@@ -1,0 +1,22 @@
+// run_ternary_renamed_local_and_self_assign — a local renamed for Inform 6 (`to`) keeps its new name
+// inside the set-up a `?:` generates; and `self = v` in a value class's method copies through its
+// `operator =` rather than rebinding I6's `self`.
+// EXPECT_OUTPUT: tern:yes sum:12 add:12
+#beguilerSettings { target = z5; informName = "none"; }
+object roomB { }
+value class Coins {
+    int cents;
+    Coins operator = (Coins o){ cents = o.cents; return self; }
+    Coins operator + (Coins o){ Coins sum; sum.cents = cents + o.cents; return sum; }
+    Coins operator += (Coins o){ self = self + o; return self; }
+}
+void main(){
+    bglInit();
+    object to = roomB;
+    print($"tern:{to == roomB ? "yes" : "no"} ");
+    Coins a; Coins b; a.cents = 5; b.cents = 7;
+    Coins c = a + b;
+    print($"sum:{c.cents} ");
+    a += b;
+    print($"add:{a.cents}");
+}

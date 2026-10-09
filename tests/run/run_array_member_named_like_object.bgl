@@ -1,0 +1,9 @@
+// run_array_member_named_like_object — an array member named like a global object emits under its
+// renamed property (`_m_history`), on every access path, as a scalar member does.
+// EXPECT_OUTPUT: 1 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Bag : object { array<int> history[4]; }
+Bag sack { }
+object History { }
+void main(){ bglInit(); sack.history += 7; print($"{sack.history.length} {sack.history[0]}"); }

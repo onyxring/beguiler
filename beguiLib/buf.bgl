@@ -66,30 +66,12 @@
 }
 extern int bglStringDefaultSize;
 
-// Glulx stream-redirect symbols. The I6 parser library provides these in
-// glk.h / parser.h; if the user includes the stdlib they get the library's
-// versions. If not, the `#Ifndef` guards below provide `<buf>`-owned
-// fallbacks so `<buf>` works standalone.
-//
-// `filemode_Write` (= 1) is the file-mode constant passed to
-// `glk_stream_open_memory`. `gg_arguments` is the parser's shared out-args
-// array used to read back the byte count from `glk_stream_close`.
-#emitfirst{
-    #Ifdef TARGET_GLULX;
-    #Ifndef filemode_Write;
-        Constant filemode_Write 1;
-    #Endif;
-    #Ifndef gg_arguments;
-        Array gg_arguments --> 4;
-    #Endif;
-    #Endif;
-}
-// Beguile-side extern decls so the pre-scan can resolve the names — the I6
-// link step resolves them to whichever definition is actually in scope
-// (stdlib's or the `<buf>`-owned shim above).
+// Glulx stream redirection needs the file mode for writing (1) and a word array for
+// glk_stream_close's counts. The I6 library declares its own (`filemode_Write`, `gg_arguments`),
+// but only after anything emitted first, so `<buf>` keeps private ones rather than borrowing them.
 #if TARGET_GLULX
-    extern int filemode_Write;
-    extern array<int> gg_arguments;
+    const int _bglFilemodeWrite = 1;
+    rawArray<int> _bglStreamCounts[2];   // glk_stream_close's result: read count, write count
 #endif
 
 //-----------------------------------------------------------------------------
@@ -336,7 +318,7 @@ object _bglBuf {
                 maxBytes = (s < 0) ? bglStringDefaultSize : s;
             }
             _bglBufGlulxStreams[self._stackTop] = bgl.asm.streamGetCurrent();
-            bgl.asm.streamSetCurrent(bgl.asm.streamOpenMemory((int)buf + bgl.wordsize, maxBytes, filemode_Write, 662));
+            bgl.asm.streamSetCurrent(bgl.asm.streamOpenMemory((int)buf + bgl.wordsize, maxBytes, _bglFilemodeWrite, 662));
         #endif
         self._stackTop++;
     }
@@ -349,15 +331,14 @@ object _bglBuf {
         self._stackTop--;
         array<char> buf = _bglBufStreamStack[self._stackTop];
         #if TARGET_ZCODE
-            bgl.asm.outputStream(-1 * 3);
+            bgl.asm.outputStream(-1 * 3);   // the VM writes the count into the length word
+            setLength(buf, length(buf));
         #else
-            bgl.asm.streamClose(bgl.asm.streamGetCurrent(), (int)gg_arguments);
-            // gg_arguments[0] is glk_stream_close's byte-count result on Glulx;
-            // copy it into our length byte.
-            _bglSetByte(buf, 0, gg_arguments[0]);
+            bgl.asm.streamClose(bgl.asm.streamGetCurrent(), (int)_bglStreamCounts);
+            // The write count is the number of bytes the redirected output produced.
+            setLength(buf, _bglStreamCounts[1]);
             bgl.asm.streamSetCurrent(_bglBufGlulxStreams[self._stackTop]);
         #endif
-        setLength(buf, length(buf));
         return buf;
     }
 

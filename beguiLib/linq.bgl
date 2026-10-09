@@ -128,8 +128,8 @@ extend extern class array {
     // orderBy reuses sort() on the scratch copy — two overloads matching sort's surface.
     /// The elements with later duplicates dropped, first occurrence kept.
     emitter array<T> distinct()                          { _bglArray.distinct($self, $prop) }
-    /// Sorted ascending into a new buffer. Unlike `sort()`, the source is left alone.
-    emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, _bglArrayCompareAsc) }
+    /// Sorted ascending by the element type's `<=>`, into a new buffer. Unlike `sort()`, the source is left alone.
+    emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, $oprefReq(<=>)) }
     /// Sorted by your own comparison, which returns <0, 0 or >0.
     emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($self, $prop, $compare) }
 }
@@ -342,7 +342,7 @@ extend _bglArray {
         return dst;
     }
 
-    array<var> orderBy(var obj, var prop, func<int, var, var> compare){
+    array<var> orderBy(var obj, var prop, func<int, var, var> compare = 0){
         array<var> dst = _bglLinqEnter(obj);
         int cap = #beguilerSettings.linqScratchSize;
         int srcLen = length(obj, prop);
@@ -354,7 +354,7 @@ extend _bglArray {
         }
         for(int i = 0; i < srcLen; i++) dst[i] = get(obj, prop, i);
         dst.length = srcLen;
-        sort(dst, 0, compare);
+        sortDefault(dst, 0, compare);
         _bglLinqLeave();
         return dst;
     }

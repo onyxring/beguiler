@@ -18,18 +18,20 @@
   - [22.7.8 Colors](#2278-colors)
   - [22.7.9 Style Validation](#2279-style-validation)
   - [22.7.10 Enums](#22710-enums)
+  - [22.7.11 Window Output](#22711-window-output)
+  - [22.7.12 Capabilities](#22712-capabilities)
 - [22.8 `<glulxImage>`](#228-glulximage)
 <!-- /toc -->
 
 ## 22.1 Overview
 
-An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§14.1.1). Extensions build on the runtime core (§21) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included; `<array>` is the exception because the core includes it itself (§12.1).
+An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§14.1.1). Extensions build on the runtime core (§21) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included, and a program that doesn't include one carries none of its code.
 
 | Extension | Include | Adds | Requires `bglInit()` | Also includes | Target |
 |---|---|---|---|---|---|
 | Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
 | Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | loaded by the core | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | yes (length headers of sized arrays) | — | both |
+| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | yes (length headers of sized arrays) | — | both |
 | LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | yes | `<array>` | both |
 | Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
@@ -156,12 +158,18 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | `s + v` | Concatenation; `v` is a literal or a string of the same type. Returns a new `stringObj`; `s` is unchanged. |
 | `s += v` | **`stringObj` only.** Append in place. |
 | `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
+| `s =~ v` | Content comparison ignoring case. |
+| `s <=> v` | Three-way comparison: negative, `0` or positive as `s` sorts before, with or after `v` (§4.5). |
 | `switch (s) { case "a": … }` | Content comparison. |
 | `s[i]` | The character at position `i`. |
 | `s[i] = c` | **`stringObj` only.** Replace the character at position `i`. |
 | `s?` | True when the slot is not `null` (§4.10). |
 
 **Methods (both types)**
+
+A method's string argument may be a literal, a `string`, a `stringObj` or an `array<char>` (`append`,
+`prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`, `compareTo`), and may be another method's
+result (`s.append(t.trim())`).
 
 | Method | Returns | Description |
 |---|---|---|
@@ -230,12 +238,12 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 **Include**
 
 ```bgl
-#include <array>         // optional: the core includes it (§12.1)
+#include <array>
 ```
 
 **Description**
 
-The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size` and `length` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
+The built-in part of the surface is subscripting, `size` and `length` (§12.3); the rest needs `#include <array>`. `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
 
 Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
@@ -274,6 +282,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 **Example**
 
 ```bgl
+#include <array>
 array<int> scores[8];
 
 void Main() {
@@ -411,9 +420,9 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 
 | Type | Kind | Members beyond `window` |
 |---|---|---|
-| `window` | base | `id`, `width`, `height`, `close()`, the split family (§22.7.3), the move family (§22.7.4), `measureStyle()`, `styleHonored()` (§22.7.9) |
-| `textBufferWindow` | scrolling prose | `drawImage(img, align, …)` (§22.7.5), `setStyle()`, `clearStyle()` (§22.7.7) |
-| `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§22.7.6), `setStyle()`, `clearStyle()` |
+| `window` | base | `id`, `width`, `height`, `close()`, the split family (§22.7.3), the move family (§22.7.4), `childStyles` (§22.7.7), `measureStyle()`, `styleHonored()`, `checkStyle()`, `distinguishes()` (§22.7.9), `supports` (§22.7.12) |
+| `textBufferWindow` | scrolling prose | `drawImage(img, align, …)` (§22.7.5), `setStyle()`, `clearStyle()` (§22.7.7), `print()`, `printLine()`, `clear()` (§22.7.11) |
+| `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§22.7.6), `setStyle()`, `clearStyle()`, `print()`, `printLine()`, `clear()` |
 | `graphicsWindow` | pixels | `drawImage(img, x, y, …)`, `setBackgroundColor(color)` |
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
@@ -426,21 +435,21 @@ The core objects `bgl.ui.mainWin` and `bgl.ui.statusBar` (§21.10) are the roots
 
 | Object | Window kind | Added by this extension |
 |---|---|---|
-| `bgl.ui.mainWin` | text buffer | `width`, `height`, the split family, `drawImage()`, `setStyle()`, `clearStyle()` |
-| `bgl.ui.statusBar` | text grid | `width`, the split family, `setStyle()`, `clearStyle()` (`height` is the core's, or the binding's, §23.3.8) |
+| `bgl.ui.mainWin` | text buffer | `width`, `height`, the split family, `childStyles`, `drawImage()`, `setStyle()`, `clearStyle()`, `print()`, `printLine()`, `clear()`, `supports` |
+| `bgl.ui.statusBar` | text grid | `width`, the split family, `childStyles`, `setStyle()`, `clearStyle()`, `print()`, `clear()`, `moveCursor()`, `supports` (`height` is the core's, or the binding's, §23.3.8) |
 | `bgl.ui.screen` | not a window | `setStyle()`, `clearStyle()` for both text window types at once (§22.7.7) |
 
-The roots are objects, not `window` instances: `close()`, the move family, `moveCursor()`, `measureStyle()` and `styleHonored()` are not available on them.
+The roots are objects, not `window` instances: `close()`, the move family, `measureStyle()`, `styleHonored()`, `checkStyle()` and `distinguishes()` are not available on them.
 
 ### 22.7.3 Splitting
 
 **Syntax**
 
 ```syntax
-⟨view⟩ = ⟨win⟩.split⟨direction⟩⟨kind⟩( ⟨size⟩ [ , ⟨scale⟩ [ , ⟨border⟩ ] ] ) ;
+⟨view⟩ = ⟨win⟩.split⟨direction⟩⟨kind⟩( ⟨size⟩ [ , ⟨scale⟩ [ , ⟨border⟩ ] ] [ , styles: ⟨sheet⟩ ] ) ;
 ```
 
-⟨direction⟩ is `Up`, `Down`, `Left` or `Right`; ⟨kind⟩ is `Grid`, `Graphics` or `Buffer`; every combination exists, spelled as one method name (`splitUpGrid`, `splitLeftGraphics`, …). ⟨size⟩ is a number of lines (grid, buffer) or pixels (graphics) when ⟨scale⟩ is `fixed` (the default), or a percentage when it is `proportional`. ⟨border⟩ is `border` or `noBorder` (the default). Any window, root or child, can be split.
+⟨direction⟩ is `Up`, `Down`, `Left` or `Right`; ⟨kind⟩ is `Grid`, `Graphics` or `Buffer`; every combination exists, spelled as one method name (`splitUpGrid`, `splitLeftGraphics`, …). ⟨size⟩ is a number of lines (grid, buffer) or pixels (graphics) when ⟨scale⟩ is `fixed` (the default), or a percentage when it is `proportional`. ⟨border⟩ is `border` or `noBorder` (the default). ⟨sheet⟩ is a `styleSheet` giving the new window its own look (§22.7.7). Any window, root or child, can be split.
 
 **Description**
 
@@ -496,7 +505,7 @@ void Main() {
 auto hud = bgl.ui.mainWin.splitUpGrid(3);
 hud.height = 5;                      // the split axis
 // hud.width = 40;                   // compile-time error: hidden on textGridWindowHorz
-(textGridWindow)hud.width = 40;      // permissive surface: no effect at run time
+((textGridWindow)hud).width = 40;    // permissive surface: no effect at run time
 bgl.ui.statusBar.height = 2;         // roots are writable on both axes
 ```
 
@@ -535,7 +544,7 @@ A text-grid window positions its cursor explicitly; any child window can be clos
 
 | Member | On | Description |
 |---|---|---|
-| `win.moveCursor(col, line)` | `textGridWindow` | Place the cursor at column `col`, line `line`. |
+| `win.moveCursor(col, line)` | `textGridWindow`, `bgl.ui.statusBar` | Place the cursor at column `col`, line `line`, both counted from 0. |
 | `win.close()` | any child window | Close the window and its subtree. Closing an already-closed window has no effect. |
 
 **Example**
@@ -585,6 +594,36 @@ hud.setStyle(eGlulxStyleType.alert, style { reverse = true; foreColor = $ff0000;
 hud.clearStyle(eGlulxStyleType.alert);
 ```
 
+**A look for one window**
+
+`setStyle()` changes a style type for every later window of that kind. To give one window its own look, describe it as a `styleSheet` — a value class with one `style` member per style type (`normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2`) — and pass it to the split as `styles:`. The sheet's hints are set just before the window opens and the previous hints are put back just after, so no other window is affected. A style left unset in the sheet leaves that style type as it was.
+
+A window's `childStyles` is a sheet that every window split *directly* from it gets. It refers to the sheet, so changing the sheet later changes what the next split gets; assigning `null` removes it. A sheet passed to the split takes precedence over the parent's `childStyles`, style type by style type, and both take precedence over `setStyle()`. To give a window's children the same look as its parent's children, assign the parent's sheet: `notes.childStyles = bgl.ui.mainWin.childStyles;`.
+
+Hints are read only when a window opens: neither `styles:` nor `childStyles` restyles a window that is already open.
+
+**Example**
+
+<!-- doctest: glulx -->
+```bgl
+#include <glulxWindow>
+#using bgl.glulx;
+
+styleSheet panelLook = styleSheet{
+    alert      = style{ fontWeight = 1; foreColor = $C80000; };
+    emphasized = style{ italics = true; };
+};
+styleSheet logLook = styleSheet{ normal = style{ fixedWidth = true; }; };
+
+void Main() {
+    bgl.ui.mainWin.childStyles = panelLook;
+    auto notes = bgl.ui.mainWin.splitRightBuffer(25);                  // panelLook
+    auto log   = bgl.ui.mainWin.splitDownBuffer(5, styles: logLook);   // logLook, then panelLook for the rest
+    notes.childStyles = bgl.ui.mainWin.childStyles;                    // notes' children look the same
+    print(notes != null && log != null);   // → true
+}
+```
+
 ### 22.7.8 Colors
 
 **Description**
@@ -604,7 +643,13 @@ bgl.ui.screen.setStyle(eGlulxStyleType.normal, style { foreColor = color.white; 
 
 **Description**
 
-Interpreters may ignore style hints. On a child window, `measureStyle(styleType, hint)` returns the value the interpreter actually uses for that style and hint, or `styleUnset` when it reports none; `styleHonored(styleType, hint)` is true when the interpreter reports the hint at all. `hint` is an `eGlulxStyleHint`, whose members are named after the `style` members. Both query the live window, so they are called after the window exists.
+Interpreters may ignore style hints, and many cannot report what they use. On a child window, `measureStyle(styleType, hint)` returns the value the interpreter actually uses for that style and hint, or `styleUnset` when it reports none (`fixedWidth` reads `1` for fixed-pitch, as it is set); `styleHonored(styleType, hint)` is true when the interpreter reports the hint at all. `hint` is an `eGlulxStyleHint`, whose members are named after the `style` members.
+
+`checkStyle(styleType, s)` compares every hint `s` sets with what the interpreter reports and returns an `eStyleCheck`: `applied` when every reported hint matches, `differs` when at least one reported hint does not, and `unknown` when the interpreter reports none of them. Interpreters built on Quixe (Lectrote, Parchment) report no hints, so there the answer is `unknown`. The enum also reads as a `bool` three ways: `r.known` (it could report), `r.isApplied` and `r.isDiffering`.
+
+`distinguishes(a, b)` is true when the interpreter shows style types `a` and `b` differently in that window; it is false when they look the same or it cannot tell.
+
+All of these query the live window, so they are called after the window exists.
 
 **Example**
 
@@ -612,6 +657,10 @@ Interpreters may ignore style hints. On a child window, `measureStyle(styleType,
 ```bgl
 if (!hud.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.reverse)) { /* fall back */ }
 int fg = hud.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.foreColor);
+
+style warn = style{ fontWeight = 1; foreColor = $C80000; };
+eStyleCheck r = hud.checkStyle(eGlulxStyleType.alert, warn);
+bool useMarkers = r.isDiffering || !hud.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.alert);
 ```
 
 ### 22.7.10 Enums
@@ -631,10 +680,63 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 | `eGlulxStyleType` | `normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2` | core | `eStyleType` |
 | `eGlulxJustify` | `left`, `full`, `centered`, `right` | `<glulxWindow>` | — |
 | `eGlulxStyleHint` | `indentation`, `paragraphIndentation`, `justify`, `sizeAdjustment`, `fontWeight`, `italics`, `fixedWidth`, `foreColor`, `backColor`, `reverse` | `<glulxWindow>` | — |
+| `eStyleCheck` | `unknown`, `applied`, `differs`; emitter values `known`, `isApplied`, `isDiffering` | `<glulxWindow>` | — |
+| `eCharOutput` | `none`, `approximate`, `exact` | `<glulxWindow>` | — |
 
-`styleUnset` is the `const int` returned by `measureStyle()` for an unreported hint.
+`styleUnset` is the `const int` returned by `measureStyle()` for an unreported hint. The `style` members `italics`, `fixedWidth` and `reverse` are `styleFlag`s: they take `true` or `false`, and stay unset (`styleUnset`) until given one.
 
-**See also** §8.2.4, §8.7.4, §11.3.1, §17.6, §21.10, §22.8, §23.3.8.
+### 22.7.11 Window Output
+
+**Syntax**
+
+```syntax
+⟨win⟩.print( ⟨value⟩ ) ;
+⟨win⟩.printLine( [ ⟨value⟩ ] ) ;
+⟨win⟩.clear() ;
+```
+
+**Description**
+
+`print` and `printLine` write to one window and then return output to wherever it was going, so they can be used in the middle of other output. They print a value exactly as `print()` and `printLine()` do (§21.4), interpolated strings included. They are members of the text windows and of `bgl.ui.mainWin` (`bgl.ui.statusBar` has `print` and `moveCursor`): writing to a graphics window is a compile-time error. `clear()` empties the window.
+
+**Example**
+
+<!-- doctest: glulx -->
+```bgl
+#include <glulxWindow>
+
+void Main() {
+    auto panel = bgl.ui.mainWin.splitRightBuffer(25);
+    panel?.printLine("Rooms seen:");
+    panel?.printLine($"  {1 + 1} so far");
+    panel?.clear();
+    print("main");   // → main
+}
+```
+
+### 22.7.12 Capabilities
+
+**Description**
+
+`bgl.glulx.supports` answers what the interpreter can do. Each member is a property, read without parentheses: `version` (the Glk version, `0xMMmmrr`), and the `bool`s `timer`, `graphics`, `graphicsTransparency`, `sound`, `soundMusic`, `soundVolume`, `soundNotify`, `hyperlinks`, `unicode`, `dateTime`, `lineTerminators` and `resourceStream`. The ones that take an argument are routines: `charOutput(c)` returns an `eCharOutput` (`none`, `approximate` or `exact`), `charInput(c)` is true when the player can type `c`, and `images(t)`, `mouse(t)` and `hyperlinkInput(t)` ask about windows of type `t` (an `eGlulxWindowType`).
+
+Every window, and both roots, also has `supports` for its own kind: `win.supports.images`, `win.supports.mouse` and `win.supports.hyperlinks`.
+
+**Example**
+
+<!-- doctest: glulx -->
+```bgl
+#include <glulxWindow>
+
+void Main() {
+    if (bgl.glulx.supports.timer) print("timer ");
+    bool canShow = bgl.glulx.supports.charOutput('e') != eCharOutput.none;
+    print(canShow);                                   // → true
+    print(bgl.ui.mainWin.supports.hyperlinks || true);   // → true
+}
+```
+
+**See also** §8.2.4, §8.7.4, §11.3.1, §17.6, §21.4, §21.10, §22.8, §23.3.8.
 
 ## 22.8 `<glulxImage>`
 

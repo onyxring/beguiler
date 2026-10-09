@@ -1,6 +1,7 @@
 #include "platform.h"
 #include <iostream>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <algorithm>
 
@@ -27,6 +28,62 @@ static const char* kStoredFirstMarker = "!__BGL_STORED_EMITFIRST__\n";
 static const char* kStoredLastMarker  = "!__BGL_STORED_EMITLAST__\n";
 
 static size_t findWordCI(const string& haystack, const string& needle, size_t pos);
+
+// Inform 6 reads `print (word)` as a print rule (`print (name) obj`), so a printed VALUE that is a
+// single word in parentheses — an emitter's `(42)` result, `(x)` — doesn't compile. One followed by
+// `;`, `,`, `.` or an operator is such a value: it becomes `0+(…)`, the same number. String literals and
+// `!` comments are left alone.
+static string fixPrintedParenValues(const string& in){
+    string out; out.reserve(in.size() + 64);
+    auto isWordChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    size_t i = 0, n = in.size();
+    while(i < n){
+        char c = in[i];
+        if(c == '"'){                                   // string literal: copy through the closing quote
+            size_t j = in.find('"', i + 1);
+            j = (j == string::npos) ? n : j + 1;
+            out.append(in, i, j - i); i = j; continue;
+        }
+        if(c == '!'){                                   // comment to end of line
+            size_t j = in.find('\n', i);
+            j = (j == string::npos) ? n : j;
+            out.append(in, i, j - i); i = j; continue;
+        }
+        bool wordStart = (i == 0 || (!isWordChar(in[i - 1]) && in[i - 1] != '.'));
+        size_t kw = 0;
+        if(wordStart){
+            if(n - i >= 9 && strncasecmp(in.c_str() + i, "print_ret", 9) == 0 && (i + 9 >= n || !isWordChar(in[i + 9]))) kw = 9;
+            else if(n - i >= 5 && strncasecmp(in.c_str() + i, "print", 5) == 0 && (i + 5 >= n || !isWordChar(in[i + 5]))) kw = 5;
+        }
+        if(kw == 0){ out += c; i++; continue; }
+        out.append(in, i, kw); i += kw;
+        size_t p = i;
+        while(p < n && (in[p] == ' ' || in[p] == '\t')) p++;
+        if(p >= n || in[p] != '(') continue;
+        int depth = 0; size_t q = p;
+        for(; q < n; q++){
+            if(in[q] == '(') depth++;
+            else if(in[q] == ')' && --depth == 0) break;
+            else if(in[q] == '"' || in[q] == '\n') { q = n; break; }
+        }
+        if(q >= n) continue;
+        // Only a single word in the parentheses reads as a rule name; `(40 + 2)` is already a value.
+        string inner = in.substr(p + 1, q - p - 1);
+        size_t a0 = inner.find_first_not_of(" \t"), a1 = inner.find_last_not_of(" \t");
+        bool oneWord = a0 != string::npos;
+        for(size_t k = a0; oneWord && k <= a1; k++)
+            if(!(isWordChar(inner[k]) || inner[k] == '$' || inner[k] == '#')) oneWord = false;
+        size_t r = q + 1;
+        while(r < n && (in[r] == ' ' || in[r] == '\t')) r++;
+        char next = r < n ? in[r] : ';';
+        if(oneWord && (next == ';' || next == ',' || next == '.' || strchr("+-*/%&|=<>~", next) != nullptr)){
+            out.append(in, i, p - i);
+            out += "0+";
+            i = p;
+        }
+    }
+    return out;
+}
 
 string i6Emitter::resolvedOutput(){
     string buf = out.str();
@@ -90,6 +147,7 @@ string i6Emitter::resolvedOutput(){
         if(it == superposedBlocks.end()) return;        // absent: already spliced, or emitted in-place
         string body = it->second;
         superposedBlocks.erase(it);
+        if(superposedObjectNames.count(name)) splicedSuperposedObjects.insert(name);
         auto bit = superposedClassBaseNames.find(name);
         if(bit != superposedClassBaseNames.end()){
             vector<string> bases = bit->second;
@@ -120,6 +178,8 @@ string i6Emitter::resolvedOutput(){
             }
         }
     }
+
+    pruneSuperposedObjectMethods(buf);
 
     // The .inf-mode trailer — `end;` through EOF — goes last of all, AFTER the superposed blocks.
     // It used to be written into `out` during emission, which put `end;` ahead of them: I6 stops
@@ -157,6 +217,14 @@ string i6Emitter::resolvedOutput(){
     }
     for(size_t p = 0; (p = buf.find(kGlobalEscapeMarker, p)) != string::npos; )
         buf.erase(p, strlen(kGlobalEscapeMarker));
+    // A debug build compiles Inform 6's veneer with tracing, which uses `debug_flag`, `workflag` and
+    // `DebugAttribute`. A library declares them; a program without one needs them, declared after
+    // anything that might.
+    if(parser.isSymbolDefined("debug"))
+        buf += "\n#Ifndef debug_flag;\nGlobal debug_flag;\n#Endif;\n"
+               "#Ifndef workflag;\nAttribute workflag;\n#Endif;\n"
+               "#Ifndef DebugAttribute;\n[ DebugAttribute a; print \"(attribute \", a, \")\"; ];\n#Endif;\n";
+    buf = fixPrintedParenValues(buf);
     return buf;
 }
 
@@ -615,25 +683,94 @@ void i6Emitter::emitTryParamCopyIns(const string& indent){
 // file-scope I6 object, `_bglLocal_<func>_<name>`), so it starts out owning it and an assignment can
 // still re-point it. The backing's stored fields are zeroed, since its state would otherwise persist
 // across calls: each call sees a fresh instance.
+// A verb's action is named for the verb; its object is named apart (`_bglVerb_<name>`).
+string i6Emitter::actionNameOf(const string& text){
+    string low = text; transform(low.begin(), low.end(), low.begin(), ::tolower);
+    for(verbObjectDef* v : languageService.verbs){
+        string vi6 = v->i6name; transform(vi6.begin(), vi6.end(), vi6.begin(), ::tolower);
+        if(v->name == low || (!vi6.empty() && vi6 == low)) return v->dName();
+    }
+    return text;
+}
+
+bool isHeaderMember(const string& name);
+
+// A routine that calls itself shares its parameters' and locals' instances with every activation:
+// each activation keeps the caller's field values in the frame pool from entry until it returns.
+void i6Emitter::prepareRecursionSave(functionDef* fd){
+    if(!fd->callsItself || fd->ownBackings.empty() || !fd->entrySetUp.empty()) return;
+    auto* body = dynamic_cast<statementBlock*>(fd->body);
+    if(body == nullptr) return;
+    vector<string> slots;
+    set<classDef*> visited;
+    function<void(classDef*, const string&)> collect = [&](classDef* c, const string& inst){
+        if(!c) return;
+        for(classDef* base : c->baseClasses) collect(base, inst);
+        for(typeMember* m : c->members){
+            auto* fm = dynamic_cast<variableDeclaration*>(m);
+            if(!fm || fm->isStatic || fm->isPrePassStub || isHeaderMember(fm->name)) continue;
+            if(fm->type.name == "attributelist") continue;
+            if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
+            if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive) continue;
+            if(dynamic_cast<arrayDeclaration*>(fm)) continue;
+            if(classDef* owned = ownedFieldClass(fm, visited)){
+                visited.insert(owned);
+                collect(owned, format("_bglField_{0}_{1}", inst, fm->dName()));
+                visited.erase(owned);
+                continue;
+            }
+            slots.push_back(format("{0}.{1}", inst, fm->i6name.empty() ? fm->dName() : fm->i6name));
+        }
+    };
+    for(auto& [backing, typeName] : fd->ownBackings) collect(languageService.findClass(typeName), backing);
+    if(slots.empty()) return;
+    const string frame = "_bglsv";
+    auto* vd = new variableDeclaration();
+    vd->name = frame;
+    vd->type = languageService.getType("var");
+    vd->isSynthetic = true;
+    body->statements.insert(body->statements.begin(), vd);
+    string save = format("{0} = _bglFrameAlloc({1});", frame, (int)slots.size());
+    string restore;
+    for(size_t i = 0; i < slots.size(); i++){
+        save += format(" {0}-->{1} = {2};", frame, (int)i, slots[i]);
+        restore += format("{0} = {1}-->{2}; ", slots[i], frame, (int)i);
+    }
+    fd->entrySetUp = save;
+    fd->cleanups.push_back({frame, restore + format("_bglFrameFree({0});", (int)slots.size())});
+}
+
 void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, const string& indent){
     for(variableDeclaration* vd : locals){
         if(!vd->isClassLocalWithBacking) continue;
         classDef* cls = languageService.findClass(vd->type.name);
         if(!cls) continue;
         out << format("{0}{1} = {2};\n", indent, spillName(vd->name), vd->backingName);
-        function<void(classDef*)> zeroFields = [&](classDef* c){
+        // Each field back to its declared value (0 when it has none). A field that owns an instance
+        // keeps pointing at it, and that instance's fields are reset in turn.
+        set<classDef*> visited;
+        function<void(classDef*, const string&)> resetFields = [&](classDef* c, const string& inst){
             if(!c) return;
-            for(classDef* base : c->baseClasses) zeroFields(base);
+            for(classDef* base : c->baseClasses) resetFields(base, inst);
             for(typeMember* m : c->members){
                 auto* fm = dynamic_cast<variableDeclaration*>(m);
-                if(!fm || fm->isStatic || fm->isPrePassStub) continue;
+                if(!fm || fm->isStatic || fm->isPrePassStub || isHeaderMember(fm->name)) continue;
                 if(fm->type.name == "attributelist") continue;
                 if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
-                if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass) continue;   // compile-time members (parent, children): no property
-                out << format("{0}{1}.{2} = 0;\n", indent, vd->backingName, fm->dName());
+                if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive) continue;   // compile-time members (parent, children): no property
+                if(dynamic_cast<arrayDeclaration*>(fm)) continue;   // inline property data: not a single word
+                if(classDef* owned = ownedFieldClass(fm, visited)){
+                    visited.insert(owned);
+                    resetFields(owned, format("_bglField_{0}_{1}", inst, fm->dName()));
+                    visited.erase(owned);
+                    continue;
+                }
+                string value = fm->declaredExpressionValue != nullptr ? staticText(fm->declaredExpressionValue) : "0";
+                if(value.empty()) value = "0";
+                out << format("{0}{1}.{2} = {3};\n", indent, inst, fm->i6name.empty() ? fm->dName() : fm->i6name, value);
             }
         };
-        zeroFields(cls);
+        resetFields(cls, vd->backingName);   // visited starts empty, as in synthesizeFieldBackings
     }
 }
 
@@ -696,7 +833,7 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
         // Any local array that draws framePool backing forces pool emission:
         //   • sized word/byte array (arraySize > 0)
         //   • list-initialized word array (arraySize == 0 with an initializer list)
-        if(arr->arraySize > 0) return true;
+        if(arr->arraySize > 0 || !arr->localInitSource.empty()) return true;
         if(!arr->isByteArray && dynamic_cast<initializerList*>(arr->declaredExpressionValue)) return true;
     }
     return false;
@@ -707,6 +844,25 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
 //   - overflow body locals          → _bglFrm-->N frame slots
 void i6Emitter::buildSpillMap(functionDef* fd){
     clearSpillMap();
+    // A routine that returns a value and frees things on the way out (local arrays, deinit) holds
+    // the value in a local of its own first: the return expression may read what the cleanups free.
+    currentReturnSlot.clear();
+    if(auto* rb = dynamic_cast<statementBlock*>(fd->body);
+       rb != nullptr && fd->returnType.name != "void" && !fd->returnType.name.empty()
+       && (funcHasLocalArrays(fd) || !fd->cleanups.empty())){
+        const string slot = "_bglret";
+        bool present = false;
+        for(statement* st : rb->statements)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(st); vd && vd->name == slot) present = true;
+        if(!present){
+            auto* vd = new variableDeclaration();
+            vd->name = slot;
+            vd->type = languageService.getType("var");
+            vd->isSynthetic = true;
+            rb->statements.insert(rb->statements.begin(), vd);
+        }
+        currentReturnSlot = slot;
+    }
     // Build the per-function display-name map regardless of target. Even on Glulx (no spill),
     // this lets spillName preserve user-chosen casing for params and locals.
     auto rememberDisplay = [&](const string& canonical, const string& display){
@@ -895,7 +1051,9 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     if(!body) return;
     set<string> propNames;
     collectDottedAccessNames(body, propNames);
-    if(propNames.empty() && fd->globalEscapes.empty()) return;
+    // Inform 6 reads these as part of a statement or condition when a local carries the name
+    // (`move x to to;`, `if (x in in)`), though a global or object of the same name is fine.
+    static const set<string> statementWords = {"to", "has", "in"};
     // Names referenced verbatim inside a raw `#i6` block can't be rewritten (raw I6 is emitted
     // as-is), so renaming them in the header/body would desync from that raw reference. Leave such
     // names raw — I6 lets a routine local safely shadow a property of the same name, so this is
@@ -906,7 +1064,10 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     // Preserve original-case (display name) inside the mangled form for readability.
     auto maybeRename = [&](const string& canonical, const string& display){
         if(currentLocalRenames.count(canonical)) return;
-        if(!propNames.count(canonical) && !fd->globalEscapes.count(canonical)) return;
+        // Any property of the name counts, not only those this routine reads: I6 takes `obj.x` with a
+        // local x in scope as the property numbered by the local, wherever the access sits.
+        if(!propNames.count(canonical) && !languageService.isKnownPropertyName(canonical)
+           && !fd->globalEscapes.count(canonical) && !statementWords.count(canonical)) return;
         if(rawTextHasWord(rawI6, canonical)) return;   // verbatim in raw I6 → keep the raw name
         const string& shown = display.empty() ? canonical : display;
         currentLocalRenames[canonical] = "_l_" + shown;
@@ -1337,6 +1498,10 @@ framePoolSize = beguilerSettings.framePoolSize;
 
 // Scratch globals (ternary temps, switch temp, try/catch cookie + per-block save slots), each only when used.
 void i6Emitter::emitPhaseScratchGlobals(){
+// Tells the library's raw I6 which array layout is in force: `<array>`'s length trailer, or the
+// core's length in word 0. First, so code emitted ahead of everything else can test it.
+if(languageService.arrayInUse)
+    out << "Constant _BGL_TRACKED_ARRAYS;\n";
 for(int i = 0; i < languageService.ternaryTempCount; i++)
     out << format("global _bgl_temp{0};\n", i);
 if(languageService.switchTempNeeded)
@@ -1358,7 +1523,7 @@ void i6Emitter::emitPhaseRuntimeNeedsScan(vector<typeDef*>& nodeList){
     int maxXP = 0;
     auto scanFd = [&](functionDef* fd){
         if(fd->isEmitter || fd->isExternal) return;
-        if(funcNeedsSpill(fd) || funcHasLocalArrays(fd)) needsPool = true;
+        if(funcNeedsSpill(fd) || funcHasLocalArrays(fd) || (fd->callsItself && !fd->ownBackings.empty())) needsPool = true;
         maxXP = max(maxXP, max(0, (int)fd->params.size() - 5));
     };
     for(typeDef* node : nodeList){
@@ -1395,6 +1560,104 @@ for(const string& block : languageService.emitFirstBlocks)
 // from function-body emission below).
 if(!languageService.storedEmitFirstBlocks.empty())
     out << kStoredFirstMarker;
+}
+
+// A superposed object is spliced in whole once anything names it; its methods then go one by one.
+// A method stays only if its name occurs somewhere outside its own body: I6 property names are
+// global, so any occurrence may be a use (a send, `provides`, a property value passed along).
+// Repeats until nothing more drops, since a dropped method may have been another's only user.
+void i6Emitter::pruneSuperposedObjectMethods(string& buf){
+    auto lc = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
+    auto countWord = [](const string& hay, const string& word){   // hay and word lowercase
+        int n = 0;
+        for(size_t p = hay.find(word); p != string::npos; p = hay.find(word, p + 1)){
+            char b = p > 0 ? hay[p-1] : ' ', a = p + word.size() < hay.size() ? hay[p + word.size()] : ' ';
+            if(!(isalnum((unsigned char)b) || b == '_') && !(isalnum((unsigned char)a) || a == '_')) n++;
+        }
+        return n;
+    };
+    bool changed = true;
+    while(changed){
+        changed = false;
+        string lower = lc(buf);
+        for(const string& name : splicedSuperposedObjects){
+            string head = "\nobject " + name + "\n";
+            size_t start = buf.find(head);
+            if(start == string::npos) continue;
+            start += 1;
+            size_t end = buf.find("\n;\n", start);
+            if(end == string::npos) continue;
+            end += 3;
+            // Lines of the block; an item is `  with NAME [` or `       NAME [` through `  ],` / `  ]`.
+            vector<string> lines;
+            for(size_t p = start; p < end; ){
+                size_t e = buf.find('\n', p);
+                lines.push_back(buf.substr(p, e - p));
+                p = e + 1;
+            }
+            struct Item { string name; size_t first, last; };
+            vector<Item> items;
+            static const regex itemHead(R"(^(  with |       )([A-Za-z_]\w*) \[)");
+            for(size_t i = 1; i < lines.size(); i++){
+                smatch m;
+                if(!regex_search(lines[i], m, itemHead)) continue;
+                size_t j = i;
+                while(j < lines.size() && lines[j] != "  ]," && lines[j] != "  ]") j++;
+                if(j == lines.size()){ items.clear(); break; }   // not a shape this pass understands
+                items.push_back({m[2].str(), i, j});
+                i = j;
+            }
+            if(items.empty()) continue;
+            // Every non-item line between items would be data; leave such objects whole.
+            bool onlyItems = true;
+            for(size_t k = 0; k + 1 < items.size(); k++) if(items[k].last + 1 != items[k+1].first) onlyItems = false;
+            if(!onlyItems || items.front().first != 1 || items.back().last + 2 != lines.size()) continue;
+            vector<bool> keep(items.size(), true);
+            for(size_t k = 0; k < items.size(); k++){
+                string itemText;
+                for(size_t i = items[k].first; i <= items[k].last; i++) itemText += lines[i] + "\n";
+                string w = lc(items[k].name);
+                if(countWord(lower, w) - countWord(lc(itemText), w) <= 0) keep[k] = false;
+            }
+            if(all_of(keep.begin(), keep.end(), [](bool b){ return b; })) continue;
+            // Rebuild the block from the kept items, mapping old block lines to new ones.
+            int startLine = (int)std::count(buf.begin(), buf.begin() + start, '\n') + 1;
+            vector<int> newLine(lines.size(), -1);
+            vector<string> out{lines[0]};
+            newLine[0] = 0;
+            bool firstKept = true;
+            size_t lastKept = items.size();
+            for(size_t k = 0; k < items.size(); k++) if(keep[k]) lastKept = k;
+            for(size_t k = 0; k < items.size(); k++){
+                if(!keep[k]) continue;
+                for(size_t i = items[k].first; i <= items[k].last; i++){
+                    string l = lines[i];
+                    if(i == items[k].first) l = (firstKept ? "  with " : "       ") + l.substr(7);
+                    if(i == items[k].last) l = k == lastKept ? "  ]" : "  ],";
+                    newLine[i] = (int)out.size();
+                    out.push_back(l);
+                }
+                firstKept = false;
+            }
+            newLine[lines.size() - 1] = (int)out.size();
+            out.push_back(lines.back());   // ";"
+            string block;
+            for(const string& l : out) block += l + "\n";
+            int delta = (int)out.size() - (int)lines.size();
+            for(auto& e : sourceMap){
+                int& ln = std::get<0>(e);
+                if(ln >= startLine && ln < startLine + (int)lines.size()){
+                    int nl = newLine[ln - startLine];
+                    ln = nl < 0 ? -1 : startLine + nl;
+                } else if(ln >= startLine + (int)lines.size()) ln += delta;
+            }
+            sourceMap.erase(remove_if(sourceMap.begin(), sourceMap.end(),
+                [](const tuple<int,string,int>& e){ return std::get<0>(e) < 0; }), sourceMap.end());
+            buf.replace(start, end - start, block);
+            changed = true;
+            break;   // positions moved; rescan from the top
+        }
+    }
 }
 
 // Registers sized-uninitialised tracked word arrays so bglInit can stamp their $9084 magic. Emits nothing.
@@ -1441,9 +1704,21 @@ if(languageService.bufInUse){
 // Outside the `bufInUse` guard above, which it used to sit inside — a startup assignment to a
 // global is not a `<buf>` matter, and without that extension the declaration came AFTER bglInit,
 // leaving I6 with "'=' applied to undeclared variable".
+// A global a `#startup` body names is written by bglInit too.
+{
+    string startupText;
+    for(const string& block : languageService.startupBlocks) startupText += block + "\n";
+    transform(startupText.begin(), startupText.end(), startupText.begin(), ::tolower);
+    if(!startupText.empty())
+        for(typeDef* g : languageService.globals)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                if(!vd->isExternal && !vd->isConst && dynamic_cast<arrayDeclaration*>(vd) == nullptr
+                   && rawTextHasWord(startupText, vd->name))
+                    vd->needsEarlyGlobalDecl = true;
+}
 for(typeDef* g : languageService.globals){
     auto* vd = dynamic_cast<variableDeclaration*>(g);
-    if(vd != nullptr && vd->needsEarlyGlobalDecl && !vd->isExternal){
+    if(vd != nullptr && vd->needsEarlyGlobalDecl && !vd->isExternal && !vd->isConst){
         // Carry the initializer when there is one: this is the whole declaration, moved, and pass
         // 3 skips the name once it is here. A global whose own initializer was deferred has had it
         // cleared, so it declares bare and bglInit assigns it.
@@ -1582,10 +1857,11 @@ std::function<void(classDef*, const char*)> emitClassRecursive = [&](classDef* c
             // Declared later in source — emission here would reference an attribute I6
             // hasn't declared yet. Diagnose with source ordering hint.
             const string& clsLabel = cd->displayName.empty() ? cd->name : cd->displayName;
+            string where = vd->src.line > 0 ? format("{0}:{1}:{2}: ", vd->src.file, vd->src.line, max(1, vd->src.col)) : string();
             throw runtime_error(format(
-                "class '{0}' uses `has {1}` but its bindings-file declaration `extern attribute {1};` "
-                "comes later in source (triggered by: {2}). Move the bindings file before the class "
-                "or its first instance.", clsLabel, attrName, triggerReason));
+                "{3}ERROR: class '{0}' lists attribute '{1}' (`attributes = {{{1}}}`), but its declaration "
+                "`extern attribute {1};` comes later in source (needed by: {2}). Declare the attribute, or "
+                "include the bindings file that declares it, before the class.", clsLabel, attrName, triggerReason, where));
         }
     }
     generateI6(cd);
@@ -1860,6 +2136,7 @@ void i6Emitter::generateI6(typeDef* node){
              string rName = od->i6name.empty() ? od->dName() : od->i6name;
              superposedBlocks[rName] = captured.str();
              superposedBlockMaps[rName] = std::move(blockMap);
+             superposedObjectNames.insert(rName);
          } else {
              emitObject(od);
          }
@@ -1928,6 +2205,9 @@ void i6Emitter::emitRawTextWithSourceMap(const string& text, const sourceLocatio
         out << text;
         return;
     }
+    // The text's own first line, too: a one-line island would otherwise borrow the line of whatever
+    // was mapped before it (its routine's header).
+    if(!text.empty() && text[0] != '\n') pushSourceMap(currentLine(), srcStart.file, srcStart.line);
     int srcOffset = 0;  // newlines passed within `text`
     for(size_t i = 0; i < text.size(); i++){
         out << text[i];
@@ -2079,7 +2359,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
         if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
             // Property array on a class: emit inline I6 property values so each
             // instance gets its declared storage. Mirrors emitObject's array path.
-            out << format("    {0} ", arr->dName());
+            out << format("    {0} ", arr->i6name.empty() ? arr->dName() : arr->i6name);
             auto extIt = externalArrayNames.find(arr->name);
             if(arr->isPromoted){
                 // Storage lives in a per-instance global, so the class declares the
@@ -2145,8 +2425,8 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             emitTryParamCopyIns("        ");
             // Per-call copy-in for params that own an instance, on class/object member methods (same
             // shape as top-level functions, just with a deeper indent).
-            emitOwnedLocalSetup(locals, "        ");
             emitParamCopyIns(fd, "        ");
+            emitOwnedLocalSetup(locals, "        ");
             // Allocate method-local arrays — without this a method-local
             // array<T>/rawArray<T>/array<char> is left as an unallocated null slot (a
             // rawArray<int> buffer handed to glk_select would crash). Frees run on every
@@ -2246,6 +2526,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         superposedBlockMaps[rName] = std::move(blockMap);
         return;
     }
+    prepareRecursionSave(funcNode);
     buildSpillMap(funcNode);
     // Persist this routine's spill map for the debug bundle (the transient maps are cleared per
     // routine). Key matches writeDebugBundle's lookup: i6name, else canonical name.
@@ -2278,13 +2559,17 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     out << ";\n";
     if(currentSpillCount > 0)
         out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+    if(!funcNode->entrySetUp.empty())
+        out << "    " << spillWord(funcNode->entrySetUp) << "\n";
     emitTryParamCopyIns("    ");
 
-    emitOwnedLocalSetup(locals, "    ");
-
     // Per-call copy-in for params that own an instance (top-level functions). Same shape applies
-    // to class member methods — emitClass calls the same helper with its own indent.
+    // to class member methods — emitClass calls the same helper with its own indent. It runs before
+    // the locals are reset: a routine that calls itself may pass one of its own locals, whose
+    // instance is the one about to be reset.
     emitParamCopyIns(funcNode, "    ");
+
+    emitOwnedLocalSetup(locals, "    ");
 
     // Local arrays: framePool-backed allocation per function call (recursion-safe).
     // For each word array declared inside the body, allocate a slice from
@@ -2324,6 +2609,13 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
         if(arr == nullptr) continue;
         if(arr->isByteArray){
+            if(!arr->localInitSource.empty()){
+                string name = spillName(arr->name), src = arr->localInitSource;
+                out << format("{0}{1} = _bglByteArrayLocalAlloc({2}-->0); _bglByteArrayLocalCopy({1}, {2});\n",
+                              indent, name, src);
+                fn->cleanups.push_back({arr->name, format("_bglByteArrayLocalFree({0}-->0);", src)});
+                continue;
+            }
             if(arr->arraySize <= 0) continue;
             string name = spillName(arr->name);
             out << format("{0}{1} = _bglByteArrayLocalAlloc({2});\n", indent, name, arr->arraySize);
@@ -2474,12 +2766,26 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
     // Leaving every active try: the cookie goes back to what it was outside the outermost.
     if(!glulxTryStack.empty())
         out << indent << "_bgl_catch_cookie = " << glulxTryStack.front().first << ";\n";
+    // A value the cleanups could disturb is computed into the routine's return slot first.
+    const string& rx = ret->returnExpression;
+    // Only a whole literal is constant: `1 + f(x)` starts with a digit but runs a call.
+    static const std::regex literalValue(R"re(^(-?\d+|\$\$?[0-9A-Fa-f]+|\$[+-][0-9.eE+-]+|"[^"]*"|'[^']*')$)re");
+    bool constantValue = rx.empty() || rx == "rtrue" || rx == "rfalse" || rx == "true" || rx == "false"
+        || std::regex_match(rx, literalValue);
+    bool holdValue = !currentReturnSlot.empty() && !constantValue
+                  && (currentCleanups != nullptr || currentSpillCount > 0);
+    if(holdValue)
+        out << indent << spillName(currentReturnSlot) << " = " << spillWord(rx) << ";\n";
     // emit deinit cleanups before every return
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
             out << indent << body << "\n";
     if(currentSpillCount > 0)
         out << format("{0}_bglFrameFree({1});\n", indent, currentSpillCount);
+    if(holdValue){
+        out << format("{0}return {1};\n", indent, spillName(currentReturnSlot));
+        return;
+    }
     if(ret->returnExpression == "rtrue" || ret->returnExpression == "rfalse")
         out << format("{0}{1};\n", indent, ret->returnExpression);
     else if(ret->returnExpression != "")
@@ -2639,19 +2945,24 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
     string openTemplate  = fi->isByteArray ? "forIn.openByte"  : "forIn.open";
     string closeTemplate = fi->isByteArray ? "forIn.closeByte" : "forIn.close";
     string arrayVarS = spillName(fi->arrayVar);
-    // Member (property) WORD array: a qualified receiver ("obj.prop") iterates via the
-    // orLibrary property convention — element n at obj.&prop-->n (0-indexed, no count
-    // slot), length (obj.#prop)/WORDSIZE. Members are never tracked, so this is
-    // independent of <array>. Globals/locals keep the count-prefixed/tracked path.
+    // Member (property) WORD array: element n at obj.&prop-->n, with the length the parser
+    // worked out for its layout (a tracked member keeps it in its last word). Globals/locals keep
+    // the count-prefixed/tracked path.
     bool isMemberArr = !fi->isByteArray && arrayVarS.find('.') != string::npos;
     string arrayArg = arrayVarS;
     string lengthExpr;
-    if(isMemberArr){
+    if(!fi->memberBase.empty()){
+        openTemplate = "forIn.openMember";
+        closeTemplate = "forIn.closeMember";
+        arrayArg = fi->memberBase;
+        lengthExpr = fi->memberLength;
+    } else if(isMemberArr){
         size_t d = arrayVarS.rfind('.');
         string owner = arrayVarS.substr(0, d), prop = arrayVarS.substr(d + 1);
         openTemplate = "forIn.openMember";
         closeTemplate = "forIn.closeMember";   // its own close (byte-identical to forIn.close for now,
                                                // so a variant can grow a distinct tail without touching the others)
+        prop = parser.propertyI6Name(prop);
         arrayArg = owner + ".&" + prop;
         lengthExpr = "(" + owner + ".#" + prop + ")/WORDSIZE";
     } else {
@@ -2694,7 +3005,7 @@ void i6Emitter::emitSwitchStatement(switchStatement* sw, const string& indent){
                     } else if(e.value != nullptr){
                         // Check for operator switch() emitter matching this value's type
                         string valType = e.value->resolvedType;
-                        string valText = (valType == "verb") ? ("##" + e.value->text()) : e.value->text();
+                        string valText = (valType == "verb") ? ("##" + actionNameOf(e.value->text())) : e.value->text();
                         auto it = sw->switchEmitters.find(valType);
                         if(it == sw->switchEmitters.end() && !valType.empty())
                             it = sw->switchEmitters.find("var"); // fallback to var
@@ -2759,7 +3070,7 @@ void i6Emitter::emitSwitchStatement(switchStatement* sw, const string& indent){
                         out << e.rangeLow->text() << " to " << e.rangeHigh->text();
                     } else if(e.value != nullptr){
                         if(e.value->resolvedType == "verb")
-                            out << "##" << e.value->text();
+                            out << "##" << actionNameOf(e.value->text());
                         else
                             out << e.value->text();
                     }
@@ -2952,7 +3263,8 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
             functionDef* printFn = nullptr;
             if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(rt)))
                 for(typeMember* m : od->members) if(isPrint(m)){ printFn = dynamic_cast<functionDef*>(m); break; }
-            classDef* cls = parser.getDispatchClass(rt);
+            // A comparison yields eBool, an enum, which prints as `bool` does.
+            classDef* cls = parser.getDispatchClass(rt == "ebool" ? "bool" : rt);
             if(printFn == nullptr && cls != nullptr)
                 printFn = dynamic_cast<functionDef*>(cls->findMember(isPrint));
             if(printFn != nullptr){
@@ -3051,31 +3363,29 @@ void i6Emitter::emitDeferredBackingClass(classDef* cls){
     superposedBlockMaps.erase(k);
     superposedClassBaseNames.erase(k);
 }
-string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited){
-    string clause;
-    bool first = true;
-    for(typeMember* m : cls->members){
-        auto* vd = dynamic_cast<variableDeclaration*>(m);
-        if(!vd || vd->isStatic || vd->isConst) continue;
+// The class of a field that owns an instance of its own (`_bglField_<instance>_<field>`), or null when
+// the field holds a plain value or a reference. `visited` holds the classes already on the path.
+classDef* i6Emitter::ownedFieldClass(variableDeclaration* vd, const set<classDef*>& visited){
+        if(!vd || vd->isStatic || vd->isConst) return nullptr;
         // `ref` members are bare pointer slots (pointer-alias semantics) — they never own
         // backing storage. This also breaks the infinite regress for self-referential ref
         // members (a Node whose `ref Node next` would otherwise back a Node backing a Node...).
-        if(vd->isRefLocal) continue;
+        if(vd->isRefLocal) return nullptr;
         // Skip non-data fields
-        if(vd->type.name == "attributelist") continue;
-        if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
+        if(vd->type.name == "attributelist") return nullptr;
+        if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") return nullptr;
         // Field type must be a real, statically-instantiable class
         classDef* fieldCls = languageService.findClass(vd->type.name);
-        if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isExternal) continue;
+        if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isExternal) return nullptr;
         // Skip if already on the instantiation path — same-class fields and any indirect cycles
         // are deliberately left at default (references owned elsewhere).
-        if(visited.count(fieldCls)) continue;
+        if(visited.count(fieldCls)) return nullptr;
         // Skip if the field's class manages its own allocation via init emitter (e.g. string).
         bool hasInitEmitter = false;
         for(typeMember* fm : fieldCls->members)
             if(auto* fn = dynamic_cast<functionDef*>(fm))
                 if(fn->isEmitter && fn->name == "init" && fn->params.empty()){ hasInitEmitter = true; break; }
-        if(hasInitEmitter) continue;
+        if(hasInitEmitter) return nullptr;
         // Skip if the field's class has no stored fields (it would emit as a plain global, not
         // an object instance — no point auto-backing it).
         bool storesFields = false;
@@ -3086,7 +3396,16 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
             if(fvd->type.name == "grammarrulelist" || fvd->type.name == "grammarrule") continue;
             storesFields = true; break;
         }
-        if(!storesFields) continue;
+        return storesFields ? fieldCls : nullptr;
+}
+
+string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited){
+    string clause;
+    bool first = true;
+    for(typeMember* m : cls->members){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        classDef* fieldCls = ownedFieldClass(vd, visited);
+        if(fieldCls == nullptr) continue;
 
         // Synthesize a backing instance global. Recurse for its own fields. The backing's
         // mangled name uses the field's display form for human readability.
@@ -3099,7 +3418,7 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
         out << ";\n";
 
         if(first){ clause = "with "; first = false; } else { clause += ", "; }
-        clause += format("{0} {1}", vd->dName(), backingName);
+        clause += format("{0} {1}", vd->i6name.empty() ? vd->dName() : vd->i6name, backingName);
     }
     return clause;
 }
@@ -3235,20 +3554,23 @@ if(list != nullptr){
     // there. Without `[N]`, capacity and length are both the seed count.
     int len = list->elements.size();
     int cap = arr->arraySize > 0 ? arr->arraySize : len;
-    out << format("array {0} {1}", arr->dName(), arr->isRaw ? "-->" : "table");
+    vector<string> entries;
     for(expression* elem : list->elements){
         string t = staticText(elem);
         // Wrap negative-leading elements in parens so I6 can't read them as
         // a binary minus against the previous element ("...without bracketing,
         // the minus sign '-' is ambiguous").
-        if(!t.empty() && t.front() == '-') out << " (" << t << ")";
-        else                                out << " " << t;
+        entries.push_back(!t.empty() && t.front() == '-' ? "(" + t + ")" : t);
     }
-    for(int pad = len; pad < cap; pad++) out << " 0";   // unused capacity
+    for(int pad = len; pad < cap; pad++) entries.push_back("0");   // unused capacity
     if(tracked){
-        out << " " << len;     // length = seeded count, not capacity
-        out << " $9084";       // magic
+        entries.push_back(to_string(len));   // length = seeded count, not capacity
+        entries.push_back("$9084");          // magic
     }
+    out << format("array {0} {1}", arr->dName(), arr->isRaw ? "-->" : "table");
+    // A lone entry would be read by I6 as the array's size; the bracket form makes it an entry.
+    if(entries.size() == 1) out << " [ " << entries[0] << " ]";
+    else for(const string& e : entries) out << " " << e;
     out << ";\n";
     return;
 }
@@ -3545,7 +3867,7 @@ for(typeMember* m : obj->members){
     if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
         // Property array: emit as inline I6 property values
         out << (first ? "  with " : ",\n       ");
-        out << arr->dName() << " ";
+        out << (arr->i6name.empty() ? arr->dName() : arr->i6name) << " ";
         auto extIt = externalArrayNames.find(arr->name);
         if(arr->isPromoted){
             // Too large for an I6 property: the storage is a synthesized global emitted
@@ -3636,8 +3958,8 @@ for(typeMember* m : obj->members){
         if(currentSpillCount > 0)
             out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
         emitTryParamCopyIns("    ");
-        emitOwnedLocalSetup(locals, "    ");
         emitParamCopyIns(fd, "    ");
+        emitOwnedLocalSetup(locals, "    ");
         // Allocate object-method-local arrays — was SKIPPED here too, so an object property
         // routine (e.g. `extend _bglUi { waitForKey() }`) with a local rawArray<int> buffer
         // got a null slot that crashed glk_select. Frees run on every exit via currentCleanups.
@@ -3691,12 +4013,20 @@ if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
 
 // The owning class's globalDeclaration emitter body, with $self/$selfsub/$val bound to this instance.
 void i6Emitter::emitObjectGlobalDeclarationEmitter(objectDef* obj, const string& objI6Name){
-    if(obj->objectClass && !obj->objectClass->globalDeclarationBody.empty()){
-string body = obj->objectClass->globalDeclarationBody;
+    // The nearest class in the object's ancestry that declares one (a verb subclass inherits verb's).
+    const classDef* declaring = nullptr;
+    function<void(const classDef*)> find = [&](const classDef* c){
+        if(c == nullptr || declaring != nullptr) return;
+        if(!c->globalDeclarationBody.empty()){ declaring = c; return; }
+        for(const classDef* b : c->baseClasses) find(b);
+    };
+    find(obj->objectClass);
+    if(declaring != nullptr){
+string body = declaring->globalDeclarationBody;
 size_t s = body.find_first_not_of(" \t\n\r"); if(s != string::npos) body = body.substr(s);
 size_t e = body.find_last_not_of(" \t\n\r");  if(e != string::npos) body = body.substr(0, e+1);
 // The action routine is named for the action, which keeps the verb's own name (`BoxSub` for `-> Box`).
-body = replaceWord(body, "$selfsub", (obj->i6nameAvoidsKeyword ? obj->dName() : objI6Name) + "sub");
+body = replaceWord(body, "$selfsub", (obj->i6nameAvoidsKeyword || dynamic_cast<verbObjectDef*>(obj) ? obj->dName() : objI6Name) + "sub");
 body = replaceWord(body, "$self",    objI6Name);
 body = replaceWord(body, "$val",     objI6Name);
 out << body << "\n";
@@ -4012,17 +4342,26 @@ void i6Emitter::liftAllVerbCompileTimeFields(){
     for(verbObjectDef* vd : languageService.verbs){
         vd->priority = defaultPriority;
         vd->isMeta = false;
-        for(typeMember* m : vd->members){
-            auto* mv = dynamic_cast<variableDeclaration*>(m);
-            if(!mv || !mv->declaredExpressionValue) continue;
-            if(mv->name == "meta"){
-                string v = mv->declaredExpressionValue->text();
-                if(v == "true" || v == "1") vd->isMeta = true;
-            } else if(mv->name == "priority"){
-                try { vd->priority = stoi(mv->declaredExpressionValue->text()); }
-                catch(...) {} // non-int literal: leave anchor at BLR default
+        auto apply = [&](const vector<typeMember*>& members){
+            for(typeMember* m : members){
+                auto* mv = dynamic_cast<variableDeclaration*>(m);
+                if(!mv || !mv->declaredExpressionValue) continue;
+                if(mv->name == "meta"){
+                    string v = mv->declaredExpressionValue->text();
+                    vd->isMeta = (v == "true" || v == "1");
+                } else if(mv->name == "priority"){
+                    try { vd->priority = stoi(mv->declaredExpressionValue->text()); }
+                    catch(...) {} // non-int literal: leave anchor at BLR default
+                }
             }
-        }
+        };
+        // A subclass of verb may set them for all its verbs; the verb's own body has the last word.
+        vector<classDef*> chain;
+        for(classDef* c = vd->objectClass; c != nullptr && c->name != "verb";
+            c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
+            chain.push_back(c);
+        for(auto it = chain.rbegin(); it != chain.rend(); ++it) apply((*it)->members);
+        apply(vd->members);
         // Stamp own-block grammar lines with the resolved anchor. Extend-block lines and
         // grammar-object rules had their priority stamped during parsing.
         for(grammarLine& gl : vd->grammarLines)
@@ -4045,7 +4384,7 @@ void i6Emitter::liftAllVerbCompileTimeFields(){
             for(const string& w : gl.additionalVerbWords)
                 if(seen.insert(w).second) vd->verbWords.push_back(w);
         }
-        if(vd->verbWords.empty() && vd->isExternal)
+        if(vd->verbWords.empty() && vd->isExternal && !vd->claimsNoWords)
             vd->verbWords.push_back(vd->name);
     }
 
@@ -4352,6 +4691,26 @@ void i6Emitter::emitVerbObject(verbObjectDef* vd){
     // called once at the start of emit(). Own-block grammar lines have been stamped with the anchor.
     emitObject(vd);   // also fires globalDeclaration emitter if defined on the verb class
     if(vd->grammarLines.empty()) return;
+    // A line on a word the library's grammar claims extends that grammar, which must come first:
+    // such grammar goes at the end of the program, after the library's grammar is included.
+    auto claimedByLibrary = [&](const string& word){
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->isExternal && find(v->verbWords.begin(), v->verbWords.end(), word) != v->verbWords.end()) return true;
+        return false;
+    };
+    bool extendsLibrary = false;
+    for(const grammarLine& gl : vd->grammarLines){
+        if(claimedByLibrary(gl.verbWord)) extendsLibrary = true;
+        for(const string& w : gl.additionalVerbWords) if(claimedByLibrary(w)) extendsLibrary = true;
+    }
+    if(extendsLibrary){
+        stringstream captured;
+        std::swap(out, captured);
+        emitVerbGrammar(vd->name, vd->priority, vd->isMeta, vd->grammarLines);
+        std::swap(out, captured);
+        deferredLibraryGrammar += captured.str();
+        return;
+    }
     emitVerbGrammar(vd->name, vd->priority, vd->isMeta, vd->grammarLines);
 }
 
@@ -4559,6 +4918,8 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
 // the word — so emit an empty `Extend only 'w' replace;`, which strips the word from its library
 // verb and leaves it triggering nothing.
 void i6Emitter::emitEvictions(){
+    out << deferredLibraryGrammar;
+    deferredLibraryGrammar.clear();
     auto toI6Word = [](const string& w) -> string {
         string e; for(char ch : w) e += (ch == '\'') ? '^' : ch;
         return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");

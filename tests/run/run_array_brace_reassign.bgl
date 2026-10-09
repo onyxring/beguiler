@@ -5,6 +5,7 @@
     It now clears the array, then appends each element.  */
 // EXPECT_OUTPUT: 3:345 1:c 0:
 #beguilerSettings { target = z5; informName = "none"; }
+#include <array>
 
 void main(){
     array<int> a[5] = {1, 2};

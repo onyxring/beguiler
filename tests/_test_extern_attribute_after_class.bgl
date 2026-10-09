@@ -1,0 +1,7 @@
+// An extern attribute used by a class must be declared before the class; the error says where.
+// EXPECT_ERROR: _test_extern_attribute_after_class.bgl:4:
+#beguilerSettings { target = z5; informName = "none"; }
+class lamp : object { attributeList attributes = {glowing}; }
+extern attribute glowing;
+lamp l1 { }
+void main(){ bglInit(); }

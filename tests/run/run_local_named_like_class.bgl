@@ -1,0 +1,9 @@
+// run_local_named_like_class — a program's `class win` doesn't break the library's own local `win`
+// (or any local named like a class): a statement starting with the local is the variable.
+// EXPECT_OUTPUT: 1 3 4
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+class win : _bglObject { int id = 1; }
+win w1 { }
+int count(){ int win = 2; win = win + 1; print(win); win++; return win; }
+void main(){ bglInit(); glulxConsole(); print(w1.id); print(" "); int r = count(); print($" {r}"); }

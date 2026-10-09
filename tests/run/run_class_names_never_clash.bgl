@@ -1,0 +1,20 @@
+// run_class_names_never_clash — a class declared in Beguile is emitted as _bglClass_<Name>, so its name
+// can be a member's name, a library attribute's name (container, door) or a library member's name.
+// EXPECT_OUTPUT: 7 yes yes 0
+#beguilerSettings { target = z5; informName = "none"; }
+class Box[2] : _bglObject { int n = 7; }
+class Holder : _bglObject { Box box; }
+class Container : _bglObject { }
+class Door : Container { }
+class Width : _bglObject { int w; }
+Holder h { }
+Door d { }
+Width wd { }
+void main(){
+    bglInit();
+    h.box = new Box();
+    print(h.box.n);
+    print(d.is(Door) ? " yes" : " no");
+    print(d.is(Container) ? " yes " : " no ");
+    print(wd.w);
+}

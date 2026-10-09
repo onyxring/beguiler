@@ -1,0 +1,5 @@
+// Only the literal 0 converts to a bnum; another integer needs an explicit cast.
+// EXPECT_ERROR: Cannot assign value of type 'intLiteral' to variable of type 'flags'
+#beguilerSettings { target = z5; informName = "none"; }
+bnum flags { a, b, c }
+void main(){ flags x = 2; }

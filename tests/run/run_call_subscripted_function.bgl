@@ -1,0 +1,13 @@
+// run_call_subscripted_function — `steps[i](args)` calls the element, in an assignment, an
+// expression and an interpolated string.
+// EXPECT_OUTPUT: 10 26 [16]
+#beguilerSettings { target = z5; informName = "none"; }
+int twice(int n){ return n * 2; }
+int square(int n){ return n * n; }
+array<func<int,int>> steps = { twice, square };
+void main(){
+    int r = steps[0](5);
+    print(r); print(" ");
+    print(1 + steps[1](5)); print(" ");
+    print($"[{steps[1](4)}]");
+}

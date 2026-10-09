@@ -1,0 +1,9 @@
+// run_shadow_increment_global_escape — ++/-- on a local or parameter that shadows a global leaves
+// `::name` reaching the global.
+// EXPECT_OUTPUT: local 2 global 7 | param 4 global 9 | prefix 0 global 10
+#beguilerSettings { target = z5; informName = "none"; }
+int counter = 100;
+void viaLocal(){ int counter = 1; counter++; ::counter = 7; print($"local {counter} global {::counter}"); }
+void viaParam(int counter){ counter++; ::counter += 2; print($" | param {counter} global {::counter}"); }
+void viaPrefix(){ int counter = 1; --counter; ++::counter; print($" | prefix {counter} global {::counter}"); }
+void main(){ viaLocal(); viaParam(3); viaPrefix(); }

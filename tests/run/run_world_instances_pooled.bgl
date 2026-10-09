@@ -1,0 +1,15 @@
+// run_world_instances_pooled — bgl.world.instances() of a pooled class lists the live instances only,
+// not the pool's free slots.
+// EXPECT_OUTPUT: 0 1 2 1
+#beguilerSettings { target = z5; informName = "none"; }
+class chip[3] : _bglObject { }
+void main(){
+    bglInit();
+    print(bgl.world.instances(chip).length); print(" ");
+    chip a = new chip();
+    print(bgl.world.instances(chip).length); print(" ");
+    chip b = new chip();
+    print(bgl.world.instances(chip).length); print(" ");
+    delete a;
+    print(bgl.world.instances(chip).length);
+}

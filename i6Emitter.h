@@ -61,6 +61,8 @@ class i6Emitter{
         // base classes. Unlike objects, an I6 `Class` directive must physically precede any class that
         // derives from it, so resolvedOutput() revives a referenced class's superposed bases FIRST.
         map<string,vector<string>> superposedClassBaseNames;
+        // Superposed objects, and those resolvedOutput() spliced in: their unused methods are pruned.
+        set<string> superposedObjectNames, splicedSuperposedObjects;
         bool emittingSuperposedBody = false;
         set<classDef*> emittedClasses;             // classes whose I6 `Class` directive has been written (shared by Pass-3 + create+populate)
         // Globals already declared ahead of bglInit (byte-array pointers, and class-typed
@@ -73,6 +75,7 @@ class i6Emitter{
             return "_bglPromoted_" + owner + "_" + prop;
         }
         void emitDeferredBackingClass(classDef*);  // emit a superposed accessor class before its baked backing instance (once)
+        string deferredLibraryGrammar;              // grammar extending the library's, written after it
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`
         void emitEvictions();                      // emit empty `Extend only 'w' replace;` for evicted words no verb reclaimed
@@ -107,6 +110,7 @@ class i6Emitter{
         // access stays direct. Populated by buildLocalRenameMap, consulted by spillName.
         map<string,string> currentLocalRenames;
         int currentSpillCount = 0;
+        string currentReturnSlot;   // a local that holds a return value while the routine's cleanups run, or ""
         // Z-machine try/catch. @throw returns from the routine that ran @catch rather than resuming
         // after it, so each try body is lifted into its own routine `_bgl_tryN(_bglFrm)`. The
         // enclosing function keeps every param and local in its frame, where the lifted body
@@ -183,6 +187,9 @@ class i6Emitter{
         map<string, string> ownedGlobalInstances;   // class-typed global (I6 name, lowercase) → its instance
         void emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, const string& indent);
         void emitParamCopyIns(functionDef* fd, const string& indent);
+        void prepareRecursionSave(class functionDef* fd);
+        void pruneSuperposedObjectMethods(string& buf);
+        string actionNameOf(const string& text);
         // Emit framePool-backed allocation for each local array in `locals`, registering the matching
         // free in `fn->cleanups`. Shared by top-level functions AND class/object member methods so a
         // method-local `array<T>`/`rawArray<T>`/`array<char>` gets a real buffer, not a null slot.
@@ -261,6 +268,7 @@ class i6Emitter{
         // owner-class itself, so self-typed fields are left at default — these are
         // intended as references managed elsewhere).
         string synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited);
+        classDef* ownedFieldClass(variableDeclaration* vd, const set<classDef*>& visited);
         void emitFunction(functionDef*);
         void emitStatement(statement*, string indent);
         // A local `array<T>` declaration: alias-assign, seed a list initializer, or nothing.

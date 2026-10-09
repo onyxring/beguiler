@@ -1,0 +1,7 @@
+// Negative test: a cast applies to the member access that follows it, and a cast's result can't be
+// assigned; the receiver cast is parenthesized.
+// EXPECT_ERROR: casts the result of the member access, as in C++ and C#; to treat 'a' as 'deriv', write '((deriv)a).…'
+#beguilerSettings { target = z5; informName = "none"; }
+class base[4] : _bglObject { }
+class deriv[4] : base { int barks = 0; }
+void main(){ base a = new deriv(); (deriv)a.barks = 9; }

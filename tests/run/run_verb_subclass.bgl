@@ -1,0 +1,33 @@
+// run_verb_subclass — verbs declared through a subclass of verb: an inherited handler() runs as the
+// action routine with the verb's own member values, a verb may still give its own handler(), `meta`
+// set on the subclass reaches its verbs, and such a verb is named, compared and performed like any.
+// EXPECT_OUTPUT: You hum.
+// EXPECT_OUTPUT: Nothing to say.
+// EXPECT_OUTPUT: LOUD
+// EXPECT_OUTPUT: credits
+// EXPECT_OUTPUT: probe action
+// INPUT: hum
+// INPUT: whistle
+// INPUT: holler
+// INPUT: credits
+// INPUT: probe
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+class chatVerb : verb {
+    string reply = "Nothing to say.";
+    void handler() { print(reply); print("^"); }
+}
+chatVerb Hum { grammar = {.hum}; reply = "You hum."; }
+chatVerb Whistle { grammar = {.whistle}; }
+chatVerb Holler { grammar = {.holler}; void handler() { print("LOUD^"); } }
+class infoVerb : verb { meta = true; }
+infoVerb Credits { grammar = {.credits}; void handler() { print("credits^"); } }
+verb Probe { grammar = {.probe}; void handler() {
+    if (action == Probe) print("probe action^");
+    Hum.perform();
+} }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

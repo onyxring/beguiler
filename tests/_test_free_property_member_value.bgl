@@ -1,0 +1,7 @@
+// A free-standing `property` names the property; it doesn't give objects the member, so assigning
+// it in an object body says how to declare it.
+// EXPECT_ERROR: declare it with its type (e.g. 'int glow = …;')
+#beguilerSettings { target = z5; informName = "none"; }
+property glow;
+object lamp { glow = 3; }
+void main(){ }

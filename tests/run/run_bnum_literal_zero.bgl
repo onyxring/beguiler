@@ -1,0 +1,10 @@
+// run_bnum_literal_zero — a literal 0 is every bnum's empty set: accepted as an initializer, member
+// value, assignment, return value and argument.
+// EXPECT_OUTPUT: 0 0 0 0 0
+#beguilerSettings { target = z5; informName = "none"; }
+bnum flags { a, b, c }
+flags g = 0;
+flags none() { return 0; }
+void take(flags f) { print(f); }
+object o { flags fl = 0; }
+void main(){ bglInit(); flags x = 0; x = flags.b; x = 0; take(0); print($" {g} {none()} {x} {o.fl}"); }

@@ -1,0 +1,7 @@
+// run_global_read_before_declaration — a routine may use a global declared after it; the variable
+// is declared ahead of the code (I6 wants a variable defined before use).
+// EXPECT_OUTPUT: 1
+#beguilerSettings { target = z5; informName = "none"; }
+void bump() { hits++; }
+int hits = 0;
+void main(){ bglInit(); bump(); print(hits); }

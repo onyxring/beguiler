@@ -205,7 +205,7 @@ bool Initialise(){
         aren't more people about but, hey, what do you expect in a cheap 
         demo game...?^^^");
 }
-extend PutOn { grammar = {{.hang, HELD, .on, NOUN}}; }
+extend PutOn { grammar += {{.hang, HELD, .on, NOUN}}; }
 ```
 
 Now we'll step over the above code, bit-by-bit, to compare and contrast with I6...
@@ -824,14 +824,14 @@ bool Initialise(){
 }
 ```
 
-`Initialise` is called by the I6 library at game startup, just as it is in any I6 game.  Beguile declares it as `bool` to follow the library convention: returning `false` (the default) lets the standard banner print; returning `true` suppresses it.  The `rfalse("...")` form prints the intro text *and* returns `false` in a single statement.
+`Initialise` is called by the I6 library at game startup, just as it is in any I6 game.  The library prints the standard banner after it returns, unless it returns `2`, so the usual return is `false`. The `rfalse("...")` form prints the intro text *and* returns `false` in a single statement. To suppress the banner, declare `int Initialise()` and return `2`.
 
 ### Extending Verbs
 
 The last item of focus in the Cloak of Darkness example is the added command pattern, which enables the player to `PUT CLOAK ON HOOK`:
 
 ```
-extend PutOn { grammar = {{.hang, HELD, .on, NOUN} }; }
+extend PutOn { grammar += {{.hang, HELD, .on, NOUN}}; }
 ```
 
 Let's analyze the above line, bit by bit...
@@ -843,9 +843,10 @@ extend PutOn
 Beguile represents all verbs as objects, specifically instances of the `verb` class. Puny Inform's `PutOn` verb was previously declared as such (`verb PutOn{...}`) in the bindings file, so by using `extend PutOn` we are simply `extend`ing the existing object, just as we did above (see "Member Type Inference").
 
 ```
-grammar = {{.hang, HELD, .on, NOUN}};
+grammar += {{.hang, HELD, .on, NOUN}};
 ```
 
+- `+=` adds the new pattern to the grammar `PutOn` already has, as I6's `Extend` does. In an `extend`, `replace grammar = { … }` replaces it instead, and a bare `grammar =` is an error (it would be ambiguous).
 - The `grammar` member (defined on type `verb`) is of type `grammarRuleList`, which you can think of as `array<grammarRule>`.
 - A `grammarRule` contains an `array<patternElement>`.
 - A `patternElement` can be any of several allowable value types used to define the pattern.  Here we are using two of the possible value types:
@@ -894,7 +895,7 @@ Conceptually, the BLR is divided into three kinds of content:
 
 ```
   #include <string>      // mutation, content equality, concatenation
-  #include <array>       // LINQ-style operations on arrays
+  #include <linq>        // LINQ-style operations on arrays
   #include <float>       // IEEE-754 arithmetic (Glulx only)
 ```
 
@@ -1114,7 +1115,7 @@ Beguile arrays are far richer.  They are **typed**, track their run-time **lengt
 
 ```bgl
 array<int>  primes = {2, 3, 5, 7, 11};  
-for (int i=0: i<primes.size: i++) print(primes[i]); 
+for (int i=0; i<primes.size; i++) print(primes[i]); 
 ```
 
 As shown above, the element **type** is mandatory and rides inside angle brackets, and you pre-populate an array with a brace-enclosed initializer list.  Also note that the index is automatically adjusted to compensate for the `size`, so `primes[0]` points to the 1st element, and *not* the size of the array (unlike i6 `table`arrays).
@@ -1149,11 +1150,7 @@ for(int p in primes) print(p);
 This approach uses the `length` if available or the `size` otherwise *(see "Size() vs. Length" below)*.
 
 ### With `<array>`
-The core Beguile language gives you declaration, subscripting, and `size`.  Pull in the BLR's `<array>` language extension to expand the core functionality of arrays...
-
-```
-#include <array>
-```
+The core Beguile language gives you declaration, subscripting, `size` and `length`.  The BLR's `<array>` extension adds the rest; enable it with `#include <array>`.  A program that doesn't include it carries none of its code.
 #### `size` vs. `length`
 
 I6 `table` arrays gives you one number: the allocated size.  Beguile gives you two:

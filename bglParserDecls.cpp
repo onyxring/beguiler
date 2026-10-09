@@ -450,14 +450,25 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                                 arrDecl.name, arrDecl.arraySize, seed->elements.size()));
     }
 
-    // Local byte arrays draw hybrid-buffer backing from the framePool, but only the
-    // sized form (array<char> buf[N]) is wired up. String/list initializers would
-    // need their literal bytes copied in per call, which isn't implemented — reject
-    // them with guidance rather than emitting an unallocated pointer.
-    if(body != nullptr && arrDecl.isByteArray
-       && (!arrDecl.stringInitializer.empty() || dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue)))
-        parsingError("Initialized local byte arrays (array<char> = \"...\" or {...}) are not yet supported. "
-                     "Declare it at file scope, or use a sized local (array<char> buf[N]) and assign elements.");
+    // An initialized local byte array (`= "…"` or `= {…}`) is drawn from the framePool on each
+    // call and filled from a hidden file-scope array holding the initializer, laid out alike.
+    if(body != nullptr && arrDecl.isByteArray && arrDecl.arraySize == 0
+       && (!arrDecl.stringInitializer.empty() || dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))){
+        auto* src = new arrayDeclaration();
+        src->name = format("_bglinit_{0}_{1}_{2}", func != nullptr ? func->name : string("x"), arrDecl.name,
+                           localByteInitCounter++);
+        src->type = arrDecl.type;
+        src->elementType = arrDecl.elementType;
+        src->isByteArray = true;
+        src->isSynthetic = true;
+        src->stringInitializer = arrDecl.stringInitializer;
+        src->declaredExpressionValue = arrDecl.declaredExpressionValue;
+        src->src = arrDecl.src;
+        languageService.globals.push_back(src);
+        arrDecl.localInitSource = src->name;
+        arrDecl.stringInitializer.clear();
+        arrDecl.declaredExpressionValue = nullptr;
+    }
 
     if(arrDecl.literalElements)
         if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
@@ -860,7 +871,19 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
         classDef* cls = languageService.findClass(varDecl.type.name);
         if(cls && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal
                  && classHasStoredFields(cls) && !isReferenceBacked(cls)){
-            string backingName = "_bglLocal_" + func->name + "_" + varDecl.name;
+            // Named like a parameter backing: the class context keeps same-named methods of two
+            // classes apart, and an operator goes by its mangled name (`+` is no I6 identifier).
+            bool isOperator = func->name == "operator()"
+                || (!func->name.empty() && !isalpha((unsigned char)func->name[0]) && func->name[0] != '_');
+            string fnPart = isOperator ? mangleOperatorName(func->name) : func->name;
+            string context = currentClass != nullptr ? currentClass->name
+                           : currentObject != nullptr ? currentObject->name : string();
+            string backingName = "_bglLocal_" + (context.empty() ? "" : context + "_") + fnPart + "_" + varDecl.name;
+            if(!paramBackingNames.insert(backingName).second){
+                int n = 2;
+                while(!paramBackingNames.insert(backingName + "_" + to_string(n)).second) n++;
+                backingName += "_" + to_string(n);
+            }
             variableDeclaration* backing = new variableDeclaration();
             backing->name = backingName;
             backing->displayName = backingName;
@@ -869,6 +892,7 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
             backing->isInstanceBacking = true;
             languageService.registerInstance(*backing);
             varDecl.backingName = backingName;   // the local itself stays a variable, set to this at entry
+            func->ownBackings.push_back({backingName, varDecl.type.name});
             varDecl.isClassLocalWithBacking = true;
         }
     }
@@ -880,6 +904,7 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
     if(varDecl.isLiteral)
         checkLiteralValue(isUnionType(varDecl.type.name) ? splitUnionType(varDecl.type.name) : vector<string>{varDecl.type.name},
             varDecl.type.name, varDecl.declaredExpressionValue, format("'{0}' is literal: it needs a literal {{KIND}}", varDecl.dName()));
+    if(!varDecl.isExternal) rejectValueWordName(varDecl.name);
     if(body != nullptr)
         body->statements.push_back(&varDecl);
     else
@@ -894,6 +919,9 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
     // another owner's instance back to the pool for the next allocation to reuse.
     if(!isConst && body != nullptr && func != nullptr && !varDecl.isRefLocal){
         classDef* cls = languageService.findClass(varDecl.type.name);
+        // A reference-class local refers to an instance it doesn't own, as a parameter does (§8.5).
+        if(cls != nullptr && !cls->isPrimitive && !cls->isEmitterClass && !cls->isAlias && !isValueClass(cls))
+            cls = nullptr;
         if(cls != nullptr){
             for(typeMember* m : cls->members){
                 functionDef* fn = dynamic_cast<functionDef*>(m);
@@ -1378,6 +1406,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         currentFunc = savedFunc;
         if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
             parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+        saveBackingsAcrossRecursion(funcDef);
     }
 
     // ── replace: emitter body-swap (existing behavior) ──
@@ -1789,4 +1818,16 @@ vector<grammarLine> bglParser::parseGrammarLines(){
         }
     }
     return expanded;
+}
+
+// A routine that calls itself shares each parameter's and local's instance with every activation;
+// the emitter keeps the caller's field values across the inner call, but a returned instance would
+// come back holding them.
+void bglParser::saveBackingsAcrossRecursion(functionDef& fd){
+    if(!fd.callsItself || fd.ownBackings.empty()) return;
+    if(classDef* rc = languageService.findClass(fd.returnType.name))
+        if(classHasStoredFields(rc) && !isReferenceBacked(rc))
+            parsingError(format("'{0}' calls itself and returns a '{1}' by value; its instances are shared "
+                "between calls, so return a field or take a `ref` parameter to fill instead.",
+                fd.dName(), typeDisplayName(fd.returnType.name)));
 }

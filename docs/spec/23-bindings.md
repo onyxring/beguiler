@@ -42,6 +42,21 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 
 Each binding is `#once`-guarded.
 
+**Include order.** Declarations are emitted in source order (§18.6), so the library's own includes sit
+where Inform 6 expects them. For the standard library:
+
+```bgl
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+// classes, objects, Initialise, and any entry point the program defines (NewRoom, PrintTaskName, …)
+#includeI6 "grammar"
+```
+
+An entry point the program defines must come before `#includeI6 "grammar"`: `grammar` declares a stub
+for every entry point not yet defined, and a definition after it is then a duplicate routine. Verbs
+and `extend` blocks may go anywhere: the grammar they emit follows the library's.
+
 ## 23.3 What a Binding Provides
 
 ### 23.3.1 Entry Point and `bglInit()`
@@ -50,7 +65,7 @@ Both libraries define `Main` themselves and call the program's `Initialise` rout
 
 Each binding wraps the library's `main` so that `bglInit()` (§21.2) runs before it. The program does not call `bglInit()` itself.
 
-The `i6StandardLibrary` binding performs the wrap only when the `autoInitialize` setting (§17.4) is true, which is its default. Set `autoInitialize = false` when another I6 extension already replaces `main` (Inform 6 forbids two replacements); the program is then responsible for calling `bglInit()`.
+Each binding performs the wrap only when the `autoInitialize` setting (§17.4) is true, which is its default. Set `autoInitialize = false` when another I6 extension already replaces `main` (Inform 6 forbids two replacements); the program is then responsible for calling `bglInit()`.
 
 ### 23.3.2 `story` and `headline`
 
@@ -88,7 +103,7 @@ A binding declares, as `extern`:
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
 - its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1).
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1). The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
+Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
 ### 23.3.5 Additive Properties
 
@@ -101,7 +116,7 @@ A binding declares the library's actions as `extern verb`s with their claimed di
 ```bgl
 extern verb Take { .take|.carry|.hold|.get|.pick|.peel }
 extern verb Look { .look|.l }
-extern verb Receive;                    // a fake action: no grammar of its own
+extern verb Receive { }                 // a fake action: no words or grammar of its own
 ```
 
 It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` — for use in grammar patterns.
@@ -147,18 +162,113 @@ A program sets a library option with `#defineI6` (§14.2.1), before the binding'
 #include <bindings/punyInform>
 ```
 
+### 23.3.11 Standard Library Properties
+
+**Description**
+
+A standard-library property is declared on the class or object that provides it, as an ordinary member
+(§8.3, §11.7.1). The library reads each one by name, so the member's name is the property's; its type
+says which of the library's forms it takes. Many properties accept either a value or a routine: declare
+the member as a value to give a value, or as a method to give a routine. A routine the library calls
+returns what the library expects of it, which the table gives as the method's return type.
+
+| Property | The library uses it to | Declare it as |
+|---|---|---|
+| `description` | describe the object (`examine`) or room (`look`) | `string description`, `void description()`, or `bool description()`: true when it printed the whole description (otherwise the library adds its own text, such as a switchable object's "currently switched on") |
+| `initial` | describe the object in a room before it is first moved | `string initial` or `void initial()` |
+| `when_open`, `when_closed`, `when_on`, `when_off` | describe an openable or switchable object in a room | `string` or a `void` method |
+| `inside_description` | describe the inside of an enterable object | `string` or a `void` method |
+| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, or `bool short_name()`: true when it printed the whole name |
+| `article`, `short_name_indef` | print the indefinite article / indefinite name | `string` or a `void` method |
+| `plural` | name several identical objects | `string plural` (declared by the binding) |
+| `parse_name` | match the player's words against the object | `int parse_name()`: the number of words matched, 0 for none, -1 to use `name` |
+| `n_to` … `d_to`, `in_to`, `out_to` | the room or door in that direction | `object n_to`, or `var n_to()` returning a room or door, `false` for "can't go", or `true` after printing its own refusal |
+| `cant_go` | refuse movement in a direction with no exit | `string cant_go` or `void cant_go()` |
+| `door_to` | the room on the other side of a door | `object door_to` or `object door_to()` |
+| `door_dir` | the direction a door leads | `property door_dir` (`door_dir = n_to;`) or `property door_dir()` |
+| `with_key` | the key that locks and unlocks the object | `object with_key` |
+| `found_in` | the rooms a floating object (a door, scenery) is in | `rawArray<object> found_in`, or `bool found_in()`: true when it is in `location` |
+| `capacity` | how many objects a container or supporter holds | `int capacity` |
+| `number`, `time_left` | a general-purpose number; turns left on the object's timer | `int` |
+| `daemon` | run every turn after `StartDaemon(obj)` | `void daemon()` |
+| `react_before`, `react_after` | intercept any action while the object is in scope | `bool react_before()`: true to stop the action |
+| `invent` | change how the object is listed in an inventory | `bool invent()`: true when it printed the whole entry |
+| `add_to_scope` | bring other objects into scope with this one | `rawArray<object> add_to_scope`, or `void add_to_scope()` calling `AddToScope(obj)` |
+| `list_together` | group similar objects in a list | `int list_together` (a group number) or `string list_together`; the library groups objects whose values are the same word, so a string is declared once, on their class, rather than repeated on each object |
+| `articles` | articles for a name in a language without inflection | `rawArray<string> articles` |
+
+The additive properties `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` are
+declared by the binding (§23.3.5) and written as methods: `bool before()` returns true to stop the
+action, and the others follow the same table.
+
+**The player's words.** Inside `parse_name` (and other parsing routines) `NextWord()` returns the next
+word as a `dictionaryWord`, or `null` for a word not in the dictionary, and advances `wn`;
+`NextWordStopped()` returns -1 once the words run out. Both are declared by the binding.
+
+**The topic of Ask, Tell and Answer.** For Ask and Tell the parser puts the topic's first word (after a
+leading "the") in `second`; for Answer (`answer ⟨topic⟩ to ⟨character⟩`) it is in `noun`, and `second`
+is the character. Both are declared `object` by the binding, so a cast reinterprets the word:
+`(dictionaryWord)second == .weather` (§4.11). The whole topic is the words `consult_from` to
+`consult_from + consult_words - 1`, read with `wn = consult_from;` and `NextWord()`.
+
+**Numbers.** A `NUMBER` grammar token (§13.4.2) puts the number in `noun` or `second`, by its position
+among the line's value tokens, and in `parsed_number`. `noun` and `second` are declared `object`, so a
+cast reads the number: `(int)noun`.
+
+**Inventory listings.** `invent` is called twice for each entry; `inventory_stage` (1 or 2) says which:
+1 before the name is printed, 2 after it, for text that follows the name.
+
+**Example**
+
+<!-- doctest: compile -->
+```bgl
+class Room : object { attributes = {light}; string description; }
+Room hall {
+    "Hall"; description = "A plain hall.";
+    object n_to = study;
+    var e_to(){ print("A wall.^"); return true; }
+    string cant_go = "Not that way.";
+}
+Room study { "Study"; description = "A study."; object s_to = hall; object u_to = hatch; }
+Room attic { "Attic"; description = "An attic."; object d_to = hatch; }
+object hatch {
+    "hatch"; attributes = {door, openable, static, scenery};
+    rawArray<object> found_in = {study, attic};
+    object door_to(){ if (location == study) return attic; return study; }
+    property door_dir = u_to;
+}
+object ball {
+    "ball"; parent = hall;
+    bool painted = false;
+    bool short_name(){ if (painted) { print("red ball"); return true; } return false; }
+    int parse_name(){
+        int n = 0;
+        while (true){ dictionaryWord w = NextWord(); if (w == .ball || w == .red) n++; else return n; }
+    }
+    string initial = "A ball lies here.";
+    bool invent(){ if (inventory_stage == 2) print(" (bouncy)"); return false; }
+}
+object guide {
+    "guide"; rawArray<dictionaryWord> name = {.guide}; parent = hall; attributes = {animate, proper};
+    bool life(){
+        if (action == Ask && (dictionaryWord)second == .weather){ print("Rain, later.^"); return true; }
+        return false;
+    }
+}
+bool Initialise(){ location = hall; rfalse; }
+```
+
 ## 23.4 Differences Between the Bindings
 
 | | `i6StandardLibrary` | `punyInform` |
 |---|---|---|
 | Directions | Direction *objects* `n_obj` … `d_obj`; a Go action has `noun == n_obj`. | No direction objects. `selected_direction` (a `property`) holds the direction property (`n_to`, `s_to`, … `in_to`, `out_to`) and `noun` is the shared `Directions` placeholder; `selected_direction_index` is `1..12`. The `FAKE_*_OBJ` constants are the parser's internal sentinels. |
 | Reacting objects | Any object may define `before`/`after`. | An object with `before`, `after`, `each_turn`, `react_before` or `react_after` must have the `reactive` attribute. |
-| Extra attributes | `door`, `absent`, `pluralname`, `male`, `female`, `neuter`, … | Also `switchable`, `on`, `workflag`, `reactive`, `scored`. |
+| Extra attributes | `door`, `absent`, `pluralname`, `male`, `female`, `neuter`, `switchable`, `on`, `scored`, `workflag`, … | The same, plus `reactive`. |
 | Pronouns | `itobj`, `himobj`, `herobj` | Also `themobj`. |
 | Status line | `StatusLineHeight()`, `gg_statuswin_cursize` | `_StatusLineHeight()`, `statusline_height`, `statusline_current_height` |
 | Colors | `CLR_*` constants | `CLR_*` plus the Ozmoo extended colors, and the `clr_on`/`clr_fg`/`clr_bg`/`clr_fgstatus` globals |
 | Verb sets | The standard library's actions, meta actions and debug actions. | PunyInform's; some claimed-word sets differ (`Drop` claims `throw`; `Shout`/`ShoutAt`; `Again`/`Oops`; `LookModeNormal`/`Short`/`Long` in place of `LMode1..3`). |
-| `autoInitialize` | Honored. | Not consulted; `main` is always wrapped. |
 
 ## 23.5 Writing a Binding
 
@@ -167,7 +277,7 @@ A binding for another library follows these rules:
 1. **Guard the file with `#once`** (§14.1.6), and declare the shared types (§23.3.7).
 2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
 3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
-4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions as bodiless `extern verb Name;`, so that grammar added by a program extends the library's verbs instead of colliding with them.
+4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions with an empty body, `extern verb Name { }`, which claims no words, so that grammar added by a program extends the library's verbs instead of colliding with them. A program's own verb can't take a fake action's name.
 5. **Declare the `grammarToken` enum** with the library's parser token names (§21.5.5).
 6. **Declare library-required constants in `#emitfirst`** (§14.4.2) using `##beguilerSettings.<key>` substitution (§14.4.5), so that they precede the program's `#includeI6` of the library (§23.3.2).
 7. **Run `bglInit()`.** Wrap the library's `main` with `#emitfirst { replace main _oldmain; }` and `#emitlast { [main; bglInit(); _oldmain(); ]; }`, gated on `#if bglAutoInitialize` so that `autoInitialize = false` disables it (§23.3.1).

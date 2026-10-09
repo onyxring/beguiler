@@ -186,6 +186,12 @@ void beguiler::extractBlorbSettings(const string& filename) {
                     if(vs != string::npos){
                         size_t ve = blockLower.find_first_of(" \t\r\n;}", vs);
                         string val = blockLower.substr(vs, ve - vs);
+                        if(!val.empty() && val.front() == '"') val = val.substr(1);
+                        if(!val.empty() && val.back() == '"') val.pop_back();
+                        // The lexer reads the target too (a Glulx character literal is Unicode), and
+                        // the library is lexed before the parser reaches this block.
+                        if(beguilerSettings.target.empty() && (val == "glulx" || val == "z5" || val == "z8" || val == "z3"))
+                            beguilerSettings.target = val;
                         if(val == "glulx")
                             parser.defineSymbol("target_glulx");
                         else if(val == "z5" || val == "z8")
@@ -327,6 +333,11 @@ void beguiler::preScanSourceSettings(CompileJob& job) {
     // .inf-mode pre-pass: detect target from the user's `!%` ICL block so BLR's
     // `#if TARGET_ZCODE` resolves correctly during preScanFile (BLR is loaded next).
     extractInfTargetFromIcl(settings.inFile);
+    // No target named anywhere: the default, Glulx, is known before the library is read.
+    if(beguilerSettings.target.empty()){
+        beguilerSettings.target = "glulx";
+        parser.defineSymbol("target_glulx");
+    }
 
     // Phase 1: asset scan — runs before preScanFile so _blorbAssets.bgl exists during parse
     Blorb& blorb = job.blorb;
@@ -370,6 +381,7 @@ void beguiler::runPostParseChecks() {
     parser.checkTypedPropertyMemberTypes();
     parser.validateHiddenMembers();
     parser.validateRoutinePropertyClashes();
+    parser.validateGlobalNameClashes();
     parser.renameI6KeywordNames();
     parser.recordObjectMemberInits();
 
@@ -648,10 +660,12 @@ bool beguiler::runInform6() {
         // sourceMap is appended in emission order (ascending by i6Line). Find the last
         // entry whose i6Line is <= the target — that gives the most-specific source for
         // any line that falls inside an emitted block.
-        bool found = false;
+        // Entries are mostly but not strictly ascending (spliced blocks), so take the nearest entry at
+        // or before the line wherever it sits; a later entry for the same line wins.
+        bool found = false; int best = -1;
         for(auto& [il, bf, bl] : emitter.sourceMap){
-            if(il > i6Line) break;
-            outFile = bf; outLine = bl;
+            if(il > i6Line || il < best) continue;
+            best = il; outFile = bf; outLine = bl;
             found = true;
         }
         return found;
@@ -666,6 +680,8 @@ bool beguiler::runInform6() {
     };
     // Format: `<file>(<line>): <Severity>: ...` (note: I6 may emit double spaces after `:`).
     regex i6DiagRe(R"(^(.+\.inf)\((\d+)\):\s+(Error|Warning|Fatal error):\s+(.*)$)");
+    // errorFormat E2: `File "<file>"; Line <line>  # <Severity>: ...` — the same four parts.
+    regex i6DiagReE2(R"re(^File "(.+\.inf)"; Line (\d+)\s+#\s+(Error|Warning|Fatal error):\s+(.*)$)re");
 
     // Capture stderr too so I6 errors come through (I6 mostly writes to stdout, but be safe).
     string popenCmd = i6Cmd + " 2>&1";
@@ -682,7 +698,7 @@ bool beguiler::runInform6() {
         // Strip trailing newline for processing; restore on output.
         while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
         smatch m;
-        if(regex_match(line, m, i6DiagRe)){
+        if(regex_match(line, m, i6DiagRe) || regex_match(line, m, i6DiagReE2)){
             string infFile = m[1];
             int infLine   = stoi(m[2]);
             string severity = m[3];
@@ -704,9 +720,9 @@ bool beguiler::runInform6() {
             // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
             string sevTag = isError ? "ERROR" : "warning";
             if(isError) sawError = true;
-            cout << infFile << ":" << infLine << ":1: " << sevTag << ": " << message << "\n";
+            cerr << infFile << ":" << infLine << ":1: " << sevTag << ": " << message << "\n";
             if(mapped)
-                cout << "  ↳ " << bglFile << ":" << bglLine << ":1\n";  // ↳
+                cerr << "  ↳ " << bglFile << ":" << bglLine << ":1\n";  // ↳
             // Unmappable .inf lines simply omit the continuation — the absence is
             // self-evident next to mapped errors that have one.
         } else {

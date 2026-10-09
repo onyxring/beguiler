@@ -1,0 +1,44 @@
+// run_recursion_value_class_locals — a routine that calls itself keeps its own value-class local
+// and parameter across the inner calls, though their instances are shared.
+// EXPECT_OUTPUT: rec 3 / walk 3:30 / sum 6 / depth 3
+#beguilerSettings { target = z5; informName = "none"; }
+value class Vec2 {
+    int x; int y;
+    Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; }
+}
+int rec(int n){
+    Vec2 v;
+    v.x = n;
+    if (n > 0) rec(n - 1);
+    return v.x;
+}
+int walk(Vec2 p, int n){
+    Vec2 q;
+    q.x = p.x - 1; q.y = p.y - 10;
+    if (n > 0) walk(q, n - 1);
+    print($"{p.x}:{p.y}");
+    return 0;
+}
+int sum(int n){
+    Vec2 v;
+    v.x = n;
+    if (n == 0) return 0;
+    int below = sum(n - 1);
+    return v.x + below;
+}
+// Passes its own local, and returns an expression that starts with a digit but makes the call.
+int depth(Vec2 c){
+    if (c.x == 0) return 0;
+    Vec2 next = c;
+    next.x = next.x - 1;
+    return 1 + depth(next);
+}
+void main(){
+    bglInit();
+    print($"rec {rec(3)} / walk ");
+    Vec2 s; s.x = 3; s.y = 30;
+    walk(s, 0);
+    print($" / sum {sum(3)}");
+    Vec2 d; d.x = 3;
+    print($" / depth {depth(d)}");
+}

@@ -1,0 +1,7 @@
+// Negative test: a class derived from array can't declare a type parameter; only array<T> and rawArray<T> do (§8.1.1).
+// EXPECT_ERROR: belongs to `array<T>` and `rawArray<T>` only
+#beguilerSettings { target = z5; informName = "none"; }
+extern emitter class ring<T> : array {
+    emitter T first() { $self-->1 }
+}
+void main(){ }

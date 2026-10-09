@@ -37,9 +37,25 @@ extern attribute moved;        /// set once the player has taken/moved the objec
 extern attribute edible;       /// can be eaten
 extern attribute door;         /// is a door between locations
 extern attribute absent;       /// object is currently out of scope
+extern attribute switchable;   /// can be switched on and off
+extern attribute on;           /// switchable object is currently on
+extern attribute scored;       /// taking it or entering it scores OBJECT_SCORE / ROOM_SCORE once
+extern attribute workflag;     /// temporary flag for list-writing and library routines
 
 //-- Properties ------------------------------------------
 extern property          plural;     /// the name for several identical objects ("three gold coins"); string or routine
+extern property          n_to;      /// the room or door to the north
+extern property          s_to;      /// the room or door to the south
+extern property          e_to;      /// the room or door to the east
+extern property          w_to;      /// the room or door to the west
+extern property          ne_to;     /// the room or door to the northeast
+extern property          nw_to;     /// the room or door to the northwest
+extern property          se_to;     /// the room or door to the southeast
+extern property          sw_to;     /// the room or door to the southwest
+extern property          u_to;      /// the room or door up
+extern property          d_to;      /// the room or door down
+extern property          in_to;     /// the room or door inside
+extern property          out_to;    /// the room or door outside
 extern additive property before;     /// runs before an action on this object; return true to stop the action
 extern additive property after;      /// runs after an action on this object; return true to replace the library's report
 extern additive property life;       /// handles actions aimed at an animate object (Attack, Kiss, Give, Show, Ask, Tell, Answer…); return true to stop them
@@ -99,6 +115,7 @@ extern int          special_number;        /// number typed for "special" token
 extern int          verb_word;             /// the verb word (e.g. 'take')
 extern int          verb_wordnum;          /// verb position in input
 extern int          wn;                    /// word number currently being parsed
+extern int          inventory_stage;       /// 1 or 2: which pass of an inventory listing is calling `invent`
 extern int          num_words;             /// number of words typed
 extern object       itobj;                 /// object currently referred to as "it"
 extern object       himobj;                /// object currently referred to as "him"
@@ -152,6 +169,8 @@ extern object LibraryExtensions {  /// parent of library extension objects; runs
 extern int  RunRoutines(object obj, property prop);                         /// run obj.prop() and return its value
 extern int  PrintOrRun(object obj, property prop);                          /// if obj.prop is a routine, run it; if a string, print it
 extern int  PrintOrRunVar(stringOrRoutine v);                               /// if v is a routine, run it; if a string, print it
+extern dictionaryWord NextWord();                                          /// the word at `wn`, then advance; null for a word not in the dictionary
+extern int  NextWordStopped();                                             /// as NextWord, but -1 once the words run out
 extern void SetPronoun(dictionaryWord dword, object value);                 /// bind a pronoun word ('it'/'him'/…) to an object
 extern void PronounNotice(object obj);                                      /// update the pronoun table so "it"/"him" refers to obj
 extern void AddToScope(object obj);                                         /// inside an add_to_scope routine: bring obj into parser scope
@@ -173,6 +192,10 @@ extern void AfterGameOver();                                                /// 
 extern void CSubjectVerb(object obj, bool reportage, bool nocaps, string v1, string v2 = null, string v3 = null, string past = null);  /// Prints obj with a verb that agrees with it ("You take", "Bob takes"); unused verb forms are 0.
 extern void SetColour(eColor fg, eColor bg, eWindow window = eWindow.all);  /// sets text colors; does nothing unless the COLOUR option is set (#defineI6 COLOUR)
 extern bool WriteListFrom(object o, eListStyle style, int depth = 0);       /// lists o and its siblings; false if there was nothing to list
+extern void Achieved(int task);                                             /// marks a task done and awards its score, once
+extern bool YesOrNo();                                                      /// waits for a yes/no answer; true for yes
+extern void ChangePlayer(object obj, int flag = 0);                         /// makes obj the player; flag 1 prints "(as …)" in room headings
+extern int  Locale(object descin, string withoutAlso = null, string withAlso = null);  /// lists descin's contents for a room description; returns how many
 
 //-- Entry points --------------------------------------------
 extern default void           AfterLife();                                     /// player just died, before the death message
@@ -191,7 +214,7 @@ extern default void           NewRoom();                                       /
 extern default bool           ObjectDoesNotFit(object obj, object container);  /// custom "won't fit" message (true = handled)
 extern default int            ParseNumber(rawArray<char> text, int length);    /// parse a game-specific number token
 extern default bool           ParserError(eParserError err);                   /// custom parser-error message (true = handled)
-extern default void           PrintTaskName(int task);                         /// name a FULL-SCORE task
+extern default bool           PrintTaskName(int task);                         /// name a FULL-SCORE task (true = handled)
 extern default bool           PrintVerb(dictionaryWord word);                  /// custom verb printing (true = handled)
 extern default void           TimePasses();                                    /// each turn, after the action
 extern default dictionaryWord UnknownVerb(dictionaryWord word);                /// remap an unknown verb word
@@ -445,9 +468,18 @@ extern verb Version   { .version }             /// show version information (met
 #endif
 
 //-- Fake actions (no grammar)
-extern verb Receive;  /// runs on second when noun is put on or in it; receive_action says which
-extern verb LetGo;    /// runs on the container or supporter when noun is taken from it
-extern verb Going;    /// runs on the destination room as the player moves
+extern verb Receive { }         /// Runs on second when noun is put on or in it; receive_action says which.
+extern verb LetGo { }           /// Runs on the container or supporter when noun is taken from it.
+extern verb Going { }           /// Runs on the destination room as the player moves.
+extern verb ThrownAt { }        /// Runs on second when noun is thrown at it.
+extern verb Order { }           /// Runs on a character told to do something it has no orders for.
+extern verb TheSame { }         /// Asks parse_name whether two objects can be told apart.
+extern verb PluralFound { }     /// Tells parse_name that a plural word matched.
+extern verb ListMiscellany { }  /// Prints a library message about lists.
+extern verb Miscellany { }      /// Prints a general library message.
+extern verb RunTimeError { }    /// Prints a library run-time error.
+extern verb Prompt { }          /// Prints the command prompt.
+extern verb NotUnderstood { }   /// Runs when a command to a character is not understood.
 
 //-- General bits of I6-to-Beguile setup ----------------------------------------
 
@@ -472,6 +504,23 @@ extend extern class object {
 
 // Substitute the stdLib's backings for status bar and main window, replacing Beguile's core behavior for this.
 #if(TARGET_GLULX)
+    superposed array<int> _bglArrangeBuf[1];
+    // The library's StatusLineHeight re-arranges the status window's own parent, which is wrong once
+    // the status bar has been split: its parent is then the new pair. The height belongs to the first
+    // pair above it that splits above or below.
+    superposed void _bglStatusSetHeight(int lines){
+        if(gg_statuswin == 0 || lines == gg_statuswin_cursize) return;
+        int pair = bgl.asm.windowGetParent(gg_statuswin);
+        while(pair != 0){
+            bgl.asm.windowGetArrangement(pair, ((int)_bglArrangeBuf) + bgl.wordsize, 0, 0);
+            int method = _bglArrangeBuf[0] & $0F;
+            if(method == 2 || method == 3) break;                       // above or below
+            pair = bgl.asm.windowGetParent(pair);
+        }
+        if(pair == 0) return;
+        bgl.asm.windowSetArrangement(pair, ($12), lines, 0);            // above, fixed size, keep the key window
+        gg_statuswin_cursize = lines;
+    }
     extend _bglStatus {
         replace auto id = {
             int operator()        { return gg_statuswin; }
@@ -479,7 +528,7 @@ extend extern class object {
         }
         replace auto height = {
             int operator()        { return gg_statuswin_cursize; }
-            void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }
+            void operator = (int v){ gg_statuswin_size = v; _bglStatusSetHeight(v); }
         }
     }
     extend _bglMainWindow {

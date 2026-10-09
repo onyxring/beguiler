@@ -1,0 +1,10 @@
+// §10.4: a global with the same name as a #using-imported member wins, with a warning.
+// EXPECT_WARNING: 'ptrsize' is both global variable 'ptrsize' and an imported member; the global is used
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object myLib { int ptrSize = 4; int other = 9; }
+#using myLib;
+int ptrSize = 2;
+void main(){
+    int ws = ptrSize;
+    print(ws + other);
+}

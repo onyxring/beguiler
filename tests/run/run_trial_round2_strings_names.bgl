@@ -1,0 +1,40 @@
+// run_trial_round2_strings_names — second field-trial round: a `stringObj` declared without a value
+// starts empty; a return before a `stringObj` local's declaration; `stringObj` assignment inside a
+// nested block copies; `captureOutput` takes a bare property name inside a method; a #using alias
+// that names the same class as a global; an enum value through an imported alias; a cast to a dotted
+// type path; a `const` member in an object body.
+// EXPECT_OUTPUT: empty:[] 0 early:ok nested:[007] capture:[A brass key.] alias:true enum:same cast:3 const:10
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+class thing : object { string description; }
+thing key { description = "A brass key."; }
+thing probe {
+    description = "probe";
+    void measure(object o){ stringObj d = ""; d.captureOutput(o, description); print($"capture:[{d}] "); }
+}
+class Crate : object { int volume; }
+enum eSize { small, medium, large }
+object kit { alias crate for Crate; alias size for eSize; alias box for Crate; }
+#using kit
+Crate c1 { volume = 3; }
+object cfg { const int limit = 10; int get(){ return limit; } }
+void fill(){ stringObj a = "leftover"; }
+void fresh(){ stringObj b; print($"empty:[{b}] {b.length} "); }
+void early(bool stop){ if (stop) return; stringObj s = "built"; }
+void show(kit.box b){ print($"cast:{b.volume} "); }
+void main(){
+    bglInit();
+    fill(); fresh();
+    early(true); early(false); print("early:ok ");
+    stringObj num = "7";
+    while (num.length < 3) num = num.prepend("0");
+    print($"nested:[{num}] ");
+    probe.measure(key);
+    print($"alias:{c1.is(Crate)} ");
+    eSize a = kit.size.large;
+    size b = size.large;
+    if (a == b) print("enum:same ");
+    var v = c1;
+    show((kit.box)v);
+    print($"const:{cfg.get()}");
+}

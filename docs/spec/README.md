@@ -399,6 +399,8 @@ appendices are for lookup.
     - [22.7.8 Colors](22-extensions.md#2278-colors)
     - [22.7.9 Style Validation](22-extensions.md#2279-style-validation)
     - [22.7.10 Enums](22-extensions.md#22710-enums)
+    - [22.7.11 Window Output](22-extensions.md#22711-window-output)
+    - [22.7.12 Capabilities](22-extensions.md#22712-capabilities)
   - [22.8 `<glulxImage>`](22-extensions.md#228-glulximage)
 - [23 IF Library Bindings](23-bindings.md)
   - [23.1 What a Binding Is](23-bindings.md#231-what-a-binding-is)

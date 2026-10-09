@@ -1,0 +1,7 @@
+// Two globals of one name (ignoring case) would be two Inform 6 symbols; Beguiler says so instead of
+// Inform 6 failing on the generated code.
+// EXPECT_ERROR: has the same name as array 'marks'
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> marks = {1};
+object Marks { }
+void main(){ }

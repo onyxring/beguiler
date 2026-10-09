@@ -1,0 +1,17 @@
+// run_string_ephemeral_and_char_array_args — a string method's argument may be another method's
+// result (an ephemeral string the call must not overwrite while copying its receiver), or an
+// `array<char>`, which is converted where its type is known rather than misread as a literal.
+// EXPECT_OUTPUT: [helloab] [abhello] -1 | true 2 true false false hellollo llohello -1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+array<char> needle = {'l','l','o'};
+void main(){
+    bglInit();
+    stringObj s = "hello";
+    stringObj t = "  ab  ";
+    string w = "world";
+    print($"[{s.append(t.trim())}] [{s.prepend(t.trim())}] {s.indexOf(t.toUpper())} | ");
+    print($"{s.contains(needle)} {s.indexOf(needle)} {s.endsWith(needle)} {s.startsWith(needle)} {w.contains(needle)} ");
+    stringObj a = s.append(needle); stringObj p = s.prepend(needle);
+    print($"{a} {p} {s.compareTo(needle)}");
+}

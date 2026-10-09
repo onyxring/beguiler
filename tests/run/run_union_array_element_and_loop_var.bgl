@@ -1,0 +1,16 @@
+// run_union_array_element_and_loop_var — a union written out is valid as an array element type (global
+// and local) and as a for-in loop variable's type, as §2.8 says of every type position.
+// EXPECT_OUTPUT: text hello / 2 / falsetrue
+#beguilerSettings { target = z5; informName = "none"; }
+void hello() { print("hello"); }
+array<string | func<void>> notes = { "text", hello };
+void main() {
+    for (string | func<void> n in notes) {
+        if (typeof(n) == eType.routine) ((func<void>)n)();
+        else print((string)n);
+        print(" ");
+    }
+    array<string | func<void>> local = { "a", hello };
+    print($"/ {local.length} / ");
+    for (string | func<void> m in notes) print(typeof(m) == eType.routine);
+}

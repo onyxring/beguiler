@@ -1,0 +1,5 @@
+// `#i6replace` is not a Beguile directive; the message points to the two ways that are.
+// EXPECT_ERROR: '#i6replace' is not a Beguile directive
+#beguilerSettings { target = z5; informName = "none"; }
+#i6replace DrawStatusLine;
+void main(){ }

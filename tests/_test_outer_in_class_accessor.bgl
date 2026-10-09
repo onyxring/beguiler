@@ -1,0 +1,13 @@
+// Negative test: `outer` names the enclosing object, so an inline accessor in a class body can't use it
+// (a class has no single instance).
+// EXPECT_ERROR: outer
+#beguilerSettings { target = z5; informName = "none"; }
+class Gadget : _bglObject {
+    int scale = 2;
+    auto level = {
+        int _raw;
+        int  operator ()        { return _raw * outer.scale; }
+        void operator = (int v) { _raw = v; }
+    }
+}
+void main(){ }

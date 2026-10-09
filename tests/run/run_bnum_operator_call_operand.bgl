@@ -1,0 +1,8 @@
+// run_bnum_operator_call_operand — a bnum operator takes a call (or member, element) as its right
+// operand, with normal precedence (`f | pick()`, `pick() | f & pick()`).
+// EXPECT_OUTPUT: 5 yes 4
+#beguilerSettings { target = z5; informName = "none"; }
+bnum flags { a, b, c }
+flags f = flags.a;
+flags pick() { return flags.c; }
+void main(){ bglInit(); flags x = f | pick(); print(x); if ((x & pick()) != 0) print(" yes"); flags y = pick() | f & pick(); print($" {y}"); }

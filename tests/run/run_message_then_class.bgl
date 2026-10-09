@@ -1,0 +1,10 @@
+// run_message_then_class — #message and #warning take their text and nothing more: classes, enums
+// and objects declared after them (in this file and in files included later) are unaffected.
+// EXPECT_OUTPUT: 3 2
+#beguilerSettings { target = z5; informName = "none"; }
+#message "a compile-time note"
+class Thing : _bglObject { int n = 3; }
+#warning "a compile-time warning"
+enum eLevel { low, high }
+Thing t { }
+void main(){ print(t.n); print(" "); print((int)eLevel.high); }

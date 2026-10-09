@@ -288,7 +288,8 @@ compile-time checking and emits no definition for it. The forms are:
 | `extern class ⟨name⟩ { … }` | §15.4.3, §8.2.2 |
 | `extern object ⟨name⟩ ;` / `extern object ⟨name⟩ { … }` | §15.4.4, §11.11 |
 
-An `extern` declaration may carry an `asI6 <i6name>` clause naming the I6 identifier (§3.11).
+An `extern` declaration names the I6 identifier itself; an `asBgl ⟨name⟩` clause gives it a different
+Beguile name (§3.11).
 
 ### 15.4.1 Extern Functions and `default` Stubs
 

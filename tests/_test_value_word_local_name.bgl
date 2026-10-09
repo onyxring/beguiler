@@ -1,0 +1,4 @@
+// Negative test: a local can't take a value word as its name either.
+// EXPECT_ERROR: 'null' is a value word and cannot be declared as a name
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int null = 1; print(null); }

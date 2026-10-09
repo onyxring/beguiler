@@ -110,6 +110,7 @@ class fileLexer{
         // Beguile bodies during pre-scan, where `!` is an operator (`!=`, `!flag`,
         // `!(expr)`, `!self.x`, etc.) and never starts a comment.
         string getRawTextThroughClosingBrace(bool isI6Content = false);
+        string getRawTextToStatementEnd();   // source up to the `;` that ends the statement (consumed, not returned)
         // Same as above but stops also when `#bgl`, `#bglDecl`, or `#bglStmt` is encountered.
         // On return, outDirective indicates which variant was found (or None if the matching
         // closing brace was consumed). When a directive is found, the directive token (e.g.

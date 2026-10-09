@@ -1,0 +1,26 @@
+// run_bgl_world_without_array — bgl.world works with only the core's arrays: its results report their
+// length and iterate, and a program that doesn't include <array> doesn't get it.
+// EXPECT_OUTPUT: 2 ab | 3 | 1 b | 2 ab
+#beguilerSettings { target = glulx; informName = "none"; }
+class Tag : _bglObject { string label; }
+Tag t1 { label = "a"; }
+Tag t2 { label = "b"; }
+object box { }
+object inside { parent = box; }
+object inside2 { parent = box; }
+object inside3 { parent = box; }
+#include "glulxConsole.bgl"
+void main(){
+    glulxConsole();
+    bglInit();
+    array<object> tags = bgl.world.instances(Tag);
+    print(tags.length); print(" ");
+    for (object o in tags) print(((Tag)o).label);
+    print($" | {bgl.world.inParent(box).length}");
+    array<object> bs = bgl.world.instances(Tag, (object o) => o == t2);
+    print($" | {bs.length} ");
+    for (object o in bs) print(((Tag)o).label);
+    tags = bgl.world.instances(Tag);   // the buffers rotate and are reused
+    print($" | {tags.length} ");
+    for (object o in tags) print(((Tag)o).label);
+}

@@ -12,16 +12,6 @@ global _bgl_temp2;
 
     Default bglStringDefaultSize 500;
 
-
-    #Ifdef TARGET_GLULX;
-    #Ifndef filemode_Write;
-        Constant filemode_Write 1;
-    #Endif;
-    #Ifndef gg_arguments;
-        Array gg_arguments --> 4;
-    #Endif;
-    #Endif;
-
 global bufa = 0;
 global bufb = 0;
 global bufsmall = 0;
@@ -29,9 +19,6 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
-    _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
-    _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
-    _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
     bufa_raw->0 = $90;
     bufa_raw->1 = $84;
     (bufa_raw + 2)-->0 = 64;
@@ -46,268 +33,8 @@ global _bglInitDone = 0;
     bufsmall = bufsmall_raw + WORDSIZE + 2;
 ];
  Constant NO_ATTRIBUTE 0; 
-[_bglArrayCompareAsc lhs rhs;
-    
-        if(lhs < rhs) return -1;
-        if(lhs > rhs) return 1;
-        return 0;
-    
-];
-object _bglArray
-  with rawGet [addr slot;
-     return addr-->slot; 
-  ],
-       rawSet [addr slot v;
-     addr-->slot = v; 
-  ],
-       get [obj prop n;
-    
-            if(metaclass(obj)==object) return obj.&prop-->n;
-            return obj-->(n+1);
-        
-  ],
-       set [obj prop n v;
-    
-            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
-            obj-->(n+1) = v;
-        
-  ],
-       copy [dobj dprop sobj sprop n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n = cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
-    }
-    self.setlength(dobj, dprop, n);
-  ],
-       isTracked [obj prop hdr;
-     if(metaclass(obj)==object) rfalse; 
-    hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
-  ],
-       size [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,0)-2;
-    }
-    return self.rawget(obj,0);
-  ],
-       length [obj prop;
-     if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,self.rawget(obj,0)-1);
-    }
-    return self.rawget(obj,0);
-  ],
-       setLength [obj prop n cap;
-    if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-         quit; 
-    }
-    cap=self.size(obj,prop);
-    if (n > cap) {
-        n=cap;
-    }
-     if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
-    if (self.istracked(obj,prop)) {
-        self.set(obj, prop, self.size(obj,prop), n);
-    }
-  ],
-       indexOf [obj prop val op len t e;
-    len=self.length(obj,prop);
-    for (t = 0 : t < len : t++) {
-        e = self.get(obj,prop,t);
-        if (e==val) {
-            return t;
-        }
-        
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
-            
-    }
-    return -1;
-  ],
-       setOwned [obj prop n v assign;
-    if (assign==0) {
-        self.set(obj, prop, n, v);
-        return;
-    }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
-    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
-  ],
-       clear [obj prop dtor sz t;
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-    for (t = 0 : t < sz : t++) {
-        self.set(obj, prop, t, 0);
-    }
-    self.setLength(obj, prop, 0);
-  ],
-       freeAll [obj prop dtor sz t;
-    if (dtor==0) {
-        return;
-    }
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-  ],
-       swap [obj prop pos1 pos2 tmp;
-    tmp = self.get(obj,prop,pos1);
-    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
-    self.set(obj, prop, pos2, tmp);
-  ],
-       reverse [obj prop len half i;
-    len=self.length(obj,prop);
-    half=len / 2;
-    for (i = 0 : i < half : i++) {
-        self.swap(obj, prop, i, len - 1 - i);
-    }
-  ],
-       append [obj prop val assign len;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    self.setOwned(obj, prop, len, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       insert [obj prop pos val assign len i;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    if (pos < 0 || pos > len) {
-        return false;
-    }
-    for (i = len : i > pos : i--) {
-        self.set(obj, prop, i, self.get(obj,prop,i - 1));
-    }
-    self.set(obj, prop, pos, 0);
-    self.setOwned(obj, prop, pos, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       prepend [obj prop val assign;
-    return self.insert(obj,prop,0,val,assign);
-  ],
-       destroyValue [dtor v;
-     if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
-  ],
-       remove [obj prop pos dtor len i;
-    len=self.length(obj,prop);
-    if (pos < 0 || pos >= len) {
-        return;
-    }
-    self.destroyValue(dtor, self.get(obj,prop,pos));
-    for (i = pos : i < len - 1 : i++) {
-        self.set(obj, prop, i, self.get(obj,prop,i + 1));
-    }
-    self.set(obj, prop, len - 1, 0);
-    self.setLength(obj, prop, len - 1);
-  ],
-       removeValue [obj prop val op dtor pos len e hit;
-    pos = 0;
-    len=self.length(obj,prop);
-    while (pos < len) {
-        e = self.get(obj,prop,pos);
-        hit=false;
-        if (e==val) {
-            hit = true;
-        }
-        if (~~hit) {
-            
-                    if(op ~= 0 && e ~= 0 && val ~= 0){
-                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
-                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
-                    }
-                
-        }
-        if (hit) {
-            self.remove(obj, prop, pos, dtor);
-            len = self.length(obj,prop);
-        }
-        else {
-             pos++ ;
-        }
-    }
-  ],
-       push [obj prop val;
-    self.insert(obj, prop, 0, val, 0);
-  ],
-       pop [obj prop v;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    v = self.get(obj,prop,0);
-    self.remove(obj, prop, 0, 0);
-    return v;
-  ],
-       dequeue [obj prop;
-    return self.pop(obj,prop);
-  ],
-       enqueue [obj prop val;
-    self.append(obj, prop, val, 0);
-  ],
-       peek [obj prop;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,0);
-  ],
-       peekEnd [obj prop len;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,len - 1);
-  ],
-       popEnd [obj prop len v;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    v = self.get(obj,prop,len - 1);
-    self.remove(obj, prop, len - 1, 0);
-    return v;
-  ],
-       sortDefault [obj prop cmp;
-    if (cmp==0) {
-        self.sort(obj, prop, _bglarraycompareasc);
-    }
-    else {
-        self.sort(obj, prop, cmp);
-    }
-  ],
-       invokeCompare [cmp a b;
-    
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        
-    return 0;
-  ],
-       sort [obj prop compare len i key j;
-    len=self.length(obj,prop);
-    for (i = 1 : i < len : i++) {
-        key = self.get(obj,prop,i);
-        j=i - 1;
-        while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
-            self.set(obj, prop, j + 1, self.get(obj,prop,j));
-             j-- ;
-        }
-        self.set(obj, prop, j + 1, key);
-    }
-  ]
-;
 global _bglWorldBufIdx = -1;
+constant _bglWorldBufSize = 128;
 object _glulx
 ;
 [_bglSuspendLineInput buffer;
@@ -321,12 +48,12 @@ object _glulx
     }
     target = _bgl_bglOpCodes_aload(event, 2);
     __glkHook(258, _bgl_bglOpCodes_aload(event, 1));
-    if (~~(metaclass(target) == Routine)) {
+    if ((~~(metaclass(target) == Routine))) {
         return false;
     }
     typed = 0;
     if (context == 0) {
-        typed = _bglsuspendlineinput(buffer);
+        typed=_bglsuspendlineinput(buffer);
     }
      target(); 
     if (context == 0) {
@@ -341,16 +68,18 @@ object _glulx
         if (__glkHook(44, win) == stream) {
             return win;
         }
-        win = __glkHook(32, win, 0);
+        win=__glkHook(32, win, 0);
     }
     return 0;
 ];
 object bgl
   with glulx _glulx
 ;
-array _bglbufstreamstack table 18;
-array _bglbufglulxstreams table 18;
-array _bgltrackedregistry table 130;
+constant _bglFilemodeWrite = 1;
+array _bglstreamcounts --> 2;
+array _bglbufstreamstack table 16;
+array _bglbufglulxstreams table 16;
+array _bgltrackedregistry table 128;
 object _bglBuf
   with _stacktop 0,
        _trackedcount 0,
@@ -415,7 +144,7 @@ object _bglBuf
        setFromLiteral [buf stringVal sz;
     sz=self.size(buf);
     if (sz < 0) {
-        sz = bglstringdefaultsize;
+        sz=bglstringdefaultsize;
     }
      stringVal.print_to_array(buf, sz); 
     self.setLength(buf, self.length(buf));
@@ -460,7 +189,7 @@ object _bglBuf
         }
     }
     _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
-    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, filemode_write, 662));
+    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, _bglfilemodewrite, 662));
     self._stacktop++;
   ],
        release [buf;
@@ -469,10 +198,9 @@ object _bglBuf
     }
     self._stacktop--;
     buf =  _bglbufstreamstack-->(self._stacktop+1) ;
-    __glkHook(68, __glkHook(72), gg_arguments);
-    buf->(0) =  gg_arguments-->(0+1) ;
+    __glkHook(68, __glkHook(72), _bglstreamcounts);
+    self.setLength(buf,  _bglstreamcounts-->1 );
     __glkHook(71,  _bglbufglulxstreams-->(self._stacktop+1) );
-    self.setLength(buf, self.length(buf));
     return buf;
   ],
        stackLen [;
@@ -506,7 +234,7 @@ object _bglBuf
        compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
     len1=self.length(buf1);
     len2=self.length(buf2);
-    if (len1 < len2) _bgl_temp0 = len1; else _bgl_temp0 = len2;
+    if (len1 < len2) { _bgl_temp0 = len1; } else { _bgl_temp0 = len2; }
     lim=_bgl_temp0;
     for (t = 0 : t < lim : t++) {
         c1=buf1->(t + WORDSIZE);
@@ -516,14 +244,14 @@ object _bglBuf
             c2 = _bglchartolower(c2);
         }
         if (c1 ~= c2) {
-            if (c1 < c2) _bgl_temp1 = -1; else _bgl_temp1 = 1;
+            if (c1 < c2) { _bgl_temp1 = -1; } else { _bgl_temp1 = 1; }
             return _bgl_temp1;
         }
     }
     if (len1 == len2) {
         return 0;
     }
-    if (len1 < len2) _bgl_temp2 = -1; else _bgl_temp2 = 1;
+    if (len1 < len2) { _bgl_temp2 = -1; } else { _bgl_temp2 = 1; }
     return _bgl_temp2;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
@@ -663,7 +391,7 @@ object _bglBuf
     }
     for (o = startingindex : o < buflen : o++) {
         c = buf->(o + WORDSIZE);
-        if (~~pred(c)) {
+        if ((~~pred(c))) {
             return o;
         }
     }
@@ -839,122 +567,61 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     if (c>='a' && c<='z') {
         rtrue;
     }
-    if ((c>=155 && c<=157)||(c>=164 && c<=166)) {
+    if (c<128) {
+        rfalse;
+    }
+    if (c==223 || c==339) {
         rtrue;
     }
-    if (c>=169 && c<=174) {
-        rtrue;
+    if (c>255) {
+        rfalse;
     }
-    if (c>=181 && c<=185) {
-        rtrue;
-    }
-    if (c>=191 && c<=195) {
-        rtrue;
-    }
-    if (c==201) {
-        rtrue;
-    }
-    if (c==203) {
-        rtrue;
-    }
-    if (c>=205 && c<=207) {
-        rtrue;
-    }
-    if (c==211) {
-        rtrue;
-    }
-    if (c==213) {
-        rtrue;
-    }
-    if (c==215) {
-        rtrue;
-    }
-    if (c==216) {
-        rtrue;
-    }
-    if (c==220) {
-        rtrue;
-    }
-    rfalse;
+    return __glkHook(161, c)~=c;
 ];
 [_bglCharIsUpper c;
     if (c>='A' && c<='Z') {
         rtrue;
     }
-    if ((c>=158 && c<=159)||(c>=167 && c<=168)) {
+    if (c<128) {
+        rfalse;
+    }
+    if (c==338) {
         rtrue;
     }
-    if (c>=160) {
-        rtrue;
+    if (c>255) {
+        rfalse;
     }
-    if (c>=175 && c<=180) {
-        rtrue;
-    }
-    if (c>=186 && c<=190) {
-        rtrue;
-    }
-    if (c>=196 && c<=200) {
-        rtrue;
-    }
-    if (c==202) {
-        rtrue;
-    }
-    if (c==204) {
-        rtrue;
-    }
-    if (c>=208 && c<=210) {
-        rtrue;
-    }
-    if (c==212) {
-        rtrue;
-    }
-    if (c==214) {
-        rtrue;
-    }
-    if (c==217) {
-        rtrue;
-    }
-    if (c==218) {
-        rtrue;
-    }
-    if (c==221) {
-        rtrue;
-    }
-    rfalse;
+    return __glkHook(160, c)~=c;
 ];
 [_bglCharToLower c;
-    switch (c) {
-        'A' to 'Z':
-            return c+32;
-        202, 204, 212, 214, 221:
-            return c-1;
-        217, 218:
-            return c-2;
-        158 to 160, 167, 168, 208 to 210:
-            return c-3;
-        186 to 190, 196 to 200:
-            return c-5;
-        175 to 180:
-            return c-6;
+    if (c>='A' && c<='Z') {
+        return c+32;
     }
-    return c;
+    if (c<128) {
+        return c;
+    }
+    if (c==338) {
+        return c+1;
+    }
+    if (c>255) {
+        return c;
+    }
+    return __glkHook(160, c);
 ];
 [_bglCharToUpper c;
-    switch (c) {
-        'a' to 'z':
-            return c-32;
-        201, 203, 211, 213, 220:
-            return c+1;
-        215, 216:
-            return c+2;
-        155 to 157, 164, 165, 205 to 207:
-            return c+3;
-        181 to 185, 191 to 195:
-            return c+5;
-        169 to 174:
-            return c+6;
+    if (c>='a' && c<='z') {
+        return c-32;
     }
-    return c;
+    if (c<128) {
+        return c;
+    }
+    if (c==339) {
+        return c-1;
+    }
+    if (c>255) {
+        return c;
+    }
+    return __glkHook(161, c);
 ];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 

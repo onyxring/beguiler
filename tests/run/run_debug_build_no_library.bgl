@@ -1,0 +1,8 @@
+// run_debug_build_no_library — a debug build of a program without an IF library compiles: Inform 6's
+// tracing veneer needs debug_flag, workflag and DebugAttribute, which the compiler supplies when no
+// library has; and log() prints what print() would.
+// BEGUILER_FLAGS: --debug
+// EXPECT_OUTPUT: hi dbg brass lamp 42
+#beguilerSettings { target = z5; informName = "none"; }
+object lamp { "brass lamp"; }
+void main(){ bglInit(); print("hi"); log(" dbg "); log(lamp); log(" "); log(42); }

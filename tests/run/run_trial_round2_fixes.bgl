@@ -1,0 +1,55 @@
+// run_trial_round2_fixes — defects the second field-trial round found: a bare block statement;
+// `++`/`+=` on a static member; `print(x)` inside a class's own `print()`; a renamed member read
+// from a subclass; for-in over a member array (own and by path); an accessor in an interpolated
+// string; two `operator =` overloads; value-class locals in an operator and in same-named methods of
+// two classes; and an enum emitter value read through a parenthesized member path.
+// EXPECT_OUTPUT: block:3 static:3 print:5 cents sub:3 4 own: 2 5 path: 2 5 interp:[2] ops:5 7 local:3 run:12 paren:true
+#beguilerSettings { target = z5; informName = "none"; }
+class Counter { static int hits = 0; }
+class Money : _bglObject { int cents; void print(){ print(cents); print(" cents"); } }
+Money m { cents = 5; }
+object Wear { }
+class Tool : _bglObject { int wear; }
+class Blade : Tool { void show(){ print(wear); wear = wear + 1; print(" "); print(wear); } }
+Blade knife { wear = 3; }
+object cfg { array<int> limits = {2, 5}; void own(){ for (int x in limits) { print(" "); print(x); } } }
+value class Level { int _v; int operator (){ return _v; } void operator = (int v){ _v = v; } }
+class Holder : _bglObject { Level lvl; }
+Holder h { }
+value class Coins {
+    int cents;
+    Coins operator = (Coins o){ cents = o.cents; return self; }
+    Coins operator = (int c){ cents = c; return self; }
+    Coins operator + (Coins o){ Coins sum; sum.cents = cents + o.cents; return sum; }
+}
+class Item : _bglObject { Coins price; }
+Item pebble { }
+Coins loose;
+value class Box { int n; Box operator = (Box o){ n = o.n; return self; } }
+class A : _bglObject { void run(){ Box b; b.n = 1; print(b.n); } }
+class B : _bglObject { void run(){ Box b; b.n = 2; print(b.n); } }
+A ra { }
+B rb { }
+enum eMachine { off, warming, ready, emitter bool running { ($self == 2 || $self == 3) } }
+object machine { eMachine state = eMachine.ready; }
+void main(){
+    bglInit();
+    int a = 1;
+    { int bb = 2; print($"block:{a + bb} "); }
+    Counter.hits++; Counter.hits += 1; Counter.hits = Counter.hits + 1;
+    print($"static:{Counter.hits} ");
+    print("print:"); print(m); print(" ");
+    print("sub:"); knife.show(); print(" ");
+    print("own:"); cfg.own(); print(" ");
+    print("path:"); for (int x in cfg.limits) { print(" "); print(x); } print(" ");
+    h.lvl = 2;
+    print($"interp:[{h.lvl}] ");
+    pebble.price = 5; loose = 7;
+    print($"ops:{pebble.price.cents} {loose.cents} ");
+    Coins one; one = 1; Coins two; two = 2;
+    Coins three; three = one + two;
+    print($"local:{three.cents} ");
+    print("run:"); ra.run(); rb.run(); print(" ");
+    bool running = (machine.state.running);
+    print($"paren:{running}");
+}

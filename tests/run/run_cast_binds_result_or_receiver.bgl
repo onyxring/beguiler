@@ -1,0 +1,17 @@
+// run_cast_binds_result_or_receiver — `(T)a.m` casts the result of the member access, as in C++ and C#;
+// `((T)a).m` retypes the receiver: it reads and writes T's members and runs an ancestor's own method.
+// EXPECT_OUTPUT: 9 9 1 2 65
+#beguilerSettings { target = z5; informName = "none"; }
+class base[4] : _bglObject { int rank(){ return 1; } int code(){ return 65; } }
+class deriv[4] : base { int barks = 0; int rank(){ return 2; } }
+void main(){
+    bglInit();
+    deriv d = new deriv();
+    base a = d;
+    ((deriv)a).barks = 9;
+    print(((deriv)a).barks); print(" ");
+    print(d.barks); print(" ");
+    print(((base)d).rank()); print(" ");
+    print(a.rank()); print(" ");
+    print((int)a.code());
+}

@@ -30,8 +30,10 @@ Every program has a `Main` function as its entry point (§6.7). General-purpose 
 the Inform 6 Standard Library and PunyInform define `Main` themselves and expect a library-specific
 entry point, such as `Initialise`, instead (§23.3.1).
 
-A global name must be unique across every kind of global declaration: declaring a variable, function,
-class, object or enum with the name of an existing global of any kind is a compile-time error (§19.2).
+A global name must be unique across every kind of global declaration, ignoring case: declaring a
+variable, function, class, object or enum with the name of an existing global of any kind is a
+compile-time error (§19.2). The one exception is an emitter function, which may share its name with a
+variable or object (§3.10).
 
 ## 3.2 Declaration Qualifiers
 
@@ -323,10 +325,13 @@ may shadow a global; inside its scope the bare name is the local and `::name` (�
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
 - A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.7.3).
 
-**Two file-scope declarations of one name.** A function and a variable or object may share a
-file-scope name, which happens whenever an author declares one of the unprefixed names the library
+**Two file-scope declarations of one name.** An emitter function and a variable or object may share
+a file-scope name, which happens whenever an author declares one of the unprefixed names the library
 publishes (`print`, `log`, and the article rules before they moved to `bgl.printRules` — §21.11).
-They are told apart by **use**, not by declaration order:
+The emitter leaves no symbol in the Inform 6 output, so only the variable or object is emitted under
+the name. Any other two globals of one name, ignoring case — two routines, objects, verbs, variables
+or arrays — would be two Inform 6 symbols, and are a compile-time error unless one is given an
+`asI6` name (§3.11). The two that may share are told apart by **use**, not by declaration order:
 
 | Use | Resolves to |
 |---|---|
@@ -390,9 +395,8 @@ the member name. It is ignored on operator methods; on a type declaration (`exte
 clause is that the name required on one side is a keyword or reserved word on the other (§15.9).
 
 A member is emitted as an Inform 6 property, and Inform 6 keeps class names and property names in one
-namespace, ignoring case. A member (field, array or method) named like a class that reaches the I6
-output, such as `Box box;` beside `class Box`, is therefore a compile-time error unless `asI6` gives
-the member a different I6 name: `Box box asI6 theBox;`. Beguile source still calls it `box`.
+namespace, ignoring case. A class declared in Beguile is emitted as `_bglClass_⟨name⟩` (§8.1), so a
+member named like a class, such as `Box box;` beside `class Box`, needs no `asI6`.
 
 Both clauses cross the language boundary. `alias` never does: `alias class Foo for Bar` (§8.2.4),
 `alias name for Type;` and `alias name = Target;` (§10.2) each introduce a second *Beguile* name for

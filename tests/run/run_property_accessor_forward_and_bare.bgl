@@ -1,0 +1,18 @@
+// run_property_accessor_forward_and_bare — a getter/setter member type declared after the class using
+// it is still recognized, and a bare member read (`target`, for self.target) runs the getter on the owner.
+// EXPECT_OUTPUT: 3333
+#beguilerSettings { target = z5; informName = "none"; }
+value class sheet { int w = 7; sheet operator = (sheet s){ self.w = s.w; return self; } }
+sheet look = sheet{ w = 3; };
+void takeRef(ref sheet o){ print(o.w); }
+class Holder[2] : _bglObject {
+    int _ref = 0;
+    typesealed refProp target;
+    void show(){ takeRef(self.target); takeRef(target); sheet t = self.target; print(t.w); }
+}
+extern emitter class refProp {
+    emitter refProp operator = (sheet v){ $self._ref = $v }
+    emitter sheet operator(){ ($self._ref) }
+}
+Holder h { }
+void main(){ bglInit(); h.target = look; h.show(); takeRef(h.target); }

@@ -18,6 +18,7 @@
     informName = "none";
 }
 
+#include <array>
 #include <string>
 
 void main() {

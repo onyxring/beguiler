@@ -1,0 +1,13 @@
+// run_emitter_chain_i6expr — an emitter body reaches another emitter function or value through $i6Expr.
+// EXPECT_OUTPUT: 10 3
+#beguilerSettings { target = z5; informName = "none"; }
+emitter int twice(int v){ ($v * 2) }
+emitter int callsTwice(int v){ $i6Expr(twice($v)) }
+emitter int two { 2 }
+emitter int usesTwo { ($i6Expr(two) + 1) }
+void main(){
+    bglInit();
+    int a = callsTwice(5);
+    int c = usesTwo;
+    print($"{a} {c}");
+}

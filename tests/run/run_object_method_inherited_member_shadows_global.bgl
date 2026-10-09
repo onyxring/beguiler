@@ -1,0 +1,11 @@
+// run_object_method_inherited_member_shadows_global — in an object's method, a bare name that is an
+// inherited member resolves to the member even when a global (here a verb object) has the same name.
+// EXPECT_OUTPUT: 2 4 9
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object lamp { }
+class Bag : object { array<object> history[4]; int count = 4; }
+verb History { grammar = { {.history} }; void handler() { } }
+int count = 9;
+Bag sack { void add() { history.enqueue(lamp); history += lamp; print($"{history.length} {count} "); } }
+void main(){ bglInit(); sack.add(); print(::count); }

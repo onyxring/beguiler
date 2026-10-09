@@ -227,8 +227,27 @@ object _bglStr {
             lck    = self.ambiguousLock(unkStr);
             retval = _bglStringPool.allocateString();
             if(unkStr ~= 0) retval.set(unkStr);
+            else retval.setLength(0);   ! a pooled buffer still holds its last text
             self.ambiguousFree(unkStr, lck);
             retval = retval.lock();
+        }
+        return retval;
+    }
+
+    // An `array<char>` as a string: copied into a pooled string returned freed (ephemeral), like
+    // the other results here. A char array is laid out as a buffer is — a length word, then the
+    // characters — but nothing at run time tells it from a packed literal, so it is converted
+    // where its type is still known.
+    var fromChars(var chars) {
+        var retval = self.new();
+        int n; int i;
+        #i6 {
+            n = chars-->0;
+            i = _bglBuf.size(retval.getBuf());   ! -1 when the buffer carries no capacity
+            if(i >= 0 && n > i) n = i;
+            for(i = 0 : i < n : i++) retval.setChar(i, chars->(i + WORDSIZE));
+            retval.setLength(n);
+            retval = retval.free();
         }
         return retval;
     }
@@ -239,9 +258,17 @@ object _bglStr {
     // bare `string` value type works, not just `stringObj`. `s` may be a literal,
     // a `string`, or a `_bglString` — `self.new` canonicalizes it.
     var format(var s, var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
+        bool lk_pattern = self.ambiguousLock(pattern);   // an ephemeral argument must outlive the copies made below
+        bool lk_p1 = self.ambiguousLock(p1);
+        bool lk_p2 = self.ambiguousLock(p2);
+        bool lk_p3 = self.ambiguousLock(p3);
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str.format(pattern, p1, p2, p3); str.free(); }
+        self.ambiguousFree(p3, lk_p3);
+        self.ambiguousFree(p2, lk_p2);
+        self.ambiguousFree(p1, lk_p1);
+        self.ambiguousFree(pattern, lk_pattern);
         return tmp;   // ephemeral, same contract as trim()
     }
 
@@ -342,27 +369,35 @@ object _bglStr {
         return r;
     }
     int indexOf(var s, var searchText, int startingIndex) {
+        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         int r;
         #i6 { r = str.indexOf(searchText, startingIndex); str.free(); }
+        self.ambiguousFree(searchText, lk_searchText);
         return r;
     }
     bool startsWith(var s, var prefix, bool caseInsensitive) {
+        bool lk_prefix = self.ambiguousLock(prefix);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         bool r;
         #i6 { r = str.startsWith(prefix, caseInsensitive); str.free(); }
+        self.ambiguousFree(prefix, lk_prefix);
         return r;
     }
     bool endsWith(var s, var suffix, bool caseInsensitive) {
+        bool lk_suffix = self.ambiguousLock(suffix);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         bool r;
         #i6 { r = str.endsWith(suffix, caseInsensitive); str.free(); }
+        self.ambiguousFree(suffix, lk_suffix);
         return r;
     }
     bool contains(var s, var searchText) {
+        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         bool r;
         #i6 { r = str.contains(searchText); str.free(); }
+        self.ambiguousFree(searchText, lk_searchText);
         return r;
     }
     bool isEmpty(var s) {
@@ -372,9 +407,11 @@ object _bglStr {
         return r;
     }
     var append(var s, var text) {
+        bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str.append(text); str.free(); }
+        self.ambiguousFree(text, lk_text);
         return tmp;   // ephemeral, same contract as trim()
     }
     var appendChar(var s, int c) {
@@ -384,9 +421,11 @@ object _bglStr {
         return tmp;   // ephemeral, same contract as trim()
     }
     var prepend(var s, var text) {
+        bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str.prepend(text); str.free(); }
+        self.ambiguousFree(text, lk_text);
         return tmp;   // ephemeral, same contract as trim()
     }
     var toUpper(var s) {
@@ -438,9 +477,11 @@ object _bglStr {
         return tmp;   // ephemeral, same contract as trim()
     }
     var insert(var s, int pos, var source) {
+        bool lk_source = self.ambiguousLock(source);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str.insert(pos, source); str.free(); }
+        self.ambiguousFree(source, lk_source);
         return tmp;   // ephemeral, same contract as trim()
     }
     var delete(var s, int pos, int count) {
@@ -450,15 +491,23 @@ object _bglStr {
         return tmp;   // ephemeral, same contract as trim()
     }
     var replace(var s, var searchText, var replaceText) {
+        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
+        bool lk_replaceText = self.ambiguousLock(replaceText);
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str.replace(searchText, replaceText); str.free(); }
+        self.ambiguousFree(replaceText, lk_replaceText);
+        self.ambiguousFree(searchText, lk_searchText);
         return tmp;   // ephemeral, same contract as trim()
     }
     var replaceAll(var s, var searchText, var replaceText) {
+        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
+        bool lk_replaceText = self.ambiguousLock(replaceText);
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str.replaceAll(searchText, replaceText); str.free(); }
+        self.ambiguousFree(replaceText, lk_replaceText);
+        self.ambiguousFree(searchText, lk_searchText);
         return tmp;   // ephemeral, same contract as trim()
     }
 
@@ -1022,6 +1071,8 @@ extend class string {
     replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
     replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
     replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
+    emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
     // Switch comparison — Phase B typed dispatch
     emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
@@ -1054,7 +1105,6 @@ extend class string {
 
     // Indexed character access
     emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
-    emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
 
     // Query — enables ?., ??, and postfix ? for null (unallocated) checks
     replace emitter eBool operator ?() { $self ~= 0 }
@@ -1066,8 +1116,10 @@ extend class string {
     emitter stringObj  append(string v)                      { _bglStr.append($val, $v) }
     /// Return a new string with one character joined on.
     emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
+    emitter stringObj  append(array<char> v)                        { _bglStr.append($val, _bglStr.fromChars($v)) }
     /// Return a new string with `v` joined on the FRONT.
     emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
+    emitter stringObj prepend(array<char> v) { _bglStr.prepend($val, _bglStr.fromChars($v)) }
     /// Return an upper-case copy.
     emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
     /// Return a lower-case copy.
@@ -1102,16 +1154,21 @@ extend class string {
     emitter int     length                                { _bglStr.getLength($val) }
     /// Order two strings by content: <0, 0 or >0. This is the comparison to hand `sort`.
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
+    emitter int compareTo(array<char> other) { _bglStr.compareValues($val, _bglStr.fromChars($other), false) }
     /// Order by content, optionally ignoring case.
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
     /// Position of the first `searchText`, counting from 0, or -1.
     emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
+    emitter int indexOf(array<char> searchText) { _bglStr.indexOf($val, _bglStr.fromChars($searchText), 0) }
     /// True when the string begins with `prefix`.
     emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
+    emitter eBool startsWith(array<char> prefix) { _bglStr.startsWith($val, _bglStr.fromChars($prefix), false) }
     /// True when the string ends with `suffix`.
     emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
+    emitter eBool endsWith(array<char> suffix) { _bglStr.endsWith($val, _bglStr.fromChars($suffix), false) }
     /// True when `searchText` appears anywhere.
     emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
+    emitter eBool contains(array<char> searchText) { _bglStr.contains($val, _bglStr.fromChars($searchText)) }
     emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
     // capture/release/captureOutput redirect output INTO a buffer — stringObj only.
 }
@@ -1146,7 +1203,7 @@ emitter class stringObj {
     /// Take a buffer from the pool. Runs automatically at the declaration.
     emitter void init()   { $self = _bglStr.new(); }
     /// Give the buffer back. Runs automatically when the declaring block ends.
-    emitter void deinit() { $self.free(); }
+    emitter void deinit() { if ($self) $self.free(); }
 
     // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
     // false-positive risk that could surface when a packed-string address
@@ -1163,12 +1220,16 @@ emitter class stringObj {
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
     emitter stringObj operator + (stringLiteral v) { _bglStr.append($val, $v) }
     emitter stringObj operator + (stringObj v)        { _bglStr.append($val, $v) }
+    emitter stringObj operator + (string v)           { _bglStr.append($val, $v) }
+    emitter stringObj operator + (char c)             { _bglStr.appendChar($val, $c) }
 
     // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
     // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
     // copies it back into self.
     emitter stringObj operator += (stringLiteral v) { $self.setFromStr($self.append($v)) }
     emitter stringObj operator += (stringObj v)        { $self.setFromStr($self.append($v)) }
+    emitter stringObj operator += (string v)           { $self.setFromStr(_bglStr.append($self, $v)) }
+    emitter stringObj operator += (char c)             { $self.setFromStr(_bglStr.appendChar($self, $c)) }
 
     // Equality — Phase B typed dispatch
     // `replace` — core declares these as address equality; <string> upgrades them to
@@ -1178,6 +1239,8 @@ emitter class stringObj {
     emitter eBool operator == (stringObj v)        { _bglStr.areEqual($val, $v, false) }
     emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
     emitter eBool operator != (stringObj v)        { (~~_bglStr.areEqual($val, $v, false)) }
+    emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
     // Switch comparison — Phase B typed dispatch
     emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
@@ -1247,7 +1310,9 @@ emitter class stringObj {
 
     emitter stringObj  append(stringObj v)                      { _bglStr.append($val, $v) }
     emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
+    emitter stringObj  append(array<char> v)                        { _bglStr.append($val, _bglStr.fromChars($v)) }
     emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
+    emitter stringObj prepend(array<char> v) { _bglStr.prepend($val, _bglStr.fromChars($v)) }
     emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
     emitter stringObj  toLower()                             { _bglStr.toLower($val) }
     emitter stringObj  trim()                                { _bglStr.trim($val) }
@@ -1266,15 +1331,20 @@ emitter class stringObj {
     emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
     emitter int     length                                { _bglStr.getLength($val) }
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
+    emitter int compareTo(array<char> other) { _bglStr.compareValues($val, _bglStr.fromChars($other), false) }
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
     emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
+    emitter int indexOf(array<char> searchText) { _bglStr.indexOf($val, _bglStr.fromChars($searchText), 0) }
     emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
+    emitter eBool startsWith(array<char> prefix) { _bglStr.startsWith($val, _bglStr.fromChars($prefix), false) }
     emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
+    emitter eBool endsWith(array<char> suffix) { _bglStr.endsWith($val, _bglStr.fromChars($suffix), false) }
     emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
+    emitter eBool contains(array<char> searchText) { _bglStr.contains($val, _bglStr.fromChars($searchText)) }
     emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
     emitter void    capture()                             { $self.capture() }
     emitter void    release()                             { $self.release() }
-    emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
+    emitter void    captureOutput(object obj, property prop)   { $self.captureOutput($obj, $prop) }
 
     // NOTE: no `static operator =` is published yet, so array<stringObj> slot writes
     // take core's raw word store and the developer owns the lifecycle explicitly:
@@ -1291,8 +1361,8 @@ emitter class stringObj {
 /// The `"…"` literal gains `<string>`'s content comparison and query methods, so a literal can be
 /// compared and searched without first being copied into a `stringObj`.
 extend class stringLiteral {
-    emitter string operator + (string v)      { _bglStr.new($self).append($v) }
-    emitter string operator + (charLiteral c) { _bglStr.new($self).appendChar($c) }
+    emitter stringObj operator + (string v)      { _bglStr.append($self, $v) }
+    emitter stringObj operator + (charLiteral c) { _bglStr.appendChar($self, $c) }
 
     // Upgrade the literal's own comparison too. Core declares these as address
     // equality; without replacing them here a literal-on-the-left comparison
@@ -1302,6 +1372,8 @@ extend class stringLiteral {
     replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
     replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
     replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
+    emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 }
 
 replace emitter void print(string str) { _bglStr.print($str) }

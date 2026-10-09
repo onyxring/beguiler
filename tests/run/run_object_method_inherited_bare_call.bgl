@@ -1,0 +1,10 @@
+// run_object_method_inherited_bare_call — inside an object's method a bare call to an inherited method
+// (`isFull()`, the `object` emitters `has`/`give`) resolves on self, as in a class method.
+// EXPECT_OUTPUT: full shiny lit given
+#beguilerSettings { target = z5; informName = "none"; }
+attribute shiny;
+attribute lit;
+class Bag : object { int limit; bool isFull() { return limit == 0; } }
+Bag sack { void check() { if (isFull()) print("full"); give(shiny); if (has(shiny)) print(" shiny"); } }
+object hall { attributes = {lit}; void check() { if (has(lit)) print(" lit"); give(shiny); } }
+void main(){ bglInit(); sack.check(); hall.check(); if (hall.has(shiny)) print(" given"); }

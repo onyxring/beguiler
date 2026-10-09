@@ -32,6 +32,7 @@
 #include <tuple>
 #include <optional>
 #include <string_view>
+#include <regex>
 
 #include "helpers.h"
 #include "settings.h"
@@ -378,6 +379,40 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                               "withheld and revived on demand; write 'static superposed' (a "
                               "free routine) for pay-only-if-used, or drop 'superposed'.", funcDef.name));
     funcDef.isSuperposed = isMemberSuperposed;
+    // An operator the class overloads (pre-scan registered every overload) takes its per-signature
+    // name now, the one the overload pass settles on, so call sites parsed from here on use it.
+    if(!isEmitter && funcDef.name != "operator()" && !funcDef.name.empty()
+       && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_'){
+        // Another signature makes a set; this declaration's own pre-scan stub has the same one.
+        auto sameSignature = [&](functionDef* fd){
+            if(fd->params.size() != funcDef.params.size()) return false;
+            for(size_t i = 0; i < fd->params.size(); i++)
+                if(fd->params[i]->type.name != funcDef.params[i]->type.name) return false;
+            return true;
+        };
+        int overloads = 1;
+        for(typeMember* m : newClass.members)
+            if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd != &funcDef && fd->name == funcDef.name
+               && !fd->isEmitter && !sameSignature(fd))
+                overloads++;
+        if(overloads > 1){
+            auto overloadName = [](functionDef* fd){
+                string disc;
+                for(paramDef* p : fd->params){
+                    string t = p->type.name;
+                    if(size_t lt = t.find('<'); lt != string::npos) t = t.substr(0, lt);
+                    disc += "_" + (t.empty() ? string("var") : t);
+                }
+                return mangleOperatorName(fd->name) + disc;
+            };
+            funcDef.i6name = overloadName(&funcDef);
+            // An overload declared earlier didn't know it had company until now.
+            for(typeMember* m : newClass.members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd != &funcDef && fd->name == funcDef.name
+                   && !fd->isEmitter && !fd->isPrePassStub)
+                    fd->i6name = overloadName(fd);
+        }
+    }
     if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
         // extern/alias class non-emitter INSTANCE methods not allowed: they would need to
         // emit a property routine on a class Beguile does not own. A `static` method has no
@@ -397,6 +432,14 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
             i6Block& rawblock=*(new i6Block());
             rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
             funcDef.body=&rawblock;
+            // A value emitter's body is the I6 expression spliced in at the call; `return …;` is a
+            // statement there. Members of an emitter class are emitters even without the keyword.
+            static const regex leadingReturn(R"(^\s*return\b)", regex::icase);
+            if(funcDef.returnType.name != "void" && regex_search(rawblock.i6Body, leadingReturn))
+                parsingError(format("'{0}' is an emitter{1}: its body is the Inform 6 expression spliced in where "
+                                    "it is called, so it can't begin with 'return' — write the value alone, "
+                                    "as in {{ $self-->1 }}", funcDef.name,
+                                    q.isEmitter ? "" : " (every member of an emitter class is)"));
         } else {
             funcDef.body = new statementBlock();
             functionDef* savedFunc = currentFunc;
@@ -688,7 +731,10 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     }
     if(!returnType.docComment.empty())   varDef.docComment = returnType.docComment;
     else if(!name.docComment.empty())    varDef.docComment = name.docComment;
-    if(tok.is(token::assignment)){
+    if(tok.is(token::assignment) && parseInlineAccessor(varDef, (string)returnType, (typeDef*)&newClass)){
+        // the accessor took the member; fall through to registration
+    }
+    else if(tok.is(token::assignment)){
         token first = file.getToken();
         if(first.is(token::braceOpen)){
             // initializer list: { expr, expr, ... } with optional nesting
@@ -1010,6 +1056,12 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     parseClassTypeParameters(newClass, nameTok, isExtend, isAlias);
     parseClassPoolSize(newClass, tok, nameTok, isExternal, isExtend, isEmitterClass, isAlias);
     parseClassInheritance(newClass, tok, nameTok, isAlias);
+    // Type parameters belong to `array` and `rawArray` alone (§8.1.1): array storage is keyed on those names.
+    if(!newClass.typeParameters.empty() && !isExtend && newClass.name != "array" && newClass.name != "rawarray")
+        parsingError(format("class '{0}': Beguile has no generic classes; a type parameter belongs to "
+            "`array<T>` and `rawArray<T>` only (§8.1.1). Declare the member types directly; to give arrays "
+            "a method that uses T, write it in `extend extern class array {{ … }}`.",
+            newClass.dName()));
     // `value` is inherited, and a class can't be both kinds: a value base and a reference base (one with
     // instances that isn't a value class) don't mix.
     if(!isExtend && !newClass.isEmitterClass && !newClass.isAlias){
@@ -1095,6 +1147,46 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
 // ===============================================================================
 // Object body member parsers
 // ===============================================================================
+// Inline accessor declaration: `auto name = { <member decls + operators> }`. The braces hold a
+// CLASS BODY (backing fields + get/set operators), not an initializer list. Synthesize an anonymous
+// value class from the body, registered globally and placed just before `host` (the enclosing object
+// or class) so its I6 `Class` precedes the instances baked for the member. Detected by a class-body
+// shape at the front of the brace (`<type> <ident>` / `<type> operator` / `operator`); an ordinary
+// `{ v1, v2 }` / `{ f = v }` initializer is left to the caller. Returns true when it took the member.
+bool bglParser::parseInlineAccessor(variableDeclaration& prop, const string& typeName, typeDef* host){
+    if(!((typeName == "auto" || typeName == "var") && file.peekToken().is(token::braceOpen))) return false;
+    token b2 = file.peekToken(2);
+    token b3 = file.peekToken(3);
+    bool classBody = b2.is("operator")
+        || ((b2.is(eTokenType::dataType) || b2.is(eTokenType::identifier))
+            && (b3.is(eTokenType::identifier) || b3.is("operator")));
+    if(!classBody) return false;
+    string anon = format("_bglaccessor{0}", anonObjectCounter++);
+    token nameTok; nameTok.tokenType = eTokenType::identifier; nameTok.value = anon; nameTok.originalValue = anon;
+    token clsTok;  clsTok.tokenType  = eTokenType::identifier; clsTok.value  = "class";
+    // `outer` names the enclosing object, a compile-time singleton; a class has no single instance.
+    objectDef* savedAccOuter = accessorOuter;
+    accessorOuter = currentObject;
+    classDef* savedClass = currentClass;
+    processClassDeclaration(clsTok, /*isExternal*/false, /*isExtend*/false, /*isEmitterClass*/false,
+                            /*isAlias*/false, nameTok, /*allowNested*/true, /*isSuperposed*/false, /*isValue*/true);
+    currentClass = savedClass;
+    accessorOuter = savedAccOuter;
+    if(file.peekToken().is(token::endStatement)) file.getToken();   // `auto x = { … };` reads either way
+    prop.type = languageService.getType(anon);
+    if(auto* accCls = languageService.findClass(anon)){
+        // A one-off class for this member: superposed, so its `Class` materializes only when an
+        // instance is baked for it; an unused host takes it along.
+        accCls->isSuperposed = true;
+        auto& g = languageService.globals;
+        size_t pos = g.size();
+        if(host)
+            for(size_t i = 0; i < g.size(); i++) if(g[i] == host){ pos = i; break; }
+        g.insert(g.begin() + pos, accCls);
+    }
+    return true;
+}
+
 void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
     // Inline accessor declaration: `auto name = { <member decls + operators> }`. The braces hold a
     // CLASS BODY (backing fields + get/set operators), not an initializer list. Synthesize an
@@ -1102,45 +1194,7 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
     // backing instance for `name` (create+populate) and get/set dispatch lands on a real object.
     // Detected by a class-body shape at the front of the brace (`<type> <ident>` / `<type> operator`
     // / `operator`); an ordinary `{ v1, v2 }` / `{ f = v }` initializer takes the path below.
-    if((typeName == "auto" || typeName == "var") && file.peekToken().is(token::braceOpen)){
-        token b2 = file.peekToken(2);
-        token b3 = file.peekToken(3);
-        bool classBody = b2.is("operator")
-            || ((b2.is(eTokenType::dataType) || b2.is(eTokenType::identifier))
-                && (b3.is(eTokenType::identifier) || b3.is("operator")));
-        if(classBody){
-            string anon = format("_bglaccessor{0}", anonObjectCounter++);
-            token nameTok; nameTok.tokenType = eTokenType::identifier; nameTok.value = anon; nameTok.originalValue = anon;
-            token clsTok;  clsTok.tokenType  = eTokenType::identifier; clsTok.value  = "class";
-            // Parse the brace body as a class body (full reuse of member/operator parsing), registering
-            // the anonymous class globally. Stream is at the '{', which processClassDeclaration reads.
-            // A value class owned by its host, so create+populate bakes one instance per host.
-            // Capture the enclosing object so `outer` resolves to it inside the accessor's bodies.
-            objectDef* savedAccOuter = accessorOuter;
-            accessorOuter = currentObject;
-            processClassDeclaration(clsTok, /*isExternal*/false, /*isExtend*/false, /*isEmitterClass*/false,
-                                    /*isAlias*/false, nameTok, /*allowNested*/true, /*isSuperposed*/false, /*isValue*/true);
-            accessorOuter = savedAccOuter;
-            prop.type = languageService.getType(anon);   // `name` is an instance of the synthesized class
-            // registerClass only adds to the emit list (`globals`) at global scope; we're nested, so
-            // the class registered in the type system but wouldn't emit. Insert it into `globals`
-            // BEFORE the enclosing object (which is already in `globals`, mid-parse), so the I6 `Class`
-            // directive precedes the backing instance the emitter bakes for this member.
-            if(auto* accCls = languageService.findClass(anon)){
-                // A one-off accessor class tied to this single host member: superposed, so its I6
-                // `Class` directive is withheld from source-order emit and materializes only when a
-                // backing instance is baked (in the host's create+populate). If the host object is
-                // itself superposed-and-unused, class + backing + object all evaporate — zero bytes.
-                accCls->isSuperposed = true;
-                auto& g = languageService.globals;
-                size_t pos = g.size();                          // default: append
-                if(currentObject)                               // insert just before the enclosing object
-                    for(size_t i = 0; i < g.size(); i++) if(g[i] == (typeDef*)currentObject){ pos = i; break; }
-                g.insert(g.begin() + pos, accCls);
-            }
-            return;
-        }
-    }
+    if(parseInlineAccessor(prop, typeName, (typeDef*)currentObject)) return;
     token first = file.getToken();
     if(first.is(token::braceOpen)){
         initializerList* list = new initializerList();
@@ -1196,10 +1250,20 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             prop.type = languageService.getType(typeName);
             prop.declaredExpressionValue = expr;
         } else {
+            applyImplicitConversion(expr, typeName);
             if(!typeName.empty() && typeName != "var" && !expr->resolvedType.empty()
                && !isTypeCompatible(expr->resolvedType, typeName))
-                parsingError(format("Cannot assign value of type '{0}' to property '{1}' of type '{2}'",
-                    typeDisplayName(expr->resolvedType), prop.dName(), typeDisplayName(typeName)));
+            {
+                // A member initializer is fixed when the program is compiled, so a value class's
+                // `operator =` (a routine) can't convert it; the class's own aggregate form can.
+                classDef* vc = languageService.findClass(typeName);
+                string hint = vc != nullptr && isValueClass(vc)
+                    ? format(" A member initializer is fixed at compile time, where the class's operator = can't run; "
+                             "write the value as `{0}{{ … }}` with its members.", typeDisplayName(typeName))
+                    : string();
+                parsingError(format("Cannot assign value of type '{0}' to property '{1}' of type '{2}'.{3}",
+                    typeDisplayName(expr->resolvedType), prop.dName(), typeDisplayName(typeName), hint));
+            }
             if(typeName == "verb") applyActionConstant(expr);
             prop.declaredExpressionValue = expr;
         }
@@ -1356,7 +1420,12 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     arrDecl.docComment = docComment;
     arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
-    if(!file.peekToken().is("asi6")) rejectMemberNamedLikeClass(arrDecl.name, propName.originalValue.empty() ? arrDecl.name : propName.originalValue);
+    {
+        bool ownerExtern = false;
+        if(auto* oc = dynamic_cast<classDef*>(ctx)) ownerExtern = oc->isExternal;
+        else if(auto* oo = dynamic_cast<objectDef*>(ctx)) ownerExtern = oo->isExternal;
+        arrDecl.i6name = memberI6NameFor(arrDecl.name, "", ownerExtern);   // also rejects a class's name
+    }
     arrDecl.literalElements = literalElements;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
     if(q && q->isInline)
@@ -1451,8 +1520,37 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 
 
 void bglParser::consumeMethodI6Alias(functionDef& funcDef){
+    // An override is the same I6 property as the method it overrides, so it takes that method's
+    // I6 name; otherwise a call, emitted under the inherited name, would always run the base's.
+    string inheritedI6;
+    {
+        vector<classDef*> bases;
+        if(currentClass != nullptr) bases = currentClass->baseClasses;
+        else if(currentObject != nullptr && currentObject->objectClass != nullptr) bases = {currentObject->objectClass};
+        for(classDef* b : bases)
+            if(typeMember* m = findMemberInHierarchy(b, [&](typeMember* x){
+                    auto* fd = dynamic_cast<functionDef*>(x);
+                    return fd != nullptr && fd->name == funcDef.name && !fd->isEmitter && !fd->isStatic && !fd->i6name.empty();
+                })){ inheritedI6 = m->i6name; break; }
+    }
+    if(!inheritedI6.empty() && !funcDef.isEmitter && !funcDef.isStatic){
+        if(file.peekToken().is("asi6")){
+            file.getToken();
+            token aliasTok = file.getToken(eTokenType::identifier);
+            string mine = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
+            string a = mine, b = inheritedI6;
+            transform(a.begin(), a.end(), a.begin(), ::tolower); transform(b.begin(), b.end(), b.begin(), ::tolower);
+            if(a != b)
+                parsingError(format("'{0}' overrides a method emitted as '{1}', so it is emitted as '{1}' too; "
+                                    "drop its `asI6 {2}`.", funcDef.dName(), inheritedI6, mine));
+        }
+        funcDef.i6name = inheritedI6;
+        return;
+    }
     if(!file.peekToken().is("asi6")){
         if(!funcDef.isEmitter && !funcDef.isStatic) rejectMemberNamedLikeClass(funcDef.name, funcDef.dName());
+        if(!funcDef.isEmitter && !funcDef.isStatic && isI6OperatorWord(funcDef.name))
+            funcDef.i6name = "_m_" + funcDef.dName();
         return;
     }
     file.getToken();                                   // 'as'
@@ -1571,6 +1669,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.type = languageService.getType(typeName);
     if(typeName.rfind("func<", 0) == 0) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
     prop.isRefLocal = isRef;  // `ref` member: assignments are pointer-copy (opt out of operator= dispatch)
+    if(objectMemberIsConst){ prop.isConst = true; objectMemberIsConst = false; }
     if(isRef){
         string why = refNotApplicable(getDispatchClass(typeName), typeDisplayName(typeName));
         if(!why.empty()) parsingError("'ref': " + why);
@@ -1809,8 +1908,19 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
             propTypeName = dynamic_cast<variableDeclaration*>(m)->type.name;
     };
     searchClass(obj.objectClass != nullptr ? obj.objectClass : languageService.findClass("_bglobject"));
-    if(propTypeName.empty())
-        parsingError(format("'{0}' is not a property defined on the object class or its bases; add a type specifier (e.g. 'object {0} = ...')", nameTok.value));
+    if(propTypeName.empty()){
+        // Suggest a type from the value about to be assigned.
+        token v = file.peekToken(1).is(token::assignment) ? file.peekToken(2) : file.peekToken(1);
+        string guess = v.is(eTokenType::integer) ? "int" : v.is(eTokenType::quote) ? "string"
+                     : v.is(eTokenType::dictionaryWord) ? "dictionaryWord" : v.is(eTokenType::charLiteral) ? "char" : "object";
+        string shown = nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue;
+        bool freeStanding = false;
+        if(auto* g = languageService.findGlobalAs<variableDeclaration>(nameTok.value)) freeStanding = g->type.name == "property";
+        parsingError(format("'{0}' is not a member of this object's class or its bases; declare it with its type "
+                            "(e.g. '{1} {0} = …;'){2}", shown, guess,
+                            freeStanding ? ". A free-standing `property` declaration names the property for passing as a "
+                                           "value; it does not give objects the member (§11.7.3)" : ""));
+    }
     // grammarRule/grammarRuleList with inferred type: route to grammar-specific parsing
     if(propTypeName == "grammarrule"){
         file.getToken(token::assignment);
@@ -2053,10 +2163,24 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
         terminator = sep.value;
     } else {
         expression* val = parseExpression(vt, {",", token::endStatement, token::braceClose}, func, body);
+        applyImplicitConversion(val, target->type.name);
+        // A primitive class holds its value directly, so a value its `operator =` takes is stored as is.
+        auto primitiveAccepts = [&](const string& memberType, const string& valueType){
+            classDef* mc = getDispatchClass(memberType);
+            if(mc == nullptr || !mc->isPrimitive) return false;
+            // The class's own overloads only: the root's `operator = (_bglPrimitive)` takes any primitive.
+            for(typeMember* m : mc->members)
+                if(auto* fn = dynamic_cast<functionDef*>(m))
+                    if(fn->name == "=" && !fn->isStatic && fn->params.size() == 1
+                       && fn->params[0]->type.name != "var" && isTypeCompatible(valueType, fn->params[0]->type.name))
+                        return true;
+            return false;
+        };
         if(target->name == "instancename" && val->resolvedType != "stringliteral")
             parsingError("'instanceName' takes a string literal: the name is fixed when the program is compiled.");
         else if(!target->type.name.empty() && target->type.name != "var" && !val->resolvedType.empty()
-                && !isTypeCompatible(val->resolvedType, target->type.name))
+                && !isTypeCompatible(val->resolvedType, target->type.name)
+                && !primitiveAccepts(target->type.name, val->resolvedType))
             parsingError(format("'{0}': member '{1}' is '{2}', so it can't take a value of type '{3}'",
                                 typeDisplay, target->dName(), typeDisplayName(target->type.name), typeDisplayName(val->resolvedType)));
         if(target->type.name == "verb") applyActionConstant(val);
@@ -2101,6 +2225,9 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
     bool expectNamed = false;   // previous separator was ';' → only a named member may follow
     token vt = file.getToken();
     while(!vt.is(token::braceClose)){
+        if((vt.is(eTokenType::identifier) || vt.is(eTokenType::dataType)) && file.peekToken().is(":"))
+            parsingError(format("inline '{0}{{...}}': a named member is written `{1} = value;` (§11.3.1), not `{1}: value`",
+                                typeDisplay, vt.originalValue.empty() ? vt.value : vt.originalValue));
         bool isNamed = (vt.is(eTokenType::identifier) || vt.is(eTokenType::dataType)) && file.peekToken().is("=");
         // Validate this item is legal in the current position.
         if(inNamed && !isNamed)
@@ -2479,6 +2606,7 @@ void bglParser::parseExternObjectBody(objectDef& newObj, verbObjectDef* vod){
         return;
     }
 
+    if(vod != nullptr && file.peekToken().is(token::braceClose)) vod->claimsNoWords = true;
     token tok = file.getToken();
     while(tok.isNot(token::braceClose) && tok.isNot(eTokenType::eof)){
         parseExternObjectMember(newObj, tok);
@@ -2525,7 +2653,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         tok = file.getToken();
         return;
     }
-    if(q.isConst)   parsingError("'const' is not valid inside an object body (use on the property type)");
+    objectMemberIsConst = q.isConst;   // a `const` member, as in a class body (§8.3.2)
     if(q.isStatic)  parsingError("'static' is not valid inside an object body");
     if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
     if(q.isEmitter){
@@ -2633,6 +2761,12 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     verbObjectDef* vod = nullptr;
     string origName = name.originalValue.empty() ? (string)name : name.originalValue;
     if(isVerbDerived){
+        if(!isExternal)
+            for(verbObjectDef* v : languageService.verbs)
+                if(v->isExternal && v->claimsNoWords && v->name == (string)name)
+                    parsingError(format("'{0}' is a fake action of the I6 library: it has no grammar or action "
+                        "routine, and Inform 6 can't give a real action its name. Give the verb another name.",
+                        origName));
         verbObjectDef& vd = languageService.registerVerbObject(origName, isExternal);
         objPtr = &vd;
         vod = &vd;
@@ -2680,6 +2814,14 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         for(typeMember* m : vod->members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
                 if(fd->name == "handler"){ vod->doFunc = fd; break; }
+        // A verb declared through a subclass of verb may inherit its handler() (the core's default,
+        // an emitter that runs the library's routine, doesn't count).
+        if(!vod->doFunc && vod->objectClass != nullptr)
+            if(typeMember* m = findMemberInHierarchy(vod->objectClass, [](typeMember* x){
+                    auto* fd = dynamic_cast<functionDef*>(x);
+                    return fd != nullptr && fd->name == "handler" && !fd->isEmitter;
+                }))
+                vod->doFunc = dynamic_cast<functionDef*>(m);
         if(!vod->doFunc)
             parsingError(format("verb '{0}' must define handler() (its body becomes the I6 <verbName>Sub action routine). Declare it 'extern verb' if the action routine is defined elsewhere.", origName));
     }

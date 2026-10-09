@@ -24,7 +24,7 @@ primitive class float {
     emitter bool operator == (float v){ $val == $v }  /// True when the values are equal.
     emitter bool operator != (float v){ $val ~= $v }  /// True when the values differ.
 
-    replace emitter void print(){ _bglFloatPrintDecimal($val); }  /// Print the value as a decimal with four places.
+    replace emitter void print(){ _bglFloatPrintDecimal($val); }  /// Print the value as a decimal rounded to four places.
 
     /// Compare two floats for sorting: -1, 0 or 1.
     static int operator <=> (var a, var b) {
@@ -131,17 +131,19 @@ superposed bool _bglFloatGe(float x, float y){
     #i6 { @jfge x y ?yes; rfalse; .yes; rtrue; }
 }
 
-// Prints a float as a decimal with four places.
+// Prints a float as a decimal rounded to four places.
 superposed void _bglFloatPrintDecimal(float v){
     bool isNeg = _bglFloatLt(v, (float)0);
     if(isNeg) v = (float)0 - v;
+    v = v + 0.00005;   // round half up at the fourth place
 
     int ipart = (int)v;
     float frac = v - (float)ipart;
     int fdigits = (int)(frac * (float)10000);
     if(fdigits < 0) fdigits = -fdigits;
+    if(fdigits > 9999) fdigits = 9999;
 
-    if(isNeg) print("-");
+    if(isNeg && (ipart != 0 || fdigits != 0)) print("-");
     print(ipart);
     print(".");
     if(fdigits < 1000) print("0");
@@ -169,4 +171,4 @@ extend class _bglMath {
     emitter float abs(float v)           { _bglFloatAbs($v) }       /// Return the absolute value of `v`.
 }
 
-emitter void print(float c){ _bglFloatPrintDecimal($c); }  /// Print `c` as a decimal with four places.
+emitter void print(float c){ _bglFloatPrintDecimal($c); }  /// Print `c` as a decimal rounded to four places.

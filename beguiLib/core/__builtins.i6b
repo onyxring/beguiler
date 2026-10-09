@@ -50,6 +50,9 @@ template framePool($size) {{{
    [ _bglByteArrayLocalFree nbytes;
       _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
    ];
+   [ _bglByteArrayLocalCopy dst src i;
+      for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+   ];
 }}}
 
 // ---------------------------------------------------------------------------

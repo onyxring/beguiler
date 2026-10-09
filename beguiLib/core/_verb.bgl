@@ -15,9 +15,9 @@ alias class verb for object{
     /// What the verb does; override it to give the verb behavior. A library verb runs the library's own routine by default.
     default emitter void handler(){ $selfsub(); }
 
-    emitter void perform()                   { <$self> }            /// Run this action now, as though the player typed it.
-    emitter void perform(object n)           { <$self $n> }         /// Run this action now on `n`, as though the player typed it.
-    emitter void perform(object n, object s) { <$self $n $s> }      /// Run this action now on `n` and `s`, as though the player typed it.
+    emitter void perform()                   { <($action)> }            /// Run this action now, as though the player typed it.
+    emitter void perform(object n)           { <($action) $n> }         /// Run this action now on `n`, as though the player typed it.
+    emitter void perform(object n, object s) { <($action) $n $s> }      /// Run this action now on `n` and `s`, as though the player typed it.
 
     emitter eBool operator == (verb v){ $val == $v }     /// True when this is action `v`.
     emitter eBool operator != (verb v){ $val ~= $v }     /// True unless this is action `v`.

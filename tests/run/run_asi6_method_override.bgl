@@ -1,0 +1,16 @@
+// run_asi6_method_override — an override of a method that has an `asI6` name is emitted under that
+// name too, so a call runs the most-derived version (and an object's own override does likewise).
+// EXPECT_OUTPUT: 4 9 12
+#beguilerSettings { target = z5; informName = "none"; }
+class box[2] : _bglObject {
+    int n = 4;
+    int size() asI6 boxSize { return n; }
+}
+class bigbox[2] : box {
+    int size() { return 9; }
+}
+box special { int size() { return 12; } }
+void main(){
+    box b = new box(); box c = new bigbox();
+    print(b.size()); print(" "); print(c.size()); print(" "); print(special.size());
+}

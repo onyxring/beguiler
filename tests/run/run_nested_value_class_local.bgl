@@ -1,0 +1,30 @@
+// run_nested_value_class_local — a value-class local whose members are value classes: each call
+// resets the nested instances (not their pointers) to their declared values, and a `ref` parameter with
+// a default works; an inline initializer gives a primitive member any value its `operator =` takes.
+// EXPECT_OUTPUT: 13 i4
+#beguilerSettings { target = z5; informName = "none"; }
+const int unsetV = $7FFF;
+primitive class styleFlag {
+    emitter styleFlag operator = (bool v){ $target = $v; }
+    emitter styleFlag operator = (int v){ $target = $v; }
+    emitter int operator () { $val }
+}
+value class st {
+    inline int weight = unsetV;
+    inline styleFlag italics = unsetV;
+    st operator = (st s){ self.weight = s.weight; self.italics = s.italics; return self; }
+}
+value class sheet {
+    st alert;
+    st normal;
+    sheet operator = (sheet s){ self.alert = s.alert; self.normal = s.normal; return self; }
+}
+sheet defaultSheet;
+void apply(int size, sheet styles = defaultSheet){ if ((int)styles.alert.italics != unsetV) print("i"); print($"{size} "); }
+void main(){
+    bglInit();
+    st a = st{ italics = true; weight = 1; };
+    print((int)a.italics);
+    sheet s = sheet{ alert = st{ italics = true; }; };
+    apply(3); apply(4, styles: s);
+}

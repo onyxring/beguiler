@@ -3,6 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
+Constant _BGL_TRACKED_ARRAYS;
 global _bgl_temp0;
 global _bgl_temp1;
 global _bgl_temp2;
@@ -23,6 +24,13 @@ global _bglInitDone = 0;
     g_queue-->(g_queue-->0) = $9084;
 ];
  Constant NO_ATTRIBUTE 0; 
+global _bglWorldBufIdx = -1;
+constant _bglWorldBufSize = 128;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -30,12 +38,180 @@ global _bglInitDone = 0;
         return 0;
     
 ];
+class _bglClass_Room
+  class object
+  with
+    visits 0
+;
+_bglClass_Room r1
+;
+_bglClass_Room r2
+;
+_bglClass_Room r3
+;
+array g_nums table 10 20 30 40 50 5 $9084;
+array g_sparse table 10;
+array g_partial table 7 8 0 9 0 5 $9084;
+array g_rooms table r1 r2 r3 3 $9084;
+array g_sw table 1 2 3 4 5 5 $9084;
+array g_rev table 10 20 30 3 $9084;
+array g_cl table 1 2 3 3 $9084;
+array g_sl table 7;
+array g_w table 7;
+array g_ap table 7;
+array g_pp table 7;
+array g_ins table 7;
+array g_full table 4;
+array g_rm table 10 20 30 40 50 5 $9084;
+array g_rv table 1 7 2 7 3 7 6 $9084;
+array g_stack table 7;
+array g_queue table 7;
+array g_back table 10 20 30 3 $9084;
+array g_unsorted table 30 10 50 20 40 5 $9084;
+array g_descending table 1 2 3 4 5 5 $9084;
+[main;
+    bglinit();
+    if (_bglArray.isTracked(g_nums, 0)) {
+        print 1;
+    }
+    if (_bglArray.isTracked(g_sparse, 0)) {
+        print 1;
+    }
+    print _bglArray.length(g_nums, 0);
+    print _bglArray.length(g_sparse, 0);
+    print _bglArray.length(g_partial, 0);
+    print _bglArray.size(g_nums, 0);
+    print _bglArray.size(g_sparse, 0);
+    print _bglArray.size(g_partial, 0);
+    print _bglArray.indexOf(g_nums, 0, 30, 0);
+    print _bglArray.indexOf(g_nums, 0, 99, 0);
+    print _bglArray.indexOf(g_partial, 0, 9, 0);
+    print _bglArray.indexOf(g_nums, 0, 40, 0);
+    if ((_bglArray.indexOf(g_nums, 0, 20, 0) >= 0)) {
+        print 1;
+    }
+    if ((~~(_bglArray.indexOf(g_nums, 0, 99, 0) >= 0))) {
+        print 1;
+    }
+    if ((~~(_bglArray.indexOf(g_nums, 0, 20, 0) >= 0))) {
+        print 0;
+    }
+    else {
+        print 1;
+    }
+    if ((_bglArray.indexOf(g_nums, 0, 99, 0) >= 0)) {
+        print 0;
+    }
+    else {
+        print 1;
+    }
+    print _bglArray.indexOf(g_rooms, 0, r2, 0);
+    if ((_bglArray.indexOf(g_rooms, 0, r3, 0) >= 0)) { _bgl_temp0 = 1; } else { _bgl_temp0 = 0; }
+    print _bgl_temp0;
+    _bglArray.swap(g_sw, 0, 0, 4);
+    print  g_sw-->(0+1) ;
+    print  g_sw-->(4+1) ;
+    _bglArray.reverse(g_rev, 0);
+    print  g_rev-->(0+1) ;
+    print  g_rev-->(2+1) ;
+    _bglArray.clear(g_cl, 0, 0);
+    print  g_cl-->(0+1) ;
+    print _bglArray.length(g_cl, 0);
+    print _bglArray.size(g_cl, 0);
+    g_sl-->(0+1) = 100;
+    g_sl-->(1+1) = 200;
+    g_sl-->(2+1) = 300;
+    _bglArray.setLength(g_sl, 0, 3);
+    print _bglArray.length(g_sl, 0);
+    print _bglArray.size(g_sl, 0);
+    g_w-->(0+1) = 42;
+    g_w-->(1+1) = 43;
+    g_w-->(2+1) = 44;
+    print _bglArray.length(g_w, 0);
+    print _bglArray.size(g_w, 0);
+    print _bglArray.indexOf(g_w, 0, 43, 0);
+    if (_bglArray.append(g_ap, 0, 10, 0)) { _bgl_temp1 = 1; } else { _bgl_temp1 = 0; }
+    print _bgl_temp1;
+    if (_bglArray.append(g_ap, 0, 20, 0)) { _bgl_temp2 = 1; } else { _bgl_temp2 = 0; }
+    print _bgl_temp2;
+    if (_bglArray.append(g_ap, 0, 30, 0)) { _bgl_temp3 = 1; } else { _bgl_temp3 = 0; }
+    print _bgl_temp3;
+    print _bglArray.length(g_ap, 0);
+    print  g_ap-->(0+1) ;
+    print  g_ap-->(2+1) ;
+    _bglArray.append(g_pp, 0, 10, 0);
+    _bglArray.append(g_pp, 0, 20, 0);
+    _bglArray.prepend(g_pp, 0, 5, 0);
+    print _bglArray.length(g_pp, 0);
+    print  g_pp-->(0+1) ;
+    print  g_pp-->(1+1) ;
+    print  g_pp-->(2+1) ;
+    _bglArray.append(g_ins, 0, 10, 0);
+    _bglArray.append(g_ins, 0, 20, 0);
+    _bglArray.append(g_ins, 0, 40, 0);
+    _bglArray.insert(g_ins, 0, 2, 30, 0);
+    print _bglArray.length(g_ins, 0);
+    print  g_ins-->(2+1) ;
+    print  g_ins-->(3+1) ;
+    _bglArray.append(g_full, 0, 1, 0);
+    _bglArray.append(g_full, 0, 2, 0);
+    if (_bglArray.append(g_full, 0, 3, 0)) { _bgl_temp4 = 1; } else { _bgl_temp4 = 0; }
+    print _bgl_temp4;
+    print _bglArray.length(g_full, 0);
+    _bglArray.remove(g_rm, 0, 2, 0);
+    print _bglArray.length(g_rm, 0);
+    print  g_rm-->(2+1) ;
+    print  g_rm-->(3+1) ;
+    _bglArray.remove(g_rm, 0, 99, 0);
+    print _bglArray.length(g_rm, 0);
+    _bglArray.removeValue(g_rv, 0, 7, 0, 0);
+    print _bglArray.length(g_rv, 0);
+    print  g_rv-->(0+1) ;
+    print  g_rv-->(1+1) ;
+    print  g_rv-->(2+1) ;
+    _bglArray.push(g_stack, 0, 10);
+    _bglArray.push(g_stack, 0, 20);
+    _bglArray.push(g_stack, 0, 30);
+    print _bglArray.length(g_stack, 0);
+    print _bglArray.peek(g_stack, 0);
+    print _bglArray.pop(g_stack, 0);
+    print _bglArray.pop(g_stack, 0);
+    print _bglArray.pop(g_stack, 0);
+    print _bglArray.length(g_stack, 0);
+    print _bglArray.pop(g_stack, 0);
+    _bglArray.enqueue(g_queue, 0, 1);
+    _bglArray.enqueue(g_queue, 0, 2);
+    _bglArray.enqueue(g_queue, 0, 3);
+    print _bglArray.dequeue(g_queue, 0);
+    print _bglArray.dequeue(g_queue, 0);
+    print _bglArray.length(g_queue, 0);
+    print _bglArray.peek(g_queue, 0);
+    print _bglArray.peekEnd(g_back, 0);
+    print _bglArray.popEnd(g_back, 0);
+    print _bglArray.length(g_back, 0);
+    print _bglArray.peekEnd(g_back, 0);
+    _bglArray.sortDefault(g_unsorted, 0, 0);
+    print  g_unsorted-->(0+1) ;
+    print  g_unsorted-->(1+1) ;
+    print  g_unsorted-->(2+1) ;
+    print  g_unsorted-->(3+1) ;
+    print  g_unsorted-->(4+1) ;
+    _bglArray.sort(g_descending, 0, _bglLambda_0);
+    print  g_descending-->(0+1) ;
+    print  g_descending-->(4+1) ;
+];
+[_bglLambda_0 a b;
+    if (a > b) {
+        return -1;
+    }
+    if (a < b) {
+        return 1;
+    }
+    return 0;
+];
 object _bglArray
   with rawGet [addr slot;
      return addr-->slot; 
-  ],
-       rawSet [addr slot v;
-     addr-->slot = v; 
   ],
        get [obj prop n;
     
@@ -48,17 +224,6 @@ object _bglArray
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
-  ],
-       copy [dobj dprop sobj sprop n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n = cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
-    }
-    self.setlength(dobj, dprop, n);
   ],
        isTracked [obj prop hdr;
      if(metaclass(obj)==object) rfalse; 
@@ -127,15 +292,6 @@ object _bglArray
     }
     self.setLength(obj, prop, 0);
   ],
-       freeAll [obj prop dtor sz t;
-    if (dtor==0) {
-        return;
-    }
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-  ],
        swap [obj prop pos1 pos2 tmp;
     tmp = self.get(obj,prop,pos1);
     self.set(obj, prop, pos1, self.get(obj,prop,pos2));
@@ -198,7 +354,7 @@ object _bglArray
         e = self.get(obj,prop,pos);
         hit=false;
         if (e==val) {
-            hit = true;
+            hit=true;
         }
         if (~~hit) {
             
@@ -210,7 +366,7 @@ object _bglArray
         }
         if (hit) {
             self.remove(obj, prop, pos, dtor);
-            len = self.length(obj,prop);
+            len=self.length(obj,prop);
         }
         else {
              pos++ ;
@@ -284,180 +440,3 @@ object _bglArray
     }
   ]
 ;
-global _bglWorldBufIdx = -1;
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
-class room
-  class object
-  with
-    visits 0
-;
-room r1
-;
-room r2
-;
-room r3
-;
-array g_nums table 10 20 30 40 50 5 $9084;
-array g_sparse table 10;
-array g_partial table 7 8 0 9 0 5 $9084;
-array g_rooms table r1 r2 r3 3 $9084;
-array g_sw table 1 2 3 4 5 5 $9084;
-array g_rev table 10 20 30 3 $9084;
-array g_cl table 1 2 3 3 $9084;
-array g_sl table 7;
-array g_w table 7;
-array g_ap table 7;
-array g_pp table 7;
-array g_ins table 7;
-array g_full table 4;
-array g_rm table 10 20 30 40 50 5 $9084;
-array g_rv table 1 7 2 7 3 7 6 $9084;
-array g_stack table 7;
-array g_queue table 7;
-array g_back table 10 20 30 3 $9084;
-array g_unsorted table 30 10 50 20 40 5 $9084;
-array g_descending table 1 2 3 4 5 5 $9084;
-[main;
-    bglinit();
-    if (_bglArray.isTracked(g_nums, 0)) {
-        print 1;
-    }
-    if (_bglArray.isTracked(g_sparse, 0)) {
-        print 1;
-    }
-    print _bglArray.length(g_nums, 0);
-    print _bglArray.length(g_sparse, 0);
-    print _bglArray.length(g_partial, 0);
-    print _bglArray.size(g_nums, 0);
-    print _bglArray.size(g_sparse, 0);
-    print _bglArray.size(g_partial, 0);
-    print _bglArray.indexOf(g_nums, 0, 30, 0);
-    print _bglArray.indexOf(g_nums, 0, 99, 0);
-    print _bglArray.indexOf(g_partial, 0, 9, 0);
-    print _bglArray.indexOf(g_nums, 0, 40, 0);
-    if ((_bglArray.indexOf(g_nums, 0, 20, 0) >= 0)) {
-        print 1;
-    }
-    if (~~(_bglArray.indexOf(g_nums, 0, 99, 0) >= 0)) {
-        print 1;
-    }
-    if (~~(_bglArray.indexOf(g_nums, 0, 20, 0) >= 0)) {
-        print 0;
-    }
-    else {
-        print 1;
-    }
-    if ((_bglArray.indexOf(g_nums, 0, 99, 0) >= 0)) {
-        print 0;
-    }
-    else {
-        print 1;
-    }
-    print _bglArray.indexOf(g_rooms, 0, r2, 0);
-    if ((_bglArray.indexOf(g_rooms, 0, r3, 0) >= 0)) _bgl_temp0 = 1; else _bgl_temp0 = 0;
-    print _bgl_temp0;
-    _bglArray.swap(g_sw, 0, 0, 4);
-    print  g_sw-->(0+1) ;
-    print  g_sw-->(4+1) ;
-    _bglArray.reverse(g_rev, 0);
-    print  g_rev-->(0+1) ;
-    print  g_rev-->(2+1) ;
-    _bglArray.clear(g_cl, 0, 0);
-    print  g_cl-->(0+1) ;
-    print _bglArray.length(g_cl, 0);
-    print _bglArray.size(g_cl, 0);
-    g_sl-->(0+1) = 100;
-    g_sl-->(1+1) = 200;
-    g_sl-->(2+1) = 300;
-    _bglArray.setLength(g_sl, 0, 3);
-    print _bglArray.length(g_sl, 0);
-    print _bglArray.size(g_sl, 0);
-    g_w-->(0+1) = 42;
-    g_w-->(1+1) = 43;
-    g_w-->(2+1) = 44;
-    print _bglArray.length(g_w, 0);
-    print _bglArray.size(g_w, 0);
-    print _bglArray.indexOf(g_w, 0, 43, 0);
-    if (_bglArray.append(g_ap, 0, 10, 0)) _bgl_temp1 = 1; else _bgl_temp1 = 0;
-    print _bgl_temp1;
-    if (_bglArray.append(g_ap, 0, 20, 0)) _bgl_temp2 = 1; else _bgl_temp2 = 0;
-    print _bgl_temp2;
-    if (_bglArray.append(g_ap, 0, 30, 0)) _bgl_temp3 = 1; else _bgl_temp3 = 0;
-    print _bgl_temp3;
-    print _bglArray.length(g_ap, 0);
-    print  g_ap-->(0+1) ;
-    print  g_ap-->(2+1) ;
-    _bglArray.append(g_pp, 0, 10, 0);
-    _bglArray.append(g_pp, 0, 20, 0);
-    _bglArray.prepend(g_pp, 0, 5, 0);
-    print _bglArray.length(g_pp, 0);
-    print  g_pp-->(0+1) ;
-    print  g_pp-->(1+1) ;
-    print  g_pp-->(2+1) ;
-    _bglArray.append(g_ins, 0, 10, 0);
-    _bglArray.append(g_ins, 0, 20, 0);
-    _bglArray.append(g_ins, 0, 40, 0);
-    _bglArray.insert(g_ins, 0, 2, 30, 0);
-    print _bglArray.length(g_ins, 0);
-    print  g_ins-->(2+1) ;
-    print  g_ins-->(3+1) ;
-    _bglArray.append(g_full, 0, 1, 0);
-    _bglArray.append(g_full, 0, 2, 0);
-    if (_bglArray.append(g_full, 0, 3, 0)) _bgl_temp4 = 1; else _bgl_temp4 = 0;
-    print _bgl_temp4;
-    print _bglArray.length(g_full, 0);
-    _bglArray.remove(g_rm, 0, 2, 0);
-    print _bglArray.length(g_rm, 0);
-    print  g_rm-->(2+1) ;
-    print  g_rm-->(3+1) ;
-    _bglArray.remove(g_rm, 0, 99, 0);
-    print _bglArray.length(g_rm, 0);
-    _bglArray.removeValue(g_rv, 0, 7, 0, 0);
-    print _bglArray.length(g_rv, 0);
-    print  g_rv-->(0+1) ;
-    print  g_rv-->(1+1) ;
-    print  g_rv-->(2+1) ;
-    _bglArray.push(g_stack, 0, 10);
-    _bglArray.push(g_stack, 0, 20);
-    _bglArray.push(g_stack, 0, 30);
-    print _bglArray.length(g_stack, 0);
-    print _bglArray.peek(g_stack, 0);
-    print _bglArray.pop(g_stack, 0);
-    print _bglArray.pop(g_stack, 0);
-    print _bglArray.pop(g_stack, 0);
-    print _bglArray.length(g_stack, 0);
-    print _bglArray.pop(g_stack, 0);
-    _bglArray.enqueue(g_queue, 0, 1);
-    _bglArray.enqueue(g_queue, 0, 2);
-    _bglArray.enqueue(g_queue, 0, 3);
-    print _bglArray.dequeue(g_queue, 0);
-    print _bglArray.dequeue(g_queue, 0);
-    print _bglArray.length(g_queue, 0);
-    print _bglArray.peek(g_queue, 0);
-    print _bglArray.peekEnd(g_back, 0);
-    print _bglArray.popEnd(g_back, 0);
-    print _bglArray.length(g_back, 0);
-    print _bglArray.peekEnd(g_back, 0);
-    _bglArray.sortDefault(g_unsorted, 0, 0);
-    print  g_unsorted-->(0+1) ;
-    print  g_unsorted-->(1+1) ;
-    print  g_unsorted-->(2+1) ;
-    print  g_unsorted-->(3+1) ;
-    print  g_unsorted-->(4+1) ;
-    _bglArray.sort(g_descending, 0, _bglLambda_0);
-    print  g_descending-->(0+1) ;
-    print  g_descending-->(4+1) ;
-];
-[_bglLambda_0 a b;
-    if (a > b) {
-        return -1;
-    }
-    if (a < b) {
-        return 1;
-    }
-    return 0;
-];

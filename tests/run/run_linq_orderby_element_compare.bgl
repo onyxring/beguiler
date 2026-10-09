@@ -1,0 +1,15 @@
+// run_linq_orderby_element_compare — orderBy() orders by the element type's `<=>`, as sort() does:
+// strings by content, ints by value; the source is left alone.
+// EXPECT_OUTPUT: apple mango pear | 1 2 3 | src pear 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+#include <linq>
+void main(){
+    bglInit();
+    array<string> words = {"pear", "apple", "mango"};
+    for (string w in words.orderBy()) { print(w); print(" "); }
+    print("| ");
+    array<int> nums = {3, 1, 2};
+    for (int n in nums.orderBy()) { print(n); print(" "); }
+    print($"| src {words[0]} {nums[0]}");
+}

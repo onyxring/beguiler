@@ -1,0 +1,7 @@
+// Negative test: a member of an emitter class is an emitter, so its body is an I6 expression, not a `return` statement (§8.2.3).
+// EXPECT_ERROR: can't begin with 'return'
+#beguilerSettings { target = z5; informName = "none"; }
+extend extern class array {
+    int second(){ return this[1]; }
+}
+void main(){ }

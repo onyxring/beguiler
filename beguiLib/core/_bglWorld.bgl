@@ -6,7 +6,6 @@
     Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
    -----------------------------------------------------------------------------*/
 #once
-#include <array>
 
 //-- Implementation ------------------------------------------------------------
 // The buffers query results are returned in, used in rotation so queries can nest.
@@ -16,6 +15,8 @@ superposed array<object> _bglWorldBuf2[#beguilerSettings.worldBufSize];
 superposed array<object> _bglWorldBuf3[#beguilerSettings.worldBufSize];
 // Not superposed: I6 must see this global before the routine that uses it.
 int _bglWorldBufIdx = -1;
+// Each buffer's capacity: word 0 holds the length when `<array>` isn't included, so it can't say.
+const int _bglWorldBufSize = #beguilerSettings.worldBufSize;
 
 // Advance the rotation and hand back the next buffer in the pool.
 superposed array<object> _bglWorldNextBuf(){
@@ -29,11 +30,17 @@ superposed array<object> _bglWorldNextBuf(){
     return _bglWorldBuf0;
 }
 
-// Record a filled buffer's length, so it reads as an ordinary array.
+// Record a filled buffer's length where `length` reads it: in `<array>`'s trailer when a program
+// includes `<array>`, otherwise in word 0. bgl.world depends only on the core's arrays, so it doesn't
+// bring `<array>` into every program.
 superposed void _bglWorldStamp(array<object> buf, int count){
     #i6 {
-        buf-->(buf-->0)     = $9084;
-        buf-->(buf-->0 - 1) = count;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            buf-->(buf-->0)     = $9084;
+            buf-->(buf-->0 - 1) = count;
+        #Ifnot;
+            buf-->0 = count;
+        #Endif;
     }
 }
 
@@ -44,7 +51,8 @@ superposed array<object> _bglWorldGetAll(var pred){
     int n = 0;
     #i6 {
         objectloop(o) {
-            if(n >= buf-->0 - 2) break;
+            if(n >= _bglWorldBufSize) break;
+            if(metaclass(o) == Object && parent(o) ~= 0 && metaclass(parent(o)) == Class) continue;   ! a pool slot not yet in use
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
     }
@@ -59,7 +67,8 @@ superposed array<object> _bglWorldInstances(var cls, var pred){
     int n = 0;
     #i6 {
         objectloop(o ofclass cls) {
-            if(n >= buf-->0 - 2) break;
+            if(n >= _bglWorldBufSize) break;
+            if(metaclass(o) == Object && parent(o) ~= 0 && metaclass(parent(o)) == Class) continue;   ! a pool slot not yet in use
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
     }
@@ -74,7 +83,7 @@ superposed array<object> _bglWorldInParent(object parent, var pred){
     int n = 0;
     #i6 {
         objectloop(o in parent) {
-            if(n >= buf-->0 - 2) break;
+            if(n >= _bglWorldBufSize) break;
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
     }

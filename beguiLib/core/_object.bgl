@@ -12,6 +12,7 @@ extern class object:_bglObject{
     typesealed parentProp parent;          /// The object that contains this one; assigning to it moves this object.
     typesealed childrenProp children;      /// The objects directly inside this one.
     typesealed attributeList attributes;   /// The flags this object carries.
+    rawArray<dictionaryWord> name;         /// The dictionary words the parser matches for this object.
 
     emitter void give(attribute attr){ give $val $attr }      /// Give this object `attr`.
     emitter void ungive(attribute attr){ give $val ~$attr }   /// Take `attr` away from this object.
@@ -39,9 +40,9 @@ extern class object:_bglObject{
 
 /// The type of `object.parent`: assigning to it moves the object.
 extern emitter class parentProp{
-    /// Move the object into `v`.
+    /// Move the object into `v`, or take it out of the object tree when `v` is null.
     emitter parentProp operator = (object v){
-        move $self to $v
+        _bglMoveTo($self, $v)
     }
     /// True when the parent is `v`; compare with null to test for no parent.
     emitter eBool operator == (_bglObject v){
@@ -61,4 +62,10 @@ extern emitter class parentProp{
 extern emitter class childrenProp{
     emitter int length { children($host) }   /// How many children the object has.
     emitter int size   { children($host) }   /// How many children the object has; the same as `length`.
+}
+
+// Moves `o` into `p`, or takes it out of the object tree when `p` is null (`move o to nothing` is a
+// run-time error in Inform 6).
+superposed void _bglMoveTo(object o, object p){
+    #i6 { if (p) move o to p; else remove o; }
 }

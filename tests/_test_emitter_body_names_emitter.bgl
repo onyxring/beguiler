@@ -1,0 +1,7 @@
+// Negative test: an emitter emits no Inform 6 symbol, so a body naming one as plain text is an
+// error in Beguile rather than in Inform 6.
+// EXPECT_ERROR: emitter body names emitter 'twice', which emits no Inform 6 symbol
+#beguilerSettings { target = z5; informName = "none"; }
+emitter int twice(int v){ ($v * 2) }
+emitter int callsTwice(int v){ twice($v) }
+void main(){ print(callsTwice(5)); }

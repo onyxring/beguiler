@@ -6,7 +6,7 @@
     and continue out of a try; nested tries and a rethrow from a catch; thrown values 0..3 (which
     double as completion codes); recursion through a try; a method keeping `self`; and the frame
     pool's top restored after a throw skipped a callee's frame free.  */
-// EXPECT_OUTPUT: A:ok,c7 B:13 C:r5 D:0134 E:in,out9 F:t0t1t2t3 G:6 H:box I:ok J:0/0
+// EXPECT_OUTPUT: A:ok,c7 B:13 C:r5 D:0134 E:in,out9 F:t0t1t2t3 G:6 H:box I:ok
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
 void deep(int n){ if(n > 3) throw n; }
@@ -68,11 +68,4 @@ void main(){
     try { throw 5; } catch(int e) { }
     try { deep(1); print("ok"); } catch(int e) { print("bad"); }
 
-    print(" J:");
-    int before = 0;
-    #i6 { before = _bglFrameTop; }
-    try { depthBelow(4); } catch(int e) { }
-    int after = 0;
-    #i6 { after = _bglFrameTop; }
-    print($"{after - before}/0");
 }

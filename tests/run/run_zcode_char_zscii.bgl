@@ -1,0 +1,12 @@
+// run_zcode_char_zscii — on the Z-machine a character is its ZSCII code: a typed accented character
+// and its accent shorthand are the same code, print it, and convert case through the library.
+// EXPECT_OUTPUT: 155 158 158 äÄÄ Ää low:true up:true same:true ci:true
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    bglInit();
+    char c = 'ä'; char u = 'Ä'; char s = '\:A';
+    print($"{(int)c} {(int)u} {(int)s} ");
+    print(c); print(u); print(s); print(" ");
+    print(c.toUpper()); print(u.toLower()); print(" ");
+    print($"low:{c.isLower()} up:{u.isUpper()} same:{u == s} ci:{u =~ c}");
+}

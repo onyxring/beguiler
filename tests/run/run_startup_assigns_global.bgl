@@ -1,0 +1,7 @@
+// run_startup_assigns_global — a #startup body may assign a program global declared after it; the
+// global is declared ahead of bglInit, which runs the body.
+// EXPECT_OUTPUT: mark 7
+#beguilerSettings { target = z5; informName = "none"; }
+#startup { startupMark = 7; }
+int startupMark;
+void main(){ bglInit(); print($"mark {startupMark}"); }

@@ -236,7 +236,7 @@ resolved and never reports.
 **Example**
 
 ```bgl
-extern attribute lit asBgl light;
+extern attribute light asBgl lit;
 object myHook asI6 hook;
 
 emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // → ($o has light)
@@ -266,7 +266,8 @@ $i6Expr( ⟨expression⟩ )
 
 Substitutes the I6 that a Beguile expression emits. This is how one emitter reaches another: an
 emitter has no routine, so a body cannot call one by name (§7.3.3) — it has to be *expanded*, and
-`$i6Expr` is what expands it.
+`$i6Expr` is what expands it. A body that names a global emitter as plain text is a compile-time
+error.
 
 The payload is ordinary Beguile, parsed and type-checked at the use site, so it gets overload
 resolution, and a callee's own `##if` gating (§7.4) comes with it rather than being re-written by

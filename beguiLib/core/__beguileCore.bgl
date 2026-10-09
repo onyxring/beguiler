@@ -96,7 +96,7 @@ emitter void print(_bglObject val){ if($val provides print) $val.print(); else p
 /// Print `msg`, but only in a debug build.
 emitter void log(var msg){
     ##if DEBUG
-    print $msg;
+    $i6Expr(print($msg));
     ##endif
 }
 emitter void printLine(var val){ $i6Expr(print($val)); print "^"; }                                  /// Print `val` the way `print(val)` would, then a newline.

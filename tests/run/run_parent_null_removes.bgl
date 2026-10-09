@@ -1,0 +1,16 @@
+// run_parent_null_removes — assigning null to an object's parent takes it out of the object tree; a
+// non-null value still moves it, and a call on the right is made once.
+// EXPECT_OUTPUT: in gone back 1
+#beguilerSettings { target = z5; informName = "none"; }
+object box { }
+object coin { parent = box; }
+int calls = 0;
+object pick(){ calls++; return box; }
+void main(){
+    print(coin.parent == box ? "in" : "out");
+    coin.parent = null;
+    print(coin.parent == null ? " gone" : " still");
+    coin.parent = pick();
+    print(coin.parent == box ? " back" : " lost");
+    print($" {calls}");
+}

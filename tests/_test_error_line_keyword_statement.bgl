@@ -1,0 +1,11 @@
+// An error in a keyword-led statement (`if`, `while`, …) is reported at that statement, not at the
+// statement before it.
+// EXPECT_ERROR: _test_error_line_keyword_statement.bgl:10:
+#beguilerSettings { target = z5; informName = "none"; }
+class Foo : _bglObject { }
+Foo f { }
+void main(){
+    int n = 0;
+    n++;
+    if (f == 3) print("y");
+}

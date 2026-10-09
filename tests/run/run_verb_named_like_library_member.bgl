@@ -1,0 +1,22 @@
+// run_verb_named_like_library_member — a verb's object is emitted as _bglVerb_<Name>, so a verb may be
+// named like a runtime-library member (size, clear, copy, sort); its action, grammar and <Name>Sub keep
+// the verb's own name, and its handler, a verb argument and switch cases reach it.
+// EXPECT_OUTPUT: sized cleared copied S
+#beguilerSettings { target = z5; informName = "none"; }
+verb Size  { grammar = { {.size} };  void handler() { print("sized"); } }
+verb Clear { grammar = { {.clear} }; void handler() { print("cleared"); } }
+verb Copy  { grammar = { {.copy} };  void handler() { print("copied"); } }
+verb Sort  { grammar = { {.sort} };  void handler() { print("sorted"); } }
+void letterOf(verb v){
+    switch (v) {
+        case Size: print("S");
+        case Clear: print("C");
+        default: print("?");
+    }
+}
+void main(){
+    Size.handler(); print(" ");
+    Clear.handler(); print(" ");
+    Copy.handler(); print(" ");
+    letterOf(Size);
+}

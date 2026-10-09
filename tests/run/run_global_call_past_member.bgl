@@ -1,0 +1,11 @@
+// run_global_call_past_member — `::name(args)` calls the global function even where a member of the
+// same name is in scope (§3.9): here an emitter member, which emits no property of its own.
+// EXPECT_OUTPUT: g5 m g6
+#beguilerSettings { target = z5; informName = "none"; }
+void show(int n){ print($"g{n} "); }
+class Thing[2] : _bglObject {
+    emitter void show(int n){ print "m "; }
+    void run(){ ::show(5); show(1); ::show(6); }
+}
+Thing t { }
+void main(){ bglInit(); t.run(); }

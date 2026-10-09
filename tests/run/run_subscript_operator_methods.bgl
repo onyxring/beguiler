@@ -1,0 +1,17 @@
+// run_subscript_operator_methods — operator [] and []= declared as ordinary methods (not emitters) are
+// sent as routines, on a named object and through a local.
+// EXPECT_OUTPUT: 11 15
+#beguilerSettings { target = z5; informName = "none"; }
+class Grid : _bglObject {
+    int stored;
+    int operator [] (int i) { return stored + i; }
+    int operator []= (int i, int v) { stored = v - i; return v; }
+}
+Grid board { }
+void main() {
+    board[2] = 10;
+    print(board[3]); print(" ");
+    Grid g = board;
+    g[0] = 5;
+    print(g[10]);
+}

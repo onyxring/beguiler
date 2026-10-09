@@ -1,0 +1,6 @@
+// Negative test: a routine named like a declared property (`name`, which every program has) would be
+// rejected by Inform 6; Beguile says so at the routine.
+// EXPECT_ERROR: routine 'name' has the same name as the property 'name'
+#beguilerSettings { target = z5; informName = "none"; }
+void name(int v){ print(v); }
+void main(){ name(3); }

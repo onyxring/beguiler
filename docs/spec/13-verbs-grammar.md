@@ -75,8 +75,30 @@ class. The body uses ordinary object member syntax (§11.4): the `grammar` membe
 from the class, so `grammar = { … }` needs no type, and further members and methods may be declared
 as on any object.
 
+A class may derive from `verb` to share behavior among several verbs: members, `meta`, `priority`, and
+a `handler()` its verbs inherit. A verb is then declared through that class, `⟨class⟩ ⟨name⟩ { … }`,
+and is a verb in every respect. A verb that declares its own `handler()` or `meta` overrides the class's.
+
+```bgl
+class chatVerb : verb {
+    string reply = "Nothing to say.";
+    void handler() { print(reply); }
+}
+chatVerb Hum     { grammar = {.hum}; reply = "You hum."; }
+chatVerb Whistle { grammar = {.whistle}; }
+
+class infoVerb : verb { meta = true; }
+infoVerb Credits { grammar = {.credits}; void handler() { print("Written by …"); } }
+```
+
 A verb name follows the same resolution rules as any identifier: a local variable with the same name
 shadows the verb (§3.10).
+
+In the generated Inform 6 the verb's action and its action routine keep the verb's name (`##Size`,
+`SizeSub`), and the object that carries `handler()` is named `_bglVerb_⟨name⟩`. Inform 6 keeps objects
+in one namespace with properties, so the object's own name would otherwise collide with any member of
+that name, the runtime library's included (`size`, `clear`, `copy`). I6 code that names the verb object
+reaches it through `$i6Name` (§7.3.3).
 
 **Example**
 

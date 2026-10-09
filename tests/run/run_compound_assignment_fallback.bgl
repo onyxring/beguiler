@@ -1,0 +1,33 @@
+// run_compound_assignment_fallback — `x op= v` on a type that declares no `operator op=` is
+// `x = x op (v)` (§9.7), through the type's own operators: a property accessor, a bnum (including
+// `^`, which Inform 6 lacks), and a regular-method `operator +=` on a value and a reference class.
+// EXPECT_OUTPUT: acc:4 bnum:2 xor:3 val:3 ref:5 prec:7
+#beguilerSettings { target = z5; informName = "none"; }
+value class Level { int _v; int operator (){ return _v; } void operator = (int v){ _v = v; } }
+class Thing : _bglObject { Level lvl; }
+Thing t { }
+bnum eCond { dusty, hot, loud }
+value class Coins {
+    int cents;
+    Coins operator = (Coins o){ cents = o.cents; return self; }
+    Coins operator += (Coins o){ cents = cents + o.cents; return self; }
+}
+class Tally : _bglObject { int n; Tally operator += (int k){ n = n + k; return self; } }
+Tally counter { n = 2; }
+Coins a;
+Coins b;
+void main(){
+    bglInit();
+    t.lvl = 5; t.lvl -= 1;
+    print($"acc:{t.lvl} ");
+    eCond c = 0; c |= eCond.hot; c ^= eCond.dusty; c &= eCond.hot;
+    print($"bnum:{(int)c} ");
+    eCond d = eCond.hot; d = d ^ eCond.dusty;
+    print($"xor:{(int)d} ");
+    a.cents = 1; b.cents = 2; a += b;
+    print($"val:{a.cents} ");
+    counter += 3;
+    print($"ref:{counter.n} ");
+    int n = 1; n *= 3 + 4;
+    print($"prec:{n}");
+}

@@ -135,7 +135,11 @@ and evaluates to a reference to it. It is the same declaration as the named form
 at startup, and it is unrelated to `new` (§4.13), which allocates at run time.
 
 The form is available for any class that can be declared as a named object. It has no meaning for
-namespace types (`emitter class`, `alias class`) or value classes. It may appear anywhere an
+namespace types (`emitter class`, `alias class`). For a value class (§8.2.7) it is a value of that class
+with the given members: a variable or argument receives a copy through the class's `operator =`, and a
+member initialized with it — the way to give an owned value-class member its starting value, since a
+member initializer is fixed at compile time and can't run `operator =` — holds those values
+(`Item pebble { price = Coins{ cents = 5; }; }`). It may appear anywhere an
 expression may: an array-literal element, an `inject` element in `extend` for arrays (§12.11), a
 variable initializer, a call argument, or standing alone as a statement.
 
@@ -341,6 +345,11 @@ the world model: `parent` and `children` place objects in the object tree, and `
 object's attribute flags. The fourth, `instanceName`, is declared on `_bglObject` (§21.5.8), so it is
 available on every object, world-model or not: it gives the object its name.
 
+`object` also declares `name`, a `rawArray<dictionaryWord>`: the dictionary words the parser matches for
+the object. It is Inform 6's own built-in `name` property, so it needs no binding, and any object may
+set it without a type: `name = {.brass, .key};`, or `name = .lamp;` for one word. It is additive (§11.7.2):
+the words a class gives and the words an instance gives are combined.
+
 ### 11.5.1 `parent`
 
 **Syntax**
@@ -355,7 +364,8 @@ The first form appears in an object body; the second is a run-time statement.
 **Description**
 
 In an object body, `parent` places the object inside another object at game start. At run time,
-assigning to `obj.parent` moves the object.
+assigning to `obj.parent` moves the object; assigning `null` takes it out of the object tree, so it is
+nowhere until it is moved again.
 
 **Example**
 
@@ -373,7 +383,7 @@ object cloak {
 children = { ⟨object⟩ , … } ;
 ⟨object⟩ . children += { ⟨object⟩ , … } ;
 for ( object ⟨name⟩ in ⟨object⟩ . children ) ⟨statement⟩
-⟨object⟩ . children . length ( )
+⟨object⟩ . children . length
 ```
 
 The first form appears in an object body; the others are run-time expressions and statements.
@@ -515,8 +525,8 @@ void Main(){
 **Syntax**
 
 ```syntax
-attribute ⟨name⟩ ;
-extern attribute ⟨name⟩ [ asI6 ⟨i6name⟩ ] ;
+attribute ⟨name⟩ [ asI6 ⟨i6name⟩ ] ;
+extern attribute ⟨i6name⟩ [ asBgl ⟨name⟩ ] ;
 ```
 
 **Description**

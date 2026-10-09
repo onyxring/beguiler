@@ -189,6 +189,11 @@ struct emitterBindings {
 
 class bglParser {
     public:
+        // The I6 property a member of this name emits as: `_m_<name>` when a global object, variable,
+        // function or verb holds the name (the rule memberI6NameFor applies), else the name itself.
+        // Depends on the name alone, so text that spells a member's property uses it directly.
+        string clashRenamedMember(const string& name);
+        string propertyI6Name(const string& name);
         fileLexer file;    //what the parser reads from.  Tokens are produced by the filelexer.
         bool lspMode = false;                  // when true, parsingError collects errors instead of halting
         std::vector<std::string> lspErrors;    // errors collected during LSP-mode parsing
@@ -252,6 +257,7 @@ class bglParser {
         // A global routine and a member emitted as a property may not share a name (ignoring case):
         // Inform 6 keeps both in one namespace.
         void validateRoutinePropertyClashes();
+        void validateGlobalNameClashes();
         // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
         // that statement wherever it starts one; give it an emitted name that can't.
         void renameI6KeywordNames();
@@ -286,6 +292,7 @@ class bglParser {
         void unknownTypeError(const token& typeTok);
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
+        bool isSymbolDefined(const string& name) const { return definedSymbols.count(name) > 0; }
         // Like defineSymbol but immutable (the `#declare` path): user code cannot #define/#redef it.
         // Used to surface compile-time #beguilerSettings (e.g. generateBlorb) as #if-testable symbols.
         void declareSymbol(const string& name, const string& value = ""){ declaredSymbols[name] = value; definedSymbols[name] = value; }
@@ -493,10 +500,14 @@ class bglParser {
         set<string> onceFiles;        // absolute paths of files that declared #once
         set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
         vector<classDef*>  usingImports;         // imported class scopes from #using directives (file-scoped)
+        bool objectMemberIsConst = false;        // the object-body member being parsed was declared `const`
         vector<objectDef*> usingObjectImports;   // imported object scopes from #using directives (file-scoped)
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
         int forInCounter = 0;               // counter for unique _bglfiN variable names
+        // $i6Expr placeholders standing for a MEMBER array: a subscript on one addresses the property
+        // data (`$self.&$prop-->i`), since $self is then the owning object.
+        set<string> i6ExprMemberArrays;
         int anonObjectCounter = 0;          // counter for unique _bglAnonN inline-object names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
@@ -512,7 +523,8 @@ class bglParser {
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
         bool processNextStatement(abstractObject& =emptyContainer);  // grammar-driven dispatcher
-        bool processStatementDispatch(token tok, abstractObject& ctx);  // grammar dispatch for a pre-read token
+        bool processStatementDispatch(token tok, abstractObject& ctx);
+        void processBracelessBody(token first, functionDef& ctx);  // grammar dispatch for a pre-read token
         bool processParameterList(functionDef&);
 
         // Grammar-driven pattern matching
@@ -553,6 +565,7 @@ class bglParser {
         // Consume an optional `as <i6name>` sitting after a method's parameter list (§3.11) and
         // record it on the method. Ignored on operators, whose i6name the overload mangler owns.
         void consumeMethodI6Alias(functionDef& funcDef);
+        static bool isI6OperatorWord(const string& name);
         // Parse an optional `asI6 <i6name>` / `asBgl <beguileName>` clause (§3.11). The two run in
         // opposite directions, which is why each is tied to one side of `extern`: `asI6` CREATES the
         // name I6 will get, so it belongs on a declaration Beguile defines; `alias` MAPS a symbol I6
@@ -607,11 +620,19 @@ class bglParser {
         // if the next token is '|', consume the '|'-separated members and return the canonical
         // union name ("A|B" — members sorted+deduped; a single member collapses). No-op (returns
         // firstType unchanged) when no '|' follows, so call sites stay cheap and low-risk.
+        void rejectValueWordName(const string& name);
+        void saveBackingsAcrossRecursion(functionDef& fd);
+        bool parseInlineAccessor(variableDeclaration& prop, const string& typeName, typeDef* host);
+        int localByteInitCounter = 0;
+        string keepValueResult(const string& text, const string& typeName);
+        bool genericTypeIsUnionHead();
         string maybeParseUnionTail(const std::string& firstType);
         string readUnionMemberType();       // reads one complete member type (base + func<>/array<> tail) after a '|'
         string parseLambdaExpr(functionDef* func, statementBlock* body, bool bareArrow = false);  // parses lambda, lifts to global, returns lifted name
 
         bool processStatement(token, abstractObject& = emptyContainer);
+        string staticMemberGlobal(const string& path);
+        bool memberTakesCall(functionDef* fd, const string& name, bool openConsumed);   // `Class.member` static → its global, else ""
         // Per-statement context shared by the processStatement branch methods.
         struct StatementContext {
             sourceLocation src;          // location recorded on every node this statement creates
@@ -730,6 +751,7 @@ class bglParser {
             token cur;                          // token being processed this iteration
             optional<token> prefetched;         // a token a sub-parse produced that the loop must see next
             string castType;  // set when a (TypeName) cast prefix is detected
+            bool receiverCast = false;  // `((T)obj).member`: castType retypes obj itself
             // `<expr>?.member`: the receiver already parsed into expr, for parseExprOptionalChain.
             string chainRecvText, chainRecvType;
             // When a cast prefix is followed by '(', the cast applies to the result of the
@@ -749,6 +771,8 @@ class bglParser {
                 string tempName;
                 int parenDepthAtQuestion;  // paren depth when '?' was encountered
                 vector<string> prefixParens;  // structural '(' tokens to restore after assembly
+                string trueSetUp;             // set-up the true branch needs, run only when it is taken
+                size_t falseMark = 0;         // where the false branch's own set-up starts in pendingInjections
             };
             vector<PendingTernary> pendingTernaries;
             const vector<string>* terminators = nullptr;
@@ -776,6 +800,8 @@ class bglParser {
         ExprStep parseExprInlineObject(ExprParseState& st);
         ExprStep parseExprIdentifier(ExprParseState& st);
         ExprStep parseExprOperator(ExprParseState& st);
+        bool parseExprUnaryOperand(ExprParseState& st, const string& op, token operand);
+        string takeBranchSetUp(size_t mark);
         ExprStep parseExprDictionaryWord(ExprParseState& st);
         ExprStep parseExprDotChain(ExprParseState& st);
         ExprStep parseExprTernaryStart(ExprParseState& st);
@@ -834,7 +860,7 @@ class bglParser {
         // parameter type. If no explicit overload exists and the element type is a registered
         // class (user-defined), synthesizes one using the `object`-typed overload as a template.
         // Returns nullptr if no match and no synthesis possible.
-        functionDef* findArraySubscriptOp(classDef* arrCls, const string& elemType, bool isWrite);
+        functionDef* findArraySubscriptOp(classDef* arrCls, const string& elemType, bool isWrite, const string& valType = "");
         // For a class that exposes a concrete operator[] (e.g. string's `char operator[](int)`)
         // but has no declared array element type, derive the element type from that operator's
         // return type so subscript resolves. Returns "" if the class has no such operator (or
@@ -1012,6 +1038,8 @@ class bglParser {
         // Emitter bodies currently being expanded, outermost first. A body reached twice is a cycle;
         // a chain past kMaxEmitterDepth is a runaway. Both are errors rather than a stack overflow.
         vector<const i6Block*> emitterExpansionChain;
+        std::set<const i6Block*> emitterBodiesChecked;
+        void rejectEmitterNamesInBody(const string& text, const i6Block* blk);
         static constexpr size_t kMaxEmitterDepth = 8;
     public:
         bool isTypeCompatible(string argType, string paramType);   // public: the LSP filters typed-argument completions with it
@@ -1065,6 +1093,8 @@ class bglParser {
         // A value going where `targetType` is expected (an initializer, an assignment, a return) runs the
         // value's implicit `operator ()` to that type, unless the target takes the value as it is.
         bool applyImplicitConversion(expression* e, const string& targetType);
+        bool zeroFitsBnum(expression* e, const string& targetType);   // a literal 0: every bnum's empty set
+        bool argFitsByRule(expression* e, const string& paramType);
         // A verb named as a value (`action = Take`, `{ Drop, … }`) is its I6 action constant `##Take`.
         // A verb-typed variable, and the library's action-holding globals, stay as they are.
         bool applyActionConstant(expression* e);

@@ -154,6 +154,58 @@ string bglParser::processBglConditionals(const string& text){
 }
 
 // Expand one emitter body at one use site. See bglParser.h for the token ordering rule.
+// A global emitter emits no Inform 6 symbol, so an emitter body that names one as plain text
+// fails only in Inform 6; it has to be reached through $i6Expr (§7.3.4).
+void bglParser::rejectEmitterNamesInBody(const string& text, const i6Block* blk){
+    auto isWordChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    for(size_t i = 0; i < text.size(); ){
+        char c = text[i];
+        if(c == '"' || c == '\''){                       // string or character literal
+            size_t e = text.find(c, i + 1);
+            i = e == string::npos ? text.size() : e + 1;
+            continue;
+        }
+        if(c == '!'){                                    // I6 comment
+            size_t e = text.find('\n', i);
+            i = e == string::npos ? text.size() : e + 1;
+            continue;
+        }
+        if(c == '$'){                                    // a $token, and a lookup token's payload
+            size_t e = i + 1;
+            while(e < text.size() && isWordChar(text[e])) e++;
+            if(e < text.size() && text[e] == '(' && e > i + 1){
+                int depth = 0;
+                for(; e < text.size(); e++){
+                    if(text[e] == '(') depth++;
+                    else if(text[e] == ')' && --depth == 0){ e++; break; }
+                }
+            }
+            i = e;
+            continue;
+        }
+        if(!isWordChar(c)){ i++; continue; }
+        size_t start = i;
+        while(i < text.size() && isWordChar(text[i])) i++;
+        if(isdigit((unsigned char)text[start])) continue;
+        char prev = start > 0 ? text[start - 1] : ' ';
+        if(prev == '$' || prev == '.' || prev == '#' || prev == ':' || prev == '@' || prev == '&') continue;
+        string word = text.substr(start, i - start);
+        transform(word.begin(), word.end(), word.begin(), ::tolower);
+        if(bglLanguageService::isI6StatementKeyword(word)) continue;
+        bool emitterOnly = false;
+        for(typeDef* g : languageService.globals){
+            if(g->name != word) continue;
+            auto* fd = dynamic_cast<functionDef*>(g);
+            // The body's own name is an Inform 6 word (`emitter int wordSize { WORDSIZE }`).
+            if(fd == nullptr || !fd->isEmitter || fd->isExternal || fd->body == blk){ emitterOnly = false; break; }
+            emitterOnly = true;
+        }
+        if(emitterOnly)
+            parsingError(format("emitter body names emitter '{0}', which emits no Inform 6 symbol; "
+                                "write $i6Expr({0}(…)) to expand it (§7.3.4).", word));
+    }
+}
+
 string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b){
     if(blk == nullptr) return "";
     // Nesting is only reachable through $i6Expr, but the guards live here so they cover every
@@ -182,6 +234,7 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     // $i6Expr before the plain token pass: it binds the tokens as TYPED values itself, so it has
     // to see them intact rather than already replaced by their I6 text.
     out = substituteI6Exprs(out, b);
+    if(emitterBodiesChecked.insert(blk).second) rejectEmitterNamesInBody(out, blk);
     if(b.fn != nullptr)
         for(size_t i = 0; i < b.fn->params.size() && i < b.args.size(); i++)
             out = i6Emitter::replaceOperand(out, "$" + b.fn->params[i]->name, b.args[i]);
@@ -197,10 +250,21 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     // $selfsub before $self: $self is a prefix of it. replaceWord's right-boundary check already
     // makes the order immaterial, but the dependency is real and worth stating.
     if(b.selfsub) out = i6Emitter::replaceWord(out, "$selfsub", *b.selfsub);
+    // $action: the receiver as an action — `##Name` for a verb (its object is named apart from its
+    // action), else the value itself, which a verb-typed variable or member already holds.
+    if(b.self && out.find("$action") != string::npos){
+        string act = *b.self, low = act;
+        transform(low.begin(), low.end(), low.begin(), ::tolower);
+        for(verbObjectDef* v : languageService.verbs){
+            string vi6 = v->i6name; transform(vi6.begin(), vi6.end(), vi6.begin(), ::tolower);
+            if(v->name == low || (!vi6.empty() && vi6 == low)){ act = "##" + v->dName(); break; }
+        }
+        out = i6Emitter::replaceWord(out, "$action", act);
+    }
     if(b.self && !shadowed("self"))  out = i6Emitter::replaceOperand(out, "$self",  *b.self);
     if(b.val  && !shadowed("val"))   out = i6Emitter::replaceOperand(out, "$val",   *b.val);
     if(b.host && !shadowed("host"))  out = i6Emitter::replaceWord(out, "$host",  *b.host);
-    if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  *b.prop);
+    if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  propertyI6Name(*b.prop));
     if(b.cls  && !shadowed("class")) out = i6Emitter::replaceWord(out, "$class", *b.cls);
     // Lookup tokens last: their payloads are Beguile paths and operator names, never $tokens, so
     // they neither consume nor are consumed by the substitutions above.
@@ -302,14 +366,14 @@ bool bglParser::evaluateCondition(const string& expr){
         bool parseOr(){
             bool lhs=parseAnd();
             while(true){ skipWs();
-                if(pos+1<s.size() && s[pos]=='|' && s[pos+1]=='|'){ pos+=2; lhs=lhs||parseAnd(); }
+                if(pos+1<s.size() && s[pos]=='|' && s[pos+1]=='|'){ pos+=2; bool r=parseAnd(); lhs=lhs||r; }   // parse the right side even when the left decides
                 else break; }
             return lhs;
         }
         bool parseAnd(){
             bool lhs=parseNot();
             while(true){ skipWs();
-                if(pos+1<s.size() && s[pos]=='&' && s[pos+1]=='&'){ pos+=2; lhs=lhs&&parseNot(); }
+                if(pos+1<s.size() && s[pos]=='&' && s[pos+1]=='&'){ pos+=2; bool r=parseNot(); lhs=lhs&&r; }
                 else break; }
             return lhs;
         }
@@ -445,6 +509,9 @@ bool bglParser::processDirectiveUnrecognized(token directive){
         string verbName = directive.value.substr(2);
         return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
     }
+    if(directive.value == "#i6replace")
+        return parsingError("'#i6replace' is not a Beguile directive. Replace an I6 library routine with `replace` on its "
+                            "`extern` declaration (§15.6), or write I6's `Replace` in an `#i6` block ahead of the library.");
     return parsingError("Unrecognized directive '" + directive.value + "'.");
 }
 

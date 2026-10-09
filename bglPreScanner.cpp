@@ -158,6 +158,7 @@ void bglParser::preScanEnumEmitterMember(enumDef& en){
         vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps;
     }
     token bodyOrSemi = file.getToken();
+    if(bodyOrSemi.is("asi6")){ string n = file.getToken().value; if(mStub) mStub->i6name = n; bodyOrSemi = file.getToken(); }   // `name(...) asI6 <i6name> {…}`
     if(bodyOrSemi.is(token::braceOpen)){
         // Capture the emitter body so a forward call before the enum's declaration expands (see the
         // class-member capture site). Main pass replaces this stub, so normal emission is unchanged.
@@ -174,6 +175,8 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
         if(t.is(token::parenClose) || t.is(eTokenType::eof)) return;
         if(t.is(token::comma)) continue;
         if(t.value == "literal") t = file.getToken();   // `literal` qualifier on the parameter type
+        bool isRef = t.value == "ref";
+        if(isRef) t = file.getToken();                  // `ref` qualifier: the type follows
         if(!t.isDataType() && !t.is(eTokenType::identifier)){
             // Unrecognized token in param position — bail out safely by skipping to ')'
             int depth = 1;
@@ -193,6 +196,7 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
         paramDef* p = new paramDef();
         p->name = nameTok.value;
         p->type.name = typeName;
+        p->isRef = isRef;
         out.push_back(p);
         token s = file.getToken();
         if(s.is(token::parenClose)) return;
@@ -302,12 +306,12 @@ void bglParser::preScanDirective(token tok){
         if(!declaredSymbols.count(sym.value))   // a #declare'd symbol can't be #undef'd (error raised in main pass)
             definedSymbols.erase(sym.value);
     } else if(tok.value == "#startup" || tok.value == "#emitfirst" || tok.value == "#emitlast"){
-        preScanSkipBody();
+        preScanSkipBody(/*isI6Content=*/true);   // raw I6: `!` comments may hold apostrophes
     } else if(tok.value == "#storedemitfirst" || tok.value == "#storedemitlast"){
         // Named-block forms — same body shape as #emitfirst/#emitlast, with a name token
         // before the `{`. Consume the name, then skip the body the same way.
         file.getToken(eTokenType::identifier);   // block name
-        preScanSkipBody();
+        preScanSkipBody(/*isI6Content=*/true);
     } else if(tok.value == "#beguilersettings"){
         preScanSkipBody(); // skip { target = Glulx; ... } so the closing } doesn't corrupt the token stream
     } else if(tok.value == "#includei6"){
@@ -349,13 +353,6 @@ void bglParser::preScanDirective(token tok){
             token t = file.getBasicToken(true);
             while(t.isNot("\n") && t.isNot(eTokenType::eof)) t = file.getBasicToken(true);
         }
-    } else if(tok.value == "#i6replace"){
-        // #i6replace RoutineName [SavedName];  — consume the rest of THIS LINE so the operands
-        // (and any trailing ';' / '//' comment) don't leak into the global loop. Reading to the
-        // newline keeps the scan line-bounded (can't swallow the next statement). The emit-first
-        // registration happens in the main pass (processDirective).
-        char c = file.readChar();
-        while(c != '\n' && c != EOF) c = file.readChar();
     } else if(tok.is("#using")){
         // Consume the full dotted path: name(.name)*
         // Resolution is deferred to the main parse (this is pre-scan).
@@ -408,8 +405,18 @@ void bglParser::preScanDirective(token tok){
         recordInactiveRange(startLine1, endLine1);
     } else if(tok.is("#endif")){
         // no-op — consumed naturally
+    } else if(tok.is("#message") || tok.is("#warning") || tok.is("#error")){
+        // Their text is the main pass's to report; step over it, or the loop would skip from the
+        // string to the next ';' and miss the declarations in between.
+        if(file.peekToken().is(eTokenType::quote) || file.peekToken().is(eTokenType::rawQuote)) file.getToken();
     }
-    // Other directives (#message, #error, #warning, #exit, ##ifdef, etc.) are ignored during pre-scan
+    // Other directives (#exit, ##ifdef, etc.) are ignored during pre-scan
+}
+
+// `true`, `false`, `null` and `self` name fixed values (§1.5); a declaration may not take one.
+void bglParser::rejectValueWordName(const string& name){
+    if(name == "true" || name == "false" || name == "null" || name == "self")
+        parsingError(format("'{0}' is a value word and cannot be declared as a name", name));
 }
 
 // Register the members of an `extend <obj>` body onto obj during pre-scan. Assumes the stream is
@@ -500,6 +507,7 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
                 fd.isPrePassStub = true;
                 preScanCaptureParams(fd.params);
                 token bodyStart = file.getToken();
+                if(bodyStart.is("asi6")){ fd.i6name = file.getToken().value; bodyStart = file.getToken(); }   // `name(...) asI6 <i6name> {…}`
                 if(bodyStart.is(token::braceOpen)){
                     // Capture EMITTER bodies for order-independent expansion (see the class-member
                     // path above for the rationale). Non-emitter bodies never expand → discard.
@@ -788,6 +796,7 @@ void bglParser::preScanExtend(token& tok){
                     fd.isPrePassStub = true;
                     preScanCaptureParams(fd.params);
                     token bodyStart = file.getToken();
+                    if(bodyStart.is("asi6")){ fd.i6name = file.getToken().value; bodyStart = file.getToken(); }   // `name(...) asI6 <i6name> {…}`
                     if(bodyStart.is(token::braceOpen)){
                         // Capture an EMITTER body so a call resolved before this class is
                         // main-pass-parsed can still expand it (order-independence): emitter
@@ -1036,12 +1045,18 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                               preScanCaptureParams(ps);
                               if(opStub) opStub->params = ps;
                           }
-                          // Drain to end of declaration (body or ;)
+                          // Drain to end of declaration (body or ;). An emitter operator's body is kept, so a
+                          // use before the class's declaration still sees it (a getter is what makes a member
+                          // a property accessor).
                           token s = file.getToken();
                           while(!s.is(token::braceOpen) && !s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
                               s = file.getToken();
                           }
-                          if(s.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                          if(s.is(token::braceOpen)){
+                              bool emitterBody = sawEmitter || cls->isEmitterClass;
+                              string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/emitterBody);
+                              if(emitterBody && opStub){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; opStub->body = blk; }
+                          }
                           if(s.is(token::braceClose)) break;
                           bt = file.getToken();
                           continue;
@@ -1068,6 +1083,7 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                           file.getToken(); // '('
                           { vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps; }
                           token bodyOrSemi = file.getToken();
+                          if(bodyOrSemi.is("asi6")){ string n = file.getToken().value; if(mStub) mStub->i6name = n; bodyOrSemi = file.getToken(); }   // `name(...) asI6 <i6name> {…}`
                           if(bodyOrSemi.is(token::braceOpen)){
                               // Capture an EMITTER body so a call resolved before this class is
                               // main-pass-parsed can still expand it (order-independence): emitter
@@ -1198,12 +1214,18 @@ void bglParser::preScanObject(token& tok, bool isExtern){
     token nameTok = file.getToken();
     string nameStr = nameTok.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+    if(!isExtern) rejectValueWordName(nameStr);
     // Check if class is verb-derived — create verbObjectDef instead of objectDef
     bool isVerbType = false;
-    {   function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
-            if(!c) return false;
+    {   // Bases are linked only after the pre-scan, so a class's pending base names count too.
+        set<classDef*> seen;
+        function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
+            if(!c || !seen.insert(c).second) return false;
             if(c->name == "verb") return true;
             for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
+            for(const DeferredClassBases& db : deferredClassBases)
+                if(db.cls == c)
+                    for(const string& bn : db.baseNames) if(checkVerb(languageService.findClass(bn))) return true;
             return false;
         };
         if(auto* cls = languageService.findClass(classType))
@@ -1265,6 +1287,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                         fd.isPrePassStub = true;
                         preScanCaptureParams(fd.params);
                         token bodyStart = file.getToken();
+                        if(bodyStart.is("asi6")){ fd.i6name = file.getToken().value; bodyStart = file.getToken(); }   // `name(...) asI6 <i6name> {…}`
                         if(bodyStart.is(token::braceOpen))
                             file.getRawTextThroughClosingBrace();
                         // Only add if not already registered
@@ -1480,6 +1503,7 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     if(!nameTok.is(eTokenType::identifier)){ preScanSkipToSemicolon(); return; }
     string nameStr = nameTok.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+    if(!isExtern) rejectValueWordName(nameStr);
 
     // Optional ': ClassName' for typed object declarations
     token sym = file.getToken();

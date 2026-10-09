@@ -1,0 +1,14 @@
+// run_forward_ref_param_and_asi6_extend — the pre-scan reads a `ref` parameter of a function declared
+// later (a forward call counted it wrong), and steps over `asI6` on a method in an `extend` of an
+// object (it swallowed the next declaration).
+// EXPECT_OUTPUT: 3 7 2
+#beguilerSettings { target = z5; informName = "none"; }
+value class box { int v = 3; box operator = (box b){ self.v = b.v; return self; } }
+box b1;
+void main(){ bglInit(); show(b1); o.move(7); eAfter x = eAfter.b; print($" {(int)x}"); }
+void show(ref box b){ print(b.v); }
+object o { }
+extend o {
+    void move(int c) asI6 _o_move { print($" {c}"); }
+}
+enum eAfter { a = 1, b }

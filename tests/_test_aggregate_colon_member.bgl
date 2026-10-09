@@ -1,0 +1,7 @@
+// A named member in an inline aggregate is `name = value;`; the `name: value` form gets a direct
+// message instead of a misleading type error or a label leaking into I6.
+// EXPECT_ERROR: a named member is written `a = value;`
+#beguilerSettings { target = z5; informName = "none"; }
+class bag : object { inline var a; inline var b; }
+void show(bag p){ }
+void main(){ show(bag{ a: 3, b: 4 }); }

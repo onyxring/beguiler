@@ -7,8 +7,8 @@ include, §21), an extension (`<name>`, §22) or a binding (§23). *Section* is 
 specified. Overloads share one row; a family of names that differ only in a suffix is listed once
 with the suffix spelled out. Names of the `bgl` namespace are listed under `bgl.…`.
 
-`<array>` is loaded by the core, so its methods need no include; `size` and `length` are built in,
-and assigning `length` and `clear()` come from `<array>`.
+`size` and `length` are built in; assigning `length`, `clear()` and the methods marked `<array>`
+need `#include <array>`.
 
 | Name | Kind | Provided by | Section |
 | --- | --- | --- | --- |
@@ -29,6 +29,7 @@ and assigning `length` and `clear()` come from `<array>`.
 | `bgl.glulx` | namespace | core (Glulx) | §21.3 |
 | `bgl.glulx.color` | object | `<glulxWindow>` | §22.7.8 |
 | `bgl.glulx.eStyleType`, `eWinType`, `eImgAlign`, `eImgDimension`, `bWinBorder`, `bWinPlacement`, `bWinScale` | type (enum aliases) | core (Glulx) | §21.3, §22.7.10 |
+| `bgl.glulx.supports` | object (interpreter capabilities) | `<glulxWindow>` | §22.7.12 |
 | `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow`, `bgl.glulx.graphicsWindow` | type (path forms of the window types) | `<glulxWindow>` | §21.3, §22.7.1 |
 | `bgl.header` | namespace | core | §21.14 |
 | `bgl.header.printSerial()` | method on `bgl.header` | core | §21.14 |
@@ -96,13 +97,16 @@ and assigning `length` and `clear()` come from `<array>`.
 | `bGlulxWindowBorder` | type (bnum) | core (Glulx) | §22.7.10 |
 | `bGlulxWindowPlacement` | type (bnum) | core (Glulx) | §22.7.10 |
 | `bGlulxWindowScale` | type (bnum) | core (Glulx) | §22.7.10 |
+| `checkStyle(styleType, s)`, `distinguishes(a, b)` | method on `window` | `<glulxWindow>` | §22.7.9 |
 | `bool` | type | core | §2.2 |
 | `capture()`, `release()` | method on `stringObj` | `<string>` | §22.3 |
 | `captureOutput(obj, prop)` | method on `stringObj` | `<string>` | §22.3 |
 | `char` | type | core | §2.2, §21.7 |
 | `children` | member on `object` | core | §11.5.2, §21.5.7 |
 | `childrenProp` | type | core | §21.5.7 |
+| `childStyles` | member on `window`, the roots (refers to a `styleSheet`) | `<glulxWindow>` | §22.7.7 |
 | `clear()` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
+| `clear()` | method on the text window types, the roots | `<glulxWindow>` | §22.7.11 |
 | `close()` | method on `window` | `<glulxWindow>` | §22.7.6 |
 | `CLR_*` | constant (colors) | binding | §23.4 |
 | `clr_on`, `clr_fg`, `clr_bg`, `clr_fgstatus` | variable (extern) | binding (`punyInform`) | §23.4 |
@@ -131,6 +135,8 @@ and assigning `length` and `clear()` come from `<array>`.
 | `eGlulxStyleHint` | type (enum) | `<glulxWindow>` | §22.7.10 |
 | `eGlulxStyleType` | type (enum) | core (Glulx) | §22.7.10 |
 | `eGlulxWindowType` | type (enum) | core (Glulx) | §22.7.10 |
+| `eCharOutput` | type (enum) | `<glulxWindow>` | §22.7.12 |
+| `eStyleCheck` | type (enum) | `<glulxWindow>` | §22.7.9 |
 | `eImages` | type (enum) | core | §17.6.1, §21.12 |
 | `enqueue(item)`, `dequeue()` | method on `array<T>` | `<array>` | §22.4 |
 | `eSounds` | type (enum) | core | §17.6.1, §21.12 |
@@ -182,7 +188,7 @@ and assigning `length` and `clear()` come from `<array>`.
 | `measureStyle(styleType, hint)`, `styleHonored(styleType, hint)` | method on `window` | `<glulxWindow>` | §22.7.9 |
 | `meta` | member on `verb` | core | §13.2.4 |
 | `mid(start, count)`, `left(count)`, `right(count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `moveCursor(col, line)` | method on `textGridWindow` | `<glulxWindow>` | §22.7.6 |
+| `moveCursor(col, line)` | method on `textGridWindow`, `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.6 |
 | `moveUp()`, `moveDown()`, `moveLeft()`, `moveRight()` | method on `window` | `<glulxWindow>` | §22.7.4 |
 | `name` | property (additive, on `object`) | core | §11.7.2, §21.5.2 |
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
@@ -203,6 +209,7 @@ and assigning `length` and `clear()` come from `<array>`.
 | `print()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `print(v)` | function (overloaded by type) | core | §21.4 |
 | `printLine([v])` | function (`print(v)`, then a newline) | core | §21.4 |
+| `print(v)`, `printLine([v])` (window output) | method on the text window types, `bgl.ui.mainWin`; `print` on `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.11 |
 | `printName(obj)` | function | core | §21.4 |
 | `priority` | member on `verb` | core | §13.2.5 |
 | `property` | type | core | §11.7, §21.5.2 |
@@ -227,16 +234,20 @@ and assigning `length` and `clear()` come from `<array>`.
 | `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |
 | `sort([compare])` | method on `array<T>` | `<array>` | §22.4 |
 | `splitUpGrid()` … `splitRightBuffer()` (12 combinations of direction and kind) | method on `window`, the roots | `<glulxWindow>` | §22.7.3 |
+| `supports` | member on `window`, the roots (`images`, `mouse`, `hyperlinks`) | `<glulxWindow>` | §22.7.12 |
 | `startsWith(prefix)`, `endsWith(suffix)`, `contains(search)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `story`, `headline` | constant (I6) and `extern string` | binding | §23.3.2 |
 | `string` | type | core | §2.2, §22.3 |
 | `stringObj` | type | `<string>` | §22.3 |
 | `stringOrRoutine` | type (named union) | binding | §2.8.2, §21.5.10, §23.3.7 |
 | `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the value class below) | core | §7.7 |
+| `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.10 |
+| `styleSheet` | type (value class; one `style` per style type) | `<glulxWindow>` | §22.7.7 |
 | `style` | type (value class; written `style { … }`; the same word as the emitter namespace above) | `<glulxWindow>` | §22.7.7 |
 | `styleUnset` | constant | `<glulxWindow>` | §22.7.10 |
 | `swap(pos1, pos2)` | method on `array<T>` | `<array>` | §22.4 |
-| `switchable`, `on`, `workflag`, `reactive`, `scored` | value (`attribute`) | binding (`punyInform`) | §23.4 |
+| `switchable`, `on`, `workflag`, `scored` | value (`attribute`) | binding (both) | §23.4 |
+| `reactive` | value (`attribute`) | binding (`punyInform`) | §23.4 |
 | `take(n)`, `skip(n)` | method on `array<T>` | `<linq>` | §22.5 |
 | `Take`, `Look`, `Receive`, … (the library's actions) | object (`extern verb`) | binding | §23.3.6 |
 | `takeWhile(pred)`, `skipWhile(pred)` | method on `array<T>` | `<linq>` | §22.5 |

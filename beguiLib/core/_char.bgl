@@ -16,7 +16,7 @@ primitive class charLiteral {
 }
 
 //-- The char type -------------------------------------------------------------
-/// A single character, held as its ZSCII code; arithmetic with `int` works, so `c + 1` is the next character.
+/// A single character, held as its ZSCII code (Z-machine) or Unicode code point (Glulx); arithmetic with `int` works, so `c + 1` is the next character.
 primitive class char {
     emitter char operator = (char c){ $target=$c; }   /// Assignment: the variable takes the character.
 
@@ -49,37 +49,54 @@ emitter void print(char c){ print (char)$c; }
 superposed array<char> _bglVowels = "aeiouAEIOU\:a\:e\:i\:o\:u\:y\:A\:E\:I\:O\:U\'a\'e\'i\'o\'u\'y\'A\'E\'I\'O\'U\'Y\`a\`e\`i\`o\`u\`A\`E\`I\`O\`U\^a\^e\^i\^o\^u\^A\^E\^I\^O\^U\oa\oA\~a\~o\~A\~O";
 
 superposed bool _bglCharIsLower(char c){
-    if(c>='a' && c<='z') rtrue;
-    if((c>='\:a' && c<='\:u') || (c>='\:e' && c<='\:y')) rtrue;
-    if(c>='\'a' && c<='\'y') rtrue;
-    if(c>='\`a' && c<='\`u') rtrue;
-    if(c>='\^a' && c<='\^u') rtrue;
-    if(c=='\oa') rtrue;
-    if(c=='\/o') rtrue;
-    if(c>='\~a' && c<='\~o') rtrue;
-    if(c=='\ae') rtrue;
-    if(c=='\cc') rtrue;
-    if(c=='\th') rtrue;
-    if(c=='\et') rtrue;
-    if(c=='\oe') rtrue;
-    rfalse;
+    #if TARGET_GLULX
+        // Glulx characters are Unicode: Glk knows the cases.
+        if(c >= 'a' && c <= 'z') rtrue;
+        if(c < 128) rfalse;
+        if(c == 223 || c == 339) rtrue;   // ß (no single upper case), œ
+        if(c > 255) rfalse;                // Glk's case tables cover Latin-1 only
+        return (char)bgl.asm.charToUpper((int)c) != c;
+    #else
+        if(c>='a' && c<='z') rtrue;
+        if((c>='\:a' && c<='\:u') || (c>='\:e' && c<='\:y')) rtrue;
+        if(c>='\'a' && c<='\'y') rtrue;
+        if(c>='\`a' && c<='\`u') rtrue;
+        if(c>='\^a' && c<='\^u') rtrue;
+        if(c=='\oa') rtrue;
+        if(c=='\/o') rtrue;
+        if(c>='\~a' && c<='\~o') rtrue;
+        if(c=='\ae') rtrue;
+        if(c=='\cc') rtrue;
+        if(c=='\th') rtrue;
+        if(c=='\et') rtrue;
+        if(c=='\oe') rtrue;
+        rfalse;
+    #endif
 }
 superposed bool _bglCharIsUpper(char c){
-    if(c>='A' && c<='Z') rtrue;
-    if((c>='\:A' && c<='\:O') || (c>='\:E' && c<='\:I')) rtrue;
-    if(c>='\:U') rtrue;
-    if(c>='\'A' && c<='\'Y') rtrue;
-    if(c>='\`A' && c<='\`U') rtrue;
-    if(c>='\^A' && c<='\^U') rtrue;
-    if(c=='\oA') rtrue;
-    if(c=='\/O') rtrue;
-    if(c>='\~A' && c<='\~O') rtrue;
-    if(c=='\AE') rtrue;
-    if(c=='\cC') rtrue;
-    if(c=='\TH') rtrue;
-    if(c=='\ET') rtrue;
-    if(c=='\OE') rtrue;
-    rfalse;
+    #if TARGET_GLULX
+        if(c >= 'A' && c <= 'Z') rtrue;
+        if(c < 128) rfalse;
+        if(c == 338) rtrue;                // Œ
+        if(c > 255) rfalse;
+        return (char)bgl.asm.charToLower((int)c) != c;
+    #else
+        if(c>='A' && c<='Z') rtrue;
+        if((c>='\:A' && c<='\:O') || (c>='\:E' && c<='\:I')) rtrue;
+        if(c>='\:U') rtrue;
+        if(c>='\'A' && c<='\'Y') rtrue;
+        if(c>='\`A' && c<='\`U') rtrue;
+        if(c>='\^A' && c<='\^U') rtrue;
+        if(c=='\oA') rtrue;
+        if(c=='\/O') rtrue;
+        if(c>='\~A' && c<='\~O') rtrue;
+        if(c=='\AE') rtrue;
+        if(c=='\cC') rtrue;
+        if(c=='\TH') rtrue;
+        if(c=='\ET') rtrue;
+        if(c=='\OE') rtrue;
+        rfalse;
+    #endif
 }
 superposed bool _bglCharIsAlpha(char c){
     return _bglCharIsLower(c) || _bglCharIsUpper(c);
@@ -98,26 +115,42 @@ superposed bool _bglCharIsConsonant(char c){
     return (_bglCharIsAlpha(c) && !_bglCharIsVowel(c));
 }
 superposed char _bglCharToLower(char c){
-    switch (c) {
-        case 'A' to 'Z':                                               return c + 32;
-        case '\oA', '\/O', '\AE', '\cC', '\OE':                        return c - 1;
-        case '\TH', '\ET':                                             return c - 2;
-        case '\:A' to '\:U', '\:E', '\:I', '\~A' to '\~O':             return c - 3;
-        case '\`A' to '\`U', '\^A' to '\^U':                           return c - 5;
-        case '\'A' to '\'Y':                                           return c - 6;
-    }
-    return c;
+    #if TARGET_GLULX
+        if(c >= 'A' && c <= 'Z') return c + 32;
+        if(c < 128) return c;
+        if(c == 338) return c + 1;         // Œ → œ
+        if(c > 255) return c;
+        return (char)bgl.asm.charToLower((int)c);
+    #else
+        switch (c) {
+            case 'A' to 'Z':                                               return c + 32;
+            case '\oA', '\/O', '\AE', '\cC', '\OE':                        return c - 1;
+            case '\TH', '\ET':                                             return c - 2;
+            case '\:A' to '\:U', '\:E', '\:I', '\~A' to '\~O':             return c - 3;
+            case '\`A' to '\`U', '\^A' to '\^U':                           return c - 5;
+            case '\'A' to '\'Y':                                           return c - 6;
+        }
+        return c;
+    #endif
 }
 superposed char _bglCharToUpper(char c){
-    switch (c) {
-        case 'a' to 'z':                                               return c - 32;
-        case '\oa', '\/o', '\ae', '\cc', '\220':                        return c + 1;
-        case '\th', '\et':                                              return c + 2;
-        case '\:a' to '\:u', '\:e', '\:i', '\~a' to '\~o':             return c + 3;
-        case '\`a' to '\`u', '\^a' to '\^u':                           return c + 5;
-        case '\'a' to '\'y':                                           return c + 6;
-    }
-    return c;
+    #if TARGET_GLULX
+        if(c >= 'a' && c <= 'z') return c - 32;
+        if(c < 128) return c;
+        if(c == 339) return c - 1;         // œ → Œ
+        if(c > 255) return c;
+        return (char)bgl.asm.charToUpper((int)c);
+    #else
+        switch (c) {
+            case 'a' to 'z':                                               return c - 32;
+            case '\oa', '\/o', '\ae', '\cc', '\220':                        return c + 1;
+            case '\th', '\et':                                              return c + 2;
+            case '\:a' to '\:u', '\:e', '\:i', '\~a' to '\~o':             return c + 3;
+            case '\`a' to '\`u', '\^a' to '\^u':                           return c + 5;
+            case '\'a' to '\'y':                                           return c + 6;
+        }
+        return c;
+    #endif
 }
 
 //-- Char methods --------------------------------------------------------------

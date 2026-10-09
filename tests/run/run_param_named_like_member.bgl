@@ -1,0 +1,14 @@
+// run_param_named_like_member — a parameter or local named like a member: `o.x = x` reads and writes
+// the member, though Inform 6 would take `.x` as the property numbered by a local x.
+// EXPECT_OUTPUT: 7 3,4 9
+#beguilerSettings { target = z5; informName = "none"; }
+class Box : _bglObject { int x; int y; }
+Box b { }
+void setX(Box o, int x) { o.x = x; }
+void place(Box o, int x, int y) { o.x = x; o.y = y; }
+int grow(Box o) { int x = o.x + 2; o.x = x; return o.x; }
+void main(){
+    setX(b, 7); print(b.x); print(" ");
+    place(b, 3, 4); print($"{b.x},{b.y} ");
+    b.x = 7; print(grow(b));
+}

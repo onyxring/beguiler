@@ -1,0 +1,13 @@
+// run_not_chain_parenthesized — each `!` term of a && / || chain negates only its own term (I6's ~~
+// binds more loosely than && and ||).
+// EXPECT_OUTPUT: ok ok ok
+#beguilerSettings { target = z5; informName = "none"; }
+attribute a1;
+attribute a2;
+attribute a3;
+object box { attributes = {a3}; }
+void main() {
+    if (!box.has(a1) && !box.has(a2) && !box.has(a3)) print("wrong"); else print("ok");
+    if (!box.has(a3) || !box.has(a3) || box.has(a3)) print(" ok"); else print(" wrong");
+    if (box.has(a3) && !box.has(a1) && !box.has(a2)) print(" ok"); else print(" wrong");
+}

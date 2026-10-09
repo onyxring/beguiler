@@ -70,6 +70,11 @@ value class _winDim {
 class window[16] : _bglObject {
     /// The Glk window handle. 0 once the window is closed.
     int id = 0;
+    int _type = 0;   // its eGlulxWindowType, for `supports`
+    int _bglChildStyles = 0;   // the sheet `childStyles` refers to, or 0
+    /// The look every window split from this one gets: the sheet itself, not a copy. A sheet passed to
+    /// the split wins over it. Set it to null for none.
+    typesealed childStylesRef childStyles;
     /// The window's width. Writable only on the axis its split controls; a write to the other is
     /// ignored at run time.
     _winDim width;      // read/write; a write to the non-adjustable axis is a runtime no-op (see _winDim)
@@ -105,18 +110,18 @@ class window[16] : _bglObject {
     // Left/Right (vertical divider) → owns its WIDTH → a `…Vert` subtype (height write hidden).
     /// Split this window and put a new TEXT GRID above it, `size` lines tall. The `Horz` return type
     /// is what makes only the height writable — the split's own axis.
-    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
-    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
-    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
-    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size); }
-    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size); }
-    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size); }
-    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size); }
-    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size); }
-    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size); }
-    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size); }
-    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
-    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
+    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
 }
 /// A window that holds text — the base of the grid and buffer kinds.
 class textWindow[8]       : window { }
@@ -124,7 +129,7 @@ class textWindow[8]       : window { }
 class textBufferWindow[8] : textWindow { }   // drawImage(align) added under #if generateBlorb below
 /// A fixed grid of character cells, addressed by column and line. What a status bar is made of.
 class textGridWindow[8]   : textWindow {
-    /// Put the cursor at a cell. Columns and lines count from 1.
+    /// Put the cursor at a cell. Columns and lines count from 0.
     void moveCursor(int col, int line) asI6 _bglWin_moveCursor { bgl.asm.windowMoveCursor(self.id, col, line); }   // `MoveCursor` is a standard-library routine
 }
 /// A window you draw images into rather than text.
@@ -156,15 +161,26 @@ alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; 
 // is purely a compile-time label: each split method casts this result to its `…Horz`/`…Vert` alias view
 // (which dissolves right back to the content type at emission), so nothing orientation-specific is
 // allocated or emitted here.
-window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size){
+// `styles` is the new window's own look: glk reads hints only as a window opens, so they are set just
+// before it opens and the type-wide hints are put back right after, leaving other windows alone.
+// `inherited` is the parent's `childStyles` (0 for none); `styles` is applied after it, so it wins.
+window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size,
+                  ref styleSheet inherited = _bglNoStyles, ref styleSheet styles = _bglNoStyles){
     if(parentId == 0) return null;   // the window to split isn't open (e.g. a status bar with no height)
+    bool styled = type != eGlulxWindowType.graphics;
+    bool hasInherited = (int)inherited != 0;
+    if(styled && hasInherited) _applySheet((int)type, inherited);
+    if(styled) _applySheet((int)type, styles);
     int id = bgl.asm.windowOpen(parentId, type, size, method, 0);
+    if(styled) _restoreSheet((int)type, styles);
+    if(styled && hasInherited) _restoreSheet((int)type, inherited);
     if(id == 0) return null;   // Glk refused the split (e.g. no graphics support)
     window kid;
     if(type == eGlulxWindowType.graphics)       kid = new graphicsWindow();
     else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
     else                                        kid = new textBufferWindow();
     kid._bind(id, method);
+    kid._type = (int)type;
     return kid;
 }
 
@@ -181,6 +197,9 @@ extend _glulx {
 // ---- root integration (§7.4): the SAME core objects gain the window API ----
 // mainWin (text buffer): add .width/.height (via outer.id) + the full split family.
 extend _bglMainWindow {
+    int _bglChildStyles = 0;   // the sheet `childStyles` refers to, or 0
+    /// The look every window split from the main window gets: the sheet itself, not a copy.
+    typesealed childStylesRef childStyles;
     auto width = {
         int _m = 0;
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
@@ -193,38 +212,41 @@ extend _bglMainWindow {
     }
     // (mainWin is a text-buffer window: drawImage(align) added under #if generateBlorb below)
     // Split family returns oriented subtypes (Up/Down → …Horz, Left/Right → …Vert), same as `window`.
-    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
-    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
-    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
-    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size); }
-    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size); }
-    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size); }
-    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size); }
-    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size); }
-    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size); }
-    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size); }
-    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
-    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
+    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
 }
 // statusBar (text grid): library binding already owns .height — add .width + split family only.
 extend _bglStatus {
+    int _bglChildStyles = 0;   // the sheet `childStyles` refers to, or 0
+    /// The look every window split from the status bar gets: the sheet itself, not a copy.
+    typesealed childStylesRef childStyles;
     auto width = {
         int _m = 0;
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
         void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
     }
-    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
-    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
-    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
-    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size); }
-    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size); }
-    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size); }
-    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size); }
-    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size); }
-    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size); }
-    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size); }
-    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
-    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
+    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
 }
 
 // ---- Images (§4.3) — blorb-only: reuse core aspect-preserving scaleVectors + _bglGetImageInfo ----
@@ -254,11 +276,21 @@ extend _bglMainWindow {
 #endif
 
 // ============================ Styles (§4.4) ============================
-// glk style hints are set per (window TYPE, style type, hint) and affect windows of that type created
-// AFTER the call — so set styles before splitting the windows they should shape (that is how children
-// "inherit" a parent's styles). Hints are always-available opcodes (NOT blorb-gated).
+// glk style hints are set per (window TYPE, style type, hint) and read only when a window opens. The
+// type-wide calls (`bgl.ui.screen.setStyle`, `win.setStyle`) set them for every later window of that type
+// and are recorded in a sheet per type, so a split can give one window its own look and then put the
+// type-wide hints back. Hints are always-available opcodes (NOT blorb-gated).
 
 const int styleUnset = $7FFFFFFF;   // "leave the interpreter default" sentinel — no real glk hint value
+
+/// A yes/no style setting that can also be left unset.
+primitive class styleFlag {
+    emitter styleFlag operator = (bool v){ $target = $v; }   /// Turn the setting on or off.
+    emitter styleFlag operator = (int v){ $target = $v; }    /// Set it from 1 or 0, or leave it unset with `styleUnset`.
+    emitter bool operator == (int v){ $val == $v }           /// True when it holds `v`.
+    emitter bool operator != (int v){ $val ~= $v }           /// True when it doesn't hold `v`.
+    emitter int  operator () { $val }                        /// Its value: 1, 0 or `styleUnset`.
+}
 
 // Justification values (glk stylehint_just_*). Cast to int when set on a style: `justify = (int)eGlulxJustify.centered;`.
 enum eGlulxJustify { left = 0, full = 1, centered = 2, right = 3 }
@@ -277,16 +309,16 @@ enum eGlulxStyleHint {
 // Each member emits under a `_bglStyle_` name: I6 properties share one global namespace, and plain
 // words such as `italics` or `reverse` are routine names in other libraries (orLibrary has `italics`).
 value class style {
-    inline int justify asI6 _bglStyle_justify              = styleUnset;   // an eGlulxJustify value (cast to int)
-    inline int indentation asI6 _bglStyle_indentation          = styleUnset;   // left-margin indent
+    inline int justify asI6 _bglStyle_justify                    = styleUnset;   // an eGlulxJustify value (cast to int)
+    inline int indentation asI6 _bglStyle_indentation            = styleUnset;   // left-margin indent
     inline int paragraphIndentation asI6 _bglStyle_paragraphIndentation = styleUnset;   // first-line extra indent
-    inline int sizeAdjustment asI6 _bglStyle_sizeAdjustment       = styleUnset;   // relative to the base text size (…-1, 0, 1…)
-    inline int fontWeight asI6 _bglStyle_fontWeight           = styleUnset;   // -1 lighter, 0 normal, 1 bold
-    inline int italics asI6 _bglStyle_italics              = styleUnset;   // bool: oblique/italic
-    inline int fixedWidth asI6 _bglStyle_fixedWidth           = styleUnset;   // bool: true ⇒ fixed-pitch (non-proportional)
-    inline int foreColor asI6 _bglStyle_foreColor            = styleUnset;   // 0xRRGGBB text colour
-    inline int backColor asI6 _bglStyle_backColor            = styleUnset;   // 0xRRGGBB background colour
-    inline int reverse asI6 _bglStyle_reverse              = styleUnset;   // bool: swap fore/back
+    inline int sizeAdjustment asI6 _bglStyle_sizeAdjustment      = styleUnset;   // relative to the base text size (…-1, 0, 1…)
+    inline int fontWeight asI6 _bglStyle_fontWeight              = styleUnset;   // -1 lighter, 0 normal, 1 bold
+    inline styleFlag italics asI6 _bglStyle_italics              = styleUnset;   // oblique/italic
+    inline styleFlag fixedWidth asI6 _bglStyle_fixedWidth        = styleUnset;   // true ⇒ fixed-pitch (non-proportional)
+    inline int foreColor asI6 _bglStyle_foreColor                = styleUnset;   // 0xRRGGBB text color
+    inline int backColor asI6 _bglStyle_backColor                = styleUnset;   // 0xRRGGBB background color
+    inline styleFlag reverse asI6 _bglStyle_reverse              = styleUnset;   // swap fore/back
     style operator = (style s){
         self.justify = s.justify;                           self.indentation = s.indentation;
         self.paragraphIndentation = s.paragraphIndentation; self.sizeAdjustment = s.sizeAdjustment;
@@ -295,7 +327,48 @@ value class style {
         self.backColor = s.backColor;                       self.reverse = s.reverse;
         return self;
     }
+    /// True when at least one hint is set.
+    bool hasHints(){
+        return justify != styleUnset || indentation != styleUnset || paragraphIndentation != styleUnset
+            || sizeAdjustment != styleUnset || fontWeight != styleUnset || italics != styleUnset
+            || fixedWidth != styleUnset || foreColor != styleUnset || backColor != styleUnset || reverse != styleUnset;
+    }
 }
+
+/// A look for every style type at once. A style left unset leaves that style type alone.
+value class styleSheet {
+    style normal asI6 _bglSheet_normal;           /// Plain text.
+    style emphasized asI6 _bglSheet_emphasized;   /// Emphasized text.
+    style fixed asI6 _bglSheet_fixed;             /// Fixed-width text.
+    style header asI6 _bglSheet_header;           /// Headers.
+    style subheader asI6 _bglSheet_subheader;     /// Subheaders.
+    style alert asI6 _bglSheet_alert;             /// Alerts.
+    style note asI6 _bglSheet_note;               /// Notes.
+    style blockQuote asI6 _bglSheet_blockQuote;   /// Block quotations.
+    style input asI6 _bglSheet_input;             /// The player's input.
+    style user1 asI6 _bglSheet_user1;             /// A style the game defines.
+    style user2 asI6 _bglSheet_user2;             /// A second style the game defines.
+    styleSheet operator = (styleSheet s){
+        self.normal = s.normal;         self.emphasized = s.emphasized; self.fixed = s.fixed;
+        self.header = s.header;         self.subheader = s.subheader;   self.alert = s.alert;
+        self.note = s.note;             self.blockQuote = s.blockQuote; self.input = s.input;
+        self.user1 = s.user1;           self.user2 = s.user2;
+        return self;
+    }
+}
+
+/// The type of a window's `childStyles`: it refers to a sheet rather than holding a copy.
+extern emitter class childStylesRef {
+    /// Refer to `v` (null for none).
+    emitter childStylesRef operator = (styleSheet v){ $self._bglChildStyles = $v }
+    /// The sheet referred to, or null.
+    emitter styleSheet operator(){ ($self._bglChildStyles) }
+}
+
+styleSheet _bglNoStyles;      // the empty sheet: a split's default
+styleSheet _bglBufferLook;    // the type-wide hints set for text-buffer windows
+styleSheet _bglGridLook;      // the type-wide hints set for text-grid windows
+style      _bglNoStyle;       // every hint unset
 
 // Apply the set fields of `s` to (wintype, st) via glk_stylehint_set. Hint indices are the fixed glk
 // ABI (Glk §5.5): 0 Indentation, 1 ParaIndentation, 2 Justification, 3 Size, 4 Weight, 5 Oblique,
@@ -306,11 +379,11 @@ void _applyStyle(int wintype, eGlulxStyleType st, style s){
     if(s.paragraphIndentation != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 1, s.paragraphIndentation);
     if(s.sizeAdjustment       != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 3, s.sizeAdjustment);
     if(s.fontWeight           != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 4, s.fontWeight);
-    if(s.italics              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 5, s.italics);
-    if(s.fixedWidth           != styleUnset){ int prop = 1; if(s.fixedWidth != 0) prop = 0; bgl.asm.stylehintSet(wintype, (int)st, 6, prop); }  // Proportional is the inverse of fixed-pitch
+    if(s.italics              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 5, (int)s.italics);
+    if(s.fixedWidth           != styleUnset){ int prop = 1; if((int)s.fixedWidth != 0) prop = 0; bgl.asm.stylehintSet(wintype, (int)st, 6, prop); }  // Proportional is the inverse of fixed-pitch
     if(s.foreColor            != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 7, s.foreColor);
     if(s.backColor            != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 8, s.backColor);
-    if(s.reverse              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 9, s.reverse);
+    if(s.reverse              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 9, (int)s.reverse);
 }
 // Reset every hint for (wintype, st) back to the interpreter default.
 void _clearStyle(int wintype, eGlulxStyleType st){
@@ -318,54 +391,257 @@ void _clearStyle(int wintype, eGlulxStyleType st){
     for(h = 0; h < 10; h++) bgl.asm.stylehintClear(wintype, (int)st, h);
 }
 
+// The type-wide sheet a wintype records into.
+void _recordStyle(int wintype, eGlulxStyleType st, style s){
+    if(wintype == (int)eGlulxWindowType.textGrid) _setSheetStyle(_bglGridLook, st, s);
+    else                                          _setSheetStyle(_bglBufferLook, st, s);
+}
+void _setSheetStyle(ref styleSheet sh, eGlulxStyleType st, style s){
+    switch(st){
+        case eGlulxStyleType.normal:     sh.normal = s;
+        case eGlulxStyleType.emphasized: sh.emphasized = s;
+        case eGlulxStyleType.fixed:      sh.fixed = s;
+        case eGlulxStyleType.header:     sh.header = s;
+        case eGlulxStyleType.subheader:  sh.subheader = s;
+        case eGlulxStyleType.alert:      sh.alert = s;
+        case eGlulxStyleType.note:       sh.note = s;
+        case eGlulxStyleType.blockQuote: sh.blockQuote = s;
+        case eGlulxStyleType.input:      sh.input = s;
+        case eGlulxStyleType.user1:      sh.user1 = s;
+        case eGlulxStyleType.user2:      sh.user2 = s;
+    }
+}
+// A type-wide setStyle / clearStyle: set the hints and remember them.
+void _setTypeStyle(int wintype, eGlulxStyleType st, style s){ _applyStyle(wintype, st, s); _recordStyle(wintype, st, s); }
+void _clearTypeStyle(int wintype, eGlulxStyleType st){ _clearStyle(wintype, st); _recordStyle(wintype, st, _bglNoStyle); }
+
+// Every style a sheet sets, applied to `wintype`.
+void _applySheet(int wintype, ref styleSheet sh){
+    _applyStyle(wintype, eGlulxStyleType.normal, sh.normal);         _applyStyle(wintype, eGlulxStyleType.emphasized, sh.emphasized);
+    _applyStyle(wintype, eGlulxStyleType.fixed, sh.fixed);           _applyStyle(wintype, eGlulxStyleType.header, sh.header);
+    _applyStyle(wintype, eGlulxStyleType.subheader, sh.subheader);   _applyStyle(wintype, eGlulxStyleType.alert, sh.alert);
+    _applyStyle(wintype, eGlulxStyleType.note, sh.note);             _applyStyle(wintype, eGlulxStyleType.blockQuote, sh.blockQuote);
+    _applyStyle(wintype, eGlulxStyleType.input, sh.input);           _applyStyle(wintype, eGlulxStyleType.user1, sh.user1);
+    _applyStyle(wintype, eGlulxStyleType.user2, sh.user2);
+}
+// For one style type a sheet touched: back to the type-wide hints.
+void _restoreStyle(int wintype, eGlulxStyleType st, style touched, style typeWide){
+    if(!touched.hasHints()) return;
+    _clearStyle(wintype, st);
+    _applyStyle(wintype, st, typeWide);
+}
+// After a split: every style the sheet touched goes back to the type-wide hints for `wintype`.
+void _restoreSheet(int wintype, ref styleSheet sh){
+    if(wintype == (int)eGlulxWindowType.textGrid) _restoreSheetFrom(wintype, sh, _bglGridLook);
+    else                                          _restoreSheetFrom(wintype, sh, _bglBufferLook);
+}
+void _restoreSheetFrom(int wintype, ref styleSheet sh, ref styleSheet base){
+    _restoreStyle(wintype, eGlulxStyleType.normal, sh.normal, base.normal);
+    _restoreStyle(wintype, eGlulxStyleType.emphasized, sh.emphasized, base.emphasized);
+    _restoreStyle(wintype, eGlulxStyleType.fixed, sh.fixed, base.fixed);
+    _restoreStyle(wintype, eGlulxStyleType.header, sh.header, base.header);
+    _restoreStyle(wintype, eGlulxStyleType.subheader, sh.subheader, base.subheader);
+    _restoreStyle(wintype, eGlulxStyleType.alert, sh.alert, base.alert);
+    _restoreStyle(wintype, eGlulxStyleType.note, sh.note, base.note);
+    _restoreStyle(wintype, eGlulxStyleType.blockQuote, sh.blockQuote, base.blockQuote);
+    _restoreStyle(wintype, eGlulxStyleType.input, sh.input, base.input);
+    _restoreStyle(wintype, eGlulxStyleType.user1, sh.user1, base.user1);
+    _restoreStyle(wintype, eGlulxStyleType.user2, sh.user2, base.user2);
+}
+
 // Per-wintype styling on the text window subtypes.
 extend class textBufferWindow {
-    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textBuffer, type, s); }
-    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textBuffer, type); }
+    void setStyle(eGlulxStyleType type, style s){ _setTypeStyle((int)eGlulxWindowType.textBuffer, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearTypeStyle((int)eGlulxWindowType.textBuffer, type); }
 }
 extend class textGridWindow {
-    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textGrid, type, s); }
-    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textGrid, type); }
+    void setStyle(eGlulxStyleType type, style s){ _setTypeStyle((int)eGlulxWindowType.textGrid, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearTypeStyle((int)eGlulxWindowType.textGrid, type); }
 }
 
 // bgl.ui.screen — the global style scope (both text window types at once). The idiomatic place to set
 // up styles at game start, before any window is split.
 superposed _bglObject _bglScreen {
     void setStyle(eGlulxStyleType type, style s){
-        _applyStyle((int)eGlulxWindowType.textBuffer, type, s);
-        _applyStyle((int)eGlulxWindowType.textGrid,   type, s);
+        _setTypeStyle((int)eGlulxWindowType.textBuffer, type, s);
+        _setTypeStyle((int)eGlulxWindowType.textGrid,   type, s);
     }
     void clearStyle(eGlulxStyleType type){
-        _clearStyle((int)eGlulxWindowType.textBuffer, type);
-        _clearStyle((int)eGlulxWindowType.textGrid,   type);
+        _clearTypeStyle((int)eGlulxWindowType.textBuffer, type);
+        _clearTypeStyle((int)eGlulxWindowType.textGrid,   type);
     }
 }
 extend _bglUi { alias screen = _bglScreen; }   // bgl.ui.screen
 
 // The roots are typed windows too: mainWin = text buffer, statusBar = text grid.
 extend _bglMainWindow {
-    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textBuffer, type, s); }
-    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textBuffer, type); }
+    void setStyle(eGlulxStyleType type, style s){ _setTypeStyle((int)eGlulxWindowType.textBuffer, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearTypeStyle((int)eGlulxWindowType.textBuffer, type); }
 }
 extend _bglStatus {
-    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textGrid, type, s); }
-    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textGrid, type); }
+    void setStyle(eGlulxStyleType type, style s){ _setTypeStyle((int)eGlulxWindowType.textGrid, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearTypeStyle((int)eGlulxWindowType.textGrid, type); }
 }
 
 // ---- style validation (glk_style_measure) ----
 // Interpreters may ignore style hints. measureStyle reports the ACTUAL value the interpreter uses for
 // a (style type, hint) on this window, or `styleUnset` if the hint isn't measurable; styleHonored is
-// the boolean "did the interpreter report this hint at all". Both query the LIVE window, so call them
-// after the window exists (unlike setStyle, which sets hints for windows created afterward).
+// the boolean "did the interpreter report this hint at all". checkStyle compares what a style asks for
+// with what the interpreter reports. All query the LIVE window, so call them after the window exists
+// (unlike setStyle, which sets hints for windows created afterward).
+
+/// How a style check came out: what the interpreter reported, or that it couldn't report.
+enum eStyleCheck {
+    unknown = 0,   /// The interpreter can't report the hints the style sets.
+    applied,       /// Every reported hint is what the style asks for.
+    differs,       /// At least one reported hint is not what the style asks for.
+    /// True when the interpreter could report.
+    emitter bool known     { ($self ~= 0) }
+    /// True when every reported hint matched.
+    emitter bool isApplied { ($self == 1) }
+    /// True when a reported hint didn't match.
+    emitter bool isDiffering { ($self == 2) }
+}
+
+// One hint: 0 when the interpreter can't report it, 1 when it reports `want`, 2 when it reports another value.
+int _checkHint(int winId, eGlulxStyleType type, int hint, int want){
+    if(want == styleUnset) return -1;   // not asked for
+    if(bgl.asm.styleMeasure(winId, (int)type, hint, ((int)_glkWinSizeBuf) + bgl.wordsize) == 0) return 0;
+    if(_glkWinSizeBuf[0] == want) return 1;
+    return 2;
+}
+
 extend class window {
     int measureStyle(eGlulxStyleType type, eGlulxStyleHint hint){
         int ok = bgl.asm.styleMeasure(self.id, (int)type, (int)hint, ((int)_glkWinSizeBuf) + bgl.wordsize);
         if(ok == 0) return styleUnset;
+        if(hint == eGlulxStyleHint.fixedWidth){ if(_glkWinSizeBuf[0] == 0) return 1; return 0; }   // glk reports Proportional
         return _glkWinSizeBuf[0];
     }
     bool styleHonored(eGlulxStyleType type, eGlulxStyleHint hint){
         return bgl.asm.styleMeasure(self.id, (int)type, (int)hint, ((int)_glkWinSizeBuf) + bgl.wordsize) != 0;
     }
+    /// Whether this window shows style type `type` the way `s` asks.
+    eStyleCheck checkStyle(eGlulxStyleType type, style s){
+        int measured = 0; int mismatched = 0; int r = 0;
+        int fixedWant = styleUnset;
+        if(s.fixedWidth != styleUnset){ fixedWant = 1; if((int)s.fixedWidth != 0) fixedWant = 0; }   // glk measures Proportional
+        r = _checkHint(self.id, type, 2, s.justify);              if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 0, s.indentation);          if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 1, s.paragraphIndentation); if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 3, s.sizeAdjustment);       if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 4, s.fontWeight);           if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 5, (int)s.italics);         if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 6, fixedWant);              if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 7, s.foreColor);            if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 8, s.backColor);            if(r > 0) measured++; if(r == 2) mismatched++;
+        r = _checkHint(self.id, type, 9, (int)s.reverse);         if(r > 0) measured++; if(r == 2) mismatched++;
+        if(measured == 0)   return eStyleCheck.unknown;
+        if(mismatched > 0)  return eStyleCheck.differs;
+        return eStyleCheck.applied;
+    }
+    /// True when the interpreter shows style types `a` and `b` differently in this window; false when
+    /// they look the same or it can't tell.
+    bool distinguishes(eGlulxStyleType a, eGlulxStyleType b){
+        return bgl.asm.styleDistinguish(self.id, (int)a, (int)b) != 0;
+    }
+}
+
+// ============================ Window output ============================
+// Each prints through the ordinary `print` overloads, so a value prints the same way in any window;
+// the output stream is switched to this window for the call and then put back.
+int _bglOutSaved = 0;   // the stream to return to
+
+extend class textWindow {
+    /// Print `v` in this window.
+    emitter void print(var v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $i6Expr(::print($v)); $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print an interpolated string in this window.
+    emitter void print(interpolatedStringLiteral v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $v; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print `v` in this window, then a newline.
+    emitter void printLine(var v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $i6Expr(::print($v)); print "^"; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print an interpolated string in this window, then a newline.
+    emitter void printLine(interpolatedStringLiteral v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $v; print "^"; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print a newline in this window.
+    emitter void printLine(){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); print "^"; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Clear this window.
+    void clear(){ bgl.asm.windowClear(self.id); }
+}
+extend _bglMainWindow {
+    /// Print `v` in the main window.
+    emitter void print(var v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $i6Expr(::print($v)); $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print an interpolated string in the main window.
+    emitter void print(interpolatedStringLiteral v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $v; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print `v` in the main window, then a newline.
+    emitter void printLine(var v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $i6Expr(::print($v)); print "^"; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print an interpolated string in the main window, then a newline.
+    emitter void printLine(interpolatedStringLiteral v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $v; print "^"; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Clear the main window.
+    void clear(){ bgl.asm.windowClear(self.id); }
+}
+extend _bglStatus {
+    /// Print `v` in the status bar, at the cursor.
+    emitter void print(var v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $i6Expr(::print($v)); $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Print an interpolated string in the status bar, at the cursor.
+    emitter void print(interpolatedStringLiteral v){ _bglOutSaved = $i6Expr(bgl.asm.streamGetCurrent()); $i6Expr(bgl.asm.setWindow($self.id)); $v; $i6Expr(bgl.asm.streamSetCurrent(_bglOutSaved)); }
+    /// Clear the status bar.
+    void clear(){ bgl.asm.windowClear(self.id); }
+    /// Put the cursor at a cell. Columns and lines count from 0.
+    void moveCursor(int col, int line) asI6 _bglWin_moveCursor { bgl.asm.windowMoveCursor(self.id, col, line); }
+}
+
+// ============================ Capabilities ============================
+/// How well the interpreter can show a character.
+enum eCharOutput {
+    none = 0,          /// It can't show it.
+    approximate = 1,   /// It shows something close.
+    exact = 2          /// It shows it exactly.
+}
+
+/// What the interpreter can do. Each is read as a property; the ones that take an argument are routines.
+emitter class _bglSupports {
+    emitter int  version              { ($i6Expr(bgl.asm.gestalt(0, 0))) }          /// The Glk version, as 0xMMmmrr.
+    emitter bool timer                { ($i6Expr(bgl.asm.gestalt(5, 0)) ~= 0) }     /// Timed events.
+    emitter bool graphics             { ($i6Expr(bgl.asm.gestalt(6, 0)) ~= 0) }     /// Images and graphics windows.
+    emitter bool graphicsTransparency { ($i6Expr(bgl.asm.gestalt(14, 0)) ~= 0) }    /// Images with transparency.
+    emitter bool sound                { ($i6Expr(bgl.asm.gestalt(8, 0)) ~= 0) }     /// Sound.
+    emitter bool soundMusic           { ($i6Expr(bgl.asm.gestalt(13, 0)) ~= 0) }    /// Music formats (MOD and the like).
+    emitter bool soundVolume          { ($i6Expr(bgl.asm.gestalt(9, 0)) ~= 0) }     /// Setting the volume.
+    emitter bool soundNotify          { ($i6Expr(bgl.asm.gestalt(10, 0)) ~= 0) }    /// Notice when a sound ends.
+    emitter bool hyperlinks           { ($i6Expr(bgl.asm.gestalt(11, 0)) ~= 0) }    /// Hyperlinks.
+    emitter bool unicode              { ($i6Expr(bgl.asm.gestalt(15, 0)) ~= 0) }    /// Unicode text.
+    emitter bool dateTime             { ($i6Expr(bgl.asm.gestalt(20, 0)) ~= 0) }    /// The date and time.
+    emitter bool lineTerminators      { ($i6Expr(bgl.asm.gestalt(18, 0)) ~= 0) }    /// Keys other than Return ending line input.
+    emitter bool resourceStream       { ($i6Expr(bgl.asm.gestalt(22, 0)) ~= 0) }    /// Reading data files from the blorb.
+    /// How well it can show `c`.
+    emitter eCharOutput charOutput(char c){ ($i6Expr(bgl.asm.gestalt(3, (int)$c))) }
+    /// True when the player can type `c` at a key prompt.
+    emitter bool charInput(char c){ ($i6Expr(bgl.asm.gestalt(1, (int)$c)) ~= 0) }
+    /// True when windows of type `t` can show images.
+    emitter bool images(eGlulxWindowType t){ ($i6Expr(bgl.asm.gestalt(7, (int)$t)) ~= 0) }
+    /// True when windows of type `t` take mouse input.
+    emitter bool mouse(eGlulxWindowType t){ ($i6Expr(bgl.asm.gestalt(4, (int)$t)) ~= 0) }
+    /// True when windows of type `t` take hyperlink clicks.
+    emitter bool hyperlinkInput(eGlulxWindowType t){ ($i6Expr(bgl.asm.gestalt(12, (int)$t)) ~= 0) }
+}
+extend _glulx { alias supports for _bglSupports; }   // bgl.glulx.supports
+
+/// What the interpreter can do in one kind of window.
+primitive class windowSupport {
+    emitter bool images     { ($i6Expr(bgl.asm.gestalt(7, (int)$self)) ~= 0) }    /// It can show images.
+    emitter bool mouse      { ($i6Expr(bgl.asm.gestalt(4, (int)$self)) ~= 0) }    /// It takes mouse input.
+    emitter bool hyperlinks { ($i6Expr(bgl.asm.gestalt(12, (int)$self)) ~= 0) }   /// It takes hyperlink clicks.
+}
+extend class window {
+    /// What the interpreter can do in this window.
+    emitter windowSupport supports { ($self._type) }
+}
+extend _bglMainWindow {
+    /// What the interpreter can do in the main window.
+    emitter windowSupport supports { (3) }
+}
+extend _bglStatus {
+    /// What the interpreter can do in the status bar.
+    emitter windowSupport supports { (4) }
 }
 
 // ============================ Colors (§4.5) ============================

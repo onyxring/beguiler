@@ -5,7 +5,7 @@
     reaches it (the sound "door"). Verified here at runtime:
       • an accessor-WRITE hide (`hide height.operator =;`) leaves the READ intact — `v.height` still
         reads; and the writable sibling axis `v.width` still writes;
-      • the cast door `(baseWin)v.height = N` writes through the base surface and is VM-sound (the
+      • the cast door `((baseWin)v).height = N` writes through the base surface and is VM-sound (the
         proxy's operator= genuinely exists in the slot — no missing-property trap);
       • a whole-METHOD hide (`hide ping();`) is reachable via the same base cast.
     The compile-ERROR halves (writing a hidden axis, calling a hidden method, reading a whole-hidden
@@ -36,7 +36,7 @@ void main(){
     v.width = 10;                           // writable axis — dispatches dim.operator=
     print("w=");  print(v.width);   print("^");   // 10 — read through operator()
     print("h=");  print(v.height);  print("^");   // 0  — read survives the write-hide
-    (baseWin)v.height = 20;                 // DOOR: write the fixed axis via the base surface
+    ((baseWin)v).height = 20;               // DOOR: write the fixed axis via the base surface
     print("h2="); print(v.height);  print("^");   // 20 — VM-sound: proxy operator= really ran
-    print("ping="); print((baseWin)v.ping());     // 7  — hidden method reached via the door
+    print("ping="); print(((baseWin)v).ping());   // 7  — hidden method reached via the door
 }

@@ -1,0 +1,18 @@
+// run_unary_before_member_call — a prefix `!` or `-`, or a `(`, in front of a call on a member array:
+// the call's receiver is the array, not the operator or the parenthesis before it.
+// EXPECT_OUTPUT: not:true neg:-1 paren:1 sum:9 group:true tail:3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object a { }
+object tracker { array<object> seen[8]; array<int> nums = {1, 2}; }
+void main(){
+    bglInit();
+    print($"not:{!tracker.seen.contains(a)} ");
+    print($"neg:{-tracker.nums.indexOf(2)} ");
+    int p = (tracker.nums.indexOf(2));
+    print($"paren:{p} ");
+    print($"sum:{-(tracker.nums.indexOf(2)) + 10} ");
+    bool g = !(tracker.seen.contains(a)) && true;
+    print($"group:{g} ");
+    print($"tail:{((tracker.nums.indexOf(2)) * 3)}");
+}

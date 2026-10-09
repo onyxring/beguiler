@@ -1,0 +1,12 @@
+// run_float_print_rounds — print() writes a float rounded to four places, not truncated.
+// EXPECT_OUTPUT: 0.6667 1.0000 -0.6667 19.6350 0.0000
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+void main(){
+    bglInit(); glulxConsole();
+    print(2.0 / 3); print(" ");
+    print(0.99999); print(" ");
+    print(-2.0 / 3); print(" ");
+    print(3.1416 * 2.5 * 2.5); print(" ");
+    print(-0.00001);
+}

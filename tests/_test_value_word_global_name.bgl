@@ -1,0 +1,5 @@
+// Negative test: `true`, `false`, `null` and `self` name fixed values and can't be declared.
+// EXPECT_ERROR: 'true' is a value word and cannot be declared as a name
+#beguilerSettings { target = z5; informName = "none"; }
+int true = 2;
+void main(){ print(true); }

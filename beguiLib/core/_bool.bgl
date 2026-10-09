@@ -35,3 +35,4 @@ primitive class bool {
 }
 
 emitter void print(bool b){ if($b == true) print "true"; else print "false"; }   /// Print `true` or `false`.
+emitter void print(eBool b){ if($b == true) print "true"; else print "false"; }  /// Print `true` or `false`.

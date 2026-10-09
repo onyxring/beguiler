@@ -1,0 +1,15 @@
+// run_namespace_object_emitter_value — an emitter value or emitter method on an object reached
+// through a namespace member (`ns.helper.answer`) expands as it does on the object itself; and a
+// printed value that is a single word in parentheses (an emitter's `(42)`) is not read by Inform 6
+// as a print rule.
+// EXPECT_OUTPUT: 42 42 8 7
+#beguilerSettings { target = z5; informName = "none"; }
+object _helper { emitter int answer { (42) } emitter int twice(int x) { ($x * 2) } int plain = 7; }
+object ns { auto helper = _helper; }
+void main(){
+    bglInit();
+    print(_helper.answer); print(" ");
+    print(ns.helper.answer); print(" ");
+    print(ns.helper.twice(4)); print(" ");
+    print(ns.helper.plain);
+}

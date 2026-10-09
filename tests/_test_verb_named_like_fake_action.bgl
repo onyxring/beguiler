@@ -1,0 +1,11 @@
+// Negative test: a fake action of the I6 library (Order, ThrownAt, …) has no grammar or action routine,
+// and Inform 6 can't give a real action its name.
+// EXPECT_ERROR: 'Order' is a fake action of the I6 library
+#beguilerSettings { target = z5; informName = "none"; includePaths = "../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; attributes = {light}; }
+verb Order { grammar = {.order}; void handler() { print("ordered^"); } }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

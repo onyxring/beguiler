@@ -501,16 +501,76 @@ void bglParser::validateRoutinePropertyClashes(){
             if(!od->isSuperposed) addMembers(od->members, od->dName());
         }
     }
+    // Free-standing `property` declarations, the bindings' and the core's (`name`), are properties too.
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd != nullptr && vd->type.name == "property")
+            properties.emplace(lower(vd->i6name.empty() ? vd->name : vd->i6name), PropertyUse{"", vd, vd->src});
     for(typeDef* g : languageService.globals){
         auto* fd = dynamic_cast<functionDef*>(g);
         if(fd == nullptr || fd->isEmitter || fd->isExternal || fd->isSuperposed || fd->isPrePassStub || fd->isReplacedDead)
             continue;
         string routine = fd->i6name.empty() ? fd->dName() : fd->i6name;
         auto it = properties.find(lower(routine));
+        if(it != properties.end() && it->second.owner.empty()){
+            parsingError(format("{0}:{1}:1: routine '{2}' has the same name as the property '{3}'{4}; Inform 6 keeps "
+                "routines and properties in one namespace, ignoring case, so rename the routine.",
+                fd->src.file, fd->src.line, routine, it->second.member->dName(),
+                it->second.src.file.empty() ? string() : format(" ({0})", at(it->second.src))));
+            continue;
+        }
         if(it == properties.end()) continue;
         parsingError(format("{0}:{1}:1: routine '{2}' has the same name as member '{3}' of '{4}' ({5}); "
             "Inform 6 keeps routines and properties in one namespace, ignoring case, so rename one of them.",
             fd->src.file, fd->src.line, routine, it->second.member->dName(), it->second.owner, at(it->second.src)));
+    }
+    // A data member that meets a global is renamed `_m_<name>`; a method is not, so an object or
+    // global variable named like one is the same clash.
+    for(typeDef* g : languageService.globals){
+        sourceLocation src; string kind;
+        if(auto* od = dynamic_cast<objectDef*>(g)){
+            if(od->isExternal || od->isSuperposed || od->isPrePassStub) continue;
+            src = od->src; kind = "object";
+        } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+            if(vd->isExternal || vd->isConst || vd->isNamespaceAlias() || vd->isPrePassStub) continue;
+            src = vd->src; kind = "global";
+        } else continue;
+        string name = g->i6name.empty() ? g->dName() : g->i6name;
+        auto it = properties.find(lower(name));
+        if(it == properties.end() || dynamic_cast<functionDef*>(it->second.member) == nullptr) continue;
+        parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as method '{4}' of '{5}' ({6}); "
+            "Inform 6 keeps objects, variables and properties in one namespace, ignoring case, so rename one "
+            "of them or give one an `asI6` name.",
+            src.file, src.line, kind, name, it->second.member->dName(), it->second.owner, at(it->second.src)));
+    }
+}
+
+// Two globals that emit the same Inform 6 symbol: I6 keeps one namespace, ignoring case, for
+// routines, objects, variables, arrays, constants and classes. A function that emits nothing (an
+// emitter) can share its name with a variable or object (§3.10); two emitted symbols can't.
+void bglParser::validateGlobalNameClashes(){
+    auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
+    auto at = [](const sourceLocation& src){ return src.file.empty() ? string("an included file") : format("{0}:{1}", src.file, src.line); };
+    struct Symbol { typeDef* def; string kind; sourceLocation src; };
+    map<string, Symbol> seen;
+    for(typeDef* g : languageService.globals){
+        string kind; sourceLocation src;
+        if(auto* fd = dynamic_cast<functionDef*>(g)){
+            if(fd->isEmitter || fd->isExternal || fd->isSuperposed || fd->isPrePassStub || fd->isReplacedDead) continue;
+            kind = "function"; src = fd->src;
+        } else if(auto* od = dynamic_cast<objectDef*>(g)){
+            if(od->isExternal || od->isSuperposed || od->isPrePassStub) continue;
+            kind = "object"; src = od->src;
+        } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+            if(vd->isExternal || vd->isNamespaceAlias() || vd->isPrePassStub || vd->isInstanceBacking || vd->isSynthetic) continue;
+            kind = dynamic_cast<arrayDeclaration*>(vd) ? "array" : "variable"; src = vd->src;
+        } else continue;
+        if(src.file.empty()) continue;   // compiler-made
+        string name = lower(g->i6name.empty() ? g->dName() : g->i6name);
+        auto [it, fresh] = seen.emplace(name, Symbol{g, kind, src});
+        if(fresh || it->second.def == g) continue;
+        parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as {4} '{5}' ({6}); Inform 6 keeps these "
+            "in one namespace, ignoring case, so rename one of them or give one an `asI6` name.",
+            src.file, src.line, kind, g->dName(), it->second.kind, it->second.def->dName(), at(it->second.src)));
     }
 }
 
@@ -896,6 +956,7 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
         languageService.registerInstance(*backing);
         p->backingName = backingName;
         p->isClassParamWithBacking = true;
+        funcDef.ownBackings.push_back({backingName, p->type.name});
         p->copyInOperator = assignOp;
         // The copy-in, run at entry: the argument (still in the parameter) is copied into the
         // parameter's own instance, then the parameter is pointed at it.
@@ -950,6 +1011,10 @@ void bglParser::detectInfModeI6Collisions(){
     std::set<std::string> beguileNames;
     for(typeDef* g : languageService.globals){
         if(dynamic_cast<i6RawNode*>(g)) continue;  // raw I6 nodes aren't named decls
+        // An `extern` names an I6 symbol on purpose (the library binds NO_ATTRIBUTE this way).
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal) continue;
+        if(auto* fd = dynamic_cast<functionDef*>(g); fd && (fd->isExternal || fd->isEmitter)) continue;
+        if(auto* od = dynamic_cast<objectDef*>(g); od && od->isExternal) continue;
         std::string n = g->name;
         std::transform(n.begin(), n.end(), n.begin(), ::tolower);
         if(!n.empty()) beguileNames.insert(n);
@@ -1784,9 +1849,48 @@ bool bglParser::processNextStatement(abstractObject& contextObject) {
 bool bglParser::processStatementDispatch(token tok, abstractObject& contextObject) {
     if(!grammarInitialized) initGrammarTable();
     sourceLocation stmtLoc = file.currentLocation();
+    // Every statement, keyword-led ones included, places its errors from its own first token.
+    if(tok.src.line > 0){
+        currentStatementSrc = tok.src;
+        currentStatementSrc.col = max(1, tok.src.col - (int)tok.originalValue.size());
+    }
 
     // Early exits
     if(tok.is(token::braceClose)) return true;
+    // A local or parameter named like a class (a library's `int win` beside a program's `class win`)
+    // lexes as a type; at the start of a statement, followed by an assignment, a member access, a
+    // subscript, a call or ++/--, it is the variable.
+    if(tok.is(eTokenType::dataType) && getCurrentCompileContext() == eCompileContext::codeBlock)
+        if(auto* f = dynamic_cast<functionDef*>(&contextObject)){
+            auto* fb = dynamic_cast<statementBlock*>(f->body);
+            token nx = file.peekToken();
+            bool usesVariable = nx.is(token::assignment) || nx.is(token::period) || nx.is(token::bracketOpen)
+                || nx.is(token::parenOpen) || nx.is("++") || nx.is("--")
+                || (nx.is(eTokenType::oper) && nx.value.size() >= 2 && nx.value.back() == '=' && nx.value != "==" && nx.value != "!=");
+            if(usesVariable && (qualifyFromParams(tok.value, f) || qualifyFromBodyLocals(tok.value, fb)
+                                || qualifyFromAncestorBlocks(tok.value, fb)))
+                tok.tokenType = eTokenType::identifier;
+        }
+    // A bare block (§5.2): a scope of its own, emitted as an always-taken `if` so its locals are
+    // released at its closing brace as any other block's are.
+    if(tok.is(token::braceOpen) && getCurrentCompileContext() == eCompileContext::codeBlock){
+        if(auto* func = dynamic_cast<functionDef*>(&contextObject)){
+            auto* blockIf = new ifStatement();
+            blockIf->src = stmtLoc;
+            blockIf->condition = new expression();
+            blockIf->condition->tokens.push_back("true");
+            blockIf->condition->resolvedType = "bool";
+            blockIf->thenBlock = new statementBlock();
+            functionDef blockCtx;
+            blockCtx.returnType = func->returnType; blockCtx.params = func->params;
+            blockCtx.body = blockIf->thenBlock;
+            openCompileContext(eCompileContext::codeBlock, blockIf->thenBlock);
+            while(processNextStatement(blockCtx) == false){}
+            closeCompileContext(eCompileContext::codeBlock);
+            if(auto* body = dynamic_cast<statementBlock*>(func->body)) body->statements.push_back(blockIf);
+            return false;
+        }
+    }
     if(tok.is(eTokenType::eof)) {
         if(getCurrentCompileContext() == eCompileContext::codeBlock)
             parsingError("Unexpected end of file — missing closing '}'");
@@ -1874,13 +1978,20 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     // '|'-separated members into ONE synthetic dataType token carrying the canonical union name.
     // The grammar's `dataType identifier …` declaration rules then match unchanged, so this one
     // choke point gives unions to locals, return types, members, and typed object declarations.
-    // Restricted to a simple leading type (uses a single-token peek, no speculative consumption);
-    // a func<…>/array<…> first member is not collapsed here — write the scalar member first
-    // (canonicalization makes member order irrelevant to the resulting type).
-    if(!q.isExtern && tok.isDataType()
-       && tok.value != "func" && tok.value != "array" && tok.value != "rawarray"
-       && file.peekToken().value == "|"){
-        tok.value = maybeParseUnionTail(tok.value);
+    // A func<…>/array<…> first member is recognized by matching its angle brackets ahead.
+    if(!q.isExtern && tok.isDataType()){
+        bool generic = tok.value == "func" || tok.value == "array" || tok.value == "rawarray";
+        if(!generic && file.peekToken().value == "|")
+            tok.value = maybeParseUnionTail(tok.value);
+        else if(generic && genericTypeIsUnionHead()){
+            string first;
+            if(tok.value == "func") first = parseFuncType();
+            else {
+                first = parseArrayTypeTail(tok.value);
+                if(first == "array<char>" || first == "array<charliteral>") first = "bytearray";
+            }
+            tok.value = maybeParseUnionTail(first);
+        }
     }
 
     // Try grammar-driven matching
@@ -1992,6 +2103,7 @@ string bglParser::parseArrayTypeTail(const string& base){
     string elem = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     if(elem == "func")                             elem = parseFuncType();
     else if(elem == "array" || elem == "rawarray") elem = parseArrayTypeTail(elem);   // nested array-of-arrays
+    elem = maybeParseUnionTail(elem);                                                 // array<A | B>
     token sep = file.getToken();
     if(sep.value == ">>") file.pushBackCloseAngle(sep);   // closes this level + an outer one
     else if(!sep.is(">")) parsingError("Expected '>' to close 'array<...>'");
@@ -2030,7 +2142,7 @@ string bglParser::readArrayElementType(){
     string elemType = t.value;
     if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
     else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
-    return elemType;
+    return maybeParseUnionTail(elemType);              // array<A | B>
 }
 
 // After a `literal` token: true when a type follows, so `literal` is the qualifier rather than a
@@ -2041,6 +2153,21 @@ bool bglParser::isLiteralQualifierAhead(){
     // A generic type parameter (`literal T item`) is an identifier followed by the declared name.
     token after = file.peekToken(2);
     return next.is(eTokenType::identifier) && (after.is(eTokenType::identifier) || after.is(eTokenType::dataType));
+}
+
+// After a just-read `func`/`array`/`rawarray`: true when its `<…>` is followed by '|'.
+bool bglParser::genericTypeIsUnionHead(){
+    if(file.peekToken().value != "<") return false;
+    int depth = 0;
+    for(int n = 1; n < 64; n++){
+        token t = file.peekToken(n);
+        if(t.is(eTokenType::eof) || t.value == ";" || t.value == "{" || t.value == "=") return false;
+        if(t.value == "<") depth++;
+        else if(t.value == ">") depth--;
+        else if(t.value == ">>") depth -= 2;
+        if(depth <= 0) return depth == 0 && file.peekToken(n + 1).value == "|";
+    }
+    return false;
 }
 
 // If a '|' follows the just-read first type, consume the '|'-separated members and return
@@ -2330,6 +2457,20 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             allowVoidReturnExpr = true;
             expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
             allowVoidReturnExpr = savedAllowVoid;
+            // A property accessor prints its value, as `print(x)` does — unless its class prints itself.
+            if(functionDef* getter = nativeGetterOf(exprNode->resolvedType)){
+                classDef* cls = getDispatchClass(exprNode->resolvedType);
+                bool printsItself = false;
+                if(cls != nullptr)
+                    for(typeMember* m : cls->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == "print" && fd->params.empty())
+                            printsItself = true;
+                if(!printsItself){
+                    string text = exprNode->text();
+                    exprNode->tokens.assign(1, text + "." + getter->i6name + "()");
+                    exprNode->resolvedType = getter->returnType.name;
+                }
+            }
             interpolatedSegment seg;
             seg.isExpr = true;
             seg.expr = exprNode;

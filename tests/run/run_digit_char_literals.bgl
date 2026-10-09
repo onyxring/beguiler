@@ -1,0 +1,14 @@
+// run_digit_char_literals — a digit character literal is that character's code, so it prints as the
+// digit, compares with its code, and isNumeric() is true for it.
+// EXPECT_OUTPUT: 7 55 true true false 0 65 48
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    char d = '7';
+    print(d); print(" ");
+    print((int)d); print(" ");
+    print(d == (char)55); print(" ");
+    print(d.isNumeric()); print(" ");
+    print('a'.isNumeric()); print(" ");
+    print('0'); print(" ");
+    print((int)'A'); print(" "); print((int)'0');
+}

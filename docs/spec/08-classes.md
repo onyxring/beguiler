@@ -61,6 +61,13 @@ variables follow the same `⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ]` form as glob
 (`extern`, `emitter`, `alias`, `extend`, `replace`, `superposed`, …) are the declaration
 qualifiers of §3.2 and may appear in any order.
 
+In the generated Inform 6, a class declared in Beguile is named `_bglClass_⟨name⟩`. Inform 6 keeps
+class names in one namespace with properties, attributes, objects and routines, and a class's natural
+name is often already one of those: the standard library's attributes `container` and `door`, or a
+member named like the class. The prefix keeps every Beguile class name free. An `extern` class keeps the
+Inform 6 name it binds, and a name that already begins with `_bgl` is reserved and is emitted
+unchanged. I6 code that names a Beguile class reaches it through `$i6Name` (§7.3.3).
+
 **Example**
 
 ```bgl
@@ -73,9 +80,27 @@ class Point {
 
 ### 8.1.1 Type Parameters
 
-Beguile has no generic classes. The `<T>` form is for array types: `array<T>`, `rawArray<T>` and any
-array class, wherever it is declared (§12.1). `array<Room>` binds `T` to `Room` in the array's method
-signatures, so `rooms.push(lamp)` is rejected when `lamp` is not a `Room`.
+Beguile has no generic classes. The `<T>` form belongs to the two array types, `array<T>` and
+`rawArray<T>` (§12.1); a type parameter on any other class, including one derived from `array`, is a
+compile-time error. `array<Room>` binds `T` to `Room` in the array's method signatures, so
+`rooms.push(lamp)` is rejected when `lamp` is not a `Room`.
+
+An `extend extern class array` block adds emitters to every array, and `T` in their signatures binds
+the same way. The extension does not repeat the `<T>`. A body is raw I6, so it works with the
+array's own layout. For a global or local array, `$self` is the array and element `i` is
+`$self-->(i+1)`. For a member array, `$self` is the owning object, `$prop` the property, and
+element `i` is `$self.&$prop-->i`; `$prop` is `0` for a non-member array (§7.3). A read can
+instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right form for either.
+
+**Example**
+
+```bgl
+extend extern class array {
+    emitter T second() { $i6Expr($self[1]) }
+}
+array<int> scores = {4, 9, 2};
+void main(){ int s = scores.second(); print(s); }   // 9
+```
 
 ## 8.2 Class Forms
 
@@ -261,7 +286,7 @@ primitive class int {
     emitter int operator + (int v){ $val + $v }
 }
 
-glulxImage cover = eAssets.coverArt;    // a primitive over int accepts the int
+glulxImage cover = eImages.coverArt;    // a primitive over int accepts the int
 int w = cover.width;                    // behavior without storage
 ```
 
@@ -282,7 +307,9 @@ constant, and the empty `[]` is the extern marker form (§8.2.2).
 A normal class may reserve a fixed number of instances by adding `[N]` after its name. Instances are
 then obtained and released with `new` (§4.13) and `delete` (§5.15). There is no dynamic allocation:
 `new` returns one of the `N` preallocated slots, or `null` when the pool is exhausted, and the pool
-never grows; the result of `new` must be tested before use.
+never grows; the result of `new` must be tested before use. A pooled instance has no name of its own:
+printed without a `short_name` (or a `print()` of its class), it shows the Inform 6 name of its slot,
+such as `_bglClass_Token_1`, so a class whose instances are printed declares one.
 
 **Pool size.**
 - `[N]`, a positive integer literal.
@@ -305,9 +332,9 @@ allocated, and a `destroy()` method, run before a slot is returned to the pool. 
 - `destroy()` returns `void` and takes no parameters.
 - One `create` and one `destroy` per class; overloads are compile-time errors.
 
-**Owned members in a pool.** Each slot has its own backing for every owned member (§8.3.4). `new`
-attaches a backing and resets its members to their declared defaults, so a reused slot always starts
-fresh; `delete` releases it. Any `create()`/`destroy()` the class declares runs after this reset.
+**Members in a pool.** `new` resets every member of the slot to its declared value, so a reused slot
+always starts fresh. Each slot also has its own backing for every owned member (§8.3.4), which `new`
+attaches and `delete` releases. Any `create()`/`destroy()` the class declares runs after this reset.
 
 **Example**
 
@@ -622,6 +649,8 @@ to acquire and release it.
   assignment. `deinit` fires at the end of the block the variable was declared in, and before any
   `return` that leaves that block. For a variable declared at the routine's top level these are the
   same thing: the routine's end and every `return` in it. Releases run in reverse declaration order.
+  A local of a reference class refers to an instance it doesn't own, so neither fires, as for a
+  parameter; a pooled instance is created and released with `new` and `delete` (§8.2.6).
 - **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
   both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
   copied in through the class's `operator =` taking its own type, and `deinit` fires at the
@@ -680,7 +709,7 @@ when two parents declare the same member name, the first-listed parent's member 
 method, bare identifiers resolve inherited **variable** members from all bases by this search;
 inherited methods resolve through method dispatch.
 
-To dispatch to a specific ancestor's version of a member, cast the receiver: `(Animal)myDog.speak()`
+To dispatch to a specific ancestor's version of a member, cast the receiver: `((Animal)myDog).speak()`
 (§4.11).
 
 **Example**
@@ -841,7 +870,7 @@ class vertWin : baseWin {
 
 vertWin side {}
 side.height = 5;                      // compile-time error
-(baseWin)side.height = 5;             // OK: the base surface still has the write
+((baseWin)side).height = 5;           // OK: the base surface still has the write
 ```
 
 **See also** §9.9 — property accessors, the usual target of `hide member.operator =;`.

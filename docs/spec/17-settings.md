@@ -47,7 +47,7 @@ command line counts as written before any block (§16.4). Two exceptions:
   dropped).
 - `release` and `seriesNumber` treat `0` as "not set", so a block that assigns `0` does not fix them.
 
-**Entry-file properties.** Five properties are read from the entry source file before parsing begins,
+**Entry-file properties.** Six properties are read from the entry source file before parsing begins,
 by a textual scan of its `#beguilerSettings` blocks:
 
 - `target`

@@ -1,0 +1,7 @@
+// An object named like another object's method would be a second I6 symbol of that name, which
+// Inform 6 rejects; Beguiler says so, and an `asI6` name avoids it.
+// EXPECT_ERROR: object 'lookup' has the same name as method 'lookup' of 'sorter'
+#beguilerSettings { target = z5; informName = "none"; }
+object sorter { int lookup(){ return 1; } }
+object lookup { }
+void main(){ }

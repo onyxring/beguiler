@@ -1,0 +1,46 @@
+// run_glulx_window_output_styles — the Glulx UI surface: `style` takes true/false, a `styleSheet` passed
+// to a split, window output (`print`, `printLine`, `clear`), status-bar output with `moveCursor`,
+// `childStyles` (a reference to a sheet), `bgl.glulx.supports` and `win.supports`, and `checkStyle`, which says "unknown" when the interpreter
+// can't report hints (headless Quixe reports none; it does claim image support).
+// Each window's text is checked on its own: the headless interpreter groups output by window.
+// EXPECT_OUTPUT: panel:7 brass lamp
+// EXPECT_OUTPUT: panel:42
+// EXPECT_OUTPUT: main:start sheet:ok supports:true images:true check:unknown known:false flag:1 unset:2147483647 status:ok child:same child:copied child:none split:ok main:end
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxWindow>
+object lamp { "brass lamp"; }
+styleSheet look = styleSheet{ alert = style{ fontWeight = 1; italics = true; foreColor = $C80000; }; };
+void main(){
+    bglInit(); glulxConsole();
+    print("main:start ");
+    textBufferWindow panel = bgl.ui.mainWin.splitRightBuffer(30, styles: look);
+    if (panel == null) { print("no panel"); return; }
+    panel.printLine($"panel:{3 + 4} {lamp}");
+    panel.print("panel:");
+    panel.print(42);
+    panel.printLine();
+    print("sheet:ok ");
+    print($"supports:{bgl.glulx.supports.hyperlinks} images:{panel.supports.images} ");
+    eStyleCheck r = panel.checkStyle(eGlulxStyleType.alert, look.alert);
+    if (r == eStyleCheck.unknown) print("check:unknown ");
+    print($"known:{r.known} ");
+    style s = style{ italics = true; };
+    print($"flag:{(int)s.italics} unset:{(int)s.reverse} ");
+    bgl.ui.statusBar.height = 1;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print("Room A");
+    print("status:ok ");
+    // childStyles refers to a sheet: set, read back, copied to a child, cleared; splits apply it.
+    bgl.ui.mainWin.childStyles = look;
+    if (bgl.ui.mainWin.childStyles == look) print("child:same ");
+    panel.childStyles = bgl.ui.mainWin.childStyles;
+    if (panel.childStyles == look) print("child:copied ");
+    textBufferWindow notes = panel.splitDownBuffer(5);
+    textBufferWindow log = panel.splitDownBuffer(3, styles: look);
+    bgl.ui.mainWin.childStyles = null;
+    if (bgl.ui.mainWin.childStyles == null) print("child:none ");
+    if (notes != null && log != null) print("split:ok ");
+    print("main:end");
+}

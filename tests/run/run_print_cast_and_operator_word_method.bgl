@@ -1,0 +1,17 @@
+// run_print_cast_and_operator_word_method — print(((Dog)a).barks) prints the member (a single word
+// in parentheses before `.` is not read by Inform 6 as a print rule); and a method named like an I6
+// operator word (ofClass) is renamed in I6, so it can be called.
+// EXPECT_OUTPUT: 7 5 8
+#beguilerSettings { target = z5; informName = "none"; }
+class Animal : object { }
+class Dog : Animal { int barks = 7; }
+Dog rex { }
+object world { int ofClass(int n){ return n + 1; } }
+class K : _bglObject { int ofClass(int n){ return n * 2; } }
+K k1 { }
+void main(){
+    bglInit();
+    Animal a = rex;
+    print(((Dog)a).barks); print(" ");
+    print($"{world.ofClass(4)} {k1.ofClass(4)}");
+}

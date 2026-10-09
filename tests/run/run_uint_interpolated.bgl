@@ -1,0 +1,10 @@
+// run_uint_interpolated — a uint inside an interpolated string prints unsigned, as print(uint) does.
+// EXPECT_OUTPUT: 65535 65535
+// EXPECT_OUTPUT: [65535]
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    uint u = (uint)-1;
+    print(u); print(" ");
+    printLine(u);
+    print($"[{u}]");
+}

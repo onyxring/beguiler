@@ -1,0 +1,23 @@
+// run_union_generic_first_member — a union whose first member is func<…> or array<…> declares
+// at every site: global, return type, parameter, member, local.
+// EXPECT_OUTPUT: [run] pos glob [run] arr
+#beguilerSettings { target = z5; informName = "none"; }
+void helper(){ print("[run]"); }
+func<void> | string g = "glob";                         // global, func first
+func<void> | string pick(int n){ if (n > 0) return "pos"; return helper; }   // return type, func first
+void describe(func<void> | string x){                   // param, func first
+    if (typeof(x) == eType.routine) { func<void> f = (func<void>)x; f(); }
+    else print((string)x);
+}
+class Slot { func<void> | string handler; }              // member, func first
+object s1 : Slot { handler = helper; }
+void main(){
+    bglInit();
+    func<void> | string L = helper;                      // local, func first
+    describe(L); print(" ");
+    describe(pick(1)); print(" ");
+    describe(g); print(" ");
+    describe(s1.handler); print(" ");
+    array<int> | string A = "arr";                       // array first
+    describe((string)A);
+}

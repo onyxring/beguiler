@@ -1,0 +1,26 @@
+// run_inline_accessor_in_class — an inline `auto name = { … }` accessor in a class body gives every
+// instance its own accessor state; a trailing `;` after the braces is accepted, in an object too.
+// EXPECT_OUTPUT: 12 30 12 | 9
+#beguilerSettings { target = z5; informName = "none"; }
+class Gadget : _bglObject {
+    auto level = {
+        int _raw;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v * 3; }
+    };
+}
+Gadget a { }
+Gadget b { }
+object dial {
+    auto setting = {
+        int _v;
+        int  operator ()        { return _v; }
+        void operator = (int v) { _v = v + 1; }
+    };
+}
+void main(){
+    a.level = 4; b.level = 10;
+    print(a.level); print(" "); print(b.level); print(" "); print(a.level);
+    dial.setting = 8;
+    print(" | "); print(dial.setting);
+}

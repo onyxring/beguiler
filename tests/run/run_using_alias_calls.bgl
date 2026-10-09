@@ -1,0 +1,16 @@
+// run_using_alias_calls — a member imported by #using (an auto value alias, an alias) is sent to its
+// target when called by its bare name: in a statement, and in a global's initializer.
+// EXPECT_OUTPUT: hits 2 / 8 10
+#beguilerSettings { target = z5; informName = "none"; }
+object _counters { int hits = 0; void hit() { hits++; } }
+object _tools { int doubled(int n) { return n * 2; } }
+object kit { auto counters = _counters; alias tools = _tools; }
+int viaPath = kit.tools.doubled(4);
+#using kit
+int viaUsing = tools.doubled(5);
+void main() {
+    bglInit();
+    kit.counters.hit();
+    counters.hit();
+    print($"hits {counters.hits} / {viaPath} {viaUsing}");
+}

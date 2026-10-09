@@ -1,0 +1,13 @@
+// run_verb_on_library_word_before_grammar — a new verb whose word the library's grammar already claims
+// may be declared before the library's grammar is included: the grammar extending the library's is
+// written after it (§23.2).
+// EXPECT_OUTPUT: Polished 3.
+// INPUT: polish 3
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+verb Polish { grammar = {.polish, NUMBER}; void handler() { print($"Polished {(int)noun}.^"); } }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

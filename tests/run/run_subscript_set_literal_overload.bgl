@@ -1,0 +1,28 @@
+// run_subscript_set_literal_overload — a literal on the right of `b[i] = …` selects an
+// `operator []=` declared against its literal pseudo-type (charLiteral, intLiteral).
+// EXPECT_OUTPUT: 74 lit5 9
+#beguilerSettings { target = z5; informName = "none"; }
+value class box {
+    int v;
+    box operator = (box o){ v = o.v; return self; }
+    emitter char operator[](int pos) { $self.v }
+    emitter char operator[]=(int pos, charLiteral c) { $self.v = $c }
+}
+value class slots {
+    int v;
+    slots operator = (slots o){ v = o.v; return self; }
+    emitter int operator[](int pos) { $self.v }
+    emitter int operator[]=(int pos, int n) { $self.v = $n }
+    emitter int operator[]=(int pos, intLiteral n) { $self.v = $n + 100 }
+}
+void main(){
+    bglInit();
+    box b; b[0] = 'J';
+    print((int)b.v);
+    slots s; s[0] = 5;
+    print(" lit");
+    print(s.v - 100);
+    int n = 9; s[0] = n;
+    print(" ");
+    print(s.v);
+}

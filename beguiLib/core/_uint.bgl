@@ -10,6 +10,7 @@
 /// A whole number read as unsigned: the same word as `int`, but comparison, division and remainder treat it as unsigned.
 primitive class uint {
     emitter int operator = (uint v){ $target=$v; }                           /// Assignment: the variable takes the value.
+    replace emitter void print(){ _bglPrintUint($val); }                     /// Print the value as an unsigned number.
 
     emitter uint operator + (uint v){ $val + $v }                            /// The sum, wrapping on overflow.
     emitter uint operator - (uint v){ $val - $v }                            /// The difference, wrapping on overflow.

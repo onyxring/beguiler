@@ -1,0 +1,21 @@
+// run_stringobj_append_string_and_char — a stringObj takes `+` and `+=` with a string and a char, as
+// §22.3 says string and stringObj mix freely and append takes a string or a char.
+// EXPECT_OUTPUT: ab! abc? 4 yes
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <string>
+void main(){
+    bglInit(); glulxConsole();
+    stringObj built = "a";
+    string w = "b";
+    built += w;
+    built += '!';
+    print(built);
+    stringObj more = built + "c";
+    stringObj next = "abc";
+    next = next + '?';
+    print(" "); print(next);
+    print($" {built.length + 1}");
+    char q = '?';
+    if (q == '?') print(" yes");
+}

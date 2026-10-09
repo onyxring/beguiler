@@ -18,6 +18,12 @@ primitive class dictionaryWord : patternElement {
     emitter dictionaryWordLiteral operator();                                     /// Convert to a dictionary-word literal.
     emitter dictionaryWord operator = (dictionaryWordLiteral v){ $target = $v; }  /// Assignment: the variable takes the word.
     emitter dictionaryWord operator = (dictionaryWord v){ $target = $v; }         /// Assignment: the variable takes the word.
+    emitter bool operator == (dictionaryWord v){ $val == $v }          /// True when both are the same word.
+    emitter bool operator == (dictionaryWordLiteral v){ $val == $v }   /// True when both are the same word.
+    emitter bool operator != (dictionaryWord v){ $val ~= $v }          /// True when they are different words.
+    emitter bool operator != (dictionaryWordLiteral v){ $val ~= $v }   /// True when they are different words.
+    emitter bool operator == (_bglObject v){ $val == $v }              /// True when there is no word (`null`).
+    emitter bool operator != (_bglObject v){ $val ~= $v }              /// True when there is a word.
     replace emitter void print(){ print (address) $val }   /// Print the word.
 }
 

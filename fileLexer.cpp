@@ -519,6 +519,38 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     return retval;//return our completed basic token
 }
+string fileLexer::getRawTextToStatementEnd(){
+    string text;
+    int depth = 0;
+    char c = readChar();
+    while(c != EOF){
+        if(c == ';' && depth == 0) return text;
+        if(c == '(' || c == '[' || c == '{') depth++;
+        else if(c == ')' || c == ']' || c == '}') depth--;
+        if(c == '"' || c == '\''){
+            char q = c; text += c; c = readChar();
+            while(c != EOF && c != q){
+                if(c == '\\'){ text += c; c = readChar(); if(c == EOF) break; }
+                text += c; c = readChar();
+            }
+        } else if(c == '/' && peekChar() == '/'){
+            while(c != EOF && c != '\n') c = readChar();
+            text += ' ';
+            continue;
+        } else if(c == '/' && peekChar() == '*'){
+            readChar(); c = readChar();
+            while(c != EOF && !(c == '*' && peekChar() == '/')) c = readChar();
+            if(c != EOF) readChar();
+            text += ' ';
+            c = readChar();
+            continue;
+        }
+        if(c != EOF) text += c;
+        c = readChar();
+    }
+    parser.parsingError("Unexpected end of file — missing ';'");
+    return text;
+}
 string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
     string retval;
     int count=1; //we have already encountered the first open brace, which is why we are calling this function, so we start our count at 1
@@ -1020,6 +1052,7 @@ token fileLexer::lexCharLiteralToken(token retval){
     //   \^a \:u \'e \`a \~n \/o \cc \oa \ae \AE \OE \oe \th \et
     char c = peekChar(); readChar();
     string charVal;
+    bool rawCode = false;   // the value is already the character's code on this target (`\$XX`, a typed character on Glulx)
     if(c == '\\'){
         c = peekChar(); readChar();
         if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
@@ -1030,6 +1063,7 @@ token fileLexer::lexCharLiteralToken(token retval){
             while(isxdigit(peekChar())){ hex += peekChar(); readChar(); }
             if(hex.empty()) parser.parsingError("Expected hex digits after \\$ in character literal");
             charVal += to_string(stoi(hex, nullptr, 16));
+            rawCode = true;
         }
         else if(isdigit(c)){
             // Numeric escape: \NNN — ZSCII character code; emit as raw integer for I6 expressions
@@ -1110,14 +1144,31 @@ token fileLexer::lexCharLiteralToken(token retval){
         // Non-ASCII: decode UTF-8 (or Latin-1) and look up ZSCII code
         uint32_t codepoint = decodeUtf8((unsigned char)c, [&](){ return readChar(); }, [&](){ return peekChar(); });
         auto it = unicodeToZscii.find(codepoint);
-        if(it != unicodeToZscii.end())
+        if(targetIsGlulx()){
+            charVal += to_string(codepoint);   // Glulx characters are Unicode
+            rawCode = true;
+        }
+        else if(it != unicodeToZscii.end())
             charVal += to_string(it->second.code);
         else {
             char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%04X", codepoint);
             parser.parsingError(format("Unsupported Unicode character U+{0} in character literal", string(hexBuf)));
         }
+    } else if(isdigit((unsigned char)c)){
+        // A digit is given as its code: a literal made only of digits is read downstream as a
+        // character code (`\55`), so `'7'` written as `7` would mean the character numbered 7.
+        charVal += to_string((int)c);
+        rawCode = true;
     } else {
         charVal += c;
+    }
+    // On Glulx a character is its Unicode code point, so an accent shorthand or a code from the
+    // ZSCII table above (`'\:a'`, `'\155'`) is translated back to the character it names.
+    if(targetIsGlulx() && !rawCode && !charVal.empty() && all_of(charVal.begin(), charVal.end(), ::isdigit)){
+        int z = stoi(charVal);
+        if(z >= 155 && z <= 251)
+            for(const auto& [cp, entry] : unicodeToZscii)
+                if(entry.code == z){ charVal = to_string(cp); break; }
     }
     // consume closing '
     // A char literal holds exactly ONE character, so the closing quote must be here. If it

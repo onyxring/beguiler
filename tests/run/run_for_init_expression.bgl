@@ -4,6 +4,7 @@
     I6 as a property message on a local and failed at run time.  */
 // EXPECT_OUTPUT: 871
 #beguilerSettings { target = z5; informName = "none"; }
+#include <array>
 
 void main() {
     array<int> a[4];

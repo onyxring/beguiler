@@ -9,274 +9,14 @@ global _bglInitDone = 0;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-[_bglArrayCompareAsc lhs rhs;
-    
-        if(lhs < rhs) return -1;
-        if(lhs > rhs) return 1;
-        return 0;
-    
-];
-object _bglArray
-  with rawGet [addr slot;
-     return addr-->slot; 
-  ],
-       rawSet [addr slot v;
-     addr-->slot = v; 
-  ],
-       get [obj prop n;
-    
-            if(metaclass(obj)==object) return obj.&prop-->n;
-            return obj-->(n+1);
-        
-  ],
-       set [obj prop n v;
-    
-            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
-            obj-->(n+1) = v;
-        
-  ],
-       copy [dobj dprop sobj sprop n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n = cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
-    }
-    self.setlength(dobj, dprop, n);
-  ],
-       isTracked [obj prop hdr;
-     if(metaclass(obj)==object) rfalse; 
-    hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
-  ],
-       size [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,0)-2;
-    }
-    return self.rawget(obj,0);
-  ],
-       length [obj prop;
-     if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,self.rawget(obj,0)-1);
-    }
-    return self.rawget(obj,0);
-  ],
-       setLength [obj prop n cap;
-    if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-         quit; 
-    }
-    cap=self.size(obj,prop);
-    if (n > cap) {
-        n=cap;
-    }
-     if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
-    if (self.istracked(obj,prop)) {
-        self.set(obj, prop, self.size(obj,prop), n);
-    }
-  ],
-       indexOf [obj prop val op len t e;
-    len=self.length(obj,prop);
-    for (t = 0 : t < len : t++) {
-        e = self.get(obj,prop,t);
-        if (e==val) {
-            return t;
-        }
-        
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
-            
-    }
-    return -1;
-  ],
-       setOwned [obj prop n v assign;
-    if (assign==0) {
-        self.set(obj, prop, n, v);
-        return;
-    }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
-    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
-  ],
-       clear [obj prop dtor sz t;
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-    for (t = 0 : t < sz : t++) {
-        self.set(obj, prop, t, 0);
-    }
-    self.setLength(obj, prop, 0);
-  ],
-       freeAll [obj prop dtor sz t;
-    if (dtor==0) {
-        return;
-    }
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-  ],
-       swap [obj prop pos1 pos2 tmp;
-    tmp = self.get(obj,prop,pos1);
-    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
-    self.set(obj, prop, pos2, tmp);
-  ],
-       reverse [obj prop len half i;
-    len=self.length(obj,prop);
-    half=len / 2;
-    for (i = 0 : i < half : i++) {
-        self.swap(obj, prop, i, len - 1 - i);
-    }
-  ],
-       append [obj prop val assign len;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    self.setOwned(obj, prop, len, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       insert [obj prop pos val assign len i;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    if (pos < 0 || pos > len) {
-        return false;
-    }
-    for (i = len : i > pos : i--) {
-        self.set(obj, prop, i, self.get(obj,prop,i - 1));
-    }
-    self.set(obj, prop, pos, 0);
-    self.setOwned(obj, prop, pos, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       prepend [obj prop val assign;
-    return self.insert(obj,prop,0,val,assign);
-  ],
-       destroyValue [dtor v;
-     if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
-  ],
-       remove [obj prop pos dtor len i;
-    len=self.length(obj,prop);
-    if (pos < 0 || pos >= len) {
-        return;
-    }
-    self.destroyValue(dtor, self.get(obj,prop,pos));
-    for (i = pos : i < len - 1 : i++) {
-        self.set(obj, prop, i, self.get(obj,prop,i + 1));
-    }
-    self.set(obj, prop, len - 1, 0);
-    self.setLength(obj, prop, len - 1);
-  ],
-       removeValue [obj prop val op dtor pos len e hit;
-    pos = 0;
-    len=self.length(obj,prop);
-    while (pos < len) {
-        e = self.get(obj,prop,pos);
-        hit=false;
-        if (e==val) {
-            hit = true;
-        }
-        if (~~hit) {
-            
-                    if(op ~= 0 && e ~= 0 && val ~= 0){
-                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
-                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
-                    }
-                
-        }
-        if (hit) {
-            self.remove(obj, prop, pos, dtor);
-            len = self.length(obj,prop);
-        }
-        else {
-             pos++ ;
-        }
-    }
-  ],
-       push [obj prop val;
-    self.insert(obj, prop, 0, val, 0);
-  ],
-       pop [obj prop v;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    v = self.get(obj,prop,0);
-    self.remove(obj, prop, 0, 0);
-    return v;
-  ],
-       dequeue [obj prop;
-    return self.pop(obj,prop);
-  ],
-       enqueue [obj prop val;
-    self.append(obj, prop, val, 0);
-  ],
-       peek [obj prop;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,0);
-  ],
-       peekEnd [obj prop len;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,len - 1);
-  ],
-       popEnd [obj prop len v;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    v = self.get(obj,prop,len - 1);
-    self.remove(obj, prop, len - 1, 0);
-    return v;
-  ],
-       sortDefault [obj prop cmp;
-    if (cmp==0) {
-        self.sort(obj, prop, _bglarraycompareasc);
-    }
-    else {
-        self.sort(obj, prop, cmp);
-    }
-  ],
-       invokeCompare [cmp a b;
-    
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        
-    return 0;
-  ],
-       sort [obj prop compare len i key j;
-    len=self.length(obj,prop);
-    for (i = 1 : i < len : i++) {
-        key = self.get(obj,prop,i);
-        j=i - 1;
-        while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
-            self.set(obj, prop, j + 1, self.get(obj,prop,j));
-             j-- ;
-        }
-        self.set(obj, prop, j + 1, key);
-    }
-  ]
-;
 global _bglWorldBufIdx = -1;
+constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
   with zcode _zcode
 ;
-class animal
+class _bglClass_Animal
   class object
   with
     legs 4,
@@ -285,58 +25,58 @@ class animal
 object cage
   with short_name "cage"
 ;
-animal dog cage
+_bglClass_Animal dog cage
   with short_name "dog"
 ;
-animal cat cage
+_bglClass_Animal cat cage
   with short_name "cat"
 ;
-animal fish
+_bglClass_Animal fish
   with short_name "fish"
 ;
 object stone cage
   with short_name "stone"
 ;
 [main totalCount caged animals o _bglfia1 _bglfi2 cagedAnimals cageWithoutStones notFish _bglfia3 _bglfi4 here;
-    totalCount=_bglArray.length(_bglworld.getall(0), 0);
+    totalCount=_bglworld.getall(0)-->0;
     print (string)"total objects: ";
     print totalCount;
     print (string)"^";
-    caged=_bglArray.length(_bglworld.inparent(cage, 0), 0);
+    caged=_bglworld.inparent(cage, 0)-->0;
     print (string)"in cage: ";
     print caged;
     print (string)"^";
-    animals=_bglArray.length(_bglworld.instances(animal, 0), 0);
+    animals=_bglworld.instances(_bglClass_Animal, 0)-->0;
     print (string)"animals: ";
     print animals;
     print (string)"^";
     print (string)"named animals:^";
-    _bglfia1 = _bglworld.instances(animal, 0);
+    _bglfia1 = _bglworld.instances(_bglClass_Animal, 0);
        _bglfi2 = 0;
-       for (: _bglfi2 < _bglArray.length(_bglfia1, 0) : _bglfi2++) {
+       for (: _bglfi2 < _bglfia1-->0 : _bglfi2++) {
           o = _bglfia1-->(_bglfi2+1);
         print (string)" - ";
         print (string)o.short_name;
         print (string)"^";
        }
-    cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0), 0);
+    cagedAnimals=_bglworld.instances(_bglClass_Animal, _bglLambda_0)-->0;
     print (string)"caged animals (in-walk filter): ";
     print cagedAnimals;
     print (string)"^";
-    cageWithoutStones=_bglArray.length(_bglworld.inparent(cage, _bglLambda_1), 0);
+    cageWithoutStones=_bglworld.inparent(cage, _bglLambda_1)-->0;
     print (string)"cage without stones: ";
     print cageWithoutStones;
     print (string)"^";
-    notFish=_bglArray.length(_bglworld.getall(_bglLambda_2), 0);
+    notFish=_bglworld.getall(_bglLambda_2)-->0;
     print (string)"everything except fish: ";
     print notFish;
     print (string)"^";
     print (string)"nested walk:^";
-    _bglfia3 = _bglworld.instances(animal, 0);
+    _bglfia3 = _bglworld.instances(_bglClass_Animal, 0);
        _bglfi4 = 0;
-       for (: _bglfi4 < _bglArray.length(_bglfia3, 0) : _bglfi4++) {
+       for (: _bglfi4 < _bglfia3-->0 : _bglfi4++) {
           o = _bglfia3-->(_bglfi4+1);
-        here=_bglArray.length(_bglworld.inparent(parent(o), 0), 0);
+        here=_bglworld.inparent(parent(o), 0)-->0;
         print (string)" - ";
         print (string)o.short_name;
         print (string)" shares its parent with ";
@@ -369,7 +109,8 @@ object _bglWorld
     n = 0;
     
         objectloop(o) {
-            if(n >= buf-->0 - 2) break;
+            if(n >= _bglWorldBufSize) break;
+            if(metaclass(o) == Object && parent(o) ~= 0 && metaclass(parent(o)) == Class) continue;   ! a pool slot not yet in use
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
     
@@ -381,7 +122,7 @@ object _bglWorld
     n = 0;
     
         objectloop(o in parent) {
-            if(n >= buf-->0 - 2) break;
+            if(n >= _bglWorldBufSize) break;
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
     
@@ -393,7 +134,8 @@ object _bglWorld
     n = 0;
     
         objectloop(o ofclass cls) {
-            if(n >= buf-->0 - 2) break;
+            if(n >= _bglWorldBufSize) break;
+            if(metaclass(o) == Object && parent(o) ~= 0 && metaclass(parent(o)) == Class) continue;   ! a pool slot not yet in use
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
     
@@ -416,11 +158,15 @@ object _bglWorld
 ];
 [_bglWorldStamp buf count;
     
-        buf-->(buf-->0)     = $9084;
-        buf-->(buf-->0 - 1) = count;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            buf-->(buf-->0)     = $9084;
+            buf-->(buf-->0 - 1) = count;
+        #Ifnot;
+            buf-->0 = count;
+        #Endif;
     
 ];
-array _bglworldbuf0 table 130;
-array _bglworldbuf1 table 130;
-array _bglworldbuf2 table 130;
-array _bglworldbuf3 table 130;
+array _bglworldbuf0 table 128;
+array _bglworldbuf1 table 128;
+array _bglworldbuf2 table 128;
+array _bglworldbuf3 table 128;

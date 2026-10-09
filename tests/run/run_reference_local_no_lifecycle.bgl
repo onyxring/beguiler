@@ -1,0 +1,16 @@
+// run_reference_local_no_lifecycle — init/deinit don't fire for a local of a reference class: it refers
+// to an instance it doesn't own (a pooled one is created and released with new and delete).
+// EXPECT_OUTPUT: got true after
+#beguilerSettings { target = z5; informName = "none"; }
+class chip[2] : _bglObject {
+    emitter void init()   { print "[init]"; }
+    emitter void deinit() { print "[deinit]"; }
+}
+void main(){
+    bglInit();
+    {
+        chip c = new chip();
+        print($"got {c != null} ");
+    }
+    print("after");
+}

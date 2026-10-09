@@ -1,0 +1,8 @@
+// An Inform 6 error inside a one-line #i6 island is reported at the island's line, not its routine's.
+// EXPECT_ERROR: _test_i6_island_error_line.bgl:7:
+#beguilerSettings { target = z5; }
+void main(){
+    bglInit();
+    int a = 1;
+    #i6 { x_undeclared_zz = 5; }
+}

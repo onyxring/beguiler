@@ -572,6 +572,8 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
             tagPos = cur;
         }
         parser.declareSymbol("generateblorb", genBlorb ? "true" : "false");
+        // No target named: the default, Glulx, as in a compile.
+        if(!parser.isSymbolDefined("target_glulx") && !parser.isSymbolDefined("target_zcode")) parser.defineSymbol("target_glulx");
     }
 
     // Register the virtual `_blorbAssets.bgl` from the ENTRY POINT's asset dir (mirrors the
@@ -751,6 +753,8 @@ void LspServer::parseDocument(const string& uri) {
         // Always declare (matches compile mode: declared true|false, never absent) so both
         // `#if (generateBlorb == true)` and bare `#if generateBlorb` presence-tests behave.
         parser.declareSymbol("generateblorb", genBlorb ? "true" : "false");
+        // No target named: the default, Glulx, as in a compile.
+        if(!parser.isSymbolDefined("target_glulx") && !parser.isSymbolDefined("target_zcode")) parser.defineSymbol("target_glulx");
     }
 
     // Register a virtual `_blorbAssets.bgl` from a live scan of the asset directory, so that
@@ -2594,6 +2598,8 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
             c->forEachMember([&](typeMember* m) {
                 if(auto* fd = dynamic_cast<functionDef*>(m)) {
                     if(fd->isPrePassStub) return;
+                    // Operators (`==`, `()`, …) are not reached with '.'.
+                    if(fd->name.empty() || !(isalpha((unsigned char)fd->name[0]) || fd->name[0] == '_')) return;
                     int kind = fd->isValueEmitter ? 6 : 2;  // 6=Variable, 2=Method
                     string detail = fd->returnType.name;
                     string label = fd->displayName.empty() ? fd->name : fd->displayName;
@@ -2615,10 +2621,13 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
                 }
             });
         };
-        collectMembers(cls);
+        // An object declared directly on the root (`_bglObject bgl { … }`) is a namespace: its own
+        // members are the point, not the root's plumbing.
+        objectDef* prefixObj = languageService.findGlobalAs<objectDef>(lower);
+        if(!(prefixObj && cls->name == "_bglobject")) collectMembers(cls);
 
         // Also collect instance-specific members if the prefix is a global object.
-        if(auto* od = languageService.findGlobalAs<objectDef>(lower)) {
+        if(auto* od = prefixObj) {
             for(typeMember* m : od->members) {
                 if(auto* fd = dynamic_cast<functionDef*>(m)) {
                     string label = fd->displayName.empty() ? fd->name : fd->displayName;

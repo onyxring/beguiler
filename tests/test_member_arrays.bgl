@@ -1,6 +1,6 @@
-/* test_member_arrays.bgl — array<T> as an object/class MEMBER uses the orLibrary
- * property-array convention: element n at obj.&prop-->n (0-indexed, no count slot),
- * length (obj.#prop)/WORDSIZE. Globals/locals keep the count-prefixed table form.
+/* test_member_arrays.bgl — array<T> as an object/class MEMBER is property data: element n at
+ * obj.&prop-->n (0-indexed), with the length in the property's last word. Globals/locals keep the
+ * count-prefixed table form.
  *
  * Regression for the member-array access bug: subscript/for-in/size on a member
  * formerly emitted the global/table form ($val-->(i+1), $val-->0) against the bare
@@ -17,7 +17,7 @@ object widget {
 
     int readElem()  { return nums[1]; }            // self.&nums-->(1)
     void writeElem(){ nums[0] = 99; }              // self.&nums-->(0) = 99
-    int sumElems()  { int t = 0; int x; for(x in nums) { t = t + x; } return t; }  // (self.#nums)/WORDSIZE bound, self.&nums-->i
+    int sumElems()  { int t = 0; int x; for(x in nums) { t = t + x; } return t; }  // bound by the length word, self.&nums-->i
     int sizeOf()    { return nums.size; }        // (self.#nums)/WORDSIZE
     int lengthOf()  { return nums.length; }      // (self.#nums)/WORDSIZE
 }

@@ -77,11 +77,16 @@ class classDef:public typeDef{
         // superposed-and-unused the whole thing (class + backing + object) evaporates — zero bytes.
         // Ordinary named classes stay non-superposed (emitted in source order as before).
         bool isSuperposed = false;
-        // Walk the alias chain to find the I6 class name used in emitted output.
-        // Alias classes delegate to their first base class; all others use their own name.
+        // The I6 class name used in emitted output. Alias classes delegate to their first base class.
+        // A class declared in Beguile is emitted as `_bglClass_<Name>`: Inform 6 keeps classes in one
+        // namespace with properties, attributes, objects and routines, and a class's natural name
+        // (Container, Door) is often already one of those. Extern classes keep the I6 name they bind.
         std::string i6Name() const {
             if(isAlias && !baseClasses.empty()) return baseClasses[0]->i6Name();
-            return name;
+            if(!i6name.empty()) return i6name;
+            if(isExternal || isEmitterClass || isPrimitive) return name;
+            if(name.rfind("_bgl", 0) == 0) return dName();   // already in the reserved namespace
+            return "_bglClass_" + dName();
         }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
@@ -351,6 +356,11 @@ class functionDef:public typeMember, public typeDef{
         codeBlock* body = nullptr;
         // deinit cleanup entries: {varName, deinitBody} — emitted before every return and at end of function
         vector<pair<string,string>> cleanups;
+        // Calls itself directly; its parameters' and locals' instances ({backing, type}) are then
+        // shared by every activation, and entrySetUp keeps the caller's field values meanwhile.
+        bool callsItself = false;
+        vector<pair<string,string>> ownBackings;
+        string entrySetUp;
         // replace chaining: when this function replaces a previous definition,
         // replaced() calls in the body resolve to replacedTarget (the mangled name).
         string replacedTarget;               // mangled name of predecessor function (empty if not a replacement)
@@ -473,6 +483,8 @@ class forInStatement : public statement {
                                       // `arrayVar` holds the container's emitted name.
         statementBlock* body = nullptr;
         vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
+        string memberBase;     // a member word array: its first element's address (`obj.&prop`)
+        string memberLength;   // and its length, as the parser reads it (tracked or raw layout)
 };
 
 
@@ -538,6 +550,7 @@ class arrayDeclaration : public variableDeclaration {
                                      // data at 1..N), never the <len>+<magic> trailer, even when
                                      // `<array>` is included. Matches bare I6 array APIs (orArray).
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
+        string localInitSource;      // a local byte array copied, on each call, from this file-scope array
 };
 
 // a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings.
@@ -583,6 +596,7 @@ class verbObjectDef : public objectDef {
                                             // `extern verb V;` defaults to {lowercased-name}. For non-extern
                                             // verbs, auto-populated from grammar lines if not explicitly set.
                                             // First entry is the primary trigger word.
+        bool claimsNoWords = false;         // `extern verb V { }`: a fake action, with no words or grammar
         functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
         vector<grammarLine> grammarLines;   // inline grammar (from verb { grammar { } })
 };

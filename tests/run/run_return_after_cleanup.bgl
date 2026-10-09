@@ -1,0 +1,32 @@
+// run_return_after_cleanup — a routine's return value is computed before its local arrays are
+// freed: `return bar(arr)` hands bar a live array, and `return arr.filter(…)` filters the live array,
+// even when the callee allocates local arrays of its own in the slots just freed.
+// EXPECT_OUTPUT: foo:42 filter:3 10 20 30
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+int bar(array<int> a){
+    array<int> scratch[5];
+    scratch += 999; scratch += 999; scratch += 999;
+    return a[0] + a[1];
+}
+int foo(){
+    array<int> arr[5];
+    arr += 40; arr += 2;
+    return bar(arr);
+}
+bool keep(int x){
+    array<int> scratch[6];
+    scratch += 7; scratch += 7; scratch += 7; scratch += 7; scratch += 7; scratch += 7;
+    return x > 0;
+}
+array<int> pick(){
+    array<int> arr[6];
+    arr += 10; arr += 20; arr += 30;
+    return arr.filter((int x) => keep(x));
+}
+void main(){
+    bglInit();
+    print($"foo:{foo()} ");
+    array<int> r = pick();
+    print($"filter:{r.length} {r[0]} {r[1]} {r[2]}");
+}

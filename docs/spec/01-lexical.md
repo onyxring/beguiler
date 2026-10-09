@@ -156,7 +156,7 @@ words alphabetically, with the section that defines each.
 
 `new` `replaced`
 
-**Value words** name a fixed value or the current receiver.
+**Value words** name a fixed value or the current receiver. None of them may be declared as a name.
 
 `false` `null` `self` `true`
 

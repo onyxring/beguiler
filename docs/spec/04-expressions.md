@@ -67,7 +67,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 4 | `\|` | infix | left | Bitwise or |
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
-| 1 | `? :` | ternary | — | Conditional (one per statement, §4.9) |
+| 1 | `? :` | ternary | right | Conditional (§4.9) |
 | 1 | `??` | infix | — | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
@@ -123,6 +123,13 @@ coalescing are in §4.10.
 A leading `-` on an integer literal forms a negative literal, whose pseudo-type is
 `negativeIntLiteral` (§2.4.1). `<=>` binds more tightly than the relational operators (§4.3).
 
+**`int` arithmetic.** An `int` is a signed word: 16 bits on the Z-machine (−32768 to 32767), 32 bits
+on Glulx. Arithmetic that leaves the range wraps (`32767 + 1` → `-32768` on the Z-machine). `/`
+truncates toward zero (`-7 / 2` → `-3`) and `%` takes the sign of the left operand (`-7 % 2` → `-1`,
+`7 % -2` → `1`). `>>` on an `int` is arithmetic, keeping the sign (`-256 >> 4` → `-16`); on a `uint`
+it fills with zeros (§21.6.1). Dividing by zero, with `/` or `%`, is a run-time error of the virtual
+machine.
+
 ## 4.6 Comparison Operators
 
 `== != < > <= >= ?= =~ <=>` are tabulated in §4.5.
@@ -147,8 +154,9 @@ A leading `-` on an integer literal forms a negative literal, whose pseudo-type 
 
 Selects one of two values. A ternary may appear as a call argument, on the right-hand side of an
 assignment, in a parenthesized sub-expression, and in the condition and increment parts of a `for`
-loop. At most one ternary may appear per statement (a call argument that is a ternary counts), and a
-ternary may not be nested in another ternary's condition or branches.
+loop. Several may appear in one statement, and one may be nested in another's condition or branches.
+Only the branch selected is evaluated, nested ternaries included: `a ? (f() ? 1 : 2) : 3` calls `f()` only
+when `a` is true.
 
 **Type of the result.** When the branches have the same type, that is the type. When one branch's
 type is assignable to the other's — a derived class and its base, for instance — the result takes the
@@ -223,21 +231,33 @@ if (noun?) print("something is here");
 
 **Description**
 
-A cast sets the resolved type of the immediately following identifier or call; it does not propagate
-through a chain. It has three uses.
+A cast applies to the whole operand that follows it, member accesses and calls included, as in C++
+and C#: `(Dog)a.barks` casts the value of `a.barks`. To treat the receiver as another type, the cast and
+the receiver are parenthesized: `((Dog)a).barks` reads `Dog`'s member. The result of a cast is not
+assignable, so `(Dog)a.barks = 9` is a compile-time error; `((Dog)a).barks = 9` assigns the member, and
+`(T)name = v;` assigns through `T`'s `operator =`. A cast has four uses.
 
 **Ancestor-qualified dispatch.** Method dispatch is dynamic: `myDog.speak()` runs the most-derived
 override. Casting the receiver to a strict ancestor of its static type selects that ancestor's version:
-`(Animal)myDog.speak()`. On `self` inside an override this calls the overridden method without
+`((Animal)myDog).speak()`. On `self` inside an override this calls the overridden method without
 recursion. An identity cast, a downcast or a cast to an unrelated type keeps dynamic dispatch. The
 receiver must be a class or object with real methods; an ancestor cast on an `emitter` method is a
-compile-time error. The cast qualifies method dispatch only; it does not apply to member access or
-`operator =` (`(Base)obj.field = x`). A base-typed *variable* stays dynamic: `Animal a = myDog;
-a.speak();` runs `Dog`'s override.
+compile-time error. On a member variable the receiver cast resolves the member against the cast type,
+which reaches a member the subtype hides (§8.7.4). A base-typed *variable* stays dynamic:
+`Animal a = myDog; a.speak();` runs `Dog`'s override.
+
+> **Compared with C#.** In C#, `((Animal)myDog).Speak()` still runs `Dog`'s override; the base version
+> is reached only through `base.Speak()` inside the class. C++ writes `myDog.Animal::speak()`.
 
 **Explicit conversion.** A conversion operator declared `explicit` fires only under a cast:
 `string s = (string)myValue;` (§9.4). A cast also forces resolution through a specific type when the
 inferred type would resolve differently.
+
+**Reinterpretation.** Between a reference type and a primitive (`object` and `dictionaryWord`, `int` and
+`object`), or between two primitives without a conversion operator, a cast changes only the type: the
+value is the same word, read as the target type. It is unchecked, like `(var)`. This is how a library
+value declared with one type and holding another is read: `(dictionaryWord)second` for the topic of an
+Ask (§23.3.11).
 
 **Class vs. instance.** The target may be a class or a named object. Casting to a class exposes the
 class's members; casting to an instance also exposes members declared on that object alone. This is
@@ -359,6 +379,7 @@ or pass it first.
 **Example**
 
 ```bgl
+#include <array>
 array<int> scores = {3, 1, 2};
 
 void applyToAll(array<int> arr, func<void, int> fn) {
@@ -389,6 +410,7 @@ operand type selects one. The rules for declaring static operators are in §9.6.
 **Example**
 
 ```bgl
+#include <array>
 #include <string>
 class Money {
     int cents = 0;

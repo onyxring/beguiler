@@ -5,7 +5,7 @@
     setting `nums = {5, 6}` reported length 6), a subclass's override couldn't be read at all
     ("not a declared property"), and a raw one refused length(). `name` is additive: each layer's
     words accumulate, the object's first.  */
-// EXPECT_OUTPUT: obj 2 6, sub 1 5, name lamp 2 1, name gadget 2 1, name rock 1 1
+// EXPECT_OUTPUT: obj 2 6, sub 1 5, name lamp 2 true, name gadget 2 true, name rock 1 true
 #beguilerSettings { target = z5; informName = "none"; }
 
 class thing : object { array<int> nums = {1}; rawArray<dictionaryWord> name = .thing; }

@@ -1,0 +1,8 @@
+// run_bare_parent_write_in_method — inside an object's method a bare inherited `parent = x;` is the
+// object's own parent (§3.8.2), so it moves the object.
+// EXPECT_OUTPUT: moved:true
+#beguilerSettings { target = z5; informName = "none"; }
+object roomA { }
+object roomB { }
+object mover { parent = roomA; void hop(){ parent = roomB; } }
+void main(){ bglInit(); mover.hop(); print($"moved:{mover.parent == roomB}"); }

@@ -1,0 +1,17 @@
+// run_local_named_i6_statement_word — locals named `to`, `has` or `in`, words Inform 6 reads as part
+// of `move … to …` and conditions, are renamed in the routine.
+// EXPECT_OUTPUT: to:true has:true in:true
+#beguilerSettings { target = z5; informName = "none"; }
+object roomA { }
+object roomB { }
+object mover { parent = roomA; }
+void main(){
+    bglInit();
+    object to = roomB;
+    mover.parent = to;
+    print($"to:{mover.parent == roomB} ");
+    bool has = mover.parent == to;
+    print($"has:{has} ");
+    object in = roomB;
+    print($"in:{mover.parent == in}");
+}

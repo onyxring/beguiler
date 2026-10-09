@@ -98,21 +98,26 @@ bglParser::ArrayReceiver bglParser::arrayReceiver(string& objName, const string&
 // layout, where length == size. Must agree with the emitter's member-array layout.
 string bglParser::memberArraySizeText(const ArrayReceiver& r, const string& which,
                                       functionDef* func, statementBlock* body){
-    string words = "((" + r.owner + ".#" + r.prop + ")/WORDSIZE)";
+    string words = "((" + r.owner + ".#" + propertyI6Name(r.prop) + ")/WORDSIZE)";
     if(!memberArrayIsTracked(r.owner, r.prop, func, body)) return words;
     return which == "size" ? "(" + words + " - 1)"
-                           : "(" + r.owner + ".&" + r.prop + "-->(" + words + " - 1))";
+                           : "(" + r.owner + ".&" + propertyI6Name(r.prop) + "-->(" + words + " - 1))";
 }
 
 string bglParser::expandMemberValueEmitter(string objText, const string& rawRecv, const string& recvType,
                                            const string& memberName, functionDef* func, statementBlock* body,
                                            string& outRetType){
-    classDef* rc = getDispatchClass(recvType);
-    if(rc == nullptr) return "";
-    auto* ve = dynamic_cast<functionDef*>(findMemberInHierarchy(rc, [&](typeMember* m){
+    auto isValueEmitterNamed = [&](typeMember* m){
         auto* fd = dynamic_cast<functionDef*>(m);
         return fd && fd->name == memberName && fd->isEmitter && fd->isValueEmitter;
-    }));
+    };
+    // An object declared as its own type carries its emitters among its own members.
+    functionDef* ve = nullptr;
+    if(auto* od = languageService.findObjectType(recvType))
+        for(typeMember* m : od->members) if(isValueEmitterNamed(m)){ ve = dynamic_cast<functionDef*>(m); break; }
+    classDef* rc = getDispatchClass(recvType);
+    if(ve == nullptr && rc == nullptr) return "";
+    if(ve == nullptr) ve = dynamic_cast<functionDef*>(findMemberInHierarchy(rc, isValueEmitterNamed));
     auto* blk = ve ? dynamic_cast<i6Block*>(ve->body) : nullptr;
     if(blk == nullptr) return "";
     outRetType = ve->returnType.name;
@@ -125,7 +130,7 @@ string bglParser::expandMemberValueEmitter(string objText, const string& rawRecv
     vb.host = objText.substr(0, objText.rfind('.') == string::npos ? objText.size() : objText.rfind('.'));
     if(isWordArrayType(recvType)) vb.prop = arr.isMember ? arr.prop : "0";
     vb.selfType = recvType;
-    vb.cls = rc->i6Name();
+    if(rc != nullptr) vb.cls = rc->i6Name();
     vb.trim = emitterTrim::wsSemi;
     return expandEmitterBody(blk, vb);
 }
@@ -274,13 +279,15 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
                 parsingError("A lambda whose body passes an interpolated string must be a single call, "
                              "such as `=> print($\"…\")`; use a block body `=> { … }` otherwise.");
         } else {
-            expression* retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose}, &fd, lambdaBody);
+            expression* retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose,
+                                                              token::braceClose}, &fd, lambdaBody);   // `}`: last of a `{ … }` list
             currentFunc = savedFunc;
             // Stash whatever terminator the inner parseExpression consumed so the enclosing
             // parser still sees it. Applies to all three: ';' (assignment RHS), ',' (next arg),
             // ')' (close of enclosing call). Without this, the outer parse loses sync and
             // misreads subsequent statements as part of the lambda's expression.
-            if(retExpr->terminator == ";" || retExpr->terminator == "," || retExpr->terminator == ")"){
+            if(retExpr->terminator == ";" || retExpr->terminator == "," || retExpr->terminator == ")"
+               || retExpr->terminator == "}"){
                 token t;
                 t.value = retExpr->terminator;
                 t.tokenType = eTokenType::symbol;
@@ -369,6 +376,25 @@ static int operatorPrecedence(const string& op){
 
 // All operators registered in operatorPrecedence() — used when building RHS terminator lists
 // so a sub-expression knows when to stop based on an encountered operator's level.
+// Structural '(' tokens an expression opened before its current receiver: not part of the receiver,
+// so a member access or call reads the receiver after them and puts them back in front.
+static size_t leadingParens(const expression* expr){
+    size_t n = 0;
+    while(n < expr->tokens.size() && expr->tokens[n] == "(") n++;
+    return n;
+}
+static string receiverText(const expression* expr){
+    string text;
+    for(size_t i = leadingParens(expr); i < expr->tokens.size(); i++) text += expr->tokens[i];
+    return text;
+}
+// Replaces the receiver with `text`, keeping the parentheses opened before it.
+static void replaceReceiver(expression* expr, const string& text){
+    size_t n = leadingParens(expr);
+    expr->tokens.assign(n, "(");
+    expr->tokens.push_back(text);
+}
+
 static const vector<string> kPrecedenceOps = {
     "*","/","%","+","-","<<",">>","<=>","<","<=",">",">=","==","!=","?=","=~","&","^","|","&&","||"
 };
@@ -495,6 +521,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         if(applyActionConstant(&r)) rhsText = r.tokens[0];
     }
     if(expr->resolvedType == "verb" && expr->tokens.size() == 1) applyActionConstant(expr);
+    rhsText = keepValueResult(rhsText, rhsType);
 
     // Step 2: Find matching operator emitter
     // 'var' is the escape-hatch type — if either side is var, skip param-type checking
@@ -777,12 +804,17 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
 void bglParser::parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body, int outerParenDepth){
     string tempName = format("_bgl_temp{0}", languageService.ternaryTempCount++);
     string condText = expr->text();
+    size_t mark = pendingInjections.size();
     expression* trueExpr  = parseExpression(file.getToken(), {":"}, func, body);
+    string trueSetUp = takeBranchSetUp(mark);
+    mark = pendingInjections.size();
     expression* falseExpr = parseExpression(file.getToken(), terminators, func, body);
-    string injText = "if (" + condText + ") " + tempName + " = " + trueExpr->text()
-                   + "; else " + tempName + " = " + falseExpr->text() + ";";
+    string falseSetUp = takeBranchSetUp(mark);
+    string injText = "if (" + condText + ") { " + trueSetUp + tempName + " = " + trueExpr->text()
+                   + "; } else { " + falseSetUp + tempName + " = " + falseExpr->text() + "; }";
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
+    inj->cooked = true;   // built from Beguile expressions: locals take their renames
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     expr->tokens.push_back(tempName);
@@ -812,6 +844,7 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
     string injText = tempName + " = " + lhsText + "; if (~~(" + nullTest + ")) " + tempName + " = " + fallback->text() + ";";
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
+    inj->cooked = true;   // built from Beguile expressions: locals take their renames
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     expr->tokens.push_back(tempName);
@@ -854,6 +887,15 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
             for(typeMember* m : currentObject->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(fd->name == canonName){ selfMethod = fd; if(retType.empty()) retType = fd->returnType.name; break; }
+        // Inherited: resolved on self's type, so overloads bind by their arguments.
+        if(selfMethod == nullptr && !(currentFunc != nullptr && currentFunc->name == canonName)){
+            string selfType = currentObject ? currentObject->name : (currentClass ? currentClass->name : string());
+            if(!selfType.empty())
+                if(functionDef* m = resolveMethod(selfType, "self", canonName, pal.args).method){
+                    selfMethod = m;
+                    if(retType.empty()) retType = m->returnType.name;
+                }
+        }
         // If the self-target is an emitter, inline its body here so the call site
         // splices the raw I6 expression instead of dispatching through self.X(...).
         // Without this, sibling emitters become I6 property calls and lose their
@@ -990,6 +1032,28 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
     return true; // always handled (either emitter or fallback)
 }
 
+// Whether member `fd` can take the call being parsed. Only a global function of the same name makes
+// this matter: then a member whose parameters can't take the peeked argument count gives way to it.
+// `openConsumed`: the call's '(' has already been read.
+bool bglParser::memberTakesCall(functionDef* fd, const string& name, bool openConsumed){
+    if(languageService.findGlobalAs<functionDef>(name) == nullptr) return true;
+    int depth = 0, commas = 0, n = -1;
+    const int first = openConsumed ? 1 : 2;   // peekToken(1) is the next token
+    for(int i = first; n < 0; i++){
+        token t = file.peekToken(i);
+        if(t.is(eTokenType::eof)) return true;
+        if(t.is(token::parenOpen) || t.is(token::bracketOpen) || t.is(token::braceOpen)) depth++;
+        else if(t.is(token::parenClose) || t.is(token::bracketClose) || t.is(token::braceClose)){
+            if(depth == 0) n = (i == first) ? 0 : commas + 1;
+            else depth--;
+        }
+        else if(t.is(token::comma) && depth == 0) commas++;
+    }
+    size_t required = 0;
+    for(paramDef* p : fd->params) if(p->defaultValue.empty()) required++;
+    return (size_t)n >= required && (size_t)n <= fd->params.size();
+}
+
 // ── Namespace-scoped type resolution ─────────────────────────────────────────
 // Walks a dotted path (e.g. "bgl.glulx.window") through namespace objects.
 // At each intermediate step, follows value alias members (auto x = Obj;) to the
@@ -1004,6 +1068,8 @@ bool bglParser::exprIsTerminator(const ExprParseState& st, const token& t){
     const vector<string>& terminators = *st.terminators;
 
     if(parenDepth > startParenDepth) return false;  // inside our own parens — not a terminator
+    // A literal is a value, whatever its text: '?' or ';' as a character is not punctuation.
+    if(t.tokenType == eTokenType::charLiteral || t.tokenType == eTokenType::quote || t.tokenType == eTokenType::rawQuote) return false;
     for(const string& term : terminators)
         if(t.value == term) return true;
     return false;
@@ -1074,6 +1140,22 @@ void bglParser::exprEmitRawBinaryOp(ExprParseState& st, const string& opTok){
     prefetched = terminatorTok;
 }
 
+// The set-up a ternary branch's own expression produced (a nested ternary, a `?.` test), taken out of
+// the statement's pending list so it runs inside that branch only. Plain raw text is moved; anything
+// else stays where it is, ahead of the whole ternary.
+string bglParser::takeBranchSetUp(size_t mark){
+    if(mark >= pendingInjections.size()) return "";
+    for(size_t i = mark; i < pendingInjections.size(); i++){
+        auto* raw = dynamic_cast<i6RawNode*>(pendingInjections[i]);
+        if(raw == nullptr || !raw->parts.empty() || raw->isI6Island) return "";
+    }
+    string text;
+    for(size_t i = mark; i < pendingInjections.size(); i++)
+        text += dynamic_cast<i6RawNode*>(pendingInjections[i])->text + " ";
+    pendingInjections.resize(mark);
+    return text;
+}
+
 // Helper: assemble a pending ternary — creates injection, replaces expr with temp name
 void bglParser::exprAssembleTernary(ExprParseState& st){
     expression* expr = st.expr;
@@ -1085,10 +1167,12 @@ void bglParser::exprAssembleTernary(ExprParseState& st){
     pendingTernaries.pop_back();
     string falseText = expr->text();
     string falseType = expr->resolvedType;
-    string injText = "if (" + pt.condText + ") " + pt.tempName + " = " + pt.trueText
-                   + "; else " + pt.tempName + " = " + falseText + ";";
+    string falseSetUp = takeBranchSetUp(pt.falseMark);
+    string injText = "if (" + pt.condText + ") { " + pt.trueSetUp + pt.tempName + " = " + pt.trueText
+                   + "; } else { " + falseSetUp + pt.tempName + " = " + falseText + "; }";
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
+    inj->cooked = true;   // built from Beguile expressions: locals take their renames
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     // Restore structural prefix parens so the outer expression stays balanced
@@ -1164,6 +1248,7 @@ string bglParser::applyCastConversion(const string& srcText, const string& srcTy
         i6RawNode* inj = new i6RawNode();
         while(!b.empty() && b.back() == ';') b.pop_back();
         inj->text = b + ";";
+        inj->cooked = true;   // built from Beguile expressions: locals take their renames
         pendingInjections.push_back(inj);
         return tempName;
     }
@@ -1265,6 +1350,19 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
             return ExprStep::Continue;
         }
     }
+    // `((T)obj).member`: the cast retypes the receiver, so the member is T's (for a method of a
+    // strict ancestor, T's own version runs).
+    if(file.peekToken(1).is(token::parenOpen) && file.peekToken(2).is(eTokenType::dataType)
+       && file.peekToken(3).is(token::parenClose) && file.peekToken(4).is(eTokenType::name)
+       && file.peekToken(5).is(token::parenClose) && file.peekToken(6).is(token::period)){
+        file.getToken(token::parenOpen);
+        castType = file.getToken(eTokenType::dataType).value;
+        file.getToken(token::parenClose);
+        cur = file.getToken();
+        file.getToken(token::parenClose);
+        st.receiverCast = true;
+        return ExprStep::Continue;
+    }
     // Check for cast expression: (TypeName)expr
     if(file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose)){
         castType = file.getToken(eTokenType::dataType).value;
@@ -1308,6 +1406,29 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
             }
         }
     }
+    // Cast to a dotted type path (`(kit.box)v`, §10.1): the path names a type through namespace aliases.
+    {
+        string path; int i = 1;
+        while((file.peekToken(i).is(eTokenType::identifier) || file.peekToken(i).is(eTokenType::dataType))
+              && file.peekToken(i + 1).is(token::period)){
+            path += file.peekToken(i).value + ".";
+            i += 2;
+        }
+        token last = file.peekToken(i);
+        if(!path.empty() && (last.is(eTokenType::identifier) || last.is(eTokenType::dataType))
+           && file.peekToken(i + 1).is(token::parenClose)){
+            token after = file.peekToken(i + 2);
+            bool operandFollows = after.is(eTokenType::identifier) || after.is(eTokenType::dataType)
+                || after.is(eTokenType::integer) || after.is(token::parenOpen);
+            string typeName = operandFollows ? resolveNamespacedType(path + last.value) : "";
+            if(!typeName.empty()){
+                for(int k = 0; k < i + 1; k++) file.getToken();   // the path and ')'
+                castType = typeName;
+                cur = exprNext(st);
+                return ExprStep::Continue;
+            }
+        }
+    }
     // Cast followed by parenthesized expression: `(T)(...)`. The cast applies to
     // the result of the inner expression, not to the first identifier inside, so
     // park castType on the stack and clear it before descending. The matching
@@ -1332,7 +1453,8 @@ bglParser::ExprStep bglParser::parseExprParenClose(ExprParseState& st){
     vector<ExprParseState::PendingParenCast>& parenCastStack = st.parenCastStack;
     vector<ExprParseState::PendingTernary>& pendingTernaries = st.pendingTernaries;
 
-    if(parenDepth > startParenDepth) parenDepth--;
+    bool closesGroup = parenDepth > startParenDepth;
+    if(closesGroup) parenDepth--;
     // If a pending ternary was opened at this depth, assemble it now.
     // This handles `(cond ? a : b)` — the ')' closes the false branch.
     if(!pendingTernaries.empty() && parenDepth <= pendingTernaries.back().parenDepthAtQuestion){
@@ -1351,6 +1473,25 @@ bglParser::ExprStep bglParser::parseExprParenClose(ExprParseState& st){
             expr->tokens.push_back(newText);
         }
         expr->resolvedType = pc.castType;
+    }
+    // `(expr)(args)`: a call through the group's routine value; a func<…> result type
+    // becomes the callee's return type.
+    if(closesGroup && file.peekToken().is(token::parenOpen)){
+        const string t = expr->resolvedType;
+        file.getToken(token::parenOpen);
+        ParsedArgList pal = parseCallArgList(st.func, st.body);
+        rejectInterpolatedArgsInExpression(pal, "call");
+        string call = "(";
+        for(size_t i = 0; i < pal.args.size(); i++){
+            if(i > 0) call += ", ";
+            call += pal.args[i]->text();
+        }
+        expr->tokens.push_back(call + ")");
+        if(t.rfind("func<", 0) == 0){
+            size_t lt = t.find('<'), comma = t.find(',', lt), gt = t.rfind('>');
+            expr->resolvedType = (comma != string::npos && comma < gt) ? t.substr(lt+1, comma-lt-1) : t.substr(lt+1, gt-lt-1);
+        }
+        else if(t == "func") expr->resolvedType = "var";
     }
     return ExprStep::Advance;
 }
@@ -1517,8 +1658,13 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
         arrName = memberOwner + "." + memberProp;   // read the pointer, not the slot
         isMemberWordArray = false;
     }
-    if(isMemberWordArray){
-        subscriptText = memberOwner + ".&" + memberProp + "-->(" + indexExpr->text() + ")";
+    if(i6ExprMemberArrays.count(arrName)){
+        isMemberWordArray = true;
+        subscriptText = arrName + ".&$prop-->(" + indexExpr->text() + ")";
+        expr->tokens.push_back(subscriptText);
+    }
+    else if(isMemberWordArray){
+        subscriptText = memberOwner + ".&" + propertyI6Name(memberProp) + "-->(" + indexExpr->text() + ")";
         expr->tokens.push_back(subscriptText);
     }
     else if(getMethod->isEmitter)
@@ -1529,6 +1675,12 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
             subscriptText = expandEmitterBody(blk, sb);
             expr->tokens.push_back(subscriptText);
         }
+    if(subscriptText.empty() && !isMemberWordArray && !getMethod->isEmitter){
+        // A routine-bodied operator [] is a method: send it.
+        string routine = getMethod->i6name.empty() ? mangleOperatorName(getMethod->name) : getMethod->i6name;
+        subscriptText = arrName + "." + routine + "(" + indexExpr->text() + ")";
+        expr->tokens.push_back(subscriptText);
+    }
     // Continuation: chained subscript on an array-of-arrays — `grid[i][j]`. Each step
     // applies operator[] to the PRIOR subscript VALUE (a pointer to an inner array),
     // which I6's `-->` needs as an explicit, parenthesized address operand. The inner
@@ -1555,6 +1707,25 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
         if(!expr->tokens.empty()) expr->tokens.pop_back();
         expr->tokens.push_back(subscriptText);
         expr->resolvedType = innerElem;
+    }
+    // `steps[i](args)`: the element is a function value, called. Parenthesized, because a bare
+    // `a-->i (args)` reads in I6 as a call of i.
+    if(!subscriptText.empty() && file.peekToken().is(token::parenOpen) && expr->resolvedType.rfind("func", 0) == 0){
+        const string t = expr->resolvedType;
+        file.getToken(token::parenOpen);
+        ParsedArgList pal = parseCallArgList(func, body);
+        rejectInterpolatedArgsInExpression(pal, "call");
+        string call = "(" + subscriptText + ")(";
+        for(size_t i = 0; i < pal.args.size(); i++){
+            if(i > 0) call += ", ";
+            call += pal.args[i]->text();
+        }
+        if(!expr->tokens.empty()) expr->tokens.pop_back();
+        expr->tokens.push_back(call + ")");
+        size_t lt = t.find('<'), comma = t.find(',', lt), gt = t.rfind('>');
+        expr->resolvedType = lt == string::npos ? "var"
+            : (comma != string::npos && comma < gt) ? t.substr(lt+1, comma-lt-1) : t.substr(lt+1, gt-lt-1);
+        return ExprStep::Advance;
     }
     // Continuation: if next token is '.', handle dot-access on the subscript result
     // (e.g. arr[0].field or arr[0].method()). Resolve against the element type's class.
@@ -1674,6 +1845,9 @@ bglParser::ExprStep bglParser::parseExprCall(ExprParseState& st, token& next){
     statementBlock* body = st.body;
 
     string callName = cur.value;
+    // `::name(args)` calls the global function, past any member of the same name (§3.9).
+    bool forceGlobal = callName.size() > 2 && callName[0] == ':' && callName[1] == ':';
+    if(forceGlobal) callName = callName.substr(2);
     // replace chaining: replaced() resolves to the predecessor's mangled name
     if(callName == "replaced" && currentFunc && !currentFunc->replacedTarget.empty()){
         callName = currentFunc->replacedTarget;
@@ -1685,23 +1859,29 @@ bglParser::ExprStep bglParser::parseExprCall(ExprParseState& st, token& next){
     // Inherited methods that share a name with a global function are skipped —
     // the global path has proper arity matching and should win (e.g. print).
     bool isSelfCall = false;
-    if(func != nullptr && callName.find('.') == string::npos){
+    // A member that cannot take this many arguments does not hide a global function of its name
+    // (`print(x)` inside a class's own `print()`).
+    auto memberFits = [&](functionDef* fd){ return memberTakesCall(fd, callName, true); };
+    if(func != nullptr && !forceGlobal && callName.find('.') == string::npos){
         // Recursive self-call: the function being parsed isn't yet in
         // currentObject->members (registered post-body), so match by name
         // against currentFunc when we're inside an object/class method.
         if((currentObject != nullptr || currentClass != nullptr) &&
-           currentFunc != nullptr && currentFunc->name == callName)
+           currentFunc != nullptr && currentFunc->name == callName && memberFits(currentFunc))
             isSelfCall = true;
         if(!isSelfCall && currentObject != nullptr)
             for(typeMember* m : currentObject->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == callName){ isSelfCall = true; break; }
-        if(!isSelfCall && currentClass != nullptr){
+                    if(fd->name == callName && memberFits(fd)){ isSelfCall = true; break; }
+        // Inherited methods: the class being declared, or the class of the object being declared.
+        classDef* selfClass = currentClass != nullptr ? currentClass
+                            : currentObject != nullptr ? currentObject->objectClass : nullptr;
+        if(!isSelfCall && selfClass != nullptr){
             // Check if name also exists as a global function — if so, defer to global resolution
             bool isGlobalFunc = false;
             if(auto* fd = languageService.findGlobalAs<functionDef>(callName)) isGlobalFunc = true;
             if(!isGlobalFunc){
-                isSelfCall = currentClass->findMember([&](typeMember* m){
+                isSelfCall = selfClass->findMember([&](typeMember* m){
                     auto* fd = dynamic_cast<functionDef*>(m);
                     return fd != nullptr && fd->name == callName;
                 }) != nullptr;
@@ -1912,6 +2092,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     }
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
+    inj->cooked = true;   // built from Beguile expressions: locals take their renames
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     for(const auto& p : chainPrefix) expr->tokens.push_back(p);
@@ -2004,31 +2185,18 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     // whether an explicit cast is a genuine UPCAST (T an ancestor of the real type),
     // which is what triggers ancestor-qualified (static `::`) dispatch below.
     string actualType = resolveIdentifierType(objName, func, body, methName);
-    // Which operand does the cast bind to? A cast that could RETYPE THIS RECEIVER binds to the
-    // receiver — that is what makes `(Base)obj.method()` ancestor dispatch, and a downcast a
-    // retype. A cast unrelated to the receiver's type cannot mean that, so it binds to the CALL
-    // RESULT, the way C reads `(char)a.b.c()`. Primitives are no help as a test: `int` and `char`
-    // are `extern emitter class`es too, so relatedness by inheritance is the discriminator.
+    // `(T)obj.method()` casts the call's result; only `((T)obj).method()` retypes the receiver.
     string resultCast;
-    if(!castType.empty()){
-        classDef* castCls = getDispatchClass(castType);
-        classDef* actCls  = getDispatchClass(actualType);
-        bool retypesReceiver = castCls != nullptr && actCls != nullptr
-                            && (castCls == actCls
-                                || isAncestorClass(castCls, actCls)
-                                || isAncestorClass(actCls, castCls));
-        if(!retypesReceiver){ resultCast = castType; castType = ""; }
-    }
-    string explicitCast = castType;   // "" unless the receiver was written `(T)obj.method()`
+    if(!castType.empty() && !st.receiverCast){ resultCast = castType; castType = ""; }
+    st.receiverCast = false;
+    string explicitCast = castType;   // "" unless the receiver was written `((T)obj).method()`
     string objType = !castType.empty() ? castType : actualType;
     castType = "";  // consume the cast
-    // Ancestor-qualified method dispatch: `(Base)obj.method(args)` forces STATIC
+    // Ancestor-qualified method dispatch: `((Base)obj).method(args)` forces STATIC
     // dispatch to Base's version, emitted as I6 `obj.Base::method(args)`. Triggered
     // ONLY when the cast target is a strict ancestor of the receiver's actual type
     // (a real upcast); a plain base-typed local, an identity cast, or a downcast all
-    // keep today's dynamic dispatch. `self.f()` from inside an override works too:
-    // `(Base)self.f()` is the super-call idiom. See languageSpec §7.x / the ancestor-
-    // dispatch scope doc. Set here, consumed at the emission sites below.
+    // keep dynamic dispatch. `((Base)self).f()` is the super-call idiom.
     classDef* ancestorDispatchClass = nullptr;
     if(!explicitCast.empty())
         if(isAncestorClass(getDispatchClass(explicitCast), getDispatchClass(actualType)))
@@ -2040,6 +2208,16 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     if(func != nullptr){
         string qualified = qualifyIdentifier(objName, func, body, methName);
         if(!qualified.empty()) objName = qualified;
+    } else {
+        // Outside a routine (a global's initializer) only the `#using` imports can rename it.
+        for(objectDef* imp : usingObjectImports)
+            for(typeMember* m : imp->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == objName && vd->isNamespaceAlias()){
+                    string target = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                    objName = !target.empty() ? target : imp->dName() + "." + objName;
+                    goto qualifiedFromUsing;
+                }
+        qualifiedFromUsing:;
     }
     // The receiver may be a classDef or an objectDef (each unclassed objectDef
     // is its own type). Both have addressable methods; bindMethodCall handles
@@ -2310,7 +2488,7 @@ bglParser::ExprStep bglParser::parseExprMemberSubscript(ExprParseState& st, toke
     if(isWordArrayType(propType) && !memberArrayIsRef(objName, propName, func, body)){
         string owner = func != nullptr ? qualifyIdentifier(objName, func, body) : objName;
         if(owner.empty()) owner = objName;
-        expr->tokens.push_back(owner + ".&" + propName + "-->(" + indexExpr->text() + ")");
+        expr->tokens.push_back(owner + ".&" + propertyI6Name(propName) + "-->(" + indexExpr->text() + ")");
     }
     else if(getMethod->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
@@ -2347,6 +2525,15 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     string objText = func != nullptr ? qualifyIdentifier(cur.value, func, body, member.value) : cur.value;
     string computedProp;   // set when `obj.p` is a computed property access
     string recvType = !objText.empty() ? resolveIdentifierType(cur.value, func, body) : "";
+    // `((T)obj).member` reads T's member; `(T)obj.member` casts the value read (below).
+    string receiverCastType;
+    if(st.receiverCast){
+        receiverCastType = castType;
+        castType = "";
+        st.receiverCast = false;
+        recvType = receiverCastType;
+        propType.clear();
+    }
     // The path walk misses a member of a generic receiver reached through a parameter or a
     // subscript (`data.length`, `grid[0].length`); the receiver's type still declares it.
     if((member.value == "size" || member.value == "length") && recvType.rfind("rawarray<", 0) == 0)
@@ -2418,8 +2605,8 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     // `hide` enforcement (read): a WHOLE-member hide (`hide height;`) blocks
     // reads too. queriedOp="" matches only whole-member entries — an
     // operator-only hide (`hide height.operator =;`) leaves the read intact.
-    // castType makes `(Base)obj.member` resolve against Base (the door).
-    {   string hideRecvType = !castType.empty() ? castType
+    // A receiver cast makes `((Base)obj).member` resolve against Base (the door).
+    {   string hideRecvType = !receiverCastType.empty() ? receiverCastType
                              : resolveIdentifierType(cur.value, func, body);
         enforceHidden(getDispatchClass(hideRecvType), member.value, "", {}, cur.value);
     }
@@ -2856,8 +3043,20 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
             expr->resolvedType = castType;
             castType = "";
         } else {
-            if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body, memberHint);
-            expr->tokens.push_back(qualified);
+            string idType = resolveIdentifierType(cur.value, func, body, memberHint);
+            // A bare member whose type is a property accessor (`target` for `self.target`) reads
+            // through its getter, on the member's owner.
+            size_t ownerDot = qualified.rfind('.');
+            string readRet, read;
+            if(ownerDot != string::npos && !next.is(token::period) && isPropertyClassType(idType))
+                read = applyPropertyClassRead(qualified.substr(0, ownerDot), idType, readRet);
+            if(!read.empty()){
+                if(expr->resolvedType.empty() || expr->tokens.empty()) expr->resolvedType = readRet;
+                expr->tokens.push_back(read);
+            } else {
+                if(expr->resolvedType.empty()) expr->resolvedType = idType;
+                expr->tokens.push_back(qualified);
+            }
         }
     } else if(func != nullptr || !looseIdentifierMode){
         parsingError(format("Undeclared identifier '{0}'", cur.value));
@@ -2965,6 +3164,8 @@ bglParser::ExprStep bglParser::parseExprIdentifier(ExprParseState& st){
 // ─── BINARY OPERATOR: emitter dispatch via applyBinaryOperator() ─
 bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
     expression* expr = st.expr;
+    if(st.cur.value == "=")
+        parsingError("An assignment is a statement (§5.5), not a value: assign first, then read the variable.");
     // `<expr>?.member`: optional chaining off a receiver that is already parsed (a member read).
     if(st.cur.value == "?." && !expr->tokens.empty() && !expr->resolvedType.empty()){
         st.chainRecvText = "<expr>";
@@ -2988,6 +3189,10 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
         currentExpectedType = expr->resolvedType;
         if(cls != nullptr){
             string opName = cur.value;
+            // Inform 6 evaluates a call's arguments before its receiver, so an operand a call
+            // returned is kept in an instance of this routine's own (the right one likewise).
+            if(string r = receiverText(expr), k = keepValueResult(r, expr->resolvedType); k != r)
+                replaceReceiver(expr, k);
             // Peek at RHS
             applyBinaryOperator(expr, opName, cls, terminators, parenDepth, [&]{ return exprNext(st); }, prefetched, func, body);
         } else if(auto* lhsEnum = languageService.findEnum(expr->resolvedType);
@@ -2998,6 +3203,25 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
             token rhs = exprNext(st);
             string rhsType, rhsText;
             if(rhs.is(eTokenType::integer)){ rhsType = "intliteral"; rhsText = rhs.value; }
+            else if(rhs.is(eTokenType::name) && (file.peekToken().is(token::parenOpen) || file.peekToken().is(token::period)
+                                                || file.peekToken().is(token::bracketOpen))){
+                // A call, member or element (`f | pick()`, `f | o.flags`): the whole operand, up to an
+                // operator that binds no tighter than this one.
+                vector<string> rhsTerminators = terminators;
+                int myPrec = operatorPrecedence(opName);
+                for(const string& op : kPrecedenceOps)
+                    if(operatorPrecedence(op) <= myPrec) rhsTerminators.push_back(op);
+                if(st.parenDepth > 0) rhsTerminators.push_back(token::parenClose);
+                rhsTerminators.push_back("?");
+                expression* rhsExpr = parseExpression(rhs, rhsTerminators, func, body);
+                token terminatorTok;
+                terminatorTok.value = rhsExpr->terminator;
+                terminatorTok.tokenType = (rhsExpr->terminator == ";" || rhsExpr->terminator == ")" || rhsExpr->terminator == "?")
+                                        ? eTokenType::symbol : eTokenType::oper;
+                prefetched = terminatorTok;
+                rhsType = rhsExpr->resolvedType;
+                rhsText = "(" + rhsExpr->text() + ")";
+            }
             else if(rhs.is(eTokenType::name)){
                 string nsEmission, nsEnumType;
                 if(tryConsumeNamespacedEnumValue(rhs, nsEmission, nsEnumType)){
@@ -3038,14 +3262,21 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
                 parsingError(format("Operator '{0}' on bnum '{1}' requires a bnum or int right-hand side (got '{2}')",
                                     opName, lhsEnum->dName(), typeDisplayName(rhsType)));
             }
-            expr->tokens.push_back(opName);
-            expr->tokens.push_back(rhsText);
+            if(opName == "^"){   // Inform 6 has no exclusive-or operator
+                string lhsText = receiverText(expr);
+                replaceReceiver(expr, "((" + lhsText + ") | (" + rhsText + ")) - ((" + lhsText + ") & (" + rhsText + "))");
+            } else {
+                expr->tokens.push_back(opName);
+                expr->tokens.push_back(rhsText);
+            }
             expr->resolvedType = resultType;
         } else {
             exprEmitRawBinaryOp(st, cur.value);
         }
     } else if(cur.value == "!"){
-        parseExprPrefixNot(expr, exprNext(st), prefetched, func, body);
+        token operand = exprNext(st);
+        if(!parseExprUnaryOperand(st, "!", operand))
+            parseExprPrefixNot(expr, operand, prefetched, func, body);
     } else if(cur.value == "&"){
         // Unary address-of: `&x` ≡ `(int)x`. In prefix position (no left operand — a binary
         // `&` can never start an operand) the ampersand yields x's raw machine address, the
@@ -3053,10 +3284,55 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
         // int cast and let the operand be processed with it (see §14 address-of). No pointer
         // type, no element math — for an array/object/buffer x that's its base address.
         castType = "int";
+    } else if(cur.value == "-" && (expr->tokens.empty() || expr->tokens.back() == "(")){
+        token operand = exprNext(st);
+        if(!parseExprUnaryOperand(st, "-", operand)){
+            expr->tokens.push_back("-");
+            prefetched = operand;
+        }
     } else {
         exprEmitRawBinaryOp(st, cur.value);
     }
     return ExprStep::Advance;
+}
+
+// A prefix `!` or `-` whose operand is a path or a parenthesized group: the operand is parsed on
+// its own, up to the next binary operator, so a call or member access in it sees only its own
+// receiver. Other operands (literals, plain names) stay on the inline path; returns false then.
+bool bglParser::parseExprUnaryOperand(ExprParseState& st, const string& op, token operand){
+    bool path = operand.is(eTokenType::name)
+             && (file.peekToken(1).is(token::period) || file.peekToken(1).is(token::parenOpen)
+                 || file.peekToken(1).is(token::bracketOpen));
+    if(!path && !operand.is(token::parenOpen)) return false;
+    vector<string> terms = *st.terminators;
+    for(const string& o : kPrecedenceOps) terms.push_back(o);
+    for(const char* t : {"?", ":", ",", "]"}) terms.push_back(t);
+    if(st.parenDepth > 0) terms.push_back(token::parenClose);
+    expression* sub = parseExpression(operand, terms, st.func, st.body);
+    expression* expr = st.expr;
+    string text = sub->text();
+    // Already one unit: a parenthesized group, or a call `name(…)`, spanning the whole text.
+    size_t open = 0;
+    while(open < text.size() && (isalnum((unsigned char)text[open]) || text[open] == '_' || text[open] == '.')) open++;
+    bool grouped = open < text.size() && text[open] == '(' && text.back() == ')';
+    for(size_t i = open, depth = 0; grouped && i < text.size(); i++){
+        if(text[i] == '(') depth++;
+        else if(text[i] == ')' && --depth == 0 && i + 1 < text.size()) grouped = false;
+    }
+    if(!grouped) text = "(" + text + ")";
+    if(op == "!"){
+        expr->tokens.push_back("(~~" + text + ")");   // I6's ~~ binds more loosely than && and ||
+        if(expr->resolvedType.empty()) expr->resolvedType = "bool";
+    } else {
+        expr->tokens.push_back("-" + text);
+        if(expr->resolvedType.empty()) expr->resolvedType = sub->resolvedType;
+    }
+    token t;
+    t.value = sub->terminator;
+    bool isOp = find(kPrecedenceOps.begin(), kPrecedenceOps.end(), t.value) != kPrecedenceOps.end();
+    t.tokenType = isOp ? eTokenType::oper : eTokenType::symbol;
+    st.prefetched = t;
+    return true;
 }
 
 // ─── DICTIONARY WORD LITERAL ─────────────────────────────────────
@@ -3091,13 +3367,12 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
 
     // An emitter value on the receiver's type (`holder.items.size`, `box.children.length`).
     {
-        string selfText; for(const auto& t : expr->tokens) selfText += t;
+        string selfText = receiverText(expr);
         string veRet;
         string veText = expandMemberValueEmitter(selfText, selfText.find('(') == string::npos ? selfText : "",
                                                  expr->resolvedType, member.value, func, st.body, veRet);
         if(!veText.empty()){
-            expr->tokens.clear();
-            expr->tokens.push_back(veText);
+            replaceReceiver(expr, veText);
             expr->resolvedType = veRet;
             prefetched = afterMember;
             cur = exprNext(st);
@@ -3127,7 +3402,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         }
         string mtype = pm ? dynamic_cast<variableDeclaration*>(pm)->type.name : "";
         if(!mtype.empty() && isPropertyClassType(mtype)){
-            string selfText; for(const auto& t : expr->tokens) selfText += t;
+            string selfText = receiverText(expr);
             // A dotted path to an array is addressed as its emitters expect (see arrayReceiver);
             // a computed one (a call's result) is just a value.
             ArrayReceiver arr;
@@ -3145,8 +3420,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             } else
                 read = applyPropertyClassRead(selfText, mtype, ret, isArr ? &arr : nullptr);
             if(!read.empty()){
-                expr->tokens.clear();
-                expr->tokens.push_back(read);
+                replaceReceiver(expr, read);
                 if(!ret.empty()) expr->resolvedType = ret;
                 prefetched = afterMember;   // keep chaining (.parent.parent, or a following .method())
                 cur = exprNext(st);
@@ -3162,9 +3436,8 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         // (they fire only at explicit casts). Emits `<recv>.member._opconv()`.
         {
             if(functionDef* fn = nativeGetterOf(mtype)){
-                string selfText; for(const auto& t : expr->tokens) selfText += t;
-                expr->tokens.clear();
-                expr->tokens.push_back(selfText + "." + member.value + "." + fn->i6name + "()");
+                string selfText = receiverText(expr);
+                replaceReceiver(expr, selfText + "." + member.value + "." + fn->i6name + "()");
                 expr->resolvedType = fn->returnType.name;
                 prefetched = afterMember;
                 cur = exprNext(st);
@@ -3181,22 +3454,22 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         // `<expr>.items[i]` — an element of a member word array, which is inline property data.
         if(auto* ad = dynamic_cast<arrayDeclaration*>(pm);
            ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && !ad->isRefLocal){
-            string owner; for(const auto& t : expr->tokens) owner += t;
+            string owner = parenthesizeReceiver(receiverText(expr));
             expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
-            if(owner.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") != string::npos)
-                owner = "(" + owner + ")";
-            expr->tokens.clear();
-            expr->tokens.push_back(owner + ".&" + memberI6Name(expr->resolvedType, member.value) + "-->(" + indexExpr->text() + ")");
+            replaceReceiver(expr, owner + ".&" + memberI6Name(expr->resolvedType, member.value) + "-->(" + indexExpr->text() + ")");
             expr->resolvedType = ad->elementType;
             cur = exprNext(st);
             return ExprStep::Continue;
         }
         if(pm != nullptr){
+            string recv = receiverText(expr), whole = expr->text();
+            if(parenthesizeReceiver(recv) != recv && parenthesizeReceiver(whole) != whole)
+                replaceReceiver(expr, "(" + recv + ")");
             expr->tokens.push_back("." + member.value);
             expr->resolvedType = mtype;
             // A property-class member reached later off this field needs the accumulated
             // path as its `$self`; refresh emitterSelf to the full receiver text.
-            { string acc; for(const auto& t : expr->tokens) acc += t; expr->emitterSelf = acc; }
+            expr->emitterSelf = receiverText(expr);
             prefetched = afterMember;   // keep chaining (.field.field, or a following .method())
             cur = exprNext(st);
             return ExprStep::Continue;
@@ -3208,7 +3481,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         // #bgl islands keep passthrough.
         classDef* recvCls = languageService.classOf(expr->resolvedType);
         if(recvCls != nullptr && isObjectBackedClass(recvCls) && !looseIdentifierMode && func != nullptr){
-            string recvText; for(const auto& t : expr->tokens) recvText += t;
+            string recvText = receiverText(expr);
             string shown = typeDisplayName(expr->resolvedType);
             parsingError(format("'{0}' is not a member of '{2}'. If this value holds a more specific "
                 "type at run time (e.g. from '.parent'), cast to it to reach its members: "
@@ -3229,8 +3502,10 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
     functionDef* func = st.func;
     statementBlock* body = st.body;
 
-    string selfText;
-    for(const auto& t : expr->tokens) selfText += t;
+    // Structural '(' tokens opened before the receiver are not part of it; they go back in front
+    // of the call.
+    size_t openParens = leadingParens(expr);
+    string selfText = receiverText(expr);
     // When the receiver path is a pseudo-property whose Beguile type wraps an
     // I6-level operation on the owning object (attributeList → `obj has attr`,
     // parentProp → `move obj to v`), `$self` in the emitter body must
@@ -3303,13 +3578,13 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
     string rawExtent;
     if(chainIsMember && (methName == "size" || methName == "length")
        && !memberArrayIsTracked(chainSelf, chainProp, func, body))
-        rawExtent = "((" + chainSelf + ".#" + chainProp + ")/WORDSIZE)";
+        rawExtent = "((" + chainSelf + ".#" + propertyI6Name(chainProp) + ")/WORDSIZE)";
     if(chainIsMember) rejectRawMemberLengthOp(chainSelf, chainProp, methName, func, body);
 
     functionDef* method = bindMethodCall(chainTypeName, selfText, methName,
                                            callArgs, emptyNamed, emptyInterp, chainElem);
 
-    expr->tokens.clear();
+    expr->tokens.assign(openParens, "(");
     expr->resolvedType = method->returnType.name;
 
     string callText;
@@ -3337,7 +3612,7 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
         }
     } else {
         const string& callName = method->i6name.empty() ? methName : method->i6name;
-        string call = selfText + "." + callName + "(";
+        string call = parenthesizeReceiver(selfText) + "." + callName + "(";
         for(size_t i = 0; i < callArgs.size(); i++){
             if(i > 0) call += ", ";
             call += callArgs[i]->text();
@@ -3435,7 +3710,10 @@ bglParser::ExprStep bglParser::parseExprTernaryStart(ExprParseState& st){
         }
     }
     pt.condText = expr->text();
+    size_t mark = pendingInjections.size();
     expression* trueExpr = parseExpression(file.getToken(), {":"}, func, body);
+    pt.trueSetUp = takeBranchSetUp(mark);
+    pt.falseMark = pendingInjections.size();
     pt.trueText = trueExpr->text();
     pt.trueType = trueExpr->resolvedType;
     pt.parenDepthAtQuestion = parenDepth;
@@ -3555,12 +3833,18 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         else if(cur.is(eTokenType::oper))                 step = parseExprOperator(st);
         else if(cur.is(eTokenType::dictionaryWord))       step = parseExprDictionaryWord(st);
         else if(cur.is(eTokenType::charLiteral)){
-            if(expr->resolvedType.empty()) expr->resolvedType = "charliteral";
             // Numeric ZSCII (\NNN) and diacritical (@^a etc.) are standalone I6 tokens; others need '...'
             bool isBareToken = (!cur.value.empty() && all_of(cur.value.begin(), cur.value.end(), ::isdigit))
                             || (cur.value.rfind("@", 0) == 0);
-            if(isBareToken) expr->tokens.push_back(cur.value);
-            else expr->tokens.push_back("'" + cur.value + "'");
+            string text = isBareToken ? cur.value : "'" + cur.value + "'";
+            if(!st.castType.empty()){                      // `(int)'A'`
+                expr->tokens.push_back(applyCastConversion(text, "charliteral", st.castType));
+                expr->resolvedType = st.castType;
+                st.castType = "";
+            } else {
+                if(expr->resolvedType.empty()) expr->resolvedType = "charliteral";
+                expr->tokens.push_back(text);
+            }
         }
         else if(cur.value == "." && !expr->tokens.empty() && !expr->resolvedType.empty())
                                                           step = parseExprDotChain(st);

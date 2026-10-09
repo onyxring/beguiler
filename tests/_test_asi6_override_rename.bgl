@@ -1,0 +1,7 @@
+// Negative test: an override is the same I6 property as the method it overrides, so it can't take an
+// I6 name of its own.
+// EXPECT_ERROR: overrides a method emitted as 'boxSize', so it is emitted as 'boxSize' too
+#beguilerSettings { target = z5; informName = "none"; }
+class box[2] : _bglObject { int size() asI6 boxSize { return 1; } }
+class bigbox[2] : box { int size() asI6 bigSize { return 2; } }
+void main(){ }

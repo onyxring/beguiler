@@ -12,298 +12,25 @@ global _bgl_sw;
 
     Default bglStringDefaultSize 500;
 
-
-    #Ifdef TARGET_GLULX;
-    #Ifndef filemode_Write;
-        Constant filemode_Write 1;
-    #Endif;
-    #Ifndef gg_arguments;
-        Array gg_arguments --> 4;
-    #Endif;
-    #Endif;
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
-    _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
-    _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
-    _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
 
     _bglInitializeStringBuffers();
 
 ];
  Constant NO_ATTRIBUTE 0; 
-[_bglArrayCompareAsc lhs rhs;
-    
-        if(lhs < rhs) return -1;
-        if(lhs > rhs) return 1;
-        return 0;
-    
-];
-object _bglArray
-  with rawGet [addr slot;
-     return addr-->slot; 
-  ],
-       rawSet [addr slot v;
-     addr-->slot = v; 
-  ],
-       get [obj prop n;
-    
-            if(metaclass(obj)==object) return obj.&prop-->n;
-            return obj-->(n+1);
-        
-  ],
-       set [obj prop n v;
-    
-            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
-            obj-->(n+1) = v;
-        
-  ],
-       copy [dobj dprop sobj sprop n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n = cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
-    }
-    self.setlength(dobj, dprop, n);
-  ],
-       isTracked [obj prop hdr;
-     if(metaclass(obj)==object) rfalse; 
-    hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
-  ],
-       size [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,0)-2;
-    }
-    return self.rawget(obj,0);
-  ],
-       length [obj prop;
-     if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,self.rawget(obj,0)-1);
-    }
-    return self.rawget(obj,0);
-  ],
-       setLength [obj prop n cap;
-    if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-         quit; 
-    }
-    cap=self.size(obj,prop);
-    if (n > cap) {
-        n=cap;
-    }
-     if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
-    if (self.istracked(obj,prop)) {
-        self.set(obj, prop, self.size(obj,prop), n);
-    }
-  ],
-       indexOf [obj prop val op len t e;
-    len=self.length(obj,prop);
-    for (t = 0 : t < len : t++) {
-        e = self.get(obj,prop,t);
-        if (e==val) {
-            return t;
-        }
-        
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
-            
-    }
-    return -1;
-  ],
-       setOwned [obj prop n v assign;
-    if (assign==0) {
-        self.set(obj, prop, n, v);
-        return;
-    }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
-    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
-  ],
-       clear [obj prop dtor sz t;
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-    for (t = 0 : t < sz : t++) {
-        self.set(obj, prop, t, 0);
-    }
-    self.setLength(obj, prop, 0);
-  ],
-       freeAll [obj prop dtor sz t;
-    if (dtor==0) {
-        return;
-    }
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
-        self.destroyvalue(dtor, self.get(obj,prop,t));
-    }
-  ],
-       swap [obj prop pos1 pos2 tmp;
-    tmp = self.get(obj,prop,pos1);
-    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
-    self.set(obj, prop, pos2, tmp);
-  ],
-       reverse [obj prop len half i;
-    len=self.length(obj,prop);
-    half=len / 2;
-    for (i = 0 : i < half : i++) {
-        self.swap(obj, prop, i, len - 1 - i);
-    }
-  ],
-       append [obj prop val assign len;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    self.setOwned(obj, prop, len, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       insert [obj prop pos val assign len i;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    if (pos < 0 || pos > len) {
-        return false;
-    }
-    for (i = len : i > pos : i--) {
-        self.set(obj, prop, i, self.get(obj,prop,i - 1));
-    }
-    self.set(obj, prop, pos, 0);
-    self.setOwned(obj, prop, pos, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       prepend [obj prop val assign;
-    return self.insert(obj,prop,0,val,assign);
-  ],
-       destroyValue [dtor v;
-     if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
-  ],
-       remove [obj prop pos dtor len i;
-    len=self.length(obj,prop);
-    if (pos < 0 || pos >= len) {
-        return;
-    }
-    self.destroyValue(dtor, self.get(obj,prop,pos));
-    for (i = pos : i < len - 1 : i++) {
-        self.set(obj, prop, i, self.get(obj,prop,i + 1));
-    }
-    self.set(obj, prop, len - 1, 0);
-    self.setLength(obj, prop, len - 1);
-  ],
-       removeValue [obj prop val op dtor pos len e hit;
-    pos = 0;
-    len=self.length(obj,prop);
-    while (pos < len) {
-        e = self.get(obj,prop,pos);
-        hit=false;
-        if (e==val) {
-            hit = true;
-        }
-        if (~~hit) {
-            
-                    if(op ~= 0 && e ~= 0 && val ~= 0){
-                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
-                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
-                    }
-                
-        }
-        if (hit) {
-            self.remove(obj, prop, pos, dtor);
-            len = self.length(obj,prop);
-        }
-        else {
-             pos++ ;
-        }
-    }
-  ],
-       push [obj prop val;
-    self.insert(obj, prop, 0, val, 0);
-  ],
-       pop [obj prop v;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    v = self.get(obj,prop,0);
-    self.remove(obj, prop, 0, 0);
-    return v;
-  ],
-       dequeue [obj prop;
-    return self.pop(obj,prop);
-  ],
-       enqueue [obj prop val;
-    self.append(obj, prop, val, 0);
-  ],
-       peek [obj prop;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,0);
-  ],
-       peekEnd [obj prop len;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,len - 1);
-  ],
-       popEnd [obj prop len v;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    v = self.get(obj,prop,len - 1);
-    self.remove(obj, prop, len - 1, 0);
-    return v;
-  ],
-       sortDefault [obj prop cmp;
-    if (cmp==0) {
-        self.sort(obj, prop, _bglarraycompareasc);
-    }
-    else {
-        self.sort(obj, prop, cmp);
-    }
-  ],
-       invokeCompare [cmp a b;
-    
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        
-    return 0;
-  ],
-       sort [obj prop compare len i key j;
-    len=self.length(obj,prop);
-    for (i = 1 : i < len : i++) {
-        key = self.get(obj,prop,i);
-        j=i - 1;
-        while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
-            self.set(obj, prop, j + 1, self.get(obj,prop,j));
-             j-- ;
-        }
-        self.set(obj, prop, j + 1, key);
-    }
-  ]
-;
 global _bglWorldBufIdx = -1;
+constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
   with zcode _zcode
 ;
-array _bglbufstreamstack table 18;
-array _bglbufglulxstreams table 18;
-array _bgltrackedregistry table 130;
+array _bglbufstreamstack table 16;
+array _bglbufglulxstreams table 16;
+array _bgltrackedregistry table 128;
 object _bglBuf
   with _stacktop 0,
        _trackedcount 0,
@@ -368,7 +95,7 @@ object _bglBuf
        setFromLiteral [buf stringVal sz;
     sz=self.size(buf);
     if (sz < 0) {
-        sz = bglstringdefaultsize;
+        sz=bglstringdefaultsize;
     }
      stringVal.print_to_array(buf, sz); 
     self.setLength(buf, self.length(buf));
@@ -453,7 +180,7 @@ object _bglBuf
        compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
     len1=self.length(buf1);
     len2=self.length(buf2);
-    if (len1 < len2) _bgl_temp0 = len1; else _bgl_temp0 = len2;
+    if (len1 < len2) { _bgl_temp0 = len1; } else { _bgl_temp0 = len2; }
     lim=_bgl_temp0;
     for (t = 0 : t < lim : t++) {
         c1=buf1->(t + WORDSIZE);
@@ -463,14 +190,14 @@ object _bglBuf
             c2 = _bglchartolower(c2);
         }
         if (c1 ~= c2) {
-            if (c1 < c2) _bgl_temp1 = -1; else _bgl_temp1 = 1;
+            if (c1 < c2) { _bgl_temp1 = -1; } else { _bgl_temp1 = 1; }
             return _bgl_temp1;
         }
     }
     if (len1 == len2) {
         return 0;
     }
-    if (len1 < len2) _bgl_temp2 = -1; else _bgl_temp2 = 1;
+    if (len1 < len2) { _bgl_temp2 = -1; } else { _bgl_temp2 = 1; }
     return _bgl_temp2;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
@@ -610,7 +337,7 @@ object _bglBuf
     }
     for (o = startingindex : o < buflen : o++) {
         c = buf->(o + WORDSIZE);
-        if (~~pred(c)) {
+        if ((~~pred(c))) {
             return o;
         }
     }
@@ -816,14 +543,35 @@ object _bglStr
             lck    = self.ambiguousLock(unkStr);
             retval = _bglStringPool.allocateString();
             if(unkStr ~= 0) retval.set(unkStr);
+            else retval.setLength(0);   ! a pooled buffer still holds its last text
             self.ambiguousFree(unkStr, lck);
             retval = retval.lock();
         
     return retval;
   ],
-       format [s pattern p1 p2 p3 str tmp;
+       fromChars [chars retval n i;
+    retval = self.new(0);
+    
+            n = chars-->0;
+            i = _bglBuf.size(retval.getBuf());   ! -1 when the buffer carries no capacity
+            if(i >= 0 && n > i) n = i;
+            for(i = 0 : i < n : i++) retval.setChar(i, chars->(i + WORDSIZE));
+            retval.setLength(n);
+            retval = retval.free();
+        
+    return retval;
+  ],
+       format [s pattern p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
+    lk_pattern=self.ambiguouslock(pattern);
+    lk_p1=self.ambiguouslock(p1);
+    lk_p2=self.ambiguouslock(p2);
+    lk_p3=self.ambiguouslock(p3);
     str = self.new(s);
      tmp = str.format(pattern, p1, p2, p3); str.free(); 
+    self.ambiguousfree(p3, lk_p3);
+    self.ambiguousfree(p2, lk_p2);
+    self.ambiguousfree(p1, lk_p1);
+    self.ambiguousfree(pattern, lk_pattern);
     return tmp;
   ],
        toAmbiguousBuffer [unkStr retval;
@@ -885,24 +633,32 @@ object _bglStr
      r = str.getChar(pos); str.free(); 
     return r;
   ],
-       indexOf [s searchText startingIndex str r;
+       indexOf [s searchText startingIndex lk_searchText str r;
+    lk_searchText=self.ambiguouslock(searchtext);
     str = self.new(s);
      r = str.indexOf(searchText, startingIndex); str.free(); 
+    self.ambiguousfree(searchText, lk_searchText);
     return r;
   ],
-       startsWith [s prefix caseInsensitive str r;
+       startsWith [s prefix caseInsensitive lk_prefix str r;
+    lk_prefix=self.ambiguouslock(prefix);
     str = self.new(s);
      r = str.startsWith(prefix, caseInsensitive); str.free(); 
+    self.ambiguousfree(prefix, lk_prefix);
     return r;
   ],
-       endsWith [s suffix caseInsensitive str r;
+       endsWith [s suffix caseInsensitive lk_suffix str r;
+    lk_suffix=self.ambiguouslock(suffix);
     str = self.new(s);
      r = str.endsWith(suffix, caseInsensitive); str.free(); 
+    self.ambiguousfree(suffix, lk_suffix);
     return r;
   ],
-       contains [s searchText str r;
+       contains [s searchText lk_searchText str r;
+    lk_searchText=self.ambiguouslock(searchtext);
     str = self.new(s);
      r = str.contains(searchText); str.free(); 
+    self.ambiguousfree(searchText, lk_searchText);
     return r;
   ],
        isEmpty [s str r;
@@ -910,9 +666,11 @@ object _bglStr
      r = str.isEmpty(); str.free(); 
     return r;
   ],
-       append [s text str tmp;
+       append [s text lk_text str tmp;
+    lk_text=self.ambiguouslock(text);
     str = self.new(s);
      tmp = str.append(text); str.free(); 
+    self.ambiguousfree(text, lk_text);
     return tmp;
   ],
        appendChar [s c str tmp;
@@ -920,9 +678,11 @@ object _bglStr
      tmp = str.appendChar(c); str.free(); 
     return tmp;
   ],
-       prepend [s text str tmp;
+       prepend [s text lk_text str tmp;
+    lk_text=self.ambiguouslock(text);
     str = self.new(s);
      tmp = str.prepend(text); str.free(); 
+    self.ambiguousfree(text, lk_text);
     return tmp;
   ],
        toUpper [s str tmp;
@@ -965,9 +725,11 @@ object _bglStr
      tmp = str.right(count); str.free(); 
     return tmp;
   ],
-       insert [s pos source str tmp;
+       insert [s pos source lk_source str tmp;
+    lk_source=self.ambiguouslock(source);
     str = self.new(s);
      tmp = str.insert(pos, source); str.free(); 
+    self.ambiguousfree(source, lk_source);
     return tmp;
   ],
        delete [s pos count str tmp;
@@ -975,14 +737,22 @@ object _bglStr
      tmp = str.delete(pos, count); str.free(); 
     return tmp;
   ],
-       replace [s searchText replaceText str tmp;
+       replace [s searchText replaceText lk_searchText lk_replaceText str tmp;
+    lk_searchText=self.ambiguouslock(searchtext);
+    lk_replaceText=self.ambiguouslock(replacetext);
     str = self.new(s);
      tmp = str.replace(searchText, replaceText); str.free(); 
+    self.ambiguousfree(replaceText, lk_replaceText);
+    self.ambiguousfree(searchText, lk_searchText);
     return tmp;
   ],
-       replaceAll [s searchText replaceText str tmp;
+       replaceAll [s searchText replaceText lk_searchText lk_replaceText str tmp;
+    lk_searchText=self.ambiguouslock(searchtext);
+    lk_replaceText=self.ambiguouslock(replacetext);
     str = self.new(s);
      tmp = str.replaceAll(searchText, replaceText); str.free(); 
+    self.ambiguousfree(replaceText, lk_replaceText);
+    self.ambiguousfree(searchText, lk_searchText);
     return tmp;
   ],
        trim [buf str tmpStr;
@@ -1005,7 +775,7 @@ object _bglStr
     _bglbuf.print(buf, -1);
   ]
 ;
-class _bglstring(bglstringpoolreserve)
+class _bglString(bglstringpoolreserve)
   with
     _underlyingBuffer 0,
     getLength[retval;
@@ -1389,7 +1159,7 @@ class _bglstring(bglstringpoolreserve)
     else {
         code = 99;
     }
-    s.free();
+    if (s) s.free();
 ];
 [exerciseConcat s1 s2 c;
     s1 = "foo";
@@ -1397,9 +1167,9 @@ class _bglstring(bglstringpoolreserve)
     c = _bglStr.new();
     c.setFromStr(_bglStr.append(s1, s2));
     c.setFromStr(_bglStr.append(s1, "literal"));
-    c.setFromLit(_bglStr.new("literal").append(s1));
-    c.setFromLit(_bglStr.new("literal").appendChar('X'));
-    c.free();
+    c.setFromStr(_bglStr.append("literal", s1));
+    c.setFromStr(_bglStr.appendChar("literal", 'X'));
+    if (c) c.free();
 ];
 [exerciseNullable s1 s2 c present;
     s1 = "hi";
@@ -1408,9 +1178,9 @@ class _bglstring(bglstringpoolreserve)
     c = _bglStr.new();
     c.setFromLit(_bgl_temp3);
     present=s1 ~= 0;
-    c.free();
+    if (c) c.free();
 ];
-[exerciseMethods s t len pos sw ew has emp;
+[exerciseMethods s t len pos sw ew _l_has emp;
     s = _bglStr.new();
     s.setFromLit("Hello, World");
     _bglStr.print(s);
@@ -1438,13 +1208,13 @@ class _bglstring(bglstringpoolreserve)
     pos=_bglStr.indexOf(s, "World", 0);
     sw=_bglStr.startsWith(s, "Hello", false);
     ew=_bglStr.endsWith(s, "World", false);
-    has=_bglStr.contains(s, ",");
+    _l_has=_bglStr.contains(s, ",");
     emp=_bglStr.isEmpty(s);
     s.capture();
     print (string)"captured-content";
     s.release();
-    s.free();
-    t.free();
+    if (s) s.free();
+    if (t) t.free();
 ];
 [exerciseForIn s c _bglfia1 _bglfi2;
     s = "abc";

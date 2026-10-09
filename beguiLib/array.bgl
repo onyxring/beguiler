@@ -179,7 +179,7 @@ extend extern class arrayLength {
 //   of isTracked() which reads the magic; both must reach the raw header
 //   without going back through size()).
 //-----------------------------------------------------------------------------
-object _bglArray {
+superposed object _bglArray {
     // ── Raw word access on a global/local array ADDRESS ───────────────────────
     // Bypasses operator[] so this object never recurses through its own dispatch.
     // `addr-->slot` is the raw I6 slot (slot 0 = header/count, data at 1..N).

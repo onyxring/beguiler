@@ -411,6 +411,8 @@ of contents.
     - [22.7.8 Colors](#2278-colors)
     - [22.7.9 Style Validation](#2279-style-validation)
     - [22.7.10 Enums](#22710-enums)
+    - [22.7.11 Window Output](#22711-window-output)
+    - [22.7.12 Capabilities](#22712-capabilities)
   - [22.8 `<glulxImage>`](#228-glulximage)
 - [23 IF Library Bindings](#23-if-library-bindings)
   - [23.1 What a Binding Is](#231-what-a-binding-is)
@@ -706,6 +708,7 @@ void showBanner(){ print("Welcome."); }
 Beguile is case-insensitive for every token except the contents of string literals. Keywords, type
 names, identifiers and operator names are normalized to lowercase, so the following are equivalent:
 
+<!-- doctest: skip -->
 ```bgl
 if(X == 1) print("yes");
 IF(x == 1) Print("yes");
@@ -730,6 +733,7 @@ A reserved word (§1.5) should not be used as a name. A member may share its nam
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 score   myVar   _internal   room1   velvetCloak
 ```
@@ -782,7 +786,7 @@ words alphabetically, with the section that defines each.
 
 `new` `replaced`
 
-**Value words** name a fixed value or the current receiver.
+**Value words** name a fixed value or the current receiver. None of them may be declared as a name.
 
 `false` `null` `self` `true`
 
@@ -821,6 +825,7 @@ An integer literal has the pseudo-type `intLiteral`; a negated one has `negative
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 42        $FF         $$11111111     // → 42, 255, 255
 -1234     $0A         $$11010        // → -1234, 10, 26
@@ -847,6 +852,7 @@ value is formed by prefixing `-`. `1.` is not a float literal and is a compile-t
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 1.0     .3     -1.2
 ```
@@ -889,6 +895,7 @@ A string literal has the pseudo-type `stringLiteral` (§2.4).
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 "Hello, world!"
 "She said, \"well done.\""
@@ -967,6 +974,7 @@ followed by such a vowel is an escaped single quote. A character literal has the
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 'a'   '\n'   '\\'   'ä'   '\:a'
 ```
@@ -995,6 +1003,7 @@ A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is com
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 .cloak   ..cloaks   .medium-sized   .monkey's
 ```
@@ -1063,7 +1072,7 @@ The primitive types are declared by the runtime core (§21) and need no `#includ
 | `uint` | Unsigned integer, the same width as `int`. A non-negative integer literal converts to it implicitly; any other conversion between `int` and `uint` is an explicit cast (§2.4.1). Its operators are specified in §21.6.1. |
 | `float` | IEEE 754 single-precision floating point. `[Glulx]` See §2.3. |
 | `bool` | Boolean value, `true` or `false`. The comparison and logical operators and `operator ?()` yield `eBool`, the enumeration `{ true, false }` (§2.7.4); `eBool` and `bool` interoperate, so a comparison may be stored in a `bool` and a `bool` tested where an `eBool` is expected. Tables elsewhere in this specification write `bool` for either. |
-| `char` | A single ZSCII character value. The runtime core (§21.7) adds case-conversion and inspection methods. |
+| `char` | A single character: its ZSCII code on the Z-machine, its Unicode code point on Glulx (Appendix D). The runtime core (§21.7) adds case-conversion and inspection methods. |
 | `string` | A reference to static text. The core provides printing, equality and literal assignment; the `<string>` extension (§22.3) compares content and adds `stringObj` for text that is built or changed. |
 | `object` | The base class of every world object in the IF model (§11.1). |
 | `verb` | The class from which verbs are declared (§13.2). |
@@ -1094,6 +1103,9 @@ bit-for-bit as a `float`.
 converted to `float` and the result is a `float`. If both operands are `int`, the result is an
 `int`. So `314 / 100` is `3`, while `(float)314 / 100` is `3.14`: one `float` operand, on either side,
 is enough. The comparison operators convert the same way but yield `bool`.
+
+`print()` writes a `float` as a decimal rounded to four places: `2.0 / 3` prints `0.6667`, and `0.99999`
+prints `1.0000`.
 
 **Example**
 
@@ -1194,6 +1206,7 @@ the ones `string` and `obj.parent` declare.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 object o;
 if(o == null) print("not yet set");
@@ -1339,6 +1352,7 @@ boolean-result type (§2.2), is declared this way by the runtime core.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern enum eBool { true, false }
 extern enum eErrorFormat { E1, E2 }
@@ -1440,6 +1454,7 @@ Objects and classes report `eType.object` and `eType.class`; a value's class is 
 
 The core declares `eType` as follows; it is shown for reference, and a program does not declare it.
 
+<!-- doctest: skip -->
 ```bgl
 enum eType { unknown = 0, int, string, routine, object, class }
 ```
@@ -1512,7 +1527,8 @@ type; the remaining arguments are the parameter types in order. A function with 
 `func<>` is valid wherever a type is: a variable, parameter, return or member type, and the element
 type of a collection, including nested forms such as `array<func<T>>`. A `func<>` value is called
 like a function, by writing the arguments after it, whether the value is held in a variable, a member
-or a loop variable.
+or a loop variable. Any parenthesized expression is called the same way: `((func<void>)v)()`
+narrows a `var` or union value to a function and calls it, as a statement or within an expression.
 
 The name of a function, written without a call, is a function value whose type is the function's
 signature: `int twice(int n)` gives a `func<int, int>`. It may be stored in, passed to or returned as a
@@ -1693,7 +1709,9 @@ There are three kinds:
 - **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
   through the class's copy operator, `operator =` taking the class; a value class that has none can't
-  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7).
+  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7). A
+  routine that calls itself keeps each call's locals and parameters its own across the inner call,
+  but it can't return a value class by value.
 
 Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
 follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a
@@ -1736,8 +1754,10 @@ Every program has a `Main` function as its entry point (§6.7). General-purpose 
 the Inform 6 Standard Library and PunyInform define `Main` themselves and expect a library-specific
 entry point, such as `Initialise`, instead (§23.3.1).
 
-A global name must be unique across every kind of global declaration: declaring a variable, function,
-class, object or enum with the name of an existing global of any kind is a compile-time error (§19.2).
+A global name must be unique across every kind of global declaration, ignoring case: declaring a
+variable, function, class, object or enum with the name of an existing global of any kind is a
+compile-time error (§19.2). The one exception is an emitter function, which may share its name with a
+variable or object (§3.10).
 
 ## 3.2 Declaration Qualifiers
 
@@ -2029,10 +2049,13 @@ may shadow a global; inside its scope the bare name is the local and `::name` (�
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
 - A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.7.3).
 
-**Two file-scope declarations of one name.** A function and a variable or object may share a
-file-scope name, which happens whenever an author declares one of the unprefixed names the library
+**Two file-scope declarations of one name.** An emitter function and a variable or object may share
+a file-scope name, which happens whenever an author declares one of the unprefixed names the library
 publishes (`print`, `log`, and the article rules before they moved to `bgl.printRules` — §21.11).
-They are told apart by **use**, not by declaration order:
+The emitter leaves no symbol in the Inform 6 output, so only the variable or object is emitted under
+the name. Any other two globals of one name, ignoring case — two routines, objects, verbs, variables
+or arrays — would be two Inform 6 symbols, and are a compile-time error unless one is given an
+`asI6` name (§3.11). The two that may share are told apart by **use**, not by declaration order:
 
 | Use | Resolves to |
 |---|---|
@@ -2096,9 +2119,8 @@ the member name. It is ignored on operator methods; on a type declaration (`exte
 clause is that the name required on one side is a keyword or reserved word on the other (§15.9).
 
 A member is emitted as an Inform 6 property, and Inform 6 keeps class names and property names in one
-namespace, ignoring case. A member (field, array or method) named like a class that reaches the I6
-output, such as `Box box;` beside `class Box`, is therefore a compile-time error unless `asI6` gives
-the member a different I6 name: `Box box asI6 theBox;`. Beguile source still calls it `box`.
+namespace, ignoring case. A class declared in Beguile is emitted as `_bglClass_⟨name⟩` (§8.1), so a
+member named like a class, such as `Box box;` beside `class Box`, needs no `asI6`.
 
 Both clauses cross the language boundary. `alias` never does: `alias class Foo for Bar` (§8.2.4),
 `alias name for Type;` and `alias name = Target;` (§10.2) each introduce a second *Beguile* name for
@@ -2223,7 +2245,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 4 | `\|` | infix | left | Bitwise or |
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
-| 1 | `? :` | ternary | — | Conditional (one per statement, §4.9) |
+| 1 | `? :` | ternary | right | Conditional (§4.9) |
 | 1 | `??` | infix | — | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
@@ -2253,7 +2275,7 @@ class Money {
     emitter bool operator == (Money v){ $self.cents == $v.cents }
     int operator () { return cents; }          // implicit conversion to int
 }
-Money a; Money b; int five = 5;
+Money a { } Money b { } int five = 5;
 bool same = a == b;       // 1: Money declares operator == (Money)
 int  sum  = a + five;     // 2: no operator + on Money; a converts to int, built-in + applies
 ```
@@ -2279,6 +2301,13 @@ coalescing are in §4.10.
 A leading `-` on an integer literal forms a negative literal, whose pseudo-type is
 `negativeIntLiteral` (§2.4.1). `<=>` binds more tightly than the relational operators (§4.3).
 
+**`int` arithmetic.** An `int` is a signed word: 16 bits on the Z-machine (−32768 to 32767), 32 bits
+on Glulx. Arithmetic that leaves the range wraps (`32767 + 1` → `-32768` on the Z-machine). `/`
+truncates toward zero (`-7 / 2` → `-3`) and `%` takes the sign of the left operand (`-7 % 2` → `-1`,
+`7 % -2` → `1`). `>>` on an `int` is arithmetic, keeping the sign (`-256 >> 4` → `-16`); on a `uint`
+it fills with zeros (§21.6.1). Dividing by zero, with `/` or `%`, is a run-time error of the virtual
+machine.
+
 ## 4.6 Comparison Operators
 
 `== != < > <= >= ?= =~ <=>` are tabulated in §4.5.
@@ -2303,8 +2332,9 @@ A leading `-` on an integer literal forms a negative literal, whose pseudo-type 
 
 Selects one of two values. A ternary may appear as a call argument, on the right-hand side of an
 assignment, in a parenthesized sub-expression, and in the condition and increment parts of a `for`
-loop. At most one ternary may appear per statement (a call argument that is a ternary counts), and a
-ternary may not be nested in another ternary's condition or branches.
+loop. Several may appear in one statement, and one may be nested in another's condition or branches.
+Only the branch selected is evaluated, nested ternaries included: `a ? (f() ? 1 : 2) : 3` calls `f()` only
+when `a` is true.
 
 **Type of the result.** When the branches have the same type, that is the type. When one branch's
 type is assignable to the other's — a derived class and its base, for instance — the result takes the
@@ -2319,6 +2349,7 @@ as the mistyping it is.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 print(x > 0 ? "positive" : "non-positive");
 int result = (cond ? a : b) + extra;
@@ -2360,6 +2391,7 @@ ternary; the postfix query applies only when the `?` ends the expression.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 object dest = actor?.destination ?? location;
 string desc = noun?.parent.description;   // parent guarded, .description not
@@ -2377,21 +2409,33 @@ if (noun?) print("something is here");
 
 **Description**
 
-A cast sets the resolved type of the immediately following identifier or call; it does not propagate
-through a chain. It has three uses.
+A cast applies to the whole operand that follows it, member accesses and calls included, as in C++
+and C#: `(Dog)a.barks` casts the value of `a.barks`. To treat the receiver as another type, the cast and
+the receiver are parenthesized: `((Dog)a).barks` reads `Dog`'s member. The result of a cast is not
+assignable, so `(Dog)a.barks = 9` is a compile-time error; `((Dog)a).barks = 9` assigns the member, and
+`(T)name = v;` assigns through `T`'s `operator =`. A cast has four uses.
 
 **Ancestor-qualified dispatch.** Method dispatch is dynamic: `myDog.speak()` runs the most-derived
 override. Casting the receiver to a strict ancestor of its static type selects that ancestor's version:
-`(Animal)myDog.speak()`. On `self` inside an override this calls the overridden method without
+`((Animal)myDog).speak()`. On `self` inside an override this calls the overridden method without
 recursion. An identity cast, a downcast or a cast to an unrelated type keeps dynamic dispatch. The
 receiver must be a class or object with real methods; an ancestor cast on an `emitter` method is a
-compile-time error. The cast qualifies method dispatch only; it does not apply to member access or
-`operator =` (`(Base)obj.field = x`). A base-typed *variable* stays dynamic: `Animal a = myDog;
-a.speak();` runs `Dog`'s override.
+compile-time error. On a member variable the receiver cast resolves the member against the cast type,
+which reaches a member the subtype hides (§8.7.4). A base-typed *variable* stays dynamic:
+`Animal a = myDog; a.speak();` runs `Dog`'s override.
+
+> **Compared with C#.** In C#, `((Animal)myDog).Speak()` still runs `Dog`'s override; the base version
+> is reached only through `base.Speak()` inside the class. C++ writes `myDog.Animal::speak()`.
 
 **Explicit conversion.** A conversion operator declared `explicit` fires only under a cast:
 `string s = (string)myValue;` (§9.4). A cast also forces resolution through a specific type when the
 inferred type would resolve differently.
+
+**Reinterpretation.** Between a reference type and a primitive (`object` and `dictionaryWord`, `int` and
+`object`), or between two primitives without a conversion operator, a cast changes only the type: the
+value is the same word, read as the target type. It is unchecked, like `(var)`. This is how a library
+value declared with one type and holding another is read: `(dictionaryWord)second` for the topic of an
+Ask (§23.3.11).
 
 **Class vs. instance.** The target may be a class or a named object. Casting to a class exposes the
 class's members; casting to an instance also exposes members declared on that object alone. This is
@@ -2403,6 +2447,7 @@ untyped read with no member check.
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 class Room : object { int lit; }
 Room library { int shelves; }
@@ -2430,6 +2475,7 @@ pointer types. A `&` with a left operand is the bitwise and (§4.8).
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 extern void FillBuffer(int address, int length);   // an I6 routine
 array<char> buf[32];
@@ -2511,6 +2557,7 @@ or pass it first.
 **Example**
 
 ```bgl
+#include <array>
 array<int> scores = {3, 1, 2};
 
 void applyToAll(array<int> arr, func<void, int> fn) {
@@ -2541,6 +2588,7 @@ operand type selects one. The rules for declaring static operators are in §9.6.
 **Example**
 
 ```bgl
+#include <array>
 #include <string>
 class Money {
     int cents = 0;
@@ -2623,6 +2671,7 @@ are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 score = score + 10;
 lamp.parent = library;
@@ -2640,12 +2689,10 @@ lamp.parent = library;
 
 **Description**
 
-`+= -= *= /= %= &= |= ^= <<= >>=` modify the variable in place. The left type must declare the
-corresponding compound operator; if it does not and the type is known (not `var`), it is a
-compile-time error. The BLR defines all of them for `int` (§2.2) and `uint` (§21.6.1).
-
-`n += 2` is equivalent to `n = n + 2` when the type declares no `operator +=`; the
-fallback is specified in §9.7.
+`+= -= *= /= %= &= |= ^= <<= >>=` modify the variable in place. When the left type declares the
+compound operator, that operator runs. When it declares none, `n op= v` is `n = n op (v)` (§9.7), so
+the type's own `op` and `=` apply; it is a compile-time error only when that assignment is. The BLR
+defines all of them for `int` (§2.2) and `uint` (§21.6.1).
 
 **Example**
 
@@ -2939,11 +2986,13 @@ delete ⟨identifier⟩ ;
 **Description**
 
 Returns a pooled-class instance to its pool, calling the class's `destroy()` method first if one is
-declared. `delete` on a variable whose type is not a pooled class is a compile-time error. Pooled
+declared. The instance leaves the object tree (it is in no room or container), and the slot is free
+for the next `new`, which starts it again from its members' declared values. `delete` on a variable whose type is not a pooled class is a compile-time error. Pooled
 classes are specified in §8.2.6; allocation with `new` in §4.13.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 Marble m = new Marble();
 if (m != null) delete m;       // destroy() runs; the slot returns to the pool
@@ -3086,6 +3135,7 @@ to another `literal` parameter or stored; an unqualified parameter may not be pa
 values kept to use later, such as event handlers or a rulebook's rules. On a variable or member it
 covers the whole type:
 
+<!-- doctest: skip -->
 ```bgl
 literal func<void> onStart = intro;              // a global
 class door { literal func<void> onOpen; }        // a member
@@ -3362,6 +3412,7 @@ ambiguous and is a compile-time error; name the operand type to select one:
 
 ```bgl
 class Money {
+    int cents;
     static bool operator == (Money a, Money b) { return a.cents == b.cents; }
     static bool operator == (Money a, int b)   { return a.cents == b; }
     emitter int refMoney(){ $opref(==, Money) }     // $opref(==) alone is ambiguous
@@ -3377,6 +3428,7 @@ that supplies its own comparator.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 emitter int  indexOf(T item) { _bglArray.indexOf($self, $prop, $item, $opref(==)) }
 emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
@@ -3399,6 +3451,7 @@ emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 primitive class int {
     emitter int  operator +  (int v){ $val + $v }
@@ -3461,7 +3514,7 @@ resolved and never reports.
 **Example**
 
 ```bgl
-extern attribute lit asI6 light;
+extern attribute light asBgl lit;
 object myHook asI6 hook;
 
 emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // → ($o has light)
@@ -3491,7 +3544,8 @@ $i6Expr( ⟨expression⟩ )
 
 Substitutes the I6 that a Beguile expression emits. This is how one emitter reaches another: an
 emitter has no routine, so a body cannot call one by name (§7.3.3) — it has to be *expanded*, and
-`$i6Expr` is what expands it.
+`$i6Expr` is what expands it. A body that names a global emitter as plain text is a compile-time
+error.
 
 The payload is ordinary Beguile, parsed and type-checked at the use site, so it gets overload
 resolution, and a callee's own `##if` gating (§7.4) comes with it rather than being re-written by
@@ -3717,6 +3771,7 @@ The literal pseudo-types declare it so that `auto x = 5;` infers `int` rather th
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 primitive class intLiteral {
     emitter int operator();     // implicit conversion to int
@@ -3823,6 +3878,13 @@ variables follow the same `⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ]` form as glob
 (`extern`, `emitter`, `alias`, `extend`, `replace`, `superposed`, …) are the declaration
 qualifiers of §3.2 and may appear in any order.
 
+In the generated Inform 6, a class declared in Beguile is named `_bglClass_⟨name⟩`. Inform 6 keeps
+class names in one namespace with properties, attributes, objects and routines, and a class's natural
+name is often already one of those: the standard library's attributes `container` and `door`, or a
+member named like the class. The prefix keeps every Beguile class name free. An `extern` class keeps the
+Inform 6 name it binds, and a name that already begins with `_bgl` is reserved and is emitted
+unchanged. I6 code that names a Beguile class reaches it through `$i6Name` (§7.3.3).
+
 **Example**
 
 ```bgl
@@ -3915,6 +3977,7 @@ be present or omitted. `extern class Name[N]` with an explicit size is a compile
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class object {
     parentProp    parent;
@@ -3945,6 +4008,7 @@ which is only called by name.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 emitter class celsius {
     fahrenheit operator(){ $val * 9 / 5 + 32 }
@@ -4015,12 +4079,13 @@ sometimes called *veneer classes*.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 primitive class int {
     emitter int operator + (int v){ $val + $v }
 }
 
-glulxImage cover = eAssets.coverArt;    // a primitive over int accepts the int
+glulxImage cover = eImages.coverArt;    // a primitive over int accepts the int
 int w = cover.width;                    // behavior without storage
 ```
 
@@ -4041,7 +4106,9 @@ constant, and the empty `[]` is the extern marker form (§8.2.2).
 A normal class may reserve a fixed number of instances by adding `[N]` after its name. Instances are
 then obtained and released with `new` (§4.13) and `delete` (§5.15). There is no dynamic allocation:
 `new` returns one of the `N` preallocated slots, or `null` when the pool is exhausted, and the pool
-never grows; the result of `new` must be tested before use.
+never grows; the result of `new` must be tested before use. A pooled instance has no name of its own:
+printed without a `short_name` (or a `print()` of its class), it shows the Inform 6 name of its slot,
+such as `_bglClass_Token_1`, so a class whose instances are printed declares one.
 
 **Pool size.**
 - `[N]`, a positive integer literal.
@@ -4064,9 +4131,9 @@ allocated, and a `destroy()` method, run before a slot is returned to the pool. 
 - `destroy()` returns `void` and takes no parameters.
 - One `create` and one `destroy` per class; overloads are compile-time errors.
 
-**Owned members in a pool.** Each slot has its own backing for every owned member (§8.3.4). `new`
-attaches a backing and resets its members to their declared defaults, so a reused slot always starts
-fresh; `delete` releases it. Any `create()`/`destroy()` the class declares runs after this reset.
+**Members in a pool.** `new` resets every member of the slot to its declared value, so a reused slot
+always starts fresh. Each slot also has its own backing for every owned member (§8.3.4), which `new`
+attaches and `delete` releases. Any `create()`/`destroy()` the class declares runs after this reset.
 
 **Example**
 
@@ -4186,6 +4253,7 @@ are owned (§8.3.4).
 **Example**
 
 ```bgl
+object lamp {}  object key {}
 class Inventory : object {
     array<int>    slots[6];
     array<object> heldRefs = { lamp, key };
@@ -4215,8 +4283,8 @@ class Config {
     const int    maxScore = 100;
     const string title    = "My Game";
 }
-Config config { }
-config.maxScore = 200;      // compile-time error
+Config gameConfig { }
+gameConfig.maxScore = 200;  // compile-time error
 ```
 
 ### 8.3.3 `static` Members
@@ -4329,7 +4397,7 @@ Pet rex { "rex", 3; }
 class A : object { inline int a1; int n; }
 class B : A { inline int b1; }
 extend class A { inline int a2; inline n; }   // A: a1, a2, n
-B x { 1, 2, 3, 4, "the x"; }                   // b1, a1, a2, n, name
+B item { 1, 2, 3, 4, "the item"; }             // b1, a1, a2, n, name
 ```
 
 ## 8.4 Methods
@@ -4380,6 +4448,8 @@ to acquire and release it.
   assignment. `deinit` fires at the end of the block the variable was declared in, and before any
   `return` that leaves that block. For a variable declared at the routine's top level these are the
   same thing: the routine's end and every `return` in it. Releases run in reverse declaration order.
+  A local of a reference class refers to an instance it doesn't own, so neither fires, as for a
+  parameter; a pooled instance is created and released with `new` and `delete` (§8.2.6).
 - **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
   both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
   copied in through the class's `operator =` taking its own type, and `deinit` fires at the
@@ -4438,7 +4508,7 @@ when two parents declare the same member name, the first-listed parent's member 
 method, bare identifiers resolve inherited **variable** members from all bases by this search;
 inherited methods resolve through method dispatch.
 
-To dispatch to a specific ancestor's version of a member, cast the receiver: `(Animal)myDog.speak()`
+To dispatch to a specific ancestor's version of a member, cast the receiver: `((Animal)myDog).speak()`
 (§4.11).
 
 **Example**
@@ -4509,6 +4579,7 @@ a compile-time error. `replace` on a member that does not exist is a warning, an
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extend class stringObj {
     replace emitter stringObj operator = (stringLiteral v){ $self.setFromLit($v); }
@@ -4581,7 +4652,7 @@ that does not hide it reaches it, whether by upcast or by passing the value to a
 **Example**
 
 ```bgl
-class dim {                           // a getter and a setter (§9.9.1)
+value class dim {                     // a getter and a setter (§9.9.1)
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v; }
@@ -4598,7 +4669,7 @@ class vertWin : baseWin {
 
 vertWin side {}
 side.height = 5;                      // compile-time error
-(baseWin)side.height = 5;             // OK: the base surface still has the write
+((baseWin)side).height = 5;           // OK: the base surface still has the write
 ```
 
 **See also** §9.9 — property accessors, the usual target of `hide member.operator =;`.
@@ -4759,12 +4830,14 @@ class Animal : object {
 **Description**
 
 `operator []` takes the index and returns the element type; `operator []=` takes the index and then
-the value, and returns a type of the author's choice — commonly the assigned type, so the assignment
-can be used as an expression. Any class may declare them, and a subclass inherits them. The result of
+the value, and returns a type of the author's choice, commonly the assigned type. A subscript
+assignment is a statement, like any assignment (§5.5), so the returned value is not read. Either may be
+an emitter or an ordinary method. Any class may declare them, and a subclass inherits them. The result of
 a subscript read supports member access, resolved against the element type.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class myBuf {
     emitter var  operator []  (int i)        { $val-->$i }
@@ -4813,7 +4886,8 @@ class MyType {
 }
 MyType t { }
 int    n = t;              // OK
-string s = (string)t;      // OK; `string s = t;` is a compile-time error
+string s = (string)t;      // OK
+string e = t;              // compile-time error: the conversion is explicit
 
 class heightProxy {
     int _val = 0;
@@ -4843,6 +4917,7 @@ null; it is entirely type-defined. Expression semantics of `?`, `?.` and `??` ar
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class object {
     emitter eBool operator ? () { $self ~= nothing }
@@ -4889,6 +4964,7 @@ takes precedence. `==` and `!=` are never derived from `<=>`.
 **Example**
 
 ```bgl
+#include <array>
 extern int compareText(string a, string b);     // an I6 routine: negative, 0 or positive
 
 extend class string {
@@ -4919,6 +4995,7 @@ directly to the variable.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 n += 2;         // → n = n + 2;  when n's type declares no operator +=
 ```
@@ -5126,7 +5203,7 @@ extend lib { auto gfx = _gfx; }
 
 lib.gfx.window w;                                   // declaration
 void open(lib.gfx.window win){ }                    // parameter
-int where = lib.gfx.placement.above;                // enum value
+eGfxPlacement where = lib.gfx.placement.above;      // enum value
 ```
 
 ## 10.2 Value Aliases
@@ -5253,6 +5330,7 @@ aliased class; with `#using bgl`, `glulx.window` resolves through the partial pa
 
 **Example**
 
+<!-- doctest: glulx -->
 ```bgl
 emitter class myPlatform { int wordsize { WORDSIZE } }
 #using myPlatform
@@ -5307,6 +5385,7 @@ members in order (§8.3.5), ended by the first `;`, exactly as in an inline obje
 follow as usual. A member given positionally can't also be given by name.
 
 ```bgl
+object hall { "hall"; }
 class Pet : object { inline instanceName; inline int legs; string owner; }
 Pet rex { "rex", 3; owner = "Jim"; parent = hall; }
 object lamp { "brass lamp"; }        // the name, positional on every class (§11.5.4)
@@ -5380,7 +5459,11 @@ and evaluates to a reference to it. It is the same declaration as the named form
 at startup, and it is unrelated to `new` (§4.13), which allocates at run time.
 
 The form is available for any class that can be declared as a named object. It has no meaning for
-namespace types (`emitter class`, `alias class`) or value classes. It may appear anywhere an
+namespace types (`emitter class`, `alias class`). For a value class (§8.2.7) it is a value of that class
+with the given members: a variable or argument receives a copy through the class's `operator =`, and a
+member initialized with it — the way to give an owned value-class member its starting value, since a
+member initializer is fixed at compile time and can't run `operator =` — holds those values
+(`Item pebble { price = Coins{ cents = 5; }; }`). It may appear anywhere an
 expression may: an array-literal element, an `inject` element in `extend` for arrays (§12.11), a
 variable initializer, a call argument, or standing alone as a statement.
 
@@ -5521,6 +5604,7 @@ class menu : object {
     inline array<dictionaryWord> words;
 }
 
+object root { }
 menu child = { root, "a child", {.foo, .bar, .baz} };
 ```
 
@@ -5535,6 +5619,7 @@ object, reachable only by an object-tree walk (§21.9).
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 menu{ root, "text to display", {.type, .kind} };
 ```
@@ -5584,6 +5669,11 @@ the world model: `parent` and `children` place objects in the object tree, and `
 object's attribute flags. The fourth, `instanceName`, is declared on `_bglObject` (§21.5.8), so it is
 available on every object, world-model or not: it gives the object its name.
 
+`object` also declares `name`, a `rawArray<dictionaryWord>`: the dictionary words the parser matches for
+the object. It is Inform 6's own built-in `name` property, so it needs no binding, and any object may
+set it without a type: `name = {.brass, .key};`, or `name = .lamp;` for one word. It is additive (§11.7.2):
+the words a class gives and the words an instance gives are combined.
+
 ### 11.5.1 `parent`
 
 **Syntax**
@@ -5598,7 +5688,8 @@ The first form appears in an object body; the second is a run-time statement.
 **Description**
 
 In an object body, `parent` places the object inside another object at game start. At run time,
-assigning to `obj.parent` moves the object.
+assigning to `obj.parent` moves the object; assigning `null` takes it out of the object tree, so it is
+nowhere until it is moved again.
 
 **Example**
 
@@ -5616,7 +5707,7 @@ object cloak {
 children = { ⟨object⟩ , … } ;
 ⟨object⟩ . children += { ⟨object⟩ , … } ;
 for ( object ⟨name⟩ in ⟨object⟩ . children ) ⟨statement⟩
-⟨object⟩ . children . length ( )
+⟨object⟩ . children . length
 ```
 
 The first form appears in an object body; the others are run-time expressions and statements.
@@ -5649,6 +5740,7 @@ it by assigning its `parent`.
 **Example**
 
 ```bgl
+attribute seen;
 object table {}
 object chair {}
 object kitchen {
@@ -5757,8 +5849,8 @@ void Main(){
 **Syntax**
 
 ```syntax
-attribute ⟨name⟩ ;
-extern attribute ⟨name⟩ [ asI6 ⟨i6name⟩ ] ;
+attribute ⟨name⟩ [ asI6 ⟨i6name⟩ ] ;
+extern attribute ⟨i6name⟩ [ asBgl ⟨name⟩ ] ;
 ```
 
 **Description**
@@ -5897,6 +5989,7 @@ known property name is accepted: a member of any class or object, or a free-stan
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 var p = (property) val;
 int v = obj.p;
@@ -6105,6 +6198,7 @@ Rules for the body:
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 extern object playerCommands {
     void pushCommand(string cmd, bool isMeta = false, bool isSilent = false);
@@ -6127,10 +6221,10 @@ The element type `T` is mandatory; bare `array` is not a type. `T` may be any ba
 `bool`, `string`, `object`, `char`, `dictionaryWord`), any user-defined class, or another array type
 (§12.9). `rawArray<T>` (§12.8) is the untracked form used at the I6 boundary.
 
-The `<array>` extension is loaded by the runtime core, so every array operation is available
-without an explicit `#include <array>`. Subscripting, `size`, `length` and `for … in` are built
-in; assigning `length`, `clear()`, value-semantic assignment and the remaining methods (`append`,
-`indexOf`, `sort`, …) are provided by `<array>` and are cataloged in §22.4.
+Subscripting, `size`, `length` and `for … in` are built in. Assigning `length`, `clear()`,
+value-semantic assignment and the remaining methods (`append`, `indexOf`, `sort`, …) come from the
+`<array>` extension, which a program enables with `#include <array>`; they are cataloged in §22.4.
+A program that doesn't include it carries none of its code.
 
 ## 12.2 Declaring Arrays
 
@@ -6210,6 +6304,7 @@ compile-time errors, except that a raw member array reports its property length 
 **Example**
 
 ```bgl
+#include <array>
 array<int> scores[5];
 
 int x = scores[2];
@@ -6350,9 +6445,14 @@ an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
 
+A member array is property data, with no address of its own to hand over, so it can't be passed as an
+array argument (a compile-time error). A routine that needs it takes the owning object instead, or the
+member is declared `ref` and bound to an array that lives elsewhere.
+
 **Example**
 
 ```bgl
+#include <array>
 class Inventory : object {
     array<object> held[8];                  // per-instance storage
 }
@@ -6394,7 +6494,7 @@ purpose is interoperability: an I6 buffer handed to Beguile (the `results` array
 entry point, a library table, an array declared in an `#i6` island, §15.2) has no count word, and
 receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it.
 
-| | `array<T>` | `rawArray<T>` parameter |
+| | `array<T>` | `rawArray<T>` |
 |---|---|---|
 | Layout | count word, then elements | elements only |
 | `size` / `length` | available | unavailable; the length is passed explicitly |
@@ -6406,6 +6506,7 @@ type-checked at every subscript and may be cast like any other value.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 bool ext_parsererror(eParserError etype, rawArray<var> results) {   // PutOn, Insert: library actions
     if (etype == eParserError.nothing && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
@@ -6432,21 +6533,17 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 
 **Description**
 
-A file-scope `rawArray<T>` declared with an initializer is an *untracked* `array<T>`: it has the
-count-word-then-elements layout of `array<T>`, and its count word holds the true element count, but it
-carries no length-tracking trailer even though `<array>` is loaded. This is the form to use
-when a bare I6 array API reads the array by its count word (for example the single-array form of
-orLibrary's `util.orArray`, §15.10); a tracked `array<T>` would over-count there.
-
-A file-scope `rawArray<T>` literal and a `rawArray<T>` parameter are not interchangeable: the literal
-is count-prefixed and the parameter is elements-only. The type system keeps them apart; a literal has
-the `array` element-covariant type and is passed where an `array<var>` is expected.
+A file-scope `rawArray<T>` declared with an initializer is emitted as exactly the I6 array its values
+make: the elements, with no count word, length trailer or magic word. It has the same elements-only
+layout as a `rawArray<T>` parameter, so it is passed wherever a `rawArray<T>` is expected, and its
+length is known only to the code that declared it. An I6 API that reads an array by a leading count
+word takes an array declared in an I6 island (§15.2).
 
 **Example**
 
 ```bgl
 array<string>    trk = { "a", "b", "c" };   // tracked
-rawArray<string> raw = { "a", "b", "c" };   // untracked; count word = 3
+rawArray<string> raw = { "a", "b", "c" };   // Array raw --> "a" "b" "c";
 ```
 
 ### 12.8.3 Member `rawArray<T>`
@@ -6546,6 +6643,7 @@ allocates a second time; the original is not released.
 **Example**
 
 ```bgl
+#include <array>
 #include <string>
 array<stringObj> slots[4];
 
@@ -6599,6 +6697,7 @@ The statements apply in source order, so a later `move` or `remove` sees the eff
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 array<rule> before = { cantTakeYourself, cantTakeScenery };
 
@@ -6672,19 +6771,41 @@ class. The body uses ordinary object member syntax (§11.4): the `grammar` membe
 from the class, so `grammar = { … }` needs no type, and further members and methods may be declared
 as on any object.
 
+A class may derive from `verb` to share behavior among several verbs: members, `meta`, `priority`, and
+a `handler()` its verbs inherit. A verb is then declared through that class, `⟨class⟩ ⟨name⟩ { … }`,
+and is a verb in every respect. A verb that declares its own `handler()` or `meta` overrides the class's.
+
+```bgl
+class chatVerb : verb {
+    string reply = "Nothing to say.";
+    void handler() { print(reply); }
+}
+chatVerb Hum     { grammar = {.hum}; reply = "You hum."; }
+chatVerb Whistle { grammar = {.whistle}; }
+
+class infoVerb : verb { meta = true; }
+infoVerb Credits { grammar = {.credits}; void handler() { print("Written by …"); } }
+```
+
 A verb name follows the same resolution rules as any identifier: a local variable with the same name
 shadows the verb (§3.10).
+
+In the generated Inform 6 the verb's action and its action routine keep the verb's name (`##Size`,
+`SizeSub`), and the object that carries `handler()` is named `_bglVerb_⟨name⟩`. Inform 6 keeps objects
+in one namespace with properties, so the object's own name would otherwise collide with any member of
+that name, the runtime library's included (`size`, `clear`, `copy`). I6 code that names the verb object
+reaches it through `$i6Name` (§7.3.3).
 
 **Example**
 
 ```bgl
-verb Examine {
+verb Inspect {
     grammar = {
-        {.examine, NOUN},
-        {.x, NOUN},
+        {.inspect, NOUN},
+        {.study, NOUN},
     };
     void handler() {
-        print("You examine it closely.");
+        print("You inspect it closely.");
     }
 }
 ```
@@ -6746,6 +6867,7 @@ action and then return true from the enclosing function, follow the call with an
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 Enter.perform(door);
 Take.perform(coin, pouch);
@@ -7298,6 +7420,7 @@ so `<i6StandardLibrary>` and `<bindings/i6StandardLibrary>` are the same include
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include <string>                  // beguiLib/string.bgl
 #include <i6StandardLibrary>       // same as <bindings/i6StandardLibrary>
@@ -7331,6 +7454,7 @@ A file may be included more than once; a file that must be processed only once g
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include "myLibrary"
 #include "utils/helpers"
@@ -7361,6 +7485,7 @@ string (`$"…"`) is not accepted as an include path.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include @"vendor\legacy\helpers"
 ```
@@ -7738,6 +7863,7 @@ format with file name and line number.
 
 **Example**
 
+<!-- doctest: error -->
 ```bgl
 #if !PLATFORM_DEFINED
     #error "You must define PLATFORM_DEFINED before including this file."
@@ -8114,6 +8240,7 @@ guarantees around classes and instances are in §18.7.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #i6 Constant DEBUG_FLAG = 1;
 
@@ -8252,7 +8379,8 @@ compile-time checking and emits no definition for it. The forms are:
 | `extern class ⟨name⟩ { … }` | §15.4.3, §8.2.2 |
 | `extern object ⟨name⟩ ;` / `extern object ⟨name⟩ { … }` | §15.4.4, §11.11 |
 
-An `extern` declaration may carry an `asI6 <i6name>` clause naming the I6 identifier (§3.11).
+An `extern` declaration names the I6 identifier itself; an `asBgl ⟨name⟩` clause gives it a different
+Beguile name (§3.11).
 
 ### 15.4.1 Extern Functions and `default` Stubs
 
@@ -8325,6 +8453,7 @@ rules are specific to `extern`:
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class object {
     parentProp parent;
@@ -8370,6 +8499,7 @@ type.
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 extern object playerCommands {
     void pushCommand(string cmd, bool isMeta = false, bool isSilent = false);
@@ -8452,7 +8582,7 @@ token is available here:
 class counter : object {
     int count = 0;
     emitter void _bglGlobalDeclaration() {
-        [ $selfsub;                     // one routine per instance: stepssub, clickssub, …
+        [ $selfsub;                     ! one routine per instance: stepssub, clickssub, …
             $self.count++;
             return $self.count;
         ];
@@ -8670,7 +8800,7 @@ command line counts as written before any block (§16.4). Two exceptions:
   dropped).
 - `release` and `seriesNumber` treat `0` as "not set", so a block that assigns `0` does not fix them.
 
-**Entry-file properties.** Five properties are read from the entry source file before parsing begins,
+**Entry-file properties.** Six properties are read from the entry source file before parsing begins,
 by a textual scan of its `#beguilerSettings` blocks:
 
 - `target`
@@ -9200,10 +9330,8 @@ members of two `#using` imports, or an operator reference with more than one can
 
 ```text
 class 'A': circular inheritance — 'B' transitively inherits from 'A'
-class 'Room' uses `has light` but its bindings-file declaration `extern attribute light;` comes later in source (triggered by: …). Move the bindings file before the class or its first instance.
+class 'Room' lists attribute 'light' (`attributes = {light}`), but its declaration `extern attribute light;` comes later in source (needed by: …). Declare the attribute, or include the bindings file that declares it, before the class.
 ```
-
-The second is a location-free message.
 
 **Includes and directives** (§14):
 
@@ -9400,7 +9528,7 @@ by `--debug`, and the `-e` added by `economy`.
 
 ## 21.1 Overview
 
-The Beguile Language Runtime (BLR) is the library of Beguile source that every program compiles against. Its *core* is loaded automatically: no `#include` is needed, in either default mode or precompiler mode (§15.1). Everything in this chapter is part of the core. The extensions, each enabled with `#include <…>` except `<array>`, which the core includes itself (§22.1), are in §22; the IF library bindings are in §23.
+The Beguile Language Runtime (BLR) is the library of Beguile source that every program compiles against. Its *core* is loaded automatically: no `#include` is needed, in either default mode or precompiler mode (§15.1). Everything in this chapter is part of the core. The extensions, each enabled with `#include <…>`, are in §22; the IF library bindings are in §23.
 
 The core provides:
 
@@ -9509,7 +9637,6 @@ The article helpers print a world-tree object with an article: `a(obj)` → "a l
 **Example**
 
 ```bgl
-extern attribute light;
 object lamp { short_name = "brass lamp"; }
 
 void Main() {
@@ -9554,10 +9681,6 @@ At runtime an object's attributes change through `give()` and `ungive()` and are
 **Example**
 
 ```bgl
-extern attribute light;
-extern attribute scenery;
-extern attribute static;
-
 class lampPost : object {
     attributeList attributes = { light, static };
 }
@@ -9589,7 +9712,9 @@ extern property ⟨name⟩ ;
 
 A `property` value is the property identifier, a word-sized value. It supports `=`, `==` and `!=` only; arithmetic on a property identifier is a compile-time error.
 
-The core declares one property itself: `name`, which is `additive` in the Inform 6 compiler. A program must not redeclare it. Every other additive property belongs to a library and is declared by its binding (§23.3.5).
+The core declares one property itself: `name`, which the Inform 6 compiler builds in as an `additive`
+property, and declares it on `object` as a `rawArray<dictionaryWord>` member (§11.5). A program must not
+redeclare it. Every other additive property belongs to a library and is declared by its binding (§23.3.5).
 
 **Example**
 
@@ -9848,6 +9973,7 @@ uint ⟨name⟩ [ = ⟨expr⟩ ] ;
 **Example**
 
 ```bgl
+int  n = 7;
 uint x = 12;          // literal
 uint y = (uint)n;     // explicit cast from int
 int  z = (int)y;      // explicit cast back
@@ -9903,6 +10029,7 @@ int s = bgl.util.math.sign(-7);               // → -1
 **Example**
 
 ```bgl
+object coin {}  object gem {}  object key {}
 int d6 = bgl.util.random.get(6);
 object prize = bgl.util.random.get(coin, gem, key);
 ```
@@ -9915,7 +10042,7 @@ object prize = bgl.util.random.get(coin, gem, key);
 
 **Description**
 
-The `char` type carries classification, case conversion and case-insensitive comparison in the core. All handle the ZSCII extended characters (accented letters, ligatures).
+The `char` type carries classification, case conversion and case-insensitive comparison in the core. All handle the accented letters and ligatures: on the Z-machine the ZSCII extended characters, on Glulx the Latin-1 range (through Glk's case tables) and `œ`/`Œ`.
 
 | Member | Returns | Description |
 |---|---|---|
@@ -10003,7 +10130,6 @@ Results live in a shared rotating set of four scratch buffers, each holding `wor
 **Example**
 
 ```bgl
-extern attribute light;
 class Treasure : object { }
 
 void Main() {
@@ -10091,6 +10217,7 @@ The `target` of a `link` decides what a click does:
 - A **function**, whether a lambda (§4.14) or a named function, is called. The parameter is `literal` (§6.3): the function runs when the player clicks, long after the `print`, so a lambda that captures a variable is a compile-time error.
 - An **`int`** or an **enum value** is delivered to `HandleGlkEvent` as the event's link value. This is the Inform 6 way of handling links, and a program that handles its links there keeps working unchanged. A `target` of `0` makes no link.
 
+<!-- doctest: skip -->
 ```bgl
 #using bgl.printRules;
 print($"There's a {link("button", => { print("Click.^"); })} on the machine.");  // run code
@@ -10099,6 +10226,23 @@ print($"Under it is {link("broom", eLinks.broom)}.");                           
 ```
 
 `HandleGlkEvent(event, context, buffer)` is an `extern default` entry point declared by the Glulx core, with the Inform 6 library's meaning: `event` is the four-word Glk event, `context` is `0` while a line is being read and `1` while a key is awaited, and the return value is `0` to carry on, `2` to end the input, or `-1` to keep waiting. The runtime wraps whatever `HandleGlkEvent` the program defines. On a hyperlink event it renews the window's hyperlink request, calls a function target itself, and passes every other event to the program's function. The same wrapper serves the Inform 6 library's input loops and the runtime's own (`bgl.ui.waitForKey`), so a program behaves the same with a library or without one.
+
+A program declares it as `int HandleGlkEvent(var event, var context, var buffer)`. The event's words
+are read with `bgl.asm.aload(event, n)` (§21.13.1): word 0 is its type, an `eGlulxEventType`
+(`none`, `timer`, `charInput`, `lineInput`, `mouseInput`, `arrange`, `redraw`, `soundNotify`,
+`hyperlink`, `volumeNotify`), and for a hyperlink word 2 is the link's value.
+
+<!-- doctest: compile -->
+```bgl
+#beguilerSettings { target = Glulx; }
+enum eLinks { wait = 2 }
+int HandleGlkEvent(var event, var context, var buffer){
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink
+        && bgl.asm.aload(event, 2) == (int)eLinks.wait) print("[waiting]");
+    return 0;
+}
+void main(){ }
+```
 
 Glk does not allow printing to a window that is waiting for a line. When a function target is clicked at a command prompt, the runtime suspends line input while the function runs. The player's partial input is echoed, and the prompt is then reprinted with that input restored. The library binding provides this for the Inform 6 library. A program's own `HandleGlkEvent` that prints at the prompt must cancel line input itself, as in Inform 6.
 
@@ -10121,7 +10265,7 @@ The link text is printed plainly on an interpreter without hyperlink support.
 | `eUnknownAsset` | Data resource ids: any packaged file that is neither an image nor a sound. |
 | `eAssets` | The union `eImages \| eSounds \| eUnknownAsset`, for APIs that accept any resource. |
 
-When `generateBlorb` is true the compiler extends `eImages` and `eSounds` with one member per asset file found (§17.6.1). A value of `eImages` is the raw resource id; with `<glulxImage>` it also answers `width()`, `height()` and `size()` (§22.8).
+When `generateBlorb` is true the compiler extends `eImages` and `eSounds` with one member per asset file found (§17.6.1). A value of `eImages` is the raw resource id; with `<glulxImage>` it also has the properties `width`, `height` and `size` (§22.8).
 
 **See also** §2.7, §2.8, §17.6.1, §22.8.
 
@@ -10138,6 +10282,7 @@ is an emitter; **S** is a `static superposed` function.
 
 **Example**
 
+<!-- doctest: glulx -->
 ```bgl
 #using bgl;
 int n = asm.random(6);        // Glulx: @random; Z-machine: @random
@@ -10394,13 +10539,13 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 
 ## 22.1 Overview
 
-An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§14.1.1). Extensions build on the runtime core (§21) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included; `<array>` is the exception because the core includes it itself (§12.1).
+An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§14.1.1). Extensions build on the runtime core (§21) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included, and a program that doesn't include one carries none of its code.
 
 | Extension | Include | Adds | Requires `bglInit()` | Also includes | Target |
 |---|---|---|---|---|---|
 | Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
 | Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | loaded by the core | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | yes (length headers of sized arrays) | — | both |
+| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | yes (length headers of sized arrays) | — | both |
 | LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | yes | `<array>` | both |
 | Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
@@ -10527,12 +10672,18 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | `s + v` | Concatenation; `v` is a literal or a string of the same type. Returns a new `stringObj`; `s` is unchanged. |
 | `s += v` | **`stringObj` only.** Append in place. |
 | `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
+| `s =~ v` | Content comparison ignoring case. |
+| `s <=> v` | Three-way comparison: negative, `0` or positive as `s` sorts before, with or after `v` (§4.5). |
 | `switch (s) { case "a": … }` | Content comparison. |
 | `s[i]` | The character at position `i`. |
 | `s[i] = c` | **`stringObj` only.** Replace the character at position `i`. |
 | `s?` | True when the slot is not `null` (§4.10). |
 
 **Methods (both types)**
+
+A method's string argument may be a literal, a `string`, a `stringObj` or an `array<char>` (`append`,
+`prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`, `compareTo`), and may be another method's
+result (`s.append(t.trim())`).
 
 | Method | Returns | Description |
 |---|---|---|
@@ -10601,12 +10752,12 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 **Include**
 
 ```bgl
-#include <array>         // optional: the core includes it (§12.1)
+#include <array>
 ```
 
 **Description**
 
-The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size` and `length` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
+The built-in part of the surface is subscripting, `size` and `length` (§12.3); the rest needs `#include <array>`. `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
 
 Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
@@ -10645,6 +10796,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 **Example**
 
 ```bgl
+#include <array>
 array<int> scores[8];
 
 void Main() {
@@ -10782,9 +10934,9 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 
 | Type | Kind | Members beyond `window` |
 |---|---|---|
-| `window` | base | `id`, `width`, `height`, `close()`, the split family (§22.7.3), the move family (§22.7.4), `measureStyle()`, `styleHonored()` (§22.7.9) |
-| `textBufferWindow` | scrolling prose | `drawImage(img, align, …)` (§22.7.5), `setStyle()`, `clearStyle()` (§22.7.7) |
-| `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§22.7.6), `setStyle()`, `clearStyle()` |
+| `window` | base | `id`, `width`, `height`, `close()`, the split family (§22.7.3), the move family (§22.7.4), `childStyles` (§22.7.7), `measureStyle()`, `styleHonored()`, `checkStyle()`, `distinguishes()` (§22.7.9), `supports` (§22.7.12) |
+| `textBufferWindow` | scrolling prose | `drawImage(img, align, …)` (§22.7.5), `setStyle()`, `clearStyle()` (§22.7.7), `print()`, `printLine()`, `clear()` (§22.7.11) |
+| `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§22.7.6), `setStyle()`, `clearStyle()`, `print()`, `printLine()`, `clear()` |
 | `graphicsWindow` | pixels | `drawImage(img, x, y, …)`, `setBackgroundColor(color)` |
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
@@ -10797,21 +10949,21 @@ The core objects `bgl.ui.mainWin` and `bgl.ui.statusBar` (§21.10) are the roots
 
 | Object | Window kind | Added by this extension |
 |---|---|---|
-| `bgl.ui.mainWin` | text buffer | `width`, `height`, the split family, `drawImage()`, `setStyle()`, `clearStyle()` |
-| `bgl.ui.statusBar` | text grid | `width`, the split family, `setStyle()`, `clearStyle()` (`height` is the core's, or the binding's, §23.3.8) |
+| `bgl.ui.mainWin` | text buffer | `width`, `height`, the split family, `childStyles`, `drawImage()`, `setStyle()`, `clearStyle()`, `print()`, `printLine()`, `clear()`, `supports` |
+| `bgl.ui.statusBar` | text grid | `width`, the split family, `childStyles`, `setStyle()`, `clearStyle()`, `print()`, `clear()`, `moveCursor()`, `supports` (`height` is the core's, or the binding's, §23.3.8) |
 | `bgl.ui.screen` | not a window | `setStyle()`, `clearStyle()` for both text window types at once (§22.7.7) |
 
-The roots are objects, not `window` instances: `close()`, the move family, `moveCursor()`, `measureStyle()` and `styleHonored()` are not available on them.
+The roots are objects, not `window` instances: `close()`, the move family, `measureStyle()`, `styleHonored()`, `checkStyle()` and `distinguishes()` are not available on them.
 
 ### 22.7.3 Splitting
 
 **Syntax**
 
 ```syntax
-⟨view⟩ = ⟨win⟩.split⟨direction⟩⟨kind⟩( ⟨size⟩ [ , ⟨scale⟩ [ , ⟨border⟩ ] ] ) ;
+⟨view⟩ = ⟨win⟩.split⟨direction⟩⟨kind⟩( ⟨size⟩ [ , ⟨scale⟩ [ , ⟨border⟩ ] ] [ , styles: ⟨sheet⟩ ] ) ;
 ```
 
-⟨direction⟩ is `Up`, `Down`, `Left` or `Right`; ⟨kind⟩ is `Grid`, `Graphics` or `Buffer`; every combination exists, spelled as one method name (`splitUpGrid`, `splitLeftGraphics`, …). ⟨size⟩ is a number of lines (grid, buffer) or pixels (graphics) when ⟨scale⟩ is `fixed` (the default), or a percentage when it is `proportional`. ⟨border⟩ is `border` or `noBorder` (the default). Any window, root or child, can be split.
+⟨direction⟩ is `Up`, `Down`, `Left` or `Right`; ⟨kind⟩ is `Grid`, `Graphics` or `Buffer`; every combination exists, spelled as one method name (`splitUpGrid`, `splitLeftGraphics`, …). ⟨size⟩ is a number of lines (grid, buffer) or pixels (graphics) when ⟨scale⟩ is `fixed` (the default), or a percentage when it is `proportional`. ⟨border⟩ is `border` or `noBorder` (the default). ⟨sheet⟩ is a `styleSheet` giving the new window its own look (§22.7.7). Any window, root or child, can be split.
 
 **Description**
 
@@ -10862,11 +11014,12 @@ void Main() {
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 auto hud = bgl.ui.mainWin.splitUpGrid(3);
 hud.height = 5;                      // the split axis
 // hud.width = 40;                   // compile-time error: hidden on textGridWindowHorz
-(textGridWindow)hud.width = 40;      // permissive surface: no effect at run time
+((textGridWindow)hud).width = 40;    // permissive surface: no effect at run time
 bgl.ui.statusBar.height = 2;         // roots are writable on both axes
 ```
 
@@ -10888,6 +11041,7 @@ Image drawing needs blorb assets, so these methods exist only when `generateBlor
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 pic.drawImage(eImages.coverArt);                  // natural size, at the top-left
 pic.drawImage(eImages.coverArt, width: 100);      // width 100, height to match
@@ -10904,11 +11058,12 @@ A text-grid window positions its cursor explicitly; any child window can be clos
 
 | Member | On | Description |
 |---|---|---|
-| `win.moveCursor(col, line)` | `textGridWindow` | Place the cursor at column `col`, line `line`. |
+| `win.moveCursor(col, line)` | `textGridWindow`, `bgl.ui.statusBar` | Place the cursor at column `col`, line `line`, both counted from 0. |
 | `win.close()` | any child window | Close the window and its subtree. Closing an already-closed window has no effect. |
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 auto hud = bgl.ui.mainWin.splitUpGrid(3);   // textGridWindowHorz
 hud.moveCursor(0, 0);                       // the top-left cell
@@ -10945,11 +11100,42 @@ Glk styles are hints set per window kind and style type; a hint affects windows 
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 bgl.ui.screen.setStyle(eGlulxStyleType.normal, style { backColor = $111111; foreColor = $cccccc; });
 bgl.ui.screen.setStyle(eGlulxStyleType.header, style { fontWeight = 1; justify = (int)eGlulxJustify.centered; });
 hud.setStyle(eGlulxStyleType.alert, style { reverse = true; foreColor = $ff0000; });
 hud.clearStyle(eGlulxStyleType.alert);
+```
+
+**A look for one window**
+
+`setStyle()` changes a style type for every later window of that kind. To give one window its own look, describe it as a `styleSheet` — a value class with one `style` member per style type (`normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2`) — and pass it to the split as `styles:`. The sheet's hints are set just before the window opens and the previous hints are put back just after, so no other window is affected. A style left unset in the sheet leaves that style type as it was.
+
+A window's `childStyles` is a sheet that every window split *directly* from it gets. It refers to the sheet, so changing the sheet later changes what the next split gets; assigning `null` removes it. A sheet passed to the split takes precedence over the parent's `childStyles`, style type by style type, and both take precedence over `setStyle()`. To give a window's children the same look as its parent's children, assign the parent's sheet: `notes.childStyles = bgl.ui.mainWin.childStyles;`.
+
+Hints are read only when a window opens: neither `styles:` nor `childStyles` restyles a window that is already open.
+
+**Example**
+
+<!-- doctest: glulx -->
+```bgl
+#include <glulxWindow>
+#using bgl.glulx;
+
+styleSheet panelLook = styleSheet{
+    alert      = style{ fontWeight = 1; foreColor = $C80000; };
+    emphasized = style{ italics = true; };
+};
+styleSheet logLook = styleSheet{ normal = style{ fixedWidth = true; }; };
+
+void Main() {
+    bgl.ui.mainWin.childStyles = panelLook;
+    auto notes = bgl.ui.mainWin.splitRightBuffer(25);                  // panelLook
+    auto log   = bgl.ui.mainWin.splitDownBuffer(5, styles: logLook);   // logLook, then panelLook for the rest
+    notes.childStyles = bgl.ui.mainWin.childStyles;                    // notes' children look the same
+    print(notes != null && log != null);   // → true
+}
 ```
 
 ### 22.7.8 Colors
@@ -10960,6 +11146,7 @@ hud.clearStyle(eGlulxStyleType.alert);
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #using bgl.glulx;
 pic.setBackgroundColor(color.rgb(20, 30, 40));
@@ -10970,13 +11157,24 @@ bgl.ui.screen.setStyle(eGlulxStyleType.normal, style { foreColor = color.white; 
 
 **Description**
 
-Interpreters may ignore style hints. On a child window, `measureStyle(styleType, hint)` returns the value the interpreter actually uses for that style and hint, or `styleUnset` when it reports none; `styleHonored(styleType, hint)` is true when the interpreter reports the hint at all. `hint` is an `eGlulxStyleHint`, whose members are named after the `style` members. Both query the live window, so they are called after the window exists.
+Interpreters may ignore style hints, and many cannot report what they use. On a child window, `measureStyle(styleType, hint)` returns the value the interpreter actually uses for that style and hint, or `styleUnset` when it reports none (`fixedWidth` reads `1` for fixed-pitch, as it is set); `styleHonored(styleType, hint)` is true when the interpreter reports the hint at all. `hint` is an `eGlulxStyleHint`, whose members are named after the `style` members.
+
+`checkStyle(styleType, s)` compares every hint `s` sets with what the interpreter reports and returns an `eStyleCheck`: `applied` when every reported hint matches, `differs` when at least one reported hint does not, and `unknown` when the interpreter reports none of them. Interpreters built on Quixe (Lectrote, Parchment) report no hints, so there the answer is `unknown`. The enum also reads as a `bool` three ways: `r.known` (it could report), `r.isApplied` and `r.isDiffering`.
+
+`distinguishes(a, b)` is true when the interpreter shows style types `a` and `b` differently in that window; it is false when they look the same or it cannot tell.
+
+All of these query the live window, so they are called after the window exists.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 if (!hud.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.reverse)) { /* fall back */ }
 int fg = hud.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.foreColor);
+
+style warn = style{ fontWeight = 1; foreColor = $C80000; };
+eStyleCheck r = hud.checkStyle(eGlulxStyleType.alert, warn);
+bool useMarkers = r.isDiffering || !hud.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.alert);
 ```
 
 ### 22.7.10 Enums
@@ -10996,10 +11194,63 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 | `eGlulxStyleType` | `normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2` | core | `eStyleType` |
 | `eGlulxJustify` | `left`, `full`, `centered`, `right` | `<glulxWindow>` | — |
 | `eGlulxStyleHint` | `indentation`, `paragraphIndentation`, `justify`, `sizeAdjustment`, `fontWeight`, `italics`, `fixedWidth`, `foreColor`, `backColor`, `reverse` | `<glulxWindow>` | — |
+| `eStyleCheck` | `unknown`, `applied`, `differs`; emitter values `known`, `isApplied`, `isDiffering` | `<glulxWindow>` | — |
+| `eCharOutput` | `none`, `approximate`, `exact` | `<glulxWindow>` | — |
 
-`styleUnset` is the `const int` returned by `measureStyle()` for an unreported hint.
+`styleUnset` is the `const int` returned by `measureStyle()` for an unreported hint. The `style` members `italics`, `fixedWidth` and `reverse` are `styleFlag`s: they take `true` or `false`, and stay unset (`styleUnset`) until given one.
 
-**See also** §8.2.4, §8.7.4, §11.3.1, §17.6, §21.10, §22.8, §23.3.8.
+### 22.7.11 Window Output
+
+**Syntax**
+
+```syntax
+⟨win⟩.print( ⟨value⟩ ) ;
+⟨win⟩.printLine( [ ⟨value⟩ ] ) ;
+⟨win⟩.clear() ;
+```
+
+**Description**
+
+`print` and `printLine` write to one window and then return output to wherever it was going, so they can be used in the middle of other output. They print a value exactly as `print()` and `printLine()` do (§21.4), interpolated strings included. They are members of the text windows and of `bgl.ui.mainWin` (`bgl.ui.statusBar` has `print` and `moveCursor`): writing to a graphics window is a compile-time error. `clear()` empties the window.
+
+**Example**
+
+<!-- doctest: glulx -->
+```bgl
+#include <glulxWindow>
+
+void Main() {
+    auto panel = bgl.ui.mainWin.splitRightBuffer(25);
+    panel?.printLine("Rooms seen:");
+    panel?.printLine($"  {1 + 1} so far");
+    panel?.clear();
+    print("main");   // → main
+}
+```
+
+### 22.7.12 Capabilities
+
+**Description**
+
+`bgl.glulx.supports` answers what the interpreter can do. Each member is a property, read without parentheses: `version` (the Glk version, `0xMMmmrr`), and the `bool`s `timer`, `graphics`, `graphicsTransparency`, `sound`, `soundMusic`, `soundVolume`, `soundNotify`, `hyperlinks`, `unicode`, `dateTime`, `lineTerminators` and `resourceStream`. The ones that take an argument are routines: `charOutput(c)` returns an `eCharOutput` (`none`, `approximate` or `exact`), `charInput(c)` is true when the player can type `c`, and `images(t)`, `mouse(t)` and `hyperlinkInput(t)` ask about windows of type `t` (an `eGlulxWindowType`).
+
+Every window, and both roots, also has `supports` for its own kind: `win.supports.images`, `win.supports.mouse` and `win.supports.hyperlinks`.
+
+**Example**
+
+<!-- doctest: glulx -->
+```bgl
+#include <glulxWindow>
+
+void Main() {
+    if (bgl.glulx.supports.timer) print("timer ");
+    bool canShow = bgl.glulx.supports.charOutput('e') != eCharOutput.none;
+    print(canShow);                                   // → true
+    print(bgl.ui.mainWin.supports.hyperlinks || true);   // → true
+}
+```
+
+**See also** §8.2.4, §8.7.4, §11.3.1, §17.6, §21.4, §21.10, §22.8, §23.3.8.
 
 ## 22.8 `<glulxImage>`
 
@@ -11026,6 +11277,7 @@ The same three are added to the `eImages` enum (§7.9), so `eImages.logo.width` 
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include <glulxImage>
 
@@ -11070,6 +11322,21 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 
 Each binding is `#once`-guarded.
 
+**Include order.** Declarations are emitted in source order (§18.6), so the library's own includes sit
+where Inform 6 expects them. For the standard library:
+
+```bgl
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+// classes, objects, Initialise, and any entry point the program defines (NewRoom, PrintTaskName, …)
+#includeI6 "grammar"
+```
+
+An entry point the program defines must come before `#includeI6 "grammar"`: `grammar` declares a stub
+for every entry point not yet defined, and a definition after it is then a duplicate routine. Verbs
+and `extend` blocks may go anywhere: the grammar they emit follows the library's.
+
 ## 23.3 What a Binding Provides
 
 ### 23.3.1 Entry Point and `bglInit()`
@@ -11078,7 +11345,7 @@ Both libraries define `Main` themselves and call the program's `Initialise` rout
 
 Each binding wraps the library's `main` so that `bglInit()` (§21.2) runs before it. The program does not call `bglInit()` itself.
 
-The `i6StandardLibrary` binding performs the wrap only when the `autoInitialize` setting (§17.4) is true, which is its default. Set `autoInitialize = false` when another I6 extension already replaces `main` (Inform 6 forbids two replacements); the program is then responsible for calling `bglInit()`.
+Each binding performs the wrap only when the `autoInitialize` setting (§17.4) is true, which is its default. Set `autoInitialize = false` when another I6 extension already replaces `main` (Inform 6 forbids two replacements); the program is then responsible for calling `bglInit()`.
 
 ### 23.3.2 `story` and `headline`
 
@@ -11116,7 +11383,7 @@ A binding declares, as `extern`:
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
 - its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1).
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1). The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
+Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
 ### 23.3.5 Additive Properties
 
@@ -11129,7 +11396,7 @@ A binding declares the library's actions as `extern verb`s with their claimed di
 ```bgl
 extern verb Take { .take|.carry|.hold|.get|.pick|.peel }
 extern verb Look { .look|.l }
-extern verb Receive;                    // a fake action: no grammar of its own
+extern verb Receive { }                 // a fake action: no words or grammar of its own
 ```
 
 It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` — for use in grammar patterns.
@@ -11167,11 +11434,108 @@ lacks it fails with a Beguile error instead of an Inform 6 one:
 
 A program sets a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
 
+<!-- doctest: skip -->
 ```bgl
 #defineI6 OPTIONAL_EXTENDED_METAVERBS
 #includeI6 @"globals"
 #includeI6 "puny"
 #include <bindings/punyInform>
+```
+
+### 23.3.11 Standard Library Properties
+
+**Description**
+
+A standard-library property is declared on the class or object that provides it, as an ordinary member
+(§8.3, §11.7.1). The library reads each one by name, so the member's name is the property's; its type
+says which of the library's forms it takes. Many properties accept either a value or a routine: declare
+the member as a value to give a value, or as a method to give a routine. A routine the library calls
+returns what the library expects of it, which the table gives as the method's return type.
+
+| Property | The library uses it to | Declare it as |
+|---|---|---|
+| `description` | describe the object (`examine`) or room (`look`) | `string description`, `void description()`, or `bool description()`: true when it printed the whole description (otherwise the library adds its own text, such as a switchable object's "currently switched on") |
+| `initial` | describe the object in a room before it is first moved | `string initial` or `void initial()` |
+| `when_open`, `when_closed`, `when_on`, `when_off` | describe an openable or switchable object in a room | `string` or a `void` method |
+| `inside_description` | describe the inside of an enterable object | `string` or a `void` method |
+| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, or `bool short_name()`: true when it printed the whole name |
+| `article`, `short_name_indef` | print the indefinite article / indefinite name | `string` or a `void` method |
+| `plural` | name several identical objects | `string plural` (declared by the binding) |
+| `parse_name` | match the player's words against the object | `int parse_name()`: the number of words matched, 0 for none, -1 to use `name` |
+| `n_to` … `d_to`, `in_to`, `out_to` | the room or door in that direction | `object n_to`, or `var n_to()` returning a room or door, `false` for "can't go", or `true` after printing its own refusal |
+| `cant_go` | refuse movement in a direction with no exit | `string cant_go` or `void cant_go()` |
+| `door_to` | the room on the other side of a door | `object door_to` or `object door_to()` |
+| `door_dir` | the direction a door leads | `property door_dir` (`door_dir = n_to;`) or `property door_dir()` |
+| `with_key` | the key that locks and unlocks the object | `object with_key` |
+| `found_in` | the rooms a floating object (a door, scenery) is in | `rawArray<object> found_in`, or `bool found_in()`: true when it is in `location` |
+| `capacity` | how many objects a container or supporter holds | `int capacity` |
+| `number`, `time_left` | a general-purpose number; turns left on the object's timer | `int` |
+| `daemon` | run every turn after `StartDaemon(obj)` | `void daemon()` |
+| `react_before`, `react_after` | intercept any action while the object is in scope | `bool react_before()`: true to stop the action |
+| `invent` | change how the object is listed in an inventory | `bool invent()`: true when it printed the whole entry |
+| `add_to_scope` | bring other objects into scope with this one | `rawArray<object> add_to_scope`, or `void add_to_scope()` calling `AddToScope(obj)` |
+| `list_together` | group similar objects in a list | `int list_together` (a group number) or `string list_together`; the library groups objects whose values are the same word, so a string is declared once, on their class, rather than repeated on each object |
+| `articles` | articles for a name in a language without inflection | `rawArray<string> articles` |
+
+The additive properties `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` are
+declared by the binding (§23.3.5) and written as methods: `bool before()` returns true to stop the
+action, and the others follow the same table.
+
+**The player's words.** Inside `parse_name` (and other parsing routines) `NextWord()` returns the next
+word as a `dictionaryWord`, or `null` for a word not in the dictionary, and advances `wn`;
+`NextWordStopped()` returns -1 once the words run out. Both are declared by the binding.
+
+**The topic of Ask, Tell and Answer.** For Ask and Tell the parser puts the topic's first word (after a
+leading "the") in `second`; for Answer (`answer ⟨topic⟩ to ⟨character⟩`) it is in `noun`, and `second`
+is the character. Both are declared `object` by the binding, so a cast reinterprets the word:
+`(dictionaryWord)second == .weather` (§4.11). The whole topic is the words `consult_from` to
+`consult_from + consult_words - 1`, read with `wn = consult_from;` and `NextWord()`.
+
+**Numbers.** A `NUMBER` grammar token (§13.4.2) puts the number in `noun` or `second`, by its position
+among the line's value tokens, and in `parsed_number`. `noun` and `second` are declared `object`, so a
+cast reads the number: `(int)noun`.
+
+**Inventory listings.** `invent` is called twice for each entry; `inventory_stage` (1 or 2) says which:
+1 before the name is printed, 2 after it, for text that follows the name.
+
+**Example**
+
+<!-- doctest: compile -->
+```bgl
+class Room : object { attributes = {light}; string description; }
+Room hall {
+    "Hall"; description = "A plain hall.";
+    object n_to = study;
+    var e_to(){ print("A wall.^"); return true; }
+    string cant_go = "Not that way.";
+}
+Room study { "Study"; description = "A study."; object s_to = hall; object u_to = hatch; }
+Room attic { "Attic"; description = "An attic."; object d_to = hatch; }
+object hatch {
+    "hatch"; attributes = {door, openable, static, scenery};
+    rawArray<object> found_in = {study, attic};
+    object door_to(){ if (location == study) return attic; return study; }
+    property door_dir = u_to;
+}
+object ball {
+    "ball"; parent = hall;
+    bool painted = false;
+    bool short_name(){ if (painted) { print("red ball"); return true; } return false; }
+    int parse_name(){
+        int n = 0;
+        while (true){ dictionaryWord w = NextWord(); if (w == .ball || w == .red) n++; else return n; }
+    }
+    string initial = "A ball lies here.";
+    bool invent(){ if (inventory_stage == 2) print(" (bouncy)"); return false; }
+}
+object guide {
+    "guide"; rawArray<dictionaryWord> name = {.guide}; parent = hall; attributes = {animate, proper};
+    bool life(){
+        if (action == Ask && (dictionaryWord)second == .weather){ print("Rain, later.^"); return true; }
+        return false;
+    }
+}
+bool Initialise(){ location = hall; rfalse; }
 ```
 
 ## 23.4 Differences Between the Bindings
@@ -11180,12 +11544,11 @@ A program sets a library option with `#defineI6` (§14.2.1), before the binding'
 |---|---|---|
 | Directions | Direction *objects* `n_obj` … `d_obj`; a Go action has `noun == n_obj`. | No direction objects. `selected_direction` (a `property`) holds the direction property (`n_to`, `s_to`, … `in_to`, `out_to`) and `noun` is the shared `Directions` placeholder; `selected_direction_index` is `1..12`. The `FAKE_*_OBJ` constants are the parser's internal sentinels. |
 | Reacting objects | Any object may define `before`/`after`. | An object with `before`, `after`, `each_turn`, `react_before` or `react_after` must have the `reactive` attribute. |
-| Extra attributes | `door`, `absent`, `pluralname`, `male`, `female`, `neuter`, … | Also `switchable`, `on`, `workflag`, `reactive`, `scored`. |
+| Extra attributes | `door`, `absent`, `pluralname`, `male`, `female`, `neuter`, `switchable`, `on`, `scored`, `workflag`, … | The same, plus `reactive`. |
 | Pronouns | `itobj`, `himobj`, `herobj` | Also `themobj`. |
 | Status line | `StatusLineHeight()`, `gg_statuswin_cursize` | `_StatusLineHeight()`, `statusline_height`, `statusline_current_height` |
 | Colors | `CLR_*` constants | `CLR_*` plus the Ozmoo extended colors, and the `clr_on`/`clr_fg`/`clr_bg`/`clr_fgstatus` globals |
 | Verb sets | The standard library's actions, meta actions and debug actions. | PunyInform's; some claimed-word sets differ (`Drop` claims `throw`; `Shout`/`ShoutAt`; `Again`/`Oops`; `LookModeNormal`/`Short`/`Long` in place of `LMode1..3`). |
-| `autoInitialize` | Honored. | Not consulted; `main` is always wrapped. |
 
 ## 23.5 Writing a Binding
 
@@ -11194,7 +11557,7 @@ A binding for another library follows these rules:
 1. **Guard the file with `#once`** (§14.1.6), and declare the shared types (§23.3.7).
 2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
 3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
-4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions as bodiless `extern verb Name;`, so that grammar added by a program extends the library's verbs instead of colliding with them.
+4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions with an empty body, `extern verb Name { }`, which claims no words, so that grammar added by a program extends the library's verbs instead of colliding with them. A program's own verb can't take a fake action's name.
 5. **Declare the `grammarToken` enum** with the library's parser token names (§21.5.5).
 6. **Declare library-required constants in `#emitfirst`** (§14.4.2) using `##beguilerSettings.<key>` substitution (§14.4.5), so that they precede the program's `#includeI6` of the library (§23.3.2).
 7. **Run `bglInit()`.** Wrap the library's `main` with `#emitfirst { replace main _oldmain; }` and `#emitlast { [main; bglInit(); _oldmain(); ]; }`, gated on `#if bglAutoInitialize` so that `autoInitialize = false` disables it (§23.3.1).
@@ -11390,7 +11753,7 @@ The table is the one in §4.3; higher precedence binds more tightly.
 | 4 | `\|` | infix | left | Bitwise or |
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
-| 1 | `? :` | ternary | — | Conditional (one per statement, §4.9) |
+| 1 | `? :` | ternary | right | Conditional (§4.9) |
 | 1 | `??` | infix | — | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
@@ -11450,6 +11813,7 @@ in a raw string literal, which recognizes only `\"`.
 
 An unescaped `^` in a string is a newline and an unescaped `~` is a double quote, as in I6.
 
+<!-- doctest: skip -->
 ```bgl
 "She said, \"well done.\""
 "Price: 5\~ off!"
@@ -11530,15 +11894,16 @@ be one of the ZSCII extended characters (codes 155 to 224):
 Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
 Glulx, the characters described below.
 
+<!-- doctest: skip -->
 ```bgl
 "café"
 'ñ'
 .café
 ```
 
-> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal or an
-> interpolated string literal: `"© 2027 — ✓"`. A character literal and a dictionary word still take only
-> the characters in the table above.
+> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal, an
+> interpolated string literal or a character literal: `"© 2027 — ✓"`, `'Ω'`. A dictionary word still
+> takes only the characters in the table above.
 
 ## D.6 Typographic Quotes and the Backtick
 
@@ -11556,8 +11921,10 @@ are folded: a numeric escape such as `\$201C` always denotes that code point.
 ## D.7 Character Literals
 
 A character literal (§1.6.6) holds exactly one character, written directly or with any escape above. Its
-value is the character's ZSCII code, so a character literal may be compared numerically: `c >= 'ä'`
-compares against the code of ä.
+value is the character's code — its ZSCII code on the Z-machine, its Unicode code point on Glulx (`'ä'`
+is 155 on the Z-machine and 228 on Glulx; an accent escape or a ZSCII `\NNN` names the same character on
+either) — so a character literal may be compared numerically: `c >= 'ä'` compares against the code of ä.
+`\$XX` gives a code as written, on either target.
 
 `\'` followed by a letter in the acute-accent set (§D.3) is the acute accent: `'\'e'` is é. A `\'`
 not followed by such a letter is an escaped single quote.
@@ -11637,6 +12004,7 @@ Having no value, neither can be used in a Beguile expression — `#if TARGET_ZCO
 like any other bare symbol (§14.2.5). A finer question, such as Z5 versus Z8, is a question about the
 `target` *setting*, which `#if` reads directly:
 
+<!-- doctest: skip -->
 ```bgl
 #if #beguilerSettings.target == "z8"
 ```
@@ -11796,8 +12164,8 @@ include, §21), an extension (`<name>`, §22) or a binding (§23). *Section* is 
 specified. Overloads share one row; a family of names that differ only in a suffix is listed once
 with the suffix spelled out. Names of the `bgl` namespace are listed under `bgl.…`.
 
-`<array>` is loaded by the core, so its methods need no include; `size` and `length` are built in,
-and assigning `length` and `clear()` come from `<array>`.
+`size` and `length` are built in; assigning `length`, `clear()` and the methods marked `<array>`
+need `#include <array>`.
 
 | Name | Kind | Provided by | Section |
 | --- | --- | --- | --- |
@@ -11818,6 +12186,7 @@ and assigning `length` and `clear()` come from `<array>`.
 | `bgl.glulx` | namespace | core (Glulx) | §21.3 |
 | `bgl.glulx.color` | object | `<glulxWindow>` | §22.7.8 |
 | `bgl.glulx.eStyleType`, `eWinType`, `eImgAlign`, `eImgDimension`, `bWinBorder`, `bWinPlacement`, `bWinScale` | type (enum aliases) | core (Glulx) | §21.3, §22.7.10 |
+| `bgl.glulx.supports` | object (interpreter capabilities) | `<glulxWindow>` | §22.7.12 |
 | `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow`, `bgl.glulx.graphicsWindow` | type (path forms of the window types) | `<glulxWindow>` | §21.3, §22.7.1 |
 | `bgl.header` | namespace | core | §21.14 |
 | `bgl.header.printSerial()` | method on `bgl.header` | core | §21.14 |
@@ -11885,13 +12254,16 @@ and assigning `length` and `clear()` come from `<array>`.
 | `bGlulxWindowBorder` | type (bnum) | core (Glulx) | §22.7.10 |
 | `bGlulxWindowPlacement` | type (bnum) | core (Glulx) | §22.7.10 |
 | `bGlulxWindowScale` | type (bnum) | core (Glulx) | §22.7.10 |
+| `checkStyle(styleType, s)`, `distinguishes(a, b)` | method on `window` | `<glulxWindow>` | §22.7.9 |
 | `bool` | type | core | §2.2 |
 | `capture()`, `release()` | method on `stringObj` | `<string>` | §22.3 |
 | `captureOutput(obj, prop)` | method on `stringObj` | `<string>` | §22.3 |
 | `char` | type | core | §2.2, §21.7 |
 | `children` | member on `object` | core | §11.5.2, §21.5.7 |
 | `childrenProp` | type | core | §21.5.7 |
+| `childStyles` | member on `window`, the roots (refers to a `styleSheet`) | `<glulxWindow>` | §22.7.7 |
 | `clear()` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
+| `clear()` | method on the text window types, the roots | `<glulxWindow>` | §22.7.11 |
 | `close()` | method on `window` | `<glulxWindow>` | §22.7.6 |
 | `CLR_*` | constant (colors) | binding | §23.4 |
 | `clr_on`, `clr_fg`, `clr_bg`, `clr_fgstatus` | variable (extern) | binding (`punyInform`) | §23.4 |
@@ -11920,6 +12292,8 @@ and assigning `length` and `clear()` come from `<array>`.
 | `eGlulxStyleHint` | type (enum) | `<glulxWindow>` | §22.7.10 |
 | `eGlulxStyleType` | type (enum) | core (Glulx) | §22.7.10 |
 | `eGlulxWindowType` | type (enum) | core (Glulx) | §22.7.10 |
+| `eCharOutput` | type (enum) | `<glulxWindow>` | §22.7.12 |
+| `eStyleCheck` | type (enum) | `<glulxWindow>` | §22.7.9 |
 | `eImages` | type (enum) | core | §17.6.1, §21.12 |
 | `enqueue(item)`, `dequeue()` | method on `array<T>` | `<array>` | §22.4 |
 | `eSounds` | type (enum) | core | §17.6.1, §21.12 |
@@ -11971,7 +12345,7 @@ and assigning `length` and `clear()` come from `<array>`.
 | `measureStyle(styleType, hint)`, `styleHonored(styleType, hint)` | method on `window` | `<glulxWindow>` | §22.7.9 |
 | `meta` | member on `verb` | core | §13.2.4 |
 | `mid(start, count)`, `left(count)`, `right(count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `moveCursor(col, line)` | method on `textGridWindow` | `<glulxWindow>` | §22.7.6 |
+| `moveCursor(col, line)` | method on `textGridWindow`, `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.6 |
 | `moveUp()`, `moveDown()`, `moveLeft()`, `moveRight()` | method on `window` | `<glulxWindow>` | §22.7.4 |
 | `name` | property (additive, on `object`) | core | §11.7.2, §21.5.2 |
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
@@ -11992,6 +12366,7 @@ and assigning `length` and `clear()` come from `<array>`.
 | `print()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `print(v)` | function (overloaded by type) | core | §21.4 |
 | `printLine([v])` | function (`print(v)`, then a newline) | core | §21.4 |
+| `print(v)`, `printLine([v])` (window output) | method on the text window types, `bgl.ui.mainWin`; `print` on `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.11 |
 | `printName(obj)` | function | core | §21.4 |
 | `priority` | member on `verb` | core | §13.2.5 |
 | `property` | type | core | §11.7, §21.5.2 |
@@ -12016,16 +12391,20 @@ and assigning `length` and `clear()` come from `<array>`.
 | `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |
 | `sort([compare])` | method on `array<T>` | `<array>` | §22.4 |
 | `splitUpGrid()` … `splitRightBuffer()` (12 combinations of direction and kind) | method on `window`, the roots | `<glulxWindow>` | §22.7.3 |
+| `supports` | member on `window`, the roots (`images`, `mouse`, `hyperlinks`) | `<glulxWindow>` | §22.7.12 |
 | `startsWith(prefix)`, `endsWith(suffix)`, `contains(search)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `story`, `headline` | constant (I6) and `extern string` | binding | §23.3.2 |
 | `string` | type | core | §2.2, §22.3 |
 | `stringObj` | type | `<string>` | §22.3 |
 | `stringOrRoutine` | type (named union) | binding | §2.8.2, §21.5.10, §23.3.7 |
 | `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the value class below) | core | §7.7 |
+| `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.10 |
+| `styleSheet` | type (value class; one `style` per style type) | `<glulxWindow>` | §22.7.7 |
 | `style` | type (value class; written `style { … }`; the same word as the emitter namespace above) | `<glulxWindow>` | §22.7.7 |
 | `styleUnset` | constant | `<glulxWindow>` | §22.7.10 |
 | `swap(pos1, pos2)` | method on `array<T>` | `<array>` | §22.4 |
-| `switchable`, `on`, `workflag`, `reactive`, `scored` | value (`attribute`) | binding (`punyInform`) | §23.4 |
+| `switchable`, `on`, `workflag`, `scored` | value (`attribute`) | binding (both) | §23.4 |
+| `reactive` | value (`attribute`) | binding (`punyInform`) | §23.4 |
 | `take(n)`, `skip(n)` | method on `array<T>` | `<linq>` | §22.5 |
 | `Take`, `Look`, `Receive`, … (the library's actions) | object (`extern verb`) | binding | §23.3.6 |
 | `takeWhile(pred)`, `skipWhile(pred)` | method on `array<T>` | `<linq>` | §22.5 |

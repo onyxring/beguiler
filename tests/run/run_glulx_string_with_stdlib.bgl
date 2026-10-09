@@ -1,0 +1,18 @@
+// run_glulx_string_with_stdlib — `<string>` with the I6 standard library on Glulx: the runtime keeps
+// its own stream names, so the library's filemode_Write and gg_arguments are not declared twice, and
+// text captured into a stringObj comes back whole.
+// EXPECT_OUTPUT: [Room A has 6 letters]
+// INPUT: look
+#beguilerSettings { target = glulx; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+object roomA { "Room A"; string description = "A plain room."; attributes = {light}; }
+bool Initialise() {
+    location = roomA;
+    stringObj s = $"{roomA}";
+    print($"[{s} has {s.length} letters]^");
+    rfalse;
+}
+#includeI6 "grammar"

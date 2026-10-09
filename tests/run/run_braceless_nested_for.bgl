@@ -1,0 +1,21 @@
+// run_braceless_nested_for — a braceless body is still a block: a C-style `for` that declares its
+// variable can be the single statement of a braceless for-in, for, if or while.
+// EXPECT_OUTPUT: 1234 01 01 01
+#beguilerSettings { target = z5; informName = "none"; }
+array<array<int>> grid = {{1,2},{3,4}};
+void main(){
+    bglInit();
+    for (array<int> row in grid)
+        for (int j = 0; j < row.length; j++)
+            print(row[j]);
+    print(" ");
+    for (int i = 0; i < 1; i++)
+        for (int k = 0; k < 2; k++) print(k);
+    print(" ");
+    if (true)
+        for (int m = 0; m < 2; m++) print(m);
+    print(" ");
+    int w = 0;
+    while (w < 1)
+        for (int n = 0; n < 2; n++) { print(n); w++; }
+}

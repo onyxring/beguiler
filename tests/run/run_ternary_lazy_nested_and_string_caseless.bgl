@@ -1,0 +1,19 @@
+// run_ternary_lazy_nested_and_string_caseless — only the selected branch of a ternary runs, nested
+// ternaries included; several ternaries share a statement; `?:` chains to the right; and `=~` compares
+// strings ignoring case.
+// EXPECT_OUTPUT: lazy:3 taken:[f]1 two:13 chain:w caseless:true true false
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+int f(){ print("[f]"); return 1; }
+void main(){
+    bglInit();
+    int a = 1; int b = 2;
+    int r = a > b ? (f() ? 1 : 2) : 3;
+    print($"lazy:{r} ");
+    print("taken:"); r = a < b ? (f() ? 1 : 2) : 3; print($"{r} ");
+    r = (a > b ? 5 : 3) + (a < b ? 10 : 20);
+    print($"two:{r} ");
+    print("chain:"); print(a > 5 ? "x" : a > 3 ? "y" : a > 0 ? "w" : "z"); print(" ");
+    string s = "Brass"; stringObj o = "BRASS";
+    print($"caseless:{s =~ "brass"} {o =~ "brass"} {s =~ "key"}");
+}

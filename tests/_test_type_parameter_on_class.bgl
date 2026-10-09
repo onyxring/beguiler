@@ -1,0 +1,5 @@
+// Negative test: Beguile has no generic classes; a type parameter belongs to an array type (§8.1.1).
+// EXPECT_ERROR: Beguile has no generic classes
+#beguilerSettings { target = z5; informName = "none"; }
+class Shelf<T> : _bglObject { int count; }
+void main(){ }

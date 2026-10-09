@@ -133,8 +133,9 @@ class Animal : object {
 **Description**
 
 `operator []` takes the index and returns the element type; `operator []=` takes the index and then
-the value, and returns a type of the author's choice — commonly the assigned type, so the assignment
-can be used as an expression. Any class may declare them, and a subclass inherits them. The result of
+the value, and returns a type of the author's choice, commonly the assigned type. A subscript
+assignment is a statement, like any assignment (§5.5), so the returned value is not read. Either may be
+an emitter or an ordinary method. Any class may declare them, and a subclass inherits them. The result of
 a subscript read supports member access, resolved against the element type.
 
 **Example**
@@ -266,6 +267,7 @@ takes precedence. `==` and `!=` are never derived from `<=>`.
 **Example**
 
 ```bgl
+#include <array>
 extern int compareText(string a, string b);     // an I6 routine: negative, 0 or positive
 
 extend class string {

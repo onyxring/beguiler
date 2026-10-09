@@ -1,0 +1,7 @@
+// A member array is property data on its owner, with no address of its own, so it can't be passed
+// to an array parameter; Beguiler says so instead of the program failing at run time.
+// EXPECT_ERROR: 'h.recent' is a member array, which can't be passed as an argument
+#beguilerSettings { target = z5; informName = "none"; }
+object h { array<int> recent = {1, 2}; }
+void show(array<int> a){ print(a.length); }
+void main(){ show(h.recent); }

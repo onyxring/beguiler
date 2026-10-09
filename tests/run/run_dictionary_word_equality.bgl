@@ -1,0 +1,13 @@
+// run_dictionary_word_equality — dictionary words compare with `==` / `!=` against another word, a
+// literal, an array element, or `null` (no word).
+// EXPECT_OUTPUT: lit:true var:true ne:true elem:false null:false notnull:true
+#beguilerSettings { target = z5; informName = "none"; }
+array<dictionaryWord> words = {.red, .blue};
+void main(){
+    bglInit();
+    dictionaryWord a = .red;
+    dictionaryWord b = .red;
+    dictionaryWord c = .blue;
+    print($"lit:{a == .red} var:{a == b} ne:{a != c} elem:{a == words[1]} ");
+    print($"null:{a == null} notnull:{a != null}");
+}

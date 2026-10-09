@@ -1,0 +1,4 @@
+// Inform 6's colon-separated `for` header gets a direct message (it used to run to end of file).
+// EXPECT_ERROR: separates its parts with `;`, not `:`
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ for (int i=0: i<3: i++) print(i); }

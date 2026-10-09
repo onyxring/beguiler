@@ -1,0 +1,9 @@
+// run_object_method_inherited_array — a bare inherited array member in an object's method keeps its
+// element type (`history.enqueue(lamp)`).
+// EXPECT_OUTPUT: 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object lamp {}
+class Bag : object { array<object> history[4]; }
+Bag sack { void add() { history.enqueue(lamp); print(history.length); } }
+void main(){ bglInit(); sack.add(); }

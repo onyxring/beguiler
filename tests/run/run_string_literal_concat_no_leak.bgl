@@ -1,0 +1,13 @@
+// run_string_literal_concat_no_leak — a literal on the left of `+` gives a stringObj, like any other
+// concatenation, and leaves no buffer behind: 300 of them in a loop do not exhaust the string pool.
+// EXPECT_OUTPUT: abchello xy done
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+void main(){
+    bglInit();
+    string s = "hello";
+    for (int i = 0; i < 300; i++){ stringObj t = "abc" + s; stringObj u = "x" + 'y'; }
+    stringObj a = "abc" + s;
+    stringObj b = "x" + 'y';
+    print($"{a} {b} done");
+}

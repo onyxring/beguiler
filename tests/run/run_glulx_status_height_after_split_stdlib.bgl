@@ -1,0 +1,19 @@
+/*  run_glulx_status_height_after_split_stdlib — with the I6 standard library on Glulx, setting the
+    status bar's height after the status bar has been split resizes the status area (the pair that
+    splits above the main window), not the new left/right pair, which Glk refuses.  */
+// EXPECT_OUTPUT: split height 4
+#beguilerSettings { target = glulx; informName = "none"; includePaths = "../../../inform6/stdlib"; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <glulxWindow>
+object roomA { short_name = "Room A"; attributes = {light}; }
+bool Initialise(){
+    location = roomA;
+    var child = bgl.ui.statusBar.splitRightGrid(10);
+    print("split ");
+    bgl.ui.statusBar.height = 4;
+    print($"height {bgl.ui.statusBar.height}^");
+    rtrue;
+}
+#includeI6 "grammar"

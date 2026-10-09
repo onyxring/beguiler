@@ -1,0 +1,6 @@
+// A #using-imported emitter value called like a function gets the emitter-value message, as the
+// qualified form does, rather than an error naming the emitter's body text.
+// EXPECT_ERROR: 'italics' is an emitter value, not a function; use it without parentheses
+#beguilerSettings { target = z5; informName = "none"; }
+#using bgl.printRules;
+void main(){ italics(); }

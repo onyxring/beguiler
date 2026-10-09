@@ -1,0 +1,13 @@
+// run_expression_lambda_in_list — an expression-bodied lambda as the last (or any) element of a
+// `{ … }` list, at file scope and in a routine.
+// EXPECT_OUTPUT: 6 4 / 9 6
+#beguilerSettings { target = z5; informName = "none"; }
+int twice(int n) { return n * 2; }
+array<func<int, int>> steps = { twice, (int n) => n + 1 };
+void after() { }
+void main() {
+    for (func<int, int> f in steps) { print(f(3)); print(" "); }
+    print("/ ");
+    array<func<int, int>> more = { (int n) => n * n, twice };
+    for (func<int, int> g in more) { print(g(3)); print(" "); }
+}

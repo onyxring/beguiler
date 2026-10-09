@@ -1,0 +1,7 @@
+// Negative test: a routine that calls itself shares its value-class instances between calls, so it
+// can't return one by value.
+// EXPECT_ERROR: 'build' calls itself and returns a 'Vec2' by value
+#beguilerSettings { target = z5; informName = "none"; }
+value class Vec2 { int x; Vec2 operator = (Vec2 o){ x = o.x; return self; } }
+Vec2 build(int n){ Vec2 v; v.x = n; if (n > 0) build(n - 1); return v; }
+void main(){ Vec2 r = build(2); print(r.x); }

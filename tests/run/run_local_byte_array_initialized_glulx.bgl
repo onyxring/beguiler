@@ -1,0 +1,16 @@
+// run_local_byte_array_initialized_glulx — a local array<char> initialized from a string or a list gets a
+// fresh copy on every call, recursive calls included, and changing it leaves the next call's alone.
+// EXPECT_OUTPUT: hello>jello 5 ok | hello>jello 5 ok | hello>jello 5 ok
+#beguilerSettings { target = glulx; informName = "none"; }
+void show(int n){
+    array<char> word = "hello";
+    array<char> two = {'o', 'k'};
+    for (int i in 0 to word.length - 1) print(word[i]);
+    word[0] = 'j';
+    print(">");
+    for (int i in 0 to word.length - 1) print(word[i]);
+    print($" {word.length} {two[0]}{two[1]}");
+    if (n > 0){ print(" | "); show(n - 1); }
+}
+#include "glulxConsole.bgl"
+void main(){ bglInit(); glulxConsole(); show(1); print(" | "); show(0); }

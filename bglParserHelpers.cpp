@@ -58,6 +58,9 @@ string mangleOperatorName(const string& opName){
         else if(ch == '|') safe += "or";
         else if(ch == '^') safe += "xor";
         else if(ch == '?') safe += "qry";
+        else if(ch == '[') safe += "idx";
+        else if(ch == ']') continue;
+        else if(ch == '(' || ch == ')') continue;
         else if(ch != ' ') safe += ch;
     }
     return safe;

@@ -1,5 +1,5 @@
 /*  run_copy_operator_chain — a subclass's copy operator copies its own field, then chains to its
-    ancestor's with a cast: `(Base)self = o;` calls Base's `operator =`, as `(Base)obj.method()` calls
+    ancestor's with a cast: `(Base)self = o;` calls Base's `operator =`, as `((Base)obj).method()` calls
     Base's method.
 
     The cast was dropped, so `(Vec2)self = o;` compiled to `self = o;` — the root assignment, which

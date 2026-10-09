@@ -1,0 +1,23 @@
+// run_call_parenthesized_value — `(expr)(args)` calls the group's routine value, as a statement
+// and inside an expression, including a cast that narrows a var or union to func<…>.
+// EXPECT_OUTPUT: [run][run] 7 12 [run] 3
+#beguilerSettings { target = z5; informName = "none"; }
+void helper(){ print("[run]"); }
+int seven(){ return 7; }
+int addTo(int a, int b){ return a + b; }
+void main(){
+    bglInit();
+    var x = helper;
+    ((func<void>)x)();
+    func<void> f = helper;
+    (f)();
+    var s = seven;
+    int n = ((func<int>)s)();
+    print(" "); print(n);
+    func<int,int,int> add = addTo;
+    print(" "); print(1 + (add)(5, 6));
+    print(" ");
+    if (n > 0) (f)();
+    func<void> | int u = 3;
+    print(" "); print((int)u);
+}

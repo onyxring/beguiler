@@ -1,0 +1,17 @@
+// run_glulx_char_unicode — on Glulx a character is its Unicode code point: a typed accented
+// character, an accent shorthand and a code from the ZSCII table name the same character, print it,
+// and convert case and compare through the library (Glk's tables for Latin-1, plus œ/Œ).
+// EXPECT_OUTPUT: 228 196 196 äÄÄ Ää low:true up:true vow:true same:true ci:true ß:true œΩŒ
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+void main(){
+    bglInit(); glulxConsole();
+    char c = 'ä'; char u = 'Ä'; char s = '\:A';
+    print($"{(int)c} {(int)u} {(int)s} ");
+    print(c); print(u); print(s); print(" ");
+    print(c.toUpper()); print(u.toLower()); print(" ");
+    char sz = 'ß';
+    print($"low:{c.isLower()} up:{u.isUpper()} vow:{c.isVowel()} same:{u == s} ci:{u =~ c} ß:{sz.isLower()} ");
+    char o = 'œ'; char k = 'Ω';
+    print(o); print(k); print(o.toUpper());
+}

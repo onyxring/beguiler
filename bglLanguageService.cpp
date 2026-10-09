@@ -422,6 +422,7 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
         if(v->name == lower && v->isPrePassStub){
             v->isPrePassStub = false;
             v->isExternal = isExternal;
+            v->i6name = isExternal ? "" : "_bglVerb_" + lower;
             v->src = parser.file.currentLocation();
             if(classDef* vc = findClass("verb"))
                 v->objectClass = vc;
@@ -436,6 +437,10 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
     verbObjectDef& vd = *(new verbObjectDef());
     vd.name = lower;
     vd.isExternal = isExternal;
+    // The verb's object only carries its handler; the action, the grammar and `<Name>Sub` keep the
+    // verb's own name. Inform 6 keeps objects in one namespace with properties, so the object takes
+    // a reserved name and a verb can be called anything (`Size`, `Clear`) without meeting a member.
+    if(!isExternal) vd.i6name = "_bglVerb_" + lower;
     vd.src = parser.file.currentLocation();
     if(classDef* vc = findClass("verb"))
         vd.objectClass = vc;

@@ -35,7 +35,7 @@
 
 ## 21.1 Overview
 
-The Beguile Language Runtime (BLR) is the library of Beguile source that every program compiles against. Its *core* is loaded automatically: no `#include` is needed, in either default mode or precompiler mode (§15.1). Everything in this chapter is part of the core. The extensions, each enabled with `#include <…>` except `<array>`, which the core includes itself (§22.1), are in §22; the IF library bindings are in §23.
+The Beguile Language Runtime (BLR) is the library of Beguile source that every program compiles against. Its *core* is loaded automatically: no `#include` is needed, in either default mode or precompiler mode (§15.1). Everything in this chapter is part of the core. The extensions, each enabled with `#include <…>`, are in §22; the IF library bindings are in §23.
 
 The core provides:
 
@@ -219,7 +219,9 @@ extern property ⟨name⟩ ;
 
 A `property` value is the property identifier, a word-sized value. It supports `=`, `==` and `!=` only; arithmetic on a property identifier is a compile-time error.
 
-The core declares one property itself: `name`, which is `additive` in the Inform 6 compiler. A program must not redeclare it. Every other additive property belongs to a library and is declared by its binding (§23.3.5).
+The core declares one property itself: `name`, which the Inform 6 compiler builds in as an `additive`
+property, and declares it on `object` as a `rawArray<dictionaryWord>` member (§11.5). A program must not
+redeclare it. Every other additive property belongs to a library and is declared by its binding (§23.3.5).
 
 **Example**
 
@@ -547,7 +549,7 @@ object prize = bgl.util.random.get(coin, gem, key);
 
 **Description**
 
-The `char` type carries classification, case conversion and case-insensitive comparison in the core. All handle the ZSCII extended characters (accented letters, ligatures).
+The `char` type carries classification, case conversion and case-insensitive comparison in the core. All handle the accented letters and ligatures: on the Z-machine the ZSCII extended characters, on Glulx the Latin-1 range (through Glk's case tables) and `œ`/`Œ`.
 
 | Member | Returns | Description |
 |---|---|---|
@@ -732,6 +734,23 @@ print($"Under it is {link("broom", eLinks.broom)}.");                           
 
 `HandleGlkEvent(event, context, buffer)` is an `extern default` entry point declared by the Glulx core, with the Inform 6 library's meaning: `event` is the four-word Glk event, `context` is `0` while a line is being read and `1` while a key is awaited, and the return value is `0` to carry on, `2` to end the input, or `-1` to keep waiting. The runtime wraps whatever `HandleGlkEvent` the program defines. On a hyperlink event it renews the window's hyperlink request, calls a function target itself, and passes every other event to the program's function. The same wrapper serves the Inform 6 library's input loops and the runtime's own (`bgl.ui.waitForKey`), so a program behaves the same with a library or without one.
 
+A program declares it as `int HandleGlkEvent(var event, var context, var buffer)`. The event's words
+are read with `bgl.asm.aload(event, n)` (§21.13.1): word 0 is its type, an `eGlulxEventType`
+(`none`, `timer`, `charInput`, `lineInput`, `mouseInput`, `arrange`, `redraw`, `soundNotify`,
+`hyperlink`, `volumeNotify`), and for a hyperlink word 2 is the link's value.
+
+<!-- doctest: compile -->
+```bgl
+#beguilerSettings { target = Glulx; }
+enum eLinks { wait = 2 }
+int HandleGlkEvent(var event, var context, var buffer){
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink
+        && bgl.asm.aload(event, 2) == (int)eLinks.wait) print("[waiting]");
+    return 0;
+}
+void main(){ }
+```
+
 Glk does not allow printing to a window that is waiting for a line. When a function target is clicked at a command prompt, the runtime suspends line input while the function runs. The player's partial input is echoed, and the prompt is then reprinted with that input restored. The library binding provides this for the Inform 6 library. A program's own `HandleGlkEvent` that prints at the prompt must cancel line input itself, as in Inform 6.
 
 The link text is printed plainly on an interpreter without hyperlink support.
@@ -753,7 +772,7 @@ The link text is printed plainly on an interpreter without hyperlink support.
 | `eUnknownAsset` | Data resource ids: any packaged file that is neither an image nor a sound. |
 | `eAssets` | The union `eImages \| eSounds \| eUnknownAsset`, for APIs that accept any resource. |
 
-When `generateBlorb` is true the compiler extends `eImages` and `eSounds` with one member per asset file found (§17.6.1). A value of `eImages` is the raw resource id; with `<glulxImage>` it also answers `width()`, `height()` and `size()` (§22.8).
+When `generateBlorb` is true the compiler extends `eImages` and `eSounds` with one member per asset file found (§17.6.1). A value of `eImages` is the raw resource id; with `<glulxImage>` it also has the properties `width`, `height` and `size` (§22.8).
 
 **See also** §2.7, §2.8, §17.6.1, §22.8.
 

@@ -306,10 +306,13 @@ extern verb NotifyOff      { .notify }              /// turn off score notificat
 #endif
 
 //-- Fake actions (no grammar)
-extern verb Going;           /// runs on rooms as the player moves; see selected_direction
-extern verb LetGo;           /// runs on the container or supporter when noun is taken from it
-extern verb Receive;         /// runs on the container or supporter when noun is put on or in it
-extern verb ThrownAt;        /// runs on second when noun is thrown at it
+extern verb Going { }          /// Runs on rooms as the player moves; see selected_direction.
+extern verb LetGo { }          /// Runs on the container or supporter when noun is taken from it.
+extern verb Receive { }        /// Runs on the container or supporter when noun is put on or in it.
+extern verb ThrownAt { }       /// Runs on second when noun is thrown at it.
+extern verb Order { }          /// Runs on a character told to do something it has no orders for.
+extern verb PluralFound { }    /// Tells parse_name that a plural word matched.
+extern verb NotUnderstood { }  /// Runs when a command to a character is not understood.
 extern verb OopsCorrection;  /// replace the mistyped word with second (meta)
 
 //-- General bits of I6-to-Beguile setup ----------------------------------------
@@ -342,13 +345,15 @@ extend _bglStatus {
     }
 }
 
-// Automatically start up the Beguile run-time environment.
-#emitfirst{
-    replace main _oldmain;
-}
-#emitlast{
-    [main;
-        bglInit();
-        _oldmain();
-    ];
-}
+// Automatically start up the Beguile run-time environment, unless the program asked to do it itself.
+#if bglAutoInitialize
+    #emitfirst{
+        replace main _oldmain;
+    }
+    #emitlast{
+        [main;
+            bglInit();
+            _oldmain();
+        ];
+    }
+#endif

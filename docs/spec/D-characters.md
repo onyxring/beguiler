@@ -117,9 +117,9 @@ Glulx, the characters described below.
 .café
 ```
 
-> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal or an
-> interpolated string literal: `"© 2027 — ✓"`. A character literal and a dictionary word still take only
-> the characters in the table above.
+> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal, an
+> interpolated string literal or a character literal: `"© 2027 — ✓"`, `'Ω'`. A dictionary word still
+> takes only the characters in the table above.
 
 ## D.6 Typographic Quotes and the Backtick
 
@@ -137,8 +137,10 @@ are folded: a numeric escape such as `\$201C` always denotes that code point.
 ## D.7 Character Literals
 
 A character literal (§1.6.6) holds exactly one character, written directly or with any escape above. Its
-value is the character's ZSCII code, so a character literal may be compared numerically: `c >= 'ä'`
-compares against the code of ä.
+value is the character's code — its ZSCII code on the Z-machine, its Unicode code point on Glulx (`'ä'`
+is 155 on the Z-machine and 228 on Glulx; an accent escape or a ZSCII `\NNN` names the same character on
+either) — so a character literal may be compared numerically: `c >= 'ä'` compares against the code of ä.
+`\$XX` gives a code as written, on either target.
 
 `\'` followed by a letter in the acute-accent set (§D.3) is the acute accent: `'\'e'` is é. A `\'`
 not followed by such a letter is an escaped single quote.

@@ -86,10 +86,8 @@ members of two `#using` imports, or an operator reference with more than one can
 
 ```text
 class 'A': circular inheritance — 'B' transitively inherits from 'A'
-class 'Room' uses `has light` but its bindings-file declaration `extern attribute light;` comes later in source (triggered by: …). Move the bindings file before the class or its first instance.
+class 'Room' lists attribute 'light' (`attributes = {light}`), but its declaration `extern attribute light;` comes later in source (needed by: …). Declare the attribute, or include the bindings file that declares it, before the class.
 ```
-
-The second is a location-free message.
 
 **Includes and directives** (§14):
 

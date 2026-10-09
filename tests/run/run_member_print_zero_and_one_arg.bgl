@@ -1,0 +1,7 @@
+// run_member_print_zero_and_one_arg — inside a class, `print()` with no arguments calls the class's
+// own print(), while `print(x)` (an argument the member can't take) calls the global one.
+// EXPECT_OUTPUT: 5 c
+#beguilerSettings { target = z5; informName = "none"; }
+class Money : _bglObject { int cents = 5; void print(){ print(cents); print(" c"); } void show(){ print(); } }
+Money purse { }
+void main(){ bglInit(); purse.show(); }

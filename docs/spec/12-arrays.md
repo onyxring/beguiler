@@ -24,10 +24,10 @@ The element type `T` is mandatory; bare `array` is not a type. `T` may be any ba
 `bool`, `string`, `object`, `char`, `dictionaryWord`), any user-defined class, or another array type
 (§12.9). `rawArray<T>` (§12.8) is the untracked form used at the I6 boundary.
 
-The `<array>` extension is loaded by the runtime core, so every array operation is available
-without an explicit `#include <array>`. Subscripting, `size`, `length` and `for … in` are built
-in; assigning `length`, `clear()`, value-semantic assignment and the remaining methods (`append`,
-`indexOf`, `sort`, …) are provided by `<array>` and are cataloged in §22.4.
+Subscripting, `size`, `length` and `for … in` are built in. Assigning `length`, `clear()`,
+value-semantic assignment and the remaining methods (`append`, `indexOf`, `sort`, …) come from the
+`<array>` extension, which a program enables with `#include <array>`; they are cataloged in §22.4.
+A program that doesn't include it carries none of its code.
 
 ## 12.2 Declaring Arrays
 
@@ -107,6 +107,7 @@ compile-time errors, except that a raw member array reports its property length 
 **Example**
 
 ```bgl
+#include <array>
 array<int> scores[5];
 
 int x = scores[2];
@@ -247,9 +248,14 @@ an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
 
+A member array is property data, with no address of its own to hand over, so it can't be passed as an
+array argument (a compile-time error). A routine that needs it takes the owning object instead, or the
+member is declared `ref` and bound to an array that lives elsewhere.
+
 **Example**
 
 ```bgl
+#include <array>
 class Inventory : object {
     array<object> held[8];                  // per-instance storage
 }
@@ -291,7 +297,7 @@ purpose is interoperability: an I6 buffer handed to Beguile (the `results` array
 entry point, a library table, an array declared in an `#i6` island, §15.2) has no count word, and
 receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it.
 
-| | `array<T>` | `rawArray<T>` parameter |
+| | `array<T>` | `rawArray<T>` |
 |---|---|---|
 | Layout | count word, then elements | elements only |
 | `size` / `length` | available | unavailable; the length is passed explicitly |
@@ -330,21 +336,17 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 
 **Description**
 
-A file-scope `rawArray<T>` declared with an initializer is an *untracked* `array<T>`: it has the
-count-word-then-elements layout of `array<T>`, and its count word holds the true element count, but it
-carries no length-tracking trailer even though `<array>` is loaded. This is the form to use
-when a bare I6 array API reads the array by its count word (for example the single-array form of
-orLibrary's `util.orArray`, §15.10); a tracked `array<T>` would over-count there.
-
-A file-scope `rawArray<T>` literal and a `rawArray<T>` parameter are not interchangeable: the literal
-is count-prefixed and the parameter is elements-only. The type system keeps them apart; a literal has
-the `array` element-covariant type and is passed where an `array<var>` is expected.
+A file-scope `rawArray<T>` declared with an initializer is emitted as exactly the I6 array its values
+make: the elements, with no count word, length trailer or magic word. It has the same elements-only
+layout as a `rawArray<T>` parameter, so it is passed wherever a `rawArray<T>` is expected, and its
+length is known only to the code that declared it. An I6 API that reads an array by a leading count
+word takes an array declared in an I6 island (§15.2).
 
 **Example**
 
 ```bgl
 array<string>    trk = { "a", "b", "c" };   // tracked
-rawArray<string> raw = { "a", "b", "c" };   // untracked; count word = 3
+rawArray<string> raw = { "a", "b", "c" };   // Array raw --> "a" "b" "c";
 ```
 
 ### 12.8.3 Member `rawArray<T>`
@@ -444,6 +446,7 @@ allocates a second time; the original is not released.
 **Example**
 
 ```bgl
+#include <array>
 #include <string>
 array<stringObj> slots[4];
 

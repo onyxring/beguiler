@@ -1,0 +1,38 @@
+/*  run_array_extension_emitters — emitters added to every array through `extend extern class array`.
+    A body reaches elements with $i6Expr($self[i]), which must address a global and a member array
+    alike, bind T per element type, and leave the outer stream lexing `.member` after the call. An
+    emitter's result used as a receiver — a field read, a field write, a routine method sent to it as
+    an expression or as a statement — must be parenthesized for I6.  */
+// EXPECT_OUTPUT: global=20
+// EXPECT_OUTPUT: member=200
+// EXPECT_OUTPUT: field=5
+// EXPECT_OUTPUT: raw=5
+// EXPECT_OUTPUT: sent=5
+// EXPECT_OUTPUT: stmt=5
+// EXPECT_OUTPUT: written=7
+#beguilerSettings { target = z5; informName = "none"; }
+extend extern class array {
+    emitter T second()    { $i6Expr($self[1]) }
+    emitter T secondRaw() { $self-->2 }
+}
+class Thing : _bglObject {
+    int w;
+    int weight(){ return w; }
+    void show(){ print("stmt="); print(w); print("^"); }
+}
+Thing a { w = 3; }
+Thing b { w = 5; }
+object holder { array<int> marks = {100, 200, 300}; }
+array<int>   nums   = {10, 20, 30};
+array<Thing> things = {a, b};
+void main(){
+    print("global=");  print(nums.second());              print("^");
+    print("member=");  print(holder.marks.second());      print("^");
+    int f = things.second().w;
+    print("field=");   print(f);                          print("^");
+    print("raw=");     print(things.secondRaw().w);       print("^");
+    print("sent=");    print(things.second().weight());   print("^");
+    things.second().show();
+    things.second().w = 7;
+    print("written="); print(b.w);                        print("^");
+}

@@ -46,7 +46,7 @@ The primitive types are declared by the runtime core (§21) and need no `#includ
 | `uint` | Unsigned integer, the same width as `int`. A non-negative integer literal converts to it implicitly; any other conversion between `int` and `uint` is an explicit cast (§2.4.1). Its operators are specified in §21.6.1. |
 | `float` | IEEE 754 single-precision floating point. `[Glulx]` See §2.3. |
 | `bool` | Boolean value, `true` or `false`. The comparison and logical operators and `operator ?()` yield `eBool`, the enumeration `{ true, false }` (§2.7.4); `eBool` and `bool` interoperate, so a comparison may be stored in a `bool` and a `bool` tested where an `eBool` is expected. Tables elsewhere in this specification write `bool` for either. |
-| `char` | A single ZSCII character value. The runtime core (§21.7) adds case-conversion and inspection methods. |
+| `char` | A single character: its ZSCII code on the Z-machine, its Unicode code point on Glulx (Appendix D). The runtime core (§21.7) adds case-conversion and inspection methods. |
 | `string` | A reference to static text. The core provides printing, equality and literal assignment; the `<string>` extension (§22.3) compares content and adds `stringObj` for text that is built or changed. |
 | `object` | The base class of every world object in the IF model (§11.1). |
 | `verb` | The class from which verbs are declared (§13.2). |
@@ -77,6 +77,9 @@ bit-for-bit as a `float`.
 converted to `float` and the result is a `float`. If both operands are `int`, the result is an
 `int`. So `314 / 100` is `3`, while `(float)314 / 100` is `3.14`: one `float` operand, on either side,
 is enough. The comparison operators convert the same way but yield `bool`.
+
+`print()` writes a `float` as a decimal rounded to four places: `2.0 / 3` prints `0.6667`, and `0.99999`
+prints `1.0000`.
 
 **Example**
 
@@ -498,7 +501,8 @@ type; the remaining arguments are the parameter types in order. A function with 
 `func<>` is valid wherever a type is: a variable, parameter, return or member type, and the element
 type of a collection, including nested forms such as `array<func<T>>`. A `func<>` value is called
 like a function, by writing the arguments after it, whether the value is held in a variable, a member
-or a loop variable.
+or a loop variable. Any parenthesized expression is called the same way: `((func<void>)v)()`
+narrows a `var` or union value to a function and calls it, as a statement or within an expression.
 
 The name of a function, written without a call, is a function value whose type is the function's
 signature: `int twice(int n)` gives a `func<int, int>`. It may be stored in, passed to or returned as a
@@ -679,7 +683,9 @@ There are three kinds:
 - **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
   through the class's copy operator, `operator =` taking the class; a value class that has none can't
-  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7).
+  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7). A
+  routine that calls itself keeps each call's locals and parameters its own across the inner call,
+  but it can't return a value class by value.
 
 Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
 follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a

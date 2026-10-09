@@ -1,0 +1,15 @@
+// run_if_directive_decided_left — #if parses the whole condition even when its left operand already
+// decides it (A || B with A defined, C && A with C undefined).
+// EXPECT_OUTPUT: or-ok and-ok
+#beguilerSettings { target = z5; informName = "none"; }
+#define A
+void main(){
+    #if A || B
+        print("or-ok");
+    #endif
+    #if C && A
+        print(" and-wrong");
+    #else
+        print(" and-ok");
+    #endif
+}

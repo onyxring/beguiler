@@ -82,3 +82,19 @@ const hiddenMember* findHiddenMember(classDef* cls, const std::string& memberNam
 // body's locals, then global variableDeclarations. Returns false for unknown
 // names, enums, primitives — they have no const-ness to query.
 bool isConstVariable(const std::string& name, functionDef* func, statementBlock* body);
+
+// `text` ready to take a `.member` suffix: wrapped in parentheses unless it is a plain dotted path or
+// already one parenthesized group, so `a-->2` becomes `(a-->2)` rather than binding as `a-->(2.m)`.
+inline std::string parenthesizeReceiver(const std::string& text){
+    if(text.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") == std::string::npos)
+        return text;
+    if(!text.empty() && text.front() == '('){
+        int depth = 0; size_t i = 0;
+        for(; i < text.size(); i++){
+            if(text[i] == '(') depth++;
+            else if(text[i] == ')' && --depth == 0) break;
+        }
+        if(i == text.size() - 1) return text;
+    }
+    return "(" + text + ")";
+}

@@ -104,12 +104,10 @@ lamp.parent = library;
 
 **Description**
 
-`+= -= *= /= %= &= |= ^= <<= >>=` modify the variable in place. The left type must declare the
-corresponding compound operator; if it does not and the type is known (not `var`), it is a
-compile-time error. The BLR defines all of them for `int` (§2.2) and `uint` (§21.6.1).
-
-`n += 2` is equivalent to `n = n + 2` when the type declares no `operator +=`; the
-fallback is specified in §9.7.
+`+= -= *= /= %= &= |= ^= <<= >>=` modify the variable in place. When the left type declares the
+compound operator, that operator runs. When it declares none, `n op= v` is `n = n op (v)` (§9.7), so
+the type's own `op` and `=` apply; it is a compile-time error only when that assignment is. The BLR
+defines all of them for `int` (§2.2) and `uint` (§21.6.1).
 
 **Example**
 
@@ -403,7 +401,8 @@ delete ⟨identifier⟩ ;
 **Description**
 
 Returns a pooled-class instance to its pool, calling the class's `destroy()` method first if one is
-declared. `delete` on a variable whose type is not a pooled class is a compile-time error. Pooled
+declared. The instance leaves the object tree (it is in no room or container), and the slot is free
+for the next `new`, which starts it again from its members' declared values. `delete` on a variable whose type is not a pooled class is a compile-time error. Pooled
 classes are specified in §8.2.6; allocation with `new` in §4.13.
 
 **Example**
