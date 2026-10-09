@@ -1,0 +1,71 @@
+Room A
+> status
+oak door: locked
+steel box: locked
+Locked: 2. Door unlocks: 0.
+> examine door
+The oak door is closed and locked.
+> east
+You can't, since the oak door is in the way.
+> take brass key
+Taken.
+> take iron key
+Taken.
+> unlock door with iron key
+The iron key doesn't seem to fit the lock.
+> unlock door with brass key
+You unlock the oak door.
+> examine door
+The oak door is closed but not locked.
+> push door
+The door does not move.
+> open door
+The door opens.
+> examine door
+The oak door is open.
+> status
+oak door: open
+steel box: locked
+Locked: 1. Door unlocks: 1.
+> east
+Room B
+Room B. A door leads west.
+The oak door stands open.
+You can also see a steel box (which is closed) here.
+> unlock box with brass key
+The brass key doesn't seem to fit the lock.
+> open box
+The steel box seems to be locked.
+> unlock box with iron key
+You unlock the steel box.
+> open box
+You open the steel box, revealing a coin.
+> take coin
+Taken.
+> close box
+You close the steel box.
+> lock box with iron key
+You lock the steel box.
+> status
+oak door: open
+steel box: locked
+Locked: 1. Door unlocks: 1.
+> west
+Room A
+Room A. A door leads east.
+The oak door stands open.
+> close door
+The door closes.
+> lock door with brass key
+You lock the oak door.
+> east
+You can't, since the oak door is in the way.
+> status
+oak door: locked
+steel box: locked
+Locked: 2. Door unlocks: 1.
+> inventory
+You're carrying:
+  a coin
+  an iron key
+  a brass key

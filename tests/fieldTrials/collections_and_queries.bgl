@@ -1,0 +1,223 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+}
+
+class Item : object {
+    int weight;
+}
+
+class Holder : object {
+    array<object> recent[3];
+    void remember(object o) {
+        if (recent.length == recent.size) recent.dequeue();
+        recent.enqueue(o);
+    }
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B.";
+    s_to = roomA;
+    n_to = roomC;
+    attributes = {light};
+}
+
+object roomC {
+    short_name = "Room C";
+    description = "Room C.";
+    s_to = roomB;
+    attributes = {light};
+}
+
+Item stone   { short_name = "stone";   name = {.stone};   weight = 5; parent = roomA; }
+Item feather { short_name = "feather"; name = {.feather}; weight = 1; parent = roomA; }
+Item cup     { short_name = "cup";     name = {.cup};     weight = 3; parent = roomA; }
+Item brick   { short_name = "brick";   name = {.brick};   weight = 7; parent = roomB; }
+Item coin    { short_name = "coin";    name = {.coin};    weight = 1; parent = roomB; }
+
+Holder satchel {
+    short_name = "satchel";
+    name = {.satchel};
+    parent = roomA;
+    attributes = {container, open};
+    bool after() {
+        switch (action) {
+            case Receive: remember(noun);
+        }
+        rfalse;
+    }
+}
+
+array<object> visits[4];        // the last four rooms entered, oldest first
+array<object> marks[3];         // a stack: the most recent mark is at the front
+
+void NewRoom() {
+    if (visits.length == visits.size) visits.dequeue();
+    visits.enqueue(location);
+}
+
+int sumOf(array<object> list, func<int, object> measure) {
+    int total = 0;
+    for (object o in list) total += measure(o);
+    return total;
+}
+
+object best(array<object> list, func<bool, object, object> better) {
+    object top = null;
+    for (object o in list) {
+        if (top == null || better(o, top)) top = o;
+    }
+    return top;
+}
+
+// Insertion sort over the in-use part of arr.
+void sortBy(array<int> arr, func<int, int, int> compare) {
+    for (int i = 1; i < arr.length; i++) {
+        int v = arr[i];
+        int j = i - 1;
+        while (j >= 0 && compare(arr[j], v) > 0) {
+            arr[j + 1] = arr[j];
+            j--;
+        }
+        arr[j + 1] = v;
+    }
+}
+
+void printList(array<object> list) {
+    if (list.length == 0) { print("none"); return; }
+    for (int i in 0 to list.length - 1) {
+        if (i > 0) print(", ");
+        print(list[i]);
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        array<object> here = bgl.world.inParent(location, (object o) => o.is(Item));
+        print($"Items here: {here.length}.^");
+        if (here.length > 0) print($"First: {here.first()}.^");
+        int heavy = here.filter((object o) => ((Item)o).weight >= 5).count();
+        print($"Heavy: {heavy}.^");
+        if (here.any((object o) => ((Item)o).weight == 1)) print("Something here weighs 1.^");
+        else                                              print("Nothing here weighs 1.^");
+        object top = best(here, (object a, object b) => ((Item)a).weight > ((Item)b).weight);
+        if (top != null) print($"Heaviest: {top}.^");
+        int total = sumOf(here, (object o) => ((Item)o).weight);
+        print($"Total weight: {total}.^");
+    }
+}
+
+verb Weights {
+    grammar = {.weights};
+    array<int> limits = {2, 5};
+    void handler() {
+        array<int> ws[8];
+        for (object o in player.children) {
+            if (o.is(Item)) ws += ((Item)o).weight;
+        }
+        if (ws.length == 0) { print("You carry nothing with a weight.^"); return; }
+        sortBy(ws, (int a, int b) => a - b);
+        print("Carried weights:");
+        for (int w in ws) print($" {w}");
+        print(".^");
+        ws.sort((int a, int b) => b - a);
+        print("Largest first:");
+        for (int i in 1 to ws.length) print($" {i}:{ws[i - 1]}");
+        print(".^");
+        for (int lim in limits) {
+            int over = ws.filter((int w) => w > lim).count();
+            print($"Over {lim}: {over}.^");
+        }
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    void handler() {
+        if (marks.length == marks.size) { print("The mark list is full.^"); return; }
+        marks.push(noun);
+        print($"Marked {noun}.^");
+    }
+}
+
+verb Unmark {
+    grammar = {.unmark};
+    void handler() {
+        if (marks.length == 0) { print("Nothing is marked.^"); return; }
+        object o = marks.pop();
+        print($"Unmarked {o}.^");
+    }
+}
+
+verb Forget {
+    grammar = {.forget, NOUN};
+    void handler() {
+        if (!marks.contains(noun)) { print("That is not marked.^"); return; }
+        marks -= noun;
+        print($"Forgot {noun}.^");
+    }
+}
+
+verb ListMarks {
+    grammar = {.marks};
+    void handler() {
+        if (marks.length == 0) { print("Nothing is marked.^"); return; }
+        int n = 0;
+        for (object o in marks) {
+            n++;
+            print($"{n}: {o}^");
+        }
+    }
+}
+
+verb Recent {
+    grammar = {.recent};
+    void handler() {
+        print("Recently put in the satchel: ");
+        if (satchel.recent.length == 0) print("none");
+        for (int i = 0; i < satchel.recent.length; i++) {
+            if (i > 0) print(", ");
+            print(satchel.recent[i]);
+        }
+        print(".^");
+    }
+}
+
+verb History {
+    grammar = {.history};
+    void handler() {
+        print("Rooms: ");
+        printList(visits);
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

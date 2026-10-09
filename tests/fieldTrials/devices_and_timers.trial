@@ -1,0 +1,80 @@
+Room A
+The desk lamp is dark here.
+The heater is idle.
+A metronome stands here, silent.
+You can also see a kettle here.
+> status
+Lamp: off. Heater: off. Metronome: off.
+Kettle: off.
+Ticks: 0. Turns in Room A: 0.
+> switch on heater
+The heater will not start while the lamp is off.
+> switch on lamp
+You switch the desk lamp on.
+> examine lamp
+The desk lamp is on.
+> switch on heater
+You switch the heater on.
+> look
+Room A
+Room A. Room B is east.
+The desk lamp glows here.
+The heater is running.
+A metronome stands here, silent.
+You can also see a kettle here.
+> switch on metronome
+The metronome starts.
+Tick 1.
+> wait
+Time passes.
+Tick 2.
+> switch on kettle
+The kettle starts to heat.
+Tick 3.
+> status
+Lamp: on. Heater: on. Metronome: on.
+Kettle: heating, 1 left.
+Ticks: 3. Turns in Room A: 8.
+> switch off kettle
+The kettle stops heating.
+Tick 4.
+> wait
+Time passes.
+Tick 5.
+> examine kettle
+The kettle is cold.
+The kettle is currently switched off.
+Tick 6.
+> switch off metronome
+The metronome stops.
+> switch on kettle
+The kettle starts to heat.
+> examine kettle
+The kettle is heating (1 turns left).
+The kettle is currently switched on.
+> east
+Room B
+Room B. Room A is west.
+The kettle clicks off.
+A fan hums.
+> wait
+Time passes.
+A fan hums.
+> west
+Room A
+Room A. Room B is east.
+The desk lamp glows here.
+The heater is running.
+A metronome stands here, silent.
+You can also see a kettle here.
+> examine kettle
+The kettle is off. Its water has boiled.
+The kettle is currently switched off.
+> status
+Lamp: on. Heater: on. Metronome: off.
+Kettle: off.
+Ticks: 6. Turns in Room A: 16.
+> switch off lamp
+You switch the desk lamp off.
+> examine lamp
+The desk lamp is off.

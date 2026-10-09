@@ -1,0 +1,77 @@
+Room A
+> where
+You: Room A. Cart: Room A. Coin: Room B.
+Ticket: cart.
+Lever: out of scope.
+> pull lever
+You can't see any such thing.
+> drive
+You are not in the cart.
+> enter crate
+You climb into the wooden crate. Room: Room A.
+> where
+You: wooden crate. Cart: Room A. Coin: Room B.
+Ticket: cart.
+Lever: out of scope.
+> exit
+You stand in Room A.
+> enter crate
+You climb into the wooden crate. Room: Room A.
+> sit on bench
+(getting out of the wooden crate)
+You sit on the stone bench.
+> stand
+You stand in Room A.
+> get on bench
+You sit on the stone bench.
+> get off bench
+You stand in Room A.
+> enter cart
+You climb into the cart. Room: Room A.
+> where
+You: cart. Cart: Room A. Coin: Room B.
+Ticket: cart.
+Lever: in scope.
+> drive
+The brake is on.
+> pull lever
+You release the brake.
+> drive
+The cart rolls into Room B.
+The ticket blows away.
+A coin rolls into the cart.
+> where
+You: cart. Cart: Room B. Coin: cart.
+Ticket: nowhere.
+Lever: in scope.
+> look
+Room B (in the cart)
+Room B. Room A is west.
+In the cart you can see a coin.
+> get out of cart
+You get out of the cart.
+Room B
+Room B. Room A is west.
+You can see a cart (in which is a coin) here.
+> pull lever
+You can't see any such thing.
+> where
+You: Room B. Cart: Room B. Coin: cart.
+Ticket: nowhere.
+Lever: out of scope.
+> take coin
+Taken.
+> enter cart
+You climb into the cart. Room: Room B.
+> push lever
+You set the brake.
+> drive
+The brake is on.
+> pull lever
+You release the brake.
+> drive
+The cart rolls into Room A.
+> where
+You: cart. Cart: Room A. Coin: yourself.
+Ticket: nowhere.
+Lever: in scope.

@@ -1,0 +1,198 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+class room : object {
+    string description;
+    attributes = {light};
+}
+
+room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+// A pool of three tokens, created and released at run time.
+class token[3] : object, bglAllocated {
+    int  serial = 0;
+    int  uses   = 0;
+    bool live   = false;
+    static int created = 0;
+    name = {.token};
+    bool short_name() {
+        print($"token {serial}");
+        rtrue;
+    }
+    void create(int n) {
+        serial = n;
+        live = true;
+        token.created++;
+        print($"[create token {n}]^");
+    }
+    void destroy() {
+        live = false;
+        print($"[destroy token {serial}]^");
+    }
+}
+
+int nextSerial = 1;
+
+// Counts the tokens currently allocated from the pool.
+int countLive() {
+    int n = 0;
+    for (object o in bgl.world.instances(token)) {
+        token t = (token)o;
+        if (t.live) n++;
+    }
+    return n;
+}
+
+token findToken(int serial) {
+    for (object o in bgl.world.instances(token)) {
+        token t = (token)o;
+        if (t.live && t.serial == serial) return t;
+    }
+    return null;
+}
+
+verb Spawn {
+    void handler() {
+        token t = new token(nextSerial);
+        if (t == null) {
+            print("The pool is exhausted.^");
+            return;
+        }
+        nextSerial++;
+        t.parent = location;
+        print($"Token {t.serial} appears.^");
+    }
+    grammar = {.spawn};
+}
+
+verb Scrap {
+    void handler() {
+        token t = findToken((int)noun);
+        if (t == null) {
+            print("No such token.^");
+            return;
+        }
+        delete t;
+        print("Scrapped.^");
+    }
+    grammar = {.scrap, NUMBER};
+}
+
+verb Polish {
+    void handler() {
+        token t = findToken((int)noun);
+        if (t == null) {
+            print("No such token.^");
+            return;
+        }
+        t.uses++;
+        print($"Token {t.serial} polished. Uses: {t.uses}.^");
+    }
+    grammar = {.polish, NUMBER};
+}
+
+verb Census {
+    void handler() {
+        print($"Live: {countLive()}. Created: {token.created}.");
+        token any = null;
+        for (object o in bgl.world.instances(token)) {
+            token t = (token)o;
+            if (t.live) any = t;
+        }
+        if (any != null) print($" Free: {any.remaining()}.");
+        print("^");
+    }
+    grammar = {.census};
+}
+
+// Positional members: width and height fill in order, then the name.
+class plate : object {
+    inline int width;
+    inline int height;
+    string description;
+}
+
+plate slab {
+    3, 4, "stone slab";
+    name = {.stone, .slab};
+    parent = roomA;
+    description = "A stone slab.";
+}
+
+// The name re-listed first, then two positional members of the class's own.
+class label : object {
+    inline instanceName;
+    inline string text;
+    inline int weight;
+    void description() {
+        print($"The tag reads {text}. Weight {weight}.^");
+    }
+}
+
+label tag {
+    "paper tag", "Fragile", 2;
+    name = {.paper, .tag};
+    parent = roomA;
+}
+
+int area(plate p) {
+    return p.width * p.height;
+}
+
+verb Measure {
+    void handler() {
+        print($"Slab: {slab.width} by {slab.height}, area {area(slab)}.^");
+        print($"Constant plate: area {area({5, 6})}.^");
+        int w = 7;
+        int h = 2;
+        print($"Run-time plate: area {area({w, h})}.^");
+        print($"Named plate: area {area(plate{ height = 3; width = 3; })}.^");
+    }
+    grammar = {.measure};
+}
+
+// A value class whose lifetime hooks print when a variable of it is created or released.
+value class tracer {
+    int id;
+    tracer operator = (tracer o) {
+        id = o.id;
+        return self;
+    }
+    emitter void init()   { print "[tracer init]^"; }
+    emitter void deinit() { print "[tracer release]^"; }
+}
+
+verb Probe {
+    void handler() {
+        print("start^");
+        {
+            tracer a;
+            a.id = 1;
+            print($"inside {a.id}^");
+        }
+        tracer b;
+        b.id = 2;
+        print($"before return {b.id}^");
+        return;
+    }
+    grammar = {.probe};
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

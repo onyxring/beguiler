@@ -1,0 +1,100 @@
+Room A
+You can see a stone, a feather, a cup and a satchel (which is empty) here.
+> tally
+Items here: 3.
+First: stone.
+Heavy: 1.
+Something here weighs 1.
+Heaviest: stone.
+Total weight: 9.
+> weights
+You carry nothing with a weight.
+> history
+Rooms: Room A.
+> take stone
+Taken.
+> take cup
+Taken.
+> take feather
+Taken.
+> weights
+Carried weights: 1 3 5.
+Largest first: 1:5 2:3 3:1.
+Over 2: 2.
+Over 5: 0.
+> unmark
+Nothing is marked.
+> mark stone
+Marked stone.
+> mark cup
+Marked cup.
+> marks
+1: cup
+2: stone
+> forget stone
+Forgot stone.
+> forget stone
+That is not marked.
+> mark feather
+Marked feather.
+> mark stone
+Marked stone.
+> mark cup
+The mark list is full.
+> marks
+1: stone
+2: feather
+3: cup
+> unmark
+Unmarked stone.
+> marks
+1: feather
+2: cup
+> recent
+Recently put in the satchel: none.
+> take satchel
+Taken.
+> put stone in satchel
+You put the stone into the satchel.
+> put cup in satchel
+You put the cup into the satchel.
+> put feather in satchel
+You put the feather into the satchel.
+> recent
+Recently put in the satchel: stone, cup, feather.
+> take stone
+Taken.
+> put stone in satchel
+You put the stone into the satchel.
+> recent
+Recently put in the satchel: cup, feather, stone.
+> weights
+You carry nothing with a weight.
+> n
+Room B
+Room B.
+You can see a brick and a coin here.
+> tally
+Items here: 2.
+First: brick.
+Heavy: 1.
+Something here weighs 1.
+Heaviest: brick.
+Total weight: 8.
+> n
+Room C
+Room C.
+> tally
+Items here: 0.
+Heavy: 0.
+Nothing here weighs 1.
+Total weight: 0.
+> s
+Room B
+Room B.
+You can see a brick and a coin here.
+> s
+Room A
+Room A.
+> history
+Rooms: Room B, Room C, Room B, Room A.

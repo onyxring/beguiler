@@ -1,0 +1,109 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+const int LAMP_FUEL = 3;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+object roomA {
+    "Room A";
+    description = "A lit room. Room B is east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "A dark room. Room A is west.";
+    w_to = roomA;
+}
+
+object coin {
+    "silver coin";
+    parent = roomB;
+    name = {.silver, .coin};
+    description = "A silver coin.";
+}
+
+object lamp {
+    "brass lamp";
+    parent = roomA;
+    name = {.brass, .lamp};
+    attributes = {switchable};
+
+    int  fuel = LAMP_FUEL;     // turns left while the lamp is off
+    bool burnt = false;
+    int  time_left;            // the library's timer counter
+
+    void printTurns(int n) {
+        print($"{n} turn{n == 1 ? "" : "s"}");
+    }
+
+    bool description() {
+        if (burnt) rtrue("The brass lamp is burnt out.^");
+        if (has(on)) {
+            print("The brass lamp is on, with ");
+            printTurns(time_left);
+            rtrue(" on its timer.^");
+        }
+        print("The brass lamp is off, with ");
+        printTurns(fuel);
+        rtrue(" of fuel.^");
+    }
+
+    bool before() {
+        switch (action) {
+            case SwitchOn:
+                if (burnt) rtrue("The brass lamp is burnt out.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartTimer(self, fuel);
+            case SwitchOff:
+                ungive(light);
+                fuel = time_left;
+                StopTimer(self);
+        }
+        rfalse;
+    }
+
+    void each_turn() {
+        if (hasnt(on)) return;
+        switch (time_left) {
+            case 1: printLine("The brass lamp is growing dim.");
+            case 0: printLine("The brass lamp flickers.");
+        }
+    }
+
+    void time_out() {
+        ungive(on);
+        ungive(light);
+        burnt = true;
+        fuel = 0;
+        printLine("The brass lamp goes out.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

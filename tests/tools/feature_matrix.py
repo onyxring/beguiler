@@ -75,6 +75,11 @@ WRITES = {                      # name → (statement, read-back expression on g
     'arrset':    ('@.items[0] = 9;',   'gb.items[0]',   9),
 }
 
+# The member-array features run a second time with a global object named like the array member, so
+# the member emits under its renamed I6 property (`_m_items`) and every access path must use that name.
+CLASH_FEATURES = {'arrlen', 'arrelem', 'arrappend', 'arrbrace', 'arrset'}
+CLASH_FIXTURE = 'object Items { }\n'
+
 # name → receiver text; `l` is a local and `p` a parameter, both bound to gb in every function, and
 # `self` is gb when the probe runs as a Box method.
 RECEIVERS = {
@@ -133,7 +138,7 @@ def write_positions(S, back, V):
 ONLY_POSITIONS = None
 
 
-def program(table, feature, receiver):
+def program(table, feature, receiver, clash=False):
     R = RECEIVERS[receiver]
     if table == 'read':
         fexpr, V = READS[feature]
@@ -147,11 +152,12 @@ def program(table, feature, receiver):
     pos = [p for p in pos if ONLY_POSITIONS is None or p[0] in ONLY_POSITIONS]
     body = '\n    '.join(code for _, code, _ in pos)
     probe = f'{ret}\nvoid body(Box p) {{\n    Box l = gb;\n    {body}\n}}\n'
+    fixture = FIXTURE + (CLASH_FIXTURE if clash else '')
     if receiver == 'self':      # the probe runs as a method, where `self` is gb
-        src = FIXTURE + 'extend class Box {\n' + probe + '}\n' + \
+        src = fixture + 'extend class Box {\n' + probe + '}\n' + \
             'void main(){\n    bglInit();\n    reset();\n    gb.body(gb);\n}\n'
     else:
-        src = FIXTURE + probe + 'void main(){\n    bglInit();\n    reset();\n    body(gb);\n}\n'
+        src = fixture + probe + 'void main(){\n    bglInit();\n    reset();\n    body(gb);\n}\n'
     want = [(name, str(v)) for name, _, vals in pos for v in vals]
     return src, want
 
@@ -160,11 +166,12 @@ TOKEN = re.compile(r'\[(\w+):([^\]]*)\]')
 
 
 def check(job):
-    table, feature, receiver, target, keep, why = job
-    src, want = program(table, feature, receiver)
-    work = os.path.join(keep or tempfile.mkdtemp(prefix='matrix-'), f'{table}_{feature}_{receiver}_{target}')
+    table, feature, receiver, target, keep, why, clash = job
+    src, want = program(table, feature, receiver, clash)
+    suffix = '_clash' if clash else ''
+    work = os.path.join(keep or tempfile.mkdtemp(prefix='matrix-'), f'{table}_{feature}_{receiver}_{target}{suffix}')
     stage, detail, out = try_program(src, target, work)
-    label = f'{table}/{feature}:{receiver} [{target}]'
+    label = f'{table}/{feature}{"+clash" if clash else ""}:{receiver} [{target}]'
     if stage != 'ok':
         return label, f'{stage.upper()}-FAIL', detail
     got = TOKEN.findall(out)
@@ -203,7 +210,8 @@ def main():
         print(program(cells[0][0], cells[0][1], recvs[0])[0])
         return
     targets = [a.target] if a.target else ['z5', 'glulx']
-    jobs = [(t, f, r, tg, a.keep, a.why) for t, f in cells for r in recvs for tg in targets]
+    jobs = [(t, f, r, tg, a.keep, a.why, False) for t, f in cells for r in recvs for tg in targets]
+    jobs += [(t, f, r, tg, a.keep, a.why, True) for t, f in cells if f in CLASH_FEATURES for r in recvs for tg in targets]
     with concurrent.futures.ThreadPoolExecutor(a.jobs) as ex:
         results = list(ex.map(check, jobs))
     counts = {}
@@ -214,7 +222,7 @@ def main():
     print('Feature matrix: ' + ', '.join(f'{v} {k.lower()}' for k, v in sorted(counts.items()))
           + f' ({len(READS)} reads × {len(read_positions("x", 1))} positions, '
           f'{len(WRITES)} writes × {len(write_positions("x;", "x", 1))} positions; '
-          f'{len(RECEIVERS)} receivers × {len(targets)} targets)')
+          f'{len(RECEIVERS)} receivers × {len(targets)} targets; array features again with a name clash)')
     sys.exit(0 if all(s == 'PASS' for _, s, _ in results) else 1)
 
 

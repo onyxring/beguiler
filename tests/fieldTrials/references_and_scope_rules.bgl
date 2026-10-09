@@ -1,0 +1,171 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// A value class: every variable of it owns an instance, and `=` copies.
+value class Gauge {
+    int level;
+    const string unit = "units";
+    Gauge operator = (Gauge o) { level = o.level; return self; }
+}
+
+// A world object with a `ref` member that can be bound to a Gauge owned elsewhere.
+class Monitor : object {
+    ref Gauge watched;
+}
+
+Monitor monitorA { }
+Monitor monitorB { }
+
+Gauge tankA;
+Gauge tankB;
+Gauge probe;
+
+int counter = 100;
+const int STEP = 5;
+const string LABEL = "tank";
+
+void showTanks() {
+    printLine($"{LABEL} A: {tankA.level}, {LABEL} B: {tankB.level}.");
+}
+
+// The parameter is a copy: the caller's Gauge does not change.
+void raiseCopy(Gauge g) {
+    g.level += STEP;
+    printLine($"Copy parameter: {g.level}.");
+}
+
+// The parameter is bound to the argument: the caller's Gauge changes.
+void raiseRef(ref Gauge g) {
+    g.level += STEP;
+    printLine($"Ref parameter: {g.level}.");
+}
+
+// `=` on a ref parameter copies into the referent.
+void overwrite(ref Gauge target, Gauge source) {
+    target = source;
+}
+
+// A local that shadows the global, and `::` to reach the global.
+void shadowWithLocal() {
+    int counter = 1;
+    counter++;
+    ::counter += counter;
+    printLine($"Local counter: {counter}. Global counter: {::counter}.");
+}
+
+// A parameter that shadows the global.
+void shadowWithParam(int counter) {
+    counter = counter * 2;
+    ::counter = ::counter - counter;
+    printLine($"Parameter counter: {counter}. Global counter: {::counter}.");
+}
+
+// A local Gauge that shadows the global probe; `::probe.level` reaches the global's member.
+void shadowMember() {
+    Gauge probe;
+    probe.level = 11;
+    ::probe.level = 22;
+    printLine($"Local probe: {probe.level}. Global probe: {::probe.level}.");
+}
+
+verb Refs {
+    grammar = {.refs};
+    void handler() {
+        tankA.level = 1;
+        tankB.level = 2;
+        Gauge copyA = tankA;
+        copyA.level = 50;
+        printLine($"Copy: {copyA.level}.");
+        showTanks();
+        ref Gauge r := tankA;
+        r.level = 7;
+        showTanks();
+        r := tankB;
+        r.level = 8;
+        showTanks();
+        r = tankA;
+        showTanks();
+        printLine($"Through r: {r.level} {r.unit}.");
+    }
+}
+
+verb Params {
+    grammar = {.params};
+    void handler() {
+        tankA.level = 10;
+        tankB.level = 20;
+        raiseCopy(tankA);
+        showTanks();
+        raiseRef(tankA);
+        showTanks();
+        overwrite(tankB, tankA);
+        showTanks();
+        tankA.level = 0;
+        showTanks();
+    }
+}
+
+verb Bind {
+    grammar = {.bind};
+    void handler() {
+        if (!monitorA.watched) printLine("Monitor A: unbound.");
+        monitorA.watched := tankB;
+        if (monitorA.watched) printLine("Monitor A: bound.");
+        monitorA.watched.level = 33;
+        showTanks();
+        monitorB.watched := tankA;
+        monitorB.watched = monitorA.watched;
+        showTanks();
+        monitorA.watched := tankA;
+        monitorA.watched.level++;
+        showTanks();
+        printLine($"Monitor A sees {monitorA.watched.level}, monitor B sees {monitorB.watched.level}.");
+    }
+}
+
+verb Shadow {
+    grammar = {.shadow};
+    void handler() {
+        counter = 100;
+        shadowWithLocal();
+        shadowWithParam(4);
+        printLine($"Counter: {counter}.");
+        probe.level = 3;
+        shadowMember();
+        printLine($"Probe: {probe.level}.");
+    }
+}
+
+verb Consts {
+    grammar = {.consts};
+    void handler() {
+        const int bonus = 3;
+        int total = STEP * bonus;
+        printLine($"Step {STEP}, bonus {bonus}, total {total}, label {LABEL}.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

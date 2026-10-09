@@ -1,0 +1,71 @@
+Room A
+> mood
+Clerk: calm, 0 gifts, Room A.
+> ask clerk about box
+The clerk says the box is not for sale.
+> ask clerk about coin
+The clerk says he would like a coin.
+> clerk, take box
+The clerk shakes his head.
+> clerk, wait
+The clerk waits.
+> tell clerk about weather
+The clerk is not interested.
+The clerk walks east to Room B.
+> mood
+Clerk: calm, 0 gifts, Room B.
+> east
+Room B
+Room B. Room A is west.
+You can see a clerk and a paper card here.
+> give coin to clerk
+The clerk takes the silver coin and smiles.
+> ask clerk about box
+The clerk says you may have the box.
+> take card
+Taken.
+> wait
+Time passes.
+The clerk walks west to Room A.
+> west
+Room A
+Room A. Room B is east.
+You can see a clerk, a brass bell, a box and a pen here.
+> take pen
+The brass bell rings.
+Taken.
+> clerk, take box
+The clerk picks up the box.
+> show key to clerk
+The clerk glances at the iron key.
+> give key to clerk
+The clerk does not want the iron key.
+The clerk walks east to Room B.
+> mood
+Clerk: pleased, 1 gift, Room B.
+> east
+Room B
+Room B. Room A is west.
+You can see a clerk here.
+> ask clerk about coin
+The clerk pats his pocket.
+> tell clerk about weather
+The clerk nods.
+> hit clerk
+The clerk backs away, annoyed.
+> west
+Room A
+Room A. Room B is east.
+You can see a brass bell here.
+The clerk arrives from Room B.
+> ask clerk about box
+The clerk ignores you.
+> clerk, wait
+The clerk ignores the order.
+> mood
+Clerk: annoyed, 1 gift, Room A.
+> inventory
+You're carrying:
+  a pen
+  a paper card
+  an iron key

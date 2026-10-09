@@ -1,0 +1,71 @@
+Room A
+The scissors lie open on the floor.
+> take ball
+Which do you mean, the red ball, the blue ball or the large blue ball?
+> red
+Taken.
+> take blue ball
+Which do you mean, the blue ball or the large blue ball?
+> large
+Taken.
+> inventory
+You're carrying:
+  a large blue ball
+  a red ball
+> color red ball
+The red ball: red. Lookups: 1.
+> color large ball
+The large blue ball: blue. Lookups: 2.
+> color sand
+The sand has no color word. Lookups: 3.
+> words large ball
+large blue ball (the large one)
+> words blue ball
+(the blue ball)
+blue ball
+> take coins
+gold coin: Taken.
+gold coin: Taken.
+gold coin: Taken.
+> inventory
+You're carrying:
+  three gold coins
+  a large blue ball
+  a red ball
+> take jar
+Taken.
+> drop labelled jar
+You can't see any such thing.
+> examine jar
+A glass jar. A label on it reads JAM.
+> drop labelled jar
+Dropped.
+> examine lamp
+The lamp is off.
+> switch lamp on
+You switch the lit lamp on.
+> take lamp
+Taken.
+> examine lamp
+The lamp is on.
+> inventory
+You're carrying:
+  a lit lamp (glowing)
+  three gold coins
+  a large blue ball
+  a red ball
+> examine item
+Item Seven.
+> take scissors
+Taken.
+> look
+Room A
+Room A.
+You can see a glass jar, a blue ball, Item Seven and some sand here.
+> inventory
+You're carrying:
+  some scissors
+  a lit lamp (glowing)
+  three gold coins
+  a large blue ball
+  a red ball

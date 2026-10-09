@@ -1,0 +1,159 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+// Library options, read while verblib is included.
+const int MAX_SCORE        = 5;
+const int AMUSING_PROVIDED = 0;
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+class room : object {
+    string description;
+    attributes = {light};
+}
+
+class thing : object {
+    string description;
+}
+
+room roomA {
+    "Room A";
+    description = "Room A. Room B is north. A black button is set in the floor.";
+    object n_to = roomB;
+}
+
+room roomB {
+    "Room B";
+    description = "Room B. Room A is south. A white button is set in the floor.";
+    object s_to = roomA;
+}
+
+thing blackButton {
+    "black button";
+    name = {.black, .button};
+    parent = roomA;
+    description = "A black button.";
+    bool before() {
+        switch (action) {
+            case Push:
+                print("The floor opens.^");
+                deadflag = 3;
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {scenery};
+}
+
+thing whiteButton {
+    "white button";
+    name = {.white, .button};
+    parent = roomB;
+    description = "A white button.";
+    bool before() {
+        switch (action) {
+            case Push:
+                score = score + 3;
+                print("A bell rings.^");
+                deadflag = 2;
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {scenery};
+}
+
+thing redApple {
+    "red apple";
+    name = {.red, .apple};
+    parent = roomA;
+    description = "A red apple.";
+    bool after() {
+        switch (action) {
+            case Eat:
+                applesEaten++;
+                score++;
+                print("You eat the red apple. It is crisp.^");
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {edible};
+}
+
+thing greenPear {
+    "green pear";
+    name = {.green, .pear};
+    parent = roomA;
+    description = "A green pear.";
+    attributes = {edible};
+}
+
+thing greyStone {
+    "grey stone";
+    name = {.grey, .stone};
+    parent = roomA;
+    description = "A grey stone.";
+}
+
+// Something that can be spoken to without being a person.
+thing grille {
+    "speaker grille";
+    name = {.speaker, .grille};
+    parent = roomA;
+    description = "A speaker grille.";
+    bool answered = false;
+    bool life() {
+        switch (action) {
+            case Ask, Tell:
+                if (!answered) {
+                    answered = true;
+                    score++;
+                }
+                print("The grille says: Noted.^");
+                rtrue;
+        }
+        rfalse;
+    }
+    bool orders() {
+        switch (action) {
+            case Jump:
+                print("The grille says: It cannot jump.^");
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {talkable, static};
+}
+
+int applesEaten = 0;
+
+verb Status {
+    void handler() {
+        print($"Score {score}. Apples eaten {applesEaten}. Pear: {greenPear.parent == null ? "gone" : "present"}.^");
+    }
+    grammar = {.status};
+}
+
+void DeathMessage() {
+    print("You have fallen through the floor");
+}
+
+void Amusing() {
+    print("Amusing: nothing further.^");
+}
+
+int Initialise() {
+    location = roomA;
+    return 2;
+}
+
+// Entry points above; the library supplies stubs for the rest here.
+#includeI6 "grammar"

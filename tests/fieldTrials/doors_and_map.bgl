@@ -1,0 +1,171 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: five rooms joined by compass directions including up and down, a two-sided door with
+// found_in and door_to/door_dir routines that depend on the player's location, a connection decided
+// by a routine with its own refusal, a room before that intercepts one direction, custom cant_go
+// text, scenery found in several rooms, the NewRoom entry point recording visits in a member array,
+// and a routine that walks the rooms and their exit properties in loops.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#include <array>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+extend class object {
+    stringOrRoutine description;
+    stringOrRoutine cant_go;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+}
+
+bool leverPulled = false;
+bool stepTested  = false;
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. Stairs lead up and down. A green door is east. A gate is north.";
+    u_to = roomC;
+    d_to = roomB;
+    e_to = greenDoor;
+    var n_to() {
+        if (leverPulled) return roomE;
+        print("The gate is shut.^");
+        return true;
+    }
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Stairs lead up.";
+    u_to = roomA;
+    bool before() {
+        switch (action) {
+            case Go:
+                if (noun == u_obj && !stepTested) {
+                    stepTested = true;
+                    rtrue("The bottom step creaks. You stay where you are.^");
+                }
+        }
+        rfalse;
+    }
+    attributes = {light};
+}
+
+object roomC {
+    short_name = "Room C";
+    description = "Room C. Stairs lead down.";
+    d_to = roomA;
+    cant_go = "The only way out of Room C is down.";
+    attributes = {light};
+}
+
+object roomD {
+    short_name = "Room D";
+    description = "Room D. The green door is west.";
+    w_to = greenDoor;
+    attributes = {light};
+}
+
+object roomE {
+    short_name = "Room E";
+    description = "Room E. The gate is south.";
+    s_to = roomA;
+    attributes = {light};
+}
+
+object greenDoor {
+    short_name = "green door";
+    name = {.green, .door};
+    rawArray<object> found_in = {roomA, roomD};
+    description = "A green door.";
+    object door_to() {
+        if (location == roomA) return roomD;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)e_to;
+        return (property)w_to;
+    }
+    attributes = {door, static, openable};
+}
+
+object stoneWall {
+    short_name = "stone wall";
+    name = {.stone, .wall};
+    rawArray<object> found_in = {roomA, roomB, roomC};
+    description = "A stone wall.";
+    attributes = {scenery};
+}
+
+object lever {
+    short_name = "lever";
+    name = {.lever};
+    parent = roomB;
+    bool before() {
+        switch (action) {
+            case Pull:
+                if (leverPulled) rtrue("The lever is already down.^");
+                leverPulled = true;
+                rtrue("You pull the lever. Somewhere above, a gate opens.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+object tracker {
+    array<object> seen[8];
+    int arrivals = 0;
+}
+
+array<object> allRooms = {roomA, roomB, roomC, roomD, roomE};
+array<property> exitProps = {(property)n_to, (property)s_to, (property)e_to, (property)w_to,
+                             (property)u_to, (property)d_to};
+array<string> exitNames = {"n", "s", "e", "w", "u", "d"};
+
+void NewRoom() {
+    tracker.arrivals++;
+    if (!tracker.seen.contains(location)) tracker.seen.append(location);
+}
+
+// Lists every room with its exits, marks the rooms seen, and counts them.
+void walkMap() {
+    int seenCount = 0;
+    for (object r in allRooms) {
+        print($"{r}:");
+        for (int i = 0; i < exitProps.length; i++) {
+            if (r.provides(exitProps[i])) print($" {exitNames[i]}");
+        }
+        if (tracker.seen.contains(r)) {
+            print(" (seen)");
+            seenCount++;
+        }
+        print("^");
+    }
+    print($"Seen {seenCount} of {allRooms.length}. Arrivals: {tracker.arrivals}.^");
+}
+
+verb MapRooms {
+    void handler() {
+        walkMap();
+    }
+    grammar = {{.rooms}};
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,5 @@
+#beguilerSettings { target = z5; }
+void main(){
+    bglInit();
+    bgl.
+}

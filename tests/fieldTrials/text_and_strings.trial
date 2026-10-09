@@ -1,0 +1,46 @@
+Room A
+A plain room.
+> names
+a brass key / the brass key / A brass key / The brass key
+an apple / the apple / An apple / The apple
+some water / the water / Some water / The water
+Bob / Bob / Bob / Bob
+> count
+Room A holds 4 things; you carry 1.
+> read notebook
+The notebook is empty.
+> write brass
+You write "brass": 5 letters, 1 vowel.
+That word names the brass key.
+> write key
+You write "key": 3 letters, 1 vowel.
+That word names the brass key.
+> write apple
+You write "apple": 5 letters, 2 vowels.
+> write bob
+You write "bob": 3 letters, 1 vowel.
+That word names Bob.
+> write zzyzx
+You can only write a word the game knows.
+> read notebook
+The notebook reads: brass, key, apple, bob.
+> words
+Sorted: apple bob brass key.
+First apple, last key, compared -1.
+First sorts before last.
+The word key is written.
+The first word written is brass.
+> spell brass
+B-R-A-S-S, backwards SSARB, as a name Brass.
+It starts with B.
+SS is at position 3.
+> spell key
+K-E-Y, backwards YEK, as a name Key.
+> pad
+Turn 007 of 999
+> measure key
+The brass key: "A brass key." is 12 characters.
+It ends with a full stop.
+> measure apple
+The apple: "A green apple." is 14 characters.
+It ends with a full stop.

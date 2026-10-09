@@ -1,0 +1,48 @@
+Room A
+> activate red button
+Red: a bell rings.
+> activate green button
+Green: light 1.
+> activate green button
+Green: light 2.
+> study plain sign
+The plain sign says: north.
+> study lamp sign
+The lamp sign lights 2 times.
+> study red button
+There is nothing to read.
+> rules
+rule 1
+rule 2
+stopped by rule 2
+ran 2
+> limit 5
+limit 5
+> rules
+rule 1
+rule 2
+rule 3
+ran 3
+> steps 3
+6 36 37
+second step of 5: 25 (25)
+picked: 14 49
+> count
+buttons 2, signs 2
+offset: 15
+> kinds
+int 42
+string text
+object red button
+int 7
+Red: a bell rings.
+union text
+note one
+Green: light 3.
+note two
+> named
+a: 1 (width 3)
+b: 2 (width 3)
+[c: 3 (width 3)]
+d: 4 (width 9)
+[e: 5 (width 6)]

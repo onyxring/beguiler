@@ -1,0 +1,193 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend class object {
+    stringOrRoutine description;
+}
+
+// An amount of money in cents; every variable and member holds its own copy.
+value class Coins {
+    int cents;
+    Coins operator =  (Coins o)  { cents = o.cents; return self; }
+    Coins operator =  (int c)    { cents = c; return self; }
+    Coins operator +  (Coins o)  { Coins sum; sum.cents = cents + o.cents; return sum; }
+    Coins operator += (Coins o)  { cents = cents + o.cents; return self; }
+    bool  operator == (Coins o)  { return cents == o.cents; }
+    int   operator <=> (Coins o) { return cents - o.cents; }
+    void  print() {
+        print(cents / 100);
+        print(".");
+        print(cents % 100 / 10);
+        print(cents % 10);
+    }
+}
+
+// Uses left on a tool; never goes below zero.
+value class WearLevel {
+    int _left;
+    int  operator ()        { return _left; }
+    void operator = (int v) { if (v < 0) v = 0; _left = v; }
+}
+
+class Item : object {
+    Coins price;
+    string | func<void> mark;
+    static int appraisals = 0;
+    default string kind() { return "item"; }
+    default void use() { print($"Nothing happens when you use {the(self)}.^"); }
+}
+
+class Tool : Item {
+    WearLevel wear;
+    default string kind() { return "tool"; }
+    default void use() {
+        if (wear == 0) { print($"{cThe(self)} is worn out.^"); return; }
+        wear -= 1;
+        print($"You use {the(self)}. Uses left: {wear}.^");
+    }
+}
+
+class Blade : Tool {
+    string kind() { return "blade"; }
+    void use() {
+        int before = wear;
+        ((Tool)self).use();
+        if (wear < before) print("The edge cuts cleanly.^");
+    }
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Item pebble {
+    short_name = "pebble";
+    name = {.pebble};
+    description = "A pebble.";
+    parent = roomA;
+}
+
+Tool hammer {
+    short_name = "hammer";
+    name = {.hammer};
+    description = "A hammer.";
+    mark = "The hammer is stamped H.";
+    parent = roomA;
+}
+
+Blade knife {
+    short_name = "knife";
+    name = {.knife};
+    description = "A knife.";
+    mark = knifeMark;
+    parent = roomA;
+}
+
+Blade saw {
+    short_name = "saw";
+    name = {.saw};
+    description = "A saw.";
+    mark = "The saw is stamped S.";
+    parent = roomA;
+}
+
+void knifeMark() {
+    print($"The knife has {knife.wear} uses left.^");
+}
+
+void appraiseItem(Item it) {
+    Item.appraisals++;
+    Coins offer = it.price;
+    offer.cents = offer.cents / 2;
+    print($"{cThe(it)}: {it.kind()}, worth {it.price}. Offer: {offer}.^");
+}
+
+verb UseIt {
+    grammar = {.use, NOUN};
+    void handler() {
+        if (!noun.is(Item)) { print("You can't use that.^"); return; }
+        Item it = (Item)noun;
+        it.use();
+    }
+}
+
+verb Appraise {
+    grammar = {.appraise, NOUN};
+    void handler() {
+        if (!noun.is(Item)) { print("That has no price.^"); return; }
+        appraiseItem((Item)noun);
+    }
+}
+
+verb Compare {
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(Item) || !second.is(Item)) { print("Only items have prices.^"); return; }
+        Item a = (Item)noun;
+        Item b = (Item)second;
+        if (a.price == b.price)     print($"{cThe(a)} and {the(b)} cost the same.^");
+        else if (a.price < b.price) print($"{cThe(a)} is cheaper than {the(b)}.^");
+        else                        print($"{cThe(a)} costs more than {the(b)}.^");
+    }
+}
+
+verb Inspect {
+    grammar = {.inspect, NOUN};
+    void handler() {
+        if (!noun.is(Item)) { print("There is nothing to inspect.^"); return; }
+        string | func<void> m = ((Item)noun).mark;
+        if (typeof(m) == eType.routine) {
+            func<void> f = (func<void>)m;
+            f();
+        } else if (typeof(m) == eType.string) {
+            print((string)m);
+            print("^");
+        } else {
+            print($"{cThe(noun)} has no mark.^");
+        }
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        Coins total;
+        Item best = null;
+        int n = 0;
+        for (object o in location.children) {
+            if (!o.is(Item)) continue;
+            Item it = (Item)o;
+            n++;
+            total += it.price;
+            if (best == null || it.price > best.price) best = it;
+            print($"{it.kind()}: {it}^");
+        }
+        print($"Items: {n}. Total: {total}. Dearest: {the(best)}. Appraisals: {Item.appraisals}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    pebble.price = 5;
+    hammer.price = 150;
+    knife.price = 150;
+    saw.price = 275;
+    hammer.wear = 2;
+    knife.wear = 1;
+    saw.wear = 3;
+    rfalse;
+}

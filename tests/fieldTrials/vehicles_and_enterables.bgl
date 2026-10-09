@@ -1,0 +1,170 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#using bgl.printRules;
+
+class Room : object {
+    string description;
+    attributeList attributes = {light};
+}
+
+Room roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east.";
+    object e_to = roomB;
+    bool after() {
+        switch (action) {
+            case Exit, GetOff:
+                if (keep_silent != 0) rfalse;
+                print($"You stand in {location}.^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+Room roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    object w_to = roomA;
+}
+
+object crate {
+    short_name = "wooden crate";
+    name = {.wooden, .crate};
+    string description = "A wooden crate.";
+    parent = roomA;
+    bool after() {
+        if (action == Enter) {
+            print($"You climb into {the(player.parent)}. Room: {location}.^");
+            rtrue;
+        }
+        rfalse;
+    }
+    attributes = {container, open, enterable, static};
+}
+
+object bench {
+    short_name = "stone bench";
+    name = {.stone, .bench};
+    string description = "A stone bench.";
+    parent = roomA;
+    bool after() {
+        if (action == Enter) rtrue("You sit on the stone bench.^");
+        rfalse;
+    }
+    attributes = {supporter, enterable, static};
+}
+
+object cart {
+    short_name = "cart";
+    name = {.cart};
+    string description = "A cart with a brake lever inside.";
+    parent = roomA;
+    // The lever can only be reached from inside the cart.
+    void add_to_scope() {
+        if (player.parent == cart) AddToScope(lever);
+    }
+    bool after() {
+        if (action == Enter) {
+            print($"You climb into the cart. Room: {location}.^");
+            rtrue;
+        }
+        rfalse;
+    }
+    attributes = {container, open, enterable, static};
+}
+
+// Nowhere in the tree: the cart brings it into scope. `general` means the brake is set.
+object lever {
+    short_name = "brake lever";
+    name = {.brake, .lever};
+    string description = "A brake lever.";
+    bool before() {
+        switch (action) {
+            case Pull, Push:
+                if (has(general)) {
+                    ungive(general);
+                    rtrue("You release the brake.^");
+                }
+                give(general);
+                rtrue("You set the brake.^");
+        }
+        rfalse;
+    }
+    attributes = {general, static};
+}
+
+object ticket {
+    short_name = "paper ticket";
+    name = {.paper, .ticket};
+    string description = "A paper ticket.";
+    parent = cart;
+}
+
+object coin {
+    short_name = "coin";
+    name = {.coin};
+    string description = "A coin.";
+    parent = roomB;
+}
+
+void reportWhere() {
+    print($"You: {player.parent}. Cart: {cart.parent}. Coin: {coin.parent}.^");
+    if (ticket.parent == null) print("Ticket: nowhere.^");
+    else print($"Ticket: {ticket.parent}.^");
+    if (TestScope(lever)) print("Lever: in scope.^");
+    else print("Lever: out of scope.^");
+}
+
+verb Where {
+    meta = true;
+    grammar = {.where};
+    void handler() {
+        reportWhere();
+    }
+}
+
+// Rolls the cart, with the player in it, to the other room.
+verb Drive {
+    grammar = {.drive};
+    void handler() {
+        if (player.parent != cart) {
+            print("You are not in the cart.^");
+            return;
+        }
+        if (lever.has(general)) {
+            print("The brake is on.^");
+            return;
+        }
+        object dest = roomB;
+        if (cart.parent == roomB) dest = roomA;
+        cart.parent = dest;
+        PlayerTo(cart, 1);
+        print($"The cart rolls into {location}.^");
+        if (ticket.parent == cart) {
+            ticket.parent = null;
+            print("The ticket blows away.^");
+        }
+        if (location == roomB && coin.parent == roomB) {
+            cart.children += {coin};
+            print("A coin rolls into the cart.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

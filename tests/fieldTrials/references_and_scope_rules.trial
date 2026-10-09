@@ -1,0 +1,30 @@
+Room A
+> refs
+Copy: 50.
+tank A: 1, tank B: 2.
+tank A: 7, tank B: 2.
+tank A: 7, tank B: 8.
+tank A: 7, tank B: 7.
+Through r: 7 units.
+> params
+Copy parameter: 15.
+tank A: 10, tank B: 20.
+Ref parameter: 15.
+tank A: 15, tank B: 20.
+tank A: 15, tank B: 15.
+tank A: 0, tank B: 15.
+> bind
+Monitor A: unbound.
+Monitor A: bound.
+tank A: 0, tank B: 33.
+tank A: 33, tank B: 33.
+tank A: 34, tank B: 33.
+Monitor A sees 34, monitor B sees 34.
+> shadow
+Local counter: 2. Global counter: 102.
+Parameter counter: 8. Global counter: 94.
+Counter: 94.
+Local probe: 11. Global probe: 22.
+Probe: 22.
+> consts
+Step 5, bonus 3, total 15, label tank.

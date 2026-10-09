@@ -1,0 +1,67 @@
+#grids
+Room A
+Room A. Room B is to the east.
+You can see a brass key here.
+[win 1] Notes open.
+[win 2] Log open.
+[grid 1]
+|Room A                             Logged: 0      |
+> abilities
+Timer: yes.
+Graphics: yes.
+Hyperlinks: yes.
+Unicode: yes.
+Shows the letter e: yes.
+Graphics windows show images: no.
+Log panel takes hyperlink clicks: yes.
+Main window shows images: yes.
+[grid 1]
+|Room A                             Logged: 0      |
+> styles
+Alert style: the interpreter cannot report it.
+Alerts look different from plain text: no.
+Fixed width reported: no.
+Fixed width measured: unset.
+Notes style known: no.
+Alerts in the log carry markers: yes.
+[grid 1]
+|Room A                             Logged: 0      |
+> take key
+Taken.
+[win 2] 1. Took the brass key.
+[grid 1]
+|Room A                             Logged: 1      |
+> mark key
+You mark the brass key.
+[win 2] 2. Marked the brass key.
+[grid 1]
+|Room A                             Logged: 2      |
+> alarm
+You raise the alarm.
+[win 2] 3. !! Alarm raised. !!
+[grid 1]
+|Room A                             Logged: 3      |
+> e
+Room B
+Room B. Room A is to the west.
+[grid 1]
+|Room B                             Logged: 3      |
+> drop key
+Dropped.
+[win 2] 4. Dropped the brass key in Room B.
+[grid 1]
+|Room B                             Logged: 4      |
+> map
+The map is written in the notes panel.
+[win 1] Map: Room A - Room B
+[grid 1]
+|Room B                             Logged: 4      |
+> erase
+The log is erased.
+[grid 1]
+|Room B                             Logged: 0      |
+> mark key
+You mark the brass key.
+[win 2] 1. Marked the brass key.
+[grid 1]
+|Room B                             Logged: 1      |

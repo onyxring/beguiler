@@ -1,0 +1,48 @@
+Room A
+A lit room. Room B is east.
+You can see a brass lamp here.
+> examine lamp
+The brass lamp is off, with 3 turns of fuel.
+> take lamp
+Taken.
+> east
+Darkness
+It is pitch dark, and you can't see a thing.
+> take coin
+You can't see any such thing.
+> switch on lamp
+You switch the brass lamp on.
+Room B
+A dark room. Room A is west.
+You can see a silver coin here.
+> examine lamp
+The brass lamp is on, with 2 turns on its timer.
+The brass lamp is growing dim.
+> switch off lamp
+You switch the brass lamp off.
+It is now pitch dark in here.
+> wait
+Time passes.
+> west
+Room A
+A lit room. Room B is east.
+> examine lamp
+The brass lamp is off, with 1 turn of fuel.
+> switch on lamp
+You switch the brass lamp on.
+The brass lamp flickers.
+> east
+Room B
+A dark room. Room A is west.
+You can see a silver coin here.
+The brass lamp goes out.
+It is now pitch dark in here.
+> take coin
+You can't see any such thing.
+> switch on lamp
+The brass lamp is burnt out.
+> west
+Room A
+A lit room. Room B is east.
+> examine lamp
+The brass lamp is burnt out.

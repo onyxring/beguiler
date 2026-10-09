@@ -1,0 +1,69 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    linqScratchSize = 16;
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#define SHELF_LIMIT 3
+
+#include "multi_file_and_namespaces_parts/multi_file_and_namespaces_world"
+#include "multi_file_and_namespaces_parts/multi_file_and_namespaces_routines"
+
+#using kit
+
+const int    maxCrates   = SHELF_LIMIT;
+const string targetName  = #beguilerSettings.target;
+const int    scratchSize = #beguilerSettings.linqScratchSize;
+
+#if TARGET_ZCODE
+    const string machineName = "Z-machine";
+#else
+    const string machineName = "Glulx";
+#endif
+
+#if #beguilerSettings.target == "z8"
+    const int machineVersion = 8;
+#elif #beguilerSettings.target == "z5"
+    const int machineVersion = 5;
+#else
+    const int machineVersion = 0;
+#endif
+
+verb About {
+    grammar = {.about};
+    void handler() {
+        print($"Target: {targetName}. Machine: {machineName}. Version: {machineVersion}. ");
+        print($"Scratch: {scratchSize}. Shelf limit: {maxCrates}.^");
+    }
+}
+
+verb Gauge {
+    grammar = {.measure, NOUN};
+    void handler() {
+        if (!noun.is(Crate)) { print("Only crates can be measured.^"); return; }
+        reportCrate((kit.crate)noun);
+    }
+}
+
+verb Stack {
+    grammar = {.stack};
+    void handler() {
+        print($"{countCrates(location)} of {maxCrates} crates. Large: {countLarge(location)}.^");
+        if (kit.shelf.isFull(location)) print("The shelf is full.^");
+        else                            print("There is room on the shelf.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

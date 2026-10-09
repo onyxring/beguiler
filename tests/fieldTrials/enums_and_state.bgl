@@ -1,0 +1,261 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an enum-driven state machine advanced by commands and by a daemon; switch on the enum
+// with every case, and with several values in one case; an enum emitter value and emitter method; a
+// bnum flag set (add, remove, toggle, test, the empty set) held in an object member; two enums sharing
+// a member name, written qualified; try/catch/throw of an enum value from a called function; casts
+// between enum and int both ways; a class with an instance <=> from which < > <= >= are derived, and
+// an array of it sorted by that operator.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+enum eMachine {
+    off, warming, ready, jammed,
+    emitter bool running { ($self == 2 || $self == 3) }
+    emitter bool isAt(eMachine s) { ($self == $s) }
+}
+
+enum eFault { none = 0, running = 10, jammed, clogged }
+
+bnum eCondition { dusty, hot, loud, oiled }
+
+array<string> conditionNames = { "dusty", "hot", "loud", "oiled" };
+
+extend class object {
+    string description;
+}
+
+class Reading : object {
+    int level;
+    int operator <=> (Reading other) { return level - other.level; }
+}
+
+Reading gaugeA { "gauge A"; level = 3; }
+Reading gaugeB { "gauge B"; level = 1; }
+Reading gaugeC { "gauge C"; level = 3; }
+
+array<Reading> allGauges = { gaugeA, gaugeB, gaugeC };
+
+object roomA {
+    "Room A";
+    description = "A plain room with a machine.";
+    attributes = {light};
+}
+
+object machine {
+    "machine";
+    parent = roomA;
+    name = {.machine};
+    description = "A grey machine.";
+    attributes = {scenery};
+
+    eMachine   state  = eMachine.off;
+    eCondition cond   = 0;
+    int        warmth = 0;
+
+    bool hasCond(eCondition c) {
+        return (cond & c) != 0;
+    }
+
+    void daemon() {
+        if (state != eMachine.warming) return;
+        warmth++;
+        if (warmth >= 2) {
+            state = eMachine.ready;
+            cond |= eCondition.hot;
+            printLine("The machine clicks: it is ready.");
+        } else {
+            printLine("The machine warms up.");
+        }
+    }
+}
+
+void printState(eMachine s) {
+    switch (s) {
+        case eMachine.off:     print("off");
+        case eMachine.warming: print("warming");
+        case eMachine.ready:   print("ready");
+        case eMachine.jammed:  print("jammed");
+    }
+}
+
+void printConditions(eCondition c) {
+    if (c == 0) {
+        print("none");
+        return;
+    }
+    bool first = true;
+    for (int i = 0; i < conditionNames.length; i++) {
+        eCondition f = (eCondition)(1 << i);
+        if ((c & f) != 0) {
+            if (!first) print(", ");
+            print(conditionNames[i]);
+            first = false;
+        }
+    }
+}
+
+// Starts the machine; throws an eFault when it cannot start.
+void startMachine() {
+    switch (machine.state) {
+        case eMachine.off:
+            if (machine.hasCond(eCondition.dusty)) throw eFault.clogged;
+            machine.state  = eMachine.warming;
+            machine.warmth = 0;
+            StartDaemon(machine);
+        case eMachine.warming, eMachine.ready:
+            throw eFault.running;
+        case eMachine.jammed:
+            throw eFault.jammed;
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        eMachine s = machine.state;
+        print("State: ");
+        printState(s);
+        print($" ({(int)s}). Running: {s.running ? "yes" : "no"}. Conditions: ");
+        printConditions(machine.cond);
+        printLine(".");
+    }
+}
+
+verb Code {
+    meta = true;
+    grammar = { {.code, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        if (n < (int)eMachine.off || n > (int)eMachine.jammed) {
+            printLine($"There is no state {n}.");
+            return;
+        }
+        eMachine s = (eMachine)n;
+        print($"State {n} is ");
+        printState(s);
+        if (s.isAt(machine.state)) printLine(", the current state.");
+        else if (n < (int)machine.state) printLine(", before the current state.");
+        else printLine(", after the current state.");
+    }
+}
+
+verb Start {
+    grammar = {.start};
+    void handler() {
+        try {
+            startMachine();
+            printLine("The machine starts warming up.");
+        } catch (eFault f) {
+            switch (f) {
+                case eFault.running: printLine("The machine is already running.");
+                case eFault.jammed:  printLine("The machine is jammed.");
+                case eFault.clogged: printLine("Dust clogs the machine; it will not start.");
+                case eFault.none:    printLine("No fault.");
+            }
+            printLine($"(Fault code {(int)f}.)");
+        }
+    }
+}
+
+verb Stop {
+    grammar = {.stop};
+    void handler() {
+        switch (machine.state) {
+            case eMachine.off:
+                printLine("The machine is already off.");
+            case eMachine.warming, eMachine.ready:
+                machine.state  = eMachine.off;
+                machine.warmth = 0;
+                machine.cond   = machine.cond & eCondition.oiled;
+                StopDaemon(machine);
+                printLine("The machine stops.");
+            case eMachine.jammed:
+                printLine("The machine is jammed; it will not stop.");
+        }
+    }
+}
+
+verb Kick {
+    grammar = {.kick};
+    void handler() {
+        if (!machine.state.running) {
+            printLine("Nothing happens.");
+            return;
+        }
+        machine.state = eMachine.jammed;
+        machine.cond  = machine.cond | eCondition.loud;
+        StopDaemon(machine);
+        printLine("The machine jams with a loud clang.");
+    }
+}
+
+verb Oil {
+    grammar = {.oil};
+    void handler() {
+        machine.cond |= eCondition.oiled;
+        if (machine.state == eMachine.jammed) {
+            machine.state = eMachine.off;
+            if (machine.hasCond(eCondition.loud)) machine.cond ^= eCondition.loud;
+            printLine("You oil the machine. It unjams and stops.");
+            return;
+        }
+        printLine("You oil the machine.");
+    }
+}
+
+verb Shake {
+    grammar = {.shake};
+    void handler() {
+        machine.cond |= eCondition.dusty;
+        printLine("Dust falls into the machine.");
+    }
+}
+
+verb Brush {
+    grammar = {.brush};
+    void handler() {
+        if (!machine.hasCond(eCondition.dusty)) {
+            printLine("The machine is clean.");
+            return;
+        }
+        machine.cond ^= eCondition.dusty;
+        printLine("You brush the dust out of the machine.");
+    }
+}
+
+verb Gauges {
+    meta = true;
+    grammar = {.gauges};
+    void handler() {
+        array<Reading> sorted[3];
+        sorted = allGauges;
+        sorted.sort();
+        print("By level:");
+        for (Reading r in sorted) print($" {r} ({r.level})");
+        printLine(".");
+        if (gaugeB < gaugeA)  printLine("Gauge B reads lower than gauge A.");
+        if (gaugeA > gaugeB)  printLine("Gauge A reads higher than gauge B.");
+        if (gaugeA >= gaugeC) printLine("Gauge A reads at least gauge C.");
+        if (gaugeA <= gaugeC && !(gaugeA < gaugeC)) printLine("Gauges A and C read the same.");
+        printLine($"A against B: {gaugeA <=> gaugeB}.");
+        if (gaugeA != gaugeC) printLine("Gauges A and C are different gauges.");
+    }
+}

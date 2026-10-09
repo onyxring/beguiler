@@ -1,0 +1,23 @@
+Room A
+Room A. Crates here: 2.
+You can see a red crate and a blue crate here.
+> about
+Target: z5. Machine: Z-machine. Version: 5. Scratch: 16. Shelf limit: 3.
+> measure red crate
+The red crate: volume 8, small.
+> measure blue crate
+The blue crate: volume 30, medium.
+> measure green crate
+The green crate: volume 70, large.
+> stack
+2 of 3 crates. Large: 0.
+There is room on the shelf.
+> drop green crate
+Dropped.
+> stack
+3 of 3 crates. Large: 1.
+The shelf is full.
+> look
+Room A
+Room A. Crates here: 3.
+You can see a green crate, a red crate and a blue crate here.

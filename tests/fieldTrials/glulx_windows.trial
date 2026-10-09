@@ -1,0 +1,32 @@
+#grids
+Room A
+Room A. Room B is to the east.
+[win 1] Panel open.
+[win 1] Seen: Room A
+[grid 1]
+|At Room A. Rooms seen: 1.                         |
+> note
+You write a note in the side panel.
+[win 1] Note written.
+[grid 1]
+|At Room A. Rooms seen: 1.                         |
+> e
+Room B
+Room B. Room A is to the west.
+[win 1] Seen: Room B
+[grid 1]
+|At Room B. Rooms seen: 2.                         |
+> w
+Room A
+Room A. Room B is to the east.
+[grid 1]
+|At Room A. Rooms seen: 2.                         |
+> picture
+Graphics window not available.
+[grid 1]
+|At Room A. Rooms seen: 2.                         |
+> look
+Room A
+Room A. Room B is to the east.
+[grid 1]
+|At Room A. Rooms seen: 2.                         |

@@ -1,0 +1,68 @@
+Room A
+> ints
+Start: 1 5 7 3 9 4
+Length 6, size 8.
+Popped 1 and 4: 5 7 3 9
+Removed index 1: 5 3 9
+indexOf 9: 2. indexOf 7: -1.
+Contains 3: true. Contains 8: false.
+Added 9, 2 and 8, removed every 9: 5 3 2 8
+Descending: 8 5 3 2
+> words
+Words: pear, apple, fig, kiwi
+apple at 1, plum at -1.
+Sorted: apple, fig, kiwi, pear
+Without fig: apple, kiwi, pear
+First apple, last pear.
+> pile
+Pile: iron bar, brass key, coin, lamp
+coin at 2.
+Without coin: iron bar, brass key, lamp
+Has coin: false.
+Top iron bar, bottom lamp.
+> slots
+After slot writes: length 0, size 5.
+Length set to 3: 11 22 33
+indexOf 33: 2.
+> row 1
+Row 1 (3 cells): 4 5 6
+> row 2
+Row 2 (4 cells): 7 8 9 10
+> row 5
+No row 5.
+> cell 2 3
+Cell 2,3 is 10.
+> cell 0 3
+No cell 0,3.
+> column 0
+Column 0: 3 cells, total 12.
+> column 3
+Column 3: 1 cells, total 10.
+> poke 0 42
+Row 0 now: 42 2 3
+> column 0
+Column 0: 3 cells, total 53.
+> shelves
+shelf A: coin, lamp
+shelf B: (none)
+> stock key
+Stocked brass key on shelf B (1 there, 2 on shelf A).
+> shelves
+shelf A: coin, lamp
+shelf B: brass key
+> weights
+Sum of 5 weights: 14. Third: 4.
+> sort
+By weight: coin (1) brass key (2) lamp (5) iron bar (9)
+> query
+Source: 3 8 3 6 1 8
+Over 4: 8 6 8
+Count over 4: 3.
+Times ten: 30 80 30 60 10 80
+Distinct: 3 8 6 1
+Ordered: 1 3 3 6 8 8
+First two: 3 8
+Any over 7: true. All over 0: true.
+First 3, last 8.
+Kept under 5: 3 1
+Heavy things: 2.

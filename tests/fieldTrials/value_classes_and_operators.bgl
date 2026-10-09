@@ -1,0 +1,184 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a value class with a copy operator, copy semantics on assignment and on passing, `+`,
+// `==` and `<=>` declared on it with `<` `>` `<=` `>=` derived from `<=>`, a routine that returns one,
+// two returned values combined in one expression, a value-class member on a class of objects, a
+// recursive routine with value-class locals, and casts on a receiver and on a member's value.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+// A grid position.
+value class Pos {
+    int x;
+    int y;
+    Pos operator = (Pos o) { x = o.x; y = o.y; return self; }
+    Pos operator + (Pos o) {
+        Pos r;
+        r.x = x + o.x;
+        r.y = y + o.y;
+        return r;
+    }
+    bool operator == (Pos o) { return x == o.x && y == o.y; }
+    // Orders by x, then by y.
+    int operator <=> (Pos o) {
+        if (x != o.x) return x - o.x;
+        return y - o.y;
+    }
+    void print() { print($"({x},{y})"); }
+}
+
+enum eShade { red, blue }
+
+class Token : object {
+    Pos at;
+    eShade shade;
+    object partner;
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Token redToken {
+    short_name = "red token";
+    name = {.red, .token};
+    shade = eShade.red;
+    partner = blueToken;
+    parent = roomA;
+}
+
+Token blueToken {
+    short_name = "blue token";
+    name = {.blue, .token};
+    shade = eShade.blue;
+    partner = redToken;
+    parent = roomA;
+}
+
+Pos makePos(int x, int y) {
+    Pos p;
+    p.x = x;
+    p.y = y;
+    return p;
+}
+
+// Changes only its own copy.
+void pushAway(Pos p) {
+    p.x = p.x + 100;
+    print($"inside: {p}^");
+}
+
+// Monotone lattice paths from p to the origin; each call keeps its own locals.
+int countPaths(Pos p) {
+    if (p.x == 0 || p.y == 0) return 1;
+    Pos left = p;
+    left.x = left.x - 1;
+    Pos down = p;
+    down.y = down.y - 1;
+    int n = countPaths(left);
+    n = n + countPaths(down);
+    if (left.x != p.x - 1 || down.y != p.y - 1) print("[local changed]^");
+    return n;
+}
+
+void printOrder(Pos a, Pos b) {
+    print($"{a} vs {b}: <=> {a <=> b}");
+    if (a == b) print(" ==");
+    if (a < b)  print(" <");
+    if (a > b)  print(" >");
+    if (a <= b) print(" <=");
+    if (a >= b) print(" >=");
+    print("^");
+}
+
+verb Copies {
+    grammar = {{.copies}};
+    void handler() {
+        Pos a = makePos(1, 2);
+        Pos b = a;
+        b.x = 9;
+        print($"a {a}, b {b}^");
+        pushAway(a);
+        print($"after: {a}^");
+        redToken.at = a;
+        a.y = 50;
+        print($"red token {redToken.at}, a {a}^");
+    }
+}
+
+verb Sum {
+    grammar = {{.sum}};
+    void handler() {
+        Pos s = makePos(1, 2) + makePos(3, 4);
+        print($"sum {s}^");
+        if (makePos(1, 2) + makePos(3, 4) == makePos(4, 6)) print("equal^");
+        else print("not equal^");
+        Pos t = s + s + makePos(-1, -1);
+        print($"chain {t}^");
+    }
+}
+
+// Order is the library's fake action ##Order, which a verb can't be named (§23.4).
+verb Rank {
+    grammar = {{.order}};
+    void handler() {
+        printOrder(makePos(1, 5), makePos(2, 0));
+        printOrder(makePos(3, 3), makePos(3, 3));
+        printOrder(makePos(4, 1), makePos(4, 0));
+    }
+}
+
+verb Paths {
+    grammar = {{.paths, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        Pos p = makePos(n, 2);
+        print($"paths from {p}: {countPaths(p)}^");
+        print($"p still {p}^");
+    }
+}
+
+verb Locate {
+    grammar = {{.locate, NOUN}};
+    void handler() {
+        if (!noun.is(Token)) { print("That is not a token.^"); return; }
+        Pos here = ((Token)noun).at;
+        Token t = (Token)noun;
+        Token other = (Token)t.partner;
+        int shadeNumber = (int)t.shade;
+        print($"{noun} at {here}, shade {shadeNumber}; partner {other} at {((Token)t.partner).at}^");
+    }
+}
+
+verb Step {
+    grammar = {{.step, NOUN}};
+    void handler() {
+        if (!noun.is(Token)) { print("That is not a token.^"); return; }
+        Token t = (Token)noun;
+        t.at = t.at + makePos(1, 1);
+        print($"{noun} now at {t.at}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    redToken.at = makePos(2, 3);
+    blueToken.at.x = 5;
+    blueToken.at.y = 1;
+    rfalse;
+}

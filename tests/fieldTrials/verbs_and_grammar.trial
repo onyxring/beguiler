@@ -1,0 +1,42 @@
+Room A
+> tally
+The bell has not rung. Turns: 0.
+> ring bell
+The brass bell rings.
+> ring
+The brass bell rings.
+> ring post
+Nothing happens when you ring the wooden post.
+> take bell
+The brass bell is fixed in place.
+> tally
+The bell has rung: ding ding. Turns: 4.
+> tally
+The bell has rung: ding ding. Turns: 4.
+> inspect bell
+A brass bell.
+> lash rope to bell
+You can't lash the rope to the brass bell.
+> x rope
+A rope, not tied to anything.
+> fasten rope around post
+I only understood you as far as wanting to fasten the rope.
+> lash rope
+What do you want to lash the rope to?
+> tie bell
+You would achieve nothing by this.
+> tie rope around post
+You tie the rope to the wooden post.
+> inspect rope
+A rope, tied to the wooden post.
+> tie rope to post
+The rope is already tied to the wooden post.
+> lash rope to post
+The rope is already tied to the wooden post.
+> e
+Room B
+Room B. Room A is to the west.
+> ring
+You have nothing to ring.
+> tally
+The bell has rung: ding ding. Turns: 14.

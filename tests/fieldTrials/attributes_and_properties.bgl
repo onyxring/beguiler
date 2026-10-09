@@ -1,0 +1,207 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Declarations ----------------------------------------------------------------------------------
+
+attribute polished;
+attribute marked;
+attribute chipped asI6 fractured;
+
+property weight_kg;                 // a member of one object only
+property never_used;                // a member of nothing
+additive property tags;
+
+// The library's compass object, which holds the direction objects.
+extern object compass;
+
+class Gem : object {
+    attributeList attributes = {polished};
+    int carats = 2;
+    rawArray<string> tags = {"gem"};
+    int scaled(int factor) { return carats * factor; }
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Gem ruby {
+    short_name = "ruby";
+    name = {.ruby};
+    parent = roomA;
+    carats = 5;
+    tags = {"red", "rare"};
+    attributes = {marked};
+}
+
+Gem opal {
+    short_name = "opal";
+    name = {.opal};
+    parent = roomA;
+    attributes = {!polished};
+}
+
+Gem quartz {
+    short_name = "quartz";
+    name = {.quartz};
+    parent = roomA;
+    tags = {"clear"};
+}
+
+object flint {
+    short_name = "flint";
+    name = {.flint};
+    parent = roomA;
+    int weight_kg = 7;
+    rawArray<string> tags = {"rough"};
+}
+
+//-- Arrays edited at compile time -----------------------------------------------------------------
+
+array<object> displayOrder = {ruby, opal};
+
+extend displayOrder {
+    inject flint after ruby;        // ruby, flint, opal
+    inject quartz first;            // quartz, ruby, flint, opal
+    remove opal;                    // quartz, ruby, flint
+    move ruby last;                 // quartz, flint, ruby
+    inject opal after [0];          // quartz, opal, flint, ruby
+}
+
+array<int> codes = {10, 20, 30};
+
+extend codes {
+    inject 5 first;                 // 5, 10, 20, 30
+    remove [2];                     // 5, 10, 30
+    inject 99;                      // 5, 10, 30, 99
+}
+
+//-- Routines --------------------------------------------------------------------------------------
+
+void showFlags(object o) {
+    print($"{o}:");
+    if (o.has(polished)) print(" polished");
+    if (o.has(marked)) print(" marked");
+    if (o.has(chipped)) print(" chipped");
+    if (!o.has(polished) && !o.has(marked) && !o.has(chipped)) print(" none");
+    printLine(".");
+}
+
+// Reads whichever property `p` names.
+void showProp(object o, property p, string label) {
+    if (o.provides(p)) {
+        int v = o.p;
+        printLine($"{o} {label}: {v}.");
+    } else {
+        printLine($"{o} has no {label}.");
+    }
+}
+
+// Sends the message `p` names.
+int sendProp(object o, property p, int arg) {
+    return o.p(arg);
+}
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Flags {
+    grammar = {.flags};
+    void handler() {
+        for (object o in displayOrder) showFlags(o);
+    }
+}
+
+verb Buff {
+    grammar = {.buff, NOUN};
+    void handler() {
+        noun.give(polished);
+        noun.ungive(marked);
+        showFlags(noun);
+    }
+}
+
+verb Chip {
+    grammar = {.chip, NOUN};
+    void handler() {
+        if (noun.has(chipped)) {
+            printLine($"{noun} is already chipped.");
+            return;
+        }
+        noun.give(chipped);
+        noun.ungive(polished);
+        showFlags(noun);
+    }
+}
+
+verb Measure {
+    grammar = {.measure, NOUN};
+    void handler() {
+        showProp(noun, carats, "carats");
+        showProp(noun, weight_kg, "weight");
+        if (noun.provides(never_used)) printLine("Unexpected property.");
+        if (noun.provides(scaled)) printLine($"Scaled by 3: {sendProp(noun, scaled, 3)}.");
+    }
+}
+
+verb TagList {
+    grammar = {.tags};
+    void handler() {
+        print($"ruby tags ({ruby.tags.length}):");
+        for (int i in 0 to ruby.tags.length - 1) print($" {ruby.tags[i]}");
+        printLine(".");
+        print($"quartz tags ({quartz.tags.size}):");
+        for (int i in 0 to quartz.tags.size - 1) print($" {quartz.tags[i]}");
+        printLine(".");
+        print($"flint tags ({flint.tags.length}):");
+        for (int i in 0 to flint.tags.length - 1) print($" {flint.tags[i]}");
+        printLine(".");
+    }
+}
+
+verb ShowOrder {
+    grammar = {.order};
+    void handler() {
+        print($"Order ({displayOrder.length}):");
+        for (object o in displayOrder) print($" {o}");
+        printLine(".");
+        print($"Codes ({codes.length}):");
+        for (int c in codes) print($" {c}");
+        printLine(".");
+    }
+}
+
+verb Dirs {
+    grammar = {.dirs};
+    void handler() {
+        int n = 0;
+        for (object d in compass.children) {
+            if (n > 0) print(",");
+            print($" {d}");
+            n++;
+        }
+        printLine(".");
+        printLine($"Directions: {compass.children.length}.");
+        if (compass.has(concealed)) printLine("The compass is concealed.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

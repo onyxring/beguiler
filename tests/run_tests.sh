@@ -27,11 +27,15 @@
 #                                                    and run, and its `// →` values checked. A block
 #                                                    is steered by a `<!-- doctest: … -->` marker;
 #                                                    see the script's header.
+#   • Field trials:      fieldTrials/*.bgl + .trial  — standard-library programs played with scripted
+#                                                    commands, transcript checked (see fieldTrials/README.md).
 #   • Feature matrix:    tools/feature_matrix.py      — each feature (member, accessor, `?.`, method,
 #                                                    operator, array, write forms, …) through each
 #                                                    receiver (global, local, parameter, self, member,
 #                                                    subscript, call, chain) in each position, run on
 #                                                    Z and Glulx with its output checked.
+#   • LSP checks:        tools/lsp_check.py           — completion and diagnostics from `beguiler --lsp`
+#                                                    for the documents in lsp/.
 #
 # The execution tier needs these external tools, discovered in this order:
 #   Inform 6:     $INFORM6, then `inform6` on PATH, then ../../inform6/inform6
@@ -250,9 +254,12 @@ if [ "$CAPTURE" != true ]; then
                     continue
                 fi
 
+                # `// BEGUILER_FLAGS:` adds compiler switches (e.g. --debug, which Inform 6 then builds with -D).
+                flags=$(grep -E '^[[:space:]]*//[[:space:]]*BEGUILER_FLAGS:' "$src" | head -1 \
+                    | sed -E 's|^[[:space:]]*//[[:space:]]*BEGUILER_FLAGS:[[:space:]]*||')
                 rm -rf "${RUN_OUT:?}"/*
                 cd "$SCRIPT_DIR"
-                if ! err=$("$BEGUILER" -o "$RUN_OUT" "$src" 2>&1 >/dev/null); then
+                if ! err=$("$BEGUILER" $flags -o "$RUN_OUT" "$src" 2>&1 >/dev/null); then
                     echo "  ERROR: $name — transpile failed"
                     echo "    $(echo "$err" | grep -iE 'ERROR' | head -1)"
                     ERRORS=$((ERRORS + 1)); continue
@@ -262,8 +269,10 @@ if [ "$CAPTURE" != true ]; then
                 else                          story="$RUN_OUT/${name}.z5";  i6flag="-v5"; fi
                 # Inform 6 reports errors on stdout and still exits 0 in some builds,
                 # so the story file's existence is what decides success.
+                case " $flags " in *" --debug "*) i6flag="$i6flag -D";; esac
                 i6out=$("$INFORM6" $i6flag "$inf" "$story" 2>&1)
-                if [ ! -f "$story" ]; then
+                # Inform 6 can leave a partial story behind after errors, so its error count decides too.
+                if [ ! -f "$story" ] || echo "$i6out" | grep -qE 'Compiled with [0-9]+ errors?'; then
                     echo "  FAIL: $name — Inform 6 rejected the emitted code"
                     echo "    $(echo "$i6out" | grep -iE 'error' | head -2)"
                     FAIL=$((FAIL + 1)); continue
@@ -322,11 +331,23 @@ else
         echo "Running spec doc tests..."
         if ! python3 "$SCRIPT_DIR/tools/spec_doctest.py"; then CHECK_FAIL=1; fi
     fi
+    # Field trials — small standard-library programs played with scripted commands.
+    if [ -f "$SCRIPT_DIR/tools/field_trials.py" ] && ls "$SCRIPT_DIR"/fieldTrials/*.bgl >/dev/null 2>&1; then
+        echo ""
+        echo "Running field trials..."
+        if ! python3 "$SCRIPT_DIR/tools/field_trials.py"; then CHECK_FAIL=1; fi
+    fi
     # Feature matrix — each feature through each receiver in each position, run on Z and Glulx.
     if [ -f "$SCRIPT_DIR/tools/feature_matrix.py" ] && command -v python3 >/dev/null 2>&1; then
         echo ""
         echo "Running feature matrix..."
         if ! python3 "$SCRIPT_DIR/tools/feature_matrix.py"; then CHECK_FAIL=1; fi
+    fi
+    # LSP checks — completion and diagnostics from `beguiler --lsp`.
+    if [ -f "$SCRIPT_DIR/tools/lsp_check.py" ] && command -v python3 >/dev/null 2>&1; then
+        echo ""
+        echo "Running LSP checks..."
+        if ! python3 "$SCRIPT_DIR/tools/lsp_check.py"; then CHECK_FAIL=1; fi
     fi
     echo ""
     echo "Results: $PASS passed, $FAIL failed, $ERRORS errors"

@@ -1,0 +1,115 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <glulxWindow> splits (a side text-buffer panel printed to by the program), a replaced
+// status line in the library's text-grid window, blorb packaging of an image asset, <glulxImage>
+// metadata, drawImage, and the "graphics window not available" path (a refused split returns null).
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+    generateBlorb = true;
+    blorbAssetPath = "glulx_windows_assets";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <glulxWindow>
+#include "_blorbAssets.bgl"
+
+#using bgl.glulx;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+textBufferWindow panel = null;
+array<object> seen[8];
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+// True when the room is already in the seen list.
+bool wasSeen(object room) {
+    for (object o in seen) {
+        if (o == room) return true;
+    }
+    return false;
+}
+
+// Writes one line to the side panel, then returns output to the main window.
+void panelLine(string text) {
+    if (panel == null) return;
+    bgl.asm.setWindow(panel.id);
+    print(text);
+    print("^");
+    bgl.asm.setWindow(bgl.ui.mainWin.id);
+}
+
+void NewRoom() {
+    if (wasSeen(location)) return;
+    seen.enqueue(location);
+    if (panel == null) return;
+    bgl.asm.setWindow(panel.id);
+    print($"Seen: {location}^");
+    bgl.asm.setWindow(bgl.ui.mainWin.id);
+}
+
+replace void DrawStatusLine() {
+    int win = bgl.ui.statusBar.id;
+    if (win == 0) return;
+    bgl.asm.setWindow(win);
+    bgl.asm.windowClear(win);
+    bgl.asm.windowMoveCursor(win, 0, 0);
+    print($"At {location}. Rooms seen: {seen.length}.");
+    bgl.asm.setWindow(bgl.ui.mainWin.id);
+}
+
+bool Initialise() {
+    location = roomA;
+    panel = bgl.ui.mainWin.splitRightBuffer(30, proportional);
+    if (panel == null) print("Side panel not available.^");
+    panelLine("Panel open.");
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+verb Picture {
+    grammar = {.picture};
+    void handler() {
+        glulxImage img = eImages.testImagePng;
+        auto gfx = bgl.ui.mainWin.splitLeftGraphics(40);
+        if (gfx == null) {
+            print("Graphics window not available.^");
+            return;
+        }
+        gfx.drawImage(img);
+        bgl.ui.mainWin.drawImage(img, eGlulxImageAlign.marginLeft);
+        print($"Image drawn, {img.width} by {img.height}.^");
+    }
+}
+
+verb Note {
+    meta = true;
+    grammar = {.note};
+    void handler() {
+        panelLine("Note written.");
+        print("You write a note in the side panel.^");
+    }
+}

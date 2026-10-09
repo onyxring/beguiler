@@ -1,0 +1,73 @@
+Room A
+A lit room with a green button and a brass plaque. Room B is north.
+> tasks
+0 of 5 tasks done, 0 of 6 points.
+  [ ] taking the ball
+  [ ] boxing the ball
+  [ ] pressing the button
+  [ ] reading the plaque
+  [ ] visiting Room B
+> status
+Status line: Room A, tasks 0, score 0.
+> score
+You have so far scored 0 out of a possible 6, in 0 turns.
+> take ball
+Taken.
+[The score has just gone up by one point.]
+> drop ball
+Dropped.
+> take ball
+Taken.
+> put ball in box
+You put the red ball into the wooden box.
+[The score has just gone up by two points.]
+> push button
+Click.
+[The score has just gone up by one point.]
+> push button
+Click.
+> status
+Status line: Room A, tasks 3, score 4.
+> tasks
+3 of 5 tasks done, 4 of 6 points.
+  [x] taking the ball
+  [x] boxing the ball
+  [x] pressing the button
+  [ ] reading the plaque
+  [ ] visiting Room B
+> full score
+You have so far scored 4 out of a possible 6, in 6 turns.
+The score is made up as follows:
+     1 taking the ball
+     2 boxing the ball
+     1 pressing the button
+     4 total (out of 6)
+> north
+Room B
+A second lit room. Room A is south.
+[The score has just gone up by one point.]
+> score
+You have so far scored 5 out of a possible 6, in 7 turns.
+> status
+Status line: Room B, tasks 4, score 5.
+> tasks
+4 of 5 tasks done, 5 of 6 points.
+  [x] taking the ball
+  [x] boxing the ball
+  [x] pressing the button
+  [ ] reading the plaque
+  [x] visiting Room B
+> south
+Room A
+A lit room with a green button and a brass plaque. Room B is north.
+You can see a wooden box (in which is a red ball) here.
+> read plaque
+The plaque reads: Press the button.
+[The score has just gone up by one point.]
+> tasks
+5 of 5 tasks done, 6 of 6 points.
+  [x] taking the ball
+  [x] boxing the ball
+  [x] pressing the button
+  [x] reading the plaque
+  [x] visiting Room B

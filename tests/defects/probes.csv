@@ -1,0 +1,7 @@
+date,found_by,units,unit,match,note
+2026-10-07,doc-tests,253,spec example,,first run of tests/tools/spec_doctest.py over docs/spec (184 run; 69 skipped as fragments)
+2026-10-08,feature-matrix,416,program,,first run of tests/tools/feature_matrix.py (13 reads + 8 writes x 8 receivers x 2 targets + clash variants)
+2026-10-08,field-trial,6,trial,field-trial pilot,pilot: lock_and_key; containers_and_supporters; light_and_timer; score_and_status; verbs_and_grammar; glulx_windows
+2026-10-08,field-trial,9,trial,field trials round 2,round 2: doors_and_map; npcs_and_orders; parsing_and_names; class_hierarchy; collections_and_queries; multi_file_and_namespaces; text_and_strings; enums_and_state; glulx_styles_and_output
+2026-10-09,field-trial,9,trial,field trials round 3,round 3: clothing_and_inventory; vehicles_and_enterables; devices_and_timers; value_classes_and_operators; functions_and_callbacks; control_flow_and_errors; arrays_and_tables; questions_and_topics; glulx_text_and_hyperlinks
+2026-10-09,field-trial,9,trial,field trials round 4,round 4: endings_and_eating; scope_and_visibility; objects_at_run_time; references_and_scope_rules; class_design; attributes_and_properties; inform6_interop; directives_and_namespaces; runtime_utilities

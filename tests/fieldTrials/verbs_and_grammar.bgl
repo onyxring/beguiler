@@ -1,0 +1,156 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a new verb with grammar lines with and without a noun, a new verb with a preposition
+// and a second noun, grammar added to a library verb (a new pattern and a synonym), a `before` that
+// intercepts both a new and a library action, perform() from a handler, a meta verb, and a routine
+// with a switch and a loop.
+
+#beguilerSettings {
+    target = Z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+int  ringCount = 0;
+bool ropeTied  = false;
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object bell {
+    "brass bell";
+    parent = roomA;
+    name = {.brass, .bell};
+    description = "A brass bell.";
+    bool before() {
+        switch (action) {
+            case Ring:
+                ringCount++;
+                rtrue("The brass bell rings.^");
+            case Take:
+                rtrue("The brass bell is fixed in place.^");
+        }
+        rfalse;
+    }
+}
+
+object post {
+    "wooden post";
+    parent = roomA;
+    name = {.wooden, .post};
+    description = "A wooden post.";
+    attributes = {static};
+}
+
+object rope {
+    "rope";
+    parent = selfobj;
+    name = {.rope};
+    bool description() {
+        if (ropeTied) rtrue("A rope, tied to the wooden post.^");
+        rtrue("A rope, not tied to anything.^");
+    }
+    bool before() {
+        if (action == Tie && second == post) {
+            if (ropeTied) rtrue("The rope is already tied to the wooden post.^");
+            ropeTied = true;
+            rtrue("You tie the rope to the wooden post.^");
+        }
+        rfalse;
+    }
+}
+
+// Prints how often the bell has rung, then the turn count.
+void reportTally(int n) {
+    switch (n) {
+        case 0:
+            print("The bell has not rung.");
+        case 1:
+            print("The bell has rung once.");
+        default:
+            print("The bell has rung:");
+            for (int i = 0; i < n; i++) print(" ding");
+            print(".");
+    }
+    print($" Turns: {turns}.^");
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+verb Ring {
+    grammar = {
+        {.ring},
+        {.ring, NOUN},
+    };
+    void handler() {
+        if (noun == null) {
+            if (bell.parent == location) {
+                Ring.perform(bell);
+                return;
+            }
+            print("You have nothing to ring.^");
+            return;
+        }
+        print($"Nothing happens when you ring {the(noun)}.^");
+    }
+}
+
+verb Lash {
+    grammar = { {.lash, HELD, .to, NOUN} };
+    void handler() {
+        if (noun == rope && second == post) {
+            if (ropeTied) {
+                print("The rope is already tied to the wooden post.^");
+                return;
+            }
+            ropeTied = true;
+            print("You lash the rope to the wooden post.^");
+            return;
+        }
+        print($"You can't lash {the(noun)} to {the(second)}.^");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        reportTally(ringCount);
+    }
+}
+
+extend Tie {
+    grammar += { {.tie, NOUN, .around, NOUN} };
+}
+
+extend Examine {
+    synonyms = {.inspect};
+}

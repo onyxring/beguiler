@@ -1,0 +1,201 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: bgl.util.math, bgl.util.random (ranges, list choice, a seeded sequence repeated),
+// uint arithmetic, shifts and unsigned comparison, char classification and case conversion,
+// bgl.header, bgl.world queries with and without predicates, and log() in a normal build and after
+// #redef DEBUG.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#includeI6 "grammar"
+
+extend class object {
+    string description;
+}
+
+attribute flagged;
+
+class Marker : object { }
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+Marker markerA {
+    short_name = "marker A";
+    name = {.marker, .a};
+    parent = roomA;
+}
+
+Marker markerB {
+    short_name = "marker B";
+    name = {.marker, .b};
+    parent = roomA;
+    attributes = {flagged};
+}
+
+Marker markerC {
+    short_name = "marker C";
+    name = {.marker, .c};
+    parent = roomB;
+}
+
+object stone {
+    short_name = "stone";
+    name = {.stone};
+    parent = roomB;
+}
+
+string yesNo(bool b) {
+    if (b) return "yes";
+    return "no";
+}
+
+verb MathCheck {
+    grammar = {.math};
+    void handler() {
+        print($"abs -5: {bgl.util.math.abs(-5)}. pow 2 8: {bgl.util.math.pow(2, 8)}. pow 3 0: {bgl.util.math.pow(3, 0)}.^");
+        print($"shiftLeft 1 4: {bgl.util.math.shiftLeft(1, 4)}. shiftRight -16 2: {bgl.util.math.shiftRight(-16, 2)}.^");
+        print($"min 3 9: {bgl.util.math.min(3, 9)}. max 3 9: {bgl.util.math.max(3, 9)}.^");
+        print($"clamp 120: {bgl.util.math.clamp(120, 0, 100)}. clamp -5: {bgl.util.math.clamp(-5, 0, 100)}. clamp 50: {bgl.util.math.clamp(50, 0, 100)}.^");
+        print($"sign -7: {bgl.util.math.sign(-7)}. sign 0: {bgl.util.math.sign(0)}. sign 12: {bgl.util.math.sign(12)}.^");
+        print($"unsignedCompare -1 1: {bgl.util.math.unsignedCompare(-1, 1)}. unsignedCompare 1 -1: {bgl.util.math.unsignedCompare(1, -1)}. unsignedCompare 4 4: {bgl.util.math.unsignedCompare(4, 4)}.^");
+        print($"unsignedDiv -1 2: {bgl.util.math.unsignedDiv(-1, 2)}. unsignedMod -1 10: {bgl.util.math.unsignedMod(-1, 10)}. unsignedDiv 5 0: {bgl.util.math.unsignedDiv(5, 0)}.^");
+    }
+}
+
+verb RandomCheck {
+    grammar = {.random};
+    void handler() {
+        bool inRange = true;
+        bool sawOne = false;
+        bool sawSix = false;
+        for (int i = 0; i < 200; i++) {
+            int d = bgl.util.random.get(6);
+            if (d < 1 || d > 6) inRange = false;
+            if (d == 1) sawOne = true;
+            if (d == 6) sawSix = true;
+        }
+        print($"get 6 in 1..6: {yesNo(inRange)}. Saw 1 and 6: {yesNo(sawOne && sawSix)}.^");
+
+        bool listed = true;
+        for (int i = 0; i < 50; i++) {
+            int v = bgl.util.random.get(10, 20, 30);
+            if (v != 10 && v != 20 && v != 30) listed = false;
+        }
+        print($"get from list stays in list: {yesNo(listed)}.^");
+
+        object pick = bgl.util.random.get(markerA, markerB, markerC);
+        print($"Picked a marker: {yesNo(pick.is(Marker))}.^");
+
+        array<int> first[8];
+        bgl.util.random.seed(42);
+        for (int i = 0; i < 8; i++) first[i] = bgl.util.random.get(1000);
+        bgl.util.random.seed(42);
+        bool same = true;
+        for (int i = 0; i < 8; i++) {
+            if (bgl.util.random.get(1000) != first[i]) same = false;
+        }
+        print($"Seed 42 repeats its sequence: {yesNo(same)}.^");
+        bgl.util.random.seed(0);
+    }
+}
+
+verb UintCheck {
+    grammar = {.uint};
+    void handler() {
+        uint big = 65535;
+        uint one = 1;
+        uint h = 40000;
+        int  n = 7;
+        uint fromInt = (uint)n;
+        print($"big: {big}. (int)big: {(int)big}. (uint)-1: {(uint)-1}.^");
+        print($"big > one: {yesNo(big > one)}. h > 30000: {yesNo(h > 30000)}. (int)h < 0: {yesNo((int)h < 0)}.^");
+        print($"big / 2: {big / 2}. big % 10: {big % 10}. big >> 4: {big >> 4}.^");
+        print($"big + one: {big + one}. one - 2: {one - 2}. h * 2: {h * 2}.^");
+        print($"fromInt: {fromInt}. one << 15: {one << 15}. h & 255: {h & 255}.^");
+        uint acc = 10;
+        acc += 5;
+        acc *= 3;
+        acc /= 4;
+        acc++;
+        print($"acc: {acc}. acc == 12: {yesNo(acc == 12)}. acc != 12: {yesNo(acc != 12)}.^");
+    }
+}
+
+verb CharCheck {
+    grammar = {.chars};
+    void handler() {
+        char a = 'a';
+        char z = 'Z';
+        char d = '7';
+        char e = 'é';
+        print($"a: lower {yesNo(a.isLower())}, upper {yesNo(a.isUpper())}, vowel {yesNo(a.isVowel())}, consonant {yesNo(a.isConsonant())}.^");
+        print($"Z: alpha {yesNo(z.isAlpha())}, upper {yesNo(z.isUpper())}, toLower {z.toLower()}.^");
+        print($"a: numeric {yesNo(a.isNumeric())}, alphanumeric {yesNo(a.isAlphaNumeric())}. Z toUpper {z.toUpper()}.^");
+        print($"a toUpper: {a.toUpper()}. 'A' =\~ 'a': {yesNo('A' =~ 'a')}. 'b' =\~ 'a': {yesNo('b' =~ 'a')}.^");
+        print($"é: lower {yesNo(e.isLower())}, vowel {yesNo(e.isVowel())}, toUpper {e.toUpper()}.^");
+        print($"{d}: numeric {yesNo(d.isNumeric())}, alphanumeric {yesNo(d.isAlphaNumeric())}, alpha {yesNo(d.isAlpha())}.^");
+    }
+}
+
+verb HeaderCheck {
+    grammar = {.header};
+    void handler() {
+        bool digits = true;
+        for (int i = 0; i < 6; i++)
+            if (!bgl.header.serialChar(i).isNumeric()) digits = false;
+        print($"Release: {bgl.header.release}. Serial is six digits: {yesNo(digits)}.^");
+    }
+}
+
+verb WorldCheck {
+    grammar = {.world};
+    void handler() {
+        array<object> markers = bgl.world.instances(Marker);
+        print($"Markers: {markers.length}.^");
+        for (object o in bgl.world.instances(Marker)) print($"- {o}^");
+        print($"In Room B: {bgl.world.inParent(roomB).length}.^");
+        for (object o in bgl.world.inParent(roomB, (object v) => v.is(Marker))) print($"Marker in Room B: {o}.^");
+        for (object o in bgl.world.getAll((object v) => v.has(flagged))) print($"Flagged: {o}.^");
+        print($"Flagged markers in Room A: {bgl.world.instances(Marker, (object v) => v.has(flagged) && v.parent == roomA).length}.^");
+    }
+}
+
+verb LogQuiet {
+    grammar = {.logquiet};
+    void handler() {
+        log("Quiet log.^");
+        print("After quiet log.^");
+    }
+}
+
+#redef DEBUG
+
+verb LogLoud {
+    grammar = {.logloud};
+    void handler() {
+        log("Loud log.^");
+        print("After loud log.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

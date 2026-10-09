@@ -1,0 +1,204 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Glulx text output. The print rules (bold, italics, underline, reverse, fixed, roman) in
+// interpolated text; Glk style types (emphasized, header, alert, user1) selected in the main window with
+// bgl.asm.setStyle, with a user1 hint set from InitGlkWindow; hyperlinks through the link print rule with
+// a lambda target, a named-function target and an enum target, a program HandleGlkEvent for the enum
+// target, and the handlers run from commands; Unicode and accented text from escapes and typed
+// characters, character literals printed, compared and case-converted; accented text in array<char>
+// case-converted and searched; and float arithmetic printed with the default format.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <glulxWindow>
+#include <string>
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eLinks { broom = 1, bucket = 2 }
+
+int leverPulls = 0;
+
+void pullLever() {
+    leverPulls++;
+    print($"The lever moves ({leverPulls}).^");
+}
+
+void handleLinkValue(int v) {
+    switch ((eLinks)v) {
+        case eLinks.broom:  print("Broom link chosen.^");
+        case eLinks.bucket: print("Bucket link chosen.^");
+        default:            print($"No link {v}.^");
+    }
+}
+
+int HandleGlkEvent(var event, var context, var buffer) {
+    if (bgl.asm.aload((int)event, 0) == 8) {          // a hyperlink event; its value is the third word
+        handleLinkValue(bgl.asm.aload((int)event, 2));
+    }
+    return 0;
+}
+
+int InitGlkWindow(int rock) {
+    if (rock == 0) {
+        bgl.ui.screen.setStyle(eGlulxStyleType.user1, style{ fontWeight = 1; foreColor = $C80000; });
+    }
+    return 0;
+}
+
+verb StylesTest {
+    grammar = {.styles};
+    void handler() {
+        print($"{bold}Bold{roman}, {italics}italic{roman}, {underline}underlined{roman}, {reverse}reversed{roman}, {fixed}fixed{roman}.^");
+        bgl.asm.setStyle((int)eGlulxStyleType.emphasized); print("Emphasized");
+        bgl.asm.setStyle((int)eGlulxStyleType.normal);     print(", ");
+        bgl.asm.setStyle((int)eGlulxStyleType.header);     print("Header");
+        bgl.asm.setStyle((int)eGlulxStyleType.normal);     print(", ");
+        bgl.asm.setStyle((int)eGlulxStyleType.alert);      print("Alert");
+        bgl.asm.setStyle((int)eGlulxStyleType.normal);     print(", ");
+        bgl.asm.setStyle((int)eGlulxStyleType.user1);      print("User one");
+        bgl.asm.setStyle((int)eGlulxStyleType.normal);     print(".^");
+    }
+}
+
+verb LinksTest {
+    grammar = {.links};
+    void handler() {
+        print($"A {link("button", => { print("Click.^"); })}, a {link("lever", pullLever)} and a {link("broom", eLinks.broom)}.^");
+        print($"Hyperlinks supported: {bgl.glulx.supports.hyperlinks}.^");
+    }
+}
+
+verb YankTest {
+    grammar = {.yank};
+    void handler() { pullLever(); }
+}
+
+verb LinkValueTest {
+    grammar = {.linkval, NUMBER};
+    void handler() { handleLinkValue((int)noun); }
+}
+
+verb UnicodeTest {
+    grammar = {.unicode};
+    void handler() {
+        print("Escapes: caf\'e, cr\`eme, na\:ive, se\~nor, \ae, \ss, \LL5.^");
+        print("Typed: café, crème, naïve, señor.^");
+        print("Glulx: © 2027 — ✓ Ω “quoted”.^");
+        print("Numeric: na\239ve, na\$EFve.^");
+    }
+}
+
+verb CharsTest {
+    grammar = {.chars};
+    void handler() {
+        char e = 'é';
+        char omega = 'Ω';
+        print($"Letters: {e} {omega} {'\'e'} {'ñ'}.^");
+        int code = e;
+        int omegaCode = omega;
+        print($"Codes: {code} {omegaCode}.^");
+        print($"Same: {e == '\'e'}. After e: {e > 'e'}. Ignoring case: {e =~ 'É'}.^");
+        char up = e.toUpper();
+        char down = 'Ñ'.toLower();
+        print($"Upper {up}, lower {down}.^");
+        print($"Vowel: {e.isVowel()}. Alpha: {'ñ'.isAlpha()}. Upper: {'Ö'.isUpper()}. Digit: {'7'.isNumeric()}.^");
+    }
+}
+
+void printChars(array<char> a) {
+    for (int i = 0; i < a.length; i++) print(a[i]);
+    print("^");
+}
+
+int findChars(array<char> hay, array<char> needle) {
+    for (int start = 0; start + needle.length <= hay.length; start++) {
+        int k = 0;
+        while (k < needle.length && hay[start + k] == needle[k]) k++;
+        if (k == needle.length) return start;
+    }
+    return -1;
+}
+
+bool sameIgnoringCase(array<char> a, array<char> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+        if (!(a[i] =~ b[i])) return false;
+    }
+    return true;
+}
+
+array<char> s = "café crème";
+array<char> word = "crème";
+array<char> other = "CAFÉ CRÈME";
+array<char> school = "ÉCOLE ÜBER";
+
+verb StringsTest {
+    grammar = {.strings};
+    void handler() {
+        print("Text: "); printChars(s);
+        print($"Length {s.length}. crème at {findChars(s, word)}. Same ignoring case: {sameIgnoringCase(s, other)}.^");
+        for (int i = 0; i < s.length; i++) s[i] = s[i].toUpper();
+        print("Upper: "); printChars(s);
+        for (int i = 0; i < school.length; i++) school[i] = school[i].toLower();
+        print("Lower: "); printChars(school);
+    }
+}
+
+verb FloatsTest {
+    grammar = {.floats};
+    void handler() {
+        float r = 2.5;
+        float area = 3.1416 * r * r;
+        print("Area: "); printLine(area);
+        float avg = (float)(7 + 8 + 10) / 3;
+        print("Average: "); printLine(avg);
+        print("Root two: "); printLine(bgl.util.math.sqrt(2.0));
+        float neg = -1.25;
+        print("Negative: "); printLine(neg);
+        int whole = (int)area;
+        print($"Whole part {whole}. Bigger than 19: {area > 19}.^");
+        print($"Interpolated: {r * 2}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+verb TextTest {
+    grammar = {{.textobj}};
+    void handler() {
+        stringObj t = "café crème";
+        print($"{t.toUpper()} / {t.toLower()}^");
+        print($"crème at {t.indexOf("crème")}; has café: {t.contains("café")}^");
+        stringObj shout = "CAFÉ CRÈME";
+        print($"same ignoring case: {t =~ shout}^");
+        print($"{t.replace("crème", "noir")} / {t.reverse()}^");
+        stringObj built = "x";
+        string more = "yz";
+        built += more;
+        built += '!';
+        print($"{built} ({built.length})^");
+    }
+}
+
+#includeI6 "grammar"

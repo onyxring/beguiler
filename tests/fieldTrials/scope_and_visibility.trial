@@ -1,0 +1,70 @@
+Room A
+Room A. Room B is north.
+You can see a glass case (which is closed) (in which is a silver ring), a rug and three marbles (a red marble, a blue marble and a green marble) here.
+> report
+Lit: yes. Coin concealed: yes. Key placed: no. Held: 1.
+> examine case
+A glass case.
+> examine ring
+A silver ring.
+> take ring
+The glass case is not open.
+> open case
+You open the glass case.
+> take ring
+Taken.
+> look under rug
+Under the rug is a copper coin.
+> look
+Room A
+Room A. Room B is north.
+You can see a glass case (which is empty), a rug, a copper coin and three marbles (a red marble, a blue marble and a green marble) here.
+> search rug
+A brass key falls out of the rug.
+> examine key
+A brass key.
+> report
+Lit: yes. Coin concealed: no. Key placed: yes. Held: 2.
+> look
+Room A
+Room A. Room B is north.
+You can see a brass key, a glass case (which is empty), a rug, a copper coin and three marbles (a red marble, a blue marble and a green marble) here.
+> take coin
+Taken.
+> take red marble
+Taken.
+> take blue marble
+Taken.
+> take green marble
+Taken.
+> inventory
+You're carrying:
+  three marbles:
+    a green marble
+    a blue marble
+    a red marble
+  a copper coin
+  a silver ring
+  a lamp
+> north
+Darkness
+It is pitch dark, and you can't see a thing.
+> report
+Lit: no. Coin concealed: no. Key placed: yes. Held: 6.
+> take cup
+You can't see any such thing.
+> turn on lamp
+The lamp is now lit.
+Room B
+Room B. Room A is south.
+You can see a tin cup here.
+> report
+Lit: yes. Coin concealed: no. Key placed: yes. Held: 6.
+> take cup
+Taken.
+> turn off lamp
+The lamp is now dark.
+It is now pitch dark in here.
+> look
+Darkness
+It is pitch dark, and you can't see a thing.

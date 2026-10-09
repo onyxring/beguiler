@@ -1,0 +1,44 @@
+Room A
+> math
+abs -5: 5. pow 2 8: 256. pow 3 0: 1.
+shiftLeft 1 4: 16. shiftRight -16 2: -4.
+min 3 9: 3. max 3 9: 9.
+clamp 120: 100. clamp -5: 0. clamp 50: 50.
+sign -7: -1. sign 0: 0. sign 12: 1.
+unsignedCompare -1 1: 1. unsignedCompare 1 -1: -1. unsignedCompare 4 4: 0.
+unsignedDiv -1 2: 32767. unsignedMod -1 10: 5. unsignedDiv 5 0: 0.
+> random
+get 6 in 1..6: yes. Saw 1 and 6: yes.
+get from list stays in list: yes.
+Picked a marker: yes.
+Seed 42 repeats its sequence: yes.
+> uint
+big: 65535. (int)big: -1. (uint)-1: 65535.
+big > one: yes. h > 30000: yes. (int)h < 0: yes.
+big / 2: 32767. big % 10: 5. big >> 4: 4095.
+big + one: 0. one - 2: 65535. h * 2: 14464.
+fromInt: 7. one << 15: 32768. h & 255: 64.
+acc: 12. acc == 12: yes. acc != 12: no.
+> chars
+a: lower yes, upper no, vowel yes, consonant no.
+Z: alpha yes, upper yes, toLower z.
+a: numeric no, alphanumeric yes. Z toUpper Z.
+a toUpper: A. 'A' =~ 'a': yes. 'b' =~ 'a': no.
+é: lower yes, vowel yes, toUpper É.
+7: numeric yes, alphanumeric yes, alpha no.
+> header
+Release: 1. Serial is six digits: yes.
+> world
+Markers: 3.
+- marker A
+- marker B
+- marker C
+In Room B: 2.
+Marker in Room B: marker C.
+Flagged: marker B.
+Flagged markers in Room A: 1.
+> logquiet
+After quiet log.
+> logloud
+Loud log.
+After loud log.

@@ -1,0 +1,149 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: the array type parameter T (§8.1.1) — emitters added to every array and rawArray through
+// `extend extern class`, reaching elements with $i6Expr($self[i]), with T in return and parameter
+// positions, bound per element type (int, string, object, a user class), on file-scope arrays, a class
+// member array, an object member array and a local array; a T result read, written and called through
+// as a receiver, passed as an argument and compared; alongside <array>'s own T-typed methods.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend extern class array {
+    emitter T    second()            { $i6Expr($self[1]) }
+    emitter bool firstIs(T v)        { $i6Expr($self[0] == $v) }
+}
+
+extend extern class rawArray {
+    emitter T    third()             { $i6Expr($self[2]) }
+}
+
+extend class object {
+    string description;
+}
+
+class Item : object {
+    int weight;
+    void report() { print($"{self}: {weight}.^"); }
+}
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+Item ironBar  { "iron bar";  parent = roomA; name = {.iron, .bar};   weight = 9; }
+Item brassKey { "brass key"; parent = roomA; name = {.brass, .key};  weight = 2; }
+Item coin     { "coin";      parent = roomA; name = {.coin};         weight = 1; }
+
+class Shelf : object {
+    array<Item> held[3];
+}
+
+Shelf shelfA { "shelf A"; parent = roomA; }
+
+object ledger {
+    "ledger";
+    array<int> marks = {10, 20, 30};
+}
+
+array<int>    nums  = {4, 9, 2};
+array<string> words = {"pear", "fig", "kiwi"};
+array<object> pile  = {roomA, coin};
+array<Item>   items = {ironBar, brassKey, coin};
+rawArray<int> raw   = {5, 6, 7};
+
+void describeItem(Item i) {
+    print($"{i} weighs {i.weight}.^");
+}
+
+verb IntsTest {
+    grammar = {.ints};
+    void handler() {
+        int n = nums.second();
+        print($"Second: {n}. First is 4: {nums.firstIs(4)}. First is 9: {nums.firstIs(9)}.^");
+        nums[1] = n * 10;
+        print($"Now: {nums[0]} {nums[1]} {nums[2]}, second {nums.second()}.^");
+        nums[1] = 9;
+    }
+}
+
+verb WordsTest {
+    grammar = {.words};
+    void handler() {
+        string w = words.second();
+        print($"Second word: {w}. First is the first: {words.firstIs(words[0])}.^");
+    }
+}
+
+verb ItemsTest {
+    grammar = {.items};
+    void handler() {
+        Item mid = items.second();
+        describeItem(mid);
+        describeItem(items.second());
+        print($"Second weighs {items.second().weight}. First is iron bar: {items.firstIs(ironBar)}.^");
+        items[1] = coin;
+        print($"After set: {items.second()}.^");
+        items[1] = brassKey;
+        items.second().weight = 3;
+        print($"Brass key now weighs {brassKey.weight}.^");
+        items.second().weight = 2;
+        object o = pile.second();
+        print($"Pile second: {o}.^");
+    }
+}
+
+verb MembersTest {
+    grammar = {.members};
+    void handler() {
+        shelfA.held.clear();
+        shelfA.held.append(coin);
+        shelfA.held.append(ironBar);
+        Item s = shelfA.held.second();
+        print($"Shelf second: {s}, weight {s.weight}.^");
+        shelfA.held.second().report();
+        print($"Ledger second: {ledger.marks.second()}. First is 10: {ledger.marks.firstIs(10)}.^");
+        ledger.marks[1] = 25;
+        print($"Ledger now: {ledger.marks[0]} {ledger.marks.second()} {ledger.marks[2]}.^");
+        ledger.marks[1] = 20;
+    }
+}
+
+verb LocalTest {
+    grammar = {.local};
+    void handler() {
+        array<int> local = {7, 8, 9};
+        print($"Local second: {local.second()}.^");
+        local[1] = 80;
+        print($"Local now: {local[0]} {local.second()} {local[2]}.^");
+        print($"Raw third: {raw.third()}.^");
+    }
+}
+
+verb MixedTest {
+    grammar = {.mixed};
+    void handler() {
+        Item top = items.peek();
+        print($"Peek: {top}. Second: {items.second()}.^");
+        int last = nums.popEnd();
+        print($"Popped {last}; second still {nums.second()}.^");
+        nums.append(last);
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

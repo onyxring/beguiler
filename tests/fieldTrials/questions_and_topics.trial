@@ -1,0 +1,46 @@
+Room A
+> ask guide about weather
+"Rain, later," says the guide.
+> ask guide about the dial
+"Try forty-two," says the guide.
+> ask guide about zorkmid
+The guide shrugs.
+> tell guide about weather
+"I know," says the guide.
+> tell guide about dial
+The guide nods politely.
+> answer hello to guide
+"Hello to you," says the guide.
+> answer goodbye to guide
+The guide does not reply.
+> consult book about weather
+Weather: rain most days.
+> look up dials in book
+Dials: set them with numbers.
+> consult book about weather and dial
+Weather: rain most days.
+Dials: set them with numbers.
+> consult book about zorkmid
+The book says nothing about that.
+> set dial to 42
+You set the dial to 42.
+> examine dial
+The dial reads 42.
+> set dial to 150
+The dial only goes from 0 to 99.
+> tune dial to 7
+The dial is tuned to 7.
+> note brass key zorkmid
+Noted 3 words: brass key ?.
+> zero dial
+Zero the dial (now 7)?
+> no
+The dial stays at 7.
+> zero dial
+Zero the dial (now 7)?
+> yes
+The dial reads 0.
+> examine dial
+The dial reads 0.
+> take silver coin
+Nothing like that is here.

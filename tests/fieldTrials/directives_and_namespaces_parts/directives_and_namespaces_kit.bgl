@@ -1,0 +1,53 @@
+/*  Field trial part — included by directives_and_namespaces.bgl. Not a trial on its own.  */
+
+#once
+
+// The includer's #define is visible here: #define is linear across #include.
+#if TRIAL_LEVEL == 2
+    const string partLevelNote = "Part sees level 2.";
+#else
+    const string partLevelNote = "Part does not see level 2.";
+#endif
+
+#define PART_LOADED
+
+class kitGauge : object {
+    int reading = 0;
+    void show() {
+        print($"Gauge reads {reading}.^");
+    }
+}
+
+enum eKitShade { pale, deep, vivid }
+
+// Reached only through kit.tools, a compile-time alias.
+superposed object _kitTools {
+    int doubled(int n) { return n * 2; }
+}
+
+// Aliased onto kit but never used through the alias, so it stays out of the program. It names an
+// I6 routine that does not exist: if it were emitted, Inform 6 would reject the program.
+extern void kitMissingRoutine();
+superposed object _kitSpare {
+    void spare() { kitMissingRoutine(); }
+}
+
+object _kitCounters {
+    int hits = 0;
+    void hit() { hits++; }
+}
+
+object kit {
+    alias gauge for kitGauge;
+    alias shade for eKitShade;
+    alias tools = _kitTools;
+    alias spare = _kitSpare;
+    auto counters = _kitCounters;
+}
+
+// An import made in an included file does not reach the includer.
+#using kit
+// WORKAROUND: through #using, `int partDoubled = tools.doubled(4);` emits the global initializer as
+// `tools.doubled(4)` unresolved (an I6 error, or a run-time "has no property doubled" when the name
+// happens to exist in I6). The same call inside a function body resolves. The full path works here.
+int partDoubled = kit.tools.doubled(4);

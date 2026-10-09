@@ -1,0 +1,148 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+class Room : object {
+    string description;
+    attributeList attributes = {light};
+}
+
+class Device : object {
+    attributeList attributes = {switchable, static};
+}
+
+// Turns that have ended with the player in Room A.
+int turnsInA = 0;
+
+Room roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east.";
+    object e_to = roomB;
+    void each_turn() {
+        turnsInA++;
+    }
+}
+
+Room roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    object w_to = roomA;
+    void each_turn() {
+        print("A fan hums.^");
+    }
+}
+
+Device lamp {
+    short_name = "desk lamp";
+    name = {.desk, .lamp};
+    parent = roomA;
+    string when_on = "The desk lamp glows here.";
+    string when_off = "The desk lamp is dark here.";
+    // True: the description is complete, so the library adds no "currently switched on/off" line.
+    bool description() {
+        if (has(on)) rtrue("The desk lamp is on.^");
+        rtrue("The desk lamp is off.^");
+    }
+}
+
+// Will not switch on while the lamp is off.
+Device heater {
+    short_name = "heater";
+    name = {.heater};
+    parent = roomA;
+    string description = "A heater.";
+    string when_on = "The heater is running.";
+    string when_off = "The heater is idle.";
+    bool before() {
+        if (action == SwitchOn && lamp.hasnt(on)) rtrue("The heater will not start while the lamp is off.^");
+        rfalse;
+    }
+}
+
+// Switching on starts a two-turn timer; switching off cancels it. When the timer runs out the kettle
+// switches itself off and stays boiled.
+Device kettle {
+    short_name = "kettle";
+    name = {.kettle};
+    parent = roomA;
+    int time_left;
+    bool boiled = false;
+    void description() {
+        if (boiled) print("The kettle is off. Its water has boiled.^");
+        else if (has(on)) print($"The kettle is heating ({time_left} turns left).^");
+        else print("The kettle is cold.^");
+    }
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartTimer(self, 2);
+                rtrue("The kettle starts to heat.^");
+            case SwitchOff:
+                StopTimer(self);
+                rtrue("The kettle stops heating.^");
+        }
+        rfalse;
+    }
+    void time_out() {
+        ungive(on);
+        boiled = true;
+        print("The kettle clicks off.^");
+    }
+}
+
+// A daemon counts ticks while it is switched on.
+Device metronome {
+    short_name = "metronome";
+    name = {.metronome};
+    parent = roomA;
+    string description = "A metronome.";
+    string when_on = "A metronome ticks here.";
+    string when_off = "A metronome stands here, silent.";
+    int ticks = 0;
+    void daemon() {
+        ticks++;
+        print($"Tick {ticks}.^");
+    }
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartDaemon(self);
+                rtrue("The metronome starts.^");
+            case SwitchOff:
+                StopDaemon(self);
+                rtrue("The metronome stops.^");
+        }
+        rfalse;
+    }
+}
+
+string onOff(object o) {
+    if (o.has(on)) return "on";
+    return "off";
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        print($"Lamp: {onOff(lamp)}. Heater: {onOff(heater)}. Metronome: {onOff(metronome)}.^");
+        if (kettle.has(on)) print($"Kettle: heating, {kettle.time_left} left.^");
+        else print("Kettle: off.^");
+        print($"Ticks: {metronome.ticks}. Turns in Room A: {turnsInA}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

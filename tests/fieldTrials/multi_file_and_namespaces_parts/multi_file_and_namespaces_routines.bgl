@@ -1,0 +1,30 @@
+/*  Field trial part — included by multi_file_and_namespaces.bgl. Not a trial on its own.  */
+
+#using kit
+#using bgl.printRules
+
+
+void describeRoomA() {
+    print($"Room A. Crates here: {countCrates(roomA)}.^");
+}
+
+int countCrates(object holder) {
+    int n = 0;
+    for (object o in holder.children) {
+        if (o.is(Crate)) n++;
+    }
+    return n;
+}
+
+int countLarge(object holder) {
+    int n = 0;
+    for (object o in holder.children) {
+        if (o.is(Crate) && measure.classify(((Crate)o).volume) == size.large) n++;
+    }
+    return n;
+}
+
+void reportCrate(crate c) {
+    size s = measure.classify(c.volume);
+    print($"{cThe(c)}: volume {c.volume}, {measure.sizeName(s)}.^");
+}

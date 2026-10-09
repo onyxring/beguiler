@@ -1,0 +1,72 @@
+Room A
+A plain room with a machine.
+> status
+State: off (1). Running: no. Conditions: none.
+> code 3
+State 3 is ready, after the current state.
+> code 9
+There is no state 9.
+> shake
+Dust falls into the machine.
+> start
+Dust clogs the machine; it will not start.
+(Fault code 12.)
+> status
+State: off (1). Running: no. Conditions: dusty.
+> brush
+You brush the dust out of the machine.
+> brush
+The machine is clean.
+> start
+The machine starts warming up.
+The machine warms up.
+> status
+State: warming (2). Running: yes. Conditions: none.
+> wait
+Time passes.
+The machine clicks: it is ready.
+> start
+The machine is already running.
+(Fault code 10.)
+> oil
+You oil the machine.
+> status
+State: ready (3). Running: yes. Conditions: hot, oiled.
+> kick
+The machine jams with a loud clang.
+> status
+State: jammed (4). Running: no. Conditions: hot, loud, oiled.
+> start
+The machine is jammed.
+(Fault code 11.)
+> stop
+The machine is jammed; it will not stop.
+> oil
+You oil the machine. It unjams and stops.
+> status
+State: off (1). Running: no. Conditions: hot, oiled.
+> code 1
+State 1 is off, the current state.
+> code 2
+State 2 is warming, after the current state.
+> kick
+Nothing happens.
+> start
+The machine starts warming up.
+The machine warms up.
+> code 1
+State 1 is off, before the current state.
+> stop
+The machine stops.
+> stop
+The machine is already off.
+> status
+State: off (1). Running: no. Conditions: oiled.
+> gauges
+By level: gauge B (1) gauge A (3) gauge C (3).
+Gauge B reads lower than gauge A.
+Gauge A reads higher than gauge B.
+Gauge A reads at least gauge C.
+Gauges A and C read the same.
+A against B: 2.
+Gauges A and C are different gauges.

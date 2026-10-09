@@ -1,0 +1,59 @@
+Room A
+> inventory
+You're carrying:
+  a leather coat (on you)
+  an id badge
+> tally
+Held: leather coat id badge.
+Held: 2. Worn: 1. Inside held containers: 0.
+> take all
+wool hat: Taken.
+canvas bag: Taken.
+red ball: Taken.
+blue ball: You're carrying too many things already.
+lead weight: The lead weight will not lift.
+> take vase
+You're carrying too many things already.
+> wear hat
+You put on the wool hat.
+> take blue ball
+Taken.
+> put red ball in bag
+You put the red ball into the canvas bag.
+> put blue ball in bag
+You put the blue ball into the canvas bag.
+> take vase
+Taken.
+> put vase in bag
+There is no more room in the canvas bag.
+> inventory
+You're carrying:
+  a glass vase
+  a canvas bag
+    a blue ball
+    a red ball
+  a wool hat (on you)
+  a leather coat (on you)
+  an id badge
+> locate red ball
+The red ball is carried (in the canvas bag).
+> locate vase
+The glass vase is carried.
+> locate weight
+The lead weight is not carried.
+> tally
+Held: glass vase canvas bag wool hat leather coat id badge.
+Held: 5. Worn: 2. Inside held containers: 2.
+> take off coat
+You take off the leather coat.
+> drop badge
+You keep hold of the badge.
+> drop all
+canvas bag: Dropped.
+leather coat: Dropped.
+id badge: You keep hold of the badge.
+> locate red ball
+The red ball is not carried.
+> tally
+Held: glass vase wool hat id badge.
+Held: 3. Worn: 1. Inside held containers: 0.

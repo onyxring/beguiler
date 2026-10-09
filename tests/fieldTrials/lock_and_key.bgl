@@ -1,0 +1,132 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object with_key;
+}
+
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A door leads east.";
+    e_to = oakDoor;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. A door leads west.";
+    w_to = oakDoor;
+    attributes = {light};
+}
+
+object oakDoor {
+    short_name = "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {roomA, roomB};
+    with_key = brassKey;
+    string when_open = "The oak door stands open.";
+    string when_closed = "The oak door is closed.";
+    void description() {
+        if (has(open)) print("The oak door is open.^");
+        else if (has(locked)) print("The oak door is closed and locked.^");
+        else print("The oak door is closed but not locked.^");
+    }
+    object door_to() {
+        if (location == roomA) return roomB;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)e_to;
+        return (property)w_to;
+    }
+    bool before() {
+        switch (action) {
+            case Push, Pull: rtrue("The door does not move.^");
+        }
+        rfalse;
+    }
+    bool after() {
+        switch (action) {
+            case Open:   rtrue("The door opens.^");
+            case Close:  rtrue("The door closes.^");
+            case Unlock: doorUnlocks++; rfalse;
+        }
+        rfalse;
+    }
+    attributes = {door, static, openable, lockable, locked};
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = roomA;
+}
+
+object ironKey {
+    short_name = "iron key";
+    name = {.iron, .key};
+    parent = roomA;
+}
+
+object steelBox {
+    short_name = "steel box";
+    name = {.steel, .box};
+    description = "A steel box.";
+    with_key = ironKey;
+    parent = roomB;
+    attributes = {container, openable, lockable, locked, static};
+}
+
+object coin {
+    short_name = "coin";
+    name = {.coin};
+    parent = steelBox;
+}
+
+// Prints each lockable object with its state, and how many of them are locked.
+void reportLocks() {
+    int lockedCount = 0;
+    for (object o in {oakDoor, steelBox}) {
+        print($"{o}: ");
+        if (o.has(locked)) {
+            print("locked");
+            lockedCount++;
+        } else if (o.has(open)) {
+            print("open");
+        } else {
+            print("closed");
+        }
+        print("^");
+    }
+    print($"Locked: {lockedCount}. Door unlocks: {doorUnlocks}.^");
+}
+
+verb Status {
+    void handler() {
+        reportLocks();
+    }
+    grammar = {{.status}};
+}
+
+int doorUnlocks = 0;
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

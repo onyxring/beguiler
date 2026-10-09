@@ -1,0 +1,31 @@
+Room A
+> symbols
+Part sees level 2.
+Level is 2.
+Redefined level above 2.
+Checks on, part loaded.
+Checks undefined.
+Zero flag is defined.
+Zero flag equals false.
+Z-machine.
+Version symbols defined.
+Level value: 3. Label: level label.
+Inline level: 3.
+> settings
+Target setting is z5.
+Frame pool above 32.
+Economy off.
+Target: z5. Pool: 40. For-in scratch: 31.
+Auto-initialize on.
+> spaces
+Gauge reads 4.
+Gauge reads 9.
+Bare type alias: 4.
+Deep: 2. Favorite: 3. Pale: 1.
+Doubled: 42. Via using: 10. Part: 8.
+Hits: 2. Bare read: 2.
+Add ten: 15.
+> raw
+C:\Users\trial\file.bgl
+caret ^ tilde ~ backslash-n \n quote " end
+tab \t stays

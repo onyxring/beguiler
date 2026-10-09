@@ -1,0 +1,59 @@
+Room A
+Room A. Room B is north. A black button is set in the floor.
+You can see a red apple, a green pear, a grey stone and a speaker grille here.
+> status
+Score 0. Apples eaten 0. Pear: present.
+> eat stone
+(first taking the grey stone)
+The grey stone is plainly inedible.
+> eat pear
+(first taking the green pear)
+You eat the green pear. Not bad.
+> eat apple
+(first taking the red apple)
+You eat the red apple. It is crisp.
+[The score has just gone up by one point.]
+> status
+Score 1. Apples eaten 1. Pear: gone.
+> ask grille about weather
+The grille says: Noted.
+[The score has just gone up by one point.]
+> tell grille about weather
+The grille says: Noted.
+> grille, jump
+The grille says: It cannot jump.
+> grille, wait
+The speaker grille has better things to do.
+> score
+You have so far scored 2 out of a possible 5, in 9 turns.
+> push black button
+The floor opens.
+    *** You have fallen through the floor ***
+In that game you scored 2 out of a possible 5, in 10 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?
+> restart
+Room A
+Room A. Room B is north. A black button is set in the floor.
+You can see a red apple, a green pear, a grey stone and a speaker grille here.
+> status
+Score 0. Apples eaten 0. Pear: present.
+> eat apple
+(first taking the red apple)
+You eat the red apple. It is crisp.
+[The score has just gone up by one point.]
+> ask grille about rain
+The grille says: Noted.
+[The score has just gone up by one point.]
+> north
+Room B
+Room B. Room A is south. A white button is set in the floor.
+> push white button
+A bell rings.
+[The score has just gone up by three points.]
+    *** You have won ***
+In that game you scored 5 out of a possible 5, in 5 turns.
+Would you like to RESTART, RESTORE a saved game, see some suggestions for AMUSING things to do or QUIT?
+> amusing
+Amusing: nothing further.
+Would you like to RESTART, RESTORE a saved game, see some suggestions for AMUSING things to do or QUIT?
+> quit

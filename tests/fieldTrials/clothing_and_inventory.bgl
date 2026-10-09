@@ -1,0 +1,171 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+// The player's own carrying limit; worn items do not count toward it.
+const int MAX_CARRIED = 4;
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#using bgl.printRules;
+
+// Wearable things list themselves as "(on you)" while worn instead of the library's "(being worn)".
+class Garment : object {
+    string description;
+    bool invent() {
+        if (inventory_stage == 2 && has(worn)) {
+            print(" (on you)");
+            return true;
+        }
+        return false;
+    }
+    attributeList attributes = {clothing};
+}
+
+class Thing : object {
+    string description;
+}
+
+object roomA {
+    short_name = "Room A";
+    string description = "Room A. A plain room.";
+    attributes = {light};
+}
+
+Garment coat {
+    short_name = "leather coat";
+    name = {.leather, .coat};
+    description = "A leather coat.";
+    parent = selfobj;
+    attributes = {worn};
+}
+
+Thing badge {
+    short_name = "id badge";
+    name = {.id, .badge};
+    description = "An id badge.";
+    parent = selfobj;
+    bool before() {
+        if (action == Drop) rtrue("You keep hold of the badge.^");
+        rfalse;
+    }
+}
+
+Garment hat {
+    short_name = "wool hat";
+    name = {.wool, .hat};
+    description = "A wool hat.";
+    parent = roomA;
+}
+
+Thing bag {
+    short_name = "canvas bag";
+    name = {.canvas, .bag};
+    description = "A canvas bag.";
+    int capacity = 2;
+    parent = roomA;
+    attributes = {container, open};
+}
+
+Thing redBall {
+    short_name = "red ball";
+    name = {.red, .ball};
+    description = "A red ball.";
+    parent = roomA;
+}
+
+Thing blueBall {
+    short_name = "blue ball";
+    name = {.blue, .ball};
+    description = "A blue ball.";
+    parent = roomA;
+}
+
+Thing weight {
+    short_name = "lead weight";
+    name = {.lead, .weight};
+    description = "A lead weight.";
+    parent = roomA;
+    bool before() {
+        switch (action) {
+            case Take: rtrue("The lead weight will not lift.^");
+        }
+        rfalse;
+    }
+}
+
+// Never included in "all"; it has to be named.
+Thing vase {
+    short_name = "glass vase";
+    name = {.glass, .vase};
+    description = "A glass vase.";
+    parent = roomA;
+}
+
+int ChooseObjects(object obj, int code) {
+    if (code < 2 && obj == vase) return 2;
+    return 0;
+}
+
+// True when o is somewhere inside who: held, worn, or inside something held.
+bool isCarried(object o, object who) {
+    object p = o.parent;
+    while (p != null) {
+        if (p == who) return true;
+        p = p.parent;
+    }
+    return false;
+}
+
+// Lists what the player holds directly, and counts worn items and what is inside held containers.
+void reportCarried() {
+    int held = 0;
+    int wornCount = 0;
+    int inside = 0;
+    print("Held:");
+    for (object o in player.children) {
+        print($" {o}");
+        held++;
+        if (o.has(worn)) wornCount++;
+        if (o.has(container)) {
+            for (object c in o.children) inside++;
+        }
+    }
+    if (held == 0) print(" nothing");
+    print($".^Held: {held}. Worn: {wornCount}. Inside held containers: {inside}.^");
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        reportCarried();
+    }
+}
+
+verb Locate {
+    meta = true;
+    grammar = {.locate, NOUN};
+    void handler() {
+        if (isCarried(noun, player)) {
+            print($"{cThe(noun)} is carried");
+            if (noun.parent != player) print($" (in {the(noun.parent)})");
+            print(".^");
+        } else {
+            print($"{cThe(noun)} is not carried.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

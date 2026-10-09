@@ -1,0 +1,55 @@
+Room A
+You can see a table (on which is an apple), a crate (which is closed), a small bag (which is empty), a feather and a cup here.
+> weigh table
+Total weight: 2. Heavy items: 0.
+> weigh crate
+Total weight: 5. Heavy items: 1.
+> history
+Bag history: none.
+> open crate
+You open the crate, revealing a stone.
+> take stone
+Taken.
+> take apple
+Taken.
+> take bag
+Taken.
+> put stone in bag
+You put the stone into the small bag.
+> put apple in bag
+You put the apple into the small bag.
+> take feather
+Taken.
+> put feather in bag
+The small bag is full.
+> weigh bag
+Total weight: 7. Heavy items: 1.
+> weigh me
+Total weight: 8. Heavy items: 0.
+> history
+Bag history: stone, apple.
+> take apple from bag
+Removed.
+> put feather in bag
+You put the feather into the small bag.
+> put apple on table
+You put the apple on the table.
+> take cup
+Taken.
+> put cup in crate
+You put the cup into the crate.
+> close crate
+You close the crate.
+> weigh crate
+Total weight: 3. Heavy items: 0.
+> weigh table
+Total weight: 2. Heavy items: 0.
+> weigh me
+Total weight: 6. Heavy items: 0.
+> history
+Bag history: stone, apple, feather.
+> inventory
+You're carrying:
+  a small bag
+    a feather
+    a stone

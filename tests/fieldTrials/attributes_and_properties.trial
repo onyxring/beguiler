@@ -1,0 +1,41 @@
+Room A
+> flags
+quartz: polished.
+opal: none.
+flint: none.
+ruby: polished marked.
+> buff opal
+opal: polished.
+> buff ruby
+ruby: polished.
+> chip ruby
+ruby: chipped.
+> chip ruby
+ruby is already chipped.
+> flags
+quartz: polished.
+opal: polished.
+flint: none.
+ruby: chipped.
+> measure ruby
+ruby carats: 5.
+ruby has no weight.
+Scaled by 3: 15.
+> measure flint
+flint has no carats.
+flint weight: 7.
+> measure opal
+opal carats: 2.
+opal has no weight.
+Scaled by 3: 6.
+> tags
+ruby tags (3): red rare gem.
+quartz tags (2): clear gem.
+flint tags (1): rough.
+> order
+Order (4): quartz opal flint ruby.
+Codes (4): 5 10 30 99.
+> dirs
+ north, south, east, west, northeast, northwest, southeast, southwest, up above, ground, inside, outside.
+Directions: 12.
+The compass is concealed.

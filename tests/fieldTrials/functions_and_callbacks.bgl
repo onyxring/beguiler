@@ -1,0 +1,237 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: function values in members and arrays called later, lambdas with and without captures,
+// a rule list run in order where a rule can stop the run, a `string | func<void>` union discriminated
+// with `typeof`, named arguments and default parameter values, overloads picked by argument type,
+// and calling a parenthesized function value.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+enum eVerdict { pass, halt }
+
+union noteValue = string | func<void>;
+
+class Button : object {
+    func<void> onPress;
+    int presses;
+}
+
+class Sign : object {
+    string | func<void> message;
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Button redButton {
+    short_name = "red button";
+    name = {.red, .button};
+    parent = roomA;
+    attributes = {static};
+}
+
+Button greenButton {
+    short_name = "green button";
+    name = {.green, .button};
+    parent = roomA;
+    attributes = {static};
+}
+
+Sign plainSign {
+    short_name = "plain sign";
+    name = {.plain, .sign};
+    message = "The plain sign says: north.";
+    parent = roomA;
+    attributes = {static};
+}
+
+Sign lampSign {
+    short_name = "lamp sign";
+    name = {.lamp, .sign};
+    parent = roomA;
+    attributes = {static};
+}
+
+int  limit = 2;
+int  lightCount = 0;
+
+void redPressed()   { print("Red: a bell rings.^"); }
+void greenPressed() { lightCount++; print($"Green: light {lightCount}.^"); }
+void lampMessage()  { print($"The lamp sign lights {lightCount} times.^"); }
+
+// Rules: each reports and says whether the run goes on.
+eVerdict ruleFirst()  { print("rule 1^"); return eVerdict.pass; }
+eVerdict ruleLimit()  {
+    print("rule 2^");
+    if (limit < 3) { print("stopped by rule 2^"); return eVerdict.halt; }
+    return eVerdict.pass;
+}
+eVerdict ruleLast()   { print("rule 3^"); return eVerdict.pass; }
+
+array<func<eVerdict>> rules = { ruleFirst, ruleLimit, ruleLast };
+
+// Runs every rule in order until one halts; returns how many ran.
+int runRules() {
+    int ran = 0;
+    for (func<eVerdict> r in rules) {
+        ran++;
+        if (r() == eVerdict.halt) return ran;
+    }
+    return ran;
+}
+
+int twice(int n)  { return n * 2; }
+int square(int n) { return n * n; }
+
+array<func<int, int>> steps = { twice, square, (int n) => n + 1 };
+
+// Calls fn on each child of o.
+void eachChild(object o, func<void, object> fn) {
+    for (object c in o.children) fn(c);
+}
+
+void show(string | func<void> m) {
+    if (typeof(m) == eType.routine) {
+        func<void> f = (func<void>)m;
+        f();
+    } else {
+        print((string)m);
+        print("^");
+    }
+}
+
+// Overloads picked by the argument's type.
+void describe(int n)    { print($"int {n}^"); }
+void describe(string s) { print("string "); print(s); print("^"); }
+void describe(object o) { print($"object {o}^"); }
+
+void report(string label, int value, int width = 3, bool brackets = false) {
+    if (brackets) print("[");
+    print(label);
+    print($": {value} (width {width})");
+    if (brackets) print("]");
+    print("^");
+}
+
+func<int, int> pickStep(int i) {
+    if (i == 0) return twice;
+    return square;
+}
+
+verb Activate {
+    grammar = {{.activate, NOUN}};
+    void handler() {
+        if (!noun.is(Button)) { print("That is not a button.^"); return; }
+        Button b = (Button)noun;
+        b.presses++;
+        b.onPress();
+    }
+}
+
+verb Study {
+    grammar = {{.study, NOUN}};
+    void handler() {
+        if (!noun.is(Sign)) { print("There is nothing to read.^"); return; }
+        show(((Sign)noun).message);
+    }
+}
+
+verb RuleCheck {
+    grammar = {{.rules}};
+    void handler() {
+        int ran = runRules();
+        print($"ran {ran}^");
+    }
+}
+
+verb SetLimit {
+    grammar = {{.limit, NUMBER}};
+    void handler() {
+        limit = parsed_number;
+        print($"limit {limit}^");
+    }
+}
+
+verb RunSteps {
+    grammar = {{.steps, NUMBER}};
+    void handler() {
+        int v = parsed_number;
+        for (func<int, int> f in steps) {
+            v = f(v);
+            print($"{v} ");
+        }
+        print("^");
+        int second = steps[1](5);
+        print($"second step of 5: {steps[1](5)} ({second})^");
+        print($"picked: {(pickStep(0))(7)} {(pickStep(1))(7)}^");
+    }
+}
+
+verb Count {
+    grammar = {{.count}};
+    void handler() {
+        int buttons = 0;
+        int signs = 0;
+        eachChild(roomA, (object o) => {
+            if (o.is(Button)) buttons++;
+            else if (o.is(Sign)) signs++;
+        });
+        print($"buttons {buttons}, signs {signs}^");
+        int offset = 10;
+        func<int, int> addOffset = (int n) => n + offset;
+        print($"offset: {addOffset(5)}^");
+    }
+}
+
+verb Kinds {
+    grammar = {{.kinds}};
+    void handler() {
+        describe(42);
+        describe("text");
+        describe(redButton);
+        int k = 7;
+        describe(k);
+        string | func<void> u = redPressed;
+        ((func<void>)u)();
+        u = "union text";
+        print((string)u);
+        print("^");
+        array<string | func<void>> notes = { "note one", greenPressed, "note two" };
+        for (string | func<void> n in notes) show(n);
+    }
+}
+
+verb Named {
+    grammar = {{.named}};
+    void handler() {
+        report("a", 1);
+        report(value: 2, label: "b");
+        report("c", 3, brackets: true);
+        report(width: 9, label: "d", value: 4);
+        report("e", 5, 6, true);
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    redButton.onPress = redPressed;
+    greenButton.onPress = greenPressed;
+    lampSign.message = lampMessage;
+    rfalse;
+}

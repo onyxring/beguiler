@@ -1,0 +1,30 @@
+Room A
+A plain room.
+You can see an iron bar, a brass key, a coin and a shelf A here.
+> ints
+Second: 9. First is 4: true. First is 9: false.
+Now: 4 90 2, second 90.
+> words
+Second word: fig. First is the first: true.
+> items
+brass key weighs 2.
+brass key weighs 2.
+Second weighs 2. First is iron bar: true.
+After set: coin.
+Brass key now weighs 3.
+Pile second: coin.
+> members
+Shelf second: iron bar, weight 9.
+iron bar: 9.
+Ledger second: 20. First is 10: true.
+Ledger now: 10 25 30.
+> local
+Local second: 8.
+Local now: 7 80 9.
+Raw third: 7.
+> mixed
+Peek: iron bar. Second: brass key.
+Popped 2; second still 9.
+> ints
+Second: 9. First is 4: true. First is 9: false.
+Now: 4 90 2, second 90.

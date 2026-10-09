@@ -1,0 +1,168 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+// Library scoring options, read while verblib is included.
+const int MAX_SCORE      = 6;
+const int TASKS_PROVIDED = 0;
+const int NUMBER_TASKS   = 5;
+#i6 { Array task_scores -> 1 2 1 1 1; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+enum eTask     { takeBall, ballInBox, pushButton, readPlaque, visitB }
+bnum eTaskDone { takeBall, ballInBox, pushButton, readPlaque, visitB }
+
+array<string> taskNames  = { "taking the ball", "boxing the ball", "pressing the button",
+                             "reading the plaque", "visiting Room B" };
+array<int>    taskPoints = { 1, 2, 1, 1, 1 };
+
+eTaskDone doneFlags = 0;
+int       doneCount = 0;
+int       pointsEarned = 0;
+
+// What the status line showed when it was last drawn.
+object statusRoom;
+int    statusTasks = -1;
+int    statusScore = -1;
+
+eTaskDone flagFor(eTask t) {
+    return (eTaskDone)(1 << ((int)t - 1));
+}
+
+bool isDone(eTask t) {
+    return (doneFlags & flagFor(t)) != 0;
+}
+
+void award(eTask t) {
+    if (isDone(t)) return;
+    doneFlags = doneFlags | flagFor(t);
+    doneCount++;
+    pointsEarned += taskPoints[(int)t - 1];
+    Achieved((int)t - 1);
+}
+
+void printSummary() {
+    printLine($"{doneCount} of {taskNames.length} tasks done, {pointsEarned} of {MAX_SCORE} points.");
+    for (int i = 0; i < taskNames.length; i++) {
+        eTask t = (eTask)(i + 1);
+        printLine($"  [{isDone(t) ? "x" : " "}] {taskNames[i]}");
+    }
+}
+
+bool PrintTaskName(int task) {
+    printLine(taskNames[task]);
+    return true;
+}
+
+void NewRoom() {
+    if (location == roomB) award(eTask.visitB);
+}
+
+replace void DrawStatusLine() {
+    bgl.ui.statusBar.height = 1;
+    bgl.asm.setWindow(1);
+    bgl.asm.setCursor(1, 1);
+    print($"{location}  Tasks {doneCount}/{taskNames.length}  Score {score}");
+    bgl.asm.setWindow(0);
+    statusRoom  = location;
+    statusTasks = doneCount;
+    statusScore = score;
+}
+
+verb Tasks {
+    meta = true;
+    grammar = {.tasks};
+    void handler() { printSummary(); }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        printLine($"Status line: {statusRoom}, tasks {statusTasks}, score {statusScore}.");
+    }
+}
+
+extend class object {
+    string description;
+    object n_to;
+    object s_to;
+}
+
+object roomA {
+    "Room A";
+    description = "A lit room with a green button and a brass plaque. Room B is north.";
+    n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "A second lit room. Room A is south.";
+    s_to = roomA;
+    attributes = {light};
+}
+
+object ball {
+    "red ball";
+    parent = roomA;
+    name = {.red, .ball};
+    description = "A red ball.";
+    bool after() {
+        switch (action) {
+            case Take:   award(eTask.takeBall);
+            case Insert: if (second == box) award(eTask.ballInBox);
+        }
+        rfalse;
+    }
+}
+
+object box {
+    "wooden box";
+    parent = roomA;
+    name = {.wooden, .box};
+    description = "A wooden box.";
+    attributes = {container, open, static};
+}
+
+object button {
+    "green button";
+    parent = roomA;
+    name = {.green, .button};
+    description = "A green button.";
+    attributes = {scenery};
+    bool before() {
+        switch (action) {
+            case Push:
+                award(eTask.pushButton);
+                rtrue("Click.^");
+        }
+        rfalse;
+    }
+}
+
+object plaque {
+    "brass plaque";
+    parent = roomA;
+    name = {.brass, .plaque};
+    attributes = {scenery};
+    bool description() {
+        award(eTask.readPlaque);
+        rtrue("The plaque reads: Press the button.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+// After the program's entry points: grammar.h stubs any entry point not yet defined.
+#includeI6 "grammar"

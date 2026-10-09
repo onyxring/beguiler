@@ -1,0 +1,221 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: interpolated strings with expressions, objects and a conditional inside; the article
+// print rules (a, the, cA, cThe) on a plain object, objects with an "an" and a "some" article and a
+// proper-named object; stringObj built piece by piece from captured output, measured, indexed,
+// written in place, compared, switched on, appended to, sorted in an array, formatted and padded;
+// char inspection of a word the player typed (a SPECIAL grammar token).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    string article;
+}
+
+array<stringObj> written[6];
+array<object>    shown = { key, apple, water, bob };
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+object key {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+}
+
+object apple {
+    "apple";
+    parent = roomA;
+    name = {.apple};
+    article = "an";
+    description = "A green apple.";
+}
+
+object water {
+    "water";
+    parent = roomA;
+    name = {.water};
+    article = "some";
+    description = "Some water.";
+    attributes = {static};
+}
+
+object bob {
+    "Bob";
+    parent = roomA;
+    name = {.bob};
+    description = "Bob.";
+    attributes = {animate, proper, male};
+}
+
+object notebook {
+    "notebook";
+    parent = selfobj;
+    name = {.notebook};
+    bool description() {
+        if (written.length == 0) rtrue("The notebook is empty.^");
+        stringObj page;
+        for (int i = 0; i < written.length; i++) {
+            if (i > 0) page += ", ";
+            page += written[i];
+        }
+        rtrue($"The notebook reads: {page}.^");
+    }
+}
+
+// The text of a dictionary word, captured from its printed form.
+stringObj wordText(dictionaryWord w) {
+    stringObj s;
+    s.capture();
+    print(w);
+    s.release();
+    return s;
+}
+
+// The number of vowels in the text.
+int vowelCount(stringObj s) {
+    int n = 0;
+    for (int i = 0; i < s.length; i++) {
+        if (s[i].isVowel()) n++;
+    }
+    return n;
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Names {
+    meta = true;
+    grammar = {.names};
+    void handler() {
+        for (object o in shown) {
+            printLine($"{a(o)} / {the(o)} / {cA(o)} / {cThe(o)}");
+        }
+    }
+}
+
+verb Count {
+    meta = true;
+    grammar = {.count};
+    void handler() {
+        int n = 0;
+        for (object o in location.children) {
+            if (o != player) n++;
+        }
+        printLine($"{location} holds {n} thing{n == 1 ? "" : "s"}; you carry {player.children.length}.");
+    }
+}
+
+verb Write {
+    grammar = { {.write, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("You can only write a word the game knows.");
+            return;
+        }
+        dictionaryWord dw = (var)special_word;
+        stringObj w = wordText(dw);
+        int vowels = vowelCount(w);
+        if (!written.append(w)) {
+            printLine("The notebook is full.");
+            return;
+        }
+        print($"You write ~{w}~: {w.length} letter{w.length == 1 ? "" : "s"}, ");
+        printLine($"{vowels} vowel{vowels == 1 ? "" : "s"}.");
+        switch (w) {
+            case "brass", "key": printLine($"That word names {the(key)}.");
+            case "bob":          printLine($"That word names {bob}.");
+        }
+    }
+}
+
+verb Spell {
+    meta = true;
+    grammar = { {.spell, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("You can only spell a word the game knows.");
+            return;
+        }
+        dictionaryWord dw = (var)special_word;
+        stringObj w = wordText(dw);
+        stringObj up = w.toUpper();
+        stringObj spelled;
+        for (int i = 0; i < up.length; i++) {
+            if (i > 0) spelled += "-";
+            spelled = spelled.append(up[i]);
+        }
+        w[0] = w[0].toUpper();
+        printLine($"{spelled}, backwards {up.reverse()}, as a name {w}.");
+        if (w.startsWith("B")) printLine("It starts with B.");
+        if (up.contains("SS")) printLine($"SS is at position {up.indexOf("SS")}.");
+    }
+}
+
+verb Words {
+    meta = true;
+    grammar = {.words};
+    void handler() {
+        if (written.length == 0) {
+            printLine("No words are written.");
+            return;
+        }
+        array<stringObj> sorted[6];
+        sorted = written;
+        sorted.sort();
+        print("Sorted:");
+        for (int i = 0; i < sorted.length; i++) print($" {sorted[i]}");
+        printLine(".");
+        stringObj first = sorted[0];
+        stringObj last  = sorted[sorted.length - 1];
+        printLine($"First {first}, last {last}, compared {first.compareTo(last)}.");
+        if (first < last) printLine("First sorts before last.");
+        if (written.contains("key")) printLine("The word key is written.");
+        if (written[0] == "brass") printLine("The first word written is brass.");
+    }
+}
+
+verb Pad {
+    meta = true;
+    grammar = {.pad};
+    void handler() {
+        stringObj num = $"{turns}";
+        while (num.length < 3) num = num.prepend("0");
+        stringObj label = "Turn";
+        printLine(label.format("$0 $1 of $2", num, "999"));
+    }
+}
+
+verb Measure {
+    meta = true;
+    grammar = { {.measure, NOUN} };
+    void handler() {
+        stringObj d;
+        d.captureOutput(noun, description);
+        stringObj trimmed = d.trim();
+        printLine($"{cThe(noun)}: ~{trimmed}~ is {trimmed.length} characters.");
+        if (trimmed.endsWith(".")) printLine("It ends with a full stop.");
+    }
+}

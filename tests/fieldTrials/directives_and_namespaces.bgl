@@ -1,0 +1,211 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: #define / #redef / #undef with and without values, #if / #elif / #else over symbols and
+// #beguilerSettings.<prop> reads, settings read in expressions, #message and #warning, superposed
+// declarations used and unused, a namespace object with type aliases and value aliases (alias and
+// auto) in an included part, #using, #include @"…", and raw string literals.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    framePoolSize = 40;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#includeI6 "grammar"
+
+#define TRIAL_LEVEL 2
+#define CHECKS
+#define ZERO_FLAG 0
+#define LABEL "level label"
+
+#message "directives_and_namespaces: #message reached"
+#warning "directives_and_namespaces: #warning reached"
+#include @"directives_and_namespaces_parts/directives_and_namespaces_kit"
+
+#using kit
+
+extend class object {
+    string description;
+}
+
+//-- Conditional compilation -------------------------------------------------
+
+#if TRIAL_LEVEL > 2
+    const string levelNote = "Level above 2.";
+#elif TRIAL_LEVEL == 2
+    const string levelNote = "Level is 2.";
+#else
+    const string levelNote = "Level below 2.";
+#endif
+
+#redef TRIAL_LEVEL 3
+
+#if TRIAL_LEVEL > 2
+    const string redefNote = "Redefined level above 2.";
+#elif TRIAL_LEVEL == 2
+    const string redefNote = "Redefined level is 2.";
+#else
+    const string redefNote = "Redefined level below 2.";
+#endif
+
+#if CHECKS && PART_LOADED
+    const string checksNote = "Checks on, part loaded.";
+#else
+    const string checksNote = "Checks off or part missing.";
+#endif
+
+#undef CHECKS
+
+#if !CHECKS
+    const string undefNote = "Checks undefined.";
+#else
+    const string undefNote = "Checks still defined.";
+#endif
+
+#if ZERO_FLAG
+    const string zeroDefinedNote = "Zero flag is defined.";
+#else
+    const string zeroDefinedNote = "Zero flag is not defined.";
+#endif
+
+#if ZERO_FLAG == false
+    const string zeroValueNote = "Zero flag equals false.";
+#else
+    const string zeroValueNote = "Zero flag is not false.";
+#endif
+
+#if TARGET_ZCODE
+    const string machineNote = "Z-machine.";
+#else
+    const string machineNote = "Glulx.";
+#endif
+
+#if #beguilerSettings.target == "Z5"
+    const string targetNote = "Target setting is z5.";
+#elif #beguilerSettings.target == "z8"
+    const string targetNote = "Target setting is z8.";
+#else
+    const string targetNote = "Target setting is Glulx.";
+#endif
+
+#if #beguilerSettings.framePoolSize > 32
+    const string poolNote = "Frame pool above 32.";
+#else
+    const string poolNote = "Frame pool 32 or less.";
+#endif
+
+#if #beguilerSettings.economy
+    const string economyNote = "Economy on.";
+#else
+    const string economyNote = "Economy off.";
+#endif
+
+#if beguiler > 0 && beguilerMajor >= 0
+    const string versionNote = "Version symbols defined.";
+#else
+    const string versionNote = "Version symbols missing.";
+#endif
+
+const int    levelValue   = TRIAL_LEVEL;
+const string labelValue   = LABEL;
+const int    poolSize     = #beguilerSettings.framePoolSize;
+const int    forInScratch = #beguilerSettings.forInScratchSize;
+const bool   autoInit     = #beguilerSettings.autoInitialize;
+const string targetName   = #beguilerSettings.target;
+
+//-- superposed ----------------------------------------------------------------
+
+superposed int addTen(int n) { return n + 10; }
+
+// Never called, so never emitted; it names an I6 routine that does not exist.
+extern void missingRoutine();
+superposed void neverCalled() { missingRoutine(); }
+
+//-- Namespace use ---------------------------------------------------------------
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+kitGauge gaugeA { reading = 4; }
+kitGauge gaugeB { reading = 9; }
+
+void showGauge(kit.gauge g) { g.show(); }
+
+kit.gauge pickGauge(int n) {
+    if (n == 1) return gaugeA;
+    return gaugeB;
+}
+
+shade favoriteShade = shade.vivid;
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb Symbols {
+    grammar = {.symbols};
+    void handler() {
+        print(partLevelNote); print("^");
+        print(levelNote); print("^");
+        print(redefNote); print("^");
+        print(checksNote); print("^");
+        print(undefNote); print("^");
+        print(zeroDefinedNote); print("^");
+        print(zeroValueNote); print("^");
+        print(machineNote); print("^");
+        print(versionNote); print("^");
+        print($"Level value: {levelValue}. Label: {labelValue}.^");
+        print($"Inline level: {TRIAL_LEVEL}.^");
+    }
+}
+
+verb Settings {
+    grammar = {.settings};
+    void handler() {
+        print(targetNote); print("^");
+        print(poolNote); print("^");
+        print(economyNote); print("^");
+        print($"Target: {targetName}. Pool: {poolSize}. For-in scratch: {forInScratch}.^");
+        if (autoInit) print("Auto-initialize on.^");
+        else print("Auto-initialize off.^");
+    }
+}
+
+verb Spaces {
+    grammar = {.spaces};
+    void handler() {
+        showGauge(pickGauge(1));
+        kit.gauge g = pickGauge(2);
+        g.show();
+        gauge h = gaugeA;
+        print($"Bare type alias: {h.reading}.^");
+        kit.shade s = kit.shade.deep;
+        print($"Deep: {(int)s}. Favorite: {(int)favoriteShade}. Pale: {(int)shade.pale}.^");
+        print($"Doubled: {kit.tools.doubled(21)}. Via using: {tools.doubled(5)}. Part: {partDoubled}.^");
+        kit.counters.hit();
+        counters.hit();
+        print($"Hits: {kit.counters.hits}. Bare read: {counters.hits}.^");
+        print($"Add ten: {addTen(5)}.^");
+    }
+}
+
+verb Raw {
+    grammar = {.raw};
+    void handler() {
+        string path = @"C:\Users\trial\file.bgl";
+        print(path); print("^");
+        print(@"caret ^ tilde ~ backslash-n \n quote \" end"); print("^");
+        print(@"tab \t stays"); print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+

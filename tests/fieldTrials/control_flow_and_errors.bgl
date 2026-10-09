@@ -1,0 +1,292 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: `switch` with several values per case, ranges and comparison guards, `break` and
+// `continue` in loops and in a switch inside a loop, `do … until` and `do … while`, `for` in its
+// C-style, range, array and children forms, nested loops, an early `return` from nested loops, nested
+// ternaries, compound assignments, try/catch/throw across nested calls with a re-throw and a thrown
+// object, and integer edge cases: overflow, signed division and modulus, `uint` and shifts.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = roomA;
+}
+
+object steelBox {
+    short_name = "steel box";
+    name = {.steel, .box};
+    parent = roomA;
+    attributes = {container, openable, static};
+}
+
+array<int> values = {4, -2, 9, 0, 3};
+int depthReached = 0;
+
+string classifyNumber(int n) {
+    switch (n) {
+        case 0:             return "zero";
+        case 1, 3, 5, 7, 9: return "odd digit";
+        case 2, 4, 6, 8:    return "even digit";
+        case 10 to 19:      return "teen";
+        case 20, 30 to 39:  return "twenty or thirties";
+        case >= 100:        return "large";
+        default:            return "other";
+    }
+}
+
+string sizeWord(int n) {
+    return n < 10 ? (n < 5 ? "small" : "medium") : n < 100 ? "large" : "huge";
+}
+
+// The first pair (in array order) whose sum exceeds the limit, as a*100+b, or -1.
+int firstPairOver(int limit) {
+    for (int a in values) {
+        for (int b in values) {
+            if (a + b > limit) return a * 100 + b;
+        }
+    }
+    return -1;
+}
+
+void level3(int n) {
+    depthReached = 3;
+    if (n > 0) throw n * 10;
+    print("level 3 done^");
+}
+
+void level2(int n) {
+    depthReached = 2;
+    level3(n);
+    print("level 2 done^");
+}
+
+int level1(int n) {
+    try {
+        level2(n);
+    } catch (int e) {
+        if (e > 50) throw e + 1;
+        print($"level 1 caught {e}^");
+        return e;
+    }
+    return 0;
+}
+
+// Throws the first container found in o.
+void scanFor(object o) {
+    for (object c in o.children) {
+        if (c.has(container)) throw c;
+    }
+}
+
+verb Classify {
+    grammar = {{.classify, NUMBER}};
+    void handler() {
+        print(classifyNumber(parsed_number));
+        print("^");
+    }
+}
+
+verb Countdown {
+    grammar = {{.countdown, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        do {
+            print($"{n} ");
+            n--;
+        } until (n <= 0);
+        print("go^");
+        int p = 1;
+        do {
+            p *= 2;
+        } while (p < parsed_number);
+        print($"power {p}^");
+    }
+}
+
+verb Loops {
+    grammar = {{.loops}};
+    void handler() {
+        print("c-style: ");
+        for (int i = 0; i < 10; i++) {
+            if (i == 7) break;
+            if (i % 3 == 0) continue;
+            print(i);
+        }
+        print("^");
+
+        print("switch: ");
+        for (int k in 1 to 6) {
+            switch (k) {
+                case 2:
+                    continue;
+                case 4, 5:
+                    if (k == 4) break;
+                    print("[5]");
+                case 6:
+                    break;
+            }
+            print($"{k} ");
+        }
+        print("end^");
+
+        int total = 0;
+        for (int v in values) {
+            if (v < 0) continue;
+            if (v == 0) break;
+            total += v;
+        }
+        print($"array sum: {total}^");
+
+        int start = 10;
+        int count = 3;
+        print("range:");
+        for (int r in start to start + count - 1) print($" {r}");
+        print("^");
+
+        print("nested:");
+        for (int i2 in 1 to 3) {
+            for (int j in 1 to 3) {
+                if (j > i2) break;
+                print($" {i2}{j}");
+            }
+        }
+        print("^");
+
+        int things = 0;
+        for (object o in roomA.children) {
+            if (o == player) continue;
+            things++;
+        }
+        print($"children: {things}^");
+
+        int w = 100;
+        int halvings = 0;
+        while (true) {
+            w /= 2;
+            halvings++;
+            if (w < 10) break;
+        }
+        print($"while: {w} after {halvings}^");
+    }
+}
+
+verb Pairs {
+    grammar = {{.pairs, NUMBER}};
+    void handler() {
+        int r = firstPairOver(parsed_number);
+        if (r == -1) print("no pair^");
+        else print($"pair {r / 100}+{r % 100}^");
+    }
+}
+
+verb Measure {
+    grammar = {{.size, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int adjusted = (n > 50 ? n : n * 2) + 1;
+        print($"{sizeWord(n)}, {adjusted}^");
+    }
+}
+
+verb Compound {
+    grammar = {{.compound}};
+    void handler() {
+        int n = 5;
+        n += 3;  print($"{n} ");
+        n -= 1;  print($"{n} ");
+        n *= 4;  print($"{n} ");
+        n /= 3;  print($"{n} ");
+        n %= 4;  print($"{n} ");
+        n <<= 4; print($"{n} ");
+        n >>= 2; print($"{n} ");
+        n |= 3;  print($"{n} ");
+        n &= 5;  print($"{n} ");
+        n ^= 1;  print($"{n}^");
+    }
+}
+
+verb Raise {
+    grammar = {{.raise, NUMBER}};
+    void handler() {
+        depthReached = 0;
+        try {
+            int r = level1(parsed_number);
+            print($"returned {r}^");
+        } catch (int e) {
+            print($"outer caught {e}^");
+        }
+        print($"depth {depthReached}^");
+    }
+}
+
+verb ScanRoom {
+    grammar = {{.scan}};
+    void handler() {
+        try {
+            scanFor(roomA);
+            print("nothing found^");
+        } catch (object found) {
+            print($"found {found}^");
+        }
+    }
+}
+
+verb Edges {
+    grammar = {{.edges}};
+    void handler() {
+        int big = 32767;
+        big++;
+        int sum = 32767;
+        int one = 1;
+        sum = sum + one;
+        int low = -32768;
+        low--;
+        print($"wrap: {big} {sum} {low}^");
+
+        int f = 200;
+        print($"multiply: {f * f}^");
+
+        int a = -7;
+        int b = 2;
+        int c = 7;
+        int d = -2;
+        print($"divide: {a / b} {c / d} {a / d}^");
+        print($"modulus: {a % b} {c % d} {a % d}^");
+
+        uint u = (uint)-1;
+        uint two = 2;
+        uint ten = 10;
+        print($"unsigned: {u} {u / two} {u % ten}");
+        if (u > (uint)1) print(" larger");
+        print("^");
+
+        int neg = -256;
+        print($"shift: {u >> 12} {neg >> 4}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

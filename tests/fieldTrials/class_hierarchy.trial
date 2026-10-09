@@ -1,0 +1,44 @@
+Room A
+You can see a pebble, a hammer, a knife and a saw here.
+> use pebble
+Nothing happens when you use the pebble.
+> use hammer
+You use the hammer. Uses left: 1.
+> use knife
+You use the knife. Uses left: 0.
+The edge cuts cleanly.
+> use knife
+The knife is worn out.
+> use saw
+You use the saw. Uses left: 2.
+The edge cuts cleanly.
+> use hammer
+You use the hammer. Uses left: 0.
+> use hammer
+The hammer is worn out.
+> appraise saw
+The saw: blade, worth 2.75. Offer: 1.37.
+> appraise hammer
+The hammer: tool, worth 1.50. Offer: 0.75.
+> appraise pebble
+The pebble: item, worth 0.05. Offer: 0.02.
+> compare hammer with knife
+The hammer and the knife cost the same.
+> compare pebble with saw
+The pebble is cheaper than the saw.
+> compare saw with knife
+The saw costs more than the knife.
+> inspect pebble
+The pebble has no mark.
+> inspect hammer
+The hammer is stamped H.
+> inspect knife
+The knife has 0 uses left.
+> tally
+item: pebble
+tool: hammer
+blade: knife
+blade: saw
+Items: 4. Total: 5.80. Dearest: the saw. Appraisals: 3.
+> examine saw
+A saw.

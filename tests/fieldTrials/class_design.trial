@@ -1,0 +1,27 @@
+Room A
+> panels
+Panel A: 6 by 8.
+Panel B: 10 by 12.
+Height read: 12.
+Painted 1. Paints: 1.
+Painted 2. Paints: 1.
+Panel B paints: 1.
+> dial
+Level: 12.
+Level: 10. Writes: 2.
+> grid
+Cells: 4 0 7 9. Returned: 9. Writes: 3.
+> ranks
+low <=> high: negative.
+high <=> high: zero.
+low < mid: yes.
+mid > high: no.
+high >= mid: yes.
+mid <= mid: yes.
+Sorted: low, mid, high.
+> lantern
+Shines at 4.
+Weighs 2.
+Brightness 4, weight 2, kind lit.
+Weighs 3.
+Kind: lit.

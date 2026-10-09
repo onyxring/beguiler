@@ -1,0 +1,189 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: #i6 islands at file scope and inside routines, reading and writing Beguile locals,
+// globals and objects (raw names and $i6Name / $i6Expr); extern declarations of an I6 global,
+// constant, routine, attribute and enum defined in an #i6 island; asI6 on a global, an object, a
+// member and a method, and asBgl on externs; an emitter reaching another through $i6Expr; replacing
+// a standard-library routine; and #startup / #emitfirst / #emitlast placement.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+// Placed ahead of the library, so the library's `Default MAX_CARRIED 100` does not apply.
+#emitfirst {
+    Constant MAX_CARRIED = 2;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#includeI6 "grammar"
+
+#i6 {
+    Global i6Counter = 10;
+    Constant I6_LIMIT = 25;
+    Attribute polished;
+    Constant SHADE_LIGHT = 1;
+    Constant SHADE_DARK = 2;
+    [ I6Double x; return x * 2; ];
+}
+
+extern int i6Counter asBgl counter;
+extern const int I6_LIMIT;
+extern int I6Double(int x);
+extern attribute polished asBgl shiny;
+extern enum eShade { SHADE_LIGHT, SHADE_DARK }
+extern int LateValue();
+extern void I6Shine(object o);
+extern int I6ReadTally();
+
+#emitlast {
+    [ LateValue; return i6Tally + 100; ];
+}
+
+extend class object {
+    string description;
+}
+
+class Item : object {
+    int weight asI6 heft = 0;
+    void ring() asI6 itemRing {
+        print($"The {self} rings. Weight {weight}.^");
+    }
+}
+
+int tally asI6 i6Tally = 0;
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Item brassKey asI6 i6Key {
+    short_name = "brass key";
+    name = {.brass, .key};
+    weight = 3;
+    parent = roomA;
+}
+
+Item ironBar {
+    short_name = "iron bar";
+    name = {.iron, .bar};
+    weight = 7;
+    parent = roomA;
+}
+
+Item tinCup {
+    short_name = "tin cup";
+    name = {.tin, .cup};
+    weight = 1;
+    parent = roomA;
+}
+
+// A file-scope island after the declarations it names.
+#i6 {
+    [ I6Shine o;
+        print (name) o, ": ";
+        if (o has polished) print "shiny^"; else print "dull^";
+    ];
+    [ I6ReadTally; return $i6Name(tally); ];
+}
+
+int bump(int n) { return n + 1; }
+
+emitter int tripled(int v){ ($v * 3) }
+emitter int sixfold(int v){ ($i6Expr(tripled($v)) * 2) }
+emitter int heftOf(object o){ ($o.$i6Name(Item.weight)) }
+
+// #startup runs inside bglInit(), before the non-constant global initializers.
+int startupMark;
+#startup {
+    startupMark = 7;
+}
+int readMark() { return startupMark; }
+int seenAtInit = readMark();
+
+replace void ScoreSub() {
+    print("Score routine replaced.^");
+    replaced();
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        print($"Counter: {counter}. Limit: {I6_LIMIT}. Double: {I6Double(21)}.^");
+        counter = counter + 5;
+        print($"Counter now: {counter}.^");
+        eShade s = eShade.SHADE_DARK;
+        if (s == eShade.SHADE_DARK) print($"Shade value: {(int)s}.^");
+        print($"Late value: {LateValue()}.^");
+    }
+}
+
+verb Islands {
+    grammar = {.islands};
+    void handler() {
+        int local = 4;
+        #i6 local = $i6Expr(bump(local));
+        #i6 {
+            local = $i6Name(bump)(local);
+            $i6Name(tally) = $i6Name(tally) + local;
+            i6Counter = i6Counter + 1;
+            if ($i6Name(brassKey) in player) print "Key held.^"; else print "Key not held.^";
+        }
+        print($"Local: {local}. Tally: {tally}. Counter: {counter}. Read back: {I6ReadTally()}.^");
+    }
+}
+
+verb Emitters {
+    grammar = {.emitters};
+    void handler() {
+        print($"Sixfold 2: {sixfold(2)}. Key heft: {heftOf(brassKey)}. Bar heft: {heftOf(ironBar)}.^");
+    }
+}
+
+verb Startup {
+    grammar = {.startup};
+    void handler() {
+        print($"Startup mark: {startupMark}. Seen at init: {seenAtInit}.^");
+    }
+}
+
+verb Buff {
+    grammar = {{.buff, NOUN}};
+    void handler() {
+        if (noun.has(shiny)) {
+            print("It is already buffed.^");
+            return;
+        }
+        noun.give(shiny);
+        print($"You buff the {noun}.^");
+    }
+}
+
+verb Gleam {
+    grammar = {.gleam};
+    void handler() {
+        I6Shine(brassKey);
+        I6Shine(ironBar);
+        #i6 give $i6Name(ironBar) polished;
+        I6Shine(ironBar);
+    }
+}
+
+verb Chime {
+    grammar = {.chime};
+    void handler() {
+        #i6 $i6Name(brassKey).$i6Name(Item.ring)();
+        brassKey.ring();
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

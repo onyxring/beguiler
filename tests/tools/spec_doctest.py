@@ -246,18 +246,19 @@ def try_program(src, target, work, run_it=True):
     os.makedirs(work, exist_ok=True)
     own = re.search(r'#beguilerSettings\s*\{[^}]*\}', src)
     if own:   # a complete program brings its own settings; it runs on the target they name
-        target = 'glulx' if re.search(r'target\s*=\s*"?glulx', own.group(0), re.I) else 'z5'
+        # a block that names no target gets the language default, Glulx
+        target = 'z5' if re.search(r'target\s*=\s*"?z', own.group(0), re.I) else 'glulx'
         src = src.replace(own.group(0), own.group(0)[:-1] + ' informName = "none"; }', 1)
-        if target == 'glulx':
-            src = re.sub(r'((?:void|int)\s+main\s*\(\s*\)\s*\{)', r'\1 glulxConsole();', src, count=1, flags=re.I)
     prog = settings(target) if target != 'stdlib' and not own else ''
     if target == 'stdlib':
         src = stdlib_game(src)
     if target == 'glulx':
         shutil.copy(GLULX_CONSOLE, os.path.join(work, 'glulxConsole.bgl'))
         prog += '#include "glulxConsole.bgl"\n'
-        if not own:
+        if 'bglInit();' in src and not own:
             src = src.replace('bglInit();', 'bglInit(); glulxConsole();', 1)
+        else:   # a block's own entry point opens the console first
+            src = re.sub(r'((?:void|int)\s+main\s*\(\s*\)\s*\{)', r'\1 glulxConsole();', src, count=1, flags=re.I)
     path = os.path.join(work, 'doc.bgl')
     open(path, 'w', encoding='utf-8').write(prog + src)
     code, out = run([BEGUILER, '-o', os.path.join(work, 'out'), path], work)

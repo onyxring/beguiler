@@ -1,0 +1,45 @@
+Room A
+> probe
+Counter: 10. Limit: 25. Double: 42.
+Counter now: 15.
+Shade value: 2.
+Late value: 100.
+> islands
+Key not held.
+Local: 6. Tally: 6. Counter: 16. Read back: 6.
+> probe
+Counter: 16. Limit: 25. Double: 42.
+Counter now: 21.
+Shade value: 2.
+Late value: 106.
+> emitters
+Sixfold 2: 12. Key heft: 3. Bar heft: 7.
+> startup
+Startup mark: 7. Seen at init: 7.
+> gleam
+brass key: dull
+iron bar: dull
+iron bar: shiny
+> buff key
+You buff the brass key.
+> buff key
+It is already buffed.
+> gleam
+brass key: shiny
+iron bar: shiny
+iron bar: shiny
+> chime
+The brass key rings. Weight 3.
+The brass key rings. Weight 3.
+> take brass key
+Taken.
+> take iron bar
+Taken.
+> take tin cup
+You're carrying too many things already.
+> islands
+Key held.
+Local: 6. Tally: 12. Counter: 22. Read back: 12.
+> score
+Score routine replaced.
+You have so far scored 0 out of a possible 0, in 14 turns.

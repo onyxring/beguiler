@@ -1,0 +1,158 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: similar objects that need disambiguation, a parse_name routine whose accepted words
+// depend on state, a class of identical items with a plural name and a plural dictionary word, the
+// pluralname, proper and article conventions, a short_name routine whose text follows state, invent
+// and describe routines, and code that reads, compares and prints dictionary words (an object's name
+// words and a member array of words).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#using bgl.printRules;
+
+extend class object {
+    stringOrRoutine description;
+}
+
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Ball : object {
+    description = "A ball.";
+}
+
+Ball redBall       { short_name = "red ball";        name = {.red, .ball};          parent = roomA; }
+Ball blueBall      { short_name = "blue ball";       name = {.blue, .ball};         parent = roomA; }
+Ball largeBlueBall { short_name = "large blue ball"; name = {.large, .blue, .ball}; parent = roomA; }
+
+class GoldCoin : object {
+    short_name = "gold coin";
+    string plural = "gold coins";
+    name = {.gold, .coin, ..coins};
+    description = "A gold coin.";
+}
+
+GoldCoin coin1 { parent = roomA; }
+GoldCoin coin2 { parent = roomA; }
+GoldCoin coin3 { parent = roomA; }
+
+object itemSeven {
+    short_name = "Item Seven";
+    name = {.item, .seven};
+    parent = roomA;
+    description = "Item Seven.";
+    attributes = {proper, static};
+}
+
+object sand {
+    short_name = "sand";
+    string article = "some";
+    name = {.sand};
+    parent = roomA;
+    description = "Sand.";
+}
+
+object scissors {
+    short_name = "scissors";
+    name = {.scissors};
+    parent = roomA;
+    description = "Scissors.";
+    bool describe() {
+        rtrue("^The scissors lie open on the floor.^");
+    }
+    attributes = {pluralname};
+}
+
+object lamp {
+    name = {.lamp};
+    parent = roomA;
+    bool short_name() {
+        if (has(on)) rtrue("lit lamp");
+        rtrue("unlit lamp");
+    }
+    bool description() {
+        rtrue($"The lamp is {has(on) ? "on" : "off"}.^");
+    }
+    bool invent() {
+        if (inventory_stage == 2 && has(on)) rtrue(" (glowing)");
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+object jar {
+    short_name = "glass jar";
+    parent = roomA;
+    bool labelled = false;
+    int parse_name() {
+        int n = 0;
+        dictionaryWord w = NextWord();
+        while (w == .glass || w == .jar || (labelled && w == .labelled)) {
+            n++;
+            w = NextWord();
+        }
+        return n;
+    }
+    bool description() {
+        labelled = true;
+        rtrue("A glass jar. A label on it reads JAM.^");
+    }
+}
+
+object sorter {
+    array<dictionaryWord> colorWords = {.red, .green, .blue};
+    int lookups = 0;
+
+    // The first of o's name words that is a color word, or null when there is none.
+    dictionaryWord colorOf(object o) {
+        lookups++;
+        for (int i = 0; i < o.name.length; i++) {
+            dictionaryWord w = o.name[i];
+            for (dictionaryWord c in colorWords) {
+                if (w == c) return w;
+            }
+        }
+        return null;
+    }
+}
+
+verb ColorQuery {
+    void handler() {
+        dictionaryWord w = sorter.colorOf(noun);
+        if (w == null) print($"{cThe(noun)} has no color word.");
+        else print($"{cThe(noun)}: {w}.");
+        print($" Lookups: {sorter.lookups}.^");
+    }
+    grammar = {{.color, NOUN}};
+}
+
+verb Words {
+    void handler() {
+        for (int i = 0; i < noun.name.length; i++) {
+            if (i > 0) print(" ");
+            print(noun.name[i]);
+        }
+        if (noun == largeBlueBall) print(" (the large one)");
+        print("^");
+    }
+    grammar = {{.words, NOUN}};
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

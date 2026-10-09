@@ -1,0 +1,69 @@
+/*  Field trial part — included by multi_file_and_namespaces.bgl. Not a trial on its own.  */
+
+extend class object {
+    stringOrRoutine description;
+}
+
+enum eSize { small, medium, large }
+
+class Crate : object {
+    int volume;
+}
+
+// Measuring helpers, reached as kit.measure.
+object _kitMeasure {
+    const int smallLimit = 10;
+    eSize classify(int volume) {
+        if (volume <= smallLimit) return eSize.small;
+        if (volume <= 50) return eSize.medium;
+        return eSize.large;
+    }
+    string sizeName(eSize s) {
+        switch (s) {
+            case eSize.small:  return "small";
+            case eSize.medium: return "medium";
+            default:           return "large";
+        }
+    }
+}
+
+// Shelf rules, reached as kit.shelf (a compile-time alias).
+object _kitShelf {
+    bool isFull(object holder) { return countCrates(holder) >= maxCrates; }   // both declared later
+}
+
+object kit {
+    alias size  for eSize;
+    alias crate for Crate;
+}
+extend kit {
+    auto  measure = _kitMeasure;
+    alias shelf   = _kitShelf;
+}
+
+object roomA {
+    short_name = "Room A";
+    description = describeRoomA;        // a routine in the routines part, included after this file
+    attributes = {light};
+}
+
+kit.crate redCrate {
+    short_name = "red crate";
+    name = {.red, .crate};
+    volume = 8;
+    parent = roomA;
+}
+
+kit.crate blueCrate {
+    short_name = "blue crate";
+    name = {.blue, .crate};
+    volume = 30;
+    parent = roomA;
+}
+
+kit.crate greenCrate {
+    short_name = "green crate";
+    name = {.green, .crate};
+    volume = 70;
+    parent = selfobj;
+}

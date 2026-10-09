@@ -1,0 +1,118 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+class Item : object {
+    int weight;
+    bool isHeavy() { return weight >= 5; }
+}
+
+class LimitedBag : object {
+    int limit;
+    array<object> history[4];
+    bool isFull() { return children.length >= limit; }
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object table {
+    short_name = "table";
+    name = {.table};
+    parent = roomA;
+    attributes = {supporter, static};
+}
+
+object crate {
+    short_name = "crate";
+    name = {.crate};
+    parent = roomA;
+    attributes = {container, openable, static};
+}
+
+LimitedBag smallBag {
+    short_name = "small bag";
+    name = {.small, .bag};
+    limit = 2;
+    parent = roomA;
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (isFull()) rtrue("The small bag is full.^");
+        }
+        rfalse;
+    }
+    bool after() {
+        switch (action) {
+            case Receive: history.enqueue(noun);
+        }
+        rfalse;
+    }
+    attributes = {container, open};
+}
+
+Item apple   { short_name = "apple";   name = {.apple};   weight = 2; parent = table; }
+Item stone   { short_name = "stone";   name = {.stone};   weight = 5; parent = crate; }
+Item feather { short_name = "feather"; name = {.feather}; weight = 1; parent = roomA; }
+Item cup     { short_name = "cup";     name = {.cup};     weight = 3; parent = roomA; }
+
+// The total weight of every Item inside holder, at any depth.
+int totalWeight(object holder) {
+    int total = 0;
+    for (object o in holder.children) {
+        if (o.is(Item)) total += ((Item)o).weight;
+        total += totalWeight(o);
+    }
+    return total;
+}
+
+// How many heavy Items are directly inside holder.
+int heavyCount(object holder) {
+    int n = 0;
+    for (object o in holder.children) {
+        if (o.is(Item) && ((Item)o).isHeavy()) n++;
+    }
+    return n;
+}
+
+verb Weigh {
+    void handler() {
+        print($"Total weight: {totalWeight(noun)}. Heavy items: {heavyCount(noun)}.^");
+    }
+    grammar = {{.weigh, NOUN}};
+}
+
+verb History {
+    void handler() {
+        print("Bag history: ");
+        if (smallBag.history.length == 0) print("none");
+        for (int i = 0; i < smallBag.history.length; i++) {
+            if (i > 0) print(", ");
+            print(smallBag.history[i]);
+        }
+        print(".^");
+    }
+    grammar = {{.history}};
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

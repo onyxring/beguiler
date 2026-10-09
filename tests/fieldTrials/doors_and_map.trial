@@ -1,0 +1,67 @@
+Room A
+> rooms
+Room A: n e u d (seen)
+Room B: u
+Room C: d
+Room D: w
+Room E: s
+Seen 1 of 5. Arrivals: 1.
+> examine wall
+A stone wall.
+> north
+The gate is shut.
+> west
+You can't go that way.
+> up
+Room C
+Room C. Stairs lead down.
+> examine wall
+A stone wall.
+> north
+The only way out of Room C is down.
+> down
+Room A
+Room A. Stairs lead up and down. A green door is east. A gate is north.
+You can see a green door here.
+> down
+Room B
+Room B. Stairs lead up.
+You can see a lever here.
+> examine wall
+A stone wall.
+> up
+The bottom step creaks. You stay where you are.
+> pull lever
+You pull the lever. Somewhere above, a gate opens.
+> pull lever
+The lever is already down.
+> up
+Room A
+Room A. Stairs lead up and down. A green door is east. A gate is north.
+You can see a green door here.
+> open door
+You open the green door.
+> east
+Room D
+Room D. The green door is west.
+You can see a green door here.
+> examine wall
+You can't see any such thing.
+> west
+Room A
+Room A. Stairs lead up and down. A green door is east. A gate is north.
+You can see a green door here.
+> north
+Room E
+Room E. The gate is south.
+> rooms
+Room A: n e u d (seen)
+Room B: u (seen)
+Room C: d (seen)
+Room D: w (seen)
+Room E: s (seen)
+Seen 5 of 5. Arrivals: 8.
+> south
+Room A
+Room A. Stairs lead up and down. A green door is east. A gate is north.
+You can see a green door here.

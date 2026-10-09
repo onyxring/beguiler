@@ -1,0 +1,44 @@
+Room A
+> styles
+Bold, italic, underlined, reversed, fixed.
+Emphasized, Header, Alert, User one.
+> links
+A button, a lever and a broom.
+Hyperlinks supported: true.
+> yank
+The lever moves (1).
+> linkval 1
+Broom link chosen.
+> linkval 2
+Bucket link chosen.
+> linkval 5
+No link 5.
+> unicode
+Escapes: café, crème, naïve, señor, æ, ß, £5.
+Typed: café, crème, naïve, señor.
+Glulx: © 2027 — ✓ Ω “quoted”.
+Numeric: naïve, naïve.
+> chars
+Letters: é Ω é ñ.
+Codes: 233 937.
+Same: true. After e: true. Ignoring case: true.
+Upper É, lower ñ.
+Vowel: true. Alpha: true. Upper: true. Digit: true.
+> strings
+Text: café crème
+Length 10. crème at 5. Same ignoring case: true.
+Upper: CAFÉ CRÈME
+Lower: école über
+> floats
+Area: 19.6350
+Average: 8.3333
+Root two: 1.4142
+Negative: -1.2500
+Whole part 19. Bigger than 19: true.
+Interpolated: 5.0000.
+> textobj
+CAFÉ CRÈME / café crème
+crème at 5; has café: true
+same ignoring case: true
+café noir / emèrc éfac
+xyz! (4)

@@ -1,0 +1,72 @@
+Room A
+Room A.
+You can see a stone slab and a paper tag here.
+> census
+Live: 0. Created: 0.
+> examine tag
+The tag reads Fragile. Weight 2.
+> measure
+Slab: 3 by 4, area 12.
+Constant plate: area 30.
+Run-time plate: area 14.
+Named plate: area 9.
+> probe
+start
+[tracer init]
+inside 1
+[tracer release]
+[tracer init]
+before return 2
+[tracer release]
+> spawn
+[create token 1]
+Token 1 appears.
+> spawn
+[create token 2]
+Token 2 appears.
+> census
+Live: 2. Created: 2. Free: 1.
+> spawn
+[create token 3]
+Token 3 appears.
+> spawn
+The pool is exhausted.
+> census
+Live: 3. Created: 3. Free: 0.
+> look
+Room A
+Room A.
+You can see a token 3, a token 2, a token 1, a stone slab and a paper tag here.
+> polish 2
+Token 2 polished. Uses: 1.
+> polish 2
+Token 2 polished. Uses: 2.
+> scrap 2
+[destroy token 2]
+Scrapped.
+> scrap 2
+No such token.
+> census
+Live: 2. Created: 3. Free: 1.
+> look
+Room A
+Room A.
+You can see a token 3, a token 1, a stone slab and a paper tag here.
+> spawn
+[create token 4]
+Token 4 appears.
+> polish 4
+Token 4 polished. Uses: 1.
+> census
+Live: 3. Created: 4. Free: 0.
+> scrap 1
+[destroy token 1]
+Scrapped.
+> scrap 3
+[destroy token 3]
+Scrapped.
+> scrap 4
+[destroy token 4]
+Scrapped.
+> census
+Live: 0. Created: 4.

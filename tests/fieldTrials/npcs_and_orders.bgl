@@ -1,0 +1,184 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an animate character with a life routine covering Ask, Tell, Give, Show and Attack
+// (topics compared as dictionary words), orders given to the character, a daemon that moves the
+// character between two rooms on a schedule with departure and arrival messages, react_before on
+// another object, and character state kept in an enum member and a counter that changes responses.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#using bgl.printRules;
+
+extend class object {
+    stringOrRoutine description;
+    object e_to;
+    object w_to;
+}
+
+enum eMood { calm, pleased, annoyed }
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object clerk {
+    short_name = "clerk";
+    name = {.clerk};
+    parent = roomA;
+    description = "A clerk.";
+    eMood mood = eMood.calm;
+    int gifts = 0;
+    int clock = 0;
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                dictionaryWord topic = (dictionaryWord)second;
+                if (mood == eMood.annoyed) rtrue("The clerk ignores you.^");
+                if (topic == .box) {
+                    if (mood == eMood.pleased) rtrue("The clerk says you may have the box.^");
+                    rtrue("The clerk says the box is not for sale.^");
+                }
+                if (topic == .coin) {
+                    if (gifts == 0) rtrue("The clerk says he would like a coin.^");
+                    rtrue("The clerk pats his pocket.^");
+                }
+                rtrue("The clerk shrugs.^");
+            case Tell:
+                if ((dictionaryWord)second == .weather) {
+                    if (mood == eMood.pleased) rtrue("The clerk nods.^");
+                    rtrue("The clerk is not interested.^");
+                }
+                rtrue("The clerk says nothing.^");
+            case Give:
+                if (noun == coin) {
+                    coin.parent = self;
+                    gifts++;
+                    mood = eMood.pleased;
+                    rtrue("The clerk takes the silver coin and smiles.^");
+                }
+                rtrue($"The clerk does not want {the(noun)}.^");
+            case Show:
+                rtrue($"The clerk glances at {the(noun)}.^");
+            case Attack:
+                mood = eMood.annoyed;
+                rtrue("The clerk backs away, annoyed.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        if (mood == eMood.annoyed) rtrue("The clerk ignores the order.^");
+        switch (action) {
+            case Wait:
+                rtrue("The clerk waits.^");
+            case Take:
+                if (noun == box && mood == eMood.pleased) {
+                    box.parent = self;
+                    rtrue("The clerk picks up the box.^");
+                }
+                rtrue("The clerk shakes his head.^");
+        }
+        rtrue("The clerk does not move.^");
+    }
+
+    void daemon() {
+        clock++;
+        if (clock % 5 != 0) return;
+        object from = parent;
+        object to = from == roomA ? roomB : roomA;
+        parent = to;
+        if (from == location) {
+            print($"^The clerk walks {to == roomB ? "east" : "west"} to {to}.^");
+        } else if (to == location) {
+            print($"^The clerk arrives from {from}.^");
+        }
+    }
+
+    attributes = {animate, male};
+}
+
+object bell {
+    short_name = "brass bell";
+    name = {.brass, .bell};
+    parent = roomA;
+    bool react_before() {
+        if (action == Take) print("The brass bell rings.^");
+        rfalse;
+    }
+    attributes = {static};
+}
+
+object box {
+    short_name = "box";
+    name = {.box};
+    parent = roomA;
+}
+
+object pen {
+    short_name = "pen";
+    name = {.pen};
+    parent = roomA;
+}
+
+object card {
+    short_name = "paper card";
+    name = {.paper, .card};
+    parent = roomB;
+}
+
+object coin {
+    short_name = "silver coin";
+    name = {.silver, .coin};
+    parent = selfobj;
+}
+
+object ironKey {
+    short_name = "iron key";
+    name = {.iron, .key};
+    parent = selfobj;
+}
+
+void printMood(eMood m) {
+    switch (m) {
+        case eMood.calm:    print("calm");
+        case eMood.pleased: print("pleased");
+        case eMood.annoyed: print("annoyed");
+    }
+}
+
+verb Mood {
+    meta = true;
+    void handler() {
+        print("Clerk: ");
+        printMood(clerk.mood);
+        print($", {clerk.gifts} gift{clerk.gifts == 1 ? "" : "s"}, {clerk.parent}.^");
+    }
+    grammar = {{.mood}};
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(clerk);
+    rfalse;
+}
+
+#includeI6 "grammar"

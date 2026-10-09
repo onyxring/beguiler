@@ -1,0 +1,137 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+class room : object {
+    string description;
+}
+
+class thing : object {
+    string description;
+}
+
+// Marbles share one list_together string, so the library lists them as a group.
+class marble : thing {
+    string list_together = "marbles";
+}
+
+room roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+room roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    object s_to = roomA;
+}
+
+thing glassCase {
+    "glass case";
+    name = {.glass, .case};
+    parent = roomA;
+    description = "A glass case.";
+    attributes = {container, transparent, openable, static};
+}
+
+thing silverRing {
+    "silver ring";
+    name = {.silver, .ring};
+    parent = glassCase;
+    description = "A silver ring.";
+}
+
+thing rug {
+    "rug";
+    name = {.rug};
+    parent = roomA;
+    description = "A rug.";
+    bool before() {
+        switch (action) {
+            case LookUnder:
+                if (copperCoin.has(concealed)) {
+                    copperCoin.ungive(concealed);
+                    print("Under the rug is a copper coin.^");
+                    rtrue;
+                }
+            case Search:
+                if (brassKey.parent == null) {
+                    brassKey.parent = roomA;
+                    print("A brass key falls out of the rug.^");
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+thing copperCoin {
+    "copper coin";
+    name = {.copper, .coin};
+    parent = roomA;
+    description = "A copper coin.";
+    attributes = {concealed};
+}
+
+thing brassKey {
+    "brass key";
+    name = {.brass, .key};
+    description = "A brass key.";
+}
+
+marble redMarble   { "red marble";   name = {.red, .marble};   parent = roomA; description = "A red marble."; }
+marble blueMarble  { "blue marble";  name = {.blue, .marble};  parent = roomA; description = "A blue marble."; }
+marble greenMarble { "green marble"; name = {.green, .marble}; parent = roomA; description = "A green marble."; }
+
+thing lamp {
+    "lamp";
+    name = {.lamp};
+    parent = selfobj;
+    description = "A lamp.";
+    bool after() {
+        switch (action) {
+            case SwitchOn:  give(light);   print("The lamp is now lit.^");   rtrue;
+            case SwitchOff: ungive(light); print("The lamp is now dark.^");  rtrue;
+        }
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+thing tinCup {
+    "tin cup";
+    name = {.tin, .cup};
+    parent = roomB;
+    description = "A tin cup.";
+}
+
+// Reports what is visible from here and who holds what.
+verb Report {
+    void handler() {
+        print($"Lit: {lightflag ? "yes" : "no"}. ");
+        print($"Coin concealed: {copperCoin.has(concealed) ? "yes" : "no"}. ");
+        print($"Key placed: {brassKey.parent != null ? "yes" : "no"}. ");
+        int held = 0;
+        for (object o in selfobj.children) held++;
+        print($"Held: {held}.^");
+    }
+    grammar = {.report};
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,150 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: the player answering and talking. A yes/no question asked from a verb handler with the
+// library's YesOrNo(); ask/tell/answer handled in an animate object's life(), comparing the topic's
+// first word (a dictionaryWord read through a cast) and falling back for an unknown topic; consult and
+// "look up" handled in a before() that walks the topic words from consult_from/consult_words with
+// NextWord(); a TOPIC token on a program verb; the library's "set X to <number>" (SetTo) read in
+// before(), and a program verb with a NUMBER token read through parsed_number; and a ParserError entry
+// point that replaces the "can't see" message.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object guide {
+    "guide";
+    name = {.guide};
+    parent = roomA;
+    description = "A guide.";
+    attributes = {animate, proper};
+    bool life() {
+        switch (action) {
+            case Ask:
+                dictionaryWord topic = (dictionaryWord)second;
+                if (topic == .weather) rtrue("~Rain, later,~ says the guide.^");
+                if (topic == .dial)    rtrue("~Try forty-two,~ says the guide.^");
+                rtrue("The guide shrugs.^");
+            case Tell:
+                if ((dictionaryWord)second == .weather) rtrue("~I know,~ says the guide.^");
+                rtrue("The guide nods politely.^");
+            case Answer:
+                // Answer's topic is in noun; second is the character addressed (§23.3.11).
+                if ((dictionaryWord)noun == .hello) rtrue("~Hello to you,~ says the guide.^");
+                rtrue("The guide does not reply.^");
+        }
+        rfalse;
+    }
+}
+
+object book {
+    "blue book";
+    name = {.blue, .book};
+    parent = roomA;
+    description = "A blue book.";
+    bool before() {
+        if (action == Consult) {
+            int matched = 0;
+            wn = consult_from;
+            for (int i = 0; i < consult_words; i++) {
+                dictionaryWord w = NextWord();
+                if (w == .weather) { print("Weather: rain most days.^"); matched++; }
+                else if (w == .dial || w == .dials) { print("Dials: set them with numbers.^"); matched++; }
+            }
+            if (matched == 0) print("The book says nothing about that.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+object dial {
+    "dial";
+    name = {.dial};
+    parent = roomA;
+    attributes = {static};
+    int setting = 0;
+    void description() { print($"The dial reads {setting}.^"); }
+    bool before() {
+        if (action == SetTo) {
+            int v = (int)second;
+            if (v < 0 || v > 99) rtrue("The dial only goes from 0 to 99.^");
+            setting = v;
+            print($"You set the dial to {setting}.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+object brassKey {
+    "brass key";
+    name = {.brass, .key};
+    parent = roomA;
+}
+
+verb Tune {
+    grammar = {.tune, NOUN, .to, NUMBER};
+    void handler() {
+        if (noun != dial) { print("That can't be tuned.^"); return; }
+        dial.setting = parsed_number;
+        print($"The dial is tuned to {parsed_number}.^");
+    }
+}
+
+verb Note {
+    grammar = {.note, TOPIC};
+    void handler() {
+        print($"Noted {consult_words} words:");
+        wn = consult_from;
+        for (int i = 0; i < consult_words; i++) {
+            dictionaryWord w = NextWord();
+            if (w == null) print(" ?");
+            else { print(" "); print(w); }
+        }
+        print(".^");
+    }
+}
+
+verb Zero {
+    grammar = {.zero, NOUN};
+    void handler() {
+        if (noun != dial) { print("Only the dial can be zeroed.^"); return; }
+        // The question ends with its own "> " prompt line so the harness sees the answer as a command.
+        print($"Zero the dial (now {dial.setting})?^> ");
+        if (YesOrNo()) {
+            dial.setting = 0;
+            print("The dial reads 0.^");
+        } else {
+            print($"The dial stays at {dial.setting}.^");
+        }
+    }
+}
+
+bool ParserError(eParserError err) {
+    if (err == eParserError.cantSee) rtrue("Nothing like that is here.^");
+    rfalse;
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

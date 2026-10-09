@@ -1,0 +1,205 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <glulxWindow> output and styles: a side text panel opened with `styles:` and written with
+// the window's own print/printLine (an action log), clear() on a command, a second panel split from the
+// first that takes its look from the first panel's childStyles, the status bar drawn with moveCursor and
+// print, capability checks (bgl.glulx.supports and a window's supports) that choose what the program
+// does, and style checks (checkStyle, distinguishes, styleHonored, measureStyle) whose results are
+// reported and decide whether alerts in the log carry text markers.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+styleSheet logLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ fontWeight = 1; foreColor = $C80000; };
+};
+
+styleSheet notesLook = styleSheet{
+    normal     = style{ italics = true; };
+    emphasized = style{ fontWeight = 1; };
+};
+
+textBufferWindow logPanel  = null;
+textBufferWindow notePanel = null;
+int  logged     = 0;
+bool useMarkers = true;
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object key {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+    bool after() {
+        switch (action) {
+            case Take:
+                logNumber();
+                logPanel?.printLine($"Took {the(self)}.");
+            case Drop:
+                logNumber();
+                logPanel?.printLine($"Dropped {the(self)} in {location}.");
+        }
+        rfalse;
+    }
+}
+
+// Starts the next numbered line of the log panel.
+void logNumber() {
+    logged++;
+    logPanel?.print($"{logged}. ");
+}
+
+// Adds an alert to the log panel, marked in text when styles can't be relied on to show it.
+void logAlert(string text) {
+    logged++;
+    if (useMarkers) logPanel?.printLine($"{logged}. !! {text} !!");
+    else            logPanel?.printLine($"{logged}. {text}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print(location);
+    bgl.ui.statusBar.moveCursor(35, 0);
+    bgl.ui.statusBar.print($"Logged: {logged}");
+}
+
+bool Initialise() {
+    location = roomA;
+    logPanel = bgl.ui.mainWin.splitRightBuffer(30, proportional, styles: logLook);
+    if (logPanel == null) {
+        printLine("No log panel.");
+        rfalse;
+    }
+    logPanel.printLine("Log open.");
+    logPanel.childStyles = notesLook;
+    notePanel = logPanel.splitDownBuffer(50, proportional);
+    notePanel?.printLine("Notes open.");
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Mark {
+    grammar = { {.mark, NOUN} };
+    void handler() {
+        print("You mark ");
+        logNumber();
+        logPanel?.printLine($"Marked {the(noun)}.");
+        printLine($"{the(noun)}.");
+    }
+}
+
+verb Erase {
+    meta = true;
+    grammar = {.erase};
+    void handler() {
+        logPanel?.clear();
+        logged = 0;
+        printLine("The log is erased.");
+    }
+}
+
+verb Alarm {
+    grammar = {.alarm};
+    void handler() {
+        logAlert("Alarm raised.");
+        printLine("You raise the alarm.");
+    }
+}
+
+verb Map {
+    meta = true;
+    grammar = {.map};
+    void handler() {
+        if (bgl.glulx.supports.graphics) {
+            auto pic = bgl.ui.mainWin.splitLeftGraphics(20);
+            if (pic != null) {
+                printLine("The map is drawn in a picture window.");
+                return;
+            }
+        }
+        notePanel?.printLine("Map: Room A - Room B");
+        printLine("The map is written in the notes panel.");
+    }
+}
+
+verb Abilities {
+    meta = true;
+    grammar = {.abilities};
+    void handler() {
+        printLine($"Timer: {bgl.glulx.supports.timer ? "yes" : "no"}.");
+        printLine($"Graphics: {bgl.glulx.supports.graphics ? "yes" : "no"}.");
+        printLine($"Hyperlinks: {bgl.glulx.supports.hyperlinks ? "yes" : "no"}.");
+        printLine($"Unicode: {bgl.glulx.supports.unicode ? "yes" : "no"}.");
+        bool canShow = bgl.glulx.supports.charOutput('e') != eCharOutput.none;
+        printLine($"Shows the letter e: {canShow ? "yes" : "no"}.");
+        printLine($"Graphics windows show images: {bgl.glulx.supports.images(eGlulxWindowType.graphics) ? "yes" : "no"}.");
+        if (logPanel != null) {
+            printLine($"Log panel takes hyperlink clicks: {logPanel.supports.hyperlinks ? "yes" : "no"}.");
+        }
+        printLine($"Main window shows images: {bgl.ui.mainWin.supports.images ? "yes" : "no"}.");
+    }
+}
+
+verb Styles {
+    meta = true;
+    grammar = {.styles};
+    void handler() {
+        if (logPanel == null) {
+            printLine("No log panel.");
+            return;
+        }
+        style warn = style{ fontWeight = 1; foreColor = $C80000; };
+        eStyleCheck r = logPanel.checkStyle(eGlulxStyleType.alert, warn);
+        switch (r) {
+            case eStyleCheck.unknown: printLine("Alert style: the interpreter cannot report it.");
+            case eStyleCheck.applied: printLine("Alert style: applied.");
+            case eStyleCheck.differs: printLine("Alert style: differs.");
+        }
+        bool shown = logPanel.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.alert);
+        printLine($"Alerts look different from plain text: {shown ? "yes" : "no"}.");
+        bool honored = logPanel.styleHonored(eGlulxStyleType.normal, eGlulxStyleHint.fixedWidth);
+        printLine($"Fixed width reported: {honored ? "yes" : "no"}.");
+        int fixedWidth = logPanel.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.fixedWidth);
+        printLine($"Fixed width measured: {fixedWidth == styleUnset ? "unset" : "set"}.");
+        if (notePanel != null) {
+            eStyleCheck n = notePanel.checkStyle(eGlulxStyleType.normal, notesLook.normal);
+            printLine($"Notes style known: {n.known ? "yes" : "no"}.");
+        }
+        useMarkers = !r.isApplied || !shown;
+        printLine($"Alerts in the log carry markers: {useMarkers ? "yes" : "no"}.");
+    }
+}

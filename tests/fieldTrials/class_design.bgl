@@ -1,0 +1,193 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Property accessors ----------------------------------------------------------------------------
+
+// A named accessor: reads return what was stored, writes store twice the value.
+value class Doubled {
+    int _val;
+    int  operator ()        { return _val; }
+    void operator = (int v) { _val = v * 2; }
+}
+
+class Panel : object {
+    Doubled width;
+    Doubled height;
+    int paints;
+    void paint(int c) {
+        paints++;
+        printLine($"Painted {c}. Paints: {paints}.");
+    }
+}
+
+// The same panel, with `height` read-only and `paint` removed from its surface.
+class FixedPanel : Panel {
+    hide height.operator =;
+    hide paint();
+}
+
+Panel panelA { }
+FixedPanel panelB { }
+
+// An inline accessor that reads and writes its host through `outer`.
+object dial {
+    int scale = 3;
+    int writes = 0;
+    auto level = {
+        int _raw;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v * outer.scale; outer.writes++; }
+    };
+}
+
+//-- Subscript operators ---------------------------------------------------------------------------
+
+class Grid : object {
+    array<int> cells[6];
+    int writes;
+    int operator [] (int i) { return cells[i]; }
+    int operator []= (int i, int v) {
+        cells[i] = v;
+        writes++;
+        return v;
+    }
+}
+
+Grid board { }
+
+//-- Static three-way comparison -------------------------------------------------------------------
+
+class Rank : object {
+    inline int points;
+    static int operator <=> (Rank a, Rank b) { return a.points - b.points; }
+}
+
+Rank low  { 2, "low"; }
+Rank mid  { 5, "mid"; }
+Rank high { 9, "high"; }
+
+void yesNo(string label, bool b) {
+    if (b) printLine($"{label}: yes.");
+    else printLine($"{label}: no.");
+}
+
+//-- Multiple inheritance --------------------------------------------------------------------------
+
+class Lit : object {
+    int brightness = 1;
+    string kind = "lit";
+    void shine() { printLine($"Shines at {brightness}."); }
+}
+
+class Weighted : object {
+    int weight = 1;
+    string kind = "weighted";
+    void weigh() { printLine($"Weighs {weight}."); }
+}
+
+class Lantern : Lit, Weighted {
+    void report() { printLine($"Brightness {brightness}, weight {weight}, kind {kind}."); }
+}
+
+Lantern lanternA { brightness = 4; weight = 2; }
+
+void weighIt(Weighted w) {
+    w.weight = w.weight + 1;
+    w.weigh();
+}
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Panels {
+    grammar = {.panels};
+    void handler() {
+        panelA.width = 3;
+        panelA.height = 4;
+        printLine($"Panel A: {panelA.width} by {panelA.height}.");
+        panelB.width = 5;
+        ((Panel)panelB).height = 6;
+        printLine($"Panel B: {panelB.width} by {panelB.height}.");
+        int h = panelB.height;
+        printLine($"Height read: {h}.");
+        panelA.paint(1);
+        ((Panel)panelB).paint(2);
+        printLine($"Panel B paints: {panelB.paints}.");
+    }
+}
+
+verb DialTest {
+    grammar = {.dial};
+    void handler() {
+        dial.level = 4;
+        printLine($"Level: {dial.level}.");
+        dial.scale = 5;
+        dial.level = 2;
+        int n = dial.level;
+        printLine($"Level: {n}. Writes: {dial.writes}.");
+    }
+}
+
+verb GridTest {
+    grammar = {.grid};
+    void handler() {
+        board[0] = 4;
+        board[2] = board[0] + 3;
+        board[5] = 9;   // an assignment is a statement (§5.5); read the value back
+        int x = board[5];
+        printLine($"Cells: {board[0]} {board[1]} {board[2]} {board[5]}. Returned: {x}. Writes: {board.writes}.");
+    }
+}
+
+verb Ranks {
+    grammar = {.ranks};
+    void handler() {
+        int c = low <=> high;
+        if (c < 0) printLine("low <=> high: negative.");
+        c = high <=> high;
+        if (c == 0) printLine("high <=> high: zero.");
+        yesNo("low < mid", low < mid);
+        yesNo("mid > high", mid > high);
+        yesNo("high >= mid", high >= mid);
+        yesNo("mid <= mid", mid <= mid);
+        array<Rank> ranks = {high, low, mid};
+        ranks.sort();
+        printLine($"Sorted: {ranks[0]}, {ranks[1]}, {ranks[2]}.");
+    }
+}
+
+verb LanternTest {
+    grammar = {.lantern};
+    void handler() {
+        lanternA.shine();
+        lanternA.weigh();
+        lanternA.report();
+        weighIt(lanternA);
+        printLine($"Kind: {lanternA.kind}.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

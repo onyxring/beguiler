@@ -1,0 +1,298 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: array<int>, array<string> and array<object> with push/pop/insert/remove/append, searching
+// (indexOf, contains), += and -= on lists, a sized array whose slot writes do not change its length, an
+// array of arrays read by row and column from NUMBER tokens, a member array on a class with per-instance
+// contents, a file-scope rawArray<int> walked through a rawArray parameter with an explicit length,
+// sorting with a named comparator, a lambda and an operator reference, and <linq> queries
+// (filter, map, count, any, all, distinct, orderBy, take, first, last).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+#include <linq>
+
+extend class object {
+    string description;
+}
+
+class Item : object {
+    int weight;
+}
+
+class Shelf : object {
+    array<object> items[4];
+    attributes = {static};
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Item brassKey { "brass key"; name = {.brass, .key}; weight = 2; parent = roomA; }
+Item ironBar  { "iron bar";  name = {.iron, .bar};  weight = 9; parent = roomA; }
+Item coin     { "coin";      name = {.coin};        weight = 1; parent = roomA; }
+Item lamp     { "lamp";      name = {.lamp};        weight = 5; parent = roomA; }
+
+Shelf shelfA { "shelf A"; name = {.shelf, .a}; parent = roomA; items = {coin, lamp}; }
+Shelf shelfB { "shelf B"; name = {.shelf, .b}; parent = roomA; }
+
+//-- Data ----------------------------------------------------------------------
+
+array<int> nums[8];
+array<string> words[6] = {"pear", "apple", "fig"};
+array<object> pile[6];
+array<int> slots[5];
+array<array<int>> table = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9, 10} };
+rawArray<int> weights = {3, 1, 4, 1, 5};
+array<Item> things[6];
+
+//-- Helpers -------------------------------------------------------------------
+
+void showInts(array<int> a) {
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+    print("^");
+}
+
+void showVars(array<var> a) {
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print((int)a[i]);
+    }
+    print("^");
+}
+
+void showWords(array<string> a) {
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(", ");
+        print(a[i]);
+    }
+    print("^");
+}
+
+void showObjects(array<object> a) {
+    if (a.length == 0) { print("(none)^"); return; }
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(", ");
+        printName(a[i]);
+    }
+    print("^");
+}
+
+int sumRaw(rawArray<int> buf, int n) {
+    int total = 0;
+    for (int i = 0; i < n; i++) total += buf[i];
+    return total;
+}
+
+int byWeight(Item a, Item b) {
+    if (a.weight < b.weight) return -1;
+    if (a.weight > b.weight) return 1;
+    return 0;
+}
+
+bool isHeavy(Item i) { return i.weight > 4; }
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb IntsTest {
+    grammar = {.ints};
+    void handler() {
+        nums.clear();
+        nums += {5, 3, 9};
+        nums.push(1);
+        nums.insert(2, 7);
+        nums.append(4);
+        print("Start: "); showInts(nums);
+        print($"Length {nums.length}, size {nums.size}.^");
+        int front = nums.pop();
+        int back = nums.popEnd();
+        print($"Popped {front} and {back}: "); showInts(nums);
+        nums.remove(1);
+        print("Removed index 1: "); showInts(nums);
+        print($"indexOf 9: {nums.indexOf(9)}. indexOf 7: {nums.indexOf(7)}.^");
+        print($"Contains 3: {nums.contains(3)}. Contains 8: {nums.contains(8)}.^");
+        nums += {9, 2, 8};
+        nums -= 9;
+        print("Added 9, 2 and 8, removed every 9: "); showInts(nums);
+        nums.sort((int a, int b) => b - a);
+        print("Descending: "); showInts(nums);
+    }
+}
+
+verb WordsTest {
+    grammar = {.words};
+    void handler() {
+        words += "kiwi";
+        print("Words: "); showWords(words);
+        print($"apple at {words.indexOf("apple")}, plum at {words.indexOf("plum")}.^");
+        words.sort(string::operator <=>);
+        print("Sorted: "); showWords(words);
+        words.removeValue("fig");
+        print("Without fig: "); showWords(words);
+        print($"First {words[0]}, last {words[words.length - 1]}.^");
+    }
+}
+
+verb PileTest {
+    grammar = {.pile};
+    void handler() {
+        pile.clear();
+        pile += {brassKey, coin, lamp};
+        pile.prepend(ironBar);
+        print("Pile: "); showObjects(pile);
+        print($"coin at {pile.indexOf(coin)}.^");
+        pile -= coin;
+        print("Without coin: "); showObjects(pile);
+        print($"Has coin: {pile.contains(coin)}.^");
+        object top = pile.peek();
+        object bottom = pile.peekEnd();
+        print("Top "); printName(top); print(", bottom "); printName(bottom); print(".^");
+    }
+}
+
+verb SlotsTest {
+    grammar = {.slots};
+    void handler() {
+        slots.clear();
+        slots[0] = 11;
+        slots[1] = 22;
+        slots[2] = 33;
+        print($"After slot writes: length {slots.length}, size {slots.size}.^");
+        slots.length = 3;
+        print("Length set to 3: "); showInts(slots);
+        print($"indexOf 33: {slots.indexOf(33)}.^");
+    }
+}
+
+verb RowTest {
+    grammar = {.row, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (r < 0 || r >= table.length) { print($"No row {r}.^"); return; }
+        print($"Row {r} ({table[r].length} cells): ");
+        showInts(table[r]);
+    }
+}
+
+verb CellTest {
+    grammar = {.cell, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        int c = (int)second;
+        if (r < 0 || r >= table.length || c < 0 || c >= table[r].length) {
+            print($"No cell {r},{c}.^");
+            return;
+        }
+        print($"Cell {r},{c} is {table[r][c]}.^");
+    }
+}
+
+verb ColumnTest {
+    grammar = {.column, NUMBER};
+    void handler() {
+        int c = (int)noun;
+        int total = 0;
+        int counted = 0;
+        for (array<int> row in table) {
+            if (c < row.length) { total += row[c]; counted++; }
+        }
+        print($"Column {c}: {counted} cells, total {total}.^");
+    }
+}
+
+verb SetCellTest {
+    grammar = {.poke, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        int v = (int)second;
+        table[r][0] = v;
+        print($"Row {r} now: ");
+        showInts(table[r]);
+    }
+}
+
+verb ShelvesTest {
+    grammar = {.shelves};
+    void handler() {
+        // A member array can't be passed as an array argument (§12.7), so the items are listed in place.
+        for (Shelf s in {shelfA, shelfB}) {
+            printName(s); print(": ");
+            if (s.items.length == 0) print("(none)");
+            for (int i = 0; i < s.items.length; i++) {
+                if (i > 0) print(", ");
+                printName(s.items[i]);
+            }
+            print("^");
+        }
+    }
+}
+
+verb StockTest {
+    grammar = {.stock, NOUN};
+    void handler() {
+        if (!shelfB.items.append(noun)) { print("Shelf B is full.^"); return; }
+        print("Stocked "); printName(noun); print($" on shelf B ({shelfB.items.length} there, {shelfA.items.length} on shelf A).^");
+    }
+}
+
+verb WeightsTest {
+    grammar = {.weights};
+    void handler() {
+        print($"Sum of 5 weights: {sumRaw(weights, 5)}. Third: {weights[2]}.^");
+    }
+}
+
+verb SortTest {
+    grammar = {.sort};
+    void handler() {
+        things.clear();
+        things += {lamp, coin, ironBar, brassKey};
+        things.sort(byWeight);
+        print("By weight: ");
+        for (Item i in things) { printName(i); print($" ({i.weight}) "); }
+        print("^");
+    }
+}
+
+verb QueryTest {
+    grammar = {.query};
+    void handler() {
+        nums.clear();
+        nums += {3, 8, 3, 6, 1, 8};
+        print("Source: "); showInts(nums);
+        print("Over 4: "); showInts(nums.filter((int x) => x > 4));
+        print($"Count over 4: {nums.filter((int x) => x > 4).count()}.^");
+        print("Times ten: "); showVars(nums.map((var y) => y * 10));
+        print("Distinct: "); showInts(nums.distinct());
+        print("Ordered: "); showInts(nums.orderBy());
+        print("First two: "); showInts(nums.take(2));
+        print($"Any over 7: {nums.any((int x) => x > 7)}. All over 0: {nums.all((int x) => x > 0)}.^");
+        print($"First {nums.first()}, last {nums.last()}.^");
+        array<int> kept = nums.filter((int x) => x < 5).distinct();
+        print("Kept under 5: "); showInts(kept);
+        things.clear();
+        things += {lamp, coin, ironBar, brassKey};
+        int heavy = things.filter(isHeavy).count();
+        print($"Heavy things: {heavy}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

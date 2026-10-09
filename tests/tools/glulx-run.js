@@ -40,6 +40,7 @@ let finished = false;
 function finish(){
     if(finished) return;
     finished = true;
+    for(const c of heldContent) collect(c);   // the story never asked for input: nothing to tell apart
     process.stdout.write(out.join('').replace(/^\n+/, '') + '\n');
     process.exit(0);
 }
@@ -47,6 +48,11 @@ function finish(){
 // With GLULX_RUN_GRIDS=1, text-grid windows (status bars, menus) are tracked too, and a snapshot of
 // each is printed whenever the story waits for input.
 const showGrids = process.env.GLULX_RUN_GRIDS === '1';
+// With GLULX_RUN_WINDOWS=1, text printed to a buffer window other than the main one (the one the
+// player types into) starts its own line, tagged `[win N] `, so it can't run into the main text.
+const tagWindows = process.env.GLULX_RUN_WINDOWS === '1';
+let mainWin = null;
+const heldContent = [];   // updates that arrived before the main window was known
 const grids = new Map();   // window id → array of line strings
 // A GlkOte content array mixes { style, text, hyperlink? } objects with bare `style, text` string
 // pairs, so a pair's position cannot be read from the array index.
@@ -62,12 +68,18 @@ function gridText(content){
     eachRun(content, run => { if(run.text) t += run.text; });
     return t;
 }
+let promptIdx = -1;   // where the latest update's trailing `>` prompt starts in `out`, or -1
 function snapshotGrids(){
+    const snaps = [];
     for(const [id, lines] of grids)
-        out.push(`\n[grid ${id}]\n` + lines.map(l => '|' + (l || '') + '|').join('\n') + '\n');
+        snaps.push(`\n[grid ${id}]\n` + lines.map(l => '|' + (l || '') + '|').join('\n') + '\n');
+    if(promptIdx >= 0) out.splice(promptIdx, 0, ...snaps);   // before the prompt the echo continues
+    else out.push(...snaps);
 }
 
 function collect(content){
+    const tagged = [];   // other windows' lines: after the main window's text for the same update,
+    let promptAt = -1;   // but before its trailing `>` prompt, which the command's echo continues
     for(const win of content || []){
         if(showGrids && win.lines){
             const g = grids.get(win.id) || [];
@@ -76,13 +88,29 @@ function collect(content){
             grids.set(win.id, g);
         }
         for(const para of win.text || []){
+            if(tagWindows && mainWin !== null && win.id !== mainWin){
+                let t = '';
+                eachRun(para.content || [], run => {
+                    if(run.text) t += run.text;
+                    if(run.hyperlink) links.push({ win: win.id, value: run.hyperlink });
+                });
+                if(t) tagged.push(`\n[win ${win.id}] ` + t + '\n');
+                continue;
+            }
             if(!para.append) out.push('\n');
+            const paraStart = out.length;
+            let paraText = '';
             eachRun(para.content || [], run => {
+                if(run.text) paraText += run.text;
                 if(run.text) out.push(run.text);
                 if(run.hyperlink) links.push({ win: win.id, value: run.hyperlink });
             });
+            if(!para.append && paraText.trim() === '>') promptAt = paraStart - 1;
         }
     }
+    if(promptAt >= 0) out.splice(promptAt, 0, ...tagged);
+    else for(const t of tagged) out.push(t);
+    promptIdx = promptAt >= 0 ? promptAt + tagged.length : -1;
 }
 
 const links = [];   // every hyperlinked run of text printed, in order: { win, value }
@@ -102,7 +130,18 @@ glkote.error = (msg) => {
     finish();
 };
 glkote.update = (arg) => {
-    collect(arg.content);
+    if(tagWindows && mainWin === null){
+        // The main window is the one the player types into. Until it asks for input, hold the text,
+        // so what other windows print before then is still told apart.
+        const first = (arg.input || []).find(r => r.type === 'line' || r.type === 'char');
+        if(!first){ heldContent.push(arg.content); }
+        else {
+            mainWin = first.id;
+            for(const c of heldContent) collect(c);
+            heldContent.length = 0;
+            collect(arg.content);
+        }
+    } else collect(arg.content);
     if(arg.disable) return finish();                     // the story exited
     const inputs = arg.input || [];
     const req = inputs.find(r => r.type);
