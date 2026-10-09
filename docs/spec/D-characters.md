@@ -43,9 +43,10 @@ An unescaped `^` in a string is a newline and an unescaped `~` is a double quote
 | `\`*NNN* | the character with decimal code *NNN* |
 | `\$`*XX* | the character with hexadecimal code *XX* |
 
-Both forms consume every consecutive digit (or hexadecimal digit) after the prefix. The code is a
-Unicode code point. Glulx renders any code point; the Z-machine renders only the characters in its
-character set (§D.5), and any other code is a compile-time error.
+Both forms consume every consecutive digit (or hexadecimal digit) after the prefix. In a string
+literal the code is a Unicode code point: Glulx renders any code point; the Z-machine renders only the
+characters in its character set (§D.5), and any other code is a compile-time error. In a character
+literal the two forms differ, as §D.7 describes.
 
 ```bgl
 "na\239ve"     // → naïve
@@ -140,7 +141,10 @@ A character literal (§1.6.6) holds exactly one character, written directly or w
 value is the character's code — its ZSCII code on the Z-machine, its Unicode code point on Glulx (`'ä'`
 is 155 on the Z-machine and 228 on Glulx; an accent escape or a ZSCII `\NNN` names the same character on
 either) — so a character literal may be compared numerically: `c >= 'ä'` compares against the code of ä.
-`\$XX` gives a code as written, on either target.
+
+The numeric escapes read differently here than in a string (§D.2). `\NNN` is a ZSCII code, and names
+the same character on either target: `'\155'` is ä, 155 on the Z-machine and 228 on Glulx. `\$XX` is
+the character's code as written, on either target, with no translation.
 
 `\'` followed by a letter in the acute-accent set (§D.3) is the acute accent: `'\'e'` is é. A `\'`
 not followed by such a letter is an escaped single quote.

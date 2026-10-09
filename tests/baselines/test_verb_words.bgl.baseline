@@ -76,7 +76,7 @@ extend only 'bar'
     * noun 'down' -> myextverb;
 extend only 'beta'
     * noun -> myextverb2;
-extend only 'gamma'
+extend only 'gamma' first
     * 'check' -> myown;
 
         [main;

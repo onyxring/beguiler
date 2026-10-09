@@ -31,8 +31,10 @@ the Inform 6 Standard Library and PunyInform define `Main` themselves and expect
 entry point, such as `Initialise`, instead (§23.3.1).
 
 A global name must be unique across every kind of global declaration, ignoring case: declaring a
-variable, function, class, object or enum with the name of an existing global of any kind is a
-compile-time error (§19.2). The one exception is an emitter function, which may share its name with a
+variable, function, class, object, enum or verb with the name of an existing global of any kind is a
+compile-time error (§19.2). That includes the globals a binding declares: a verb named like a library
+verb (`verb Empty` beside the binding's `extern verb Empty`) is an error, and the library verb is
+extended instead (§13.5). The one exception is an emitter function, which may share its name with a
 variable or object (§3.10).
 
 ## 3.2 Declaration Qualifiers
@@ -114,9 +116,62 @@ extern const ⟨type⟩ ⟨name⟩ ;
 
 **Description**
 
-`const` marks a variable as read-only. Assigning to it, including `++`, `--` and compound assignment,
-is a compile-time error. `extern const` declares a constant that is defined in Inform 6: it is
-registered for type-checking, produces no output, and takes no initializer.
+`const` fixes what a name stands for. Assigning to it, including `++`, `--` and compound assignment,
+is a compile-time error, and a `const` declaration must give its value. A `const` emits as an Inform 6
+`Constant`, so it applies to the types whose value is one word: the primitives (`int`, `float`, `char`,
+`bool`, …), `string`, enums, and references to objects.
+
+On a reference, `const` fixes which object the name stands for, not the object: `const Thing pick = rock;`
+always stands for `rock`, and `rock`'s members can still change.
+
+Two kinds of type are *storage* rather than a one-word value, and `const` is a compile-time error on
+both:
+
+| Type | What a variable of it holds | Why `const` has nothing to fix |
+|---|---|---|
+| an array (`array<T>`, `rawArray<T>`) | the array's elements | the name always stands for the same storage; assigning to it copies elements in (§12) |
+| a value class (§8.2.7) | an instance of its own, with storage for its fields | the name always stands for its own instance; assigning to it copies fields in |
+
+A variable of a reference type holds a reference: assigning to it makes the name stand for another
+object, which is what `const` prevents. A variable of a storage type never stands for anything else. It
+is created with its own storage, and an assignment copies new contents into that storage. The name is
+already as fixed as `const` could make it, and what the storage holds is the part `const` does not
+govern, so on these types `const` would promise nothing.
+
+A class is a value class when its declaration says `value class`, or when it derives from a class that
+does (§8.2.7). Nothing at the use site says so: `Money price` reads the same whether `Money` is a value
+class or a reference class. The value class's declaration (or a hover in the editor) is where to look.
+
+**Example**
+
+<!-- doctest: compile -->
+```bgl
+value class Money {
+    int cents;
+    Money operator = (int c) { cents = c; return self; }
+}
+class Thing : object { int weight; }
+Thing rock { weight = 5; }
+
+const int     PRICE_CENTS = 325;    // a one-word value: an I6 Constant
+const Thing   pick = rock;          // a reference: pick always stands for rock
+
+void main() {
+    pick.weight = 7;                // fine: const fixes the name, not rock's members
+    Money price = PRICE_CENTS;      // a Money made from the constant's value
+}
+```
+
+> **Not `const Money price = 325;`.** That declaration is an error: `price` would hold its own `Money`,
+> whose `cents` can always be changed, so the `const` would fix nothing. Keep the constant on the plain
+> value, as `PRICE_CENTS` is above, and assign it where a `Money` is needed.
+
+> **Not `const array<int> bands = {5, 10, 20};`.** Also an error, for the same reason: `bands` is the
+> array's own storage. Drop `const`. An array the program never changes is simply an array it never
+> writes to.
+
+`extern const` declares a constant that is defined in Inform 6: it is registered for type-checking,
+produces no output, and takes no initializer.
 
 **Example**
 

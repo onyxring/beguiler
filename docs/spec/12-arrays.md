@@ -43,7 +43,8 @@ array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
 
 `<`, `>`, `[` and `]` are literal. The first form is a sized array: capacity `⟨n⟩`, zero-initialized,
 length 0. `⟨n⟩` is any compile-time integer: an integer literal, a `#define`d symbol whose value is
-an integer (§14.2.1), or an integer `#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
+an integer (§14.2.1), a `const int` initialized with an integer literal (§3.4), or an integer
+`#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
 from that array instead; the value's type decides which is meant. The same shorthand applies to a

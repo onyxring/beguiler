@@ -1,0 +1,15 @@
+/*  run_round5_glulx_text — unary minus on a float negates the float; a character beyond Latin-1 put
+    into a stringObj is stored as '?', as captured text is.  */
+// EXPECT_OUTPUT: neg=2.2500 stored=63
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <string>
+#include "glulxConsole.bgl"
+void main(){
+    glulxConsole(); bglInit();
+    float g = -2.25;
+    float h = -g;
+    stringObj a = "";
+    a += '─';
+    int code = a[0];
+    print("neg="); print(h); print($" stored={code}^");
+}

@@ -73,7 +73,7 @@ object _bglVerb_give2
 verb 'donate'
     * held 'to' creature -> Give2
     * creature held -> Give2 reverse;
-extend only 'give'
+extend only 'give' first
     * held 'to' creature -> give2
     * creature held -> give2 reverse;
 

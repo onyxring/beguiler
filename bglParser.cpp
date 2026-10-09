@@ -574,6 +574,40 @@ void bglParser::validateGlobalNameClashes(){
     }
 }
 
+// A program's verb is a global name (§3.1): no other global may share it, ignoring case, and it may
+// not redeclare a verb the binding already declares — that one is extended, not declared again. Its
+// I6 names are prefixed, so the I6-level check above never sees these clashes.
+void bglParser::validateVerbNameClashes(){
+    auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
+    auto at = [](const sourceLocation& src){ return src.file.empty() ? string("an included file") : format("{0}:{1}", src.file, src.line); };
+    for(verbObjectDef* v : languageService.verbs){
+        if(v->isExternal || v->src.file.empty()) continue;
+        string name = lower(v->dName());
+        for(verbObjectDef* o : languageService.verbs)
+            if(o != v && o->isExternal && lower(o->dName()) == name)
+                parsingError(format("{0}:{1}:1: verb '{2}' has the same name as the library verb '{3}' ({4}); "
+                    "rename it, or add to the library verb with `extend {3} {{ … }}`.",
+                    v->src.file, v->src.line, v->dName(), o->dName(), at(o->src)));
+        for(typeDef* g : languageService.globals){
+            if(g == v || lower(g->dName()) != name) continue;
+            string kind; sourceLocation gsrc;
+            if(auto* fd = dynamic_cast<functionDef*>(g)){
+                if(fd->isEmitter || fd->isPrePassStub || fd->isReplacedDead) continue;
+                kind = "function"; gsrc = fd->src;
+            } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+                if(vd->isNamespaceAlias() || vd->isPrePassStub || vd->isInstanceBacking || vd->isSynthetic) continue;
+                kind = dynamic_cast<arrayDeclaration*>(vd) ? "array" : "variable"; gsrc = vd->src;
+            } else if(auto* od = dynamic_cast<objectDef*>(g)){
+                if(dynamic_cast<verbObjectDef*>(od) || od->isPrePassStub) continue;
+                kind = "object"; gsrc = od->src;
+            } else continue;
+            parsingError(format("{0}:{1}:1: verb '{2}' has the same name as {3} '{4}' ({5}); a verb is a "
+                "global name, so rename one of them.", v->src.file, v->src.line, v->dName(), kind, g->dName(),
+                at(gsrc)));
+        }
+    }
+}
+
 // Post-parse validation of `hide` directives. A hide that doesn't resolve to an INHERITED member
 // (or, for an operator hide, whose member type doesn't expose that operator) is a WARNING, not an
 // error (Jim's call — typo/refactor tolerance); the entry simply has no effect. Runs after the full
@@ -1762,11 +1796,13 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
         token tt = file.getToken({eTokenType::dataType, eTokenType::identifier});
         string typeName = tt.value;
         if(typeName == "func") typeName = parseFuncType();  // nested func<>
+        else if(typeName == "array" || typeName == "rawarray") typeName = parseArrayTypeTail(typeName);
         if(!first) result += ",";
         result += typeName;
         first = false;
         token sep = file.getToken();
         if(sep.is(">")) break;
+        if(sep.value == ">>") parsingError("Unbalanced '>>' closing a func<...> type");
     }
     result += ">";
     typeTok.value = result;
@@ -2080,6 +2116,7 @@ string bglParser::parseFuncType(){
         token t = file.getToken({eTokenType::dataType, eTokenType::identifier});
         string typeName = t.value;
         if(typeName == "func") typeName = parseFuncType();
+        else if(typeName == "array" || typeName == "rawarray") typeName = parseArrayTypeTail(typeName);
         if(!first) result += ",";
         result += typeName;
         first = false;
@@ -2267,7 +2304,8 @@ bool bglParser::processParameterList(functionDef& funcDef){
                         }
                         parsingWarning("Parameter '" + param.name + "' shadows global of the same name; '::" + param.name + "' reaches the global.");
                     }
-                if(currentClass != nullptr){
+                // A static method has no receiver, so a member can't be shadowed.
+                if(currentClass != nullptr && !funcDef.isStatic){
                     for(typeMember* m : currentClass->members)
                         if(m->name == param.name)
                             parsingWarning("Parameter '" + param.name + "' shadows a member of class '" + currentClass->name + "'.");
@@ -2414,7 +2452,7 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             else if(nc == '/') {
                 char xc = file.peekChar();
                 if(string("oO").find(xc) != string::npos) {
-                    file.readChar(); currentStr += "@\\"; currentStr += xc;
+                    file.readChar(); currentStr += "@/"; currentStr += xc;
                 } else { currentStr += '/'; }
             }
             else if(nc == 'c') {
@@ -2425,7 +2463,7 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             }
             else if(nc == 'o') {
                 char xc = file.peekChar();
-                if(xc == 'a' || xc == 'A') {
+                if(xc == 'a' || xc == 'A' || xc == 'e') {
                     file.readChar(); currentStr += "@o"; currentStr += xc;
                 } else { currentStr += 'o'; }
             }
@@ -2434,7 +2472,9 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             else if(nc == 'A' && file.peekChar()=='E') { file.readChar(); currentStr += "@AE"; }
             else if(nc == 'O' && file.peekChar()=='E') { file.readChar(); currentStr += "@OE"; }
             else if(nc == 't' && file.peekChar()=='h') { file.readChar(); currentStr += "@th"; }
+            else if(nc == 'T' && file.peekChar()=='H') { file.readChar(); currentStr += "@Th"; }
             else if(nc == 'e' && file.peekChar()=='t') { file.readChar(); currentStr += "@et"; }
+            else if(nc == 'E' && file.peekChar()=='T') { file.readChar(); currentStr += "@Et"; }
             else if(nc == 'L' && file.peekChar()=='L') { file.readChar(); currentStr += "@LL"; }
             else if(nc == '!' && file.peekChar()=='!') { file.readChar(); currentStr += "@!!"; }
             else if(nc == '?' && file.peekChar()=='?') { file.readChar(); currentStr += "@??"; }

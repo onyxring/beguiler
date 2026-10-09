@@ -1,0 +1,18 @@
+/*  run_element_compound — compound assignment, `++` and `--` on an array element: a global array, an
+    array of arrays, a member array, an index with a side effect (evaluated once), and inside an
+    unbraced `if`.  */
+// EXPECT_OUTPUT: -5 40 99 33 15 calls=1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<int> counts = {0, 0, 0};
+array<array<int>> grid = {{1, 2}, {3, 4}};
+object k1 { array<int> q = {10, 20}; }
+int calls = 0;
+int next(){ calls++; return 1; }
+void main(){
+    int i = 1;
+    counts[i] += 2; counts[i]++; ++counts[i]; counts[0] -= 5; counts[next()] *= 10; counts[2]--;
+    grid[1][0] += 30; k1.q[0] += 5;
+    for(int j = 0; j < 3; j++){ if(j == 2) counts[j] += 100; }
+    print($"{counts[0]} {counts[1]} {counts[2]} {grid[1][0]} {k1.q[0]} calls={calls}^");
+}

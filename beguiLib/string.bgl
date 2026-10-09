@@ -658,8 +658,8 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     }
     var setFromStr(var src) {
         #i6 {
-            ! Direct setFromBuffer using src.getBuf() — caller knows src is
-            ! a _bglString instance.
+            ! A literal or string passed where a stringObj is expected arrives as packed text.
+            if(metaclass(src) == String){ _bglBuf.setFromLiteral(self.getBuf(), src); return self; }
             _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());
         }
         return self;
@@ -671,7 +671,10 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     }
 
     var setChar(int pos, int val) {
-        #i6 { self.getBuf()->(pos + WORDSIZE) = val; }
+        #i6 {
+            if(val > 255) val = '?';   ! one byte per character: beyond Latin-1 reads as '?', as captured text does
+            self.getBuf()->(pos + WORDSIZE) = val;
+        }
         return self;
     }
 

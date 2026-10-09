@@ -47,11 +47,13 @@ static const map<uint32_t, ZsciiEntry> unicodeToZscii = {
     {0xFE, {215, "@th"}}, {0xDE, {217, "@Th"}},
     {0xF0, {216, "@et"}}, {0xD0, {218, "@Et"}},
     {0x153,{220, "@oe"}}, {0x152,{221, "@OE"}},  // œ Œ — outside Latin-1, 2-byte UTF-8
-    {0xDF, {219, "@ss"}},  // ß
+    {0xDF, {161, "@ss"}},  // ß
     // punctuation
-    {0xA3, {222, "@LL"}},  // £
-    {0xA1, {223, "@!!"}},  // ¡
-    {0xBF, {224, "@??"}},  // ¿
+    {0xBB, {162, "@>>"}},  // »
+    {0xAB, {163, "@<<"}},  // «
+    {0xA3, {219, "@LL"}},  // £
+    {0xA1, {222, "@!!"}},  // ¡
+    {0xBF, {223, "@??"}},  // ¿
 };
 
 // Smart quotes and the backtick are handled per target (targetIsZcode, bglLanguageService.cpp).
@@ -414,7 +416,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 else if(c=='/') {
                     char nc = peekChar();
                     if(string("oO").find(nc) != string::npos) {
-                        readChar(); retval.value += "@\\"; retval.value += nc; // \/o -> @\o (ø)
+                        readChar(); retval.value += "@/"; retval.value += nc;  // \/o -> @/o (ø)
                     } else { retval.value += '/'; }                            // \/  -> literal slash
                 }
                 else if(c=='c') {
@@ -425,8 +427,8 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 }
                 else if(c=='o') {
                     char nc = peekChar();
-                    if(nc=='a' || nc=='A') {
-                        readChar(); retval.value += "@o"; retval.value += nc;  // \oa -> @oa (å), \oA -> @oA (Å)
+                    if(nc=='a' || nc=='A' || nc=='e') {
+                        readChar(); retval.value += "@o"; retval.value += nc;  // \oa -> @oa (å), \oA -> @oA (Å), \oe -> @oe (œ)
                     } else { retval.value += 'o'; }                            // \o  -> literal o
                 }
                 // Multi-char accent names: \ss \ae \AE \oe \OE \th \et \LL \!! \?? \<< \>>
@@ -518,6 +520,16 @@ token fileLexer::getBasicToken(bool suppressBleed){
     }
 
     return retval;//return our completed basic token
+}
+fileLexer::mark_t fileLexer::mark(){
+    auto& [s, n, ln, cc] = files.top(); (void)n;
+    return { s->tellg(), ln, cc };
+}
+void fileLexer::rewind(const mark_t& m){
+    auto& [s, n, ln, cc] = files.top(); (void)n;
+    s->clear();
+    s->seekg(m.pos);
+    ln = m.line; cc = m.col;
 }
 string fileLexer::getRawTextToStatementEnd(){
     string text;
@@ -628,24 +640,44 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          // scan that swallows the closing brace.
          if(c=='"'){
              bool beguileEscapes = !(isI6Content || i6Depth != -1);
-             retval += c; c = readChar();
-             while(c != '"' && c != EOF){
-                 if(beguileEscapes && c == '\\'){
-                     retval += c; c = readChar();          // the backslash
-                     if(c == EOF) break;
-                     retval += c; c = readChar();          // the escaped char (\" does not close)
-                     continue;
-                 }
-                 retval += c; c = readChar();
+             if(beguileEscapes){
+                 // An interpolated string's `{…}` spans are Beguile expressions, which may hold
+                 // strings of their own (with braces in them): skip it as a whole.
+                 bool interpolated = !retval.empty() && retval.back() == '$';
+                 function<void(bool)> skipString = [&](bool interp){
+                     retval += c; c = readChar();             // the opening quote
+                     int span = 0;
+                     while(c != EOF && !(c == '"' && span == 0)){
+                         if(c == '\\'){ retval += c; c = readChar(); if(c == EOF) break; }
+                         else if(interp && c == '{') span++;
+                         else if(interp && span > 0 && c == '}') span--;
+                         else if(span > 0 && c == '"'){
+                             bool inner = retval.back() == '$';
+                             skipString(inner);
+                             continue;
+                         }
+                         retval += c; c = readChar();
+                     }
+                     if(c == '"'){ retval += c; c = readChar(); }
+                 };
+                 skipString(interpolated);
+                 continue;
              }
+             retval += c; c = readChar();
+             while(c != '"' && c != EOF){ retval += c; c = readChar(); }
              if(c == '"'){ retval += c; c = readChar(); }
              continue;
          }
          // Skip character/dict-word literals — same reasoning: I6 doesn't C-escape, so '\'
-         // is a 3-char literal that terminates at the second '.
+         // is a 3-char literal that terminates at the second '. A Beguile one does: '\'e'.
          if(c=='\''){
+             bool beguileEscapes = !(isI6Content || i6Depth != -1);
              retval += c; c = readChar();
              while(c != '\'' && c != EOF){
+                 if(beguileEscapes && c == '\\'){
+                     retval += c; c = readChar();
+                     if(c == EOF) break;
+                 }
                  retval += c; c = readChar();
              }
              if(c == '\''){ retval += c; c = readChar(); }
@@ -1055,8 +1087,12 @@ token fileLexer::lexCharLiteralToken(token retval){
     bool rawCode = false;   // the value is already the character's code on this target (`\$XX`, a typed character on Glulx)
     if(c == '\\'){
         c = peekChar(); readChar();
-        if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
+        // The basic escapes are given as codes: in an I6 character constant `'^'` is an apostrophe.
+        if     (c == 'n'){ charVal += targetIsGlulx() ? "10" : "13"; rawCode = true; }
         else if(c == '\\') charVal += '\\';  // \\ -> backslash
+        else if(c == '"'){ charVal += "34"; rawCode = true; }
+        else if(c == '@'){ charVal += "64"; rawCode = true; }
+        else if((c == '^' || c == '~') && peekChar() == c){ readChar(); charVal += c == '^' ? "94" : "126"; rawCode = true; }
         else if(c == '$'){
             // Hex escape: \$XX — character code in hexadecimal; emit as raw integer
             string hex;
@@ -1139,6 +1175,14 @@ token fileLexer::lexCharLiteralToken(token retval){
         else if(c == 'T' && peekChar()=='H') { readChar(); charVal += "217"; }  // Þ
         else if(c == 'e' && peekChar()=='t') { readChar(); charVal += "216"; }  // ð
         else if(c == 'E' && peekChar()=='T') { readChar(); charVal += "218"; }  // Ð
+        else if(c == 's' && peekChar()=='s') { readChar(); charVal += "161"; }  // ß
+        else if(c == '>' && peekChar()=='>') { readChar(); charVal += "162"; }  // »
+        else if(c == '<' && peekChar()=='<') { readChar(); charVal += "163"; }  // «
+        else if(c == 'L' && peekChar()=='L') { readChar(); charVal += "219"; }  // £
+        else if(c == '!' && peekChar()=='!') { readChar(); charVal += "222"; }  // ¡
+        else if(c == '?' && peekChar()=='?') { readChar(); charVal += "223"; }  // ¿
+        else if(c == '^'){ charVal += "94";  rawCode = true; }   // \^ not before an accent letter
+        else if(c == '~'){ charVal += "126"; rawCode = true; }
         else             { charVal += '\\'; charVal += c; } // unknown: pass through
     } else if((unsigned char)c >= 0x80){
         // Non-ASCII: decode UTF-8 (or Latin-1) and look up ZSCII code

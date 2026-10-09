@@ -57,6 +57,12 @@ A tracked buf's value behaves as a standard I6 hybrid buffer — the length word
 
 An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size` and `length` from the buffer's length word (§12.4), and `isTracked()` returns false.
 
+A buf, and the `stringObj` built on one (§22.3), holds one byte per character, so it holds only the
+characters of Latin-1 (codes 0 to 255). This is so on Glulx too, where string literals and `char`
+values may be any Unicode character (§D.5): a character beyond Latin-1 captured or appended into a
+buf is stored as `?`. An `array<char>` initialized from such text is a compile-time error. Text that
+needs those characters is printed from a string literal rather than built in a buffer.
+
 **Methods on `array<char>`**
 
 | Method | Returns | Description |

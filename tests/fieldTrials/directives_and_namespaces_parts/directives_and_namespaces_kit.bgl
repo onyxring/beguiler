@@ -47,7 +47,4 @@ object kit {
 
 // An import made in an included file does not reach the includer.
 #using kit
-// WORKAROUND: through #using, `int partDoubled = tools.doubled(4);` emits the global initializer as
-// `tools.doubled(4)` unresolved (an I6 error, or a run-time "has no property doubled" when the name
-// happens to exist in I6). The same call inside a function body resolves. The full path works here.
-int partDoubled = kit.tools.doubled(4);
+int partDoubled = tools.doubled(4);

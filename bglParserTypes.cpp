@@ -678,8 +678,8 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
                     if(getDispatchClass(c.type) != getDispatchClass(candidates[globalAt].type)
                        || getDispatchClass(c.type) == nullptr) sameType = false;
                 if(!sameType)
-                    parsingWarning(format("'{0}' is both {1} and an imported member; the global is used "
-                        "(§10.4). Write the imported one with its full path.", name, candidates[globalAt].origin));
+                    parsingWarning(format("'{0}' is both {1} and an imported member; the global is used. "
+                        "Write the imported one with its full path.", name, candidates[globalAt].origin));
                 return candidates[globalAt].type;
             }
         }
@@ -1206,6 +1206,8 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             firstArgTok = file.getToken();
         }
     }
+    // Reached only by a `)` straight after a `,`.
+    if(!result.args.empty()) parsingWarning("a trailing comma ends this argument list");
     currentExpectedType = savedExpectedArgs;
     return result;
 }
@@ -1494,6 +1496,20 @@ void bglParser::rejectNonStaticOnTypeName(const string& headText, classDef* cls,
     if(cls == nullptr || member.empty()) return;
     // Only when the head really is a TYPE name — an instance that happens to share the name wins.
     if(!languageService.isClassType(headText) && resolveNamespacedType(headText).empty()) return;
+    // So does a local or parameter of that name (§3.10).
+    if(currentFunc != nullptr){
+        string h = headText; transform(h.begin(), h.end(), h.begin(), ::tolower);
+        for(paramDef* p : currentFunc->params) if(p->name == h) return;
+        function<bool(statementBlock*)> declares = [&](statementBlock* b){
+            if(b == nullptr) return false;
+            for(statement* st : b->statements){
+                if(auto* vd = dynamic_cast<variableDeclaration*>(st); vd && vd->name == h) return true;
+            }
+            return false;
+        };
+        if(declares(dynamic_cast<statementBlock*>(currentFunc->body))) return;
+        for(statementBlock* b : activeBlockStack) if(declares(b)) return;
+    }
     typeMember* found = findMemberInHierarchy(cls, [&](typeMember* m){
         auto* vd = dynamic_cast<variableDeclaration*>(m);
         return vd != nullptr && !vd->isStatic && !vd->isAlias && vd->name == member;
@@ -1834,7 +1850,26 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
 string bglParser::resolveIslandTokens(const string& raw, functionDef* func, statementBlock* enclosing){
     if(raw.find('$') == string::npos) return raw;      // the common case: no token, no work
     emitterBindings none;
-    return substituteI6Names(substituteI6Exprs(raw, none, func, enclosing));
+    // An I6 `!` comment runs to the end of its line and is left as written, tokens and all.
+    string out, code;
+    auto flush = [&]{ if(!code.empty()){ out += substituteI6Names(substituteI6Exprs(code, none, func, enclosing)); code.clear(); } };
+    char quote = 0;
+    for(size_t i = 0; i < raw.size(); i++){
+        char c = raw[i];
+        if(quote){ code += c; if(c == quote) quote = 0; continue; }
+        if(c == '"' || c == '\''){ quote = c; code += c; continue; }
+        if(c == '!'){
+            flush();
+            size_t e = raw.find('\n', i);
+            if(e == string::npos) e = raw.size();
+            out += raw.substr(i, e - i);
+            i = e - 1;
+            continue;
+        }
+        code += c;
+    }
+    flush();
+    return out;
 }
 
 // Replace every `$i6Name(...)` in an emitter body. Parenthesis-aware, so an overload signature
@@ -2666,8 +2701,8 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
                     if(getDispatchClass(c.type) != getDispatchClass(candidates[globalAt].type)
                        || getDispatchClass(c.type) == nullptr) sameType = false;
                 if(!sameType)
-                    parsingWarning(format("'{0}' is both {1} and an imported member; the global is used "
-                        "(§10.4). Write the imported one with its full path.", name, candidates[globalAt].origin));
+                    parsingWarning(format("'{0}' is both {1} and an imported member; the global is used. "
+                        "Write the imported one with its full path.", name, candidates[globalAt].origin));
                 return candidates[globalAt].qualified;
             }
         }
@@ -2951,6 +2986,8 @@ functionDef* bglParser::findAssignOperator(classDef* cls, const string& valueTyp
             addType(valCls->name);
             for(classDef* c : valCls->ancestorsNearestFirst()) addType(c->name);
         }
+        // A literal reaches an operator taking its base type, `3` an `operator = (int)` (§2.10.1).
+        if(string base = literalBaseType(valueType); base != valueType) addType(base);
     }
     for(const string& t : chain){
         typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){
@@ -3775,10 +3812,12 @@ bglParser::MethodMatch bglParser::resolveMethodNamed(const string& typeName, con
     return resolveMethod(typeName, objPath, methodName, args);
 }
 
-functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, const string& methodName,
+functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, const string& methodNameIn,
                                         vector<expression*>& args, vector<string>& namedArgNames,
                                         vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
                                         const string& elementType){
+    string methodName = methodNameIn;   // members are keyed in lower case
+    transform(methodName.begin(), methodName.end(), methodName.begin(), ::tolower);
     // On an `array<literal T>` receiver, the methods that store an element (declared `literal T`)
     // take only literal values; finalizeCallArgs reads this while binding.
     struct LiteralElementsGuard {

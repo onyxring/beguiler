@@ -1788,6 +1788,7 @@ for(const string& arrName : trackedByteArraysNeedingMagicInit){
     // accept symbolic arithmetic in Global initializers, so we declare the
     // Global early (= 0) and assign the real value here at startup.
     out << "    " << arrName << " = " << raw << " + WORDSIZE + 2;\n";
+    out << "    _bglBuf._registerTracked(" << arrName << ");\n";   // <buf> knows a tracked buffer by its registry
 }
 for(const string& block : languageService.startupBlocks)
     out << block << "\n";
@@ -2438,7 +2439,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                     emitStatement(s, "        ");
             if(currentCleanups != nullptr && !endsInReturn(body))
                 for(auto& [varName, cbody] : *currentCleanups)
-                    out << "        " << cbody << "\n";
+                    out << "        " << spillWord(cbody) << "\n";
             currentCleanups = nullptr;
             if(currentSpillCount > 0)
                 out << format("        _bglFrameFree({0});\n", currentSpillCount);
@@ -2590,7 +2591,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     // emit deinit cleanups at implicit end of function (fall-through path)
     if(currentCleanups != nullptr && !endsInReturn(body))
         for(auto& [varName, body] : *currentCleanups)
-            out << "    " << body << "\n";
+            out << "    " << spillWord(body) << "\n";   // a spilled local is freed through its frame slot
     if(currentSpillCount > 0)
         out << format("    _bglFrameFree({0});\n", currentSpillCount);
     currentCleanups = nullptr;
@@ -2706,6 +2707,7 @@ void i6Emitter::emitLocalDeclaration(variableDeclaration* var, const string& ind
             b = replaceWord(b, "$self",              selfText);
             b = replaceWord(b, "$val",               selfText);
             b = replaceWord(b, "$target",            selfText);
+            if(!currentSpillAliases.empty()) b = groupFrameSlots(b);   // `(_bglFrm-->1)._opeq(…)`
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
             out << format("{0}{1};\n", indent, b);
@@ -2713,6 +2715,7 @@ void i6Emitter::emitLocalDeclaration(variableDeclaration* var, const string& ind
             string rhs = exprText(var->declaredExpressionValue);
             if(rhs.find("$target") != string::npos){
                 rhs = replaceWord(rhs, "$target", selfText);
+                if(!currentSpillAliases.empty()) rhs = groupFrameSlots(rhs);
                 out << format("{0}{1};\n", indent, rhs);
             } else {
                 out << format("{0}{1} = {2};\n", indent, selfText, rhs);
@@ -2738,6 +2741,7 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
         if(!assign->emitterProp.empty()) b=replaceWord(b,"$prop", assign->emitterProp);
         b=replaceWord(b,"$val",  spillName(assign->variableLeft));
         b=replaceWord(b,"$target", spillName(assign->variableLeft));
+        if(!currentSpillAliases.empty()) b = groupFrameSlots(b);
         while(!b.empty() && b.back()==';') b.pop_back();
         out << indent << b << ";\n";
     } else {
@@ -2745,6 +2749,7 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
         // $target in expression: substitute LHS and emit as statement (no "LHS =" prefix)
         if(rhs.find("$target") != string::npos){
             rhs = replaceWord(rhs, "$target", spillName(assign->variableLeft));
+            if(!currentSpillAliases.empty()) rhs = groupFrameSlots(rhs);
             out << indent << rhs << ";\n";
         } else {
             out << format("{0}{1} = {2};\n", indent, spillName(assign->variableLeft), rhs);
@@ -2779,7 +2784,7 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
     // emit deinit cleanups before every return
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
-            out << indent << body << "\n";
+            out << indent << spillWord(body) << "\n";
     if(currentSpillCount > 0)
         out << format("{0}_bglFrameFree({1});\n", indent, currentSpillCount);
     if(holdValue){
@@ -3273,12 +3278,14 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
                     if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
                         emitterBindings pb; pb.self = exprStr; pb.val = exprStr;
                         pb.trim = emitterTrim::wsSemi;
-                        out << indent << parser.expandEmitterBody(blk, pb) << ";\n";
+                        string body = parser.expandEmitterBody(blk, pb);
+                        out << indent << (currentSpillAliases.empty() ? body : groupFrameSlots(body)) << ";\n";
                         continue;
                     }
                 }
                 if(printFn != nullptr && !printFn->isEmitter){
-                    out << indent << exprStr << ".print();\n";
+                    string call = exprStr + ".print();";
+                    out << indent << (currentSpillAliases.empty() ? call : groupFrameSlots(call)) << "\n";
                     continue;
                 }
             }
@@ -3907,7 +3914,7 @@ for(typeMember* m : obj->members){
         if(vd->type.name == "attributelist") continue; // handled separately below
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
         if(isHeaderMember(vd->name)) continue; // emitted in the object's header, not as a 'with' property
-        if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue; // compile-time-only verb fields
+        if(isVerbInstance && (vd->name == "meta" || vd->name == "priority" || vd->name == "librarypriority")) continue; // compile-time-only verb fields
         out << (first ? "  with " : ",\n       ");
         // Honor an explicit i6name (`Type member as <i6name>;`) so the emitted I6 property
         // short-name can differ from the Beguile member name — lets a member sidestep an I6
@@ -3970,7 +3977,7 @@ for(typeMember* m : obj->members){
                 emitStatement(s, "    ");
         if(currentCleanups != nullptr && !endsInReturn(body))
             for(auto& [varName, cbody] : *currentCleanups)
-                out << "    " << cbody << "\n";
+                out << "    " << spillWord(cbody) << "\n";
         currentCleanups = nullptr;
         if(currentSpillCount > 0)
             out << format("    _bglFrameFree({0});\n", currentSpillCount);
@@ -4097,7 +4104,7 @@ void i6Emitter::emitObject(objectDef* obj){
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isExternal) continue; // alias members have no I6 backing
-            if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue;
+            if(isVerbInstance && (vd->name == "meta" || vd->name == "priority" || vd->name == "librarypriority")) continue;
             if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && !isHeaderMember(vd->name)) { hasProps = true; break; }
         } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
@@ -4318,6 +4325,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                     if(f->name == hookName){ fn = f; break; }
             i6RawNode* raw = new i6RawNode();
             raw->text = code;
+            raw->cooked = true;   // compiler-made: it must not stop the routine's parameters being renamed
             if(fn){
                 auto* body = dynamic_cast<statementBlock*>(fn->body);
                 if(body){ body->statements.insert(body->statements.begin(), raw); return; }
@@ -4668,12 +4676,13 @@ void i6Emitter::emitVerbGrammar(const string& verbName, int anchor, bool isMeta,
     // Own-block lines whose trigger word collides with an existing (extern) verb must
     // emit as Extend rather than Verb (the fan-out path in emitGrammarLines handles this
     // automatically). The First-vs-Last choice for those extends is driven by the verb's
-    // own priority against the extern's implicit anchor (the BLR `class verb` default):
-    //   priority <  default → Extend first (this verb's rules match before stdlib's)
-    //   priority >= default → Extend       (default last; appends to stdlib's rules)
+    // own priority against the library verbs' anchor (the BLR `class verb`'s libraryPriority):
+    //   priority <  libraryPriority → Extend first (this verb's rules match before the library's)
+    //   priority >= libraryPriority → Extend       (appends to the library's rules)
     // Brand-new trigger words on the same own-line are unaffected — emitDirectiveHead
     // emits them as `verb 'w'` regardless of mode.
-    int externAnchor = languageService.getClassFieldIntDefault("verb", "priority", 10);
+    int externAnchor = languageService.getClassFieldIntDefault("verb", "librarypriority",
+                                                               languageService.getClassFieldIntDefault("verb", "priority", 10));
     extendDirective ownMode = (anchor < externAnchor) ? extendDirective::First : extendDirective::Last;
     if(!anchorOwn.empty()) emitGrammarLines(verbName, anchorOwn, isMeta, ownMode);
     for(auto& bucket : bucketize(lessThan,  /*descending*/true))

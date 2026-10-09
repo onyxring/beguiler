@@ -60,10 +60,12 @@ Room foyer { short_name = "Foyer"; }
 
 #i6 {
     [ DebugDump x ;
-        objectloop(x ofclass Room) print (name) x, "^";
+        objectloop(x ofclass $i6Name(Room)) print (name) x, "^";
     ];
 }
 ```
+
+> **Naming.** Beguile emits the class `Room` as `_bglClass_Room` (§8.1), so an island names it with `$i6Name(Room)`, which expands to the emitted identifier, rather than with the bare source name.
 
 ### 15.1.2 Precompiler Mode
 

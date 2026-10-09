@@ -1,0 +1,43 @@
+/*  run_puny_binding_routines — the punyInform binding declares PunyInform's own routines.
+
+    The binding used to declare only _StatusLineHeight, so a program calling PlayerTo, TestScope, the
+    timer and daemon routines or NextWord had to redeclare them. This tier assembles the program and
+    plays it, so a declaration that names a routine PunyInform lacks, or the wrong arity, fails here.
+*/
+// EXPECT_OUTPUT: moved=1 here=1 scope=1 anc=1 contains=1 cap=7 words=-1 spaces=[   ]
+// EXPECT_OUTPUT: ding
+// INPUT: wait
+// INPUT: quit
+#beguilerSettings { target = z5; includePaths = "../../../inform6/puny/lib"; }
+
+#defineI6 DEFAULT_CAPACITY 7
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+object roomA  { "Room A"; attributes = {light}; }
+object roomB  { "Room B"; attributes = {light}; }
+object box    { "box"; parent = roomA; name = {.box}; attributes = {container, open}; }
+object coin   { "coin"; parent = box;  name = {.coin}; }
+object bell   { "bell"; parent = roomB; name = {.bell};
+    void daemon() { print("ding^"); }
+}
+
+bool Initialise() {
+    PlayerTo(roomB, 1);
+    print("moved="); print(location == roomB ? 1 : 0);
+    PlayerTo(roomA, 1);
+    print(" here="); print(location == roomA ? 1 : 0);
+    print(" scope="); print(TestScope(coin) ? 1 : 0);
+    print(" anc="); print(CommonAncestor(coin, box) == box ? 1 : 0);
+    print(" contains="); print(IndirectlyContains(roomA, coin) ? 1 : 0);
+    print(" cap="); print(ObjectCapacity(roomA));
+    wn = 1;
+    print(" words="); print(NextWordStopped());
+    print(" spaces=["); FastSpaces(3); print("]^");
+    StartDaemon(bell);
+    rfalse;
+}

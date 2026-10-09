@@ -422,6 +422,51 @@ void bglParser::rejectValueWordName(const string& name){
 // Register the members of an `extend <obj>` body onto obj during pre-scan. Assumes the stream is
 // positioned right after `extend <name>` (scans to '{', processes through the matching '}').
 // Registers function stubs plus auto/alias namespace-redirect members — see header comment.
+// `alias X for Type;`, `alias X = ident;` or `[emitter] auto X = ident;` in an object body: a
+// resolution stub, so a dotted path through it resolves before the main pass reaches the object.
+// The stub is isExternal (no I6 emission) + isPrePassStub; the main pass reconciles it away once its
+// real member lands. Anything richer is left for the normal member handling.
+bool bglParser::preScanNamespaceRedirect(token& t, objectDef* obj){
+    if(!t.is("alias") && !t.is("auto")) return false;
+    bool isAliasKw = t.is("alias");
+    token p3 = file.peekToken(2);   // 'for' | '='
+    token p4 = file.peekToken(3);   // Type/ident | '{' | ...
+    token p5 = file.peekToken(4);   // ';' for a simple redirect
+    bool aliasFor = isAliasKw && p3.is("for") && p5.is(token::endStatement);
+    bool eqRedir  = p3.is(token::assignment) && (p4.is(eTokenType::identifier) || p4.isDataType()) && p5.is(token::endStatement);
+    if(!aliasFor && !eqRedir) return false;
+    token nm = file.getToken();          // member name
+    file.getToken();                     // 'for' | '='
+    token rhs = file.getToken();         // type/ident
+    file.getToken();                     // ';'
+    variableDeclaration& vd = *(new variableDeclaration());
+    vd.name = nm.value;
+    vd.displayName = nm.originalValue;
+    vd.isExternal = true;
+    vd.isPrePassStub = true;
+    vd.type = languageService.getType(rhs.value);   // real type if already registered
+    if(vd.type.name.empty()){                       // else stash the (lowercased) name for by-name resolution
+        string ln = rhs.value; transform(ln.begin(), ln.end(), ln.begin(), ::tolower);
+        vd.type.name = ln;
+    }
+    if(aliasFor){
+        vd.isAlias = true;
+    } else {
+        // Object-valued redirect (auto/alias to an object) needs the init name so the expr walk can
+        // follow it to the target object; harmless for class targets. `alias` marks it a namespace
+        // hook, as the main pass will, so a path through it resolves before the declaration is reached.
+        vd.isAlias = isAliasKw;
+        expression* e = new expression();
+        e->tokens.push_back(rhs.value);
+        vd.declaredExpressionValue = e;
+    }
+    bool replaced = false;
+    for(auto& m : obj->members)
+        if(m->name == vd.name && m->isPrePassStub){ m = &vd; replaced = true; break; }
+    if(!replaced) obj->members.push_back(&vd);
+    return true;
+}
+
 void bglParser::preScanExtendObjectMembers(objectDef* obj){
     // Open the body
     token t = file.getToken();
@@ -443,48 +488,9 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
         //   alias X for Type;      alias X = ident;      [emitter] auto X = ident;
         // The stub is isExternal (no I6 emission) + isPrePassStub; the main pass reconciles it away
         // once its real member lands (see processObjectExtension).
-        if(t.is("alias") || t.is("auto")){
-            bool isAliasKw = t.is("alias");
-            token p3 = file.peekToken(2);   // 'for' | '='
-            token p4 = file.peekToken(3);   // Type/ident | '{' | ...
-            token p5 = file.peekToken(4);   // ';' for a simple redirect
-            bool aliasFor = isAliasKw && p3.is("for") && p5.is(token::endStatement);
-            bool eqRedir  = p3.is(token::assignment) && (p4.is(eTokenType::identifier) || p4.isDataType()) && p5.is(token::endStatement);
-            if(aliasFor || eqRedir){
-                token nm = file.getToken();          // member name
-                file.getToken();                     // 'for' | '='
-                token rhs = file.getToken();         // type/ident
-                file.getToken();                     // ';'
-                variableDeclaration& vd = *(new variableDeclaration());
-                vd.name = nm.value;
-                vd.displayName = nm.originalValue;
-                vd.isExternal = true;
-                vd.isPrePassStub = true;
-                vd.type = languageService.getType(rhs.value);   // real type if already registered
-                if(vd.type.name.empty()){                       // else stash the (lowercased) name for by-name resolution
-                    string ln = rhs.value; transform(ln.begin(), ln.end(), ln.begin(), ::tolower);
-                    vd.type.name = ln;
-                }
-                if(aliasFor){
-                    vd.isAlias = true;
-                } else {
-                    // Object-valued redirect (auto/alias to an object) needs the init name so the
-                    // expr walk can follow it to the target object; harmless for class targets.
-                    // `alias` marks it a namespace hook, as the main pass will, so a path through
-                    // it resolves before the declaration is reached.
-                    vd.isAlias = isAliasKw;
-                    expression* e = new expression();
-                    e->tokens.push_back(rhs.value);
-                    vd.declaredExpressionValue = e;
-                }
-                bool replaced = false;
-                for(auto& m : obj->members)
-                    if(m->name == vd.name && m->isPrePassStub){ m = &vd; replaced = true; break; }
-                if(!replaced) obj->members.push_back(&vd);
-                t = file.getToken();
-                continue;
-            }
-            // not a simple redirect — fall through to normal handling below
+        if((t.is("alias") || t.is("auto")) && preScanNamespaceRedirect(t, obj)){
+            t = file.getToken();
+            continue;
         }
 
         if(t.isDataType() || t.is(eTokenType::identifier)){
@@ -813,26 +819,31 @@ void bglParser::preScanExtend(token& tok){
                     for(auto it = cls->members.begin(); it != cls->members.end(); ++it){
                         if((*it)->name == fd.name){
                             exists = true;
-                            if(memberIsReplace) *it = &fd;
+                            if(memberIsReplace){
+                                *it = &fd;
+                                // An emitter expands where it is used, so a use above this extend has
+                                // to see the replacement, not the body the class declares (§8.7.1).
+                                fd.isForwardReplace = memberIsEmitter;
+                            }
                             break;
                         }
                     }
                     if(!exists) cls->members.push_back(&fd);
                 } else {
-                    // Property. A positional one gets a stub now, so the class's order is complete
-                    // for instances parsed before the main pass reaches this extend.
-                    if(memberIsInline){
+                    // Property: a stub now, so code above this extend sees it (§8.7.1), and a
+                    // positional one completes the class's order for instances parsed before it.
+                    {
                         bool exists = false;
                         for(typeMember* m : cls->members) if(m->name == memberName.value){ exists = true; break; }
                         if(!exists){
                             variableDeclaration& vd = *(new variableDeclaration());
                             vd.name = memberName.value;
                             vd.type.name = t.value;
-                            vd.isInline = true;
+                            vd.isInline = memberIsInline;
                             vd.isPrePassStub = true;
                             cls->members.push_back(&vd);
                         }
-                        addInlineOrder(*cls, memberName.value);
+                        if(memberIsInline) addInlineOrder(*cls, memberName.value);
                     }
                     // skip to ;
                     while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
@@ -947,6 +958,25 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                           vd.isStatic = true;
                           vd.isPrePassStub = true;
                           cls->members.push_back(&vd);
+                      }
+                  }
+                  // A static method: a stub with its signature, so a call above it in the class resolves.
+                  else if(typeTok.isDataType() && memberName.is(eTokenType::identifier)
+                          && !memberName.is("operator") && afterName.is(token::parenOpen)){
+                      bool exists = false;
+                      for(typeMember* m : cls->members)
+                          if(m->name == memberName.value){ exists = true; break; }
+                      file.getToken();   // '('
+                      vector<paramDef*> ps;
+                      preScanCaptureParams(ps);
+                      if(!exists){
+                          functionDef& fd = *(new functionDef());
+                          fd.name = memberName.value;
+                          fd.returnType.name = typeTok.value;
+                          fd.isStatic = true;
+                          fd.isPrePassStub = true;
+                          fd.params = ps;
+                          cls->members.push_back(&fd);
                       }
                   }
                   // Skip to ';' — but if we hit a '{' (an init block), consume it raw
@@ -1236,7 +1266,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
     // matched neither arm, the declaration fell through to the bodiless path, and the skip there
     // ran past this object's body into the NEXT declaration. Consuming it here rather than
     // widening the test below keeps `object Name asI6 <name>;` on the bodiless path where it belongs.
-    preScanI6NameClause(nameStr);
+    string asI6Name;
+    preScanI6NameClause(nameStr, &asI6Name);
     token peek = file.peekToken();
     if(peek.is(token::braceOpen) || peek.is(":")){ // object body
         objectDef* objStub = nullptr;
@@ -1252,6 +1283,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             // Set objectClass from the declared type so forward references resolve correctly
             if(auto* cls = languageService.findClass(classType))
                 objStub->objectClass = cls;
+            if(!asI6Name.empty()) objStub->i6name = asI6Name;   // a use above the declaration emits it
         } else {
             // Already registered — find it
             if(auto* od = languageService.findGlobalAs<objectDef>(nameStr)) objStub = od;
@@ -1268,6 +1300,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                 if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                 if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
                 if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
+                if(preScanNamespaceRedirect(t, objStub)){ t = file.getToken(); continue; }
                 // `name = v` where the member's name is also a class name: an assignment, not a declaration.
                 if(t.isDataType() && (file.peekToken().is(token::assignment) || file.peekToken().is(token::bindAssignment))){
                     preScanSkipToSemicolon();
@@ -1427,12 +1460,15 @@ void bglParser::preScanProperty(bool isExtern){
 // Pre-scan counterpart to parseI6NameClause (§3.11): step over `asI6 <name>` / `alias <name>`, and
 // for `alias` register under the BEGUILE name the clause supplies rather than the I6 symbol declared
 // before it. Reports nothing — the main pass owns the diagnostics.
-void bglParser::preScanI6NameClause(string& nameStr){
+void bglParser::preScanI6NameClause(string& nameStr, string* asI6Name){
     bool isAsBgl = file.peekToken().is("asbgl");
     if(!isAsBgl && !file.peekToken().is("asi6")) return;
     file.getToken();                       // the clause keyword
     token other = file.getToken();         // the name it carries
-    if(!isAsBgl) return;                   // asI6: the declared name stays the Beguile one
+    if(!isAsBgl){                          // asI6: the declared name stays the Beguile one
+        if(asI6Name != nullptr) *asI6Name = other.originalValue.empty() ? other.value : other.originalValue;
+        return;
+    }
     nameStr = other.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
 }

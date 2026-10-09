@@ -39,7 +39,7 @@ extern attribute door;         /// is a door between locations
 extern attribute locked;       /// container/door is locked
 extern attribute lockable;     /// can be locked and unlocked
 extern attribute workflag;     /// internal working flag (parser use)
-extern attribute reactive;     /// REQUIRED for objects with before/after/each_turn/react_before/react_after
+extern attribute reactive;     /// marks objects that run each_turn, react_before, react_after or add_to_scope; set at startup unless OPTIONAL_MANUAL_REACTIVE is defined
 extern attribute scored;       /// object/room has been scored
 
 //-- Properties ------------------------------------------
@@ -123,7 +123,59 @@ extern object   Directions;                 /// shared placeholder bound to `nou
 #endif
 
 //-- Global routines ------------------------------------------------
-extern void _StatusLineHeight(int h);  /// Sets the status window to `h` lines and remembers it.
+// Routines PunyInform compiles only under an option constant, or only for z5 and later, are noted in their docs.
+extern void           _StatusLineHeight(int h);                                                  /// Sets the status window to `h` lines and remembers it.
+extern void           Banner();                                                                  /// Prints the game name and serial number.
+extern void           ChangeFgColour(eColor colour);                                             /// Changes the foreground color when colors are enabled (z5 and later; a stub on z3).
+extern void           ChooseObjectsFinal_Discard(int n);                                         /// Removes option `n` (0 or higher) from within ChooseObjectsFinal.
+extern void           ChooseObjectsFinal_Pick(int n);                                            /// Picks option `n` (0 or higher) from within ChooseObjectsFinal.
+extern void           ClearScreen(eWindow window);                                               /// Clears the main window, the status window or both (z5 and later).
+extern object         CommonAncestor(object a, object b);                                        /// The nearest object that contains both `a` and `b`, or nothing.
+extern property       DoorDir(object door);                                                      /// The direction property in which the door lies.
+extern object         DoorTo(object door);                                                       /// The room the door leads to, or 1 if its door_to routine already explained why not.
+extern void           DrawStatusLine(bool newlines = false);                                     /// Prints the status line, or just as many newlines when `newlines` is true.
+extern void           FastSpaces(int n);                                                         /// Prints `n` spaces.
+extern bool           ImplicitDisrobeIfWorn(object obj);                                         /// Takes `obj` off if it is worn; false means success.
+extern bool           ImplicitGrabIfNotHeld(object obj);                                         /// Takes `obj` if it is not held; false means success.
+extern bool           IndirectlyContains(object outer, object inner);                            /// True if `outer` holds `inner` on some level.
+extern void           LoopOverScope(func<void, object> routine, object actor = null);            /// Calls `routine` once for each object in scope for `actor` (default the player).
+extern void           MoveFloatingObjects();                                                     /// Rechecks which objects with `found_in` are present.
+extern dictionaryWord NextWord();                                                                /// The word at `wn`, then advances `wn`; null if empty or not in the dictionary.
+extern int            NextWordStopped();                                                         /// As NextWord, but -1 once `wn` is past the end of the input.
+extern int            NumberWords();                                                             /// The number of words in the player's input.
+extern int            ObjectCapacity(object obj);                                                /// The object's `capacity`, defaulting to DEFAULT_CAPACITY or 100.
+extern bool           ObjectIsUntouchable(object item, bool dontPrint = false, bool checkTake = false);  /// True if the player cannot touch `item`; prints why unless `dontPrint` is set.
+extern bool           OzmooColoursAvailable();                                                   /// True when played on Ozmoo with its extra colors (z5 and later).
+extern int            ParseToken(int tokenType, int tokenData);                                  /// Runs the parser on a grammar token from within a general parsing routine.
+extern void           PlaceInScope(object obj);                                                  /// Puts `obj` in scope from within a scope routine, ignoring its children.
+extern void           PlayerTo(object dest, int flag = 0);                                       /// Moves the player to `dest`; flag 0=long description, 1=quiet, 2=per lookmode.
+extern int            PrintContents(var text, object obj, int style = 0);                        /// Lists the contents of `obj`, preceded by `text` unless it is 0.
+extern int            PrintContentsFromR(var text, object obj, int maxCount = 0);                /// Lists `obj` and its siblings with their contents, keeping the current style.
+extern void           PrintMsg(int msg, var arg1 = 0, var arg2 = 0);                             /// Prints the library message `msg`.
+extern int            PrintOrRun(object obj, property prop, bool noNewline = false);             /// Runs `obj.prop` if it is a routine, or prints it (and a newline) if it is a string.
+extern void           PronounNotice(object obj);                                                 /// Makes the pronouns that fit `obj` refer to it.
+extern int            RunRoutines(object obj, property prop, int switchValue = 0);               /// Runs the routines in `obj.prop` until one returns non-zero, and returns that value.
+extern void           ScopeWithin(object obj);                                                   /// Puts everything within `obj` in scope, searching supporters, transparent objects and open containers.
+extern void           SetTime(int minutes, int step = 0);                                        /// Sets the time to `minutes` after midnight; a positive `step` is minutes per turn.
+extern void           StartDaemon(object obj);                                                   /// Starts running obj's `daemon` property every turn.
+extern void           StartTimer(object obj, int turns);                                         /// Starts obj's timer; its `time_out` runs after `turns` turns.
+extern void           StopDaemon(object obj);                                                    /// Stops running obj's `daemon` property.
+extern void           StopTimer(object obj);                                                     /// Cancels obj's running timer.
+extern bool           TestScope(object obj, object actor = null);                                /// True if `obj` is in scope for `actor` (default the player).
+extern int            TryNumber(int wordNum);                                                    /// The number in word `wordNum` of the input (0-10000), or -1000 if it is not a number.
+extern int            WordAddress(int wordNum);                                                  /// The memory address of the characters of word `wordNum` of the input.
+extern int            WordLength(int wordNum);                                                   /// The number of characters in word `wordNum` of the input.
+extern dictionaryWord WordValue(int wordNum);                                                    /// The dictionary word that word `wordNum` of the input matches, or null.
+extern bool           YesOrNo();                                                                 /// Waits for the player to answer; true for yes, false for no.
+#if OPTIONAL_ALLOW_WRITTEN_NUMBERS
+    extern int NumberWord(dictionaryWord word);  /// The number 1-20 a number word such as 'six' stands for, or 0 if it is not one.
+#endif
+#if OPTIONAL_LANGUAGE_NUMBER
+    extern void LanguageNumber(int n);  /// Prints `n` in words.
+#endif
+#if OPTIONAL_FULL_SCORE && TASKS_PROVIDED
+    extern void Achieved(int task);  /// Completes scoring task `task` and awards its points once.
+#endif
 
 //-- Helpful Enumerations ----------------------------------------------
 enum eColor {

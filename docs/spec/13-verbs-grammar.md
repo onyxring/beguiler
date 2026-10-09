@@ -146,9 +146,9 @@ verbs (§13.2.3) are exempt.
 **Example**
 
 ```bgl
-verb Jump {
-    grammar = { {.jump} };
-    void handler() { print("You jump on the spot."); }
+verb Twirl {
+    grammar = { {.twirl} };
+    void handler() { print("You twirl on the spot."); }
 }
 ```
 
@@ -270,7 +270,11 @@ lower number is tried earlier by the parser. The `verb` member `priority` defaul
 recognized only on `verb` instances and is not a run-time property.
 
 A verb's *anchor* is the priority declared in its own `verb` body, or `10` when none is declared
-(an extern verb always has the default anchor). Every other contribution to that verb's trigger
+(an extern verb always has the default anchor). A program verb whose own grammar uses a word a
+library verb already owns is placed against the library's lines by the `verb` member
+`libraryPriority`, `20` by default: with an anchor below it, the default, the program verb's lines are
+tried first, so `verb Press { grammar = {.press, NOUN}; … }` takes `press` ahead of the library's
+`Push`. Every other contribution to that verb's trigger
 words sorts relative to the anchor: a contribution with a lower priority is tried before the verb's
 own lines, a higher one after. The verb that a `synonyms` list attaches to (§13.5.4) is not an anchor
 in this sense.
@@ -292,9 +296,9 @@ come last. Per-rule and block-local priorities participate in the same ordering.
 **Example**
 
 ```bgl
-verb Take {
+verb Pocket {
     priority = 5;
-    grammar = { {.take, NOUN}, {.grab, NOUN} };
+    grammar = { {.pocket, NOUN}, {.stash, NOUN} };
     void handler() { … }
 }
 
@@ -309,7 +313,7 @@ extend Look {
 }
 
 grammar additions {
-    grammarRule r1 = {Take, {.nab, NOUN}};             // 10
+    grammarRule r1 = {Pocket, {.nab, NOUN}};           // 10
     grammarRule r2 = {Drop, {.toss, HELD}, 5};         // 5
 }
 ```

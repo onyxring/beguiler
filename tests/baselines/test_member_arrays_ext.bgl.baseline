@@ -101,7 +101,6 @@ array g table 30 10 20 3 $9084;
 ];
 [gSort;
     _bglArray.sortDefault(g, 0, 0);
-    n = _bglCap0;
 ];
 [gChain;
     return _bglArray.length(_bglArray.filter(g, 0, _bglLambda_1), 0);

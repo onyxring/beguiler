@@ -33,6 +33,7 @@ class abstractObject{
         bool operator == (abstractObject);
         bool isExternal;
         bool isPrePassStub = false; // true when registered by the pre-scanner; cleared when full pass processes the declaration
+        bool isForwardReplace = false; // a pre-scan stub for a later `extend … replace emitter`: the class's own declaration doesn't overwrite it
         const string& dName() const { return displayName.empty() ? name : displayName; } // display name for error messages
         virtual void dummy(){}  //typeid requires at lease one virtual function in the base class to work
 };

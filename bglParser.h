@@ -258,6 +258,7 @@ class bglParser {
         // Inform 6 keeps both in one namespace.
         void validateRoutinePropertyClashes();
         void validateGlobalNameClashes();
+        void validateVerbNameClashes();
         // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
         // that statement wherever it starts one; give it an emitted name that can't.
         void renameI6KeywordNames();
@@ -472,7 +473,7 @@ class bglParser {
         // File-scope counterpart: records the type's init emitter — and the operator= emitter applying
         // any declared value — in languageService.globalInits for the bglInit routine.
         void recordGlobalVariableInit(class variableDeclaration& varDecl, bool isConst, class functionDef* func, class statementBlock* body);
-        bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false, bool isSuperposed = false);
+        bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false, bool isSuperposed = false, bool isConst = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());
         bool processObjectExtension(token nameTok);
@@ -583,7 +584,8 @@ class bglParser {
         // Pre-scan counterpart: step over `asI6 <name>` / `asBgl <name>` and, for `asBgl`, register
         // the stub under the BEGUILE name the clause supplies rather than the I6 symbol declared
         // before it. Reports nothing — the main pass owns the diagnostics.
-        void preScanI6NameClause(string& nameStr);
+        void preScanI6NameClause(string& nameStr, string* asI6Name = nullptr);
+        bool preScanNamespaceRedirect(token& t, class objectDef* obj);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false, string docComment = "");
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
@@ -675,6 +677,8 @@ class bglParser {
         void resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign);
         // `lhs op= rhs;` — compound assignment (+=, -=, *=, /=, %=, |=, &=, ^=, <<=, >>=).
         bool processCompoundAssignment(token tok, token symbol, StatementContext& sc);
+        // `a[i] op= v;` / `a[i]++;` / `++a[i];` rewritten as `a[i] = a[i] op (v);`; true when it handled it.
+        bool rewriteElementCompound(token tok, StatementContext& sc);
         // `x.children += { a, b };` — world-model child placement at runtime.
         bool processChildrenPlacement(token tok, token symbol, StatementContext& sc);
         // `arr += { a, b };` — per-element compound op over a brace list; true when it handled the statement.
@@ -800,6 +804,7 @@ class bglParser {
         ExprStep parseExprInlineObject(ExprParseState& st);
         ExprStep parseExprIdentifier(ExprParseState& st);
         ExprStep parseExprOperator(ExprParseState& st);
+        class functionDef* negationThroughInt(const string& type);
         bool parseExprUnaryOperand(ExprParseState& st, const string& op, token operand);
         string takeBranchSetUp(size_t mark);
         ExprStep parseExprDictionaryWord(ExprParseState& st);

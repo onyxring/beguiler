@@ -1,0 +1,5 @@
+// Negative test: a const declaration must give its value (§3.4).
+// EXPECT_ERROR: needs a value
+#beguilerSettings { target = z5; informName = "none"; }
+const int limit;
+void main(){ }

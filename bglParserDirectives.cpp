@@ -202,7 +202,7 @@ void bglParser::rejectEmitterNamesInBody(const string& text, const i6Block* blk)
         }
         if(emitterOnly)
             parsingError(format("emitter body names emitter '{0}', which emits no Inform 6 symbol; "
-                                "write $i6Expr({0}(…)) to expand it (§7.3.4).", word));
+                                "write $i6Expr({0}(…)) to expand it.", word));
     }
 }
 
@@ -511,7 +511,7 @@ bool bglParser::processDirectiveUnrecognized(token directive){
     }
     if(directive.value == "#i6replace")
         return parsingError("'#i6replace' is not a Beguile directive. Replace an I6 library routine with `replace` on its "
-                            "`extern` declaration (§15.6), or write I6's `Replace` in an `#i6` block ahead of the library.");
+                            "`extern` declaration, or write I6's `Replace` in an `#i6` block ahead of the library.");
     return parsingError("Unrecognized directive '" + directive.value + "'.");
 }
 

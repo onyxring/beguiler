@@ -1,5 +1,5 @@
 // Negative test: an assignment is a statement (§5.5), not a value.
-// EXPECT_ERROR: An assignment is a statement (§5.5), not a value
+// EXPECT_ERROR: An assignment is a statement, not a value
 #beguilerSettings { target = z5; informName = "none"; }
 array<int> arr[4];
 void main(){ int x = (arr[1] = 9); print(x); }

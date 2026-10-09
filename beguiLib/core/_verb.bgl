@@ -11,6 +11,7 @@ alias class verb for object{
     grammarRuleList grammar;  /// The patterns that match this verb: `grammar = { {.take, NOUN} }`.
     bool meta;                /// True for an out-of-world command, such as SAVE, that takes no game time.
     int priority = 10;        /// Where this verb's grammar sits among others: lower matches earlier; the default is 10.
+    int libraryPriority = 20; /// Where a library verb's grammar sits; above the default, so a verb that adds to a library word matches first.
 
     /// What the verb does; override it to give the verb behavior. A library verb runs the library's own routine by default.
     default emitter void handler(){ $selfsub(); }

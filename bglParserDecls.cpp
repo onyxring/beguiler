@@ -256,7 +256,11 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
             t = file.getToken();
             continue;
         }
+        // An enum element type picks its own member over a same-named global (`door`, an attribute).
+        string savedExpected = currentExpectedType;
+        if(languageService.findEnum(elementType) != nullptr) currentExpectedType = elementType;
         expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
+        currentExpectedType = savedExpected;
         list->elements.push_back(elem);
         if(elem->terminator == token::braceClose) break;
         t = file.getToken();
@@ -287,8 +291,13 @@ void bglParser::bakeInlineArrayAggregate(const string& innerElemType, const stri
     languageService.registerInstance(inner);   // file-scope global; emitted as its own `array` directive
 }
 
-bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal, bool isSuperposed) {
+bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal, bool isSuperposed, bool isConst) {
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
+    // An array's name is already a fixed address and assigning to it copies its contents, so `const`
+    // has no binding to fix here (§3.4).
+    if(isConst)
+        parsingError(format("'const' doesn't apply to array '{0}': an array is storage.",
+            name.originalValue.empty() ? (string)name : name.originalValue));
     arrDecl.src = file.currentLocation();
     arrDecl.name = (string)name;
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
@@ -334,6 +343,14 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         if(firstVal.is(eTokenType::quote) || firstVal.is(eTokenType::rawQuote)){
             if(elementType == "char" || elementType == "charliteral"){
                 token strTok = file.getToken();
+                // A byte array holds one byte per character: a character beyond Latin-1 doesn't fit.
+                for(size_t at = strTok.value.find("@{"); at != string::npos; at = strTok.value.find("@{", at + 2)){
+                    size_t close = strTok.value.find('}', at);
+                    if(close != string::npos && stoul(strTok.value.substr(at + 2, close - at - 2), nullptr, 16) > 0xFF)
+                        parsingError(format("array<char> '{0}' holds one byte per character, so its text can't "
+                            "include a character beyond Latin-1 (U+{1}). Print such text from a string instead.",
+                            arrDecl.dName(), strTok.value.substr(at + 2, close - at - 2)));
+                }
                 arrDecl.stringInitializer = strTok.value;
                 file.getToken(token::endStatement);
             } else if(elementType.empty() || elementType == "string" || elementType == "stringliteral" || elementType == "var"){
@@ -532,7 +549,11 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                     const string& t = vd->type.name;
                     if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                 }
-                parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; '::" + varDecl.name + "' reaches the global.");
+                if(dynamic_cast<classDef*>(g) != nullptr)
+                    parsingWarning("Local variable '" + varDecl.name + "' has the name of class '" + g->dName()
+                        + "'; in this routine the name means the variable, though the class still declares types.");
+                else
+                    parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; '::" + varDecl.name + "' reaches the global.");
             }
         if(currentClass != nullptr){
             for(typeMember* m : currentClass->members)
@@ -905,8 +926,12 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
         checkLiteralValue(isUnionType(varDecl.type.name) ? splitUnionType(varDecl.type.name) : vector<string>{varDecl.type.name},
             varDecl.type.name, varDecl.declaredExpressionValue, format("'{0}' is literal: it needs a literal {{KIND}}", varDecl.dName()));
     if(!varDecl.isExternal) rejectValueWordName(varDecl.name);
-    if(body != nullptr)
+    if(body != nullptr){
         body->statements.push_back(&varDecl);
+        // What the initializer left to do after it runs (a lambda's captured-variable copy-back).
+        for(statement* inj : postInjections) body->statements.push_back(inj);
+        postInjections.clear();
+    }
     else
         languageService.registerInstance(varDecl);
 
@@ -1110,6 +1135,14 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // marker exists only so the compiler can warn when a single-word member is bound to one. Which
     // properties are additive is library-specific — `name` from the compiler itself, `before`/`after`
     // /`life` and kin from the standard library — so that knowledge lives in the bindings.
+    // A value class's variable owns an instance of its own, so `const` has no binding to fix (§3.4).
+    if(isConst && !isExternal)
+        if(classDef* vc = languageService.findClass((string)dataType); vc != nullptr && isValueClass(vc))
+            parsingError(format("'const' doesn't apply to '{0}': '{1}' is a value class, which is storage.",
+                varDecl.dName(), vc->dName()));
+    if(isConst && !isExternal && symbol.is(token::endStatement))
+        parsingError(format("const '{0}' needs a value: `const {1} {0} = …;`.", varDecl.dName(),
+                            dataType.originalValue.empty() ? (string)dataType : dataType.originalValue));
     if(isAdditive && varDecl.type.name != "property")
         parsingError("'additive' is only valid on a property declaration (e.g. `additive property foo;`)");
     // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
@@ -1195,6 +1228,15 @@ int bglParser::readCompileTimeInt(const string& what){
         }
     }
     if(t.is(eTokenType::identifier) || t.is(eTokenType::name)){
+        // A `const int` initialized with an integer literal is as good as a #define.
+        if(auto* vd = languageService.findGlobalAs<variableDeclaration>(t.value);
+           vd != nullptr && vd->isConst && vd->declaredExpressionValue != nullptr){
+            string v = vd->declaredExpressionValue->text();
+            v.erase(remove(v.begin(), v.end(), ' '), v.end());
+            while(v.size() > 2 && v.front() == '(' && v.back() == ')') v = v.substr(1, v.size() - 2);
+            if(!v.empty() && v.find_first_not_of("-0123456789") == string::npos && v.find('-', 1) == string::npos)
+                return stoi(v);
+        }
         auto it = definedSymbols.find(t.value);
         if(it != definedSymbols.end()){
             try { return stoi(it->second); } catch(...){ }
@@ -1203,8 +1245,9 @@ int bglParser::readCompileTimeInt(const string& what){
             return 0;
         }
     }
-    parsingError(format("{0} must be a compile-time integer — an integer literal, a #define'd integer, or an "
-                        "integer #beguilerSettings property. Got '{1}'.", what, t.value));
+    parsingError(format("{0} must be a compile-time integer — an integer literal, a #define'd integer, a "
+                        "`const int` set to an integer literal, or an integer #beguilerSettings property. Got '{1}'.",
+                        what, t.value));
     return 0;
 }
 

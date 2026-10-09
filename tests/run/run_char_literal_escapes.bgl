@@ -1,0 +1,16 @@
+/*  run_char_literal_escapes — every escape in Appendix D gives a character literal its code: accent
+    and named escapes, the basic escapes (`'\n'` is the newline, not `'^'`), and typed characters
+    whose ZSCII codes the lexer looks up. Strings take `\oe` and `\/o`, and a `{` inside a string in an
+    interpolation span does not end the span.  */
+// EXPECT_OUTPUT: acute=170 ss=161 pound=219 inv=222 q=223 quotes=163,162 nl=13 caret=94 at=64
+// EXPECT_OUTPUT: typed=161,219,223
+// EXPECT_OUTPUT: [œø] a q{ b
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    print($"acute={(int)'\'e'} ss={(int)'\ss'} pound={(int)'\LL'} inv={(int)'\!!'} q={(int)'\??'} ");
+    print($"quotes={(int)'\<<'},{(int)'\>>'} nl={(int)'\n'} caret={(int)'\^'} at={(int)'\@'}^");
+    print($"typed={(int)'ß'},{(int)'£'},{(int)'¿'}^");
+    int c = 1;
+    print("[\oe\/o] ");
+    print($"a {c == 1 ? "q{" : "r"} b^");
+}

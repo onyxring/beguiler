@@ -1,0 +1,6 @@
+// Negative test: a program verb can't redeclare a verb the binding declares; it is extended instead (§3.1, §13.2).
+// EXPECT_ERROR: has the same name as the library verb
+#beguilerSettings { target = z5; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+verb Empty { grammar = {.blank}; void handler(){ } }
+void main(){ }

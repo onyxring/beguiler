@@ -1,0 +1,21 @@
+/*  run_round5_declarations — a bnum member right of `|` at file scope gives its value; a `const int`
+    sizes an array; where an enum is expected, its member beats an attribute of the same name; a
+    `for` step may be a plain assignment.  */
+// EXPECT_OUTPUT: g=6 traits=1,12,2 size=5,5 door=3,3 step=1,3,9
+#beguilerSettings { target = z5; informName = "none"; }
+bnum eTrait { walkable, wet, opaque, tall }
+eTrait g = wet | opaque;
+array<eTrait> traits = { walkable, opaque | tall, wet };
+const int KINDS = 5;
+array<int> counts[KINDS];
+enum eCell { ground = 0, wall, water, door }
+attribute door;
+eCell c = door;
+array<eCell> row = { wall, door, ground };
+void main(){
+    array<int> loc[KINDS];
+    print($"g={(int)g} traits={(int)traits[0]},{(int)traits[1]},{(int)traits[2]} size={counts.size},{loc.size} door={(int)c},{(int)row[1]} step=");
+    int i;
+    for(i = 1; i < 20; i = i * 3){ print(i); if(i < 9) print(","); }
+    print("^");
+}

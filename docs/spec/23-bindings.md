@@ -150,6 +150,7 @@ lacks it fails with a Beguile error instead of an Inform 6 one:
 |---|---|
 | Debugging verbs (`tree`, `purloin`, `actions`, …) and debug-only globals and constants | `#if DEBUG` (§20.3) |
 | Standard library: `objects` and `places` | `#if !NO_PLACES` |
+| PunyInform routines: `NumberWord`, `LanguageNumber`, `Achieved` | `#if OPTIONAL_ALLOW_WRITTEN_NUMBERS`, `#if OPTIONAL_LANGUAGE_NUMBER`, `#if OPTIONAL_FULL_SCORE && TASKS_PROVIDED` |
 | PunyInform: `recording`, `replay`, `objects` and `places` | `#if OPTIONAL_EXTENDED_METAVERBS`; `objects` and `places` also `#if !NO_PLACES` |
 
 A program sets a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
@@ -263,7 +264,7 @@ bool Initialise(){ location = hall; rfalse; }
 | | `i6StandardLibrary` | `punyInform` |
 |---|---|---|
 | Directions | Direction *objects* `n_obj` … `d_obj`; a Go action has `noun == n_obj`. | No direction objects. `selected_direction` (a `property`) holds the direction property (`n_to`, `s_to`, … `in_to`, `out_to`) and `noun` is the shared `Directions` placeholder; `selected_direction_index` is `1..12`. The `FAKE_*_OBJ` constants are the parser's internal sentinels. |
-| Reacting objects | Any object may define `before`/`after`. | An object with `before`, `after`, `each_turn`, `react_before` or `react_after` must have the `reactive` attribute. |
+| Reacting objects | Any object may define `before`/`after`. | An object with `each_turn`, `react_before`, `react_after` or `add_to_scope` needs the `reactive` attribute, which the library sets for it at startup unless `OPTIONAL_MANUAL_REACTIVE` is defined; with that option the program gives `reactive` itself. |
 | Extra attributes | `door`, `absent`, `pluralname`, `male`, `female`, `neuter`, `switchable`, `on`, `scored`, `workflag`, … | The same, plus `reactive`. |
 | Pronouns | `itobj`, `himobj`, `herobj` | Also `themobj`. |
 | Status line | `StatusLineHeight()`, `gg_statuswin_cursize` | `_StatusLineHeight()`, `statusline_height`, `statusline_current_height` |

@@ -1,0 +1,72 @@
+/*  run_round5_names — name resolution an author leans on without thinking: static methods called
+    before their declaration and by bare name inside the class, a camelCase func member called bare,
+    a local named like a class, a member receiver of a statement call and of `?.`, a global extern
+    routine called from a method that inherits a member of its name, and declarations used above the
+    code that declares them: an asI6 object, a namespace alias, an extend's property and its replace
+    emitter, and a #using member in a global initializer.  */
+// EXPECT_OUTPUT: statics=42,20,6 camel=7 local=3 stmt=2 opt=2 extern=1
+// EXPECT_OUTPUT: asI6=2 alias=8 extend=5 replaced=3 using=8
+#beguilerSettings { target = z5; informName = "none"; }
+extern object child(object o);
+value class Money {
+    int Cents;
+    Money operator = (Money o) { Cents = o.Cents; return self; }
+    Money Doubled() { return Money.FromCents(Cents * 2); }
+    static Money FromCents(int c) { Money r; r.Cents = c; return r; }
+}
+class Util : object {
+    static int Twice(int v) { return v * 2; }
+    static int Quad(int v) { return Twice(Twice(v)); }
+    int Base = 3;
+    int Scaled() { return Twice(Base); }
+}
+Util u { }
+void show(int n) { print(n); }
+class Box : object {
+    func<void, int> onChange;
+    void fire() { onChange(7); }
+}
+Box bx { onChange = show; }
+class Item : object { int Rarity = 3; }
+Item rock { }
+class Node : object {
+    int Val;
+    Node Next;
+    void Ping() { print(Val); }
+    void PingNext() { Next.Ping(); }
+    void PingMaybe() { Next?.Ping(); }
+    object FirstChild() { return child(self); }
+}
+Node na { Val = 1; }
+Node nb { Val = 2; }
+object holder { }
+object inside { parent = holder; }
+void bumpIt() { registry.note(); }
+object registry asI6 reg { int total = 0; void note() { total++; } }
+int useEarly() { return ns.math.twice(4); }
+class mathHelpers { static int twice(int n) { return n * 2; } }
+object ns { alias math = mathHelpers; }
+class meter : object { int reading = 2; emitter int shown() { ($self.reading + 100) } }
+meter m1 { }
+int readPeak(meter m) { return m.peak; }
+int early() { return m1.shown(); }
+extend class meter { int peak = 5; replace emitter int shown() { ($self.reading + 1) } }
+object _kitTools { int doubled(int n) { return n * 2; } }
+object kit { auto tools = _kitTools; }
+#using kit
+int partDoubled = tools.doubled(4);
+void main(){
+    bglInit();
+    Money m = Money.FromCents(21);
+    Money d = m.Doubled();
+    print($"statics={d.Cents},{Util.Quad(5)},{u.Scaled()} camel=");
+    bx.fire();
+    Item item = rock;
+    print($" local={item.Rarity} stmt=");
+    na.Next = nb;
+    na.PingNext();
+    print(" opt="); na.PingMaybe();
+    print($" extern={(int)(child(holder) == inside)}^");
+    bumpIt(); bumpIt();
+    print($"asI6={registry.total} alias={useEarly()} extend={readPeak(m1)} replaced={early()} using={partDoubled}^");
+}

@@ -1,0 +1,32 @@
+/*  run_lambda_setup_scope — what a lambda's body needs set up runs inside the lambda: a ternary in an
+    expression body, a nested lambda that captures the outer lambda's parameter. A captured local is
+    copied back after a declaration's initializer and before either branch of an `if`. A capturing
+    lambda passed to a call in a `return` is fine. Lambdas take func<…>/array<…> parameters and can be
+    ternary branches, bare or parenthesized; a parenthesized false branch is its own group.  */
+// EXPECT_OUTPUT: max=7 nested=15,17 decl=1 if=2 ret=5
+// EXPECT_OUTPUT: params=7,2,18 branches=105,7,105 paren=1,6
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+int apply(int x, func<int, int> f) { return f(x); }
+int addTo(int x, int k) { return apply(x, (int n) => n + k); }
+int seven() { return 7; }
+array<int> nums = {1, 2, 3};
+void main(){
+    func<int, int, int> big = (int a, int b) => a > b ? a : b;
+    func<int, int> outer = (int lim) => apply(10, (int x) => x + lim);
+    int calls = 0;
+    int r = apply(5, (int x) => { calls++; return x; });
+    print($"max={big(3, 7)} nested={outer(5)},{outer(7)} decl={calls}");
+    if(apply(5, (int x) => { calls++; return x; }) > 0) print($" if={calls}");
+    print($" ret={addTo(2, 3)}^");
+    func<int, func<int>> callIt = (func<int> g) => g();
+    func<int, array<int>> second = (array<int> a) => a[1];
+    func<int, func<int, int>, int> twice = (func<int, int> f, int v) => f(f(v));
+    int n = 5;
+    func<int, int> f1 = n > 3 ? (int x) => x + 100 : (int x) => x - 100;
+    func<int, int> f2 = n < 3 ? (int x) => x + 100 : (int x) => x > 2 ? 7 : 8;
+    func<int, int> f3 = n > 3 ? ((int x) => x + 100) : ((int x) => x - 100);
+    int p1 = n > 3 ? (1) : (2);
+    int p2 = n > 3 ? (n + 1) : (n - 1);
+    print($"params={callIt(seven)},{second(nums)},{twice((int x) => x * 3, 2)} branches={f1(n)},{f2(n)},{f3(n)} paren={p1},{p2}^");
+}

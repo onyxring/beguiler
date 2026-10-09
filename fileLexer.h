@@ -58,6 +58,10 @@ class fileLexer{
         int         lastTokenLine = -1;
         std::string lastTokenFile;
 
+        // A position in the current stream, to look ahead raw and then return to it.
+        struct mark_t { std::streampos pos; int line; int col; };
+        mark_t mark();
+        void rewind(const mark_t& m);
         void open(std::string);
         void openText(const std::string& content, const std::string& virtualName, int startLine = 1);
         void close();

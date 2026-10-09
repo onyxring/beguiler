@@ -1,0 +1,6 @@
+// Negative test: a value-class variable holds its own instance, so `const` has nothing to fix (§3.4).
+// EXPECT_ERROR: is a value class
+#beguilerSettings { target = z5; informName = "none"; }
+value class Money { int Cents; Money operator = (int c) { Cents = c; return self; } }
+const Money price = 325;
+void main(){ }

@@ -2974,7 +2974,7 @@ json LspServer::completeMemberModifiers(int line, int col, const string& docText
                     add("emitter","emitter member", "`emitter` — an inline-I6 member (expanded at the call site, no runtime call).");
                     add("superposed","superposed member", "`superposed` — a lazily-emitted, zero-footprint member.");
                     if(isClassBody) {
-                        add("inline", "positional slot", "`inline` — mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }` (§6.2.1).");
+                        add("inline", "positional slot", "`inline` — mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }`.");
                         add("default","class default member", "`default` — a member value provided as the class default (valid in class declarations only).");
                     }
                     handled = true; return json{{"isIncomplete", true}, {"items", items}};

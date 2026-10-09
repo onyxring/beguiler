@@ -74,11 +74,11 @@ extend only 'climbx'
     * number 'into' noun -> Keypad;
 verb 'dialx'
     * number 'into' noun -> keypad;
-extend only 'gox'
+extend only 'gox' first
     * number 'into' noun -> keypad;
-extend 'crossx'
+extend 'crossx' first
     * number 'into' noun -> keypad;
-extend 'putx'
+extend 'putx' first
     * number 'into' noun -> keypad;
 
         [main;

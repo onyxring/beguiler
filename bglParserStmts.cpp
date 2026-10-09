@@ -29,6 +29,7 @@
 #include <tuple>
 #include <optional>
 #include <string_view>
+#include <regex>
 
 #include "helpers.h"
 #include "settings.h"
@@ -186,6 +187,12 @@ bool bglParser::processReturnVoid(vector<token>& t, Qualifiers&, abstractObject&
 }
 
 void bglParser::rejectEscapingLambda(const expression* e, const string& where){
+    // Only the value itself escapes: a lambda passed to a call in the expression runs during it.
+    if(e == nullptr) return;
+    string v = e->text();
+    v.erase(remove_if(v.begin(), v.end(), [](char c){ return isspace((unsigned char)c); }), v.end());
+    while(v.size() > 2 && v.front() == '(' && v.back() == ')') v = v.substr(1, v.size() - 2);
+    if(v.rfind("_bglLambda_", 0) != 0 || v.find_first_of("(,") != string::npos) return;
     string captured = capturedByLambdaIn(e);
     if(!captured.empty())
         parsingError(format("A lambda {0} runs after the variables it captures are gone, so it cannot "
@@ -212,6 +219,8 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
     token first = file.getToken();
     expression* retExpr = parseExpression(first, {token::endStatement}, func, body);
     allowVoidReturnExpr = savedAllowVoid;
+    // A lambda's copy-back into this routine's locals has nothing to update once it returns.
+    postInjections.clear();
     rejectEscapingLambda(retExpr, format("returned from '{0}'", currentFunc ? currentFunc->dName() : funcName));
     if(func != nullptr && func->returnType.name == "void"){
         // Allow `return <void-typed expr>;` as the C/I6 idiom shorthand. In loose-mode
@@ -271,6 +280,9 @@ bool bglParser::processIf(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     // Drain any ternary injections from the condition BEFORE the if statement
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
+    // What the condition left to do after it runs (a lambda's copy-back) opens both branches.
+    vector<statement*> condAfter = postInjections;
+    postInjections.clear();
     ifStmt.thenBlock = new statementBlock();
     functionDef thenCtx;
     if(func != nullptr){ thenCtx.returnType = func->returnType; thenCtx.params = func->params; }
@@ -297,6 +309,11 @@ bool bglParser::processIf(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         } else {
             processBracelessBody(elseNext, elseCtx);
         }
+    }
+    if(!condAfter.empty()){
+        if(ifStmt.elseBlock == nullptr) ifStmt.elseBlock = new statementBlock();
+        for(statementBlock* b : {ifStmt.thenBlock, ifStmt.elseBlock})
+            b->statements.insert(b->statements.begin(), condAfter.begin(), condAfter.end());
     }
     if(body != nullptr) body->statements.push_back(&ifStmt);
     return false;
@@ -360,10 +377,25 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
     forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
     vector<statement*> condSetup = pendingInjections;
     pendingInjections.clear();
+    // The step is a statement, so it may be a plain assignment: `i = i * 3`.
+    string assignedTarget;
+    if(file.peekToken(1).is(eTokenType::identifier)){
+        int k = 2;
+        while(file.peekToken(k).is(token::period) && file.peekToken(k + 1).is(eTokenType::identifier)) k += 2;
+        if(file.peekToken(k).is(token::assignment)){
+            string path;
+            for(int j = 1; j < k; j++) path += file.getToken().value;
+            file.getToken();   // '='
+            assignedTarget = func != nullptr ? qualifyIdentifier(path, func, body) : path;
+            if(assignedTarget.empty()) parsingError(format("Undeclared variable '{0}'", path));
+            if(isConstVariable(path, func, body)) parsingError(format("Cannot assign to const variable '{0}'", path));
+        }
+    }
     expression* incrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
     vector<statement*> incrInjections = pendingInjections;
     pendingInjections.clear();
     string incrText = incrExpr ? incrExpr->text() : "";
+    if(!assignedTarget.empty()) incrText = assignedTarget + " = " + incrText;
     if(!incrInjections.empty()) forStmt.incrementText = "";
     else forStmt.incrementText = incrText;
     forStmt.body = new statementBlock();
@@ -547,6 +579,11 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
                     parsingError(format("'for in': cannot iterate rawArray parameter '{0}' — a rawArray has no "
                                         "length header, so its size isn't known. Loop explicitly with a known "
                                         "bound, e.g. `for(int i in 0 to n-1) {0}[i]`.", arrExprText));
+                classDef* pc = languageService.classOf(tn);
+                if(!isWordArrayType(tn) && tn != "bytearray"
+                   && (languageService.findObjectType(tn) != nullptr || (pc != nullptr && isObjectBackedClass(pc))))
+                    parsingError(format("'for ({0} in {1})': '{1}' is an object, not a collection. To visit what it "
+                        "holds, iterate its children: `for (object x in {1}.children)`.", elemVarName, arrExprText));
                 arrElemType = (tn.size() > 6 && tn.substr(0,6) == "array<") ? tn.substr(6, tn.size()-7) : "var";
                 arrName = arrExprText;
                 break;
@@ -583,6 +620,14 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         arrElemType = decl != nullptr ? decl->name : "_bglobject";
     }
 
+    if(!isChildrenSource && arrName.empty() && arrExpr != nullptr && !isWordArrayType(arrExpr->resolvedType)){
+        // An object is not a collection (§5.9): its contents are its children.
+        const string& t = arrExpr->resolvedType;
+        classDef* tc = languageService.classOf(t);
+        if(languageService.findObjectType(t) != nullptr || (tc != nullptr && isObjectBackedClass(tc)))
+            parsingError(format("'for ({0} in {1})': '{1}' is an object, not a collection. To visit what it "
+                "holds, iterate its children: `for (object x in {1}.children)`.", elemVarName, arrExprText));
+    }
     if(!isChildrenSource && arrName.empty()){
         arrName = format("_bglfia{0}", forInCounter++);
         variableDeclaration& tmpDecl = *(new variableDeclaration());
@@ -1780,11 +1825,109 @@ bool bglParser::dispatchWriteThroughReceiver(const string& recvText, const strin
     return dispatchPathStatement(path, symbol, sc);
 }
 
+// `a[i] op= v;`, `a[i]++;`, `++a[i];` (and the chained `a[i][j]` forms) are `a[i] = a[i] op (v)`, parsed
+// as that assignment, so the element's own read and write apply. An index that isn't a plain name or
+// number is evaluated once, into a local. Looks ahead raw from just after the `[`; anything else is
+// left exactly where it was.
+bool bglParser::rewriteElementCompound(token tok, StatementContext& sc){
+    if(sc.func == nullptr || file.hasPendingToken) return false;
+    fileLexer::mark_t at = file.mark();
+    // The text after the `[`, up to the statement's `;` (which is consumed).
+    string rest;
+    {
+        int depth = 1;
+        bool found = false;
+        char c = file.readChar();
+        while(c != EOF){
+            if(c == '"' || c == '\''){
+                char q = c; rest += c; c = file.readChar();
+                while(c != EOF && c != q){
+                    if(c == '\\'){ rest += c; c = file.readChar(); if(c == EOF) break; }
+                    rest += c; c = file.readChar();
+                }
+                if(c == EOF) break;
+                rest += c; c = file.readChar();
+                continue;
+            }
+            if(c == '/' && file.peekChar() == '/'){ while(c != EOF && c != '\n') c = file.readChar(); continue; }
+            if(c == '/' && file.peekChar() == '*'){
+                file.readChar(); c = file.readChar();
+                while(c != EOF && !(c == '*' && file.peekChar() == '/')) c = file.readChar();
+                if(c != EOF){ file.readChar(); c = file.readChar(); }
+                rest += ' ';
+                continue;
+            }
+            if(c == '[' || c == '(' || c == '{') depth++;
+            else if(c == ']' || c == ')' || c == '}') depth--;
+            else if(c == ';' && depth == 0){ found = true; break; }
+            rest += c; c = file.readChar();
+        }
+        if(!found){ file.rewind(at); return false; }
+    }
+    vector<string> indexes;
+    size_t i = 0;
+    auto readIndex = [&]() -> bool {
+        int depth = 1; size_t start = i;
+        for(; i < rest.size(); i++){
+            char c = rest[i];
+            if(c == '"' || c == '\''){
+                for(i++; i < rest.size() && rest[i] != c; i++) if(rest[i] == '\\') i++;
+                continue;
+            }
+            if(c == '[' || c == '(' || c == '{') depth++;
+            else if((c == ']' || c == ')' || c == '}') && --depth == 0) break;
+        }
+        if(i >= rest.size()) return false;
+        indexes.push_back(rest.substr(start, i - start));
+        i++;
+        return true;
+    };
+    auto skipSpace = [&]{ while(i < rest.size() && isspace((unsigned char)rest[i])) i++; };
+    bool ok = readIndex();
+    for(skipSpace(); ok && i < rest.size() && rest[i] == '['; skipSpace()){ i++; ok = readIndex(); }
+    string tail = ok ? rest.substr(i) : "";
+    while(!tail.empty() && isspace((unsigned char)tail.back())) tail.pop_back();
+    string op, rhs;
+    if(ok && pendingPrefixOp && tail.empty()){ op = pendingPrefixOp->value.substr(0, 1); rhs = "1"; }
+    else if(ok && !pendingPrefixOp && (tail == "++" || tail == "--")){ op = tail.substr(0, 1); rhs = "1"; }
+    else if(ok && !pendingPrefixOp){
+        static const regex compound(R"(^(\+|-|\*|/|%|\||&|\^|<<|>>)=([^=][\s\S]*)$)");
+        smatch m;
+        if(regex_match(tail, m, compound)){ op = m[1]; rhs = m[2]; }
+    }
+    if(op.empty()){ file.rewind(at); return false; }
+    pendingPrefixOp.reset();
+
+    static int counter = 0;
+    string decls, lhs = tok.value;
+    for(const string& idx : indexes){
+        string t = idx;
+        t.erase(0, t.find_first_not_of(" \t\r\n"));
+        t.erase(t.find_last_not_of(" \t\r\n") + 1);
+        if(!t.empty() && t.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") == string::npos)
+            lhs += "[" + t + "]";
+        else {
+            string name = format("_bglidx{0}", counter++);
+            decls += "int " + name + " = (" + t + "); ";
+            lhs += "[" + name + "]";
+        }
+    }
+    string text = decls + lhs + " = " + lhs + " " + op + " (" + rhs + ");";
+    size_t statements = count(decls.begin(), decls.end(), ';') + 1;
+    file.openText(text, sc.src.file, sc.src.line);
+    try {
+        for(size_t n = 0; n < statements; n++) processStatementDispatch(file.getToken(), *sc.func);
+    } catch(...) { file.close(); throw; }
+    file.close();
+    return true;
+}
+
 // `name[i] …` — an element write, a chained subscript, or member access on the element.
 bool bglParser::processSubscriptStatement(token tok, StatementContext& sc){
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
     string arrPath = (string)tok;  // e.g. "scores" or "player.inventory"
+    if(rewriteElementCompound(tok, sc)) return false;
     expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
 
     // Peek after ']': if '.', this is a dot-chain on the subscript result (e.g. arr[0].method()).
@@ -2855,9 +2998,9 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
         // Going through qualifyIdentifier here keeps local/parameter precedence: a local named
         // `beacon` resolves to itself and nothing is rewritten.
         string q = qualifyIdentifier(objectPath, func, body, methodName);
-        // A `#using`-imported member qualifies to its path (`kit.counters`), which is sent as it is.
-        if(!q.empty() && q != objectPath && q.find('(') == string::npos
-           && (q.find('.') == string::npos || q.rfind("self.", 0) != 0))
+        // A `#using`-imported member qualifies to its path (`kit.counters`), which is sent as it is;
+        // a member of this object or class is sent through self.
+        if(!q.empty() && q != objectPath && q.find('(') == string::npos)
             emitObjectPath = q;
     }
     string objectName = objectPath;  // kept for backward compat in non-emitter emit path

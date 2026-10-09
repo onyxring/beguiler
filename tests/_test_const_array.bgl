@@ -1,0 +1,5 @@
+// Negative test: `const` fixes a binding, and an array has none to fix (§3.4).
+// EXPECT_ERROR: 'const' doesn't apply to array
+#beguilerSettings { target = z5; informName = "none"; }
+const array<int> bands = { 5, 10, 20 };
+void main(){ }

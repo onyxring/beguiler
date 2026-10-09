@@ -1,0 +1,4 @@
+// Negative test: an interpolated string has no value, so it can't be a ?: branch (§2.4.2).
+// EXPECT_ERROR: An interpolated string has no value
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int i = 0; print(i == 0 ? $"zero {i}" : $"other {i}"); }

@@ -337,8 +337,11 @@ extern enum eErrorFormat { E1, E2 }
 **Description**
 
 An enumeration member may be referenced by bare name (`north`, `true`) or qualified by its type
-(`direction.north`, `eBool.true`). The qualified form is required when two enumeration types declare
-a member of the same name.
+(`direction.north`, `eBool.true`). Where a value of an enumeration type is expected (an initializer,
+an assignment, an argument, an array element of that type), a bare name that is both a member of that
+enumeration and some other global, such as the attribute `door`, is the member. Elsewhere the
+qualified form is required when two enumeration types, or an enumeration and another global, share
+the name.
 
 Enumerations may carry emitter methods, declared in the body or added with `extend enum`; the form is
 given in §7.9.

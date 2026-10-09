@@ -304,6 +304,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     funcDef.isEmitter=isEmitter;
     funcDef.isExplicit=isExplicitConversion;
     funcDef.isDefault=q.isDefault;
+    funcDef.isStatic=isMemberStatic;   // known before the parameters are read
     if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
     else if(!name.docComment.empty())    funcDef.docComment = name.docComment;
     // Non-emitter operator methods (name starts with a non-identifier char, e.g. `=`,
@@ -501,6 +502,11 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         if(body) newClass.globalDeclarationBody = body->i6Body;
     } else {
         if(!isExtend){
+            // A later `extend … replace emitter` already holds this slot; its body is the one used.
+            for(typeMember* m : newClass.members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->isForwardReplace && fd->name == funcDef.name){
+                    tok = file.getToken(); return true;
+                }
             // Silently replace pre-scan stubs (may have been seeded by an 'extend class' that
             // appears later in the file — pre-scan pushes stubs into this class's member list).
             if(replaceStubMember(newClass.members, funcDef)) { tok = file.getToken(); return true; }
@@ -623,7 +629,10 @@ variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& va
     arr.isRaw = base->isRaw;
     arr.isRefLocal = base->isRefLocal;
     arr.declaredExpressionValue = list;
-    arr.arraySize = max(base->arraySize, (int)list->elements.size());
+    // An additive property (`name`) adds to the class's words rather than replacing them, so it
+    // carries only its own; padding it out to the class's count would add `0` words.
+    arr.arraySize = languageService.isAdditiveProperty(arr.i6name.empty() ? arr.name : arr.i6name)
+                  ? (int)list->elements.size() : max(base->arraySize, (int)list->elements.size());
     promoteMemberArrayIfOversized(arr);
     return &arr;
 }
@@ -932,7 +941,14 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
                 returnType.tokenType = eTokenType::dataType;
                 name = tok;
             } else {
-                tok.assertDataType(); // will error with a meaningful message
+                string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
+                bool rootOnly = true;
+                for(classDef* b : newClass.baseClasses) if(b->name != "_bglobject") rootOnly = false;
+                parsingError(format("class '{0}': '{1}' is set here but isn't a member of '{0}'{2}. {3}To declare "
+                    "a new member, give it a type: `int {1} = …;`.", newClass.dName(), shown,
+                    rootOnly ? "" : " or its bases",
+                    rootOnly ? format("A class has no base unless it names one: `class {0} : object {{ … }}` "
+                                      "inherits object's members, such as `name`. ", newClass.dName()) : ""));
                 returnType = tok;
                 name = file.getToken({eTokenType::identifier, eTokenType::dataType});
             }
@@ -1059,7 +1075,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     // Type parameters belong to `array` and `rawArray` alone (§8.1.1): array storage is keyed on those names.
     if(!newClass.typeParameters.empty() && !isExtend && newClass.name != "array" && newClass.name != "rawarray")
         parsingError(format("class '{0}': Beguile has no generic classes; a type parameter belongs to "
-            "`array<T>` and `rawArray<T>` only (§8.1.1). Declare the member types directly; to give arrays "
+            "`array<T>` and `rawArray<T>` only. Declare the member types directly; to give arrays "
             "a method that uses T, write it in `extend extern class array {{ … }}`.",
             newClass.dName()));
     // `value` is inherited, and a class can't be both kinds: a value base and a reference base (one with
@@ -1919,7 +1935,7 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
         parsingError(format("'{0}' is not a member of this object's class or its bases; declare it with its type "
                             "(e.g. '{1} {0} = …;'){2}", shown, guess,
                             freeStanding ? ". A free-standing `property` declaration names the property for passing as a "
-                                           "value; it does not give objects the member (§11.7.3)" : ""));
+                                           "value; it does not give objects the member" : ""));
     }
     // grammarRule/grammarRuleList with inferred type: route to grammar-specific parsing
     if(propTypeName == "grammarrule"){
@@ -2043,7 +2059,7 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
     token symbol = file.getToken({token::bracketOpen, token::assignment, token::endStatement, token::parenOpen});
     if(symbol.is(token::parenOpen))
         return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
-    processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern, q.isSuperposed);
+    processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern, q.isSuperposed, q.isConst);
     return false;
 }
 
@@ -2226,7 +2242,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
     token vt = file.getToken();
     while(!vt.is(token::braceClose)){
         if((vt.is(eTokenType::identifier) || vt.is(eTokenType::dataType)) && file.peekToken().is(":"))
-            parsingError(format("inline '{0}{{...}}': a named member is written `{1} = value;` (§11.3.1), not `{1}: value`",
+            parsingError(format("inline '{0}{{...}}': a named member is written `{1} = value;`, not `{1}: value`",
                                 typeDisplay, vt.originalValue.empty() ? vt.value : vt.originalValue));
         bool isNamed = (vt.is(eTokenType::identifier) || vt.is(eTokenType::dataType)) && file.peekToken().is("=");
         // Validate this item is legal in the current position.
