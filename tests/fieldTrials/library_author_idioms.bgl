@@ -1,0 +1,162 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a two-file kit with #once and a re-include, configured by a #define set before it and a
+// #declare set after it; #if on settings and symbols; #message and #warning; ///-documented classes,
+// static helpers, default members overridden by instances, emitters using $self, $i6Name and $i6Expr,
+// an emitter namespace and an emitter class; asI6 on an object and members; a namespace object with
+// type and value aliases, extended in a later file; superposed objects used and unused; extend class
+// with replace; alias class; replace of a kit function with replaced(); hooks filled with lambdas and
+// named functions; forward references from kit to consumer and from consumer to a later-included part.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#define TK_UNIT "ticks"
+#include "library_author_idioms_parts/library_author_idioms_core"
+
+#using tk
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// A meter that keeps the defaults.
+tk.meter plainMeter {
+    "plain meter";
+    parent = roomA;
+    name = {.plain, .meter};
+}
+
+// A meter that overrides the defaults and fills its hook with a lambda.
+tk.meter waterMeter {
+    "water meter";
+    parent = roomA;
+    name = {.water, .meter};
+    limit = 3;
+    onChange = (int r) => { if (r == 3) print("The water meter is full.^"); };
+    string label() { return "Water"; }
+    void report() {
+        print($"Water at {reading} of {limit}, {pct()} percent.^");
+    }
+}
+
+// An alias-class instance, declared before the part that declares tkPanel is included.
+tkPanel wallPanel {
+    "wall panel";
+    parent = roomA;
+    name = {.wall, .panel};
+    description = "A wall panel.";
+    limit = 4;
+    onChange = panelChanged;
+    string label() { return "Panel"; }
+}
+
+void panelChanged(int r) {
+    print($"Panel hook: {r}.^");
+}
+
+replace void tkHello() {
+    replaced();
+    print("Consumer ready.^");
+}
+
+#declare TK_VERBOSE
+
+level gaugeLevel = 3;
+
+verb Kit {
+    grammar = {.kit};
+    void handler() {
+        tkHello();
+        print(tkModeNote); print("^");
+        print($"Unit: {tkUnitName}.^");
+        tkOut.rule();
+        tkOut.say("Said through the emitter namespace.");
+        tkOut.sayNum(tk.math.clamp(42, 0, 9));
+    }
+}
+
+verb Readings {
+    grammar = {.readings};
+    void handler() {
+        for (object o in roomA.children)
+            if (o.is(tkMeter)) ((tkMeter)o).report();
+        print($"Sum: {tk.extras.sumReadings(roomA)}. Changes: {tk.reg.total}.^");
+    }
+}
+
+verb Reset {
+    grammar = {.reset, NOUN};
+    void handler() {
+        if (!noun.is(tkMeter)) { print("That is not a meter.^"); return; }
+        tk.extras.reset((tkMeter)noun);
+    }
+}
+
+verb Quiet {
+    grammar = {.quiet};
+    void handler() {
+        tkLogHook = (tkMeter m, string what) => print("(logged)^");
+        print("Log hook replaced.^");
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    void handler() {
+        print($"Level {(int)gaugeLevel}, half {gaugeLevel.halved()}.^");
+        if (gaugeLevel.isHigh()) print("Level is high.^");
+        gaugeLevel = 1;
+        print($"Level {(int)gaugeLevel}, half {gaugeLevel.halved()}.^");
+        if (!gaugeLevel.isHigh()) print("Level is low.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+verb Pump {
+    grammar = {.pump, NOUN};
+    void handler() {
+        if (!noun.is(tkMeter)) { print("That is not a meter.^"); return; }
+        tk.meter m = (tk.meter)noun;
+        m.bump(1);
+        m.report();
+        if (m.isFull()) print("Full.^");
+        else print($"Room for {m.remaining} more.^");
+    }
+}
+
+// Called by the kit's extras part.
+void tkAfterReset(tkMeter m) {
+    print($"After reset: peak {m.peak}.^");
+}
+
+verb Names {
+    grammar = {.names};
+    void handler() {
+        tkMeter m = waterMeter;
+        print($"Water changes: {m.changes}. Peak flag: {m.atPeak()}.^");
+        print($"Percent of 3 in 4: {tkMath.percent(3, 4)}.^");
+    }
+}
+
+#include "library_author_idioms_parts/library_author_idioms_extras"
+
+
+#includeI6 "grammar"

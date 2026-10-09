@@ -1,0 +1,121 @@
+/*  Field trial part — included by library_author_idioms.bgl. Not a trial on its own.  */
+
+#once
+
+// Configuration the includer may set before including the kit.
+#if !TK_UNIT
+    #define TK_UNIT "units"
+#endif
+
+#if TARGET_ZCODE
+    #message "library_author_idioms: kit core built for the Z-machine"
+#else
+    #message "library_author_idioms: kit core built for Glulx"
+#endif
+
+#if #beguilerSettings.target != "z5"
+    #warning "library_author_idioms: kit core is only tried on z5"
+#endif
+
+#if !TK_STRICT
+    #warning "library_author_idioms: TK_STRICT is not defined"
+#endif
+
+// TK_VERBOSE is #declare'd by the consumer, after this file is processed.
+#if TK_VERBOSE
+    const string tkModeNote = "Kit mode: verbose.";
+#else
+    const string tkModeNote = "Kit mode: quiet.";
+#endif
+
+const string tkUnitName = TK_UNIT;
+
+/// Small integer helpers shared by the kit.
+class tkMath {
+    /// Limits a value to the range lo..hi.
+    static int clamp(int v, int lo, int hi) {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
+    /// Returns a value as a percentage of a whole.
+    static int percent(int part, int whole) {
+        if (whole == 0) return 0;
+        return part * 100 / whole;
+    }
+}
+
+/// A meter that counts up to a limit and reports its reading.
+class tkMeter : object {
+    int  reading = 0;
+    int  limit = 5;
+    int  changes asI6 tkMeterChanges = 0;    ///< How many times the reading changed.
+
+    /// Called after every change; meters may leave it unset.
+    literal func<void, int> onChange;
+
+    /// The word printed before the reading.
+    default string label() { return "Meter"; }
+
+    /// Prints the reading.
+    default void report() {
+        print($"{label()}: {reading}/{limit} {tkUnitName}.^");
+    }
+
+    /// Adds to the reading, within the limit, and runs the hook.
+    void bump(int by) {
+        int before = reading;
+        reading = tk.math.clamp(reading + by, 0, limit);
+        if (reading == before) return;
+        changes++;
+        tkMeterRegistry.noteChange();
+        if (onChange != null) onChange(reading);
+    }
+
+    emitter bool isFull()    { ($self.reading > $self.limit) }      // wrong; the extras part replaces it
+    emitter int  remaining   { ($self.limit - $self.reading) }
+    emitter int  pct()       { $i6Name(tkMath.percent)($self.reading, $self.limit) }
+}
+
+/// Counts changes across all meters.
+object tkMeterRegistry asI6 tkReg {
+    int total asI6 tkRegTotal = 0;
+    void noteChange() { total++; }
+}
+
+/// Plain I6 output helpers, called by name.
+emitter tkOut {
+    void rule()             { print "--^"; }
+    void say(string s)      { print (string) $s; new_line; }
+    void sayNum(int n)      { print "[", $n, "]^"; }
+}
+
+/// A word-sized gauge value with no storage of its own.
+emitter class tkLevel {
+    tkLevel operator = (int v) { $target = $v; }
+    int operator()             { $val }
+    bool isHigh()              { ($val > 2) }
+    int  halved()              { $i6Expr(tkHalf($val)) }
+}
+
+emitter int tkHalf(int n) { ($n / 2) }
+
+/// The kit's namespace.
+object tk {
+    alias meter for tkMeter;
+    alias level for tkLevel;
+    alias math  = tkMath;
+    alias reg   = tkMeterRegistry;
+}
+
+/// The greeting the kit prints; a consumer may replace it.
+void tkHello() {
+    print("Kit ready.^");
+}
+
+/// Logs a kit event about a meter; the consumer may fill it in.
+literal func<void, tkMeter, string> tkLogHook = tkDefaultLog;
+
+void tkDefaultLog(tkMeter m, string what) {
+    print($"[kit] {m.label()}: {what}^");
+}

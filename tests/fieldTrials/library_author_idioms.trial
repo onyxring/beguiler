@@ -1,0 +1,60 @@
+Room A
+Room A.
+You can see a plain meter, a water meter and a wall panel here.
+> kit
+Kit ready.
+Consumer ready.
+Kit mode: verbose.
+Unit: ticks.
+--
+Said through the emitter namespace.
+[9]
+> pump water meter
+Water at 1 of 3, 33 percent.
+Room for 2 more.
+> pump water meter
+Water at 2 of 3, 66 percent.
+Room for 1 more.
+> pump water meter
+The water meter is full.
+Water at 3 of 3, 100 percent.
+Full.
+> pump water meter
+Water at 3 of 3, 100 percent.
+Full.
+> pump plain meter
+Meter: 1/5 ticks.
+Room for 4 more.
+> pump panel
+Panel hook: 1.
+Panel: 1/4 ticks.
+Room for 3 more.
+> readings
+Meter: 1/5 ticks.
+Water at 3 of 3, 100 percent.
+Panel: 1/4 ticks.
+Sum: 5. Changes: 5.
+> names
+Water changes: 3. Peak flag: false.
+Percent of 3 in 4: 75.
+> reset water meter
+[kit] Water: reset
+After reset: peak 3.
+> names
+Water changes: 3. Peak flag: false.
+Percent of 3 in 4: 75.
+> quiet
+Log hook replaced.
+> reset panel
+(logged)
+After reset: peak 1.
+> levels
+Level 3, half 1.
+Level is high.
+Level 1, half 0.
+Level is low.
+> readings
+Meter: 1/5 ticks.
+Water at 0 of 3, 0 percent.
+Panel: 0/4 ticks.
+Sum: 1. Changes: 5.

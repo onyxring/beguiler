@@ -1,0 +1,362 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a first-time programmer writes it. Many globals and bool flags,
+// the SAME identifier spelled in different letter cases (globals, functions, objects, verbs, library
+// names, keywords), long before() handlers built from nested if/else chains instead of switch,
+// copy-pasted objects that differ in one word, redundant comparisons (`flag == true`, `!(x == 0)`)
+// and parentheses, one counter bumped three different ways in several places, magic numbers next
+// to a constant, mixed brace placement and spacing, while loops with hand-kept counters, text built
+// by printing pieces, a custom verb that shares its word with a library verb, and simple custom verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+// ----- GLOBAL VARIABLES -----
+// how many times each button was pressed
+int RedPresses = 0;
+int bluePresses = 0;
+int GREENPRESSES = 0;
+// how many presses in total (all buttons)
+int totalPresses = 0;
+// is the door open?
+bool DoorIsOpen = false;
+// has the player been to room b yet?
+bool visitedB = false;
+// did the player reset the panel?
+bool resetDone = false;
+// the last button pressed (as a word)
+string LastButton = "none";
+// the number of buttons
+const int NUM_BUTTONS = 3;
+
+// ----- HELPER FUNCTIONS -----
+
+// this function adds one to the total
+// it is called every time a button is pressed
+void AddOnePress()
+{
+    // add one
+    TotalPresses = TotalPresses + 1;
+}
+
+// this function checks if all the buttons have been pressed
+// it returns true if they have and false if they have not
+bool AllPressed() {
+    IF ((redPresses > 0) && (BluePresses > 0) && (greenPresses > 0)) {
+        Return (True);
+    }
+    ELSE {
+        return (FALSE);
+    };
+
+}
+
+// this function opens the door if all three buttons were pressed
+void checkDoor()
+{
+    if (allpressed() == true)
+    {
+        if (doorIsOpen == false)
+        {
+            DOORISOPEN = true;
+            printLine("Somewhere a door clicks open.");
+        }
+    }
+}
+
+// prints the word "time" or "times"
+void printTimes(int n) {
+    print(" ");
+    print(n);
+    if (n == 1) {
+        print(" time");
+    } else {
+        print(" times");
+    }
+}
+
+// prints the status of everything
+void ShowStatus() {
+    print("Red:");
+    printTimes(redpresses);
+    print(".^");
+    print("Blue:");
+    printTimes(BLUEPRESSES);
+    print(".^");
+    print("Green:");
+    printTimes(greenPresses);
+    print(".^");
+    print("Total: ");
+    print(totalpresses);
+    print("^");
+    if (DoorIsOpen == true) {
+        print("Door: open");
+    } else {
+        print("Door: closed");
+    }
+    print("^");
+    print("Last: ");
+    print(lastbutton);
+    print("^");
+}
+
+// ----- OBJECTS -----
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// the first room
+object roomA {
+    "Room A";
+    description = "Room A. There is a door to the east.";
+    E_TO = RoomB;
+    attributes = {light};
+}
+
+// the second room
+Object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {LIGHT};
+}
+
+// the panel
+object panel {
+    "panel";
+    PARENT = roomA;
+    name = {.panel};
+    attributes = {static};
+    // the description of the panel changes depending on the buttons
+    bool description() {
+        if (totalPresses == 0) {
+            rtrue("The panel has three buttons. None is lit.^");
+        } else {
+            if (totalPresses == 1) {
+                rtrue("The panel has three buttons. One button has been pressed.^");
+            } else {
+                if ((totalPresses > 1) && (totalPresses < 5)) {
+                    rtrue("The panel has three buttons. Some buttons have been pressed.^");
+                } else {
+                    rtrue("The panel has three buttons. Many buttons have been pressed.^");
+                }
+            }
+        }
+    }
+}
+
+// the red button
+object redButton {
+    "red button";
+    parent = roomA;
+    name = {.red, .button};
+    attributes = {static};
+    description = "A red button.";
+    bool before() {
+        if (action == Push) {
+            // the player pushed the red button
+            redPresses = redPresses + 1;
+            addOnePress();
+            lastButton = "red";
+            print("You press the red button. Click.^");
+            CheckDoor();
+            rtrue;
+        } else {
+            if (action == Take) {
+                print("The red button is part of the panel.^");
+                rtrue;
+            } else {
+                rfalse;
+            }
+        }
+    }
+}
+
+// the blue button (copied from the red button)
+object BlueButton {
+    "blue button";
+    parent = roomA;
+    name = {.blue, .button};
+    attributes = {static};
+    description = "A blue button.";
+    bool before() {
+        if (action == push) {
+            // the player pushed the blue button
+            bluePresses += 1;
+            addOnePress();
+            lastButton = "blue";
+            print("You press the blue button. Click.^");
+            CheckDoor();
+            rtrue;
+        } else {
+            if (action == TAKE) {
+                print("The blue button is part of the panel.^");
+                rtrue;
+            } else {
+                rfalse;
+            }
+        }
+    }
+}
+
+// the green button (copied from the blue button)
+object greenButton {
+    "green button";
+    parent = roomA;
+    name = {.green, .button};
+    attributes = {static};
+    description = "A green button.";
+    bool before() {
+        if (action == Push) {
+            // the player pushed the green button
+            GreenPresses++;
+            AddOnePress();
+            lastButton = "green";
+            print("You press the green button. Click.^");
+            checkdoor();
+            rtrue;
+        } else {
+            if (action == Take) {
+                print("The green button is part of the panel.^");
+                rtrue;
+            } else {
+                rfalse;
+            }
+        }
+    }
+}
+
+// the player
+bool Initialise() {
+    Location = ROOMA;
+    rtrue;
+}
+
+// ----- THE DOOR -----
+
+// this is called when the player tries to go east (through the door)
+// (it is a routine on the room, so it can stop the player)
+extend roomA {
+    bool before() {
+        if (action == Go) {
+            if (noun == e_obj) {
+                if (doorIsOpen == false) {
+                    print("The door is shut.^");
+                    rtrue;
+                }
+                else
+                {
+                    if (VisitedB == false) {
+                        visitedb = true;
+                        print("You go through the door for the first time.^");
+                    }
+                }
+            }
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "grammar"
+
+// ----- VERBS -----
+
+// STATUS - shows the status
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        showstatus();
+    }
+}
+
+// COUNT - counts to the number of buttons
+verb Count {
+    grammar = {.count};
+    void handler() {
+        INT i = 1;
+        // loop until we get to the number of buttons
+        While (i <= num_buttons) {
+            Print((i));
+            If (i < 3) { PRINT(", "); }
+            i = i + 1;
+        };
+        print(".^");
+    }
+}
+
+// STARS - prints one star for each press
+verb Stars {
+    grammar = {.stars};
+    void handler() {
+        int count = 0;    // (a local with the same name as the COUNT verb)
+        if (!(totalPresses == 0)) {
+            while (count < totalPresses) {
+                print("*");
+                count++;
+            }
+            print("^");
+        } else {
+            print("No presses.^");
+        }
+    }
+}
+
+// RESET - sets all the buttons back to zero
+verb Reset {
+    grammar = {.reset};
+    void handler() {
+        if (resetDone == true) {
+            print("The panel has already been reset.^");
+            return;
+        }
+        RedPresses = 0;
+        BluePresses = 0;
+        GreenPresses = 0;
+        TotalPresses = 0;
+        lastButton = "none";
+        resetDone = true;
+        // the door stays open
+        print("The panel resets.^");
+    }
+}
+
+// PRESS - the same as push, but only for buttons
+verb Press {
+    grammar = {.press, NOUN};
+    void handler() {
+        if (noun == redButton || noun == BLUEBUTTON || noun == GreenButton) {
+            Push.perform(noun);
+        } else {
+            print("You can only press buttons.^");
+        }
+    }
+}
+
+// RATE - gives a rating based on the presses
+verb Rate {
+    grammar = {.rate};
+    void handler() {
+        if (TOTALPRESSES == 0) {
+            printLine("Rating: none.");
+        } else if (totalPresses < 3) {
+            print("Rating: low.^");
+        } else if (totalPresses == 3) {
+            print("Rating: exact.^");
+        } else if (totalPresses < 6) {
+            print("Rating: high.^");
+        } else {
+            PrintLine("Rating: too high.");
+        }
+    }
+}

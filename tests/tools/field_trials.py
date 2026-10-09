@@ -96,7 +96,8 @@ def check(path, keep, show):
     os.makedirs(work, exist_ok=True)
     code, out = run([BEGUILER, '-o', work, path], os.path.dirname(path))
     stories = [f for f in os.listdir(work) if f.endswith(('.z5', '.z8', '.ulx'))]
-    if not stories:
+    # Inform 6 can leave a story behind after reporting errors, so its error count decides too.
+    if not stories or re.search(r'Compiled with \d+ errors?', out) or 'Error running I6' in out:
         err = next((l for l in out.split('\n') if 'ERROR' in l or 'Error' in l), out.strip()[-300:])
         return name, 'COMPILE-FAIL', re.sub(r'^.*?/(?=[^/]*\.(bgl|inf)[:(])', '', err.strip())[:300], out
     story = os.path.join(work, stories[0])

@@ -1,0 +1,60 @@
+Room A
+Room A.
+You can see a goblin, a rat, an iron sword, a torch and a rock here.
+> money
+a $2.05, b $1.50, sum $3.55, diff $0.55.
+a > b
+b <= a
+sum == 3.55
+a - a is zero
+> coords
+(0, 0) + 2 * (2, -3) = (4, -6), distance 10.
+goblin at (4, -6); finish now (99, -6).
+goblin position equals (4, -6)
+> hierarchy
+#1 goblin: goblin, priority 111.
+#2 rat: creature, priority 11.
+#3 iron sword: weapon, priority 1.
+#5 rock: item, priority 1.
+As Entity: goblin 111.
+Base version: 1.
+Stacks: rock 20, sword 1.
+> census
+Entities: 5.
+> health
+Rat health after 50: 10.
+After -= 4: 6.
+After -3: 0; alive false.
+> zap rat
+rat takes 2 fire damage; health 5.
+> bash rat
+rat takes 4 blunt damage; health 1.
+> zap rock
+Only creatures can be hit.
+> chain
+Goblin targets rat.
+rat takes 3 sharp damage; health 0.
+rat is defeated.
+Rat targets goblin.
+Rat targets nobody.
+> rarity
+iron sword: rare, $3.00.
+torch: common, $0.75.
+rock: common.
+> shop sword
+Bought iron sword for $3.00; $1.00 left.
+> shop torch
+Bought torch for $0.75; $0.25 left.
+> shop rock
+That is not for sale. Balance $0.25.
+> orders
+Pool exhausted.
+First $0.75, second $2.20.
+Order of 3 released.
+Third $0.40; created 3.
+Order of 2 released.
+Order of 4 released.
+> inventory
+You're carrying:
+  a torch
+  an iron sword

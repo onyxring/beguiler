@@ -1,0 +1,179 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a PunyInform program (globals + puny includes, the punyInform binding), library option
+// constants set with #defineI6 before the includes (OPTIONAL_SCORED, OPTIONAL_SIMPLE_DOORS,
+// OPTIONAL_MANUAL_REACTIVE) and plain constants (MAX_SCORE, INITIAL_LOCATION_VALUE, ROOM_SCORE),
+// the `reactive` attribute set by hand, a two-way simple door (found_in and door_dir as lists)
+// that is lockable with a key, an openable container, a dark room lit by a switchable lamp,
+// `scored` rooms and objects, an animate character with `life` (Ask topic via consult words, Give,
+// Attack) and a daemon, custom verbs with and without a noun, a synonym added to a library verb, and
+// reading `selected_direction` in a room's `before`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+#defineI6 OPTIONAL_SIMPLE_DOORS
+#defineI6 OPTIONAL_MANUAL_REACTIVE
+#defineI6 ROOM_SCORE 1
+#defineI6 OBJECT_SCORE 2
+
+const int    MAX_SCORE              = 6;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A door is east.";
+    e_to = woodDoor;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. A door is west; stairs lead down.";
+    w_to = woodDoor;
+    d_to = roomC;
+    attributes = {light};
+}
+
+object roomC {
+    "Room C";
+    description = "Room C. Stairs lead up.";
+    u_to = roomB;
+    attributes = {scored, reactive};
+
+    bool before() {
+        if (action == Go && selected_direction == (property)u_to && coin.parent == player)
+            printLine("The stairs creak.");
+        rfalse;
+    }
+}
+
+object woodDoor {
+    "wooden door";
+    name = {.wooden, .door};
+    description = "A wooden door.";
+    rawArray<object>   found_in = {roomA, roomB};
+    rawArray<property> door_dir = {(property)e_to, (property)w_to};
+    object with_key = key;
+    attributes = {door, openable, lockable, locked, static};
+}
+
+object box {
+    "tin box";
+    parent = roomA;
+    name = {.tin, .box};
+    attributes = {container, openable};
+}
+
+object key {
+    "brass key";
+    parent = box;
+    name = {.brass, .key};
+}
+
+object lamp {
+    "lamp";
+    parent = roomB;
+    name = {.lamp};
+    attributes = {switchable, reactive};
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:  give(light);
+            case SwitchOff: ungive(light);
+        }
+        rfalse;
+    }
+}
+
+object coin {
+    "silver coin";
+    parent = roomC;
+    name = {.silver, .coin};
+    attributes = {scored};
+}
+
+object clerk {
+    "clerk";
+    parent = roomA;
+    name = {.clerk};
+    description = "A clerk.";
+    int  coughs = 0;
+    bool paid   = false;
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .door) rtrue("The clerk says the key is in the box.^");
+                rtrue("The clerk shrugs.^");
+            case Give:
+                if (noun == coin && !paid) {
+                    paid = true;
+                    coin.parent = self;
+                    score += 2;
+                    rtrue("The clerk takes the silver coin.^");
+                }
+                rtrue("The clerk refuses.^");
+            case Attack:
+                rtrue("The clerk steps back.^");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        coughs++;
+        if (coughs % 4 == 0 && location == parent) printLine("^The clerk coughs.");
+    }
+
+    attributes = {animate};
+}
+
+
+verb Knock {
+    grammar = { {.knock, .on, NOUN} };
+    void handler() {
+        if (noun != woodDoor) {
+            print($"You knock on {the(noun)}.^");
+            return;
+        }
+        if (clerk.parent == location) printLine("The clerk looks up.");
+        else printLine("Nobody answers.");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        printLine($"Score {score} of {MAX_SCORE}, {turns} turns.");
+    }
+}
+
+extend Examine {
+    synonyms = {.inspect};
+}
+
+bool Initialise() {
+    StartDaemon(clerk);
+    rfalse;
+}

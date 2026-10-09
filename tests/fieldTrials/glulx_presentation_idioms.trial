@@ -1,0 +1,92 @@
+#grids
+Room A
+Room A. Room B is to the east.
+You can see a brass key and a steel rod here.
+[grid 1]
+|Room A · seen 50.0%                 Moves: 0      |
+> styles
+Room A holds 3 things: the brass key is yes here.
+Captured: LOUD and fixed (14).
+Name    |grams |
+[grid 1]
+|Room A · seen 50.0%                 Moves: 1      |
+> measure
+Rod: 1.8 m, 175.0 cm, 5.7 ft.
+Rod weight: 1.3 kg; key weight: 0.0 kg.
+Box diagonal: 5.0. Below zero: -2.3.
+Ceiling 3.0, floor 2.0.
+[grid 1]
+|Room A · seen 50.0%                 Moves: 2      |
+> stock
+────────────────────────
+nails   12  36.4%  █ high
+screws   7  21.2%  ▄ mid
+bolts    1  3.0%   ▁ low
+washers 13  39.4%  █ high
+────────────────────────
+Total 33; n/a for an empty bin.
+[grid 1]
+|Room A · seen 50.0%                 Moves: 3      |
+> samples
+40000 samples; sum 1999842; largest 100; last 21.
+Mean 50.0; above 50: 49.5%.
+[grid 1]
+|Room A · seen 50.0%                 Moves: 4      |
+> capture
+Captured 27 of 80 characters.
+The steel rod weighs 1250 g
+weighs at 14; starts with The: yes.
+THE_STEEL_ROD_WEIGHS_1250_G
+STEEL_ROD_WEIGHS_1250_G »
+[grid 1]
+|Room A · seen 50.0%                 Moves: 5      |
+> letters
+Ångström café: 13 characters, 4 vowels, 1 uppercase.
+Beyond ASCII: Å=197, ö=246, é=233.
+Shouted: ÅNGSTRÖM CAFÉ; reversed: éfac mörtsgnÅ.
+Same ignoring case: yes; equal: no.
+[grid 1]
+|Room A · seen 50.0%                 Moves: 6      |
+> banner
+┌────────────┐
+│ ★ Room A ★ │
+└────────────┘
+[grid 1]
+|Room A · seen 50.0%                 Moves: 7      |
+> links
+Choose the button or the bell.
+Links shown as links: yes.
+[grid 1]
+|Room A · seen 50.0%                 Moves: 8      |
+> click
+The button clicks (1 time).
+[grid 1]
+|Room A · seen 50.0%                 Moves: 9      |
+> e
+Room B
+Room B. Room A is to the west.
+[grid 1]
+|Room B · seen 100.0%                Moves: 10     |
+> layout
+Status layout: compact.
+[grid 1]
+|★ Room B                                          |
+> w
+Room A
+Room A. Room B is to the east.
+You can see a brass key and a steel rod here.
+[grid 1]
+|★ Room A                                          |
+> target
+Built for Glulx.
+Setting says glulx; sample capacity 40000.
+[grid 1]
+|★ Room A                                          |
+> take key
+Taken.
+[grid 1]
+|★ Room A                                          |
+> layout
+Status layout: full.
+[grid 1]
+|Room A · seen 100.0%                Moves: 12     |

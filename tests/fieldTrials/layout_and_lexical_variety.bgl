@@ -1,0 +1,305 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical variety. Allman, K&R and one-line braces; declarations, argument
+// lists, expressions and chained calls split across many lines; no optional spaces at all; extra
+// blank lines and whitespace; comments between tokens, inside argument lists, after `{` and inside
+// expressions; `///` and `/** */` doc comments before and after members and parameters; mixed-case
+// keywords, types and identifiers; decimal, hex, binary and negative integers; char literals with
+// escapes, accents and numeric codes; raw strings; interpolation with nested quotes; `^` and `~` in
+// strings, their escapes and accent forms; directly typed accented characters; empty statements and
+// blocks; stray semicolons at every boundary; deeply nested parentheses; `<=>`-adjacent tokens.
+
+#beguilerSettings
+{
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+};
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#INCLUDE <bindings/i6StandardLibrary>
+;;
+
+EXTEND   CLASS   object
+{
+    string description;
+};
+
+CONST INT    BASE      =   100;
+const int    MASK      =   $FF;          // hex
+Const Int    BITS      =   $$1010;       // binary → 10
+const int    NEG       =   -42;
+const int    LOWHEX    =   $0a;          // hex digits in either case → 10
+
+
+Object roomA
+{
+    "Room A";
+    description = "A plain room.^It has a ~sign~ on the wall.";
+    ATTRIBUTES = {light};
+}
+
+object sign {
+    "sign"; parent = ROOMA; name = {.sign, .board, .café,}; attributes = {static,};
+    description = @"The sign reads: C:\temp\x^y~z.";
+}
+
+
+/// A tally that counts, with a chainable surface.
+class Tally : object
+{
+    int total;   /// The running total.
+    int steps;
+
+    /** Adds n to the total.
+     *  Returns the tally, for chaining. */
+    Tally add(int n /* the amount */)
+    {
+        total += n; steps++;
+        return self;
+    }
+
+    Tally times(
+        int n          // multiplier
+    ) { total *= n; steps++; return self; }
+
+    Tally show() { print($"[{total}]"); return self; }
+}
+
+Tally tallyA { }
+
+
+//-- Functions in assorted brace and spacing styles ---------------------------------------------
+
+int sum3(int a,int b,int c){return a+b+c;}
+
+int  weigh (
+    int  first ,          /// The hundreds.
+    int  second ,         /* second value */
+    int  third
+)
+{
+    return first
+         * 100
+         + second
+         * 10
+         + third;
+}
+
+bool both(bool a,bool b){if(a&&b){return true;}return false;}
+
+VOID   ShowSign  (  INT   n  )   {   PRINTLINE( $"sign {n}" );   }
+
+void yesNo(string label, bool b) { if (b) printLine($"{label}: yes."); else printLine($"{label}: no."); }
+
+bool Initialise() {
+    LOCATION = roomA;
+    RFALSE;
+}
+
+#includeI6 "grammar"
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Ints
+{
+    meta = true;
+    grammar = {.ints};
+    void handler()
+    {
+        printLine($"{BASE} {MASK} {BITS} {NEG} {lowhex}");
+        int x=-7;int y=$$11;int z=$Ab;
+        printLine($"{x} {y} {z} {x+y*z} {-x} {-(-x)}");
+        printLine($"{MASK&$0F} {BITS|$$0101} {MASK^$$1111}");
+    }
+}
+
+verb Chars {
+    meta = true;
+    grammar = {.chars};
+    void handler() {
+        char a = 'a';
+        char nl = '\n';
+        char q = '\'';
+        char bs = '\\';
+        printLine($"{(int)a} {(int)nl} {(int)q} {(int)bs}");
+        char e = '\'e';
+        char d = 'ä';
+        char u = '\:u';
+        char n = '\~n';
+        char ss = '\ss';
+        printLine($"{(int)e} {(int)d} {(int)u} {(int)n} {(int)ss}");
+        if ('z' > 'a' && 'Z' < 'a') printLine("ordered");
+    }
+}
+
+verb Strs {
+    meta = true;
+    grammar = {.strs};
+    void handler() {
+        printLine("caret^made a new line");
+        printLine("tilde gives ~quotes~");
+        printLine("escaped \^ and \~ stay put");
+        printLine("accents: caf\'e cr\`eme g\^ateau na\:ive se\~nor");
+        printLine("doubled: \^^a and \~~n");
+        printLine("named: \ss \ae \oe \OE \/o \cc \LL");
+        printLine("numeric: na\239ve na\$EFve");
+        printLine("typed: café über señor");
+        printLine("quoted: \"well done\" and \\ and \@");
+    }
+}
+
+verb Raw {
+    meta = true;
+    grammar = {.raw};
+    void handler() {
+        printLine(@"raw: C:\Users\jim ^ ~ \n \{");
+        printLine(@"raw quote: \"yes\"");
+        print(sign.description); print("^");
+    }
+}
+
+verb Interp {
+    meta = true;
+    grammar = {.interp};
+    void handler() {
+        int n = 1;
+        printLine($"one {n == 1 ? "item" : "items"} here");
+        n = 2;
+        printLine($"two {n == 1 ? "item" : "items"} here");
+        printLine($"braces: \{n} and {n} and {(n + 1) * (n - 1)}");
+        printLine($"nested call: {sum3(1, sum3(2, 3, 4), 5)}");
+        printLine($"room: {roomA} ~quoted~ ^done");
+    }
+}
+
+verb Layout {
+    meta = true;
+    grammar = {.layout};
+    void handler() {
+        int r = weigh(
+            1,
+            2,
+            3
+        );
+        printLine($"weigh {r}");
+        int s = sum3(  /* a */ 10 , /* b */ 20 , // c follows
+                       30 );
+        printLine($"sum {s}");
+        int t
+            =
+            s
+            -
+            r
+            ;
+        printLine($"diff {t}");
+        int /* type */ q /* name */ = /* value */ (t /* left */ + /* op */ 3) /* end */ ;
+        printLine( /* only arg */ $"q {q}" /* after */ );
+        ShowSign(t);
+        showsign(  T  );
+    }
+}
+
+verb Parens {
+    meta = true;
+    grammar = {.parens};
+    void handler() {
+        int a = ((((((1 + 2))))));
+        int b = (((a * (a + (a - (1))))));
+        int c = ((a+b)*((b-a)/((2))))%((7));
+        printLine($"{a} {b} {c}");
+        bool p=(((a<b)&&((b>a)||(c==0))));
+        yesNo("p", p);
+        yesNo("both", both((a<b),(((c!=0)))));
+    }
+}
+
+verb Chain {
+    meta = true;
+    grammar = {.chain};
+    void handler() {
+        tallyA.total = 0;
+        tallyA.steps = 0;
+        tallyA
+            .add(2)
+            .show()
+            .times(3)       // six
+            .show()
+            .add( /* one */ 1 )
+            .show();
+        print("^");
+        TALLYA.Add(1).Times(2).SHOW();
+        print("^");
+        printLine($"steps {tallyA.steps}");
+    }
+}
+
+verb Blank {
+    meta = true;
+    grammar = {.blank};
+    void handler() {
+        ;;
+        { }
+        {;}
+        if (true) { } else { printLine("never"); }
+        for (int i = 0; i < 3; i++) { }
+        int k = 0;
+        while (k < 4) k++;
+        printLine($"k {k}");
+        { { { printLine("deep block"); } } };
+        ;
+    }
+}
+
+verb Cases {
+    meta = true;
+    grammar = {.cases};
+    void handler() {
+        int MixedName = 5;
+        mixedname++;
+        MIXEDNAME += 1;
+        printLine($"mixed {mixedName}");
+        For (Int I = 0; i < 2; I++) Print(i);
+        print("^");
+        Switch (MixedName) {
+            Case 7: PrintLine("seven");
+            Default: printLine("other");
+        }
+        While (FALSE) { }
+        If (TRUE && !False) printLine("true");
+        Else printLine("false");
+    }
+}
+
+verb Loops {
+    meta = true;
+    grammar = {.loops};
+    void handler() {
+        int n=0;
+        do{n++;}while(n<3);
+        print(n);
+        do
+        {
+            n--;
+        }
+        until
+        (
+            n == 0
+        );
+        print(n);
+        for(int i=0;i<3;i++){if(i==1)continue;print(i);}
+        for (int j in 1
+                   to 3)
+        { print(j); }
+        switch(n){case 0:print("z");case 1 to 9:print("s");default:print("d");}
+        print("^");
+    }
+}
+
+verb Compact {
+    meta = true;
+    grammar = {.compact};
+    void handler() {int a=3;int b=4;if(a<b&&b>0){a=a+1;}else{a=0;}if(a==b){printLine("equal");}
+        int c=a<<2;int d=c>>1;printLine($"{c} {d} {(a<=b)?1:0} {(c>=d)?1:0} {(a<b)?1:0}");}
+}

@@ -1,0 +1,43 @@
+Room A
+Room A. There is a door to the east.
+You can see a panel, a red button, a blue button and a green button here.
+> examine panel
+The panel has three buttons. None is lit.
+> east
+The door is shut.
+> PUSH Red Button
+You press the red button. Click.
+> press blue button
+You press the blue button. Click.
+> press panel
+You can only press buttons.
+> rate
+Rating: low.
+> count
+1, 2, 3.
+> push green button
+You press the green button. Click.
+Somewhere a door clicks open.
+> stars
+***
+> rate
+Rating: exact.
+> east
+You go through the door for the first time.
+Room B
+Room B. Room A is to the west.
+> west
+Room A
+Room A. There is a door to the east.
+You can see a panel, a red button, a blue button and a green button here.
+> status
+Red: 1 time.
+Blue: 1 time.
+Green: 1 time.
+Total: 3
+Door: open
+Last: green
+> reset
+The panel resets.
+> reset
+The panel has already been reset.

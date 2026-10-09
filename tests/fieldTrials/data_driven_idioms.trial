@@ -1,0 +1,56 @@
+Room A
+Room A.
+> grid
+##+##
+#..~#
+#,~~,
+#####
+4 rows of 5.
+> cell 1 3
+Cell 1,3: water (wet).
+> cell 0 2
+Cell 0,2: door (walkable, tall).
+> cell 9 9
+No cell 9,9.
+> tally
+ground 2
+wall 12
+water 3
+door 1
+grass 2
+Walkable: 5.
+> scan 2
+Row 2: first walkable at 1, first wet at 2, first tall door at -1.
+Longest walkable run: 1.
+> pump 0
+prime: idle -> priming.
+> pump 1
+start: priming -> running.
+> pump 2
+kick: running -> jammed.
+The pump jams.
+> pump 3
+halt: jammed -> jammed.
+Nothing changes.
+> lookup red bolt fox blue
+red=300 part:bolt ? blue=240
+3 of 4 matched, colors sum 540.
+> parts
+bolt #12: 40 at 2 = 80, cheap
+gear #31: 6 at 15 = 90, mid
+valve: out of stock
+spring #27: 18 at 4 = 72, cheap
+washer #13: 55 at 1 = 55, cheap
+4 stocked, total 297, best 90.
+> find 40
+#40 is at 2: valve.
+> find 99
+No part #99.
+> byprice
+By price: washer, bolt, spring, gear, valve
+> bystock
+By stock: washer 55, bolt 40, spring 18, gear 6, valve 0
+> kits
+kit A: 3 parts, cost 20, can build.
+kit B: 2 parts, cost 46, can build.
+kit C: 3 parts, cost 41, short of valve.

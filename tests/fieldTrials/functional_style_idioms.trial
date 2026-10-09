@@ -1,0 +1,61 @@
+Room A
+> nums
+4 8 15 16 23 42 8 4
+8 16 30 32 46 84 16 8
+4 8 5 6 3 2 8 4
+Sum 120, max 42.
+Evens 6, odds 2.
+> query 10
+At least 10: 15 16 23 42
+Distinct sorted: 4 8 15 16 23 42
+Descending top 3: 42 23 16
+Skip 2, while < 20: 15 16
+Any over 10: yes. All under 50: yes.
+First even over 10: 16. Last: 4.
+> pipe 4
+pipe(4) = 36
+pick 0: 4
+pick 1: 8
+pick 2: 16
+pick 3: 5
+chosen: 104
+fact 4 = 24
+> sign 5
+0 is zero; even; not positive.
+> sign 20
+15 is positive; odd; big.
+> goods
+By weight: feather, cup, stone, brick
+Cheap: stone, brick
+Light and cheap: none
+Labels: 4, first stone.
+Worth total 38.
+> heavy 4
+Heaviest over 4: brick.
+Several over the limit.
+2 over the limit.
+> heavy 9
+Heaviest over 9: feather.
+None over the limit.
+> fits 5
+stone: fits
+feather: fits
+cup: fits
+brick: no
+All fit: no.
+> nested
+Weight covers two numbers: stone, brick
+> blurb 1
+blurb 1: negative
+> blurb 5
+blurb 5: plain text
+> named
+product 24
+over 10: 4
+> early 0
+0: nothing
+> higher 16
+chooser(2)(16) = 256
+Over 16: 2 numbers, sum 65.
+Checks passed by 16: 3 of 3.
+Every check: yes.

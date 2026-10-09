@@ -1,0 +1,296 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written in Inform 6 habits. #defineI6 options tested both by #if and by #Ifdef
+// inside an #i6 island; an #i6 island of a global and routines (objectloop over children and over a
+// Beguile class) reached through extern; extern of I6 built-ins and verblib routines; a
+// LibraryMessages object between the parser and verblib includes; before/after/life/react_before/
+// daemon/describe routines written as switch(action) with rtrue/rfalse and print_ret-style
+// rtrue("..."); give/has/hasnt; a child/sibling walk; moving and removing objects through parent;
+// found_in as an array and as a routine; door_to and door_dir routines; a topic read with
+// wn/NextWord against dictionary words; GamePreRoutine; deadflag; and one-letter locals.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 TRIAL_FEATHERS 2
+#defineI6 TRIAL_LOUD
+
+const int MAX_SCORE = 5;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Jump: rtrue("You hop on the spot.^");
+            case Sing: rtrue("You hum a note.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#i6 {
+    Global acts = 0;
+    [ CountIn o  x n;
+        objectloop (x in o) n++;
+        return n;
+    ];
+    [ ListCoins  x;
+        ! Classes emit as _bglClass_<Name>, so the island names Coin through $i6Name, §15.1.1.
+        objectloop (x ofclass $i6Name(Coin)) print (name) x, "^";
+    ];
+}
+
+extern int acts;
+extern int CountIn(object o);
+extern void ListCoins();
+extern object child(object o);
+extern object sibling(object o);
+extern bool IndirectlyContains(object o1, object o2);
+
+extend class object {
+    stringOrRoutine description;
+    object e_to;
+    object w_to;
+}
+
+class Coin : object {
+    name = {.coin, ..coins};
+    int value;
+    description = "A coin.";
+}
+
+int g_fed;       // times the parrot has eaten
+bool g_door;     // the door has been opened once
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. An oak door is east.";
+    e_to = oakDoor;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. The oak door is west.";
+    w_to = oakDoor;
+    attributes = {light};
+}
+
+object oakDoor {
+    short_name = "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {roomA, roomB};
+    description = "An oak door.";
+    object door_to() {
+        if (location == roomA) return roomB;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)e_to;
+        return (property)w_to;
+    }
+    bool after() {
+        switch (action) {
+            case Open:
+                if (g_door) rfalse;
+                g_door = true;
+                rtrue("The oak door swings open for the first time.^");
+        }
+        rfalse;
+    }
+    attributes = {door, static, openable};
+}
+
+object ceiling {
+    short_name = "ceiling";
+    name = {.ceiling};
+    bool found_in() {
+        if (location == roomA || location == roomB) rtrue;
+        rfalse;
+    }
+    description = "A plain ceiling.";
+    attributes = {scenery};
+}
+
+object sign {
+    short_name = "sign";
+    name = {.sign};
+    parent = roomA;
+    description = "The sign reads: NO SINGING.";
+    bool react_before() {
+        switch (action) {
+            case Sing: rtrue("The sign forbids it.^");
+        }
+        rfalse;
+    }
+    attributes = {scenery};
+}
+
+object box {
+    short_name = "wooden box";
+    name = {.wooden, .box};
+    parent = roomA;
+    description = "A wooden box.";
+    children = {copper, silver};
+    bool before() {
+        switch (action) {
+            case Take: rtrue("The box is too heavy.^");
+            case Open:
+                if (has(open)) rfalse;
+                give(open);
+                rtrue("You lift the lid of the box.^");
+        }
+        rfalse;
+    }
+    attributes = {container, openable, static};
+}
+
+Coin copper {
+    short_name = "copper coin";
+    name = {.copper};
+    value = 1;
+}
+
+Coin silver {
+    short_name = "silver coin";
+    name = {.silver};
+    value = 3;
+}
+
+object parrot {
+    short_name = "parrot";
+    name = {.parrot, .bird};
+    parent = roomB;
+    description = "A green parrot.";
+    bool describe() {
+        rtrue("^A parrot watches you from its perch.^");
+    }
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Give:
+                if (!noun.is(Coin)) rtrue("The parrot ignores it.^");
+                noun.parent = null;
+                g_fed++;
+                score = score + ((Coin)noun).value;
+                print($"The parrot swallows the {noun}. ");
+                rtrue($"It has eaten {g_fed} coin{g_fed == 1 ? "" : "s"}.^");
+            case Ask:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .coin) rtrue("~Shiny!~ says the parrot.^");
+                if (w == .door) rtrue("~Oak!~ says the parrot.^");
+                rtrue("The parrot says nothing.^");
+            case Attack:
+                rtrue("The parrot flaps out of reach.^");
+        }
+        rfalse;
+    }
+    void daemon() {
+        number--;
+        if (number <= 0) {
+            StopDaemon(self);
+            printLine("The parrot falls silent.");
+            return;
+        }
+        printLine("The parrot squawks.");
+    }
+    int number;
+    attributes = {animate};
+}
+
+object perch {
+    short_name = "perch";
+    name = {.perch};
+    parent = roomB;
+    attributes = {scenery, supporter};
+}
+
+object button {
+    short_name = "red button";
+    name = {.red, .button};
+    parent = roomB;
+    description = "A red button.";
+    bool before() {
+        switch (action) {
+            case Push:
+                if (g_fed < 2) rtrue("Nothing happens.^");
+                deadflag = 2;
+                rtrue("A bell rings.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+bool GamePreRoutine() {
+    acts++;
+    rfalse;
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        object o;
+        int n;
+        n = 0;
+        for (o = child(location); o; o = sibling(o)) n++;
+        print($"Walked: {n}. Counted: {CountIn(location)}. Box: {CountIn(box)}.^");
+        if (IndirectlyContains(location, copper)) printLine("The copper coin is here.");
+        else printLine("The copper coin is gone.");
+        ListCoins();
+    }
+}
+
+verb ActsTest {
+    grammar = {.acts};
+    void handler() {
+        print($"Actions so far: {acts}. Score: {score}.^");
+    }
+}
+
+verb Rouse {
+    grammar = {{.rouse, CREATURE}};
+    void handler() {
+        if (noun != parrot) { print("Nothing to rouse.^"); return; }
+        #if TRIAL_FEATHERS
+            parrot.number = TRIAL_FEATHERS;
+        #else
+            parrot.number = 1;
+        #endif
+        StartDaemon(parrot);
+        #i6 {
+            #Ifdef TRIAL_LOUD;
+            print "You clap loudly.^";
+            #Ifnot;
+            print "You clap.^";
+            #Endif;
+        }
+    }
+}
+
+// A program verb may not share its name with a library verb (`Empty`).
+verb Unload {
+    grammar = {{.unload, NOUN}};
+    void handler() {
+        object o;
+        if (noun.hasnt(container)) { print("That holds nothing.^"); return; }
+        if (noun.hasnt(open)) { print("It is closed.^"); return; }
+        for (o in noun.children) o.parent = location;
+        printLine("Emptied.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,391 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: behavior driven from data tables: an array of arrays of an enum as a 2-D grid, parallel
+// arrays indexed by an enum cast to int, a bnum trait set per cell kind (combined with |, tested with &,
+// listed by bit position), an enum state machine driven by a transition table read with [state][event]
+// from a NUMBER token, switch on the enum with several values in one case and a default, const ints and
+// a #define sizing an array, records as objects in an array<Part> and lookups returning an index, -1 or
+// null, a value-class tally accumulated through a ref parameter, array<dictionaryWord> matched against
+// the words of a TOPIC, a member array on a class read and walked per instance, an index array
+// insertion-sorted by hand with a while loop, array.sort with a named comparator, range for-in loops,
+// break and continue in nested loops, and tallies counted from the data.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int NOT_FOUND = -1;
+const int KIND_COUNT = 5;
+#define MAX_PARTS 8
+
+enum eCell { ground = 0, wall, water, door, grass }
+bnum eTrait { walkable, wet, opaque, tall }
+enum ePump { idle = 0, priming, running, jammed }
+enum ePumpEvent { prime = 0, start, kick, halt }
+
+//-- Tables --------------------------------------------------------------------
+
+// Parallel arrays, indexed by (int)eCell.
+array<string> cellNames  = { "ground", "wall", "water", "door", "grass" };
+array<string> cellGlyphs = { ".", "#", "\~", "+", "," };
+array<eTrait> cellTraits = { walkable, opaque | tall, wet, walkable | tall, walkable };
+
+array<string> traitNames = { "walkable", "wet", "opaque", "tall" };
+
+array<array<eCell>> grid = {
+    { wall,  wall,   eCell.door, wall,   wall  },
+    { wall,  ground, ground,     water,  wall  },
+    { wall,  grass,  water,      water,  grass },
+    { wall,  wall,   wall,       wall,   wall  }
+};
+
+// Next pump state, read as pumpTable[state][event].
+//                              prime     start     kick      halt
+array<array<ePump>> pumpTable = {
+    {                         priming,  jammed,   idle,     idle   },   // idle
+    {                         priming,  running,  priming,  idle   },   // priming
+    {                         running,  running,  jammed,   idle   },   // running
+    {                         jammed,   jammed,   idle,     jammed }    // jammed
+};
+array<string> eventNames = { "prime", "start", "kick", "halt" };
+
+array<dictionaryWord> colorWords  = { .red, .green, .blue, .gray };
+array<int>            colorValues = { 300, 120, 240, 0 };
+
+array<int> priceBands = { 5, 10, 20 };
+
+//-- Records -------------------------------------------------------------------
+
+class Part : object {
+    int code;
+    int stock;
+    int price;
+}
+
+Part bolt   { "bolt";   name = {.bolt};   code = 12; stock = 40; price = 2;  }
+Part gear   { "gear";   name = {.gear};   code = 31; stock = 6;  price = 15; }
+Part valve  { "valve";  name = {.valve};  code = 40; stock = 0;  price = 24; }
+Part spring { "spring"; name = {.spring}; code = 27; stock = 18; price = 4;  }
+Part washer { "washer"; name = {.washer}; code = 13; stock = 55; price = 1;  }
+
+array<Part> parts[MAX_PARTS] = { bolt, gear, valve, spring, washer };
+
+class Kit : object {
+    array<Part> needs[4];
+    array<int>  qty[4];
+}
+
+Kit kitA { "kit A"; needs = { bolt, spring, washer }; qty = { 4, 2, 4 }; }
+Kit kitB { "kit B"; needs = { gear, bolt };           qty = { 2, 8 };    }
+Kit kitC { "kit C"; needs = { valve, gear, washer };  qty = { 1, 1, 2 }; }
+
+value class Tally {
+    int items;
+    int total;
+    int best;
+    Tally operator = (Tally o) { items = o.items; total = o.total; best = o.best; return self; }
+}
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+ePump pumpState = idle;
+
+//-- Lookups -------------------------------------------------------------------
+
+int indexOfCode(int c) {
+    for (int i = 0; i < parts.length; i++) {
+        if (parts[i].code == c) return i;
+    }
+    return NOT_FOUND;
+}
+
+Part partByCode(int c) {
+    int at = indexOfCode(c);
+    if (at == NOT_FOUND) return null;
+    return parts[at];
+}
+
+Part partByWord(dictionaryWord w) {
+    for (Part p in parts) {
+        if (p.name[0] == w) return p;
+    }
+    return null;
+}
+
+int bandOf(int price) {
+    for (int i in 0 to priceBands.length - 1) {
+        if (price < priceBands[i]) return i;
+    }
+    return priceBands.length;
+}
+
+// The first column of row r whose cell has every trait in want, or NOT_FOUND.
+int findInRow(int r, eTrait want) {
+    array<eCell> row = grid[r];
+    for (int c = 0; c < row.length; c++) {
+        eTrait t = cellTraits[(int)row[c]];
+        if ((t & want) == want) return c;
+    }
+    return NOT_FOUND;
+}
+
+void printTraits(eTrait t) {
+    if (t == 0) { print("none"); return; }
+    bool first = true;
+    for (int i = 0; i < traitNames.length; i++) {
+        eTrait f = (eTrait)(1 << i);
+        if ((t & f) == 0) continue;
+        if (!first) print(", ");
+        print(traitNames[i]);
+        first = false;
+    }
+}
+
+void printBand(int b) {
+    switch (b) {
+        case 0:      print("cheap");
+        case 1, 2:   print("mid");
+        default:     print("dear");
+    }
+}
+
+void printPumpState(ePump s) {
+    switch (s) {
+        case ePump.idle:                   print("idle");
+        case ePump.priming, ePump.running: print(s == ePump.running ? "running" : "priming");
+        case ePump.jammed:                 print("jammed");
+    }
+}
+
+void addTo(ref Tally t, int v) {
+    t.items++;
+    t.total += v;
+    if (v > t.best) t.best = v;
+}
+
+int byPrice(Part a, Part b) {
+    if (a.price < b.price) return -1;
+    if (a.price > b.price) return 1;
+    return 0;
+}
+
+void listParts() {
+    for (int i = 0; i < parts.length; i++) {
+        if (i > 0) print(", ");
+        printName(parts[i]);
+    }
+    print("^");
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb GridTest {
+    grammar = {.grid};
+    void handler() {
+        for (array<eCell> row in grid) {
+            for (eCell c in row) print(cellGlyphs[(int)c]);
+            print("^");
+        }
+        print($"{grid.length} rows of {grid[0].length}.^");
+    }
+}
+
+verb CellTest {
+    grammar = {.cell, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        int c = (int)second;
+        if (r >= grid.length || c >= grid[r].length) { print($"No cell {r},{c}.^"); return; }
+        int k = (int)grid[r][c];
+        print($"Cell {r},{c}: {cellNames[k]} (");
+        printTraits(cellTraits[k]);
+        print(").^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        array<int> counts[KIND_COUNT];
+        int walkableCells = 0;
+        for (array<eCell> row in grid) {
+            for (eCell c in row) {
+                counts[(int)c]++;
+                if ((cellTraits[(int)c] & walkable) != 0) walkableCells++;
+            }
+        }
+        for (int k = 0; k < KIND_COUNT; k++) {
+            if (counts[k] == 0) continue;
+            print($"{cellNames[k]} {counts[k]}^");
+        }
+        print($"Walkable: {walkableCells}.^");
+    }
+}
+
+verb ScanTest {
+    grammar = {.scan, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (r >= grid.length) { print($"No row {r}.^"); return; }
+        print($"Row {r}: first walkable at {findInRow(r, walkable)}, first wet at {findInRow(r, wet)}, ");
+        print($"first tall door at {findInRow(r, walkable | tall)}.^");
+        int run = 0;
+        int longest = 0;
+        for (eCell c in grid[r]) {
+            if ((cellTraits[(int)c] & walkable) == 0) { run = 0; continue; }
+            run++;
+            if (run > longest) longest = run;
+        }
+        print($"Longest walkable run: {longest}.^");
+    }
+}
+
+verb PumpTest {
+    grammar = {.pump, NUMBER};
+    void handler() {
+        int e = (int)noun;
+        if (e >= eventNames.length) { print($"No event {e}.^"); return; }
+        ePump before = pumpState;
+        pumpState = pumpTable[(int)pumpState][e];
+        print($"{eventNames[e]}: ");
+        printPumpState(before);
+        print(" -> ");
+        printPumpState(pumpState);
+        print(".^");
+        switch ((ePumpEvent)e) {
+            case ePumpEvent.kick:
+                if (pumpState == ePump.jammed) print("The pump jams.^");
+            case ePumpEvent.halt:
+                if (before == pumpState) print("Nothing changes.^");
+        }
+    }
+}
+
+verb LookupTest {
+    grammar = {.lookup, TOPIC};
+    void handler() {
+        wn = consult_from;
+        int matched = 0;
+        int sum = 0;
+        for (int k = 0; k < consult_words; k++) {
+            dictionaryWord w = NextWord();
+            int at = colorWords.indexOf(w);
+            if (at != NOT_FOUND) {
+                print($"{colorWords[at]}={colorValues[at]} ");
+                matched++;
+                sum += colorValues[at];
+                continue;
+            }
+            Part p = partByWord(w);
+            if (p != null) {
+                print("part:"); printName(p); print(" ");
+                matched++;
+                continue;
+            }
+            print("? ");
+        }
+        print($"^{matched} of {consult_words} matched, colors sum {sum}.^");
+    }
+}
+
+verb PartsTest {
+    grammar = {.parts};
+    void handler() {
+        Tally t;
+        for (Part p in parts) {
+            if (p.stock == 0) { printName(p); print(": out of stock^"); continue; }
+            int value = p.stock * p.price;
+            printName(p); print($" #{p.code}: {p.stock} at {p.price} = {value}, ");
+            printBand(bandOf(p.price));
+            print("^");
+            addTo(t, value);
+        }
+        print($"{t.items} stocked, total {t.total}, best {t.best}.^");
+    }
+}
+
+verb FindTest {
+    grammar = {.find, NUMBER};
+    void handler() {
+        int c = (int)noun;
+        Part p = partByCode(c);
+        if (p == null) { print($"No part #{c}.^"); return; }
+        print($"#{c} is at {indexOfCode(c)}: "); printName(p); print(".^");
+    }
+}
+
+verb ByPriceTest {
+    grammar = {.byprice};
+    void handler() {
+        parts.sort(byPrice);
+        print("By price: "); listParts();
+    }
+}
+
+verb ByStockTest {
+    grammar = {.bystock};
+    void handler() {
+        array<int> order[MAX_PARTS];
+        for (int i in 0 to parts.length - 1) order += i;
+        for (int i = 1; i < order.length; i++) {
+            int key = order[i];
+            int j = i - 1;
+            while (j >= 0 && parts[order[j]].stock < parts[key].stock) {
+                order[j + 1] = order[j];
+                j--;
+            }
+            order[j + 1] = key;
+        }
+        print("By stock: ");
+        for (int i = 0; i < order.length; i++) {
+            if (i > 0) print(", ");
+            Part p = parts[order[i]];
+            printName(p); print($" {p.stock}");
+        }
+        print("^");
+    }
+}
+
+verb KitsTest {
+    grammar = {.kits};
+    void handler() {
+        for (Kit k in {kitA, kitB, kitC}) {
+            int cost = 0;
+            object short = null;
+            for (int i = 0; i < k.needs.length; i++) {
+                cost += k.needs[i].price * k.qty[i];
+            }
+            for (int i = 0; i < k.needs.length; i++) {
+                if (k.needs[i].stock < k.qty[i]) { short = k.needs[i]; break; }
+            }
+            printName(k); print($": {k.needs.length} parts, cost {cost}, ");
+            if (short == null) print("can build");
+            else { print("short of "); printName(short); }
+            print(".^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

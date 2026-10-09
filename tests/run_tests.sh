@@ -104,7 +104,7 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
         if [ -n "$want_warn" ]; then
             while IFS= read -r needle; do
                 [ -z "$needle" ] && continue
-                if ! echo "$compile_stderr" | grep -qF "$needle"; then
+                if ! echo "$compile_stderr" | grep -qF -- "$needle"; then
                     echo "  FAIL: $name — expected warning not emitted: '$needle'"
                     FAIL=$((FAIL + 1))
                     cleanup
@@ -169,7 +169,7 @@ for src in "$SCRIPT_DIR"/_test_*.bgl "$SCRIPT_DIR"/_test_*.inf; do
     all_matched=true
     while IFS= read -r needle; do
         [ -z "$needle" ] && continue
-        if ! echo "$stderr" | grep -qF "$needle"; then
+        if ! echo "$stderr" | grep -qF -- "$needle"; then
             echo "  FAIL: $name — stderr did not contain expected '$needle'"
             echo "    stderr: $(echo "$stderr" | head -3)"
             all_matched=false
@@ -286,7 +286,7 @@ if [ "$CAPTURE" != true ]; then
                 all_matched=true
                 while IFS= read -r needle; do
                     [ -z "$needle" ] && continue
-                    if ! echo "$actual" | grep -qF "$needle"; then
+                    if ! echo "$actual" | grep -qF -- "$needle"; then
                         echo "  FAIL: $name — output did not contain '$needle'"
                         echo "    got: $(echo "$actual" | grep -vE '^$' | head -3 | tr '\n' '|')"
                         all_matched=false; break

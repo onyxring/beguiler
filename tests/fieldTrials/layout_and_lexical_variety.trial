@@ -1,0 +1,66 @@
+Room A
+A plain room.
+It has a "sign" on the wall.
+You can see a sign here.
+> examine sign
+The sign reads: C:\temp\x^y~z.
+> x café
+The sign reads: C:\temp\x^y~z.
+> ints
+100 255 10 -42 10
+-7 3 171 506 7 -7
+15 15 240
+> chars
+97 13 39 92
+170 155 157 206 161
+ordered
+> strs
+caret
+made a new line
+tilde gives "quotes"
+escaped ^ and ~ stay put
+accents: café crème gâteau naïve señor
+doubled: ^a and ~n
+named: ß æ œ Œ ø ç £
+numeric: naïve naïve
+typed: café über señor
+quoted: "well done" and \ and @
+> raw
+raw: C:\Users\jim ^ ~ \n \{
+raw quote: "yes"
+The sign reads: C:\temp\x^y~z.
+> interp
+one item here
+two items here
+braces: {n} and 2 and 3
+nested call: 15
+room: Room A "quoted"
+done
+> layout
+weigh 123
+sum 60
+diff -63
+q -60
+sign -63
+sign -63
+> parens
+3 15 3
+p: yes.
+both: yes.
+> chain
+[2][6][7]
+[16]
+steps 5
+> blank
+k 4
+deep block
+> cases
+mixed 7
+01
+seven
+true
+> loops
+3002123z
+> compact
+equal
+16 8 1 1 0

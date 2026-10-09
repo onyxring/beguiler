@@ -1,0 +1,353 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: presentation idioms of a Glulx-first author. Print rules mixed inline with helper calls
+// that return string and stringObj inside interpolated text; stringObj built from interpolated text,
+// with += and char appends, and returned from helpers; Unicode box and star characters in printed
+// text; floats formatted to one decimal by a helper for percentages and measurements, with
+// bgl.util.math float functions; content switch on a helper's string result; <buf> capture of printed
+// text into a sized array<char>, then in-place transforms and searches; char classification and case
+// conversion over accented text; hyperlinks with a lambda and a named-function target; a status line
+// drawn by a replaced DrawStatusLine in two layouts; a sample array sized by a #define larger than the
+// Z-machine allows; and #if TARGET_GLULX / TARGET_ZCODE branches so the shared parts would also build
+// for Z.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#if TARGET_GLULX
+    #include <glulxWindow>
+    #define SAMPLE_COUNT 40000
+#else
+    #define SAMPLE_COUNT 200
+#endif
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    int    grams;
+    object e_to;
+    object w_to;
+}
+
+enum eStatusLayout { full, compact }
+
+array<int>    samples[SAMPLE_COUNT];
+array<char>   scratch[80];
+array<char>   wordWeighs = "weighs";
+array<char>   wordThe = "The";
+array<char>   space = " ";
+array<char>   underscore = "_";
+array<char>   tick = " »";   // an array<char> holds Latin-1 only, so no " ✓"
+array<string> stockNames = { "nails", "screws", "bolts", "washers" };
+array<int>    stockCounts = { 12, 7, 1, 13 };
+eStatusLayout layout = eStatusLayout.full;
+int           presses = 0;
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object key {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+    grams = 35;
+}
+
+object rod {
+    "steel rod";
+    parent = roomA;
+    name = {.steel, .rod};
+    description = "A steel rod.";
+    grams = 1250;
+}
+
+// ---- helpers that return text ------------------------------------------------------------------
+
+string yesNo(bool b) { return b ? "yes" : "no"; }
+
+string pluralOf(int n, string one, string many) {
+    if (n == 1) return one;
+    return many;
+}
+
+int childCount(object o) {
+    int n = 0;
+    for (object c in o.children) n++;
+    return n;
+}
+
+// A row of the same character, used for rules and box edges.
+// Printed rather than built in a stringObj, which holds Latin-1 only.
+void printRepeat(char c, int n) {
+    for (int i = 0; i < n; i++) print(c);
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+#if TARGET_GLULX
+    // One decimal place, rounded half away from zero.
+    stringObj oneDecimal(float f) {
+        bool negative = f < 0;
+        if (negative) f = -f;
+        int tenths = (int)(f * 10 + 0.5);
+        stringObj out = $"{negative ? "-" : ""}{tenths / 10}.{tenths % 10}";
+        return out;
+    }
+
+    stringObj percent(int part, int whole) {
+        if (whole == 0) return "n/a";
+        float p = (float)part * 100 / whole;
+        return oneDecimal(p) + "%";
+    }
+
+    string band(int part, int whole) {
+        float p = (float)part * 100 / whole;
+        if (p < 10)  return "low";
+        if (p < 30)  return "mid";
+        return "high";
+    }
+#else
+    stringObj percent(int part, int whole) {
+        if (whole == 0) return "n/a";
+        stringObj out = $"{part * 100 / whole}%";
+        return out;
+    }
+
+    string band(int part, int whole) {
+        int p = part * 100 / whole;
+        if (p < 10) return "low";
+        if (p < 30) return "mid";
+        return "high";
+    }
+#endif
+
+int roomsSeen() {
+    int n = 0;
+    if (roomA.has(visited)) n++;
+    if (roomB.has(visited)) n++;
+    return n;
+}
+
+void pressButton() {
+    presses++;
+    printLine($"The button clicks ({presses} {pluralOf(presses, "time", "times")}).");
+}
+
+// ---- status line ----------------------------------------------------------------------------------
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    switch (layout) {
+        case eStatusLayout.full:
+            bgl.ui.statusBar.print($"{location} {'·'} seen {percent(roomsSeen(), 2)}");
+            bgl.ui.statusBar.moveCursor(36, 0);
+            bgl.ui.statusBar.print($"Moves: {turns}");
+        case eStatusLayout.compact:
+            bgl.ui.statusBar.print($"{'★'} {location}");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    for (int i = 0; i < samples.size; i++) samples[i] = (i * 7) % 101;
+    rfalse;
+}
+
+// ---- verbs --------------------------------------------------------------------------------------
+
+verb Styles {
+    grammar = {.styles};
+    void handler() {
+        int n = childCount(location);
+        printLine($"{bold}{location}{roman} holds {italics}{n}{roman} {pluralOf(n, "thing", "things")}: {the(key)} is {underline}{yesNo(key.parent == location)}{roman} here.");
+        stringObj loud = $"{bold}LOUD{roman} and {fixed}fixed{roman}";
+        printLine($"Captured: {loud} ({loud.length}).");
+        printLine($"{reverse}{padRight("Name", 8)}{roman}|{fixed}{padRight("grams", 6)}{roman}|");
+    }
+}
+
+verb Measure {
+    grammar = {.measure};
+    void handler() {
+        #if TARGET_GLULX
+            float metres = 1.75;
+            printLine($"Rod: {oneDecimal(metres)} m, {oneDecimal(metres * 100)} cm, {oneDecimal(metres / 0.3048)} ft.");
+            float kilos = (float)rod.grams / 1000;
+            printLine($"Rod weight: {oneDecimal(kilos)} kg; key weight: {oneDecimal((float)key.grams / 1000)} kg.");
+            float diagonal = bgl.util.math.sqrt(3.0 * 3.0 + 4.0 * 4.0);
+            printLine($"Box diagonal: {oneDecimal(diagonal)}. Below zero: {oneDecimal(-2.25)}.");
+            printLine($"Ceiling {oneDecimal(bgl.util.math.ceil(2.1))}, floor {oneDecimal(bgl.util.math.floor(2.9))}.");
+        #else
+            printLine($"Rod weight: {rod.grams} g.");
+        #endif
+    }
+}
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        int total = 0;
+        for (int i = 0; i < stockCounts.length; i++) total += stockCounts[i];
+        printRepeat('─', 24); printLine();
+        for (int i = 0; i < stockNames.length; i++) {
+            int n = stockCounts[i];
+            stringObj label = stockNames[i];
+            stringObj pct = percent(n, total);
+            string level = band(n, total);
+            string mark;
+            switch (level) {
+                case "low":  mark = "▁";
+                case "mid":  mark = "▄";
+                default:     mark = "█";
+            }
+            printLine($"{fixed}{padRight(label, 8)}{n < 10 ? " " : ""}{n}  {padRight(pct, 6)}{roman} {mark} {level}");
+        }
+        printRepeat('─', 24); printLine();
+        printLine($"Total {total}; {percent(0, 0)} for an empty bin.");
+    }
+}
+
+verb SamplesTest {
+    grammar = {.samples};
+    void handler() {
+        int sum = 0;
+        int top = 0;
+        int over = 0;
+        for (int i = 0; i < samples.size; i++) {
+            sum += samples[i];
+            if (samples[i] > top) top = samples[i];
+            if (samples[i] > 50) over++;
+        }
+        printLine($"{samples.size} samples; sum {sum}; largest {top}; last {samples[samples.size - 1]}.");
+        #if TARGET_GLULX
+            float mean = (float)sum / samples.size;
+            printLine($"Mean {oneDecimal(mean)}; above 50: {percent(over, samples.size)}.");
+        #endif
+    }
+}
+
+verb Capture {
+    grammar = {.capture};
+    void handler() {
+        bgl.util.buf.capture(scratch);
+        print($"{cThe(rod)} weighs {rod.grams} g");
+        bgl.util.buf.release();
+        printLine($"Captured {scratch.length} of {scratch.size} characters.");
+        bgl.util.buf.print(scratch); printLine();
+        int at = bgl.util.buf.indexOf(scratch, wordWeighs);
+        printLine($"weighs at {at}; starts with The: {yesNo(bgl.util.buf.startsWith(scratch, wordThe))}.");
+        bgl.util.buf.replaceAll(scratch, space, underscore);
+        bgl.util.buf.toUpper(scratch);
+        bgl.util.buf.print(scratch); printLine();
+        bgl.util.buf.delete(scratch, 0, 4);
+        bgl.util.buf.append(scratch, tick);
+        bgl.util.buf.print(scratch); printLine();
+    }
+}
+
+verb Letters {
+    grammar = {.letters};
+    void handler() {
+        stringObj word = "Ångström café";
+        int vowels = 0;
+        int upper = 0;
+        stringObj wide = "";
+        stringObj shout = "";
+        for (int i = 0; i < word.length; i++) {
+            char c = word[i];
+            if (c.isVowel()) vowels++;
+            if (c.isUpper()) upper++;
+            int code = c;
+            if (code > 127) {
+                if (!wide.isEmpty()) wide += ", ";
+                stringObj piece = $"{c}={code}";   // an interpolated string can be assigned, not appended (§2.4.2)
+                wide += piece;
+            }
+            shout += c.toUpper();
+        }
+        printLine($"{word}: {word.length} characters, {vowels} vowels, {upper} uppercase.");
+        printLine($"Beyond ASCII: {wide}.");
+        printLine($"Shouted: {shout}; reversed: {word.reverse()}.");
+        printLine($"Same ignoring case: {yesNo(shout =~ word)}; equal: {yesNo(shout == word)}.");
+    }
+}
+
+verb BannerTest {
+    grammar = {.banner};
+    void handler() {
+        // The stars stay out of the stringObj, which holds Latin-1 only.
+        stringObj title = $"{location}";
+        int width = title.length + 6;
+        print("┌"); printRepeat('─', width); printLine("┐");
+        printLine($"│ {bold}{'★'} {title} {'★'}{roman} │");
+        print("└"); printRepeat('─', width); printLine("┘");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    void handler() {
+        #if TARGET_GLULX
+            printLine($"Choose {link("the button", pressButton)} or {link("the bell", => { printLine("The bell rings."); })}.");
+            printLine($"Links shown as links: {yesNo(bgl.glulx.supports.hyperlinks)}.");
+        #else
+            printLine("Type PRESS.");
+        #endif
+    }
+}
+
+verb Click {
+    grammar = {.click};
+    void handler() { pressButton(); }
+}
+
+verb LayoutTest {
+    meta = true;
+    grammar = {.layout};
+    void handler() {
+        layout = layout == eStatusLayout.full ? eStatusLayout.compact : eStatusLayout.full;
+        printLine($"Status layout: {layout == eStatusLayout.full ? "full" : "compact"}.");
+    }
+}
+
+verb Target {
+    meta = true;
+    grammar = {.target};
+    void handler() {
+        #if TARGET_GLULX
+            printLine("Built for Glulx.");
+        #elif TARGET_ZCODE
+            printLine("Built for the Z-machine.");
+        #endif
+        #if #beguilerSettings.target == "glulx"
+            printLine($"Setting says glulx; sample capacity {SAMPLE_COUNT}.");
+        #endif
+    }
+}
+
+#includeI6 "grammar"

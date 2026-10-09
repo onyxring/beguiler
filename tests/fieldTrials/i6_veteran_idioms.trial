@@ -1,0 +1,53 @@
+Room A
+Room A. An oak door is east.
+You can see an oak door and a wooden box (which is closed) here.
+> jump
+You hop on the spot.
+> sing
+The sign forbids it.
+> tally
+Walked: 5. Counted: 5. Box: 2.
+The copper coin is here.
+copper coin
+silver coin
+> open box
+You lift the lid of the box.
+> unload box
+Emptied.
+> take copper
+Taken.
+> take silver
+Taken.
+> open door
+The oak door swings open for the first time.
+> east
+Room B
+Room B. The oak door is west.
+A parrot watches you from its perch.
+You can also see an oak door and a red button here.
+> ask parrot about coin
+"Shiny!" says the parrot.
+> give copper to parrot
+The parrot swallows the copper coin. It has eaten 1 coin.
+[The score has just gone up by one point.]
+> give silver to parrot
+The parrot swallows the silver coin. It has eaten 2 coins.
+[The score has just gone up by three points.]
+> rouse parrot
+You clap loudly.
+The parrot squawks.
+> wait
+Time passes.
+The parrot falls silent.
+> acts
+Actions so far: 16. Score: 4.
+> tally
+Walked: 6. Counted: 6. Box: 0.
+The copper coin is gone.
+copper coin
+silver coin
+> push button
+A bell rings.
+    *** You have won ***
+In that game you scored 4 out of a possible 5, in 17 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

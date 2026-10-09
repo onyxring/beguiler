@@ -1,0 +1,432 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it. PascalCase members and methods,
+// explicit types everywhere, small methods calling each other; a three-level hierarchy whose
+// overrides chain to the base version with ancestor casts; `default` methods as abstract-feeling
+// bases; interfaces imitated with a shared base class and multiple inheritance; static members,
+// static factory methods on value classes and static calls from inside the class; `const` members
+// set in object declarations; value classes for money and coordinates with operators and derived
+// ordering; a clamping property accessor with compound assignment; enums in switches and as
+// parameters; a pooled class with create/destroy and `new`/`delete`; `is` tests and downcasts; `null`
+// checks, `?.` and `??`; try/catch/throw with thrown error objects.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+const int MAX_HEALTH = 10;
+
+enum eRarity { Common, Rare, Legendary }
+enum eDamageKind { Blunt = 1, Sharp, Fire }
+
+//-- Value types -----------------------------------------------------------------------------------
+
+value class Money {
+    int Cents;
+
+    Money operator = (Money other) { Cents = other.Cents; return self; }
+    Money operator + (Money other) { return Money.FromCents(Cents + other.Cents); }
+    Money operator - (Money other) { return Money.FromCents(Cents - other.Cents); }
+    bool operator == (Money other) { return Cents == other.Cents; }
+    int operator <=> (Money other) { return Cents - other.Cents; }
+
+    int GetDollars() { return Cents / 100; }
+    int GetRemainder() { return Cents % 100; }
+    bool IsZero() { return Cents == 0; }
+
+    void print() {
+        int remainder = GetRemainder();
+        if (remainder < 10) print($"${GetDollars()}.0{remainder}");
+        else print($"${GetDollars()}.{remainder}");
+    }
+
+    static Money FromDollars(int dollars, int cents) { return Money.FromCents(dollars * 100 + cents); }
+    static Money FromCents(int cents) {
+        Money result;
+        result.Cents = cents;
+        return result;
+    }
+}
+
+value class Coord {
+    int X;
+    int Y;
+
+    Coord operator = (Coord other) { X = other.X; Y = other.Y; return self; }
+    Coord operator + (Coord other) { return Coord.Of(X + other.X, Y + other.Y); }
+    bool operator == (Coord other) { return X == other.X && Y == other.Y; }
+
+    int Abs(int v) { return v < 0 ? -v : v; }
+    int DistanceTo(Coord other) { return Abs(X - other.X) + Abs(Y - other.Y); }
+    void print() { print($"({X}, {Y})"); }
+
+    static Coord Origin() { return Coord.Of(0, 0); }
+    static Coord Of(int x, int y) {
+        Coord c;
+        c.X = x;
+        c.Y = y;
+        return c;
+    }
+}
+
+// Health that never leaves 0..MAX_HEALTH.
+value class BoundedHealth {
+    int _value;
+    int operator () { return _value; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > MAX_HEALTH) v = MAX_HEALTH;
+        _value = v;
+    }
+}
+
+//-- Class hierarchy -------------------------------------------------------------------------------
+
+class Entity : object {
+    static int InstanceCount = 0;
+    const int Id = 0;
+
+    default string GetKindName() { return "entity"; }
+    default int GetPriority() { return 1; }
+
+    void Register() { Entity.InstanceCount++; }
+    void Report() {
+        printLine($"#{Id} {self}: {GetKindName()}, priority {GetPriority()}.");
+    }
+}
+
+// The "interface": anything with a price.
+class IPriced : object {
+    default Money GetPrice() { return Money.FromCents(0); }
+}
+
+class ShopError : object {
+    const string Message;
+}
+
+ShopError ErrNoFunds    { Message = "You cannot afford that."; }
+ShopError ErrNotForSale { Message = "That is not for sale."; }
+
+class Creature : Entity {
+    BoundedHealth Health;
+    eDamageKind Weakness = eDamageKind.Fire;
+    Creature Target;
+    Coord Position;
+
+    default string GetKindName() { return "creature"; }
+    default int GetPriority() { return ((Entity)self).GetPriority() + 10; }
+
+    bool IsAlive() { return Health > 0; }
+    int ComputeDamage(int amount, eDamageKind kind) {
+        if (kind == Weakness) return amount * 2;
+        return amount;
+    }
+    void TakeDamage(int amount, eDamageKind kind) {
+        int actual = ComputeDamage(amount, kind);
+        Health -= actual;
+        printLine($"{self} takes {actual} {Creature.DamageName(kind)} damage; health {Health}.");
+        if (!IsAlive()) printLine($"{self} is defeated.");
+    }
+    void AttackTarget(eDamageKind kind) {
+        Target?.TakeDamage(3, kind);
+    }
+
+    static string DamageName(eDamageKind kind) {
+        switch (kind) {
+            case eDamageKind.Blunt: return "blunt";
+            case eDamageKind.Sharp: return "sharp";
+            case eDamageKind.Fire:  return "fire";
+        }
+        return "unknown";
+    }
+}
+
+class Goblin : Creature {
+    replace string GetKindName() { return "goblin"; }
+    replace int GetPriority() { return ((Creature)self).GetPriority() + 100; }
+}
+
+class Item : Entity {
+    eRarity Rarity = eRarity.Common;
+    const int MaxStack = 1;
+
+    replace string GetKindName() { return "item"; }
+
+    static string RarityName(eRarity rarity) {
+        switch (rarity) {
+            case eRarity.Common:    return "common";
+            case eRarity.Rare:      return "rare";
+            case eRarity.Legendary: return "legendary";
+            default:                return "?";
+        }
+    }
+    static int RarityMultiplier(eRarity rarity) {
+        switch (rarity) {
+            case eRarity.Rare:      return 2;
+            case eRarity.Legendary: return 5;
+            default:                return 1;
+        }
+    }
+}
+
+class Weapon : Item, IPriced {
+    int BaseCents;
+    eDamageKind Kind = eDamageKind.Sharp;
+
+    replace string GetKindName() { return "weapon"; }
+    Money GetPrice() { return Money.FromCents(BaseCents * Item.RarityMultiplier(Rarity)); }
+}
+
+class Account : object {
+    Money Balance;
+
+    bool CanAfford(Money amount) { return Balance >= amount; }
+    void Withdraw(Money amount) {
+        if (!CanAfford(amount)) throw ErrNoFunds;
+        Balance = Balance - amount;
+    }
+}
+
+Account PlayerAccount { }
+
+// A pool of at most two orders.
+class Order[2] : object {
+    static int Created = 0;
+    int Quantity;
+    Money UnitPrice;
+
+    // `count`, not `quantity`: names are case-insensitive, so that would be the member.
+    void create(int count, int cents) {
+        Quantity = count;
+        UnitPrice = Money.FromCents(cents);
+        Order.Created++;
+    }
+    void destroy() { printLine($"Order of {Quantity} released."); }
+
+    Money GetTotal() {
+        Money total = Money.FromCents(0);
+        for (int i = 0; i < Quantity; i++) total = total + UnitPrice;
+        return total;
+    }
+}
+
+//-- World -----------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Goblin goblinA {
+    "goblin";
+    name = {.goblin};
+    parent = roomA;
+    Id = 1;
+    attributes = {animate};
+}
+
+Creature rat {
+    "rat";
+    name = {.rat};
+    parent = roomA;
+    Id = 2;
+    Weakness = eDamageKind.Blunt;
+    attributes = {animate};
+}
+
+Weapon sword {
+    "iron sword";
+    name = {.iron, .sword};
+    parent = roomA;
+    Id = 3;
+    BaseCents = 150;
+    Rarity = eRarity.Rare;
+}
+
+Weapon torch {
+    "torch";
+    name = {.torch};
+    parent = roomA;
+    Id = 4;
+    BaseCents = 75;
+    Kind = eDamageKind.Fire;
+}
+
+Item rock {
+    "rock";
+    name = {.rock};
+    parent = roomA;
+    Id = 5;
+    MaxStack = 20;
+}
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb MoneyTest {
+    grammar = {.money};
+    void handler() {
+        Money a = Money.FromDollars(2, 5);
+        Money b = Money.FromCents(150);
+        Money sum = a + b;
+        Money diff = a - b;
+        printLine($"a {a}, b {b}, sum {sum}, diff {diff}.");
+        if (a > b) printLine("a > b");
+        if (b <= a) printLine("b <= a");
+        if (sum == Money.FromCents(355)) printLine("sum == 3.55");
+        if ((a - a).IsZero()) printLine("a - a is zero");
+    }
+}
+
+verb CoordTest {
+    grammar = {.coords};
+    void handler() {
+        Coord start = Coord.Origin();
+        Coord step = Coord.Of(2, -3);
+        Coord finish = start + step + step;
+        printLine($"{start} + 2 * {step} = {finish}, distance {start.DistanceTo(finish)}.");
+        goblinA.Position = finish;
+        finish.X = 99;
+        printLine($"goblin at {goblinA.Position}; finish now {finish}.");
+        if (goblinA.Position == Coord.Of(4, -6)) printLine("goblin position equals (4, -6)");
+    }
+}
+
+verb Hierarchy {
+    grammar = {.hierarchy};
+    void handler() {
+        goblinA.Report();
+        rat.Report();
+        sword.Report();
+        rock.Report();
+        Entity e = goblinA;
+        printLine($"As Entity: {e.GetKindName()} {e.GetPriority()}.");
+        printLine($"Base version: {((Entity)goblinA).GetPriority()}.");
+        printLine($"Stacks: rock {rock.MaxStack}, sword {sword.MaxStack}.");
+    }
+}
+
+verb Census {
+    grammar = {.census};
+    void handler() {
+        Entity.InstanceCount = 0;
+        for (object o in roomA.children) {
+            if (o.is(Entity)) ((Entity)o).Register();
+        }
+        printLine($"Entities: {Entity.InstanceCount}.");
+    }
+}
+
+verb HealthTest {
+    grammar = {.health};
+    void handler() {
+        rat.Health = 50;
+        printLine($"Rat health after 50: {rat.Health}.");
+        rat.Health -= 4;
+        printLine($"After -= 4: {rat.Health}.");
+        rat.Health = -3;
+        printLine($"After -3: {rat.Health}; alive {rat.IsAlive()}.");
+        rat.Health = 7;
+    }
+}
+
+void Strike(object victim, eDamageKind kind) {
+    if (victim == null || !victim.is(Creature)) {
+        printLine("Only creatures can be hit.");
+        return;
+    }
+    Creature c = (Creature)victim;
+    c.TakeDamage(2, kind);
+}
+
+verb Zap {
+    grammar = {.zap, NOUN};
+    void handler() { Strike(noun, eDamageKind.Fire); }
+}
+
+verb Bash {
+    grammar = {.bash, NOUN};
+    void handler() { Strike(noun, eDamageKind.Blunt); }
+}
+
+verb Chain {
+    grammar = {.chain};
+    void handler() {
+        object who = goblinA.Target ?? rat;
+        printLine($"Goblin targets {who}.");
+        goblinA.AttackTarget(eDamageKind.Sharp);
+        goblinA.Target = rat;
+        rat.Target = goblinA;
+        goblinA.AttackTarget(eDamageKind.Sharp);
+        Creature back = goblinA.Target?.Target;
+        if (back != null) printLine($"Rat targets {back}.");
+        rat.Target = null;
+        if (goblinA.Target?.Target == null) printLine("Rat targets nobody.");
+    }
+}
+
+// Not `verb Buy`: a program verb may not share its name with a library verb.
+verb ShopFor {
+    grammar = {.shop, NOUN};
+    void handler() {
+        try {
+            if (!noun.is(IPriced)) throw ErrNotForSale;
+            IPriced priced = (IPriced)noun;
+            Money price = priced.GetPrice();
+            PlayerAccount.Withdraw(price);
+            priced.parent = player;
+            printLine($"Bought {priced} for {price}; {PlayerAccount.Balance} left.");
+        } catch (ShopError e) {
+            printLine($"{e.Message} Balance {PlayerAccount.Balance}.");
+        }
+    }
+}
+
+verb OrdersTest {
+    grammar = {.orders};
+    void handler() {
+        Order first = new Order(3, 25);
+        Order second = new Order(2, 110);
+        Order third = new Order(1, 5);
+        if (third == null) printLine("Pool exhausted.");
+        printLine($"First {first.GetTotal()}, second {second.GetTotal()}.");
+        delete first;
+        third = new Order(4, 10);
+        if (third != null) printLine($"Third {third.GetTotal()}; created {Order.Created}.");
+        delete second;
+        delete third;
+    }
+}
+
+verb Rarities {
+    grammar = {.rarity};
+    void handler() {
+        for (object o in roomA.children) {
+            if (!o.is(Item)) continue;
+            Item current = (Item)o;   // not `item`: names are case-insensitive, so that is the class
+            print($"{current}: {Item.RarityName(current.Rarity)}");
+            if (current.is(Weapon)) print($", {((Weapon)current).GetPrice()}");
+            printLine(".");
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    PlayerAccount.Balance = Money.FromDollars(4, 0);
+    rat.Health = 7;
+    goblinA.Health = MAX_HEALTH;
+    rfalse;
+}

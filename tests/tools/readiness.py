@@ -255,9 +255,20 @@ def report(rows, probes, by, md):
     out.append(('`' if md else '') + sparkline(vals) + ('`' if md else '')
                + f"  {rates[0][0]} → {rates[-1][0]}, peak {max(vals):.1f}, now {vals[-1]:.1f}")
     out.append('')
-    out.append(table(['active week', 'found', 'new lines', 'per 1k (4 wk)', ''],
-                     [[w, n, k, '-' if a is None else f'{a:.1f}', '█' * min(60, round(a or 0))]
-                      for w, n, k, a in rates[-16:]], md))
+    # fixed: defects fixed since the previous active week (a fix lands in an active week, a quiet week
+    # holds none); open: defects found by the end of the week and not yet fixed by then.
+    week_end = lambda w: (datetime.date.fromisoformat(w) + datetime.timedelta(days=6)).isoformat()
+    shown = rates[-16:]
+    prev_end = {w: week_end(rates[i - 1][0]) if i > 0 else '' for i, (w, *_) in enumerate(rates)}
+    def fixed_in(w):
+        return sum(1 for r in rows if r['fixed_date'] and prev_end[w] < r['fixed_date'] <= week_end(w))
+    def open_at(w):
+        e = week_end(w)
+        return sum(1 for r in rows if r['found_date'] and r['found_date'] <= e
+                   and not (r['fixed_date'] and r['fixed_date'] <= e))
+    out.append(table(['active week', 'found', 'fixed', 'open', 'new lines', 'per 1k (4 wk)', ''],
+                     [[w, n, fixed_in(w), open_at(w), k, '-' if a is None else f'{a:.1f}', '█' * min(60, round(a or 0))]
+                      for w, n, k, a in shown], md))
     out.append(h('Probe yield (falling on fresh probes is the strongest stability signal)'))
     prow = []
     for i, p in enumerate(probes):
@@ -288,6 +299,8 @@ def report(rows, probes, by, md):
         out.append('\n*dev* = exposed by code being written; *probe* = doc-tests, feature matrix, field trials, suite; '
                    '*escape* = Jim or a WIP game hit it first. An *active week* has a compiler or BLR change, a defect '
                    'found, or a probe round; the headline and trend count only those, so time away changes nothing. '
+                   'In the trend, *fixed* counts fixes since the previous active week and *open* the defects found '
+                   'by the end of the week and not yet fixed then. '
                    '*New work* = lines added to the compiler, BLR, field trials, examples and WIP games, less '
                    'regression tests and commits that name a ledger ID (fixes). '
                    'Lines changed = compiler + BLR, from git plus the '

@@ -1,0 +1,270 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written in a functional style. Expression-bodied lambdas stored in locals, globals,
+// members and arrays; functions passed, returned (func<func<int, int>, int>) and called straight off a
+// call; hand-written fold/pipe/forEach/countIf over func<> parameters, with a lambda mutating captured
+// locals; <linq> chains (filter, map, orderBy with a comparator, take, skip, takeWhile, distinct, any,
+// all, first, last, count) on array<int>, array<Item> and an array of predicates, with captured locals
+// and a chain run from inside another chain's lambda; `??` on a chain's first(); nested ternaries,
+// including inside interpolated-string spans and choosing between functions; a function-typed default
+// parameter; named arguments carrying lambdas; `var` locals and loop variables; a
+// `string | func<string, int>` union discriminated with typeof; recursion through a ternary; early
+// returns in a block-bodied lambda.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+class Item : object {
+    string label;
+    int weight;
+    int price;
+    func<bool, int> fits;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Item stone   { "stone";   name = {.stone};   label = "stone";   weight = 5; price = 2; parent = roomA; fits = (int n) => n >= 5; }
+Item feather { "feather"; name = {.feather}; label = "feather"; weight = 1; price = 9; parent = roomA; fits = (int n) => true; }
+Item cup     { "cup";     name = {.cup};     label = "cup";     weight = 3; price = 4; parent = roomA; fits = (int n) => n % 2 == 1; }
+Item brick   { "brick";   name = {.brick};   label = "brick";   weight = 7; price = 1; parent = roomA; fits = (int n) => false; }
+
+//-- Data ----------------------------------------------------------------------
+
+array<int> nums = {4, 8, 15, 16, 23, 42, 8, 4};
+array<Item> goods = {stone, feather, cup, brick};
+
+//-- Small helpers ---------------------------------------------------------------
+
+int twice(int n)   { return n * 2; }
+int square(int n)  { return n * n; }
+int inc(int n)     { return n + 1; }
+int identity(int n){ return n; }
+bool isEven(int n) { return n % 2 == 0; }
+int fact(int n)    { return n <= 1 ? 1 : n * fact(n - 1); }
+
+array<func<int, int>> pipeline = { twice, inc, (int n) => n - 3, square };
+
+int fold(array<int> a, int seed, func<int, int, int> f) {
+    var acc = seed;
+    for (int x in a) acc = f(acc, x);
+    return acc;
+}
+
+int pipe(int x, array<func<int, int>> fs) {
+    for (func<int, int> f in fs) x = f(x);
+    return x;
+}
+
+int countIf(array<int> a, func<bool, int> pred) {
+    return fold(a, 0, (int acc, int x) => pred(x) ? acc + 1 : acc);
+}
+
+func<int, int> pick(int k) {
+    return k == 0 ? identity : k == 1 ? twice : k == 2 ? square : inc;
+}
+
+string sign(int n) {
+    return n > 0 ? "positive" : n < 0 ? "negative" : "zero";
+}
+
+void showInts(array<int> a, func<int, int> f = identity) {
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(" "); print(f(a[i])); }
+    print("^");
+}
+
+void showItems(array<Item> a) {
+    if (a.length == 0) { print("none^"); return; }
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(", ");
+        print(a[i].label);
+    }
+    print("^");
+}
+
+string | func<string, int> blurb(int n) {
+    return n > 2 ? "plain text" : sign;
+}
+
+string render(string | func<string, int> v, int arg) {
+    if (typeof(v) == eType.routine) return ((func<string, int>)v)(arg);
+    return (string)v;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb ShowNums {
+    grammar = {{.nums}};
+    void handler() {
+        showInts(nums);
+        showInts(nums, twice);
+        showInts(nums, (int n) => n % 10);
+        print($"Sum {fold(nums, 0, (int a, int b) => a + b)}, max {fold(nums, 0, (int a, int b) => a > b ? a : b)}.^");
+        print($"Evens {countIf(nums, isEven)}, odds {countIf(nums, (int n) => !isEven(n))}.^");
+    }
+}
+
+verb Query {
+    grammar = {{.query, NUMBER}};
+    void handler() {
+        int min = parsed_number;
+        array<int> big = nums.filter((int n) => n >= min);
+        print($"At least {min}: ");
+        showInts(big);
+        print($"Distinct sorted: ");
+        showInts(nums.distinct().orderBy());
+        print($"Descending top 3: ");
+        showInts(nums.orderBy((int a, int b) => b - a).take(3));
+        print($"Skip 2, while < 20: ");
+        showInts(nums.skip(2).takeWhile((int n) => n < 20));
+        print($"Any over {min}: {nums.any((int n) => n > min) ? "yes" : "no"}. All under 50: {nums.all((int n) => n < 50) ? "yes" : "no"}.^");
+        print($"First even over {min}: {nums.filter((int n) => n > min && isEven(n)).first()}. Last: {nums.last()}.^");
+    }
+}
+
+verb RunPipe {
+    grammar = {{.pipe, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"pipe({n}) = {pipe(n, pipeline)}^");
+        for (int k = 0; k < 4; k++) print($"pick {k}: {pick(k)(n)}^");
+        func<int, int> f = n > 3 ? (int x) => x + 100 : (int x) => x - 100;
+        print($"chosen: {f(n)}^");
+        print($"fact {n} = {fact(n)}^");
+    }
+}
+
+verb SignOf {
+    grammar = {{.sign, NUMBER}};
+    void handler() {
+        int n = parsed_number - 5;
+        print($"{n} is {sign(n)}; {n % 2 == 0 ? "even" : "odd"}; {n > 10 ? "big" : n > 0 ? "small" : "not positive"}.^");
+    }
+}
+
+verb ShowGoods {
+    grammar = {{.goods}};
+    void handler() {
+        print("By weight: ");
+        showItems(goods.orderBy((Item a, Item b) => a.weight - b.weight));
+        print("Cheap: ");
+        showItems(goods.filter((Item i) => i.price < 3));
+        print("Light and cheap: ");
+        showItems(goods.filter((Item i) => i.weight < 3).filter((Item i) => i.price < 3));
+        array<var> labels = goods.map((Item i) => i.label);
+        print($"Labels: {labels.count()}, first {(string)labels[0]}.^");
+        array<var> worth = goods.map((Item i) => i.weight * i.price);
+        var total = 0;
+        for (var w in worth) total += w;
+        print($"Worth total {total}.^");
+    }
+}
+
+verb Heavy {
+    grammar = {{.heavy, NUMBER}};
+    void handler() {
+        int lim = parsed_number;
+        Item top = goods.filter((Item i) => i.weight > lim).orderBy((Item a, Item b) => b.weight - a.weight).first();
+        Item pickOne = top ?? feather;
+        print($"Heaviest over {lim}: {pickOne.label}.^");
+        int heavyCount = goods.filter((Item i) => i.weight > lim).count();
+        print(heavyCount == 0 ? "None over the limit.^" : heavyCount == 1 ? "One over the limit.^" : "Several over the limit.^");
+        // An interpolated string has no value, so it can't be a ?: branch (§2.4.2).
+        if (heavyCount > 1) print($"{heavyCount} over the limit.^");
+    }
+}
+
+verb Fits {
+    grammar = {{.fits, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (Item i in goods) print($"{i.label}: {i.fits(n) ? "fits" : "no"}^");
+        print($"All fit: {goods.all((Item i) => i.fits(n)) ? "yes" : "no"}.^");
+    }
+}
+
+verb Nested {
+    grammar = {{.nested}};
+    void handler() {
+        // For each item, how many numbers are at least its weight: a chain inside a chain's lambda.
+        array<Item> busy = goods.filter((Item i) => nums.filter((int n) => n <= i.weight).count() >= 2);
+        print("Weight covers two numbers: ");
+        showItems(busy);
+    }
+}
+
+verb ShowBlurb {
+    grammar = {{.blurb, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        string | func<string, int> b = blurb(n);
+        print($"blurb {n}: {render(b, n - 2)}^");
+    }
+}
+
+verb Named {
+    grammar = {{.named}};
+    void handler() {
+        array<int> factors = {2, 3, 4};
+        print($"product {fold(f: (int a, int b) => a * b, seed: 1, a: factors)}^");
+        int offset = 10;
+        int found = countIf(pred: (int n) => n > offset, a: nums);
+        print($"over {offset}: {found}^");
+    }
+}
+
+verb Early {
+    grammar = {{.early, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<string, int> classify = (int x) => {
+            if (x == 0) return "nothing";
+            if (x < 3) return "few";
+            return "many";
+        };
+        print($"{n}: {classify(n)}^");
+    }
+}
+
+void forEach(array<int> a, func<void, int> f) {
+    for (int x in a) f(x);
+}
+
+array<func<bool, int>> checks = { isEven, (int n) => n > 10, (int n) => n % 4 == 0 };
+
+verb Higher {
+    grammar = {{.higher, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<func<int, int>, int> chooser = pick;
+        print($"chooser(2)({n}) = {chooser(2)(n)}^");
+        int hits = 0;
+        int sum = 0;
+        forEach(nums, (int x) => { if (x > n) { hits++; sum += x; } });
+        print($"Over {n}: {hits} numbers, sum {sum}.^");
+        print($"Checks passed by {n}: {checks.filter((func<bool, int> c) => c(n)).count()} of {checks.count()}.^");
+        print($"Every check: {checks.all((func<bool, int> c) => c(n)) ? "yes" : "no"}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

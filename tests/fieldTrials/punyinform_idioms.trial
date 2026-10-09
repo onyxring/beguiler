@@ -1,0 +1,57 @@
+Room A
+Room A. A door is east.
+You can see a wooden door, a tin box (which is closed) and a clerk here.
+> knock on door
+The clerk looks up.
+> open box
+You open the tin box, revealing a brass key.
+> take key
+Taken.
+> ask clerk about door
+The clerk says the key is in the box.
+The clerk coughs.
+> unlock door with key
+You unlock the wooden door.
+> open door
+You open the wooden door.
+> east
+Room B
+Room B. A door is west; stairs lead down.
+You can see a wooden door and a lamp here.
+> down
+Darkness
+It is pitch dark here!
+> up
+Room B
+You can see a wooden door and a lamp here.
+> take lamp
+Taken.
+> turn on lamp
+You switch the lamp on.
+> down
+Room C
+Room C. Stairs lead up.
+You can see a silver coin here.
+[The score has just gone up by 1 point.]
+> take coin
+Taken.
+[The score has just gone up by 2 points.]
+> up
+The stairs creak.
+Room B
+You can see a wooden door here.
+> west
+Room A
+You can see a wooden door, a tin box (which is open but empty) and a clerk here.
+> give coin to clerk
+The clerk takes the silver coin.
+The clerk coughs.
+[The score has just gone up by 2 points.]
+> inspect clerk
+A clerk.
+> attack clerk
+The clerk steps back.
+> tally
+Score 5 of 6, 18 turns.
+> score
+You have so far scored 5 out of a possible 6, in 18 turns.

@@ -1,0 +1,45 @@
+/*  Field trial part — included by library_author_idioms.bgl. Not a trial on its own.  */
+
+#once
+
+#include "library_author_idioms_core"      // already included by the consumer: #once skips it
+
+/// Adds peak tracking to every meter.
+extend class tkMeter {
+    int peak = 0;
+    emitter bool atPeak() { ($self.reading == $self.peak) }
+    replace emitter bool isFull() { ($self.reading >= $self.limit && $self.limit > 0) }
+}
+
+/// Helpers reached only through tk.extras.
+superposed object _tkExtras {
+    /// Resets a meter and logs the reset through the consumer's hook.
+    void reset(tkMeter m) {
+        if (m.reading > m.peak) m.peak = m.reading;
+        m.reading = 0;
+        tkLogHook(m, "reset");
+        tkAfterReset(m);                    // declared by the consumer
+    }
+    int sumReadings(object holder) {
+        int n = 0;
+        for (object o in holder.children)
+            if (o.is(tkMeter)) n = n + ((tkMeter)o).reading;
+        return n;
+    }
+}
+
+// Never used: if it were emitted, Inform 6 would reject the missing routine.
+extern void tkMissingRoutine();
+superposed object _tkUnused {
+    void never() { tkMissingRoutine(); }
+}
+
+extend tk {
+    alias extras = _tkExtras;
+    alias unused = _tkUnused;
+}
+
+/// A meter variant with a description, for rooms.
+alias class tkPanel for tkMeter {
+    string description;
+}
