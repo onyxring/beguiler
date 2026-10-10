@@ -1,0 +1,6 @@
+// Negative test: overriding a binding's extern default keeps its parameters.
+// EXPECT_ERROR: whose parameters it must keep
+#beguilerSettings { target = z5; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+void Amusing(int x){ print(x); }
+void main(){ }

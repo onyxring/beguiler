@@ -601,6 +601,53 @@ extend class A { inline int a2; inline n; }   // A: a1, a2, n
 B item { 1, 2, 3, 4, "the item"; }             // b1, a1, a2, n, name
 ```
 
+### 8.3.6 `required` Members
+
+**Syntax**
+
+```syntax
+required ⟨type⟩ ⟨name⟩ ;
+required ⟨type⟩ ⟨name⟩ ( ⟨parameters⟩ ) ;
+```
+
+**Description**
+
+A `required` member is one that every object of the class must get a value for. The requirement is
+met by the nearest declaration that gives one: the object itself, or any class between the object
+and the class that declared the member. A subclass may meet it, and its objects then need not. An
+object that gets no value is a compile-time error naming the object and the member.
+
+A required routine is declared with its parameters and a `;` in place of a body; each object, or a
+subclass, gives the body. A `required default` routine has a body that doesn't meet the requirement: it
+is the fallback for `extern` objects, which the requirement doesn't cover. `verb` declares `handler()`
+this way (§13.2.1).
+
+- `required` applies to class members; in an object body it is a compile-time error.
+- A `required` member that is given a value in the same declaration is a warning: nothing needs to
+  supply it. A `default` body is the exception (above).
+- A class that marks `required` a member an ancestor already gives a value is a warning, and has no
+  effect.
+- Inform 6 supplies an `extern` object, so `required` doesn't apply to one.
+
+**Example**
+
+```bgl
+class Shape : object {
+    required array<int> sides;
+    required int area();
+}
+class Square : Shape {
+    array<int> sides = {4, 4, 4, 4};
+    int area() { return 16; }
+}
+Square tile { }                                          // Square gives both
+Shape wedge { sides = {3, 4, 5}; int area() { return 6; } }
+```
+
+> **Compared with C# and TypeScript.** C#'s `required` makes the code that creates an object set the
+> member; a Beguile object declaration is that creation. There are no abstract classes: a class that
+> leaves a member required can still have objects, and each one meets the requirement.
+
 ## 8.4 Methods
 
 **Syntax**
@@ -635,6 +682,7 @@ class Counter {
 
 ```syntax
 emitter void init() { ⟨i6-template⟩ }
+emitter void init( ⟨own-type⟩ ⟨source⟩ ) { ⟨i6-template⟩ }
 emitter void deinit() { ⟨i6-template⟩ }
 static ⟨type⟩ deinit( ⟨type⟩ ⟨value⟩ ) { ⟨statement⟩ … }
 ```
@@ -656,15 +704,30 @@ to acquire and release it.
   copied in through the class's `operator =` taking its own type, and `deinit` fires at the
   routine's end and before every `return`. For an emitter class, `init` is what gives the parameter
   its own instance, so changes inside the routine don't reach the caller; such a class with no copy
-  operator can be passed only by `ref` (a compile-time error otherwise). A reference-class parameter
-  shares its argument, so neither fires.
+  operator can be passed only by `ref` (a compile-time error otherwise). When the class also declares
+  the **copy form**, `init` with one parameter of its own type, a parameter is set up by that one call
+  with the argument instead of `init` followed by `operator =`. The copy form sees the argument before
+  the parameter's instance is acquired, so it can protect it: `stringObj`'s keeps an argument that is
+  a returned (already released) value from being handed back out as the parameter's own instance. A
+  reference-class parameter shares its argument, so neither fires.
 - **Global.** `init` fires at startup, in `bglInit`, before the declared value is applied. A global
   is never released.
 - **`ref`.** A `ref` local or parameter owns nothing, so neither fires: it shares the referent.
 - **Returned value.** A local returned from a routine has already been released when the caller
   receives it: the caller must copy it at once (the ephemeral pattern, §22.3).
-- In these instance forms both must be emitters and declare no parameters; either violation is a
-  compile-time error. `init` has no other form and cannot be `static`.
+- **Held temporaries.** A class may declare three emitters that keep such a released value safe
+  inside a call: `int temporaryMark()`, `T holdTemporary(T v)` and `var releaseTemporaries(var result,
+  int marked)`. When a call or operator is given a value of that type that is a call's result, beside
+  another operand that is a call's result too, each such value is passed through `holdTemporary`,
+  and the call through `releaseTemporaries(⟨call⟩, temporaryMark())`; operands that are names or
+  literals are left alone. `temporaryMark` opens a mark, and the matching `releaseTemporaries`
+  releases what was held since then and closes it; the marks nest with the calls, and the type keeps
+  them, so `marked` only makes the mark come first. `holdTemporary` must leave a value that isn't
+  released untouched. `stringObj` declares them, so `join(s.left(3), s.right(4))` receives both
+  substrings intact.
+- In these instance forms both must be emitters, and `deinit` declares no parameters; `init` declares
+  none, or one of its own type (the copy form, used only for parameters). Any other form is a
+  compile-time error, and `init` cannot be `static`.
 
 A `static deinit` with exactly one parameter is the **value form**: it releases a value a container
 holds without a receiver, and is what `array<T>` calls for dropped elements (§12.10). A type that

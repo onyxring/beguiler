@@ -59,7 +59,7 @@ class _bglClass_menu
   with
     linkTo,
     title,
-    words 
+    words 0 0 0 
 ;
 _bglClass_menu root
   with title "root"

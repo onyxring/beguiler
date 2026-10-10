@@ -1,0 +1,7 @@
+// Negative test: assigning a capturing lambda to a variable declared outside the loop.
+// EXPECT_ERROR: The lambdas this loop stores in 'last' all share one copy of 'i'
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    func<int> last;
+    for (int i = 0; i < 3; i++) last = => i;
+}

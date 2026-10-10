@@ -2975,6 +2975,7 @@ json LspServer::completeMemberModifiers(int line, int col, const string& docText
                     add("superposed","superposed member", "`superposed` — a lazily-emitted, zero-footprint member.");
                     if(isClassBody) {
                         add("inline", "positional slot", "`inline` — mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }`.");
+                        add("required", "required member", "`required` — every object of the class must give this member a value, itself or through a subclass.");
                         add("default","class default member", "`default` — a member value provided as the class default (valid in class declarations only).");
                     }
                     handled = true; return json{{"isIncomplete", true}, {"items", items}};
@@ -3927,7 +3928,7 @@ static const set<string> bglModifiers = {
     "replace", "extend", "explicit", "default",
     // The rest of Appendix A's qualifier set, which this list had drifted behind.
     // `asI6`/`asBgl` are stored folded, as every keyword comparison here is.
-    "additive", "alias", "asbgl", "asi6", "hide", "primitive", "ref",
+    "additive", "alias", "asbgl", "asi6", "hide", "primitive", "ref", "required",
     "superposed", "synonyms", "typesealed"
 };
 // No `#ifdef` / `#ifndef`, in either hash form: `#if SYMBOL` and `#if !SYMBOL` test definedness

@@ -1,0 +1,4 @@
+// Negative test: `~` and `~~` are Inform 6 operators, not Beguile's.
+// EXPECT_ERROR: is an Inform 6 operator
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int c = 5 & ~2; }

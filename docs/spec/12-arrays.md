@@ -37,7 +37,6 @@ A program that doesn't include it carries none of its code.
 array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 array<⟨type⟩> ⟨name⟩ = ⟨value⟩ ;
-array<⟨type⟩> ⟨name⟩ ;
 array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
 ```
 
@@ -48,9 +47,13 @@ an integer (§14.2.1), a `const int` initialized with an integer literal (§3.4)
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
 from that array instead; the value's type decides which is meant. The same shorthand applies to a
-list-typed class or object member (§11.5.3, §12.7). The fourth is declared without capacity. The fifth
-combines the first two: capacity `⟨n⟩`, length the number of values, the remaining slots zeroed. A list
-longer than `⟨n⟩` is a compile-time error.
+list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
+length the number of values, the remaining slots zeroed. A list longer than `⟨n⟩` is a compile-time
+error.
+
+An array always has storage: a capacity of at least 1, or at least one element. A global or local
+array declared with neither (`array<int> g;`), with an empty `{}`, or with a capacity of 0 is a
+compile-time error. To share an array that lives elsewhere, declare a `ref` instead (§3.7).
 
 **Description**
 
@@ -65,7 +68,7 @@ error.
 ```bgl
 array<int> scores[5];
 array<int> primes = {2, 3, 5, 7, 11};
-array<Room> visited;
+array<Room> visited[20];
 ```
 
 ## 12.3 Subscripts, Size and Length
@@ -226,6 +229,7 @@ int n = keep[0];                // safe
 array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
+required array<⟨type⟩> ⟨name⟩ ;
 ref array<⟨type⟩> ⟨name⟩ ;
 ```
 
@@ -245,6 +249,12 @@ instance of a class has its own copy of a member array, with the declared capaci
 Two member kinds always keep the bare I6 layout and are never moved to separate storage: a
 `rawArray<T>` member (§12.8.3), where exceeding the property limit is an error, and a member bound to
 an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
+
+A member array is declared with a capacity or at least one element. In a class body, a member every
+object must give is declared `required` with neither (§8.3.6); one that may stay empty declares room,
+`array<int> items[4];`. Otherwise a member array with neither, or with an empty `{}`, is a
+compile-time error, except in an `extern` or `emitter` class, whose body describes a layout rather
+than storage.
 
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.

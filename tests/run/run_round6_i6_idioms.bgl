@@ -1,0 +1,29 @@
+// run_round6_i6_idioms — idioms an Inform 6 author writes: assigning a verb to `action` makes it an
+// action constant, a cast before a dictionary word casts the word, and a string binds to the
+// additive `each_turn`.
+// EXPECT_OUTPUT: same action
+// EXPECT_OUTPUT: same word
+// EXPECT_OUTPUT: Water drips.
+// INPUT: check
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object drip { short_name = "drip"; parent = roomA; attributes = {scenery}; string each_turn = "Water drips."; }
+verb Check {
+    grammar = { {.check} };
+    void handler() {
+        verb saved = action;
+        action = Jump;
+        if (action == Jump) printLine("same action");
+        action = saved;
+        int a = (int).bounce;
+        int b = (int)(.bounce);
+        if (a == b) printLine("same word");
+    }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

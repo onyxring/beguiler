@@ -1,0 +1,6 @@
+// Negative test: an object giving an array member an empty `{}` gives it no storage.
+// EXPECT_ERROR: Array 'items' has no storage: give it at least one element, or leave it to the class.
+#beguilerSettings { target = z5; informName = "none"; }
+class Box : _bglObject { array<int> items[3]; }
+Box b { items = {}; }
+void main(){ }

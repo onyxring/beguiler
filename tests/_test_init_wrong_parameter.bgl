@@ -1,0 +1,8 @@
+// Negative test: `init` takes no parameters, or one of its own type (the copy form).
+// EXPECT_ERROR: Emitter 'init' takes no parameters, or one 'Box' to copy from.
+#beguilerSettings { target = z5; informName = "none"; }
+emitter class Box {
+    emitter void init(int n) { $self = $n; }
+    emitter void deinit() { }
+}
+void main(){ }

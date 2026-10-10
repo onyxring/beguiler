@@ -57,6 +57,24 @@ An entry point the program defines must come before `#includeI6 "grammar"`: `gra
 for every entry point not yet defined, and a definition after it is then a duplicate routine. Verbs
 and `extend` blocks may go anywhere: the grammar they emit follows the library's.
 
+PunyInform's own includes are the reverse: the binding follows them, and the entry points go before them.
+
+<!-- doctest: skip -->
+```bgl
+// entry points the program defines (NewRoom, DeathMessage, …)
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+```
+
+An entry point of PunyInform (`NewRoom`, `DeathMessage`, `LibraryMessages`, `BeforeParsing`, `ParseNoun`,
+`ChooseObjects`, `InScope`, `UnknownVerb`, `PrintVerb`, …) must be defined before `#includeI6 "puny"`.
+PunyInform detects an entry point with `#Ifdef` while it is being read, and compiles the call to one only
+if the name is already defined; a definition after the include is a routine that nothing calls, and the
+only sign is the I6 warning `Routine "NewRoom" declared but not used`. The `punyInform` binding therefore
+declares none of the entry points: PunyInform has no stubs for them, so a declaration would give no
+default to override, and it would not check a definition's signature either.
+
 ## 23.3 What a Binding Provides
 
 ### 23.3.1 Entry Point and `bglInit()`
@@ -101,13 +119,13 @@ A binding declares, as `extern`:
 - its **globals**: game state (`location`, `player`, `actor`, `score`, `turns`, …) and parser results (`noun`, `second`, `action`, `verb_word`, …). `action` is declared with type `verb`, so it compares directly with verb names (§13.3);
 - its **constants**: parser error codes, scope reasons, color and window constants;
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
-- its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1).
+- its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1). PunyInform's entry points are not declared (§23.2).
 
 Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
 ### 23.3.5 Additive Properties
 
-Additive properties belong to the library that defines them, so the binding declares them (§11.7.2). The `i6StandardLibrary` binding declares `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`. `name` is additive in the Inform 6 compiler itself and is declared by the core (§21.5.2), not by a binding.
+Additive properties belong to the library that defines them, so the binding declares them (§11.7.2). The `i6StandardLibrary` binding declares `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`; the `punyInform` binding declares `before`, `after`, `life`, `describe`, `time_out` and `each_turn` (`orders` is an ordinary property in PunyInform). `name` is additive in the Inform 6 compiler itself and is declared by the core (§21.5.2), not by a binding.
 
 ### 23.3.6 Verbs and Grammar Tokens
 

@@ -31,7 +31,7 @@ class abstractObject{
         bool i6nameAvoidsKeyword = false;   // i6name was given only because 'name' is an I6 statement keyword
         string docComment;  // user-authored doc-comment (`///` or `/** */`) preceding the declaration; rendered as Markdown in LSP hover
         bool operator == (abstractObject);
-        bool isExternal;
+        bool isExternal = false;
         bool isPrePassStub = false; // true when registered by the pre-scanner; cleared when full pass processes the declaration
         bool isForwardReplace = false; // a pre-scan stub for a later `extend … replace emitter`: the class's own declaration doesn't overwrite it
         const string& dName() const { return displayName.empty() ? name : displayName; } // display name for error messages
@@ -48,6 +48,7 @@ class typeInstance:virtual public abstractObject{
 //members of types, including functions and variables.
 class typeMember:virtual public abstractObject{   
     public:        
+        bool isRequired = false;   // `required` member: each instance gets a value from itself or a class below the declaring one
 };
 
 // A `hide` directive recorded on a subtype (or `extend class`): makes an INHERITED member (or one
@@ -332,6 +333,8 @@ class functionCallStatement:public statement{
         string emitterBody;            // raw i6 body if an emitter was resolved, else ""
         vector<string> emitterParams;  // parameter names to substitute in the body
         vector<vector<interpolatedSegment>> interpSegmentsPerArg; // per-argument interpolated segments; interpSegmentsPerArg[i] is non-empty when args[i] is $"..."
+        string heldPrefix, heldSuffix; // around the call: releases the temporaries its arguments hold
+        vector<string> heldMarks;      // the release marks, left in heldSuffix as heldMarkPlaceholder(k)
 };
 //the declaration of a function.  This may be a global function, or an object member
 class functionDef:public typeMember, public typeDef{
@@ -365,6 +368,7 @@ class functionDef:public typeMember, public typeDef{
         // replace chaining: when this function replaces a previous definition,
         // replaced() calls in the body resolve to replacedTarget (the mangled name).
         string replacedTarget;               // mangled name of predecessor function (empty if not a replacement)
+        bool replaceFoundNothing = false;    // a `replace` with no earlier function of its name to replace
         functionDef* replacedFunc = nullptr;  // pointer to predecessor functionDef
         bool replacedWasCalled = false;       // set when replaced() is encountered during body parsing
         bool isReplacedDead = false;          // true when this replaced version is unreachable (no successor calls replaced())
@@ -588,7 +592,6 @@ struct grammarLine {
 // a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar
 class verbObjectDef : public objectDef {
     public:
-        bool isExternal = false;
         bool isMeta = false;                // I6 meta verb (declared via `meta = true;` or `extern meta verb …`)
         int priority = 0;                   // anchor priority. Resolved in emitVerbObject from BLR's `class verb`
                                             // default, then overridden by any `priority = N;` in the verb body.

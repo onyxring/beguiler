@@ -383,6 +383,8 @@ void beguiler::runPostParseChecks() {
     parser.validateRoutinePropertyClashes();
     parser.validateGlobalNameClashes();
     parser.validateVerbNameClashes();
+    parser.validateEqualityPairs();
+    parser.validateRequiredMembers();
     parser.renameI6KeywordNames();
     parser.recordObjectMemberInits();
 

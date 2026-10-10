@@ -1,0 +1,27 @@
+// run_action_variable — a bare `extern verb action;` is a variable of type verb (the binding's action):
+// it is saved, assigned and compared as actions; an extern verb with a body is an action whose
+// handler() falls back to the I6 routine.
+// EXPECT_OUTPUT: same action
+// EXPECT_OUTPUT: back
+// EXPECT_OUTPUT: You're carrying nothing.
+// INPUT: check
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+verb Check {
+    grammar = { {.check} };
+    void handler() {
+        verb saved = action;
+        action = Jump;
+        if (action == Jump) printLine("same action");
+        action = saved;
+        if (action == Check) printLine("back");
+        Inv.handler();
+    }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

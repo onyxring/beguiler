@@ -1,0 +1,6 @@
+// Negative test: a capturing lambda pushed into a global array outlives what it captures.
+// EXPECT_ERROR: stored in 'hooks'
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<func<int, int>> hooks[4];
+void main(){ int m = 3; hooks.push((int n) => n * m); }

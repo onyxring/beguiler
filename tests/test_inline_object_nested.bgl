@@ -7,7 +7,7 @@
 class menu : object {
     inline object linkTo;                 // object-ref positional slot
     inline string title;                  // scalar positional slot
-    inline array<dictionaryWord> words;   // `inline array<>` member — a positional slot too
+    inline array<dictionaryWord> words[3];   // `inline array<>` member — a positional slot too
 }
 
 menu root { title = "root"; }

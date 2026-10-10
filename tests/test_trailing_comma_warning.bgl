@@ -1,0 +1,5 @@
+// A trailing comma in a call's arguments warns; an interpolated string argument does not look like one.
+// EXPECT_WARNING: a trailing comma ends this argument list
+#beguilerSettings { target = z5; informName = "none"; }
+void f(var a, var b){ }
+void main(){ int n = 1; f(1, 2,); }

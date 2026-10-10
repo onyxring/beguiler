@@ -57,6 +57,7 @@ section with the full treatment.
 - **reference class** — A class not declared `value` (the default): its variables refer to instances owned elsewhere, are empty until assigned, and share on assignment and passing. See §2.10.3, §8.2.1.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
+- **required** — A class-member qualifier: every object of the class must get a value for the member, from itself or from a class between it and the declaring class. See §8.3.6.
 - **routine** — An I6 callable. A Beguile **function** compiles to a routine. See §6.1.
 - **size vs. length** — For a Beguile array, `size` is the capacity reserved at compile time; `length` is the runtime count of in-use elements. See §12.3.
 - **source file** — A file the compiler reads: a `.bgl` file, or an `.inf` file in precompiler mode. See §3.1, §15.1.

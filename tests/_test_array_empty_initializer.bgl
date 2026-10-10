@@ -1,0 +1,5 @@
+// Negative test: an array always has storage; an empty `{}` gives it none.
+// EXPECT_ERROR: Array 'g' has no storage: give it a capacity ([n]) or at least one element
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> g = {};
+void main(){ }

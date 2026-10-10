@@ -1,0 +1,37 @@
+// run_string_temporaries_in_calls — results passed straight into a call beside another result are
+// held until the call returns: a routine, a method, a statement call, a condition, a chained call and
+// the results of the author's own functions; a loop shows they are released again.
+// EXPECT_OUTPUT: [red|blue]
+// EXPECT_OUTPUT: <red|blue>
+// EXPECT_OUTPUT: [1/2]
+// EXPECT_OUTPUT: [r/e]
+// EXPECT_OUTPUT: cond ok
+// EXPECT_OUTPUT: [RED/BLUE]
+// EXPECT_OUTPUT: [red/blue] loop
+// EXPECT_OUTPUT: 1 1 [REDblue]
+#beguilerSettings { target = Glulx; informName = "none"; }
+#include <string>
+#include "glulxConsole.bgl"
+stringObj makeNum(int n) { stringObj out = $"{n}"; return out; }
+stringObj join(stringObj a, stringObj b) { return a + "/" + b; }
+void showPair(stringObj a, stringObj b) { printLine($"[{a}|{b}]"); }
+class Box : _bglObject { void display(stringObj a, stringObj b) { printLine($"<{a}|{b}>"); } }
+Box bx { }
+stringObj both(stringObj s) { return join(s.left(1), s.right(1)); }
+void main() {
+    glulxConsole();
+    bglInit();
+    stringObj s = "red, blue";
+    showPair(s.left(3), s.right(4));
+    bx.display(s.left(3), s.right(4));
+    printLine($"[{join(makeNum(1), makeNum(2))}]");
+    printLine($"[{both(s)}]");
+    if (join(s.left(1), s.right(1)) == "r/e") printLine("cond ok");
+    stringObj t = join(s.left(3), s.right(4)).toUpper();
+    printLine($"[{t}]");
+    for (int i = 0; i < 30; i++) t = join(s.left(3), s.right(4));
+    printLine($"[{t}] loop");
+    print(s.left(3).indexOf(s.right(1))); print(" ");
+    print(s.left(5).toUpper().indexOf(s.mid(1, 1).toUpper())); print(" ");
+    printLine($"[{s.left(3).toUpper() + s.right(4).toLower()}]");
+}

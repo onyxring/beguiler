@@ -138,10 +138,9 @@ void handler() { … }
 **Description**
 
 `handler()` is the verb's action body: it runs when the player enters a command matching the verb's
-grammar. The `verb` class declares it as a `default` emitter method (§8.7.3), so a verb object overrides it
-with an ordinary `void handler()` and needs no `replace`. A non-extern verb must define `handler()`; omitting it is a
-compile-time error. Extern
-verbs (§13.2.3) are exempt.
+grammar. The `verb` class declares it `required default` (§8.3.6): a verb declared in Beguile must
+give one, an ordinary `void handler()`, and omitting it is a compile-time error. The `default` body,
+which runs the verb's I6 routine, is used only by extern verbs (§13.2.3).
 
 **Example**
 
@@ -183,7 +182,7 @@ Take.perform(coin); rtrue;
 **Syntax**
 
 ```syntax
-extern verb ⟨name⟩ ;
+extern verb ⟨name⟩ { }
 extern verb ⟨name⟩ { .⟨word⟩ [ | .⟨word⟩ ] … }
 extern verb ⟨name⟩ { grammar = { { .⟨word⟩ [ | .⟨word⟩ ] … } , … } ; }
 ```
@@ -192,9 +191,14 @@ The `|` in these forms is the literal alternation token (§13.4.3), not notation
 
 **Description**
 
-A verb whose behavior is defined by the I6 library is declared `extern verb`. The declaration
-registers the name for `switch (action)` comparisons, grammar lines, `perform()` and method calls. An
-extern verb needs no `handler()`.
+A verb whose behavior is defined by the I6 library is declared `extern verb` with a body: its trigger
+words, or `{ }` for an action the player can't type. The declaration registers the name for
+`switch (action)` comparisons, grammar lines, `perform()` and method calls. An extern verb needs no
+`handler()`: it falls back to `verb`'s `default` one, which runs the I6 routine (`<name>Sub`).
+
+Without a body, `extern verb ⟨name⟩;` declares a *variable* of type `verb`, as any class-typed
+declaration without a body does (`extern object noun;`). The library's `action` is declared this way, so
+`action = Jump;` and `action == Jump` assign and compare actions.
 
 An I6 verb may claim several trigger words (`inventory`, `inv`, `i`). Declaring them in the extern
 verb's body makes the claims visible, so that a grammar line elsewhere that uses one of those words
@@ -205,8 +209,6 @@ native verb, and these rules apply:
   listing them all in one line yields the same claimed-word set.
 - Pattern tokens after the trigger word are ignored, and writing one is a warning. No grammar is
   defined for an extern verb from Beguile; only the words in first position contribute.
-- A bare `extern verb Name;` claims a single word, the lowercased verb name. The body form is needed
-  only when the verb claims additional words or its primary word differs from its name.
 - The first word of the first grammar line is the verb's *primary trigger*, the word used as the
   target when the verb is extended (§13.5). All listed words are equally claimed for collision
   detection.
@@ -221,7 +223,7 @@ trigger words only; a body with several lines or other members uses the full for
 **Example**
 
 ```bgl
-extern verb Take;
+extern verb Take { .take|.get }
 extern verb Inv  { .inventory|.inv|.i }
 extern verb Quit { .q|.quit|.die }
 ```
@@ -403,6 +405,9 @@ Each element of a pattern is one of the following.
 | `NOUN(Routine)` | a noun filter: the parser matches nouns normally, then calls the global `bool` routine with each candidate object, which accepts or rejects it |
 | `SCOPE(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
 
+Both bindings declare `scope_stage`, the pass (1, 2 or 3) the parser is making when it calls a scope
+routine; objects are placed in scope on pass 2, as `if (scope_stage == 2) { PlaceInScope(obj); }`.
+
 A bare identifier in a pattern must be declared as a `grammarToken`, an `attribute`, or a global
 function; any other declaration, or an undeclared name, is a compile-time error. In pattern position
 a bare `NOUN` resolves to the grammar token even when an `extern object noun` exists at file scope;
@@ -579,7 +584,7 @@ modifiers (§13.4.4) are accepted.
 **Example**
 
 ```bgl
-extern verb PutOn;
+extern verb PutOn { .put }
 extend PutOn {
     grammar += { {.hang, HELD, .on, NOUN} };
 }

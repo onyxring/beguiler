@@ -285,7 +285,7 @@ compile-time checking and emits no definition for it. The forms are:
 | `extern ⟨type⟩ ⟨name⟩ ( ⟨params⟩ ) ;` | §15.4.1 |
 | `extern ⟨type⟩ ⟨name⟩ ;` / `extern const ⟨type⟩ ⟨name⟩ ;` | §15.4.2, §3.5 |
 | `extern attribute ⟨name⟩ ;` / `extern property ⟨name⟩ ;` | §15.4.2, §11.6, §11.7.1 |
-| `extern verb ⟨name⟩ ;` | §15.4.2, §13.2.3 |
+| `extern verb ⟨name⟩ { … }` | §15.4.2, §13.2.3 |
 | `extern enum ⟨name⟩ { … }` / `extern bnum ⟨name⟩ { … }` | §15.4.2, §2.7.4 |
 | `extern class ⟨name⟩ { … }` | §15.4.3, §8.2.2 |
 | `extern object ⟨name⟩ ;` / `extern object ⟨name⟩ { … }` | §15.4.4, §11.11 |

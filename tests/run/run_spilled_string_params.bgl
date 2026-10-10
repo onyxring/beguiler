@@ -1,0 +1,14 @@
+// run_spilled_string_params — on the Z-machine a call's arguments past the fifth travel in globals set
+// before the call: their copy-in uses those globals, and temporaries among them are held from a mark
+// taken before the spill, so twenty calls neither corrupt them nor run the string pool out.
+// EXPECT_OUTPUT: [red|blue] x20
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+stringObj last;
+void report(int a, int b, int c, int d, int e, stringObj f, stringObj g) { last = $"[{f}|{g}]"; }
+void main() {
+    bglInit();
+    stringObj s = "red, blue";
+    for (int i = 0; i < 20; i++) report(1, 2, 3, 4, 5, s.left(3), s.right(4));
+    printLine($"{last} x20");
+}

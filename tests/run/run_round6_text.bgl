@@ -1,0 +1,14 @@
+// run_round6_text — left/right/mid clamp a position or count outside the text, and a member renamed for
+// Inform 6 (here mainWin's id, by a function named id) is written through a namespace alias under the
+// same name it is read by: glulxConsole() sets bgl.ui.mainWin.id, and printing goes through it.
+// EXPECT_OUTPUT: [][rule][][a folding rule][old]
+#beguilerSettings { target = Glulx; informName = "none"; }
+#include <string>
+#include "glulxConsole.bgl"
+void id() { }
+void main() {
+    glulxConsole();
+    bglInit();
+    stringObj s = "a folding rule";
+    printLine($"[{s.left(-1)}][{s.right(4)}][{s.mid(20, 3)}][{s.left(99)}][{s.mid(3, 3)}]");
+}

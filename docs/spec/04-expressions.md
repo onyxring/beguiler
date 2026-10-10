@@ -71,7 +71,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 1 | `??` | infix | — | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
-There is no unary bitwise-not operator.
+There is no unary bitwise-not operator. Inform 6's `~` and `~~` are not Beguile operators: write `!` for logical not.
 
 ## 4.4 Binary Operator Resolution
 
@@ -370,8 +370,13 @@ captures nothing costs nothing extra. Inside a method, a lambda that reads a mem
 
 Captures are for callbacks that run before the enclosing function moves on. A lambda that captures a
 variable may not outlive it, so it is a compile-time error to return one, to store one in a global or
-a member, or to pass one to a `literal` parameter (§6.3). Storing one in a local is allowed. A capture
-of a `const` local initialized from a compile-time value is exempt: every copy is the same value.
+a member, or to pass one to a `literal` parameter (§6.3). Storing one in a local is allowed, except
+inside a loop: a lambda created on each pass is one lambda with one copy of what it captures, so the
+lambdas a loop stores in a local declared outside it would all read the last pass's values. Storing a
+capturing lambda there (assigning it, writing it to an element, or passing it to an array method that
+keeps its argument, such as `push`) is a compile-time error. A lambda used during the statement, such
+as a predicate passed to `filter`, may capture loop variables freely. A capture of a `const` local
+initialized from a compile-time value is exempt from all of these: every copy is the same value.
 
 **Constraints.** A lambda literal may not be invoked immediately (`((int n) => { … })(42)`); assign it
 or pass it first.

@@ -1,0 +1,6 @@
+// Negative test: a required routine is given by each object or a subclass.
+// EXPECT_ERROR: 'rock' must give 'weigh', which 'Thing' requires.
+#beguilerSettings { target = z5; informName = "none"; }
+class Thing : _bglObject { required int weigh(); }
+Thing rock { }
+void main(){ }

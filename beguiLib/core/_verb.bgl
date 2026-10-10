@@ -13,8 +13,8 @@ alias class verb for object{
     int priority = 10;        /// Where this verb's grammar sits among others: lower matches earlier; the default is 10.
     int libraryPriority = 20; /// Where a library verb's grammar sits; above the default, so a verb that adds to a library word matches first.
 
-    /// What the verb does; override it to give the verb behavior. A library verb runs the library's own routine by default.
-    default emitter void handler(){ $selfsub(); }
+    /// What the verb does: every verb declared in Beguile gives it; an extern verb runs its Inform 6 routine.
+    required default emitter void handler(){ $selfsub(); }
 
     emitter void perform()                   { <($action)> }            /// Run this action now, as though the player typed it.
     emitter void perform(object n)           { <($action) $n> }         /// Run this action now on `n`, as though the player typed it.

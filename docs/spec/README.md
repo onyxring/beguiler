@@ -157,6 +157,7 @@ appendices are for lookup.
     - [8.3.3 `static` Members](08-classes.md#833-static-members)
     - [8.3.4 Owned Members](08-classes.md#834-owned-members)
     - [8.3.5 `inline` Members](08-classes.md#835-inline-members)
+    - [8.3.6 `required` Members](08-classes.md#836-required-members)
   - [8.4 Methods](08-classes.md#84-methods)
   - [8.5 Lifecycle: `init` and `deinit`](08-classes.md#85-lifecycle-init-and-deinit)
   - [8.6 Inheritance](08-classes.md#86-inheritance)

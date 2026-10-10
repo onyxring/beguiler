@@ -1,0 +1,8 @@
+/*  run_extern_function_asbgl — an extern routine renamed for Beguile with asBgl after its parameters
+    is called by the Beguile name, above and below the declaration, and emitted by the I6 one.  */
+// EXPECT_OUTPUT: 42 10
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { [ I6Twice x; return x * 2; ]; }
+int early() { return twice(21); }
+extern int I6Twice(int x) asBgl twice;
+void main(){ print(early()); print(" "); print(twice(5)); print("^"); }

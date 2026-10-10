@@ -475,6 +475,10 @@ optional<string> bglParser::resolveTypeFromCaptures(const string& name){
         for(statement* s : lambdaOuterBody->statements)
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                 if(vd->name == name) return vd->type.name;
+    for(auto it = lambdaOuterBlockStack.rbegin(); it != lambdaOuterBlockStack.rend(); ++it)
+        for(statement* s : (*it)->statements)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                if(vd->name == name) return vd->type.name;
     statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
     if(rootBody != nullptr && rootBody != lambdaOuterBody){
         function<string(statementBlock*)> findInBlock = [&](statementBlock* blk) -> string {
@@ -1060,6 +1064,57 @@ vector<functionDef*> bglParser::collectMethodCandidates(const string& typeName, 
 // is set only when EVERY candidate that reaches it names the same object-backed class; any
 // disagreement (or a non-object-backed / out-of-range param) leaves it nullptr → a bare `{` there
 // errors and the author must write `Type{ … }`.
+// The type's temporary-holding hooks, or null when it declares none.
+static functionDef* temporaryHook(classDef* cls, const char* name, size_t params){
+    if(cls == nullptr) return nullptr;
+    for(classDef* c = cls; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses.front())
+        for(typeMember* m : c->members)
+            if(auto* fn = dynamic_cast<functionDef*>(m))
+                if(fn->isEmitter && fn->name == name && fn->params.size() == params && dynamic_cast<i6Block*>(fn->body))
+                    return fn;
+    return nullptr;
+}
+
+bglParser::HeldTemporaries bglParser::holdCallTemporaries(const vector<pair<string*, string>>& operands){
+    HeldTemporaries held;
+    // An operand that emits a call (a routine, a getter) can allocate; a bare name or a literal can't.
+    auto allocates = [](const string& t){ return t.find('(') != string::npos; };
+    size_t allocating = 0;
+    for(auto& [text, type] : operands) if(allocates(*text)) allocating++;
+    if(allocating < 2) return held;
+    for(auto& [text, type] : operands){
+        if(!allocates(*text)) continue;
+        classDef* cls = getDispatchClass(type);
+        functionDef* hold = temporaryHook(cls, "holdtemporary", 1);
+        if(hold == nullptr || !temporaryHook(cls, "temporarymark", 0) || !temporaryHook(cls, "releasetemporaries", 2)) continue;
+        emitterBindings b; b.fn = hold; b.args = { *text }; b.trim = emitterTrim::wsSemi;
+        *text = expandEmitterBody(dynamic_cast<i6Block*>(hold->body), b);
+        if(find(held.owners.begin(), held.owners.end(), cls) == held.owners.end()) held.owners.push_back(cls);
+    }
+    return held;
+}
+
+string bglParser::wrapHeldCall(const HeldTemporaries& held, const string& callText, vector<string>* marks){
+    string out = callText;
+    for(classDef* cls : held.owners){
+        functionDef* mark = temporaryHook(cls, "temporarymark", 0);
+        functionDef* release = temporaryHook(cls, "releasetemporaries", 2);
+        emitterBindings mb; mb.fn = mark; mb.trim = emitterTrim::wsSemi;
+        string markText = expandEmitterBody(dynamic_cast<i6Block*>(mark->body), mb);
+        if(marks != nullptr){ markText = heldMarkPlaceholder(marks->size()); marks->push_back(expandEmitterBody(dynamic_cast<i6Block*>(mark->body), mb)); }
+        emitterBindings rb; rb.fn = release; rb.args = { out, markText }; rb.trim = emitterTrim::wsSemi;
+        out = expandEmitterBody(dynamic_cast<i6Block*>(release->body), rb);
+    }
+    return out;
+}
+
+bool bglParser::isInlineConstructible(classDef* cls){
+    if(cls == nullptr) return false;
+    if(isObjectBackedClass(cls)) return true;
+    for(variableDeclaration* vd : positionalMembers(cls)) if(!vd->isExternal) return true;
+    return false;
+}
+
 bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& candidates){
     BraceArgHints h;
     size_t maxP = 0;
@@ -1074,12 +1129,7 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
     // braced-LIST path instead and are intentionally excluded here.
     // A positional member with storage: the root's positional `instanceName` is a header slot, and
     // doesn't make an array or a value class an aggregate.
-    auto hasInlineMember = [&](classDef* k) -> bool {
-        if(k == nullptr) return false;
-        for(variableDeclaration* vd : positionalMembers(k)) if(!vd->isExternal) return true;
-        return false;
-    };
-    auto inlineConstructible = [&](classDef* c){ return c && (isObjectBackedClass(c) || hasInlineMember(c)); };
+    auto inlineConstructible = [&](classDef* c){ return isInlineConstructible(c); };
     for(auto* fd : candidates){
         for(size_t i = 0; i < fd->params.size(); i++){
             classDef* cls = getDispatchClass(fd->params[i]->type.name);
@@ -1199,6 +1249,9 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             }
             expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
             currentExpectedType = "";
+            if(arg->resolvedType == "void")
+                parsingError(format("'{0}' has no value to pass; a print rule goes in interpolated text "
+                    "($\"{{{0}}}\") or stands as a statement.", firstArgTok.originalValue.empty() ? firstArgTok.value : firstArgTok.originalValue));
             result.args.push_back(arg);
             result.namedArgNames.push_back(namedArgName);
             if(namedArgName.empty()) posIdx++;
@@ -1206,8 +1259,8 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             firstArgTok = file.getToken();
         }
     }
-    // Reached only by a `)` straight after a `,`.
-    if(!result.args.empty()) parsingWarning("a trailing comma ends this argument list");
+    // A `)` straight after a `,` ends the loop here; an interpolated argument's own `)` breaks out instead.
+    if(firstArgTok.is(token::parenClose) && !result.args.empty()) parsingWarning("a trailing comma ends this argument list");
     currentExpectedType = savedExpectedArgs;
     return result;
 }
@@ -1307,6 +1360,10 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
         // routines defined in the surrounding stream. Return "var" as the inferred type;
         // emission falls through to a literal `name(args)` call which I6 will resolve.
         if(looseIdentifierMode) return "var";
+        // The name reached a verb's object, so a function of the verb's name lost to it.
+        if(funcName.size() > 9 && strncasecmp(funcName.c_str(), "_bglVerb_", 9) == 0)
+            parsingError(format("'{0}' names both a verb and a function; a verb is a global name, so rename one "
+                                "of them.", funcName.substr(9)));
         parsingError(format("Undeclared function '{0}'", funcName));
     }
     string dispName = gcm.nameMatch ? gcm.nameMatch->dName() : funcName;
@@ -2375,6 +2432,12 @@ optional<string> bglParser::qualifyFromCaptures(const string& name){
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                 if(vd->name == name)
                     return addCapture(name, vd->type.name, vd);
+    // The blocks still open around the lambda, innermost first.
+    for(auto it = lambdaOuterBlockStack.rbegin(); it != lambdaOuterBlockStack.rend(); ++it)
+        for(statement* s : (*it)->statements)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                if(vd->name == name)
+                    return addCapture(name, vd->type.name, vd);
     // Check function root body recursively — covers locals declared before/outside the
     // enclosing block (e.g. `int base = 10;` declared before a for-loop).
     statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
@@ -2846,10 +2909,6 @@ string bglParser::addCapture(const string& outerName, const string& typeName, va
     // Check if already captured in this lambda
     for(auto& cap : currentFunc->captures)
         if(cap.outerName == outerName) return cap.globalName;
-    // Warn if capturing a for-loop variable — the round-trip (load/unload) means
-    // modifications inside the lambda will affect the loop's progression.
-    if(currentLoopVars.count(outerName))
-        parsingWarning(format("Lambda captures loop variable '{0}'. Modifications inside the lambda will affect loop progression via capture round-trip.", outerName));
     string globalName = format("_bglCap{0}", languageService.captureCounter++);
     string why;
     bool isConstant = vd != nullptr && vd->isConst && vd->declaredExpressionValue != nullptr
@@ -3818,6 +3877,11 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                                         const string& elementType){
     string methodName = methodNameIn;   // members are keyed in lower case
     transform(methodName.begin(), methodName.end(), methodName.begin(), ::tolower);
+    // A verb object is typed `verb` (its value is the action), but its methods are its own class's
+    // (an i6Verb's handler() runs the I6 action routine).
+    if(objType == "verb")
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->name == objPath && v->objectClass != nullptr){ objType = v->objectClass->name; break; }
     // On an `array<literal T>` receiver, the methods that store an element (declared `literal T`)
     // take only literal values; finalizeCallArgs reads this while binding.
     struct LiteralElementsGuard {
@@ -3921,6 +3985,19 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
     if(mm.method->isEmitter && mm.method->isValueEmitter)
         parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methodName));
     finalizeCallArgs(args, namedArgNames, interpSegmentsPerArg, mm.method);
+    // An argument for an array method's element parameter (`T`) becomes an element: on an array that
+    // outlives this routine (a global or a member) a capturing lambda would outlive its captures.
+    if(isWordArrayType(objType) || objType.rfind("array", 0) == 0){
+        bool lasting = objPath.find('.') != string::npos
+                    || languageService.findGlobalAs<arrayDeclaration>(objPath) != nullptr;
+        for(size_t i = 0; i < args.size() && i < mm.method->params.size(); i++){
+            const string& pt = mm.method->params[i]->type.name;
+            if(pt == "t" || (!elementType.empty() && pt == elementType)){
+                if(lasting) rejectEscapingLambda(args[i], format("stored in '{0}'", objPath));
+                else rejectLoopStoredLambda(args[i], objPath);
+            }
+        }
+    }
     mangleOverloadSetForReceiver(objType, methodName);
     return mm.method;
 }

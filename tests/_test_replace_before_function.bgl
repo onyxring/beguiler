@@ -1,0 +1,6 @@
+// Negative test: a replace follows what it replaces.
+// EXPECT_ERROR: comes before
+#beguilerSettings { target = z5; informName = "none"; }
+replace int step(int n) { return n + 100; }
+int step(int n) { return n; }
+void main() { }

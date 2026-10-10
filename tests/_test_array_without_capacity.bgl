@@ -1,0 +1,5 @@
+// Negative test: a global or local array with neither a capacity nor an initializer has no storage.
+// EXPECT_ERROR: Array 'g' needs a capacity ([n]) or an initializer
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> g;
+void main(){ }

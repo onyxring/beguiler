@@ -1247,6 +1247,38 @@ bool fileLexer::tryLexDictionaryWordToken(token& retval){
                           || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
                           || prevTokenType == eTokenType::directive
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
+    // `(int).bounce`: a cast never takes a member, so the '.' after it starts a dictionary word.
+    if(prevIsExprEnd && prevTokenValue == ")" && retval.is(".")){
+        auto here = currentStream()->tellg();
+        streamoff i = (streamoff)here - 2;              // the character before the '.'
+        auto at = [&](streamoff k) -> int {
+            if(k < 0) return -1;
+            currentStream()->seekg(k);
+            return currentStream()->peek();
+        };
+        while(isspace(at(i))) i--;
+        if(at(i) == ')'){
+            i--;
+            while(isspace(at(i))) i--;
+            string word;
+            while(i >= 0 && (isalnum(at(i)) || at(i) == '_')){ word.insert(word.begin(), (char)at(i)); i--; }
+            while(isspace(at(i))) i--;
+            token typeTok; typeTok.value = word;
+            if(at(i) == '(' && !word.empty() && typeTok.isDataType()){
+                // `f(T).x` is a call's result, not a cast; a cast's '(' follows an operator or a keyword.
+                i--;
+                while(isspace(at(i))) i--;
+                string before;
+                while(i >= 0 && (isalnum(at(i)) || at(i) == '_')){ before.insert(before.begin(), (char)at(i)); i--; }
+                int c = at(i);
+                bool call = !before.empty() ? (before != "return" && before != "case")
+                                            : (c == ')' || c == ']');
+                if(!call) prevIsExprEnd = false;
+            }
+        }
+        currentStream()->clear();
+        currentStream()->seekg(here);
+    }
     if(retval.is(".") && !prevIsExprEnd){
         char c1 = peekChar();
         // Helper lambda: read dict-word chars (identifier chars + apostrophe).

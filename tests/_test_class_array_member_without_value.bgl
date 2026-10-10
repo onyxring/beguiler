@@ -1,0 +1,5 @@
+// Negative test: a class member array with neither capacity nor initializer, not marked required.
+// EXPECT_ERROR: Array 'loose' needs a capacity ([n]) or an initializer, or 'required' if every object must give it.
+#beguilerSettings { target = z5; informName = "none"; }
+class Holder : _bglObject { array<int> loose; }
+void main(){ }

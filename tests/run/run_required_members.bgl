@@ -1,0 +1,19 @@
+// run_required_members — a required member is met by the object or by a class between it and the
+// declaring class; a required routine is given the same way, and the given values are the ones used.
+// EXPECT_OUTPUT: 4 4 16 | 3 5 6 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Shape : _bglObject {
+    required array<int> sides;
+    required int corners;
+    required int area();
+    array<int> tags[4];
+}
+class Square : Shape { array<int> sides = {4, 4, 4, 4}; int area() { return 16; } }
+Square sq { corners = 4; }
+Shape tri { sides = {3, 4, 5}; corners = 3; int area() { return 6; } }
+void main() {
+    bglInit();
+    print($"{sq.sides.length} {sq.corners} {sq.area()} | {tri.corners} {tri.sides[2]} {tri.area()} {tri.tags.length}");
+    printLine();
+}

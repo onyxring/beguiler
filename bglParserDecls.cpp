@@ -224,7 +224,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
 initializerList* bglParser::parseArrayInitializerList(const string& elementType, functionDef* func, statementBlock* body){
     initializerList* list = new initializerList();
     classDef* elemCls = getDispatchClass(elementType);
-    bool inferInlineObjects = elemCls != nullptr && isObjectBackedClass(elemCls);
+    bool inferInlineObjects = isInlineConstructible(elemCls) && !isArrayOfArraysElement(elementType);
     bool inferInlineArrays  = isArrayOfArraysElement(elementType);
     string nestedElem       = inferInlineArrays ? arrayInnerType(elementType) : "";
     token t = file.getToken();
@@ -283,7 +283,7 @@ void bglParser::bakeInlineArrayAggregate(const string& innerElemType, const stri
     if(!innerElemType.empty() && innerElemType != "var")
         for(size_t i = 0; i < il->elements.size(); i++){
             expression* e = il->elements[i];
-            if(!e->resolvedType.empty() && !isArrayElementCompatible(e->resolvedType, innerElemType))
+            if(!e->resolvedType.empty() && !zeroFitsBnum(e, innerElemType) && !isArrayElementCompatible(e->resolvedType, innerElemType))
                 parsingError(format("Inner array element {0} has type '{1}', expected '{2}'", i, e->resolvedType, innerElemType));
             checkByteElementRange(e, innerElemType);
         }
@@ -334,6 +334,8 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     if(symbol.is(token::bracketOpen)) {
         // array<T> name[N];   or   array<T> name[N] = <initializer>;
         arrDecl.arraySize = readCompileTimeInt("an array's capacity");
+        if(arrDecl.arraySize < 1)
+            parsingError(format("Array '{0}' needs a capacity of at least 1.", arrDecl.dName()));
         file.getToken(token::bracketClose);
         hasInitializer = file.getToken({token::endStatement, token::assignment}).is(token::assignment);
     }
@@ -376,8 +378,8 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             if(!elementType.empty() && elementType != "var"){
                 for(size_t i = 0; i < list->elements.size(); i++){
                     expression* elem = list->elements[i];
-                    if(!elem->resolvedType.empty() && !isArrayElementCompatible(elem->resolvedType, elementType))
-                        parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, elementType));
+                    if(!elem->resolvedType.empty() && !zeroFitsBnum(elem, elementType) && !isArrayElementCompatible(elem->resolvedType, elementType))
+                        parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, typeDisplayName(elem->resolvedType), typeDisplayName(elementType)));
                     checkByteElementRange(elem, elementType);
                 }
             }
@@ -466,6 +468,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             parsingError(format("Array '{0}' declares capacity {1} but its initializer supplies {2} elements.",
                                 arrDecl.name, arrDecl.arraySize, seed->elements.size()));
     }
+    if(auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
+       seed != nullptr && seed->elements.empty() && arrDecl.arraySize <= 0 && !isExternal)
+        parsingError(format("Array '{0}' has no storage: give it a capacity ([n]) or at least one element; declare it 'ref' to share another array.", arrDecl.dName()));
 
     // An initialized local byte array (`= "…"` or `= {…}`) is drawn from the framePool on each
     // call and filled from a hidden file-scope array holding the initializer, laid out alike.
@@ -792,7 +797,19 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
             if(foldInlineObjectAggregateDeclaration(dataType, variableName, first, func, body))
                 return true;   // folded into the object declaration — nothing more to build
         }
-        if(first.is(token::braceOpen)){
+        classDef* declCls = getDispatchClass((string)dataType);
+        if(first.is(token::braceOpen) && declCls != nullptr && !isObjectBackedClass(declCls)
+           && isInlineConstructible(declCls) && ((string)dataType).find('<') == string::npos){
+            // A value class with `inline` members: `Pair q = { 5, 6 };` is `Pair q = Pair{ 5, 6 };`.
+            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            bakeInlineObjectAggregate(declCls, (string)dataType, anonName, func, body);
+            file.getToken(token::endStatement);
+            expression* rhs = new expression();
+            rhs->tokens.push_back(anonName);
+            rhs->resolvedType = (string)dataType;
+            varDecl.declaredExpressionValue = rhs;
+            checkVariableInitializerAssignable(varDecl, dataType, rhs, isRef);
+        } else if(first.is(token::braceOpen)){
             // initializer list: { expr, expr, ... }
             initializerList* list = new initializerList();
             token t = file.getToken();
@@ -823,7 +840,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
                 expression* elem = list->elements[i];
                 if(elem->resolvedType.empty())
                     parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-                else if(!expectedElemType.empty() && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
+                else if(!expectedElemType.empty() && !zeroFitsBnum(elem, expectedElemType) && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
                     parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
                 checkByteElementRange(elem, expectedElemType);
             }
@@ -1097,21 +1114,6 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // reach here as a plain variable declaration.
     if(dataType.value == "array")
         parsingError("bare 'array' is not a valid type — declare the element type: array<T>");
-    // Extern Type name ; where Type is verb-derived → route to object declaration (verb instance)
-    if(isExternal && symbol.is(token::endStatement)){
-        bool verbDerived = false;
-        if(classDef* cls = languageService.findClass(dataType.value)){
-            function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
-                if(!c) return false;
-                if(c->name == "verb") return true;
-                for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
-                return false;
-            };
-            verbDerived = checkVerb(cls);
-        }
-        if(verbDerived)
-            return processObjectDeclaration(dataType, variableName, true, "", "", false);
-    }
     variableDeclaration& varDecl = *new variableDeclaration();
     varDecl.src = file.currentLocation();
     varDecl.name=(string) variableName;
@@ -1300,6 +1302,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // overridden. `extern` otherwise asserts "this exists in I6", so silently redefining it is a
     // mistake (a name collision, or a missing `default`). A `default` extern is dropped here so the
     // real definition takes over cleanly. `replace` has its own path (below) and is exempt.
+    functionDef* overriddenDefault = nullptr;   // the `extern default` this definition takes over
     if(!isExternal && !isReplace){
         for(auto it = languageService.globals.begin(); it != languageService.globals.end(); ++it){
             auto* ex = dynamic_cast<functionDef*>(*it);
@@ -1308,6 +1311,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
                     parsingError(format("'{0}' is already declared extern (it exists externally); a plain "
                         "definition would silently redefine it. If it's an overridable library stub, mark the "
                         "declaration `extern default`; otherwise rename to avoid the collision.", funcDef.name));
+                overriddenDefault = ex;
                 languageService.globals.erase(it);
                 break;
             }
@@ -1359,6 +1363,10 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             bool same = true;
             for(size_t i = 0; i < ex->params.size(); i++)
                 if(ex->params[i]->type.name != funcDef.params[i]->type.name){ same = false; break; }
+            if(same && ex->replaceFoundNothing)
+                parsingError(format("the replace of '{0}' above comes before '{0}' itself. A replace follows what "
+                    "it replaces; move it below this declaration (or below the include that declares it).",
+                    funcDef.dName()));
             if(same)
                 parsingError(format("'{0}' is already defined with these parameter types. Overloads must "
                     "differ in their parameters — a return type alone cannot tell two calls apart.",
@@ -1366,6 +1374,19 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         }
     }
 
+    // The library calls the routine it declared, so an override keeps its parameters.
+    if(overriddenDefault != nullptr){
+        bool same = overriddenDefault->params.size() == funcDef.params.size();
+        for(size_t i = 0; same && i < funcDef.params.size(); i++)
+            same = overriddenDefault->params[i]->type.name == funcDef.params[i]->type.name;
+        if(!same){
+            string sig;
+            for(size_t i = 0; i < overriddenDefault->params.size(); i++)
+                sig += (i ? ", " : "") + typeDisplayName(overriddenDefault->params[i]->type.name);
+            parsingError(format("'{0}' overrides the library's '{0}({1})', whose parameters it must keep.",
+                                funcDef.dName(), sig));
+        }
+    }
     // Synthesize the instance and copy-in for each param whose class copies, before the body is parsed.
     synthesizeParamBackings(funcDef);
 
@@ -1413,6 +1434,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             funcDef.replacedTarget = mangledName;
             funcDef.replacedFunc = existing;
         } else {
+            funcDef.replaceFoundNothing = true;
             parsingWarning(format("replace: no existing global function '{0}' found; treating as new definition", funcDef.name));
         }
     }
@@ -1435,6 +1457,14 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         if(file.peekToken().is(token::braceOpen))
             parsingError(format("extern function '{0}' cannot have a body — declare it with ';'. "
                                 "Its implementation comes from I6, or from a `default` override.", funcDef.name));
+        // `extern int I6Twice(int x) asBgl twice;`: Beguile calls it `twice`, Inform 6 knows it as I6Twice.
+        if(file.peekToken().is("asbgl")){
+            file.getToken();
+            token bgl = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            if(funcDef.i6name.empty()) funcDef.i6name = funcDef.dName();
+            funcDef.name = bgl.value;
+            funcDef.displayName = bgl.originalValue.empty() ? bgl.value : bgl.originalValue;
+        }
         file.getToken(token::endStatement);
         funcDef.body = new statementBlock();
     } else {

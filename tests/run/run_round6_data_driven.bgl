@@ -1,0 +1,53 @@
+// run_round6_data_driven — table-style code: a bnum cast as a right operand, a renamed member read
+// through an element, a method with arguments on an inner array, 0 as a bnum element, and a bare
+// { … } building a value class as an element, an initializer and an argument.
+// EXPECT_OUTPUT: has 5 5
+// EXPECT_OUTPUT: 9 4 7
+// EXPECT_OUTPUT: true 0
+// EXPECT_OUTPUT: 0 0 3
+// EXPECT_OUTPUT: 1,2 3,4 5,6 7,8 9,10
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+bnum ePerm { enter, take, craft }
+value class Stop {
+    inline int turn;
+    Stop operator = (Stop o) { turn = o.turn; return self; }
+}
+value class Pair {
+    inline int a;
+    inline int b;
+    Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
+}
+array<Stop> schedule = { Stop{ 2 }, Stop{ 4 } };
+array<array<int>> rows = { { 1, 2 }, { 3 } };
+array<ePerm> needs = { 0, enter, enter | take };
+array<Pair> pairs = { Pair{ 1, 2 }, { 3, 4 } };
+void show(Pair p) { print(p.a); print(","); print(p.b); print(" "); }
+void main() {
+    bglInit();
+    int n = 2;
+    ePerm p = enter | (ePerm)(1 << n);
+    ePerm q = enter | (ePerm)4;
+    if ((p & (ePerm)(1 << n)) != 0) print("has ");
+    print((int)p); print(" "); print((int)q); print("^");
+
+    schedule[0].turn = 9;
+    print(schedule[0].turn); print(" "); print(schedule[1].turn); print(" ");
+    Stop s = schedule[1];
+    s.turn = 7;
+    print(s.turn); print("^");
+
+    print(rows[0].contains(2)); print(" "); print(rows[1].indexOf(3)); print("^");
+
+    needs[2] = 0;
+    array<ePerm> loc = { craft, 0 };
+    print((int)needs[0]); print(" "); print((int)needs[2]); print(" "); print((int)needs[1] + (int)loc[0] - 2); print("^");
+
+    for (Pair x in pairs) show(x);
+    Pair r = { 5, 6 };
+    show(r);
+    array<Pair> more = { { 7, 8 } };
+    show(more[0]);
+    show({ 9, 10 });
+    print("^");
+}

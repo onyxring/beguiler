@@ -1,0 +1,5 @@
+// Negative test: on an extern function asBgl follows the parameters.
+// EXPECT_ERROR: the clause follows the parameters
+#beguilerSettings { target = z5; informName = "none"; }
+extern int I6Twice asBgl twice(int x);
+void main(){ }

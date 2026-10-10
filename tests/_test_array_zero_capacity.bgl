@@ -1,0 +1,5 @@
+// Negative test: a capacity of 0 gives an array no storage.
+// EXPECT_ERROR: Array 'z' needs a capacity of at least 1.
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> z[0];
+void main(){ }

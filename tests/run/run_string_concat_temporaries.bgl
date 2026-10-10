@@ -1,0 +1,28 @@
+// run_string_concat_temporaries — both operands of a string + are temporaries (results returned
+// already released): neither one's evaluation may reuse the other's buffer, in a chain, through a
+// function that itself concatenates, in a condition and in a loop that would otherwise run the pool out.
+// EXPECT_OUTPUT: [redblue]
+// EXPECT_OUTPUT: [rbe]
+// EXPECT_OUTPUT: [r-eue] [redr-e]
+// EXPECT_OUTPUT: cond ok
+// EXPECT_OUTPUT: [reue]
+// EXPECT_OUTPUT: [redblue] after 40
+#beguilerSettings { target = Glulx; informName = "none"; }
+#include <string>
+#include "glulxConsole.bgl"
+stringObj tag(stringObj a) { return a.left(1) + "-" + a.right(1); }
+stringObj both(stringObj a) { return a.left(2) + a.right(2); }
+void main() {
+    glulxConsole();
+    bglInit();
+    stringObj s = "red, blue";
+    stringObj k = s.left(3) + s.right(4);
+    printLine($"[{k}]");
+    stringObj c = s.left(1) + s.mid(5, 1) + s.right(1);
+    printLine($"[{c}]");
+    printLine($"[{tag(s) + s.right(2)}] [{s.left(3) + tag(s)}]");
+    if (s.left(3) + s.right(4) == "redblue") printLine("cond ok");
+    printLine($"[{both(s)}]");
+    for (int i = 0; i < 40; i++) k = s.left(3) + s.right(4);
+    printLine($"[{k}] after 40");
+}

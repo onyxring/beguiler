@@ -1,0 +1,5 @@
+// Negative test: a print rule has no value, so it can't be an argument (`print(bold)`).
+// EXPECT_ERROR: 'bold' has no value to pass
+#beguilerSettings { target = z5; informName = "none"; }
+#using bgl.printRules;
+void main(){ print(bold); }

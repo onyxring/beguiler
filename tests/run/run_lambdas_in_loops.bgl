@@ -1,0 +1,23 @@
+// run_lambdas_in_loops — inside a loop, lambdas used during the statement capture loop variables
+// freely; a stored lambda may capture a const; one declared inside the loop is its own per pass.
+// EXPECT_OUTPUT: 0 1 2 | 306 7 10
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+void main() {
+    bglInit();
+    array<int> rows = {1, 5, 9};
+    array<func<int>> fs[4];
+    const int step = 10;
+    int total = 0;
+    for (int i = 0; i < 3; i++) {
+        total += rows.filter((int r) => r > i * 4).count();         // used now: fine
+        if (rows.any((int x) => x == i * 4 + 1)) total += 100;     // used now: fine
+        fs.push(=> step);                                      // const capture: fine
+        func<int> here = => i;                                 // declared inside the loop: fine
+        print(here()); print(" ");
+    }
+    int n = 7;
+    fs.push(=> n);                                             // outside any loop: fine
+    print($"| {total} {fs[0]()} {fs[3]()}"); printLine();
+}

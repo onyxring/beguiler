@@ -1,0 +1,5 @@
+// Negative test: `required` applies to class members; an object gives values.
+// EXPECT_ERROR: 'required' applies to class members
+#beguilerSettings { target = z5; informName = "none"; }
+object o { required int x = 1; }
+void main(){ }

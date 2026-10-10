@@ -115,6 +115,7 @@ extern int          special_number;        /// number typed for "special" token
 extern int          verb_word;             /// the verb word (e.g. 'take')
 extern int          verb_wordnum;          /// verb position in input
 extern int          wn;                    /// word number currently being parsed
+extern int          scope_stage;           /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on; place objects in scope on pass 2.
 extern int          inventory_stage;       /// 1 or 2: which pass of an inventory listing is calling `invent`
 extern int          num_words;             /// number of words typed
 extern object       itobj;                 /// object currently referred to as "it"
@@ -173,6 +174,8 @@ extern dictionaryWord NextWord();                                          /// t
 extern int  NextWordStopped();                                             /// as NextWord, but -1 once the words run out
 extern void SetPronoun(dictionaryWord dword, object value);                 /// bind a pronoun word ('it'/'him'/…) to an object
 extern void PronounNotice(object obj);                                      /// update the pronoun table so "it"/"him" refers to obj
+extern void PlaceInScope(object obj);                                       /// inside a scope routine: put obj in scope, ignoring its children
+extern void ScopeWithin(object domain, object nosearch = null, int context = 0);  /// inside a scope routine: put everything within domain in scope, except what is inside nosearch
 extern void AddToScope(object obj);                                         /// inside an add_to_scope routine: bring obj into parser scope
 extern void MoveFloatingObjects();                                          /// relocate `found_in` backdrops/floating objects for the current location
 extern void StartTimer(object obj, int turns);                              /// start obj's timer; its time_out runs after `turns` turns

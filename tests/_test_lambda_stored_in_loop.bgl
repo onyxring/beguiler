@@ -1,0 +1,8 @@
+// Negative test: lambdas a loop stores outside it share one copy of what they capture.
+// EXPECT_ERROR: The lambdas this loop stores in 'fs' all share one copy of 'i'; a lambda stored in a loop can capture only const values.
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+void main(){
+    array<func<int>> fs[3];
+    for (int i = 0; i < 3; i++) fs.push(=> i * 10);
+}

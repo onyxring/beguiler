@@ -1,0 +1,23 @@
+// run_stdlib_scope_stage_place_in_scope — the standard-library binding declares scope_stage, PlaceInScope
+// and ScopeWithin, so a SCOPE(Routine) writer can use them (§13.4.2).
+// EXPECT_OUTPUT: Rung.
+// EXPECT_OUTPUT: Rung twice.
+// INPUT: ring bell
+// INPUT: ring crate
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object hidden { short_name = "hidden"; attributes = {container, open}; }
+object bell  { short_name = "bell"; name = {.bell}; }
+object crate { short_name = "crate"; name = {.crate}; parent = hidden; }
+bool bellScope() {
+    if (scope_stage == 2) { PlaceInScope(bell); ScopeWithin(hidden); }
+    rfalse;
+}
+verb Ring { grammar = { {.ring, SCOPE(bellScope)} }; void handler() { if (noun == bell) printLine("Rung."); else printLine("Rung twice."); } }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

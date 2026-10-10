@@ -118,10 +118,11 @@ struct Qualifiers {
     bool isValue = false;      // `value class`: instances are copied; variables own one (type kinds)
     bool isLiteral = false;    // `literal` variable or member: holds only values known at compile time (§6.3)
     bool isPrimitive = false;  // `primitive class`: the value itself, no instance (implies extern emitter)
+    bool isRequired = false;   // `required` class member: every object must get a value for it
     bool anySet() const {      // true if ANY qualifier was consumed before the current token
         return isReplace || isExplicit || isExtern || isEmitter || isConst || isStatic || isInline
             || isExtend || isAlias || isDefault || isRef || isSuperposed || isTypeSealed
-            || isAdditive || isValue || isPrimitive;
+            || isAdditive || isValue || isPrimitive || isRequired;
     }
 };
 
@@ -161,6 +162,14 @@ enum class emitterTrim { none, ws, wsSemi };
 // What each substitution token stands for at one emitter-body use site. A token left unset is
 // not substituted, so a caller supplies only what its context actually defines — the receiver
 // alone for a method emitter, receiver + property for an array emitter, and so on.
+// The k-th held-temporary mark left in a call statement's heldSuffix (see bglParser::wrapHeldCall).
+inline std::string heldMarkPlaceholder(size_t k){ return "\x02" + std::to_string(k) + "\x02"; }
+// Every occurrence of `from` in `s` replaced by `to`.
+inline std::string replaceEvery(std::string s, const std::string& from, const std::string& to){
+    for(size_t at = s.find(from); at != std::string::npos; at = s.find(from, at + to.size())) s.replace(at, from.size(), to);
+    return s;
+}
+
 struct emitterBindings {
     optional<string> self;                  // $self
     optional<string> val;                   // $val
@@ -259,6 +268,8 @@ class bglParser {
         void validateRoutinePropertyClashes();
         void validateGlobalNameClashes();
         void validateVerbNameClashes();
+        void validateEqualityPairs();
+        void validateRequiredMembers();
         // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
         // that statement wherever it starts one; give it an emitted name that can't.
         void renameI6KeywordNames();
@@ -498,6 +509,9 @@ class bglParser {
         // innermost (current if/for/while body). Used by Tier 1c identifier resolution to find
         // locals declared in ancestor blocks that haven't been added to the AST yet.
         vector<statementBlock*> activeBlockStack;
+        // The blocks open around the lambda being parsed (its enclosing function's, still unattached
+        // while they parse), searched for captures.
+        vector<statementBlock*> lambdaOuterBlockStack;
         set<string> onceFiles;        // absolute paths of files that declared #once
         set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
         vector<classDef*>  usingImports;         // imported class scopes from #using directives (file-scoped)
@@ -521,6 +535,7 @@ class bglParser {
         // `setup; if (~~cond) break;` and the loop tests `true`.
         void moveConditionIntoBody(expression*& condition, vector<statement*> setup, statementBlock* loopBody);
         set<string> currentLoopVars;        // names of active for-loop init variables (for capture warnings)
+        vector<size_t> loopBlockDepths;     // activeBlockStack's size where each enclosing loop's body begins
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
         bool processNextStatement(abstractObject& =emptyContainer);  // grammar-driven dispatcher
@@ -617,6 +632,9 @@ class bglParser {
         // A lambda that captures variables may only run while they exist: not stored in a global or
         // member, not returned. `where` names the store for the error.
         void rejectEscapingLambda(const class expression* e, const string& where);
+        // Inside a loop, a capturing lambda stored in `target` (a local declared outside the loop's
+        // body) is shared by every pass, so it can capture only constants.
+        void rejectLoopStoredLambda(const class expression* e, const string& target);
         string parseArrayTypeTail(const std::string& base);  // base ("array"/"rawarray") read; consumes <Elem>, returns "array<Elem>" (nests + splits ">>")
         // Union types (A | B | ...): after a complete first type is read at a declaration site,
         // if the next token is '|', consume the '|'-separated members and return the canonical
@@ -1183,6 +1201,17 @@ class bglParser {
         vector<functionDef*> collectMethodCandidates(const string& typeName, const string& methodName);
         // Compute the per-position / per-name agreed object-backed class from candidate callees.
         BraceArgHints braceArgHints(const vector<functionDef*>& candidates);
+        // A class a bare `{ … }` constructs as an inline instance: object-backed, or a value class with
+        // positional (`inline`) members.
+        bool isInlineConstructible(classDef* cls);
+        // A call whose arguments include a temporary of a type declaring holdTemporary/temporaryMark/
+        // releaseTemporaries, beside another argument that can allocate: each such temporary is rewritten
+        // to be held, and wrapHeldCall then releases them once the call has returned.
+        struct HeldTemporaries { vector<classDef*> owners; bool any() const { return !owners.empty(); } };
+        HeldTemporaries holdCallTemporaries(const vector<pair<string*, string>>& operands);
+        // With `marks`, each mark is left as the placeholder heldMarkPlaceholder(k) and its text goes
+        // to (*marks)[k], so the caller can take it earlier (before Z-machine argument spills).
+        string wrapHeldCall(const HeldTemporaries& held, const string& callText, vector<string>* marks = nullptr);
 
         ParsedArgList parseCallArgList(functionDef* func, statementBlock* body, const BraceArgHints& braceHints = {});
 

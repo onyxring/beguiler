@@ -444,26 +444,36 @@ object _bglBuf {
 
     // ── Substring extraction ──────────────────────────────────────────────────
     // mid: copy numCharsToCopy chars from fromBuf[fromPos] into toBuf. -1 for
-    // numCharsToCopy means "from fromPos to end of source".
+    // numCharsToCopy means "from fromPos to end of source". A position or count
+    // outside the source is clamped to it.
     array<char> mid(array<char> toBuf, array<char> fromBuf, int fromPos, int numCharsToCopy){
-        int maxLen = length(fromBuf) - fromPos;
+        int len = length(fromBuf);
+        if(fromPos < 0) fromPos = 0;
+        if(fromPos > len) fromPos = len;
+        int maxLen = len - fromPos;
         if(numCharsToCopy == -1 || numCharsToCopy > maxLen) numCharsToCopy = maxLen;
+        if(numCharsToCopy < 0) numCharsToCopy = 0;
         copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
         setLength(toBuf, numCharsToCopy);
         return toBuf;
     }
 
-    // left: copy the first n chars of fromBuf into toBuf.
+    // left: copy the first n chars of fromBuf into toBuf (all of it when n is past the end).
     array<char> left(array<char> toBuf, array<char> fromBuf, int numCharsToCopy){
+        int len = length(fromBuf);
+        if(numCharsToCopy > len) numCharsToCopy = len;
+        if(numCharsToCopy < 0) numCharsToCopy = 0;
         copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
         setLength(toBuf, numCharsToCopy);
         return toBuf;
     }
 
-    // right: copy the last n chars of fromBuf into toBuf.
+    // right: copy the last n chars of fromBuf into toBuf (all of it when n is past the end).
     array<char> right(array<char> toBuf, array<char> fromBuf, int numCharsToCopy){
-        int fromPos = length(fromBuf) - numCharsToCopy;
-        copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+        int len = length(fromBuf);
+        if(numCharsToCopy > len) numCharsToCopy = len;
+        if(numCharsToCopy < 0) numCharsToCopy = 0;
+        copy(toBuf, fromBuf, numCharsToCopy, 0, len - numCharsToCopy);
         setLength(toBuf, numCharsToCopy);
         return toBuf;
     }

@@ -1,0 +1,5 @@
+// An interpolated string argument closes its call without a trailing-comma warning.
+// EXPECT_NO_WARNING: trailing comma
+#beguilerSettings { target = z5; informName = "none"; }
+void f(var a, var b){ }
+void main(){ int n = 1; print($"x {n} y"); printLine($"a{n}"); f($"a {n}", 2); }

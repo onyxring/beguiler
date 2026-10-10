@@ -30,6 +30,11 @@
 //------------------------------------------------------------------------------
 #i6 {
     Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
+    Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
+    Array _bglStringLockStackSlots --> bglStringLockStackSize;
+    Global _bglStringLockStackTop = 0;
+    Array _bglStringLockStackMarks --> bglStringLockStackSize;  ! the slot height at each open mark
+    Global _bglStringLockStackMarkTop = 0;
     Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
@@ -535,6 +540,54 @@ object _bglStr {
             if(metaclass(buf) == Routine) return buf();
         }
         _bglBuf.print(buf);
+    }
+}
+
+//==============================================================================
+// _bglStringLockStack — holds the temporaries (already-freed results) a call's
+// arguments produce, so evaluating one can't reallocate another's. A mark is opened
+// before the arguments (Inform 6 evaluates the last argument first, so the compiler
+// puts it there), each temporary is locked and pushed, and the drain after the call
+// frees back to that mark and closes it. Marks nest with the calls.
+//==============================================================================
+superposed _bglObject _bglStringLockStack {
+    // Lock `s` if it is a freed pool string and remember it; any other value passes through.
+    var stackLock(var s) {
+        if(_bglStr.ambiguousLock(s)) {
+            #i6 {
+                if(_bglStringLockStackTop >= bglStringLockStackSize){
+                    print "[ERROR: too many temporary strings in one expression.]";
+                    return s;
+                }
+                _bglStringLockStackSlots-->_bglStringLockStackTop = s;
+                _bglStringLockStackTop++;
+            }
+        }
+        return s;
+    }
+    // Open a mark at the current height; the matching stackDrain releases back to it.
+    int stackMark() {
+        #i6 {
+            if(_bglStringLockStackMarkTop >= bglStringLockStackSize){
+                print "[ERROR: temporary strings nested too deeply.]";
+                return 0;
+            }
+            _bglStringLockStackMarks-->_bglStringLockStackMarkTop = _bglStringLockStackTop;
+            _bglStringLockStackMarkTop++;
+        }
+        return 0;
+    }
+    // Free what was locked since the most recent mark, close that mark, and pass `result` through.
+    var stackDrain(var result, int unused) {
+        #i6 {
+            if(_bglStringLockStackMarkTop == 0) return result;
+            _bglStringLockStackMarkTop--;
+            while(_bglStringLockStackTop > _bglStringLockStackMarks-->_bglStringLockStackMarkTop){
+                _bglStringLockStackTop--;
+                _bglStr.ambiguousFree(_bglStringLockStackSlots-->_bglStringLockStackTop, true);
+            }
+        }
+        return result;
     }
 }
 
@@ -1060,6 +1113,7 @@ extend class string {
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
     emitter stringObj operator + (stringLiteral v) { _bglStr.append($val, $v) }
     emitter stringObj operator + (string v)        { _bglStr.append($val, $v) }
+    emitter stringObj operator + (stringObj v)     { _bglStr.append($val, $v) }
 
     // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
     // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
@@ -1149,7 +1203,7 @@ extend class string {
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     /// Return a copy with EVERY `searchText` swapped for `replaceText`.
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
-    /// Substitute `{0}`, `{1}`… in `pattern` with this string and any extra arguments.
+    /// Substitute `$0`, `$1`… in `pattern` with this string and any extra arguments.
     emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
     emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
     emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
@@ -1205,6 +1259,17 @@ emitter class stringObj {
     // Lifecycle
     /// Take a buffer from the pool. Runs automatically at the declaration.
     emitter void init()   { $self = _bglStr.new(); }
+    /// Take a buffer from the pool holding a copy of `v`. Runs automatically for a parameter.
+    emitter void init(stringObj v) { $self = _bglStr.new($v); }
+
+    // Temporaries in a call: a released (temporary) result is held from when it is produced until the
+    // call returns, so evaluating another argument can't take its buffer. The compiler places these.
+    /// Open a mark to release held temporaries back to. Used by the compiler before a call's arguments.
+    emitter int temporaryMark() { _bglStringLockStack.stackMark() }
+    /// Hold `v` if it is a temporary; a live string passes through. Used by the compiler on an argument.
+    emitter stringObj holdTemporary(stringObj v) { _bglStringLockStack.stackLock($v) }
+    /// Release what was held since the open mark and close it, passing `result` through; `marked` only orders the mark first. Used by the compiler around a call.
+    emitter var releaseTemporaries(var result, int marked) { _bglStringLockStack.stackDrain($result, $marked) }
     /// Give the buffer back. Runs automatically when the declaring block ends.
     emitter void deinit() { if ($self) $self.free(); }
 
@@ -1365,6 +1430,7 @@ emitter class stringObj {
 /// compared and searched without first being copied into a `stringObj`.
 extend class stringLiteral {
     emitter stringObj operator + (string v)      { _bglStr.append($self, $v) }
+    emitter stringObj operator + (stringObj v)   { _bglStr.append($self, $v) }
     emitter stringObj operator + (charLiteral c) { _bglStr.appendChar($self, $c) }
 
     // Upgrade the literal's own comparison too. Core declares these as address

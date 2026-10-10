@@ -67,6 +67,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `remove` | control (soft: inside `extend` of an array) | §12.11 |
 | `replace` | qualifier, I6 | §6.5, §8.7.2 |
 | `replaced` | operator (call to the replaced routine) | §6.5 |
+| `required` | qualifier (soft: before a member's type) | §8.3.6 |
 | `return` | control | §5.14 |
 | `rfalse` | control | §5.14 |
 | `rtrue` | control | §5.14 |

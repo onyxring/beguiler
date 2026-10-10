@@ -1,0 +1,9 @@
+// `required` with a value of its own, or on a member an ancestor already gives, has no effect: warned.
+// EXPECT_WARNING: 'weight' is required but has a value here, so nothing needs to supply it.
+// EXPECT_WARNING: 'f' is required but has a body here, so nothing needs to supply it.
+// EXPECT_WARNING: 'size' already gets a value from 'Base', so 'required' has no effect here.
+#beguilerSettings { target = z5; informName = "none"; }
+class Base : _bglObject { int size = 3; required int weight = 2; required int f() { return 1; } }
+class Sub : Base { required int size; }
+Sub s { }
+void main(){ }

@@ -253,7 +253,7 @@ that is not a declared property is a compile-time error.
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.
 
 The value is whatever has been fixed when the reference is parsed. A string property not yet set
-reads as `""` and an integer property as `0`, except the three runtime sizes, which read as their
+reads as `""` and an integer property as `0`, except the four runtime sizes, which read as their
 defaults; so the block that sets a property must precede, in parse order, any reference to it.
 
 Inside the raw-I6 body of `#emitfirst`, `#emitlast`, `#storedEmitFirst` and `#storedEmitLast`, the

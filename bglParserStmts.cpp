@@ -199,6 +199,27 @@ void bglParser::rejectEscapingLambda(const expression* e, const string& where){
             "capture them; this one captures '{1}'.", where, captured));
 }
 
+void bglParser::rejectLoopStoredLambda(const expression* e, const string& target){
+    if(e == nullptr || loopBlockDepths.empty()) return;
+    string v = e->text();
+    v.erase(remove_if(v.begin(), v.end(), [](char c){ return isspace((unsigned char)c); }), v.end());
+    while(v.size() > 2 && v.front() == '(' && v.back() == ')') v = v.substr(1, v.size() - 2);
+    if(v.rfind("_bglLambda_", 0) != 0 || v.find_first_of("(,") != string::npos) return;
+    string captured = capturedByLambdaIn(e);
+    if(captured.empty()) return;
+    // Where the target was declared: a block on the stack, or the routine itself (params, top level).
+    string name = target.substr(0, target.find_first_of(".[("));
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
+    long declaredAt = -1;
+    for(long i = (long)activeBlockStack.size() - 1; i >= 0 && declaredAt < 0; i--)
+        if(statementBlock* blk = activeBlockStack[i])
+            for(statement* s : blk->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s); vd && vd->name == name){ declaredAt = i; break; }
+    if(declaredAt >= (long)loopBlockDepths.back()) return;   // declared inside the loop: one per pass
+    parsingError(format("The lambdas this loop stores in '{0}' all share one copy of '{1}'; a lambda stored "
+        "in a loop can capture only const values.", target, captured));
+}
+
 bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'return' is not valid at global scope");
@@ -336,7 +357,7 @@ bool bglParser::processWhile(vector<token>& t, Qualifiers&, abstractObject& ctx)
     if(func != nullptr){ whileCtx.returnType = func->returnType; whileCtx.params = func->params; }
     whileCtx.body = whileStmt.body;
     token next = file.getToken();
-    loopDepth++;
+    loopDepth++; loopBlockDepths.push_back(activeBlockStack.size());
     if(next.is(token::braceOpen)){
         openCompileContext(eCompileContext::codeBlock, whileStmt.body);
         while(processNextStatement(whileCtx) == false){}
@@ -344,7 +365,7 @@ bool bglParser::processWhile(vector<token>& t, Qualifiers&, abstractObject& ctx)
     } else {
         processBracelessBody(next, whileCtx);
     }
-    loopDepth--;
+    loopDepth--; loopBlockDepths.pop_back();
     moveConditionIntoBody(whileStmt.condition, condSetup, whileStmt.body);
     if(body != nullptr) body->statements.push_back(&whileStmt);
     return false;
@@ -403,7 +424,7 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
     if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
     forCtx.body = forStmt.body;
     token next = file.getToken();
-    if(!loopVarName.empty()) currentLoopVars.insert(loopVarName); loopDepth++;
+    if(!loopVarName.empty()) currentLoopVars.insert(loopVarName); loopDepth++; loopBlockDepths.push_back(activeBlockStack.size());
     if(next.is(token::braceOpen)){
         openCompileContext(eCompileContext::codeBlock, forStmt.body);
         while(processNextStatement(forCtx) == false){}
@@ -418,7 +439,7 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
         incrStmt->text = incrText + ";";
         forStmt.body->statements.push_back(incrStmt);
     }
-    loopDepth--; if(!loopVarName.empty()) currentLoopVars.erase(loopVarName);
+    loopDepth--; loopBlockDepths.pop_back(); if(!loopVarName.empty()) currentLoopVars.erase(loopVarName);
     moveConditionIntoBody(forStmt.condition, condSetup, forStmt.body);
     if(body != nullptr) body->statements.push_back(&forStmt);
     return false;
@@ -500,7 +521,7 @@ bool bglParser::processForInLiteralList(const std::string& elemVarName, std::str
     if(elemVarType.rfind("func<", 0) == 0) elemParam.type.name = elemVarType;
     forCtx.params.push_back(&elemParam);
     token next = file.getToken();
-    currentLoopVars.insert(elemVarName); loopDepth++;
+    currentLoopVars.insert(elemVarName); loopDepth++; loopBlockDepths.push_back(activeBlockStack.size());
     if(next.is(token::braceOpen)){
         openCompileContext(eCompileContext::codeBlock, fi.body);
         while(processNextStatement(forCtx) == false){}
@@ -508,7 +529,7 @@ bool bglParser::processForInLiteralList(const std::string& elemVarName, std::str
     } else {
         processBracelessBody(next, forCtx);
     }
-    loopDepth--; currentLoopVars.erase(elemVarName);
+    loopDepth--; loopBlockDepths.pop_back(); currentLoopVars.erase(elemVarName);
     if(body != nullptr) body->statements.push_back(&fi);
     return false;
 }
@@ -537,7 +558,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
         forCtx.body = forStmt.body;
         token next = file.getToken();
-        currentLoopVars.insert(elemVarName); loopDepth++;
+        currentLoopVars.insert(elemVarName); loopDepth++; loopBlockDepths.push_back(activeBlockStack.size());
         if(next.is(token::braceOpen)){
             openCompileContext(eCompileContext::codeBlock, forStmt.body);
             while(processNextStatement(forCtx) == false){}
@@ -545,7 +566,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         } else {
             processBracelessBody(next, forCtx);
         }
-        loopDepth--; currentLoopVars.erase(elemVarName);
+        loopDepth--; loopBlockDepths.pop_back(); currentLoopVars.erase(elemVarName);
         if(body != nullptr) body->statements.push_back(&forStmt);
         return false;
     }
@@ -746,7 +767,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
     forCtx.params.push_back(&elemParam);
     forCtx.body = fi.body;
     token next = file.getToken();
-    currentLoopVars.insert(elemVarName); loopDepth++;
+    currentLoopVars.insert(elemVarName); loopDepth++; loopBlockDepths.push_back(activeBlockStack.size());
     if(next.is(token::braceOpen)){
         openCompileContext(eCompileContext::codeBlock, fi.body);
         while(processNextStatement(forCtx) == false){}
@@ -754,7 +775,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
     } else {
         processBracelessBody(next, forCtx);
     }
-    loopDepth--; currentLoopVars.erase(elemVarName);
+    loopDepth--; loopBlockDepths.pop_back(); currentLoopVars.erase(elemVarName);
     if(body != nullptr) body->statements.push_back(&fi);
     return false;
 }
@@ -927,13 +948,13 @@ bool bglParser::processDo(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(func != nullptr){ doCtx.returnType = func->returnType; doCtx.params = func->params; }
     doCtx.body = doStmt.body;
     // Caller already consumed "do" "{" — parse body
-    loopDepth++;
+    loopDepth++; loopBlockDepths.push_back(activeBlockStack.size());
     size_t continuesBefore = parsedContinues.size();
     int bodyDepth = loopDepth;
     openCompileContext(eCompileContext::codeBlock, doStmt.body);
     while(processNextStatement(doCtx) == false){}
     closeCompileContext(eCompileContext::codeBlock);
-    loopDepth--;
+    loopDepth--; loopBlockDepths.pop_back();
     // Expect 'while' or 'until'
     token keyword = file.getToken({eTokenType::identifier, eTokenType::dataType});
     if(keyword.is("while")) doStmt.isWhile = true;
@@ -1005,8 +1026,14 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
                 if(!conditionType.empty() && !val->resolvedType.empty()
                    && !isTypeCompatible(val->resolvedType, conditionType)
                    && val->resolvedType != "verb")
+                {
+                    // An object is its own type; name the class it is an instance of.
+                    string shown = typeDisplayName(val->resolvedType);
+                    if(objectDef* od = languageService.findObjectType(val->resolvedType); od && od->objectClass)
+                        shown = od->objectClass->dName();
                     parsingError(format("Switch case type '{0}' does not match condition type '{1}'",
-                                       val->resolvedType, conditionType));
+                                       shown, typeDisplayName(conditionType)));
+                }
                 return val;
             };
             auto parseNextEntry = [&](expression*& lastExpr) {
@@ -1635,7 +1662,7 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
         file.getToken(token::assignment);
         expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
         if(valExpr != nullptr && !valExpr->resolvedType.empty()
-           && !isArrayElementCompatible(valExpr->resolvedType, innerElem))
+           && !zeroFitsBnum(valExpr, innerElem) && !isArrayElementCompatible(valExpr->resolvedType, innerElem))
             parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
                                 typeDisplayName(valExpr->resolvedType), typeDisplayName(innerElem)));
         checkByteElementRange(valExpr, innerElem);
@@ -1669,6 +1696,9 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
     if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(arrPath, func, body)))
         if(arr->literalElements) checkLiteralElements(*arr, {valExpr});
+    if(arrPath.find('.') != string::npos || languageService.findGlobalAs<arrayDeclaration>(arrPath) != nullptr)
+        rejectEscapingLambda(valExpr, format("stored in '{0}'", arrPath));
+    else rejectLoopStoredLambda(valExpr, arrPath);
 
     // Resolve array type and compute $self/$prop
     string arrType = resolvePathType(arrPath, func, body);
@@ -1701,7 +1731,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
             typeDisplayName(elemType), typeDisplayName(arrType)));
     }
     // Validate value type against element type
-    if(!valType.empty() && !isArrayElementCompatible(valType, elemType))
+    if(!valType.empty() && !zeroFitsBnum(valExpr, elemType) && !isArrayElementCompatible(valType, elemType))
         parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
             typeDisplayName(valType), typeDisplayName(elemType)));
     checkByteElementRange(valExpr, elemType);
@@ -1774,6 +1804,9 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     if(!isMemberWordArray && !setMethod->isEmitter)   // a routine-bodied operator []= is a method
         callStmt.functionName = arrPath + "." + (setMethod->i6name.empty() ? mangleOperatorName(setMethod->name)
                                                                             : setMethod->i6name);
+    // The value's set-up (a lifted ternary, a call's kept result) runs before the store.
+    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    pendingInjections.clear();
     if(body != nullptr) body->statements.push_back(&callStmt);
     for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
     postInjections.clear();
@@ -1969,7 +2002,9 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         if(size_t d = qualified.rfind('.'); d != string::npos){
             string recvPath = lhsOriginal.substr(0, lhsOriginal.rfind('.'));
             string mem      = qualified.substr(d + 1);
-            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body, mem), mem);
+            string recvType = resolveIdentifierType(recvPath, func, body, mem);
+            if(recvType.empty()) recvType = resolvePathType(recvPath, func, body);   // through namespace aliases
+            string aliased  = memberI6Name(recvType, mem);
             if(aliased != mem) qualified = qualified.substr(0, d + 1) + aliased;
         }
         t.variableLeft = qualified;
@@ -1992,7 +2027,9 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
             string mem      = lhsOriginal.substr(ed + 1);
             // Resolve the member alias against the ORIGINAL receiver path — the type registry keys
             // on Beguile names, so rewriting the receiver first would lose the type.
-            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+            string recvType = resolveIdentifierType(recvPath, func, body);
+            if(recvType.empty()) recvType = resolvePathType(recvPath, func, body);
+            string aliased  = memberI6Name(recvType, mem);
             // The receiver may carry an `as` alias of its own (`object beacon as lamp`). A proxy
             // emitter addresses it directly — parentProp's body is `move $self to $v` — so $self
             // has to be the emitted name, or the store targets an object I6 never declared.
@@ -2177,8 +2214,7 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
                         }
         }
         if(leftType == nullptr)
-            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lhsOriginal)){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; }
-    }
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lhsOriginal)){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; }    }
 
     // Resolve via getDispatchClass so a template-typed LHS (e.g. `array<int>`) reaches
     // operator= dispatch — getType("array<int>") returns null (only the base `array` is
@@ -2470,6 +2506,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
         bool isLocal = lhsOriginal.find('.') == string::npos
             && (qualifyFromParams(head, func) || qualifyFromBodyLocals(head, body) || qualifyFromAncestorBlocks(head, body));
         if(!isLocal) rejectEscapingLambda(rhs, format("stored in '{0}'", lhsOriginal));
+        else rejectLoopStoredLambda(rhs, lhsOriginal);
         if(variableDeclaration* vd = findAssignedDeclaration(lhsOriginal, func, body))
             if(vd->isLiteral)
                 checkLiteralValue(isUnionType(vd->type.name) ? splitUnionType(vd->type.name) : vector<string>{vd->type.name},
@@ -2693,6 +2730,9 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     if(processArrayBracedCompound(tok, symbol, lhs, sc)) return false;
 
     expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
+    if(tok.value.find('.') != string::npos || languageService.findGlobalAs<arrayDeclaration>(tok.value) != nullptr)
+        rejectEscapingLambda(rhs, format("stored in '{0}'", tok.value));
+    else rejectLoopStoredLambda(rhs, tok.value);
     // Set-up the operand needs (a `?.` test, a temp) runs before the assignment that reads it.
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
@@ -2740,6 +2780,12 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             auto* opFunc = dynamic_cast<functionDef*>(m);
             return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
                    && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var"
+                   && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+        });
+        // A `var` operand skips type checking: it takes the operator the left side has.
+        if(!m && rhsType == "var") m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+            auto* opFunc = dynamic_cast<functionDef*>(m);
+            return opFunc && opFunc->name==symbol.value && opFunc->isEmitter && opFunc->params.size()==1
                    && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
         });
         if(m){
@@ -2869,6 +2915,9 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
     statementBlock* body = sc.body;
     string rawName = (string)tok;
     // replace chaining: replaced() resolves to the predecessor's mangled name
+    if(rawName == "replaced" && currentFunc && currentFunc->replaceFoundNothing)
+        parsingError(format("replaced() has nothing to call: no '{0}' is declared before this replace. A replace "
+            "follows what it replaces; move it below '{0}' (or below the include that declares it).", currentFunc->dName()));
     if(rawName == "replaced" && currentFunc && !currentFunc->replacedTarget.empty()){
         rawName = currentFunc->replacedTarget;
         currentFunc->replacedWasCalled = true;
@@ -3341,9 +3390,10 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         chainReturnType = chainMethod->returnType.name;
         chainTok = file.getToken();
     }
-    // A lambda body parsed as a statement ends at the enclosing argument list's `,` or `)`, which
-    // is handed back for that list to read.
-    if(lambdaBodyStatement && (chainTok.is(token::comma) || chainTok.is(token::parenClose))){
+    // A lambda body parsed as a statement ends at the enclosing argument list's `,` or `)`, or at
+    // the `;` of the declaration or assignment it is the value of; that token is handed back.
+    if(lambdaBodyStatement && (chainTok.is(token::comma) || chainTok.is(token::parenClose)
+                               || chainTok.is(token::endStatement))){
         stashedToken = chainTok;
         return false;
     }
@@ -3405,6 +3455,33 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
     // would grow the stack per iteration.
     if(callStmt.emitterBody.find("$target") != string::npos)
         callStmt.emitterBody = replaceWord(callStmt.emitterBody, "$target", "sp");
+
+    // Temporaries among the arguments are held until the call returns. An emitter body that is
+    // statements, not one expression, has nowhere to put the release, so it is left as it is.
+    {
+        string eb = callStmt.emitterBody;
+        size_t z = eb.find_last_not_of(" \t\r\n;");
+        bool expressionForm = eb.empty() || eb.substr(0, z + 1).find(';') == string::npos;
+        bool interpolated = false;
+        for(auto& segs : callStmt.interpSegmentsPerArg) if(!segs.empty()) interpolated = true;
+        if(expressionForm && !interpolated){
+            vector<string> texts;
+            vector<pair<string*, string>> operands;
+            for(expression* a : callStmt.args) texts.push_back(a->text());
+            for(size_t i = 0; i < callStmt.args.size(); i++) operands.push_back({&texts[i], callStmt.args[i]->resolvedType});
+            if(HeldTemporaries held = holdCallTemporaries(operands); held.any()){
+                for(size_t i = 0; i < callStmt.args.size(); i++){
+                    callStmt.args[i]->tokens.clear();
+                    callStmt.args[i]->tokens.push_back(texts[i]);
+                }
+                const string marker = "\x01" "call" "\x01";
+                string wrapped = wrapHeldCall(held, marker, &callStmt.heldMarks);
+                size_t m = wrapped.find(marker);
+                callStmt.heldPrefix = wrapped.substr(0, m);
+                callStmt.heldSuffix = wrapped.substr(m + marker.size());
+            }
+        }
+    }
 
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();

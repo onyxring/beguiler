@@ -277,7 +277,7 @@ object. An `array<T>` member may be declared `inline`, making it a positional sl
 class menu : object {
     inline object linkTo;
     inline string title;
-    inline array<dictionaryWord> words;
+    required inline array<dictionaryWord> words;
 }
 
 object root { }

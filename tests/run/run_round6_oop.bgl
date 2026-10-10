@@ -1,0 +1,39 @@
+// run_round6_oop — a try inside a for-in loop body, an object's print() reached through interpolation
+// of a base-typed value, a chain of upcasts on a method receiver, and a ternary stored into an element.
+// EXPECT_OUTPUT: 1c3 0c2 | widget 3|widget 3|widget 3| 1 1 1 | 5 6
+#beguilerSettings { target = z5; }
+array<int> xs = { 1, 2, 3 };
+array<int> slots[2];
+class Widget : object {
+    int n = 3;
+    void print() { print($"widget {n}"); }
+}
+Widget w { "w"; }
+class A : _bglObject { default int rank() { return 1; } }
+class B : A { default int rank() { return 2; } }
+class C : B { int rank() { return 3; } }
+C obj { }
+void main() {
+    bglInit();
+    for (int x in xs) {
+        try { if (x == 2) throw 7; print(x); } catch (int e) { print("c"); }
+    }
+    print(" ");
+    for (int i = 0; i < 3; i++) {
+        try { if (i == 1) throw 7; print(i); } catch (int e) { print("c"); }
+    }
+    print(" | ");
+    object asObject = w;
+    _bglObject asBase = w;
+    print(asObject); print("|");
+    print($"{asObject}"); print("|");
+    print($"{asBase}"); print("| ");
+    print(((A)obj).rank()); print(" ");
+    print(((A)(B)obj).rank()); print(" ");
+    print(((A)((B)obj)).rank()); print(" | ");
+    bool up = true;
+    slots[0] = up ? 5 : 6;
+    slots[1] = !up ? 5 : 6;
+    print(slots[0]); print(" "); print(slots[1]);
+    printLine();
+}

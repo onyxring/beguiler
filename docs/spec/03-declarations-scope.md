@@ -68,6 +68,7 @@ the construct it modifies.
 | `value` | A class whose instances are owned by each variable and copied (`value class`). | §8.2.7 |
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
 | `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
+| `required` | A class member every object must get a value for. | §8.3.6 |
 | `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
 | `literal` | A parameter, variable, member or array element type that holds only values known at compile time. | §6.3 |
 
@@ -419,6 +420,7 @@ object ⟨name⟩ asI6 ⟨i6 name⟩ { … }
 ⟨type⟩ ⟨member⟩ asI6 ⟨i6 name⟩ ;              // class or object member
 ⟨type⟩ ⟨method⟩ ( … ) asI6 ⟨i6 name⟩ { … }
 extern ⟨type⟩ ⟨i6 name⟩ asBgl ⟨name⟩ ;
+extern ⟨type⟩ ⟨i6 routine⟩ ( … ) asBgl ⟨name⟩ ;
 ```
 
 **Description**
@@ -446,7 +448,8 @@ directions: each clause names the side its keyword ends in.
 `asI6` is valid on any typed instance declaration, on a named object definition (including instances
 of subclasses such as `room Name asI6 place { }`), and on class and object members, where it follows
 the member name. It is ignored on operator methods; on a type declaration (`extern class`,
-`alias class`) or on a free function it is a compile-time error. The usual reason to reach for either
+`alias class`) or on a free function it is a compile-time error. On an `extern` function `asBgl`
+follows the parameters, as `asI6` does on a method: `extern int I6Twice(int x) asBgl twice;`. The usual reason to reach for either
 clause is that the name required on one side is a keyword or reserved word on the other (§15.9).
 
 A member is emitted as an Inform 6 property, and Inform 6 keeps class names and property names in one

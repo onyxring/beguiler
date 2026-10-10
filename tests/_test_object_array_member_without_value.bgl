@@ -1,0 +1,5 @@
+// Negative test: an object member array with neither capacity nor initializer has no storage.
+// EXPECT_ERROR: Array 'mine' needs a capacity ([n]) or an initializer.
+#beguilerSettings { target = z5; informName = "none"; }
+object o { array<int> mine; }
+void main(){ }

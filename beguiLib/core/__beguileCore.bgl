@@ -82,9 +82,9 @@ emitter class _bglObject{
     emitter bool is(bglClass cls){
         ($val ofclass $cls)
     }
-    /// Print this object's name. What `print(obj)` calls.
+    /// Print this object: its own print() if it has one, otherwise its name.
     emitter void print(){
-        print (name)$val;
+        if($val provides print) $val.print(); else print (name)$val;
     }
 }
 /// A reference to a class, as `obj.is(cls)` takes.

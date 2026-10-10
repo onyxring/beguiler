@@ -1,0 +1,39 @@
+/*  run_puny_scope_entry_additive — the punyInform binding declares scope_stage and the additive properties,
+    and an entry point defined before the library include is the one the library calls.
+*/
+// EXPECT_OUTPUT: Rung.
+// EXPECT_OUTPUT: NewRoom ran.
+// EXPECT_OUTPUT: Object before.
+// EXPECT_OUTPUT: Class before.
+// INPUT: ring bell
+// INPUT: hop
+// INPUT: touch rock
+// INPUT: quit
+#beguilerSettings { target = z5; includePaths = "../../../inform6/puny/lib"; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+void NewRoom() { printLine("NewRoom ran."); }
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+object roomA { "Room A"; attributes = {light}; }
+object roomB { "Room B"; attributes = {light}; }
+object bell  { "bell"; name = {.bell}; }
+
+class Thing : object {
+    bool before() { if (action == Touch) printLine("Class before."); rfalse; }
+}
+Thing rock {
+    "rock"; parent = roomB; name = {.rock};
+    bool before() { if (action == Touch) printLine("Object before."); rfalse; }
+}
+
+bool bellScope() { if (scope_stage == 2) { PlaceInScope(bell); rfalse; } rfalse; }
+verb Ring { grammar = { {.ring, SCOPE(bellScope)} }; void handler() { printLine("Rung."); } }
+
+verb Hop { grammar = {.hop}; void handler() { PlayerTo(roomB); } }
+
+bool Initialise() { rfalse; }

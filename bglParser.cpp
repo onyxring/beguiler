@@ -608,6 +608,122 @@ void bglParser::validateVerbNameClashes(){
     }
 }
 
+// A class that declares `==` without `!=` keeps the inherited `!=`, which compares identity, so
+// `a == b` and `a != b` can both be true.
+void bglParser::validateEqualityPairs(){
+    for(typeDef* g : languageService.globals){
+        auto* cls = dynamic_cast<classDef*>(g);
+        if(cls == nullptr || cls->isExternal || cls->isEmitterClass || cls->isAlias || cls->isPrePassStub) continue;
+        functionDef* eq = nullptr; bool ne = false;
+        for(typeMember* m : cls->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m)){
+                if(fd->name == "==") eq = fd;
+                if(fd->name == "!=") ne = true;
+            }
+        if(eq == nullptr || ne || eq->src.file.empty() || eq->src.file.find("beguiLib") != string::npos) continue;
+        // After the parse no file is open, so the location comes from the declaration.
+        cerr << format("{0}:{1}:{2}: warning: class '{3}' declares operator == but not operator !=, so != "
+            "still compares identity; declare operator != too.", eq->src.file, eq->src.line, max(1, eq->src.col),
+            cls->dName()) << endl;
+    }
+}
+
+// A `required` class member must get a value from each object of the class: from the object itself or
+// from a class between it and the declaring class. A class that requires a member an ancestor already
+// gives a value has no effect (a warning).
+void bglParser::validateRequiredMembers(){
+    // Does this class body itself give `name` a value?
+    // A required routine declared with `;` gets an empty placeholder body, so its body doesn't count;
+    // nor does a `default` body on a required routine, which is the fallback for extern objects.
+    auto givesValue = [](typeMember* m){
+        if(m->isPrePassStub) return false;
+        if(auto* fd = dynamic_cast<functionDef*>(m)){
+            if(fd->isRequired && fd->isDefault) return false;
+            auto* blk = dynamic_cast<statementBlock*>(fd->body);
+            return fd->body != nullptr && !(fd->isRequired && blk != nullptr && blk->statements.empty());
+        }
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(m)) return ad->arraySize > 0 || ad->declaredExpressionValue != nullptr;
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m)) return vd->declaredExpressionValue != nullptr;
+        return false;
+    };
+    auto classSupplies = [&](classDef* c, const string& name){
+        for(typeMember* m : c->members)
+            if(m->name == name && !m->isRequired && givesValue(m)) return true;
+        return false;
+    };
+    auto derives = [](classDef* c, classDef* from){
+        function<bool(classDef*)> walk = [&](classDef* k){
+            if(k == from) return true;
+            for(classDef* b : k->baseClasses) if(walk(b)) return true;
+            return false;
+        };
+        return walk(c);
+    };
+    // Is the requirement met on some path from `c` up to (not including) `owner`?
+    function<bool(classDef*, classDef*, const string&)> metBelow = [&](classDef* c, classDef* owner, const string& name){
+        if(c == owner) return false;
+        if(classSupplies(c, name)) return true;
+        for(classDef* b : c->baseClasses)
+            if(derives(b, owner) && metBelow(b, owner, name)) return true;
+        return false;
+    };
+    auto where = [](const sourceLocation& s){ return format("{0}:{1}:{2}: ", s.file, s.line, max(1, s.col)); };
+
+    vector<pair<classDef*, typeMember*>> required;
+    for(typeDef* g : languageService.globals){
+        auto* cls = dynamic_cast<classDef*>(g);
+        if(cls == nullptr || cls->isPrePassStub) continue;
+        for(typeMember* m : cls->members){
+            if(!m->isRequired || givesValue(m)) continue;   // a value of its own already meets it (warned at parse)
+            string shown = m->displayName.empty() ? m->name : m->displayName;
+            classDef* giver = nullptr;
+            for(classDef* b : cls->baseClasses){
+                function<classDef*(classDef*)> find = [&](classDef* k) -> classDef* {
+                    if(classSupplies(k, m->name)) return k;
+                    for(classDef* bb : k->baseClasses) if(classDef* f = find(bb)) return f;
+                    return nullptr;
+                };
+                if((giver = find(b)) != nullptr) break;
+            }
+            sourceLocation src;
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m)) src = vd->src;
+            else if(auto* fd = dynamic_cast<functionDef*>(m)) src = fd->src;
+            if(giver != nullptr){
+                cerr << where(src) << format("warning: '{0}' already gets a value from '{1}', so 'required' has no effect here.",
+                                             shown, giver->dName()) << endl;
+                continue;
+            }
+            required.push_back({cls, m});
+        }
+    }
+    if(required.empty()) return;
+    vector<objectDef*> objects;
+    for(typeDef* g : languageService.globals)
+        if(auto* obj = dynamic_cast<objectDef*>(g)) objects.push_back(obj);
+    for(verbObjectDef* v : languageService.verbs)
+        if(find(objects.begin(), objects.end(), (objectDef*)v) == objects.end()) objects.push_back(v);
+    for(objectDef* obj : objects){
+        if(obj->isPrePassStub || obj->isExternal) continue;   // Inform 6 supplies an extern object
+        vector<classDef*> classes;
+        if(obj->objectClass) classes.push_back(obj->objectClass);
+        for(typeDef* b : obj->baseClasses)
+            if(auto* bc = dynamic_cast<classDef*>(b); bc && find(classes.begin(), classes.end(), bc) == classes.end())
+                classes.push_back(bc);
+        for(auto& [owner, m] : required){
+            bool isA = false, met = false;
+            for(classDef* c : classes)
+                if(derives(c, owner)){ isA = true; if(metBelow(c, owner, m->name)) met = true; }
+            if(!isA || met) continue;
+            bool own = false;
+            for(typeMember* om : obj->members) if(om->name == m->name && !om->isPrePassStub) own = true;
+            if(own) continue;
+            string shown = m->displayName.empty() ? m->name : m->displayName;
+            parsingError(where(obj->src) + format("'{0}' must give '{1}', which '{2}' requires.",
+                                                  obj->dName(), shown, owner->dName()));
+        }
+    }
+}
+
 // Post-parse validation of `hide` directives. A hide that doesn't resolve to an INHERITED member
 // (or, for an operator hide, whose member type doesn't expose that operator) is a WARNING, not an
 // error (Jim's call — typo/refactor tolerance); the entry simply has no effect. Runs after the full
@@ -652,7 +768,7 @@ void bglParser::checkTypedPropertyMemberTypes(){
     // The property name a member binds to (its i6name override, else its declared name).
     auto propOf = [](variableDeclaration* vd){ return vd->i6name.empty() ? vd->name : vd->i6name; };
 
-    // (1) every member bound to an additive property must be a `rawArray<T>` — or a routine. The
+    // (1) every member bound to an additive property must be a `rawArray<T>`, a routine or a string. The
     // contributions accumulate into one shared run of words: a tracked `array<T>` keeps its length
     // in a trailing slot that would land inside that data, and a scalar has no run at all. A routine
     // is exempt — I6's `before`/`after`/`life`/… are routine-valued additive properties. Rejected
@@ -670,6 +786,8 @@ void bglParser::checkTypedPropertyMemberTypes(){
             // variableDeclaration whose type is inherited from a base member — which is itself
             // checked here. Its own type is empty at this point, so it is not a scalar to reject.
             if(ad == nullptr && vd->type.name.empty()) continue;
+            // A string is one word that the library prints (`each_turn "Water drips.";`).
+            if(ad == nullptr && (vd->type.name == "string" || vd->type.name == "stringorroutine")) continue;
             string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
             if(ad != nullptr)
                 parsingError(where + format("'{0}.{1}' is declared 'array<{2}>', but '{3}' is an ADDITIVE "
@@ -679,7 +797,7 @@ void bglParser::checkTypedPropertyMemberTypes(){
             else
                 parsingError(where + format("'{0}.{1}' is declared '{2}', but '{3}' is an ADDITIVE "
                     "property: its contributions accumulate into one shared run of words, so each must be "
-                    "a `rawArray<T>` (or a routine). A scalar cannot bind to it.",
+                    "a `rawArray<T>`, a routine or a string. A scalar cannot bind to it.",
                     ownerLabel, vd->dName(), typeDisplayName(vd->type.name), propName));
         }
     };
@@ -903,10 +1021,32 @@ static functionDef* lifecycleEmitter(classDef* cls, const string& name){
     return nullptr;
 }
 
+// The class's copying `init`: one parameter of the class's own type.
+static functionDef* copyInitEmitter(classDef* cls){
+    for(typeMember* m : cls->members)
+        if(auto* fn = dynamic_cast<functionDef*>(m))
+            if(fn->isEmitter && fn->name == "init" && fn->params.size() == 1
+               && fn->params[0]->type.name == cls->name && dynamic_cast<i6Block*>(fn->body))
+                return fn;
+    return nullptr;
+}
+
 bool bglParser::synthesizeLifecycleParamCopy(functionDef& funcDef, paramDef& p, classDef* cls){
     functionDef* initFn = lifecycleEmitter(cls, "init");
     functionDef* deinitFn = lifecycleEmitter(cls, "deinit");
     if(initFn == nullptr || deinitFn == nullptr) return false;
+    // A copying `init` takes the argument itself, so it can keep it safe while the parameter's
+    // instance is acquired.
+    if(functionDef* copyInit = copyInitEmitter(cls)){
+        emitterBindings b; b.self = p.name; b.val = p.name; b.selfType = p.type.name; b.trim = emitterTrim::wsSemi;
+        b.fn = copyInit; b.args.push_back(kParamArgMarker);
+        p.isClassParamWithBacking = true;
+        p.copyInText = format("{0} = {1}; {2};", kParamArgMarker, p.name,
+                              expandEmitterBody(dynamic_cast<i6Block*>(copyInit->body), b));
+        b = emitterBindings(); b.self = p.name; b.val = p.name; b.selfType = p.type.name; b.trim = emitterTrim::wsSemi;
+        funcDef.cleanups.push_back({p.name, expandEmitterBody(dynamic_cast<i6Block*>(deinitFn->body), b) + ";"});
+        return true;
+    }
     functionDef* op = findAssignOperator(cls, p.type.name, [](functionDef* f){
         return !f->isEmitter || dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
     if(op == nullptr){
@@ -2574,6 +2714,11 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("superposed"))              { q.isSuperposed = true; advance(); }
         else if(tok.is("typesealed"))              { q.isTypeSealed = true; advance(); }
         else if(tok.is("additive"))                { q.isAdditive   = true; advance(); }
+        // `required` is a keyword only in front of a member's type; it stays an ordinary name elsewhere.
+        else if(tok.value == "required" && (file.peekToken().is(eTokenType::dataType)
+                    || file.peekToken().isOneOf({"array", "rawarray", "inline", "const", "static", "ref", "typesealed", "literal",
+                                                 "default", "emitter"})))
+                                                   { q.isRequired   = true; advance(); }
         else if(tok.value == "literal" && isLiteralQualifierAhead()) { q.isLiteral = true; advance(); }
         // `value` and `primitive` are keywords only in front of `class`: both are ordinary names elsewhere.
         else if(tok.is("value") && file.peekToken().is(token::classDeclaration))     { q.isValue     = true; advance(); }

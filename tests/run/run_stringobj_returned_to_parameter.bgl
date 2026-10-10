@@ -1,0 +1,22 @@
+// run_stringobj_returned_to_parameter — a stringObj a function returns, passed straight to a stringObj
+// parameter, arrives intact: the parameter's copying init keeps the released argument from being
+// handed back out as the parameter's own buffer. The parameter is still a copy.
+// EXPECT_OUTPUT: [5] [42] [   42] [7] m=7
+#beguilerSettings { target = Glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <string>
+stringObj makeNum(int n) { stringObj out = $"{n}"; return out; }
+stringObj ident(stringObj s) { return s; }
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = s.prepend(" ");
+    return s;
+}
+void main() {
+    glulxConsole();
+    bglInit();
+    stringObj m = makeNum(5);
+    print($"[{ident(m)}] [{ident(makeNum(42))}] [{padLeft(makeNum(42), 5)}] ");
+    m = makeNum(7);
+    padLeft(m, 4);
+    printLine($"[{m}] m={m}");
+}

@@ -83,7 +83,7 @@ Every operation takes the buffer as its first argument. Operations that return `
 | `append(to, from)` / `prepend(to, from)` | `array<char>` | Add `from`'s contents at the end / start of `to`. |
 | `insert(to, from, pos[, count])` | `array<char>` | Insert `from` (or its first `count` characters) at `pos`. |
 | `delete(buf, pos, count)` | `array<char>` | Remove `count` characters at `pos`, closing the gap. |
-| `mid(to, from, fromPos, n)` / `left(to, from, n)` / `right(to, from, n)` | `array<char>` | Copy a substring of `from` into `to`; `n == -1` in `mid` means to the end. |
+| `mid(to, from, fromPos, n)` / `left(to, from, n)` / `right(to, from, n)` | `array<char>` | Copy a substring of `from` into `to`; `n == -1` in `mid` means to the end, and a position or count outside `from` is clamped to it. |
 | `indexOf(buf, search[, start])` | `int` | Position of the first occurrence at or after `start`, or `-1`. |
 | `indexOfFirstTrue(buf, pred[, start])` / `indexOfFirstFalse` | `int` | Position of the first character for which `pred(c)` is true / false, or `-1`. `pred` is `func<bool, char>`. |
 | `replace(buf, search, repl)` / `replaceAll(buf, search, repl[, start])` | `array<char>` | Replace the first / every occurrence in place. |
@@ -152,7 +152,7 @@ Two types, for two different things:
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
 | `stringObj` | a buffer of its own, taken from the string pool | yes | allocated on declaration, released at scope exit |
 
-A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. A `stringObj` global is allocated at startup.
+A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. Results may be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`): each is held until the call returns (§8.5). A `stringObj` global is allocated at startup.
 
 `s == null` and `s != null` remain identity tests on both types (there is no content to compare against `null`).
 
@@ -161,7 +161,7 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | Operator | Description |
 |---|---|
 | `s = "text"` / `s = other` | Assign. On a `string` the slot now refers to the text; on a `stringObj` the text is copied into its buffer. `stringObj` also accepts an interpolated string, capturing its output. |
-| `s + v` | Concatenation; `v` is a literal or a string of the same type. Returns a new `stringObj`; `s` is unchanged. |
+| `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char`). Returns a new `stringObj`; neither operand is changed. |
 | `s += v` | **`stringObj` only.** Append in place. |
 | `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
 | `s =~ v` | Content comparison ignoring case. |
@@ -185,7 +185,7 @@ result (`s.append(t.trim())`).
 | `s.toUpper()` / `s.toLower()` | `stringObj` | Case conversion. |
 | `s.trim()` / `s.trimLeft()` / `s.trimRight()` | `stringObj` | Without leading and/or trailing spaces. |
 | `s.reverse()` | `stringObj` | Characters in reverse order. |
-| `s.mid(start, count)` / `s.left(count)` / `s.right(count)` | `stringObj` | Substrings. |
+| `s.mid(start, count)` / `s.left(count)` / `s.right(count)` | `stringObj` | Substrings. A position or count outside the text is clamped to it: `left(-1)` is empty and `left(99)` is the whole text. |
 | `s.insert(pos, src)` | `stringObj` | With `src` inserted at `pos`. |
 | `s.delete(pos, count)` | `stringObj` | With `count` characters removed at `pos`. |
 | `s.replace(search, repl)` / `s.replaceAll(search, repl)` | `stringObj` | With the first / every occurrence replaced. |

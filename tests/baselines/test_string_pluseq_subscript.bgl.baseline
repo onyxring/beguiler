@@ -234,23 +234,46 @@ object _bglBuf
     }
     return true;
   ],
-       mid [toBuf fromBuf fromPos numCharsToCopy maxLen;
-    maxLen=self.length(frombuf) - frompos;
+       mid [toBuf fromBuf fromPos numCharsToCopy len maxLen;
+    len=self.length(fromBuf);
+    if (frompos < 0) {
+        fromPos = 0;
+    }
+    if (frompos > len) {
+        fromPos=len;
+    }
+    maxLen=len - frompos;
     if (numcharstocopy == -1 || numcharstocopy > maxlen) {
         numCharsToCopy=maxLen;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
     }
     self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
     self.setLength(toBuf, numCharsToCopy);
     return tobuf;
   ],
-       left [toBuf fromBuf numCharsToCopy;
+       left [toBuf fromBuf numCharsToCopy len;
+    len=self.length(fromBuf);
+    if (numcharstocopy > len) {
+        numCharsToCopy=len;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
     self.copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
     self.setLength(toBuf, numCharsToCopy);
     return tobuf;
   ],
-       right [toBuf fromBuf numCharsToCopy fromPos;
-    fromPos=self.length(frombuf) - numcharstocopy;
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+       right [toBuf fromBuf numCharsToCopy len;
+    len=self.length(fromBuf);
+    if (numcharstocopy > len) {
+        numCharsToCopy=len;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, len - numcharstocopy);
     self.setLength(toBuf, numCharsToCopy);
     return tobuf;
   ],
@@ -387,6 +410,11 @@ object _bglBuf
 ;
 
     Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
+    Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
+    Array _bglStringLockStackSlots --> bglStringLockStackSize;
+    Global _bglStringLockStackTop = 0;
+    Array _bglStringLockStackMarks --> bglStringLockStackSize;  ! the slot height at each open mark
+    Global _bglStringLockStackMarkTop = 0;
     Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
@@ -1210,3 +1238,5 @@ class _bglString(bglstringpoolreserve)
     }
     return c;
 ];
+object _bglStringLockStack
+;

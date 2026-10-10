@@ -40,6 +40,6 @@ that `#beguilerSettings.prop` may read (§17.7).
 
 **Enum values.** `eTarget`: `Glulx`, `Z5`, `Z8`. `eErrorFormat`: `E1`, `E2`.
 
-**Validation.** `serial` must be exactly six digits; the three `int` sizes must be at least 1;
+**Validation.** `serial` must be exactly six digits; the four `int` sizes must be at least 1;
 `target` must be an `eTarget` member; a regular-string `includePaths` entry must name an existing
 directory.

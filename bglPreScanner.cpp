@@ -1402,17 +1402,9 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             file.getRawTextThroughClosingBrace();
         }
     } else {
-        // extern ClassName Name; or ClassName Name = ...; — variable or object stub
-        if(isVerbType){
-            // extern verb-derived: register as verb object
-            bool alreadyReg = false;
-            for(verbObjectDef* v : languageService.verbs)
-                if(v->name == nameStr){ alreadyReg = true; break; }
-            if(!alreadyReg){
-                verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
-                vs.isPrePassStub = true;
-            }
-        } else {
+        // `ClassName Name;` or `ClassName Name = …;` — a variable of that class, `verb` included (an
+        // action is declared with its body).
+        {
             bool alreadyReg = false;
             if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
             if(!alreadyReg){
@@ -1582,6 +1574,15 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
             stub.i6nameAvoidsKeyword = true;
         }
         preScanCaptureParams(stub.params);
+        // `extern int I6Twice(int x) asBgl twice;` is called `twice` from Beguile.
+        if(isExtern && file.peekToken().is("asbgl")){
+            file.getToken();
+            token bgl = file.getToken();
+            stub.i6name = nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue;
+            nameStr = bgl.value;
+            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+            stub.name = nameStr;
+        }
         bool alreadyReg = false;
         for(typeDef* g : languageService.globals){
             auto* fd = dynamic_cast<functionDef*>(g);

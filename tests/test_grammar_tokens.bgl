@@ -15,8 +15,8 @@
 // Support routines — used as grammar token filters below
 //-----------------------------------------------------------------------------
 
-// A routine used as noun(inScope) — must return bool
-bool inScope() {
+// A routine used as noun(alwaysAllowed) — must return bool
+bool alwaysAllowed() {
     return true;
 }
 
@@ -74,11 +74,11 @@ verb Fiddle {
 
 //-----------------------------------------------------------------------------
 // noun(Routine) — parameterized noun filter
-// Expected I6: * noun=inScope -> ...
+// Expected I6: * noun=alwaysAllowed -> ...
 //-----------------------------------------------------------------------------
 verb Grab {
     grammar = {
-        {.grab, noun(inScope)},
+        {.grab, noun(alwaysAllowed)},
     };
     void handler() {
         print("Grabbed.");
@@ -100,11 +100,11 @@ verb Seek {
 
 //-----------------------------------------------------------------------------
 // Mixed: attribute + noun(Routine) in same line
-// Expected I6: * container noun=inScope -> ...
+// Expected I6: * container noun=alwaysAllowed -> ...
 //-----------------------------------------------------------------------------
 verb Pour {
     grammar = {
-        {.pour, container, noun(inScope)},
+        {.pour, container, noun(alwaysAllowed)},
     };
     void handler() {
         print("Poured.");

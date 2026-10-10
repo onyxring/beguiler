@@ -1,0 +1,9 @@
+// Negative test: an object that gets no value for a required member, from itself or a class between
+// it and the declaring class, is an error.
+// EXPECT_ERROR: 'blob' must give 'sides', which 'Shape' requires.
+#beguilerSettings { target = z5; informName = "none"; }
+class Shape : _bglObject { required array<int> sides; }
+class Square : Shape { array<int> sides = {4, 4, 4, 4}; }
+Square tile { }
+Shape blob { }
+void main(){ }

@@ -349,6 +349,8 @@ string i6Emitter::templateText(const string& name){
     return b == string::npos ? "" : body.substr(b, e - b + 1);
 }
 
+static string groupFrameSlots(string text);
+
 void i6Emitter::applyTemplate(string name, map<string,string> args, string indent){
     auto it = builtinTemplates.find(name);
     if(it == builtinTemplates.end()){
@@ -373,6 +375,7 @@ void i6Emitter::applyTemplate(string name, map<string,string> args, string inden
             else pos+=from.size();
         }
     }
+    if(!currentSpillAliases.empty()) body = groupFrameSlots(body);   // `(_bglFrm-->1)++` in a lifted loop
     // emit each non-blank line with indent prefix
     istringstream ss(body);
     string line;
@@ -795,9 +798,15 @@ void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
             for(size_t at = text.find(kParamArgMarker); at != string::npos; at = text.find(kParamArgMarker, at + arg.size()))
                 text.replace(at, strlen(kParamArgMarker), arg);
         }
+        // A parameter past the fifth lives in a spill global on the Z-machine.
+        if(!currentSpillAliases.empty())
+            text = mapOutsideLiterals(text, [&](string code){
+                for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
+                return groupFrameSlots(code);
+            });
         out << indent << text << "\n";
         if(!p->backingName.empty())
-            out << format("{0}{1} = {2};\n", indent, p->name, p->backingName);
+            out << format("{0}{1} = {2};\n", indent, spillWord(p->name), p->backingName);
     }
 }
 
@@ -1814,6 +1823,9 @@ auto resolveInstanceClass = [&](typeDef* node) -> classDef* {
         if(vd->type.name == "property") return nullptr;
         auto* cd = languageService.findClass(vd->type.name);
         if(!cd || cd->isEmitterClass || cd->isAlias || cd->isExternal) return nullptr;
+        // A reference-class global holds an object reference, which needs no class declared first;
+        // only a value class's global owns an instance of it.
+        if(!isValueClass(cd)) return nullptr;
         // Only user classes with stored members require class-before-instance ordering.
         for(typeMember* m : cd->members){
             auto* mv = dynamic_cast<variableDeclaration*>(m);
@@ -2831,7 +2843,10 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
                 call->interpSegmentsPerArg[interpArgIdx], indent);
         } else {
             while(!b.empty() && b.back()==';') b.pop_back();
-            out << indent << spillWord(b) << ";\n";   // locals the body names directly (a member-array owner)
+            string heldSuffix = call->heldSuffix;
+            for(size_t k = 0; k < call->heldMarks.size(); k++)
+                heldSuffix = replaceEvery(heldSuffix, heldMarkPlaceholder(k), call->heldMarks[k]);
+            out << indent << call->heldPrefix << spillWord(b) << heldSuffix << ";\n";   // locals the body names directly (a member-array owner)
         }
     } else {
         // On Z-machine, args beyond the 5th are passed via _bglXPn globals — but ONLY for
@@ -2844,6 +2859,17 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
             if(auto* fd = dynamic_cast<functionDef*>(g))
                 if(fd->isExternal && fd->name == call->functionName){ calleeIsExtern = true; break; }
         size_t maxDirectArgs = (!calleeIsExtern && isZTarget(currentTarget) && call->args.size() > 5) ? 5 : call->args.size();
+        // Held temporaries release back to a mark opened before any argument is evaluated, and the
+        // spilled arguments below are evaluated first: so the mark is opened first, as a statement.
+        string heldSuffix = call->heldSuffix;
+        for(size_t k = 0; k < call->heldMarks.size(); k++){
+            string mark = call->heldMarks[k];
+            if(maxDirectArgs < call->args.size()){
+                out << indent << mark << ";\n";
+                mark = "0";
+            }
+            heldSuffix = replaceEvery(heldSuffix, heldMarkPlaceholder(k), mark);
+        }
         for(size_t i = maxDirectArgs; i < call->args.size(); i++)
             out << format("{0}_bglXP{1} = {2};\n", indent, i - 5, exprText(call->args[i]));
         // Prefer displayName (original case) over functionName (lowercased) — same
@@ -2852,12 +2878,12 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
         const string& emitName = call->displayName.empty() ? call->functionName : call->displayName;
         string callee = spillWord(emitName);
         if(callee.rfind("_bglFrm-->", 0) == 0) callee = "(" + callee + ")";   // a call binds tighter than -->
-        out << indent << callee << token::parenOpen;
+        out << indent << call->heldPrefix << callee << token::parenOpen;
         for(size_t i = 0; i < maxDirectArgs; i++){
             if(i>0) out << ", ";
             out << exprText(call->args[i]);
         }
-        out << token::parenClose << ";\n";
+        out << token::parenClose << heldSuffix << ";\n";
     }
 }
 // An `if` / `else` statement and its blocks.

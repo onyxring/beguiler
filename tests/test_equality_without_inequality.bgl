@@ -1,0 +1,5 @@
+// A class that declares == without != keeps identity for != and is warned.
+// EXPECT_WARNING: declares operator == but not operator !=
+#beguilerSettings { target = z5; informName = "none"; }
+class Part : object { int no; bool operator == (Part o) { return no == o.no; } }
+void main(){ }

@@ -305,6 +305,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     funcDef.isExplicit=isExplicitConversion;
     funcDef.isDefault=q.isDefault;
     funcDef.isStatic=isMemberStatic;   // known before the parameters are read
+    funcDef.isRequired = q.isRequired;
     if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
     else if(!name.docComment.empty())    funcDef.docComment = name.docComment;
     // Non-emitter operator methods (name starts with a non-identifier char, e.g. `=`,
@@ -352,8 +353,11 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         tok = file.getToken();
         return true;
     }
-    if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
-        parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
+    if(isEmitter && funcDef.name == "deinit" && !funcDef.params.empty())
+        parsingError("Emitter 'deinit' cannot accept parameters");
+    if(isEmitter && funcDef.name == "init" && !funcDef.params.empty()
+       && (funcDef.params.size() != 1 || funcDef.params[0]->type.name != newClass.name))
+        parsingError(format("Emitter 'init' takes no parameters, or one '{0}' to copy from.", newClass.dName()));
     if(isMemberStatic && q.isEmitter)
         parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
     if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
@@ -414,7 +418,11 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                     fd->i6name = overloadName(fd);
         }
     }
-    if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
+    if(funcDef.isRequired && !funcDef.isEmitter && file.peekToken().is(token::endStatement)){
+        // `required bool handler();` — each object supplies the body; the class's is empty.
+        file.getToken();
+        funcDef.body = new statementBlock();
+    } else if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
         // extern/alias class non-emitter INSTANCE methods not allowed: they would need to
         // emit a property routine on a class Beguile does not own. A `static` method has no
         // receiver, so it emits as a free routine and carries no such requirement — which is
@@ -429,6 +437,8 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         funcDef.body=&rawblock;
     } else {
         file.getToken(token::braceOpen); //consume the open brace;
+        if(funcDef.isRequired && !funcDef.isDefault)
+            parsingWarning(format("'{0}' is required but has a body here, so nothing needs to supply it.", funcDef.dName()));
         if(funcDef.isEmitter){
             i6Block& rawblock=*(new i6Block());
             rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
@@ -553,7 +563,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                     for(typeMember* m : c->members)
                         if(auto* fd = dynamic_cast<functionDef*>(m))
                             if(fd->name == funcDef.name && sigMatches(fd)){
-                                shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return;
+                                shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault || fd->isRequired; return;
                             }
                     for(classDef* base : c->baseClasses) searchBases(base);
                 };
@@ -716,6 +726,9 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     if(q.isTypeSealed) varDef.isTypeSealed = true;
     varDef.isLiteral = q.isLiteral;
     varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
+    varDef.isRequired = q.isRequired;
+    if(q.isRequired && tok.is(token::assignment))
+        parsingWarning(format("'{0}' is required but has a value here, so nothing needs to supply it.", varDef.dName()));
     if(q.isRef){
         string why = refNotApplicable(getDispatchClass(varDef.type.name), typeDisplayName(varDef.type.name));
         if(!why.empty()) parsingError("'ref': " + why);
@@ -785,7 +798,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
                         expression* elem = list->elements[i];
                         if(elem->resolvedType.empty())
                             parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-                        else if(!isArrayElementCompatible(elem->resolvedType, expectedElemType))
+                        else if(!zeroFitsBnum(elem, expectedElemType) && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
                             parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
                         checkByteElementRange(elem, expectedElemType);
                     }
@@ -1244,10 +1257,12 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             expression* elem = list->elements[i];
             if(elem->resolvedType.empty())
                 parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-            else if(!expectedElemType.empty() && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
+            else if(!expectedElemType.empty() && !zeroFitsBnum(elem, expectedElemType) && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
                 parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
             checkByteElementRange(elem, expectedElemType);
         }
+        if(list->elements.empty() && (typeName.rfind("array<", 0) == 0 || typeName.rfind("rawarray<", 0) == 0))
+            parsingError(format("Array '{0}' has no storage: give it at least one element, or leave it to the class.", prop.dName()));
         prop.declaredExpressionValue = list;
     } else {
         expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
@@ -1432,7 +1447,22 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     }
 
     token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
+    {
+        bool ownerIsClass = dynamic_cast<classDef*>(ctx) != nullptr;
+        bool ownerExtern = false;
+        if(auto* oc = dynamic_cast<classDef*>(ctx)) ownerExtern = oc->isExternal || oc->isEmitterClass;   // a shape, no storage
+        else if(auto* oo = dynamic_cast<objectDef*>(ctx)) ownerExtern = oo->isExternal;
+        bool isRequired = q && q->isRequired;
+        string shown = propName.originalValue.empty() ? propName.value : propName.originalValue;
+        if(sym.is(token::endStatement) && !ownerExtern && !(q && (q->isRef || q->isExtern)) && !isRequired)
+            parsingError(ownerIsClass
+                ? format("Array '{0}' needs a capacity ([n]) or an initializer, or 'required' if every object must give it.", shown)
+                : format("Array '{0}' needs a capacity ([n]) or an initializer.", shown));
+        if(isRequired && !sym.is(token::endStatement))
+            parsingWarning(format("'{0}' is required but has a value here, so nothing needs to supply it.", shown));
+    }
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
+    arrDecl.isRequired = q && q->isRequired;
     arrDecl.docComment = docComment;
     arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
@@ -1455,6 +1485,8 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     // `[N]` fixes the capacity; an initializer may follow to seed the leading slots, as on a global.
     if(sym.is(token::bracketOpen)){
         arrDecl.arraySize = readCompileTimeInt("an array's capacity");
+        if(arrDecl.arraySize < 1)
+            parsingError(format("Array '{0}' needs a capacity of at least 1.", arrDecl.dName()));
         promoteMemberArrayIfOversized(arrDecl);
         file.getToken(token::bracketClose);
         sym = file.getToken({token::endStatement, token::assignment});
@@ -1510,6 +1542,9 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
            seed != nullptr && (int)seed->elements.size() > arrDecl.arraySize)
             parsingError(format("Array '{0}' declares capacity {1} but its initializer supplies {2} elements.",
                                 arrDecl.dName(), arrDecl.arraySize, seed->elements.size()));
+    if(auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
+       seed != nullptr && seed->elements.empty() && arrDecl.arraySize <= 0)
+        parsingError(format("Array '{0}' has no storage: give it a capacity ([n]) or at least one element; declare it 'ref' to share another array.", arrDecl.dName()));
     // Set byte array type for char arrays
     if(elemType == "char"){
         arrDecl.isByteArray = true;
@@ -1623,7 +1658,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
             for(typeMember* m : c->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(fd->name == funcDef.name && sigMatches(fd)){
-                        shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return;
+                        shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault || fd->isRequired; return;
                     }
             for(classDef* base : c->baseClasses) searchClass(base);
         };
@@ -2059,6 +2094,9 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
     token symbol = file.getToken({token::bracketOpen, token::assignment, token::endStatement, token::parenOpen});
     if(symbol.is(token::parenOpen))
         return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
+    if(symbol.is(token::endStatement) && !q.isExtern && !q.isRef)
+        parsingError(format("Array '{0}' needs a capacity ([n]) or an initializer; declare it 'ref' to share another array.",
+                            name.originalValue.empty() ? name.value : name.originalValue));
     processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern, q.isSuperposed, q.isConst);
     return false;
 }
@@ -2364,8 +2402,12 @@ bool bglParser::processAliasedDeclaration(token typeTok, token nameTok, token al
     // Entered after "Type name as alias" have been consumed. Reads symbol.
     string i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
-    if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
+    if(symbol.is(token::parenOpen)){
+        if(q.isExtern)
+            parsingError(format("On an extern function the clause follows the parameters: `extern {0} {1}(…) asBgl {2};`.",
+                (string)typeTok, i6alias, nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+        parsingError("'asI6' can't rename a free function.");
+    }
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, "", i6alias, true, q.isEmitter);
     else
@@ -2656,6 +2698,8 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         return;
     }
     Qualifiers q = parseQualifiers(tok);
+    if(q.isRequired)
+        parsingError("'required' applies to class members: an object gives the member its value.");
     bool memberIsReplace = q.isReplace;
     // `box = v` where a class is also named Box (the member emits under an `asI6` name): a type
     // followed by `=` can't begin a declaration, so this is the member.
@@ -2821,11 +2865,8 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     closeCompileContext(eCompileContext::objectDef);
     currentObject = savedObject;
 
-    // Verb-specific post-processing: link handler() (the action body) and require it on native verbs.
-    // A native verb with no handler() would fall back to the default Sub bridge and recurse at
-    // runtime, so this is a hard error. `extern verb` is exempt — its action routine is defined
-    // elsewhere (the library's <verbName>Sub). (The generic `abstract` member feature, when added,
-    // will subsume this check.)
+    // Verb-specific post-processing: link handler() (the action body). `verb` declares handler()
+    // `required`, so a verb that gives none is reported with the other required members.
     if(vod && !isExternal){
         for(typeMember* m : vod->members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -2835,11 +2876,9 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         if(!vod->doFunc && vod->objectClass != nullptr)
             if(typeMember* m = findMemberInHierarchy(vod->objectClass, [](typeMember* x){
                     auto* fd = dynamic_cast<functionDef*>(x);
-                    return fd != nullptr && fd->name == "handler" && !fd->isEmitter;
+                    return fd != nullptr && fd->name == "handler" && !fd->isEmitter && !fd->isRequired;
                 }))
                 vod->doFunc = dynamic_cast<functionDef*>(m);
-        if(!vod->doFunc)
-            parsingError(format("verb '{0}' must define handler() (its body becomes the I6 <verbName>Sub action routine). Declare it 'extern verb' if the action routine is defined elsewhere.", origName));
     }
 
     return false;
@@ -2915,7 +2954,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
             expression* elem;
             std::string clauseStr;
             classDef* elemCls = getDispatchClass(arr->elementType);
-            if(elemTok.is(token::braceOpen) && elemCls != nullptr && isObjectBackedClass(elemCls)){
+            if(elemTok.is(token::braceOpen) && isInlineConstructible(elemCls) && !isArrayOfArraysElement(arr->elementType)){
                 // Inferred inline object: a bare `{ … }` takes the array's element type (the '{' is
                 // already consumed). Bake an anon object and inject a reference, just like the explicit
                 // `Type{ … }` form below. The clause keyword (or ';') follows the closing '}'.

@@ -262,7 +262,10 @@ form is usable in an expression or a comparator lambda.
 
 A type with `<=>` but without `<`, `>`, `<=` or `>=` gets the missing ones from it: `a < b` means
 `(a <=> b) < 0`, and likewise for the others. An ordering operator the type declares, or inherits,
-takes precedence. `==` and `!=` are never derived from `<=>`.
+takes precedence. `==` and `!=` are never derived from `<=>`, and `!=` is not derived from `==`: a
+class that declares `operator ==` without `operator !=` keeps the inherited `!=`, which compares
+identity, so `a == b` and `a != b` can both be true. The compiler warns about such a class; declare
+both.
 
 **Example**
 

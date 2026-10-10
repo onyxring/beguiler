@@ -56,6 +56,12 @@ extern property u_to;
 extern property d_to;
 extern property in_to;
 extern property out_to;
+extern additive property before;     /// Runs before an action on this object; return true to stop the action.
+extern additive property after;      /// Runs after an action on this object; return true to replace the library's report.
+extern additive property life;       /// Handles actions aimed at an animate object; return true to stop them.
+extern additive property describe;   /// Prints the object's paragraph in a room description; return true to replace the default.
+extern additive property time_out;   /// Runs when the object's timer reaches zero.
+extern additive property each_turn;  /// Runs at the end of every turn the object is in scope; string or routine.
 
 //-- Global constants ---------------------------------------------------------------
 // Direction values the parser uses before a direction is resolved; most code uses selected_direction.
@@ -93,6 +99,7 @@ extern int      special_word;               /// dictionary address for "special"
 extern int      special_number;             /// number typed for "special" token
 extern int      verb_word;                  /// the verb word
 extern int      verb_wordnum;               /// verb position in input
+extern int      scope_stage;                /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on; place objects in scope on pass 2.
 extern int      wn;                         /// word number currently being parsed
 extern int      num_words;                  /// number of words typed
 extern int      keep_silent;                /// suppress action output
@@ -365,7 +372,7 @@ extern verb ThrownAt { }       /// Runs on second when noun is thrown at it.
 extern verb Order { }          /// Runs on a character told to do something it has no orders for.
 extern verb PluralFound { }    /// Tells parse_name that a plural word matched.
 extern verb NotUnderstood { }  /// Runs when a command to a character is not understood.
-extern verb OopsCorrection;  /// replace the mistyped word with second (meta)
+extern verb OopsCorrection { }  /// replace the mistyped word with second (meta)
 
 //-- General bits of I6-to-Beguile setup ----------------------------------------
 
