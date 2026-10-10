@@ -1,0 +1,87 @@
+Room A
+Room A. A workbench stands here.
+On the workbench are an iron clamp and a folding rule.
+> report
+Item           Count         Value     Share
+============================================
+Hinges         1,250       $437.50    10.51%
+Brackets          87       $104.40     2.51%
+Wood screws   23,400       $936.00    22.49%
+Sandpaper          6         $5.94     0.14%
+Glue             412     $2,678.00    64.35%
+============================================
+Total                    $4,161.84   100.00%
+> numbers
+ 000              0
+ 007              7
+ 999            999
+ 000          1,000
+ 000        -45,210
+ 567      1,234,567
+ 647  2,147,483,647
+Thirds: 0.33 0.67; whole: 5.00; default print: 0.6667.
+> bars
+Hinges      |# 5.34%
+Brackets    |# 0.37%
+Wood screws |#################### 100.00%
+Sandpaper   |# 0.03%
+Glue        |# 1.76%
+> wrap
+: Clamp the two boards
+: together, wait for the glue
+: to set, then sand the joint
+: until it is smooth to the
+: touch.
+--
+* short
+* words only
+> search
+"the" appears 4 times; "glue" 1; "nail" 0.
+A glue sets; then the clamp comes off. The joint holds.
+The glue sets; thisn this clamp comes off. The joint holds.
+Before the semicolon: [The glue sets]; after: [then the ]; last word: [holds.].
+Starts with "The glue": true; ends with "holds.": true.
+> case
+The Étude Of Wood-Turning
+total_weight_in_grams
+total weight in grams
+cRÈME bRÛLÉE 42
+ÅNGSTRÖM / ångström
+> menu
+Menu
+  1. Look around
+  2. Count things
+  3. Show the rule
+Type CHOOSE and a number (3 options).
+> choose 2
+2 things on the bench, 0 carried.
+> capture
+On the bench: an iron clamp, a folding rule.
+As prose: an iron clamp and a folding rule.
+Captured 49 characters: THE WORKBENCH HOLDS 2 ITEMS; 1 MENU PICKS SO FAR.
+Words: 10; digits spelled: The workbench holds 2 items; one menu picks so far.
+> take clamp
+Taken.
+> @link 2
+1 thing on the bench, 1 carried.
+> @link 1
+Room A
+Room A. A workbench stands here.
+On the workbench is a folding rule.
+> choose 3
++----------------+
+| Measure twice, |
+|   cut once.    |
+|   -- shop rule |
++----------------+
+> choose 4
+No option 4.
+> capture
+On the bench: a folding rule.
+As prose: a folding rule.
+Captured 48 characters: THE WORKBENCH HOLDS 1 ITEM; 4 MENU PICKS SO FAR.
+Words: 10; digits spelled: The workbench holds one item; 4 menu picks so far.
+> format
+[Glue]
+Glue x 412
+Line 5: Glue at $6.50

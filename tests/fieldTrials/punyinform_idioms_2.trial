@@ -1,0 +1,57 @@
+Yard
+Yard. A garden is northeast.
+A spade leans on the wall.
+A cart stands here.
+> take spade
+Got it.
+> jump
+You hop.
+> enter cart
+You enter the cart.
+> jump
+Not in the cart.
+> search me
+You pat your pockets.
+> northeast
+The cart rolls.
+Garden (in the cart)
+Garden. The yard is southwest.
+A cart stands here, with you in it.
+You can also see a kettle, a glass case (which contains a coin) and two seeds (a red seed and a blue seed) here.
+> get out
+You leave the cart.
+> southwest
+Yard
+> northeast
+Gravel crunches.
+Garden
+A cart stands here.
+You can also see a kettle, a glass case (which contains a coin) and two seeds (a red seed and a blue seed) here.
+> ring bell
+You ring the bell.
+> turn on kettle
+You switch the kettle on.
+> x kettle
+A kettle, 2 turns from boiling.
+The kettle rattles.
+> chant one 7 zebra
+1 7 ?
+> count three
+one, two, three.
+The kettle whistles and switches off.
+> poke coin
+The glass case isn't open.
+> poke case
+You poke the glass case.
+> probe
+Bell out of scope, wall in scope, 3 rooms entered.
+> home
+You are back in the yard.
+> ring bell
+No bell is within earshot.
+> probe
+Bell out of scope, wall in scope, 4 rooms entered.
+> finish
+  *** Trial finished ***
+In that game you scored 0 out of a possible 0, in 18 turns.
+Would you like to RESTART, RESTORE or QUIT?

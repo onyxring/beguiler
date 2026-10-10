@@ -1,0 +1,55 @@
+Map: E to C has no way back.
+Recipe 3: needs nothing.
+Reply 3: repeats key 'wood'.
+Stop 3: turn 5 is out of order.
+Data check: 4 problems.
+Room A
+Room A.
+You can see a clerk here.
+> ask clerk about ladder
+The clerk wants to see: craft.
+> ask clerk about wood
+The clerk says wood makes planks.
+The clerk goes to B.
+> exits
+From A: 0=B 1=C(locked)
+> step 1
+Room C needs: take.
+> grant 1
+take: granted.
+The clerk arrives.
+> make plank
+Making needs: craft.
+The clerk goes to E.
+> toggle 2
+Badge: enter, take, craft, talk.
+> make plank
+Made plank (1 now).
+> make crate
+Short for crate: have 1 plank, 5 nail.
+> uses plank
+crate <- 2 plank + 4 nail (3)
+ladder <- 3 plank + 1 rope (2)
+Recipes using plank: 2.
+> recipes cost
+0. plank <- 2 wood + 1 nail (1)
+1. rope <- nothing (1)
+2. ladder <- 3 plank + 1 rope (2)
+3. crate <- 2 plank + 4 nail (3)
+> recipes name
+0. crate <- 2 plank + 4 nail (3)
+1. ladder <- 3 plank + 1 rope (2)
+2. plank <- 2 wood + 1 nail (1)
+3. rope <- nothing (1)
+> route 4
+Route: A B D E (3 steps).
+> revoke 3
+Badge: enter, take, craft.
+> stock
+wood 6 (raw)
+nail 5 (raw)
+rope 1 (made)
+plank 1 (made)
+> step 0
+Room B
+Room B.

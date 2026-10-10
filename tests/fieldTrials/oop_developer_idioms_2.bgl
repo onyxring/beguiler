@@ -1,0 +1,418 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, second pass. Equality vs identity
+// (an instance `==`/`!=` on a reference class, identity through `(object)` casts); `<=>` on a
+// reference class driving `>`/`<=` and `array<T>.sort()`; composition, a bin class that owns an
+// `array<Part>` member sized by a `const`, with indexOf/contains/remove/`-=` going through the
+// element's `==`; `hide` of inherited methods and of an accessor's setter, reached again through a
+// base cast and a base-typed variable; `default`/override/`replace` chains four levels deep with
+// ancestor-cast dispatch and cast chains; `is` tests and downcasts on `noun`; a validating accessor
+// whose setter throws, under `=` and `+=`; thrown error objects with their own `print()`; a state
+// pattern (state objects returned from overridable methods) and a strategy pattern (a `func<int,int>`
+// member set from a named function, a method parameter and a lambda); an identifier-sized object
+// pool reused across turns with a static serial counter and a queue of open instances; `print()`
+// overrides on every class, used through interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+const int BIN_CAPACITY = 4;
+const int POOL_SIZE = 3;
+
+//-- Errors ----------------------------------------------------------------------------------------
+
+class ValidationError : object {
+    const string Message;
+    void print() { print($"[error: {Message}]"); }
+}
+
+ValidationError ErrOutOfRange { Message = "value out of range"; }
+ValidationError ErrBinFull    { Message = "bin is full"; }
+ValidationError ErrNotFound   { Message = "part not found"; }
+
+// A percentage that refuses anything outside 0..100.
+value class Percent {
+    int _value;
+    int operator () { return _value; }
+    void operator = (int v) {
+        if (v < 0 || v > 100) throw ErrOutOfRange;
+        _value = v;
+    }
+}
+
+//-- Parts: equal by part number, identical only when the same object ------------------------------
+
+class Part : object {
+    const int PartNo = 0;
+    int Weight;
+
+    default string KindName() { return "part"; }
+
+    void print() { print($"{KindName()} #{PartNo}/{Weight}g"); }
+
+    bool operator == (Part other) { return (object)other != null && PartNo == other.PartNo; }
+    bool operator != (Part other) { return !(self == other); }
+    int operator <=> (Part other) { return Weight - other.Weight; }
+
+    bool SameInstance(Part other) { return (object)self == (object)other; }
+}
+
+class Gear : Part {
+    int Teeth;
+    string KindName() { return "gear"; }
+}
+
+class Spring : Part {
+    replace string KindName() { return "spring"; }
+}
+
+Gear gearA   { PartNo = 101; Weight = 40; Teeth = 12; }
+Gear gearB   { PartNo = 101; Weight = 40; Teeth = 12; }
+Gear gearC   { PartNo = 102; Weight = 75; Teeth = 30; }
+Spring coilA { PartNo = 201; Weight = 5; }
+Spring coilB { PartNo = 202; Weight = 9; }
+
+array<Part> Catalog = { gearA, coilA, gearC, coilB, gearB };
+
+//-- Composition: a bin has parts ------------------------------------------------------------------
+
+class Bin : object {
+    string Label;
+    array<Part> Contents[BIN_CAPACITY];
+
+    void print() { print($"bin {Label} ({Contents.length}/{Contents.size})"); }
+
+    void Add(Part p) {
+        if (Contents.length == Contents.size) throw ErrBinFull;
+        Contents += p;
+    }
+    void Take(Part p) {
+        int at = Contents.indexOf(p);
+        if (at < 0) throw ErrNotFound;
+        Contents.remove(at);
+    }
+    bool Holds(Part p) { return Contents.contains(p); }
+    bool HoldsInstance(Part p) {
+        for (Part each in Contents) if (each.SameInstance(p)) return true;
+        return false;
+    }
+    int TotalWeight() {
+        int total = 0;
+        for (Part each in Contents) total += each.Weight;
+        return total;
+    }
+    Part Heaviest() {
+        Part best = null;
+        for (Part each in Contents) {
+            if (!best? || each > best) best = each;
+        }
+        return best;
+    }
+    void SortByWeight() { Contents.sort(); }
+    void List() {
+        print($"{self}:");
+        for (Part each in Contents) print($" {each}");
+        printLine();
+    }
+}
+
+// Read-only to callers that know it as a SealedBin.
+class SealedBin : Bin {
+    hide Add();
+    hide Take();
+}
+
+Bin binA        { Label = "A"; }
+SealedBin vault { Label = "V"; }
+
+//-- Object pool reused across turns ---------------------------------------------------------------
+
+class Ticket[POOL_SIZE] : object {
+    static int NextSerial = 1;
+    int Serial;
+    int Uses = 0;
+    Part Subject;
+
+    void create(Part p) { Serial = Ticket.NextSerial++; Subject = p; }
+    void destroy() { printLine($"{self} closed after {Uses} use{Uses == 1 ? "" : "s"}."); }
+    void print() { print($"ticket {Serial} for {Subject}"); }
+}
+
+array<Ticket> OpenTickets[POOL_SIZE];
+int NextCatalog = 0;
+
+void IssueOne() {
+    Part p = Catalog[NextCatalog % Catalog.length];
+    Ticket t = new Ticket(p);
+    if (t == null) { printLine($"No ticket for {p}: pool exhausted."); return; }
+    NextCatalog++;
+    OpenTickets.enqueue(t);
+    printLine($"Issued {t}.");
+}
+
+//-- Devices: overrides four levels deep -----------------------------------------------------------
+
+class Device : object {
+    Percent Load;
+
+    default string TypeLabel() { return "device"; }
+    default int Rating() { return 1; }
+
+    void print() { print($"{TypeLabel()} "); printName(self); }
+}
+
+class Powered : Device {
+    int Watts = 10;
+    default string TypeLabel() { return "powered device"; }
+    default int Rating() { return ((Device)self).Rating() + Watts; }
+}
+
+// Not `default`: the chain ends here, so Turbine needs `replace`.
+class Motor : Powered {
+    string TypeLabel() { return "motor"; }
+    int Rating() { return ((Powered)self).Rating() * 2; }
+}
+
+class Turbine : Motor {
+    hide Load.operator =;
+    replace string TypeLabel() { return "turbine"; }
+    replace int Rating() { return ((Motor)self).Rating() + 1000; }
+}
+
+//-- State and strategy ----------------------------------------------------------------------------
+
+int Halve(int n) { return n / 2; }
+int Triple(int n) { return n * 3; }
+
+class State : object {
+    static int Transitions = 0;
+    default string StateName() { return "state"; }
+    default State Next(Machine m) { return self; }
+    void print() { print($"<{StateName()}>"); }
+}
+
+class IdleState : State {
+    string StateName() { return "idle"; }
+    State Next(Machine m) { return m.Output > 0 ? (State)stRunning : self; }
+}
+
+class RunningState : State {
+    string StateName() { return "running"; }
+    State Next(Machine m) {
+        if (m.Output > 100) return stOverheated;
+        if (m.Output == 0) return stIdle;
+        return self;
+    }
+}
+
+class OverheatedState : RunningState {
+    replace string StateName() { return "overheated"; }
+    replace State Next(Machine m) { return m.Output == 0 ? stIdle : self; }
+}
+
+IdleState stIdle { }
+RunningState stRunning { }
+OverheatedState stOverheated { }
+
+class Machine : object {
+    State Current;
+    func<int, int> Strategy;
+    int Output;
+    int Ticks;
+
+    void UseStrategy(func<int, int> s) { Strategy = s; }
+
+    void Step(int input) {
+        Output = Strategy(input);
+        Ticks++;
+        State next = Current.Next(self);
+        if (next != Current) {
+            State.Transitions++;
+            print($"{Current} -> {next}; ");
+            Current = next;
+        }
+        printLine($"step {Ticks}: {input} -> {Output}, now {Current}.");
+    }
+}
+
+Machine press { Current = stIdle; Strategy = Halve; }
+
+//-- World -----------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Powered pump        { "pump";    name = {.pump};    parent = roomA; Watts = 5; }
+Motor fan           { "fan";     name = {.fan};     parent = roomA; }
+Turbine bigTurbine  { "turbine"; name = {.turbine}; parent = roomA; Watts = 50; }
+object crate        { "crate";   name = {.crate};   parent = roomA; }
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb PartsTest {
+    grammar = {.parts};
+    void handler() {
+        printLine($"{gearA}, {gearB}, {gearC}, {coilA}");
+        printLine($"gearA == gearB: {gearA == gearB}; same instance: {gearA.SameInstance(gearB)}.");
+        printLine($"gearA != gearC: {gearA != gearC}; identity: {(object)gearA == (object)gearB}.");
+        if (gearC > gearA) printLine("gearC is heavier than gearA.");
+        if (coilA <= coilB) printLine("coilA is no heavier than coilB.");
+        Part p = gearB;
+        if (p == gearA && p.is(Gear)) printLine($"As a part, gearB equals gearA and has {((Gear)p).Teeth} teeth.");
+        printLine($"gearA <=> gearC = {gearA <=> gearC}.");
+    }
+}
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        array<Part> incoming = { gearC, coilA, gearA, coilB, gearB };
+        for (Part p in incoming) {
+            try {
+                binA.Add(p);
+                printLine($"Added {p}.");
+            } catch (ValidationError e) {
+                printLine($"Could not add {p}: {e}.");
+            }
+        }
+        binA.List();
+        printLine($"Holds gearB (equal): {binA.Holds(gearB)}; (same): {binA.HoldsInstance(gearB)}.");
+        printLine($"Heaviest {binA.Heaviest()}, total {binA.TotalWeight()}g.");
+        binA.SortByWeight();
+        binA.List();
+    }
+}
+
+verb Extract {
+    grammar = {.extract};
+    void handler() {
+        binA.Take(gearB);
+        printLine($"Took a part equal to {gearB}; gearA still in bin: {binA.HoldsInstance(gearA)}.");
+        try { binA.Take(gearB); }
+        catch (ValidationError e) { printLine($"Second take: {e}."); }
+        binA.Contents -= coilA;
+        binA.List();
+    }
+}
+
+verb VaultTest {
+    grammar = {.vault};
+    void handler() {
+        ((Bin)vault).Add(gearC);
+        Bin asBin = vault;
+        asBin.Add(coilB);
+        vault.List();
+        printLine($"Vault holds gearC: {vault.Holds(gearC)}; heaviest {vault.Heaviest()}.");
+        try { asBin.Take(gearA); }
+        catch (ValidationError e) { printLine($"Vault: {e}."); }
+    }
+}
+
+verb Issue {
+    grammar = {.issue};
+    void handler() { IssueOne(); IssueOne(); }
+}
+
+verb UseTickets {
+    grammar = {.use};
+    void handler() {
+        for (Ticket t in OpenTickets) {
+            t.Uses++;
+            printLine($"Used {t} ({t.Uses}).");
+        }
+    }
+}
+
+verb Retire {
+    grammar = {.retire};
+    void handler() {
+        Ticket oldest = OpenTickets.dequeue();
+        if (oldest?) delete oldest;
+        else printLine("Nothing to retire.");
+    }
+}
+
+verb ListTickets {
+    grammar = {.tickets};
+    void handler() {
+        printLine($"{OpenTickets.length} open, next serial {Ticket.NextSerial}.");
+        for (Ticket t in OpenTickets) printLine($"  {t}: {t.Uses} uses");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NOUN};
+    void handler() {
+        if (!noun.is(Device)) { printLine($"{noun} is not a device."); return; }
+        Device d = (Device)noun;
+        printLine($"{noun}: rating {d.Rating()}, load {d.Load}%.");
+        if (!d.is(Powered)) return;
+        Powered p = (Powered)d;
+        printLine($"As device {((Device)p).Rating()}, {p.Watts} watts.");
+        if (p.is(Turbine)) {
+            Turbine t = (Turbine)p;
+            printLine($"As motor {((Motor)t).Rating()}, as powered {((Powered)t).Rating()}, as device {((Device)(Motor)t).Rating()}.");
+        } else if (p.is(Motor)) {
+            printLine("A plain motor.");
+        }
+    }
+}
+
+void SetLoad(Device d, int value) {
+    try {
+        d.Load = value;
+        printLine($"{d} load set to {d.Load}%.");
+    } catch (ValidationError e) {
+        printLine($"{d} rejected {value}: {e}.");
+    }
+}
+
+verb Throttle {
+    grammar = {.throttle};
+    void handler() {
+        SetLoad(fan, 40);
+        SetLoad(fan, 120);
+        SetLoad(pump, -5);
+        try { fan.Load += 70; }
+        catch (ValidationError e) { printLine($"fan += 70: {e}"); }
+        printLine($"fan still {fan.Load}%.");
+        ((Device)bigTurbine).Load = 90;
+        printLine($"turbine load {bigTurbine.Load}%.");
+        int sum = fan.Load + bigTurbine.Load;
+        printLine($"Combined {sum}%.");
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        printLine($"Press starts {press.Current}.");
+        press.Step(1);
+        press.Step(10);
+        press.UseStrategy(Triple);
+        press.Step(50);
+        press.Step(2);
+        printLine($"Direct call: {press.Strategy(7)}.");
+        press.UseStrategy((int n) => 0);
+        press.Step(9);
+        printLine($"{State.Transitions} transitions in {press.Ticks} steps.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

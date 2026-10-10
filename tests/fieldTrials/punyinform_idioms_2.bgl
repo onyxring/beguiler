@@ -1,0 +1,283 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a second PunyInform program, laid out the PunyInform way (globals, then the entry points,
+// then puny); optional features OPTIONAL_FULL_DIRECTIONS, OPTIONAL_ALLOW_WRITTEN_NUMBERS,
+// OPTIONAL_LANGUAGE_NUMBER and OPTIONAL_LIST_TOGETHER; MSG_ overrides with #defineI6 (a string
+// replacement, and a number >= 1000 routed to a LibraryMessages entry point); a custom player object
+// (CUSTOM_PLAYER_OBJECT) with its own `orders` and `before`; NewRoom and DeathMessage entry points; a room
+// `initial`; an object `initial`; `describe`; floating objects with `found_in` as a list and as a
+// routine; an enterable vehicle whose `before` lets Go move it; a `time_left`/`time_out` timer with
+// `each_turn` (reactive set automatically); list_together as a string on a class; a SCOPE(Routine)
+// grammar token using scope_stage and PlaceInScope; TestScope; TOPIC words read with NextWord,
+// NumberWord and TryNumber; NUMBER with a written number and LanguageNumber; ObjectIsUntouchable;
+// PlayerTo; and ending with deadflag 3.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_FULL_DIRECTIONS
+#defineI6 OPTIONAL_ALLOW_WRITTEN_NUMBERS
+#defineI6 OPTIONAL_LANGUAGE_NUMBER
+#defineI6 OPTIONAL_LIST_TOGETHER
+#defineI6 MSG_TAKE_DEFAULT "Got it."
+#defineI6 MSG_JUMP 1000
+
+const object INITIAL_LOCATION_VALUE = yard;
+const object CUSTOM_PLAYER_OBJECT   = me;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+
+#using bgl.printRules;
+
+int roomsEntered = 0;
+
+// PunyInform tests for its entry points with #Ifdef, so they come before "puny".
+void NewRoom() {
+    roomsEntered++;
+}
+
+void DeathMessage() {
+    print("Trial finished");
+}
+
+bool LibraryMessages(int msg, var arg1, var arg2) {
+    if (msg == MSG_JUMP) rtrue("You hop.^");
+    rfalse;
+}
+
+#includeI6 "puny"
+
+extend class object {
+    string description;
+    object ne_to;
+    object sw_to;
+}
+
+object me {
+    "you";
+    name = {.me, .myself, .self};
+    short_name = "yourself";
+    description = "Yourself.";
+    int capacity = 10;
+
+    // The player's `orders` sees every command the player types; `before` sees actions on the player.
+    bool orders() {
+        if (action == Jump && parent == cart) rtrue("Not in the cart.^");
+        rfalse;
+    }
+
+    bool before() {
+        if (action == Search) rtrue("You pat your pockets.^");
+        rfalse;
+    }
+
+    attributes = {concealed, animate, proper, transparent};
+}
+
+object yard {
+    "Yard";
+    description = "Yard. A garden is northeast.";
+    ne_to = garden;
+    attributes = {light};
+}
+
+object garden {
+    "Garden";
+    description = "Garden. The yard is southwest.";
+    sw_to = yard;
+    string initial = "Gravel crunches.";
+    attributes = {light};
+}
+
+object wall {
+    "stone wall";
+    name = {.stone, .wall};
+    description = "A stone wall.";
+    rawArray<object> found_in = {yard, garden};
+    attributes = {scenery};
+}
+
+object sky {
+    "sky";
+    name = {.sky};
+    description = "Gray.";
+    bool found_in() { return true; }
+    attributes = {scenery};
+}
+
+object spade {
+    "spade";
+    parent = yard;
+    name = {.spade};
+    string initial = "A spade leans on the wall.";
+}
+
+object cart {
+    "cart";
+    parent = yard;
+    name = {.cart};
+    description = "A wooden cart.";
+
+    bool describe() {
+        print("^A cart stands here");
+        if (player.parent == self) print(", with you in it");
+        rtrue(".^");
+    }
+
+    bool before() {
+        if (action == Go && player.parent == self) {
+            printLine("The cart rolls.");
+            rtrue;          // 1: the library moves the cart and the player
+        }
+        rfalse;
+    }
+
+    attributes = {enterable, container, open, static};
+}
+
+class Seed : object {
+    string list_together = "seeds";
+}
+
+Seed redSeed  { "red seed";  parent = garden; name = {.red, .seed};  }
+Seed blueSeed { "blue seed"; parent = garden; name = {.blue, .seed}; }
+
+object kettle {
+    "kettle";
+    parent = garden;
+    name = {.kettle};
+    int time_left;
+
+    bool description() {
+        if (has(on)) rtrue($"A kettle, {time_left} turns from boiling.^");
+        rtrue("A cold kettle.^");
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:  StartTimer(self, 3);
+            case SwitchOff: StopTimer(self);
+        }
+        rfalse;
+    }
+
+    void each_turn() {
+        if (has(on) && time_left == 1) printLine("The kettle rattles.");
+    }
+
+    void time_out() {
+        ungive(on);
+        printLine("The kettle whistles and switches off.");
+    }
+
+    attributes = {switchable, static};
+}
+
+object glassCase {
+    "glass case";
+    parent = garden;
+    name = {.glass, .case};
+    attributes = {container, transparent, static};
+}
+
+object coin {
+    "coin";
+    parent = glassCase;
+    name = {.coin};
+}
+
+object bell {
+    "bell";
+    name = {.bell};
+}
+
+bool bellScope() {
+    switch (scope_stage) {
+        case 1: rfalse;
+        case 2:
+            if (location == garden) PlaceInScope(bell);
+            rfalse;
+    }
+    rtrue("No bell is within earshot.^");
+}
+
+verb Ring {
+    grammar = { {.ring, SCOPE(bellScope)} };
+    void handler() {
+        printLine($"You ring {the(noun)}.");
+    }
+}
+
+verb Poke {
+    grammar = { {.poke, NOUN} };
+    void handler() {
+        if (ObjectIsUntouchable(noun)) return;
+        printLine($"You poke {the(noun)}.");
+    }
+}
+
+verb Chant {
+    grammar = { {.chant, TOPIC} };
+    void handler() {
+        wn = consult_from;
+        for (int i = 0; i < consult_words; i++) {
+            dictionaryWord w = NextWord();
+            int n = w == null ? TryNumber(wn - 1) : NumberWord(w);
+            if (i > 0) print(" ");
+            if (n > 0) print(n);
+            else print("?");
+        }
+        printLine("");
+    }
+}
+
+verb Count {
+    grammar = { {.count, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        if (n < 1 || n > 5) {
+            printLine("Too many.");
+            return;
+        }
+        for (int i = 1; i <= n; i++) {
+            LanguageNumber(i);
+            if (i < n) print(", ");
+        }
+        printLine(".");
+    }
+}
+
+verb Probe {
+    meta = true;
+    grammar = {.probe};
+    void handler() {
+        print("Bell ");
+        print(TestScope(bell) ? "in scope" : "out of scope");
+        print(", wall ");
+        print(TestScope(wall) ? "in scope" : "out of scope");
+        printLine($", {roomsEntered} rooms entered.");
+    }
+}
+
+verb Home {
+    grammar = {.home};
+    void handler() {
+        PlayerTo(yard, 1);
+        printLine("You are back in the yard.");
+    }
+}
+
+verb Finish {
+    grammar = {.finish};
+    void handler() {
+        deadflag = 3;
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

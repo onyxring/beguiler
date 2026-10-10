@@ -1,0 +1,140 @@
+/*  Field trial part — included by library_author_idioms_2.bgl. Not a trial on its own.  */
+
+#once
+
+// Carrying limits follow the includer's settings block.
+#if #beguilerSettings.framePoolSize >= 80
+    const int wtMaxGrams = 12000;
+#else
+    const int wtMaxGrams = 6000;
+#endif
+
+#if #beguilerSettings.economy
+    const string wtStyle = "terse";
+#elif #beguilerSettings.target == "Z5" && #beguilerSettings.forInScratchSize == 31
+    const string wtStyle = "full";
+#else
+    const string wtStyle = "plain";
+#endif
+
+/// A weight in grams, held in a plain int.
+emitter class wtWeight {
+    wtWeight operator = (int v) { $target = $v; }
+    int  operator()             { $val }
+    int  kilos                  { ($val / 1000) }
+    int  grams()                { ($val % 1000) }
+    bool over(int limit)        { ($val > $limit) }
+    void show()                 { $i6Name(wtShowGrams)($val); }
+}
+
+void wtShowGrams(int g) {
+    if (g < 1000) { print($"{g} g"); return; }
+    int rest = g % 1000;
+    print($"{g / 1000}.");
+    if (rest < 100) print("0");
+    if (rest < 10) print("0");
+    print($"{rest} kg");
+}
+
+/// How awkward an item is to carry.
+enum eWtBulk {
+    flat, boxy, unwieldy,
+    emitter int slots { ($self) }       // enum values start at 1
+}
+
+/// Something with a weight that the kit tracks.
+class wtItem : object {
+    wtWeight weight = 100;
+    eWtBulk  bulk = flat;
+
+    /// Prints a one-line weight report.
+    void noteWeight() {
+        print($"{self}: ");
+        weight.show();
+        print(".^");
+    }
+
+    bool before() {
+        switch (action) {
+            case Take:
+                if (wtCanCarry(self)) rfalse;
+                wtRefuse(self);
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+/// True when the player can take the item without passing the limit.
+bool wtCanCarry(wtItem it) {
+    int total = wt.carried() + it.weight;
+    return total <= wtMaxGrams;
+}
+
+/// Prints the refusal; a consumer may replace it.
+void wtRefuse(wtItem it) {
+    print($"The {it} is too heavy to add.^");
+}
+
+// The kit's own I6 helper, summing the weights of a holder's children.
+#i6 {
+    [ WT_SumWeights holder  o total;
+        objectloop (o in holder)
+            if (o ofclass $i6Name(wtItem)) total = total + o.$i6Name(wtItem.weight);
+        return total;
+    ];
+    [ WT_CountOver holder limit  o n;
+        objectloop (o in holder)
+            if (o ofclass $i6Name(wtItem) && o.$i6Name(wtItem.weight) > limit) n++;
+        return n;
+    ];
+}
+
+extern int WT_SumWeights(object holder) asBgl wtSumWeights;
+extern int WT_CountOver(object holder, int limit) asBgl wtCountOver;
+
+/// The heaviest item a holder has, or nothing.
+superposed wtItem wtHeaviest(object holder) {
+    wtItem best = null;
+    for (object o in holder.children)
+        if (o.is(wtItem)) {
+            wtItem w = (wtItem)o;
+            if (best == null || w.weight > best.weight) best = w;
+        }
+    return best;
+}
+
+// Never used by the trial: if emitted, Inform 6 would reject the missing routine.
+extern void WT_NotThere();
+superposed void wtNeverCalled() { WT_NotThere(); }
+
+/// Readouts reached through wt.scale.
+superposed object _wtScale {
+    void readout(object holder) {
+        wtWeight w = wtSumWeights(holder);
+        print("Load: ");
+        w.show();
+        print($" of {wtMaxGrams / 1000} kg, {wtCountOver(holder, 1000)} over 1 kg.^");
+    }
+}
+
+superposed object _wtLedger {
+    void dump() { WT_NotThere(); }
+}
+
+/// A crate that holds its own count of packed items.
+superposed class wtCrate : wtItem {
+    int packed = 0;
+    void pack() { packed++; weight = weight + 500; }
+}
+
+superposed class wtSack : wtItem {
+    void rip() { WT_NotThere(); }
+}
+
+/// The kit's namespace.
+object wt {
+    alias scale  = _wtScale;
+    alias ledger = _wtLedger;
+    int carried() { return wtSumWeights(player); }
+}

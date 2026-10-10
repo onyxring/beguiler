@@ -1,0 +1,446 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a crafting table as an array of value-class records written as Type{ … } and bare { … }
+// with positional inline members, a reply table as an array of object records keyed by dictionary
+// words and read from a life routine, a map as jagged array<array<eRoom>> adjacency lists used to
+// move the player and to search a shortest route with a queue (enqueue/dequeue), a turn schedule of
+// value-class records driving a character's daemon, bnum permission masks combined with |, masked
+// with & and ^, toggled with ^ and tested with &, enum-indexed parallel tables read with (int) casts and
+// reverse lookups from a dictionary word back to an enum, record views sorted by different keys with
+// named comparators (an int key, a string key through <=>), searching records by a second key, and a
+// validation pass over every table run at startup.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <string>
+
+//-- Enumerations --------------------------------------------------------------
+
+const int NONE = -1;
+const int ROOM_COUNT = 5;
+const int ITEM_COUNT = 6;
+
+enum eRoom { atA = 0, atB, atC, atD, atE }
+enum eItem { wood = 0, nail, rope, plank, crate, ladder }
+bnum ePerm { enter, take, craft, talk }
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+class Place : object {
+    attributes = {light};
+}
+
+Place roomA { "Room A"; description = "Room A."; }
+Place roomB { "Room B"; description = "Room B."; }
+Place roomC { "Room C"; description = "Room C."; }
+Place roomD { "Room D"; description = "Room D."; }
+Place roomE { "Room E"; description = "Room E."; }
+
+//-- Tables --------------------------------------------------------------------
+
+// Indexed by (int)eRoom.
+array<object> rooms     = { roomA, roomB, roomC, roomD, roomE };
+array<string> roomTags  = { "A", "B", "C", "D", "E" };
+array<ePerm>  roomNeeds = { 0, enter, enter | take, enter, enter | talk };
+
+// exits[r] lists the rooms reachable from r. Row E is deliberately one-way to C.
+array<array<eRoom>> exits = {
+    { atB, atC },
+    { atA, atD },
+    { atA },
+    { atB, atE },
+    { atD, atC }
+};
+
+// Indexed by (int)eItem.
+array<string>         itemNames = { "wood", "nail", "rope", "plank", "crate", "ladder" };
+array<dictionaryWord> itemWords = { .wood, .nail, .rope, .plank, .crate, .ladder };
+array<int>            stock[ITEM_COUNT] = { 8, 6, 1, 0, 0, 0 };
+
+array<string> permNames = { "enter", "take", "craft", "talk" };
+
+value class Recipe {
+    inline eItem makes;
+    inline eItem partA;
+    inline int   qtyA;
+    inline eItem partB;
+    inline int   qtyB;
+    inline int   cost;
+    Recipe operator = (Recipe o) {
+        makes = o.makes; partA = o.partA; qtyA = o.qtyA;
+        partB = o.partB; qtyB = o.qtyB; cost = o.cost;
+        return self;
+    }
+}
+
+// The last row needs nothing: the validation pass reports it.
+array<Recipe> recipes = {
+    Recipe{ plank,  wood,  2, nail, 1, 1 },
+    Recipe{ crate,  plank, 2, nail, 4, 3 },
+    { ladder, plank, 3, rope, 1, 2 },
+    { rope,   wood,  0, nail, 0, 1 }
+};
+
+class Reply : object {
+    inline dictionaryWord key;
+    inline string text;
+    inline ePerm needs;
+}
+
+// The last row repeats a key: the validation pass reports it.
+array<Reply> replies = {
+    { .wood,   "The clerk says wood makes planks.",           0 },
+    { .ladder, "The clerk says a ladder takes three planks.", craft },
+    { .badge,  "The clerk says badges open rooms.",           0 },
+    { .wood,   "The clerk says nothing new.",                 0 }
+};
+
+value class Stop {
+    inline int   turn;
+    inline eRoom where;
+    Stop operator = (Stop o) { turn = o.turn; where = o.where; return self; }
+}
+
+// Turns must ascend; the fourth row does not.
+array<Stop> schedule = {
+    Stop{ 2, atB },
+    Stop{ 4, atD },
+    Stop{ 6, atE },
+    Stop{ 5, atA }
+};
+
+ePerm badge = enter | talk;
+
+//-- Lookups -------------------------------------------------------------------
+
+int roomIndex(object o) {
+    for (int i = 0; i < rooms.length; i++) {
+        if (rooms[i] == o) return i;
+    }
+    return NONE;
+}
+
+int itemIndex(dictionaryWord w) {
+    return itemWords.indexOf(w);
+}
+
+int recipeFor(eItem it) {
+    for (int i = 0; i < recipes.length; i++) {
+        if (recipes[i].makes == it) return i;
+    }
+    return NONE;
+}
+
+Reply replyFor(dictionaryWord w) {
+    for (Reply r in replies) {
+        if (r.key == w) return r;
+    }
+    return null;
+}
+
+bool allows(ePerm have, ePerm need) {
+    return (have & need) == need;
+}
+
+// The flags in need that have lacks (the language has no unary bitwise not).
+ePerm missing(ePerm have, ePerm need) {
+    return need ^ (need & have);
+}
+
+void printPerms(ePerm p) {
+    if (p == 0) { print("none"); return; }
+    bool first = true;
+    for (int i = 0; i < permNames.length; i++) {
+        if ((p & (ePerm)(1 << i)) == 0) continue;
+        if (!first) print(", ");
+        print(permNames[i]);
+        first = false;
+    }
+}
+
+void printRecipe(Recipe r) {
+    print($"{itemNames[(int)r.makes]} <- ");
+    if (r.qtyA > 0) print($"{r.qtyA} {itemNames[(int)r.partA]}");
+    if (r.qtyA > 0 && r.qtyB > 0) print(" + ");
+    if (r.qtyA + r.qtyB == 0) print("nothing");
+    if (r.qtyB > 0) print($"{r.qtyB} {itemNames[(int)r.partB]}");
+    print($" ({r.cost})");
+}
+
+int byCost(Recipe a, Recipe b) {
+    if (a.cost < b.cost) return -1;
+    if (a.cost > b.cost) return 1;
+    return 0;
+}
+
+int byName(Recipe a, Recipe b) {
+    return itemNames[(int)a.makes] <=> itemNames[(int)b.makes];
+}
+
+dictionaryWord topicWord() {
+    wn = consult_from;
+    return NextWord();
+}
+
+//-- Validation ----------------------------------------------------------------
+
+int validate() {
+    int bad = 0;
+    for (int r = 0; r < exits.length; r++) {
+        for (eRoom n in exits[r]) {
+            if (!exits[(int)n].contains((eRoom)r)) {
+                print($"Map: {roomTags[r]} to {roomTags[(int)n]} has no way back.^");
+                bad++;
+            }
+        }
+    }
+    for (int i = 0; i < recipes.length; i++) {
+        Recipe rc = recipes[i];
+        if (rc.qtyA + rc.qtyB == 0) { print($"Recipe {i}: needs nothing.^"); bad++; }
+        if (rc.makes == rc.partA || rc.makes == rc.partB) { print($"Recipe {i}: uses its own output.^"); bad++; }
+    }
+    for (int i = 0; i < replies.length; i++) {
+        for (int j = 0; j < i; j++) {
+            if (replies[j].key == replies[i].key) {
+                print($"Reply {i}: repeats key '{replies[i].key}'.^");
+                bad++;
+                break;
+            }
+        }
+    }
+    for (int i = 1; i < schedule.length; i++) {
+        if (schedule[i].turn <= schedule[i - 1].turn) { print($"Stop {i}: turn {schedule[i].turn} is out of order.^"); bad++; }
+    }
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}.^");
+    return bad;
+}
+
+//-- The clerk -----------------------------------------------------------------
+
+object clerk {
+    "clerk";
+    name = {.clerk};
+    parent = roomA;
+    attributes = {animate};
+    int tick = 0;
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                Reply r = replyFor((dictionaryWord)second);
+                if (r == null) rtrue("The clerk shrugs.^");
+                if (!allows(badge, r.needs)) {
+                    print("The clerk wants to see: ");
+                    printPerms(missing(badge, r.needs));
+                    rtrue(".^");
+                }
+                print(r.text);
+                rtrue("^");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        tick++;
+        for (Stop s in schedule) {
+            if (s.turn != tick) continue;
+            object to = rooms[(int)s.where];
+            object from = parent;
+            if (to == from) return;
+            parent = to;
+            if (from == location) print($"^The clerk goes to {roomTags[(int)s.where]}.^");
+            else if (to == location) print("^The clerk arrives.^");
+            return;
+        }
+    }
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb BadgeTest {
+    grammar = {.badge};
+    void handler() {
+        print("Badge: "); printPerms(badge); print(".^");
+    }
+}
+
+verb GrantTest {
+    grammar = {.grant, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= permNames.length) { print($"No permission {n}.^"); return; }
+        ePerm f = (ePerm)(1 << n);
+        bool had = (badge & f) != 0;
+        badge = badge | f;
+        print($"{permNames[n]}: {had ? "already held" : "granted"}.^");
+    }
+}
+
+verb RevokeTest {
+    grammar = {.revoke, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        ePerm f = (ePerm)(1 << n);
+        if ((badge & f) != 0) badge = badge ^ f;
+        print("Badge: "); printPerms(badge); print(".^");
+    }
+}
+
+verb ToggleTest {
+    grammar = {.toggle, NUMBER};
+    void handler() {
+        badge = badge ^ (ePerm)(1 << (int)noun);
+        print("Badge: "); printPerms(badge); print(".^");
+    }
+}
+
+verb ExitsTest {
+    grammar = {.exits};
+    void handler() {
+        int here = roomIndex(location);
+        array<eRoom> row = exits[here];
+        print($"From {roomTags[here]}:");
+        for (int i = 0; i < row.length; i++) {
+            int to = (int)row[i];
+            print($" {i}={roomTags[to]}");
+            if (!allows(badge, roomNeeds[to])) print("(locked)");
+        }
+        print("^");
+    }
+}
+
+verb StepTest {
+    grammar = {.step, NUMBER};
+    void handler() {
+        array<eRoom> row = exits[roomIndex(location)];
+        int i = (int)noun;
+        if (i >= row.length) { print($"No exit {i}.^"); return; }
+        int to = (int)row[i];
+        ePerm need = roomNeeds[to];
+        if (!allows(badge, need)) {
+            print($"Room {roomTags[to]} needs: ");
+            printPerms(missing(badge, need));
+            print(".^");
+            return;
+        }
+        PlayerTo(rooms[to]);
+    }
+}
+
+verb RouteTest {
+    grammar = {.route, NUMBER};
+    void handler() {
+        int goal = (int)noun;
+        int start = roomIndex(location);
+        if (goal >= ROOM_COUNT) { print($"No room {goal}.^"); return; }
+        array<int> prev[ROOM_COUNT];
+        array<int> queue[ROOM_COUNT];
+        prev.length = ROOM_COUNT;
+        for (int i = 0; i < ROOM_COUNT; i++) prev[i] = NONE;
+        prev[start] = start;
+        queue.enqueue(start);
+        while (queue.length > 0) {
+            int r = queue.dequeue();
+            if (r == goal) break;
+            for (eRoom n in exits[r]) {
+                if (prev[(int)n] != NONE) continue;
+                prev[(int)n] = r;
+                queue.enqueue((int)n);
+            }
+        }
+        if (prev[goal] == NONE) { print($"No route to {roomTags[goal]}.^"); return; }
+        array<int> path[ROOM_COUNT];
+        for (int at = goal; at != start; at = prev[at]) path.push(at);
+        path.push(start);
+        print("Route:");
+        for (int r in path) print($" {roomTags[r]}");
+        print($" ({path.length - 1} steps).^");
+    }
+}
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        for (int i in 0 to ITEM_COUNT - 1) {
+            if (stock[i] == 0) continue;
+            print($"{itemNames[i]} {stock[i]}");
+            print(recipeFor((eItem)i) == NONE ? " (raw)^" : " (made)^");
+        }
+    }
+}
+
+verb MakeTest {
+    grammar = {.make, TOPIC};
+    void handler() {
+        dictionaryWord w = topicWord();
+        int it = itemIndex(w);
+        if (it == NONE) { print("No such item.^"); return; }
+        int at = recipeFor((eItem)it);
+        if (at == NONE) { print($"Nothing makes {itemNames[it]}.^"); return; }
+        if (!allows(badge, craft)) { print("Making needs: craft.^"); return; }
+        Recipe rc = recipes[at];
+        int a = (int)rc.partA;
+        int b = (int)rc.partB;
+        if (stock[a] < rc.qtyA || stock[b] < rc.qtyB) {
+            print($"Short for {itemNames[it]}: have {stock[a]} {itemNames[a]}, {stock[b]} {itemNames[b]}.^");
+            return;
+        }
+        stock[a] -= rc.qtyA;
+        stock[b] -= rc.qtyB;
+        stock[it]++;
+        print($"Made {itemNames[it]} ({stock[it]} now).^");
+    }
+}
+
+verb UsesTest {
+    grammar = {.uses, TOPIC};
+    void handler() {
+        int it = itemIndex(topicWord());
+        if (it == NONE) { print("No such item.^"); return; }
+        eItem want = (eItem)it;
+        int found = 0;
+        for (Recipe rc in recipes) {
+            if ((rc.partA == want && rc.qtyA > 0) || (rc.partB == want && rc.qtyB > 0)) {
+                printRecipe(rc); print("^");
+                found++;
+            }
+        }
+        print($"Recipes using {itemNames[it]}: {found}.^");
+    }
+}
+
+verb RecipesTest {
+    grammar = {.recipes, TOPIC};
+    void handler() {
+        dictionaryWord key = topicWord();
+        array<Recipe> view[8];
+        view = recipes;
+        if (key == .cost) view.sort(byCost);
+        else if (key == .name) view.sort(byName);
+        else { print("Sort by cost or name.^"); return; }
+        for (int i = 0; i < view.length; i++) {
+            print($"{i}. "); printRecipe(view[i]); print("^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    StartDaemon(clerk);
+    rfalse;
+}
+
+#includeI6 "grammar"

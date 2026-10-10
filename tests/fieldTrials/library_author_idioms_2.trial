@@ -1,0 +1,38 @@
+Room A
+Room A.
+You can see a feather, a brick, an anvil and a crate here.
+> weigh feather
+feather (1 slot): 20 g. Weighed 1 time.
+> heft brick
+brick (2 slots): 2.500 kg. Weighed 1 time.
+> gauge anvil
+anvil (3 slots): 9.000 kg, heavy, awkward. Weighed 1 time.
+> weigh feather
+feather (1 slot): 20 g. Weighed 2 times.
+> take feather
+Taken.
+> take brick
+Taken.
+> take crate
+Taken.
+> load
+Load: 6.520 kg of 12 kg, 2 over 1 kg.
+Heaviest: crate.
+Style: full.
+> take anvil
+The anvil is too heavy to add.
+Carrying 6520 g already.
+> pack crate
+Packed 1; the crate is 4 kg and 500 g.
+> drop brick
+Dropped.
+> load check
+Load: 4.520 kg of 12 kg, 1 over 1 kg.
+Heaviest: crate.
+Style: full.
+> bulks
+brick: 2
+anvil: 3 awkward
+Literal: 3, false.
+> gauge crate
+crate (2 slots): 4.500 kg. Weighed 1 time.

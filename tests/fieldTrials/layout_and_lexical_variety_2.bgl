@@ -1,0 +1,370 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: odd layout and lexical habits applied to declarations rather than statements. A settings
+// block with one token per line; directives with extra whitespace and trailing comments; #define and
+// #redef; nested #if/#elif/#else with deep and ragged indentation, inside a function and at file scope;
+// enums and bnums split across lines, with comments between members, negative and explicit values,
+// trailing commas and emitter members; comments and doc comments between declaration qualifiers;
+// classes and objects in Allman, one-line and token-per-line styles; verb grammar lists split across
+// lines with parenthesized alternation and comments between tokens; switch with each case, value,
+// range and guard on lines of their own; func types and lambdas split across lines; nested generic
+// types with spaces inside and between the angle brackets; interpolated strings broken by line ends;
+// doc comments after `{`, on parameters, before statements and at end of file.
+
+#beguilerSettings
+{
+    target
+        =
+            z5
+                ;
+    includePaths    =    "../../../inform6/stdlib"   ;
+}
+
+#includeI6     "parser"        // the parser
+#includeI6	"verblib"	// tabs around the name
+#include      <bindings/i6StandardLibrary>       /* bindings */
+#include <array>   ///   doc comment on a directive line: documents nothing
+
+#define     LEVEL       3
+#define   VERBOSE                // defined, no value
+#redef      LEVEL       4        // now 4
+
+extend /* the root */ class object
+{
+    string description;
+}
+
+//-- Enumerations ---------------------------------------------------------------------------------
+
+enum   eDial
+{
+    low,            // 1
+    /* skipped two */
+    mid   =   4,
+    high,           // 5
+    neg
+        =
+        -2,
+    after,          // -1
+    emitter int doubled { ($self * 2) }
+};
+
+bnum ePane{left,right,top,bottom,};                          // 1 2 4 8
+
+bnum   eWide
+{
+    wa ,
+    wb =
+        16 ,
+    wc                                                       // 32
+}
+
+extend enum eDial { emitter int plus(int n) { ($self + $n) } }
+
+//-- Constants and globals, with comments between the qualifier and the declaration ---------------
+
+const /* fixed */ int    LIMIT = 9;
+CONST
+    INT
+        STEP
+            =
+                2;
+const /// doc between qualifier and type
+    eDial startDial = eDial.mid;
+
+array < array < int > > grid = {
+    { 1 , 2 , 3 } ,
+    { 4 , 5 } ,
+    { } ,
+};
+
+array<array<int> > grid2 = {{7},{8,9}};
+
+array<
+    func<
+        int ,
+        int
+    >
+> steps [ 4 ] ;
+
+func <int, int, int>    combine;
+
+//-- Classes and objects -------------------------------------------------------------------------
+
+/// A dial reading.
+superposed /* emitted only if used */ class
+Gauge
+    : object
+{   /// Documents nothing: doc comment right after the brace.
+    int /* the */ reading = 0;      /// Current reading.
+    eDial dial = eDial.low;
+
+    int bump(
+        int by    /// How far.
+        ,
+        int times /** How often. */
+    )
+    { reading += by * times; return reading; }
+
+    static int scale(int n) { return n * 10; }
+}
+
+class Panel : object { ePane panes = 0; bool has(ePane p) { return (panes & p) != 0; } }
+
+Object roomA
+{
+    "Room A";
+    description
+        =
+        "A plain room.";
+    attributes
+        = { light , } ;
+}
+
+Gauge gaugeA { "gauge"; parent = roomA; name = { .gauge , .dial , } ; attributes = { static }; description = "A gauge."; reading = 3; }
+
+Panel
+    panelA
+{
+    "panel"
+    ;
+    parent=roomA;name={.panel};attributes={static};description="A panel.";
+    panes = ePane.left | ePane.top;
+}
+
+object stick { "stick"; parent = roomA; name = {.stick}; description = "A stick."; }
+
+//-- Functions -----------------------------------------------------------------------------------
+
+int addInt(int a, int b) { return a + b; }
+int twice(int n) { return n * 2; }
+
+void applyAll(
+    array<int> xs ,
+    func<
+        void ,
+        int
+    > fn
+)
+{
+    for (int x in xs) fn(x);
+}
+
+string levelName()
+{
+#if LEVEL > 3
+        #if VERBOSE
+    return "high, verbose";
+        #else
+    return "high";
+        #endif
+    #elif LEVEL == 3
+            return "three";
+#else
+  return "low";
+                #endif
+}
+
+  #if !NOT_DEFINED_ANYWHERE
+int fileScopeFlag = 1;
+        #else
+int fileScopeFlag = 0;
+#endif
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+verb Wobble
+{
+    grammar
+        =
+        {
+            {   .wobble   ,   NOUN   } ,
+            {
+                .wobble ,
+                NOUN ,
+                ( .with | .using ) /* either */ ,
+                HELD
+            } ,
+        }
+        ;
+    void handler() { print($"You wobble the {noun}"); if (second) print($" with the {second}"); printLine("."); }
+}
+
+verb
+    Prod
+{
+    grammar = { .prod | .jab
+                ,
+                NOUN };
+    void handler()
+    {
+        print("Prodded: "); printLine(noun);
+    }
+}
+
+verb Enums {
+    meta = true; grammar = {.enums};
+    void handler() {
+        printLine($"{(int)eDial.low} {(int)eDial.mid} {(int)eDial.high} {(int)eDial.neg} {(int)eDial.after}");
+        eDial d = startDial;
+        printLine($"{d.doubled} {eDial.high.doubled} {d.plus(10)} {neg.plus(
+            3
+        )}");
+        printLine($"{left} {right} {top} {bottom} {wa} {wb} {wc}");
+        ePane p = ePane.left
+                | ePane.bottom ;
+        printLine($"{(int)p} {panelA.has(top)} {panelA.has(right)}");
+    }
+}
+
+verb Grids {
+    meta = true; grammar = {.grids};
+    void handler() {
+        int total = 0;
+        for (array < int > row in grid) { print($"[{row.length}]"); for (int i = 0; i < row.length; i++) total += row[i]; }
+        printLine($" total {total} rows {grid.length}");
+        grid [ 0 ] [ 2 ] = 30;
+        printLine($"{grid[0][2]} {grid2[1][1]} {grid2 . length}");
+    }
+}
+
+verb Funcs {
+    meta = true; grammar = {.funcs};
+    void handler() {
+        combine = addInt;
+        func<
+            int,
+            int
+        > f = twice;
+        printLine($"{combine(2, 3)} {f(LIMIT)} {Gauge.scale(STEP)}");
+        steps.push(twice);
+        steps.push(
+            (int n)
+                =>
+                    n + 100
+        );
+        steps.push((int n) => {
+            int m = n;
+            m *= m;
+            return m;
+        });
+        for (func<int,int> s in steps) print($"<{s(5)}>");
+        print("^");
+    }
+}
+
+verb Lambdas {
+    meta = true; grammar = {.lambdas};
+    void handler() {
+        array<int> xs = {1, 2, 3};
+        int sum = 0;
+        applyAll(xs,
+                 (int x)
+                 =>
+                 {
+                     sum += x;
+                 });
+        printLine($"sum {sum}");
+        applyAll(xs, (int x) => print($"({x})")
+        );
+        print("^");
+        xs.sort(
+            (int a,
+             int b) => b
+                     - a
+        );
+        printLine($"{xs[0]} {xs[1]} {xs[2]}");
+    }
+}
+
+void describeNumber(int n)
+{
+    switch
+    (
+        n
+    )
+    {
+        case
+            0
+            :
+            printLine("zero");
+        case 1,
+             2,
+             3:
+            printLine("small");
+        case 4
+             to
+             9
+             :
+                printLine("medium");
+        case >=
+            100: printLine("huge");
+        case
+        < 0
+        :
+        printLine("negative");
+        default
+        :
+            printLine("other");
+    }
+}
+
+verb Cases {
+    meta = true; grammar = {.cases};
+    void handler() {
+        describeNumber(0); describeNumber(2); describeNumber(7);
+        describeNumber(50); describeNumber(500); describeNumber(-3);
+        eDial d = high;
+        switch (d) { case low: printLine("dial low"); case mid,
+            high: printLine("dial mid or high"); default: printLine("dial other"); }
+    }
+}
+
+verb Conds {
+    meta = true; grammar = {.conds};
+    void handler() {
+        printLine(levelName());
+        printLine($"flag {fileScopeFlag}");
+            #if TARGET_ZCODE
+                printLine("z-machine");
+    #else
+                printLine("glulx");
+                    #endif
+#if #beguilerSettings.target == "z5"
+        printLine("z5 exactly");
+#endif
+    }
+}
+
+verb Strs {
+    meta = true; grammar = {.strs};
+    void handler() {
+        int n = 3;
+        printLine($"first {n}
+second {n + 1}");
+        printLine("plain line one
+plain line two");
+        printLine($"{n}{n}{ n }{
+            n
+        }");
+    }
+}
+
+verb Gauges {
+    meta = true; grammar = {.gauges};
+    void handler() {
+        /// A doc comment before a statement: documents nothing.
+        int r = gaugeA.bump(
+            2,    // by
+            3     // times
+        );
+        printLine($"reading {r} {gaugeA.reading}");
+    }
+}
+
+#includeI6   "grammar"
+
+/// Trailing doc comment at end of file.

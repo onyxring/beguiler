@@ -1,0 +1,78 @@
+Room A
+Room A. Room B is east.
+You can see two tokens (a brass token and a tin token), a gem (glittering) and a radio here.
+> jump
+The floor creaks.
+> pray
+Not now.
+> i
+Your hands are empty.
+(Turn 2.)
+> take all
+brass token: Taken.
+tin token: Taken.
+gem: You pocket the gem.
+> i
+You're carrying:
+  a gem (glittering)
+  two tokens:
+    a tin token
+    a brass token
+(Turn 4.)
+(Turn 4.)
+> drop tin token
+The counter clicks.
+Down it goes.
+> turn knob
+The radio crackles.
+> report
+Clicks: 1. Radio timer: 1. Look mode: 2.
+Build: release.
+I6: release.
+> east
+Room B
+Room B. Room A is west.
+You can see a cabinet, a full jar, a red stone, a blue stone and a robot here.
+The radio falls silent.
+Water drips.
+> take stone
+(the red stone)
+Taken.
+Water drips.
+> x empty jar
+You can't see any such thing.
+> x full jar
+A glass jar.
+Water drips.
+> tip jar
+You tip the jar out.
+Water drips.
+> x empty jar
+A glass jar.
+Water drips.
+> pull handle
+The cabinet rattles.
+Water drips.
+> robot, bounce
+The robot bounces.
+Water drips.
+> robot, west
+The robot's wheels spin.
+Water drips.
+> wait
+Time passes.
+Water drips.
+The robot beeps.
+> recall old song
+You recall the old song.
+Water drips.
+> recall gem
+You recall the gem.
+Water drips.
+> recall cabinet
+You recall no such thing.
+> up
+No way up.
+Water drips.
+> score
+[score] You have so far scored 1 out of a possible 3, in 20 turns.

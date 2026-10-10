@@ -1,0 +1,363 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a second program in a first-time programmer's voice. A locked door and a chest
+// puzzle, a dog that follows the player (a daemon started from Initialise), a score kept in many
+// globals AND in the library's score, text built with stringObj concatenation and interpolation,
+// arrays indexed by hand behind bounds checks, a class with fields only and a second class with a
+// method, switch discovered partway through (on ints, ranges, guards and strings) next to the
+// older nested-if style, copy-pasted verbs, and identifiers spelled in mixed letter case.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+
+// ===== SCORE STUFF =====
+// points for each thing you can do
+int chestPoints = 0;
+int keyPoints = 0;
+int doorPoints = 0;
+int StudyPoints = 0;
+// all of them added up
+int totalPoints = 0;
+// flags so you only get the points once
+bool gotChestPoints = false;
+bool gotKeyPoints = false;
+bool gotDoorPoints = false;
+bool gotStudyPoints = false;
+// how many times the dog was petted (pet and pat both count)
+int pets = 0;
+
+// the names of the things you can score for (in the same order as the points)
+array<string> thingNames = {"chest", "key", "door", "study"};
+// the points for each thing (filled in by hand in UpdateTable)
+array<int> pointTable[4];
+
+// works out the total (call this every time points change!!)
+void addUpPoints() {
+    totalPoints = chestPoints + keyPoints + DoorPoints + studyPoints;
+    // keep the real score the same as mine
+    Score = totalPoints;
+}
+
+// copies the points into the table
+void updateTable() {
+    pointTable[0] = chestPoints;
+    pointTable[1] = KEYPOINTS;
+    pointTable[2] = doorPoints;
+    pointTable[3] = studypoints;
+}
+
+// gets a name from the list but doesn't crash if i is wrong
+string getName(int i) {
+    if (i < 0) {
+        return "nothing";
+    }
+    if (i >= thingNames.size) {
+        return "nothing";
+    }
+    return thingNames[i];
+}
+
+// ===== CLASSES =====
+
+// a thing you can pick up (it just has a weight)
+class Thing : object {
+    int weight;
+}
+
+// a thing that has a counter and a method to use it (i learned methods!)
+class Counter : object {
+    int count = 0;
+    string word = "thing";
+    void bump() {
+        count = count + 1;
+    }
+    void say() {
+        print($"The {word} count is {count}.^");
+    }
+}
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+    object with_key;
+}
+
+// ===== ROOMS =====
+
+object hall {
+    "Hall";
+    description = "The hall. A door is to the east.";
+    E_to = oakDoor;
+    attributes = {light};
+}
+
+object study {
+    "Study";
+    description = "The study. A door is to the west.";
+    w_to = OakDoor;
+    attributes = {light};
+}
+
+// ===== THINGS =====
+
+object chest {
+    "wooden chest";
+    parent = hall;
+    name = {.wooden, .chest};
+    description = "A wooden chest.";
+    attributes = {container, openable, static};
+    bool after() {
+        if (action == Open) {
+            if (gotChestPoints == false) {
+                gotChestPoints = true;
+                chestPoints = chestPoints + 2;
+                addUpPoints();
+            }
+        }
+        rfalse;
+    }
+}
+
+Thing brassKey {
+    "brass key";
+    parent = chest;
+    name = {.brass, .key};
+    weight = 1;
+    description = "A small brass key.";
+    bool after() {
+        if (action == Take) {
+            if (!gotKeyPoints) {
+                gotKeyPoints = TRUE;
+                keyPoints += 3;
+                AddUpPoints();
+            }
+        }
+        rfalse;
+    }
+}
+
+THING rock {
+    "grey rock";
+    parent = hall;
+    name = {.grey, .rock};
+    weight = 10;
+    description = "A heavy grey rock.";
+    // (first time using switch for action, it is shorter!)
+    bool before() {
+        switch (action) {
+            case Take:
+                rtrue("The rock is too heavy.^");
+            case Push, Pull:
+                print("The rock does not move.^");
+                return true;
+        }
+        return false;
+    }
+}
+
+object oakDoor {
+    "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {hall, study};
+    with_key = brassKey;
+    attributes = {door, static, openable, lockable, locked};
+    object door_to() {
+        if (location == hall) return study;
+        return hall;
+    }
+    property door_dir() {
+        if (location == hall) return (property)e_to;
+        return (property)w_to;
+    }
+    bool after() {
+        if (action == Unlock) {
+            if (gotDoorPoints == false) {
+                gotDoorPoints = true;
+                doorPoints = 4;
+                addUpPoints();
+            }
+        }
+        rfalse;
+    }
+}
+
+// ===== THE DOG =====
+
+Counter dogCounter {
+    "dog counter";
+    word = "pet";
+}
+
+object dog {
+    "dog";
+    parent = hall;
+    name = {.dog};
+    description = "A brown dog. It follows you around.";
+    attributes = {animate};
+    // the dog follows you (runs every turn)
+    void daemon() {
+        if (dog.parent != location) {
+            dog.parent = location;
+            print("^The dog follows you.^");
+            if (location == study) {
+                if (gotStudyPoints == false) {
+                    gotStudyPoints = true;
+                    StudyPoints = 5;
+                    addUpPoints();
+                }
+            }
+        }
+    }
+}
+
+bool initialise() {
+    location = hall;
+    StartDaemon(Dog);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// PET - pet the dog
+verb Pet {
+    grammar = {.pet, noun};
+    void handler() {
+        if (noun == dog) {
+            pets = pets + 1;
+            dogCounter.bump();
+            print("You pet the dog. It wags its tail.^");
+        } else {
+            print("You can only pet the dog.^");
+        }
+    }
+}
+
+// PAT - same as pet (copied)
+verb Pat {
+    grammar = {.pat, noun};
+    void handler() {
+        if (noun == DOG) {
+            pets = pets + 1;
+            DogCounter.BUMP();
+            print("You pat the dog. It wags its tail.^");
+        } else {
+            print("You can only pat the dog.^");
+        }
+    }
+}
+
+// POINTS - shows all the points
+verb Points {
+    meta = true;
+    grammar = {.points};
+    void handler() {
+        updateTable();
+        int i = 0;
+        while (i < 4) {
+            print(getName(i));
+            print(": ");
+            print(pointTable[i]);
+            print("^");
+            i = i + 1;
+        }
+        // build the total line out of pieces
+        stringObj line;
+        line = "Total";
+        line = line + ": ";
+        stringObj numberPart = $"{totalPoints} of 14";
+        line += numberPart;
+        if (totalPoints == 14) {
+            line += " (all)";
+        }
+        line += ".";
+        printLine(line);
+        print(getName(4));
+        print(" / ");
+        print(getName(-1));
+        print("^");
+        // say the name of the last thing with "the" in front
+        stringObj last = getName(thingNames.size - 1);
+        stringObj said = "the " + last + " is last";
+        printLine(said);
+    }
+}
+
+// RANK - says how good you are (using switch, which i just found out about)
+verb Rank {
+    meta = true;
+    grammar = {.rank};
+    void handler() {
+        switch (TotalPoints) {
+            case 0:       print("Rank: beginner.^");
+            case 1 to 5:  print("Rank: novice.^");
+            case 6 to 13: print("Rank: expert.^");
+            case >= 14:   print("Rank: master.^");
+        }
+    }
+}
+
+// PETS - how many times the dog was petted (the old way, with ifs)
+verb HowManyPets {
+    meta = true;
+    grammar = {.pets};
+    void handler() {
+        if (pets == 0) {
+            print("The dog has not been petted.^");
+        } else {
+            if (pets == 1) {
+                print("The dog has been petted once.^");
+            } else {
+                print($"The dog has been petted {pets} times.^");
+            }
+        }
+        dogCounter.say();
+    }
+}
+
+// WEIGH - says how heavy the things are
+verb Weigh {
+    grammar = {.weigh, noun};
+    void handler() {
+        if (noun.is(Thing)) {
+            Thing t = (Thing)noun;
+            switch (t.weight) {
+                case 1:  print($"The {noun} is light.^");
+                case 10: print($"The {noun} is heavy.^");
+                default: print($"The {noun} weighs {t.weight}.^");
+            }
+        } else {
+            print("You can't weigh that.^");
+        }
+    }
+}
+
+// WHICH - a letter for each thing in the list (uses a switch on a string)
+verb Which {
+    meta = true;
+    grammar = {.which};
+    void handler() {
+        int i = 0;
+        while (i < thingNames.size) {
+            string n = getName(i);
+            switch (n) {
+                case "chest":         print("C");
+                case "key":           print("K");
+                case "door", "study": print("D");
+                default:              print("?");
+            }
+            i++;
+        }
+        print("^");
+    }
+}

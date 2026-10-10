@@ -1,0 +1,346 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a second set of Glulx presentation idioms. A report table aligned in columns with
+// padLeft/padRight/center helpers over stringObj, numbers formatted with thousands separators
+// (insert), zero padding (prepend) and two-decimal percentages from floats; print rules switched
+// inside loops (header, zebra rows, a highlighted maximum) and a bar chart scaled with floats; a word
+// wrapper that splits text into words and fills lines to a width; search and replace helpers (counting
+// occurrences ignoring case, replace, replaceAll, mid/left/right); case conversion helpers (title case,
+// snake case, words from camel case, swapped case) over Latin-1 accented text; a ruled quotation box;
+// a menu of hyperlinks to named functions, clicked at the prompt and also run from a numbered command
+// through an array of func<void>, one of them launching a library action with perform(); a property
+// declared as a string | func<void> union, a string on some objects and a lambda on one; output
+// captured with capture() and with captureOutput() from that lambda, then post-processed; and format().
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+
+#using bgl.printRules;
+
+extend class object {
+    string | func<void> description;
+}
+
+array<string> itemNames  = { "Hinges", "Brackets", "Wood screws", "Sandpaper", "Glue" };
+array<int>    itemCounts = { 1250, 87, 23400, 6, 412 };
+array<int>    itemCents  = { 35, 120, 4, 99, 650 };
+array<string> quoteLines = { "Measure twice,", "cut once.", "-- shop rule" };
+array<func<void>> menuActions = { optLook, optCount, optQuote };
+int menuPicks = 0;
+
+object roomA {
+    "Room A";
+    description = "Room A. A workbench stands here.";
+    attributes = {light};
+}
+
+object bench {
+    "workbench";
+    parent = roomA;
+    name = {.workbench, .bench};
+    attributes = {scenery, supporter};
+    description = () => {
+        int n = childCount(bench);
+        print($"The workbench holds {n} {n == 1 ? "item" : "items"}; {menuPicks} menu picks so far.");
+    };
+}
+
+object clamp {
+    "iron clamp";
+    parent = bench;
+    name = {.iron, .clamp};
+    description = "An iron clamp.";
+}
+
+object rule {
+    "folding rule";
+    parent = bench;
+    name = {.folding, .rule};
+    description = "A folding rule.";
+}
+
+// ---- text helpers ----------------------------------------------------------------------------------
+
+int childCount(object o) { int n = 0; for (object c in o.children) n++; return n; }
+stringObj repeat(char c, int n) { stringObj out = ""; for (int i = 0; i < n; i++) out += c; return out; }
+stringObj padRight(stringObj s, int width) { while (s.length < width) s += ' '; return s; }
+stringObj padLeft(stringObj s, int width) { while (s.length < width) s = s.prepend(" "); return s; }
+
+stringObj center(stringObj s, int width) {
+    int left = (width - s.length) / 2;
+    stringObj out = repeat(' ', left) + s;
+    return padRight(out, width);
+}
+
+stringObj zeroPad(int n, int width) {
+    stringObj s = $"{n}";
+    while (s.length < width) s = s.prepend("0");
+    return s;
+}
+
+stringObj withCommas(int n) {
+    bool negative = n < 0;
+    stringObj digits = $"{negative ? -n : n}";
+    for (int pos = digits.length - 3; pos > 0; pos -= 3) digits = digits.insert(pos, ",");
+    if (negative) digits = digits.prepend("-");
+    return digits;
+}
+
+stringObj twoPlaces(float f) {
+    int hundredths = (int)(f * 100 + 0.5);
+    stringObj out = $"{hundredths / 100}.{zeroPad(hundredths % 100, 2)}";
+    return out;
+}
+
+stringObj money(int cents) { stringObj out = $"${withCommas(cents / 100)}.{zeroPad(cents % 100, 2)}"; return out; }
+
+int countOf(stringObj text, string needle) {
+    stringObj rest = text.toLower();
+    stringObj find = needle.toLower();
+    int n = 0;
+    int at = rest.indexOf(find);
+    while (at >= 0) {
+        n++;
+        rest = rest.right(rest.length - at - find.length);
+        at = rest.indexOf(find);
+    }
+    return n;
+}
+
+stringObj titleCase(stringObj s) {
+    bool start = true;
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        s[i] = start ? c.toUpper() : c.toLower();
+        start = c == ' ' || c == '-';
+    }
+    return s;
+}
+
+stringObj snakeCase(stringObj s) { return s.trim().toLower().replaceAll(" ", "_"); }
+
+stringObj camelToWords(stringObj s) {
+    stringObj out = "";
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        if (c.isUpper()) { out += ' '; out += c.toLower(); }
+        else out += c;
+    }
+    return out;
+}
+
+stringObj swapCase(stringObj s) {
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        if (c.isUpper()) s[i] = c.toLower();
+        else if (c.isLower()) s[i] = c.toUpper();
+    }
+    return s;
+}
+
+// Fills lines up to `width`, breaking only between words; each line gets `prefix`.
+void wrap(string text, int width, string prefix) {
+    stringObj all = text;
+    stringObj line = "";
+    stringObj word = "";
+    for (int i = 0; i <= all.length; i++) {
+        char c = i < all.length ? all[i] : ' ';
+        if (c != ' ') { word += c; continue; }
+        if (word.isEmpty()) continue;
+        if (!line.isEmpty() && line.length + 1 + word.length > width) {
+            printLine($"{prefix}{line}");
+            line = "";
+        }
+        if (!line.isEmpty()) line += ' ';
+        line += word;
+        word = "";
+    }
+    if (!line.isEmpty()) printLine($"{prefix}{line}");
+}
+
+void showQuote() {
+    int width = 0;
+    for (string s in quoteLines) if (s.length > width) width = s.length;
+    stringObj edge = repeat('-', width + 2);
+    printLine($"{fixed}+{edge}+");
+    for (int i = 0; i < quoteLines.length; i++) {
+        stringObj body = quoteLines[i];
+        if (i == quoteLines.length - 1) body = padLeft(body, width);
+        else body = center(body, width);
+        printLine($"| {body} |");
+    }
+    printLine($"+{edge}+{roman}");
+}
+
+// ---- menu targets --------------------------------------------------------------------------------
+
+void optLook()  { menuPicks++; Look.perform(); }
+void optCount() {
+    menuPicks++;
+    int n = childCount(bench);
+    printLine($"{n} {n == 1 ? "thing" : "things"} on the bench, {childCount(player)} carried.");
+}
+void optQuote() { menuPicks++; showQuote(); }
+
+bool Initialise() { location = roomA; rfalse; }
+
+// ---- verbs --------------------------------------------------------------------------------------
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int totalCents = 0;
+        int top = 0;
+        for (int i = 0; i < itemCounts.length; i++) {
+            int value = itemCounts[i] * itemCents[i];
+            totalCents += value;
+            if (value > itemCounts[top] * itemCents[top]) top = i;
+        }
+        stringObj rule = repeat('=', 44);
+        printLine($"{bold}{padRight("Item", 12)}{padLeft("Count", 8)}{padLeft("Value", 14)}{padLeft("Share", 10)}{roman}");
+        printLine(rule);
+        for (int i = 0; i < itemNames.length; i++) {
+            int value = itemCounts[i] * itemCents[i];
+            float share = (float)value * 100 / totalCents;
+            if (i == top) bold;
+            else if (i % 2 == 1) reverse;
+            stringObj pct = twoPlaces(share);
+            pct += "%";
+            print($"{padRight(itemNames[i], 12)}{padLeft(withCommas(itemCounts[i]), 8)}");
+            printLine($"{padLeft(money(value), 14)}{padLeft(pct, 10)}{roman}");
+        }
+        printLine(rule);
+        printLine($"{underline}{padRight("Total", 20)}{padLeft(money(totalCents), 14)}{padLeft("100.00%", 10)}{roman}");
+    }
+}
+
+verb Numbers {
+    grammar = {.numbers};
+    void handler() {
+        array<int> samples = { 0, 7, 999, 1000, -45210, 1234567, 2147483647 };
+        for (int n in samples) {
+            printLine($"{padLeft(zeroPad(n < 0 ? 0 : n % 1000, 3), 4)} {padLeft(withCommas(n), 14)}");
+        }
+        printLine($"Thirds: {twoPlaces(1.0 / 3)} {twoPlaces(2.0 / 3)}; whole: {twoPlaces(5.0)}; default print: {2.0 / 3}.");
+    }
+}
+
+verb Bars {
+    grammar = {.bars};
+    void handler() {
+        int most = 0;
+        for (int n in itemCounts) if (n > most) most = n;
+        for (int i = 0; i < itemNames.length; i++) {
+            float scale = (float)itemCounts[i] / most;
+            int len = (int)(scale * 20 + 0.5);
+            if (len == 0 && itemCounts[i] > 0) len = 1;
+            print($"{padRight(itemNames[i], 12)}|");
+            for (int j = 0; j < len; j++) {
+                if (j % 5 == 4) print($"{bold}#{roman}");
+                else print("#");
+            }
+            printLine($" {twoPlaces(scale * 100)}%");
+        }
+    }
+}
+
+verb WrapTest {
+    grammar = {.wrap};
+    void handler() {
+        string text = "Clamp the two boards together, wait for the glue to set, then sand the joint until it is smooth to the touch.";
+        wrap(text, 28, ": ");
+        printLine("--");
+        wrap("   short   words    only   ", 10, "* ");
+    }
+}
+
+verb SearchTest {
+    grammar = {.search};
+    void handler() {
+        stringObj text = "The glue sets; then the clamp comes off. The joint holds.";
+        printLine($"~the~ appears {countOf(text, "the")} times; ~glue~ {countOf(text, "GLUE")}; ~nail~ {countOf(text, "nail")}.");
+        printLine(text.replace("The", "A"));
+        printLine(text.replaceAll("the", "this"));
+        int semi = text.indexOf(";");
+        printLine($"Before the semicolon: [{text.left(semi)}]; after: [{text.mid(semi + 2, 9)}]; last word: [{text.right(6)}].");
+        printLine($"Starts with ~The glue~: {text.startsWith("The glue")}; ends with ~holds.~: {text.endsWith("holds.")}.");
+    }
+}
+
+verb CaseTest {
+    grammar = {.case};
+    void handler() {
+        printLine(titleCase("the éTUDE of WOOD-turning"));
+        printLine(snakeCase("  Total Weight In Grams "));
+        printLine(camelToWords("totalWeightInGrams"));
+        printLine(swapCase("Crème Brûlée 42"));
+        stringObj loud = "ångström";
+        printLine($"{loud.toUpper()} / {loud.toUpper().toLower()}");
+    }
+}
+
+verb Menu {
+    grammar = {.menu};
+    void handler() {
+        printLine($"{bold}Menu{roman}");
+        printLine($"  1. {link("Look around", optLook)}");
+        printLine($"  2. {link("Count things", optCount)}");
+        printLine($"  3. {link("Show the rule", optQuote)}");
+        printLine($"Type CHOOSE and a number ({menuActions.length} options).");
+    }
+}
+
+verb Choose {
+    grammar = {.choose, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 1 || n > menuActions.length) {
+            printLine($"No option {n}.");
+            return;
+        }
+        func<void> act = menuActions[n - 1];
+        act();
+    }
+}
+
+verb Capture {
+    grammar = {.capture};
+    void handler() {
+        stringObj listing = "";
+        listing.capture();
+        for (object o in bench.children) print($"{a(o)}, ");
+        listing.release();
+        listing = listing.left(listing.length - 2);
+        printLine($"On the bench: {listing}.");
+        int comma = listing.indexOf(", ");
+        stringObj joined = listing;
+        if (comma >= 0) joined = listing.left(comma) + " and " + listing.right(listing.length - comma - 2);
+        printLine($"As prose: {joined}.");
+
+        stringObj said = "";
+        said.captureOutput(bench, description);
+        printLine($"Captured {said.length} characters: {said.toUpper()}");
+        printLine($"Words: {countOf(said, " ") + 1}; digits spelled: {said.replaceAll("1", "one")}");
+    }
+}
+
+verb FormatTest {
+    grammar = {.format};
+    void handler() {
+        stringObj item = "Glue";
+        printLine(item.format("[$0]"));
+        printLine(item.format("$0 x $1", withCommas(itemCounts[4])));
+        printLine(item.format("$1: $0 at $2", "Line 5", money(itemCents[4])));
+    }
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,75 @@
+Room A
+Room A.
+You can see a pump, a fan, a turbine and a crate here.
+> parts
+gear #101/40g, gear #101/40g, gear #102/75g, spring #201/5g
+gearA == gearB: true; same instance: false.
+gearA != gearC: true; identity: false.
+gearC is heavier than gearA.
+coilA is no heavier than coilB.
+As a part, gearB equals gearA and has 12 teeth.
+gearA <=> gearC = -35.
+> stock
+Added gear #102/75g.
+Added spring #201/5g.
+Added gear #101/40g.
+Added spring #202/9g.
+Could not add gear #101/40g: [error: bin is full].
+bin A (4/4): gear #102/75g spring #201/5g gear #101/40g spring #202/9g
+Holds gearB (equal): true; (same): false.
+Heaviest gear #102/75g, total 129g.
+bin A (4/4): spring #201/5g spring #202/9g gear #101/40g gear #102/75g
+> extract
+Took a part equal to gear #101/40g; gearA still in bin: false.
+Second take: [error: part not found].
+bin A (2/4): spring #202/9g gear #102/75g
+> vault
+bin V (2/4): gear #102/75g spring #202/9g
+Vault holds gearC: true; heaviest gear #102/75g.
+Vault: [error: part not found].
+> issue
+Issued ticket 1 for gear #101/40g.
+Issued ticket 2 for spring #201/5g.
+> use
+Used ticket 1 for gear #101/40g (1).
+Used ticket 2 for spring #201/5g (1).
+> issue
+Issued ticket 3 for gear #102/75g.
+No ticket for spring #202/9g: pool exhausted.
+> retire
+ticket 1 for gear #101/40g closed after 1 use.
+> issue
+Issued ticket 4 for spring #202/9g.
+No ticket for gear #101/40g: pool exhausted.
+> tickets
+3 open, next serial 5.
+  ticket 2 for spring #201/5g: 1 uses
+  ticket 3 for gear #102/75g: 0 uses
+  ticket 4 for spring #202/9g: 0 uses
+> probe fan
+motor fan: rating 22, load 0%.
+As device 1, 10 watts.
+A plain motor.
+> probe turbine
+turbine turbine: rating 1102, load 0%.
+As device 1, 50 watts.
+As motor 102, as powered 51, as device 1.
+> probe crate
+crate is not a device.
+> throttle
+motor fan load set to 40%.
+motor fan rejected 120: [error: value out of range].
+powered device pump rejected -5: [error: value out of range].
+fan += 70: [error: value out of range]
+fan still 40%.
+turbine load 90%.
+Combined 130%.
+> cycle
+Press starts <idle>.
+step 1: 1 -> 0, now <idle>.
+<idle> -> <running>; step 2: 10 -> 5, now <running>.
+<running> -> <overheated>; step 3: 50 -> 150, now <overheated>.
+step 4: 2 -> 6, now <overheated>.
+Direct call: 21.
+<overheated> -> <idle>; step 5: 9 -> 0, now <idle>.
+3 transitions in 5 steps.

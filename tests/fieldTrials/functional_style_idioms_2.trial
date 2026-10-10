@@ -1,0 +1,64 @@
+Room A
+> push red
+red clicks.
+> push blue
+blue rank is now 2.
+> push grey
+Nothing obvious happens.
+> take red
+red is warm.
+> take green
+green hums.
+> take grey
+Taken.
+> fire 6
+3 listeners.
+square 36
+log 6
+half 3
+> factory 3
+neg -3, ten 13, seven 21
+pickOp -3, twiceOf ten 23, twiceOf lambda 81
+applyN twice 3 times 24, applyN makeOp 30
+> tags
+red: plain
+blue: low
+green: untagged
+grey: red
+> coalesce
+red -> red
+blue -> blue
+green -> green
+grey -> spare
+Picked red.
+> chain
+red: next blue, third green
+blue: next green, third none
+green: next none, third none
+grey: next none, third none
+green note: set by chain
+> order
+Distinct: red blue green grey
+By rank desc then group: red green grey blue
+Group 2: blue green
+Mapped back: grey green blue red
+Rank total 15.
+> loops 5
+1: 5
+2: 10
+3: 15
+kept 300
+> tree
+Room A
+  yourself
+    grey node
+    green node
+    red node
+  blue node
+  box
+    pebble
+    shell
+9 objects.
+> recur 7
+sumTo 28; 7 is odd
+square 49

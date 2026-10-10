@@ -1,0 +1,280 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: event handlers kept per object as func<> members (some left null) and fired from the
+// library's before/after, tested with == null; a listener registry (array<literal func<…>>) filled with push and +=, and
+// dispatched by a verb; function factories returning named functions, a `const`-capturing lambda and
+// a function chosen by a ternary; functions taking and returning functions (twiceOf, applyN);
+// a three-way union of reference types (string | Node | func<string, Node>) discriminated with typeof
+// and switch; `??` chains over strings and objects; deep `?.` chains through a linked list of class
+// instances; <linq> over object arrays (orderBy with a two-key comparator, distinct, filter, map to
+// array<var> and back to array<Node> by cast); lambdas made inside loops, called at once and kept;
+// recursion over the object tree with a visitor func; mutual recursion; a lambda called through a
+// cast straight after it is written.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Nodes: a small class with handlers and links -------------------------------
+
+class Node : object {
+    string label;
+    int rank;
+    int group;
+    Node next;
+    string note;
+    literal func<bool, Node> onPush;     // fired from before(); null = no handler
+    literal func<void, Node> onTake;     // fired from after()
+    string | Node | func<string, Node> tag;
+
+    bool before() {
+        if (action == Push && onPush != null) return onPush(self);
+        rfalse;
+    }
+    bool after() {
+        if (action == Take && onTake != null) { onTake(self); rtrue; }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+bool pushLoud(Node n) { print($"{n.label} clicks.^"); rtrue; }
+bool pushCount(Node n) { n.rank++; print($"{n.label} rank is now {n.rank}.^"); rtrue; }
+string tagOf(Node n) { return n.rank > 2 ? "high" : "low"; }
+
+Node red   { "red node";   name = {.red};   label = "red";   rank = 3; group = 1; parent = roomA;
+             onPush = pushLoud; tag = "plain";
+             onTake = (Node n) => print($"{n.label} is warm.^"); }
+Node blue  { "blue node";  name = {.blue};  label = "blue";  rank = 1; group = 2; parent = roomA;
+             onPush = pushCount; tag = tagOf; }
+Node green { "green node"; name = {.green}; label = "green"; rank = 3; group = 2; parent = roomA;
+             onTake = (Node n) => { print($"{n.label} hums.^"); }; }
+Node grey  { "grey node";  name = {.grey};  label = "grey";  rank = 2; group = 1; parent = roomA; note = "spare"; }
+
+object box {
+    "box";
+    name = {.box};
+    parent = roomA;
+    attributes = {container, open};
+}
+object pebble { "pebble"; name = {.pebble}; parent = box; }
+object shell  { "shell";  name = {.shell};  parent = box; }
+
+//-- Listener registry --------------------------------------------------------------
+
+array<literal func<void, int>> listeners[6];
+
+void logIt(int n)  { print($"log {n}^"); }
+void halfIt(int n) { print($"half {n / 2}^"); }
+
+void register(literal func<void, int> f) { listeners.push(f); }
+
+void broadcast(int n) {
+    for (func<void, int> f in listeners) f(n);
+}
+
+//-- Functions over functions -------------------------------------------------------
+
+int twice(int n)   { return n * 2; }
+int negate(int n)  { return -n; }
+int plusTen(int n) { return n + 10; }
+
+enum eOp { neg, ten, seven }
+
+func<int, int> makeOp(eOp kind) {
+    if (kind == eOp.neg) return negate;
+    if (kind == eOp.ten) return plusTen;
+    const int k = 7;
+    return (int n) => n * k;
+}
+
+func<int, int> pickOp(int n) { return n % 2 == 0 ? twice : negate; }
+
+int twiceOf(func<int, int> f, int x) { return f(f(x)); }
+
+int applyN(func<int, int> f, int times, int x) {
+    for (int i = 0; i < times; i++) x = f(x);
+    return x;
+}
+
+//-- Unions -----------------------------------------------------------------------
+
+string describeTag(Node n) {
+    var t = n.tag;
+    switch (typeof(t)) {
+        case eType.string:  return (string)t;
+        case eType.routine: return ((func<string, Node>)t)(n);
+        case eType.object:  return ((Node)t).label;
+    }
+    return "untagged";
+}
+
+//-- Recursion ------------------------------------------------------------------------
+
+void walk(object o, int depth, func<void, object, int> visit) {
+    visit(o, depth);
+    for (object c in o.children) walk(c, depth + 1, visit);
+}
+
+bool isEven(int n) { return n == 0 ? true : isOdd(n - 1); }
+bool isOdd(int n)  { return n == 0 ? false : isEven(n - 1); }
+
+int sumTo(int n) { return n <= 0 ? 0 : n + sumTo(n - 1); }
+
+//-- Helpers --------------------------------------------------------------------------
+
+array<Node> nodes = {red, blue, green, grey, red, blue};
+
+void showNodes(array<Node> a) {
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(" "); print(a[i].label); }
+    print("^");
+}
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb Fire {
+    grammar = {{.fire, NUMBER}};
+    void handler() {
+        print($"{listeners.count()} listeners.^");
+        broadcast(parsed_number);
+    }
+}
+
+verb Factory {
+    grammar = {{.factory, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"neg {makeOp(eOp.neg)(n)}, ten {makeOp(eOp.ten)(n)}, seven {makeOp(eOp.seven)(n)}^");
+        print($"pickOp {pickOp(n)(n)}, twiceOf ten {twiceOf(plusTen, n)}, twiceOf lambda {twiceOf((int x) => x * x, n)}^");
+        print($"applyN twice 3 times {applyN(twice, 3, n)}, applyN makeOp {applyN(makeOp(eOp.ten), n, 0)}^");
+    }
+}
+
+verb Tags {
+    grammar = {{.tags}};
+    void handler() {
+        grey.tag = red;
+        for (Node n in nodes.distinct()) print($"{n.label}: {describeTag(n)}^");
+    }
+}
+
+verb Coalesce {
+    grammar = {{.coalesce}};
+    void handler() {
+        for (Node n in nodes.distinct()) {
+            string shown = n.note ?? n.next?.note ?? n.label;
+            print($"{n.label} -> {shown}^");
+        }
+        Node last = nodes.filter((Node n) => n.rank > 5).first() ?? nodes.filter((Node n) => n.rank > 2).last() ?? grey;
+        print($"Picked {last.label}.^");
+    }
+}
+
+verb Chain {
+    grammar = {{.chain}};
+    void handler() {
+        red.next = blue; blue.next = green; green.next = null; grey.next = null;
+        for (Node n in nodes.distinct()) {
+            string third = n.next?.next?.label ?? "none";
+            print($"{n.label}: next {n.next?.label ?? "none"}, third {third}^");
+        }
+        red.next?.next?.note = "set by chain";
+        print($"green note: {green.note ?? "unset"}^");
+    }
+}
+
+verb Sorting {
+    grammar = {{.order}};
+    void handler() {
+        print("Distinct: ");
+        showNodes(nodes.distinct());
+        print("By rank desc then group: ");
+        showNodes(nodes.distinct().orderBy((Node a, Node b) => a.rank != b.rank ? b.rank - a.rank : a.group - b.group));
+        print("Group 2: ");
+        showNodes(nodes.filter((Node n) => n.group == 2).distinct());
+        array<var> picked = nodes.distinct().map((Node n) => n.rank >= 2 ? n : null);
+        array<Node> back[6];
+        for (var v in picked) if (v != null) back.push((Node)v);
+        print("Mapped back: ");
+        showNodes(back);
+        array<var> ranks = nodes.map((Node n) => n.rank);
+        int total = 0;
+        for (var r in ranks) total += r;
+        print($"Rank total {total}.^");
+    }
+}
+
+verb Loops {
+    grammar = {{.loops, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (int i = 1; i <= 3; i++) {
+            func<int, int> scale = (int x) => x * i;
+            print($"{i}: {scale(n)}^");
+        }
+        // A lambda stored in a loop would share one copy of its captures, so the loop keeps a value
+        // and the lambda is made after it; lambdas used inside the loop capture freely.
+        int last = 0;
+        for (Node nd in nodes.distinct()) {
+            int r = nd.rank;
+            if (nd.group == 2) {
+                func<int> byLocal = => r * 100;
+                func<int> byNode = => nd.rank * 100;
+                if (byLocal() == byNode()) last = byLocal();
+            }
+        }
+        func<int> kept = => last;
+        print($"kept {kept()}^");
+    }
+}
+
+verb Tree {
+    grammar = {{.tree}};
+    void handler() {
+        int count = 0;
+        walk(roomA, 0, (object o, int d) => {
+            count++;
+            for (int i = 0; i < d; i++) print("  ");
+            print(o);
+            print("^");
+        });
+        print($"{count} objects.^");
+    }
+}
+
+verb Recur {
+    grammar = {{.recur, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"sumTo {sumTo(n)}; {n} is {isEven(n) ? "even" : "odd"}^");
+        int sq = ((func<int, int>)((int x) => x * x))(n);
+        print($"square {sq}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    register(logIt);
+    register((int n) => print($"square {n * n}^"));
+    listeners += halfIt;
+    rfalse;
+}

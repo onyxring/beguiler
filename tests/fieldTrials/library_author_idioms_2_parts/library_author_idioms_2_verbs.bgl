@@ -1,0 +1,26 @@
+/*  Field trial part — included by library_author_idioms_2.bgl. Not a trial on its own.  */
+
+#once
+
+#include "library_author_idioms_2_load"
+
+/// Reports one item's weight.
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(wtItem)) { print("That has no weight to speak of.^"); return; }
+        ((wtItem)noun).noteWeight();
+    }
+}
+
+/// Reports the player's load.
+verb Load {
+    grammar = {.load};
+    void handler() {
+        wt.scale.readout(player);
+        wtItem h = wtHeaviest(player);
+        if (h == null) print("Heaviest: none.^");
+        else print($"Heaviest: {h}.^");
+        print($"Style: {wtStyle}.^");
+    }
+}

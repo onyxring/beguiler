@@ -1,0 +1,135 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a two-part weight kit configured by #if on #beguilerSettings values (int, bool, enum,
+// and a runtime size left at its default); an emitter class wrapping int, used as a member type,
+// with an emitter value, emitter methods and $i6Name; an enum with an emitter value, extended by the
+// consumer with extend enum before the kit declares it; extend class adding a member and replacing a
+// kit method; replace of a kit function with replaced(); a binding layer (extern + emitters) over
+// I6 routines the kit writes in an #i6 block, reading a Beguile member via $i6Name; superposed
+// objects, routines and classes, some used through an alias and some never used; kit verbs extended
+// by the consumer (grammar +=, synonyms) before the kit declares them, and after; consumer objects
+// of kit classes declared above the kit's include; a library `before` on a kit class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    framePoolSize = 80;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+// --- Consumer code that comes before the kit is included. ---
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+wtItem feather {
+    "feather";
+    parent = roomA;
+    name = {.feather};
+    weight = 20;
+}
+
+wtItem brick {
+    "brick";
+    parent = roomA;
+    name = {.brick};
+    weight = 2500;
+    bulk = boxy;
+}
+
+wtItem anvil {
+    "anvil";
+    parent = roomA;
+    name = {.anvil};
+    weight = 9000;
+    bulk = unwieldy;
+}
+
+wtCrate crate {
+    "crate";
+    parent = roomA;
+    name = {.crate};
+    weight = 4000;
+    bulk = boxy;
+}
+
+extend Weigh {
+    grammar += { {.heft, NOUN} };
+    synonyms = {.gauge};
+}
+
+// An enum extension may come before the enum it extends.
+extend enum eWtBulk {
+    emitter bool awkward() { ($self >= 3) }
+}
+
+// --- The kit. ---
+
+#include "library_author_idioms_2_parts/library_author_idioms_2_verbs"
+
+// --- Consumer code that adapts the kit. ---
+
+// A replace follows the function it replaces, so it comes after the kit include.
+replace void wtRefuse(wtItem it) {
+    replaced(it);
+    print($"Carrying {wt.carried()} g already.^");
+}
+
+extend class wtItem {
+    int handled = 0;
+    replace void noteWeight() {
+        handled++;
+        print($"{self} ({bulk.slots} slot{bulk.slots == 1 ? "" : "s"}): ");
+        weight.show();
+        if (weight.over(5000)) print(", heavy");
+        if (bulk.awkward()) print(", awkward");
+        print($". Weighed {handled} time{handled == 1 ? "" : "s"}.^");
+    }
+}
+
+extend Load {
+    grammar += { {.load, .check} };
+}
+
+verb Pack {
+    grammar = {.pack, NOUN};
+    void handler() {
+        if (!noun.is(wtCrate)) { print("Only the crate can be packed.^"); return; }
+        wtCrate c = (wtCrate)noun;
+        c.pack();
+        wtWeight w = c.weight;
+        print($"Packed {c.packed}; the crate is {w.kilos} kg and {w.grams()} g.^");
+    }
+}
+
+verb Bulks {
+    grammar = {.bulks};
+    void handler() {
+        for (object o in roomA.children)
+            if (o.is(wtItem)) {
+                wtItem it = (wtItem)o;
+                print($"{it}: {it.bulk.slots}");
+                if (it.bulk.awkward()) print(" awkward");
+                print("^");
+            }
+        print($"Literal: {unwieldy.slots}, {flat.awkward()}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

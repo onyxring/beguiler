@@ -1,0 +1,45 @@
+Hall
+The hall. A door is to the east.
+You can see an oak door, a wooden chest (which is closed), a grey rock and a dog here.
+> rank
+Rank: beginner.
+> open chest
+You open the wooden chest, revealing a brass key.
+[The score has just gone up by two points.]
+> take key
+Taken.
+[The score has just gone up by three points.]
+> take rock
+The rock is too heavy.
+> weigh key
+The brass key is light.
+> unlock door with key
+You unlock the oak door.
+[The score has just gone up by four points.]
+> open door
+You open the oak door.
+> east
+Study
+The study. A door is to the west.
+You can see an oak door here.
+The dog follows you.
+[The score has just gone up by five points.]
+> pet dog
+You pet the dog. It wags its tail.
+> pat dog
+You pat the dog. It wags its tail.
+> pets
+The dog has been petted 2 times.
+The pet count is 2.
+> points
+chest: 2
+key: 3
+door: 4
+study: 5
+Total: 14 of 14 (all).
+nothing / nothing
+the study is last
+> rank
+Rank: master.
+> which
+CKDD

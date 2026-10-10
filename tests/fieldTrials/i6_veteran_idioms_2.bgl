@@ -1,0 +1,351 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: more code written in Inform 6 habits. A LibraryMessages object switching on lm_n and
+// lm_o (Take, Inv, Drop); before on rooms; orders on the player, assigned to selfobj.orders from
+// Initialise; an NPC whose grammar routine reads verb_word and sets action itself, and whose orders
+// routine answers it; add_to_scope as an array and as a routine calling AddToScope; parse_name reading
+// NextWord against a state flag; a ChooseObjects entry point; a SCOPE(Routine) token whose
+// routine switches on scope_stage, with PlaceInScope and ScopeWithin; replace of
+// library routines (ScoreSub from the binding, InvSub declared extern here) calling replaced();
+// react_after; invent with inventory_stage; list_together on a class; each_turn routines; StartTimer,
+// time_left and time_out; #if DEBUG with an #else, a DEBUG-only verb, and #Ifdef DEBUG inside an #i6
+// island; library globals (notify_mode, lookmode) poked from Initialise.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Take:
+                if (lm_n == 1 && (object)lm_o == gem) rtrue("You pocket the gem.^");
+            case Drop:
+                if (lm_n == 3) rtrue("Down it goes.^");
+            case Inv:
+                if (lm_n == 1) rtrue("Your hands are empty.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extern void InvSub();
+
+extend class object {
+    stringOrRoutine description;
+    object e_to;
+    object w_to;
+}
+
+replace void ScoreSub() {
+    print("[score] ");
+    replaced();
+}
+
+// InvSub re-enters itself through InvTallSub's <Inv>, so a non-empty inventory prints the note twice.
+replace void InvSub() {
+    replaced();
+    print($"(Turn {turns}.)^");
+}
+
+// The player's orders, hung on selfobj at start-up as an I6 author would.
+bool PlayerOrders() {
+    switch (action) {
+        case Pray: rtrue("Not now.^");
+    }
+    rfalse;
+}
+
+int g_clicks;
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    bool before() {
+        switch (action) {
+            case Jump: rtrue("The floor creaks.^");
+        }
+        rfalse;
+    }
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    bool before() {
+        switch (action) {
+            case Jump: rtrue("The ceiling is too low.^");
+            case Go:
+                if (noun == u_obj) rtrue("No way up.^");
+        }
+        rfalse;
+    }
+    attributes = {light};
+}
+
+class Token : object {
+    string list_together = "tokens";
+    description = "A token.";
+}
+
+Token brassToken {
+    short_name = "brass token";
+    name = {.brass, .token};
+    parent = roomA;
+}
+
+Token tinToken {
+    short_name = "tin token";
+    name = {.tin, .token};
+    parent = roomA;
+}
+
+object gem {
+    short_name = "gem";
+    name = {.gem};
+    parent = roomA;
+    description = "A gem.";
+    bool invent() {
+        if (inventory_stage == 2) print(" (glittering)");
+        rfalse;
+    }
+}
+
+object counter {
+    short_name = "counter";
+    name = {.counter};
+    parent = roomA;
+    description = "A counter.";
+    bool react_after() {
+        switch (action) {
+            case Drop:
+                g_clicks++;
+                print("The counter clicks.^");
+        }
+        rfalse;
+    }
+    attributes = {scenery};
+}
+
+object knob {
+    short_name = "knob";
+    name = {.knob};
+    description = "A knob.";
+    bool before() {
+        switch (action) {
+            case Turn:
+                StartTimer(radio, 2);
+                rtrue("The radio crackles.^");
+        }
+        rfalse;
+    }
+}
+
+object radio {
+    short_name = "radio";
+    name = {.radio};
+    parent = roomA;
+    description = "A radio.";
+    rawArray<object> add_to_scope = {knob};
+    int time_left;
+    void time_out() {
+        printLine("The radio falls silent.");
+    }
+    attributes = {static};
+}
+
+object handle {
+    short_name = "handle";
+    name = {.handle};
+    description = "A handle.";
+    bool before() {
+        switch (action) {
+            case Pull: rtrue("The cabinet rattles.^");
+        }
+        rfalse;
+    }
+}
+
+object cabinet {
+    short_name = "cabinet";
+    name = {.cabinet};
+    parent = roomB;
+    description = "A cabinet.";
+    void add_to_scope() {
+        AddToScope(handle);
+    }
+    attributes = {static};
+}
+
+object jar {
+    name = {.jar};
+    parent = roomB;
+    bool full = true;
+    bool short_name() {
+        if (full) print("full jar");
+        else print("empty jar");
+        rtrue;
+    }
+    description = "A glass jar.";
+    int parse_name() {
+        int n;
+        dictionaryWord w;
+        n = 0;
+        while (true) {
+            w = NextWord();
+            if (w == .jar || w == .glass) n++;
+            else if (w == .full && full) n++;
+            else if (w == .empty && !full) n++;
+            else return n;
+        }
+    }
+}
+
+object drip {
+    short_name = "drip";
+    name = {.drip};
+    parent = roomB;
+    string each_turn = "Water drips.^";
+    attributes = {scenery};
+}
+
+object redStone {
+    short_name = "red stone";
+    name = {.red, .stone};
+    parent = roomB;
+}
+
+object blueStone {
+    short_name = "blue stone";
+    name = {.blue, .stone};
+    parent = roomB;
+}
+
+object robot {
+    short_name = "robot";
+    name = {.robot};
+    parent = roomB;
+    description = "A robot.";
+    int grammar() {
+        if (verb_word == (int).bounce) {
+            action = Jump;
+            noun = null;
+            second = null;
+            return 1;
+        }
+        return 0;
+    }
+    bool orders() {
+        switch (action) {
+            case Jump: rtrue("The robot bounces.^");
+            case Go: rtrue("The robot's wheels spin.^");
+        }
+        rfalse;
+    }
+    void each_turn() {
+        if (action == Wait) printLine("The robot beeps.");
+    }
+    attributes = {animate, neuter};
+}
+
+// Memories live nowhere; only the recall verb's scope routine reaches them.
+object memories {
+    short_name = "memories";
+}
+
+object oldSong {
+    short_name = "old song";
+    name = {.old, .song};
+    parent = memories;
+}
+
+object firstRoom {
+    short_name = "first room";
+    name = {.first, .room};
+    parent = memories;
+}
+
+int ChooseObjects(object obj, int code) {
+    if (code < 2) return 0;
+    if (obj == redStone) return 3;
+    return 0;
+}
+
+bool RecallScope() {
+    switch (scope_stage) {
+        case 1: rfalse;
+        case 2:
+            ScopeWithin(memories);
+            PlaceInScope(gem);
+            rtrue;
+        case 3: rtrue("You recall no such thing.^");
+    }
+    rfalse;
+}
+
+verb Recall {
+    grammar = {{.recall, SCOPE(RecallScope)}};
+    void handler() {
+        print($"You recall the {noun}.^");
+    }
+}
+
+verb Tip {
+    grammar = {{.tip, NOUN}};
+    void handler() {
+        if (noun != jar) { print("Nothing to tip.^"); return; }
+        jar.full = false;
+        score++;
+        printLine("You tip the jar out.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        print($"Clicks: {g_clicks}. Radio timer: {radio.time_left}. Look mode: {lookmode}.^");
+        #if DEBUG
+            printLine("Build: debug.");
+        #else
+            printLine("Build: release.");
+        #endif
+        #i6 {
+            #Ifdef DEBUG;
+            print "I6: debug.^";
+            #Ifnot;
+            print "I6: release.^";
+            #Endif;
+        }
+    }
+}
+
+#if DEBUG
+    verb Warp {
+        grammar = {.warp};
+        void handler() {
+            PlayerTo(roomB);
+        }
+    }
+#endif
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    notify_mode = 0;
+    lookmode = 2;
+    selfobj.orders = PlayerOrders;
+    rfalse;
+}

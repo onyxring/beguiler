@@ -1,0 +1,47 @@
+Room A
+A plain room.
+You can see a gauge, a panel and a stick here.
+> enums
+1 4 5 -2 -1
+8 10 14 1
+1 2 4 8 1 16 32
+9 true false
+> grids
+[3][2][0] total 15 rows 3
+30 9 2
+> funcs
+5 18 20
+<25><105><10>
+> lambdas
+sum 6
+(1)(2)(3)
+3 2 1
+> cases
+zero
+small
+medium
+other
+huge
+negative
+dial mid or high
+> conds
+high, verbose
+flag 1
+z-machine
+z5 exactly
+> strs
+first 3 second 4
+plain line one plain line two
+3333
+> gauges
+reading 9 9
+> wobble gauge
+You wobble the gauge.
+> take stick
+Taken.
+> wobble panel with stick
+You wobble the panel with the stick.
+> jab panel
+Prodded: panel
+> prod gauge
+Prodded: gauge
