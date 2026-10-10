@@ -1,0 +1,7 @@
+// test_provides_property_name.bgl — where a property is expected (`obj.provides(number)`), a name that is
+// a property (here a class member) is that property, though it is also an enum value of two enums.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+class Bulky : object { int number = 2; }
+bool test(object obj) { return obj.provides(number); }
+void main(){ }

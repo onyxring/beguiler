@@ -1,0 +1,13 @@
+/*  run_pooled_subclass_own_pool — each pooled class has its own pool, as in Inform 6.
+
+    A subclass declares its own [N] and inherits create(); exhausting the parent's pool leaves it free.  */
+// EXPECT_OUTPUT: s 1 s2null true w 5 2 w2 6
+#beguilerSettings { target = z5; informName = "none"; }
+class S[1] { int Id; void create(int i) { Id = i; } }
+class W[2] : S { int Span = 2; }
+void main(){
+    bglInit();
+    S s = new S(1); S s2 = new S(9);
+    W w = new W(5); W w2 = new W(6);
+    print($"s {s.Id} s2null {s2 == null} w {w.Id} {w.Span} w2 {w2.Id}");
+}

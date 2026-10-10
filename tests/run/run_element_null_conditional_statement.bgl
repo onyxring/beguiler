@@ -1,0 +1,9 @@
+// run_element_null_conditional_statement — `arr[i]?.method();` as a statement calls the method only
+// when the element is not null (§4.10).
+// EXPECT_OUTPUT: hit1 hit1 done
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class P { int n; void hit() { print($"hit{n} "); } }
+P p1 { n = 1; }
+array<P> ps[3];
+void main(){ bglInit(); ps[0] = p1; ps[0]?.hit(); ps[1]?.hit(); int i = 0; ps[i]?.hit(); print("done"); }

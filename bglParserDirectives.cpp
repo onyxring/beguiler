@@ -1430,6 +1430,7 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "ifid"){           if(cfg.ifid.empty())           cfg.ifid           = strVal; }
         else if(key == "autoinitialize"){ if(cfg.claim(key)) cfg.autoInitialize = (strVal == "true"); }
         else if(key == "economy"){ if(cfg.claim(key)) cfg.economy = (strVal == "true"); }
+        else if(key == "filterverbsplitwarnings"){ if(cfg.claim(key)) cfg.filterVerbSplitWarnings = (strVal == "true"); }
         else if(key == "omitunusedroutines"){ if(cfg.claim(key)) cfg.omitUnusedRoutines = (strVal == "true"); }
 
         tok = file.getToken();

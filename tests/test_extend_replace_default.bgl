@@ -1,0 +1,17 @@
+// test_extend_replace_default.bgl — in `extend class`, `replace default` (either order) replaces a
+// method's body and keeps it default, so a subclass overrides it without a warning; a plain `replace`
+// ends the chain. No stray I6 property is emitted for the second qualifier.
+// EXPECT_WARNING: class 'sub3': method 'mark' shadows definition in base class 'base3'
+// EXPECT_NO_WARNING: class 'sub1'
+// EXPECT_NO_WARNING: class 'sub2'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class base1 { default string note() { return "plain"; } }
+extend class base1 { replace default string note() { return "extended"; } }
+class sub1 : base1 { string note() { return "sub"; } }
+class base2 { default int tag() { return 1; } }
+extend class base2 { default replace int tag() { return 2; } }
+class sub2 : base2 { int tag() { return 3; } }
+class base3 { default void mark() { } }
+extend class base3 { replace void mark() { } }
+class sub3 : base3 { void mark() { } }
+void main(){ }

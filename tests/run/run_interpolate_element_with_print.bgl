@@ -1,0 +1,10 @@
+// run_interpolate_element_with_print — interpolating an array element whose class has print() calls it
+// on the element ($"{boxes[0]}"), as on a variable.
+// EXPECT_OUTPUT: [box1] [box2]
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Box { int n; void print() { print($"box{n}"); } }
+Box b1 { n = 1; }
+Box b2 { n = 2; }
+array<Box> boxes = { b1, b2 };
+void main(){ bglInit(); int i = 1; print($"[{boxes[0]}] [{boxes[i]}]"); }

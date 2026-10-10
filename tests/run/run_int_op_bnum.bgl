@@ -1,0 +1,11 @@
+// run_int_op_bnum — an int on the left of & | ^ + with a bnum on the right takes int's operator, as
+// the reverse order does (a bnum widens to int, §2.7.3).
+// EXPECT_OUTPUT: 2 7 2 7 2 true
+#beguilerSettings { target = z5; informName = "none"; }
+bnum itemFlag { portable, fragile, heavy }
+void main(){
+    int f = 3;
+    int a = f & itemFlag.fragile; int b = f | itemFlag.heavy; int c = f ^ itemFlag.portable; int d = f + itemFlag.heavy;
+    int e = itemFlag.fragile & f;
+    print($"{a} {b} {c} {d} {e} {(f & itemFlag.heavy) == 0}");
+}

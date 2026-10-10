@@ -1,0 +1,19 @@
+// run_extern_object_typed_member — a typed data member of an `extern object` body reads and writes the
+// I6 property; a primitive-typed member is storage, not a namespace redirect to its type.
+// EXPECT_OUTPUT: 3 4 5 true
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 Object dev "device" with lvl 3, other 0;
+extern object dev {
+    int lvl;
+    object other;
+}
+void main(){
+    int a = dev.lvl;
+    print(a); print(" ");
+    dev.lvl = 4;
+    print(dev.lvl); print(" ");
+    print(dev.lvl + 1); print(" ");
+    dev.other = dev;
+    object o = dev.other;
+    print(o == dev);
+}

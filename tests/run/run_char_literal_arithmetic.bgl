@@ -1,0 +1,12 @@
+// run_char_literal_arithmetic — a character literal takes + and - with an int or a char, as §4.5 shows (`'a' + 1`).
+// EXPECT_OUTPUT: bx2d<=c
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    char c = 'a' + 1; print(c);
+    char d = 'z' - 2; print(d);
+    int n = 'c' - 'a'; print(n);
+    char e = 'a' + n + 1; print(e);
+    if ('a' < c) print("<");
+    if ('b' == c) print("=");
+    print('a' + 2);
+}

@@ -1,0 +1,5 @@
+// _test_i6_byte_array_operator.bgl — Inform 6's `->` is not Beguile; the error says to index the array.
+// EXPECT_ERROR: '->' is Inform 6's byte-array operator
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+rawArray<char> tbl = "abc";
+void main(){ int v = tbl->0; }

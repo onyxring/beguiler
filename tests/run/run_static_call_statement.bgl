@@ -1,0 +1,19 @@
+// run_static_call_statement — a static method called as a statement (its result discarded, or void)
+// calls the class's routine, also through a subclass name and inside a method.
+// EXPECT_OUTPUT: 3 7 12 13 20
+#beguilerSettings { target = z5; informName = "none"; }
+class Item {
+    static int Made = 0;
+    static int Bump(int n) { Item.Made = Item.Made + n; return Item.Made; }
+    static void Bump2(int n) { Item.Made = Item.Made + n; }
+    void use() { Item.Bump2(1); }
+}
+class Sword : Item { }
+Sword s1 { }
+void main(){
+    Item.Bump(3); print(Item.Made); print(" ");
+    Item.Bump2(4); print(Item.Made); print(" ");
+    Sword.Bump(5); print(Item.Made); print(" ");
+    s1.use(); print(Item.Made); print(" ");
+    int x = Sword.Bump(7); print(x);
+}

@@ -687,6 +687,8 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
                 return candidates[globalAt].type;
             }
         }
+        // Where a property is expected (`obj.provides(number)`), a property's name is that property.
+        if(currentExpectedType == "property" && namesProperty(name)) return string("property");
         string msg = format("'{0}' is ambiguous: matches ", name);
         for(size_t i = 0; i < candidates.size(); i++){
             if(i > 0) msg += (i == candidates.size() - 1 ? " and " : ", ");
@@ -1153,7 +1155,7 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
     for(auto* fd : candidates){
         for(size_t i = 0; i < fd->params.size(); i++){
             const string& t = fd->params[i]->type.name;
-            string e = languageService.findEnum(t) ? t : "";
+            string e = (languageService.findEnum(t) || t == "property") ? t : "";   // a property parameter too
             if(h.positionalEnum[i].empty() && !enumConflict[i]) h.positionalEnum[i] = e;
             else if(h.positionalEnum[i] != e) enumConflict[i] = 1;
             const string& pn = fd->params[i]->name;
@@ -2009,6 +2011,18 @@ string bglParser::clashRenamedMember(const string& name){
     return "";
 }
 
+// A global the binding declares under this name that emits an I6 symbol: a variable (not a property),
+// a routine or an object.
+bool bglParser::namesLibraryGlobal(const string& name){
+    for(typeDef* g : languageService.globals){
+        if(g->name != name) continue;
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ if(vd->isExternal && vd->type.name != "property") return true; }
+        else if(auto* fd = dynamic_cast<functionDef*>(g)){ if(fd->isExternal && !fd->isEmitter) return true; }
+        else if(auto* od = dynamic_cast<objectDef*>(g)){ if(od->isExternal && dynamic_cast<verbObjectDef*>(od) == nullptr) return true; }
+    }
+    return false;
+}
+
 std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::string& memberName){
     if(recvTypeName.empty() || memberName.empty()) return memberName;
     typeDef& td = languageService.getType(recvTypeName);
@@ -2573,9 +2587,10 @@ void bglParser::collectQualifyCandidatesFromUsingClassImports(const string& name
             else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->name != name) continue;
                 ct = vd->type.name;
-                // Recursively qualify so a namespace auto member resolves through to its backing
-                // object (parallels the object-import case below).
-                qual = qualifyIdentifier(imp->name + "." + name, func, body);
+                // A static is the class's global; otherwise qualify recursively, so a namespace auto
+                // member resolves through to its backing object (parallels the object-import case below).
+                qual = vd->isStatic ? "_bgl_" + imp->name + "_" + name
+                                    : qualifyIdentifier(imp->name + "." + name, func, body);
                 origin = format("#using-imported variable '{0}.{1}'", imp->dName(), name);
                 matched = true;
             }
@@ -2769,6 +2784,8 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
                 return candidates[globalAt].qualified;
             }
         }
+        // Where a property is expected (`obj.provides(number)`), a property's name is that property.
+        if(currentExpectedType == "property" && namesProperty(name)) return propertyI6Name(name);
         string msg = format("'{0}' is ambiguous: matches ", name);
         for(size_t i = 0; i < candidates.size(); i++){
             if(i > 0) msg += (i == candidates.size() - 1 ? " and " : ", ");
@@ -2778,6 +2795,18 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
         parsingError(msg);
     }
     return nullopt;
+}
+
+// True if `name` is a property: a `property` global, or a member of any class or object.
+bool bglParser::namesProperty(const string& name){
+    if(auto* gv = languageService.findGlobalAs<variableDeclaration>(name); gv && gv->type.name == "property") return true;
+    for(typeDef* g : languageService.globals){
+        vector<typeMember*>* members = nullptr;
+        if(auto* cd = dynamic_cast<classDef*>(g)) members = &cd->members;
+        else if(auto* od = dynamic_cast<objectDef*>(g)) members = &od->members;
+        if(members) for(typeMember* m : *members) if(m->name == name) return true;
+    }
+    return false;
 }
 
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body, const string& memberHint){
@@ -3195,6 +3224,9 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(argType == "var") return true;    // var is assignable to any type (untyped source)
     if(argType == "nullliteral") return true;   // `null`, the empty reference, fits every type
     if(argType == paramType) return true;
+    // A nested array<char> element keeps its spelled type; the declared form is byteArray.
+    auto byteForm = [](const std::string& t){ return t == "array<char>" ? std::string("bytearray") : t; };
+    if(byteForm(argType) == byteForm(paramType)) return true;
     // Named union → structural expansion: a named union (`union X = A|B`) is transparent for
     // assignment/passing (member lookup stays nominal elsewhere via its classDef). Expand here so
     // the structural-union rules below apply, then fall through.
@@ -3609,9 +3641,12 @@ variableDeclaration* bglParser::findAssignedDeclaration(const string& path, func
     };
     auto objectMember = [&](objectDef* od, const string& name) -> variableDeclaration* {
         if(od == nullptr) return nullptr;
+        variableDeclaration* inherited = memberOf(od->objectClass, name);
+        // An object's value for a class's `literal` member is still that member: keep its qualifier.
+        if(inherited != nullptr && inherited->isLiteral) return inherited;
         for(typeMember* m : od->members)
             if(m->name == name) if(auto* vd = dynamic_cast<variableDeclaration*>(m)) return vd;
-        return memberOf(od->objectClass, name);
+        return inherited;
     };
     size_t dot = path.rfind('.');
     if(dot == string::npos){
@@ -3655,6 +3690,7 @@ string bglParser::capturedByLambdaIn(const expression* e){
 // class, a named function, a lambda that captures nothing, or a `literal` parameter passed on. The
 // expression's emitted tokens are checked one by one; operators and punctuation are skipped.
 bool bglParser::isLiteralValue(const expression* e, string& why){
+    if(e->resolvedType == "nullliteral") return true;   // `null` is known at compile time
     auto sameName = [](const string& a, const string& b){ return strcasecmp(a.c_str(), b.c_str()) == 0; };
     for(size_t ti = 0; ti < e->tokens.size(); ti++){
         const string& t = e->tokens[ti];
@@ -3874,7 +3910,12 @@ bglParser::MethodMatch bglParser::resolveMethodNamed(const string& typeName, con
 functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, const string& methodNameIn,
                                         vector<expression*>& args, vector<string>& namedArgNames,
                                         vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
-                                        const string& elementType){
+                                        const string& elementTypeIn){
+    // A receiver typed `array<T>` (an inner array, `grid[1]`) binds T from its type.
+    string elementType = elementTypeIn;
+    if(elementType.empty() && (objType.rfind("array<", 0) == 0 || objType.rfind("rawarray<", 0) == 0)
+       && objType.back() == '>')
+        elementType = objType.substr(objType.find('<') + 1, objType.size() - objType.find('<') - 2);
     string methodName = methodNameIn;   // members are keyed in lower case
     transform(methodName.begin(), methodName.end(), methodName.begin(), ::tolower);
     // A verb object is typed `verb` (its value is the action), but its methods are its own class's
@@ -4043,6 +4084,17 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
            || (gcm.match->name == currentFunc->name && gcm.match->params.size() == currentFunc->params.size())))
         currentFunc->callsItself = true;
     out.funcVarReturnType = gcm.funcVarReturnType;
+    // A call through a func<…> variable converts each argument to its parameter type (an accessor's getter).
+    if(!gcm.funcVarReturnType.empty()){
+        vector<string> ta = funcTypeArgs(resolveIdentifierType(name, func, body));
+        for(size_t i = 0; i < args.size() && i + 1 < ta.size(); i++){
+            const string& want = ta[i + 1];
+            if(args[i] == nullptr || args[i]->resolvedType.empty() || args[i]->resolvedType == want || want == "var") continue;
+            string text = args[i]->text();
+            string conv = applyCastConversion(text, args[i]->resolvedType, want);
+            if(conv != text){ args[i]->tokens = {conv}; args[i]->resolvedType = want; }
+        }
+    }
     if(gcm.funcVarReturnType.empty() && gcm.match){
         out.method = gcm.match;
         finalizeCallArgs(args, namedArgNames, interpSegmentsPerArg, gcm.match);

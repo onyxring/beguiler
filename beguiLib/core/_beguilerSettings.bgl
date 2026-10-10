@@ -25,6 +25,7 @@ extern class beguilerSettingsType {
     bool         autoInitialize     = true;        /// Start the Beguile runtime before the game's own main; set it false when another extension already replaces main.
     bool         omitUnusedRoutines = true;        /// Leave routines nothing uses out of the story file; set it false to keep every routine.
     bool         economy            = false;       /// Shrink a Z-machine story by abbreviating common text; skipped when the source has its own abbreviations.
+    bool         filterVerbSplitWarnings = true;   /// Hide Inform 6's warning about a library verb left with no words after Beguile gives one of its words its own grammar.
     bool         generateBlorb      = false;       /// Package the story and its assets into a blorb file.
     string       blorbAssetPath     = "assets";    /// The asset folder, relative to the source file.
     string       author             = "";          /// The author's name, for the story's bibliographic data (required).

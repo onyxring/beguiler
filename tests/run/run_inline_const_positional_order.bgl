@@ -1,0 +1,12 @@
+// run_inline_const_positional_order — positional `inline` members take values in declaration order,
+// `inline const` ones included, and members an `extend class` adds come after.
+// EXPECT_OUTPUT: 1 2 3 4 | 5 c 9
+#beguilerSettings { target = z5; informName = "none"; }
+class G { inline const int P; inline int Q; inline const int R; inline int S; }
+G g1 { 1, 2, 3, 4; }
+class H { inline int P; inline const string C; }
+extend class H { inline int W; }
+H h1 { 5, "c", 9; }
+void main(){
+    print($"{g1.P} {g1.Q} {g1.R} {g1.S} | {h1.P} {h1.C} {h1.W}");
+}

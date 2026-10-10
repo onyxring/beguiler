@@ -4,23 +4,23 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 Release 1;
+constant _bglWorldBufSize = 128;
+constant MAX = 100;
+constant TITLE = "Test";
+constant RAW_MSG = "raw @@92n stays literal and @@92t too";
+constant RAW_WITH_QUOTE = "has a ""quoted"" word";
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
   with zcode _zcode
 ;
-constant MAX = 100;
-constant TITLE = "Test";
-constant RAW_MSG = "raw @@92n stays literal and @@92t too";
-constant RAW_WITH_QUOTE = "has a ""quoted"" word";
 [main a b c s ch flag autoInt autoChar i j;
     a = 5;
     b = 10;
@@ -34,8 +34,8 @@ constant RAW_WITH_QUOTE = "has a ""quoted"" word";
     a = a + 3;
     b = b - 1;
     c = c * 2;
-     a++ ;
-     b-- ;
+    a++;
+    b--;
     if (flag) {
         print (string)"yes";
     }
@@ -46,7 +46,7 @@ constant RAW_WITH_QUOTE = "has a ""quoted"" word";
         print i;
     }
     while (a > 0) {
-         a-- ;
+        a--;
     }
     switch (c) {
         0:

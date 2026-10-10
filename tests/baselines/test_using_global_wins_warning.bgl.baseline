@@ -3,14 +3,15 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
+global ptrSize = 2;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -20,7 +21,6 @@ object myLib
   with _m_ptrsize 4,
        other 9
 ;
-global ptrSize = 2;
 [main ws;
     ws=ptrsize;
     print ws + mylib.other;

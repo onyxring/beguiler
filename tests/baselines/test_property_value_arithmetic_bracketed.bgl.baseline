@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 5;
+#Ifdef beguiler;#Endif;
+constant _bglWorldBufSize = 128;
+constant Slots = 4;
+global _bglWorldBufIdx = -1;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+ Constant NO_ATTRIBUTE 0; 
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
+class _bglClass_Bin
+  with
+    load (slots - 1),
+    other (7 - 2),
+    plain -3
+;
+_bglClass_Bin b
+;
+object r
+  with third (slots * 2)
+;
+[main;
+];

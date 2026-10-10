@@ -98,7 +98,8 @@ In the generated Inform 6 the verb's action and its action routine keep the verb
 `SizeSub`), and the object that carries `handler()` is named `_bglVerb_⟨name⟩`. Inform 6 keeps objects
 in one namespace with properties, so the object's own name would otherwise collide with any member of
 that name, the runtime library's included (`size`, `clear`, `copy`). I6 code that names the verb object
-reaches it through `$i6Name` (§7.3.3).
+reaches it through `$i6Name` (§7.3.3). A verb whose action routine would take the name of a routine
+the binding declares (`verb Multi` and the library's `MultiSub`) is a compile-time error.
 
 **Example**
 
@@ -401,9 +402,13 @@ Each element of a pattern is one of the following.
 | `ANYNUMBER` | any number, no range check |
 | `SPECIAL` | a number or a dictionary word |
 | *attributeName* | an object that has that attribute (`container`, `animate`) |
-| *RoutineName* | a general parsing routine: a global `bool` function the parser calls to consume input words and report a match |
-| `NOUN(Routine)` | a noun filter: the parser matches nouns normally, then calls the global `bool` routine with each candidate object, which accepts or rejects it |
+| *RoutineName* | a general parsing routine: a global function the parser calls to consume input words (`NextWord()`, `wn`); it returns -1 for no match, 0 when it matched words but no value, 1 when it put a number in `parsed_number`, or the object it matched |
+| `NOUN(Routine)` | a noun filter: the parser matches nouns normally, puts each candidate object in `noun`, and calls the global `bool` routine, which accepts or rejects it |
 | `SCOPE(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
+
+These are Inform 6's own routine tokens, so the parser calls each routine with no arguments: a filter reads
+the candidate from `noun`, and a general parsing routine reads the input itself. A routine named in a
+pattern that declares parameters is a compile-time error.
 
 Both bindings declare `scope_stage`, the pass (1, 2 or 3) the parser is making when it calls a scope
 routine; objects are placed in scope on pass 2, as `if (scope_stage == 2) { PlaceInScope(obj); }`.
@@ -420,14 +425,14 @@ case-insensitive (§1.3), so `noun` in a pattern is the same token.
 **Example**
 
 ```bgl
-bool isEdible(object obj) { return obj.has(edible); }
+bool isEdible() { return noun.has(edible); }
 
 verb Taste {
     grammar = { {.taste, NOUN(isEdible)} };
     void handler() { … }
 }
 
-bool parseColor(int context) { … }
+int parseColor() { … }
 
 verb Paint {
     grammar = { {.paint, NOUN, parseColor} };      // "paint <object> <color>"
@@ -495,11 +500,13 @@ ordinary dictionary words and are unaffected.
   every word in the group. On a native word, or a library word with no synonyms, the modifier has no
   effect.
 
-In I6 terms: a line whose trigger word belongs to a library verb's synonym group is emitted as
-`Extend only 'w'`, which splits `w` off the group, keeps the library grammar it inherits and adds the
-line to `w` alone; with `withI6Synonyms` the line is emitted as `Extend 'w'`, which I6 applies to
-every word of the group. A library word with no synonyms is emitted as a plain `Extend`, and a new
-word as a fresh `Verb`. Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
+In I6 terms: a line whose trigger word is a library word is emitted as `Extend only 'w'`, which
+splits `w` off its I6 `Verb`, keeps the library grammar it inherits and adds the line to `w` alone;
+with `withI6Synonyms` the line is emitted as `Extend 'w'`, which I6 applies to every word of the
+group. A new word is emitted as a fresh `Verb`. The compiler cannot know a library word's grouping
+(an included I6 extension may add synonyms), so it splits every library word; when `w` was its
+`Verb`'s only word, Inform 6 warns that the declaration is left with no words, a warning the compiler
+hides unless `filterVerbSplitWarnings` is `false` (§17.3). Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
 
 **Example**
 

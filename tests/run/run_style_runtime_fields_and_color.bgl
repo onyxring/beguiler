@@ -1,0 +1,15 @@
+// run_style_runtime_fields_and_color — an inline `style{}` with runtime values sets the members under
+// their I6 names, and `color.red` is a constant, so a global style can be initialized from it.
+// EXPECT_OUTPUT: 2 3 16711680 | 16711680 16777215
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxWindow>
+#using bgl.glulx;
+style warn = style{ foreColor = color.red; };
+void show(style s){ print($"{s.justify} {s.fontWeight} {s.foreColor}"); }
+void main(){
+    bglInit(); glulxConsole();
+    int w = 3;
+    show(style{ justify = (int)eGlulxJustify.centered; fontWeight = w; foreColor = color.red; });
+    print($" | {warn.foreColor} {color.white}");
+}

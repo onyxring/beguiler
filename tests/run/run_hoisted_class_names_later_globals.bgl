@@ -1,0 +1,12 @@
+// run_hoisted_class_names_later_globals — a class emitted at its first instance (§18.7) may name a
+// constant, another class's static or a plain global declared further down: all are declared ahead
+// of the classes.
+// EXPECT_OUTPUT: 3 1 2 hook
+#beguilerSettings { target = z5; informName = "none"; }
+class Bin { int load = Slots - 1; void poke() { stats.count++; } void fire() { if (onFire != null) onFire(); } }
+Bin b1 { }
+const int Slots = 4;
+class stats { static int count = 0; }
+func<void> onFire;
+void hook() { print(" hook"); }
+void main(){ print(b1.load); print(" "); b1.poke(); print(stats.count); print(" "); b1.poke(); print(stats.count); onFire = hook; b1.fire(); }

@@ -1,0 +1,34 @@
+// run_accessor_right_operand_and_hook_arg — a value-class accessor read as a right operand
+// (`9 - fill`, `x - fill`, `2 * fill`, `9 > fill`) or passed through a func<> variable converts
+// through its getter, as it does as a left operand or a plain function's argument.
+// EXPECT_OUTPUT: 5 -1 8 1 4 4 8
+#beguilerSettings { target = z5; informName = "none"; }
+value class clampV {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int n) { _v = n; }
+}
+literal func<void, int> hook;
+func<int, int> twice;
+void plain(int n) { print(n); print(" "); }
+int dbl(int n) { return n * 2; }
+class holder {
+    clampV fill;
+    void go() {
+        fill = 4;
+        int x = 3;
+        print(9 - fill); print(" ");
+        print(x - fill); print(" ");
+        print(2 * fill); print(" ");
+        print(9 > fill ? 1 : 0); print(" ");
+        plain(fill);
+        if (hook != null) hook(fill);
+        print(twice(fill));
+    }
+}
+holder h { }
+void main(){
+    hook = plain;
+    twice = dbl;
+    h.go();
+}

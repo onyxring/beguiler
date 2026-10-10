@@ -69,6 +69,7 @@ class i6Emitter{
         // globals whose value is applied in bglInit through operator=); pass 3 must not
         // re-declare them.
         set<string> earlyDeclaredGlobals;
+        set<string> earlyStaticGlobals;   // class statics declared ahead of every class, by I6 name
         // Storage name for a member array promoted out of its property (see
         // promoteMemberArrayIfOversized). One per owning instance.
         static std::string promotedArrayName(const std::string& owner, const std::string& prop){
@@ -80,7 +81,7 @@ class i6Emitter{
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`
         void emitEvictions();                      // emit empty `Extend only 'w' replace;` for evicted words no verb reclaimed
         set<string> splitEmitted;                  // `only`-split library words already peeled off via `Extend only 'w'`
-        bool isGroupedExternWord(const string& w); // true if w is claimed by an extern verb with >1 trigger word (has synonyms)
+        bool isExternWord(const string& w);   // true if an extern (library) verb claims w
         // built-in I6 templates loaded from beguilib/_builtins.i6b
         map<string, pair<vector<string>, string>> builtinTemplates;
         // Per-template ##triggerEmitter <names> annotations, lowercased. When a template
@@ -184,6 +185,7 @@ class i6Emitter{
         string globalInstanceName(variableDeclaration* varNode);
         bool globalOwnsInstance(variableDeclaration* vd);
         string staticText(expression* e);
+        string propertyValueText(expression* e);   // staticText, bracketed when it is an arithmetic expression
         map<string, string> ownedGlobalInstances;   // class-typed global (I6 name, lowercase) → its instance
         void emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, const string& indent);
         void emitParamCopyIns(functionDef* fd, const string& indent);

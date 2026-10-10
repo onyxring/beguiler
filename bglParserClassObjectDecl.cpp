@@ -512,6 +512,32 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         if(body) newClass.globalDeclarationBody = body->i6Body;
     } else {
         if(!isExtend){
+            // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
+            // A "shadow" requires matching signature (arity + param types). Same name but
+            // different arity or param types is an overload, not a shadow — no warning.
+            if(!isReplace && !funcDef.name.empty()){
+                string shadowedFrom;
+                bool shadowedIsDefault = false;
+                auto sigMatches = [&](functionDef* fd){
+                    if(fd->params.size() != funcDef.params.size()) return false;
+                    for(size_t j = 0; j < funcDef.params.size(); j++)
+                        if(fd->params[j]->type.name != funcDef.params[j]->type.name) return false;
+                    return true;
+                };
+                function<void(classDef*)> searchBases = [&](classDef* c){
+                    if(!shadowedFrom.empty()) return;
+                    for(typeMember* m : c->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                            if(fd->name == funcDef.name && sigMatches(fd)){
+                                shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault || fd->isRequired; return;
+                            }
+                    for(classDef* base : c->baseClasses) searchBases(base);
+                };
+                for(classDef* base : newClass.baseClasses) searchBases(base);
+                if(!shadowedFrom.empty() && !shadowedIsDefault)
+                    parsingWarning(format("class '{0}': method '{1}' shadows definition in base class '{2}'; use 'replace' to suppress this warning",
+                        newClass.dName(), funcDef.dName(), shadowedFrom));
+            }
             // A later `extend … replace emitter` already holds this slot; its body is the one used.
             for(typeMember* m : newClass.members)
                 if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->isForwardReplace && fd->name == funcDef.name){
@@ -546,32 +572,6 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                 }
             }
             if(replacedExisting) { tok = file.getToken(); return true; }
-            // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
-            // A "shadow" requires matching signature (arity + param types). Same name but
-            // different arity or param types is an overload, not a shadow — no warning.
-            if(!isReplace && !funcDef.name.empty()){
-                string shadowedFrom;
-                bool shadowedIsDefault = false;
-                auto sigMatches = [&](functionDef* fd){
-                    if(fd->params.size() != funcDef.params.size()) return false;
-                    for(size_t j = 0; j < funcDef.params.size(); j++)
-                        if(fd->params[j]->type.name != funcDef.params[j]->type.name) return false;
-                    return true;
-                };
-                function<void(classDef*)> searchBases = [&](classDef* c){
-                    if(!shadowedFrom.empty()) return;
-                    for(typeMember* m : c->members)
-                        if(auto* fd = dynamic_cast<functionDef*>(m))
-                            if(fd->name == funcDef.name && sigMatches(fd)){
-                                shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault || fd->isRequired; return;
-                            }
-                    for(classDef* base : c->baseClasses) searchBases(base);
-                };
-                for(classDef* base : newClass.baseClasses) searchBases(base);
-                if(!shadowedFrom.empty() && !shadowedIsDefault)
-                    parsingWarning(format("class '{0}': method '{1}' shadows definition in base class '{2}'; use 'replace' to suppress this warning",
-                        newClass.dName(), funcDef.dName(), shadowedFrom));
-            }
         }
         newClass.members.push_back(&funcDef);
     }
@@ -1600,7 +1600,10 @@ void bglParser::consumeMethodI6Alias(functionDef& funcDef){
     }
     if(!file.peekToken().is("asi6")){
         if(!funcDef.isEmitter && !funcDef.isStatic) rejectMemberNamedLikeClass(funcDef.name, funcDef.dName());
-        if(!funcDef.isEmitter && !funcDef.isStatic && isI6OperatorWord(funcDef.name))
+        // Renamed like a data member when the name is an I6 operator word, or a library global, routine
+        // or object the binding declares (`Action` and parser.h's `action`). A library property keeps it.
+        if(!funcDef.isEmitter && !funcDef.isStatic
+           && (isI6OperatorWord(funcDef.name) || namesLibraryGlobal(funcDef.name)))
             funcDef.i6name = "_m_" + funcDef.dName();
         return;
     }
@@ -2345,7 +2348,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
             if(vd && dynamic_cast<arrayDeclaration*>(vd) == nullptr && vd->declaredExpressionValue
                && isRuntimeScalar(vd->declaredExpressionValue->resolvedType)){
                 i6RawNode* inj = new i6RawNode();
-                inj->text = objName + "." + vd->name + " = " + vd->declaredExpressionValue->text() + ";";
+                inj->text = objName + "." + memberI6Name(cls->name, vd->name) + " = " + vd->declaredExpressionValue->text() + ";";
                 // The RHS may reference routine locals/params (e.g. `{width, height}` where width/height
                 // are params) that shadow the aggregate class's property names. Mark the node `cooked` so
                 // the emitter renames those value-context uses (RHS `width` → `_l_width`) while leaving the
@@ -2742,6 +2745,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
             aliasDef.name = (string)aliasName;
             aliasDef.type = languageService.getType(rhs.value);
             aliasDef.isExternal = true;  // no I6 emission
+            aliasDef.isValueAlias = true;   // a namespace hook: a path through it redirects to the class
             newObj.members.push_back(&aliasDef);
             tok = file.getToken();
             return;
@@ -3079,6 +3083,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             aliasDef.name = (string)aliasName;
             aliasDef.type = languageService.getType(rhs.value);
             aliasDef.isExternal = true;  // no I6 emission
+            aliasDef.isValueAlias = true;   // a namespace hook: a path through it redirects to the class
             obj->members.push_back(&aliasDef);
             tok = file.getToken();
             return;
@@ -3381,7 +3386,9 @@ void bglParser::extendGrammarRuleListRemove(objectDef& obj, const string& member
     auto externClaims = [&](const string& w) -> bool {
         if(!vod) return false;
         for(const grammarLine& gl : vod->grammarLines)
-            if(gl.isOwnLine && gl.verbWord == w) return true;
+            if(gl.isOwnLine && (gl.verbWord == w
+                                || find(gl.additionalVerbWords.begin(), gl.additionalVerbWords.end(), w) != gl.additionalVerbWords.end()))
+                return true;
         bool anyOwn = false;
         for(const grammarLine& gl : vod->grammarLines) if(gl.isOwnLine){ anyOwn = true; break; }
         return !anyOwn && w == vod->name;   // bare `extern verb V;` claims its own name

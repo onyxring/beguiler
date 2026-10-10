@@ -17,14 +17,14 @@ global _bgl_temp10;
 global _bgl_temp11;
 global _bgl_temp12;
 global _bgl_temp13;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl

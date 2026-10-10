@@ -1,0 +1,20 @@
+// run_not_on_call_result — `!` on a call that returns a value class goes through the class's
+// `operator !`, as it does on a variable, not I6's `~~` on the result.
+// EXPECT_OUTPUT: var call true
+#beguilerSettings { target = z5; informName = "none"; }
+value class V {
+    int X;
+    V operator = (V o) { X = o.X; return self; }
+    bool operator ! () { return X == 0; }
+    static V Of(int x) { V r; r.X = x; return r; }
+}
+void main(){
+    V a = V.Of(0);
+    V b = V.Of(5);
+    if (!a) print("var");
+    if (!b) print(" WRONG");
+    if (!V.Of(0) && true) print(" call");
+    if (!V.Of(5)) print(" WRONG");
+    bool z = !a;
+    print($" {z}");
+}

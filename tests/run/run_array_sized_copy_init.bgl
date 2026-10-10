@@ -1,0 +1,17 @@
+/*  run_array_sized_copy_init — a sized array declared from an expression gets a copy of the value.
+
+    `array<int> keep[5] = build();` used to ignore its initializer, leaving the array empty.  */
+// EXPECT_OUTPUT: 1 3 3 99 1 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+array<int> build(){ array<int> r[3] = {1, 2, 3}; return r; }
+
+void main(){
+    array<int> keep[5] = build();
+    array<int> other[5] = build();
+    other[0] = 99;
+    array<int> again[4] = keep;
+    again[1] = 2;
+    print($"{keep[0]} {keep[2]} {keep.length} {other[0]} {again[0]} {again[1]}^");
+}

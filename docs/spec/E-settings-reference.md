@@ -14,6 +14,7 @@ that `#beguilerSettings.prop` may read (§17.7).
 | `description` | string | `""` | first | — | yes | §17.5 |
 | `economy` | bool | `false` | first | — | yes | §17.3 |
 | `errorFormat` | `eErrorFormat` | `E1` | first | `-E1`, `-E2` | yes | §17.3 |
+| `filterVerbSplitWarnings` | bool | `true` | first | `-filterVerbSplitWarnings=<true\|false>` | yes | §17.3 |
 | `firstPublished` | string | `""` | first | — | yes | §17.5 |
 | `forgiveness` | string | `""` | first | — | yes | §17.5 |
 | `forInScratchSize` | int | `31` | first | — | yes | §17.4 |

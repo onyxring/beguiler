@@ -1,0 +1,11 @@
+// run_comparison_bracketed_rhs — a comparison's right side is typed on its own: `f == (g | x)` on a bnum.
+// EXPECT_OUTPUT: truetruetrue
+#beguilerSettings { target = z5; informName = "none"; }
+bnum eFlag { fa, fb, fc }
+void main(){
+    eFlag f = eFlag.fa | eFlag.fb; eFlag g = eFlag.fb;
+    int z = 3;
+    bool c = z == (1 | 2); print(c);
+    bool b = f == (g | eFlag.fa); print(b);
+    bool b2 = (g | eFlag.fa) == f; print(b2);
+}

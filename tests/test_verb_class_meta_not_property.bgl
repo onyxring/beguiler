@@ -1,0 +1,8 @@
+// test_verb_class_meta_not_property.bgl — a class derived from verb that sets meta or priority sets it
+// for its verbs at compile time; neither is emitted as a property of the class (PunyInform has a
+// global named meta, so a property of that name is an I6 error).
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+class infoVerb : verb { meta = true; priority = 5; }
+infoVerb Survey { grammar = {.survey}; void handler() { print("x"); } }
+void main(){ }

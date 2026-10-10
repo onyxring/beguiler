@@ -1,0 +1,16 @@
+// run_glulx_window_pool_exhausted — splitting past the window pool returns null, without opening a Glk
+// window or reporting an I6 error.
+// EXPECT_OUTPUT: opened 8 null true
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxWindow>
+void main(){
+    bglInit(); glulxConsole();
+    int ok = 0;
+    bool sawNull = false;
+    for (int i = 0; i < 9; i++) {
+        auto w = bgl.ui.mainWin.splitRightBuffer(5, proportional);
+        if (w != null) ok++; else sawNull = true;
+    }
+    print($"opened {ok} null {sawNull}");
+}

@@ -386,6 +386,7 @@ void beguiler::runPostParseChecks() {
     parser.validateEqualityPairs();
     parser.validateRequiredMembers();
     parser.renameI6KeywordNames();
+    parser.resolveDeletes();
     parser.recordObjectMemberInits();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields
@@ -693,6 +694,28 @@ bool beguiler::runInform6() {
         cerr << "Error running I6!" << endl;
         return true;
     }
+    // A library word Beguile gave its own grammar is split off its `Verb` with `Extend only`; when the
+    // word was that Verb's only one, I6 warns the declaration is left empty. Expected, so hidden
+    // unless filterVerbSplitWarnings is false: only for a Verb line that names a word we split.
+    regex splitWarnRe(R"re(^(?:(.+)\((\d+)\):|File "(.+)"; Line (\d+)\s+#)\s+Warning:\s+Verb declaration no longer has any verbs associated.*$)re");
+    set<string> splitWords = emitter.splitEmitted;
+    splitWords.insert(emitter.evictedEmitted.begin(), emitter.evictedEmitted.end());
+    splitWords.insert(languageService.evictedExternWords.begin(), languageService.evictedExternWords.end());
+    auto namesSplitWord = [&](const string& file, int lineNo){
+        ifstream in(file);
+        string text;
+        for(int n = 1; n <= lineNo && getline(in, text); n++){}
+        static const regex wordRe(R"('([^']+)')");
+        for(sregex_iterator it(text.begin(), text.end(), wordRe), end; it != end; ++it){
+            string w = (*it)[1];
+            if(size_t sl = w.find("//"); sl != string::npos) w = w.substr(0, sl);
+            replace(w.begin(), w.end(), '^', '\'');
+            transform(w.begin(), w.end(), w.begin(), ::tolower);
+            if(splitWords.count(w)) return true;
+        }
+        return false;
+    };
+
     char buf[4096];
     bool sawError = false;
     int i6WarnHidden = 0;   // count of BLR-internal I6 warnings filtered from display
@@ -701,6 +724,11 @@ bool beguiler::runInform6() {
         // Strip trailing newline for processing; restore on output.
         while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
         smatch m;
+        if(beguilerSettings.filterVerbSplitWarnings && regex_match(line, m, splitWarnRe)){
+            string file = m[1].matched ? string(m[1]) : string(m[3]);
+            int lineNo = stoi(m[2].matched ? string(m[2]) : string(m[4]));
+            if(namesSplitWord(file, lineNo)){ i6WarnHidden++; continue; }
+        }
         if(regex_match(line, m, i6DiagRe) || regex_match(line, m, i6DiagReE2)){
             string infFile = m[1];
             int infLine   = stoi(m[2]);
@@ -838,6 +866,7 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         cout << "  -includepaths=<dir>  Add a directory to the include search path\n";
         cout << "  -lib=<dir>           Path to the Beguile system library (default: beguiLib/ next to binary)\n";
         cout << "  --debug              Enable debug mode (emit .bgldbg debug info)\n";
+        cout << "  -filterVerbSplitWarnings=<true|false>  Hide I6's warnings about library verbs left empty by a split (default true)\n";
         cout << "\n";
         cout << "Most options can also be set via #beguilerSettings in the source file.\n";
         cout << "The compiler should be placed in the same folder as the I6 compiler,\n";
@@ -845,6 +874,7 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         return true;
     }
 
+    auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
     for(int i=1; i<argc; i++){
         string arg = argv[i];
         if(arg[0]=='-'){ //switch
@@ -882,6 +912,9 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 // One debug mode: the Beguile debugger's files and I6's DEBUG (its debugging verbs
                 // and tracing) always go together; either flag turns on both.
                 settings.debugMode = true;
+            } else if(arg.size() > 25 && lower(arg.substr(1,24)) == "filterverbsplitwarnings=") {
+                beguilerSettings.filterVerbSplitWarnings = lower(arg.substr(25)) != "false";
+                beguilerSettings.claim("filterverbsplitwarnings");   // the command line wins over the block
             } else if(arg.size() >= 5 && arg.substr(1,4)=="lib=") {
                 // Consumed by resolveLibPath; recognized here so it doesn't leak into I6 switches.
             } else {

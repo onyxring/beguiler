@@ -124,6 +124,8 @@ extend extern class byteArray {
     replace emitter int  size             { _bglBuf.size($val) }
     /// True when this buffer carries a length. A buffer built outside `<buf>` does not.
     emitter bool isTracked()              { _bglBuf.isTracked($val) }
+    /// Copy another buffer's bytes and length into this one, up to this buffer's size.
+    emitter void operator = (array<char> v) { _bglBuf.setFromBuffer($self, $v) }
 }
 
 /// With `<buf>`, a buffer's `length` is assignable.
@@ -273,6 +275,8 @@ object _bglBuf {
     // setFromBuffer: bulk-copy from another tracked buf.
     array<char> setFromBuffer(array<char> buf, array<char> stringVal){
         int svlen = length(stringVal);
+        // An untracked buffer records no capacity; its length word is the most it is known to hold.
+        if(!isTracked(buf) && svlen > length(buf)) svlen = length(buf);
         copy(buf, stringVal, svlen, 0, 0);
         setLength(buf, svlen);
         return buf;

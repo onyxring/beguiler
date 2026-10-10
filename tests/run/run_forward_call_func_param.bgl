@@ -1,0 +1,12 @@
+// run_forward_call_func_param — a call to a function declared later resolves through a func<> parameter
+// (a named function, a lambda, or a func passed on) as it does after the declaration.
+// EXPECT_OUTPUT: 6 10 8 5
+#beguilerSettings { target = z5; informName = "none"; }
+int inc(int n) { return n + 1; }
+int a(int n) { return b(n, inc); }
+int c(int n) { return b(n, (int x) => x * 2); }
+int d(int n, func<int, int> f) { return b(n, f); }
+int e(int n) { return twoArgs(n, (int x, int y) => x + y); }
+int b(int n, func<int, int> f) { return f(n); }
+int twoArgs(int n, func<int, int, int> f) { return f(n, 0); }
+void main(){ print($"{a(5)} {c(5)} {d(7, inc)} {e(5)}"); }

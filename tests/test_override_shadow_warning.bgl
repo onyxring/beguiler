@@ -1,0 +1,8 @@
+// test_override_shadow_warning.bgl — an override without `replace` warns, unless the base method is
+// `default` (or `required`); an override marked `replace` does not warn. print() on an object class
+// overrides the root's default print() silently.
+// EXPECT_WARNING: method 'speak' shadows definition in base class 'Animal'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Animal { void speak(){ } default void eat(){ } void sleep(){ } }
+class Cat : Animal { void speak(){ } void eat(){ } replace void sleep(){ } void print(){ } }
+void main(){ }

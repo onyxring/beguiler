@@ -1,0 +1,20 @@
+// run_local_nested_array_per_call — a local array of arrays with a literal initializer gets fresh inner
+// arrays on every call (recursion included), not shared file-scope ones.
+// EXPECT_OUTPUT: 3:1,2,3 11 2 3:1,2,3 10 2 43 3:1,2,3 11 2 3:1,2,3 10 2 43
+#beguilerSettings { target = z5; informName = "none"; framePoolSize = 256; }
+#include <array>
+int sum(int n) {
+    array<array<int>> t = { {1}, {2, 3}, {4, 5, 6} };
+    array<array<array<int>>> d = { { {7, 8} }, { {9}, {10, 11} } };
+    t[2][0] = t[2][0] + n;
+    d[1][1][0] = d[1][1][0] + n;
+    int s = 0;
+    for (array<int> row in t) for (int v in row) s = s + v;
+    print($"{t.length}:{t[0].length},{t[1].length},{t[2].length} {d[1][1][0]} {d[1].length} ");
+    if (n > 0) s = s + sum(n - 1);
+    return s;
+}
+void main(){
+    bglInit();
+    print(sum(1)); print(" "); print(sum(1));
+}

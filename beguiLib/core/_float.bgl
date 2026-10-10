@@ -11,7 +11,7 @@
 /// A single-precision floating-point number, written `1.5`, `.3` or `-2.0`.
 primitive class float {
     emitter int operator = (float v){ $target = $v; }                                /// Assignment: the variable takes the value.
-    emitter int operator = (int v){ $target = _bglFloatNumtof($v); }                 /// Assignment: the variable takes the int's value as a float.
+    emitter int operator = (int v){ $target = _bglFloatNumtof($v); }                      /// Assignment: the variable takes the int's value as a float.
     emitter int operator = (intLiteral v){ $target = _bglFloatNumtof($v); }          /// Assignment: the variable takes the number as a float.
     emitter int operator = (negativeIntLiteral v){ $target = _bglFloatNumtof($v); }  /// Assignment: the variable takes the number as a float.
 
@@ -40,27 +40,27 @@ primitive class float {
     emitter bool operator >  (float v){ _bglFloatGt($val, $v) }  /// True when this is greater than `v`.
     emitter bool operator >= (float v){ _bglFloatGe($val, $v) }  /// True when this is at least `v`.
 
-    emitter float operator += (float v){ $val = $val + $v }  /// Add `v` to the variable.
-    emitter float operator -= (float v){ $val = $val - $v }  /// Subtract `v` from the variable.
-    emitter float operator *= (float v){ $val = $val * $v }  /// Multiply the variable by `v`.
-    emitter float operator /= (float v){ $val = $val / $v }  /// Divide the variable by `v`.
-    emitter float operator %= (float v){ $val = $val % $v }  /// Set the variable to its remainder after dividing by `v`.
+    emitter float operator += (float v){ $val = _bglFloatFadd($val, $v) }  /// Add `v` to the variable.
+    emitter float operator -= (float v){ $val = _bglFloatFsub($val, $v) }  /// Subtract `v` from the variable.
+    emitter float operator *= (float v){ $val = _bglFloatFmul($val, $v) }  /// Multiply the variable by `v`.
+    emitter float operator /= (float v){ $val = _bglFloatFdiv($val, $v) }  /// Divide the variable by `v`.
+    emitter float operator %= (float v){ $val = _bglFloatFmod($val, $v) }  /// Set the variable to its remainder after dividing by `v`.
 
-    emitter float operator + (int v){ _bglFloatFadd($val, _bglFloatNumtof($v)) }  /// The sum.
-    emitter float operator - (int v){ _bglFloatFsub($val, _bglFloatNumtof($v)) }  /// The difference.
-    emitter float operator * (int v){ _bglFloatFmul($val, _bglFloatNumtof($v)) }  /// The product.
-    emitter float operator / (int v){ _bglFloatFdiv($val, _bglFloatNumtof($v)) }  /// The quotient.
-    emitter float operator % (int v){ _bglFloatFmod($val, _bglFloatNumtof($v)) }  /// The remainder.
-    emitter bool  operator == (int v){ $val == _bglFloatNumtof($v) }              /// True when the values are equal.
-    emitter bool  operator != (int v){ $val ~= _bglFloatNumtof($v) }              /// True when the values differ.
-    emitter bool  operator <  (int v){ _bglFloatLt($val, _bglFloatNumtof($v)) }   /// True when this is less than `v`.
-    emitter bool  operator <= (int v){ _bglFloatLe($val, _bglFloatNumtof($v)) }   /// True when this is at most `v`.
-    emitter bool  operator >  (int v){ _bglFloatGt($val, _bglFloatNumtof($v)) }   /// True when this is greater than `v`.
-    emitter bool  operator >= (int v){ _bglFloatGe($val, _bglFloatNumtof($v)) }   /// True when this is at least `v`.
-    emitter float operator += (int v){ $val = $val + _bglFloatNumtof($v) }        /// Add `v` to the variable.
-    emitter float operator -= (int v){ $val = $val - _bglFloatNumtof($v) }        /// Subtract `v` from the variable.
-    emitter float operator *= (int v){ $val = $val * _bglFloatNumtof($v) }        /// Multiply the variable by `v`.
-    emitter float operator /= (int v){ $val = $val / _bglFloatNumtof($v) }        /// Divide the variable by `v`.
+    emitter float operator + (int v){ _bglFloatFadd($val, _bglFloatNumtof($v)) }          /// The sum.
+    emitter float operator - (int v){ _bglFloatFsub($val, _bglFloatNumtof($v)) }          /// The difference.
+    emitter float operator * (int v){ _bglFloatFmul($val, _bglFloatNumtof($v)) }          /// The product.
+    emitter float operator / (int v){ _bglFloatFdiv($val, _bglFloatNumtof($v)) }          /// The quotient.
+    emitter float operator % (int v){ _bglFloatFmod($val, _bglFloatNumtof($v)) }          /// The remainder.
+    emitter bool  operator == (int v){ $val == _bglFloatNumtof($v) }                      /// True when the values are equal.
+    emitter bool  operator != (int v){ $val ~= _bglFloatNumtof($v) }                      /// True when the values differ.
+    emitter bool  operator <  (int v){ _bglFloatLt($val, _bglFloatNumtof($v)) }           /// True when this is less than `v`.
+    emitter bool  operator <= (int v){ _bglFloatLe($val, _bglFloatNumtof($v)) }           /// True when this is at most `v`.
+    emitter bool  operator >  (int v){ _bglFloatGt($val, _bglFloatNumtof($v)) }           /// True when this is greater than `v`.
+    emitter bool  operator >= (int v){ _bglFloatGe($val, _bglFloatNumtof($v)) }           /// True when this is at least `v`.
+    emitter float operator += (int v){ $val = _bglFloatFadd($val, _bglFloatNumtof($v)) }  /// Add `v` to the variable.
+    emitter float operator -= (int v){ $val = _bglFloatFsub($val, _bglFloatNumtof($v)) }  /// Subtract `v` from the variable.
+    emitter float operator *= (int v){ $val = _bglFloatFmul($val, _bglFloatNumtof($v)) }  /// Multiply the variable by `v`.
+    emitter float operator /= (int v){ $val = _bglFloatFdiv($val, _bglFloatNumtof($v)) }  /// Divide the variable by `v`.
 
     explicit emitter int operator(){ _bglFloatFtonumz($val) }  /// Convert to an `int`, truncating toward zero.
 }

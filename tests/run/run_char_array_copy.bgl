@@ -1,0 +1,20 @@
+/*  run_char_array_copy — `dst = src` on array<char> copies bytes and length (<buf>'s operator =).
+
+    A local destination is untracked, so the copy stops at its length word; a nested element source
+    is spelled array<char>, not byteArray.  */
+// EXPECT_OUTPUT: 4 hell|5 hello|3 1-3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <buf>
+array<array<char>> progs = { {1,2,3}, {4} };
+array<char> g[6];
+void main(){
+    bglInit();
+    array<char> p[4];
+    array<char> q = "hello";
+    p = q;
+    print($"{p.length} "); bgl.util.buf.print(p);
+    g = q;
+    print($"|{g.length} "); bgl.util.buf.print(g);
+    p = progs[0];
+    print($"|{p.length} {(int)p[0]}-{(int)p[2]}");
+}

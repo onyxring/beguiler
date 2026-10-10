@@ -1,0 +1,15 @@
+// _test_grammar_routine_with_params.bgl — the parser calls a NOUN(...) filter with no arguments (the
+// candidate is in `noun`), so a filter that declares a parameter would never receive one.
+//
+// EXPECT_ERROR: must take no parameters
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <bindings/i6StandardLibrary>
+
+bool isEdible(object o) { return o.has(edible); }
+verb Nibble { grammar = { {.nibble, NOUN(isEdible)} }; void handler() { } }
+void main(){}

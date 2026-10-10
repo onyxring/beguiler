@@ -135,6 +135,8 @@ class classDef:public typeDef{
         // First member of the hierarchy for which `pred` is true — own members in declaration
         // order, then each base in `baseClasses` order, recursively. nullptr if none matches.
         typeMember* findMember(const std::function<bool(typeMember*)>& pred);
+        // The class in this hierarchy whose own members hold `m` (this class first); null if none.
+        classDef* declaringClass(const typeMember* m);
         // Visit EVERY member of the hierarchy in that same order, with no early exit. A member
         // reachable through two base paths is visited once per path; callers that need each
         // member at most once dedupe themselves.
@@ -228,6 +230,8 @@ class expression {
             for(const string& t : tokens){
                 // Translate Beguile/C operators to I6 equivalents.
                 // In I6, '!' is the line-comment character, so '!=' must become '~=' (not-equal).
+                // `-` then `-a` must not join into I6's decrement `--a` (likewise `+` `+`).
+                if(!result.empty() && !t.empty() && (t[0] == '-' || t[0] == '+') && result.back() == t[0]) result += ' ';
                 if(t == "!=") result += "~=";
                 else result += t;
             }
@@ -556,6 +560,8 @@ class arrayDeclaration : public variableDeclaration {
                                      // `<array>` is included. Matches bare I6 array APIs (orArray).
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
+        string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time
+        string copyHeld;             //   and the local counting the frame words its storage took
 };
 
 // a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings.
@@ -678,6 +684,8 @@ class beguilerSettingsDef : public typeDef {
                                        // optimal I6 abbreviations (inform6 -u), inject them, compile with -e.
                                        // Skipped if the source already defines its own Abbreviate directives
                                        // (respect the author's hand-tuned set). Off by default.
+        bool   filterVerbSplitWarnings = true; // true → hide I6's "Verb declaration no longer has any verbs
+                                       // associated" for library verbs a Beguile `Extend only` emptied.
 
         // blorb packaging
         bool   blorbEnabled  = false;  // true = run asset scan + blorb build

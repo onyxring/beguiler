@@ -1,0 +1,8 @@
+// test_property_value_arithmetic_bracketed.bgl — an arithmetic member value is bracketed in the I6
+// `with` list (`load (slots - 1)`), which I6 otherwise warns may be two values.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+const int Slots = 4;
+class Bin { int load = Slots - 1; int other = 7 - 2; int plain = -3; }
+Bin b { }
+object r { int third = Slots * 2; }
+void main(){ }

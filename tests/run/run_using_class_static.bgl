@@ -1,0 +1,12 @@
+// run_using_class_static — after `#using` a class, a bare static name is the static's global (read,
+// write, ++) and a bare static method name calls the class's routine.
+// EXPECT_OUTPUT: 3 3 6 7 9
+#beguilerSettings { target = z5; informName = "none"; }
+class stats { static int count = 3; static int addTo(int n) { stats.count = stats.count + n; return stats.count; } }
+#using stats
+void main(){
+    print(count); print(" "); print(stats.count); print(" ");
+    count = 5; count++; print($"{count} ");
+    addTo(1); print($"{count} ");
+    print(addTo(2));
+}

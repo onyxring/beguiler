@@ -1,0 +1,6 @@
+// _test_extend_enum_on_bnum.bgl — a bnum is extended with `extend bnum`; `extend enum` on it says so.
+// EXPECT_ERROR: extend it with `extend bnum fl`
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+bnum fl { a, b }
+extend enum fl { emitter int twice { ($self * 2) } }
+void main(){ }

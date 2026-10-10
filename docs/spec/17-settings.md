@@ -105,6 +105,7 @@ own `Include` directives against the same set.
 | `serial` | string | `""` | Story serial number, emitted as an I6 `Serial` directive when set. Must be exactly six digits. |
 | `omitUnusedRoutines` | bool | `true` | Emits `!% $OMIT_UNUSED_ROUTINES=1`, so Inform 6 drops routines nothing references (§18.11). |
 | `economy` | bool | `false` | Opt-in automatic text abbreviation (§18.11). |
+| `filterVerbSplitWarnings` | bool | `true` | Hides Inform 6's "Verb declaration no longer has any verbs associated" warning for a library verb whose only word a Beguile line split off (§13.4.4); `false` shows it. |
 
 ## 17.4 Runtime Settings
 
@@ -248,7 +249,7 @@ that is not a declared property is a compile-time error.
 | --- | --- |
 | string | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName`, `informPath`, `beguiLibPath`, `errorFormat`, `serial`, `includePaths` |
 | int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `worldBufSize`, `forInScratchSize` |
-| bool | `generateBlorb`, `autoInitialize`, `economy`, `omitUnusedRoutines`, `rewritePaths` |
+| bool | `generateBlorb`, `autoInitialize`, `economy`, `filterVerbSplitWarnings`, `omitUnusedRoutines`, `rewritePaths` |
 
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.
 

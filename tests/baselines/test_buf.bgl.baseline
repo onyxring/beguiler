@@ -12,6 +12,8 @@ global _bgl_temp2;
 global bufa = 0;
 global bufb = 0;
 global bufsmall = 0;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -33,8 +35,6 @@ global _bglInitDone = 0;
     _bglBuf._registerTracked(bufsmall);
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -115,6 +115,9 @@ object _bglBuf
   ],
        setFromBuffer [buf stringVal svlen;
     svlen=self.length(stringVal);
+    if ((~~self.istracked(buf)) && svlen > self.length(buf)) {
+        svlen=self.length(buf);
+    }
     self.copy(buf, stringVal, svlen, 0, 0);
     self.setLength(buf, svlen);
     return buf;

@@ -1,0 +1,12 @@
+// run_print_cast_call — printing a cast-then-called func prints its value, not an I6 print rule.
+// EXPECT_OUTPUT: 12 12|12|12|9
+#beguilerSettings { target = z5; informName = "none"; }
+int triple(int n) { return n * 3; }
+void main() {
+    string | func<int, int> a = triple;
+    string | func<int, int> g = triple;
+    print($"{((func<int, int>)a)(4)} {((func<int, int>)g)(4)}|");
+    print(((func<int, int>)a)(4)); print("|");
+    int r = ((func<int, int>)a)(4); print(r); print("|");
+    print(1 + ((func<int, int>)a)(4) - 4);
+}

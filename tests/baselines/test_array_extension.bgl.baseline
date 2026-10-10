@@ -9,6 +9,8 @@ global _bgl_temp1;
 global _bgl_temp2;
 global _bgl_temp3;
 global _bgl_temp4;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -24,8 +26,6 @@ global _bglInitDone = 0;
     g_queue-->(g_queue-->0) = $9084;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -369,7 +369,7 @@ object _bglArray
             len=self.length(obj,prop);
         }
         else {
-             pos++ ;
+            pos++;
         }
     }
   ],
@@ -434,7 +434,7 @@ object _bglArray
         j=i - 1;
         while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
             self.set(obj, prop, j + 1, self.get(obj,prop,j));
-             j-- ;
+            j--;
         }
         self.set(obj, prop, j + 1, key);
     }

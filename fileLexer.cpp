@@ -445,6 +445,12 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 else if(c=='?' && peekChar()=='?') { readChar(); retval.value += "@??"; }  // ¿
                 else if(c=='<' && peekChar()=='<') { readChar(); retval.value += "@<<"; }  // «
                 else if(c=='>' && peekChar()=='>') { readChar(); retval.value += "@>>"; }  // »
+                else if((unsigned char)c >= 0x80){
+                    // An escape followed by a non-ASCII character: name the character, not its first byte.
+                    string ch(1, c);
+                    while((unsigned char)peekChar() >= 0x80 && ((unsigned char)peekChar() & 0xC0) == 0x80) ch += readChar();
+                    parser.parsingError(format("Unknown escape '\\{0}' in string literal", ch));
+                }
                 else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
             }
             else if((unsigned char)c >= 0x80){
@@ -481,6 +487,17 @@ token fileLexer::getBasicToken(bool suppressBleed){
             else if(c=='^')   retval.value+="@@94";         // literal caret
             else if(c=='\\')  retval.value+="@@92";         // literal backslash
             else if(c=='@')   retval.value+="@@64";         // literal at-sign
+            else if((unsigned char)c >= 0x80){
+                // A typed non-ASCII character is the character, as in any string (Appendix D).
+                uint32_t codepoint = decodeUtf8((unsigned char)c,
+                    [&](){ char b = readChar(); retval.originalValue += b; return b; }, [&](){ return peekChar(); });
+                string tr;
+                if(i6TranslateStringCodepoint(codepoint, tr)) retval.value += tr;
+                else {
+                    char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%04X", codepoint);
+                    parser.parsingError(format("Unsupported Unicode character U+{0} in string literal", string(hexBuf)));
+                }
+            }
             else              retval.value+=c;
             c=peekChar();
             continue;
@@ -492,7 +509,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
             if(retval.value[1]=='/' && c== '\n') break; //singleline 
             
-            if(retval.value[1]=='*' && retval.value.length()>3 && retval.value[retval.value.length()-1]=='*' && c=='/'){ //multiline
+            if(retval.value[1]=='*' && retval.value.length()>=3 && retval.value[retval.value.length()-1]=='*' && c=='/'){ //multiline; `/**/` is empty
                 retval.value+=c;
                 readChar();
                 break;
@@ -531,9 +548,8 @@ void fileLexer::rewind(const mark_t& m){
     s->seekg(m.pos);
     ln = m.line; cc = m.col;
 }
-string fileLexer::getRawTextToStatementEnd(){
+string fileLexer::getRawTextToStatementEnd(int depth){
     string text;
-    int depth = 0;
     char c = readChar();
     while(c != EOF){
         if(c == ';' && depth == 0) return text;
@@ -670,6 +686,11 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          }
          // Skip character/dict-word literals — same reasoning: I6 doesn't C-escape, so '\'
          // is a 3-char literal that terminates at the second '. A Beguile one does: '\'e'.
+         // In Beguile an apostrophe straight after a word character is part of a dictionary word (`.child's`).
+         if(c=='\'' && !(isI6Content || i6Depth != -1) && !retval.empty() && isValidIdentifierChar(retval.back())){
+             retval += c; c = readChar();
+             continue;
+         }
          if(c=='\''){
              bool beguileEscapes = !(isI6Content || i6Depth != -1);
              retval += c; c = readChar();
@@ -1247,6 +1268,8 @@ bool fileLexer::tryLexDictionaryWordToken(token& retval){
                           || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
                           || prevTokenType == eTokenType::directive
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
+    // A keyword that a value follows (`return .lamp;`, `case .take:`) is not a receiver.
+    if(prevIsExprEnd && (prevTokenValue == "return" || prevTokenValue == "case")) prevIsExprEnd = false;
     // `(int).bounce`: a cast never takes a member, so the '.' after it starts a dictionary word.
     if(prevIsExprEnd && prevTokenValue == ")" && retval.is(".")){
         auto here = currentStream()->tellg();

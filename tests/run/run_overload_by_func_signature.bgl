@@ -1,0 +1,16 @@
+// run_overload_by_func_signature — overloads may differ only in a func<> parameter's signature, for a
+// global function and for a method; the call picks the overload by the lambda's shape.
+// EXPECT_OUTPUT: 5 20 7 12
+#beguilerSettings { target = z5; informName = "none"; }
+int applyTo(func<int, int> f, int x)      { return f(x); }
+int applyTo(func<int, int, int> f, int x) { return f(x, x + 1); }
+object calc {
+    int run(func<int, int> f)      { return f(6); }
+    int run(func<int, int, int> f) { return f(3, 4); }
+}
+void main(){
+    print(applyTo((int a) => a + 1, 4)); print(" ");
+    print(applyTo((int a, int b) => a * b, 4)); print(" ");
+    print(calc.run((int a) => a + 1)); print(" ");
+    print(calc.run((int a, int b) => a * b));
+}

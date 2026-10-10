@@ -1,0 +1,42 @@
+// run_array_unsized_copy_init_glulx — the Glulx form: an array declared from a value, without a capacity, gets storage sized
+// from the value when the declaration runs, and a copy of it: a later chain or call doesn't change it.
+// EXPECT_OUTPUT: 3:1,2,3 2:20,30 kept 3:1,2,3 4:9,8,7,6 loop 6 sum 10
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <array>
+#include <linq>
+#include "glulxConsole.bgl"
+
+array<int> build(){ array<int> r[3] = {1, 2, 3}; return r; }
+array<int> second(){
+    array<int> pad[4] = {5, 5, 5, 5};
+    array<int> r = {9, 8, 7, 6};
+    return r;
+}
+array<int> grow(int n){ array<int> r[8]; for (int i = 0; i < n; i++) r.append(i + 1); return r; }
+
+void show(array<int> a){
+    print($"{a.length}:");
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(","); print(a[i]); }
+    print(" ");
+}
+
+void main(){
+    bglInit(); glulxConsole();
+    array<int> nums = {10, 20, 30, 40};
+    array<int> keep = build();
+    show(keep);
+    array<int> mid = nums.filter((int x) => x > 10 && x < 40);
+    show(mid);
+    array<int> other = nums.filter((int x) => x > 25);
+    print("kept "); show(keep);
+    array<int> far = second();
+    show(far);
+    int total = 0;
+    int rounds = 0;
+    for (int i = 1; i <= 4; i++) {
+        array<int> g = grow(i);
+        total += g[g.length - 1];
+        rounds += g.length > 0 ? 1 : 0;
+    }
+    print($"loop {rounds + 2} sum {total}");
+}

@@ -60,7 +60,12 @@ superposed int _bglPow(int i, int p){
 
 superposed int _bglAbs(int p){ if(p < 0) return -p; return p; }
 superposed int _bglShiftLeft(int i, int numBits){ return i * _bglPow(2, numBits); }
-superposed int _bglShiftRight(int i, int numBits){ return i / _bglPow(2, numBits); }
+superposed int _bglShiftRight(int i, int numBits){
+    int p = _bglPow(2, numBits);
+    int q = i / p;
+    if(i < 0 && q * p != i) q--;   // an arithmetic shift rounds toward minus infinity; division rounds toward zero
+    return q;
+}
 
 superposed int _bglUnsignedShiftRight(int i, int numBits){ return _bglUnsignedDiv(i, _bglPow(2, numBits)); }
 

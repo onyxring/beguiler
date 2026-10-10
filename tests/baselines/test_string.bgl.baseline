@@ -12,6 +12,8 @@ global _bgl_sw;
 
     Default bglStringDefaultSize 500;
 
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -21,8 +23,6 @@ global _bglInitDone = 0;
 
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -103,6 +103,9 @@ object _bglBuf
   ],
        setFromBuffer [buf stringVal svlen;
     svlen=self.length(stringVal);
+    if ((~~self.istracked(buf)) && svlen > self.length(buf)) {
+        svlen=self.length(buf);
+    }
     self.copy(buf, stringVal, svlen, 0, 0);
     self.setLength(buf, svlen);
     return buf;

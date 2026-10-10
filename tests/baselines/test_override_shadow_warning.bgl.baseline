@@ -1,0 +1,41 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 5;
+#Ifdef beguiler;#Endif;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+ Constant NO_ATTRIBUTE 0; 
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
+class _bglClass_Animal
+  with
+    speak[;
+    ],
+    eat[;
+    ],
+    sleep[;
+    ]
+;
+class _bglClass_Cat
+  class _bglClass_Animal
+  with
+    speak[;
+    ],
+    eat[;
+    ],
+    sleep[;
+    ],
+    print[;
+    ]
+;
+[main;
+];

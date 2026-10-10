@@ -1,0 +1,28 @@
+// run_glulx_window_close_frees_slot — closing a window returns it to its pool, so a program can open
+// and close more windows than the pool holds; a window held as its base type frees into the right pool.
+// EXPECT_OUTPUT: cycles 12 grids 12 kept 1
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxWindow>
+void main(){
+    bglInit(); glulxConsole();
+    int cycles = 0;
+    for (int i = 0; i < 12; i++) {
+        auto w = bgl.ui.mainWin.splitRightBuffer(5, proportional);
+        if (w == null) break;
+        cycles++;
+        w.close();
+        w.close();
+    }
+    int grids = 0;
+    for (int i = 0; i < 12; i++) {
+        window w = bgl.ui.mainWin.splitUpGrid(1);
+        if (w == null) break;
+        grids++;
+        w.close();
+    }
+    auto a = bgl.ui.mainWin.splitLeftBuffer(20, proportional);
+    auto b = a.splitDownBuffer(2);
+    b.close();
+    print($"cycles {cycles} grids {grids} kept {a.id != 0 ? 1 : 0}");
+}

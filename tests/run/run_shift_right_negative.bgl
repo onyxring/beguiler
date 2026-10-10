@@ -1,0 +1,9 @@
+// run_shift_right_negative — >> on an int is an arithmetic shift: it rounds toward minus infinity, so a
+// negative value stays negative (-7 >> 1 is -4, -1 >> n is -1).
+// EXPECT_OUTPUT: -4 -1 -1 -16 3 0 -4
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    int a = -7; int b = -1; int c = -256; int d = 7; int e = 1;
+    print($"{a >> 1} {b >> 1} {b >> 3} {c >> 4} {d >> 1} {e >> 1} ");
+    a >>= 1; print(a);
+}

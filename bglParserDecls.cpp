@@ -135,7 +135,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
         if(enumPtr == nullptr)
             parsingError(format("extend enum '{0}': no previously declared enum with that name", (string)name));
         if(enumPtr->isBnum != isBnum)
-            parsingError(format("extend enum '{0}': {1} extension does not match the original {2} declaration",
+            parsingError(format("'{0}' is a {2}; extend it with `extend {2} {0}`, not `extend {1}`.",
                                 (string)name, isBnum ? "bnum" : "enum", enumPtr->isBnum ? "bnum" : "enum"));
     } else {
         enumPtr = &languageService.registerEnum((string)name, isExternal, name.originalValue);
@@ -229,6 +229,22 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
     string nestedElem       = inferInlineArrays ? arrayInnerType(elementType) : "";
     token t = file.getToken();
     while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
+        if(inferInlineArrays && t.is(token::braceOpen) && func != nullptr && nestedElem != "char"){
+            // A local's inner array is allocated per call (emitLocalArrayAllocs), so the list stays a list.
+            initializerList* il = parseArrayInitializerList(nestedElem, func, body);
+            if(!nestedElem.empty() && nestedElem != "var")
+                for(size_t i = 0; i < il->elements.size(); i++){
+                    expression* e = il->elements[i];
+                    if(!e->resolvedType.empty() && !zeroFitsBnum(e, nestedElem) && !isArrayElementCompatible(e->resolvedType, nestedElem))
+                        parsingError(format("Inner array element {0} has type '{1}', expected '{2}'", i, e->resolvedType, nestedElem));
+                }
+            il->resolvedType = elementType;
+            list->elements.push_back(il);
+            token sep = file.getToken({",", token::braceClose});
+            if(sep.is(token::braceClose)) break;
+            t = file.getToken();
+            continue;
+        }
         if(inferInlineArrays && t.is(token::braceOpen)){
             // Array-of-arrays element: bake `{...}` as an anonymous inner array and store its address.
             string anonName = format("_bglanon{0}", anonObjectCounter++);
@@ -409,6 +425,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             //     an int for `array<char>`) is the one-element shorthand.
             // The caller can always write explicit braces to force a one-element list in the excluded
             // cases.
+            bool canReread = !file.hasPendingToken;
+            fileLexer::mark_t exprAt = file.mark();
+            set<typeDef*> before(languageService.globals.begin(), languageService.globals.end());
+            size_t postAt = postInjections.size();
             token first = file.getToken();
             expression* expr = parseExpression(first, {token::endStatement}, func, body);
             bool elementLike = !elementType.empty() && elementType != "var"
@@ -448,7 +468,28 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                 if(!elementType.empty() && !genericValueFits(expr, target, func, body))
                     parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'",
                         typeDisplayName(elementAwareType(expr, func, body)), typeDisplayName(target)));
-                arrDecl.declaredExpressionValue = expr;
+                // The library's own locals hold handles to buffers it manages; they stay aliases.
+                bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
+                                || arrDecl.name.rfind("_bgl", 0) == 0
+                                || arrDecl.isByteArray || arrDecl.isRaw
+                                || !languageService.arrayInUse;   // without <array>, assignment aliases too
+                if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
+                    // The initializer is copied into the array's own storage, as `name = value;` would.
+                    // Without a capacity, the storage is sized from the value when the declaration runs.
+                    pendingInjections.clear();
+                    postInjections.resize(postAt);
+                    // The re-read lifts its lambdas again; the first ones would be dead routines.
+                    auto& gl = languageService.globals;
+                    gl.erase(remove_if(gl.begin(), gl.end(), [&](typeDef* g){
+                        return !before.count(g) && dynamic_cast<functionDef*>(g) && g->name.rfind("_bglLambda_", 0) == 0; }), gl.end());
+                    file.rewind(exprAt);
+                    copyInitSource = file.getRawTextToStatementEnd();
+                    if(arrDecl.arraySize == 0){
+                        arrDecl.copySource = "_bglsrc_" + arrDecl.name;
+                        arrDecl.copyHeld = "_bglheld_" + arrDecl.name;
+                    }
+                } else
+                    arrDecl.declaredExpressionValue = expr;
             }
         }
     }
@@ -500,7 +541,24 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         // Set-up an element needs (a `?.` test, a temp) runs before the elements are stored.
         for(statement* inj : pendingInjections) body->statements.push_back(inj);
         pendingInjections.clear();
+        string valueSource = copyInitSource;
+        copyInitSource.clear();
+        if(!arrDecl.copySource.empty()){
+            string text = "int " + arrDecl.copyHeld + "; " + (string)dataType + "<" + elementType + "> "
+                        + arrDecl.copySource + " = " + valueSource + ";";
+            file.openText(text, arrDecl.src.file, arrDecl.src.line);
+            try { for(int n = 0; n < 2; n++) processStatementDispatch(file.getToken(), *func); }
+            catch(...) { file.close(); throw; }
+            file.close();
+            valueSource = arrDecl.copySource;
+        }
         body->statements.push_back(&arrDecl);
+        if(!valueSource.empty()){
+            string text = arrDecl.name + " = " + valueSource + ";";
+            file.openText(text, arrDecl.src.file, arrDecl.src.line);
+            try { processStatementDispatch(file.getToken(), *func); } catch(...) { file.close(); throw; }
+            file.close();
+        }
     } else
         languageService.registerInstance(arrDecl);
     return false;
@@ -1304,17 +1362,17 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // real definition takes over cleanly. `replace` has its own path (below) and is exempt.
     functionDef* overriddenDefault = nullptr;   // the `extern default` this definition takes over
     if(!isExternal && !isReplace){
-        for(auto it = languageService.globals.begin(); it != languageService.globals.end(); ++it){
+        // Every declaration of it goes: the program may repeat the binding's `extern default`.
+        for(auto it = languageService.globals.begin(); it != languageService.globals.end(); ){
             auto* ex = dynamic_cast<functionDef*>(*it);
             if(ex && ex->isExternal && !ex->isPrePassStub && ex->name == funcDef.name){
                 if(!ex->isDefault)
                     parsingError(format("'{0}' is already declared extern (it exists externally); a plain "
                         "definition would silently redefine it. If it's an overridable library stub, mark the "
                         "declaration `extern default`; otherwise rename to avoid the collision.", funcDef.name));
-                overriddenDefault = ex;
-                languageService.globals.erase(it);
-                break;
-            }
+                if(overriddenDefault == nullptr) overriddenDefault = ex;
+                it = languageService.globals.erase(it);
+            } else ++it;
         }
     }
 
@@ -1335,7 +1393,8 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     } else {
         for(typeDef*& g : languageService.globals){
             if(auto* stub = dynamic_cast<functionDef*>(g)){
-                if(stub->name == funcDef.name && stub->isPrePassStub){
+                // An extern takes only an extern's place: a definition's stub holds its source position.
+                if(stub->name == funcDef.name && stub->isPrePassStub && stub->isExternal == funcDef.isExternal){
                     g = &funcDef;
                     registeredEarly = true;
                     break;
@@ -1825,11 +1884,18 @@ grammarLine bglParser::parseGrammarLineContent(){
                     parsingError(format("'{0}' in '{1}({0})' does not name a declared global function", routine.value, display));
                 if(rfd->returnType.name != "bool" && rfd->returnType.name != "ebool")
                     parsingError(format("'{0}' in '{1}({0})' must return bool (returns '{2}')", routine.value, display, rfd->returnType.name));
+                if(!rfd->params.empty())
+                    parsingError(format("'{0}' in '{1}({0})' must take no parameters: the parser calls it with none{2}",
+                        routine.originalValue.empty() ? routine.value : routine.originalValue, display, pt.value == "noun" ? " and leaves the candidate object in 'noun'" : ""));
                 tokenStr = pt.value + "=" + routine.value;  // I6 form: noun=Routine
             } else {
                 // bare token: must be a declared grammarToken, attribute, or global function
                 if(resolvedType != "grammartoken" && resolvedType != "attribute" && resolvedType != "function")
                     parsingError(format("'{0}' in grammar pattern is not a declared grammarToken, attribute, or global function", display));
+                if(resolvedType == "function")
+                    if(auto* fd = languageService.findGlobalAs<functionDef>(pt.value); fd && !fd->params.empty())
+                        parsingError(format("general parsing routine '{0}' must take no parameters: the parser calls it with none, "
+                                            "and it reads the input with NextWord()", display));
             }
             line.patternTokens.push_back(tokenStr);
         }

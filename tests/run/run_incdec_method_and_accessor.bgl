@@ -1,0 +1,32 @@
+// run_incdec_method_and_accessor — `x++` / `++x` / `x--` as statements call a regular-method
+// `operator ++` / `prefix++` / `--`; on an accessor with no `++` of its own, `x++` is `x = x + 1`
+// through its getter and setter (§9.7).
+// EXPECT_OUTPUT: 1 11 10 v2 21 20
+#beguilerSettings { target = z5; informName = "none"; }
+value class V {
+    int X;
+    V operator = (V o) { X = o.X; return self; }
+    void operator ++ () { X++; }
+    void operator prefix++ () { X = X + 10; }
+    void operator -- () { X--; }
+}
+class C { int N; void operator ++ () { N = N + 2; } }
+C c1 { }
+object furnace {
+    int Scale = 3;
+    auto Heat = {
+        int _raw = 0;
+        int operator () { return _raw / outer.Scale; }
+        void operator = (int v) { _raw = v * outer.Scale; }
+    }
+}
+void main(){
+    V a;
+    a++; print(a.X); print(" ");
+    ++a; print(a.X); print(" ");
+    a--; print(a.X); print(" ");
+    c1++; print($"v{c1.N} ");
+    furnace.Heat = 20;
+    furnace.Heat++; print(furnace.Heat); print(" ");
+    furnace.Heat--; print(furnace.Heat);
+}

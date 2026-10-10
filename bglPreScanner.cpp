@@ -189,7 +189,8 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
             return;
         }
         string typeName = t.value;
-        preScanConsumeGenericSuffix(t);
+        // A `func<…>` parameter keeps its signature, so a call before the declaration resolves like one after.
+        if(string suffix = preScanConsumeGenericSuffix(t); typeName == "func") typeName += suffix;
         token nameTok = file.getToken();
         if(nameTok.is(token::parenClose)) return;
         if(!nameTok.is(eTokenType::identifier)) continue;
@@ -217,7 +218,8 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
     }
 }
 
-void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
+string bglParser::preScanConsumeGenericSuffix(const token& typeTok){
+    string suffix;
     // array<...> and func<...> can nest arbitrarily (e.g. array<func<eVerdict>>),
     // so consume the whole <...> by matching angle-bracket depth rather than a
     // fixed number of tokens.
@@ -226,13 +228,15 @@ void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
     if(file.peekToken().is("<")
        && (typeTok.value == "array" || typeTok.value == "rawarray" || typeTok.value == "func")){
         file.getToken(); // '<'
+        suffix = "<";
         int depth = 1;
         while(depth > 0){
             token t = file.getToken();
+            if(t.is(eTokenType::eof)) return "";
+            suffix += t.value;
             if(t.value == "<") depth++;
             else if(t.value == ">") depth--;
             else if(t.value == ">>") depth -= 2;   // `array<func<void>>` closes two levels in one token
-            else if(t.is(eTokenType::eof)) return;
         }
     }
     // Union tail: `| Type | Type ...`. A '|' right after a type at a declaration head is a union,
@@ -242,7 +246,9 @@ void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
         file.getToken();                       // '|'
         token member = file.getToken();        // member base type
         preScanConsumeGenericSuffix(member);   // member's own <...> (and any further '|' chain)
+        suffix.clear();                        // a union's name is not one type's
     }
+    return suffix;
 }
 
 void bglParser::preScanDirective(token tok){
@@ -755,7 +761,7 @@ void bglParser::preScanExtend(token& tok){
             // Member qualifiers, in any order. `inline` is recorded: an instance declared before
             // this extend still has to see the class's extended positional order.
             while(t.is("replace") || t.is("explicit") || t.is("emitter") || t.is("ref") || t.is("typesealed")
-                  || t.is("inline") || t.is("const") || t.is("static")){
+                  || t.is("inline") || t.is("const") || t.is("static") || t.is("default") || t.is("superposed")){
                 if(t.is("replace")) memberIsReplace = true;
                 if(t.is("emitter")) memberIsEmitter = true;
                 if(t.is("inline"))  memberIsInline  = true;
@@ -1003,7 +1009,8 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                   // carry the full signature, not just the name.
                   bool sawEmitter = false;
                   bool sawInline  = false;
-                  while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref") || bt.is("inline")){
+                  while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref") || bt.is("inline")
+                        || bt.is("const") || bt.is("typesealed") || (bt.value == "required" && file.peekToken().isDataType())){
                       if(bt.is("emitter")) sawEmitter = true;
                       if(bt.is("inline"))  sawInline  = true;
                       bt = file.getToken();
@@ -1308,7 +1315,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                     continue;
                 }
                 if(t.isDataType()){
-                    preScanConsumeGenericSuffix(t);
+                    string genericSuffix = preScanConsumeGenericSuffix(t);
                     token memberName = file.getToken();
                     token afterName = file.getToken();
                     if(afterName.is(token::parenOpen)){
@@ -1359,10 +1366,19 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                             continue;
                         }
                         if(!memberIsEmitter){
-                            variableDeclaration& vd = *(new variableDeclaration());
+                            // A member array stays an array (with its element type), so a use before
+                            // the object's declaration is typed like one after.
+                            bool isArr = (t.value == "array" || t.value == "rawarray") && genericSuffix.size() > 2;
+                            variableDeclaration& vd = isArr ? *(new arrayDeclaration()) : *(new variableDeclaration());
+                            if(isArr){
+                                auto& ad = static_cast<arrayDeclaration&>(vd);
+                                ad.elementType = genericSuffix.substr(1, genericSuffix.size() - 2);
+                                ad.isRaw = t.value == "rawarray";
+                                ad.isByteArray = ad.elementType == "char" && !ad.isRaw;
+                            }
                             vd.name = memberName.value;
                             vd.displayName = memberName.originalValue;
-                            vd.type = languageService.getType(t.value);
+                            vd.type = languageService.getType(isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : t.value);
                             vd.isPrePassStub = true;
                             bool exists = false;
                             for(typeMember* m : objStub->members)
@@ -1516,7 +1532,8 @@ void bglParser::preScanUnion(){
 // Typed declaration head — a function, an emitter value, a type-named object, or a global variable.
 void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     string typeName = tok.value;
-    preScanConsumeGenericSuffix(tok);
+    // A func<…> global keeps its signature, so a call through it before its declaration resolves.
+    if(string suffix = preScanConsumeGenericSuffix(tok); typeName == "func") typeName += suffix;
     // Consume a dotted namespace type path: identifier.identifier.identifier …
     // Without this, a decl like `bgl.glulx.window winStatus;` never registers a stub,
     // so the variable gets appended to `globals` at the END of main-parse registration,

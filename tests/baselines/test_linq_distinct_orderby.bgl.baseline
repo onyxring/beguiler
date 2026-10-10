@@ -46,6 +46,8 @@ Constant _BGL_TRACKED_ARRAYS;
         _bglLinqActiveDepth = _bglLinqActiveDepth - 1;
     ];
 
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -59,8 +61,6 @@ global _bglInitDone = 0;
 
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -192,7 +192,7 @@ object _bglArray
         j=i - 1;
         while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
             self.set(obj, prop, j + 1, self.get(obj,prop,j));
-             j-- ;
+            j--;
         }
         self.set(obj, prop, j + 1, key);
     }
@@ -212,7 +212,7 @@ object _bglArray
                     
             }
             dst-->(writecount+1) = elem;
-             writecount++ ;
+            writecount++;
         }
     }
     _bglArray.setLength(dst, 0, writeCount);
@@ -247,7 +247,7 @@ object _bglArray
                     
             }
             dst-->(outlen+1) = elem;
-             outlen++ ;
+            outlen++;
         }
     }
     _bglArray.setLength(dst, 0, outLen);

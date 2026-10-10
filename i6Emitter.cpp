@@ -842,7 +842,7 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
         // Any local array that draws framePool backing forces pool emission:
         //   • sized word/byte array (arraySize > 0)
         //   • list-initialized word array (arraySize == 0 with an initializer list)
-        if(arr->arraySize > 0 || !arr->localInitSource.empty()) return true;
+        if(arr->arraySize > 0 || !arr->localInitSource.empty() || !arr->copySource.empty()) return true;
         if(!arr->isByteArray && dynamic_cast<initializerList*>(arr->declaredExpressionValue)) return true;
     }
     return false;
@@ -1740,6 +1740,59 @@ for(typeDef* g : languageService.globals){
         earlyDeclaredGlobals.insert(vd->name);
     }
 }
+// A class is emitted at its first instance (§18.7), which can come before a constant or another
+// class's static that its members name; declare those here, ahead of every class, when their values
+// are plain (literals, and constants already declared).
+{
+    set<string> known;
+    auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
+    auto plain = [&](const string& text){
+        static const regex lit(R"re("[^"]*"|'[^']*'|\$\$[01]+|\$[0-9A-Fa-f]+)re");
+        string rest = regex_replace(text, lit, " ");
+        static const regex word(R"([A-Za-z_][A-Za-z0-9_]*)");
+        for(sregex_iterator it(rest.begin(), rest.end(), word), end; it != end; ++it)
+            if(!known.count(lower(it->str()))) return false;
+        return true;
+    };
+    for(typeDef* g : languageService.globals){
+        auto* vd = dynamic_cast<variableDeclaration*>(g);
+        if(vd == nullptr || !vd->isConst || vd->isExternal || dynamic_cast<arrayDeclaration*>(vd) != nullptr
+           || vd->declaredExpressionValue == nullptr || earlyDeclaredGlobals.count(vd->name)) continue;
+        string value = staticText(vd->declaredExpressionValue);
+        if(value.empty() || !plain(value)) continue;
+        out << format("constant {0} = {1};\n", vd->dName(), value);
+        earlyDeclaredGlobals.insert(vd->name);
+        known.insert(lower(vd->dName()));
+    }
+    // Plain variables too: a scalar, string, func or reference global with no value or a plain one.
+    for(typeDef* g : languageService.globals){
+        auto* vd = dynamic_cast<variableDeclaration*>(g);
+        if(vd == nullptr || vd->isConst || vd->isExternal || vd->isStatic || !vd->i6name.empty()
+           || dynamic_cast<arrayDeclaration*>(vd) != nullptr || earlyDeclaredGlobals.count(vd->name)
+           || globalOwnsInstance(vd)) continue;
+        const string& t = vd->type.name;
+        bool scalar = t == "int" || t == "uint" || t == "bool" || t == "char" || t == "float" || t == "string"
+                   || t == "object" || t.rfind("func<", 0) == 0 || languageService.findEnum(t) != nullptr;
+        if(!scalar) continue;
+        string value = vd->declaredExpressionValue != nullptr ? staticText(vd->declaredExpressionValue) : "";
+        if(!value.empty() && !plain(value)) continue;
+        out << "global " << vd->dName() << (value.empty() ? "" : " = " + value) << ";\n";
+        earlyDeclaredGlobals.insert(vd->name);
+    }
+    for(typeDef* g : languageService.globals){
+        auto* cd = dynamic_cast<classDef*>(g);
+        if(cd == nullptr || cd->isExternal || cd->isEmitterClass || cd->isAlias) continue;
+        for(typeMember* m : cd->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || !vd->isStatic || dynamic_cast<arrayDeclaration*>(vd) != nullptr) continue;
+            string value = vd->declaredExpressionValue != nullptr ? staticText(vd->declaredExpressionValue) : "";
+            if(!value.empty() && !plain(value)) continue;
+            string name = format("_bgl_{0}_{1}", cd->dName(), vd->dName());
+            out << "global " << name << (value.empty() ? "" : " = " + value) << ";\n";
+            earlyStaticGlobals.insert(name);
+        }
+    }
+}
 }
 
 // The synthesised bglInit routine: array magic stamps, sized-buffer setup, startup blocks, global inits.
@@ -2284,6 +2337,7 @@ void i6Emitter::emitClassStaticGlobals(classDef* classNode){
 for(typeMember* m : classNode->members)
     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
         if(vd->isStatic){
+            if(earlyStaticGlobals.count(format("_bgl_{0}_{1}", classNode->dName(), vd->dName()))) continue;   // declared early
             out << format("global _bgl_{0}_{1}", classNode->dName(), vd->dName());
             if(vd->declaredExpressionValue != nullptr && !staticText(vd->declaredExpressionValue).empty())
                 out << format(" = {0}", staticText(vd->declaredExpressionValue));
@@ -2344,6 +2398,10 @@ if(!emittableBases.empty()){
 
 // Selects the members that reach the `with` list, dropping emitters, statics, attributes and grammar.
 void i6Emitter::collectEmittableMembers(classDef* classNode, vector<typeMember*>& emittable){
+// A class derived from verb sets meta and priority for its verbs at compile time; they are not properties.
+bool isVerbClass = false;
+for(classDef* c = classNode; c != nullptr && !isVerbClass; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
+    isVerbClass = c->name == "verb";
 for(typeMember* m : classNode->members){
     if(auto* fd = dynamic_cast<functionDef*>(m)){
         if(fd->isEmitter) continue;
@@ -2357,6 +2415,7 @@ for(typeMember* m : classNode->members){
         if(vd->isStatic) continue;
         if(vd->type.name == "attributelist") continue; // emitted separately as 'has' line
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
+        if(isVerbClass && (vd->name == "meta" || vd->name == "priority" || vd->name == "librarypriority")) continue;
     }
     emittable.push_back(m);
 }
@@ -2409,7 +2468,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                 out << " ";
                 for(expression* elem : list->elements) out << staticText(elem) << " ";
             } else if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
-                out << format(" {0}", staticText(vd->declaredExpressionValue));
+                out << format(" {0}", propertyValueText(vd->declaredExpressionValue));
             out << sep << "\n";
         }
         else if(auto* fd = dynamic_cast<functionDef*>(m)){
@@ -2621,6 +2680,10 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
     for(variableDeclaration* vd : locals){
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
         if(arr == nullptr) continue;
+        if(!arr->copySource.empty()){   // allocated where it's declared, sized from its value
+            fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->copyHeld)});
+            continue;
+        }
         if(arr->isByteArray){
             if(!arr->localInitSource.empty()){
                 string name = spillName(arr->name), src = arr->localInitSource;
@@ -2640,18 +2703,34 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
                   : (list ? (int)list->elements.size() : 0);
         if(count <= 0) continue;   // pointer-alias decl (e.g. `= _bglLinqWrite()`) — emitStatement owns it
         string name = spillName(arr->name);
+        // A nested list's inner arrays are per call too, held in the outer array's slots.
+        std::function<void(const string&, initializerList*)> allocInner = [&](const string& ptr, initializerList* outer){
+            if(outer == nullptr || arr->isRaw) return;
+            for(size_t i = 0; i < outer->elements.size(); i++)
+                if(auto* inner = dynamic_cast<initializerList*>(outer->elements[i])){
+                    int k = max(1, (int)inner->elements.size());   // an empty `{}` row still has storage, length 0
+                    string slot = format("({0}-->{1})", ptr, i + 1);
+                    bool tracked = languageService.arrayInUse;
+                    out << format("{0}{1}-->{2} = {3}({4});\n", indent, ptr, i + 1,
+                                  tracked ? "_bglArrayLocalAlloc" : "_bglArrayLocalAllocPlain", k);
+                    fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", k + (tracked ? 3 : 1))});
+                    allocInner(slot, inner);
+                }
+        };
         if(languageService.arrayInUse && !arr->isRaw){
             out << format("{0}{1} = _bglArrayLocalAlloc({2});\n", indent, name, count);
             std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
             if(!dtor.empty())
                 fn->cleanups.push_back({arr->name, format("_bglArray.freeAll({0}, 0, {1});", name, dtor)});
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
+            allocInner(name, list);
         } else if(arr->isRaw){
             out << format("{0}{1} = _bglRawArrayLocalAlloc({2});\n", indent, name, count);
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count)});
         } else {
             out << format("{0}{1} = _bglArrayLocalAllocPlain({2});\n", indent, name, count);
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 1)});
+            allocInner(name, list);
         }
     }
 }
@@ -2661,6 +2740,13 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
 // assignment of the RHS expression. No allocation — caller owns the storage.
 // A local `array<T>` declaration: alias-assign, seed a list initializer, or nothing.
 void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string& indent){
+    if(!arrLoc->copySource.empty()){   // the copy itself is the assignment that follows
+        string name = spillName(arrLoc->name), held = spillName(arrLoc->copyHeld);
+        string src = spillName(arrLoc->copySource);
+        out << format("{0}{1} = _bglArrayLocalCopyAlloc(_bglArray.length({2}, 0), {2}, {1}); {3} = {3} + _bglFrameTaken; {2} = _bglFrameSrc;\n",
+                      indent, name, src, held);
+        return;
+    }
     if(arrLoc->arraySize == 0
        && arrLoc->declaredExpressionValue != nullptr
        && dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue) == nullptr
@@ -2683,11 +2769,21 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
             // fixes independently of the seed length. _bglArrayLocalAlloc already
             // zeroed the slice, so unseeded slots need no explicit write.
             int cap = arrLoc->arraySize > 0 ? arrLoc->arraySize : len;
-            int i = 0;
-            for(expression* elem : list->elements)
-                out << format("{0}{1}-->{2} = {3};\n", indent, name, i++ + 1, exprText(elem));
-            if(languageService.arrayInUse && !arrLoc->isRaw)   // tracked layout has a length slot at cap+1
-                out << format("{0}{1}-->{2} = {3};\n", indent, name, cap + 1, len);
+            bool tracked = languageService.arrayInUse && !arrLoc->isRaw;   // tracked layout has a length slot at cap+1
+            // A nested list fills the per-call inner array emitLocalArrayAllocs put in its slot.
+            std::function<void(const string&, initializerList*, int)> fill = [&](const string& ptr, initializerList* l, int c){
+                int i = 0;
+                for(expression* elem : l->elements){
+                    auto* inner = arrLoc->isRaw ? nullptr : dynamic_cast<initializerList*>(elem);
+                    if(inner != nullptr)
+                        fill(format("({0}-->{1})", ptr, i + 1), inner, max(1, (int)inner->elements.size()));
+                    else   // a rawArray has no length header: its elements start at slot 0
+                        out << format("{0}{1}-->{2} = {3};\n", indent, ptr, i + (arrLoc->isRaw ? 0 : 1), exprText(elem));
+                    i++;
+                }
+                if(tracked) out << format("{0}{1}-->{2} = {3};\n", indent, ptr, c + 1, (int)l->elements.size());
+            };
+            fill(name, list, cap);
             return;
         }
     }
@@ -3310,7 +3406,13 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
                     }
                 }
                 if(printFn != nullptr && !printFn->isEmitter){
-                    string call = exprStr + ".print();";
+                    // A receiver that isn't a plain name (an element `a-->(i+1)`) is bracketed for the send.
+                    string recv = exprStr;
+                    size_t a = recv.find_first_not_of(" "), b = recv.find_last_not_of(" ");
+                    recv = a == string::npos ? recv : recv.substr(a, b - a + 1);
+                    if(recv.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") != string::npos)
+                        recv = "(" + recv + ")";
+                    string call = recv + ".print();";
                     out << indent << (currentSpillAliases.empty() ? call : groupFrameSlots(call)) << "\n";
                     continue;
                 }
@@ -3682,6 +3784,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     }
 
     if(varNode->isConst){
+        if(earlyDeclaredGlobals.count(varNode->name)) return;   // declared ahead of the classes
         out << format("constant {0}", varNode->dName());
         if(varNode->declaredExpressionValue != nullptr)
             out << format(" = {0}", staticText(varNode->declaredExpressionValue));
@@ -3731,6 +3834,20 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
 
 // An expression's text for static data: a bare reference to a class-typed global that owns an
 // instance names the instance, since static data needs a constant.
+// A property's value list is space-separated, so I6 reads `n - 1` there as possibly two values and
+// warns; a bracketed expression is one value.
+string i6Emitter::propertyValueText(expression* e){
+    string t = staticText(e);
+    bool quoted = false;
+    for(size_t i = 1; i < t.size(); i++){
+        char c = t[i];
+        if(c == '"' || c == '\'') quoted = !quoted;
+        else if(!quoted && (c == '+' || c == '-' || c == '*' || c == '/' || c == '%'))
+            return "(" + t + ")";
+    }
+    return t;
+}
+
 string i6Emitter::staticText(expression* e){
     if(e == nullptr) return "";
     string t = e->text();
@@ -3957,7 +4074,7 @@ for(typeMember* m : obj->members){
             out << ownIt->second;
         } else if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
             for(expression* elem : list->elements) out << staticText(elem) << " ";
-        } else if(vd->declaredExpressionValue) out << staticText(vd->declaredExpressionValue);
+        } else if(vd->declaredExpressionValue) out << propertyValueText(vd->declaredExpressionValue);
         first = false;
     } else if(auto* fd = dynamic_cast<functionDef*>(m)){
         if(fd->isEmitter) continue; // emitter methods are inlined at call sites, not emitted as properties
@@ -4058,11 +4175,14 @@ void i6Emitter::emitObjectGlobalDeclarationEmitter(objectDef* obj, const string&
 string body = declaring->globalDeclarationBody;
 size_t s = body.find_first_not_of(" \t\n\r"); if(s != string::npos) body = body.substr(s);
 size_t e = body.find_last_not_of(" \t\n\r");  if(e != string::npos) body = body.substr(0, e+1);
-// The action routine is named for the action, which keeps the verb's own name (`BoxSub` for `-> Box`).
-body = replaceWord(body, "$selfsub", (obj->i6nameAvoidsKeyword || dynamic_cast<verbObjectDef*>(obj) ? obj->dName() : objI6Name) + "sub");
-body = replaceWord(body, "$self",    objI6Name);
-body = replaceWord(body, "$val",     objI6Name);
-out << body << "\n";
+// The standard tokens, $i6Name included. The action routine is named for the action, which keeps
+// the verb's own name (`BoxSub` for `-> Box`).
+i6Block blk; blk.i6Body = body;
+emitterBindings gb;
+gb.selfsub = (obj->i6nameAvoidsKeyword || dynamic_cast<verbObjectDef*>(obj) ? obj->dName() : objI6Name) + "sub";
+gb.self = objI6Name; gb.val = objI6Name;
+if(obj->objectClass != nullptr){ gb.selfType = obj->objectClass->name; gb.cls = obj->objectClass->i6Name(); }
+out << parser.expandEmitterBody(&blk, gb) << "\n";
     }
 }
 
@@ -4278,11 +4398,17 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                 pooled.push_back(cd);
 
     for(classDef* cd : pooled){
-        // Symbolic pool size can't be expanded into N discrete backing instances at compile time.
+        // A symbolic pool size can't be expanded into N backing instances at compile time (§8.2.6).
         if(!cd->poolSizeExpr.empty()){
-            for(typeMember* m : cd->members)
-                if(ownedClass(dynamic_cast<variableDeclaration*>(m)))
-                    { std::cerr << format("WARNING: class '{0}': pooled owned member on a symbolically-sized pool (`[{1}]`) is not yet supported; declare a numeric pool size to give each instance its own backing.\n", cd->dName(), cd->poolSizeExpr); break; }
+            cd->forEachMember([&](typeMember* m){
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                if(classDef* oc = ownedClass(vd)){
+                    string where = vd->src.line > 0 ? format("{0}:{1}:{2}: ", vd->src.file, vd->src.line, max(1, vd->src.col)) : string();
+                    throw runtime_error(format("{0}ERROR: class '{1}' is pooled by a name (`[{2}]`), so it cannot have the "
+                        "owned member '{3}' (a '{4}'); give the pool a number.", where, cd->dName(), cd->poolSizeExpr,
+                        vd->dName(), oc->dName()));
+                }
+            });
             continue;
         }
         int N = cd->poolSize;
@@ -4802,13 +4928,12 @@ void i6Emitter::emitVerbSynonym(verbSynonymDecl* vsd){
 //   Replace → `extend 'w' replace`
 // Per-line targetVerb overrides verbName (for multi-verb grammar objects).
 // When isMeta is true, the first emission of each trigger word emits as `Verb meta 'word'`.
-// A trigger word "has synonyms" if some extern (library) verb claims it alongside other words —
-// i.e. it belongs to a multi-word I6 verb grouping. Only such words need `Extend only` to peel
-// them out cleanly; a solo library word (or a brand-new word) has no synonyms to over-reach, so
-// `only` on it downgrades to a plain `Extend`/`Verb`. Reads the binding-declared verbWords.
-bool i6Emitter::isGroupedExternWord(const string& w){
+// A library word: one an extern verb claims. Its I6 grouping is unknowable here (an included
+// extension may add synonyms), so a line on it always splits with `Extend only`, which is right
+// grouped or solo; on a solo word I6 then warns of the emptied verb (see filterVerbSplitWarnings).
+bool i6Emitter::isExternWord(const string& w){
     for(verbObjectDef* v : languageService.verbs)
-        if(v->isExternal && v->verbWords.size() > 1)
+        if(v->isExternal)
             for(const string& vw : v->verbWords)
                 if(vw == w) return true;
     return false;
@@ -4869,14 +4994,14 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
             // then any further contribution to the same word appends via plain `Extend only 'w'`.
             if(evictedEmitted.insert(word).second) out << format("extend only {0} replace\n", toI6Word(word));
             else                                   out << format("extend only {0}\n",         toI6Word(word));
-        } else if(isGroupedExternWord(word) && !withSynonymsWord){
-            // DEFAULT for a GROUPED library word: word-precise. Split it off its verb via
+        } else if(isExternWord(word) && !withSynonymsWord){
+            // DEFAULT for a library word: word-precise. Split it off its verb via
             // `Extend only 'w'` — inherits the library grammar, adds this line, leaves the word's
             // I6 synonyms untouched. Combined with `replace grammar =` it emits `Extend only 'w'
             // replace`, wiping the split word's inherited grammar and installing only these lines.
             // The first split carries the only/replace head; further contributions to the now-split
             // word append with plain `extend`. (The `withI6Synonyms` modifier opts OUT of this, into
-            // the whole-group `Extend` below; solo/new words never reach here — no synonyms.)
+            // the whole-group `Extend` below.)
             if(splitEmitted.insert(word).second){
                 switch(mode){
                     case extendDirective::First:   out << format("extend only {0} first\n",   toI6Word(word)); break;
@@ -4913,8 +5038,8 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
     for(const vector<string>& triggerSet : setOrder){
         const vector<lineEntry>& entries = bySet[triggerSet];
 
-        // A grouped library word splits by default; it stays whole-group only if a line opted out
-        // with `withI6Synonyms` (decided against isGroupedExternWord in emitDirectiveHead).
+        // A library word splits by default; it stays whole-group only if a line opted out
+        // with `withI6Synonyms` (decided against isExternWord in emitDirectiveHead).
         bool withSynonymsWord = false;
         for(const lineEntry& e : entries) if(e.withI6Synonyms){ withSynonymsWord = true; break; }
 

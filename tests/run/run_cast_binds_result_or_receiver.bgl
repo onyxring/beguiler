@@ -3,7 +3,7 @@
 // EXPECT_OUTPUT: 9 9 1 2 65
 #beguilerSettings { target = z5; informName = "none"; }
 class base[4] : _bglObject { int rank(){ return 1; } int code(){ return 65; } }
-class deriv[4] : base { int barks = 0; int rank(){ return 2; } }
+class deriv[4] : base { int barks = 0; replace int rank(){ return 2; } }
 void main(){
     bglInit();
     deriv d = new deriv();

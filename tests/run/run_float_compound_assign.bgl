@@ -1,0 +1,18 @@
+// run_float_compound_assign — +=, -=, *=, /=, %= on a float use float arithmetic, with a float or an int operand.
+// EXPECT_OUTPUT: 3.0000 2.5000 5.0000 3.7500 1.5000 3.5000 7.0000 6.0000 3.0000
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+float g = 2.5;
+void main(){
+    bglInit(); glulxConsole();
+    g += 0.5; print(g); print(" ");
+    g -= 0.5; print(g); print(" ");
+    float f = 2.5;
+    f *= 2.0; print(f); print(" ");
+    f = 7.5; f /= 2.0; print(f); print(" ");
+    f = 7.5; f %= 2.0; print(f); print(" ");
+    f = 1.5; f += 2; print(f); print(" ");
+    f *= 2; print(f); print(" ");
+    f -= 1; print(f); print(" ");
+    f /= 2; print(f);
+}

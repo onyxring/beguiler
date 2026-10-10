@@ -1,0 +1,13 @@
+// run_lexer_apostrophe_word_and_empty_comment — a dictionary word with an apostrophe (`.child's`) inside a
+// function body, and the empty block comment `/**/`, which is not a `/**` doc comment.
+// EXPECT_OUTPUT: true 8 9 true
+#beguilerSettings { target = z5; informName = "none"; }
+dictionaryWord g = .child's;
+bool same(){ dictionaryWord w = .child's; return w == g; }
+void main(){
+    int a = 1;
+    print(same()); print(" ");
+    print(a/**/+7); print(" ");
+    print($"{a/**/+/**/8}");
+    print(" "); print(same());
+}

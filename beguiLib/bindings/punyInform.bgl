@@ -60,6 +60,7 @@ extern additive property before;     /// Runs before an action on this object; r
 extern additive property after;      /// Runs after an action on this object; return true to replace the library's report.
 extern additive property life;       /// Handles actions aimed at an animate object; return true to stop them.
 extern additive property describe;   /// Prints the object's paragraph in a room description; return true to replace the default.
+extern property          time_left;  /// Turns left on the object's timer; an object with a timer declares it (`int time_left;`).
 extern additive property time_out;   /// Runs when the object's timer reaches zero.
 extern additive property each_turn;  /// Runs at the end of every turn the object is in scope; string or routine.
 

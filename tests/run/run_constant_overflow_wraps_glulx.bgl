@@ -1,0 +1,6 @@
+// run_constant_overflow_wraps_glulx — on Glulx a literal expression that overflows 32 bits wraps as the
+// same arithmetic does at run time.
+// EXPECT_OUTPUT: -2147483648 0 32768
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+void main(){ bglInit(); glulxConsole(); print($"{2147483647 + 1} {65536 * 65536} {32767 + 1}"); }

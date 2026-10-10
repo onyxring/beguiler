@@ -1,0 +1,24 @@
+// run_compound_through_base_cast — `+=`, `-=` and `++` through a base cast reach an accessor whose `=`
+// the subclass hides (§8.7.4): the rewrite keeps the cast.
+// EXPECT_OUTPUT: 5 35 34 35
+#beguilerSettings { target = z5; informName = "none"; }
+value class Clamped {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+}
+class Gauge { Clamped Level; }
+class Boiler : Gauge {
+    hide Level.operator =;
+    void setIt()  { ((Gauge)self).Level = 5; }
+    void raise()  { ((Gauge)self).Level += 30; }
+    void lower()  { ((Gauge)self).Level -= 1; }
+    void bump()   { ((Gauge)self).Level++; }
+}
+Boiler boiler1 { }
+void main(){
+    boiler1.setIt(); print(boiler1.Level); print(" ");
+    boiler1.raise(); print(boiler1.Level); print(" ");
+    boiler1.lower(); print(boiler1.Level); print(" ");
+    boiler1.bump();  print(boiler1.Level);
+}

@@ -1,0 +1,11 @@
+// _test_owned_element_write_needs_array.bgl — an element of an array of an owning type (stringObj) is
+// copied in through the type's operator =, which <array> supplies; without it the write would share
+// the value's storage.
+// EXPECT_ERROR: which needs #include <array>
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+array<stringObj> log[4];
+void main(){
+    stringObj t = "x";
+    log[0] = t;
+}

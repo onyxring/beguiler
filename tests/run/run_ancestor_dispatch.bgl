@@ -20,8 +20,8 @@ class base[4] : _bglObject {
     void tag(){ mark = 10; }
 }
 class deriv[4] : base {
-    int rank(){ return 2; }                             // overrides base.rank
-    void tag(){ mark = 20; }                            // overrides base.tag
+    replace int rank(){ return 2; }                             // overrides base.rank
+    replace void tag(){ mark = 20; }                            // overrides base.tag
     int both(){ return rank() + ((base)self).rank(); }    // dynamic (deriv→2) + super-call (base→1)
 }
 

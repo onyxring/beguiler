@@ -1,0 +1,8 @@
+// _test_char_array_length_needs_buf.bgl — `length = n` on an array<char> is <buf>'s; without it the
+// error says so, rather than naming the internal length type.
+// EXPECT_ERROR: length is assignable only with #include <buf>
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){
+    array<char> c[8];
+    c.length = 3;
+}

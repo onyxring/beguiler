@@ -509,7 +509,9 @@ primitive class intLiteral {
 
 ```syntax
 enum ⟨name⟩ { ⟨value⟩, …, ⟨emitter-member⟩ … }
+bnum ⟨name⟩ { ⟨value⟩, …, ⟨emitter-member⟩ … }
 extend enum ⟨name⟩ { ⟨emitter-member⟩ … }
+extend bnum ⟨name⟩ { ⟨emitter-member⟩ … }
 
 ⟨emitter-member⟩ ::= emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ }
                    | emitter ⟨type⟩ ⟨property⟩ { ⟨i6-template⟩ }
@@ -520,7 +522,8 @@ extend enum ⟨name⟩ { ⟨emitter-member⟩ … }
 An enum or bnum value is a bare word, so an enum can host emitter members: substituted at the use
 site with `$self` bound to the value and `$paramName` to each argument. An emitter method is called
 with parentheses; an emitter value (§14.4.5) is read as a property, without them. They are declared
-in the enum body, or added later with `extend enum`, using the same member forms as an emitter class.
+in the enum body, or added later with `extend enum` (`extend bnum` for a bnum), using the same member
+forms as an emitter class.
 A member may be used on a bare value or on an enum-typed variable, and before the declaration that
 adds it.
 

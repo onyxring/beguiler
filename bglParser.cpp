@@ -392,16 +392,17 @@ size_t bglParser::findInfEndDirective(const std::string& text){
 
 // Build a mangled I6 property name for an overloaded object/class method, e.g.
 // `getAll(func<bool,object>)` → `getAll_1_func`. Format: <name>_<arity> followed by
-// `_<paramTypeName>` for each parameter. Generic suffixes are stripped so `func<...>`
-// and `array<T>` collapse to `func` / `array` — overload disambiguation runs on the
-// outer type, not template args. Used by mangleOverloadSet below and (via the same
-// helper) by call-site emission paths.
+// `_<paramTypeName>` for each parameter. Template arguments are kept (`func<int, int>` →
+// `func_int_int`), since overloads may differ only in them. Used by mangleOverloadSet below
+// and (via the same helper) by call-site emission paths.
 static string mangleObjectMethodName(functionDef* fd){
     string safe = fd->name + "_" + to_string(fd->params.size());
     for(paramDef* p : fd->params){
-        string t = p->type.name;
-        size_t lt = t.find('<');
-        if(lt != string::npos) t = t.substr(0, lt);
+        string t;
+        for(char c : p->type.name)
+            if(isalnum((unsigned char)c) || c == '_') t += c;
+            else if((c == '<' || c == ',') && !t.empty() && t.back() != '_') t += '_';
+        while(!t.empty() && t.back() == '_') t.pop_back();
         safe += "_";
         safe += t.empty() ? "var" : t;
     }
@@ -588,6 +589,10 @@ void bglParser::validateVerbNameClashes(){
                 parsingError(format("{0}:{1}:1: verb '{2}' has the same name as the library verb '{3}' ({4}); "
                     "rename it, or add to the library verb with `extend {3} {{ … }}`.",
                     v->src.file, v->src.line, v->dName(), o->dName(), at(o->src)));
+        // The verb's action routine is <name>Sub: a library routine of that name already holds it.
+        if(auto* fd = languageService.findGlobalAs<functionDef>(name + "sub"); fd && !fd->isEmitter && !fd->isPrePassStub)
+            parsingError(format("{0}:{1}:1: a verb's action routine is its name followed by 'Sub', and '{2}' is already "
+                "a routine ({3}); rename the verb.", v->src.file, v->src.line, fd->dName(), at(fd->src)));
         for(typeDef* g : languageService.globals){
             if(g == v || lower(g->dName()) != name) continue;
             string kind; sourceLocation gsrc;

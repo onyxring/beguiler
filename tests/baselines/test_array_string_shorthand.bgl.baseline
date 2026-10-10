@@ -7,14 +7,14 @@ Constant _BGL_TRACKED_ARRAYS;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _glulx
 ;
 [_bglSuspendLineInput buffer;

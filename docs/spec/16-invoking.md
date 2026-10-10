@@ -55,6 +55,7 @@ through, unchanged, to the Inform 6 command line (§16.3.1).
 | `-inform=<name>` | The Inform 6 compiler to run. An absolute path is used verbatim; anything else is resolved relative to the directory containing the `beguiler` binary. The name `none` skips the Inform 6 hand-off: the transpiled `.inf` is written and compilation stops there. | `informName` / `informPath` |
 | `-includepaths=<dir>[,<dir>…]` | Adds one or more directories to the include search path (§18.4). Comma-separated; whitespace around each entry is trimmed; duplicates are ignored. Entries are taken as written: no separator rewriting, no relative-path resolution, no existence check. | `includePaths` |
 | `-lib=<dir>` | Location of the Beguile system library (the `beguiLib` tree). An absolute path is used verbatim; a relative path is anchored to the directory containing the `beguiler` binary. Surrounding `"` or `'` quotes are stripped. | `beguiLibPath` |
+| `-filterVerbSplitWarnings=<true\|false>` | Whether to hide Inform 6's warning about a library verb left with no words by a split (§13.4.4). | `filterVerbSplitWarnings` |
 | `--debug`, `-D` | Debug build (§20.3): Inform 6 is run with `-k` and `-D`, the debug bundle is written, and `DEBUG` is defined. The two spellings are equivalent. | none |
 | `--lsp` | Language-server mode (§16.6). No compilation takes place. | none |
 
@@ -80,6 +81,7 @@ given, the rule is per property:
 | `outputPath` | Command line (`-o`) wins. |
 | `informName` / `informPath` | Command line (`-inform=`) wins over both; between the two block properties, `informPath` wins over `informName` (§16.5). |
 | `includePaths` | Additive. Command-line entries are added first, then block entries in the order they are parsed. |
+| `filterVerbSplitWarnings` | Command line wins. |
 | `beguiLibPath` | The command line (`-lib=`, or the default) locates the library for the core files loaded before the program's own source is read; a block value replaces it for every `#include` processed after the block. |
 
 `--debug`, `--lsp` and pass-through switches have no settings equivalent; `generateBlorb`,

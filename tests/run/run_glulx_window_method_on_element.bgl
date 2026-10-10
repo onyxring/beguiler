@@ -1,0 +1,15 @@
+// run_glulx_window_method_on_element — a window's output methods work on an array element receiver
+// (`panes[0].printLine(…)`), as on a local.
+// EXPECT_OUTPUT: pane text 3
+// EXPECT_OUTPUT: main done
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+#include <glulxWindow>
+array<textBufferWindow> panes[3];
+void main(){
+    bglInit(); glulxConsole();
+    panes[0] = bgl.ui.mainWin.splitRightBuffer(10);
+    panes[0].printLine($"pane text {3}");
+    print("main done");
+}

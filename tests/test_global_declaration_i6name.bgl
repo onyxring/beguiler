@@ -1,0 +1,15 @@
+// test_global_declaration_i6name.bgl — a _bglGlobalDeclaration body takes the standard substitution
+// tokens, $i6Name included, as well as $self and $selfsub.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class counter {
+    int count = 0;
+    int ticks = 0;
+    emitter void _bglGlobalDeclaration() {
+        [ $selfsub;
+            $self.$i6Name(counter.ticks)++;
+            return $self.$i6Name(counter.ticks);
+        ];
+    }
+}
+counter steps { }
+void main(){ }

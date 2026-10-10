@@ -7,7 +7,7 @@ class box[2] : _bglObject {
     int size() asI6 boxSize { return n; }
 }
 class bigbox[2] : box {
-    int size() { return 9; }
+    replace int size() { return 9; }
 }
 box special { int size() { return 12; } }
 void main(){

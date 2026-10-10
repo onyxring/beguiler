@@ -1,0 +1,5 @@
+// run_raw_string_non_ascii — a directly typed non-ASCII character in a raw string @"…" is that
+// character, as in any string (Appendix D); only escapes are left unprocessed.
+// EXPECT_OUTPUT: raw café \n
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ print(@"raw café \n"); }

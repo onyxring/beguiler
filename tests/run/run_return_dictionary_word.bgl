@@ -1,0 +1,9 @@
+// run_return_dictionary_word — `return .lamp;` returns the dictionary word; `return` is not a receiver.
+// EXPECT_OUTPUT: true true
+#beguilerSettings { target = z5; informName = "none"; }
+dictionaryWord a() { return .lamp; }
+dictionaryWord b(int n) { switch (n) { case 1: return .one; } return .other; }
+void main(){
+    dictionaryWord w = .lamp;
+    print(a() == w); print(" "); print(b(1) == .one);
+}

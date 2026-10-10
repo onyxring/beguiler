@@ -68,6 +68,12 @@ member named like the class. The prefix keeps every Beguile class name free. An 
 Inform 6 name it binds, and a name that already begins with `_bgl` is reserved and is emitted
 unchanged. I6 code that names a Beguile class reaches it through `$i6Name` (§7.3.3).
 
+Members share that namespace too. A data member, or a method, whose name is also a global the program
+or the library binding declares (`score`, `action`, a library routine or object) is emitted under
+another name, and every Beguile use follows it; a member named like a library *property* (`before`,
+`describe`) keeps its name, which is how the library calls it. I6 code reaches a renamed member
+through `$i6Name`.
+
 **Example**
 
 ```bgl
@@ -319,7 +325,9 @@ such as `_bglClass_Token_1`, so a class whose instances are printed declares one
 - `[N]`/`[IDENT]` are compile-time errors on `emitter class` and `alias class`.
 - `extend class Name[…]` is a compile-time error; the pool size belongs to the original declaration.
 
-**Inheritance.** Subclasses share the parent's pool; there is no per-subclass size.
+**Inheritance.** Each pooled class has its own pool, as in Inform 6: a subclass used with `new` declares
+its own `[N]`, and inherits the parent's members, `create()` and `destroy()`. A subclass without `[N]`
+cannot be allocated with `new`, even when its parent is pooled.
 
 **`create()` and `destroy()`.** A pooled class may declare a `create()` method, run when a slot is
 allocated, and a `destroy()` method, run before a slot is returned to the pool. Both are optional.
@@ -505,7 +513,9 @@ member. Beguile's `static` is unrelated to Inform 6's `static` (an immovable obj
 A class name reaches **only** what belongs to the class: its `static` members, its `static` methods,
 its emitter values and its alias members. Naming a per-instance member through the type
 (`Counter.someField`, or through a type alias — §10.2) is a compile-time error; a per-instance
-member exists only on an instance.
+member exists only on an instance. A subclass name reaches its base classes' statics too:
+`Sword.Made` names `Item.Made`, one variable, the declaring class's; a subclass's own static of the
+same name shadows it.
 
 **Example**
 
@@ -868,7 +878,9 @@ A base-class method marked `default` is expected to be overridden: overriding it
 and produces no warning. `default` is valid only in a class declaration; in an object or verb body
 it is a compile-time error. An override that is not itself marked `default` ends the chain — further
 descendants again need `replace` — so mark each override `default` to keep a method freely
-overridable. The `verb` class declares `handler()` this way (§13.2.1).
+overridable. The `verb` class declares `handler()` this way (§13.2.1). In an `extend class`, `replace
+default` (in either order) gives a method a new body and keeps it `default`; a plain `replace` there
+ends the chain.
 
 **Example**
 

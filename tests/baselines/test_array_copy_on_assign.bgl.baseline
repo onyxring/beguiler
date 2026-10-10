@@ -26,6 +26,34 @@ Constant _BGL_TRACKED_ARRAYS;
       r-->(size + 2) = $9084;
       return r;
    ];
+   Global _bglFrameTaken = 0;
+   Global _bglFrameSrc = 0;
+   ! A local array with room for src's n elements: `cur` when it has room, else a new block. When src
+   ! is a returned local lying in freed frame space at or above the top, its elements are moved down
+   ! into the new block (forward, so none is overwritten before it is read) and _bglFrameSrc names
+   ! the block to copy from instead.
+   [ _bglArrayLocalCopyAlloc n src cur top i;
+      _bglFrameTaken = 0;
+      _bglFrameSrc = src;
+      if (cur ~= 0 && cur-->(cur-->0) == $9084 && cur-->0 - 2 >= n) return cur;
+      top = _bglFramePool + _bglFrameTop * WORDSIZE;
+      if (src < top || src >= _bglFramePool + 64 * WORDSIZE) {
+         _bglFrameTaken = n + 3;
+         return _bglArrayLocalAlloc(n);
+      }
+      if (_bglFrameTop + n + 3 > 64) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      _bglFrameTop = _bglFrameTop + n + 3;
+      for (i = 1: i <= n: i++) top-->i = src-->i;
+      top-->0 = n + 2;
+      top-->(n + 1) = n;
+      top-->(n + 2) = $9084;
+      _bglFrameTaken = n + 3;
+      _bglFrameSrc = top;
+      return top;
+   ];
    [ _bglArrayLocalAllocPlain size r i;
       r = _bglFrameAlloc(size + 1);
       r-->0 = size;
@@ -50,6 +78,8 @@ Constant _BGL_TRACKED_ARRAYS;
    [ _bglByteArrayLocalCopy dst src i;
       for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
    ];
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -57,8 +87,6 @@ global _bglInitDone = 0;
     dst-->(dst-->0) = $9084;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -73,13 +101,16 @@ object bgl
 ];
 array src table 11 22 33 44 4 $9084;
 array dst table 10;
-[main keep picked;
+[main keep _bglheld_picked _bglsrc_picked picked;
     keep = _bglArrayLocalAlloc(8);
     bglinit();
     _bglArray.copy(dst, 0, src, 0);
     _bglArray.copy(keep, 0, src, 0);
-    picked = dst;
+    _bglsrc_picked = dst;
+    picked = _bglArrayLocalCopyAlloc(_bglArray.length(_bglsrc_picked, 0), _bglsrc_picked, picked); _bglheld_picked = _bglheld_picked + _bglFrameTaken; _bglsrc_picked = _bglFrameSrc;
+    _bglArray.copy(picked, 0, _bglsrc_picked, 0);
     _bglFrameFree(11);
+    _bglFrameFree(_bglheld_picked);
 ];
 object _bglArray
   with rawGet [addr slot;

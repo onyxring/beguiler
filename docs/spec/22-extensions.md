@@ -71,6 +71,7 @@ needs those characters is printed from a string literal rather than built in a b
 | `buf.length` | `int` | Current number of characters. |
 | `buf.length = n` | | Set the current length, limited to `size` on a tracked buffer. |
 | `buf.isTracked()` | `bool` | True for a tracked buf. |
+| `buf = other` | | Copy `other`'s characters and length, up to `size`; an untracked buffer takes no more than its current length. |
 
 **Buffer operations, `bgl.util.buf`**
 
@@ -544,14 +545,14 @@ bgl.ui.mainWin.drawImage(eImages.icon, eGlulxImageAlign.marginLeft, 48, 48);
 
 **Description**
 
-A text-grid window positions its cursor explicitly; any child window can be closed, which also closes every window split from it.
+A text-grid window positions its cursor explicitly; any child window can be closed. Closing a window returns it to its class's pool (§8.2.6), so a program can open and close more windows than the pool holds. The windows split from it stay open: the window beside it takes over its space.
 
 **Methods**
 
 | Member | On | Description |
 |---|---|---|
 | `win.moveCursor(col, line)` | `textGridWindow`, `bgl.ui.statusBar` | Place the cursor at column `col`, line `line`, both counted from 0. |
-| `win.close()` | any child window | Close the window and its subtree. Closing an already-closed window has no effect. |
+| `win.close()` | any child window | Close the window and return it to the pool. Closing it again has no effect until another window is split, which may reuse its slot. |
 
 **Example**
 
@@ -559,7 +560,7 @@ A text-grid window positions its cursor explicitly; any child window can be clos
 ```bgl
 auto hud = bgl.ui.mainWin.splitUpGrid(3);   // textGridWindowHorz
 hud.moveCursor(0, 0);                       // the top-left cell
-hud.close();                                // hud and any window split from it are gone
+hud.close();                                // hud is gone; its slot is free for the next split
 ```
 
 ### 22.7.7 Styles

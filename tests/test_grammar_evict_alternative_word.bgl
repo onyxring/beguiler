@@ -1,0 +1,7 @@
+// test_grammar_evict_alternative_word.bgl — an extern verb claims every word of its short form
+// `{ .drop|.discard }`, not only the first, so `grammar -=` can evict `discard`.
+// EXPECT_NO_WARNING: is not a word this verb claims
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+extern verb Drop2 { .drop|.discard }
+extend Drop2 { grammar -= { {.discard} }; }
+void main(){ }

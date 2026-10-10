@@ -3,21 +3,22 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
+global _bgl_Animal_count = 0;
+global _bgl_Tally_total = 0;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
   with zcode _zcode
 ;
 attribute light;
-global _bgl_Animal_count = 0;
 class _bglClass_Animal
   class object
   with
@@ -77,7 +78,6 @@ class _bglClass_Box
 ;
 _bglClass_Box g_box
 ;
-global _bgl_Tally_total = 0;
 class _bglClass_Tally
   class object
   with

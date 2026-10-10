@@ -1,0 +1,15 @@
+// run_literal_func_null_and_member — a literal func<> may be cleared with null (known at compile time),
+// and reading an object's value for a class's literal member is a literal value for a literal parameter.
+// EXPECT_OUTPUT: f null 0 2
+#beguilerSettings { target = z5; informName = "none"; }
+literal func<void> hook;
+void f() { print("f"); }
+class Part { literal func<int, int> rule; }
+Part gear { rule = (int x) => x - 1; }
+literal func<int, int> g = (int x) => x + 1;
+void keep(literal func<int, int> h) { print($" {h(1)}"); }
+void main(){
+    hook = f; hook(); hook = null;
+    if (hook == null) print(" null");
+    keep(gear.rule); keep(g);
+}

@@ -1,0 +1,12 @@
+// run_negation_and_postfix_operands — `- -a` negates twice (not I6's decrement `--a`), and a postfix
+// ++/-- is an operand of a binary + or - (`i-- - 1`).
+// EXPECT_OUTPUT: 5 5 -5 7 6 4 4 5 5 -5 8 -4
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    int a = 5; int i = 5;
+    print(- -a); print(" "); print(a); print(" ");
+    print(- - -a); print(" "); print(- -7); print(" "); print(4 - -2); print(" ");
+    int k = i-- - 1; print(k); print(" "); print(i); print(" ");
+    k = i++ + 1; print(k); print(" "); print(i); print(" ");
+    k = -i; print(k); print(" "); k = 3 - -i; print(k); print(" "); k = - (a - 1); print(k);
+}

@@ -1,0 +1,5 @@
+// _test_i6_word_array_operator.bgl — Inform 6's `-->` is not Beguile; the error says to index the array.
+// EXPECT_ERROR: '-->' is Inform 6's word-array operator
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+rawArray<int> tbl = { 1, 2 };
+void main(){ int v = tbl-->1; }

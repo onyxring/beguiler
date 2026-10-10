@@ -70,9 +70,9 @@ emitter class _bglObject{
     /// Assignment: the variable refers to the assigned instance. A value class copies instead.
     emitter _bglObject operator = (_bglObject v){ $target = $v }
 
-    emitter eBool operator ?() { $val ~= nothing }               /// True unless the reference is null.
-    emitter eBool operator == (_bglObject v){ $val == $v }       /// True when both refer to the same object.
-    emitter eBool operator != (_bglObject v){ $val ~= $v }       /// True when they refer to different objects.
+    default emitter eBool operator ?() { $val ~= nothing }               /// True unless the reference is null.
+    default emitter eBool operator == (_bglObject v){ $val == $v }       /// True when both refer to the same object.
+    default emitter eBool operator != (_bglObject v){ $val ~= $v }       /// True when they refer to different objects.
 
     /// True when this object declares `prop`, so reading it is safe.
     emitter bool provides(property prop){
@@ -83,7 +83,7 @@ emitter class _bglObject{
         ($val ofclass $cls)
     }
     /// Print this object: its own print() if it has one, otherwise its name.
-    emitter void print(){
+    default emitter void print(){
         if($val provides print) $val.print(); else print (name)$val;
     }
 }

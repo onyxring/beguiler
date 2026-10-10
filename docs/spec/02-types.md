@@ -343,8 +343,8 @@ enumeration and some other global, such as the attribute `door`, is the member. 
 qualified form is required when two enumeration types, or an enumeration and another global, share
 the name.
 
-Enumerations may carry emitter methods, declared in the body or added with `extend enum`; the form is
-given in §7.9.
+Enumerations may carry emitter methods, declared in the body or added with `extend enum` (`extend bnum`
+for a bnum); the form is given in §7.9.
 
 ## 2.8 Union Types
 

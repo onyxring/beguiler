@@ -434,6 +434,8 @@ verb Keypad {
 
 `enter` now also dials the keypad, still navigates rooms, and its synonyms are untouched — the object model's "name a word, affect that word" rule, honored at the library boundary. Solo library words (like `put`, a single-trigger I6 verb) have no synonyms to over-reach, so they stay plain `Extend`; brand-new words are a fresh `Verb`.
 
+> **Note.** This is no longer true: every library word now lowers to `Extend only`, solo or grouped. See the spec, §13.4.4, for the reasoning.
+
 This is the counterpart to eviction: both peel `enter` off its group via `Extend only`, but eviction adds `replace` (wiping the library grammar — the word is *yours*), while the default keeps it (the word gains a meaning, *shares* the library's). Split-and-keep is the common case, so it's the keywordless default.
 
 When you genuinely want I6's whole-group spread — a pattern that should reach every synonym of a verb — opt in per line with **`withI6Synonyms`** (a trailing modifier, after `reverse`):

@@ -1,0 +1,7 @@
+// _test_verb_action_routine_clash.bgl — a verb's action routine is <Name>Sub; `verb Multi` would
+// emit MultiSub, which the library already defines (the parser's multiple-object routine).
+// EXPECT_ERROR: and 'MultiSub' is already a routine
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+verb Multi { grammar = {.multi}; void handler() { } }
+void main(){ }

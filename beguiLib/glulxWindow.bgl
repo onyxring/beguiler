@@ -86,9 +86,14 @@ class window[16] : _bglObject {
         self.width._id  = newId; self.width._axis  = 0; self.width._method  = (int)method;
         self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
     }
-    // Close this window (glk closes its subtree). self.id guards double-close.
-    /// Close this window and everything split from it. Safe to call twice.
-    void close(){ if(self.id != 0){ bgl.asm.windowClose(self.id, 0); self.id = 0; } }
+    /// Close this window and return it to the pool. Windows split from it stay open: the one beside it
+    /// takes its place. Safe to call twice until another window is split.
+    void close(){
+        if(self.id == 0) return;
+        bgl.asm.windowClose(self.id, 0);
+        self.id = 0;
+        delete self;
+    }
 
     // ---- re-arrangement: change an EXISTING window's placement/size within its parent pair ----
     // Re-runs glk_window_set_arrangement on the parent and updates the stored split method on both
@@ -167,6 +172,12 @@ alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; 
 window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size,
                   ref styleSheet inherited = _bglNoStyles, ref styleSheet styles = _bglNoStyles){
     if(parentId == 0) return null;   // the window to split isn't open (e.g. a status bar with no height)
+    // The pooled object first: with the pool spent, no Glk window is opened for nothing to hold.
+    window kid;
+    if(type == eGlulxWindowType.graphics)       kid = new graphicsWindow();
+    else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
+    else                                        kid = new textBufferWindow();
+    if(kid == null) return null;
     bool styled = type != eGlulxWindowType.graphics;
     bool hasInherited = (int)inherited != 0;
     if(styled && hasInherited) _applySheet((int)type, inherited);
@@ -174,11 +185,7 @@ window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags m
     int id = bgl.asm.windowOpen(parentId, type, size, method, 0);
     if(styled) _restoreSheet((int)type, styles);
     if(styled && hasInherited) _restoreSheet((int)type, inherited);
-    if(id == 0) return null;   // Glk refused the split (e.g. no graphics support)
-    window kid;
-    if(type == eGlulxWindowType.graphics)       kid = new graphicsWindow();
-    else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
-    else                                        kid = new textBufferWindow();
+    if(id == 0){ delete kid; return null; }   // Glk refused the split (e.g. no graphics support)
     kid._bind(id, method);
     kid._type = (int)type;
     return kid;
@@ -651,16 +658,16 @@ extend _bglStatus {
 superposed _bglObject _bglColor {
     int rgb(int r, int g, int b){ return (r * 65536) + (g * 256) + b; }
 
-    int black     = $000000;
-    int white     = $ffffff;
-    int red       = $ff0000;
-    int green     = $00ff00;
-    int blue      = $0000ff;
-    int yellow    = $ffff00;
-    int cyan      = $00ffff;
-    int magenta   = $ff00ff;
-    int gray      = $808080;
-    int lightGray = $c0c0c0;
-    int darkGray  = $404040;
+    emitter int black     { $000000 }
+    emitter int white     { $ffffff }
+    emitter int red       { $ff0000 }
+    emitter int green     { $00ff00 }
+    emitter int blue      { $0000ff }
+    emitter int yellow    { $ffff00 }
+    emitter int cyan      { $00ffff }
+    emitter int magenta   { $ff00ff }
+    emitter int gray      { $808080 }
+    emitter int lightGray { $c0c0c0 }
+    emitter int darkGray  { $404040 }
 }
 extend _glulx { alias color = _bglColor; }   // bgl.glulx.color

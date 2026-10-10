@@ -3,14 +3,14 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _zcode
 ;
 object bgl
@@ -32,8 +32,13 @@ object bgl
 [_bglShiftLeft i numBits;
     return i * _bglpow(2,numbits);
 ];
-[_bglShiftRight i numBits;
-    return i / _bglpow(2,numbits);
+[_bglShiftRight i numBits p q;
+    p=_bglpow(2,numBits);
+    q=i / p;
+    if (i < 0 && q * p ~= i) {
+        q--;
+    }
+    return q;
 ];
 [_bglPow i p retval t;
     if (p == 0) {

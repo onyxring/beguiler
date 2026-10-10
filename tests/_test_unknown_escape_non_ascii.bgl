@@ -1,0 +1,5 @@
+// _test_unknown_escape_non_ascii.bgl — an unknown escape before a non-ASCII character names the
+// character, not its first UTF-8 byte.
+// EXPECT_ERROR: Unknown escape '\ï'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ print("na\ïve"); }

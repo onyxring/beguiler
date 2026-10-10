@@ -270,6 +270,7 @@ class bglParser {
         void validateVerbNameClashes();
         void validateEqualityPairs();
         void validateRequiredMembers();
+        void resolveDeletes();   // pick each `delete`'s pool once every class is known
         // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
         // that statement wherever it starts one; give it an emitted name that can't.
         void renameI6KeywordNames();
@@ -581,6 +582,12 @@ class bglParser {
         // Consume an optional `as <i6name>` sitting after a method's parameter list (§3.11) and
         // record it on the method. Ignored on operators, whose i6name the overload mangler owns.
         void consumeMethodI6Alias(functionDef& funcDef);
+        bool namesLibraryGlobal(const string& name);
+        struct PendingDelete { i6RawNode* node; classDef* cls; string var; };
+        vector<PendingDelete> pendingDeletes;
+        string copyInitSource;   // a sized local array's initializer, re-read as an assignment
+        void foldOverflowingConstant(expression* expr);
+        bool namesProperty(const string& name);
         static bool isI6OperatorWord(const string& name);
         // Parse an optional `asI6 <i6name>` / `asBgl <beguileName>` clause (§3.11). The two run in
         // opposite directions, which is why each is tied to one side of `extern`: `asI6` CREATES the
@@ -722,6 +729,8 @@ class bglParser {
         void rejectMemberNamedLikeClass(const string& name, const string& shown);
         // `++`/`--` whose target begins with a call or subscript, finished when that path reaches `;`.
         optional<token> pendingPrefixOp;
+        string withReceiverCast(const string& path, const StatementContext& sc);
+        void emitIncDecStatement(token var, const string& lhs, const vector<string>& ops, StatementContext& sc);
         bool finishPrefixIncDec(token op, token varName, StatementContext& sc);
         // A write through a computed receiver (`arr[i].n += v`, `f().n = v`): binds the receiver to a
         // hidden local and handles `local.member <op> …` as an ordinary path statement.
@@ -764,6 +773,7 @@ class bglParser {
         void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body, int parenDepth = 0);
         void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
         bool parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall, functionDef* func, statementBlock* body);
+        bool applyNotOperator(expression* expr, const string& opType, const string& opText);
         bool parseExprPrefixNot(expression* expr, token operand, optional<token>& prefetched, functionDef* func, statementBlock* body);
         // State of one parseExpression activation, shared by its branch methods.
         struct ExprParseState {
@@ -1328,7 +1338,7 @@ class bglParser {
         // If typeTok is a generic base type (array/func) and the next token is '<', consume
         // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller
         // can continue reading the identifier name. Used by pre-scan member header recognition.
-        void preScanConsumeGenericSuffix(const token& typeTok);
+        string preScanConsumeGenericSuffix(const token& typeTok);   // returns the `<…>` read, if any
         // Pre-scan one `emitter <type> name(params){body}` member inside an enum body (the `emitter`
         // keyword already consumed) into a companion functionDef stub — capturing params and the
         // emitter body so a forward call before the enum's main-pass declaration still expands

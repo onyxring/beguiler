@@ -1,0 +1,18 @@
+// run_switch_operator_switch — a class's `operator switch` compares each case (object or int cases), also when
+// the switch is on a named object; without one, cases compare identity.
+// EXPECT_OUTPUT: one two two four same
+#beguilerSettings { target = z5; informName = "none"; }
+class B { int C; emitter eBool operator switch (B v) { $self.C == $v.C } }
+B b1 { C = 1; }
+B b2 { C = 2; }
+B b3 { C = 2; }
+class T { int N; emitter eBool operator switch (int v) { $self.N == $v } }
+T t4 { N = 4; }
+void M(B x) { switch (x) { case b1: print("one "); case b2: print("two "); default: print("none "); } }
+void main(){
+    M(b1); M(b3);
+    switch (b3) { case b1: print("one "); case b2: print("two "); }
+    switch (t4) { case 1, 2: print("low "); case 4: print("four "); }
+    B y = b2;
+    switch (y) { case b3: print("same "); }
+}

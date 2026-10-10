@@ -23,6 +23,14 @@ typeMember* classDef::findMember(const std::function<bool(typeMember*)>& pred){
     return nullptr;
 }
 
+classDef* classDef::declaringClass(const typeMember* m){
+    for(typeMember* own : members)
+        if(own == m) return this;
+    for(classDef* base : baseClasses)
+        if(classDef* found = base->declaringClass(m)) return found;
+    return nullptr;
+}
+
 void classDef::forEachMember(const std::function<void(typeMember*)>& fn){
     for(typeMember* m : members)
         fn(m);

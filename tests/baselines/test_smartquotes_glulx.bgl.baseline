@@ -6,14 +6,15 @@ Constant beguiler = 5;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
+global smart = "@{201C}curly@{201D} and @{2018}single@{2019} and `tick`";
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-global _bglWorldBufIdx = -1;
-constant _bglWorldBufSize = 128;
 object _glulx
 ;
 [_bglSuspendLineInput buffer;
@@ -54,7 +55,6 @@ object _glulx
 object bgl
   with glulx _glulx
 ;
-global smart = "@{201C}curly@{201D} and @{2018}single@{2019} and `tick`";
 [_bgl_float__oplteqgt a b;
     
             if(_bglFloatLt(a, b)) return -1;

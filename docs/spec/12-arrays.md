@@ -46,7 +46,10 @@ an integer (§14.2.1), a `const int` initialized with an integer literal (§3.4)
 `#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
-from that array instead; the value's type decides which is meant. The same shorthand applies to a
+from that array instead; the value's type decides which is meant. In a function body, `⟨name⟩` then
+gets its own storage, sized to the value's length when the declaration runs, and a copy of the value's
+elements, as `=` copies (§12.5); a sized local (`array<int> x[⟨n⟩] = build();`) copies into its
+declared capacity. The same shorthand applies to a
 list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
 length the number of values, the remaining slots zeroed. A list longer than `⟨n⟩` is a compile-time
 error.
@@ -104,7 +107,7 @@ Every traversal in `<array>` (`indexOf()`, `contains()`, `removeValue()`, `sort(
 `length == 0` and reads as empty; use `+=`, `insert()` or assign `length` to make the slots live.
 
 On an `array<char>` (§12.4), `size` and `length` both read the buffer's length word, which starts
-at the declared capacity. On a `rawArray<T>` (§12.8) `size`, `length` and `for … in` are
+at the declared capacity; assigning its `length` needs `<buf>` (§22.4). On a `rawArray<T>` (§12.8) `size`, `length` and `for … in` are
 compile-time errors, except that a raw member array reports its property length from both. `isTracked()`
 (§22.4) tells a tracked array from an untracked one.
 
@@ -181,7 +184,9 @@ print(code);                    // → 104
 Assigning one array to another (`dst = src`) copies the elements; the two arrays are independent
 afterwards. This is the mechanism that captures an ephemeral array
 result (§12.6). Copying into an element of an owning element type goes through that type's
-`static operator =` (§12.10).
+`static operator =` (§12.10). On an `array<char>` the copy is `<buf>`'s (§22.4): it copies the bytes
+and the length, up to the destination's size; without `<buf>`, `dst = src` on an `array<char>` is a
+compile-time error.
 
 **Example**
 
@@ -217,7 +222,7 @@ array<int> build() {
     return tmp;                 // ephemeral
 }
 
-array<int> keep = build();      // copies into stable storage
+array<int> keep = build();      // copies into storage of its own, sized from the result
 int n = keep[0];                // safe
 ```
 
@@ -401,7 +406,8 @@ The element type of an array may itself be an array type, to any depth. A nested
 one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
 `array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
-the outer array with `row` typed `array<T>`. A nested array may be declared as a local. A wrong
+the outer array with `row` typed `array<T>`. A nested array may be declared as a local; its inner
+arrays are allocated per call with it (§12.6). A wrong
 element type or a wrong nesting depth in an initializer is a compile-time error.
 
 **Example**
@@ -451,7 +457,8 @@ jobs: `emitter deinit()` releases a receiver at scope exit, `static deinit(T v)`
 container has no receiver for. A type that owns storage generally wants both (§8.5).
 
 **Assignment copies.** Every store into an owning element type goes through `static operator =`,
-which copies the incoming value into the buffer the slot owns. Passing an already-allocated value
+which copies the incoming value into the buffer the slot owns. That store is `<array>`'s, so an
+element write into an array of an owning type without `#include <array>` is a compile-time error. Passing an already-allocated value
 allocates a second time; the original is not released.
 
 **Example**

@@ -1,0 +1,21 @@
+// run_host_in_statement_emitter — `$host` in an emitter-class method used as a statement names the
+// object the proxy member is on, as it does when the method is used in an expression.
+// EXPECT_OUTPUT: set 1 h
+#beguilerSettings { target = z5; informName = "none"; }
+attribute marked;
+emitter class mk {
+    void set()   { give $host marked; }
+    void bump()  { $host.x++; }
+    void pass()  { f($host); }
+    bool isSet() { ($host has marked) }
+}
+class holder { mk mark; int x; }
+void f(holder o) { print($" {o.x} "); }
+holder h { "h"; }
+void main(){
+    h.mark.set();
+    h.mark.bump();
+    if (h.mark.isSet()) print("set");
+    h.mark.pass();
+    print(h);
+}

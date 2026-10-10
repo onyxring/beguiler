@@ -110,9 +110,10 @@ eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& b
         return eSettingKind::integer;
     }
     else if(key == "generateblorb" || key == "economy" || key == "autoinitialize"
-         || key == "omitunusedroutines" || key == "rewritepaths"){
+         || key == "omitunusedroutines" || key == "rewritepaths" || key == "filterverbsplitwarnings"){
         bv = (key == "generateblorb")      ? beguilerSettings.blorbEnabled
            : (key == "economy")            ? beguilerSettings.economy
+           : (key == "filterverbsplitwarnings") ? beguilerSettings.filterVerbSplitWarnings
            : (key == "autoinitialize")     ? beguilerSettings.autoInitialize
            : (key == "omitunusedroutines") ? beguilerSettings.omitUnusedRoutines
            :                                 beguilerSettings.rewritePaths.value_or(true); // unset = enabled

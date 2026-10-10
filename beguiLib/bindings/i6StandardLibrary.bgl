@@ -61,6 +61,7 @@ extern additive property after;      /// runs after an action on this object; re
 extern additive property life;       /// handles actions aimed at an animate object (Attack, Kiss, Give, Show, Ask, Tell, Answer…); return true to stop them
 extern additive property orders;     /// handles commands given to this character ("bob, go north"); on the player, sees every command; return true to stop it
 extern additive property describe;   /// prints the object's paragraph in a room description; return true to replace the default
+extern property          time_left;  /// turns left on the object's timer; an object with a timer declares it (`int time_left;`)
 extern additive property time_out;   /// runs when the object's timer (StartTimer, time_left) reaches zero
 extern additive property each_turn;  /// runs at the end of every turn the object is in scope; string or routine
 
@@ -188,6 +189,8 @@ extern void Banner();                                                       /// 
 extern void ClearScreen();                                                  /// clear the screen
 extern void NotifyTheScore();                                               /// print "[Your score has gone up…]"
 extern void ScoreSub();                                                     /// the SCORE action handler
+extern void MultiAdd(object obj);                                           /// add obj to the parser's multiple-object list
+extern int  MultiSub(object obj);                                           /// remove obj from the parser's multiple-object list; 0 if it was there
 extern void DisplayStatus();                                                /// refresh the status line
 extern void StatusLineHeight(int height);                                   /// set the status window height to `height` lines
 extern void DrawStatusLine();                                               /// redraws the status line

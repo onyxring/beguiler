@@ -1,0 +1,15 @@
+// run_static_through_subclass — a subclass name reaches its bases' statics: one variable, the declaring
+// class's (reads, writes, ++, +=, static calls); a subclass's own static of the same name shadows it.
+// EXPECT_OUTPUT: 3 5 6 8 9 100 9
+#beguilerSettings { target = z5; informName = "none"; }
+class Item { static int Made = 3; static int Bump(int n) { Item.Made = Item.Made + n; return Item.Made; } }
+class Sword : Item { }
+class Dagger : Sword { static int Made = 100; }
+void main(){
+    print(Sword.Made); print(" ");
+    Sword.Made = 5; print(Item.Made); print(" ");
+    Sword.Made++; print(Item.Made); print(" ");
+    Sword.Made += 2; print(Item.Made); print(" ");
+    int x = Sword.Bump(1); print(x); print(" ");
+    print(Dagger.Made); print(" "); print(Item.Made);
+}

@@ -1,0 +1,13 @@
+// run_forward_object_member_array — an object's member array used before the object's declaration is
+// typed as the array it is: subscripts, length and the <array> methods work as they do after it.
+// EXPECT_OUTPUT: 3 2 7 9
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+void main(){
+    bglInit();
+    h.slots[0] = 7;
+    h.slots.length = 1;
+    h.slots.append(9);
+    print($"{h.slots.size} {h.slots.length} {h.slots[0]} {h.slots[1]}");
+}
+object h { array<int> slots[3]; }

@@ -1,0 +1,9 @@
+// run_constant_overflow_wraps — an integer expression of literals that overflows the Z-machine word wraps
+// as the same arithmetic does at run time (§4.5): Beguile folds it, since I6 would reject the overflow.
+// EXPECT_OUTPUT: -32768 -32768 32767 -25536 -32768 -16384 5 16
+#beguilerSettings { target = z5; informName = "none"; }
+const int Big = 32767;
+void main(){
+    int m = 32767;
+    print($"{32767 + 1} {m + 1} {-32768 - 1} {200 * 200} {$7FFF + 1} {(32767 + 1) / 2} {7 - 2} {1000 * 1000 / 1000}");
+}

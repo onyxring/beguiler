@@ -1,0 +1,14 @@
+// run_array_element_call_statement — `hs[i](arg);` calls a func held in an array element as a statement.
+// EXPECT_OUTPUT: 5 12 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+void a(int n) { print(n); print(" "); }
+void b(int n) { print(n * 2); print(" "); }
+array<func<void, int>> hs = { a, b };
+void main(){
+    bglInit();
+    hs[0](5);
+    int i = 1;
+    hs[i](6);
+    hs[i - 1](3 + 4);
+}

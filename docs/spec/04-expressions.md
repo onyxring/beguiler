@@ -124,7 +124,7 @@ A leading `-` on an integer literal forms a negative literal, whose pseudo-type 
 `negativeIntLiteral` (§2.4.1). `<=>` binds more tightly than the relational operators (§4.3).
 
 **`int` arithmetic.** An `int` is a signed word: 16 bits on the Z-machine (−32768 to 32767), 32 bits
-on Glulx. Arithmetic that leaves the range wraps (`32767 + 1` → `-32768` on the Z-machine). `/`
+on Glulx. Arithmetic that leaves the range wraps (`32767 + 1` → `-32768` on the Z-machine), on literals as on variables. `/`
 truncates toward zero (`-7 / 2` → `-3`) and `%` takes the sign of the left operand (`-7 % 2` → `-1`,
 `7 % -2` → `1`). `>>` on an `int` is arithmetic, keeping the sign (`-256 >> 4` → `-16`); on a `uint`
 it fills with zeros (§21.6.1). Dividing by zero, with `/` or `%`, is a run-time error of the virtual
