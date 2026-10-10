@@ -1,0 +1,73 @@
+Room A
+Room A.
+You can see a bowl, a pouch, a vault and a chest here.
+> kit
+level 2, pool 60
+7
+Pool 60, slots 3.
+--
+42
+10
+27
+6
+Width 6: [=]
+42
+pong
+8
+Tail routine ran.
+60
+> stock pouch
+Pouch: 4 of 9, kind weight 10, extended.
+Room for 5.
+> stock pouch
+Pouch: 8 of 9, kind weight 10, extended.
+Room for 1.
+> stock pouch
+Pouch: 9 of 9, kind weight 10, extended.
+Full.
+> stamp pouch
+Mark set.
+> stamp pouch
+Mark cleared.
+> stamp bowl
+Not a holder.
+> stock bowl
+Not a holder.
+> stock chest
+Chest: 4 of 9, kind weight 30, chest note.
+Room for 5.
+> count
+1 2
+Made 4, turns 9.
+Used: pouch true, chest true, vault false.
+> hooks
+[hook Pouch 9]
+[lambda Chest 7]
+[tick]
+> stock pouch
+[lambda Pouch 9]
+Pouch: 9 of 9, kind weight 10, extended.
+Full.
+[tick]
+> stock chest
+[lambda Chest 9]
+Chest: 9 of 9, kind weight 30, chest note.
+Full.
+[tick]
+> count
+3 4
+Made 8, turns 13.
+Used: pouch true, chest true, vault false.
+[tick]
+> seal
+[lambda Vault 8]
+[lambda Vault 9]
+Vault: 9 of 9, kind weight 20, sealed.
+Vault: 2 of 9, kind weight 20, sealed.
+Total 40.
+[tick]
+> count
+5 6
+Made 10, turns 15.
+Used: pouch true, chest true, vault true.
+[tick]

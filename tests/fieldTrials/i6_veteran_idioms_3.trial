@@ -1,0 +1,148 @@
+Room A
+Room A. Room B is east.
+You can see a copper coin, a silver coin, a brass key, an iron key, a chest (which is closed), a lamp and a guard here.
+> status
+Inputs: 1. Rooms: 1. Lit: 3/3. Weight: 0.
+Prices: 3 5 7.
+Rusty: true. Weight of copper coin: 2. Of brass key: 1.
+> grab brass key
+Taken.
+> x brass key
+Nothing special about the brass key.
+> nab copper
+Taken.
+> take silver
+Taken.
+> take all
+iron key: Your hands are full.
+lamp: Your hands are full.
+> i
+You're carrying:
+  a silver coin
+  a copper coin
+  a brass key
+> x lamp
+A lamp.
+A bell rings in the distance.
+> drop copper
+Dropped, with a thud.
+> dial iii
+Dialed 3.
+> dial 4
+Dialed 4.
+> note one two three
+Noted: one two three.
+> flip lamp
+You switch the lamp on.
+> flip lamp
+You switch the lamp off.
+> nibble lamp
+Nothing like that is here.
+> inspect lamp
+A lamp.
+> study lamp
+A lamp.
+> unlock chest with iron key
+(first taking the iron key)
+The iron key is too rusty to turn.
+> unlock chest with brass key
+You unlock the chest.
+> open chest
+You open the chest, revealing a gem.
+> contents chest
+the gem
+> rummage chest
+In the chest is a gem.
+> rummage in chest
+In the chest is a gem.
+> stash brass key in chest
+Stashed.
+> stash silver, iron key in chest
+silver coin: Stashed.
+iron key: Stashed.
+> take gem
+Taken.
+[The score has just gone up by two points.]
+> contents chest
+the iron key, the silver coin and the brass key
+> status
+Inputs: 28. Rooms: 1. Lit: 3/3. Weight: 3.
+Prices: 3 5 7.
+Rusty: true. Weight of copper coin: 2. Of brass key: 1.
+> discard lamp
+I didn't understand that sentence.
+> places
+That's not a verb I recognise.
+> south
+The guard blocks the way south.
+> hand guard brass key
+(first taking the brass key)
+The guard declines the brass key.
+> take brass key
+You already have the brass key.
+> show brass key to guard
+The guard nods and steps aside.
+> tell guard about it
+The guard is not listening.
+> ring chest
+The chest rings dully.
+> ring guard
+Nothing rings.
+> paint chest red
+Painted the chest, color 1.
+> paint chest green
+I didn't understand that sentence.
+> west
+Only east and north lead anywhere.
+> east
+Room B
+Room B. Room A is west.
+You can see an apple here.
+A draft blows through.
+> ring echo
+The echo answers.
+> take echo
+An echo cannot be taken.
+> x apple
+An apple.
+> nibble apple
+You nibble the apple.
+> x apple
+Nothing like that is here.
+> x moon
+Nothing like that is here.
+> west
+Room A
+Room A. Room B is east.
+You can see a copper coin, a chest (in which are an iron key and a silver coin), a lamp and a guard here.
+> take lamp
+Taken.
+> north
+Darkness
+It is pitch dark, and you can't see a thing.
+> switch on lamp
+You switch the lamp on.
+Room C
+Room C. The way out is south.
+> look
+Room C
+Room C. The way out is south.
+> status
+Inputs: 53. Rooms: 4. Lit: 4/4. Weight: 5.
+Prices: 3 5 7.
+Rusty: true. Weight of copper coin: 2. Of brass key: 1.
+> switch off lamp
+You switch the lamp off.
+It is now pitch dark in here.
+> south
+Room A
+Room A. Room B is east.
+You can see a copper coin, a chest (in which are an iron key and a silver coin) and a guard here.
+> south
+Room D
+Room D. A lever is here.
+[The score has just gone up by four points.]
+> pull lever
+    *** You have jammed the machinery ***
+In that game you scored 6 out of a possible 6, in 46 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

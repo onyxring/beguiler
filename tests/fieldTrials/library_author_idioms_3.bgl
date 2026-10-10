@@ -1,0 +1,187 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit split over core, extras, legacy and a missing optional part, steered by #defineI6
+// with a value, #redef/#undef, #elif, #declare with a value, #exit, #once and settings (target and
+// framePoolSize) read by #if; #emitfirst/#emitlast with ##beguilerSettings, #startup, #i6 globals and
+// objects bound through extern; global emitter overloads, a var-forwarding emitter, void emitter
+// values, ##if in an emitter body; an emitter class used as a proxy member through $host; an enum
+// with an emitter member; $i6Name on an overloaded static method; a static superposed method; a
+// value-class accessor, with hide on its setter in a subclass; required and default members; extend
+// class with replace; _bglGlobalDeclaration and $selfsub; a stub library routine defined by the kit;
+// type aliases on a namespace object and emitter-class alias members with #using; consumer objects
+// declared before the kit, extended after; ::name; hooks filled with lambdas and named functions.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+    framePoolSize = 60;
+}
+
+#defineI6 LA3_SLOTS 3
+#define LA3_NO_EXTRAS
+#redef LA3_NO_EXTRAS 0
+#undef LA3_NO_EXTRAS
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#declare LA3_LEVEL 2
+
+// --- Consumer code ahead of the kit. ---
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object bowl {
+    "bowl";
+    parent = roomA;
+    name = {.bowl};
+    int uses = 0;
+}
+
+extend bowl {
+    int rank = 1;
+}
+
+int total = 0;
+
+// --- The kit. ---
+
+#include "library_author_idioms_3_parts/library_author_idioms_3_extras"
+#include "library_author_idioms_3_parts/library_author_idioms_3_legacy"
+#include ?"library_author_idioms_3_parts/library_author_idioms_3_missing"
+#include "library_author_idioms_3_parts/library_author_idioms_3_core"
+
+#using la3
+
+#if LA3_LEVEL >= 2 && #beguilerSettings.framePoolSize == 60
+    const string levelNote = "level 2, pool 60";
+#else
+    const string levelNote = "other";
+#endif
+
+// --- Consumer code that adapts the kit. ---
+
+la3Lib.holder pouch {
+    "pouch";
+    parent = roomA;
+    name = {.pouch};
+    string tag() { return "Pouch"; }
+}
+
+la3Sealed vault {
+    "vault";
+    parent = roomA;
+    name = {.vault};
+    kind = gem;
+    string tag() { return "Vault"; }
+    int total = 40;
+    void bump() { ::total = ::total + total; }
+}
+
+la3Holder chest {
+    "chest";
+    parent = roomA;
+    name = {.chest};
+    kind = la3Lib.kind.scroll;
+    string tag() { return "Chest"; }
+    replace string note() { return "chest note"; }
+}
+
+la3Counter ticker { }
+
+void named(la3Holder h, int amount) {
+    print($"[hook {h.tag()} {amount}]^");
+}
+
+verb Stock {
+    grammar = {.stock, NOUN};
+    void handler() {
+        if (!noun.is(la3Holder)) { print("Not a holder.^"); return; }
+        la3Holder h = (la3Holder)noun;
+        h.add(4);
+        h.report();
+        if (h.isFull()) print("Full.^");
+        else print($"Room for {h.room()}.^");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (!noun.is(la3Holder)) { print("Not a holder.^"); return; }
+        la3Holder h = (la3Holder)noun;
+        if (h.mark.isSet()) { h.mark.clear(); la3Show("Mark cleared."); }
+        else { h.mark.set(); la3Show("Mark set."); }
+    }
+}
+
+verb Kit {
+    grammar = {.kit};
+    void handler() {
+        la3Show(levelNote);
+        la3Show(la3_boot);
+        la3Show($"Pool {LA3_POOL}, slots {la3Slots}.");
+        la3Rule;
+        la3Break();
+        la3Show(la3Scale3(6, 7));
+        la3Show(la3Num.scale(5));
+        la3Show(la3Num.cube(3));
+        la3Show(la3.calc.mul3(2, 3));
+        print($"Width {fmt.width}: "); fmt.bar(); la3Break();
+        la3Show(la3Lib.util.twice(21));
+        la3Show(la3Lib.util.device());
+        La3_Tail();
+        la3Show(coin.weight + gem.weight + scroll.weight);
+    }
+}
+
+verb Count {
+    grammar = {.count};
+    void handler() {
+        #i6 print $i6Name(ticker)sub(), " ", $i6Name(ticker)sub(), "^";
+        print($"Made {la3Holder.made}, turns {la3Turns}.^");
+        print($"Used: pouch {pouch.used}, chest {chest.used}, vault {vault.used}.^");
+    }
+}
+
+verb Hooks {
+    grammar = {.hooks};
+    void handler() {
+        la3OnFill = named;
+        pouch.add(2);
+        la3OnFill = (la3Holder h, int amount) => { print($"[lambda {h.tag()} {amount}]^"); };
+        chest.add(3);
+        la3TickHook = () => print("[tick]^");
+    }
+}
+
+verb Seal {
+    grammar = {.seal};
+    void handler() {
+        la3Sealed v = vault;
+        v.add(8);
+        v.add(8);
+        v.report();
+        ((la3Holder)v).fill = 2;
+        v.report();
+        vault.bump();
+        print($"Total {total}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

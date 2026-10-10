@@ -1,0 +1,488 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a third first-time-programmer program built by copying the spec's examples. An enum and
+// a const kept next to old-style int flags, a class derived from verb (copied from the spec) beside
+// plain verbs with several grammar lines, grammar += and synonyms in extend blocks, a grammar object,
+// for / for-in / do-while / do-until / break / continue written out in long hand, a bubble sort over
+// an array, switch on an enum and on a verb, try/catch/throw, a ternary used once in a print, a timer
+// and an each_turn on objects, children loops over a container and a supporter, compound assignment
+// operators, and stringObj text built piece by piece.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+// ===== ENUMS AND CONSTANTS =====
+// the states of the lamp
+enum lampState { lampOff, lampOn, lampBroken }
+// the sizes of things
+enum size3 { small = 1, medium = 5, large = 10 }
+const int MAX_TRIES = 3;
+const int PRIZE_POINTS = 5;
+
+// ===== GLOBALS =====
+lampState theLampState = lampOff;
+int turnsLit = 0;
+int tries = 0;
+int sortedOnce = 0;
+bool lampWasBroken = false;
+bool bellRung = false;
+int visits = 0;
+int shakeCount;
+// weights of the things, filled in by hand
+array<int> weights = {7, 3, 9, 1, 5};
+array<int> copyOfWeights[5];
+
+// ===== FUNCTIONS =====
+
+// says the name of the lamp state
+string stateName(lampState s) {
+    switch (s) {
+        case lampOff:    return "off";
+        case lampOn:     return "on";
+        case lampBroken: return "broken";
+    }
+    return "unknown";
+}
+
+// copies the weights (a for loop, the old way)
+void copyWeights() {
+    for (int i = 0; i < 5; i++) {
+        copyOfWeights[i] = weights[i];
+    }
+    // slot writes do not make the slots count, so say how many are in use
+    copyOfWeights.length = 5;
+}
+
+// sorts the copy with a bubble sort, written out in full
+void sortCopy() {
+    bool swapped;
+    do {
+        swapped = false;
+        for (int j = 0; j < 4; j++) {
+            if (copyOfWeights[j] > copyOfWeights[j + 1]) {
+                int temp = copyOfWeights[j];
+                copyOfWeights[j] = copyOfWeights[j + 1];
+                copyOfWeights[j + 1] = temp;
+                swapped = true;
+            }
+        }
+    } while (swapped);
+    sortedOnce++;
+}
+
+// adds up an array (for-in, copied from the spec)
+int addUp(array<int> a) {
+    int total = 0;
+    for (auto v in a) total += v;
+    return total;
+}
+
+// throws if the number is bad
+void checkTries(int n) {
+    if (n > MAX_TRIES) {
+        throw n;
+    }
+    if (n < 0) {
+        throw -1;
+    }
+}
+
+// the word for a number of items
+string itemWord(int n) {
+    return n == 1 ? "item" : "items";
+}
+
+// says how many children an object has
+void sayCount(object o) {
+    int n = 0;
+    for (object c in o.children) {
+        n++;
+    }
+    print($"{o} has {n} {itemWord(n)}.^");
+}
+
+// ===== CLASSES =====
+
+class Gadget : object {
+    int level = 1;
+    void raise() {
+        level += 1;
+    }
+    void say() {
+        print($"Level {level}.^");
+    }
+}
+
+// a gadget that raises by two (override)
+class BigGadget : Gadget {
+    replace void raise() {
+        level += 2;
+    }
+}
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+    object n_to;
+    object s_to;
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east and Room C is to the north.";
+    e_to = roomB;
+    n_to = roomC;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object roomC {
+    "Room C";
+    description = "Room C. Room A is to the south.";
+    s_to = roomA;
+    // no light here, the lamp is needed
+}
+
+// ===== THINGS =====
+
+object chest {
+    "wooden chest";
+    parent = roomA;
+    name = {.wooden, .chest};
+    attributes = {container, openable, static};
+}
+
+object table {
+    "steel table";
+    parent = roomA;
+    name = {.steel, .table};
+    attributes = {supporter, static};
+}
+
+object apple {
+    "red apple";
+    parent = chest;
+    name = {.red, .apple};
+    attributes = {edible};
+}
+
+object coin {
+    "silver coin";
+    parent = chest;
+    name = {.silver, .coin};
+}
+
+object cup {
+    "tin cup";
+    parent = table;
+    name = {.tin, .cup};
+}
+
+object plate {
+    "clay plate";
+    parent = table;
+    name = {.clay, .plate};
+}
+
+object lamp {
+    "brass lamp";
+    parent = roomA;
+    name = {.brass, .lamp};
+    description = "A brass lamp.";
+    attributes = {switchable};
+    // keep the state in step with the lamp's on and off
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                theLampState = lampOn;
+                give(light);
+            case SwitchOff:
+                theLampState = lampOff;
+                ungive(light);
+        }
+        rfalse;
+    }
+    // each turn the lamp is lit, count it
+    void each_turn() {
+        if (theLampState == lampOn) {
+            turnsLit++;
+            if (turnsLit >= 4 && !lampWasBroken) {
+                lampWasBroken = true;
+                theLampState = lampBroken;
+                ungive(light);
+                ungive(on);
+                print("^The lamp goes dark. It is broken.^");
+            }
+        }
+    }
+}
+
+Gadget bell {
+    "brass bell";
+    parent = roomB;
+    name = {.brass, .bell};
+    description = "A brass bell.";
+    attributes = {static};
+}
+
+BigGadget gong {
+    "iron gong";
+    parent = roomB;
+    name = {.iron, .gong};
+    description = "An iron gong.";
+    attributes = {static};
+    level = 4;
+}
+
+object timerBox {
+    "timer box";
+    parent = roomC;
+    name = {.timer, .box};
+    description = "A timer box.";
+    attributes = {static};
+    int time_left;
+    void time_out() {
+        print("^The timer box beeps.^");
+    }
+}
+
+// ===== START =====
+
+bool initialise() {
+    location = roomA;
+    copyWeights();
+    StartTimer(timerBox, 3);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// the verb class, copied from the spec
+class chatVerb : verb {
+    string reply = "Nothing to say.";
+    void handler() {
+        print(reply);
+        print("^");
+    }
+}
+chatVerb Hum     { grammar = {.hum}; reply = "You hum."; }
+chatVerb Whistle { grammar = {.whistle}; }
+chatVerb Croon   { grammar = {.sing | .chant}; reply = "You sing a note."; }
+
+// RING - rings the bell or the gong
+verb Ring {
+    grammar = {
+        {.ring, NOUN},
+        {.strike, NOUN},
+    };
+    void handler() {
+        if (noun == bell) {
+            bell.raise();
+            bellRung = true;
+            print("The bell rings. ");
+            bell.say();
+        } else if (noun == gong) {
+            gong.raise();
+            print("The gong rings. ");
+            gong.say();
+        } else {
+            print("You can't ring that.^");
+        }
+    }
+}
+
+// TRIES - counts up and may throw
+verb Attempt {
+    grammar = {.attempt};
+    void handler() {
+        tries += 1;
+        try {
+            checkTries(tries);
+            print($"Try {tries} of {MAX_TRIES}.^");
+        } catch (int e) {
+            print($"Too many tries ({e}).^");
+            tries = 0;
+        }
+    }
+}
+
+// SORT - sorts the weights
+verb Sort {
+    grammar = {.sort};
+    void handler() {
+        sortCopy();
+        for (int i = 0; i < 5; i++) {
+            if (i > 0) print(", ");
+            print(copyOfWeights[i]);
+        }
+        print("^");
+        print($"Total {addUp(copyOfWeights)}.^");
+    }
+}
+
+// SIZES - writes out the sizes enum
+verb Sizes {
+    meta = true;
+    grammar = {.sizes};
+    void handler() {
+        size3 s = medium;
+        int asNumber = (int)s;
+        print($"Medium is {asNumber}.^");
+        print($"Large is {(int)large}.^");
+        int n = 0;
+        do {
+            n++;
+            if (n == 2) continue;
+            if (n > 4) break;
+            print(n);
+            print(" ");
+        } until (n >= 10);
+        print("^");
+        for (int k in 3 to 5) {
+            print(k);
+        }
+        print("^");
+        int shift = 3;
+        shift <<= 2;
+        shift -= 1;
+        print($"Shift {shift}.^");
+    }
+}
+
+// LAMP - says what the lamp is doing
+verb LampState {
+    meta = true;
+    grammar = {.lamp};
+    void handler() {
+        stringObj line = "The lamp is ";
+        line += stateName(theLampState);
+        stringObj lit = $"{turnsLit}";
+        line = line + ", lit " + lit + " turns.";
+        printLine(line);
+    }
+}
+
+// LOOK IN - counts what is in the chest and on the table
+verb Count {
+    grammar = {.count};
+    void handler() {
+        sayCount(chest);
+        sayCount(table);
+        int total = chest.children.length + table.children.length;
+        print($"Total {total}.^");
+    }
+}
+
+// MOVE ALL - puts every child of the chest on the table
+verb Unload {
+    grammar = {.unload, NOUN};
+    void handler() {
+        if (noun != chest) {
+            print("You can only empty the chest.^");
+            return;
+        }
+        if (chest.has(open) == false) {
+            print("The chest is closed.^");
+            return;
+        }
+        for (object o in chest.children) {
+            o.parent = table;
+        }
+        print("You empty the chest onto the table.^");
+        sayCount(table);
+    }
+}
+
+// WHERE - says which room the player is in using a switch on objects
+verb Where {
+    meta = true;
+    grammar = {.where};
+    void handler() {
+        if (location == roomA) print("In Room A.^");
+        else if (location == roomB) print("In Room B.^");
+        else if (location == roomC) print("In Room C.^");
+        else print("Nowhere.^");
+        print($"Back to Room A {visits} times.^");
+    }
+}
+
+// WHICH - says which verb is running, using a switch on verbs
+verb WhichAction {
+    meta = true;
+    grammar = {.which};
+    void handler() {
+        stringObj s = "none";
+        switch (action) {
+            case Take:        s = "take";
+            case Ring, Shake: s = "noisy";
+            case WhichAction: s = "which";
+            default:          s = "other";
+        }
+        print(s);
+        print("^");
+    }
+}
+
+// GAUGE - shake the gadgets
+verb Shake {
+    grammar = {.shake, NOUN};
+    void handler() {
+        shakeCount++;
+        if (noun.is(Gadget)) {
+            Gadget g = (Gadget)noun;
+            g.raise();
+            g.say();
+        } else {
+            print("Nothing happens.^");
+        }
+    }
+}
+
+// ===== EXTENDING GRAMMAR =====
+
+extend Ring {
+    grammar += { {.bang, NOUN} };
+    synonyms = {.chime};
+}
+
+extend Take {
+    grammar += { {.grab, NOUN} };
+}
+
+grammar extras {
+    rule1 = {Examine, {.inspect, NOUN}};
+    array<grammarRule> rules = {
+        {Drop, {.leave, HELD}},
+        {Take, {.fetch, NOUN}},
+    };
+}
+
+// the room before routine: counts the times the player leaves Room B
+extend roomB {
+    bool before() {
+        if (action == Go && noun == w_obj) {
+            visits += 1;
+        }
+        rfalse;
+    }
+}

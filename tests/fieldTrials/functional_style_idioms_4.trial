@@ -1,0 +1,66 @@
+Room A
+> sorted
+1/3 2/1 2/4 3/2 5/9
+5/9 2/4 1/3 3/2 2/1
+spring nut washer bolt gear
+3, -3, 0, nut first
+> rules 4
+bolt 7, nut 8, gear 3, spring 16, washer 4
+mapped: 5 12 2 7
+both 15, twice 48, applyTwice gear 2
+evenSteps 4, with triple 6
+> grid
+row 0: plain 9, scaled 60
+row 1: plain 11, scaled 90
+row 2: plain 7, scaled 60
+row 3: plain 0, scaled 0
+triple total 63
+after edit: 47 8 4
+widest 3
+> tree
+  yourself
+  crate
+    sack
+      washer
+      gear
+    bolt
+    nut
+  spring
+8 objects, deepest 2.
+4 parts in containers, first bolt, last gear.
+cheap: 2, big and costly: all
+washer gear
+> keep 7
+registry 4, runRegistry(7) = 5
+without inc 3, runRegistry = 5, has gear rule: yes
+> keep 20
+registry 4, runRegistry(20) = 77
+without inc 3, runRegistry = 74, has gear rule: yes
+> chain 7
+collatz(7) = 16, fresh calls 16
+again = 16, fresh calls 0
+collatz(6) = 8, fresh calls 2
+> pick 4
+action by name
+action 12
+five
+named, rule present: yes, no
+sack, sack
+> pick 7
+action by name
+action 21
+twenty-one
+named, rule present: yes, no
+sack, sack
+> pick 2
+action by name
+action 6
+one
+named, rule present: yes, no
+sack, sack
+> pick 9
+action by name
+action 27
+other 27
+named, rule present: yes, no
+sack, sack

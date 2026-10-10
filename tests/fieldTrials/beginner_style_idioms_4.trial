@@ -1,0 +1,66 @@
+Room A
+Room A. Room B is to the east.
+You can see a wooden chest (which is closed) and a brass lamp here.
+> flags
+key: portable lit = 5
+vase: fragile = 2
+box: portable fragile locked = 11
+both: portable fragile lit = 7
+common: portable = 1
+empty: none = 0
+locked is 8, lit is 4.
+> spawn
+number 7
+text seven
+goblin at 3,4
+orc at 5,6 (hostile)
+troll at 10,20 (hostile)
+elf at 1,2
+Spawned 4, last elf.
+> marble
+A marble of weight 5.
+> marble
+A marble of weight 8.
+> marble
+A marble of weight 11.
+> marble
+The pool is exhausted.
+> dropmarbles
+Freeing weight 5.
+Freeing weight 8.
+Freeing weight 11.
+Freed 3.
+> grid
+1 2 3 = 6 (row 1 of 3, 3 cells)
+4 5 = 9 (row 2 of 3, 2 cells)
+6 = 6 (row 3 of 3, 1 cells)
+Total 21, now 43.
+> calc
+6 7 49
+doubler(4) is 8.
+applyAdd is 15.
+> vec
+a 1,2  b 5,2
+a 2,2  b 5,9  p 5,9
+c 7,8,9  d 7,8,1
+> yell
+hey
+hey!!
+> display
+plain text
+hello from a routine
+a string
+a routine
+a string
+hello from a routine
+> pick
+none
+many
+Room B
+no nothing
+has chosen
+Config One, max 100.
+> look
+Room A
+Room A. Room B is to the east.
+You can see a wooden chest (which is closed) and a brass lamp here.

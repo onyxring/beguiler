@@ -1,0 +1,237 @@
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+An unlit lamp is here.
+You can also see a shiny copper coin, a shiny silver coin and an anvil here.
+> look
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+An unlit lamp is here.
+You can also see a shiny copper coin, a shiny silver coin and an anvil here.
+> status
+Prompts: 2. Posts: 2. Dark: 0. Received: 0. Tent: false.
+> x lamp
+A lamp.
+> take lamp
+[The lamp is noted.]
+Got it.
+> switch on lamp
+The lamp glows.
+> i
+You're carrying:
+  a lamp (providing light)
+  a pack (being worn)
+> wait
+Time drags.
+> sleep
+You are not tired.
+> nudge
+What do you want to shove?
+> sign
+You're unable to.
+> read sign
+It says: NO WAITING.
+> take coin
+Which do you mean, the copper coin or the silver coin?
+> take all
+copper coin: Got it.
+silver coin: Got it.
+anvil: (putting the copper coin into the pack to make room)
+Got it.
+[The score has just gone up by one point.]
+> i
+You're carrying:
+  an anvil
+  a shiny silver coin
+  a lamp (providing light)
+  a pack (being worn)
+    a shiny copper coin
+> put anvil in bin
+The anvil is too bulky for the bin.
+> take anvil
+You already have the anvil.
+> drop anvil
+Dropped.
+> nab anvil
+Got it.
+> drop anvil
+Dropped.
+> put copper coin on bin
+(first taking the copper coin out of the pack)
+Nothing goes on a bin.
+> n
+Study
+Study. The hall is south.
+A chest stands closed.
+You can also see a shiny gold coin, a crate (which is empty), a gem and robot here.
+> take gem
+(putting the silver coin into the pack to make room)
+You pocket the gem.
+[The score has just gone up by three points.]
+> sum
+Tasks: 5. I6 calls: 1. Score: 4.
+> open chest
+You open the chest, revealing nothing.
+[The score has just gone up by two points.]
+> open crate
+The crate is already open.
+> put gem in crate
+You put the gem into the crate.
+> pocket coin
+(the gold coin)
+Pocketed the gold coin.
+> pocket gold coin and gem
+gold coin: Pocketed the gold coin.
+gem: Pocketed the gem.
+> i
+You're carrying:
+  a shiny copper coin
+  a lamp (providing light)
+  a pack (being worn)
+    a gem
+    a shiny gold coin
+    a shiny silver coin
+> s
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+You can also see an anvil here.
+> put gold coin in bin
+(first taking the gold coin out of the pack)
+The bin spits out the gold coin.
+[The score has just gone up by one point.]
+> put copper coin in bin
+You put the copper coin into the bin.
+> put silver coin in bin
+(first taking the silver coin out of the pack)
+You put the silver coin into the bin.
+> take copper coin from bin
+The copper coin is stuck.
+> survey
+A tent is pitched here.
+A bin stands open here.
+You also see an anvil.
+Listed: 1.
+> spin 42
+Spun 42.
+> choose 7
+Number 7.
+> choose lamp
+Word lamp.
+> sing
+I didn't understand that sentence.
+> sing softly
+Your singing is abominable.
+> sniff around
+You smell nothing unexpected.
+> smell around
+You smell nothing unexpected.
+> stow lamp in tent
+Stow lamp -> tent.
+> stow lamp onto tent
+Stow lamp -> tent.
+> enter tent
+You get into the tent.
+> look
+Hall (in the tent)
+Hall. A study is north and a cellar is down.
+A bin stands open here.
+You can also see an anvil here.
+Inside the tent.
+> out
+You get out of the tent.
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+You can also see an anvil here.
+> switch off lamp
+The lamp dims.
+> down
+Darkness
+It is pitch dark, and you can't see a thing.
+> east
+You grope onward.
+Darkness
+It is pitch dark, and you can't see a thing.
+> west
+You grope onward.
+Darkness
+It is pitch dark, and you can't see a thing.
+> up
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+You can also see an anvil here.
+> w
+West is a solid wall.
+> n
+Study
+Study. The hall is south.
+A chest stands open.
+You can also see a crate (which is empty) and robot here.
+> in
+Closet
+Closet. The study is out.
+> out
+Study
+Study. The hall is south.
+A chest stands open.
+You can also see a crate (which is empty) and robot here.
+> become robot
+You are now the robot.
+Study
+Study. The hall is south.
+A chest stands open.
+You can also see your former self and a crate (which is empty) here.
+> look
+Study
+Study. The hall is south.
+A chest stands open.
+You can also see your former self and a crate (which is empty) here.
+> revert
+You are yourself again.
+> fullscore
+You have so far scored 7 out of a possible 7, in 54 turns, earning you the rank of Tester
+The score is made up as follows:
+     3 taking the gem
+     2 opening the chest
+     2 finding sundry items
+     7 total (out of 7)
+> score
+You have so far scored 7 out of a possible 7, in 54 turns, earning you the rank of Tester
+> status
+Prompts: 62. Posts: 44. Dark: 2. Received: 5. Tent: true.
+> s
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+You can also see an anvil here.
+> down
+Darkness
+It is pitch dark, and you can't see a thing.
+> plunge
+[The end comes quickly.]
+    *** You have died ***
+In that game you scored 7 out of a possible 7, in 57 turns, earning you the rank of Tester
+Would you like to RESTART, RESTORE a saved game, give the FULL score for that game or QUIT?
+> restart
+Hall
+Hall. A study is north and a cellar is down.
+A tent is pitched here.
+A bin stands open here.
+An unlit lamp is here.
+You can also see a shiny copper coin, a shiny silver coin and an anvil here.
+> finish
+    *** You have won ***
+In that game you scored 0 out of a possible 7, in 1 turn, earning you the rank of Tester
+Would you like to RESTART, RESTORE a saved game, give the FULL score for that game, see some suggestions for AMUSING things to do or QUIT?
+> amusing
+Try holding the sign.
+Would you like to RESTART, RESTORE a saved game, give the FULL score for that game, see some suggestions for AMUSING things to do or QUIT?

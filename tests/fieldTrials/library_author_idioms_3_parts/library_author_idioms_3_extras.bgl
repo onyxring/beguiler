@@ -1,0 +1,41 @@
+/*  Field trial part — included by library_author_idioms_3.bgl. Not a trial on its own.  */
+
+#once
+
+#if LA3_NO_EXTRAS
+    #exit
+#endif
+
+#include "library_author_idioms_3_core"
+
+extern int La3_Mul(int a, int b) asBgl la3Mul;
+#i6 [ La3_Mul a b; return a * b; ];
+
+#i6 Object la3_dev "device" with la3_lvl 3, la3_ping [; print "pong^"; return 5; ];
+extern object la3_dev {
+    int la3_lvl;
+    int la3_ping();
+}
+
+extend class la3Holder {
+    int spare = 2;
+    emitter bool used { ($self.$i6Name(la3Holder.taken) > 0) }
+    bool isFull() { return fill == 9; }
+    int room() { return 9 - fill; }
+    replace string note() { return "extended"; }
+}
+
+superposed object _la3Util {
+    int twice(int n) { return la3Mul(n, 2); }
+    int device() { return la3_dev.la3_ping() + la3_dev.la3_lvl; }
+}
+extend la3Lib {
+    alias util = _la3Util;
+}
+
+emitter class la3Calc {
+    int mul3(int a, int b) { $i6Expr(la3Scale3($a, $b)) }
+}
+extend class la3 { la3Calc calc; }
+
+superposed la3Holder la3Orphan { "orphan"; string tag() { return "orphan"; } }

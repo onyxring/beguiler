@@ -1,0 +1,55 @@
+Room A
+> stages 4
+four stages: 49
+swapped: 30
+negated: -18
+empty: 4, 0 stages
+pick -4, pick2 104
+bump 55
+> folds
+sum 28
+max 9
+weighted 56
+applyTo one 5, two 20
+scaleBy 16, 30, 11, -6
+after change 280
+> deque
+2 4 8 15 16
+dequeue 2, popEnd 16, peek 4, peekEnd 15
+7 4 99 8 15 8 8
+7 4 15
+15 7 4
+15
+contains 15: yes, indexOf 15: 0, length 1
+> words
+apple cherry fig pear
+pear fig cherry apple
+> union 10
+a 15, b 20, c 9
+> stock
+6 items.
+In Room A: hammer, ruby, rag
+Heavy: hammer, saw, rock
+By price: ruby, opal, saw, hammer, rag, rock
+Cheapest two: rag, rock
+Skip heavy: ruby, rag, saw, opal, rock
+Take while: hammer, ruby
+Labels: hammer ruby rag saw opal rock
+All priced under 50: yes; any junk: yes
+> nested
+ruby, rag, saw, opal
+Their prices total 55.
+> kinds
+hammer is tool; tool
+ruby is fine gem; gem
+rag is junk; junk
+saw is tool; tool
+opal is gem; gem
+rock is junk; junk
+cost sum 74
+reader 60, scaled 28
+> hooks 3
+bonus hook 103
+empty hook
+hookA 3
+local hook 21

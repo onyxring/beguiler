@@ -1,0 +1,394 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fourth first-time-programmer program, again built from the spec's own examples.
+// A bnum of item flags combined with | and tested with &, overloaded functions next to default
+// and named arguments, a pooled class with create/destroy and an exhausted pool, value classes
+// (a copy operator, a subclass that chains to it, a ref local and a ref parameter), a class with
+// a static counter and a const member, an array of arrays walked with nested for-in, an array of
+// func values filled with lambdas (one capturing a parameter), a union of string and routine
+// narrowed with typeof, ternaries nested in print arguments, ?. and ?? on objects, stringObj
+// passed by value and by ref, a switch on typeof, and a func variable set to a named function from initialise.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+// ===== ITEM FLAGS (copied from the spec, one flag added) =====
+bnum itemFlag { portable, fragile, lit, locked }
+
+// the flags of three things, kept as plain ints like the spec does
+int keyFlags = itemFlag.portable | itemFlag.lit;
+int vaseFlags = itemFlag.fragile;
+int boxFlags = itemFlag.locked | itemFlag.portable | itemFlag.fragile;
+
+// ===== GLOBALS =====
+int spawned = 0;
+int marblesMade = 0;
+int doubleCalls = 0;
+bool lampIsOn = false;
+string lastSpawn = "none";
+func<int, int> doubler;
+
+// ===== CLASSES COPIED FROM THE SPEC =====
+
+class Counter {
+    static int instanceCount = 0;
+    void increment() { Counter.instanceCount = Counter.instanceCount + 1; }
+}
+
+class Config {
+    const int maxScore = 100;
+    const string title = "Config One";
+}
+Config gameConfig { }
+
+class marbleClass[3] : object {
+    int weight = 0;
+    void create(int w) { weight = w; marblesMade++; }
+    void destroy() { weight = 0; }
+}
+
+value class Vec2 {
+    int x; int y;
+    Vec2 operator = (Vec2 o) { x = o.x; y = o.y; return self; }
+}
+value class Vec3 : Vec2 {
+    int z;
+    Vec3 operator = (Vec3 o) { z = o.z; (Vec2)self = o; return self; }
+}
+
+
+// ===== FUNCTIONS =====
+
+// three ways of saying a thing: one overload each for int and string
+void say(int n) {
+    print("number ");
+    print(n);
+    print("^");
+}
+void say(string s) {
+    print("text ");
+    print(s);
+    print("^");
+}
+
+// copied from the spec (renamed, a verb is called Spawn): defaults and named arguments
+void spawnOne(string name, int x, int y, bool hostile = false) {
+    spawned++;
+    lastSpawn = name;
+    print($"{name} at {x},{y}");
+    if (hostile) {
+        print(" (hostile)");
+    }
+    print("^");
+}
+
+int twice(int n) { return n * 2; }
+
+// says which flags a number has, the long way
+void showFlags(string who, int f) {
+    print(who);
+    print(":");
+    if ((f & itemFlag.portable) != 0) { print(" portable"); }
+    if ((f & itemFlag.fragile) != 0) { print(" fragile"); }
+    if ((f & itemFlag.lit) != 0) { print(" lit"); }
+    if ((f & itemFlag.locked) != 0) { print(" locked"); }
+    if (f == 0) { print(" none"); }
+    print(" = ");
+    print(f);
+    print("^");
+}
+
+// the union describe from the spec
+void showIt(stringOrRoutine v) {
+    if (typeof(v) == eType.routine) {
+        func<void> f = (func<void>)v;
+        f();
+    } else {
+        print((string)v);
+        print("^");
+    }
+}
+
+void hello() { print("hello from a routine^"); }
+
+// builds a function that adds n (the lambda captures a parameter)
+int applyAdd(int base, int n) {
+    func<int, int> adder = (int v) => v + n;
+    return adder(base);
+}
+
+// the stringObj pair from the spec
+void shoutCopy(stringObj s) { s += "!"; }
+void shoutRef(ref stringObj s) { s += "!"; }
+
+// bumps x of a vec by value (no effect) and by ref (has effect)
+void nudge(Vec2 v) { v.x++; }
+void nudgeHere(ref Vec2 v) { v.x++; }
+
+// ===== ROOMS AND THINGS =====
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object chest {
+    "wooden chest";
+    parent = roomA;
+    name = {.wooden, .chest};
+    attributes = {container, openable, static};
+}
+
+object key {
+    "brass key";
+    parent = chest;
+    name = {.brass, .key};
+}
+
+object lamp {
+    "brass lamp";
+    parent = roomA;
+    name = {.brass, .lamp};
+    attributes = {switchable};
+}
+
+object vase {
+    "glass vase";
+    parent = roomB;
+    name = {.glass, .vase};
+}
+
+
+Counter ticker { }
+
+bool initialise() {
+    location = roomA;
+    doubler = twice;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// FLAGS - shows the flag combinations
+verb Flags {
+    meta = true;
+    grammar = {.flags};
+    void handler() {
+        showFlags("key", keyFlags);
+        showFlags("vase", vaseFlags);
+        showFlags("box", boxFlags);
+        int both = keyFlags | vaseFlags;
+        showFlags("both", both);
+        int common = boxFlags & keyFlags;
+        showFlags("common", common);
+        showFlags("empty", 0);
+        print($"locked is {(int)itemFlag.locked}, lit is {(int)itemFlag.lit}.^");
+    }
+}
+
+// SPAWN - overloads and named arguments
+verb Spawn {
+    meta = true;
+    grammar = {.spawn};
+    void handler() {
+        say(7);
+        say("seven");
+        spawnOne("goblin", 3, 4);
+        spawnOne("orc", 5, 6, true);
+        spawnOne(x: 10, y: 20, name: "troll", hostile: true);
+        spawnOne("elf", y: 2, x: 1);
+        print($"Spawned {spawned}, last {lastSpawn}.^");
+    }
+}
+
+// MARBLE - takes a marble from the pool of three
+verb Marble {
+    meta = true;
+    grammar = {.marble};
+    void handler() {
+        marbleClass m = new marbleClass(marblesMade * 3 + 5);
+        if (m == null) {
+            print("The pool is exhausted.^");
+            return;
+        }
+        marbleHolder.keep(m);
+        print($"A marble of weight {m.weight}.^");
+    }
+}
+
+// DROPMARBLES - gives them all back
+verb DropMarbles {
+    meta = true;
+    grammar = {.dropmarbles};
+    void handler() {
+        int total = marbleHolder.count;
+        for (int i = 0; i < total; i++) {
+            marbleClass m = marbleHolder.slots[i];
+            print($"Freeing weight {m.weight}.^");
+            delete m;
+        }
+        marbleHolder.count = 0;
+        print($"Freed {total}.^");
+    }
+}
+
+// GRID - nested arrays
+array<array<int>> gridData = { {1, 2, 3}, {4, 5}, {6} };
+
+verb Grid {
+    meta = true;
+    grammar = {.grid};
+    void handler() {
+        int total = 0;
+        int rowNumber = 0;
+        for (array<int> row in gridData) {
+            rowNumber++;
+            int rowSum = 0;
+            for (int cell in row) {
+                rowSum += cell;
+                print(cell);
+                print(" ");
+            }
+            print($"= {rowSum} (row {rowNumber} of {gridData.length}, {row.length} cells)^");
+            total += rowSum;
+        }
+        gridData[1][0] = 40;
+        print($"Total {total}, now {gridData[1][0] + gridData[0][2]}.^");
+    }
+}
+
+// CALC - func values from lambdas and names
+verb Calc {
+    meta = true;
+    grammar = {.calc};
+    void handler() {
+        array<func<int, int>> steps = { twice, (int n) => n + 1, (int n) => n * n };
+        int value = 3;
+        for (func<int, int> step in steps) {
+            value = step(value);
+            print(value);
+            print(" ");
+        }
+        print("^");
+        print($"doubler(4) is {doubler(4)}.^");
+        print($"applyAdd is {applyAdd(10, 5)}.^");
+    }
+}
+
+// VEC - value classes
+verb Vec {
+    meta = true;
+    grammar = {.vec};
+    void handler() {
+        Vec2 a;
+        a.x = 1; a.y = 2;
+        Vec2 b = a;
+        b.x = 5;
+        nudge(a);
+        print($"a {a.x},{a.y}  b {b.x},{b.y}^");
+        nudgeHere(a);
+        ref Vec2 p := b;
+        p.y = 9;
+        print($"a {a.x},{a.y}  b {b.x},{b.y}  p {p.x},{p.y}^");
+        Vec3 c;
+        c.x = 7; c.y = 8; c.z = 9;
+        Vec3 d;
+        d = c;
+        d.z = 1;
+        print($"c {c.x},{c.y},{c.z}  d {d.x},{d.y},{d.z}^");
+    }
+}
+
+// YELL - strings by value and by ref
+verb Yell {
+    meta = true;
+    grammar = {.yell};
+    void handler() {
+        stringObj s = "hey";
+        shoutCopy(s);
+        print($"{s}^");
+        shoutRef(s);
+        shoutRef(s);
+        print($"{s}^");
+    }
+}
+
+// DISPLAY - union values
+verb Display {
+    meta = true;
+    grammar = {.display};
+    void handler() {
+        showIt("plain text");
+        showIt(hello);
+        array<stringOrRoutine> things = { "first", hello, "last" };
+        for (stringOrRoutine t in things) {
+            switch (typeof(t)) {
+                case eType.string:  print("a string^");
+                case eType.routine: print("a routine^");
+                default:            print("something else^");
+            }
+        }
+        string | func<void> chosen = lampIsOn ? "lamp is on" : hello;
+        showIt(chosen);
+    }
+}
+
+// PICK - ternaries and null handling
+verb Pick {
+    meta = true;
+    grammar = {.pick};
+    void handler() {
+        int n = Counter.instanceCount;
+        print(n == 0 ? "none" : n == 1 ? "one" : "many");
+        print("^");
+        ticker.increment();
+        ticker.increment();
+        n = Counter.instanceCount;
+        print(n == 0 ? "none" : n == 1 ? "one" : "many");
+        print("^");
+        object where = vase.parent;
+        object nothing = null;
+        object chosen = nothing ?? where;
+        print($"{chosen}^");
+        if (nothing?) print("has nothing^"); else print("no nothing^");
+        if (chosen?) print("has chosen^");
+        print($"{gameConfig.title}, max {gameConfig.maxScore}.^");
+    }
+}
+
+// the marble holder: keeps what was made so DROPMARBLES can free it (declared after the verbs that use it)
+object marbleHolder {
+    "marble holder";
+    int count = 0;
+    array<marbleClass> slots[3];
+    void keep(marbleClass m) {
+        slots[count] = m;
+        count++;
+    }
+}

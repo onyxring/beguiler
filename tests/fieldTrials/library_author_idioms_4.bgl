@@ -1,0 +1,174 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit on Glulx split over core, entries and bridge parts, the entries part including the
+// core and the includer including both (#once), sized by a #defineI6 set before it and tested by
+// #declare after it; ##beguilerSettings in #emitfirst bound by a const extern; a bnum with an emitter
+// member, extended after the fact; a static-only class; a namespace object mixing
+// type aliases, a superposed value alias and a static-class alias; a three-step emitter class path
+// with ##if in its body; emitter values on a global and on an object; extern enum, attribute with
+// asBgl, property and object body bound to hand-written I6; an #i6 island with a nested #bgl and
+// $i6Expr over a local; an extern default stub supplied by the kit; extend class with replace and
+// hide; consumer objects of a kit class declared before the kit; hooks filled with a lambda and a
+// named function; extend of library verbs; a ?-include that finds nothing and an @-include.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#defineI6 LA4_CAP 4
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// A kit instance written before the kit is included.
+la4Entry early {
+    "early entry";
+    parent = roomA;
+    name = {.early};
+    flags = sticky | shared;
+    string label() { return "Early"; }
+}
+
+#include "library_author_idioms_4_parts/library_author_idioms_4_entries"
+#include @"library_author_idioms_4_parts/library_author_idioms_4_bridge"
+#include ?"library_author_idioms_4_parts/library_author_idioms_4_optional"
+#include "library_author_idioms_4_parts/library_author_idioms_4_core"
+
+#using la4Lib
+#using la4Stats
+#using la4
+
+#if LA4_API >= 4 && LA4_CAP == 4
+    const string capNote = "api 4, cap 4";
+#else
+    const string capNote = "other";
+#endif
+
+// The consumer adds a flag test and replaces a kit method.
+extend bnum eLa4Flag {
+    emitter bool quiet { (($self & 2) ~= 0) }
+}
+
+extend class la4Entry {
+    int notes = 0;
+    replace void summary() {
+        notes++;
+        print($"{label()} / {kindName()} / level {level} of {la4Cap} / id {id} / note {notes}");
+    }
+}
+
+la4Lib.entry bin {
+    "bin";
+    parent = roomA;
+    name = {.bin};
+    flags = hidden;
+    string label() { return "Bin"; }
+    string kindName() { return "bin"; }
+}
+
+la4Fixed plate {
+    "plate";
+    parent = roomA;
+    name = {.plate};
+    string label() { return "Plate"; }
+}
+
+
+void named(la4Entry e, int lv) {
+    print($"[named {e.label()} {lv}]^");
+}
+
+verb Info {
+    grammar = {.info};
+    void handler() {
+        print(capNote); print("^");
+        print($"Target {LA4_TARGET_NAME}.^");
+        fmt.rule();
+        fmt.box.wrap(la4Cap);
+        fmt.box.tag("cap");
+        print("^");
+        print($"Created {created}, touches {touches}.^");
+        print($"Meter full {la4Meter.full}, room {la4Meter.room}.^");
+        print($"Tools: {tools.clampTo(9)}{tools.plural(2)}, {tools.clampTo(-3)}{tools.plural(1)}.^");
+    }
+}
+
+verb Detail {
+    grammar = {.detail, NOUN};
+    void handler() {
+        if (!noun.is(la4Entry)) { print("Not an entry.^"); return; }
+        la4Entry e = (la4Entry)noun;
+        e.summary(); print("^");
+    }
+}
+
+verb Raise {
+    grammar = {.raise, NOUN};
+    void handler() {
+        if (!noun.is(la4Entry)) { print("Not an entry.^"); return; }
+        la4Entry e = (la4Entry)noun;
+        e.touch();
+        e.summary(); print("^");
+    }
+}
+
+verb Flags {
+    grammar = {.flags, NOUN};
+    void handler() {
+        if (!noun.is(la4Entry)) { print("Not an entry.^"); return; }
+        la4Entry e = (la4Entry)noun;
+        int f = e.flags;
+        print($"{e.label()}: sticky {e.flags.within(1)}, shared {e.flags.within(4)}");
+        print($", hidden {e.flags.within(2)}, quiet {e.flags.quiet}.^");
+        if (noun.has(seen)) print("Seen.^");
+        else { noun.give(seen); print("Now seen.^"); }
+    }
+}
+
+verb Bridge {
+    grammar = {.bridge};
+    void handler() {
+        print($"Mix {la4Mix(5)}.^");
+        eLa4Band b = LA4_HIGH;
+        print($"High {la4IsHigh(b)}, low {la4IsHigh(LA4_LOW)}.^");
+        print($"Raw rank {la4_raw.la4_rank}, provides {la4_raw.provides(la4_rank)}.^");
+        print($"Entry provides rank {early.provides(la4_rank)}, notes {early.provides(notes)}.^");
+        print($"Commands seen {la4Commands}.^");
+    }
+}
+
+verb Hooks {
+    grammar = {.hooks};
+    void handler() {
+        la4OnTouch = named;
+        early.touch();
+        la4OnTouch = (la4Entry e, int lv) => { print($"[lambda {e.label()} {lv}]^"); };
+        bin.touch();
+        plate.touch();
+        la4OnTouch = null;
+        bin.touch();
+    }
+}
+
+extend Examine { grammar += { {.inspect, NOUN} }; }
+extend Look { synonyms = {.peek}; }
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,244 @@
+#grids
+Room A
+Room A. Room B is to the east.
+You can see a brass key and an iron anvil here.
+[grid 1]
+|Room A  turn 0                                    |
+|load 0.0/2.5 kg [..........]                      |
+[grid 2]
+|Room A | 0                                        |
+> layout
+HUD open: yes; notes open: yes.
+HUD height 2, width > 0: yes.
+Notes width > 0: yes, height > 0: yes.
+Status bar height 1.
+[grid 1]
+|Room A  turn 0                                    |
+|load 0.0/2.5 kg [..........]                      |
+[grid 2]
+|Room A | 0                                        |
+> take key
+Taken.
+[grid 1]
+|Room A  turn 1                                    |
+|load 0.0/2.5 kg [..........]                      |
+[grid 2]
+|Room A | 1                                        |
+> weigh
+Carrying 0.0 kg of 2.5; 1.4% full.
+[....................] ok
+[win 1] 1. weighed 0.0 kg
+[grid 1]
+|Room A  turn 2                                    |
+|load 0.0/2.5 kg [..........]                      |
+[grid 2]
+|Room A | 2                                        |
+> take anvil
+Taken.
+[grid 1]
+|Room A  turn 3                                    |
+|load 1.9/2.5 kg [########..]                      |
+[grid 2]
+|Room A | 3                                        |
+> weigh
+Carrying 1.9 kg of 2.5; 77.4% full.
+[###############.....] ok
+[win 1] 2. weighed 1.9 kg
+[grid 1]
+|Room A  turn 4                                    |
+|load 1.9/2.5 kg [########..]                      |
+[grid 2]
+|Room A | 4                                        |
+> pick
+Choose heavier or lighter.
+Limit is 2.5 kg.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.5 kg [########..]                      |
+[grid 2]
+|Room A | 5                                        |
+> @link 1
+Limit 3.0 kg.
+[win 1] 3. limit 3.0
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/3.0 kg [######....]                      |
+[grid 2]
+|Room A | 5                                        |
+> @link 2
+Limit 2.5 kg.
+[win 1] 4. limit 2.5
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.5 kg [########..]                      |
+[grid 2]
+|Room A | 5                                        |
+> @link 2
+Limit 2.0 kg.
+[win 1] 5. limit 2.0
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+[grid 2]
+|Room A | 5                                        |
+> notes
+5 notes; keeping the last 5.
+  1: weighed 0.0 kg
+  2: weighed 1.9 kg
+  3: limit 3.0
+  4: limit 2.5
+  5: limit 2.0
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+[grid 2]
+|Room A | 5                                        |
+> grow
+HUD height now 3.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> wide
+Width unchanged: yes.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> probe
+Hyperlinks: yes; graphics: yes; unicode: yes.
+Notes hyperlinks: yes.
+Alert weight reported: no.
+Alert style unknown.
+Known: no; applied: no; differing: no.
+Measured colour is unset: yes.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> restyle
+Temporary window open.
+[win 2] temporary window, 2 lines
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> clearnotes
+Done.
+[win 1] Notes cleared.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> hudoff
+HUD closed.
+[win 1] 6. hud closed
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> hudoff
+HUD already closed.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> grow
+No HUD.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> layout
+HUD open: no; notes open: yes.
+Notes width > 0: yes, height > 0: yes.
+Status bar height 1.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 5                                        |
+> pick
+Choose heavier or lighter.
+Limit is 2.0 kg.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 6                                        |
+> hudon
+HUD open.
+[win 1] 7. hud opened
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 6                                        |
+[grid 3]
+|Room A  turn 6                    |
+|load 1.9/2.0 kg [##########]      |
+> hudon
+HUD already open.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 6                                        |
+[grid 3]
+|Room A  turn 6                    |
+|load 1.9/2.0 kg [##########]      |
+> drop anvil
+Dropped.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 7                                        |
+[grid 3]
+|Room A  turn 7                    |
+|load 0.0/2.0 kg [..........]      |
+> weigh
+Carrying 0.0 kg of 2.0; 1.8% full.
+[....................] ok
+[win 1] 8. weighed 0.0 kg
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 8                                        |
+[grid 3]
+|Room A  turn 8                    |
+|load 0.0/2.0 kg [..........]      |
+> redraws
+HUD redrawn more than 20 times: yes.
+[grid 1]
+|Room A  turn 5                                    |
+|load 1.9/2.0 kg [##########]                      |
+|                                                  |
+[grid 2]
+|Room A | 8                                        |
+[grid 3]
+|Room A  turn 8                    |
+|load 0.0/2.0 kg [..........]      |

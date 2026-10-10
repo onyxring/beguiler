@@ -1,0 +1,286 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits on the Z-machine (z8). Comment banners made of slashes and
+// stars; a `//` line holding a block-comment opener and a block comment holding `//`; empty and
+// star-heavy block comments; comments between a keyword and its parenthesis, inside `catch (...)`,
+// around `?` and `:`, between a postfix `++` and its semicolon, and between `case` and its value; mixed
+// case on statement keywords (`ReTuRn`, `ELSE IF`, `tRy`); 16-bit integer wrap, hex and binary extremes
+// and signed division and shift; `a - -b`, `a++ + ++b`, `!!b`, `!noun?` and a cast ahead of a
+// parenthesis; ZSCII character literals (`\155`, `\$E4`, accents, case-insensitive `=~`) used as case
+// labels; Z-machine folding of curly quotes and the backtick; accents in names and dictionary words,
+// apostrophes and hyphens in words, and a word longer than the dictionary resolution; try/catch/throw
+// with nesting, re-throw and an object payload; `rtrue(...)` with an interpolated string; children
+// loops that move the current child; `do`/`until` against `while`; a range loop with expression
+// bounds; static members; an `extend` of an object; case-varied references to one identifier.
+
+#beguilerSettings
+{
+    target /* the machine */ = z8 ;
+    includePaths="../../../inform6/stdlib"
+        ;
+}
+
+#IncludeI6 "parser"
+#INCLUDEI6 "verblib"
+#Include <bindings/i6StandardLibrary>
+
+////////////////////////////////////////////////////////////////////////////////
+// Banner made of slashes. The line above is not a doc comment that attaches to
+// anything, and this line is an ordinary one.
+////////////////////////////////////////////////////////////////////////////////
+
+/*****************************************************************************
+ *  Banner made of stars: the closing delimiter is the last two characters.
+ *****************************************************************************/
+
+extend class object { string description; }
+
+// /* this block opener sits in a line comment and opens nothing
+const int AFTER_LINE_COMMENT = 1;
+/* this line comment opener // sits in a block comment */ const int AFTER_BLOCK_COMMENT = 2;
+/**/ const int AFTER_EMPTY = 3; /***/ const int AFTER_STARS = 4;
+/**
+ * A doc comment with star-prefixed lines.
+ */
+const int AFTER_DOC = 5;
+
+//-- Forward references ----------------------------------------------------------------------------
+
+Object roomA
+{
+    "Room A"; description = "A plain room.";
+    attributes = { light };
+}
+
+Object roomB { "Room B"; attributes = { light }; }
+extend roomB { description = "A second room."; }
+
+Bin binA { "bin"; parent = roomA; name = {.bin, .café, .Tin-Can, .O'Brien's};
+           attributes = {static, container, open}; description = "A bin."; }
+
+class Bin : object
+{
+    int load = SlotCount - 1;
+    static int made = 0;
+    static int bump() { made++; return made; }
+    int room() { return SlotCount - load; }
+}
+
+object token1 { "token one"; parent = binA; name = {.token, .one}; description = "A token."; }
+object token2 { "token two"; parent = binA; name = {.token, .two}; description = "A token."; }
+object token3 { "token three"; parent = binA; name = {.token, .three}; description = "A token."; }
+object longThing { "long thing"; parent = roomA; name = {.extraordinarily, .thing};
+                   description = "A long thing."; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+verb Wrap
+{
+    meta = true; grammar = {.wrap};
+    void handler()
+    {
+        printLine($"{32767 + 1} {-32767 - 2} {$7FFF} {32767 + $1} {$8000} {$FFFF} {-$7FFF}");
+        printLine($"{$$111111111111111} {$$1000000000000000} {1 << 15} {1 << 14 << 1} {32767 / 2 * 4}");
+        printLine($"{-7 / 2} {-7 % 2} {7 % -2} {7 / -2} {-256 >> 4} {$7FFF >> 14} {-7 >> 1}");
+        printLine($"{00} {007} {0010} {-0} {- 0} {$00} {$$0} {$000FF} {$$00000011}");
+        int a = 30000; int b = a + a; int c = b - a - a;
+        printLine($"{b} {c} {a * 2 / 2} {a / 2 * 2} {(a + a) / 2}");
+    }
+}
+
+verb Signs
+{
+    meta = true; grammar = {.signs};
+    void handler()
+    {
+        int a = 5; int b = 3;
+        printLine($"{a - -b} {a- -b} {a - - - b} {-a - -b} {a- (-b)}");
+        int x = 2; int y = 3;
+        int s = x++ + ++y;
+        printLine($"{s} {x} {y}");
+        s = x-- - --y;
+        printLine($"{s} {x} {y}");
+        s = x ++ + y ++;
+        printLine($"{s} {x} {y}");
+        bool t = true; bool f = false;
+        printLine($"{!!t} {!!f} {!(!t)} {!t == f} {!f && !f} {!(t && f)} {(int)!t} {(int) ! f}");
+        printLine($"{!noun?} {(noun?) ? 1 : 0} {(int)(noun?)}");
+        printLine($"{(int)(char)65 + 1} {( int )a + ( int )b} {(int)(a > b) + (int)(b > a)}");
+    }
+}
+
+verb Comments
+{
+    meta = true; grammar = {.comments};
+    void handler() /* after the parens */
+    {
+        int n = 1 /* a */ + /* b */ 2 /* c */ ;
+        n /* lhs */ ++ /* op */ ;
+        n /*x*/ += /*y*/ 10 /*z*/;
+        printLine( /*1*/ $"{n}" /*2*/ );
+        int q = n /* a */ > /* b */ 5 /* c */ ? /* d */ 100 /* e */ : /* f */ 200 /* g */ ;
+        printLine($"{q} {n /* in a span */ - /* and another */ 1}");
+        if /* gap */ ( /* in */ n /* out */ > 0 /* done */ ) /* before body */ printLine("positive");
+        /* before else */ else /* after else */ printLine("not positive");
+        switch /* s */ ( /* t */ n ) /* u */
+        {
+            case /* c1 */ 14 /* c2 */ : /* c3 */ printLine("fourteen");
+            default /* d */ : printLine("other");
+        }
+        while /* w */ ( /* x */ n /* y */ < /* z */ 16 /* end */ ) /* body */ n /* i */ ++ ;
+        printLine($"{n}");
+    }
+}
+
+//-- Case mixing and control flow --------------------------------------------------------------------
+
+int Depth(int n)
+{
+    iF (n <= 0) RETURN 0;
+    ELSE IF (n == 1)
+        ReTuRn 1;
+    elSe
+        rEtUrN Depth(n - 1) + Depth(n - 2) + 1;
+}
+
+verb Flow
+{
+    meta = true; grammar = {.flow};
+    void handler()
+    {
+        printLine($"{depth(0)} {DEPTH(1)} {Depth(5)}");
+        int n = 0;
+        Do { n += 2; } WHILE (n < 5);
+        printLine($"{n}");
+        dO { n -= 3; } UnTiL (n <= 0);
+        printLine($"{n}");
+        int total = 0;
+        For (Int i In n + 2 To n * 2 + 5) total += i;
+        printLine($"{total}");
+        for (int i = 10; i > 0; i -= 3) { if (i == 7) CONTINUE; if (i < 3) BREAK; print(i); print(" "); }
+        printLine("");
+    }
+}
+
+verb Tries
+{
+    meta = true; grammar = {.tries};
+    void handler()
+    {
+        tRy { thrower(3); printLine("not reached"); }
+        CaTcH /* type */ ( /* c */ int /* d */ e /* e */ ) /* f */
+        { printLine($"caught {e}"); }
+        try
+        {
+            try { thrower(9); }
+            catch (int inner) { printLine($"inner {inner}"); THROW inner + 1; }
+            printLine("not reached");
+        }
+        catch (int outer) { printLine($"outer {outer}"); }
+        try { throw longThing; } catch (object o) { printLine($"object {o}"); }
+        try { thrower(0); printLine("no throw"); } catch (int e) { printLine("never"); }
+        printLine($"{safe(4)} {safe(-4)}");
+    }
+}
+
+void thrower(int n)
+{
+    if (n > 0) throw n * 2;
+}
+
+int safe(int n)
+{
+    try { thrower(n); return 1; }
+    catch (int e) { return e; }
+    return 0;
+}
+
+//-- Characters and strings on the Z-machine -----------------------------------------------------
+
+void classify(char c)
+{
+    switch (c)
+    {
+        case 'a' to 'z': print("L");
+        case 'A' to 'Z': print("U");
+        case /* digit */ '0' to '9': print("D");
+        case 'ä', '\:o': print("E");
+        case '\155' to '\160': print("X");
+        case >= '\$100': print("W");
+        default: print("?");
+    }
+}
+
+verb Chars
+{
+    meta = true; grammar = {.chars};
+    void handler()
+    {
+        printLine($"{(int)'ä'} {(int)'\155'} {(int)'\:a'} {(int)'ö'} {(int)'\'e'} {(int)'é'} {(int)'ñ'} {(int)'\~n'}");
+        printLine($"{(int)'\$E4'} {(int)'\$41'} {(int)'\65'} {(int)'\ss'} {(int)'ß'} {(int)'£'} {(int)'\LL'}");
+        printLine($"{'ä' =~ 'Ä'} {'a' =~ 'A'} {'a' =~ 'b'} {'A' < 'a'} {'ä' > 'z'} {('a' + 3) == 'd'}");
+        classify('q'); classify('Q'); classify('7'); classify('ä'); classify('ö'); classify('Ü'); classify('\$3A9'); classify('!');
+        print("^");
+        char c = 'a'; c = c + 1; char d = c - 1;
+        printLine($"{(int)c} {(int)d}");
+    }
+}
+
+verb Strs
+{
+    meta = true; grammar = {.strs};
+    void handler()
+    {
+        printLine("curly “double” and ‘single’ and `tick`");
+        printLine("typed café über señor Ærø £5 ¿que?");
+        printLine("numeric na\239ve na\$EFve");
+        printLine("braces { } and // and /* */ stay in text");
+        printLine("tilde ~quotes~ caret^second line");
+        printLine("escaped \~ \^ \@ and \"quote\" and \\");
+        printLine(@"raw ~ ^ \ // /* */ and {braces} and \n café");
+        printLine($"interp {1 + 1} “curly” `tick` {'a' =~ 'A' ? "same" : "different"}");
+        printLine($"{binA}: {binA.load} {binA.room()} {Bin.bump()} {Bin.bump()} {Bin.made}");
+    }
+}
+
+//-- Containment ---------------------------------------------------------------------------------
+
+verb Kids
+{
+    meta = true; grammar = {.kids};
+    void handler()
+    {
+        printLine($"{binA.children.length} {roomA.children.length} {roomB.children.length}");
+        for (object o in binA.children) o.parent = roomB;
+        printLine($"{binA.children.length} {roomB.children.length}");
+        for (object o in roomB.children) { if (o == token2) continue; o.parent = binA; }
+        printLine($"{binA.children.length} {roomB.children.length} {token2.parent}");
+        token2.parent = BINA;
+        binA.children += { LongThing };
+        printLine($"{binA.children.length} {longThing.parent} {roomA.children.length}");
+    }
+}
+
+bool both(int a, int b)
+{
+    if (a > 0 && b > 0) rtrue($"both positive: {a} {b}");
+    rfalse($"not both: {a} {b}");
+}
+
+verb Rtrue
+{
+    meta = true; grammar = {.rtrue};
+    void handler()
+    {
+        bool r = both(1, 2); printLine("");
+        r = both(1, -2); printLine("");
+        printLine($"{r}");
+    }
+}
+
+#includeI6 "grammar"
+
+const int SlotCount = 4;

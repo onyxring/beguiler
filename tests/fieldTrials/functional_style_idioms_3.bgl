@@ -1,0 +1,303 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: stage pipelines held in array<func<int, int>> and called by subscript (stages[i](x)),
+// folded with a hand-written reduce; array<int> deque and list operations (enqueue, dequeue, popEnd,
+// insert, remove, removeValue, reverse, swap, += and -= with lists, sort with a lambda comparator);
+// array<string> sorted with an operator reference (string::operator <=>); a named union
+// (intOrFn = int | func<int, int>) with a static method, discriminated by typeof; bgl.world queries
+// with predicate lambdas feeding <linq> on array<object>, cast back to a class; a <linq> chain inside
+// another chain's predicate (depth two); methods whose lambdas read members (capturing self);
+// a class method taking a visitor; overloaded functions that take func<> parameters; a function-typed
+// parameter with a default and named arguments; `replace`/`replaced()` on a function used as a
+// callback; a switch over an enum inside a block-bodied lambda with early returns; ternaries choosing
+// lambdas; skipWhile/takeWhile/take/skip/all/any/count; callbacks stored in a `literal` array and
+// run by a verb.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- World ----------------------------------------------------------------------
+
+enum eKind { tool, gem, junk }
+
+class Item : object {
+    string label;
+    int weight;
+    int price;
+    eKind kind;
+
+    int cost() { return price * 2; }
+
+    // Lambdas that read members capture self.
+    func<int> weightReader() {
+        func<int> reader = => weight * 10;
+        return reader;
+    }
+    int scaled(int by) {
+        func<int, int> f = (int n) => n * weight + price;
+        return f(by);
+    }
+    void each(func<void, Item> visit) { visit(self); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object roomB { "Room B"; description = "Room B."; attributes = {light}; }
+
+Item hammer { "hammer"; name = {.hammer}; label = "hammer"; weight = 6; price = 4; kind = eKind.tool; parent = roomA; }
+Item ruby   { "ruby";   name = {.ruby};   label = "ruby";   weight = 1; price = 30; kind = eKind.gem; parent = roomA; }
+Item rag    { "rag";    name = {.rag};    label = "rag";    weight = 1; price = 0; kind = eKind.junk; parent = roomA; }
+Item saw    { "saw";    name = {.saw};    label = "saw";    weight = 4; price = 7; kind = eKind.tool; parent = roomB; }
+Item opal   { "opal";   name = {.opal};   label = "opal";   weight = 2; price = 18; kind = eKind.gem; parent = roomB; }
+Item rock   { "rock";   name = {.rock};   label = "rock";   weight = 9; price = 0; kind = eKind.junk; parent = roomB; }
+
+//-- Stage functions ----------------------------------------------------------------
+
+int addOne(int n)   { return n + 1; }
+int double(int n)   { return n * 2; }
+int negate(int n)   { return 0 - n; }
+int square(int n)   { return n * n; }
+
+int reduce(array<func<int, int>> stages, int seed) {
+    int acc = seed;
+    for (int i = 0; i < stages.length; i++) acc = stages[i](acc);
+    return acc;
+}
+
+int foldInts(array<int> a, func<int, int, int> f, int seed) {
+    int acc = seed;
+    for (int v in a) acc = f(acc, v);
+    return acc;
+}
+
+int applyTo(func<int, int> f, int x)      { return f(x); }
+int applyTo(func<int, int, int> f, int x)  { return f(x, x + 1); }
+
+int scaleBy(int x, func<int, int> after = addOne, int factor = 3) { return after(x * factor); }
+
+//-- Named union ---------------------------------------------------------------------
+
+union intOrFn = int | func<int, int> {
+    static int resolve(intOrFn v, int arg) {
+        if (typeof(v) == eType.routine) return ((func<int, int>)v)(arg);
+        return (int)v + arg;
+    }
+}
+
+//-- replace / replaced --------------------------------------------------------------
+
+int bump(int n) { return n + 1; }
+replace int bump(int n) { return replaced(n) * 10; }
+replace int bump(int n) { return replaced(n) + 5; }
+
+//-- Callbacks kept for later --------------------------------------------------------
+
+array<literal func<void, int>> hookList[6];
+const int bonus = 100;
+
+void hookA(int n) { print($"hookA {n}^"); }
+
+//-- Helpers -------------------------------------------------------------------------
+
+void showInts(array<int> a) {
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(" "); print(a[i]); }
+    print("^");
+}
+
+void showObjs(array<object> a) {
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(", "); print(a[i]); }
+    if (a.length == 0) print("none");
+    print("^");
+}
+
+string kindName(eKind k) {
+    switch (k) {
+        case eKind.tool: return "tool";
+        case eKind.gem:  return "gem";
+    }
+    return "junk";
+}
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb Stages {
+    grammar = {{.stages, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<func<int, int>> pipeline[6];
+        pipeline.append(addOne);
+        pipeline.append(double);
+        pipeline.append((int x) => x - 3);
+        pipeline.append(square);
+        print($"four stages: {reduce(pipeline, n)}^");
+        pipeline.swap(0, 3);
+        print($"swapped: {reduce(pipeline, n)}^");
+        pipeline.remove(1);
+        pipeline.insert(1, negate);
+        print($"negated: {reduce(pipeline, n)}^");
+        pipeline.clear();
+        print($"empty: {reduce(pipeline, n)}, {pipeline.length} stages^");
+        func<int, int> pick = n > 5 ? double : negate;
+        func<int, int> pick2 = n % 2 == 0 ? (int x) => x + 100 : square;
+        print($"pick {pick(n)}, pick2 {pick2(n)}^");
+        print($"bump {bump(n)}^");
+    }
+}
+
+verb Folds {
+    grammar = {{.folds}};
+    void handler() {
+        array<int> data = {5, 3, 8, 1, 9, 2};
+        int mult = 2;
+        print($"sum {foldInts(data, (int a, int b) => a + b, 0)}^");
+        print($"max {foldInts(data, (int a, int b) => a > b ? a : b, 0)}^");
+        print($"weighted {foldInts(data, (int a, int b) => a + b * mult, 0)}^");
+        print($"applyTo one {applyTo(addOne, 4)}, two {applyTo((int a, int b) => a * b, 4)}^");
+        print($"scaleBy {scaleBy(5)}, {scaleBy(5, double)}, {scaleBy(5, factor: 2)}, {scaleBy(after: negate, x: 2)}^");
+        mult = 10;
+        print($"after change {foldInts(data, (int a, int b) => a + b * mult, 0)}^");
+    }
+}
+
+verb Deque {
+    grammar = {{.deque}};
+    void handler() {
+        array<int> q[10];
+        q += {4, 8, 15};
+        q.enqueue(16);
+        q.push(2);
+        showInts(q);
+        print($"dequeue {q.dequeue()}, popEnd {q.popEnd()}, peek {q.peek()}, peekEnd {q.peekEnd()}^");
+        q.insert(1, 99);
+        q.prepend(7);
+        q.append(8);
+        q.append(8);
+        showInts(q);
+        q.removeValue(8);
+        q -= 99;
+        showInts(q);
+        q.sort((int a, int b) => b - a);
+        showInts(q);
+        q.reverse();
+        q -= {7, 4};
+        showInts(q);
+        print($"contains 15: {q.contains(15) ? "yes" : "no"}, indexOf 15: {q.indexOf(15)}, length {q.length}^");
+    }
+}
+
+verb Words {
+    grammar = {{.words}};
+    void handler() {
+        array<string> w = {"pear", "apple", "fig", "cherry"};
+        w.sort(string::operator <=>);
+        for (int i = 0; i < w.length; i++) print($"{w[i]} ");
+        print("^");
+        w.sort((string a, string b) => b <=> a);
+        for (string s in w) print($"{s} ");
+        print("^");
+    }
+}
+
+verb Union {
+    grammar = {{.union, NUMBER}};
+    void handler() {
+        intOrFn a = 5;
+        intOrFn b = double;
+        intOrFn c = (int x) => x - 1;
+        int n = parsed_number;
+        print($"a {intOrFn.resolve(a, n)}, b {intOrFn.resolve(b, n)}, c {intOrFn.resolve(c, n)}^");
+    }
+}
+
+verb Stock {
+    grammar = {{.stock}};
+    void handler() {
+        array<object> all = bgl.world.instances(Item);
+        print($"{all.count()} items.^");
+        print("In Room A: ");
+        showObjs(bgl.world.instances(Item, (object o) => o.parent == roomA));
+        print("Heavy: ");
+        showObjs(bgl.world.instances(Item).filter((object o) => ((Item)o).weight > 3));
+        print("By price: ");
+        showObjs(bgl.world.instances(Item).orderBy((object a, object b) => ((Item)b).price - ((Item)a).price));
+        print("Cheapest two: ");
+        showObjs(all.orderBy((object a, object b) => ((Item)a).price - ((Item)b).price).take(2));
+        print("Skip heavy: ");
+        showObjs(all.skipWhile((object o) => ((Item)o).weight > 3));
+        print("Take while: ");
+        showObjs(all.takeWhile((object o) => ((Item)o).price > 0));
+        array<var> labels = all.map((object o) => ((Item)o).label);
+        print("Labels:");
+        for (var l in labels) print($" {(string)l}");
+        print("^");
+        print($"All priced under 50: {all.all((object o) => ((Item)o).price < 50) ? "yes" : "no"}; any junk: {all.any((object o) => ((Item)o).kind == eKind.junk) ? "yes" : "no"}^");
+    }
+}
+
+verb Nested {
+    grammar = {{.nested}};
+    void handler() {
+        array<object> all = bgl.world.instances(Item);
+        // A chain inside a chain's predicate: items with a heavier sibling in the same room.
+        array<object> outweighed = all.filter((object a) =>
+            all.any((object b) => b.parent == a.parent && ((Item)b).weight > ((Item)a).weight));
+        showObjs(outweighed);
+        int total = 0;
+        for (object o in outweighed) total += ((Item)o).price;
+        print($"Their prices total {total}.^");
+    }
+}
+
+verb Kinds {
+    grammar = {{.kinds}};
+    void handler() {
+        func<string, Item> describe = (Item it) => {
+            switch (it.kind) {
+                case eKind.tool: return "tool";
+                case eKind.gem:
+                    if (it.price > 20) return "fine gem";
+                    return "gem";
+            }
+            return "junk";
+        };
+        for (object o in bgl.world.instances(Item)) print($"{((Item)o).label} is {describe((Item)o)}; {kindName(((Item)o).kind)}^");
+        int sum = 0;
+        saw.each((Item it) => { sum += it.cost(); });
+        ruby.each((Item it) => { sum += it.cost(); });
+        print($"cost sum {sum}^");
+        print($"reader {hammer.weightReader()()}, scaled {opal.scaled(5)}^");
+    }
+}
+
+verb Hooks {
+    grammar = {{.hooks, NUMBER}};
+    void handler() {
+        const int local = 7;
+        hookList.clear();
+        hookList.push(hookA);
+        hookList.push((int n) => print("empty hook^"));
+        hookList.push((int n) => print($"bonus hook {n + bonus}^"));
+        hookList += (int n) => print($"local hook {n * local}^");
+        int n = parsed_number;
+        for (func<void, int> h in hookList) h(n);
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

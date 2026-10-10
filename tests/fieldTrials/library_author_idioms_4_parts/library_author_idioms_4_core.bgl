@@ -1,0 +1,76 @@
+/*  Field trial part — included by library_author_idioms_4.bgl. Not a trial on its own.  */
+
+#once
+
+// The includer may size the kit before including it.
+#if !LA4_CAP
+    #define LA4_CAP 6
+#endif
+
+#declare LA4_API 4
+
+#emitfirst {
+    Constant LA4_TARGET_NAME = ##beguilerSettings.target;
+}
+extern const string LA4_TARGET_NAME;
+
+/// Flags an entry carries.
+bnum eLa4Flag {
+    sticky, hidden, shared,
+    emitter bool within(int mask) { (($self & $mask) ~= 0) }
+}
+
+/// Counters shared by every entry.
+class la4Stats {
+    static int created = 0;
+    static int touches = 0;
+    static int nextId() {
+        created++;
+        return created;
+    }
+}
+
+
+/// The scale helpers; present only when used.
+superposed object _la4Tools {
+    int clampTo(int v) {
+        if (v > LA4_CAP) return LA4_CAP;
+        if (v < 0) return 0;
+        return v;
+    }
+    string plural(int n) { return n == 1 ? "" : "s"; }
+}
+
+/// Type and value names of the kit.
+object la4Lib {
+    alias entry for la4Entry;
+    alias flag  for eLa4Flag;
+    alias tools = _la4Tools;
+    alias stats = la4Stats;
+}
+
+/// Output helpers, reached by a three-step path.
+emitter class la4Box {
+    void wrap(int n)     { print "["; print $n; print "]"; }
+    void tag(string s)   { print "<"; print (string) $s; print ">"; }
+}
+emitter class la4Fmt {
+    la4Box box;
+    void rule() {
+##if TARGET_GLULX
+        glk_put_char(45); glk_put_char(45); glk_put_char(10);
+##else
+        print "--"; new_line;
+##endif
+    }
+}
+emitter class la4 { }
+extend class la4 { la4Fmt fmt; }
+
+/// A global emitter value and an emitter on an object.
+emitter int la4Cap { LA4_CAP }
+object la4Meter {
+    int level = 3;
+    emitter bool full { ($self.level >= LA4_CAP) }
+    emitter int room  { (LA4_CAP - $self.level) }
+}

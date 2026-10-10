@@ -1,0 +1,60 @@
+Room A
+Room A.
+You can see a blade, an axe, a hammer, a mail, a buckler, a lump, a furnace and a dial here.
+> costs
+blade 25.00, axe 12.50, mail 45.50, buckler 15.16.
+Registered 3, weight 19.
+Mail price 45, buckler price 15.
+Axe is cheaper.
+blade tags [5], axe tags [7].
+> cash
+a 12.50, b 3.99, a - b 8.51, b * 3 11.97, a / 4 3.12, a % 100 50.
+d 7.05; larger of b and d: 7.05.
+After d--: 7.04.
+After --d: 6.04.
+Ordering derived from <=>.
+Equal by value.
+c 4.53.
+Stock of 4: spent 83.00; second weapon (#6); its cost 12.50.
+> bits
+head [1], hand [4], both [5], both xor head [4].
+m is empty.
+m [10]; m >> 2 [2]; m & 2 [2].
+m shares bit 8.
+m lacks hand.
+m has no head bit.
+m equals 10.
+> kinds
+blade (#4) [blade] weight 4, cost 25.00
+weapon (#6) [weapon] weight 6, cost 12.50
+tool (#3) [tool] weight 3, cost 0.00
+armor (#9) [armor] weight 9, cost 45.50
+armor (#2) [armor] weight 2, cost 15.16
+thing (#1) [thing] weight 1, cost 0.00
+Sword as weapon: weapon; as tool: tool; as item: thing.
+Trace: item > tool > weapon > sword
+Trace: item > tool > weapon
+Trace: item > tool
+Printed: blade (#4) weapon (#6) thing (#1).
+> garb
+armor (#9): wear on body; defense 5.
+armor (#2): carry on hand; defense 2.
+Worn mask [6].
+> gauges
+gauge at 100.
+gauge at 70; level 70.
+gauge at 100.
+boiler at 100.
+boiler at 10.
+Sum 110.
+> cells
+Pool exhausted.
+cell 1 at 40; cell 2 at 80.
+cell 2 at 100.
+cell 0 at 0.
+cell 0 at 5.
+> checks
+blade (#4): sword weapon tool
+armor (#9): armor wearable
+thing (#1):
+Registered: 3.

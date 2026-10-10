@@ -1,0 +1,440 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5. Library switches set with #defineI6 (TASKS_PROVIDED, NUMBER_TASKS,
+// AMUSING_PROVIDED, SACK_OBJECT naming a Beguile object, MAX_CARRIED); task_scores declared in an #i6
+// island and read through extern; Achieved and PrintTaskName; entry points PrintRank (declared extern
+// default here), Amusing, AfterLife, AfterPrompt, GamePostRoutine, DarkToDark, ObjectDoesNotFit and
+// PrintVerb; instance names written positionally; a Room class carrying direction properties, a
+// default cant_go and light; initial, when_open/when_closed, when_on/when_off, article, capacity and
+// inside_description; before rules on the Receive and LetGo fake actions; extend of an object with
+// name +=, replace of a method, a class attribute negated in an extend; extend of library verbs (word-level eviction
+// with a native verb reclaiming the word, priority, replace grammar =, withI6Synonyms); MULTI,
+// SPECIAL, ANYNUMBER and (parenthesized) alternation tokens; Locale; ChangePlayer; deadflag; a restart and an amusing
+// list after the game ends; Initialise returning 2.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 TASKS_PROVIDED
+#defineI6 NUMBER_TASKS 2
+#defineI6 AMUSING_PROVIDED
+#defineI6 SACK_OBJECT pack
+#defineI6 MAX_CARRIED 3
+#defineI6 OBJECT_SCORE 1
+
+const int MAX_SCORE = 7;
+
+#i6 {
+    Array task_scores -> 3 2;
+    Global i6_calls = 0;
+    [ SumTasks  i n;
+        for (i = 0: i < NUMBER_TASKS: i++) n = n + task_scores->i;
+        i6_calls++;
+        return n;
+    ];
+}
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Wait: rtrue("Time drags.^");
+            case Sleep:
+                if (lm_n == 1) rtrue("You are not tired.^");
+            case Take:
+                if (lm_n == 1) rtrue("Got it.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extern rawArray<char> task_scores;
+extern int i6_calls;
+extern int SumTasks();
+extern default void PrintRank();
+
+int g_prompts;     // AfterPrompt calls
+int g_posts;       // GamePostRoutine calls
+int g_dark;        // dark-to-dark moves
+int g_received;    // Receive rules run
+bool g_tent;       // the tent has been entered
+
+// Rooms share their exits and defaults through a class.
+class Room : object {
+    attributes = {light};
+    stringOrRoutine description;
+    string cant_go = "That way is blocked.";
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+    object in_to;
+    object out_to;
+}
+
+class DarkRoom : Room { attributes = {!light}; }
+
+Room hall {
+    "Hall";
+    description = "Hall. A study is north and a cellar is down.";
+    n_to = study;
+    d_to = cellar;
+    bool before() {
+        switch (action) {
+            case Go:
+                if (noun == w_obj) rtrue("West is a solid wall.^");
+        }
+        rfalse;
+    }
+}
+
+Room study {
+    "Study";
+    description = "Study. The hall is south.";
+    s_to = hall;
+    in_to = closet;
+}
+
+Room closet {
+    "Closet";
+    description = "Closet. The study is out.";
+    out_to = study;
+}
+
+DarkRoom cellar {
+    "Cellar";
+    description = "Cellar. The hall is up, a vault east.";
+    u_to = hall;
+    e_to = vault;
+}
+
+DarkRoom vault {
+    "Vault";
+    description = "Vault. The cellar is west.";
+    w_to = cellar;
+}
+
+// An enterable container: the player can sit inside it.
+object tent {
+    "tent";
+    name = {.tent};
+    parent = hall;
+    string initial = "A tent is pitched here.";
+    string inside_description = "Inside the tent.";
+    bool before() {
+        switch (action) {
+            case Enter:
+                g_tent = true;
+        }
+        rfalse;
+    }
+    attributes = {enterable, container, open, static, transparent};
+}
+
+object pack {
+    "pack";
+    name = {.pack, .rucksack};
+    parent = selfobj;
+    attributes = {container, open, clothing, worn};
+}
+
+class Item : object {
+    string description = "An item.";
+}
+
+class Coin : Item {
+    name = {.coin, ..coins};
+    string article = "a shiny";
+    string plural = "shiny coins";
+    attributes = {scored};
+}
+
+Coin copperCoin { "copper coin"; name = {.copper}; parent = hall; }
+Coin silverCoin { "silver coin"; name = {.silver}; parent = hall; }
+Coin goldCoin   { "gold coin";   name = {.gold};   parent = study; }
+
+// Bulky items are refused by containers through ObjectDoesNotFit.
+class Bulky : Item {
+    int number = 2;
+}
+
+Bulky anvil {
+    "anvil";
+    name = {.anvil};
+    parent = hall;
+}
+
+Bulky crate {
+    "crate";
+    name = {.crate};
+    parent = study;
+    int capacity = 4;
+    attributes = {container, open, openable, static};
+}
+
+object bin {
+    "bin";
+    name = {.bin};
+    parent = hall;
+    int capacity = 2;
+    string when_open = "A bin stands open here.";
+    string when_closed = "A bin stands closed here.";
+    bool before() {
+        switch (action) {
+            case Receive:
+                g_received++;
+                if ((int)PutOn == receive_action) rtrue("Nothing goes on a bin.^");
+                if (noun == goldCoin) rtrue("The bin spits out the gold coin.^");
+            case LetGo:
+                if (noun == copperCoin) rtrue("The copper coin is stuck.^");
+        }
+        rfalse;
+    }
+    attributes = {container, open, openable, static};
+}
+
+object lamp {
+    "lamp";
+    name = {.lamp};
+    parent = hall;
+    string description = "A lamp.";
+    string when_on = "A lamp burns here.";
+    string when_off = "An unlit lamp is here.";
+    bool after() {
+        switch (action) {
+            case SwitchOn: give(light);
+            case SwitchOff: ungive(light);
+        }
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+// Extended once declared: a second name word, a replaced method, a changed attribute.
+extend lamp {
+    name += {.brass};
+    replace bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                rtrue("The lamp glows.^");
+            case SwitchOff:
+                ungive(light);
+                rtrue("The lamp dims.^");
+        }
+        rfalse;
+    }
+}
+
+// The copper coin is worth nothing: the class attribute is negated.
+extend copperCoin { attributes = {!scored}; }
+
+object gem {
+    "gem";
+    name = {.gem};
+    parent = study;
+    string description = "A gem.";
+    bool after() {
+        switch (action) {
+            case Take:
+                if (task_scores[0] == 3) {
+                    Achieved(0);
+                    rtrue("You pocket the gem.^");
+                }
+        }
+        rfalse;
+    }
+}
+
+object chest {
+    "chest";
+    name = {.chest};
+    parent = study;
+    string description = "A chest.";
+    string when_open = "A chest stands open.";
+    string when_closed = "A chest stands closed.";
+    bool after() {
+        switch (action) {
+            case Open:
+                Achieved(1);
+                rfalse;
+        }
+        rfalse;
+    }
+    attributes = {container, openable, static};
+}
+
+object sign {
+    "sign";
+    name = {.sign};
+    parent = hall;
+    string description = "The sign reads: NO WAITING.";
+    attributes = {scenery};
+}
+
+object robot {
+    "robot";
+    name = {.robot};
+    parent = study;
+    string description = "A robot.";
+    attributes = {animate, proper, neuter};
+}
+
+// Entry points.
+bool PrintTaskName(int task) {
+    switch (task) {
+        case 0: printLine("taking the gem"); return true;
+        case 1: printLine("opening the chest"); return true;
+    }
+    return false;
+}
+
+void PrintRank() { printLine(", earning you the rank of Tester"); }
+
+void Amusing() { printLine("Try holding the sign."); }
+
+void AfterLife() { printLine("[The end comes quickly.]"); }
+
+void AfterPrompt() { g_prompts++; }
+
+bool GamePostRoutine() {
+    g_posts++;
+    if (action == Take && noun == lamp) printLine("[The lamp is noted.]");
+    return false;
+}
+
+void DarkToDark() {
+    g_dark++;
+    printLine("You grope onward.");
+}
+
+bool ObjectDoesNotFit(object obj, object box) {
+    if (box.has(container) && obj.provides(number) && ((Bulky)obj).number > 1) {
+        print($"The {obj} is too bulky for the {box}.^");
+        return true;
+    }
+    return false;
+}
+
+bool PrintVerb(dictionaryWord w) {
+    if (w == .nudge) { print("shove"); return true; }
+    return false;
+}
+
+// Library verbs, extended.
+extend Push { priority = 5; grammar += { {.nudge, NOUN} }; }
+extend Smell { grammar += { {.smell, .around, withI6Synonyms} }; }
+extend Sing { replace grammar = { {.sing, .softly} }; }
+extend Examine { grammar -= { {.read} }; }
+extend Take { synonyms = {.nab}; }
+
+// A native verb reclaims the evicted word.
+verb Read {
+    grammar = {.read, NOUN};
+    void handler() {
+        if (noun == sign) printLine("It says: NO WAITING.");
+        else Examine.perform(noun);
+    }
+}
+
+verb Sum {
+    grammar = {.sum};
+    meta = true;
+    void handler() {
+        print($"Tasks: {SumTasks()}. I6 calls: {i6_calls}. Score: {score}.^");
+    }
+}
+
+verb Pocket {
+    grammar = {.pocket, MULTI};
+    void handler() {
+        noun.parent = pack;
+        print($"Pocketed the {noun}.^");
+    }
+}
+
+verb Spin {
+    grammar = {.spin, ANYNUMBER};
+    void handler() { print($"Spun {(int)noun}.^"); }
+}
+
+verb Choose {
+    grammar = {.choose, SPECIAL};
+    void handler() {
+        if (special_word != 0) print($"Word {(dictionaryWord)noun}.^");
+        else print($"Number {(int)noun}.^");
+    }
+}
+
+verb Stow {
+    grammar = {
+        {.stow, HELD, (.in | .into), NOUN},
+        {.stow, HELD, .on | .onto, NOUN},
+    };
+    void handler() {
+        if (action == Stow) print($"Stow {noun} -> {second}.^");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    void handler() {
+        int n = Locale(location, "You see", "You also see");
+        if (n > 0) print(".");
+        print($"^Listed: {n}.^");
+    }
+}
+
+verb Become {
+    grammar = {.become, CREATURE};
+    void handler() {
+        ChangePlayer(noun);
+        printLine("You are now the robot.");
+        Look.perform();
+    }
+}
+
+verb Revert {
+    grammar = {.revert};
+    void handler() {
+        ChangePlayer(selfobj);
+        printLine("You are yourself again.");
+    }
+}
+
+verb Status {
+    grammar = {.status};
+    meta = true;
+    void handler() {
+        print($"Prompts: {g_prompts}. Posts: {g_posts}. Dark: {g_dark}. Received: {g_received}. Tent: {g_tent}.^");
+    }
+}
+
+verb Plunge {
+    grammar = {.plunge};
+    void handler() {
+        if (real_location != cellar) { printLine("There is nothing to plunge into."); return; }
+        deadflag = 1;
+    }
+}
+
+verb Finish {
+    grammar = {.finish};
+    void handler() { deadflag = 2; }
+}
+
+#includeI6 "grammar"
+
+int Initialise() {
+    location = hall;
+    return 2;      // no banner
+}

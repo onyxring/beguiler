@@ -1,0 +1,349 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a byte-code program table as array<array<char>> copied into a local array<char> and run
+// by a dispatch loop, an opcode enum indexing array<func<void, int>> (named routines and a lambda) and
+// parallel array<bool>/array<string> tables, an operand stack with push/pop/peek, a file-scope
+// rawArray<int> literal handed to a rawArray<int> parameter, a rawArray<char> view of a byte table,
+// parts declared as inline objects with positional members and a named parent, a bin list edited
+// at build time with extend ... { inject / remove / move }, a ref array member bound with := and
+// appended through, a local array<array<int>> filled and summed, array insert/prepend/swap/reverse/
+// removeValue/-=/+=/popEnd/peekEnd/length assignment, a part list sorted through an instance <=>, a
+// const-sized pair of arrays used as a ring of recent results, and a validation pass over the tables.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int STACK_MAX = 6;
+const int RING_SIZE = 3;
+const int OP_COUNT = 9;
+
+enum eOp { halt = 0, push, add, mul, dup, swap, out, jnz, dec }
+
+//-- Tables --------------------------------------------------------------------
+
+// Indexed by (int)eOp.
+array<string> opNames = { "halt", "push", "add", "mul", "dup", "swap", "out", "jnz", "dec" };
+array<bool>   opArg   = { false, true, false, false, false, false, false, true, false };
+array<int>    opUses[OP_COUNT];
+
+// Each program is a byte string of opcodes and operands.
+array<array<char>> programs = {
+    { 1, 3, 1, 4, 2, 6, 0 },                  // 3 + 4
+    { 1, 3, 2, 2, 7, 0 },                     // underflow on add
+    { 1, 3, 4, 6, 8, 4, 7, 2, 0 },            // countdown
+    { 1, 5, 1, 6, 3, 6, 1, 2, 4, 3, 6, 0 },   // 5 * 6, then 2 squared
+    { 1, 1, 7, 20, 0 },                       // bad jump target
+    { 1, 1, 1, 2, 5, 6, 6, 0 }                // swap the top two
+};
+
+rawArray<int> weightTable = { 5, 3, 9, 1 };
+rawArray<char> signature = "ab";
+
+// A short history of printed results.
+array<int> ring[RING_SIZE];
+int ringAt = 0;
+int ringFill = 0;
+
+array<int> stack[STACK_MAX];
+array<int> shared[6];
+int pc = 0;
+bool crashed = false;
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+class Place : object {
+    attributes = {light};
+}
+
+Place roomA { "Room A"; description = "Room A."; }
+Place roomB { "Room B"; description = "Room B."; }
+
+class Part : object {
+    inline instanceName;
+    inline int weight;
+    inline dictionaryWord noun;
+    int operator <=> (Part o) { return weight - o.weight; }
+}
+
+Part keyPart { "brass key", 4, .key; name = {.brass, .key}; parent = roomA; description = "A brass key."; }
+Part boltPart = { "iron bolt", 9, .bolt };
+Part cupPart { "tin cup", 2, .cup; name = {.tin, .cup}; parent = roomB; }
+Part pinPart = Part{ "steel pin", 1, .pin };
+
+array<Part> parts[6] = { keyPart, boltPart, cupPart };
+
+class Bin : object {
+    inline string label;
+    ref array<int> log;
+}
+
+Bin binA = { "bin A" };
+Bin binB = { "bin B" };
+Bin binC = { "bin C" };
+Bin binD = { "bin D" };
+Bin binE = { "bin E" };
+
+array<Bin> binOrder = { binA, binB, binC, binD };
+
+extend binOrder {
+    inject binE after binA;
+    remove binC;
+    move binD first;
+}
+
+//-- Machine -------------------------------------------------------------------
+
+void remember(int v) {
+    ring[ringAt] = v;
+    ringAt = (ringAt + 1) % RING_SIZE;
+    if (ringFill < RING_SIZE) ringFill++;
+}
+
+void fail(string why) {
+    print($"Fault at {pc}: {why}.^");
+    crashed = true;
+}
+
+bool need(int n) {
+    if (stack.length < n) { fail("stack underflow"); return false; }
+    return true;
+}
+
+void opHalt(int arg) { crashed = true; }
+void opAdd(int arg) {
+    if (!need(2)) return;
+    int b = stack.pop();
+    int a = stack.pop();
+    stack.push(a + b);
+}
+void opMul(int arg) {
+    if (!need(2)) return;
+    stack.push(stack.pop() * stack.pop());
+}
+void opDup(int arg) { if (need(1)) stack.push(stack.peek()); }
+void opSwap(int arg) { if (need(2)) stack.swap(0, 1); }
+void opOut(int arg) {
+    if (!need(1)) return;
+    int v = stack.pop();
+    print($"out {v}^");
+    remember(v);
+}
+void opDec(int arg) { if (need(1)) stack[0] = stack[0] - 1; }
+void opJnz(int arg) {
+    if (!need(1)) return;
+    if (arg >= 12) { fail("jump out of range"); return; }
+    if (stack.pop() != 0) pc = arg;
+}
+
+array<func<void, int>> handlers = {
+    opHalt,
+    (int a) => stack.push(a),
+    opAdd, opMul, opDup, opSwap, opOut, opJnz, opDec
+};
+
+int run(int which) {
+    array<char> code[16];
+    code = programs[which];
+    int len = code.length;
+    stack.clear();
+    crashed = false;
+    int steps = 0;
+    pc = 0;
+    while (!crashed && pc < len && steps < 40) {
+        int op = code[pc];
+        int arg = 0;
+        if (op >= OP_COUNT) { fail("bad opcode"); break; }
+        opUses[op]++;
+        if (opArg[op]) { arg = code[pc + 1]; pc++; }
+        pc++;
+        handlers[op](arg);
+        steps++;
+    }
+    if (steps >= 40) print("Stopped: step limit.^");
+    return steps;
+}
+
+//-- Lookups -------------------------------------------------------------------
+
+int sumRaw(rawArray<int> t, int n) {
+    int s = 0;
+    for (int i in 0 to n - 1) s += t[i];
+    return s;
+}
+
+int partIndex(dictionaryWord w) {
+    for (int i = 0; i < parts.length; i++) {
+        if (parts[i].noun == w) return i;
+    }
+    return -1;
+}
+
+void printParts(array<Part> list) {
+    for (int i = 0; i < list.length; i++) {
+        if (i > 0) print(", ");
+        print($"{list[i]} ({list[i].weight})");
+    }
+    print("^");
+}
+
+void printOrder() {
+    for (Bin b in binOrder) print($"[{b.label}]");
+    print("^");
+}
+
+//-- Validation ----------------------------------------------------------------
+
+int validate() {
+    int bad = 0;
+    if (opNames.length != OP_COUNT) { print("Table: opNames length wrong.^"); bad++; }
+    if (opArg.length != OP_COUNT) { print("Table: opArg length wrong.^"); bad++; }
+    for (int i = 0; i < programs.length; i++) {
+        array<char> p = programs[i];
+        bool ends = p.length > 0 && p[p.length - 1] == 0;
+        if (!ends) { print($"Program {i}: does not end with halt.^"); bad++; }
+    }
+    if (sumRaw(weightTable, 4) != 18) { print("Table: raw weights wrong.^"); bad++; }
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}.^");
+    return bad;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb RunTest {
+    grammar = {.run, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= programs.length) { print($"No program {n}.^"); return; }
+        int steps = run(n);
+        print($"Program {n}: {steps} steps, stack {stack.length}.^");
+    }
+}
+
+verb UsesTest {
+    grammar = {.uses};
+    void handler() {
+        bool any = false;
+        for (int i in 0 to OP_COUNT - 1) {
+            if (opUses[i] == 0) continue;
+            print($"{opNames[i]} {opUses[i]}{opArg[i] ? " (arg)" : ""}^");
+            any = true;
+        }
+        if (!any) print("No opcodes run.^");
+    }
+}
+
+verb RingTest {
+    grammar = {.ring};
+    void handler() {
+        print($"Ring ({ringFill}):");
+        for (int i = 0; i < ringFill; i++) {
+            int at = (ringAt - 1 - i + RING_SIZE) % RING_SIZE;
+            print($" {ring[at]}");
+        }
+        print("^");
+    }
+}
+
+verb PartsTest {
+    grammar = {.parts};
+    void handler() { printParts(parts); }
+}
+
+verb HeavyTest {
+    grammar = {.heavy};
+    void handler() {
+        array<Part> view[6];
+        view = parts;
+        view.sort();
+        printParts(view);
+        view.reverse();
+        printParts(view);
+    }
+}
+
+verb EditTest {
+    grammar = {.edit, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        if (w == .add) {
+            if (parts.append(pinPart)) print("Appended pin.^");
+            else print("Full.^");
+        }
+        else if (w == .front) { parts.prepend(pinPart); print("Prepended pin.^"); }
+        else if (w == .mid) {
+            if (parts.insert(1, pinPart)) print("Inserted pin.^");
+        }
+        else if (w == .drop) { parts.removeValue(pinPart); print("Dropped pin.^"); }
+        else if (w == .cut) { parts -= pinPart; print("Cut pin.^"); }
+        else if (w == .last) {
+            Part p = parts.popEnd();
+            print($"Popped {p}; end now {parts.peekEnd()}.^");
+        }
+        else if (w == .trim) { parts.length = 2; print($"Trimmed to {parts.length}.^"); }
+        else { print("Edit add, front, mid, drop, cut, last or trim.^"); return; }
+        print($"Parts: {parts.length}.^");
+    }
+}
+
+verb BinsTest {
+    grammar = {.bins};
+    void handler() {
+        printOrder();
+        binA.log := shared;
+        binB.log := shared;
+        binA.log += 7;
+        binB.log += { 8, 9 };
+        print($"Shared: {shared.length} entries, first {shared[0]}, last {shared[shared.length - 1]}.^");
+        shared -= 8;
+        print($"After removal: {shared.length} entries, {binA.log.length} through bin A.^");
+    }
+}
+
+verb GridTest {
+    grammar = {.grid, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        array<array<int>> tri = { {1}, {1, 1}, {1, 1, 1}, {1, 1, 1, 1} };
+        for (int r = 1; r < n && r < tri.length; r++) {
+            for (int c = 1; c < r; c++) tri[r][c] = tri[r - 1][c - 1] + tri[r - 1][c];
+        }
+        int total = 0;
+        for (array<int> row in tri) {
+            for (int i = 0; i < row.length; i++) { print($"{row[i]} "); total += row[i]; }
+            print("/ ");
+        }
+        print($"total {total}.^");
+    }
+}
+
+verb RawTest {
+    grammar = {.raw};
+    void handler() {
+        print($"Raw weights: {sumRaw(weightTable, 4)}, first three {sumRaw(weightTable, 3)}.^");
+        print($"Signature {signature[0]} {signature[1]}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    rfalse;
+}
+
+#includeI6 "grammar"

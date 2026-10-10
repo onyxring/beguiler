@@ -1,0 +1,340 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a third PunyInform program, built on classes that fix attributes and properties (a
+// supporter class with `capacity`, a clothing class, a guard class); OPTIONAL_REACTIVE_PARSE_NAME and
+// OPTIONAL_ORDERED_TIMERS with `timer_order` on two daemons; a `parse_name` routine that counts words;
+// `add_to_scope` with PlaceInScope; `react_before` and `react_after`; the Receive fake action on a
+// supporter; the `orders` property of an NPC (including a Give that "ask for" turns into); `cant_go`, `article`,
+// `inside_description` and `when_open`; the grammar tokens MULTIHELD, MULTIINSIDE and CREATURE with
+// REVERSE; `extend` of a library verb with `grammar +=`; ImplicitDisrobeIfWorn; CommonAncestor,
+// IndirectlyContains, ObjectCapacity, PrintContents, LoopOverScope (a named function and a lambda that
+// writes a captured local), TestScope, SetTime, the_time, himobj and the(); YesOrNo; meta verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_REACTIVE_PARSE_NAME
+#defineI6 OPTIONAL_ORDERED_TIMERS
+
+const object INITIAL_LOCATION_VALUE = hall;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+}
+
+int surveyed = 0;
+int dutyLog  = 0;
+
+class Ledge : object {
+    int capacity = 2;
+    attributes = {supporter, static};
+}
+
+class Garment : object {
+    attributes = {clothing};
+}
+
+class Tool : object {
+    string description = "A plain tool.";
+}
+
+object hall {
+    "Hall";
+    description = "Hall. A store is east; stairs lead down.";
+    string cant_go = "A wall blocks the way.";
+    e_to = store;
+    d_to = cellar;
+    attributes = {light};
+}
+
+object store {
+    "Store";
+    description = "Store. The hall is west.";
+    w_to = hall;
+    attributes = {light};
+}
+
+object cellar {
+    "Cellar";
+    description = "Cellar. Stairs lead up.";
+    u_to = hall;
+    attributes = {light};
+}
+
+Ledge shelf {
+    "shelf";
+    parent = hall;
+    name = {.shelf};
+    description = "A shelf.";
+
+    bool before() {
+        if (action == Receive && noun == sack) rtrue("The shelf will not take the sack.^");
+        rfalse;
+    }
+}
+
+object sack {
+    "sack";
+    parent = hall;
+    name = {.sack};
+    description = "A sack.";
+    int capacity = 3;
+    string when_open = "An open sack lies here.";
+    attributes = {container, openable, open};
+}
+
+Tool bolt  { "bolt";  parent = hall; name = {.bolt}; }
+Tool nut   { "nut";   parent = hall; name = {.nut}; }
+Tool rivet { "rivet"; parent = hall; name = {.rivet}; }
+
+object washers {
+    "washers";
+    parent = store;
+    name = {.washers, .washer};
+    string article = "some";
+    attributes = {pluralname};
+}
+
+Garment cloak {
+    "cloak";
+    parent = selfobj;
+    name = {.cloak};
+    description = "A gray cloak.";
+    attributes = {worn};
+}
+
+object boots {
+    "pair of boots";
+    parent = store;
+    description = "Boots.";
+    attributes = {clothing};
+
+    // Matches "pair", "boots", "boot", "pair of boots", "boots pair" and so on.
+    int parse_name() {
+        int count = 0;
+        bool going = true;
+        while (going) {
+            dictionaryWord w = NextWord();
+            if (w == .pair || w == .of || w == .boot || w == .boots) count++;
+            else going = false;
+        }
+        return count;
+    }
+}
+
+object window {
+    "window";
+    parent = hall;
+    name = {.window};
+    description = "A window.";
+
+    void add_to_scope() {
+        PlaceInScope(bird);
+    }
+
+    attributes = {scenery};
+}
+
+object bird {
+    "bird";
+    name = {.bird};
+    description = "A bird outside the window.";
+}
+
+object booth {
+    "booth";
+    parent = store;
+    name = {.booth};
+    string inside_description = "Inside the booth.";
+    attributes = {enterable, container, open, static};
+}
+
+object bell {
+    "bell";
+    parent = store;
+    name = {.bell};
+    description = "A bell.";
+    int rings = 0;
+
+    bool react_after() {
+        if (action == Drop && noun == self) {
+            rings++;
+            printLine($"The bell rings, {rings} time(s).");
+        }
+        rfalse;
+    }
+}
+
+object ledger {
+    "ledger";
+    parent = store;
+    name = {.ledger};
+}
+
+object key {
+    "key";
+    parent = store;
+    name = {.key};
+}
+
+object guard {
+    "guard";
+    parent = store;
+    name = {.guard};
+    description = "A guard.";
+
+    bool react_before() {
+        if (action == Take && noun == ledger && location == store) {
+            printLine("The guard shakes his head.");
+            rtrue;
+        }
+        rfalse;
+    }
+
+    // "ask guard for X" reaches here as "guard, give X to me"; other orders are refused unless understood.
+    bool orders() {
+        switch (action) {
+            case Take: rtrue("The guard declines.^");
+            case Give:
+                if (second == player) rtrue("The guard keeps it.^");
+        }
+        rfalse;
+    }
+
+    bool life() {
+        switch (action) {
+            case Give:
+                rtrue($"The guard takes {the(noun)}.^");
+        }
+        rfalse;
+    }
+
+    attributes = {animate};
+}
+
+// Two daemons: lower timer_order runs first, whatever order they were started in.
+object lateDaemon {
+    "late daemon";
+    int timer_order = 20;
+    void daemon() {
+        if (turns % 3 == 0) printLine("Late.");
+    }
+}
+
+object earlyDaemon {
+    "early daemon";
+    int timer_order = 5;
+    void daemon() {
+        if (turns % 3 == 0) printLine("Early.");
+    }
+}
+
+verb Stash {
+    grammar = { {.stash, MULTIHELD, .in, NOUN} };
+    void handler() {
+        if (!second.has(container)) {
+            printLine($"You can't stash things in {the(second)}.");
+            return;
+        }
+        ImplicitDisrobeIfWorn(noun);
+        noun.parent = second;
+        printLine("Stashed.");
+    }
+}
+
+extend Remove {
+    grammar += { {.grab, MULTIINSIDE, .from, NOUN} };
+}
+
+extend Give {
+    grammar += { {.hand, CREATURE, HELD, REVERSE} };
+}
+
+extend Examine {
+    synonyms = {.study};
+}
+
+class infoVerb : verb { meta = true; }
+
+infoVerb Survey {
+    grammar = {.survey};
+    void handler() {
+        surveyed = 0;
+        LoopOverScope(countOne);
+        int animates = 0;
+        LoopOverScope((object o) => {
+            if (o.has(animate)) animates++;
+        });
+        printLine($"{surveyed} in scope, {animates} animate.");
+    }
+}
+
+void countOne(object o) {
+    surveyed++;
+}
+
+infoVerb Relate {
+    grammar = {.relate, NOUN, .to, NOUN};
+    void handler() {
+        object c = CommonAncestor(noun, second);
+        if (c == null) printLine("Nothing in common.");
+        else printLine($"Common: {the(c)}.");
+        printLine(IndirectlyContains(noun, second) ? "Inside." : "Not inside.");
+    }
+}
+
+infoVerb Contents {
+    grammar = {.contents, NOUN};
+    void handler() {
+        int listed = PrintContents("Holding: ", noun);
+        printLine(listed != 0 ? "^Listed." : "Nothing to list.");
+        printLine($"Room for {ObjectCapacity(noun)}.");
+    }
+}
+
+infoVerb Clock {
+    grammar = {.clock};
+    void handler() {
+        printLine($"Minute {the_time}, bell {TestScope(bell) ? "near" : "far"}.");
+        SetTime(the_time + 15);
+    }
+}
+
+infoVerb Who {
+    grammar = {.who};
+    void handler() {
+        if (himobj == null) printLine("Nobody.");
+        else printLine($"Him is {the(himobj)}.");
+    }
+}
+
+verb Reset {
+    grammar = {.reset};
+    void handler() {
+        print("Move the guard to the hall?^> ");   // the question ends with a prompt line so the harness reads the answer as a command
+        if (YesOrNo()) {
+            guard.parent = hall;
+            printLine("The guard is in the hall.");
+        } else printLine("Nothing changes.");
+    }
+}
+
+bool Initialise() {
+    SetTime(540);
+    StartDaemon(lateDaemon);
+    StartDaemon(earlyDaemon);
+    rfalse;
+}

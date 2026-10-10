@@ -1,0 +1,9 @@
+/*  Field trial part — included by library_author_idioms_3.bgl. Not a trial on its own.  */
+
+#once
+
+#if #beguilerSettings.target == "z8"
+    #exit
+#endif
+
+#error "library_author_idioms_3_legacy: only the z8 build skips this part"

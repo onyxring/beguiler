@@ -1,0 +1,231 @@
+#grids
+Room A
+Room A. Room B is to the north.
+You can see a brass lamp here.
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> more
+Added 3; open 3; refused 0.
+Table full: yes.
+[win 1] pane 2 open
+[win 2] pane 1 open
+[win 3] pane 0 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> panelist
+Open panes: 3; opened 3; refused 0.
+  pane 0: height 36, width > 0: yes
+  pane 1: height 0, width > 0: yes
+  pane 2: height 2, width > 0: yes
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> panetext
+Written.
+[win 3] The brass lamp is a brass lamp; the Room A holds it.
+[win 3] level 3, high
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 4] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 5] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 6] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 7] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 8] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 9] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> closefirst
+Closed the last pane: 3 -> 2 tracked.
+Reopened a pane: yes; open 3.
+[win 10] pane 2 open
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> probe
+Placement values: true; scale: true.
+Window types: 3 4 5.
+Colors: true true true.
+Char out 'e' not none: yes.
+Char in 'a': yes.
+Images for buffer ok: yes.
+Mouse and hyperlink queries answered: yes yes.
+Main supports hyperlinks equals global: yes.
+Graphics split answered: yes.
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> shape
+Status bar split gave a window: yes.
+Vert width after write: 14.
+Height write on the permissive surface: has height.
+Horz height after write: 2.
+After moveDown, has height: yes.
+Height written after moveDown: yes.
+Shape done.
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> looks
+Chain built: yes yes; same measure: yes.
+Looks done.
+[grid 1]
+|T0          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 0                                        |
+> levels
+Set level: raise, lower, reset, other, zero.
+Also show.
+[grid 1]
+|T1          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 1                                        |
+> @link 5
+Level is shown.
+[grid 1]
+|T1          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 1                                        |
+> events
+Link events 0; level 3; last 0.
+[grid 1]
+|T1          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 1                                        |
+> levels
+Set level: raise, lower, reset, other, zero.
+Also show.
+[grid 1]
+|T2          |
+|            |
+[grid 2]
+|level 3 (high)                     |
+|<===--> last link 0                |
+[grid 3]
+|Room A / 2                                        |
+> @link 6
+[grid 1]
+|T2          |
+|            |
+[grid 2]
+|level 4 (max)                      |
+|<====-> last link 7                |
+[grid 3]
+|Room A / 2                                        |

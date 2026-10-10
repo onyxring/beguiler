@@ -1,0 +1,271 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a class with a static three-way operator whose reference (Part::operator <=>) is handed
+// to sort and to a hand-written sortBy; a literal func<> member given non-capturing lambdas in object
+// definitions and called through the member (p.rule(x)); an array<array<int>> grid walked with row
+// folds; an array<func<int, int>> mapped by <linq> (the chain's lambda takes a func<> parameter);
+// a recursive walk of the object tree built from bgl.world.inParent with a visitor and an accumulator
+// lambda; composition done by a lambda over two func<> locals; a literal func<> parameter that keeps a
+// callback in an array<literal func<>> registry, fed a named function, a constant-capturing lambda and
+// a ternary; memoization of a recursive function in a global array; a lambda that writes a captured
+// local and a captured loop variable inside a loop, used during the statement; switch on a function
+// result; a union-returning ternary between a string and a function; `??` over members; a chain that
+// ends in a terminal inside an interpolated-string span; mutual recursion between a function and a
+// func<>-taking function.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- World ----------------------------------------------------------------------
+
+class Part : object {
+    int size;
+    int cost;
+    literal func<int, int> rule;
+    static int operator <=> (Part a, Part b) {
+        if (a.size != b.size) return a.size - b.size;
+        return a.cost - b.cost;
+    }
+    int applied(int x) { return rule == null ? x : rule(x); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object crate { "crate"; name = {.crate}; parent = roomA; attributes = {container, open}; }
+object sack  { "sack";  name = {.sack};  parent = crate; attributes = {container, open}; }
+
+Part bolt   { "bolt";   name = {.bolt};   size = 3; cost = 2; rule = (int x) => x + 3;     parent = crate; }
+Part nut    { "nut";    name = {.nut};    size = 2; cost = 1; rule = (int x) => x * 2;     parent = crate; }
+Part washer { "washer"; name = {.washer}; size = 2; cost = 4;                              parent = sack; }
+Part gear   { "gear";   name = {.gear};   size = 5; cost = 9; rule = dec;                  parent = sack; }
+Part spring { "spring"; name = {.spring}; size = 1; cost = 3; rule = (int x) => x * x;     parent = roomA; }
+
+//-- Plain functions ----------------------------------------------------------------
+
+int inc(int n)    { return n + 1; }
+int triple(int n) { return n * 3; }
+int half(int n)   { return n / 2; }
+int dec(int n)    { return n - 1; }
+
+int applyTwice(func<int, int> f, int x) { return f(f(x)); }
+
+int sumRow(array<int> row, func<int, int> f) {
+    int total = 0;
+    for (int v in row) total += f(v);
+    return total;
+}
+
+// Mutual recursion between a function and one that takes a function.
+int evenSteps(int n, func<int, int> step) { return n <= 0 ? 0 : oddSteps(n - 1, step) + step(n); }
+int oddSteps(int n, func<int, int> step)  { return n <= 0 ? 0 : evenSteps(n - 1, step) - step(n); }
+int runSteps(int n, func<int, int> step) { return evenSteps(n, step); }
+
+// Memoized recursion over a global array.
+array<int> memo[16];
+int calls = 0;
+int collatz(int n) {
+    if (n == 1) return 0;
+    if (n < 16 && memo[n] != 0) return memo[n];
+    calls++;
+    int r = 1 + collatz(n % 2 == 0 ? n / 2 : 3 * n + 1);
+    if (n < 16) memo[n] = r;
+    return r;
+}
+
+//-- Registry of kept callbacks ------------------------------------------------------
+
+array<literal func<int, int>> registry[5];
+
+void register(literal func<int, int> f) { registry.append(f); }
+
+int runRegistry(int x) {
+    int acc = x;
+    for (func<int, int> f in registry) acc = f(acc);
+    return acc;
+}
+
+//-- Object tree ---------------------------------------------------------------------
+
+// Visit every object under `root`, depth first, telling the visitor its depth.
+void walk(object root, int depth, func<void, object, int> visit) {
+    array<object> kids = bgl.world.inParent(root);
+    array<object> mine[8];
+    mine = kids;
+    for (object k in mine) {
+        visit(k, depth);
+        walk(k, depth + 1, visit);
+    }
+}
+
+// A hand-written sort that takes the comparator by function reference.
+void sortBy(array<Part> a, func<int, Part, Part> cmp) {
+    for (int i = 1; i < a.length; i++) {
+        for (int j = i; j > 0 && cmp(a[j - 1], a[j]) > 0; j--) a.swap(j - 1, j);
+    }
+}
+
+void showParts(array<object> a) {
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(" "); print(a[i]); }
+    if (a.length == 0) print("none");
+    print("^");
+}
+
+void perform(func<void> action) { action(); }
+
+string | func<int, int> chooseAction(bool useName) { return useName ? "by name" : triple; }
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb Sorted {
+    grammar = {{.sorted}};
+    void handler() {
+        array<Part> ps[6];
+        ps += {gear, spring, bolt, washer, nut};
+        ps.sort(Part::operator <=>);
+        for (Part p in ps) print($"{p.size}/{p.cost} ");
+        print("^");
+        sortBy(ps, (Part a, Part b) => b.cost - a.cost);
+        for (Part p in ps) print($"{p.size}/{p.cost} ");
+        print("^");
+        sortBy(ps, Part::operator <=>);
+        for (Part p in ps) print($"{(object)p} ");
+        print("^");
+        print($"{washer <=> nut}, {nut <=> washer}, {bolt <=> bolt}, {nut < washer ? "nut first" : "washer first"}^");
+    }
+}
+
+verb Rules {
+    grammar = {{.rules, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"bolt {bolt.rule(n)}, nut {nut.rule(n)}, gear {gear.rule(n)}, spring {spring.applied(n)}, washer {washer.applied(n)}^");
+        array<func<int, int>> fs[4];
+        fs += {inc, triple, half};
+        fs.append(bolt.rule);
+        array<var> outs = fs.map((func<int, int> f) => f(n));
+        print("mapped:");
+        for (var v in outs) print($" {(int)v}");
+        print("^");
+        func<int, int> both = (int x) => triple(inc(x));
+        func<int, int> twice = (int x) => applyTwice(both, x);
+        print($"both {both(n)}, twice {twice(n)}, applyTwice gear {applyTwice(gear.rule, n)}^");
+        print($"evenSteps {runSteps(5, inc)}, with triple {runSteps(4, triple)}^");
+    }
+}
+
+verb Grid {
+    grammar = {{.grid}};
+    void handler() {
+        array<array<int>> grid = { {1, 2, 3}, {4, 5}, {6}, {} };
+        int k = 10;
+        for (int r = 0; r < grid.length; r++)
+            print($"row {r}: plain {sumRow(grid[r], inc)}, scaled {sumRow(grid[r], (int v) => v * k)}^");
+        int total = 0;
+        for (array<int> row in grid) total += sumRow(row, triple);
+        print($"triple total {total}^");
+        grid[1][0] = 40;
+        grid[2][0] = 7;
+        print($"after edit: {sumRow(grid[1], inc)} {sumRow(grid[2], inc)} {grid.length}^");
+        int widest = 0;
+        for (int r = 0; r < grid.length; r++) {
+            int w = grid[r].length;
+            perform(=> { if (w > widest) widest = w; });
+        }
+        print($"widest {widest}^");
+    }
+}
+
+verb Tree {
+    grammar = {{.tree}};
+    void handler() {
+        int count = 0;
+        int deepest = 0;
+        walk(roomA, 0, (object o, int d) => {
+            for (int i = 0; i <= d; i++) print("  ");
+            print(o);
+            print("^");
+            count++;
+            if (d > deepest) deepest = d;
+        });
+        print($"{count} objects, deepest {deepest}.^");
+        array<object> parts = bgl.world.instances(Part, (object o) => o.parent == crate || o.parent == sack);
+        print($"{parts.count()} parts in containers, first {parts.first()}, last {parts.last()}.^");
+        print($"cheap: {parts.filter((object o) => ((Part)o).cost < 4).count()}, big and costly: {parts.filter((object o) => ((Part)o).size > 2).all((object o) => ((Part)o).cost > 1) ? "all" : "not all"}^");
+        showParts(bgl.world.inParent(sack));
+    }
+}
+
+verb Keep {
+    grammar = {{.keep, NUMBER}};
+    void handler() {
+        const int lift = 5;
+        registry.clear();
+        register(inc);
+        register((int x) => x + lift);
+        if (parsed_number > 10) register(triple); else register(half);
+        register(gear.rule);
+        print($"registry {registry.length}, runRegistry({parsed_number}) = {runRegistry(parsed_number)}^");
+        registry.removeValue(inc);
+        print($"without inc {registry.length}, runRegistry = {runRegistry(parsed_number)}, has gear rule: {registry.contains(gear.rule) ? "yes" : "no"}^");
+    }
+}
+
+verb Chain {
+    grammar = {{.chain, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        calls = 0;
+        print($"collatz({n}) = {collatz(n)}, fresh calls {calls}^");
+        calls = 0;
+        print($"again = {collatz(n)}, fresh calls {calls}^");
+        calls = 0;
+        print($"collatz(6) = {collatz(6)}, fresh calls {calls}^");
+    }
+}
+
+verb Pick {
+    grammar = {{.pick, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (int i = 0; i < 2; i++) {
+            string | func<int, int> a = chooseAction(i == 0);
+            if (typeof(a) == eType.routine) {
+                print($"action {((func<int, int>)a)(n)}^");
+            }
+            else print($"action {(string)a}^");
+        }
+        func<int, int> sel = n > 3 ? (n > 6 ? triple : inc) : half;
+        switch (sel(n)) {
+            case 1: print("one^");
+            case 5: print("five^");
+            case 21: print("twenty-one^");
+            default: print($"other {sel(n)}^");
+        }
+        string label = bolt.name == null ? "unnamed" : "named";
+        print($"{label}, rule present: {(spring.rule != null ? "yes" : "no")}, {(washer.rule != null ? "yes" : "no")}^");
+        object holder = washer.parent ?? roomA;
+        object none = nut.child ?? holder;
+        print($"{holder}, {none}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

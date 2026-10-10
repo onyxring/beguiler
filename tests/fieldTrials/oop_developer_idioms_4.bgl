@@ -1,0 +1,366 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, fourth pass. An `alias class` as the
+// project's own base type, with classes derived from it; a value class for money with a copy operator
+// overloaded by `int`, arithmetic by value and by int, `-`/`/`/`%`, an instance `<=>` driving `<`/`>=`,
+// `==`/`!=`, and postfix and prefix `--`; a bit-set value class with `|`, `&`, `^`, `<<`, `>>`, `!` and
+// `?=`, and `|=`, `&=` and `<<=` met by the fallback to the plain operator; an owned value member
+// holding another value class; a clamping named accessor class used as an owned member, made
+// read-only by `hide Member.operator =` on a subclass and written again through a base cast, and
+// reset on pooled `new`; interfaces by convention (`required` routines met by a class, `default`
+// routines overridden) under multiple inheritance, with a four-level chain, `replace default` in
+// `extend class` and ancestor casts; static members and static factories reached from instances and
+// subclasses; enums in a switch and as `required` return type; an array of reference elements read for their value members;
+// `is` tests.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+alias class Entity for object {
+    stringOrRoutine description;
+}
+
+enum Place { Head = 0, Body = 1, Hand = 2 }
+
+//-- Money -----------------------------------------------------------------------------------------
+
+value class Money {
+    int Cents;
+
+    Money operator = (Money o) { Cents = o.Cents; return self; }
+    Money operator = (int c) { Cents = c; return self; }
+    Money operator + (Money o) { return Money.Of(Cents + o.Cents); }
+    Money operator - (Money o) { return Money.Of(Cents - o.Cents); }
+    Money operator * (int k) { return Money.Of(Cents * k); }
+    Money operator / (int k) { return Money.Of(Cents / k); }
+    int operator % (int k) { return Cents % k; }
+    int operator <=> (Money o) { return Cents - o.Cents; }
+    bool operator == (Money o) { return Cents == o.Cents; }
+    bool operator != (Money o) { return Cents != o.Cents; }
+    void operator -- () { Cents = Cents - 1; }
+    void operator prefix-- () { Cents = Cents - 100; }
+
+    void print() {
+        int c = Cents % 100;
+        print($"{Cents / 100}.");
+        if (c < 10) print("0");
+        print(c);
+    }
+
+    static Money Of(int cents) {
+        Money m;
+        m.Cents = cents;
+        return m;
+    }
+    static Money Larger(Money a, Money b) {
+        if (a >= b) return Money.Of(a.Cents);
+        return Money.Of(b.Cents);
+    }
+}
+
+//-- Bit set ---------------------------------------------------------------------------------------
+
+value class Mask {
+    int Bits;
+
+    Mask operator = (Mask o) { Bits = o.Bits; return self; }
+    Mask operator | (Mask o) { return Mask.Of(Bits | o.Bits); }
+    Mask operator & (Mask o) { return Mask.Of(Bits & o.Bits); }
+    Mask operator ^ (Mask o) { return Mask.Of(Bits ^ o.Bits); }
+    Mask operator << (int n) { return Mask.Of(Bits << n); }
+    Mask operator >> (int n) { return Mask.Of(Bits >> n); }
+    bool operator ! () { return Bits == 0; }
+    bool operator == (Mask o) { return Bits == o.Bits; }
+    bool operator != (Mask o) { return Bits != o.Bits; }
+    bool operator ?= (Mask o) { return (Bits & o.Bits) != 0; }
+
+    void print() { print($"[{Bits}]"); }
+
+    static Mask Of(int b) {
+        Mask m;
+        m.Bits = b;
+        return m;
+    }
+    static Mask For(Place p) { return Mask.Of(1 << (int)p); }
+}
+
+//-- Gauges with a clamping accessor ---------------------------------------------------------------
+
+value class Clamped {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) {
+        if (v < 0) _v = 0;
+        else if (v > 100) _v = 100;
+        else _v = v;
+    }
+}
+
+class Gauge : Entity {
+    Clamped Level;
+    void Fill(int n) { Level += n; }
+    void Drain(int n) { Level -= n; }
+    void print() { print($"gauge at {Level}"); }
+}
+
+class Boiler : Gauge {
+    hide Level.operator =;
+    void Stoke() { ((Gauge)self).Level += 30; }
+    replace void print() { print($"boiler at {Level}"); }
+}
+
+class Cell[2] : Gauge {
+    int Id;
+    void create(int number) { Id = number; if (number > 0) Level = number * 40; }
+    replace void print() { print($"cell {Id} at {Level}"); }
+}
+
+//-- Interfaces by convention ----------------------------------------------------------------------
+
+class Priced : object {
+    required int Price();
+}
+
+class Wearable : object {
+    required Place Where();
+    default string Action() { return "wear"; }
+}
+
+//-- Items -----------------------------------------------------------------------------------------
+
+class Item : Entity {
+    static int Made = 0;
+    static int Registered = 0;
+    int Weight = 1;
+    Money Cost;
+    Mask Tags;
+
+    default string Kind() { return "item"; }
+    default void Trace() { print("item"); }
+    static void Register(Item it) { Item.Registered++; Item.Made = Item.Made + it.Weight; }
+    void Summary() { printLine($"{self} [{Kind()}] weight {Weight}, cost {Cost}"); }
+    void print() { print($"{Kind()} (#{Weight})"); }
+}
+
+class Tool : Item {
+    string Kind() { return "tool"; }
+    default void Trace() { ((Item)self).Trace(); print(" > tool"); }
+}
+
+class Weapon : Tool {
+    int Damage;
+    string Kind() { return "weapon"; }
+    default void Trace() { ((Tool)self).Trace(); print(" > weapon"); }
+}
+
+class Sword : Weapon {
+    replace string Kind() { return "blade"; }
+    default void Trace() { ((Weapon)self).Trace(); print(" > sword"); }
+}
+
+class Armor : Item, Priced, Wearable {
+    int Defense;
+    Place Where() { return Body; }
+    int Price() { return Cost.Cents / 100; }
+    replace string Kind() { return "armor"; }
+}
+
+class Shield : Armor {
+    Place Where() { return Hand; }
+    string Action() { return "carry"; }
+}
+
+extend class Item {
+    replace default string Kind() { return "thing"; }
+}
+
+Entity roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Sword blade   { "blade"; name = {.blade}; parent = roomA; Weight = 4; Damage = 7; }
+Weapon axe    { "axe"; name = {.axe}; parent = roomA; Weight = 6; Damage = 9; }
+Tool hammer   { "hammer"; name = {.hammer}; parent = roomA; Weight = 3; }
+Armor mail    { "mail"; name = {.mail}; parent = roomA; Weight = 9; Defense = 5; }
+Shield buckler { "buckler"; name = {.buckler}; parent = roomA; Weight = 2; Defense = 2; }
+Item lump     { "lump"; name = {.lump}; parent = roomA; }
+Boiler furnace { "furnace"; name = {.furnace}; parent = roomA; }
+Gauge dial    { "dial"; name = {.dial}; parent = roomA; }
+
+array<Item> Stock = { blade, axe, mail, lump };
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Cash {
+    grammar = {.cash};
+    void handler() {
+        Money a = Money.Of(1250);
+        Money b = Money.Of(399);
+        Money c = a - b;
+        printLine($"a {a}, b {b}, a - b {c}, b * 3 {b * 3}, a / 4 {a / 4}, a % 100 {a % 100}.");
+        Money d;
+        d = 705;
+        printLine($"d {d}; larger of b and d: {Money.Larger(b, d)}.");
+        d--;
+        printLine($"After d--: {d}.");
+        --d;
+        printLine($"After --d: {d}.");
+        if (b < a && a >= b && d != b && a > c) printLine("Ordering derived from <=>.");
+        if (Money.Of(25) == Money.Of(25)) printLine("Equal by value.");
+        c -= b;
+        c += Money.Of(1);
+        printLine($"c {c}.");
+        Money spent;
+        for (Item it in Stock) spent += it.Cost;
+        printLine($"Stock of {Stock.length}: spent {spent}; second {Stock[1]}; its cost {Stock[1].Cost}.");
+    }
+}
+
+verb Bits {
+    grammar = {.bits};
+    void handler() {
+        Mask head = Mask.For(Head);
+        Mask hand = Mask.For(Hand);
+        Mask both = head | hand;
+        printLine($"head {head}, hand {hand}, both {both}, both xor head {both ^ head}.");
+        Mask m = Mask.Of(0);
+        if (!m) printLine("m is empty.");
+        m |= both;
+        m &= Mask.Of(13);
+        m <<= 1;
+        printLine($"m {m}; m >> 2 {m >> 2}; m & 2 {m & Mask.Of(2)}.");
+        if (m ?= Mask.Of(8)) printLine("m shares bit 8.");
+        if (!(m ?= hand)) printLine("m lacks hand.");
+        if (!(m ?= head)) printLine("m has no head bit.");
+        if (m == Mask.Of(10) && m != both) printLine("m equals 10.");
+    }
+}
+
+verb Kinds {
+    grammar = {.kinds};
+    void handler() {
+        for (Item it in {blade, axe, hammer, mail, buckler, lump}) it.Summary();
+        printLine($"Sword as weapon: {((Weapon)blade).Kind()}; as tool: {((Tool)blade).Kind()}; as item: {((Item)blade).Kind()}.");
+        print("Trace: ");
+        blade.Trace();
+        printLine();
+        print("Trace: ");
+        axe.Trace();
+        printLine();
+        print("Trace: ");
+        ((Tool)blade).Trace();
+        printLine();
+        printLine($"Printed: {blade} {axe} {lump}.");
+    }
+}
+
+verb Costs {
+    grammar = {.costs};
+    void handler() {
+        blade.Cost = 2500;
+        axe.Cost = blade.Cost / 2;
+        mail.Cost = Money.Of(4000) + Money.Of(550);
+        buckler.Cost = mail.Cost / 3;
+        Item.Register(blade);
+        Item.Register(axe);
+        Item.Register(mail);
+        printLine($"blade {blade.Cost}, axe {axe.Cost}, mail {mail.Cost}, buckler {buckler.Cost}.");
+        printLine($"Registered {Item.Registered}, weight {Item.Made}.");
+        printLine($"Mail price {mail.Price()}, buckler price {buckler.Price()}.");
+        if (axe.Cost < blade.Cost) printLine("Axe is cheaper.");
+        blade.Tags = Mask.For(Hand) | Mask.For(Head);
+        axe.Tags = blade.Tags;
+        axe.Tags |= Mask.For(Body);
+        printLine($"blade tags {blade.Tags}, axe tags {axe.Tags}.");
+    }
+}
+
+verb Garb {
+    grammar = {.garb};
+    void handler() {
+        Mask worn = Mask.Of(0);
+        for (Armor a in {mail, buckler}) {
+            string name = "";
+            switch (a.Where()) {
+                case Body: name = "body";
+                case Hand: name = "hand";
+                default:   name = "other";
+            }
+            printLine($"{a}: {a.Action()} on {name}; defense {a.Defense}.");
+            worn |= Mask.For(a.Where());
+        }
+        printLine($"Worn mask {worn}.");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges};
+    void handler() {
+        dial.Fill(60);
+        dial.Fill(60);
+        printLine($"{dial}.");
+        dial.Drain(30);
+        printLine($"{dial}; level {dial.Level}.");
+        dial.Level = 250;
+        printLine($"{dial}.");
+        furnace.Stoke();
+        furnace.Stoke();
+        furnace.Stoke();
+        furnace.Stoke();
+        printLine($"{furnace}.");
+        ((Gauge)furnace).Level = 12;
+        furnace.Drain(2);
+        printLine($"{furnace}.");
+        int sum = dial.Level + furnace.Level;
+        printLine($"Sum {sum}.");
+    }
+}
+
+verb Cells {
+    grammar = {.cells};
+    void handler() {
+        Cell c1 = new Cell(1);
+        Cell c2 = new Cell(2);
+        Cell c3 = new Cell(3);
+        if (c3 == null) printLine("Pool exhausted.");
+        printLine($"{c1}; {c2}.");
+        c2.Fill(50);
+        printLine($"{c2}.");
+        delete c2;
+        Cell c4 = new Cell(0);
+        printLine($"{c4}.");
+        c4.Fill(5);
+        printLine($"{c4}.");
+        delete c1;
+        delete c4;
+    }
+}
+
+verb Checks {
+    grammar = {.checks};
+    void handler() {
+        for (Item it in {blade, mail, lump}) {
+            print($"{it}:");
+            if (it.is(Sword)) print(" sword");
+            if (it.is(Weapon)) print(" weapon");
+            if (it.is(Tool)) print(" tool");
+            if (it.is(Armor)) print(" armor");
+            if (it.is(Wearable)) print(" wearable");
+            printLine();
+        }
+        printLine($"Registered: {Tool.Registered}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

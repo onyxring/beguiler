@@ -1,0 +1,413 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fourth PunyInform program, using what the first three did not: OPTIONAL_FULL_SCORE with
+// TASKS_PROVIDED, NUMBER_TASKS, a task_scores array from an #i6 island, a PrintTaskName entry point and
+// Achieved; OPTIONAL_EXTENDED_VERBSET (Dig, Burn, Consult, Tie, Fill handled in `before`);
+// OPTIONAL_FLEXIBLE_INVENTORY (inventory tall/wide); OPTIONAL_GUESS_MISSING_NOUN;
+// OPTIONAL_PRINT_SCENERY_CONTENTS; the extensions ext_flags (author-written extern bindings for
+// SetFlag, ClearFlag, FlagIsSet), ext_waittime (waittime_waiting, wait until/for) and ext_cheap_scenery
+// (a `cheap_scenery` property, CSPerformAction); the fake actions Going (on the destination room and, as `after`, the old one), LetGo and ThrownAt, a life
+// routine told an order, and the real actions PushDir, Tell, Ask, Consult, Fill and Dig; the library routines DoorDir, DoorTo, PrintMsg,
+// PrintOrRun, RunRoutines, ScopeWithin, WordValue, WordLength, NumberWords, PronounNotice and
+// ImplicitGrabIfNotHeld; globals inventory_style, lookmode, things_score and places_score; a class
+// hierarchy of verbs; an enum and a bnum over task state; and an extern I6 routine declared by the author.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+#defineI6 OPTIONAL_SIMPLE_DOORS
+#defineI6 OPTIONAL_FULL_SCORE
+#defineI6 OPTIONAL_EXTENDED_VERBSET
+#defineI6 OPTIONAL_FLEXIBLE_INVENTORY
+#defineI6 OPTIONAL_GUESS_MISSING_NOUN
+#defineI6 OPTIONAL_PRINT_SCENERY_CONTENTS
+#defineI6 TASKS_PROVIDED
+#defineI6 NUMBER_TASKS 3
+#defineI6 FLAG_COUNT 4
+#defineI6 ROOM_SCORE 1
+#defineI6 OBJECT_SCORE 1
+
+const int    MAX_SCORE              = 8;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#i6 { Array task_scores -> 2 3 1; }
+
+#includeI6 "globals"
+#includeI6 "ext_flags"
+#includeI6 "ext_cheap_scenery"
+#include <bindings/punyInform>
+
+#using bgl.printRules;
+
+enum eTask { gotCoin = 0, dugHole = 1, filledJug = 2 }
+
+// The library tests for this entry point with #Ifdef, so it comes before "puny".
+void PrintTaskName(int task) {
+    switch ((eTask)task) {
+        case gotCoin:   print(" for the coin^");
+        case dugHole:   print(" for the hole^");
+        case filledJug: print(" for the jug^");
+    }
+}
+
+#includeI6 "puny"
+#includeI6 "ext_waittime"
+
+// The extensions ship no binding, so the program declares what it calls.
+extern void SetFlag(int a, int b = 0, int c = 0);
+extern void ClearFlag(int a, int b = 0, int c = 0);
+extern bool FlagIsSet(int a, int b = 0, int c = 0);
+extern bool CSPerformAction(verb act, int id = 0, object other = null);
+extern int  waittime_waiting;
+extern int  sys_statusline_flag;
+
+extern const int MSG_JUMP_OVER;
+
+const int F_DUG    = 1;
+const int F_TIED   = 2;
+const int F_BURNT  = 3;
+const int F_FILLED = 4;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+    object n_to;
+    object s_to;
+    rawArray<var> cheap_scenery;
+}
+
+bnum eMood { calm = 1, wary = 2, angry = 4 }
+
+int  guardCount = 0;
+eMood mood = calm;
+
+class Place : object {
+    attributes = {light};
+}
+
+class Fixture : object {
+    attributes = {static, scenery};
+    string description = "Fixed in place.";
+}
+
+class Thing : object {
+    string description = "A plain thing.";
+}
+
+Place roomA {
+    "Room A";
+    description = "Room A. A gate is east.";
+    e_to = gate;
+    cheap_scenery = { 100, .pillar, .pillars, "A stone pillar." };
+
+    bool after() {
+        if (action == Going) printLine("You leave Room A.");
+        rfalse;
+    }
+}
+
+Place roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = gate;
+    attributes = {scored, light};
+
+    bool before() {
+        if (action == Going && selected_direction == (property)e_to && mood == angry)
+            rtrue("The guard bars the way east.^");
+        rfalse;
+    }
+}
+
+Fixture gate {
+    "iron gate";
+    name = {.iron, .gate};
+    rawArray<object>   found_in = {roomA, roomB};
+    rawArray<property> door_dir = {(property)e_to, (property)w_to};
+    attributes = {door, openable, static, scenery};
+}
+
+Fixture ground {
+    "soft ground";
+    parent = roomA;
+    name = {.soft, .ground, .earth};
+    int dug = 0;
+
+    bool before() {
+        switch (action) {
+            case Dig:
+                if (FlagIsSet(F_DUG)) rtrue("The hole is already dug.^");
+                SetFlag(F_DUG);
+                Achieved((int)dugHole);
+                rtrue("You dig a hole.^");
+            case Take: rtrue("The ground stays put.^");
+        }
+        rfalse;
+    }
+}
+
+Thing coin {
+    "copper coin";
+    parent = roomA;
+    name = {.copper, .coin};
+}
+
+Thing jug {
+    "clay jug";
+    parent = roomA;
+    name = {.clay, .jug};
+    attributes = {container, open};
+
+    bool before() {
+        switch (action) {
+            case Fill:
+                if (FlagIsSet(F_FILLED)) rtrue("The jug is full.^");
+                if (ImplicitGrabIfNotHeld(self)) rtrue;
+                SetFlag(F_FILLED);
+                Achieved((int)filledJug);
+                rtrue("You fill the jug.^");
+            case Empty:
+                ClearFlag(F_FILLED);
+                rtrue("You pour the jug out.^");
+        }
+        rfalse;
+    }
+}
+
+Thing rope {
+    "hemp rope";
+    parent = roomA;
+    name = {.hemp, .rope};
+
+    bool before() {
+        if (action == Tie) {
+            SetFlag(F_TIED, -F_BURNT);
+            rtrue("You tie the rope.^");
+        }
+        if (action == Burn) {
+            ClearFlag(F_TIED);
+            SetFlag(F_BURNT);
+            rtrue("The rope burns.^");
+        }
+        rfalse;
+    }
+}
+
+Thing ball {
+    "rubber ball";
+    parent = roomA;
+    name = {.rubber, .ball};
+    attributes = {scored};
+}
+
+Fixture window {
+    "paper window";
+    parent = roomB;
+    name = {.paper, .window};
+
+    bool before() {
+        if (action == ThrownAt && noun == ball) {
+            noun.parent = location;
+            rtrue("The ball bounces off the window.^");
+        }
+        rfalse;
+    }
+}
+
+Thing crate {
+    "wooden crate";
+    parent = roomA;
+    name = {.wooden, .crate};
+    attributes = {static};
+
+    bool before() {
+        if (action == PushDir) {
+            if (second == Directions && selected_direction == (property)e_to) {
+                crate.parent = roomB;
+                rtrue("The crate slides east.^");
+            }
+            rtrue("It will not go that way.^");
+        }
+        rfalse;
+    }
+}
+
+Thing table {
+    "stone table";
+    parent = roomB;
+    name = {.stone, .table};
+    attributes = {supporter, static};
+
+    bool before() {
+        switch (action) {
+            case LetGo:   printLine($"You lift {the(noun)} off the table.");
+            case Receive: printLine($"You set {the(noun)} on the table.");
+        }
+        rfalse;
+    }
+}
+
+Thing book {
+    "field book";
+    parent = roomA;
+    name = {.field, .book};
+    string first = "alpha";
+
+    bool before() {
+        if (action == Consult) {
+            wn = consult_from;
+            int n = NumberWords();
+            dictionaryWord w = WordValue(consult_from);
+            if (w == .alpha) rtrue("Alpha is the first entry.^");
+            print($"No entry; {consult_words} word(s) of {WordLength(consult_from)} letters.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+Thing basket {
+    "wicker basket";
+    parent = roomA;
+    name = {.wicker, .basket};
+    attributes = {container, open};
+}
+
+object guard {
+    "guard";
+    parent = roomA;
+    name = {.guard};
+    description = "A guard.";
+    attributes = {animate};
+
+    bool life() {
+        // An order the guard has no orders for arrives with `action` set to the order, not to Order.
+        if (actor == self) {
+            mood = angry;
+            rtrue("The guard glares.^");
+        }
+        switch (action) {
+            case Ask:
+                rtrue("The guard says nothing useful.^");
+            case Tell:
+                mood |= wary;
+                guardCount++;
+                rtrue($"The guard listens, {guardCount} time(s).^");
+            case Give:
+                if (noun == coin) {
+                    Achieved((int)gotCoin);
+                    coin.parent = self;
+                    rtrue("The guard pockets the coin.^");
+                }
+                if (mood & angry) {
+                    mood = calm;
+                    noun.parent = self;
+                    rtrue($"The guard takes {the(noun)} and calms down.^");
+                }
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        if (action == Take) rtrue("The guard declines.^");
+        rfalse;
+    }
+}
+
+class infoVerb : verb {
+    meta = true;
+}
+
+infoVerb Moods {
+    grammar = {.moods};
+    void handler() {
+        print("Mood:");
+        if ((mood & calm) != 0)  print(" calm");
+        if ((mood & wary) != 0)  print(" wary");
+        if ((mood & angry) != 0) print(" angry");
+        printLine("");
+    }
+}
+
+infoVerb Flags {
+    grammar = {.flags};
+    void handler() {
+        rawArray<string> flagNames = { "dug", "tied", "burnt", "filled" };
+        for (int i = 1; i <= 4; i++)
+            if (FlagIsSet(i)) printLine($"Flag {i}: {flagNames[i - 1]}");
+    }
+}
+
+infoVerb Counts {
+    grammar = {.counts};
+    void handler() {
+        printLine($"Things {things_score}, places {places_score}, score {score}/{MAX_SCORE}.");
+        printLine($"Inventory style {inventory_style}, look mode {lookmode}.");
+    }
+}
+
+infoVerb Stamp {
+    grammar = {.stamp};
+    void handler() {
+        printLine($"Time {the_time}, statusline {sys_statusline_flag}, waiting {waittime_waiting}.");
+    }
+}
+
+verb Pillar {
+    grammar = {.inspect, .pillar};
+    void handler() {
+        if (!CSPerformAction(Examine, 100)) printLine("No pillar action.");
+    }
+}
+
+verb Doors {
+    grammar = {.doors};
+    void handler() {
+        printLine(DoorTo(gate) == roomB ? "Gate leads to Room B." : "Gate leads elsewhere.");
+        printLine(DoorDir(gate) == (property)e_to ? "Gate is east." : "Gate is elsewhere.");
+    }
+}
+
+verb Msg {
+    grammar = {.msg};
+    void handler() {
+        PrintMsg(MSG_JUMP_OVER, ball);
+    }
+}
+
+verb Run {
+    grammar = {.run, NOUN};
+    void handler() {
+        int r = RunRoutines(noun, (property)description);
+        printLine($"Ran {r}.");
+        PrintOrRun(noun, (property)description);
+        PronounNotice(noun);
+        printLine($"Him is {himobj == null ? "nobody" : "set"}.");
+    }
+}
+
+bool roomBScope() {
+    switch (scope_stage) {
+        case 1: rfalse;
+        case 2: ScopeWithin(roomB); rfalse;
+    }
+    rtrue("Nothing to peek at.^");
+}
+
+verb Peek {
+    grammar = { {.peek, .at, SCOPE(roomBScope)} };
+    void handler() {
+        printLine($"You peek at {the(noun)}.");
+    }
+}
+
+bool Initialise() {
+    SetTime(480, 1);
+    sys_statusline_flag = 1;
+    rfalse;
+}

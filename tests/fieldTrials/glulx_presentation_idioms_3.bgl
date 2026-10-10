@@ -1,0 +1,314 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a window layout built from <glulxWindow>: a text-grid HUD split above the main window
+// and a text-buffer notes panel split to its right, each given a look through a styleSheet passed as
+// styles: and through childStyles; windows held as auto (orientation views) and as the plain content
+// types, and kept in globals that start null; print, printLine, clear and moveCursor on child
+// windows with interpolated strings, float formatting and print rules; writing the split axis of a
+// window, closing and reopening a window, null-guarded use after a refused or closed split; style
+// probes (measureStyle, styleHonored, checkStyle, distinguishes) and bgl.glulx.supports; setStyle on
+// bgl.ui.screen and clearStyle; hyperlinks printed into the main window that rewrite the HUD; a
+// float readout with a progress bar; and a replaced DrawStatusLine that redraws the windows.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    int    grams;
+}
+
+styleSheet hudLook = styleSheet{
+    normal = style{ fixedWidth = true; reverse = true; };
+    alert  = style{ fontWeight = 1; foreColor = color.red; };
+};
+styleSheet noteLook = styleSheet{
+    normal     = style{ italics = true; };
+    emphasized = style{ fontWeight = 1; };
+};
+
+textGridWindow   hud   = null;
+textBufferWindow notes = null;
+textBufferWindow extra = null;
+int  noteCount = 0;
+int  hudRedraws = 0;
+bool hudOn = true;
+float loadLimit = 2.5;
+array<stringObj> noteLog[6];
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    attributes = {light};
+}
+
+object key {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+    grams = 35;
+}
+
+object anvil {
+    "iron anvil";
+    parent = roomA;
+    name = {.iron, .anvil};
+    description = "An iron anvil.";
+    grams = 1900;
+}
+
+object spool {
+    "wire spool";
+    parent = roomB;
+    name = {.wire, .spool};
+    description = "A wire spool.";
+    grams = 410;
+}
+
+// ---- helpers -----------------------------------------------------------------------------------
+
+float carriedKilos() {
+    int g = 0;
+    for (object o in player.children) g += o.grams;
+    return (float)g / 1000;
+}
+
+stringObj oneDecimal(float f) {
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+stringObj meter(float fraction, int cells) {
+    if (fraction > 1.0) fraction = 1.0;
+    int filled = (int)(fraction * cells + 0.5);
+    stringObj bar = "[";
+    for (int i = 0; i < cells; i++) bar += i < filled ? '#' : '.';
+    bar += ']';
+    return bar;
+}
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+void addNote(stringObj text) {
+    noteCount++;
+    noteLog[(noteCount - 1) % noteLog.size] = text;
+    notes?.printLine($"{noteCount}. {text}");
+}
+
+void redrawHud() {
+    if (hud == null) return;
+    hudRedraws++;
+    hud.clear();
+    hud.moveCursor(0, 0);
+    hud.print($"{location}  turn {turns}");
+    hud.moveCursor(0, 1);
+    float kilos = carriedKilos();
+    hud.print($"load {oneDecimal(kilos)}/{oneDecimal(loadLimit)} kg {meter(kilos / loadLimit, 10)}");
+}
+
+// ---- window setup --------------------------------------------------------------------------------
+
+void openWindows() {
+    bgl.ui.mainWin.childStyles = noteLook;
+    auto top = bgl.ui.mainWin.splitUpGrid(2, fixed, noBorder, styles: hudLook);
+    hud = top;
+    notes = bgl.ui.mainWin.splitRightBuffer(30, proportional);
+    hudOn = hud != null;
+}
+
+bool Initialise() {
+    location = roomA;
+    openWindows();
+    rfalse;
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | {turns}");
+    redrawHud();
+}
+
+// ---- verbs --------------------------------------------------------------------------------------
+
+verb Weigh {
+    grammar = {.weigh};
+    void handler() {
+        float kilos = carriedKilos();
+        float ratio = kilos / loadLimit;
+        printLine($"Carrying {oneDecimal(kilos)} kg of {oneDecimal(loadLimit)}; {oneDecimal(ratio * 100)}% full.");
+        printLine($"{fixed}{meter(ratio, 20)}{roman} {ratio > 1.0 ? "overloaded" : "ok"}");
+        stringObj t = $"weighed {oneDecimal(kilos)} kg"; addNote(t);
+    }
+}
+
+verb Layout {
+    grammar = {.layout};
+    meta = true;
+    void handler() {
+        printLine($"HUD open: {yn(hud != null)}; notes open: {yn(notes != null)}.");
+        if (hud != null) printLine($"HUD height {hud.height}, width > 0: {yn(hud.width > 0)}.");
+        if (notes != null) printLine($"Notes width > 0: {yn(notes.width > 0)}, height > 0: {yn(notes.height > 0)}.");
+        printLine($"Status bar height {bgl.ui.statusBar.height}.");
+    }
+}
+
+verb Grow {
+    grammar = {.grow};
+    meta = true;
+    void handler() {
+        if (hud == null) { printLine("No HUD."); return; }
+        hud.height = hud.height + 1;
+        printLine($"HUD height now {hud.height}.");
+        redrawHud();
+        hud.moveCursor(0, 2);
+        hud.print("extra row");
+    }
+}
+
+verb Wide {
+    grammar = {.wide};
+    meta = true;
+    void handler() {
+        // The width of a window split above cannot be set: no effect at run time.
+        if (hud == null) return;
+        int before = hud.width;
+        hud.width = before + 5;
+        printLine($"Width unchanged: {yn(hud.width == before)}.");
+    }
+}
+
+verb CloseHud {
+    grammar = {.hudoff};
+    meta = true;
+    void handler() {
+        if (hud == null) { printLine("HUD already closed."); return; }
+        hud.close();
+        hud = null;
+        printLine("HUD closed.");
+        addNote("hud closed");
+    }
+}
+
+verb OpenHud {
+    grammar = {.hudon};
+    meta = true;
+    void handler() {
+        if (hud != null) { printLine("HUD already open."); return; }
+        hud = bgl.ui.mainWin.splitUpGrid(2, styles: hudLook);
+        if (hud == null) { printLine("HUD refused."); return; }
+        printLine("HUD open.");
+        addNote("hud opened");
+        redrawHud();
+    }
+}
+
+verb ShowNotes {
+    grammar = {.notes};
+    meta = true;
+    void handler() {
+        int shown = noteCount < noteLog.size ? noteCount : noteLog.size;
+        printLine($"{noteCount} notes; keeping the last {shown}.");
+        for (int i = 0; i < shown; i++) {
+            int n = noteCount - shown + i;
+            printLine($"  {n + 1}: {noteLog[n % noteLog.size]}");
+        }
+    }
+}
+
+verb ClearNotes {
+    grammar = {.clearnotes};
+    meta = true;
+    void handler() {
+        extra?.printLine("closing");
+        extra?.close();
+        extra?.close();
+        extra = null;
+        notes?.clear();
+        notes?.printLine("Notes cleared.");
+        printLine("Done.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    meta = true;
+    void handler() {
+        printLine($"Hyperlinks: {yn(bgl.glulx.supports.hyperlinks)}; graphics: {yn(bgl.glulx.supports.graphics)}; unicode: {yn(bgl.glulx.supports.unicode)}.");
+        printLine($"Notes hyperlinks: {yn(notes != null && notes.supports.hyperlinks)}.");
+        if (hud == null) return;
+        bool honored = hud.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.fontWeight);
+        printLine($"Alert weight reported: {yn(honored)}.");
+        style warn = style{ fontWeight = 1; foreColor = color.red; };
+        eStyleCheck r = hud.checkStyle(eGlulxStyleType.alert, warn);
+        switch (r) {
+            case eStyleCheck.applied: printLine("Alert style applied.");
+            case eStyleCheck.differs: printLine("Alert style differs.");
+            default: printLine("Alert style unknown.");
+        }
+        printLine($"Known: {yn(r.known)}; applied: {yn(r.isApplied)}; differing: {yn(r.isDiffering)}.");
+        int fg = hud.measureStyle(eGlulxStyleType.alert, eGlulxStyleHint.foreColor);
+        printLine($"Measured colour is unset: {yn(fg == styleUnset)}.");
+    }
+}
+
+verb Restyle {
+    grammar = {.restyle};
+    meta = true;
+    void handler() {
+        bgl.ui.screen.setStyle(eGlulxStyleType.header, style{ justify = (int)eGlulxJustify.centered; sizeAdjustment = 1; });
+        style red = style{};
+        red.foreColor = color.rgb(200, 0, 0);
+        bgl.ui.mainWin.setStyle(eGlulxStyleType.alert, red);
+        bgl.ui.mainWin.clearStyle(eGlulxStyleType.alert);
+        if (notes == null) return;
+        if (extra != null) { printLine("Temporary window already open."); return; }
+        extra = notes.splitDownBuffer(2, fixed, border, styles: noteLook);
+        if (extra == null) { printLine("No temporary window."); return; }
+        extra.printLine($"{bold}temporary{roman} window, {extra.height} lines");
+        printLine("Temporary window open.");
+    }
+}
+
+verb Pick {
+    grammar = {.pick};
+    void handler() {
+        printLine($"Choose {link("heavier", raiseLimit)} or {link("lighter", lowerLimit)}.");
+        printLine($"Limit is {oneDecimal(loadLimit)} kg.");
+    }
+}
+
+void raiseLimit() { loadLimit += 0.5;
+     stringObj t = $"limit {oneDecimal(loadLimit)}"; addNote(t); redrawHud(); printLine($"Limit {oneDecimal(loadLimit)} kg."); }
+void lowerLimit() { loadLimit -= 0.5;
+     if (loadLimit < 0.5) loadLimit = 0.5; stringObj t = $"limit {oneDecimal(loadLimit)}"; addNote(t); redrawHud(); printLine($"Limit {oneDecimal(loadLimit)} kg."); }
+
+verb Redraws {
+    grammar = {.redraws};
+    meta = true;
+    void handler() { printLine($"HUD redrawn more than 20 times: {yn(hudRedraws > 20)}."); }
+}
+
+#includeI6 "grammar"

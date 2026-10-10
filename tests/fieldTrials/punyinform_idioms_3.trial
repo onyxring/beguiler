@@ -1,0 +1,179 @@
+> i
+You're carrying a cloak (worn).
+> north
+A wall blocks the way.
+> put bolt on shelf
+(first taking the bolt)
+You put the bolt on the shelf.
+Early.
+Late.
+> put nut on shelf
+(first taking the nut)
+You put the nut on the shelf.
+> put rivet on shelf
+(first taking the rivet)
+There is no more room.
+> contents shelf
+Holding: a nut and a bolt
+Listed.
+Room for 2.
+> x bird
+A bird outside the window.
+Early.
+Late.
+> survey
+10 in scope, 1 animate.
+> take sack
+Taken.
+> put sack on shelf
+The shelf will not take the sack.
+> stash cloak in sack
+(first taking off the cloak)
+Stashed.
+Early.
+Late.
+> take bolt
+Taken.
+> stash bolt and rivet in sack
+bolt: Stashed.
+rivet: Stashed.
+> i
+You're carrying a sack (which contains a rivet, a bolt and a cloak).
+Early.
+Late.
+> contents sack
+Holding: a rivet, a bolt and a cloak
+Listed.
+Room for 3.
+> stash nut in bolt
+You can't stash things in the bolt.
+> drop sack
+Dropped.
+> grab bolt and rivet from sack
+bolt: Removed.
+rivet: Removed.
+Early.
+Late.
+> grab all from sack
+cloak: Removed.
+> i
+You're carrying a cloak, a rivet and a bolt.
+> relate bolt to cloak
+Common: yourself.
+Not inside.
+> relate sack to shelf
+Common: the Hall.
+Not inside.
+> relate bolt to sack
+Common: the Hall.
+Not inside.
+> relate bolt to bolt
+Common: the bolt.
+Inside.
+> east
+Store
+Store. The hall is west.
+You can see some washers, a pair of boots, a booth (which is empty), a bell, a ledger, a key and a guard here.
+Early.
+Late.
+> relate bolt to boots
+Common: the Store.
+Not inside.
+> x pair of boots
+Boots.
+> x boots
+Boots.
+> take pair
+Taken.
+Early.
+Late.
+> wear boots
+You are now wearing the pair of boots.
+> x boot
+Boots.
+> take washers
+Taken.
+Early.
+Late.
+> i
+You're carrying some washers, a pair of boots (worn), a cloak, a rivet and a bolt.
+> x guard
+A guard.
+> who
+Him is the guard.
+> take ledger
+The guard shakes his head.
+Early.
+Late.
+> ask him for key
+The guard keeps it.
+> give nut to him
+You can't see any such thing.
+> hand guard rivet
+The guard takes the rivet.
+> guard, take bolt
+The guard declines.
+Early.
+Late.
+> guard, jump
+The guard has better things to do.
+> take bell
+Taken.
+> drop bell
+The bell rings, 1 time(s).
+Dropped.
+Early.
+Late.
+> clock
+Minute 540, bell near.
+> clock
+Minute 555, bell near.
+> enter booth
+You enter the booth.
+> look
+Store (in the booth)
+Store. The hall is west.
+You can see a bell, a ledger, a key and a guard here.
+Inside the booth.
+> contents booth
+Nothing to list.
+Room for 100.
+> get out
+You leave the booth.
+Early.
+Late.
+> north
+You can't go that way.
+> west
+Hall
+You can see a sack (which is open but empty) and a shelf (on which is a nut) here.
+> down
+Cellar
+Cellar. Stairs lead up.
+Early.
+Late.
+> up
+Hall
+You can see a sack (which is open but empty) and a shelf (on which is a nut) here.
+> reset
+Move the guard to the hall?
+> yes
+The guard is in the hall.
+> look
+Hall
+Hall. A store is east; stairs lead down.
+You can see a guard, a sack (which is open but empty) and a shelf (on which is a nut) here.
+Early.
+Late.
+> reset
+Move the guard to the hall?
+> no
+Nothing changes.
+> study nut
+A plain tool.
+> wait
+Nothing happens.
+Early.
+Late.
+> wait
+Nothing happens.

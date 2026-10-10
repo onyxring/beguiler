@@ -1,0 +1,106 @@
+Room A
+Room A. Room B is to the east and Room C is to the north.
+You can see a wooden chest (which is closed), a steel table (on which are a tin cup and a clay plate) and a brass lamp here.
+> look
+Room A
+Room A. Room B is to the east and Room C is to the north.
+You can see a wooden chest (which is closed), a steel table (on which are a tin cup and a clay plate) and a brass lamp here.
+> hum
+You hum.
+> sing
+You sing a note.
+> chant
+You sing a note.
+The timer box beeps.
+> whistle
+Nothing to say.
+> attempt
+Try 1 of 3.
+> attempt
+Try 2 of 3.
+> attempt
+Try 3 of 3.
+> attempt
+Too many tries (4).
+> sort
+1, 3, 5, 7, 9
+Total 25.
+> sizes
+Medium is 5.
+Large is 10.
+1 3 4
+345
+Shift 11.
+> which
+which
+> lamp
+The lamp is off, lit 0 turns.
+> count
+wooden chest has 2 items.
+steel table has 2 items.
+Total 4.
+> open chest
+You open the wooden chest, revealing a red apple and a silver coin.
+> unload chest
+You empty the chest onto the table.
+steel table has 4 items.
+> count
+wooden chest has 0 items.
+steel table has 4 items.
+Total 4.
+> inspect lamp
+A brass lamp.
+> fetch lamp
+Taken.
+> switch on lamp
+You switch the brass lamp on.
+> lamp
+The lamp is on, lit 1 turns.
+> n
+Room C
+Room C. Room A is to the south.
+You can see a timer box here.
+> s
+Room A
+Room A. Room B is to the east and Room C is to the north.
+You can see a wooden chest (which is empty) and a steel table (on which are a silver coin, a red apple, a tin cup and a clay plate) here.
+> z
+Time passes.
+The lamp goes dark. It is broken.
+> which
+which
+> z
+Time passes.
+> lamp
+The lamp is broken, lit 4 turns.
+> shake lamp
+Nothing happens.
+> e
+Room B
+Room B. Room A is to the west.
+You can see a brass bell and an iron gong here.
+> ring bell
+The bell rings. Level 2.
+> ring gong
+The gong rings. Level 6.
+> shake gong
+Level 8.
+> shake bell
+Level 3.
+> chime gong
+The gong rings. Level 10.
+> bang gong
+The gong rings. Level 12.
+> take gong
+The iron gong is fixed in place.
+> w
+Room A
+Room A. Room B is to the east and Room C is to the north.
+You can see a wooden chest (which is empty) and a steel table (on which are a silver coin, a red apple, a tin cup and a clay plate) here.
+> where
+In Room A.
+Back to Room A 1 times.
+> z
+Time passes.
+> z
+Time passes.

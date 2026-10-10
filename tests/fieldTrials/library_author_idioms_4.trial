@@ -1,0 +1,67 @@
+Room A
+Room A.
+You can see an early entry, a bin and a plate here.
+> info
+api 4, cap 4
+Target glulx.
+--
+[4]<cap>
+Created 0, touches 0.
+Meter full false, room 1.
+Tools: 4s, 0.
+> detail early
+Early / entry / level 1 of 4 / id 0 / note 1
+> detail bin
+Bin / bin / level 1 of 4 / id 0 / note 1
+> detail plate
+Plate / fixed / level 1 of 4 / id 0 / note 1
+> detail me
+Not an entry.
+> raise early
+Early / entry / level 2 of 4 / id 1 / note 2
+> raise bin
+Bin / bin / level 2 of 4 / id 2 / note 2
+> raise early
+Early / entry / level 3 of 4 / id 1 / note 3
+> raise early
+Early / entry / level 4 of 4 / id 1 / note 4
+> raise early
+Early / entry / level 4 of 4 / id 1 / note 5
+> raise plate
+Fixed.
+Plate / fixed / level 1 of 4 / id 0 / note 2
+> flags early
+Early: sticky true, shared true, hidden false, quiet false.
+Now seen.
+> flags early
+Early: sticky true, shared true, hidden false, quiet false.
+Seen.
+> flags bin
+Bin: sticky false, shared false, hidden true, quiet true.
+Now seen.
+> bridge
+Mix 32.
+High true, low false.
+Raw rank 7, provides true.
+Entry provides rank false, notes true.
+Commands seen 15.
+> hooks
+[named Early 4]
+[lambda Bin 3]
+Fixed.
+> info
+api 4, cap 4
+Target glulx.
+--
+[4]<cap>
+Created 2, touches 8.
+Meter full false, room 1.
+Tools: 4s, 0.
+> detail early
+Early / entry / level 4 of 4 / id 1 / note 6
+> inspect bin
+You see nothing special about the bin.
+> peek
+Room A
+Room A.
+You can see an early entry, a bin and a plate here.

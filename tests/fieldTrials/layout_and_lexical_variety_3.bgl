@@ -1,0 +1,263 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits on Glulx. Declarations used before they are declared (a derived
+// class ahead of its base, an object ahead of its class, an enum and constants ahead of their uses, a
+// variable after the verb that reads it); comments glued to operators and numbers with no whitespace;
+// comment openers inside strings and character literals; hex, binary, leading-zero and extreme integer
+// literals; negation chains; operator-precedence neighbours (shift against additive, bitwise against
+// each other, `&&` against `||`, ternary chains, compound assignment with shifts, `%=` and `^=`, `++`
+// and `--` in expressions, a cast ahead of `+`); float literals in the `.5` form; character literals
+// from Unicode, ZSCII and hex escapes compared and used as case labels with ranges; string escapes for
+// accents, doubled `\^` and `\~`, curly quotes, symbols and numeric codes; raw strings holding comment
+// openers; dictionary words with hyphens and mixed case in `name` and in grammar; interpolation holding
+// a ternary, a comment, a nested call and an escaped brace; `else` and `if` on separate lines; method
+// chains split across lines with comments between the links; array literals with comments and a
+// trailing comma; `??` and `?.` with a postfix `?`; bnum values combined with `|`, `&` and `|=`.
+
+#beguilerSettings
+{ target=Glulx;includePaths = "../../../inform6/stdlib" ;}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend class object { string description; }
+
+//-- Declared before what they depend on ---------------------------------------------------------
+
+class Crate : Carried { int weight = 5; int total() { return weight + extra; }
+    Crate add(int n) { weight += n; return self; }
+    Crate show() { print($"[{weight}]"); return self; } }   // base is below
+class Carried : object { int extra = LIFT; }
+
+Crate crateA { "crate"; parent = roomA; name = { .crate , .box-like }; attributes = {static};
+    description = "A crate."; weight = BIG; }
+
+const int LIFT = $$101;                  // 5, used above
+const int BIG=$1F ;                       // 31
+
+Object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+
+object ball
+{
+    "ball"; parent = roomA; description = "A ball.";
+    name = { .ball , ..balls , .Round-ISH , .child's };
+}
+
+object coin { "coin"; parent = roomA; description = "A coin."; name = {.coin}; }
+
+bnum eFlag { fa, fb, fc }                            // 1 2 4
+enum eMood { calm, tense = 3 /* gap */, wild }       // 1 3 4
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+verb Ints
+{
+    meta=true;grammar={.ints};
+    void handler()
+    {
+        printLine($"{$ff} {$FfFf} {$$1010} {$$00001111} {-$10} {-$$11} {007} {0}");
+        printLine($"{2147483647} {-2147483647} {$7FFFFFFF} {$FFFFFFFF} {$80000000}");
+        printLine($"{4/**/-/**/2} {4 /* a */ - /* b */ - /* c */ 2} {4-
+            // line comment ends the line
+            -2}");
+        int a = 5;
+        printLine($"{-a} {- -a} {- - -a} {-a * -a} {- a - - a} {-a % 3} {-a / 2}");
+        printLine($"{ - /* gap */ 7} {-/* */-7}");
+        printLine($"{_one + _under_2 + Under_Score3}");
+    }
+}
+
+int _one = 1;
+int _under_2 = 20;
+int Under_Score3 = 300;
+
+verb Prec
+{
+    meta = true; grammar = {.prec};
+    void handler()
+    {
+        int a = 3; int b = 5; int c = 6; int d = 12;
+        printLine($"{1 + 2 << 3} {1 << 2 + 3} {16 >> 1 + 1} {2 * 3 << 1} {100 - 4 - 8} {100 / 5 / 2} {100 % 7 % 4}");
+        printLine($"{(a & b) == 1} {a | b ^ c & d} {a ^ b & c | d} {a | (b == 5 ? 8 : 0)}");
+        printLine($"{a < b == true} {a < b == b > a} {(a == 3 && b == 4 || c == 6) ? 1 : 0}");
+        printLine($"{a == 3 || b == 4 && c == 7 ? 1 : 0} {!(a == 3) || c == 6 ? 1 : 0} {!a == 0}");
+        printLine($"{a > b ? 1 : a > 2 ? 2 : 3} {a < b ? c < d ? 10 : 20 : 30} {a > b ? 1 : c > d ? 2 : 4}");
+        printLine($"{a + b * c - d / a} {(a + b) * (c - d) / a} {a * b % c} {d % a * b}");
+        printLine($"{(int)(d > c) + (int)(a > b)} {d - c - b - a} {d - (c - (b - a))}");
+        a <<= 2; b >>= 1; c %= 4; d ^= $F; 
+        printLine($"{a} {b} {c} {d}");
+        a |= 1; b &= 3; c *= c + 1; d /= 2 + 1;
+        printLine($"{a} {b} {c} {d}");
+        int x; b = 7; a = b; x = a;
+        printLine($"{x} {a} {b}");
+        int i = 5; int j = i++ * 2; int k = i-- - 1;
+        printLine($"{i} {j} {k}");
+    }
+}
+
+verb Forward
+{
+    meta=true;
+    grammar={.forward};
+    void handler()
+    {
+        printLine($"{crateA.total()} {crateA.weight} {crateA.extra} {LIFT + BIG}");
+        printLine($"{(int)calm} {(int)tense} {(int)wild} {(int)eMood.wild - (int)eMood.tense}");
+        printLine(tail(2));
+        printLine(tail(0));
+    }
+}
+
+string tail(int n)
+{
+    if (n > 1)
+        return "many";
+    else
+    if (n == 1) return "one";
+    else
+        return "none";
+}
+
+verb Chars
+{
+    meta = true; grammar = {.chars};
+    void handler()
+    {
+        printLine($"{(int)'a'} {(int)'/'} {(int)'\"'} {(int)'\''} {(int)'\\'} {(int)'\n'} {(int)'\$41'} {(int)'\65'}");
+        printLine($"{(int)'ä'} {(int)'\155'} {(int)'\$E4'} {(int)'\:a'} {(int)'\'e'} {(int)'Ω'} {(int)'\$3A9'}");
+        printLine($"{(int)'\ss'} {(int)'\ae'} {(int)'\LL'} {(int)'\~n'} {(int)'\^^'} {(int)'\~~'}");
+        printLine($"{'a' < 'b'} {'é' =~ 'É'} {'a' + 1 == 'b'} {('a' + 2) == 'c'}");
+        classify('x'); classify('5'); classify('\$20'); classify('é'); classify('Ω');
+        print("^");
+    }
+}
+
+void classify(char c)
+{
+    switch (c)
+    {
+        case 'a' to 'z': print("L");
+        case '0', '1', '2' to '9': print("D");
+        case ' ': print("_");
+        case 'é', '\'e': print("E");
+        case >= '\$100': print("W");
+        default: print("?");
+    }
+}
+
+verb Strs
+{
+    meta=true;grammar={.strs};
+    void handler()
+    {
+        printLine("not a // comment and not a /* comment */ either");
+        printLine("http://x.y/*z*/ ^ line two");
+        printLine(@"raw // keeps /* these */ and \n and ^ and ~");
+        printLine("accents: \^a \^^a \~n \~~n \^z \~z \:u \`e");
+        printLine("curly: “double” ‘single’ `tick`");
+        printLine("symbols: © ✓ — \$2713 \9731");
+        printLine("braces { } stay in plain strings");
+        printLine($"interp: \{braces} {a1}" /* trailing */);
+    }
+}
+
+int a1 = 9;
+
+verb Interp
+{
+    meta = true; grammar = {.interp};
+    void handler()
+    {
+        int n = 3;
+        printLine($"{n > 2 ? "big" : "small"} {n<2?"s":"b"} {tail( n - 2 )} {tail(n)}");
+        printLine($"{ n /* inner comment */ + 1 } {(n + 1) * ( n - 1 ) } {n}{n}");
+        printLine($"{ -n } {- n} {n--} {n} {++n} {n*-1}");
+        printLine($"{ (n > 1) && (n < 9) } {"s"} {'c'} {(char)('a' + n)}");
+    }
+}
+
+verb Floats
+{
+    meta = true; grammar = {.floats};
+    void handler()
+    {
+        float h = .5;
+        float q = h + .25;
+        float z = -.5 * 3.0 + 1.0;
+        printLine($"{h} {q} {z} {(float)7 / 2} {1.0 / 3} {(int)(q * 100)}");
+        printLine($"{h < q} {h + .5 == 1.0} {-h < .0}");
+    }
+}
+
+verb Moods
+{
+    meta = true; grammar = {.moods};
+    void handler()
+    {
+        eMood m = tense;
+        switch ( m ) { case calm : print("calm"); case tense,wild:print("not calm"); }
+        print("^");
+        m = wild;
+        printLine(m == wild ? "wild" : "other");
+    }
+}
+
+verb Dict
+{
+    meta = true; grammar = {.dict | .word-list | .DICT , NOUN};
+    void handler() { if (noun?) printLine($"noun {noun}"); else printLine("no noun"); }
+}
+
+verb Chain
+{
+    meta = true; grammar = {.chain};
+    void handler()
+    {
+        crateA
+            .add(1)       // 32
+            . show ( )
+            /* then */ .add( 2 /* more */ )
+            .SHOW()
+            .Add(-3)
+            .show();
+        print("^");
+        array<int> xs = { 1 /* one */, $0A, $$11, -4, /* last */ };
+        printLine($"{xs.length} {xs[1] * xs[2] - xs[3]} {xs[xs[0]]} {xs[ 1 + 1 ]} {xs[xs.length - 1]}");
+        int sum = 0;
+        for (int v in xs) sum += v;
+        printLine($"sum {sum}");
+    }
+}
+
+verb Opt
+{
+    meta = false;
+    grammar = { {.opt}, {.opt , NOUN} };
+    void handler()
+    {
+        object w = noun ?? coin;
+        object p = w?.parent ?? roomA;
+        printLine($"{w} in {p}");
+        printLine((noun? && w != coin) ? "given" : "defaulted");
+    }
+}
+
+verb Bits
+{
+    meta = true; grammar = {.bits};
+    void handler()
+    {
+        eFlag f = eFlag.fa | eFlag.fc;
+        printLine($"{(int)f} {(f & eFlag.fb) == 0} {(f & fc) != 0}");
+        f |= fb;
+        printLine($"{(int)f} {f == (fa | fb | fc)}");
+        int n = (int)f << 1 | 1;
+        printLine($"{n} {n & $F0 | $0F ^ 5}");
+    }
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,312 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a pool of Glulx windows managed from a table. Splits from a child window and from
+// bgl.ui.statusBar; every direction spelled out (splitLeftBuffer, splitDownGrid, splitRightGrid);
+// orientation views held as auto with their split axis written (height on Horz, width on Vert) and
+// the permissive surface reached by a cast; moveDown re-arranging an existing child; a small
+// table of buffer panes filled in a loop, one closed twice and its slot reused; windows kept in an
+// array<textBufferWindow> and walked with a for loop and null tests; a graphics split attempted
+// and null-guarded; childStyles set to a styleSheet, copied from one window to another and cleared with null;
+// bgl.glulx.color values, color.rgb and the bgl.glulx aliases (eWinType, bWinScale, bWinBorder,
+// bWinPlacement); the supports probes charOutput, charInput, images, mouse and hyperlinkInput; print
+// rules (bold, italics, underline, reverse, fixed, roman, the, cThe, a) written into a child window;
+// a link whose target is an enum value delivered to a program-defined HandleGlkEvent, which reads
+// the event words with bgl.asm.aload and redraws a grid; a link with a lambda target and one with a
+// zero target (no link) on the same line; and a replaced DrawStatusLine writing to the status bar with moveCursor.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+enum eLinks { raise = 7, lower = 9, reset = 11, other }
+
+styleSheet paneLook = styleSheet{
+    normal     = style{ fixedWidth = true; backColor = color.darkGray; foreColor = color.white; };
+    emphasized = style{ italics = true; foreColor = color.yellow; };
+};
+styleSheet gridLook = styleSheet{
+    normal = style{ reverse = true; };
+    note   = style{ fontWeight = 1; };
+};
+
+array<textBufferWindow> panes[3];
+textGridWindow   gauge   = null;
+textGridWindow   corner  = null;
+int  level      = 3;
+int  linkEvents = 0;
+int  lastLink   = 0;
+int  opened     = 0;
+int  refused    = 0;
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the north.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the south.";
+    attributes = {light};
+}
+
+object lamp {
+    "brass lamp";
+    parent = roomA;
+    name = {.brass, .lamp};
+    description = "A brass lamp.";
+}
+
+// ---- helpers -----------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+string levelName(int n) {
+    switch (n) {
+        case 0: return "off";
+        case 1: return "low";
+        case 2: return "medium";
+        case 3: return "high";
+        default: return "max";
+    }
+}
+
+void drawGauge() {
+    if (gauge == null) return;
+    gauge.clear();
+    gauge.moveCursor(0, 0);
+    gauge.print($"level {level} ({levelName(level)})");
+    gauge.moveCursor(0, 1);
+    stringObj bar = "";
+    for (int i = 0; i < 5; i++) bar += i < level ? '=' : '-';
+    gauge.print($"<{bar}> last link {lastLink}");
+}
+
+int openPanes() {
+    int n = 0;
+    for (int i = 0; i < panes.size; i++) if (panes[i] != null) n++;
+    return n;
+}
+
+// Opens one more buffer pane; each is split from the previous pane when there is one.
+bool addPane() {
+    int slot = -1;
+    for (int i = 0; i < panes.size; i++) if (panes[i] == null) { slot = i; break; }
+    if (slot < 0) return false;
+    textBufferWindow parent = slot > 0 && panes[slot - 1] != null ? panes[slot - 1] : null;
+    textBufferWindow w;
+    if (parent != null) w = parent.splitDownBuffer(2, fixed, noBorder);
+    else w = bgl.ui.mainWin.splitLeftBuffer(10, proportional, border, styles: paneLook);
+    if (w == null) { refused++; return false; }
+    panes[slot] = w;
+    opened++;
+    w.printLine($"pane {slot} open");
+    return true;
+}
+
+// ---- entry points ----------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    gauge = bgl.ui.mainWin.splitUpGrid(2, fixed, noBorder, styles: gridLook);
+    auto side = gauge.splitRightGrid(12, fixed, border);
+    corner = side;
+    return false;
+}
+
+replace void DrawStatusLine() {
+    drawGauge();
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} / {turns}");
+    if (corner != null) {
+        corner.clear();
+        corner.moveCursor(0, 0);
+        corner.print($"T{turns}");
+    }
+}
+
+int HandleGlkEvent(var event, var context, var buffer) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        linkEvents++;
+        lastLink = bgl.asm.aload(event, 2);
+        switch (lastLink) {
+            case (int)eLinks.raise: if (level < 4) level++;
+            case (int)eLinks.lower: if (level > 0) level--;
+            case (int)eLinks.reset: level = 3;
+            default: lastLink = -1;
+        }
+        drawGauge();
+    }
+    return 0;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb PaneList {
+    grammar = {.panelist};
+    meta = true;
+    void handler() {
+        printLine($"Open panes: {openPanes()}; opened {opened}; refused {refused}.");
+        for (int i = 0; i < panes.size; i++) {
+            if (panes[i] == null) continue;
+            printLine($"  pane {i}: height {panes[i].height}, width > 0: {yn(panes[i].width > 0)}");
+        }
+    }
+}
+
+verb More {
+    grammar = {.more};
+    meta = true;
+    void handler() {
+        int added = 0;
+        while (addPane()) added++;
+        printLine($"Added {added}; open {openPanes()}; refused {refused}.");
+        printLine($"Table full: {yn(openPanes() == panes.size)}.");
+    }
+}
+
+verb CloseFirst {
+    grammar = {.closefirst};
+    meta = true;
+    void handler() {
+        int before = openPanes();
+        // WORKAROUND(round8-5): Quixe stops when a closed window owned a split that survives (content_box is not defined, D816); only a leaf is closed.
+        panes[panes.size - 1]?.close();
+        panes[panes.size - 1] = null;
+        panes[panes.size - 1]?.close();
+        printLine($"Closed the last pane: {before} -> {openPanes()} tracked.");
+        bool again = addPane();
+        printLine($"Reopened a pane: {yn(again)}; open {openPanes()}.");
+    }
+}
+
+verb Shape {
+    grammar = {.shape};
+    meta = true;
+    void handler() {
+        auto strip = bgl.ui.statusBar.splitDownBuffer(3, fixed, border);
+        printLine($"Status bar split gave a window: {yn(strip != null)}.");
+        auto tall = bgl.ui.mainWin.splitLeftGrid(8, fixed, noBorder);
+        if (tall == null) { printLine("No tall window."); return; }
+        tall.width = 14;
+        printLine($"Vert width after write: {tall.width}.");
+        ((textGridWindow)tall).height = 9;
+        printLine($"Height write on the permissive surface: {tall.height > 0 ? "has height" : "no height"}.");
+        auto flat = tall.splitUpGrid(1, fixed);
+        if (flat != null) {
+            flat.height = 2;
+            printLine($"Horz height after write: {flat.height}.");
+            flat.moveCursor(0, 0);
+            flat.print("flat");
+            flat.moveDown(3, fixed, noBorder);
+            printLine($"After moveDown, has height: {yn(flat.height > 0)}.");
+            flat.height = 1;
+            printLine($"Height written after moveDown: {yn(flat.height > 0)}.");
+            flat.close();
+            flat.close();
+        }
+        tall.close();
+        strip?.printLine("strip");
+        strip?.close();
+        printLine("Shape done.");
+    }
+}
+
+verb Looks {
+    grammar = {.looks};
+    meta = true;
+    void handler() {
+        bgl.ui.mainWin.childStyles = paneLook;
+        auto a = bgl.ui.mainWin.splitRightBuffer(10, proportional);
+        if (a != null) {
+            a.childStyles = bgl.ui.mainWin.childStyles;
+            auto b = a.splitDownBuffer(2);
+            a.childStyles = null;
+            auto c = a.splitRightBuffer(5);
+            bool same = true;
+            if (b != null && c != null) {
+                same = b.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.emphasized)
+                    == c.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.emphasized);
+                b.printLine($"{bold}b{roman} {italics}styled{roman} {underline}text{roman}");
+                c.printLine($"{reverse}c{roman} {fixed}fixed{roman}");
+            }
+            printLine($"Chain built: {yn(b != null)} {yn(c != null)}; same measure: {yn(same)}.");
+            b?.close();
+            c?.close();
+            a.close();
+        }
+        bgl.ui.mainWin.childStyles = null;
+        printLine("Looks done.");
+    }
+}
+
+verb PaneText {
+    grammar = {.panetext};
+    meta = true;
+    void handler() {
+        if (panes[0] == null) { printLine("No first pane."); return; }
+        panes[0].printLine($"{cThe(lamp)} is {a(lamp)}; {the(roomA)} holds it.");
+        panes[0].printLine($"{bold}level{roman} {level}, {italics}{levelName(level)}{roman}");
+        printLine("Written.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    meta = true;
+    void handler() {
+        printLine($"Placement values: {(int)bWinPlacement.left != (int)bWinPlacement.right}; scale: {(int)bWinScale.fixed != (int)bWinScale.proportional}.");
+        printLine($"Window types: {(int)eWinType.textBuffer} {(int)eWinType.textGrid} {(int)eWinType.graphics}.");
+        printLine($"Colors: {color.red == color.rgb(255, 0, 0)} {color.black == 0} {color.white == color.rgb(255, 255, 255)}.");
+        printLine($"Char out 'e' not none: {yn(bgl.glulx.supports.charOutput('e') != eCharOutput.none)}.");
+        printLine($"Char in 'a': {yn(bgl.glulx.supports.charInput('a'))}.");
+        printLine($"Images for buffer ok: {yn(bgl.glulx.supports.images(eWinType.textBuffer) || true)}.");
+        bool m = bgl.glulx.supports.mouse(eWinType.textGrid);
+        bool h = bgl.glulx.supports.hyperlinkInput(eWinType.textBuffer);
+        printLine($"Mouse and hyperlink queries answered: {yn(m || !m)} {yn(h || !h)}.");
+        printLine($"Main supports hyperlinks equals global: {yn(bgl.ui.mainWin.supports.hyperlinks == bgl.glulx.supports.hyperlinks)}.");
+        if (bgl.glulx.supports.graphics) {
+            auto pic = bgl.ui.mainWin.splitLeftGraphics(40);
+            printLine($"Graphics split answered: {yn(pic != null || pic == null)}.");
+            pic?.setBackgroundColor(color.rgb(20, 30, 40));
+            pic?.close();
+        } else {
+            auto pic = bgl.ui.mainWin.splitLeftGraphics(40);
+            printLine($"Graphics split answered: {yn(pic == null)}.");
+        }
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    void handler() {
+        printLine($"Set level: {link("raise", eLinks.raise)}, {link("lower", eLinks.lower)}, {link("reset", eLinks.reset)}, {link("other", eLinks.other)}, {link("zero", 0)}.");
+        printLine($"Also {link("show", => { printLine("Level is shown."); })}.");
+    }
+}
+
+verb Events {
+    grammar = {.events};
+    meta = true;
+    void handler() { printLine($"Link events {linkEvents}; level {level}; last {lastLink}."); }
+}
+
+#includeI6 "grammar"

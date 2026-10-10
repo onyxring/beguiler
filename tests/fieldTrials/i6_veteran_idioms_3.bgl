@@ -1,0 +1,396 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: more code written in Inform 6 habits, on z8. Library constants set with #defineI6
+// (MAX_CARRIED, OBJECT_SCORE, ROOM_SCORE, NO_PLACES); an #i6 island declaring an Attribute, a
+// Property with a default, a Fake_action and an Array, each reached through extern; a routine
+// written in I6 with a #bgl island inside it, and $i6Expr over a Beguile local; entry points
+// BeforeParsing, UnknownVerb, ParseNumber, ParserError, InScope, NewRoom, LookRoutine, TimePasses
+// and DeathMessage; LibraryMessages cases on lm_n; extend of library verbs (synonyms, a word
+// evicted with grammar -=, grammar += with REVERSE); native verbs using NUMBER, TOPIC, an
+// attribute token, a NOUN(filter) token, a general parsing routine, MULTIHELD and a meta verb
+// class; a grammar object with explicit verbs; direction properties as routines and as strings;
+// a lockable container with with_key; a dark room lit by an after rule on SwitchOn; a Fake_action
+// run through RunRoutines; WriteListFrom with combined list styles; perform() from handlers.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 MAX_CARRIED 3
+#defineI6 OBJECT_SCORE 2
+#defineI6 ROOM_SCORE 4
+#defineI6 NO_PLACES
+
+const int MAX_SCORE = 6;
+
+#i6 {
+    Attribute rusty;
+    Property weight 1;
+    Array prices --> 3 5 7;
+}
+
+#includeI6 "parser"
+
+#i6 Fake_action Ping;
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Take:
+                if (lm_n == 12) rtrue("Your hands are full.^");
+            case Examine:
+                if (lm_n == 2) rtrue($"Nothing special about the {(object)lm_o}.^");
+            case Drop:
+                if (lm_n == 3) rtrue("Dropped, with a thud.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extern attribute rusty;
+extern property weight;
+extern verb Ping { }
+extern rawArray<int> prices;
+
+extend class object {
+    stringOrRoutine description;
+    stringOrRoutine cant_go;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object with_key;
+    int weight;
+}
+
+int g_inputs;     // lines the parser has seen
+int g_rooms;      // rooms entered
+int g_lit;        // set from inside an I6 routine
+bool g_passed;    // the guard has let the player by
+
+// An I6 routine with a Beguile island inside it.
+#i6 {
+    [ CountLit  x n;
+        objectloop (x has light) n++;
+        #bgl { g_lit = n; }
+        return n;
+    ];
+}
+extern int CountLit();
+
+int weightOf(object o) {
+    int t = 0;
+    object x;
+    for (x in o.children) t = t + x.weight;
+    return t;
+}
+
+// $i6Expr runs a Beguile call as one I6 expression over a Beguile local.
+int carried() {
+    int w;
+    #i6 w = $i6Expr(weightOf(player));
+    return w;
+}
+
+bool isEdible() { return noun.has(edible); }
+
+int parseColor() {
+    dictionaryWord w = NextWord();
+    if (w == .red) { parsed_number = 1; return 1; }
+    if (w == .blue) { parsed_number = 2; return 1; }
+    return -1;
+}
+
+// Entry points.
+extern default void BeforeParsing();   // as the binding declares it
+void BeforeParsing() { g_inputs++; }
+
+dictionaryWord UnknownVerb(dictionaryWord w) {
+    if (w == .grab) return .take;
+    return null;
+}
+
+// Roman numerals typed as a count of the letter i.
+int ParseNumber(rawArray<char> text, int length) {
+    int i;
+    for (i = 0; i < length; i++) if (text[i] != 'i') return 0;
+    return length;
+}
+
+bool ParserError(eParserError err) {
+    if (err == eParserError.cantSee) {
+        print("Nothing like that is here.^");
+        return true;
+    }
+    return false;
+}
+
+bool InScope(object who) {
+    if (scope_reason == eScopeReason.parsing && location == roomB) PlaceInScope(echo);
+    return false;
+}
+
+void NewRoom() { g_rooms++; }
+
+void LookRoutine() {
+    if (location == roomB) printLine("A draft blows through.");
+}
+
+void TimePasses() {
+    if (turns == 7) printLine("A bell rings in the distance.");
+}
+
+void DeathMessage() { print("You have jammed the machinery"); }
+
+// Rooms.
+object roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    n_to = roomC;
+    cant_go = "Only east and north lead anywhere.";
+    object s_to() {
+        if (g_passed) return roomD;
+        print("The guard blocks the way south.^");
+        rtrue;
+    }
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object roomC {
+    short_name = "Room C";
+    description = "Room C. The way out is south.";
+    s_to = roomA;
+}
+
+object roomD {
+    short_name = "Room D";
+    description = "Room D. A lever is here.";
+    n_to = roomA;
+    attributes = {light, scored};
+}
+
+class Coin : object {
+    name = {.coin, ..coins};
+    weight = 2;
+    description = "A coin.";
+}
+
+Coin copperCoin { short_name = "copper coin"; name = {.copper}; parent = roomA; }
+Coin silverCoin { short_name = "silver coin"; name = {.silver}; parent = roomA; }
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = roomA;
+}
+
+object ironKey {
+    short_name = "iron key";
+    name = {.iron, .key};
+    parent = roomA;
+    attributes = {rusty};
+}
+
+object chest {
+    short_name = "chest";
+    name = {.chest};
+    parent = roomA;
+    with_key = brassKey;
+    description = "A chest.";
+    bool before() {
+        switch (action) {
+            case Unlock:
+                if (second == ironKey) rtrue("The iron key is too rusty to turn.^");
+            case Ping: rtrue("The chest rings dully.^");
+        }
+        rfalse;
+    }
+    attributes = {container, openable, lockable, locked, static};
+}
+
+object gem {
+    short_name = "gem";
+    name = {.gem};
+    parent = chest;
+    description = "A gem.";
+    weight = 3;
+    attributes = {scored};
+}
+
+object lamp {
+    short_name = "lamp";
+    name = {.lamp};
+    parent = roomA;
+    description = "A lamp.";
+    bool after() {
+        switch (action) {
+            case SwitchOn: give(light);
+            case SwitchOff: ungive(light);
+        }
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+object apple {
+    short_name = "apple";
+    name = {.apple};
+    parent = roomB;
+    description = "An apple.";
+    attributes = {edible};
+}
+
+object echo {
+    short_name = "echo";
+    name = {.echo};
+    description = "An echo.";
+    bool before() {
+        switch (action) {
+            case Ping: rtrue("The echo answers.^");
+            case Take: rtrue("An echo cannot be taken.^");
+        }
+        rfalse;
+    }
+}
+
+object guard {
+    short_name = "guard";
+    name = {.guard};
+    parent = roomA;
+    description = "A guard.";
+    bool life() {
+        switch (action) {
+            case Show:
+                if (noun == brassKey) {
+                    g_passed = true;
+                    rtrue("The guard nods and steps aside.^");
+                }
+                rtrue("The guard shrugs.^");
+            case Give:
+                if (noun == brassKey) rtrue("The guard declines the brass key.^");
+            case Tell:
+                rtrue("The guard is not listening.^");
+        }
+        rfalse;
+    }
+    attributes = {animate, male, static};
+}
+
+// Verbs from the library, extended.
+extend Take { synonyms = {.nab}; }
+extend Drop { grammar -= { {.discard} }; }
+extend Give { grammar += { {.hand, CREATURE, HELD, REVERSE} }; }
+extend Examine { grammar += { {.inspect, NOUN} }; }
+
+grammar extras {
+    rule1 = {Examine, {.study, NOUN}};
+    array<grammarRule> rules = {
+        {Search, {.rummage, .in, NOUN}},
+        {Search, {.rummage, NOUN}},
+    };
+}
+
+// Native verbs.
+verb Dial {
+    grammar = {.dial, NUMBER};
+    void handler() { print($"Dialed {(int)noun}.^"); }
+}
+
+verb Note {
+    grammar = {.note, TOPIC};
+    void handler() {
+        int i;
+        print("Noted:");
+        wn = consult_from;
+        for (i = 0; i < consult_words; i++) print($" {NextWord()}");
+        print(".^");
+    }
+}
+
+verb Flip {
+    grammar = {.flip, switchable};
+    void handler() {
+        if (noun.has(on)) SwitchOff.perform(noun);
+        else SwitchOn.perform(noun);
+    }
+}
+
+verb Nibble {
+    grammar = {.nibble, NOUN(isEdible)};
+    void handler() {
+        noun.remove();
+        print($"You nibble the {noun}.^");
+    }
+}
+
+verb Paint {
+    grammar = {.paint, NOUN, parseColor};
+    void handler() { print($"Painted the {noun}, color {inp2}.^"); }
+}
+
+verb Stash {
+    grammar = {.stash, MULTIHELD, .in, NOUN};
+    void handler() {
+        noun.parent = second;
+        printLine("Stashed.");
+    }
+}
+
+verb Ring {
+    grammar = {.ring, NOUN};
+    void handler() {
+        verb saved = action;
+        action = Ping;
+        if (RunRoutines(noun, before)) return;
+        action = saved;
+        printLine("Nothing rings.");
+    }
+}
+
+verb Lever {
+    grammar = {.pull, .lever};
+    priority = 5;
+    void handler() {
+        if (location != roomD) { printLine("There is no lever here."); return; }
+        deadflag = 3;
+    }
+}
+
+class infoVerb : verb { meta = true; }
+
+infoVerb Status {
+    grammar = {.status};
+    void handler() {
+        print($"Inputs: {g_inputs}. Rooms: {g_rooms}. Lit: {CountLit()}/{g_lit}. Weight: {carried()}.^");
+        print($"Prices: {prices[0]} {prices[1]} {prices[2]}.^");
+        print($"Rusty: {ironKey.has(rusty)}. Weight of copper coin: {copperCoin.weight}. Of brass key: {brassKey.weight}.^");
+    }
+}
+
+infoVerb Contents {
+    grammar = {.contents, NOUN};
+    void handler() {
+        WriteListFrom(noun.child, eListStyle.english | eListStyle.defArt | eListStyle.recurse);
+        print("^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    return false;
+}

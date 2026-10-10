@@ -100,6 +100,9 @@ def check(path, keep, show):
     if not stories or re.search(r'Compiled with \d+ errors?', out) or 'Error running I6' in out:
         err = next((l for l in out.split('\n') if 'ERROR' in l or 'Error' in l), out.strip()[-300:])
         return name, 'COMPILE-FAIL', re.sub(r'^.*?/(?=[^/]*\.(bgl|inf)[:(])', '', err.strip())[:300], out
+    # A split library verb's emptied-declaration warning is beguiler's to hide (filterVerbSplitWarnings).
+    if 'Verb declaration no longer has any verbs associated' in out:
+        return name, 'COMPILE-FAIL', 'Inform 6 warned of a verb emptied by a split; beguiler should hide it', out
     story = os.path.join(work, stories[0])
     stdin = '\n'.join(c for c, _ in steps) + '\n'
     if story.endswith('.ulx'):

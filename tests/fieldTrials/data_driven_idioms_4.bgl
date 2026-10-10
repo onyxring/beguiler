@@ -1,0 +1,373 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a state machine held as data twice (a flat rawArray<int> next-state table indexed
+// state*events+event, and a value-class edge list edited at build time with extend ... { inject Type{ }
+// before [N] / move [N] last / remove [N] }) cross-checked by a validation pass, an event enum indexing
+// an array<func<void, Slot>> of actions, a slot pool of inline-positional objects with a per-instance
+// member array larger than a Z-machine property (separate storage) and a free list used as a queue,
+// enum members with explicit sparse values and a bnum mask array, linq filter/map/orderBy/takeWhile/
+// skip/take/distinct/any/all/count/first/last chains captured into typed arrays, array.sort with a
+// lambda comparator, a jagged array<array<string>>, an array<bool> seen map, an array<char> digit table
+// from a string used for hex printing, a file-scope rawArray<char> lookup, a for-in over an enum array,
+// and a const-sized array<int> ledger kept in parallel with the pool.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int SLOT_COUNT = 6;
+const int HIST_MAX = 40;
+const int EV_COUNT = 4;
+const int ST_COUNT = 4;
+
+enum eState { idle = 0, ready, busy, jam }
+enum eEvent { evFeed = 0, evBegin, evFinish, evKick }
+enum eKind { coin = 1, token = 5, chip = 10 }
+bnum eMark { fresh, worn, broken }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> stateNames = { "idle", "ready", "busy", "jam" };
+array<string> eventNames = { "feed", "begin", "finish", "kick" };
+array<eKind>  kindList   = { coin, token, chip };
+array<string> kindNames  = { "none", "coin", "?", "?", "?", "token", "?", "?", "?", "?", "chip" };
+
+// Next state for (state, event), indexed state*EV_COUNT+event; -1 means no move.
+rawArray<int> nextTab = {
+     1, -1, -1, -1,
+    -1,  2, -1,  3,
+    -1, -1,  0,  3,
+    -1, -1, -1,  0
+};
+
+rawArray<char> costTab = "0125";    // cost digit by state, read as characters
+
+array<char> digits = "0123456789abcdef";
+
+array<array<string>> routes = {
+    { "feed", "begin", "finish" },
+    { "feed", "begin", "kick", "kick" },
+    { "kick" }
+};
+
+array<eMark> marks = { fresh, worn | broken, 0, worn };
+
+array<bool> seen[ST_COUNT];
+array<int> ledger[SLOT_COUNT];
+
+value class Edge {
+    inline eState from;
+    inline eEvent on;
+    inline eState to;
+    inline int cost;
+    Edge operator = (Edge o) { from = o.from; on = o.on; to = o.to; cost = o.cost; return self; }
+}
+
+// The list is edited below: one row is missing, one is surplus. The cost is the cost of the target
+// state (costTab); the ready/kick row is deliberately wrong and the validation pass reports it.
+array<Edge> edges = {
+    Edge{ idle,  evFeed,   ready, 1 },
+    Edge{ busy,  evFinish, idle,  0 },
+    Edge{ ready, evKick,   jam,   3 },
+    Edge{ jam,   evKick,   idle,  0 },
+    Edge{ idle,  evBegin,  busy,  9 }
+};
+
+extend edges {
+    inject Edge{ ready, evBegin, busy, 2 } before [1];
+    inject Edge{ busy,  evKick,  jam,  5 } after [2];
+    move [5] last;
+    remove [5];
+}
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+class Place : object {
+    attributes = {light};
+}
+
+Place roomA { "Room A"; description = "Room A."; }
+
+class Slot : object {
+    inline instanceName;
+    inline eKind kind;
+    inline int qty;
+    array<int> history[HIST_MAX];
+    bool inUse = false;
+}
+
+Slot s0 = { "slot 0", coin, 3 };
+Slot s1 = { "slot 1", token, 2 };
+Slot s2 = { "slot 2", chip, 1 };
+Slot s3 = { "slot 3", coin, 0 };
+Slot s4 = { "slot 4", token, 0 };
+Slot s5 = { "slot 5", chip, 4 };
+
+array<Slot> pool = { s0, s1, s2, s3, s4, s5 };
+array<int> freeList[SLOT_COUNT] = { 3, 4 };
+
+eState cur = idle;
+int cursor = 0;
+
+//-- Actions -------------------------------------------------------------------
+
+void note(Slot s, int v) {
+    if (s.history.length < HIST_MAX) s.history += v;
+}
+
+void onFeed(Slot s)   { s.qty++; note(s, 100 + s.qty); }
+void onBegin(Slot s)  { note(s, 200); }
+void onFinish(Slot s) { if (s.qty > 0) s.qty--; note(s, 300 + s.qty); }
+void onKick(Slot s)   { s.qty = 0; note(s, 400); }
+
+array<func<void, Slot>> actions = { onFeed, onBegin, onFinish, onKick };
+
+//-- Lookups -------------------------------------------------------------------
+
+int nextOf(eState s, eEvent e) {
+    return nextTab[(int)s * EV_COUNT + (int)e];
+}
+
+int costOf(eState s) {
+    return costTab[(int)s] - '0';
+}
+
+int edgeIndex(eState s, eEvent e) {
+    for (int i = 0; i < edges.length; i++) {
+        if (edges[i].from == s && edges[i].on == e) return i;
+    }
+    return -1;
+}
+
+void printHex(int n) {
+    print($"{digits[(n >> 4) & 15]}{digits[n & 15]}");
+}
+
+void printMarks(eMark m) {
+    if (m == 0) { print("clean"); return; }
+    if ((m & fresh) != 0) print("fresh");
+    if ((m & worn) != 0) print("worn");
+    if ((m & worn) != 0 && (m & broken) != 0) print("+");
+    if ((m & broken) != 0) print("broken");
+}
+
+//-- Validation ----------------------------------------------------------------
+
+int validate() {
+    int bad = 0;
+    int live = 0;
+    for (int i = 0; i < ST_COUNT * EV_COUNT; i++) {
+        if (nextTab[i] != -1) live++;
+    }
+    if (live != edges.length) { print($"Edges: {edges.length} rows but {live} live cells.^"); bad++; }
+    for (int i = 0; i < edges.length; i++) {
+        Edge e = edges[i];
+        int t = nextOf(e.from, e.on);
+        if (t != (int)e.to) {
+            print($"Edge {i}: {stateNames[(int)e.from]} on {eventNames[(int)e.on]} gives {t}, not {(int)e.to}.^");
+            bad++;
+        }
+        if (e.cost != costOf(e.to)) {
+            print($"Edge {i}: cost {e.cost} but state cost {costOf(e.to)}.^");
+            bad++;
+        }
+    }
+    for (Slot s in pool) {
+        if (s.history.size != HIST_MAX) { print("Pool: history size wrong.^"); bad++; }
+    }
+    if (marks.length != 4) { print("Marks: length wrong.^"); bad++; }
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}.^");
+    return bad;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb FireTest {
+    grammar = {.fire, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= EV_COUNT) { print($"No event {n}.^"); return; }
+        eEvent ev = (eEvent)n;
+        int to = nextOf(cur, ev);
+        if (to < 0) {
+            print($"No move from {stateNames[(int)cur]} on {eventNames[n]}.^");
+            return;
+        }
+        Slot s = pool[cursor];
+        actions[n](s);
+        seen[(int)cur] = true;
+        int row = edgeIndex(cur, ev);
+        print($"{stateNames[(int)cur]} -> {stateNames[to]} (cost {edges[row].cost}), {s} qty {s.qty}.^");
+        cur = (eState)to;
+        seen[to] = true;
+    }
+}
+
+verb CursorTest {
+    grammar = {.cursor, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= pool.length) { print($"No slot {n}.^"); return; }
+        cursor = n;
+        print($"Cursor at {pool[n]}.^");
+    }
+}
+
+verb PoolTest {
+    grammar = {.pool};
+    void handler() {
+        for (int i = 0; i < pool.length; i++) {
+            Slot s = pool[i];
+            print($"{s}: {kindNames[(int)s.kind]} x{s.qty}, {s.history.length} entries{s.inUse ? ", in use" : ""}^");
+        }
+    }
+}
+
+verb GrabTest {
+    grammar = {.grab};
+    void handler() {
+        if (freeList.length == 0) { print("No free slot.^"); return; }
+        int i = freeList.dequeue();
+        Slot s = pool[i];
+        s.inUse = true;
+        ledger[i] = ledger[i] + 1;
+        print($"Grabbed {s}; {freeList.length} free.^");
+    }
+}
+
+verb DropTest {
+    grammar = {.drop, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= pool.length) { print($"No slot {i}.^"); return; }
+        Slot s = pool[i];
+        if (!s.inUse) { print($"{s} is not in use.^"); return; }
+        s.inUse = false;
+        s.history.clear();
+        freeList.enqueue(i);
+        print($"Dropped {s}; free list holds {freeList.length}, next {freeList.peek()}.^");
+    }
+}
+
+verb HistTest {
+    grammar = {.hist, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= pool.length) { print($"No slot {i}.^"); return; }
+        Slot s = pool[i];
+        print($"{s} history:");
+        for (int j = 0; j < s.history.length; j++) print($" {s.history[j]}");
+        if (s.history.length == 0) print(" empty");
+        print("^");
+    }
+}
+
+verb HexTest {
+    grammar = {.hex, NUMBER};
+    void handler() {
+        printHex((int)noun);
+        print("^");
+    }
+}
+
+verb StatsTest {
+    grammar = {.stats};
+    void handler() {
+        array<Slot> held = pool.filter((Slot s) => s.qty > 0);
+        print($"Stocked: {held.length} of {pool.length}, first {held.first()}, last {held.last()}.^");
+        print($"Empty count: {pool.filter((Slot s) => s.qty == 0).count()}.^");
+        print($"Any chip: {pool.any((Slot s) => s.kind == chip)}; all stocked: {pool.all((Slot s) => s.qty > 0)}.^");
+        array<int> qs = pool.map((Slot s) => s.qty);
+        int total = 0;
+        for (int q in qs) total += q;
+        print($"Total qty {total}.^");
+        array<eKind> kinds = pool.map((Slot s) => (int)s.kind);
+        array<eKind> uniq = kinds.distinct();
+        print($"Kinds:");
+        for (eKind k in uniq) print($" {kindNames[(int)k]}");
+        print("^");
+    }
+}
+
+verb SortedTest {
+    grammar = {.sorted};
+    void handler() {
+        array<Slot> byQty = pool.orderBy((Slot a, Slot b) => b.qty - a.qty);
+        print("By qty:");
+        for (Slot s in byQty) print($" {s}={s.qty}");
+        print("^");
+        array<Slot> top = byQty.takeWhile((Slot s) => s.qty > 1);
+        array<Slot> rest = byQty.skip(top.length).take(2);
+        print($"Above one: {top.length}; next two: {rest.length}, {rest.first()} then {rest.last()}.^");
+        array<Slot> view[SLOT_COUNT] = pool;
+        view.sort((Slot a, Slot b) => (int)a.kind - (int)b.kind);
+        print("By kind:");
+        for (Slot s in view) print($" {s}");
+        print("^");
+    }
+}
+
+verb RouteTest {
+    grammar = {.route, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= routes.length) { print($"No route {n}.^"); return; }
+        array<string> r = routes[n];
+        eState at = idle;
+        print($"Route {n} ({r.length} steps):");
+        for (int i = 0; i < r.length; i++) {
+            int e = -1;
+            for (int k = 0; k < EV_COUNT; k++) {
+                if (eventNames[k] == r[i]) { e = k; break; }
+            }
+            int to = (e < 0) ? -1 : nextOf(at, (eEvent)e);
+            if (to < 0) { print($" {r[i]}:stuck in {stateNames[(int)at]}"); break; }
+            print($" {r[i]}>{stateNames[to]}");
+            at = (eState)to;
+        }
+        print("^");
+    }
+}
+
+verb SeenTest {
+    grammar = {.seen};
+    void handler() {
+        print("Seen:");
+        for (int i = 0; i < seen.size; i++) {
+            if (seen[i]) print($" {stateNames[i]}");
+        }
+        print("^");
+    }
+}
+
+verb MarksTest {
+    grammar = {.marks};
+    void handler() {
+        for (eMark m in marks) { printMarks(m); print(";"); }
+        print("^");
+        print($"Ledger: {ledger[0]} {ledger[1]} {ledger[2]} {ledger[3]} {ledger[4]} {ledger[5]}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    rfalse;
+}
+
+#includeI6 "grammar"

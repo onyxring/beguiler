@@ -1,0 +1,68 @@
+Room A
+Room A.
+You can see a duck, a penguin and a furnace here.
+> vecs
+a (1, 2), b (3, 4), c (4, 6), d (9, 11).
+c (5, 8), a (2, 3), b (13, 14).
+c (7, 8); c[0] + c[1] = 15.
+Squared length of a: 13; scaled (6, 9); unit (1, 1).
+a shares a row or column with (2, 99).
+a shares nothing with the origin.
+Origin is empty.
+a differs from b and equals (2, 3).
+Made 10.
+> copies
+p (1, 2, 3), q (1, 2, 30), flat (50, 2).
+  inside: (100, 0)
+After copy: (0, 0).
+After ref: (100, 0).
+Through ref: (9, 9).
+Rebound: (51, 2) and (9, 9).
+> chain
+Chain total 321; from n2 320; from n3 300.
+Skipping n2: from n1 301.
+Five steps round the ring from n3 reach node 20.
+> shapes
+r1 (rect): area 6.
+sq1 (square): area 16.
+tri (triangle): area 6.
+Square as rect: 16; base cast: 0.
+Shape version: shape.
+> multi
+Duck flies, as swimmer swims.
+Penguin swims, as flyer flies.
+Climb up; altitude 8, depth 2.
+Dive to 6, altitude 8.
+Notes: int, string.
+Swimmer note: flyer
+> pool
+Pool exhausted.
+slot 1 at (10, 20); slot 2 at (99, 40); mark 7; live 3.
+  released slot 2, live 2.
+slot 5: span 2, pos (1, 1), live 3.
+  released slot 1, live 2.
+  released slot 3, live 1.
+  released slot 5, live 0.
+> heat
+After ++: 3.
+After prefix ++: 12.
+After += 2: 42.
+Scale 1, set 5: 5.
+After -= 20: 0.
+Sum 1.
+> versions
+v2.1 v1.0 v1.3
+v1.0 v1.3 v2.1
+v13 <=> v21 = -1.
+Ordering derived from <=>.
+v13 equals v13b by value.
+Identity: false.
+> gadgets
+gadget one: power 5, code G-1, weight 9, spare 4.
+g2: power 8, code G-2, weight 11, spare 6.
+> bags
+Picked bag of 1.
+Picked bag of 4.
+Described: several.
+Empty bag is absent.
+Matches many.

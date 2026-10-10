@@ -1,0 +1,141 @@
+/*  Field trial part — included by library_author_idioms_3.bgl. Not a trial on its own.  */
+
+#once
+
+#message "library_author_idioms_3: core part"
+
+// The consumer sets LA3_SLOTS with #defineI6 before the includes.
+#if LA3_SLOTS > 4
+    const int la3Slots = 4;
+#elif LA3_SLOTS > 1
+    const int la3Slots = LA3_SLOTS;
+#else
+    const int la3Slots = 1;
+#endif
+
+// Raw I6 the kit places: a constant from settings at the top, a routine at the end, and a global
+// that a startup block fills in.
+#emitfirst {
+    Constant LA3_POOL = ##beguilerSettings.framePoolSize;
+    Global la3_boot = 0;
+}
+#emitlast {
+    [ La3_Tail; print "Tail routine ran.^"; ];
+}
+#startup { la3_boot = 7; }
+
+extern const int LA3_POOL;
+extern int la3_boot;
+extern void La3_Tail();
+
+attribute la3Marked asI6 la3_marked;
+
+// Output helpers: an overload set, a forwarding emitter, and a value emitter.
+emitter void la3Show(string s)  { print (string) $s; new_line; }
+emitter void la3Show(int n)     { print $n; new_line; }
+emitter void la3Show(var v)     { $i6Expr(print($v)); new_line; }
+emitter void la3Rule            { print "--"; new_line; }
+emitter void la3Break() {
+##if TARGET_GLULX
+    glk_put_char(10);
+##else
+    new_line;
+##endif
+}
+
+
+/// Marks an object from the outside; the receiver is the object that owns the member.
+emitter class la3Mark {
+    void set()   { give $host $i6Name(la3Marked); }
+    void clear() { give $host ~$i6Name(la3Marked); }
+    bool isSet() { ($host has $i6Name(la3Marked)) }
+}
+
+/// The kinds of thing a holder keeps.
+enum eLa3Kind {
+    coin, gem, scroll,
+    emitter int weight { ($self * 10) }
+}
+
+/// Number helpers, one overloaded.
+class la3Num {
+    static int scale(int a)         { return a * 2; }
+    static int scale(int a, int b)  { return a * b; }
+    static superposed int cube(int a) { return a * a * a; }
+}
+emitter int la3Scale3(int a, int b) { $i6Name(la3Num.scale(int, int))($a, $b) }
+
+// An accessor that keeps its value between 0 and 9.
+value class la3Clamp {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int n) {
+        if (n < 0) n = 0;
+        if (n > 9) n = 9;
+        _v = n;
+    }
+}
+
+/// Called after a holder changes; the consumer may replace it.
+literal func<void, la3Holder, int> la3OnFill;
+literal func<void> la3TickHook;
+
+/// Something that keeps a bounded amount of a kind of thing.
+class la3Holder : object {
+    required string tag();
+    la3Clamp fill;
+    la3Mark  mark;
+    eLa3Kind kind = coin;
+    static int made = 0;
+    int taken = 0;
+
+    /// Adds to the amount.
+    void add(int n) {
+        fill = fill + n;
+        taken++;
+        la3Holder.made = la3Holder.made + 1;
+        if (la3OnFill != null) la3OnFill(self, fill);
+    }
+    default string note() { return "plain"; }
+    void report() {
+        print($"{tag()}: {fill} of 9, kind weight {kind.weight}, {note()}.^");
+    }
+}
+
+/// A holder whose amount can only be read through its own type.
+class la3Sealed : la3Holder {
+    hide fill.operator =;
+    string note() { return "sealed"; }
+}
+
+/// One I6 routine per instance.
+class la3Counter : object {
+    int tally = 0;
+    emitter void _bglGlobalDeclaration() {
+        [ $selfsub;
+            $self.$i6Name(la3Counter.tally)++;
+            return $self.$i6Name(la3Counter.tally);
+        ];
+    }
+}
+
+// The stub the I6 library provides; the kit defines it.
+int la3Turns = 0;
+void TimePasses() {
+    la3Turns++;
+    if (la3TickHook != null) la3TickHook();
+}
+
+/// Kit namespace for types.
+object la3Lib {
+    alias holder for la3Holder;
+    alias kind   for eLa3Kind;
+}
+
+/// Formatting, reached through the la3 emitter class.
+emitter class la3Fmt {
+    void bar()               { print "[=]"; }
+    int  width               { 6 }
+}
+emitter class la3 { }
+extend class la3 { la3Fmt fmt; }

@@ -1,0 +1,39 @@
+/*  Field trial part — included by library_author_idioms_4.bgl. Not a trial on its own.  */
+
+#once
+
+// Names the kit takes from hand-written I6.
+#i6 {
+    Constant LA4_LOW = 1;
+    Constant LA4_HIGH = 2;
+    Attribute la4_seen;
+    Property la4_rank 0;
+    Object la4_raw "raw thing" with la4_rank 7;
+    [ La4_Triple n; return n * 3; ];
+}
+
+extern enum eLa4Band { LA4_LOW, LA4_HIGH }
+extern attribute la4_seen asBgl seen;
+extern property la4_rank;
+extern int La4_Triple(int n) asBgl la4Triple;
+extern object la4_raw {
+    int la4_rank;
+}
+
+emitter bool la4IsHigh(eLa4Band b) { ($b == LA4_HIGH) }
+
+// A routine that moves between the two languages and back.
+int la4Mix(int a) {
+    int n = a;
+    #i6 n = $i6Expr(la4Triple(n));
+    #i6 {
+        n = n + 1;
+        #bgl { n = n * 2; }
+    }
+    return n;
+}
+
+// The library stub, supplied by the kit.
+extern default void BeforeParsing();
+int la4Commands = 0;
+void BeforeParsing() { la4Commands++; }

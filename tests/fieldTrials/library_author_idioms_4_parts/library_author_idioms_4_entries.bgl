@@ -1,0 +1,34 @@
+/*  Field trial part — included by library_author_idioms_4.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_4_core"
+
+/// Called when an entry is touched; the consumer may fill it.
+literal func<void, la4Entry, int> la4OnTouch;
+
+/// Something with a level, flags and a label.
+class la4Entry : object {
+    int id = 0;
+    int level asI6 la4_level = 1;
+    eLa4Flag flags = sticky;
+    default string kindName() { return "entry"; }
+    required string label();
+
+    /// Raises the level, within the cap.
+    void touch() {
+        if (id == 0) id = la4Stats.nextId();
+        level = la4Lib.tools.clampTo(level + 1);
+        la4Stats.touches++;
+        if (la4OnTouch != null) la4OnTouch(self, level);
+    }
+    void summary() {
+        print($"{label()} ({kindName()}) level {level}");
+    }
+}
+
+/// An entry that cannot be raised.
+class la4Fixed : la4Entry {
+    hide level;
+    string kindName() { return "fixed"; }
+    void touch() { print("Fixed.^"); }
+}

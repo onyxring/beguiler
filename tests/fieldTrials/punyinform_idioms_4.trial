@@ -1,0 +1,144 @@
+Room A
+Room A. A gate is east.
+You can see a copper coin, a clay jug (which is empty), a hemp rope, a rubber ball, a wooden crate, a field book, a wicker basket (which is empty) and a guard here.
+> x pillar
+A stone pillar.
+> inspect pillar
+A stone pillar.
+> moods
+Mood: calm
+> flags
+> dig ground
+You dig a hole.
+[The score has just gone up by 3 points.]
+> dig ground
+The hole is already dug.
+> flags
+Flag 1: dug
+> fill jug
+(first taking the clay jug)
+You fill the jug.
+[The score has just gone up by 1 point.]
+> fill jug
+The jug is full.
+> empty jug
+You pour the jug out.
+> tie rope
+You tie the rope.
+> burn rope
+The rope burns.
+> flags
+Flag 1: dug
+Flag 3: burnt
+> inventory tall
+You're carrying:
+  a clay jug (which is empty)
+> i
+You're carrying:
+  a clay jug (which is empty)
+> inventory wide
+You're carrying a clay jug (which is empty).
+> counts
+Things 0, places 0, score 4/8.
+Inventory style 1, look mode 1.
+> consult book about alpha
+Alpha is the first entry.
+> consult book about beta gamma
+No entry; 2 word(s) of 4 letters.
+> tell guard about coin
+The guard listens, 1 time(s).
+> ask guard about gate
+The guard says nothing useful.
+> give coin to guard
+(first taking the copper coin)
+The guard pockets the coin.
+[The score has just gone up by 2 points.]
+> fullscore
+The score is made up as follows:
+     2  for the coin
+     3  for the hole
+     1  for the jug
+     6 total (out of 8)
+> score
+You have so far scored 6 out of a possible 8, in 17 turns.
+> push crate north
+It will not go that way.
+> doors
+Gate leads to Room B.
+Gate is east.
+> msg
+You would achieve nothing by this.
+> run guard
+A guard.
+Ran 1.
+A guard.
+Him is set.
+> peek at table
+You peek at the stone table.
+> open gate
+You open the iron gate.
+> push crate east
+The crate slides east.
+> take ball
+Taken.
+[The score has just gone up by 1 point.]
+> guard, jump
+The guard glares.
+> moods
+Mood: angry
+> east
+The guard bars the way east.
+> give book to guard
+(first taking the field book)
+The guard takes the field book and calms down.
+> give jug to guard
+The guard doesn't seem interested.
+> moods
+Mood: calm
+> east
+You leave Room A.
+Room B
+Room B. Room A is west.
+You can see a wooden crate and a stone table here.
+[The score has just gone up by 1 point.]
+> counts
+Things 1, places 1, score 8/8.
+Inventory style 1, look mode 1.
+> throw ball at window
+The ball bounces off the window.
+> take ball
+Taken.
+> throw ball at window
+The ball bounces off the window.
+> put jug on table
+You set the clay jug on the table.
+You put the clay jug on the stone table.
+> take jug from table
+You lift the clay jug off the table.
+Removed.
+> stamp
+Time 515, statusline 1, waiting 0.
+> wait 3 turns
+Time passes.
+> wait until 9:00
+Time passes.
+> wait for 1 hour
+Time passes.
+> stamp
+Time 600, statusline 1, waiting 0.
+> west
+Room A
+You can see a hemp rope, a wicker basket (which is empty) and a guard here.
+> counts
+Things 1, places 1, score 8/8.
+Inventory style 1, look mode 1.
+> give rope
+(first taking the hemp rope)
+(assuming to the guard)
+The guard doesn't seem interested.
+> i
+You're carrying a hemp rope and a clay jug (which is empty).
+> take all
+wicker basket: Taken.
+> i
+You're carrying a wicker basket (which is empty), a hemp rope and a clay jug (which is empty).

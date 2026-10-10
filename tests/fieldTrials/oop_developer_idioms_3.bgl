@@ -1,0 +1,427 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, third pass. A value-class
+// hierarchy whose subclass chains its copy operator with `(Base)self = o`; operators overloaded by
+// right-hand type (`+` with a value and with an int), postfix and prefix `++`, `+=`, `!`, `[]` and
+// `[]=`, `?=`, an explicit conversion, and an operator and a static factory added with `extend class`;
+// value parameters against `ref` parameters; a linked chain of value nodes with a `ref` member, walked
+// with a `ref` local rebound by `:=`; `required` members and a `required default` routine met by a
+// class or by the object; multiple inheritance with a name clash resolved by base casts, and methods
+// overloaded by parameter type; a pooled class with `create`
+// arguments, owned value members reset by `new`, and `destroy`; an inline accessor reaching its host
+// through `outer`, driven by `+=` and `-=`; static `<=>` and `==` on a reference class, used in
+// expressions and through `Type::operator`; positional `inline` members extended by `extend class`;
+// emitter `operator ?` on a class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Value classes ---------------------------------------------------------------------------------
+
+value class Vec2 {
+    static int Made = 0;
+    int X;
+    int Y;
+
+    Vec2 operator = (Vec2 o) { X = o.X; Y = o.Y; return self; }
+    Vec2 operator + (Vec2 o) { return Vec2.Of(X + o.X, Y + o.Y); }
+    Vec2 operator + (int k) { return Vec2.Of(X + k, Y + k); }
+    Vec2 operator += (Vec2 o) { X += o.X; Y += o.Y; return self; }
+    void operator ++ () { X++; Y++; }
+    void operator prefix++ () { X = X + 10; Y = Y + 10; }
+    bool operator == (Vec2 o) { return X == o.X && Y == o.Y; }
+    bool operator != (Vec2 o) { return !(X == o.X && Y == o.Y); }
+    bool operator ! () { return X == 0 && Y == 0; }
+    bool operator ?= (Vec2 o) { return X == o.X || Y == o.Y; }
+    int operator [] (int i) { return i == 0 ? X : Y; }
+    int operator []= (int i, int v) {
+        if (i == 0) X = v; else Y = v;
+        return v;
+    }
+    explicit int operator () { return X * X + Y * Y; }
+
+    void print() { print($"({X}, {Y})"); }
+
+    static Vec2 Of(int x, int y) {
+        Vec2 v;
+        v.X = x;
+        v.Y = y;
+        Vec2.Made++;
+        return v;
+    }
+}
+
+extend class Vec2 {
+    Vec2 operator * (int k) { return Vec2.Of(X * k, Y * k); }
+    static Vec2 Unit() { return Vec2.Of(1, 1); }
+}
+
+value class Vec3 : Vec2 {
+    int Z;
+
+    Vec3 operator = (Vec3 o) { Z = o.Z; (Vec2)self = o; return self; }
+    replace void print() { print($"({X}, {Y}, {Z})"); }
+}
+
+value class Node {
+    int Id;
+    ref Node Next;
+    Node operator = (Node o) { Id = o.Id; return self; }
+}
+
+Node n1;
+Node n2;
+Node n3;
+
+void Bump(ref Vec2 v) { v.X += 100; }
+void BumpCopy(Vec2 v) { v.X += 100; printLine($"  inside: {v}"); }
+
+int SumChain(ref Node head) {
+    int total = 0;
+    ref Node cur := head;
+    for (;;) {
+        if (!cur) break;
+        total += cur.Id;
+        cur := cur.Next;
+    }
+    return total;
+}
+
+//-- Required members ------------------------------------------------------------------------------
+
+class Shape : object {
+    required string Label;
+    required int Area();
+    required default string Kind() { return "shape"; }
+
+    void Report() { printLine($"{Label} ({Kind()}): area {Area()}."); }
+}
+
+class Rect : Shape {
+    int W;
+    int H;
+    int Area() { return W * H; }
+    string Kind() { return "rect"; }
+}
+
+class Square : Rect {
+    int Side;
+    replace int Area() { return Side * Side; }
+    replace string Kind() { return "square"; }
+}
+
+Rect r1     { Label = "r1"; W = 2; H = 3; }
+Square sq1  { Label = "sq1"; Side = 4; }
+Shape tri   { Label = "tri"; int Area() { return 6; } string Kind() { return "triangle"; } }
+
+//-- Multiple inheritance --------------------------------------------------------------------------
+
+class Flyer : object {
+    int Altitude = 5;
+    default string Move() { return "flies"; }
+    string Note(int n) { return "int"; }
+    string Note(string s) { return "string"; }
+}
+
+class Swimmer : object {
+    int Depth = 2;
+    default string Move() { return "swims"; }
+    void Note(Flyer f) { print("flyer"); }
+}
+
+class Duck : Flyer, Swimmer {
+    string Climb() { Altitude += 3; return "up"; }
+    void Dive() { Depth += 4; printLine($"Dive to {Depth}, altitude {Altitude}."); }
+}
+
+class Penguin : Flyer, Swimmer {
+    replace string Move() { return ((Swimmer)self).Move(); }
+}
+
+Duck duckA       { "duck"; name = {.duck}; parent = roomA; }
+Penguin penguinA { "penguin"; name = {.penguin}; parent = roomA; }
+
+//-- Pooled classes --------------------------------------------------------------------------------
+
+value class Coins {
+    int Cents;
+    Coins operator = (Coins o) { Cents = o.Cents; return self; }
+    void print() { print($"{Cents}c"); }
+}
+
+class Slot[3] : object {
+    static int Live = 0;
+    int Id;
+    int Mark = 7;
+    int Span = 2;
+    Vec2 Pos;
+
+    void create(int number, int x, int y) { Id = number; Pos.X = x; Pos.Y = y; Slot.Live++; }
+    void destroy() { Slot.Live--; printLine($"  released {self}, live {Slot.Live}."); }
+    void print() { print($"slot {Id}"); }
+}
+
+//-- Accessor reaching its host --------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object furnace {
+    "furnace";
+    name = {.furnace};
+    parent = roomA;
+    int Scale = 3;
+    auto Heat = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            if (v < 0) v = 0;
+            _raw = v * outer.Scale;
+        }
+    }
+}
+
+//-- Static comparison on a reference class --------------------------------------------------------
+
+class Ver : object {
+    inline const int Major;
+    inline const int Minor;
+
+    static int operator <=> (Ver a, Ver b) {
+        if (a.Major != b.Major) return a.Major - b.Major;
+        return a.Minor - b.Minor;
+    }
+    static bool operator == (Ver a, Ver b) { return a.Major == b.Major && a.Minor == b.Minor; }
+    void print() { print($"v{Major}.{Minor}"); }
+}
+
+Ver v21 = Ver{ 2, 1 };
+Ver v10 = Ver{ 1, 0 };
+Ver v13 = Ver{ 1, 3 };
+Ver v13b = Ver{ 1, 3 };
+
+array<Ver> Versions = { v21, v10, v13 };
+
+//-- Positional members ----------------------------------------------------------------------------
+
+class Gadget : object {
+    inline int Power;
+    inline const string Code;
+    int Spare;
+}
+
+extend class Gadget {
+    inline int Weight;
+    inline Spare;
+}
+
+Gadget g1 { 5, "G-1", 9, 4, "gadget one"; }
+Gadget g2 { 8, "G-2"; Weight = 11; Spare = 6; }
+
+//-- Query operator --------------------------------------------------------------------
+
+class Bag : object {
+    int Count;
+    emitter eBool operator ? () { $self.Count > 0 }
+    emitter eBool operator switch (Bag v) { $self.Count == $v.Count }
+    string Describe() { return Count > 1 ? "several" : "one"; }
+    void print() { print($"bag of {Count}"); }
+}
+
+Bag emptyBag { Count = 0; }
+Bag oneBag   { Count = 1; }
+Bag manyBag  { Count = 4; }
+Bag fourBag  { Count = 4; }
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Vecs {
+    grammar = {.vecs};
+    void handler() {
+        Vec2 a = Vec2.Of(1, 2);
+        Vec2 b = Vec2.Of(3, 4);
+        Vec2 c = a + b;
+        Vec2 d = c + 5;
+        printLine($"a {a}, b {b}, c {c}, d {d}.");
+        c += a;
+        a++;
+        ++b;
+        printLine($"c {c}, a {a}, b {b}.");
+        c[0] = 7;
+        printLine($"c {c}; c[0] + c[1] = {c[0] + c[1]}.");
+        printLine($"Squared length of a: {(int)a}; scaled {a * 3}; unit {Vec2.Unit()}.");
+        if (a ?= Vec2.Of(2, 99)) printLine("a shares a row or column with (2, 99).");
+        if (!(a ?= Vec2.Of(0, 0))) printLine("a shares nothing with the origin.");
+        if (!Vec2.Of(0, 0)) printLine("Origin is empty.");
+        if (a != b && a == Vec2.Of(2, 3)) printLine("a differs from b and equals (2, 3).");
+        printLine($"Made {Vec2.Made}.");
+    }
+}
+
+verb Copies {
+    grammar = {.copies};
+    void handler() {
+        Vec3 p;
+        p.X = 1; p.Y = 2; p.Z = 3;
+        Vec3 q = p;
+        q.Z = 30;
+        Vec2 flat = p;
+        flat.X = 50;
+        printLine($"p {p}, q {q}, flat {flat}.");
+        Vec2 target = Vec2.Of(0, 0);
+        BumpCopy(target);
+        printLine($"After copy: {target}.");
+        Bump(target);
+        printLine($"After ref: {target}.");
+        ref Vec2 viaRef := target;
+        viaRef.Y = 8;
+        viaRef = Vec2.Of(9, 9);
+        printLine($"Through ref: {target}.");
+        viaRef := flat;
+        viaRef.X++;
+        printLine($"Rebound: {flat} and {target}.");
+    }
+}
+
+verb Chain {
+    grammar = {.chain};
+    void handler() {
+        printLine($"Chain total {SumChain(n1)}; from n2 {SumChain(n2)}; from n3 {SumChain(n3)}.");
+        n1.Next := n3;
+        printLine($"Skipping n2: from n1 {SumChain(n1)}.");
+        n1.Next := n2;
+        n3.Next := n1;
+        ref Node walker := n3;
+        int steps = 0;
+        while (steps < 5) { walker := walker.Next; steps++; }
+        printLine($"Five steps round the ring from n3 reach node {walker.Id}.");
+    }
+}
+
+verb Shapes {
+    grammar = {.shapes};
+    void handler() {
+        r1.Report();
+        sq1.Report();
+        tri.Report();
+        Rect asRect = sq1;
+        printLine($"Square as rect: {asRect.Area()}; base cast: {((Rect)sq1).Area()}.");
+        printLine($"Shape version: {((Shape)r1).Kind()}.");
+    }
+}
+
+verb MultiTest {
+    grammar = {.multi};
+    void handler() {
+        printLine($"Duck {duckA.Move()}, as swimmer {((Swimmer)duckA).Move()}.");
+        printLine($"Penguin {penguinA.Move()}, as flyer {((Flyer)penguinA).Move()}.");
+        printLine($"Climb {duckA.Climb()}; altitude {duckA.Altitude}, depth {duckA.Depth}.");
+        duckA.Dive();
+        printLine($"Notes: {duckA.Note(3)}, {duckA.Note("x")}.");
+        print("Swimmer note: ");
+        ((Swimmer)duckA).Note(penguinA);
+        printLine();
+    }
+}
+
+verb PoolTest {
+    grammar = {.pool};
+    void handler() {
+        Slot s1 = new Slot(1, 10, 20);
+        Slot s2 = new Slot(2, 30, 40);
+        s2.Span = 9;
+        s2.Pos.X = 99;
+        Slot s3 = new Slot(3, 50, 60);
+        Slot s4 = new Slot(4, 0, 0);
+        if (s4 == null) printLine("Pool exhausted.");
+        printLine($"{s1} at {s1.Pos}; {s2} at {s2.Pos}; mark {s3.Mark}; live {Slot.Live}.");
+        delete s2;
+        Slot s5 = new Slot(5, 1, 1);
+        printLine($"{s5}: span {s5.Span}, pos {s5.Pos}, live {Slot.Live}.");
+        delete s1;
+        delete s3;
+        delete s5;
+    }
+}
+
+verb Heat {
+    grammar = {.heat};
+    void handler() {
+        furnace.Heat++;
+        printLine($"After ++: {furnace.Heat}.");
+        ++furnace.Heat;
+        printLine($"After prefix ++: {furnace.Heat}.");
+        furnace.Heat += 2;
+        printLine($"After += 2: {furnace.Heat}.");
+        furnace.Scale = 1;
+        furnace.Heat = 5;
+        printLine($"Scale 1, set 5: {furnace.Heat}.");
+        furnace.Heat -= 20;
+        printLine($"After -= 20: {furnace.Heat}.");
+        int h = furnace.Heat + furnace.Scale;
+        printLine($"Sum {h}.");
+        furnace.Scale = 3;
+        furnace.Heat = 0;
+    }
+}
+
+verb VersionList {
+    grammar = {.versions};
+    void handler() {
+        for (Ver v in Versions) print($"{v} ");
+        printLine();
+        Versions.sort(Ver::operator <=>);
+        for (Ver v in Versions) print($"{v} ");
+        printLine();
+        printLine($"v13 <=> v21 = {v13 <=> v21}.");
+        if (v13 < v21 && v21 > v10 && v13 >= v13b) printLine("Ordering derived from <=>.");
+        if (v13 == v13b) printLine("v13 equals v13b by value.");
+        printLine($"Identity: {(object)v13 == (object)v13b}.");
+    }
+}
+
+verb Gadgets {
+    grammar = {.gadgets};
+    void handler() {
+        printLine($"{g1}: power {g1.Power}, code {g1.Code}, weight {g1.Weight}, spare {g1.Spare}.");
+        printLine($"g2: power {g2.Power}, code {g2.Code}, weight {g2.Weight}, spare {g2.Spare}.");
+    }
+}
+
+verb Bags {
+    grammar = {.bags};
+    void handler() {
+        Bag pick = emptyBag ?? oneBag;
+        printLine($"Picked {pick}.");
+        Bag pick2 = manyBag ?? oneBag;
+        printLine($"Picked {pick2}.");
+        printLine($"Described: {manyBag?.Describe()}.");
+        if (!emptyBag?) printLine("Empty bag is absent.");
+        switch (fourBag) {
+            case oneBag:  printLine("Matches one.");
+            case manyBag: printLine("Matches many.");
+            default:      printLine("No match.");
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    n1.Id = 1; n2.Id = 20; n3.Id = 300;
+    n1.Next := n2;
+    n2.Next := n3;
+    rfalse;
+}
