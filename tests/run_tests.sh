@@ -5,6 +5,7 @@
 #   • Positive baselines: test_*.bgl, test_*.inf  — must compile; .transpiled.inf must match
 #                                                    captured baseline at <baselineDir>/<basename>.baseline.
 #                                                    May also declare `// EXPECT_WARNING: <substring>`
+#                                                    or `// EXPECT_NO_WARNING: <substring>`
 #                                                    lines, each of which must appear on stderr — a
 #                                                    warning never reaches the .inf, so a baseline
 #                                                    alone cannot tell if one stops firing.
@@ -111,6 +112,21 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
                     continue 2
                 fi
             done <<< "$want_warn"
+        fi
+
+        # And diagnostics it must not produce: a warning that fires where it shouldn't.
+        no_warn=$(grep -E '^[[:space:]]*//[[:space:]]*EXPECT_NO_WARNING:' "$src" \
+            | sed -E 's|^[[:space:]]*//[[:space:]]*EXPECT_NO_WARNING:[[:space:]]*||')
+        if [ -n "$no_warn" ]; then
+            while IFS= read -r needle; do
+                [ -z "$needle" ] && continue
+                if echo "$compile_stderr" | grep -qF -- "$needle"; then
+                    echo "  FAIL: $name — unexpected warning emitted: '$needle'"
+                    FAIL=$((FAIL + 1))
+                    cleanup
+                    continue 2
+                fi
+            done <<< "$no_warn"
         fi
 
         baseline="$BASELINE_DIR/${name}.baseline"
