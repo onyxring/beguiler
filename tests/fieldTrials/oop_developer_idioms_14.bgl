@@ -24,7 +24,7 @@
 #define AUDIT_LEVEL 2
 #define STRICT_MASS
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

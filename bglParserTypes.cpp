@@ -1337,6 +1337,8 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
     size_t posIdx = 0;   // count of POSITIONAL args seen so far (named args don't advance it)
     token firstArgTok = file.getToken();
     while(firstArgTok.isNot(token::parenClose)){
+        if(firstArgTok.is(token::comma))
+            parsingError(format("Argument {0} is missing: nothing comes before its ','.", result.args.size() + 1));
         // Named argument detection: identifier followed by ':'
         string namedArgName;
         if(firstArgTok.is(eTokenType::name) && file.peekToken(1).is(":")){
@@ -1503,6 +1505,7 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
     // If no global found, check for func<> variable
     if(result.nameMatch == nullptr){
         string varType = resolveIdentifierType(name, func, body);
+        result.varType = varType;
         if(varType.rfind("func<", 0) == 0)
             if(vector<string> targs = funcTypeArgs(varType); !targs.empty()) result.funcVarReturnType = targs[0];
     }
@@ -1513,7 +1516,8 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
 // Called after resolveGlobalCall; issues parsingError if validation fails.
 // Returns the resolved function's return type name.
 
-string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, size_t argCount){
+string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, const vector<expression*>& args){
+    size_t argCount = args.size();
     if(!gcm.funcVarReturnType.empty()) return gcm.funcVarReturnType;
     if(gcm.nameMatch == nullptr){
         // Loose mode (#bgl{} content): unresolved function names are assumed to be I6
@@ -1524,6 +1528,9 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
         if(funcName.size() > 9 && strncasecmp(funcName.c_str(), "_bglVerb_", 9) == 0)
             parsingError(format("'{0}' names both a verb and a function; a verb is a global name, so rename one "
                                 "of them.", funcName.substr(9)));
+        if(!gcm.varType.empty())
+            parsingError(format("'{0}' is a variable of type '{1}', not a function, so it can't be called.",
+                                funcName, typeDisplayName(gcm.varType)));
         parsingError(format("Undeclared function '{0}'", funcName));
     }
     string dispName = gcm.nameMatch ? gcm.nameMatch->dName() : funcName;
@@ -1542,7 +1549,25 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
             gcm.match = gcm.nameMatch;
             return gcm.match->returnType.name;
         }
-        parsingError(format("No overload of function '{0}' accepts these argument types", dispName));
+        string provided, detail;
+        for(size_t i = 0; i < args.size(); i++){
+            if(i) provided += ", ";
+            provided += args[i]->resolvedType.empty() ? "?" : typeDisplayName(args[i]->resolvedType);
+        }
+        for(typeDef* g : languageService.globals){
+            auto* fd = dynamic_cast<functionDef*>(g);
+            if(fd == nullptr || fd->name != gcm.nameMatch->name || fd->isPrePassStub || fd->params.size() < args.size()) continue;
+            detail += "\n  candidate: " + formatSignature(fd);
+            for(size_t i = 0; i < args.size(); i++){
+                string argType = args[i]->resolvedType, paramType = fd->params[i]->type.name;
+                if(paramType == "var" || argType.empty() || isTypeCompatible(argType, paramType)) continue;
+                detail += format("\n    arg {0}: '{1}' is not compatible with parameter '{2} {3}'",
+                                 i + 1, typeDisplayName(argType), typeDisplayName(paramType), fd->params[i]->dName());
+                break;
+            }
+        }
+        parsingError(format("No overload of function '{0}' accepts these argument types.\n  provided: ({1}){2}",
+                            dispName, provided, detail));
     }
     return gcm.match->returnType.name;
 }
@@ -2111,6 +2136,10 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
                           : parseExpression(first, {";"}, func, scope);
             allowVoidReturnExpr = savedAllowVoid;
             emitted = e != nullptr ? e->text() : "";
+            file.bleedSpaces();
+            if(file.peekChar() != EOF)
+                parsingError(format("$i6Expr({0}) holds more than one expression; write one $i6Expr for each.",
+                                    out.substr(open + 1, close - open - 1)));
         } catch(...) {
             file.close();
             restoreLexer();
@@ -2182,7 +2211,10 @@ string bglParser::substituteI6Names(const string& body){
     while((at = findTokenCI(out, "$i6Name", at)) != string::npos){
         size_t open = at + 7;
         while(open < out.size() && (out[open] == ' ' || out[open] == '\t')) open++;
-        if(open >= out.size() || out[open] != '('){ at += 7; continue; }
+        if(open >= out.size() || out[open] != '('){
+            parsingError("$i6Name takes the name in parentheses: `$i6Name(path)`.");
+            at += 7; continue;
+        }
         size_t close = matchingParen(out, open);
         if(close == string::npos){
             parsingError("$i6Name( — unterminated; expected a closing ')'");
@@ -2712,6 +2744,18 @@ bool bglParser::isConstName(const string& name, functionDef* func, statementBloc
         if(*it != nullptr && *it != body)
             for(statement* s : (*it)->statements)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s); vd && vd->name == name) return vd->isConst;
+    // A member of the class or object being written comes before a global of the name (§3.8.2).
+    auto memberConst = [&](const vector<typeMember*>& members, bool& found){
+        for(typeMember* m : members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == name){ found = true; return vd->isConst; }
+        return false;
+    };
+    bool found = false;
+    if(currentObject != nullptr){ bool c = memberConst(currentObject->members, found); if(found) return c; }
+    for(classDef* k = currentClass != nullptr ? currentClass : (currentObject ? currentObject->objectClass : nullptr); k != nullptr;
+        k = k->baseClasses.empty() ? nullptr : k->baseClasses.front()){
+        bool c = memberConst(k->members, found); if(found) return c;
+    }
     return isConstVariable(name, func, body);
 }
 
@@ -4691,6 +4735,23 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
         ensureOwnPrintOverload(args[0]->resolvedType);
     }
     GlobalCallMatch gcm = resolveGlobalCall(name, args, func, body);
+    // The library's overload was chosen though the program's own function of the name takes the call too.
+    if(gcm.match != nullptr && gcm.match->src.file.find("beguiLib") != string::npos && !looseIdentifierMode)
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd != gcm.match && fd->name == name && !fd->isPrePassStub
+               && !fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos){
+                size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                if(args.size() < req || args.size() > fd->params.size()) continue;
+                bool fits = true;
+                for(size_t i = 0; i < args.size() && fits; i++)
+                    if(args[i] && !args[i]->resolvedType.empty() && !isTypeCompatible(args[i]->resolvedType, fd->params[i]->type.name)) fits = false;
+                if(fits){
+                    parsingWarning(format("this call goes to the library's '{0}', which fits it better than the program's own "
+                        "'{0}' (line {1}); give the program's function another name, or pass all its arguments.",
+                        gcm.match->dName(), fd->src.line));
+                    break;
+                }
+            }
     // A stringObj where a string parameter is expected: say so, rather than that no overload fits.
     if(gcm.match == nullptr && gcm.arityMatch != nullptr && !looseIdentifierMode)
         for(size_t i = 0; i < args.size() && i < gcm.arityMatch->params.size(); i++)
@@ -4699,7 +4760,7 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                     "the type stringObj or `string | stringObj`.", i + 1, gcm.arityMatch->dName()));
     // validateGlobalCall returns the return type string; we discard it here (the caller derives
     // return type from the matched method). validateGlobalCall also throws on invalid calls.
-    validateGlobalCall(gcm, name, args.size());
+    validateGlobalCall(gcm, name, args);
     // A call to the routine being parsed (it may resolve to the routine's pre-scan stub).
     if(gcm.match != nullptr && currentFunc != nullptr && currentClass == nullptr && currentObject == nullptr
        && (gcm.match == currentFunc
@@ -5072,7 +5133,20 @@ bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmissi
 // ===============================================================================
 // Dotted path type resolution (multi-hop hierarchy walk)
 // ===============================================================================
+// `selfType` as a member's type is the owner's own class: `r1.next` is a Room2 on a Room2.
 std::string bglParser::resolvePathType(std::string path, functionDef* func, statementBlock* body, const string& memberHint) {
+    string t = resolvePathTypeRaw(path, func, body, memberHint);
+    if(t != "selftype") return t;
+    size_t dot = path.rfind('.');
+    if(dot == string::npos) return currentSelfTypeName().empty() ? t : currentSelfTypeName();
+    string owner = path.substr(0, dot);
+    string ot = owner == "self" ? currentSelfTypeName()
+              : owner.find('.') == string::npos ? resolveIdentifierType(owner, func, body) : resolvePathType(owner, func, body);
+    string oc = objectsClassName(ot);
+    return !oc.empty() ? oc : (ot.empty() ? t : ot);
+}
+
+std::string bglParser::resolvePathTypeRaw(std::string path, functionDef* func, statementBlock* body, const string& memberHint) {
     size_t dot = path.find('.');
     if(dot == string::npos) return resolveIdentifierType(path, func, body, memberHint);
     string head = path.substr(0, dot);
@@ -5152,9 +5226,14 @@ std::string bglParser::resolvePathType(std::string path, functionDef* func, stat
 string bglParser::keepValueResult(const string& text, const string& typeName){
     functionDef* func = currentFunc;
     if(func == nullptr) return text;
-    bool isCall = false;   // a routine call somewhere in it: `name(`
-    for(size_t i = 1; i < text.size() && !isCall; i++)
-        isCall = text[i] == '(' && (isalnum((unsigned char)text[i - 1]) || text[i - 1] == '_');
+    bool isCall = false;   // a routine call somewhere in it: `name(` — but not a checked subscript's address
+    for(size_t i = 1; i < text.size() && !isCall; i++){
+        if(text[i] != '(' || !(isalnum((unsigned char)text[i - 1]) || text[i - 1] == '_')) continue;
+        size_t b = i;
+        while(b > 0 && (isalnum((unsigned char)text[b - 1]) || text[b - 1] == '_')) b--;
+        string word = text.substr(b, i - b);
+        isCall = word != "_bglAt" && word != "_bglMemberAt" && word != "_bglByteAt";
+    }
     if(!isCall) return text;
     classDef* cls = languageService.findClass(typeName);
     if(!cls || cls->isEmitterClass || !isValueClass(cls) || !classHasStoredFields(cls)) return text;

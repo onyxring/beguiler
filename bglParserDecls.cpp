@@ -162,6 +162,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
     // value entries rather than re-registering them — but emitter members are ALWAYS parsed in the main
     // pass so their pre-scan stubs are replaced with fully-resolved definitions (mirroring classes).
     bool valuesAlreadyPopulated = !newEnum.namedValues.empty();
+    set<string> namedHere;
     int val=1;
     while(true){
         tok=file.getToken();
@@ -179,6 +180,9 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
             parsingError(format("enum '{0}': only emitter methods (`emitter T name(){{ ... }}`) may be "
                                 "attached to an enum — '{1}' members are not allowed", newEnum.dName(), (string)tok));
         // Otherwise this is a value entry.
+        if(!namedHere.insert(tok.value).second)
+            parsingError(format("enum '{0}' already has a member '{1}'.", newEnum.dName(),
+                                tok.originalValue.empty() ? tok.value : tok.originalValue));
         if(valuesAlreadyPopulated){
             // Drain this single value entry (name [= number]) up to the next separator / close brace.
             while(!file.peekToken().is(token::comma) && !file.peekToken().is(token::braceClose)
@@ -1017,6 +1021,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
             varDecl.declaredExpressionValue = rhs;
 
             inferAutoVariableType(varDecl, dataType, isAuto, rhs);
+            if(!isRef && symbol.value == token::assignment) rejectNullIntoValueClass(rhs, languageService.findClass((string)dataType));
 
             checkVariableInitializerAssignable(varDecl, dataType, rhs, isRef);
         }
@@ -1286,6 +1291,9 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
         if(classDef* vc = languageService.findClass((string)dataType); vc != nullptr && isValueClass(vc))
             parsingError(format("'const' doesn't apply to '{0}': '{1}' is a value class, which is storage.",
                 varDecl.dName(), vc->dName()));
+    if(isExternal && symbol.is(token::assignment))
+        parsingError(format("extern '{0}' can't take a value: Inform 6 declares it, and its value comes from there.",
+                            varDecl.dName()));
     if(isConst && !isExternal && symbol.is(token::endStatement))
         parsingError(format("const '{0}' needs a value: `const {1} {0} = …;`.", varDecl.dName(),
                             dataType.originalValue.empty() ? (string)dataType : dataType.originalValue));
@@ -1451,6 +1459,10 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // overridden. `extern` otherwise asserts "this exists in I6", so silently redefining it is a
     // mistake (a name collision, or a missing `default`). A `default` extern is dropped here so the
     // real definition takes over cleanly. `replace` has its own path (below) and is exempt.
+    if(currentClass == nullptr && currentObject == nullptr && !funcDef.isPrePassStub)
+        if(classDef* same = languageService.findClass(funcDef.name); same != nullptr && !same->isAlias)
+            parsingError(format("'{0}' is already the name of the class declared at {1}; a function can't share it.",
+                                funcDef.dName(), languageService.declaredAt(same->name)));
     functionDef* overriddenDefault = nullptr;   // the `extern default` this definition takes over
     // A program's own `extern` for a routine a binding declares is the signature it means to use.
     if(isExternal && funcDef.src.file.find("beguiLib") == string::npos)
@@ -1607,6 +1619,9 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
 
     if(isEmitter && file.peekToken().is(token::endStatement)){
         // Semicolon-terminated emitter: pass-through (value unchanged)
+        if(funcDef.name != "operator()")
+            parsingError(format("emitter '{0}' has no body: an emitter's body is the code it puts at each use. "
+                                "Only a conversion `operator()` may end with ';'.", funcDef.dName()));
         file.getToken(); // consume ';'
         i6Block& rawblock=*(new i6Block());
         rawblock.i6Body=" $self";
@@ -1619,6 +1634,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         if(!isReplace && currentClass == nullptr && currentObject == nullptr)
             if(auto it = forwardReplaceBodies.find(emitterSignatureKey(funcDef)); it != forwardReplaceBodies.end())
                 rawblock.i6Body = it->second;
+        checkEmitterTokens(funcDef, rawblock.i6Body, currentClass == nullptr && currentObject == nullptr);
         funcDef.body=&rawblock;
     } else if(isExternal){
         // extern non-emitter routine: declared bodyless with ';'. The implementation lives in I6
@@ -2039,7 +2055,9 @@ vector<grammarLine> bglParser::parseGrammarLines(){
     // outer braces ARE the line literal. parseGrammarLineContent reads from the current
     // position (just past `{`) and consumes through the matching `}` — which is the
     // outer close here.
-    if(file.peekToken().is(eTokenType::dictionaryWord)){
+    // A parenthesized first group (`{ ( .a | .b ), noun }`) starts a line too.
+    if(file.peekToken().is(eTokenType::dictionaryWord)
+       || (file.peekToken().is("(") && file.peekToken(2).is(eTokenType::dictionaryWord))){
         result.push_back(parseGrammarLineContent());
     } else {
         token tok = file.getToken();
@@ -2084,4 +2102,31 @@ void bglParser::saveBackingsAcrossRecursion(functionDef& fd){
             parsingError(format("'{0}' calls itself and returns a '{1}' by value; its instances are shared "
                 "between calls, so return a field or take a `ref` parameter to fill instead.",
                 fd.dName(), typeDisplayName(fd.returnType.name)));
+}
+
+// Every `$word` in an emitter body is one of its parameters or a substitution token (§7.3); anything
+// else would reach Inform 6 as text. A `$` before hex digits is I6's hex literal.
+void bglParser::checkEmitterTokens(functionDef& fn, const string& body, bool isGlobal){
+    static const set<string> tokens = {"action", "class", "host", "i6expr", "i6name", "opref", "oprefreq",
+                                       "prop", "self", "selfsub", "target", "val"};
+    for(size_t i = 0; i < body.size(); i++){
+        char c = body[i];
+        if(c == '"'){ size_t e = body.find('"', i + 1); if(e == string::npos) break; i = e; continue; }
+        if(c == '!' && (i == 0 || body[i-1] != '~')){ size_t e = body.find('\n', i); if(e == string::npos) break; i = e; continue; }
+        if(c != '$' || i + 1 >= body.size() || !(isalpha((unsigned char)body[i+1]) || body[i+1] == '_')) continue;
+        size_t e = i + 1;
+        while(e < body.size() && (isalnum((unsigned char)body[e]) || body[e] == '_')) e++;
+        string word = body.substr(i + 1, e - i - 1), low = word;
+        transform(low.begin(), low.end(), low.begin(), ::tolower);
+        i = e - 1;
+        bool isParam = false;
+        for(paramDef* p : fn.params) if(p->name == low) isParam = true;
+        if(isParam) continue;
+        if(low == "self" && isGlobal)
+            parsingError(format("emitter '{0}' uses $self, but a global emitter has no receiver; use a parameter.", fn.dName()));
+        if(tokens.count(low)) continue;
+        if(all_of(low.begin(), low.end(), [](char h){ return isxdigit((unsigned char)h); })) continue;
+        parsingError(format("'${0}' in emitter '{1}' is neither one of its parameters nor a substitution token.",
+                            word, fn.dName()));
+    }
 }

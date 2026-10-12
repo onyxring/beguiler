@@ -93,7 +93,7 @@ extend edges {
 
 //-- World ---------------------------------------------------------------------
 
-extend class object {
+extend extern class object {
     string description;
 }
 

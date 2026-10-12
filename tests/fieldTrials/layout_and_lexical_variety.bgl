@@ -21,7 +21,7 @@
 #INCLUDE <bindings/i6StandardLibrary>
 ;;
 
-EXTEND   CLASS   object
+EXTEND   EXTERN   CLASS   object
 {
     string description;
 };

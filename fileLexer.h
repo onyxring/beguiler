@@ -52,6 +52,8 @@ class fileLexer{
         // getRawTextThroughClosingBrace). Used by LSP error recovery to unwind nested blocks
         // correctly when an exception fires from deeply inside a class/function body.
         int braceDepth = 0;
+        vector<int> braceLines;   // the line of each '{' still open, innermost last
+        int firstMultilineString = 0;   // where the first string that ran onto another line began
         // Pending doc-comment text accumulated by getToken() — attached to the next non-comment
         // token's docComment field. Cleared when consumed or when a blank line orphans it.
         std::string pendingDocComment;
@@ -107,6 +109,7 @@ class fileLexer{
     public:
         token peekToken();
         token peekToken(int);
+        vector<token> peekTokens(int count, std::function<bool(token&)> stopAfter);   // the next tokens in one pass, up to `count` or the first stopAfter accepts (and never past end of file)
         void  pushBackCloseAngle(const token& doubled); // split a ">>": deliver one ">" now, stash the other
 
         // Reads raw chars up to the matching `}`. The `isI6Content` flag controls

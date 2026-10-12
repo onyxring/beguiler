@@ -37,7 +37,7 @@
 #include <array>
 #include <linq>
 
-extend class object { string description ; }
+extend extern class object { string description ; }
 
 object roomA { "Room A" ; description = "A plain room." ; attributes = light ; }
 

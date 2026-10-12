@@ -95,7 +95,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_wibble
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"wibble";
   ]
 ;

@@ -1,0 +1,5 @@
+/* Malformed input: stray_endif */
+// EXPECT_ERROR: '#endif' has no '#if' before it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ }
+#endif

@@ -881,7 +881,7 @@ int i6Emitter::estimateFrameWords(functionDef* fd){
     };
     for(variableDeclaration* vd : locals)
         if(auto* arr = dynamic_cast<arrayDeclaration*>(vd)){
-            if(arr->isByteArray) words += 1 + (max(arr->arraySize, 0) + ws - 1) / ws;
+            if(arr->isByteArray) words += 2 + (max(arr->arraySize, 0) + ws - 1) / ws;
             else if(auto* l = dynamic_cast<initializerList*>(arr->declaredExpressionValue)) words += max(listWords(l), arr->arraySize + 3);
             else if(arr->arraySize > 0) words += arr->arraySize + 3;
             else if(!arr->copySource.empty() || !arr->copyLength.empty()) words += 8;
@@ -1807,13 +1807,6 @@ if(languageService.bufInUse){
         if(arr->arraySize > 0 && arr->stringInitializer.empty()
            && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
             trackedByteArraysNeedingMagicInit.push_back(arr->dName());
-            // Emit the user-visible pointer Global EARLY (before bglInit) so the
-            // runtime assignment `name = name_raw + WORDSIZE + 2;` in bglInit has a
-            // declared lvalue to write to. I6 doesn't accept symbolic arithmetic
-            // (e.g. `name_raw + WORDSIZE + 2`) as a Global initializer or Constant
-            // value, so the assignment lives in bglInit; this just declares the
-            // variable. Pass 3's byte-array emission skips re-emitting the global.
-            out << format("global {0} = 0;\n", arr->dName());
         }
     }
     // An object's sized `array<char>` members are tracked buffers too: bglInit points each at its raw allocation.
@@ -1826,25 +1819,9 @@ if(languageService.bufInUse){
             auto* arr = dynamic_cast<arrayDeclaration*>(m);
             if(arr == nullptr || !arr->isByteArray || arr->isRefLocal || arr->isStatic || arr->arraySize <= 0
                || !arr->stringInitializer.empty() || arr->declaredExpressionValue != nullptr) continue;
-            string raw = "_" + obj->name + "_" + arr->name + "_raw";
             string objName = obj->i6name.empty() ? obj->name : obj->i6name;
             string prop = arr->i6name.empty() ? arr->dName() : arr->i6name;
-            trackedByteMembers.push_back({raw, objName + "." + prop, arr->arraySize});
-            trackedByteMemberRaws.insert(raw);
-        }
-        // A member given a tracked byte array (a pointer set at startup) takes it in bglInit.
-        for(typeMember* m : obj->members){
-            auto* vd = dynamic_cast<variableDeclaration*>(m);
-            if(vd == nullptr || vd->declaredExpressionValue == nullptr || dynamic_cast<initializerList*>(vd->declaredExpressionValue)) continue;
-            string v = vd->declaredExpressionValue->text();
-            string lv = v; transform(lv.begin(), lv.end(), lv.begin(), ::tolower);
-            for(const string& t : trackedByteArraysNeedingMagicInit){
-                string lt = t; transform(lt.begin(), lt.end(), lt.begin(), ::tolower);
-                if(lt != lv) continue;
-                string objName = obj->i6name.empty() ? obj->name : obj->i6name;
-                runtimeMemberValues.insert(vd);
-                runtimeMemberInits.push_back(objName + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name) + " = " + t + ";");
-            }
+            trackedByteMembers.push_back({"", objName + "." + prop, arr->arraySize});
         }
     }
 }
@@ -1970,52 +1947,11 @@ out << "    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;\n";
 for(const string& arrName : trackedArraysNeedingMagicInit)
     out << "    " << arrName << "-->(" << arrName << "-->0) = $9084;\n";
 // Sized-buffer setup for tracked char arrays (`array<char> X[N]` with `<buf>`).
-// orLibrary SizedBuffer model — the user-visible pointer is offset WORDSIZE+2
-// bytes into the raw allocation so that `X-->0` reads as the I6 hybrid-buffer
-// length (matching `print_to_array` / Glk conventions) and the size + magic
-// prefix lives at negative offsets:
-//
-//   raw bytes 0..1:                  magic ($90, $84)
-//   raw bytes 2..(WORDSIZE+1):       size WORD (= declared char capacity N)
-//   raw bytes (WORDSIZE+2)..(2*WORDSIZE+1):  length WORD (initial 0, I6 zero-init)
-//   raw bytes (2*WORDSIZE+2)..end:   N bytes of data
-//
-//   user-visible X = X_raw + WORDSIZE + 2
-//   X-->0  = length     (I6 hybrid buffer convention)
-//   X->WORDSIZE..  = data
-//   X-->(-1)  = size word (capacity)
-//   X->(-WORDSIZE-2..-WORDSIZE-1) = $90 $84 magic
-//
-// We can't reassign a global array's address, so the user-named symbol is a
-// Global pointer variable. Each entry in this vector names the user-visible
-// (display-cased) array name; we emit stamping against `<name>_raw` and set
-// the pointer here.
-for(const string& arrName : trackedByteArraysNeedingMagicInit){
-    int N = 0;
-    for(typeDef* g : languageService.globals){
-        auto* arr = dynamic_cast<arrayDeclaration*>(g);
-        if(arr != nullptr && arr->dName() == arrName){ N = arr->arraySize; break; }
-    }
-    const string raw = arrName + "_raw";
-    out << "    " << raw << "->0 = $90;\n";
-    out << "    " << raw << "->1 = $84;\n";
-    // Size word at byte 2 — `(raw + 2)-->0` does word access at byte address
-    // raw+2. Works on both Z (aligned) and Glulx (unaligned word access in
-    // memory is permitted per the Glulx spec).
-    out << "    (" << raw << " + 2)-->0 = " << N << ";\n";
-    // Set the user-visible pointer past the prefix metadata. I6 doesn't
-    // accept symbolic arithmetic in Global initializers, so we declare the
-    // Global early (= 0) and assign the real value here at startup.
-    out << "    " << arrName << " = " << raw << " + WORDSIZE + 2;\n";
-    out << "    _bglBuf._registerTracked(" << arrName << ");\n";   // <buf> knows a tracked buffer by its registry
-}
-for(const TrackedByteMember& t : trackedByteMembers){
-    out << "    " << t.raw << "->0 = $90;\n";
-    out << "    " << t.raw << "->1 = $84;\n";
-    out << "    (" << t.raw << " + 2)-->0 = " << t.size << ";\n";
-    out << "    " << t.lvalue << " = " << t.raw << " + WORDSIZE + 2;\n";
+// <buf> knows its tracked buffers by a registry.
+for(const string& arrName : trackedByteArraysNeedingMagicInit)
+    out << "    _bglBuf._registerTracked(" << arrName << ");\n";
+for(const TrackedByteMember& t : trackedByteMembers)
     out << "    _bglBuf._registerTracked(" << t.lvalue << ");\n";
-}
 for(const string& init : runtimeMemberInits)
     out << "    " << init << "\n";
 for(const string& block : languageService.startupBlocks)
@@ -2524,21 +2460,7 @@ for(typeMember* m : classNode->members){
             // ->WORDSIZE) so the member backing matches the standalone
             // array<char> layout and the byteArray []/size()/for-in accessors.
             // Mirrors the emitGlobal byte-array path.
-            if(!arr->stringInitializer.empty()){
-                out << format("Array {0} buffer {1};\n", mangledName, arr->stringInitializer);
-            } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-                out << format("Array {0} buffer", mangledName);
-                bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
-                if(bracketed) out << " [";
-                for(expression* elem : list->elements){
-                    string t = staticText(elem);
-                    if(!t.empty() && t.front() == '-') out << " (" << t << ")";
-                    else                                out << " " << t;
-                }
-                out << (bracketed ? " ];\n" : ";\n");
-            } else {
-                out << format("Array {0} buffer {1};\n", mangledName, arr->arraySize);
-            }
+            out << byteArrayDecl(mangledName, arr, arr->arraySize);
             externalArrayNames[arr->name] = mangledName;
         }
     }
@@ -3850,7 +3772,16 @@ classDef* i6Emitter::ownedFieldClass(variableDeclaration* vd, const set<classDef
 string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited){
     string clause;
     bool first = true;
-    for(typeMember* m : cls->members){
+    // The class's own members and the ones it inherits (a nearer class's member of a name hides a farther one's).
+    vector<typeMember*> members;
+    set<string> seenNames;
+    std::function<void(classDef*)> gather = [&](classDef* c){
+        if(c == nullptr) return;
+        for(typeMember* m : c->members) if(seenNames.insert(m->name).second) members.push_back(m);
+        for(classDef* b : c->baseClasses) gather(b);
+    };
+    gather(cls);
+    for(typeMember* m : members){
         auto* vd = dynamic_cast<variableDeclaration*>(m);
         classDef* fieldCls = ownedFieldClass(vd, visited);
         if(fieldCls == nullptr) continue;
@@ -3883,42 +3814,15 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
         auto* ad = dynamic_cast<arrayDeclaration*>(m);
         if(ad == nullptr || !ad->isByteArray || ad->isRefLocal || ad->isStatic || !seen.insert(ad->name).second) return;
         string buf = format("{0}_{1}", instanceName, ad->name);
-        if(!ad->stringInitializer.empty())
-            out << format("Array {0} buffer {1};\n", buf, ad->stringInitializer);
-        else if(auto* list = dynamic_cast<initializerList*>(ad->declaredExpressionValue)){
-            out << "Array " << buf << " buffer";
-            bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
-            if(bracketed) out << " [";
-            for(expression* e : list->elements){ string t = staticText(e); out << (t.front() == '-' ? " (" + t + ")" : " " + t); }
-            out << (bracketed ? " ];\n" : ";\n");
-        } else
-            out << format("Array {0} buffer {1};\n", buf, max(1, ad->arraySize));
+        out << byteArrayDecl(buf, ad, ad->arraySize);
         if(first){ clause = "with "; first = false; } else { clause += ", "; }
         clause += format("{0} {1}", ad->i6name.empty() ? ad->dName() : ad->i6name, buf);
     });
     return clause;
 }
 
-// One standalone `array<char>` declaration: I6 hybrid buffer, or the `<buf>` SizedBuffer raw allocation.
-// ── Byte-array paths.
-//
-// Default (no `<buf>`): emit the standard I6 6.30 hybrid buffer —
-//   `Array X buffer N;` allocates WORDSIZE bytes for the length WORD
-//   followed by N data bytes. Beguile's byteArray `[i]` reads at
-//   `$val->($i + WORDSIZE)` to match.
-//
-// With `<buf>` (languageService.bufInUse): orLibrary SizedBuffer model.
-//   - The user-named symbol is a `Global` pointer variable. bglInit
-//     points it `WORDSIZE + 2` bytes into a separate raw allocation so
-//     the user-visible pointer behaves as an I6 hybrid buffer (length
-//     at `X-->0`, data at `X->WORDSIZE`).
-//   - The raw allocation carries the prefix metadata: magic at bytes 0-1,
-//     size word at bytes 2..(WORDSIZE+1).
-//   - bglInit stamps both pieces; see the SizedBuffer setup block above.
-//
-// String-initialized byte arrays opt out of SizedBuffer — they're
-// compile-time literals whose length is fixed and whose I6 hybrid
-// length-word convention is sufficient.
+// One standalone `array<char>` declaration: an I6 hybrid buffer (its length at `-->0`, data from
+// `->WORDSIZE`) with its capacity in the word before it (byteArrayDecl).
 void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
     // rawArray<char>: bare bytes from offset 0, with no length word.
     if(arr->isRaw){
@@ -3937,64 +3841,9 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
         out << ";\n";
         return;
     }
-    bool bufTracked = languageService.bufInUse;
-    if(!arr->stringInitializer.empty()) {
-        out << format("array {0} buffer {1};\n", arr->dName(), arr->stringInitializer);
-        return;
-    }
-    auto* byteSeed = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
-    if(arr->arraySize > 0 && byteSeed != nullptr) {
-        // Seeded capacity (`array<char> name[N] = {…}`). A byte array carries no
-        // length/magic trailer, so capacity is all there is: emit the seed values
-        // followed by zeros out to N. The SizedBuffer layout has no room to bake
-        // literal bytes into its raw allocation, so it is rejected rather than
-        // silently dropping the seed.
-        if(bufTracked)
-            throw runtime_error("i6Emitter: a seeded `array<char> name[N] = {...}` is not supported while <buf> "
-                   "is included (the SizedBuffer allocation is stamped at startup). Declare it as "
-                   "`array<char> name = {...}` to size it from the seed, or assign elements at runtime.");
-        out << format("array {0} buffer", arr->dName());
-        bool bracketed = max((int)byteSeed->elements.size(), arr->arraySize) == 1;
-        if(bracketed) out << " [";
-        for(expression* elem : byteSeed->elements){
-            string t = staticText(elem);
-            if(!t.empty() && t.front() == '-') out << " (" << t << ")";
-            else                                out << " " << t;
-        }
-        for(int pad = (int)byteSeed->elements.size(); pad < arr->arraySize; pad++) out << " 0";
-        out << (bracketed ? " ];\n" : ";\n");
-        return;
-    }
-    if(arr->arraySize > 0) {
-        if(bufTracked){
-            // SizedBuffer: emit only the raw allocation here. The user-visible
-            // pointer (`Global arrName = 0;`) was already emitted by the pre-pass
-            // ahead of bglInit; bglInit sets its runtime value to
-            // `arrName_raw + WORDSIZE + 2` and stamps the prefix metadata.
-            //
-            // Raw size = magic(2) + size word(WORDSIZE) + length word(WORDSIZE) + N data bytes.
-            // We use `-> NumBytes` (raw byte array, no I6-managed length header) so
-            // bytes 0-1 belong to us for the magic prefix.
-            out << format("array {0}_raw -> (2 + 2*WORDSIZE + {1});\n",
-                          arr->dName(), arr->arraySize);
-        } else {
-            out << format("array {0} buffer {1};\n", arr->dName(), arr->arraySize);
-        }
-        return;
-    }
-    if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-        out << format("array {0} buffer", arr->dName());
-        bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
-        if(bracketed) out << " [";
-        for(expression* elem : list->elements){
-            string t = staticText(elem);
-            if(!t.empty() && t.front() == '-') out << " (" << t << ")";
-            else                                out << " " << t;
-        }
-        out << (bracketed ? " ];\n" : ";\n");
-        return;
-    }
-    throw runtime_error("i6Emitter: unable to emit byte array.");
+    if(arr->arraySize <= 0 && arr->stringInitializer.empty() && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr)
+        throw runtime_error("i6Emitter: unable to emit byte array.");
+    out << byteArrayDecl(arr->dName(), arr, arr->arraySize, languageService.bufInUse);   // <buf> makes length assignable
 }
 
 // One standalone word array: tracked `table` layout, plain `table`, or a flat `-->` rawArray.
@@ -4268,25 +4117,8 @@ if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
         // ->WORDSIZE) so the member backing matches the standalone
         // array<char> layout and the byteArray []/size()/for-in accessors.
         // Mirrors the emitGlobal byte-array path.
-        if(!arr->stringInitializer.empty()){
-            out << format("Array {0} buffer {1};\n", mangledName, arr->stringInitializer);
-        } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-            out << format("Array {0} buffer", mangledName);
-            bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
-            if(bracketed) out << " [";
-            for(expression* elem : list->elements){
-                string t = staticText(elem);
-                if(!t.empty() && t.front() == '-') out << " (" << t << ")";
-                else                                out << " " << t;
-            }
-            out << (bracketed ? " ];\n" : ";\n");
-        } else if(trackedByteMemberRaws.count(mangledName + "_raw")){
-            out << format("Array {0}_raw -> (2 + 2*WORDSIZE + {1});\n", mangledName, arr->arraySize);
-            externalArrayNames[arr->name] = "0";   // bglInit points it at the raw allocation
-            continue;
-        } else {
-            out << format("Array {0} buffer {1};\n", mangledName, arr->arraySize);
-        }
+        out << byteArrayDecl(mangledName, arr, arr->arraySize,
+                             languageService.bufInUse && !arr->isStatic && arr->arraySize > 0 && arr->declaredExpressionValue == nullptr);
         externalArrayNames[arr->name] = mangledName;
     }
 }
@@ -4383,8 +4215,7 @@ if(obj->objectClass != nullptr)
     }
     for(arrayDeclaration* a : inheritedByteArrays(obj)){
         string buffer = "_" + obj->name + "_" + a->name;
-        inheritedOwned.push_back({a->i6name.empty() ? a->dName() : a->i6name,
-                                  trackedByteMemberRaws.count(buffer + "_raw") ? "0" : buffer});   // bglInit sets a tracked one
+        inheritedOwned.push_back({a->i6name.empty() ? a->dName() : a->i6name, buffer});
     }
     {
 set<string> ownMemberNames;
@@ -4403,6 +4234,11 @@ for(auto& kv : ownedInstanceNames)
 // The instance's whole `with` clause: property members, methods, raw blocks and inherited owned wirings.
 void i6Emitter::emitObjectWithClause(objectDef* obj, map<string, string>& externalArrayNames, map<string, string>& ownedInstanceNames, vector<pair<string,string>>& inheritedOwned, bool isVerbInstance){
 bool first = true;
+// A verb's priority orders its grammar at compile time; it is also readable, so it is a property too.
+if(auto* vod = isVerbInstance ? dynamic_cast<verbObjectDef*>(obj) : nullptr){
+    out << "  with priority " << vod->priority;
+    first = false;
+}
 for(typeMember* m : obj->members){
     if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
         // Property array: emit as inline I6 property values
@@ -4940,9 +4776,12 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             i6RawNode* bufs = new i6RawNode();
             string elems;
             for(int k = 0; k < N; k++){
+                string slot = format("{0}_{1}", base, k);
                 bufs->text += ad->arraySize <= 0 && !ad->stringInitializer.empty()
-                            ? format("Array {0}_{1} buffer {2};\n", base, k, ad->stringInitializer)   // as long as the class's
-                            : format("Array {0}_{1} buffer {2};\n", base, k, ad->arraySize > 0 ? ad->arraySize : 1);
+                            ? byteCapacityPrefix(slot, i6StringChars(ad->stringInitializer))
+                              + format("Array {0} buffer {1};\n", slot, ad->stringInitializer)   // as long as the class's
+                            : byteCapacityPrefix(slot, ad->arraySize > 0 ? ad->arraySize : 1)
+                              + format("Array {0} buffer {1};\n", slot, ad->arraySize > 0 ? ad->arraySize : 1);
                 elems += format(" {0}_{1}", base, k);
             }
             bufs->text += format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
@@ -5781,3 +5620,51 @@ void i6Emitter::emitEvictions(){
 }
 
 i6Emitter emitter;
+// The characters an I6 string literal (quotes included) puts in a buffer: an `@` escape is one.
+int i6Emitter::i6StringChars(const string& lit){
+    string t = lit.size() >= 2 && lit.front() == '"' && lit.back() == '"' ? lit.substr(1, lit.size() - 2) : lit;
+    int n = 0;
+    for(size_t i = 0; i < t.size(); n++){
+        if(t[i] != '@'){ i++; continue; }
+        if(i + 1 < t.size() && t[i + 1] == '@'){ i += 2; while(i < t.size() && isdigit((unsigned char)t[i])) i++; }
+        else if(i + 1 < t.size() && t[i + 1] == '{'){ size_t e = t.find('}', i); i = e == string::npos ? t.size() : e + 1; }
+        else i += 3;
+    }
+    return n;
+}
+
+// An array<char>'s capacity, in the word just before it: I6 lays consecutive arrays out contiguously,
+// and the buffer's own first word is its length.
+string i6Emitter::byteCapacityPrefix(const string& name, int capacity){
+    bool glulx = beguilerSettings.target == "glulx";
+    unsigned v = (unsigned)max(capacity, 0);
+    string bytes = glulx ? format(" {0} {1} {2} {3}", (v >> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255)
+                         : format(" {0} {1}", (v >> 8) & 255, v & 255);
+    return "Array _bglcap_" + name + " ->" + bytes + ";\n";
+}
+
+// An array<char> declaration with its capacity word: from a string, a list, or a size.
+string i6Emitter::byteArrayDecl(const string& name, arrayDeclaration* arr, int size, bool startsEmpty){
+    string decl;
+    int cap = 0;
+    if(!arr->stringInitializer.empty()){
+        cap = i6StringChars(arr->stringInitializer);
+        decl = format("Array {0} buffer {1};\n", name, arr->stringInitializer);
+    } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+        cap = max((int)list->elements.size(), size);
+        decl = format("Array {0} buffer", name);
+        bool bracketed = cap == 1;   // `buffer 113` would read as a size
+        if(bracketed) decl += " [";
+        for(expression* elem : list->elements){
+            string t = staticText(elem);
+            decl += (!t.empty() && t.front() == '-') ? " (" + t + ")" : " " + t;
+        }
+        for(int pad = (int)list->elements.size(); pad < size; pad++) decl += " 0";
+        decl += bracketed ? " ];\n" : ";\n";
+    } else {
+        cap = max(size, 1);
+        decl = startsEmpty ? format("Array {0} -> (WORDSIZE + {1});\n", name, cap)
+                           : format("Array {0} buffer {1};\n", name, cap);   // starts full, as I6's own does
+    }
+    return byteCapacityPrefix(name, cap) + decl;
+}

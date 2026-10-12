@@ -41,5 +41,28 @@ object gameState
     gamestate.gamescore = 10;
     gamestate.gamemoves = 1;
     inventory.count = 3;
-    first = inventory.&items-->(0);
+    first = _bglMemberAt(inventory, items, 0, 0)-->0;
 ];
+[_bglMemberAt obj prop i f n;
+    n = 0;
+    
+        n = obj.#prop / WORDSIZE;
+        if(f & 2) n--;
+        if(i >= 0 && i < n) return obj.&prop + i * WORDSIZE;
+        return _bglOutOfRange(i, n, f & 1);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

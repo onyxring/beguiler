@@ -1,0 +1,6 @@
+/* Malformed input: using_function */
+// EXPECT_ERROR: is a function; #using takes a class or an object
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void helper(){ }
+#using helper
+void main(){ helper(); }

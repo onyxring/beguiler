@@ -1819,6 +1819,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
     }
 
     //process all statements in the file one by one.  This may include recursive calls for included files.
+    size_t conditionalBase = openConditionals.size();
     try{
         while(processNextStatement()==false){
             //cout<<"Block processed."<<endl;
@@ -1871,6 +1872,12 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         }
     } catch(exitFileSignal&){
         // #exit directive: treat as end-of-file, discarding any open directive nesting
+        openConditionals.resize(min(openConditionals.size(), conditionalBase));
+    }
+    if(openConditionals.size() > conditionalBase){
+        int line = openConditionals[conditionalBase].line;
+        openConditionals.resize(conditionalBase);
+        parsingError(format("The '#if' at line {0} has no '#endif'.", line));
     }
     //emit.out<<endl;
     file.close();
@@ -2225,8 +2232,24 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     }
 
     // Early exits
+    if(tok.is(token::braceClose) && getCurrentCompileContext() == eCompileContext::global && !looseIdentifierMode)
+        parsingError("Unexpected '}' at file scope: it closes nothing.");
     if(tok.is(token::braceClose)) return true;
     if(tok.is(token::endStatement)) return false;   // an empty statement (`default: ;`, `if (c) ;`)
+    if(tok.is("self") && getCurrentCompileContext() == eCompileContext::codeBlock)
+        rejectSelfWithoutObject(dynamic_cast<functionDef*>(&contextObject));
+    if(getCurrentCompileContext() == eCompileContext::codeBlock && !looseIdentifierMode){
+        token nx = file.peekToken();
+        if((tok.is("if") || tok.is("while") || tok.is("switch") || tok.is("for")) && !nx.is(token::parenOpen))
+            parsingError(format("'{0}' takes its condition in parentheses: `{0} (…)`.", tok.value));
+        string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
+        // `Box::hello()`: the lexer glues `::` onto the name that follows.
+        if(tok.is(eTokenType::dataType) && nx.value.rfind("::", 0) == 0 && nx.value.size() > 2)
+            parsingError(format("'{0}::{1}' — a class's member is reached with '.': `{0}.{1}`.", shown, nx.value.substr(2)));
+    }
+    if(tok.is("outer") && file.peekToken().is(token::period) && getCurrentCompileContext() == eCompileContext::codeBlock)
+        if(auto* f = dynamic_cast<functionDef*>(&contextObject))
+            rejectStrayOuter(f, dynamic_cast<statementBlock*>(f->body));
     // A local or parameter named like a class (a library's `int win` beside a program's `class win`)
     // lexes as a type; at the start of a statement, followed by an assignment, a member access, a
     // subscript, a call or ++/--, it is the variable.
@@ -2263,7 +2286,8 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     }
     if(tok.is(eTokenType::eof)) {
         if(getCurrentCompileContext() == eCompileContext::codeBlock)
-            parsingError("Unexpected end of file — missing closing '}'");
+            parsingError(file.braceLines.empty() ? string("Unexpected end of file — missing closing '}'")
+                : format("The '{{' at line {0} is never closed: the file ends before its '}}'.", file.braceLines.back()));
         return true;
     }
     // Directives flow through the grammar table (each #xxx is a rule).
@@ -2274,6 +2298,13 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
         parsingError("'explicit' is only valid inside a class or object body");
     if(q.isStatic && getCurrentCompileContext() == eCompileContext::global)
         parsingError("'static' is only valid inside a class body");
+    if(getCurrentCompileContext() == eCompileContext::codeBlock && !looseIdentifierMode){
+        if(q.isStatic)
+            parsingError("'static' doesn't apply to a local: a local lasts one call. Keep a value between calls "
+                         "in a global or a static member.");
+        if(q.isRequired)
+            parsingError("'required' applies to a class or object member, not a local.");
+    }
 
     // Static member access: ClassName.member — route to processStatement
     // Object instances need no special handling here — they're lexed as identifiers.
@@ -2383,6 +2414,14 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
 
     if(getCurrentCompileContext() == eCompileContext::global) {
         // `class X` where X already names a class, object or enum: say so, not "expected type name".
+        if(q.isExtend && tok.is(token::classDeclaration)){
+            token target = file.peekToken();
+            string shown = target.originalValue.empty() ? target.value : target.originalValue;
+            if(languageService.findGlobalAs<objectDef>(target.value) != nullptr)
+                parsingError(format("'{0}' is an object, not a class; extend it with `extend {0} {{ … }}`.", shown));
+            if(target.is(eTokenType::identifier))
+                parsingError(format("extend class '{0}': there is no class '{0}' to extend.", shown));
+        }
         if(tok.is(token::classDeclaration)){
             string nm = file.peekToken().value;
             transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
@@ -2427,11 +2466,40 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
                 parsingError(format("Missing type before identifier '{0}'. Variable declarations require a type — e.g. `{1}`", name, example));
             }
         }
+        if(tok.is(token::bracketOpen))
+            parsingError("'[ … ];' is an Inform 6 routine; in Beguile write `void name() { … }`, or put the routine "
+                         "in an `#i6 { … }` block.");
+        if(tok.is("global"))
+            parsingError("A variable declared at file scope is already global; drop 'global': `int score = 0;`.");
+        if(tok.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen))
+            parsingError(format("'{0}(…)' is a statement, and statements go inside a function; at file scope only "
+                                "declarations and directives are allowed.", tok.originalValue.empty() ? tok.value : tok.originalValue));
+        if(tok.is(eTokenType::directive)){
+            string d = tok.value;
+            if(d == "#ifdef" || d == "#ifndef")
+                parsingError(format("'{0}' is the C preprocessor's; Beguile writes `#if {1}NAME`.", d, d == "#ifndef" ? "!" : ""));
+            if(d.rfind("##", 0) == 0)
+                parsingError(format("'{0}' belongs in an emitter body; in Beguile source write '{1}'.", d, d.substr(1)));
+            parsingError(format("Unrecognized directive '{0}'.", d));
+        }
         parsingError(format("Illegal global identifier:'{0}'", (string)tok));
     }
 
     if(q.isExtern) parsingError(format("Extern declaration only valid for global variables, classes, routines, and enums:'{0}'", (string)tok));
 
+    // A word then a literal matched no statement form: `print "x";`, or a misspelled keyword.
+    if(tok.is(eTokenType::identifier) && !looseIdentifierMode){
+        token nx = file.peekToken();
+        if(nx.isString() || nx.is(eTokenType::integer)){
+            string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
+            auto* f = dynamic_cast<functionDef*>(&contextObject);
+            auto* fb = f ? dynamic_cast<statementBlock*>(f->body) : nullptr;
+            if(languageService.findGlobalAs<functionDef>(tok.value) != nullptr)
+                parsingError(format("'{0}' is a function: call it with parentheses, `{0}({1});`.", shown, nx.value));
+            if(f != nullptr && resolveIdentifierType(tok.value, f, fb).empty())
+                parsingError(format("'{0}' isn't a keyword or a declared name.", shown));
+        }
+    }
     processStatement(tok, contextObject);
     return false;
 }
@@ -2626,6 +2694,10 @@ bool bglParser::processParameterList(functionDef& funcDef){
         // function's scope, so we allow the shadow.
         if(tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)){
             param.name=(string) tok;
+            for(paramDef* other : funcDef.params)
+                if(other->name == param.name)
+                    parsingError(format("'{0}' has two parameters named '{1}'.", funcDef.dName(),
+                                        tok.originalValue.empty() ? param.name : tok.originalValue));
             param.displayName=tok.originalValue;
             // Disallow parameter names that shadow a global, a class member, or an object member.
             // Emitters are skipped: their parameter names are template substitution keys, not I6 locals.
@@ -2855,6 +2927,8 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             size_t setUpAt = pendingInjections.size();   // earlier set-up (a `?.` guard) belongs to the statement
             file.prevTokenType = eTokenType::symbol; file.prevTokenValue = "{";   // not the `$`: a string here is plain
             token exprFirst = file.getToken();
+            if(exprFirst.is(token::braceClose))
+                parsingError("An interpolated string's '{ }' holds no expression; write one, or '\\{' for a literal brace.");
             // An interpolation segment prints a value but CALLS a routine: a void call is valid here
             // (emitInterpolatedSegments lowers a void-typed segment to a bare `expr;` statement — the
             // routine runs, nothing is printed). So permit void in segment position.
@@ -3060,6 +3134,7 @@ void bglParser::emitOpenBlockCleanups(statementBlock* body){
         for(auto r = it->second.rbegin(); r != it->second.rend(); ++r){
             i6RawNode* node = new i6RawNode();
             node->text = *r;
+            node->cooked = true;   // names locals, renamed like any other use
             body->statements.push_back(node);
         }
     }
@@ -3089,6 +3164,8 @@ void bglParser::openCompileContext(eCompileContext newScope, statementBlock* bod
     // For codeBlock contexts, always push to the active block stack (nullptr if no body provided).
     // closeCompileContext always pops for codeBlock, so push/pop counts must match.
     if(newScope == eCompileContext::codeBlock) activeBlockStack.push_back(body);
+    // Each nested block is a level of the parser's own recursion; past a few hundred the stack runs out.
+    if(compileContextStack.size() > 400) parsingError("Blocks are nested too deeply (more than 400 levels).");
 }
 string bglParser::contextToString(eCompileContext context){
     switch(context){
@@ -3128,6 +3205,7 @@ void bglParser::closeCompileContext(eCompileContext expectedScope){
             for(auto r = it->second.rbegin(); r != it->second.rend(); ++r){
                 i6RawNode* node = new i6RawNode();
                 node->text = *r;
+                node->cooked = true;   // names locals, renamed like any other use
                 closing->statements.push_back(node);
             }
             blockCleanups.erase(it);

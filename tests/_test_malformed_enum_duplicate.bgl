@@ -1,0 +1,5 @@
+/* Malformed input: enum_duplicate */
+// EXPECT_ERROR: already has a member 'Red'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+enum Color { red, green, Red }
+void main(){ }

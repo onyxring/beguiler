@@ -1,0 +1,37 @@
+/*  run_measure2_forms — forms measurement round 2 found broken (D1272–D1278).  */
+// EXPECT_OUTPUT: 3 | 7 | 5 2 | 2 | 8 9 | top: 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+#include <string>
+
+// D1272, D1273: a selfType member read through a variable, and a three-call selfType chain.
+class Node : object { int key; selfType next; }
+Node n1 { key = 1; }
+Node n2 { key = 3; }
+class Widget : object { int width; selfType wide(int n) { width = n; return self; } }
+Widget wid { }
+
+// D1275: a value class deriving from one with an owned value member.
+value class Inner { int n; Inner operator = (Inner o) { n = o.n; return self; } }
+value class Base { Inner part; Base operator = (Base o) { part = o.part; return self; } }
+value class Derived : Base { int extra = 2; Derived operator = (Derived o) { part = o.part; extra = o.extra; return self; } }
+
+// D1276, D1277: a member named like a global const; its initializer names the const.
+const int COUNT = 9;
+object counter { int count = COUNT; void dec() { count--; } }
+
+// D1278: a stringObj local in a loop body, named like a method the routine calls.
+array<int> vals = {2, 4};
+int topOf() { int r = 0; for (int v in vals) { stringObj first = "x"; r = vals.first(); } return r; }
+
+void main() {
+    bglInit();
+    n1.next = n2; Node r = n1.next; print(r.key); print(" | ");
+    wid.wide(1).wide(2).wide(7); print(wid.width); print(" | ");
+    Derived d; d.part.n = 5; print($"{d.part.n} {d.extra} | ");
+    print(n1.next.key - 1); print(" | ");
+    counter.dec(); print($"{counter.count} {COUNT} | ");
+    print($"top: {topOf()}");
+    print("^");
+}

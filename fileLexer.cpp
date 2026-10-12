@@ -179,6 +179,8 @@ void fileLexer::close(){
 void fileLexer::reset(){
     while(!files.empty()) close();      // drain the stack, deleting each stream
     braceDepth = 0;
+    braceLines.clear();
+    firstMultilineString = 0;
     prevTokenType = eTokenType::unknown;
     prevTokenValue.clear();
     pendingDocComment.clear();
@@ -275,8 +277,10 @@ token fileLexer::getBasicToken(bool suppressBleed){
             string twoChars=retval.value + nc; /*   we do a lot of two character checks, so let's just build this string once and use it repeatedly; we will 
                                                     readChar() to dispose of the nc if we end up using it, but for now we just want to peek at it without consuming it*/
             
-            if(twoChars=="//" || twoChars=="/*")
+            if(twoChars=="//" || twoChars=="/*"){
                 retval.tokenType=eTokenType::comment;
+                retval.src.line = get<2>(files.top());   // where it opened, for an unclosed one
+            }
             else if(c=='\"' && prevTokenValue == "$"){
                 // An interpolated string is one token to anything that looks ahead over it: its `{…}`
                 // spans hold expressions, with strings (and apostrophes) of their own. The interpolation
@@ -301,10 +305,13 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 prevTokenType = eTokenType::quote;
                 return retval;
             }
-            else if(c=='\"')
+            else if(c=='\"'){
                 retval.tokenType=eTokenType::quote;
+                retval.src.line = get<2>(files.top());   // where it opened, for an unclosed one
+            }
             else if(c=='@' && nc=='"') {
                 retval.tokenType=eTokenType::rawQuote;
+                retval.src.line = get<2>(files.top());
                 retval.value="\""; // adopt the same outer-quote format as regular quote tokens
                 retval.originalValue="\"";
                 readChar();        // consume the '"'
@@ -582,6 +589,17 @@ token fileLexer::getBasicToken(bool suppressBleed){
     }
 
     //a special case: we've reached the end of file.  If we are not at the global scope, then throw an error, because we've terminated early
+    if(c==EOF && retval.tokenType==eTokenType::comment && retval.value.size() >= 2 && retval.value[1]=='*'
+       && !(retval.value.size() >= 4 && retval.value.compare(retval.value.size()-2, 2, "*/") == 0))
+        parser.parsingError(format("A '/*' comment opened at line {0} is never closed with '*/'.", retval.src.line));
+    // A string left open usually lost its '"' where it first ran onto another line.
+    if((retval.tokenType==eTokenType::quote || retval.tokenType==eTokenType::rawQuote) && firstMultilineString == 0
+       && retval.value.find('\n') != string::npos)
+        firstMultilineString = retval.src.line;
+    if(c==EOF && (retval.tokenType==eTokenType::quote || retval.tokenType==eTokenType::rawQuote)
+       && (retval.value.size() < 2 || retval.value.back() != '"'))
+        parser.parsingError(format("A string opened at line {0} is never closed with '\"'.",
+                                   firstMultilineString ? firstMultilineString : retval.src.line));
     if(c==EOF) {
         // Sub-parses driven by openText (e.g. #bgl{} content lifted out of an #i6 raw block)
         // legitimately end at EOF inside whatever compile context the caller is in.
@@ -646,10 +664,17 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
     // its `{`. Everything at count >= i6Depth is treated as I6 content.
     int i6Depth = -1;
     bool pendingI6 = false;
+    int openLine = braceLines.empty() ? 0 : braceLines.back();
+    int stringLine = 0;   // where a string still open at the end of the file began
 
      while(count>0){
          if(c == EOF){
-             parser.parsingError("Unexpected end of file — missing closing '}'");
+             if(stringLine > 0)
+                 parser.parsingError(format("A string opened at line {0} is never closed with '\"'.", stringLine));
+             else if(openLine > 0)
+                 parser.parsingError(format("The '{{' at line {0} is never closed: the file ends before its '}}'.", openLine));
+             else
+                 parser.parsingError("Unexpected end of file — missing closing '}'");
              break;
          }
          // A one-line `#i6 …;` has no region: what follows it isn't its `{`.
@@ -713,6 +738,11 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          // ends early at the escaped quote and a following apostrophe opens a runaway char-literal
          // scan that swallows the closing brace.
          if(c=='"'){
+             int startLine = get<2>(files.top());
+             struct OnEnd { char& c; int& out; int& firstMulti; int line; fileLexer& lx;
+                 ~OnEnd(){ if(c == EOF) out = firstMulti ? firstMulti : line;
+                           else if(firstMulti == 0 && get<2>(lx.files.top()) != line) firstMulti = line; } }
+                 onEnd{c, stringLine, firstMultilineString, startLine, *this};
              bool beguileEscapes = !(isI6Content || i6Depth != -1);
              if(beguileEscapes){
                  // An interpolated string's `{…}` spans are Beguile expressions, which may hold
@@ -773,7 +803,7 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
      // The caller had already consumed the opening '{' via getToken(), which incremented
      // braceDepth. We've now consumed the matching '}' here as raw char reads, so decrement to
      // keep the counter balanced for LSP error recovery.
-     if(braceDepth > 0) braceDepth--;
+     if(braceDepth > 0){ braceDepth--; if(!braceLines.empty()) braceLines.pop_back(); }
      return retval;
 }
 
@@ -918,7 +948,7 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
         c = readChar();
     }
     if(outDirective == eBglDirective::NotFound){
-        if(braceDepth > 0) braceDepth--;
+        if(braceDepth > 0){ braceDepth--; if(!braceLines.empty()) braceLines.pop_back(); }
         outRemainingDepth = 0;
     }
     return retval;
@@ -1488,19 +1518,53 @@ token fileLexer::getToken(){
     prevTokenValue = retval.value;
     retval.src = currentLocation();
     // Track brace depth for LSP error recovery — counts '{' and '}' tokens as they're emitted.
-    if(retval.is(token::braceOpen))  braceDepth++;
-    else if(retval.is(token::braceClose) && braceDepth > 0) braceDepth--;
+    if(retval.is(token::braceOpen)){ braceDepth++; braceLines.push_back(retval.src.line); }
+    else if(retval.is(token::braceClose) && braceDepth > 0){ braceDepth--; if(!braceLines.empty()) braceLines.pop_back(); }
     return retval;
 }
 token fileLexer::peekToken(){
     return peekToken(1);
 }
+vector<token> fileLexer::peekTokens(int count, std::function<bool(token&)> stopAfter){
+    vector<token> out;
+    auto savepos=currentStream()->tellg();
+    eTokenType savedPrev = prevTokenType;
+    string savedPrevValue = prevTokenValue;
+    int savedBraceDepth = braceDepth;
+    vector<int> savedBraceLines = braceLines;
+    int savedLastTokenLine = lastTokenLine;
+    string savedLastTokenFile = lastTokenFile;
+    bool savedHasPending = hasPendingToken;
+    token savedPending = pendingToken;
+    auto& [pStream, pName, pLine, pCol] = files.top();
+    int saveLine = pLine;
+    int saveCol  = pCol;
+    size_t depth = files.size();
+    for(int i = 0; i < count; i++){
+        out.push_back(getToken());
+        if(out.back().is(eTokenType::eof) || files.size() != depth || stopAfter(out.back())) break;
+    }
+    currentStream()->seekg(savepos);
+    prevTokenType = savedPrev;
+    prevTokenValue = savedPrevValue;
+    braceDepth = savedBraceDepth;
+    braceLines = savedBraceLines;
+    lastTokenLine = savedLastTokenLine;
+    lastTokenFile = savedLastTokenFile;
+    hasPendingToken = savedHasPending;
+    pendingToken = savedPending;
+    pLine = saveLine;
+    pCol  = saveCol;
+    return out;
+}
+
 token fileLexer::peekToken(int tokNum){
     token retval;
     auto savepos=currentStream()->tellg();
     eTokenType savedPrev = prevTokenType;
     string savedPrevValue = prevTokenValue;
     int savedBraceDepth = braceDepth;
+    vector<int> savedBraceLines = braceLines;
     int savedLastTokenLine = lastTokenLine;
     string savedLastTokenFile = lastTokenFile;
     bool savedHasPending = hasPendingToken;
@@ -1516,6 +1580,7 @@ token fileLexer::peekToken(int tokNum){
     prevTokenType = savedPrev;
     prevTokenValue = savedPrevValue;
     braceDepth = savedBraceDepth;
+    braceLines = savedBraceLines;
     lastTokenLine = savedLastTokenLine;
     lastTokenFile = savedLastTokenFile;
     hasPendingToken = savedHasPending;

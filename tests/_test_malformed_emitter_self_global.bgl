@@ -1,0 +1,5 @@
+/* Malformed input: emitter_self_global */
+// EXPECT_ERROR: a global emitter has no receiver
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int twice(int v){ ($self * 2) }
+void main(){ print(twice(3)); }

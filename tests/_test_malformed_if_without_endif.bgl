@@ -1,0 +1,5 @@
+/* Malformed input: if_without_endif */
+// EXPECT_ERROR: has no '#endif'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#if TARGET_ZCODE
+void main(){ }

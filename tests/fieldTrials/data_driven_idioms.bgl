@@ -95,7 +95,7 @@ value class Tally {
     Tally operator = (Tally o) { items = o.items; total = o.total; best = o.best; return self; }
 }
 
-extend class object {
+extend extern class object {
     string description;
 }
 

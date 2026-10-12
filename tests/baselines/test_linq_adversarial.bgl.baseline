@@ -68,17 +68,19 @@ Constant _BGL_TRACKED_ARRAYS;
       return r;
    ];
    [ _bglByteArrayLocalAlloc nbytes words r i;
-      words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
       r = _bglFrameAlloc(words);
       for (i = 0: i < words: i++) r-->i = 0;
       r-->0 = nbytes;
-      return r;
+      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + WORDSIZE;
    ];
    [ _bglByteArrayLocalFree nbytes;
-      _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
    ];
    [ _bglByteArrayLocalCopy dst src i;
       for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+      dst-->0 = src-->0;
    ];
 
     ! MAX_DEPTH = number of nesting levels: depth 0 is a top-level chain, depth 1 is a chain
@@ -164,8 +166,8 @@ array g_empty table 10;
     result = _bglArrayLocalCopyAlloc(_bglArray.length(_bglsrc_result, 0), _bglsrc_result, result); _bglheld_result = _bglheld_result + _bglFrameTaken; _bglsrc_result = _bglFrameSrc;
     _bglArray.copy(result, 0, _bglsrc_result, 0, 0);
     print _bglArray.length(result, 0);
-    print  result-->(0+1) ;
-    print  result-->(4+1) ;
+    print  _bglAt(result, 0, 0)-->0 ;
+    print  _bglAt(result, 4, 0)-->0 ;
     print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_8), 0);
     print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_9), 0);
     print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_10), 0);
@@ -176,9 +178,9 @@ array g_empty table 10;
         print -1;
     }
     print _bglArray.length(_bglArray.takeWhile(g_nums, 0, _bglLambda_13), 0);
-    print  (_bglArray.takeWhile(g_nums, 0, _bglLambda_14))-->(9+1) ;
+    print  _bglAt((_bglArray.takeWhile(g_nums, 0, _bglLambda_14)), 9, 0)-->0 ;
     print _bglArray.length(_bglArray.skipWhile(g_nums, 0, _bglLambda_15), 0);
-    print  (_bglArray.skipWhile(g_nums, 0, _bglLambda_16))-->(0+1) ;
+    print  _bglAt((_bglArray.skipWhile(g_nums, 0, _bglLambda_16)), 0, 0)-->0 ;
     print _bglArray.length(_bglArray.take(g_nums, 0, 0), 0);
     print _bglArray.length(_bglArray.take(g_nums, 0, 10), 0);
     print _bglArray.length(_bglArray.skip(g_nums, 0, 0), 0);
@@ -186,16 +188,16 @@ array g_empty table 10;
     print _bglArray.first(_bglArray.filter(g_one, 0, _bglLambda_17), 0);
     print _bglArray.first(_bglArray.map(g_one, 0, _bglLambda_18), 0);
     print _bglArray.length(_bglArray.distinct(g_one, 0), 0);
-    print  (_bglArray.orderBy(g_one, 0, 0))-->(0+1) ;
+    print  _bglAt((_bglArray.orderBy(g_one, 0, 0)), 0, 0)-->0 ;
     print _bglArray.length(_bglArray.distinct(g_same, 0), 0);
-    print  (_bglArray.distinct(g_same, 0))-->(0+1) ;
-    print  (_bglArray.orderBy(g_sorted, 0, 0))-->(0+1) ;
-    print  (_bglArray.orderBy(g_sorted, 0, 0))-->(4+1) ;
-    print  g_sorted-->(0+1) ;
-    print  (_bglArray.orderBy(g_dupes, 0, _bglLambda_19))-->(0+1) ;
+    print  _bglAt((_bglArray.distinct(g_same, 0)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.orderBy(g_sorted, 0, 0)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.orderBy(g_sorted, 0, 0)), 4, 0)-->0 ;
+    print  _bglAt(g_sorted, 0, 0)-->0 ;
+    print  _bglAt((_bglArray.orderBy(g_dupes, 0, _bglLambda_19)), 0, 0)-->0 ;
     print _bglArray.length(_bglArray.filter(g_neg, 0, _bglLambda_20), 0);
     print _bglArray.length(_bglArray.distinct(g_neg, 0), 0);
-    print  (_bglArray.orderBy(g_neg, 0, 0))-->(0+1) ;
+    print  _bglAt((_bglArray.orderBy(g_neg, 0, 0)), 0, 0)-->0 ;
     print _bglArray.length(_bglArray.filter(g_empty, 0, _bglLambda_21), 0);
     print _bglArray.length(_bglArray.map(g_empty, 0, _bglLambda_22), 0);
     print _bglArray.length(_bglArray.take(g_empty, 0, 5), 0);
@@ -210,16 +212,16 @@ array g_empty table 10;
     if(_bglArray.any(g_empty, 0, _bglLambda_25) == true) print "true"; else print "false";
     if(_bglArray.all(g_empty, 0, _bglLambda_26) == true) print "true"; else print "false";
     print _bglArray.length(_bglArray.filter(_bglArray.map(g_nums, 0, _bglLambda_27), 0, _bglLambda_28), 0);
-    print  (_bglArray.orderBy(_bglArray.map(g_nums, 0, _bglLambda_29), 0, _bglLambda_30))-->(0+1) ;
+    print  _bglAt((_bglArray.orderBy(_bglArray.map(g_nums, 0, _bglLambda_29), 0, _bglLambda_30)), 0, 0)-->0 ;
     print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_31), 0);
-    print  (_bglArray.filter(g_nums, 0, _bglLambda_32))-->(0+1) ;
-    print  (_bglArray.map(g_nums, 0, _bglLambda_33))-->(2+1) ;
-    print  (_bglArray.take(g_nums, 0, 3))-->(2+1) ;
-    print  (_bglArray.skip(g_nums, 0, 7))-->(0+1) ;
-    print  (_bglArray.takeWhile(g_nums, 0, _bglLambda_34))-->(2+1) ;
-    print  (_bglArray.skipWhile(g_nums, 0, _bglLambda_35))-->(0+1) ;
-    print  (_bglArray.distinct(g_dupes, 0))-->(0+1) ;
-    print  (_bglArray.orderBy(g_dupes, 0, 0))-->(0+1) ;
+    print  _bglAt((_bglArray.filter(g_nums, 0, _bglLambda_32)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.map(g_nums, 0, _bglLambda_33)), 2, 0)-->0 ;
+    print  _bglAt((_bglArray.take(g_nums, 0, 3)), 2, 0)-->0 ;
+    print  _bglAt((_bglArray.skip(g_nums, 0, 7)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.takeWhile(g_nums, 0, _bglLambda_34)), 2, 0)-->0 ;
+    print  _bglAt((_bglArray.skipWhile(g_nums, 0, _bglLambda_35)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.orderBy(g_dupes, 0, 0)), 0, 0)-->0 ;
     _bglFrameFree(_bglheld_result);
 ];
 [_bglLambda_0 x;
@@ -448,7 +450,7 @@ object _bglArray
                         quit;
                     
             }
-            dst-->(writecount+1) = elem;
+            _bglAt(dst, writecount, 1)-->0 = elem;
             writecount++;
         }
     }
@@ -498,7 +500,7 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = f(self.get(obj,prop,i));
+        _bglAt(dst, i, 1)-->0 = f(self.get(obj,prop,i));
     }
     _bglArray.setLength(dst, 0, srcLen);
     _bgllinqleave();
@@ -522,7 +524,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,i);
+        _bglAt(dst, i, 1)-->0 = self.get(obj,prop,i);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -547,7 +549,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,start + i);
+        _bglAt(dst, i, 1)-->0 = self.get(obj,prop,start + i);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -568,7 +570,7 @@ object _bglArray
                     quit;
                 
         }
-        dst-->(outlen+1) = self.get(obj,prop,i);
+        _bglAt(dst, outlen, 1)-->0 = self.get(obj,prop,i);
         outlen++;
     }
     _bglArray.setLength(dst, 0, outLen);
@@ -591,7 +593,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,start + i);
+        _bglAt(dst, i, 1)-->0 = self.get(obj,prop,start + i);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -606,7 +608,7 @@ object _bglArray
         elem = self.get(obj,prop,i);
         seen=false;
         for (j = 0 : j < outlen : j++) {
-            if ( dst-->(j+1) ==elem) {
+            if ( _bglAt(dst, j, 0)-->0 ==elem) {
                 seen=true;
                 break;
             }
@@ -618,7 +620,7 @@ object _bglArray
                         quit;
                     
             }
-            dst-->(outlen+1) = elem;
+            _bglAt(dst, outlen, 1)-->0 = elem;
             outlen++;
         }
     }
@@ -637,7 +639,7 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = self.get(obj,prop,i);
+        _bglAt(dst, i, 1)-->0 = self.get(obj,prop,i);
     }
     _bglArray.setLength(dst, 0, srcLen);
     self.sortDefault(dst, 0, compare);
@@ -645,3 +647,28 @@ object _bglArray
     return dst;
   ]
 ;
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

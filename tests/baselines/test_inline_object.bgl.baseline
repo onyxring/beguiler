@@ -69,11 +69,11 @@ _bglClass_point origin
 array path table origin _bglanon6 _bglanon7;
 array inferred table _bglanon8 _bglanon9;
 [main;
-    print ( pts-->(1+1) ).x;
-    print ( path-->(1+1) ).y;
-    print ( path-->(2+1) ).x;
-    print ( inferred-->(0+1) ).x;
-    print ( inferred-->(1+1) ).y;
+    print ( _bglAt(pts, 1, 0)-->0 ).x;
+    print ( _bglAt(path, 1, 0)-->0 ).y;
+    print ( _bglAt(path, 2, 0)-->0 ).x;
+    print ( _bglAt(inferred, 0, 0)-->0 ).x;
+    print ( _bglAt(inferred, 1, 0)-->0 ).y;
     print pb.y;
     print pc.x;
 ];
@@ -129,13 +129,38 @@ _bglClass_point pc
     @glk api args retval;
     return retval;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
 [_bglFloatGt _l_x _l_y;
      @jfgt _l_x _l_y ?yes; rfalse; .yes; rtrue; 
 ];
 [_bglFloatLt _l_x _l_y;
      @jflt _l_x _l_y ?yes; rfalse; .yes; rtrue; 
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
 ];
+array _bglsink --> 1;

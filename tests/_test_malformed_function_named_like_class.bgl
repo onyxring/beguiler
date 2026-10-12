@@ -1,0 +1,6 @@
+/* Malformed input: function_named_like_class */
+// EXPECT_ERROR: a function can't share it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Door : object { }
+void door(){ }
+void main(){ }

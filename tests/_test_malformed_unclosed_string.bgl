@@ -1,0 +1,6 @@
+/* Malformed input: unclosed_string */
+// EXPECT_ERROR: A string opened at line 5 is never closed
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){
+    print("hello);
+}

@@ -1,0 +1,4 @@
+/* Malformed input: missing_paren */
+// EXPECT_ERROR: Missing ')' before ';'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ print("a"; }

@@ -1,0 +1,6 @@
+/* Malformed input: member_init_calls */
+// EXPECT_ERROR: so it can't call 'pick()'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int pick(){ return 4; }
+class Thing : object { int weight = pick(); }
+void main(){ }

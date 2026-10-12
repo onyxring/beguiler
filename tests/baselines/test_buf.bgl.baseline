@@ -9,9 +9,6 @@ global _bgl_temp2;
 
     Default bglStringDefaultSize 500;
 
-global bufa = 0;
-global bufb = 0;
-global bufsmall = 0;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
@@ -19,20 +16,8 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
-    bufa_raw->0 = $90;
-    bufa_raw->1 = $84;
-    (bufa_raw + 2)-->0 = 64;
-    bufa = bufa_raw + WORDSIZE + 2;
     _bglBuf._registerTracked(bufa);
-    bufb_raw->0 = $90;
-    bufb_raw->1 = $84;
-    (bufb_raw + 2)-->0 = 64;
-    bufb = bufb_raw + WORDSIZE + 2;
     _bglBuf._registerTracked(bufb);
-    bufsmall_raw->0 = $90;
-    bufsmall_raw->1 = $84;
-    (bufsmall_raw + 2)-->0 = 16;
-    bufsmall = bufsmall_raw + WORDSIZE + 2;
     _bglBuf._registerTracked(bufsmall);
 ];
  Constant NO_ATTRIBUTE 0; 
@@ -53,7 +38,7 @@ object _bglBuf
         return false;
     }
     for (i = 0 : i < self._trackedcount : i++) {
-        if ( _bgltrackedregistry-->(i+1)  == p) {
+        if ( _bglAt(_bgltrackedregistry, i, 0)-->0  == p) {
             return true;
         }
     }
@@ -64,14 +49,14 @@ object _bglBuf
          print "^[Beguile runtime: tracked buffer registry full]^"; 
         return;
     }
-    _bgltrackedregistry-->(self._trackedcount+1) = buf;
+    _bglAt(_bgltrackedregistry, self._trackedcount, 1)-->0 = buf;
     self._trackedcount++;
   ],
        size [buf;
-    if (self.istracked(buf)) {
-        return buf-->(-1);
+    if (buf == 0) {
+        return -1;
     }
-    return -1;
+    return buf-->(-1);
   ],
        length [buf;
     return buf-->(0);
@@ -113,15 +98,13 @@ object _bglBuf
     if (sz < 0) {
         sz=bglstringdefaultsize;
     }
+    sz=sz + WORDSIZE;
      stringVal.print_to_array(buf, sz); 
     self.setLength(buf, self.length(buf));
     return buf;
   ],
        setFromBuffer [buf stringVal svlen;
     svlen=self.length(stringVal);
-    if ((~~self.istracked(buf)) && svlen > self.length(buf)) {
-        svlen=self.length(buf);
-    }
     self.copy(buf, stringVal, svlen, 0, 0);
     self.setLength(buf, svlen);
     return buf;
@@ -148,7 +131,7 @@ object _bglBuf
     return tobuf;
   ],
        capture [buf maxBytes;
-    _bglbufstreamstack-->(self._stacktop+1) = buf;
+    _bglAt(_bglbufstreamstack, self._stacktop, 1)-->0 = buf;
     @output_stream 3 buf;
     self._stacktop++;
   ],
@@ -157,7 +140,7 @@ object _bglBuf
         return 0;
     }
     self._stacktop--;
-    buf =  _bglbufstreamstack-->(self._stacktop+1) ;
+    buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
     @output_stream -1 * 3;
     self.setLength(buf, self.length(buf));
     return buf;
@@ -480,9 +463,12 @@ object _bglBuf
     return tobuf;
   ]
 ;
-array bufa_raw -> (2 + 2*WORDSIZE + 64);
-array bufb_raw -> (2 + 2*WORDSIZE + 64);
-array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
+Array _bglcap_bufa -> 0 64;
+Array bufa -> (WORDSIZE + 64);
+Array _bglcap_bufb -> 0 64;
+Array bufb -> (WORDSIZE + 64);
+Array _bglcap_bufsmall -> 0 16;
+Array bufsmall -> (WORDSIZE + 16);
 [exerciseLength szA szA2 szB szS lenA lenA2 lenB trA trA2;
     szA=_bglbuf.size(bufa);
     szA2=_bglBuf.size(bufa);
@@ -499,12 +485,12 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     trA2=_bglBuf.isTracked(bufa);
 ];
 [exerciseChars c0_sub c1_sub c0_api c1_api cEnd_api cOut;
-    bufa->(0 + WORDSIZE) = 'A';
-    bufa->(31 + WORDSIZE) = 'Z';
+    _bglByteAt(bufa, 0, 1)->0 = 'A';
+    _bglByteAt(bufa, 31, 1)->0 = 'Z';
     _bglbuf.setchar_3_bytearray_int_char(bufa, 1, 'B');
     _bglbuf.setchar_3_bytearray_int_char(bufa, 32, 'M');
-    c0_sub= bufa->(0 + WORDSIZE);
-    c1_sub= bufa->(1 + WORDSIZE);
+    c0_sub= _bglByteAt(bufa, 0, 0)->0;
+    c1_sub= _bglByteAt(bufa, 1, 0)->0;
     c0_api=_bglbuf.getchar(bufa, 0);
     c1_api=_bglbuf.getchar(bufa, 1);
     cEnd_api=_bglbuf.getchar(bufa, 31);
@@ -621,6 +607,25 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
 ];
 [_bglLambda_3 c;
     return iswhitespace(c);
+];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglByteAt arr i w n;
+    n = 0;
+    
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
+        return _bglOutOfRange(i, n, w);
+    
 ];
 [_bglCharIsAlpha c;
     return _bglcharislower(c) || _bglcharisupper(c);
@@ -749,3 +754,17 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     }
     return c;
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

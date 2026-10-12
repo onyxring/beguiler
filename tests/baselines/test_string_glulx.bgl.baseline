@@ -81,7 +81,7 @@ object _bglBuf
         return false;
     }
     for (i = 0 : i < self._trackedcount : i++) {
-        if ( _bgltrackedregistry-->(i+1)  == p) {
+        if ( _bglAt(_bgltrackedregistry, i, 0)-->0  == p) {
             return true;
         }
     }
@@ -92,14 +92,14 @@ object _bglBuf
          print "^[Beguile runtime: tracked buffer registry full]^"; 
         return;
     }
-    _bgltrackedregistry-->(self._trackedcount+1) = buf;
+    _bglAt(_bgltrackedregistry, self._trackedcount, 1)-->0 = buf;
     self._trackedcount++;
   ],
        size [buf;
-    if (self.istracked(buf)) {
-        return buf-->(-1);
+    if (buf == 0) {
+        return -1;
     }
-    return -1;
+    return buf-->(-1);
   ],
        length [buf;
     return buf-->(0);
@@ -141,15 +141,13 @@ object _bglBuf
     if (sz < 0) {
         sz=bglstringdefaultsize;
     }
+    sz=sz + WORDSIZE;
      stringVal.print_to_array(buf, sz); 
     self.setLength(buf, self.length(buf));
     return buf;
   ],
        setFromBuffer [buf stringVal svlen;
     svlen=self.length(stringVal);
-    if ((~~self.istracked(buf)) && svlen > self.length(buf)) {
-        svlen=self.length(buf);
-    }
     self.copy(buf, stringVal, svlen, 0, 0);
     self.setLength(buf, svlen);
     return buf;
@@ -176,7 +174,7 @@ object _bglBuf
     return tobuf;
   ],
        capture [buf maxBytes s;
-    _bglbufstreamstack-->(self._stacktop+1) = buf;
+    _bglAt(_bglbufstreamstack, self._stacktop, 1)-->0 = buf;
     if (maxbytes == 0) {
         s=self.size(buf);
         if ((s < 0)) {
@@ -186,7 +184,7 @@ object _bglBuf
             maxBytes=s;
         }
     }
-    _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
+    _bglAt(_bglbufglulxstreams, self._stacktop, 1)-->0 = __glkHook(72);
     __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, _bglfilemodewrite, 662));
     self._stacktop++;
   ],
@@ -195,10 +193,10 @@ object _bglBuf
         return 0;
     }
     self._stacktop--;
-    buf =  _bglbufstreamstack-->(self._stacktop+1) ;
+    buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
     __glkHook(68, __glkHook(72), _bglstreamcounts);
     self.setLength(buf,  _bglstreamcounts-->1 );
-    __glkHook(71,  _bglbufglulxstreams-->(self._stacktop+1) );
+    __glkHook(71,  _bglAt(_bglbufglulxstreams, self._stacktop, 0)-->0 );
     return buf;
   ],
        stackLen [;
@@ -1411,6 +1409,17 @@ class _bglString(bglstringpoolreserve)
     @glk api args retval;
     return retval;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
 [_bglCharToLower c;
     if (c>='A' && c<='Z') {
         return c+32;
@@ -1447,9 +1456,23 @@ class _bglString(bglstringpoolreserve)
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
 object _bglStringLockStack
 ;
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
 ];
+array _bglsink --> 1;

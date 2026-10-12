@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_frob
-  with handler [m;
+  with priority 10,
+       handler [m;
     meta = true;
     if (meta) {
         meta = false;

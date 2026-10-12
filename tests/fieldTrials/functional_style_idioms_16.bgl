@@ -31,7 +31,7 @@
 #define DIAL_TRACE
 #define DIAL_SLOTS 4
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

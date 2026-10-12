@@ -129,7 +129,7 @@ class BigGadget : Gadget {
     }
 }
 
-extend class object {
+extend extern class object {
     string description;
     object e_to;
     object w_to;

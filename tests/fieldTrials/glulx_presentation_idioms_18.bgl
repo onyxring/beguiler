@@ -50,7 +50,7 @@
     [ MarkSum g i n; for (i = 0: i < 4: i++) n = n + (g.&gauge_marks)-->i; return n; ];
 }
 
-extend class object {
+extend extern class object {
     string description;
 }
 

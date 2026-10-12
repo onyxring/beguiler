@@ -71,9 +71,9 @@ class _bglClass_rule
 ;
 array book table _bglanon4 _bglanon5;
 [main v;
-    print ( book-->(1+1) ).pri;
-    if(( book-->(0+1) ).matcher provides print) ( book-->(0+1) ).matcher.print(); else print (name)( book-->(0+1) ).matcher;
-    v = ( book-->(0+1) ).run();
+    print ( _bglAt(book, 1, 0)-->0 ).pri;
+    if(( _bglAt(book, 0, 0)-->0 ).matcher provides print) ( _bglAt(book, 0, 0)-->0 ).matcher.print(); else print (name)( _bglAt(book, 0, 0)-->0 ).matcher;
+    v = ( _bglAt(book, 0, 0)-->0 ).run();
     print v;
 ];
 _bglClass_rule _bglanon4
@@ -104,13 +104,38 @@ _bglClass_rule _bglanon5
     @glk api args retval;
     return retval;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 
 ];
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
 ];
+array _bglsink --> 1;

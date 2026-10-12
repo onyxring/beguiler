@@ -11,7 +11,7 @@
 #includeI6 "grammar"
 #include <bindings/i6StandardLibrary>
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
     object n_to;
     object s_to;

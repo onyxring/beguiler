@@ -1,0 +1,6 @@
+/* Malformed input: class_member_reads_global */
+// EXPECT_ERROR: can't read the variable 'startWeight'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int startWeight = 5;
+class Thing : object { int weight = startWeight; }
+void main(){ }

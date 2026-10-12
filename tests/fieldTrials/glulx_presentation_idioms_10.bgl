@@ -42,7 +42,7 @@
 
 #declare PANEL_KIT
 
-extend class object {
+extend extern class object {
     string description;
 }
 

@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_beep1
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"beep one";
   ]
 ;
@@ -75,7 +76,8 @@ verb 'beep'
 verb 'honk'
     * noun -> beep1;
 object _bglVerb_beep2
-  with handler [;
+  with priority 5,
+       handler [;
     print (string)"beep two";
   ]
 ;

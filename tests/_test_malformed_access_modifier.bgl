@@ -1,0 +1,5 @@
+/* Malformed input: access_modifier */
+// EXPECT_ERROR: has no access modifiers
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Box : object { public int size; }
+void main(){ }

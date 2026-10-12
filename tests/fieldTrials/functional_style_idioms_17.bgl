@@ -38,7 +38,7 @@ Global gaugeChecks = 0;
 
 extern int gaugeChecks;
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

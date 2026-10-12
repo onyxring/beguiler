@@ -27,7 +27,7 @@
 
 #include "library_author_idioms_5_parts/library_author_idioms_5_store"
 
-extend class object {
+extend extern class object {
     string description;
 }
 

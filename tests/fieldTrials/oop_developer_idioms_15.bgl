@@ -29,7 +29,7 @@
 #define TRACE_LEVEL 2
 #define STRICT_BAYS
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

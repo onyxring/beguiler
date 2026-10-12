@@ -1,0 +1,27 @@
+/*  run_array_bounds — an index outside an array<T> prints a run-time message and the access is skipped.  */
+// EXPECT_OUTPUT: 4 | 
+// EXPECT_OUTPUT: [Beguile run-time error: array index 4 is outside the 4 elements it can hold; the write is skipped]
+// EXPECT_OUTPUT: [Beguile run-time error: array index 4 is outside the 4 elements it holds; the read is skipped]
+// EXPECT_OUTPUT: 0 | 
+// EXPECT_OUTPUT: [Beguile run-time error: array index -1 is outside the 4 elements it can hold; the write is skipped]
+// EXPECT_OUTPUT: 3 | 
+// EXPECT_OUTPUT: [Beguile run-time error: array index 5 is outside the 3 elements it holds; the read is skipped]
+// EXPECT_OUTPUT: 8 8 | z | 
+// EXPECT_OUTPUT: [Beguile run-time error: array index 8 is outside the 8 elements it can hold; the write is skipped]
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> g[4];
+class Tally : object { array<int> perKind[4]; }
+Tally t { }
+int over(int i){ return i + 4; }
+array<char> text[8];
+void put(array<char> a, int i){ a[i] = 'z'; }
+void main(){
+    int i = 2;
+    g[i] = 1; t.perKind[i] = 3; print(g[i] + t.perKind[i]); print(" | ");
+    i = over(0); g[i] = 9; print(g[i]); print(" | ");
+    t.perKind[i - 5] = 9; print(t.perKind[2]); print(" | ");
+    array<int> loc[3]; loc[i + 1] = 4; print(loc[i + 1]);
+    print("^");
+    print($"{text.size} {text.length} | "); put(text, 7); print(text[7]); print(" | "); put(text, 8);
+    print("^");
+}

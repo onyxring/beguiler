@@ -1,0 +1,4 @@
+/* Malformed input: break_outside_loop */
+// EXPECT_ERROR: 'break' is only valid inside a loop
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 1; if(a == 1) break; }

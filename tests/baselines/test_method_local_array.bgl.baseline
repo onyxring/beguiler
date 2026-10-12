@@ -67,17 +67,19 @@ Constant _BGL_TRACKED_ARRAYS;
       return r;
    ];
    [ _bglByteArrayLocalAlloc nbytes words r i;
-      words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
       r = _bglFrameAlloc(words);
       for (i = 0: i < words: i++) r-->i = 0;
       r-->0 = nbytes;
-      return r;
+      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + WORDSIZE;
    ];
    [ _bglByteArrayLocalFree nbytes;
-      _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
    ];
    [ _bglByteArrayLocalCopy dst src i;
       for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+      dst-->0 = src-->0;
    ];
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
@@ -160,7 +162,7 @@ object gadget
   ],
        viaTracked [_bglret nums;
     nums = _bglArrayLocalAlloc(4);
-    nums-->(0+1) = 1;
+    _bglAt(nums, 0, 1)-->0 = 1;
     _bglret = nums;
     _bglFrameFree(7);
     return _bglret;
@@ -186,13 +188,38 @@ object gadget
     @glk api args retval;
     return retval;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 
 ];
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
 ];
+array _bglsink --> 1;

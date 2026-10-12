@@ -1,0 +1,5 @@
+/* Malformed input: delete_class */
+// EXPECT_ERROR: is the class; delete takes a variable
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Tok[3] : object { int v; }
+void main(){ delete Tok; }

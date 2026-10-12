@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_trundle
-  with handler [;
+  with priority 15,
+       handler [;
     print (string)"trundle";
   ]
 ;
@@ -72,7 +73,8 @@ object _bglVerb_trundle
 verb 'trundle'
     * noun -> trundle;
 object _bglVerb_smelt
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"smelt";
   ]
 ;

@@ -1,0 +1,4 @@
+/* Malformed input: if_without_parens */
+// EXPECT_ERROR: takes its condition in parentheses
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int x = 1; if x == 1 { print("a"); } }

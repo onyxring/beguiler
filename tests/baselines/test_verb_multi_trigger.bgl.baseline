@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_typenum
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"type num";
   ]
 ;
@@ -76,7 +77,8 @@ verb 'entrz'
 verb 'putz'
     * number 'into'/'in'/'on'/'onto' noun -> typenum;
 object _bglVerb_toggle
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"toggle";
   ]
 ;
@@ -90,7 +92,8 @@ verb 'flop'
     * noun -> toggle
     * noun 'twice' -> toggle;
 object _bglVerb_beep
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"beep";
   ]
 ;
@@ -101,7 +104,8 @@ verb 'beep'
     * noun -> beep
     * noun -> chirp;
 object _bglVerb_chirp
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"chirp";
   ]
 ;
@@ -113,7 +117,8 @@ verb 'chirp'
 verb 'tweet'
     * noun -> chirp;
 object _bglVerb_squelch
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"squelch";
   ]
 ;

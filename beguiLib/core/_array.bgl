@@ -10,8 +10,8 @@
 
 /// A fixed-capacity array of `T`, declared sized (`array<int> a[8]`) or from a list (`array<int> a = {1,2,3}`).
 extern emitter class array<T>{
-    replace emitter T    operator[](int i)        { $val-->($i+1) }       /// The element at `i`.
-    replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }  /// Set the element at `i`.
+    replace emitter T    operator[](int i)        { _bglAt($val, $i, 0)-->0 }       /// The element at `i`.
+    replace emitter T    operator[]=(int i, T v)  { _bglAt($val, $i, 1)-->0 = $v }  /// Set the element at `i`.
     replace emitter int  size                     { $val-->0 }             /// How many elements the array can hold.
     typesealed arrayLength length;                                         /// How many elements are in use; the same as `size` unless `<array>` is included.
 }
@@ -32,9 +32,9 @@ extern emitter class rawArray<T> {
 
 /// The type of `array<char>`: one byte per element, for text.
 extern emitter class byteArray : array {
-    replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }       /// The character at `i`.
-    replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }  /// Set the character at `i`.
-    replace emitter int  size                       { $val-->0 }                     /// How many characters the array holds.
+    replace emitter char operator[](int i)          { _bglByteAt($val, $i, 0)->0 }       /// The character at `i`.
+    replace emitter char operator[]=(int i, char v) { _bglByteAt($val, $i, 1)->0 = $v }  /// Set the character at `i`.
+    replace emitter int  size                       { (($val) + 0)-->(-1) }               /// How many characters the array can hold.
     // Its own type, so byte arrays don't take `<array>`'s length, which suits word arrays only.
     replace typesealed byteArrayLength length;                                       /// How many characters the array holds.
 }
@@ -44,6 +44,54 @@ extern emitter class byteArrayLength {
     emitter int operator()                          { $self-->0 }                    /// How many characters are in use.
 }
 //-- Implementation ------------------------------------------------------------
+// Subscripts of an array<T> are checked against its size. Out of range, a message is printed and the
+// access goes to a scratch word instead.
+superposed rawArray<int> _bglSink[1];
+superposed int _bglOutOfRange(int i, int n, int w){
+    #i6 {
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    }
+}
+// The address of element `i` of a global or local array; `w` is 1 for a write.
+superposed int _bglAt(int arr, int i, int w){
+    int n = 0;
+    #i6 {
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    }
+}
+// The address of character `i` of an array<char>, whose capacity is in the word before it.
+superposed int _bglByteAt(int arr, int i, int w){
+    int n = 0;
+    #i6 {
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
+        return _bglOutOfRange(i, n, w);
+    }
+}
+// The address of element `i` of an object's member array; `f` is 1 for a write, plus 2 when the
+// member keeps its length in its last word.
+superposed int _bglMemberAt(var obj, var prop, int i, int f){
+    int n = 0;
+    #i6 {
+        n = obj.#prop / WORDSIZE;
+        if(f & 2) n--;
+        if(i >= 0 && i < n) return obj.&prop + i * WORDSIZE;
+        return _bglOutOfRange(i, n, f & 1);
+    }
+}
 // Scratch storage for `for(x in {a, b, c})` lists.
 #storedEmitFirst scratchSupport {
     Array _bglScratchStack --> (_BGL_FORIN_SCRATCH_CAP + 3);   ! word 0 is set by _bglScratchMake

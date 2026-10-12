@@ -1,0 +1,5 @@
+/* `extend class` on an extern class can't add a field: Inform 6 owns the instances. */
+// EXPECT_ERROR: 'object' is an extern class, so 'extend' can add only emitters and static members to it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+extend class object { int weight = 0; }
+void main(){ }

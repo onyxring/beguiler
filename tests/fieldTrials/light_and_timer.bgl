@@ -13,7 +13,7 @@
 
 const int LAMP_FUEL = 3;
 
-extend class object {
+extend extern class object {
     string description;
     object e_to;
     object w_to;

@@ -20,7 +20,7 @@
 
 #using bgl.printRules;
 
-extend class object {
+extend extern class object {
     string description;
     string article;
 }

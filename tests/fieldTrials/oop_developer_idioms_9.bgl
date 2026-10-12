@@ -32,7 +32,7 @@
 #define TRACE_PIPELINE
 #define MAX_STEPS 6
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

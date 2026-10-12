@@ -1,9 +1,5 @@
-// EXPECT_ERROR: Undeclared identifier 'x'
-// Statement without a closing ';'. Should error cleanly, not crash.
-// The actual error is a downstream symptom ("Undeclared identifier 'x'") rather
-// than the upstream cause (missing ';' confuses the parser into reading the next
-// token as part of the initializer). Not great UX but acceptable behavior — the
-// compile fails with a clear identifier-location pointer.
+// EXPECT_ERROR: Missing ';' at the end of line 6, after '5'
+// Statement without a closing ';': the error names the line the ';' is missing from.
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
 void main(){

@@ -40,7 +40,7 @@
 #define BOARD_TRACE
 #define BOARD_SLOTS 3
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

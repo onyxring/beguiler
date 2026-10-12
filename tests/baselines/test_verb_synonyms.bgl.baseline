@@ -95,7 +95,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_quaff
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"You quaff it.";
   ]
 ;
@@ -105,7 +106,8 @@ object _bglVerb_quaff
 verb 'quaff'
     * noun -> quaff;
 object _bglVerb_gaze
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"You gaze.";
   ]
 ;

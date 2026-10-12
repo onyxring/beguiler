@@ -65,7 +65,7 @@ array<int> priceOf = { 2, 3, 5, 8, 20 };
 
 //-- Records -------------------------------------------------------------------
 
-extend class object {
+extend extern class object {
     string description;
 }
 

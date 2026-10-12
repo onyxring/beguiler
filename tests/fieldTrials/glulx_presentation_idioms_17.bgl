@@ -35,7 +35,7 @@
 
 #using bgl.glulx;
 
-extend class object {
+extend extern class object {
     string description;
 }
 

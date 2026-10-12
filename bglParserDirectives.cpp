@@ -492,12 +492,14 @@ void bglParser::skipConditionalBlock(abstractObject& ctx){
             while(ct.isNot("\n") && ct.isNot(eTokenType::eof)){ condText += ct.value; ct = file.getBasicToken(true); }
             if(evaluateCondition(condText)) {
                 recordInactiveRange(startLine1, elifLine - 1);
+                openConditionals.push_back({elifLine, false});
                 return;
             }
             // continue skipping — the next terminator determines the range end
         }
         if(depth == 1 && t.is("#else")){
             recordInactiveRange(startLine1, t.src.line - 1);
+            openConditionals.push_back({t.src.line, true});
             return;
         }
     }
@@ -618,6 +620,10 @@ bool bglParser::directiveUsing(token directive, abstractObject& contextObj){
         if(auto* od = languageService.findGlobalAs<objectDef>(curName)) curObj = od;
     }
     if(!curCls && !curObj){
+        if(languageService.findGlobalAs<functionDef>(curName))
+            return parsingError(format("#using '{0}': '{0}' is a function; #using takes a class or an object.", displayPath));
+        if(languageService.findGlobalAs<variableDeclaration>(curName))
+            return parsingError(format("#using '{0}': '{0}' is a variable; #using takes a class or an object.", displayPath));
         parsingWarning(format("#using '{0}': not a declared class or object; directive ignored", displayPath));
         return false;
     }
@@ -670,6 +676,17 @@ bool bglParser::directiveUsing(token directive, abstractObject& contextObj){
         curObj = nextObj;
     }
     // Import the final scope
+    if(curCls && !curCls->isEmitterClass && !curCls->isGlobalEmitterObject && !curCls->isAlias){
+        bool importable = false;
+        for(typeMember* m : curCls->members){
+            if(auto* fd = dynamic_cast<functionDef*>(m)){ if(fd->isStatic || fd->isEmitter) importable = true; }
+            else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){ if(vd->isStatic || vd->isAlias) importable = true; }
+            else importable = true;
+        }
+        if(!importable && !curCls->members.empty())
+            return parsingError(format("#using '{0}': '{0}' has only instance members, which need an object to run; "
+                                       "reach them through an instance.", displayPath));
+    }
     if(curCls) usingImports.push_back(curCls);
     else if(curObj) usingObjectImports.push_back(curObj);
     return false;
@@ -810,6 +827,9 @@ bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
     if(val.is(eTokenType::comment)){
         while(val.isNot("\n") && val.isNot(eTokenType::eof)) val = file.getBasicToken(true);
     }
+    if(val.is("="))
+        parsingError(format("'{0} {1}' takes its value without '=': `{0} {1} value`.", directive.value,
+                            sym.originalValue.empty() ? sym.value : sym.originalValue));
     if(val.isNot("\n") && val.isNot(eTokenType::eof)){
         valStr = val.value;
         // consume rest of line
@@ -887,40 +907,49 @@ bool bglParser::directiveIf(token directive, abstractObject& contextObj){
     }
     if(!evaluateCondition(condText))
         skipConditionalBlock(contextObj);
-    else if(stoppedOnDirective)
-        processDirective(t, contextObj);
+    else {
+        openConditionals.push_back({directive.src.line, false});
+        if(stoppedOnDirective) processDirective(t, contextObj);
+    }
     return false;
 }
 
-// #elif — reached only when a prior branch was true, so skip to the matching #endif.
-bool bglParser::directiveElif(token directive, abstractObject& contextObj){
-    // reached here only when a prior #if branch was TRUE — skip to #endif
-    int startLine1 = directive.src.line + 1;  // first line after the #elif directive
+// Skip a taken branch's alternatives up to its `#endif`, rejecting an `#elif` or `#else` after its `#else`.
+void bglParser::skipToEndif(token& directive, bool sawElse){
+    const string from = directive.value;
+    int startLine1 = directive.src.line + 1;  // first line after the directive
     int depth = 1;
     int endLine1 = startLine1;
     while(depth > 0){
         token t = file.getToken();
-        if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside #elif block."); return false; }
+        if(t.is(eTokenType::eof)) { parsingError(format("Unexpected end of file inside {0} block.", from)); return; }
         if(t.is("#if"))    depth++;
         if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
+        if(depth == 1 && (t.is("#elif") || t.is("#else"))){
+            if(sawElse) parsingError(format("'{0}' can't follow '#else': '#else' is the last branch of its '#if'.", t.value));
+            if(t.is("#else")) sawElse = true;
+        }
     }
     recordInactiveRange(startLine1, endLine1);
+}
+
+// #elif — reached only when a prior branch was true, so skip to the matching #endif.
+bool bglParser::directiveElif(token directive, abstractObject& contextObj){
+    if(openConditionals.empty()) return parsingError("'#elif' has no '#if' before it.");
+    bool inElse = openConditionals.back().inElse;
+    openConditionals.pop_back();
+    if(inElse) parsingError("'#elif' can't follow '#else': '#else' is the last branch of its '#if'.");
+    skipToEndif(directive, false);
     return false;
 }
 
 // #else — reached only when a prior branch was true, so skip to the matching #endif.
 bool bglParser::directiveElse(token directive, abstractObject& contextObj){
-    // reached here only when a prior #if/#elif branch was TRUE — skip to #endif
-    int startLine1 = directive.src.line + 1;  // first line after the #else directive
-    int depth = 1;
-    int endLine1 = startLine1;
-    while(depth > 0){
-        token t = file.getToken();
-        if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside #else block."); return false; }
-        if(t.is("#if"))    depth++;
-        if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
-    }
-    recordInactiveRange(startLine1, endLine1);
+    if(openConditionals.empty()) return parsingError("'#else' has no '#if' before it.");
+    bool inElse = openConditionals.back().inElse;
+    openConditionals.pop_back();
+    if(inElse) parsingError("'#else' can't follow '#else': '#else' is the last branch of its '#if'.");
+    skipToEndif(directive, true);
     return false;
 }
 
@@ -1184,7 +1213,14 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("#elif"): return directiveElif(directive, contextObj);
         case chk("#else"): return directiveElse(directive, contextObj);
         case chk("#endif"):{
-            // consumed as a no-op (skipConditionalBlock handles it, but a stray #endif is harmless)
+            if(openConditionals.empty()) return parsingError("'#endif' has no '#if' before it.");
+            openConditionals.pop_back();
+            // Nothing follows it on its line but a comment (`#endif A` is C's habit).
+            for(token t = file.getBasicToken(true); t.isNot("\n") && t.isNot(eTokenType::eof); t = file.getBasicToken(true)){
+                if(t.is(eTokenType::comment) || t.is(";") || all_of(t.value.begin(), t.value.end(), ::isspace)) continue;
+                parsingError(format("'#endif' takes nothing after it on its line, but has '{0}'.", t.value));
+                break;
+            }
             return false;
         }
 
@@ -1294,7 +1330,8 @@ bool bglParser::processBeguilerSettings(){
             token member = file.getToken(eTokenType::identifier);
             // Validate that qualifier matches the declared member type
             if(!memberType.empty() && val.value != memberType)
-                parsingError(format("beguilerSettings property '{0}' expects a {1} value, got '{2}'", key, memberType, val.value));
+                parsingError(format("beguilerSettings property '{0}' expects a {1} value, got '{2}'", key,
+                                    typeDisplayName(memberType), val.originalValue.empty() ? val.value : val.originalValue));
             val = member;
         }
         file.getToken(token::endStatement);
@@ -1308,7 +1345,8 @@ bool bglParser::processBeguilerSettings(){
             if(expectStr && !val.isString())
                 parsingError(format("beguilerSettings property '{0}' expects a string, got '{1}'", key, val.value));
             if(!expectInt && !expectStr && !val.is(eTokenType::identifier))
-                parsingError(format("beguilerSettings property '{0}' expects a {1} value, got '{2}'", key, memberType, val.value));
+                parsingError(format("beguilerSettings property '{0}' expects a {1} value, got '{2}'", key,
+                                    typeDisplayName(memberType), val.originalValue.empty() ? val.value : val.originalValue));
         }
 
         string strVal = val.value;

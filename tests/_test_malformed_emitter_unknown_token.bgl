@@ -1,0 +1,5 @@
+/* Malformed input: emitter_unknown_token */
+// EXPECT_ERROR: is neither one of its parameters nor a substitution token
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int twice(int v){ ($vv * 2) }
+void main(){ print(twice(3)); }

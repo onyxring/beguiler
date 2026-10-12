@@ -1,0 +1,5 @@
+/* Malformed input: emitter_no_body */
+// EXPECT_ERROR: has no body
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int twice(int v);
+void main(){ print(twice(3)); }

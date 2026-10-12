@@ -104,7 +104,8 @@ object bgl
     return true;
 ];
 object _bglVerb_measure
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Measured.";
   ]
 ;
@@ -114,7 +115,8 @@ object _bglVerb_measure
 verb 'measure'
     * anynumber -> measure;
 object _bglVerb_replenish
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Replenished.";
   ]
 ;
@@ -126,7 +128,8 @@ verb 'replenish'
 verb 'chat'
     * animate 'about' topic -> replenish;
 object _bglVerb_fiddle
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Fiddled.";
   ]
 ;
@@ -136,7 +139,8 @@ object _bglVerb_fiddle
 verb 'fiddle'
     * myfilter -> fiddle;
 object _bglVerb_grab
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Grabbed.";
   ]
 ;
@@ -146,7 +150,8 @@ object _bglVerb_grab
 verb 'grab'
     * noun=alwaysallowed -> grab;
 object _bglVerb_seek
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Sought.";
   ]
 ;
@@ -156,7 +161,8 @@ object _bglVerb_seek
 verb 'seek'
     * scope=setscope -> seek;
 object _bglVerb_pour
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Poured.";
   ]
 ;

@@ -1,0 +1,5 @@
+/* Malformed input: unclosed_comment */
+// EXPECT_ERROR: comment opened at line 4 is never closed
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+/* a note
+void main(){ }

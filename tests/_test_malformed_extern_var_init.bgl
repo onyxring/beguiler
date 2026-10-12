@@ -1,0 +1,5 @@
+/* Malformed input: extern_var_init */
+// EXPECT_ERROR: can't take a value
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+extern int score = 5;
+void main(){ print(score); }

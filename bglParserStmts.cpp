@@ -49,6 +49,8 @@ using namespace std;
 bool bglParser::processBreak(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'break' is not valid at global scope");
+    if(loopDepth == 0 && switchBlockDepths.empty() && !looseIdentifierMode)
+        parsingError("'break' is only valid inside a loop (for, while, or do) or a switch");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     emitLoopExitCleanups(body, true);
@@ -180,6 +182,9 @@ bool bglParser::processReturnVoid(vector<token>& t, Qualifiers&, abstractObject&
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'return' is not valid at global scope");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
+    if(func != nullptr && !looseIdentifierMode && !func->returnType.name.empty() && func->returnType.name != "void")
+        parsingError(format("'{0}' returns {1}, so its 'return' needs a value.", func->dName(),
+                            typeDisplayName(func->returnType.name)));
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     emitOpenBlockCleanups(body);
     returnStatement& rs = *(new returnStatement());
@@ -252,7 +257,7 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
         // when `f` was declared in I6 and isn't visible to the Beguile resolver.
         string retType = retExpr ? retExpr->resolvedType : "";
         if(retType != "void" && retType != "var")
-            parsingError(format("Cannot return a value from void routine '{0}'", funcName));
+            parsingError(format("Cannot return a value from void routine '{0}'", func->dName()));
     }
     // A block-body lambda has no declared return type: its first `return` supplies it, and any later
     // one is checked against that.
@@ -1380,6 +1385,10 @@ bool bglParser::processDelete(vector<token>& t, Qualifiers& q, abstractObject& c
         nameTok.originalValue = accessorOuter->dName();
     }
     string varName = (string)nameTok;
+    if(nameTok.is(eTokenType::dataType) && !file.peekToken().is(token::period)
+       && !qualifyFromParams(varName, func) && !qualifyFromBodyLocals(varName, body) && languageService.findClass(varName) != nullptr)
+        parsingError(format("'delete {0}': '{0}' is the class; delete takes a variable holding one of its instances.",
+            nameTok.originalValue.empty() ? varName : nameTok.originalValue));
     // A dotted path (`delete holder.pack`) names a member, not a variable. Consume the rest of
     // the path so the type comes from the MEMBER rather than the head of the path — otherwise
     // `delete holder.pack` reported that `holder` is not a pooled class, which it never is.
@@ -1703,7 +1712,8 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
                 if(string q = qualifyIdentifier(memOwner, func, body); !q.empty()) memOwner = q;
         }
         if(isMember && !memberArrayIsRef(memOwner, memProp, func, body))
-            subscriptText = memOwner + ".&" + propertyI6Name(memProp) + "-->(" + indexExpr->text() + ")";
+            subscriptText = checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), false,
+                                              memberArrayIsTracked(memOwner, memProp, func, body));
     }
     subscriptText = valueSlotText(subscriptText, elemType);
     // Read member name and dispatch
@@ -1804,7 +1814,8 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPathIn, expression
         readText = expandEmitterBody(gblk, gb);
         // A member word array is inline property data, read as the subscript read path does.
         if(isMember && !refMember && isWordArrayType(arrType))
-            readText = memberOwner + ".&" + propertyI6Name(memberProp) + "-->(" + indexExpr->text() + ")";
+            readText = checkedMemberSlot(memberOwner, propertyI6Name(memberProp), indexExpr->text(), false,
+                                         memberArrayIsTracked(memberOwner, memberProp, func, body));
     }
     string curType = elemType;   // type of grid[0] — an array<...>
     while(true){
@@ -1940,6 +1951,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     const sourceLocation& stmtLoc = sc.src;
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
+    rejectConstantIndexOutside(arrPath, indexExpr, func, body);
     file.getToken(token::assignment);
     expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
     if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(arrPath, func, body)))
@@ -2110,7 +2122,8 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
         setMethod = owned;
     }
     if(isMemberWordArray){
-        string slot = memOwner + ".&" + propertyI6Name(memProp) + "-->(" + indexExpr->text() + ")";
+        string slot = checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), true,
+                                        memberArrayIsTracked(memOwner, memProp, func, body));
         // An element type that owns storage stores through its assign routine, which copies into the
         // slot's own instance; `slot` is read twice, so an index with side effects can't share it.
         bool isStaticAssign = false;
@@ -2744,20 +2757,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
         string elem = resolveArrayElementType(a.variableLeft, currentFunc, nullptr);
         if(!elem.empty()) checkClasslessAssignable(val, leftType->name + "<" + elem + ">", "variable");
     }
-    // Only a class whose sole `operator =` copies another of its kind: a setter may take null.
-    auto copiesOnly = [&](classDef* c){
-        bool any = false, other = false;
-        for(typeMember* m : c->members)
-            if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == "=" && f->params.size() == 1){
-                any = true;
-                if(f->params[0]->type.name != c->name) other = true;
-            }
-        return any && !other;
-    };
-    if(val != nullptr && !isBindAssign && val->resolvedType == "nullliteral" && classType != nullptr
-       && isValueClass(classType) && !classType->isEmitterClass && copiesOnly(classType))
-        parsingError(format("A '{0}' owns its instance, so null can't be stored in it; a 'ref' can be bound to null with ':= null'.",
-                            classType->dName()));
+    if(val != nullptr && !isBindAssign) rejectNullIntoValueClass(val, classType);
     // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
     // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
     // operator= into whatever the slot currently points at, exactly as it would on a
@@ -4044,6 +4044,15 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
             }
             return false;
         });
+        // The class's own method is bound as any call is: by argument types, with `selfType` bound to the
+        // receiver, and its overload set's names settled.
+        bool chainBound = false;
+        if(chainNameMatch != nullptr){
+            string recvType = chainReturnType;
+            vector<vector<interpolatedSegment>> interp;
+            chainMethod = bindMethodCall(recvType, "<chain>", chainMethodName, chainArgs, chainPal.namedArgNames, interp);
+            chainBound = true;
+        }
         // Conversion operator fallback for chained methods
         if(chainNameMatch == nullptr && chainCls){
             for(typeMember* m : chainCls->members){
@@ -4076,7 +4085,7 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         if(chainMethod == nullptr)
             parsingError(format("Method '{0}' on type '{1}' has wrong arity for {2} argument(s)",
                 chainMethodName, chainReturnType, chainArgs.size()));
-        { vector<vector<interpolatedSegment>> interp; finalizeCallArgs(chainArgs, chainPal.namedArgNames, interp, chainMethod); }
+        if(!chainBound){ vector<vector<interpolatedSegment>> interp; finalizeCallArgs(chainArgs, chainPal.namedArgNames, interp, chainMethod); }
         string selfText = callStmt.emitterBody.empty() ? string() : resolveEmitterText(callStmt);
         if(selfText.empty()){
             selfText = (callStmt.displayName.empty() ? callStmt.functionName : callStmt.displayName) + "(";
@@ -4417,15 +4426,22 @@ bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext&
         // `pick()?.bump();`: a `?.` on what a call returned guards the rest, as the expression form does.
         // An interpolated string in the arguments isn't token-shaped (its spans hold strings), so the
         // look-ahead stops there; such a call is not a `?.` receiver.
-        int k = 1;
-        bool scanned = true;
-        for(int depth = 1; depth > 0; k++){
-            token pk = file.peekToken(k);
-            if(pk.is(eTokenType::eof) || pk.value == "$"){ scanned = false; break; }
-            if(pk.is(token::parenOpen)) depth++;
-            else if(pk.is(token::parenClose)) depth--;
-        }
-        if(scanned && file.peekToken(k).is("?.") && !file.hasPendingToken){
+        // One pass up to the call's ')' and the token after it; a ';' outside braces ends the statement first.
+        int depth = 1, braces = 0;
+        bool scanned = false, closed = false;
+        vector<token> ahead = file.peekTokens(100000, [&](token& pk){
+            if(closed) return true;
+            if(pk.is(eTokenType::eof) || pk.value == "$") return true;
+            if(pk.is(token::braceOpen)) braces++;
+            else if(pk.is(token::braceClose)) braces--;
+            else if(pk.is(token::endStatement) && braces <= 0) return true;
+            else if(pk.is(token::parenOpen)) depth++;
+            else if(pk.is(token::parenClose) && --depth == 0) closed = true;
+            return false;
+        });
+        token afterCall;
+        if(closed && ahead.size() >= 2 && ahead[ahead.size() - 2].is(token::parenClose)){ scanned = true; afterCall = ahead.back(); }
+        if(scanned && afterCall.is("?.") && !file.hasPendingToken){
             file.pendingToken = symbol;
             file.hasPendingToken = true;
             parseExpression(tok, {token::endStatement}, sc.func, sc.body);
@@ -4442,6 +4458,7 @@ bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext&
     if(symbol.is(eTokenType::oper) && !symbol.is(token::assignment))
         return parsingError(format("'{0} {1} …' computes a value that nothing uses: assign it or pass it to a call.",
             tok.originalValue.empty() ? tok.value : tok.originalValue, symbol.value));
+    if(tok.is("else")) return parsingError("'else' has no 'if' before it.");
     return parsingError(format("Unhandled token '{0}'",tok.value));
 }
 
@@ -4449,3 +4466,19 @@ bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext&
 
 //-------------------------------------------------------------------------------------------------------------------------------
 // Throw an error, formatting the output to point to the current line
+
+// A value class's variable owns its instance, so null can't go into it — unless the class has an
+// `operator =` taking something other than its own kind, a setter that may accept null.
+void bglParser::rejectNullIntoValueClass(expression* val, classDef* classType){
+    if(val == nullptr || val->resolvedType != "nullliteral" || classType == nullptr
+       || !isValueClass(classType) || classType->isEmitterClass) return;
+    bool any = false, other = false;
+    for(typeMember* m : classType->members)
+        if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == "=" && f->params.size() == 1){
+            any = true;
+            if(f->params[0]->type.name != classType->name) other = true;
+        }
+    if(any && !other)
+        parsingError(format("A '{0}' owns its instance, so null can't be stored in it; a 'ref' can be bound to null with ':= null'.",
+                            classType->dName()));
+}

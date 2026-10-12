@@ -51,7 +51,7 @@ extern int DepthOf(object o);
 extern int lastSweep;
 extern void ListTags(object o);
 
-extend class object {
+extend extern class object {
     string description;
 }
 

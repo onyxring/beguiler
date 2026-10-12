@@ -1,0 +1,6 @@
+/* Malformed input: self_in_global */
+// EXPECT_ERROR: a global function has no object
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int counter;
+void bump(){ self.counter++; }
+void main(){ bump(); }

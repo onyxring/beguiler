@@ -233,8 +233,6 @@ Moved up at 4: 50x4; then 50x5.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -249,8 +247,6 @@ Key window is the status bar: yes.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -270,8 +266,6 @@ Page from line 4.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -291,8 +285,6 @@ Page from line 1.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -312,8 +304,6 @@ Page from line 4.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -333,8 +323,6 @@ Page from line 7.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -355,8 +343,6 @@ Pages drawn 5.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -371,8 +357,6 @@ Keys: j down, k up, 0-9 jump, x choose, q leave.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |
@@ -387,8 +371,6 @@ Left the menu.
 |  Renamed [slanted+mono 2]                        |
 |  Pull lever [plain 0]                            |
 |  Wait [strong+inverse 2]                         |
-|                                                  |
-|                                                  |
 [grid 3]
 |The hatch is shut.                                |
 |                                                  |

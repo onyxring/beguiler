@@ -391,7 +391,7 @@ class bglParser {
         // Parse one method member of a class body (`tok` is its '('); true = member fully handled.
         bool parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend, const string& i6alias = "");
         // Parse one variable/alias member of a class body (`tok` is its '=' or ';'); true = handled.
-        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias = "");
+        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias = "", bool extendIsExtern = false);
         // Parse one member of a class body; on return `tok` is the next member's first token (or '}').
         void parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend);
         // Parse one member of an `extern object` body; on return `tok` is the next member's first token.
@@ -945,6 +945,7 @@ class bglParser {
         string inferSubscriptElementType(classDef* cls);
         // memberHint: forwarded to the underlying resolveIdentifierType for the path's head.
         string resolvePathType(string path, functionDef* func, statementBlock* body, const string& memberHint = "");
+        string resolvePathTypeRaw(string path, functionDef* func, statementBlock* body, const string& memberHint = "");
         // True if `typeName` resolves to a class (incl. base hierarchy) or objectDef that exposes
         // a member (field/method) named `memberName`. Returns false for primitives, enums, and
         // unknown types. Used by the resolver for member-aware tie-breaking.
@@ -1278,9 +1279,10 @@ class bglParser {
             functionDef* nameMatch = nullptr;        // first function with matching name (for error messages)
             functionDef* arityMatch = nullptr;       // first function with matching arity
             string funcVarReturnType;                // non-empty if this is a func<> variable call
+            string varType;                          // the type of a variable of the name, when no function has it
         };
         GlobalCallMatch resolveGlobalCall(const string& name, const vector<expression*>& args, functionDef* func, statementBlock* body);
-        string validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, size_t argCount);
+        string validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, const vector<expression*>& args);
 
         // Replace a pre-scan stub in a member list with the real definition. Returns true if replaced.
         static bool replaceStubMember(vector<typeMember*>& members, functionDef& newDef);
@@ -1349,6 +1351,21 @@ class bglParser {
         // library advertising a capability the core file conditionally uses).
         map<string,string> declaredSymbols;
         bool evaluateCondition(const string& expr);   // evaluates a #if boolean expression
+        // `#if` branches being parsed: where each opened, and whether its `#else` has been reached.
+        struct OpenConditional { int line; bool inElse; };
+        vector<OpenConditional> openConditionals;
+        void skipToEndif(token& directive, bool sawElse);
+        void checkEmitterTokens(class functionDef& fn, const string& body, bool isGlobal);
+        void rejectSelfWithoutObject(class functionDef* func);
+        void markMemberStart(token& tok);
+        void unknownBaseError(token& base);
+        void rejectAccessModifier(token& tok);
+        void rejectStrayOuter(class functionDef* func, class statementBlock* body);
+        string checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked);
+        bool memberArrayDeclTracked(class arrayDeclaration* ad);
+        void rejectConstantIndexOutside(const string& path, class expression* index, class functionDef* func, class statementBlock* body);
+        void rejectConstantIndexOutside(class arrayDeclaration* ad, class expression* index, const string& shown = "");
+        void rejectNullIntoValueClass(class expression* val, class classDef* classType);
         void skipConditionalBlock(abstractObject& ctx);    // skips tokens until #elif/#else/#endif at depth 0
         void skipBglConditionalBlock(abstractObject& ctx); // skips tokens until ##else/##endif at depth 0
 

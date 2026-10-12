@@ -137,7 +137,7 @@ string opName(eOp o) {
 
 //-- Step table ----------------------------------------------------------------
 
-extend class object {
+extend extern class object {
     string description;
 }
 

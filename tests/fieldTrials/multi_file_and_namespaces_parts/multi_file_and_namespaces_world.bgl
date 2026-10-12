@@ -1,6 +1,6 @@
 /*  Field trial part — included by multi_file_and_namespaces.bgl. Not a trial on its own.  */
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

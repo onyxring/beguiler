@@ -221,7 +221,7 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
         // alias class single-parent clause
         token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
         classDef* parent = languageService.findClass(parentTok.value);
-        if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
+        if(!parent) unknownBaseError(parentTok);
         else { checkInheritanceCycle(parent, parentTok.originalValue); addBase(parent); }
         tok = file.getToken();
     } else if(tok.is(":")){
@@ -229,8 +229,13 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
             token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
             if(parentTok.is(eTokenType::identifier)) parentTok = consumeTypeToken(parentTok);   // `: base`, `: ns.base` (an alias)
             classDef* parent = languageService.findClass(parentTok.value);
-            if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
+            if(!parent) unknownBaseError(parentTok);
             else { checkInheritanceCycle(parent, parentTok.originalValue); addBase(parent); }
+            if(parent && parent->isPrimitive && !newClass.isPrimitive && !newClass.isValue && !newClass.isEmitterClass
+               && !newClass.isAlias && !newClass.isExternal)
+                parsingError(format("class '{0}' can't derive from '{1}': a class's variable holds a reference to an "
+                                    "object, and '{1}' is a primitive value. For a new kind of '{1}', write "
+                                    "`primitive class {0} : {1}`.", newClass.dName(), parent->dName()));
             tok = file.getToken();
         } while(tok.is(","));
     }
@@ -533,6 +538,21 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
             if(additive && isReplace)
                 parsingError(format("'{0}' is additive: every class's and object's contribution is kept, so it can't be replaced.",
                                     funcDef.dName()));
+            if(isReplace && !additive && !funcDef.name.empty() && isalpha((unsigned char)funcDef.name[0])){
+                bool found = false;
+                function<void(classDef*)> anyBase = [&](classDef* c){
+                    for(typeMember* m : c->members) if(m->name == funcDef.name) found = true;
+                    for(classDef* base : c->baseClasses) if(!found) anyBase(base);
+                };
+                for(classDef* base : newClass.baseClasses) anyBase(base);
+                for(typeMember* m : newClass.members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m); m->name == funcDef.name && !(fd && fd->isPrePassStub)) found = true;
+                if(auto* g = languageService.findGlobalAs<variableDeclaration>(funcDef.name); g && g->type.name == "property")
+                    found = true;   // a library property the class gives its own routine
+                if(!found)
+                    parsingWarning(format("class '{0}': 'replace' specified but no base class has a member '{1}'; "
+                                          "treating as new definition", newClass.dName(), funcDef.dName()));
+            }
             // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
             // A "shadow" requires matching signature (arity + param types). Same name but
             // different arity or param types is an overload, not a shadow — no warning.
@@ -716,7 +736,7 @@ variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& va
     return &arr;
 }
 
-bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias){
+bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias, bool extendIsExtern){
     bool isReplace = q.isReplace;
     bool isMemberConst = q.isConst;
     bool isMemberStatic = q.isStatic;
@@ -876,6 +896,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             varDef.declaredExpressionValue = list;
         } else {
             expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+            if(!isMemberStatic) rejectRunTimeMemberRead(expr, varDef.dName());
             if(initializerList* list = asSingleElementList(expr, (string)returnType))
                 varDef.declaredExpressionValue = list;
             else
@@ -908,6 +929,13 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             if(vd && vd->name == varDef.name){ existing = m; break; }
         }
         bool existingIsStub = existing != nullptr && existing->isPrePassStub;
+        // Inform 6 owns an extern class's instances (the library's objects among them), so a new field
+        // could never be given to all of them. `extend extern class` describes one Inform 6 already provides.
+        if(newClass.isExternal && !extendIsExtern && !isMemberStatic && !isEmitter && !varDef.isAlias && (existing == nullptr || existingIsStub))
+            parsingError(format("extend class '{0}': '{0}' is an extern class, so 'extend' can add only emitters and "
+                                "static members to it. To give the type of a property Inform 6 already provides, write "
+                                "`extend extern class {0}`; for a new one, declare '{1}' on a class of your own.",
+                                newClass.dName(), varDef.dName()));
         if(existing && !existingIsStub && !isReplace)
             parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), varDef.dName()));
         if(!existing && isReplace)
@@ -943,6 +971,8 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
 // Parse one member of a class body — a single iteration of the member loop. On entry `tok` is the
 // member's first token; on return it is the first token of the next member (or the closing '}').
 void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend){
+    markMemberStart(tok);
+    rejectAccessModifier(tok);
     if(tok.is(eTokenType::eof))
         parsingError(format("Unexpected end of file inside class '{0}' — missing closing '}}'", newClass.dName()));
     // Conditional compilation between members. Needed for inline accessor objects — an
@@ -1119,7 +1149,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     }
     else{
         if(isOperator==true) parsingError("Operators must be functions.");
-        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend, memberI6Alias)) return;
+        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend, memberI6Alias, isExternal)) return;
     }
     tok=file.getToken();
 }
@@ -1482,9 +1512,48 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
 // (`holder.v`) happens at run time, so it can't be one.
 void bglParser::rejectRunTimeMemberRead(expression* e, const string& memberName){
     if(e == nullptr) return;
+    // `int count = COUNT;`: the initializer names the global const, not the member it initializes
+    // (Beguile ignores case, so the member's own name resolved first).
+    {
+        string t = e->text();
+        t.erase(0, t.find_first_not_of(" \t")); t.erase(t.find_last_not_of(" \t") + 1);
+        if(t.rfind("self.", 0) == 0 && t.find_first_of(".( ", 5) == string::npos){
+            string nm = t.substr(5); transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+            if(nm.rfind("_m_", 0) == 0) nm = nm.substr(3);
+            if(auto* g = languageService.findGlobalAs<variableDeclaration>(nm); g && g->isConst && g->declaredExpressionValue){
+                e->tokens = {g->i6name.empty() ? g->dName() : g->i6name};   // the I6 constant, by name
+                return;
+            }
+        }
+    }
+    // A global variable is read at run time, so an initializer can't name one; a const can.
+    {
+        string t = e->text();
+        static const regex word(R"((^|[^\w.$#'"])([A-Za-z_]\w*)(?=\s*($|[^\w.(])))");
+        for(sregex_iterator it(t.begin(), t.end(), word), end; it != end; ++it){
+            string w = (*it)[2].str(), lw = w;
+            transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
+            auto* g = languageService.findGlobalAs<variableDeclaration>(lw);
+            if(g == nullptr || g->isConst || g->isExternal || g->isPrePassStub || dynamic_cast<arrayDeclaration*>(g) != nullptr) continue;
+            if(classDef* tc = languageService.findClass(g->type.name); tc != nullptr && !tc->isPrimitive)
+                continue;   // static data names the instance it holds
+            const string& gt = g->type.name;
+            if(gt == "attribute" || gt == "property" || gt == "verb" || gt == "grammartoken" || g->isNamespaceAlias()) continue;
+            parsingError(format("member '{0}' is fixed when the program is compiled, so it can't read the variable '{1}'; "
+                "use a const, or set the member in a routine.", memberName, g->dName()));
+        }
+    }
     string text = e->text(), bare;
     bool inQuote = false;
     for(char c : text){ if(c == '"') inQuote = !inQuote; else if(!inQuote) bare += c; }
+    static const regex call(R"((^|[^\w.$#])([A-Za-z_]\w*)\s*\()");
+    for(sregex_iterator it(bare.begin(), bare.end(), call), end; it != end; ++it){
+        string lw = (*it)[2].str();
+        transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
+        if(auto* fd = languageService.findGlobalAs<functionDef>(lw); fd && !fd->isEmitter)
+            parsingError(format("member '{0}' is fixed when the program is compiled, so it can't call '{1}()', "
+                "which runs at run time. Set it in a routine instead.", memberName, fd->dName()));
+    }
     static const regex read(R"(([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*))");
     for(sregex_iterator it(bare.begin(), bare.end(), read), end; it != end; ++it){
         string owner = (*it)[1].str(), lower = owner;
@@ -2718,7 +2787,7 @@ bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, toke
         classDef& cls = languageService.registerClass("_" + (string)nameTok + "_class", false, objDisplay);
         for(token& b : baseToks){
             classDef* base = languageService.findClass(b.value);
-            if(!base) parsingError(format("Unknown base class '{0}'", b.originalValue.empty() ? b.value : b.originalValue));
+            if(!base) unknownBaseError(b);
             if(find(cls.baseClasses.begin(), cls.baseClasses.end(), base) == cls.baseClasses.end())
                 cls.baseClasses.push_back(base);
         }
@@ -2865,6 +2934,8 @@ std::string bglParser::unionExpansionOf(const std::string& typeName){
 // Parse one member of an `extern object` body — a single iteration of that body's member loop.
 // On entry `tok` is the member's first token; on return it is the next member's first token.
 void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
+    markMemberStart(tok);
+    rejectAccessModifier(tok);
     if(tok.is("#if") || tok.is("#elif") || tok.is("#else") || tok.is("#endif")){
         processDirective(tok, newObj);
         tok = file.getToken();
@@ -3046,6 +3117,8 @@ void bglParser::parseExternObjectBody(objectDef& newObj, verbObjectDef* vod){
 // Parse one member of an object body — a single iteration of the member loop. On entry `tok` is
 // the member's first token; on return it is the first token of the next member (or '}').
 void bglParser::parseObjectMember(objectDef& newObj, token& tok){
+    markMemberStart(tok);
+    rejectAccessModifier(tok);
     if(tok.is(eTokenType::eof)) parsingError(format("Unexpected end of file inside object '{0}' — missing closing '}}'", newObj.dName()));
     if(tok.is(eTokenType::directive)){
         if(tok.is("#i6")) processI6InlineMember(newObj);
@@ -3467,6 +3540,8 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
 // `tok` is the member's first token; on return it is the next member's first token (or '}').
 // `extendBlockPriority` / `extendHadReplaceGrammar` are the block-local verb-grammar state.
 void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok, token nameTok, bool isExternalObj, int& extendBlockPriority, int verbPriorityDefault, bool& extendHadReplaceGrammar){
+    markMemberStart(tok);
+    rejectAccessModifier(tok);
     if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside object — missing closing '}'");
     if(tok.is(eTokenType::directive)){
         if(tok.is("#i6")) processI6InlineMember(*obj);
@@ -4065,3 +4140,27 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
 //===============================================================================================================================
 // Grammar declarations
 //===============================================================================================================================
+
+// A member's errors are placed from its own first token, not from the declaration that holds it.
+void bglParser::markMemberStart(token& tok){
+    if(tok.src.line <= 0 || tok.is(eTokenType::eof)) return;
+    currentStatementSrc = tok.src;
+    currentStatementSrc.col = max(1, tok.src.col - (int)tok.originalValue.size());
+}
+
+// A base names no class: say what it does name, when it names something.
+void bglParser::unknownBaseError(token& base){
+    string shown = base.originalValue.empty() ? base.value : base.originalValue;
+    if(auto* od = languageService.findGlobalAs<objectDef>(base.value))
+        parsingError(format("'{0}' is an object, not a class; a class derives from a class{1}.", shown,
+            od->objectClass ? " (" + shown + "'s class is '" + od->objectClass->dName() + "')" : string()));
+    if(languageService.findEnum(base.value) != nullptr)
+        parsingError(format("'{0}' is an enum; a class derives only from a class.", shown));
+    parsingError(format("Unknown base class '{0}'", shown));
+}
+
+// `public int size;`: members have no access modifiers.
+void bglParser::rejectAccessModifier(token& tok){
+    if(tok.is("public") || tok.is("private") || tok.is("protected") || tok.is("internal"))
+        parsingError(format("Beguile has no access modifiers ('{0}'): every member is visible; drop it.", tok.value));
+}

@@ -1,0 +1,8 @@
+/*  run_extend_class_defaults — members an `extend class` adds reach every instance, with their defaults.  */
+// EXPECT_OUTPUT: 5 0 2 9
+#beguilerSettings { target = z5; informName = "none"; }
+class Thing : object { int w; }
+extend class Thing { int j = 5; int k; }
+Thing rock { }
+Thing lamp { j = 2; }
+void main(){ lamp.k = 9; print($"{rock.j} {rock.k} {lamp.j} {lamp.k}"); print("^"); }

@@ -1,0 +1,5 @@
+/* Malformed input: statement_at_file_scope */
+// EXPECT_ERROR: statements go inside a function
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+print("top level");
+void main(){ }

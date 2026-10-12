@@ -40,7 +40,7 @@ object LibraryMessages {
 
 extern void InvSub();
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
     object e_to;
     object w_to;

@@ -17,14 +17,16 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-array task_scores buffer 5 10 5 10 5 5 5 5 10 5 10 5 5 5 10;
-array greeting buffer 'H' 'i';
+Array _bglcap_task_scores -> 0 15;
+Array task_scores buffer 5 10 5 10 5 5 5 5 10 5 10 5 5 5 10;
+Array _bglcap_greeting -> 0 2;
+Array greeting buffer 'H' 'i';
 [sumFirstThree;
-    return  task_scores->(0 + WORDSIZE) + task_scores->(1 + WORDSIZE) + task_scores->(2 + WORDSIZE) ;
+    return  _bglByteAt(task_scores, 0, 0)->0 + _bglByteAt(task_scores, 1, 0)->0 + _bglByteAt(task_scores, 2, 0)->0 ;
 ];
 [writeAndRead v;
-    task_scores->(0 + WORDSIZE) = 99;
-    v =  task_scores->(0 + WORDSIZE) ;
+    _bglByteAt(task_scores, 0, 1)->0 = 99;
+    v =  _bglByteAt(task_scores, 0, 0)->0 ;
     print v;
     print (string)"^";
 ];
@@ -32,8 +34,30 @@ array greeting buffer 'H' 'i';
     total=sumfirstthree();
     print total;
     print (string)"^";
-    print (char) greeting->(0 + WORDSIZE) ;
-    print (char) greeting->(1 + WORDSIZE) ;
+    print (char) _bglByteAt(greeting, 0, 0)->0 ;
+    print (char) _bglByteAt(greeting, 1, 0)->0 ;
     print (string)"^";
     writeandread();
 ];
+[_bglByteAt arr i w n;
+    n = 0;
+    
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

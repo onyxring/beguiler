@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_whistle
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"whistle";
   ]
 ;
@@ -72,7 +73,8 @@ object _bglVerb_whistle
 verb 'whistle'
     * noun -> whistle;
 object _bglVerb_hum
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"hum";
   ]
 ;
@@ -84,7 +86,8 @@ verb 'hum'
 verb 'murmur'
     * noun -> hum;
 object _bglVerb_tap
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"tap";
   ]
 ;

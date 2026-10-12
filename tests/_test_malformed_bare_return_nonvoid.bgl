@@ -1,0 +1,5 @@
+/* Malformed input: bare_return_nonvoid */
+// EXPECT_ERROR: so its 'return' needs a value
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int f(int n){ if(n > 0) return n; return; }
+void main(){ print(f(1)); }

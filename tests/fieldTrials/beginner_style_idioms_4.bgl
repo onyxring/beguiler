@@ -136,7 +136,7 @@ void nudgeHere(ref Vec2 v) { v.x++; }
 
 // ===== ROOMS AND THINGS =====
 
-extend class object {
+extend extern class object {
     string description;
     object e_to;
     object w_to;

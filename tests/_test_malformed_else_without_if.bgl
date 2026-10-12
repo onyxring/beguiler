@@ -1,0 +1,4 @@
+/* Malformed input: else_without_if */
+// EXPECT_ERROR: 'else' has no 'if' before it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ else { print("a"); } }

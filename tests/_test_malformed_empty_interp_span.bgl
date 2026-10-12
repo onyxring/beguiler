@@ -1,0 +1,4 @@
+/* Malformed input: empty_interp_span */
+// EXPECT_ERROR: holds no expression
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ print($"a { } b"); }

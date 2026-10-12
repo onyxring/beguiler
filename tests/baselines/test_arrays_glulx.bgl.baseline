@@ -71,31 +71,33 @@ object plainObj2
 array g_nums table 10 20 30 40 50;
 array g_sized table 8;
 array g_flags table true false true;
-array g_buf buffer 32;
-array g_short buffer 8;
+Array _bglcap_g_buf -> 0 0 0 32;
+Array g_buf buffer 32;
+Array _bglcap_g_short -> 0 0 0 8;
+Array g_short buffer 8;
 object inventory
   with slots 0 0 0 0 0 0 ,
        count 0
 ;
 [main i b last first middle last_c firstSh lastSh c;
     bglinit();
-    i= g_nums-->(0+1);
-    b= g_flags-->(1+1);
-    g_nums-->(0+1) = 42;
-    g_flags-->(0+1) = false;
-    g_sized-->(7+1) = 99;
-    last= g_sized-->(7+1);
-    g_buf->(0 + WORDSIZE) = 'H';
-    g_buf->(1 + WORDSIZE) = 'e';
-    g_buf->(15 + WORDSIZE) = 'X';
-    g_buf->(31 + WORDSIZE) = '!';
-    first= g_buf->(0 + WORDSIZE);
-    middle= g_buf->(15 + WORDSIZE);
-    last_c= g_buf->(31 + WORDSIZE);
-    g_short->(0 + WORDSIZE) = 'a';
-    g_short->(7 + WORDSIZE) = 'z';
-    firstSh= g_short->(0 + WORDSIZE);
-    lastSh= g_short->(7 + WORDSIZE);
+    i= _bglAt(g_nums, 0, 0)-->0;
+    b= _bglAt(g_flags, 1, 0)-->0;
+    _bglAt(g_nums, 0, 1)-->0 = 42;
+    _bglAt(g_flags, 0, 1)-->0 = false;
+    _bglAt(g_sized, 7, 1)-->0 = 99;
+    last= _bglAt(g_sized, 7, 0)-->0;
+    _bglByteAt(g_buf, 0, 1)->0 = 'H';
+    _bglByteAt(g_buf, 1, 1)->0 = 'e';
+    _bglByteAt(g_buf, 15, 1)->0 = 'X';
+    _bglByteAt(g_buf, 31, 1)->0 = '!';
+    first= _bglByteAt(g_buf, 0, 0)->0;
+    middle= _bglByteAt(g_buf, 15, 0)->0;
+    last_c= _bglByteAt(g_buf, 31, 0)->0;
+    _bglByteAt(g_short, 0, 1)->0 = 'a';
+    _bglByteAt(g_short, 7, 1)->0 = 'z';
+    firstSh= _bglByteAt(g_short, 0, 0)->0;
+    lastSh= _bglByteAt(g_short, 7, 0)->0;
     c=inventory.count;
 ];
 [_bgl_float__oplteqgt a b;
@@ -118,13 +120,46 @@ object inventory
     @glk api args retval;
     return retval;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglByteAt arr i w n;
+    n = 0;
+    
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
+        return _bglOutOfRange(i, n, w);
+    
+];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 
 ];
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
 ];
+array _bglsink --> 1;

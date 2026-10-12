@@ -66,17 +66,19 @@ Constant beguiler = 5;
       return r;
    ];
    [ _bglByteArrayLocalAlloc nbytes words r i;
-      words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
       r = _bglFrameAlloc(words);
       for (i = 0: i < words: i++) r-->i = 0;
       r-->0 = nbytes;
-      return r;
+      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + WORDSIZE;
    ];
    [ _bglByteArrayLocalFree nbytes;
-      _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
    ];
    [ _bglByteArrayLocalCopy dst src i;
       for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+      dst-->0 = src-->0;
    ];
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
@@ -95,10 +97,10 @@ object bgl
 object widget
   with nums 10 20 30 ,
        readElem [;
-    return self.&nums-->(1);
+    return _bglMemberAt(self, nums, 1, 0)-->0;
   ],
        writeElem [;
-    self.&nums-->(0) = 99;
+    _bglMemberAt(self, nums, 0, 1)-->0 = 99;
   ],
        sumElems [t x _bglfi1;
     t = 0;
@@ -121,10 +123,10 @@ class _bglClass_gadget
   with
     readings 1 2 3 4 ,
     peek[i;
-        return self.&readings-->(i);
+        return _bglMemberAt(self, readings, i, 0)-->0;
     ],
     poke[i v;
-        self.&readings-->(i) = v;
+        _bglMemberAt(self, readings, i, 1)-->0 = v;
     ],
     total[t x _bglfi2;
         t = 0;
@@ -141,9 +143,43 @@ _bglClass_gadget g1
 array g_nums table 7 8 9;
 [main ra loc rb;
     loc = _bglArrayLocalAllocPlain(2);
-    ra= g_nums-->(1+1);
+    ra= _bglAt(g_nums, 1, 0)-->0;
     loc-->1 = 5;
     loc-->2 = 6;
-    rb= loc-->(0+1);
+    rb= _bglAt(loc, 0, 0)-->0;
     _bglFrameFree(3);
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglMemberAt obj prop i f n;
+    n = 0;
+    
+        n = obj.#prop / WORDSIZE;
+        if(f & 2) n--;
+        if(i >= 0 && i < n) return obj.&prop + i * WORDSIZE;
+        return _bglOutOfRange(i, n, f & 1);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

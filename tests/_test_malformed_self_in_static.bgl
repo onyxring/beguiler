@@ -1,0 +1,5 @@
+/* Malformed input: self_in_static */
+// EXPECT_ERROR: a static method has no object
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Box : object { int size; static int twice(){ return self.size * 2; } }
+void main(){ }

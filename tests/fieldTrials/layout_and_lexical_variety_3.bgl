@@ -22,7 +22,7 @@
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 
-extend class object { string description; }
+extend extern class object { string description; }
 
 //-- Declared before what they depend on ---------------------------------------------------------
 

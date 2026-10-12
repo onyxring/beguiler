@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_tickle
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"tickle";
   ]
 ;
@@ -74,7 +75,8 @@ verb 'tickle'
     * noun -> tickle
     * 'roughly' noun -> tickle;
 object _bglVerb_burnish
-  with handler [;
+  with priority 20,
+       handler [;
     print (string)"burnish";
   ]
 ;

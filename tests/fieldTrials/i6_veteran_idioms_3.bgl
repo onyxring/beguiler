@@ -57,7 +57,7 @@ extern property weight;
 extern verb Ping { }
 extern rawArray<int> prices;
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
     stringOrRoutine cant_go;
     object n_to;

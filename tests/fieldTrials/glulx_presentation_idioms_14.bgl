@@ -36,7 +36,7 @@
     [ LampTotal o n; objectloop (o ofclass Lamp) n = n + o.lamp_level; return n; ];
 }
 
-extend class object {
+extend extern class object {
     string description;
 }
 

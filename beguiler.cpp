@@ -732,6 +732,11 @@ bool beguiler::runInform6() {
             int lineNo = stoi(m[2].matched ? string(m[2]) : string(m[4]));
             if(namesSplitWord(file, lineNo)){ i6WarnHidden++; continue; }
         }
+        if(line.find("No 'Main' routine has been defined") != string::npos){
+            cerr << "ERROR: The program has no main() function, so it has nowhere to start.\n";
+            sawError = true;
+            continue;
+        }
         if(regex_match(line, m, i6DiagRe) || regex_match(line, m, i6DiagReE2)){
             string infFile = m[1];
             int infLine   = stoi(m[2]);

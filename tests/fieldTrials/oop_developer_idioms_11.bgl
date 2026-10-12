@@ -28,7 +28,7 @@
 
 #define MAX_SPEND 90
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
 }
 

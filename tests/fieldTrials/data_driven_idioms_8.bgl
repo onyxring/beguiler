@@ -97,7 +97,7 @@ value class Stock {
 
 //-- Lots ----------------------------------------------------------------------
 
-extend class object {
+extend extern class object {
     string description;
 }
 

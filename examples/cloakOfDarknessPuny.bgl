@@ -30,7 +30,7 @@ object cloakroom{
     object e_to=foyer;
     attributeList attributes = {light, general};
 }
-extend class object { 
+extend extern class object { 
     string description; 
     object s_to; 
     object e_to; 

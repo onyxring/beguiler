@@ -33,14 +33,39 @@ array flags table true false true;
 array names table "alpha" "beta";
 array rooms table kitchen hall studio;
 [main i b s r n1 n2;
-    i= nums-->(0+1);
-    b= flags-->(1+1);
-    s =  names-->(0+1);
-    r =  rooms-->(2+1);
-    nums-->(0+1) = 42;
-    flags-->(1+1) = false;
-    names-->(0+1) = "gamma";
-    rooms-->(0+1) = hall;
+    i= _bglAt(nums, 0, 0)-->0;
+    b= _bglAt(flags, 1, 0)-->0;
+    s =  _bglAt(names, 0, 0)-->0;
+    r =  _bglAt(rooms, 2, 0)-->0;
+    _bglAt(nums, 0, 1)-->0 = 42;
+    _bglAt(flags, 1, 1)-->0 = false;
+    _bglAt(names, 0, 1)-->0 = "gamma";
+    _bglAt(rooms, 0, 1)-->0 = hall;
     n1=nums-->0;
     n2=rooms-->0;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

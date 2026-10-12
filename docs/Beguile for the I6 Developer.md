@@ -100,7 +100,7 @@ object cloakroom{
     object e_to=foyer;
     attributeList attributes = {light, general};
 }
-extend class object { 
+extend extern class object { 
     string description; 
     object s_to; 
     object e_to; 
@@ -521,7 +521,7 @@ A few additional key differences between Beguile objects and I6 objects become a
 The next section introduces the `extend` keyword:
 
 ```
-extend class object { 
+extend extern class object { 
     string short_name;
     string description; 
     object s_to; 
@@ -531,9 +531,9 @@ extend class object {
 }
 ```
 
-> ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class, including the built-in `object` itself.*
+> ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class. `object` is an `extern` class: Inform 6 owns its instances, the library's objects among them, so Beguile can't give them new properties. `extend extern class object` instead tells Beguile the types of properties the library already provides.*
 
-Here we extend `object` by defining several properties and their types.  On the surface, what this does isn't obvious, but it demonstrates the Beguile rule of "Type Inference".  Put another way, when a member is declared on a class, its type will be inferred, even if not specified, on instances of that class.  This enables the next block to compile:
+Here we extend `object` by giving the types of several library properties.  On the surface, what this does isn't obvious, but it demonstrates the Beguile rule of "Type Inference".  Put another way, when a member is declared on a class, its type will be inferred, even if not specified, on instances of that class.  This enables the next block to compile:
 
 ```
 object foyer{

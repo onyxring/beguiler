@@ -1,0 +1,9 @@
+/* Malformed input: elif_after_else */
+// EXPECT_ERROR: can't follow '#else'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#if TARGET_ZCODE
+void main(){ }
+#else
+void main(){ }
+#elif TARGET_GLULX
+#endif

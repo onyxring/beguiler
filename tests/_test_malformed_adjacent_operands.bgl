@@ -1,0 +1,4 @@
+/* Malformed input: adjacent_operands */
+// EXPECT_ERROR: follows '1' with nothing between them
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ print(1 2); }

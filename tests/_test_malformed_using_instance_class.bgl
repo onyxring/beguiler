@@ -1,0 +1,6 @@
+/* Malformed input: using_instance_class */
+// EXPECT_ERROR: has only instance members
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class widget : object { int size; void grow(){ size++; } }
+#using widget
+void main(){ }

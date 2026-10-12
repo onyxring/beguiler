@@ -27,7 +27,7 @@ const object INITIAL_LOCATION_VALUE = hall;
 
 #using bgl.printRules;
 
-extend class object {
+extend extern class object {
     string description;
     object e_to;
     object w_to;

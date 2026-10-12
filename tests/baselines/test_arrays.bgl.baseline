@@ -35,21 +35,55 @@ array g_sized table 10;
 array g_flags table true false true;
 array g_objs table plainobj1 plainobj2;
 array g_rooms table r1 r2;
-array g_buf buffer 32;
+Array _bglcap_g_buf -> 0 32;
+Array g_buf buffer 32;
 object inventory
   with slots 0 0 0 0 0 0 ,
        count 0
 ;
 [main i b r o c ch;
     bglinit();
-    i= g_nums-->(0+1);
-    b= g_flags-->(1+1);
-    r =  g_rooms-->(0+1);
-    o =  g_objs-->(0+1);
-    g_nums-->(0+1) = 42;
-    g_flags-->(0+1) = false;
-    g_rooms-->(0+1) = r2;
-    g_objs-->(0+1) = r1;
+    i= _bglAt(g_nums, 0, 0)-->0;
+    b= _bglAt(g_flags, 1, 0)-->0;
+    r =  _bglAt(g_rooms, 0, 0)-->0;
+    o =  _bglAt(g_objs, 0, 0)-->0;
+    _bglAt(g_nums, 0, 1)-->0 = 42;
+    _bglAt(g_flags, 0, 1)-->0 = false;
+    _bglAt(g_rooms, 0, 1)-->0 = r2;
+    _bglAt(g_objs, 0, 1)-->0 = r1;
     c=inventory.count;
-    ch= g_buf->(0 + WORDSIZE);
+    ch= _bglByteAt(g_buf, 0, 0)->0;
 ];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglByteAt arr i w n;
+    n = 0;
+    
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

@@ -95,7 +95,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_whiff
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"You take a whiff of the air.";
   ]
 ;
@@ -107,7 +108,8 @@ verb 'whiff'
 verb 'waft'
     * noun -> whiff;
 object _bglVerb_nudge
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"You nudge it.";
   ]
 ;
@@ -141,7 +143,8 @@ verb 'jostle'
     handleaction(##examine);
 ];
 object _bglVerb_possess
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Possessed.";
   ]
 ;
@@ -152,7 +155,8 @@ verb 'carol^s'
     * noun -> possess
     * noun -> possess;
 object _bglVerb_greet
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Greeted.";
   ]
 ;
@@ -162,7 +166,8 @@ object _bglVerb_greet
 verb 'mr'
     * noun -> greet;
 object _bglVerb_stow
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"Stowed.";
   ]
 ;

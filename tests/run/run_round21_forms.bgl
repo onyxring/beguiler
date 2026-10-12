@@ -67,7 +67,7 @@ int appendTwo(array<int> a) { a += {3, 1}; return a.length; }
 array<int> spare[5];
 
 // D1247: postfix `?` on a call result.
-string label(int n) { if (n == 1) return "one"; return null; }
+string labelOf(int n) { if (n == 1) return "one"; return null; }
 
 // D1248: a throw past two nested sends, caught and returned through a send.
 object inner { int fail(int v) { if (v > 2) throw v; return v; } }
@@ -90,7 +90,7 @@ void main() {
     if (tileB.above(tileA)) print("above "); print($"{tileA.use()} {tileA.shift(tileA)} | ");
     print($"{gadget.show(4) / 10} {gadget.show(4) % 10 + 8} | ");
     print(appendTwo(spare)); print(" | ");
-    bool b = label(1)?; print(b); print(" | ");
+    bool b = labelOf(1)?; print(b); print(" | ");
     sifter.run(1); print(" "); sifter.run(5);
     print("^");
 }

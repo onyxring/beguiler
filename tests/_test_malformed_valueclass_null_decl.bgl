@@ -1,0 +1,5 @@
+/* Malformed input: valueclass_null_decl */
+// EXPECT_ERROR: so null can't be stored in it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+value class Pt { int x; Pt operator = (Pt o){ x = o.x; return self; } }
+void main(){ Pt p = null; print(p.x); }

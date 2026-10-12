@@ -1,0 +1,7 @@
+/* Malformed input: ifdef */
+// EXPECT_ERROR: Beguile writes 
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#define CHEATS
+#ifdef CHEATS
+void main(){ }
+#endif

@@ -45,7 +45,7 @@
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 
-extend class object { string description; }
+extend extern class object { string description; }
 
 extern const string TRIAL_TARGET;
 extern const int    TRIAL_PROBE;

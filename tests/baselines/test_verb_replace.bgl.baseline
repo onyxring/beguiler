@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_quaff
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"quaff";
   ]
 ;

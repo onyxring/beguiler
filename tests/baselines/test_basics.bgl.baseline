@@ -8,7 +8,7 @@ constant _bglWorldBufSize = 128;
 constant MAX = 100;
 constant TITLE = "Test";
 constant RAW_MSG = "raw @@92n stays literal and @@92t too";
-constant RAW_WITH_QUOTE = "has a ""quoted"" word";
+constant RAW_WITH_QUOTE = "has a ~quoted~ word";
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
 [bglInit;

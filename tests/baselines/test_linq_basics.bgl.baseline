@@ -79,17 +79,17 @@ array g_empty table 10;
 [main;
     bglinit();
     print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_0), 0);
-    print  (_bglArray.filter(g_nums, 0, _bglLambda_1))-->(0+1) ;
-    print  (_bglArray.filter(g_nums, 0, _bglLambda_2))-->(1+1) ;
-    print  (_bglArray.filter(g_nums, 0, _bglLambda_3))-->(2+1) ;
+    print  _bglAt((_bglArray.filter(g_nums, 0, _bglLambda_1)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.filter(g_nums, 0, _bglLambda_2)), 1, 0)-->0 ;
+    print  _bglAt((_bglArray.filter(g_nums, 0, _bglLambda_3)), 2, 0)-->0 ;
     print _bglArray.length(_bglArray.map(g_nums, 0, _bglLambda_4), 0);
-    print  (_bglArray.map(g_nums, 0, _bglLambda_5))-->(0+1) ;
-    print  (_bglArray.map(g_nums, 0, _bglLambda_6))-->(5+1) ;
+    print  _bglAt((_bglArray.map(g_nums, 0, _bglLambda_5)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.map(g_nums, 0, _bglLambda_6)), 5, 0)-->0 ;
     print _bglArray.length(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_7), 0, _bglLambda_8), 0);
-    print  (_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_9), 0, _bglLambda_10))-->(0+1) ;
-    print  (_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_11), 0, _bglLambda_12))-->(2+1) ;
+    print  _bglAt((_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_9), 0, _bglLambda_10)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_11), 0, _bglLambda_12)), 2, 0)-->0 ;
     print _bglArray.length(_bglArray.filter(_bglArray.map(g_nums, 0, _bglLambda_13), 0, _bglLambda_14), 0);
-    print  (_bglArray.filter(_bglArray.map(g_nums, 0, _bglLambda_15), 0, _bglLambda_16))-->(0+1) ;
+    print  _bglAt((_bglArray.filter(_bglArray.map(g_nums, 0, _bglLambda_15), 0, _bglLambda_16)), 0, 0)-->0 ;
     print _bglArray.length(_bglArray.filter(g_empty, 0, _bglLambda_17), 0);
     print _bglArray.length(_bglArray.map(g_empty, 0, _bglLambda_18), 0);
 ];
@@ -213,7 +213,7 @@ object _bglArray
                         quit;
                     
             }
-            dst-->(writecount+1) = elem;
+            _bglAt(dst, writecount, 1)-->0 = elem;
             writecount++;
         }
     }
@@ -238,10 +238,35 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = f(self.get(obj,prop,i));
+        _bglAt(dst, i, 1)-->0 = f(self.get(obj,prop,i));
     }
     _bglArray.setLength(dst, 0, srcLen);
     _bgllinqleave();
     return dst;
   ]
 ;
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = arr-->0;
+        #Ifdef _BGL_TRACKED_ARRAYS;
+            if(n > 1 && arr-->n == $9084) n = n - 2;
+        #Endif;
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+array _bglsink --> 1;

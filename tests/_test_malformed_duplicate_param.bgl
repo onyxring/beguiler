@@ -1,0 +1,5 @@
+/* Malformed input: duplicate_param */
+// EXPECT_ERROR: has two parameters named 'a'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void add(int a, int a){ print(a); }
+void main(){ add(1, 2); }

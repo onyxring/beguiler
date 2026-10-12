@@ -1206,7 +1206,8 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         }
     }
     if(retType == "void" && !allowVoidReturnExpr)
-        parsingError(format("Cannot use void function '{0}' in an expression", callName));
+        parsingError(format("Cannot use void function '{0}' in an expression",
+            [&]{ auto* fd = languageService.findGlobalAs<functionDef>(callName); return fd ? fd->dName() : callName; }()));
     if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
     // Flatten parsed args back to tokens for the enclosing expression. Qualify the callee: a bare
     // name only resolves in I6 for a global routine, but an object-member call (e.g. a method reached
@@ -1729,8 +1730,14 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
     {
         int depth = 1;
         bool coalesce = false;
-        for(int k = 1; k < 400 && depth > 0; k++){
-            token pk = file.peekToken(k);
+        int scanDepth = 1;
+        vector<token> ahead = file.peekTokens(400, [&](token& t){
+            if(t.is(token::parenOpen)) scanDepth++;
+            else if(t.is(token::parenClose) && --scanDepth == 0) return true;
+            return t.is(token::endStatement) || t.is(token::braceOpen) || (scanDepth == 1 && t.value == "??");
+        });
+        for(size_t k = 0; k < ahead.size() && depth > 0; k++){
+            token& pk = ahead[k];
             if(pk.is(eTokenType::eof) || pk.is(token::endStatement) || pk.is(token::braceOpen)) break;
             if(pk.is(token::parenOpen)) depth++;
             else if(pk.is(token::parenClose)) depth--;
@@ -2267,6 +2274,7 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
                    : resolvePathType(arrName, func, body);
     classDef* arrCls = getDispatchClass(arrType);
     expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+    rejectConstantIndexOutside(arrName, indexExpr, func, body);
     // Element-type-aware lookup: find operator[] whose return type matches the
     // array's declared element type. byteArray (array<char>) keeps its char operator[];
     // other arrays have int/object/bool/string overloads plus implicit synthesis for
@@ -2321,7 +2329,8 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
         expr->tokens.push_back(subscriptText);
     }
     else if(isMemberWordArray){
-        subscriptText = memberOwner + ".&" + propertyI6Name(memberProp) + "-->(" + indexExpr->text() + ")";
+        subscriptText = checkedMemberSlot(memberOwner, propertyI6Name(memberProp), indexExpr->text(), false,
+                                          memberArrayIsTracked(memberOwner, memberProp, func, body));
         expr->tokens.push_back(subscriptText);
         if(isArrayOfArraysElement(elemType) && expr->tokens.size() == 1) expr->resolvedType = elemType;   // a row, subscripted on
     }
@@ -2435,9 +2444,10 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
                && isWordArrayType(expr->resolvedType)){
                 file.getToken();   // '['
                 expression* innerIndex = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+                rejectConstantIndexOutside(memberArr, innerIndex, member.originalValue);
                 if(!expr->tokens.empty()) expr->tokens.pop_back();
-                expr->tokens.push_back("(" + recv + ").&" + memberI6Name(elemType, member.value)
-                                       + "-->(" + innerIndex->text() + ")");
+                expr->tokens.push_back(checkedMemberSlot("(" + recv + ")", memberI6Name(elemType, member.value),
+                                                         innerIndex->text(), false, memberArrayDeclTracked(memberArr)));
                 expr->resolvedType = memberArr->elementType;
                 return ExprStep::Advance;
             }
@@ -3248,7 +3258,10 @@ bglParser::ExprStep bglParser::parseExprMemberSubscript(ExprParseState& st, toke
     if(isWordArrayType(propType) && !memberArrayIsRef(objName, propName, func, body)){
         string owner = func != nullptr ? qualifyIdentifier(objName, func, body) : objName;
         if(owner.empty()) owner = objName;
-        expr->tokens.push_back(owner + ".&" + propertyI6Name(propName) + "-->(" + indexExpr->text() + ")");
+        rejectConstantIndexOutside(dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(objName + "." + propName, func, body)),
+                                   indexExpr, member.originalValue);
+        expr->tokens.push_back(checkedMemberSlot(owner, propertyI6Name(propName), indexExpr->text(), false,
+                                                 memberArrayIsTracked(objName, propName, func, body)));
         if(file.peekToken().is(token::bracketOpen) && expr->tokens.size() == 1){   // a row, or an element with `[]`
             expr->resolvedType = elemType;
             string text = expr->tokens.back();
@@ -3988,6 +4001,12 @@ bglParser::ExprStep bglParser::parseExprIdentifier(ExprParseState& st){
     functionDef* func = st.func;
     statementBlock* body = st.body;
 
+    if(cur.value == "self") rejectSelfWithoutObject(func);
+    if(file.peekToken().value == "=>" && !st.prefetched)
+        parsingError(format("A lambda's parameters are written with their types, in parentheses: `(Type {0}) => …`.",
+                            cur.originalValue.empty() ? cur.value : cur.originalValue));
+    if(cur.value == "outer") rejectStrayOuter(func, body);
+
     // ── Cast to property: `(property)IDENT` ──
     // Bypasses the normal lexical-member walk that would otherwise resolve
     // bare `n_to` inside a room body to `self.n_to` (the value). With the cast,
@@ -4451,7 +4470,9 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
            ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && !ad->isRefLocal){
             string owner = parenthesizeReceiver(receiverText(expr));
             expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
-            replaceReceiver(expr, owner + ".&" + memberI6Name(expr->resolvedType, member.value) + "-->(" + indexExpr->text() + ")");
+            rejectConstantIndexOutside(ad, indexExpr, member.originalValue);
+            replaceReceiver(expr, checkedMemberSlot(owner, memberI6Name(expr->resolvedType, member.value), indexExpr->text(),
+                                                    false, memberArrayDeclTracked(ad)));
             expr->resolvedType = ad->elementType;
             cur = exprNext(st);
             return ExprStep::Continue;
@@ -4911,6 +4932,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     // MAIN EXPRESSION LOOP — processes one token per iteration
     // Branches by token type: parens, literals, identifiers, operators, etc.
     // ═══════════════════════════════════════════════════════════════════════
+    optional<token> prevTok;
     while(true){
         if(exprIsTerminator(st, cur)){ expr->terminator = cur.value; break; }
         if(cur.is(eTokenType::eof)){
@@ -4922,6 +4944,30 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 ? string("'->' is Inform 6's byte-array operator; in Beguile, index the array: `name[i]` "
                          "(an array<char> or rawArray<char> reads bytes).")
                 : string("'-->' is Inform 6's word-array operator; in Beguile, index the array: `name[i]`."));
+
+        // `print(1 2)`: two operands with nothing between them.
+        auto isLiteral = [](token& t){
+            return t.is(eTokenType::integer) || t.is(eTokenType::floatLiteral) || t.isString() || t.is(eTokenType::charLiteral);
+        };
+        // `int x = 1` then `print(x);` on the next line: the statement's ';' is missing.
+        if(prevTok && (isLiteral(*prevTok) || prevTok->is(eTokenType::identifier)) && (isLiteral(cur) || cur.is(eTokenType::name))
+           && cur.src.line > prevTok->src.line && prevTok->src.file == cur.src.file)
+            parsingError(format("Missing ';' at the end of line {0}, after '{1}'.", prevTok->src.line, prevTok->value));
+        if(cur.is(token::endStatement)){
+            bool inParens = parenDepth > 0 || find(terminators.begin(), terminators.end(), token::parenClose) != terminators.end();
+            bool inBrackets = find(terminators.begin(), terminators.end(), "]") != terminators.end();
+            if(inParens || inBrackets) parsingError(format("Missing '{0}' before ';'.", inParens ? ")" : "]"));
+        }
+        if(isLiteral(cur) && prevTok && (isLiteral(*prevTok) || prevTok->is(eTokenType::identifier)))
+            parsingError(format("'{0}' follows '{1}' with nothing between them: a ',' or an operator is missing.",
+                                cur.value, prevTok->value));
+        // `1 + ;`: an operator with nothing after it.
+        if(cur.is(eTokenType::oper) && cur.value != "++" && cur.value != "--"){
+            token nx = st.prefetched ? *st.prefetched : stashedToken ? *stashedToken : file.peekToken();
+            if(nx.isOneOf({";", ")", "]", "}", ","}) && !(cur.value == ">" && nx.is(token::parenClose)))
+                parsingError(format("'{0}' has nothing after it: an operand is missing.", cur.value));
+        }
+        prevTok = cur;
 
         ExprStep step = ExprStep::Advance;
         if(!cur.isString() && (cur.value == "~" || cur.value == "~~"))
@@ -5042,4 +5088,50 @@ void bglParser::foldOverflowingConstant(expression* expr){
     skip();
     if(bad || i != text.size() || !overflowed) return;
     expr->tokens = { v < 0 ? "(" + to_string(v) + ")" : to_string(v) };
+}
+
+// `self` names the object a method runs on; a global function or a static method has none.
+void bglParser::rejectSelfWithoutObject(functionDef* func){
+    if(looseIdentifierMode || func == nullptr) return;
+    if(currentClass == nullptr && currentObject == nullptr)
+        parsingError(format("'self' in '{0}': a global function has no object; pass one as a parameter.", func->dName()));
+    else if(func->isStatic)
+        parsingError(format("'self' in '{0}': a static method has no object; pass one as a parameter.", func->dName()));
+}
+
+// `outer` outside any inline accessor, where nothing else is named `outer` either.
+void bglParser::rejectStrayOuter(functionDef* func, statementBlock* body){
+    if(accessorOuter != nullptr || looseIdentifierMode || func == nullptr) return;
+    if(currentClass != nullptr && currentClass->name.rfind("_bglaccessor", 0) == 0) return;   // a class's accessor says so itself
+    if(!resolveIdentifierType("outer", func, body).empty()) return;
+    parsingError("'outer' names the object holding an inline accessor, so it is only meaningful inside the "
+                 "accessor's operators; in a method, use 'self'.");
+}
+
+// An element of an object's member array<T>, bounds-checked at run time (`write` checks the size, a
+// read the length).
+string bglParser::checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked){
+    return "_bglMemberAt(" + owner + ", " + prop + ", " + index + ", " + to_string((write ? 1 : 0) | (tracked ? 2 : 0)) + ")-->0";
+}
+
+// Whether a member array keeps its length in its last word (see memberArrayIsTracked).
+bool bglParser::memberArrayDeclTracked(arrayDeclaration* ad){
+    if(ad == nullptr || !languageService.arrayInUse) return false;
+    return !ad->isRaw && !languageService.isAdditiveProperty(ad->i6name.empty() ? ad->name : ad->i6name);
+}
+
+// `a[4]` on an `array<int> a[4]`: a constant index past the declared size is a compile-time error.
+void bglParser::rejectConstantIndexOutside(const string& path, expression* index, functionDef* func, statementBlock* body){
+    if(index == nullptr || looseIdentifierMode) return;
+    rejectConstantIndexOutside(dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(path, func, body)), index);
+}
+void bglParser::rejectConstantIndexOutside(arrayDeclaration* ad, expression* index, const string& shown){
+    if(index == nullptr || ad == nullptr || ad->arraySize <= 0 || ad->isRaw || looseIdentifierMode) return;
+    string t = index->text();
+    t.erase(remove_if(t.begin(), t.end(), [](char c){ return isspace((unsigned char)c) || c == '(' || c == ')'; }), t.end());
+    if(t.empty() || t.find_first_not_of("-0123456789") != string::npos || t.find('-', 1) != string::npos || t == "-") return;
+    long n = stol(t);
+    if(n >= 0 && n < ad->arraySize) return;
+    parsingError(format("Index {0} is outside '{1}', which holds {2} element{3} (0 to {4}).", t, shown.empty() ? ad->dName() : shown,
+                        ad->arraySize, ad->arraySize == 1 ? "" : "s", ad->arraySize - 1));
 }

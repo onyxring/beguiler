@@ -134,6 +134,10 @@ glkote.update = (arg) => {
     if(Array.isArray(arg.windows)){
         const live = new Set(arg.windows.map(w => w.id));
         for(const id of [...grids.keys()]) if(!live.has(id)) grids.delete(id);
+        // A grid made shorter keeps only the rows it now has.
+        for(const w of arg.windows)
+            if(grids.has(w.id) && typeof w.gridheight === 'number' && grids.get(w.id).length > w.gridheight)
+                grids.get(w.id).length = w.gridheight;
     }
     if(tagWindows && mainWin === null){
         // The main window is the one the player types into. Until it asks for input, hold the text,

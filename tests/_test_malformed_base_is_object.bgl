@@ -1,0 +1,7 @@
+/* Malformed input: base_is_object */
+// EXPECT_ERROR: is an object, not a class
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Thing : object { }
+Thing rock { }
+class Pebble : rock { }
+void main(){ }

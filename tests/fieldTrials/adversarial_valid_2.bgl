@@ -25,7 +25,7 @@
 #include <bindings/i6StandardLibrary>
 #include <array>   // element stores into arrays of value classes
 
-extend class object {
+extend extern class object {
     string description;
 }
 

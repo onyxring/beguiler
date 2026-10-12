@@ -62,7 +62,8 @@ object bgl
     print (string)"^";
 ];
 object _bglVerb_census
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"census";
   ]
 ;
@@ -74,7 +75,8 @@ verb meta 'census'
 verb meta 'tally'
     * -> census;
 object _bglVerb_ponder
-  with handler [;
+  with priority 10,
+       handler [;
     print (string)"ponder";
   ]
 ;

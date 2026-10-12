@@ -7,4 +7,4 @@
 #include "somefile
 #include "other"
 int probe(){ return 0; }
-// EXPECT_ERROR: missing closing
+// EXPECT_ERROR: A string opened at line 7 is never closed

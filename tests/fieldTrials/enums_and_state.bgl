@@ -30,7 +30,7 @@ bnum eCondition { dusty, hot, loud, oiled }
 
 array<string> conditionNames = { "dusty", "hot", "loud", "oiled" };
 
-extend class object {
+extend extern class object {
     string description;
 }
 

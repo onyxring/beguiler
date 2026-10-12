@@ -54,7 +54,7 @@ extern object child(object o);
 extern object sibling(object o);
 extern bool IndirectlyContains(object o1, object o2);
 
-extend class object {
+extend extern class object {
     stringOrRoutine description;
     object e_to;
     object w_to;

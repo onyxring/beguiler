@@ -161,7 +161,9 @@ class i6Emitter{
         // Sized `array<char>` members under <buf>: (raw array, the property it points at, capacity).
         struct TrackedByteMember { string raw; string lvalue; int size; };
         vector<TrackedByteMember> trackedByteMembers;
-        set<string> trackedByteMemberRaws;
+        static int i6StringChars(const string& lit);
+        string byteCapacityPrefix(const string& name, int capacity);
+        string byteArrayDecl(const string& name, class arrayDeclaration* arr, int size, bool startsEmpty = false);
         set<const variableDeclaration*> runtimeMemberValues;   // object member values bglInit assigns
         vector<string> runtimeMemberInits;
 

@@ -4,40 +4,26 @@
 // Usage:
 //   #include <buf>      in your .bgl file to activate buffer support.
 //
-// A "buf" with `<buf>` included follows the orLibrary SizedBuffer layout.
-// The user-visible pointer is offset WORDSIZE+2 bytes into a raw allocation,
-// so reads/writes through the user pointer behave as a standard I6 hybrid
-// buffer (length WORD at offset 0, data starting at WORDSIZE), while
-// negative offsets expose the size and magic prefix:
+// Every `array<char>` follows the orLibrary SizedBuffer layout: an I6 hybrid buffer (length WORD at
+// offset 0, data from WORDSIZE) with its capacity in the WORD just before it:
 //
-//   layout (from raw allocation start):
-//     bytes 0..1                       = magic ($90, $84)
-//     bytes 2..WORDSIZE+1              = size WORD (capacity in chars)
-//     bytes WORDSIZE+2..2*WORDSIZE+1   = length WORD (current used chars)  ← user pointer
-//     bytes 2*WORDSIZE+2..end          = N data bytes
-//
-//   access from the user pointer (buf):
+//     buf-->(-1)             = size (data capacity)
 //     buf-->0                = length (current chars)        ← I6 hybrid convention
 //     buf->WORDSIZE+i        = data char at position i       ← matches byteArray[i]
-//     buf-->(-1)             = size (data capacity)
-//     buf->(-WORDSIZE-2)     = magic byte $90
-//     buf->(-WORDSIZE-1)     = magic byte $84
 //
-// `buf[i]` indexes data directly using Beguile's native byteArray subscript
-// (`$val->($i + WORDSIZE)`). Length/size are read/written through
-// `buf.length()` / `buf.size()` / `buf.setLength(n)` (or the equivalent
-// `_bglBuf.X(buf, ...)` calls).
+// `<buf>` adds the operations, makes `length` assignable, and starts a sized declaration empty.
+// The string pool's buffers keep two reserved bytes before the size word (_bglConvertToSizedBuffer).
 //
 // To declare a tracked buf in your code:
 //
 //     #include <buf>
-//     array<char> myBuf[64];     // 64 chars of data + sized-buffer prefix
+//     array<char> myBuf[64];     // 64 chars of data, with its size before it
 //     myBuf[0] = 'H';            // direct char access
 //     myBuf.setLength(1);        // tell the buf there's 1 char of content
 //
 // Limits: length and size are full WORDs (2 bytes on Z, 4 on Glulx), so the
 // per-buf capacity ceiling is the I6 array limit on the target — no 255-char
-// cap. The user-visible pointer behaves as an I6 hybrid buffer, so it's
+// cap. The buffer is an I6 hybrid buffer, so it's
 // interoperable with stdlib routines like `print_to_array`, glk_put_buffer,
 // etc., without any wrapping.
 //
@@ -139,30 +125,8 @@ extend extern class byteArrayLength {
 //=============================================================================
 // _bglBuf — utility namespace for buffer operations.
 //
-// SizedBuffer layout (orLibrary model). User-visible pointer `buf` is offset
-// WORDSIZE+2 bytes into the raw allocation:
-//
-//   byte offset (from raw):
-//     0..1:                     [DEPRECATED] reserved magic-byte slot
-//     2..WORDSIZE+1:            size WORD = data capacity (chars)
-//     WORDSIZE+2..2*WORDSIZE+1: length WORD = current used chars  ← buf-->0
-//     2*WORDSIZE+2..end:        data                              ← buf->WORDSIZE
-//
-//   Access from user pointer:
-//     buf-->0                = length (current chars)
-//     buf-->(-1)             = size (capacity)
-//     buf->WORDSIZE          = first data char
-//     buf->(-WORDSIZE-2)     = [DEPRECATED] reserved magic slot (unwritten)
-//     buf->(-WORDSIZE-1)     = [DEPRECATED] reserved magic slot (unwritten)
-//
-// DEPRECATED: the two-byte prefix at offsets -WORDSIZE-2 / -WORDSIZE-1 used
-// to hold a $90 $84 magic stamp consumed by the old heuristic isTracked().
-// Phase B (registry-based isTracked + typed dispatch via extend class string)
-// made the stamp unnecessary. The bytes are still reserved (allocation size
-// and user-pointer offset unchanged) so the layout stays stable through the
-// deprecation window. Compaction to drop the prefix entirely is captured as
-// pending work — coordinate _bglConvertToSizedBuffer offset, the C++ emitter
-// for user-declared `array<char>[N]`, and _bglDsbuf chunk-stride math.
+// Layout: see the file header. `size` is `buf-->(-1)`, `length` is `buf-->0`. The registry below
+// tells a buffer from a packed string where a value could be either (setAny).
 //=============================================================================
 object _bglBuf {
     // Top of the shared capture/release stack. 0 = nothing captured.
@@ -215,8 +179,8 @@ object _bglBuf {
     // For untracked byteArrays returns -1 — distinguishes from a legitimately
     // empty buf and parallels orBuf's sized-buf convention.
     int size(array<char> buf){
-        if(isTracked(buf)) return _bglGetWord(buf, -1);
-        return -1;
+        if((int)buf == 0) return -1;
+        return _bglGetWord(buf, -1);
     }
 
     // length returns the current char count (WORD at buf-->0, the I6 hybrid-
@@ -271,6 +235,7 @@ object _bglBuf {
     array<char> setFromLiteral(array<char> buf, var stringVal){
         int sz = size(buf);
         if(sz < 0) sz = bglStringDefaultSize;
+        sz = sz + bgl.wordsize;   // print_to_array counts the length word in the array's size
         #i6 { stringVal.print_to_array(buf, sz); }
         setLength(buf, length(buf));
         return buf;
@@ -279,8 +244,6 @@ object _bglBuf {
     // setFromBuffer: bulk-copy from another tracked buf.
     array<char> setFromBuffer(array<char> buf, array<char> stringVal){
         int svlen = length(stringVal);
-        // An untracked buffer records no capacity; its length word is the most it is known to hold.
-        if(!isTracked(buf) && svlen > length(buf)) svlen = length(buf);
         copy(buf, stringVal, svlen, 0, 0);
         setLength(buf, svlen);
         return buf;

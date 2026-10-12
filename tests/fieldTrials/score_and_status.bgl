@@ -90,7 +90,7 @@ verb Status {
     }
 }
 
-extend class object {
+extend extern class object {
     string description;
     object n_to;
     object s_to;

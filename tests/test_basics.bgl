@@ -16,7 +16,7 @@ const string TITLE = "Test";
 // for \" (escaped double-quote). Embedded backslashes, quotes, and characters
 // pass through to the emitted I6 string as-is.
 const string RAW_MSG = @"raw \n stays literal and \t too";
-const string RAW_WITH_QUOTE = @"has a ""quoted"" word";
+const string RAW_WITH_QUOTE = @"has a \"quoted\" word";
 
 void main(){
     // Variable declarations and assignments

@@ -30,7 +30,7 @@
 
 #using bgl.printRules;
 
-extend class object {
+extend extern class object {
     string description;
     int    grams;
     object e_to;

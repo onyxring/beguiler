@@ -1,0 +1,7 @@
+/* Malformed input: i6expr_two_exprs */
+// EXPECT_ERROR: holds more than one expression
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void a(){ }
+void b(){ }
+emitter void both(){ $i6Expr(a(); b()) }
+void main(){ both(); }

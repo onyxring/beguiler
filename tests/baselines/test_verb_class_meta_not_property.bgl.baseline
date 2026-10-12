@@ -65,7 +65,8 @@ class _bglClass_infoVerb
   class object
 ;
 _bglClass_infoVerb _bglVerb_survey
-  with handler [;
+  with priority 5,
+       handler [;
     print (string)"x";
   ]
 ;
