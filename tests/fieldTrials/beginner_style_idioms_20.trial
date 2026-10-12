@@ -1,0 +1,165 @@
+Room A
+Room A. Plants grow in a bed here. Room B is to the east.
+You can see a bed (on which are a rose, a fern, a tulip and a cactus) and a watering can (which is empty) here.
+> check
+The rose is fine (2 cups).
+The fern is fine (4 cups).
+The tulip is fine (1 cup).
+The cactus is fine (1 cup).
+0 are dry.
+> examine can
+A watering can. It is empty (0 cups).
+> water rose
+You need the watering can.
+> take can
+Taken.
+> water rose
+The can is empty.
+> fill can
+There is no water here.
+The fern flowers.
+> east
+Room B
+Room B. There is a tap on the wall. Room A is to the west.
+You can see a tap here.
+> fill can
+You fill the can at the tap.
+> x can
+A watering can. It is full (5 cups).
+> west
+Room A
+Room A. Plants grow in a bed here. Room B is to the east.
+You can see a bed (on which are a rose, a fern, a tulip and a cactus) here.
+> water rose
+You water the rose. The rose is fine (1 cup).
+> water tulip
+You water the tulip. The tulip is fine (1 cup).
+> water cactus
+You water the cactus. The cactus is fine (1 cup).
+> check
+The rose is dry (0 cups).
+The fern is dry (0 cups) and has a flower.
+The tulip is dry (0 cups).
+The cactus is fine (1 cup).
+3 are dry.
+> thirsty
+Thirsty: rose, fern, tulip, cactus.
+Every plant is thirsty!
+> rank
+1. rose (0)
+2. fern (0)
+3. tulip (0)
+4. cactus (0)
+> smell rose
+The rose smells of earth.
+> take fern
+It is planted in the ground.
+> wait
+Time passes.
+> wait
+Time passes.
+> check
+The rose is dry (0 cups).
+The fern is dry (0 cups) and has a flower.
+The tulip is dry (0 cups).
+The cactus is dry (0 cups).
+4 are dry.
+> garden
+In the bed: rose, fern, tulip and cactus.
+1 is in flower.
+> rain
+It rains on the garden.
+The rain stops.
+> wait
+Time passes.
+> check
+The rose is fine (1 cup).
+The fern is fine (1 cup) and has a flower.
+The tulip is fine (1 cup).
+The cactus is fine (1 cup).
+0 are dry.
+> rain
+It won't rain again.
+> pour fern
+You water the fern. The fern is fine (2 cups) and has a flower.
+> totals
+Used: 5 cups. Fills: 1. Can: empty.
+[]
+> name rose
+A rose is red.
+> name tulip
+A TULIP is a plant.
+> name cactus
+A cactus is prickly.
+> name can
+That isn't a plant.
+> east
+Room B
+Room B. There is a tap on the wall. Room A is to the west.
+You can see a tap here.
+> fill can
+You fill the can at the tap.
+> empty can
+You pour out 5 cups.
+> empty can
+The can is already empty.
+> fill can
+You fill the can at the tap.
+> totals
+Used: 5 cups. Fills: 3. Can: full.
+[ooooo]
+> west
+Room A
+Room A. Plants grow in a bed here. Room B is to the east.
+You can see a bed (on which are a rose, a fern, a tulip and a cactus) here.
+> water rose
+You water the rose. The rose is fine (1 cup).
+> pour cactus
+You water the cactus. The cactus is soaked (4 cups).
+> check
+The rose is dry (0 cups).
+The fern is dry (0 cups) and has a flower.
+The tulip is dry (0 cups).
+The cactus is soaked (4 cups).
+3 are dry.
+> rank
+1. cactus (3)
+2. rose (0)
+3. fern (0)
+4. tulip (0)
+> thirsty
+Thirsty: rose, fern, tulip.
+> sort
+Sorted: cactus fern rose tulip.
+> check
+The cactus is fine (2 cups).
+The fern is dry (0 cups) and has a flower.
+The rose is dry (0 cups).
+The tulip is dry (0 cups).
+3 are dry.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> garden
+In the bed: rose, fern, tulip and cactus.
+1 is in flower.
+> smell rose
+The rose smells of earth.
+> smell fern
+The fern smells sweet.
+> fill can
+There is no water here.
+> totals
+Used: 10 cups. Fills: 3. Can: empty.
+[]
+> reset
+4 plants are reset.
+> check
+The cactus is fine (1 cup).
+The fern is fine (1 cup).
+The rose is fine (1 cup).
+The tulip is fine (1 cup).
+0 are dry.

@@ -1,0 +1,347 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a Fixture class
+// whose additive before refuses Take, shared by a crate, a dial and a lever; a crate moved between
+// rooms with PushDir and AllowPushDir, uncovering a concealed trapdoor (door_to, door_dir, found_in
+// over two rooms); a dark cellar lit by a matchbook whose Burn rule gives light and starts a timer
+// (time_left/time_out) and an invent rule; a ladder whose Climb performs Go; a locked safe opened
+// by setting a dial through the library's SetTo (special token, the number read from second) and a
+// native verb adding a NUMBER line to "turn" that performs SetTo; a sized array<int> of the
+// combination and a ring of tried numbers; a parrot with react_before on Take, life on
+// Ask/Tell/Give (NextWord against dictionary words) and an each_turn counter; a LibraryMessages
+// override of Go; a meta verb printing a tally; NewRoom; an #i6 island routine reached through
+// extern; deadflag set when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 DIAL_TOP 9
+
+const int MAX_SCORE = 3;
+const int RING = 5;
+const int MATCHES = 3;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Go:
+                if (lm_n == 2) rtrue("No exit that way.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#i6 {
+    [ PrintDigits n w;
+        ! prints n zero-padded to w digits
+        if (w > 1) PrintDigits(n / 10, w - 1);
+        print n % 10;
+    ];
+}
+
+extern void PrintDigits(int n, int w);
+
+extend extern class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+}
+
+class Fixture : object {
+    bool before() {
+        switch (action) {
+            case Take, Remove:
+                rtrue("It is fixed in place.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+int g_rooms;                    // rooms entered
+array<int> combo = {4, 9, 2};   // the safe's combination
+int dialStep;                   // how many digits of combo are set
+array<int> tried[RING];         // last numbers set on the dial
+int nTried;
+
+void Remember(int n) {
+    tried[nTried % RING] = n;
+    nTried++;
+}
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    void description() {
+        print("Room A. Room B is east.");
+        if (trapdoor.hasnt(concealed)) print(" A trapdoor is set in the floor.");
+        print("^");
+    }
+    e_to = roomB;
+    d_to = trapdoor;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object cellar {
+    short_name = "Cellar";
+    description = "Cellar. A ladder leads up.";
+    u_to = trapdoor;
+}
+
+object trapdoor {
+    short_name = "trapdoor";
+    name = {.trapdoor, .trap, .door};
+    rawArray<object> found_in = {roomA, cellar};
+    description = "A wooden trapdoor.";
+    object door_to() {
+        if (location == roomA) return cellar;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)d_to;
+        return (property)u_to;
+    }
+    attributes = {door, openable, static, scenery, concealed};
+}
+
+// ---------------------------------------------------------------- the crate
+
+Fixture crate {
+    short_name = "wooden crate";
+    name = {.wooden, .crate};
+    parent = roomA;
+    description = "A heavy wooden crate.";
+    bool before() {
+        switch (action) {
+            case PushDir:
+                if (location == roomA && trapdoor.has(concealed)) {
+                    trapdoor.ungive(concealed);
+                    Award();
+                }
+                AllowPushDir();
+                rtrue;
+            case Push, Pull:
+                rtrue("It needs a direction: push it east or west.^");
+        }
+        rfalse;
+    }
+}
+
+// ---------------------------------------------------------------- the safe
+
+object safe {
+    short_name = "steel safe";
+    name = {.steel, .safe};
+    parent = roomB;
+    description = "A steel safe with a dial on its door.";
+    attributes = {container, openable, lockable, locked, static};
+}
+
+Fixture dial {
+    short_name = "dial";
+    name = {.dial};
+    parent = roomB;
+    void description() {
+        print("A dial marked 0 to ");
+        PrintDigits(DIAL_TOP, 1);
+        print(". It reads ");
+        if (nTried == 0) print("0");
+        else PrintDigits(tried[(nTried - 1) % RING], 1);
+        print(".^");
+    }
+    bool before() {
+        int n;
+        switch (action) {
+            case SetTo:
+                n = (int)second;
+                if (n < 0 || n > DIAL_TOP) rtrue("The dial only goes from 0 to 9.^");
+                Remember(n);
+                print($"You turn the dial to {n}.");
+                if (safe.hasnt(locked)) rtrue(" Nothing happens.^");
+                if (n == combo[dialStep]) dialStep++;
+                else if (n == combo[0]) dialStep = 1;
+                else dialStep = 0;
+                if (dialStep == combo.size) {
+                    safe.ungive(locked);
+                    Award();
+                    rtrue(" The safe clicks.^");
+                }
+                print("^");
+                rtrue;
+            case Turn, Set:
+                rtrue("Set the dial to a number.^");
+        }
+        rfalse;
+    }
+    attributes = {scenery};
+}
+
+object matchbook {
+    short_name = "matchbook";
+    name = {.matchbook, .match, .matches, .book};
+    parent = safe;
+    int matches = MATCHES;
+    void description() {
+        print($"A matchbook with {matches} match");
+        if (matches != 1) print("es");
+        print(" left.^");
+    }
+    bool before() {
+        switch (action) {
+            case Burn:
+                if (has(light)) rtrue("A match is already burning.^");
+                if (matches == 0) rtrue("The matchbook is empty.^");
+                if (parent != player) rtrue("You aren't holding it.^");
+                matches--;
+                give(light);
+                StartTimer(self, 3);
+                rtrue("You strike a match.^");
+        }
+        rfalse;
+    }
+    bool invent() {
+        if (inventory_stage == 2) print($" ({matches} left)");
+        rfalse;
+    }
+    int time_left;
+    void time_out() {
+        ungive(light);
+        print("^The match burns out.^");
+    }
+}
+
+// ---------------------------------------------------------------- the cellar
+
+Fixture lever {
+    short_name = "iron lever";
+    name = {.iron, .lever};
+    parent = cellar;
+    description = "An iron lever.";
+    bool before() {
+        switch (action) {
+            case Pull, Push:
+                if (has(general)) rtrue("It is already down.^");
+                give(general);
+                print("The lever clunks down.^");
+                Award();
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+Fixture ladder {
+    short_name = "ladder";
+    name = {.ladder};
+    parent = cellar;
+    description = "A short ladder up to the trapdoor.";
+    bool before() {
+        switch (action) {
+            case Climb, Enter:
+                Go.perform(u_obj);
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {scenery};
+}
+
+// ---------------------------------------------------------------- the parrot
+
+object parrot {
+    short_name = "parrot";
+    name = {.parrot, .bird};
+    parent = roomB;
+    description = "A grey parrot.";
+    int preen;
+    bool react_before() {
+        switch (action) {
+            case Take:
+                if (noun != self) print("The parrot squawks: ~Thief!~^");
+        }
+        rfalse;
+    }
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Ask, Tell:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .safe || w == .combination || w == .dial) rtrue("~Four, nine, two!~^");
+                if (w == .cellar) rtrue("~Under the crate!~^");
+                rtrue("The parrot tilts its head.^");
+            case Give:
+                rtrue("The parrot ignores it.^");
+            case Attack:
+                rtrue("The parrot flaps out of reach.^");
+        }
+        rfalse;
+    }
+    void each_turn() {
+        preen++;
+        if (preen % 4 == 0) print("^The parrot preens.^");
+    }
+    attributes = {animate};
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb TurnTo {
+    grammar = {{.turn | .spin, NOUN, .to, NUMBER}};
+    void handler() {
+        SetTo.perform(noun, second);
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        int i;
+        int n = nTried;
+        print($"Rooms {g_rooms}, score {score}, step {dialStep}, matches {matchbook.matches}.^");
+        if (n == 0) { printLine("Dial: untouched."); return; }
+        if (n > RING) n = RING;
+        print("Dial:");
+        for (i = 0; i < n; i++) print($" {tried[i]}");
+        print($" (of {nTried}).^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

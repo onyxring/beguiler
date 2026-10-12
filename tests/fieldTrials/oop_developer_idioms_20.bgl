@@ -1,0 +1,466 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twentieth pass: an order workflow.
+// The State pattern: a state base class whose `default` transition methods throw a pooled error, with one
+// singleton state object per subclass overriding the transitions it allows and returning the next state;
+// an order entity deriving from an "auditable" base and a mixin, holding an `array<LineItem>` of a value
+// class that owns a `Money` value member, extended by a discounted line (copy operators all the way down), a fluent
+// `selfType` builder method, a computed total through value-class arithmetic and a `<=>`-derived compare;
+// a string-keyed `switch` dispatching commands to the current state inside `try`/`catch`; an inventory
+// repository with parallel arrays and `indexOf` on `array<string>`; a static event bus of `func<>`
+// handlers published to on every transition; static counters; `<linq>` queries (`filter`, `count`,
+// `any`, `all`, `map`) over the orders with lambdas; `sort` of the value-class line array with comparator
+// lambdas comparing two method results through `<=>`; `?.`/`??` on a lookup that may fail; `stringObj`
+// building with interpolation; named and default arguments.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eStatus { Pending, Paid, Shipped, Delivered, Cancelled }
+
+//-- Money: a value type ---------------------------------------------------------------------------------------
+
+value class Money {
+    inline int Cents;
+
+    Money operator = (Money o) { Cents = o.Cents; return self; }
+    Money operator + (Money o) { return Money{ Cents + o.Cents }; }
+    Money operator - (Money o) { return Money{ Cents - o.Cents }; }
+    Money operator * (int factor) { return Money{ Cents * factor }; }
+    int operator <=> (Money o) { return Cents - o.Cents; }
+    bool operator == (Money o) { return Cents == o.Cents; }
+    bool operator != (Money o) { return Cents != o.Cents; }
+
+    static Money FromDollars(int dollars, int cents = 0) { return Money{ dollars * 100 + cents }; }
+
+    // The amount as "$d.cc".
+    stringObj Format() {
+        int whole = Cents / 100;
+        int part = Cents % 100;
+        stringObj text = $"${whole}.";
+        if (part < 10) text += "0";
+        text += $"{part}";
+        return text;
+    }
+}
+
+//-- Line items ------------------------------------------------------------------------------------------------
+
+value class LineItem {
+    string Sku;
+    int Qty;
+    Money UnitPrice;
+
+    LineItem operator = (LineItem o) {
+        Sku = o.Sku;
+        Qty = o.Qty;
+        UnitPrice = o.UnitPrice;
+        return self;
+    }
+
+    Money Subtotal() { return UnitPrice * Qty; }
+}
+
+value class DiscountedLine : LineItem {
+    int PercentOff;
+
+    DiscountedLine operator = (DiscountedLine o) {
+        Sku = o.Sku;
+        Qty = o.Qty;
+        UnitPrice = o.UnitPrice;
+        PercentOff = o.PercentOff;
+        return self;
+    }
+
+    Money Discounted() {
+        Money full = Subtotal();
+        return Money{ full.Cents - full.Cents * PercentOff / 100 };
+    }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class TransitionError[2] : object {
+    string From;
+    string Action;
+    static int Raised;
+
+    void create(string fromState, string attempted) {
+        From = fromState;
+        Action = attempted;
+        TransitionError.Raised++;
+    }
+}
+
+//-- Base classes ----------------------------------------------------------------------------------------------
+
+class Auditable : object {
+    int Version;
+    default void Touch() { Version++; }
+}
+
+class Taggable : object {
+    string Tag = "none";
+    bool HasTag() { return Tag != "none"; }
+}
+
+//-- States ----------------------------------------------------------------------------------------------------
+
+class OrderState : object {
+    inline instanceName;
+    inline eStatus Code;
+
+    default OrderState Pay(Order o)     { return Refuse("pay"); }
+    default OrderState Ship(Order o)    { return Refuse("ship"); }
+    default OrderState Deliver(Order o) { return Refuse("deliver"); }
+    default OrderState Cancel(Order o)  { return Refuse("cancel"); }
+    default bool IsFinal() { return false; }
+
+    OrderState Refuse(string action) {
+        TransitionError err = new TransitionError(Name(), action);
+        if (err == null) return self;
+        throw err;
+    }
+
+    string Name() {
+        switch (Code) {
+            case eStatus.Pending:   return "pending";
+            case eStatus.Paid:      return "paid";
+            case eStatus.Shipped:   return "shipped";
+            case eStatus.Delivered: return "delivered";
+            default:                return "cancelled";
+        }
+    }
+}
+
+class PendingState : OrderState {
+    OrderState Pay(Order o) {
+        if (o.LineCount() == 0) return Refuse("pay");
+        o.Paid = o.Total();
+        return statePaid;
+    }
+    OrderState Cancel(Order o) { return stateCancelled; }
+}
+
+class PaidState : OrderState {
+    OrderState Ship(Order o) {
+        if (!stock.ReserveAll(o)) return Refuse("ship");
+        return stateShipped;
+    }
+    OrderState Cancel(Order o) {
+        Order.Refunded = Order.Refunded + o.Paid;
+        return stateCancelled;
+    }
+}
+
+class ShippedState : OrderState {
+    OrderState Deliver(Order o) { return stateDelivered; }
+}
+
+class DeliveredState : OrderState {
+    bool IsFinal() { return true; }
+}
+
+class CancelledState : OrderState {
+    bool IsFinal() { return true; }
+}
+
+PendingState statePending     { "pending state", Pending; }
+PaidState statePaid           { "paid state", Paid; }
+ShippedState stateShipped     { "shipped state", Shipped; }
+DeliveredState stateDelivered { "delivered state", Delivered; }
+CancelledState stateCancelled { "cancelled state", Cancelled; }
+
+//-- The order ---------------------------------------------------------------------------------------------------
+
+class Order : Auditable, Taggable {
+    inline instanceName;
+    inline int Id;
+    OrderState State;
+    array<LineItem> Lines[4];
+    Money Paid;
+    static int Transitions;
+    static Money Refunded;
+
+    selfType AddLine(string sku, int qty, Money price) {
+        LineItem item;
+        item.Sku = sku;
+        item.Qty = qty;
+        item.UnitPrice = price;
+        Lines.append(item);
+        Touch();
+        return self;
+    }
+
+    selfType Tagged(string label) {
+        Tag = label;
+        return self;
+    }
+
+    int LineCount() { return Lines.length; }
+
+    void SortLinesBySubtotal(bool descending = true) {
+        if (descending) Lines.sort((LineItem x, LineItem y) => y.Subtotal() <=> x.Subtotal());
+        else Lines.sort((LineItem x, LineItem y) => x.Subtotal() <=> y.Subtotal());
+    }
+
+    Money Total() {
+        Money sum;
+        for (LineItem line in Lines) sum = sum + line.Subtotal();
+        return sum;
+    }
+
+    eStatus Status() { return State.Code; }
+
+    void Touch() {
+        ((Auditable)self).Touch();
+    }
+
+    // Applies one command through the current state; false when the state refuses it.
+    bool Apply(string command) {
+        OrderState before = State;
+        try {
+            switch (command) {
+                case "pay":     State = State.Pay(self);
+                case "ship":    State = State.Ship(self);
+                case "deliver": State = State.Deliver(self);
+                case "cancel":  State = State.Cancel(self);
+                default:        return false;
+            }
+        } catch (TransitionError e) {
+            printLine($"{self}: cannot {e.Action} when {e.From}.");
+            delete e;
+            return false;
+        }
+        if (State != before) {
+            Order.Transitions++;
+            Touch();
+            EventBus.Publish(self, State.Code);
+        }
+        return true;
+    }
+}
+
+Order order1 { "order 1", 101; State = statePending; }
+Order order2 { "order 2", 102; State = statePending; }
+Order order3 { "order 3", 103; State = statePending; }
+
+array<Order> AllOrders = { order1, order2, order3 };
+
+//-- Inventory ---------------------------------------------------------------------------------------------------
+
+class Inventory : object {
+    array<string> Skus[4];
+    array<int> Counts[4];
+
+    void Add(string sku, int count) {
+        int at = Skus.indexOf(sku);
+        if (at < 0) {
+            Skus.append(sku);
+            Counts.append(count);
+        } else {
+            Counts[at] = Counts[at] + count;
+        }
+    }
+
+    int CountOf(string sku) {
+        int at = Skus.indexOf(sku);
+        return at < 0 ? 0 : Counts[at];
+    }
+
+    // Takes every line's quantity, or nothing when any line is short.
+    bool ReserveAll(Order o) {
+        for (LineItem line in o.Lines) {
+            if (CountOf(line.Sku) < line.Qty) return false;
+        }
+        for (LineItem line in o.Lines) {
+            int at = Skus.indexOf(line.Sku);
+            Counts[at] = Counts[at] - line.Qty;
+        }
+        return true;
+    }
+}
+
+Inventory stock { }
+
+//-- Event bus ---------------------------------------------------------------------------------------------------
+
+class EventBus : object {
+    static array<func<void, Order, eStatus>> Handlers[3];
+    static int Published;
+
+    static void Subscribe(func<void, Order, eStatus> handler) {
+        Handlers.append(handler);
+    }
+
+    static void Publish(Order o, eStatus status) {
+        Published++;
+        for (func<void, Order, eStatus> h in Handlers) h(o, status);
+    }
+}
+
+int ShippedCount;
+
+void LogTransition(Order o, eStatus status) {
+    printLine($"[{o} -> {o.State.Name()}]");
+}
+
+void CountShipments(Order o, eStatus status) {
+    if (status == eStatus.Shipped) ShippedCount++;
+}
+
+//-- Helpers -----------------------------------------------------------------------------------------------------
+
+Order FindById(int id) {
+    for (Order o in AllOrders) {
+        if (o.Id == id) return o;
+    }
+    return null;
+}
+
+void Run(Order o, string command) {
+    bool ok = o.Apply(command);
+    if (!ok) printLine($"{o} stays {o.State.Name()}.");
+}
+
+void ShowOrder(Order o, bool withLines = true) {
+    stringObj total = o.Total().Format();
+    printLine($"{o} #{o.Id}: {o.State.Name()}, {o.LineCount()} lines, total {total}, v{o.Version}, tag {o.Tag}.");
+    if (!withLines) return;
+    for (LineItem line in o.Lines) {
+        stringObj sub = line.Subtotal().Format();
+        printLine($"  {line.Sku} x{line.Qty} = {sub}");
+    }
+}
+
+//-- Verbs -------------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        EventBus.Subscribe(LogTransition);
+        EventBus.Subscribe(CountShipments);
+        stock.Add("bolt", 10);
+        stock.Add("nut", 4);
+        stock.Add("gear", 1);
+        stock.Add("nut", 2);
+        order1.AddLine("bolt", 3, Money.FromDollars(1, 5)).AddLine("nut", 2, Money{ 40 }).Tagged("rush");
+        order2.AddLine("gear", 2, Money.FromDollars(12));
+        order3.AddLine("bolt", 4, Money{ 99 });
+        printLine($"Stock: bolt {stock.CountOf("bolt")}, nut {stock.CountOf("nut")}, gear {stock.CountOf("gear")}, cog {stock.CountOf("cog")}.");
+    }
+}
+
+verb ListOrders {
+    grammar = {.orders};
+    void handler() {
+        for (Order o in AllOrders) ShowOrder(o);
+    }
+}
+
+verb Process {
+    grammar = {.process};
+    void handler() {
+        Run(order1, "pay");
+        Run(order1, "ship");
+        Run(order1, "deliver");
+        Run(order1, "cancel");
+        Run(order2, "ship");
+        Run(order2, "pay");
+        Run(order2, "ship");
+        Run(order3, "pay");
+        Run(order3, "refund");
+        Run(order3, "cancel");
+        printLine($"Transitions {Order.Transitions}, published {EventBus.Published}, shipped {ShippedCount}, errors {TransitionError.Raised}.");
+    }
+}
+
+verb Query {
+    grammar = {.query};
+    void handler() {
+        int finals = AllOrders.filter((Order o) => o.State.IsFinal()).count();
+        bool anyPaid = AllOrders.any((Order o) => o.Status() == eStatus.Paid);
+        bool allTouched = AllOrders.all((Order o) => o.Version > 0);
+        int tagged = AllOrders.filter((Order o) => o.HasTag()).count();
+        printLine($"Final {finals}, any paid {anyPaid}, all touched {allTouched}, tagged {tagged}.");
+        array<var> ids = AllOrders.map((Order o) => o.Id * 10);
+        printLine($"Ids {ids[0]} {ids[1]} {ids[2]}.");
+        Order found = FindById(102);
+        Order missing = FindById(999);
+        string foundName = found?.State.Name() ?? "none";
+        string missingName = missing?.State.Name() ?? "none";
+        printLine($"Found {foundName}, missing {missingName}.");
+        stringObj refunded = Order.Refunded.Format();
+        printLine($"Refunded {refunded}; stock bolt {stock.CountOf("bolt")}, nut {stock.CountOf("nut")}, gear {stock.CountOf("gear")}.");
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        Money a = order1.Total();
+        Money b = order2.Total();
+        Money c = order3.Total();
+        bool aLess = a < b;
+        bool cMore = c > a;
+        bool same = a == Money{ 395 };
+        Money diff = b - a;
+        stringObj diffText = diff.Format();
+        Money both = order1.Total() + order3.Total();
+        stringObj bothText = both.Format();
+        printLine($"a<b {aLess}, c>a {cMore}, same {same}, diff {diffText}, both {bothText}.");
+        DiscountedLine d;
+        d.Sku = "gear";
+        d.Qty = 3;
+        d.UnitPrice = Money.FromDollars(2, 50);
+        d.PercentOff = 20;
+        DiscountedLine copy = d;
+        copy.PercentOff = 50;
+        copy.Qty = 2;
+        stringObj full = d.Subtotal().Format();
+        stringObj off = d.Discounted().Format();
+        stringObj half = copy.Discounted().Format();
+        printLine($"{d.Sku} x{d.Qty}: full {full}, 20% off {off}, x{copy.Qty} 50% off {half}.");
+    }
+}
+
+verb Restock {
+    grammar = {.restock};
+    void handler() {
+        stock.Add("gear", 3);
+        Run(order2, "ship");
+        Run(order2, "deliver");
+        order1.SortLinesBySubtotal(descending: false);
+        ShowOrder(order1, withLines: true);
+        order1.SortLinesBySubtotal();
+        ShowOrder(order1);
+        ShowOrder(order2, false);
+        printLine($"Gear left {stock.CountOf("gear")}, shipped {ShippedCount}, published {EventBus.Published}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

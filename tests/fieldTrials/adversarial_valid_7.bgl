@@ -1,0 +1,397 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small signal-relay program, on the Z-machine.
+// A value class with distinct postfix `++` and `prefix++`, `!`, `?=`, an implicit int conversion and
+// an explicit string conversion, static `<=>`, `==` and `!=`, used as locals, `ref` parameters and
+// array elements (sorted, searched, sorted again by a comparator taking an operator reference); a
+// relay class whose positional order re-lists `instanceName` first and is grown by a later `extend
+// class` (objects declared before it use the final order), with `selfType` returns and a fluent
+// chain carried through a subclass, a static counter, `default` methods overridden in a subclass and
+// reached again by an ancestor cast, and a `hide` in a third class; a chain walked through `?.` and
+// `??`; an object with an inline accessor reaching its host through `outer`, a method with defaulted
+// and named parameters, and a method that throws an enum caught as that enum; a lambda that writes a
+// captured local which the caller reads after the call; a file-scope `rawArray<int>` handed to a
+// `rawArray<int>` parameter with its length; a stringObj built in a loop that `continue`s past
+// owning locals; a bnum switched through an int, nested ternaries, a ternary in a `for` condition,
+// do/while, overloads by value class and int, a global `replace` that calls `replaced()`, children
+// walked and moved, and an object `before` that answers a verb.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+// ---- flags and states ---------------------------------------------------------------------------
+
+bnum lineFlag { muted, looped, priority }          // 1, 2, 4
+
+enum relayState { idle, busy = 5, fault }          // 0, 5, 6
+
+rawArray<int> gainTable = { 3, 1, 4, 1, 5 };
+const int GAIN_COUNT = 5;
+
+int sumRaw(rawArray<int> vals, int n, int skip = 0) {
+    int s = 0;
+    for (int i = skip; i < n; i++) s += vals[i];
+    return s;
+}
+
+// ---- the signal: a value class with an unusual operator set ---------------------------------------
+
+value class Signal {
+    inline int strength;
+    inline int hops;
+
+    Signal operator = (Signal o) { strength = o.strength; hops = o.hops; return self; }
+    Signal operator ++ () { hops++; return self; }                 // postfix: one more hop
+    Signal operator prefix++ () { strength += 10; return self; }   // prefix: a boost
+    bool operator ! () { return strength <= 0; }
+    bool operator ?= (int floor) { return strength >= floor; }
+    int operator () { return strength - hops; }                    // implicit: net level
+    explicit string operator () { return strength > 50 ? "strong" : (strength > 0 ? "weak" : "dead"); }
+
+    static int  operator <=> (Signal a, Signal b) { return (a.strength - a.hops) - (b.strength - b.hops); }
+    static bool operator ==  (Signal a, Signal b) { return a.strength == b.strength; }
+    static bool operator !=  (Signal a, Signal b) { return a.strength != b.strength; }
+}
+
+int level(Signal s) { return s.strength * 100 + s.hops; }
+int level(int raw)  { return -raw; }
+
+// ---- relays: positional, selfType, a fluent chain ---------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object rack { "rack"; parent = roomA; name = .rack; attributes = {container, open, static}; }
+
+class Relay : object {
+    inline instanceName;
+    inline int gain;
+    Relay next;
+    relayState state = idle;
+    lineFlag flags;
+    static int linked = 0;
+
+    selfType link(Relay n) {
+        next = n;
+        Relay.linked++;
+        return self;
+    }
+
+    selfType mark(lineFlag f) {
+        flags = flags | f;
+        return self;
+    }
+
+    default void pass(ref Signal s) {
+        s++;
+        s.strength += gain;
+        if ((flags & muted) != 0) s.strength = 0;
+    }
+
+    default string kind() { return "plain"; }
+}
+
+class BoostRelay : Relay {
+    int boosts = 0;
+
+    selfType boost() {
+        boosts++;
+        return self;
+    }
+
+    void pass(ref Signal s) {
+        ((Relay)self).pass(s);
+        for (int i = 0; i < boosts; i++) ++s;
+    }
+
+    string kind() { return "boost"; }
+}
+
+class SealedRelay : Relay {
+    hide mark;
+    string kind() { return "sealed"; }
+}
+
+Relay relayA { "relay A", 2; parent = rack; name = .alpha; }
+BoostRelay relayB { "relay B", 1, 7; parent = rack; name = .bravo; }
+SealedRelay relayC { "relay C"; gain = 4; parent = rack; }
+Relay relayD { "relay D", 0, 1; }
+
+extend class Relay {
+    inline int delay;
+}
+
+// ---- the switchboard: an inline accessor, defaults, named arguments, a throw ------------------------
+
+int faults = 0;
+
+object board {
+    "switchboard";
+    parent = roomA;
+    name = .switchboard .board;
+    int scale = 2;
+    int writes = 0;
+
+    auto load = {
+        int _raw = 0;
+        int  operator ()        { return _raw; }
+        void operator = (int v) {
+            _raw = v * outer.scale;
+            outer.writes++;
+        }
+    }
+
+    Relay head = relayA;
+
+    int route(ref Signal s, int limit = 9, bool stopOnMute = false) {
+        int steps = 0;
+        Relay r = head;
+        while (r != null && steps < limit) {
+            if (stopOnMute && (r.flags & muted) != 0) break;
+            r.pass(s);
+            steps++;
+            r = r.next;
+        }
+        return steps;
+    }
+
+    void check(Relay r) {
+        if (r.state == fault) {
+            faults++;
+            throw r.state;
+        }
+        r.state = busy;
+    }
+
+    bool before() {
+        switch (action) {
+            case Push:
+                load = load + 1;
+                printLine($"Load {load} writes {writes}.");
+                rtrue;
+            default:
+                rfalse;
+        }
+    }
+}
+
+// ---- free functions ------------------------------------------------------------------------------
+
+void eachRelay(func<void, Relay> fn) {
+    for (object o in rack.children) fn((Relay)o);
+}
+
+string bucket(int code) {
+    return code < 0 ? "neg" : code == 0 ? "zero" : code < 10 ? "small" : "big";
+}
+
+int tariff(int hops) { return hops * 3; }
+replace int tariff(int hops) { return replaced(hops) + (hops > 2 ? 1 : 0); }
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs ---------------------------------------------------------------------------------
+
+class probeVerb : verb {
+    meta = true;
+}
+
+probeVerb ProbeSignal {
+    grammar = {.probesignal};
+    void handler() {
+        Signal s = Signal{ 20, 0 };
+        s++;
+        s++;
+        ++s;
+        int net = s;
+        bool dead = !s;
+        bool loud = s ?= 25;
+        bool louder = s ?= 40;
+        printLine($"Sig {s.strength} {s.hops} net {net} dead {dead} {loud} {louder} {(string)s}.");
+        Signal t = s;
+        t.strength = 0;
+        printLine($"Copy {s.strength} {t.strength} {!t} {(string)t} lv {level(s)} {level(7)}.");
+        Signal u = Signal{ 60, 1 };
+        bool lt = t < u;
+        bool same = s == Signal{ 30, 9 };
+        bool diff = s != u;
+        printLine($"Cmp {s <=> u} {lt} {same} {diff} {(string)u}.");
+    }
+}
+
+probeVerb ProbeChain {
+    grammar = {.probechain};
+    void handler() {
+        relayA.link(relayB);
+        relayB.boost().boost().link(relayC);
+        relayC.link(relayD);
+        relayD.mark(looped).mark(lineFlag.priority);   // qualified: inside a verb, bare `priority` is the verb's own member
+        printLine($"Linked {Relay.linked} flags {(int)relayD.flags} boosts {relayB.boosts}.");
+        printLine($"Gains {relayA.gain} {relayB.gain} {relayC.gain} {relayD.gain} delay {relayA.delay} {relayB.delay} {relayD.delay}.");
+        string tail = relayA.next?.next?.next?.next?.kind() ?? "none";
+        string third = relayA.next?.next?.kind() ?? "none";
+        print(tail);
+        print(" ");
+        print(third);
+        print(" ");
+        print(((Relay)relayB).kind());
+        print(" ");
+        printLine(relayB.kind());
+        Signal s = Signal{ 5, 0 };
+        int steps = board.route(s);
+        printLine($"Route {steps} {s.strength} {s.hops}.");
+        Signal m = Signal{ 5, 0 };
+        relayC.flags = relayC.flags | muted;
+        int st2 = board.route(stopOnMute: true, s: m);
+        Signal z = Signal{ 5, 0 };
+        int st3 = board.route(z, 2);
+        printLine($"Stop {st2} {m.strength} {m.hops} cap {st3} {z.strength}.");
+        Signal w = Signal{ 5, 0 };
+        int st4 = board.route(w);
+        printLine($"Muted {st4} {w.strength} {w.hops} {(string)w}.");
+    }
+}
+
+probeVerb ProbeBoard {
+    grammar = {.probeboard};
+    void handler() {
+        board.load = 3;
+        int a = board.load;
+        board.load = board.load + 1;
+        printLine($"Load {a} {board.load} writes {board.writes}.");
+        board.scale = 1;
+        board.load = 5;
+        printLine($"Rescaled {board.load} writes {board.writes}.");
+        relayD.state = fault;
+        int ok = 0;
+        for (object o in {relayA, relayB, relayD, relayC}) {
+            try {
+                board.check((Relay)o);
+                ok++;
+            } catch (relayState e) {
+                printLine($"Fault {(int)e} at {o}.");
+            }
+        }
+        printLine($"Checked {ok} faults {faults} states {(int)relayA.state} {(int)relayC.state} {(int)relayD.state}.");
+    }
+}
+
+probeVerb ProbeLoop {
+    grammar = {.probeloop};
+    void handler() {
+        int total = 0;
+        int seen = 0;
+        eachRelay((Relay r) => {
+            total += r.gain;
+            seen++;
+        });
+        printLine($"Each {seen} total {total}.");
+        printLine($"Raw {sumRaw(gainTable, GAIN_COUNT)} {sumRaw(gainTable, GAIN_COUNT, skip: 3)} {sumRaw(gainTable, 2)}.");
+        stringObj log = "";
+        for (int i = 0; i < GAIN_COUNT; i++) {
+            stringObj piece = "";
+            piece += bucket(gainTable[i] - 3);
+            if (gainTable[i] == 1) continue;
+            log += piece;
+            log += ",";
+        }
+        print(log);
+        printLine($" len {log.length}.");
+        int k = 0;
+        int lim = 3;
+        for (int j = 0; j < (lim > 2 ? lim : 1); j++) k += j;
+        int n = 0;
+        do {
+            n++;
+        } while (n * n < 20);
+        printLine($"Loops {k} {n} tariff {tariff(1)} {tariff(4)} {bucket(-2)} {bucket(0)} {bucket(12)}.");
+    }
+}
+
+probeVerb ProbeQueue {
+    grammar = {.probequeue};
+    void handler() {
+        array<Signal> q[6];
+        q.append(Signal{ 30, 1 });
+        q.append(Signal{ 10, 0 });
+        q += Signal{ 50, 5 };
+        q.append(Signal{ 20, 3 });
+        q.sort();
+        print("Asc");
+        for (Signal s in q) {
+            print(" ");
+            print((int)s);
+        }
+        int at = q.indexOf(Signal{ 50, 0 });
+        printLine($" at {at} len {q.length}.");
+        func<int, Signal, Signal> cmp = Signal::operator <=>;
+        q.sort((Signal a, Signal b) => cmp(b, a));
+        print("Desc");
+        for (Signal s in q) {
+            print(" ");
+            print(s.strength);
+        }
+        ref Signal top := q[0];
+        ++top;
+        top++;
+        printLine($" top {q[0].strength} {q[0].hops} {(string)q[0]}.");
+        int bits = relayD.flags;
+        switch (bits) {
+            case 1, 2:       printLine("one");
+            case 6:          printLine("looped+priority");
+            case 3 to 5:     printLine("mid");
+            default:         printLine("other");
+        }
+    }
+}
+
+probeVerb ProbeRack {
+    grammar = {.proberack};
+    void handler() {
+        int before = rack.children.length;
+        stringObj names = "";
+        for (object o in rack.children) {
+            names += ((Relay)o).kind();
+            names += " ";
+            if (((Relay)o).gain > 3) o.parent = roomA;
+        }
+        print(names);
+        printLine($"moved {before} {rack.children.length} {relayC.parent}.");
+        relayC.parent = rack;
+    }
+}
+
+verb Tick {
+    grammar = {.tick, NOUN};
+    void handler() {
+        printLine($"Ticked {noun}.");
+    }
+}
+
+extend relayA {
+    bool before() {
+        if (action == Tick) {
+            gain++;
+            printLine($"{self} gain {gain}.");
+            rtrue;
+        }
+        rfalse;
+    }
+}

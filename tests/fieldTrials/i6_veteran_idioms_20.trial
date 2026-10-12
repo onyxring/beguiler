@@ -1,0 +1,116 @@
+Room A
+Room A. Room B is east.
+You can see a wooden crate here.
+> tally
+Rooms 1, score 0, step 0, matches 3.
+Dial: untouched.
+> take crate
+It is fixed in place.
+> push crate
+It needs a direction: push it east or west.
+> down
+No exit that way.
+> push crate east
+Room B
+Room B. Room A is west.
+You can see a steel safe (which is closed) and a parrot here.
+[The score has just gone up by one point.]
+> examine dial
+A dial marked 0 to 9. It reads 0.
+> ask parrot about safe
+"Four, nine, two!"
+> ask parrot about cellar
+"Under the crate!"
+The parrot preens.
+> ask parrot about weather
+The parrot tilts its head.
+> attack parrot
+The parrot flaps out of reach.
+> set dial to 12
+The dial only goes from 0 to 9.
+> set dial to 4
+You turn the dial to 4.
+The parrot preens.
+> turn dial to 9
+You turn the dial to 9.
+> spin dial to 7
+You turn the dial to 7.
+> turn dial
+Set the dial to a number.
+> set dial to 4
+You turn the dial to 4.
+The parrot preens.
+> set dial to 9
+You turn the dial to 9.
+> set dial to 2
+You turn the dial to 2. The safe clicks.
+[The score has just gone up by one point.]
+> set dial to 5
+You turn the dial to 5. Nothing happens.
+> tally
+Rooms 2, score 2, step 3, matches 3.
+Dial: 2 5 7 4 9 (of 7).
+> open safe
+You open the steel safe, revealing a matchbook.
+The parrot preens.
+> take matchbook
+The parrot squawks: "Thief!"
+Taken.
+> give matchbook to parrot
+The parrot ignores it.
+> examine matchbook
+A matchbook with 3 matches left.
+> examine dial
+A dial marked 0 to 9. It reads 5.
+The parrot preens.
+> push crate west
+Room A
+Room A. Room B is east. A trapdoor is set in the floor.
+> look
+Room A
+Room A. Room B is east. A trapdoor is set in the floor.
+You can see a wooden crate here.
+> inventory
+You're carrying:
+  a matchbook (3 left)
+> down
+(first opening the trapdoor)
+Darkness
+It is pitch dark, and you can't see a thing.
+> light match
+You strike a match.
+Cellar
+Cellar. A ladder leads up.
+You can see an iron lever here.
+> climb ladder
+Room A
+Room A. Room B is east. A trapdoor is set in the floor.
+You can see a wooden crate here.
+> down
+Cellar
+Cellar. A ladder leads up.
+You can see an iron lever here.
+> examine ladder
+A short ladder up to the trapdoor.
+The match burns out.
+It is now pitch dark in here.
+> examine lever
+You can't see any such thing.
+> tally
+Rooms 6, score 2, step 3, matches 2.
+Dial: 2 5 7 4 9 (of 7).
+> light match
+You strike a match.
+Cellar
+Cellar. A ladder leads up.
+You can see an iron lever here.
+> light match
+A match is already burning.
+> take lever
+It is fixed in place.
+> pull lever
+The lever clunks down.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 35 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

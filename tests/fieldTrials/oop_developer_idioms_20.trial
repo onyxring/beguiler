@@ -1,0 +1,66 @@
+Room A
+Room A.
+
+> orders
+order 1 #101: pending, 0 lines, total $0.00, v0, tag none.
+order 2 #102: pending, 0 lines, total $0.00, v0, tag none.
+order 3 #103: pending, 0 lines, total $0.00, v0, tag none.
+
+> setup
+Stock: bolt 10, nut 6, gear 1, cog 0.
+
+> orders
+order 1 #101: pending, 2 lines, total $3.95, v2, tag rush.
+  bolt x3 = $3.15
+  nut x2 = $0.80
+order 2 #102: pending, 1 lines, total $24.00, v1, tag none.
+  gear x2 = $24.00
+order 3 #103: pending, 1 lines, total $3.96, v1, tag none.
+  bolt x4 = $3.96
+
+> compare
+a<b true, c>a true, same true, diff $20.05, both $7.91.
+gear x3: full $7.50, 20% off $6.00, x2 50% off $2.50.
+
+> process
+[order 1 -> paid]
+[order 1 -> shipped]
+[order 1 -> delivered]
+order 1: cannot cancel when delivered.
+order 1 stays delivered.
+order 2: cannot ship when pending.
+order 2 stays pending.
+[order 2 -> paid]
+order 2: cannot ship when paid.
+order 2 stays paid.
+[order 3 -> paid]
+order 3 stays paid.
+[order 3 -> cancelled]
+Transitions 6, published 6, shipped 1, errors 3.
+
+> orders
+order 1 #101: delivered, 2 lines, total $3.95, v5, tag rush.
+  bolt x3 = $3.15
+  nut x2 = $0.80
+order 2 #102: paid, 1 lines, total $24.00, v2, tag none.
+  gear x2 = $24.00
+order 3 #103: cancelled, 1 lines, total $3.96, v3, tag none.
+  bolt x4 = $3.96
+
+> query
+Final 2, any paid true, all touched true, tagged 1.
+Ids 1010 1020 1030.
+Found paid, missing none.
+Refunded $3.96; stock bolt 7, nut 4, gear 1.
+
+> restock
+[order 2 -> shipped]
+[order 2 -> delivered]
+order 1 #101: delivered, 2 lines, total $3.95, v5, tag rush.
+  nut x2 = $0.80
+  bolt x3 = $3.15
+order 1 #101: delivered, 2 lines, total $3.95, v5, tag rush.
+  bolt x3 = $3.15
+  nut x2 = $0.80
+order 2 #102: delivered, 1 lines, total $24.00, v4, tag none.
+Gear left 2, shipped 2, published 8.

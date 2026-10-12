@@ -1,0 +1,396 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small controller kept in tables. Enums of states and events indexing parallel string
+// tables; a transition table as an array of arrays read [state][event] with -1 for a refused event;
+// an array<func<void>> of entry actions dispatched by the new state; an event word table searched with
+// indexOf; a bnum lamp table printed bit by bit; a history ring kept with enqueue/dequeue and queried
+// with <linq> (distinct, filter, count, any); a value-class job record queued in an array of the class,
+// appended from inline objects with run-time members, sorted by a comparator lambda, copied out and
+// removed; a check table of objects written as bare { … } with a func<> member, extended with inject
+// after and first; <linq> filter/count/any over the job array with lambdas capturing a local; a run
+// of TOPIC words fired in turn, building a stringObj trail with interpolated +=; stringObj rows padded
+// to columns; a switch with ranges and guards; and for-in over arrays, rows of the table and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int STATES = 4;
+const int EVENTS = 4;
+const int RING_SIZE = 6;
+const int QUEUE_SIZE = 5;
+const int REFUSED = -1;
+const int NOT_FOUND = -1;
+#define COLUMN 9
+#define LAMP_KINDS 4
+
+enum eState { idle = 0, armed, running, halted }
+enum eEvent { arm = 0, start, stop, reset }
+bnum eLamp { green, amber, red, blue }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> stateNames = { "idle", "armed", "running", "halted" };
+array<string> eventNames = { "arm", "start", "stop", "reset" };
+array<dictionaryWord> eventWords = { .arm, .start, .stop, .reset };
+array<string> lampNames = { "green", "amber", "red", "blue" };
+
+// The next state, read moves[state][event]; REFUSED where the event does nothing.
+//                       arm start stop reset
+array<array<int>> moves = {
+    {                     1,  -1,  -1,   0 },   // idle
+    {                    -1,   2,   0,   0 },   // armed
+    {                    -1,  -1,   3,  -1 },   // running
+    {                    -1,  -1,  -1,   0 }    // halted
+};
+
+// Lamps lit in each state, indexed by (int)eState.
+array<eLamp> lampsFor = {
+    green,
+    amber,
+    green | blue,
+    red
+};
+
+array<int> entered[STATES];
+
+void enterIdle()    { entered[0]++; print("Panel clear.^"); }
+void enterArmed()   { entered[1]++; print("Panel armed.^"); }
+void enterRunning() { entered[2]++; print("Panel running.^"); }
+void enterHalted()  { entered[3]++; print("Panel halted.^"); }
+
+array<func<void>> onEnter = { enterIdle, enterArmed, enterRunning, enterHalted };
+
+eState current = idle;
+int steps = 0;
+array<int> ring[RING_SIZE];
+
+//-- Records -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object panel {
+    "panel";
+    name = {.panel};
+    parent = roomA;
+    attributes = {static};
+}
+
+value class Job {
+    inline int id;
+    inline int pri;
+    inline int cost;
+    Job operator = (Job o) { id = o.id; pri = o.pri; cost = o.cost; return self; }
+}
+
+array<Job> queue[QUEUE_SIZE];
+int nextId = 1;
+int spent = 0;
+
+bool isLow(int v, int limit)  { return v < limit; }
+bool isHigh(int v, int limit) { return v > limit; }
+bool isEven(int v, int limit) { return v % 2 == 0; }
+bool isMultiple(int v, int limit) { return v % limit == 0; }
+
+class Check : object {
+    inline string label;
+    inline int limit;
+    inline func<bool, int, int> test;
+}
+
+array<Check> checks = {
+    { "low",  3, isLow },
+    { "high", 8, isHigh },
+};
+
+extend checks {
+    inject { "even", 0, isEven } after [0];
+    inject { "fives", 5, isMultiple } first;
+}
+
+//-- Lookups -------------------------------------------------------------------
+
+void printLamps(eLamp set) {
+    if (set == 0) { print("none"); return; }
+    bool first = true;
+    for (int i in 0 to LAMP_KINDS - 1) {
+        if ((set & (eLamp)(1 << i)) == 0) continue;
+        if (!first) print(" ");
+        print(lampNames[i]);
+        first = false;
+    }
+}
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+void remember(int s) {
+    if (ring.length == RING_SIZE) ring.dequeue();
+    ring.enqueue(s);
+}
+
+// Applies an event; returns false when the current state refuses it.
+bool fire(eEvent e) {
+    int to = moves[(int)current][(int)e];
+    if (to == REFUSED) return false;
+    current = (eState)to;
+    steps++;
+    remember(to);
+    onEnter[to]();
+    return true;
+}
+
+void printBand(int n) {
+    switch (n) {
+        case 0:       print("empty");
+        case 1 to 2:  print("light");
+        case 3 to 5:  print("busy");
+        case >= 6:    print("heavy");
+        default:      print("odd");
+    }
+}
+
+int queuedCost() {
+    int total = 0;
+    for (Job j in queue) total += j.cost;
+    return total;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb SendTest {
+    grammar = {.send, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        int at = eventWords.indexOf(w);
+        if (at == NOT_FOUND) { print("No such event.^"); return; }
+        eState was = current;
+        if (!fire((eEvent)at)) {
+            print($"{stateNames[(int)was]} refuses {eventNames[at]}.^");
+            return;
+        }
+        print($"{stateNames[(int)was]} -> {stateNames[(int)current]}.^");
+    }
+}
+
+verb StateTest {
+    grammar = {.state};
+    void handler() {
+        print($"State {stateNames[(int)current]} after {steps} steps; lamps ");
+        printLamps(lampsFor[(int)current]);
+        print(".^");
+        int open = 0;
+        for (int to in moves[(int)current]) {
+            if (to != REFUSED) open++;
+        }
+        print($"{open} events accepted:");
+        for (int e = 0; e < EVENTS; e++) {
+            if (moves[(int)current][e] != REFUSED) print($" {eventNames[e]}");
+        }
+        print(".^");
+    }
+}
+
+verb TableTest {
+    grammar = {.table};
+    void handler() {
+        stringObj head = "";
+        padTo(head, COLUMN);
+        head.print();
+        for (string n in eventNames) {
+            stringObj cell = n;
+            padTo(cell, COLUMN);
+            cell.print();
+        }
+        print("^");
+        int row = 0;
+        for (array<int> r in moves) {
+            stringObj label = stateNames[row];
+            padTo(label, COLUMN);
+            label.print();
+            for (int to in r) {
+                stringObj cell;
+                if (to == REFUSED) cell = "-";
+                else cell = stateNames[to];
+                padTo(cell, COLUMN);
+                cell.print();
+            }
+            print("^");
+            row++;
+        }
+    }
+}
+
+verb LampsTest {
+    grammar = {.lamps};
+    void handler() {
+        for (int s in 0 to STATES - 1) {
+            print($"{stateNames[s]}: ");
+            printLamps(lampsFor[s]);
+            print("^");
+        }
+        eLamp all = 0;
+        for (eLamp l in lampsFor) all = all | l;
+        print("Ever lit: ");
+        printLamps(all);
+        print(".^");
+    }
+}
+
+verb HistoryTest {
+    grammar = {.history};
+    void handler() {
+        if (ring.length == 0) { print("No history.^"); return; }
+        print("Visited:");
+        for (int s in ring) print($" {stateNames[s]}");
+        print(".^");
+        int kinds = ring.distinct().count();
+        int idles = ring.filter((int s) => s == (int)eState.idle).count();
+        bool halt = ring.any((int s) => s == (int)eState.halted);
+        print($"{ring.length} kept, {kinds} kinds, {idles} idle, halted: {halt}.^");
+        print("Entered:");
+        for (int s = 0; s < STATES; s++) print($" {stateNames[s]} {entered[s]}");
+        print(".^");
+    }
+}
+
+verb JobTest {
+    grammar = {.job, NUMBER, NUMBER};
+    void handler() {
+        int p = (int)noun;
+        int c = (int)second;
+        if (queue.length == QUEUE_SIZE) { print("Queue full.^"); return; }
+        int id = nextId;
+        queue.append(Job{ id, p, c });
+        nextId++;
+        print($"Job {id} queued (priority {p}, cost {c}); ");
+        printBand(queue.length);
+        print(".^");
+    }
+}
+
+verb JobsTest {
+    grammar = {.jobs};
+    void handler() {
+        if (queue.length == 0) { print("No jobs.^"); return; }
+        queue.sort((Job a, Job b) => b.pri - a.pri);
+        for (Job j in queue) {
+            stringObj row;
+            row = $"#{j.id}";
+            padTo(row, 4);
+            row.print();
+            print($"p{j.pri} c{j.cost}^");
+        }
+        int dear = 0;
+        int limit = 4;
+        for (Job j in queue) if (j.cost > limit) dear++;
+        print($"{queue.length} jobs, cost {queuedCost()}, {dear} over {limit}.^");
+    }
+}
+
+verb WorkTest {
+    grammar = {.work};
+    void handler() {
+        if (current != running) { print($"Not running ({stateNames[(int)current]}).^"); return; }
+        if (queue.length == 0) { print("No jobs.^"); return; }
+        queue.sort((Job a, Job b) => b.pri - a.pri);
+        Job top = queue[0];
+        queue.remove(0);
+        spent += top.cost;
+        print($"Ran job {top.id} (cost {top.cost}); {queue.length} left, {spent} spent.^");
+        if (spent >= 10) fire(stop);
+    }
+}
+
+verb CheckTest {
+    grammar = {.check, NUMBER};
+    void handler() {
+        int v = (int)noun;
+        print($"{v}:");
+        int hits = 0;
+        for (Check c in checks) {
+            bool ok = c.test(v, c.limit);
+            if (ok) hits++;
+            print($" {c.label}={ok}");
+        }
+        print($" ({hits} of {checks.length}).^");
+    }
+}
+
+verb DescribeTest {
+    grammar = {.describe, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        eState s;
+        switch (w) {
+            case .idle:    s = idle;
+            case .armed:   s = armed;
+            case .running: s = running;
+            case .halted:  s = halted;
+            default:       print("No such state.^"); return;
+        }
+        int ins = 0;
+        for (array<int> r in moves) {
+            for (int to in r) if (to == (int)s) ins++;
+        }
+        print($"{stateNames[(int)s]}: {ins} ways in, lamps ");
+        printLamps(lampsFor[(int)s]);
+        print(".^");
+    }
+}
+
+verb ScriptTest {
+    grammar = {.script, TOPIC};
+    void handler() {
+        wn = consult_from;
+        stringObj trail = stateNames[(int)current];
+        int refused = 0;
+        for (int k = 0; k < consult_words; k++) {
+            int at = eventWords.indexOf(NextWord());
+            if (at == NOT_FOUND || !fire((eEvent)at)) { refused++; continue; }
+            trail += $" > {stateNames[(int)current]}";
+        }
+        trail.print();
+        print($" ({refused} refused).^");
+    }
+}
+
+verb UrgentTest {
+    grammar = {.urgent, NUMBER};
+    void handler() {
+        int floor = (int)noun;
+        int n = queue.filter((Job j) => j.pri >= floor).count();
+        bool cheap = queue.any((Job j) => j.pri >= floor && j.cost <= 2);
+        print($"{n} of {queue.length} at priority {floor} or more; cheap one: {cheap}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    remember((int)current);
+    rfalse;
+}
+
+#includeI6 "grammar"

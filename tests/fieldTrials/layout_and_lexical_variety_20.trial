@@ -1,0 +1,119 @@
+Room A
+Room A. A tap is fixed to the wall. Room B is north.
+You can see a small jar, a wide jar and a tap here.
+> shelf
+1. oil jar: 3/4 oil (part full).
+2. small jar: 0/2 nothing (empty).
+3. wide jar: 0/6 nothing (empty).
+1 of 3 hold something.
+> gauge
+Total 3/12 (25%), 0 full, 2 empty.
+> fill small jar
+The tap is off.
+> turn on tap
+You switch the tap on.
+> status
+Tap on (2 left), runs 1, turns in A 2.
+> fill small jar
+You fill the small jar with water.
+> fill small jar
+The small jar is already full.
+> fill wide jar
+You fill the wide jar with water.
+The tap shuts itself off.
+> pour small jar into wide jar
+The wide jar is full.
+> fill small jar
+The tap is off.
+> status
+Tap off, runs 1, turns in A 7.
+> wait
+Time passes.
+> fill small jar
+The tap is off.
+> gauge
+Total 11/12 (91%), 2 full, 0 empty.
+Last time: total 3, change 8.
+> tear slip
+You tear off slip 1 and write 11 on it.
+> mark wide jar with 2
+You mark the wide jar "use first".
+> mark small jar 4
+You mark the small jar "spare 4".
+> mark small jar 9
+There is no mark 9.
+> shelf
+1. wide jar: 6/6 water (full), labelled "use first".
+2. oil jar: 3/4 oil (part full).
+3. small jar: 2/2 water (low), labelled "spare 4".
+3 of 3 hold something.
+> north
+Room B
+Room B. Room A is south.
+You can see an oil jar here.
+> take oil jar
+Taken.
+> pour oil jar into oil jar
+That is the same jar.
+> note total
+You tear off slip 2 and write 11 on it.
+> read slips
+2 slips (2 torn in all): 2:11, 1:11.
+> south
+Room A
+Room A. A tap is fixed to the wall. Room B is north.
+You can see a small jar, a wide jar and a tap here.
+> pour oil jar into small jar
+The small jar holds water; it won't mix.
+> drain small jar
+You drain 2 units of water from the small jar.
+> pour oil jar in small jar
+You pour 2 units into the small jar.
+> tip small jar into wide jar
+The wide jar holds water; it won't mix.
+> pour oil jar into wide jar
+The wide jar holds water; it won't mix.
+> pour tap into wide jar
+You can only pour from jar to jar.
+> gauge
+Total 9/12 (75%), 2 full, 0 empty.
+Last time: total 11, change -2.
+> turn on tap
+You switch the tap on.
+> turn off tap
+You switch the tap off.
+> turn on tap
+The tap is stuck.
+> drink wide jar
+No.
+> drain wide jar
+You drain 6 units of water from the wide jar.
+> fill wide jar
+The tap is off.
+> tear slip
+You tear off slip 3 and write 3 on it.
+> tear slip
+The pad is used up.
+> slips
+3 slips (3 torn in all): 3:3, 2:11, 1:11.
+> i
+You're carrying:
+  a slip 3
+  a slip 2
+  an oil jar
+  a slip 1
+> scrap slips
+You scrap 3 slips.
+> slips
+You hold no slips.
+> tear slip
+You tear off slip 4 and write 3 on it.
+> slips
+1 slip (4 torn in all): 4:3.
+> shelf
+1. small jar: 2/2 oil (low), labelled "spare 4".
+2. oil jar: 1/4 oil (low).
+3. wide jar: 0/6 nothing (empty), labelled "use first".
+2 of 3 hold something.
+> status
+Tap off, runs 2, turns in A 31.

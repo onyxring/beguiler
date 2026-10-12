@@ -1,0 +1,564 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twentieth first-time-programmer program, a small garden of plants that dry out and
+// must be watered, written the way a beginner writes it after reading the spec once. Water kept in
+// int globals with a const for the can's size, bool flags, an enum for a plant's state returned from
+// a method and switched on, a class of plants (water, growth, a kind string, methods that work out
+// and say the state, a before() that handles Take and Smell), a subclass for a cactus that needs
+// less water (a replaced method), a garden list kept in an <array> array of the class filled with
+// append in Initialise, a sun with a daemon that dries every plant each turn, a can that the library's
+// Fill and Empty actions fill and empty, helper functions (one with a default argument, one with a
+// ternary, one returning a string from a switch with ranges), <linq> filter / count / any / all /
+// orderBy with lambdas over the plant list (one lambda capturing a local), a sort with a comparator,
+// stringObj lines built with + and += and interpolation, a string switch, for-in over a range and
+// over the array, a while loop and a do/until, children loops, and verbs with and without a noun
+// (water, check, thirsty, rank, rain, pour, garden, reset) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== WATER =====
+
+// how much water is in the can
+int canWater = 0;
+// the most water the can holds
+const int CAN_SIZE = 5;
+// how much water the player has used in total
+int waterUsed = 0;
+// how many times the can was filled
+int fills = 0;
+// is it raining?
+bool raining = false;
+// did it rain already? (it only rains once)
+bool rainedOnce = false;
+// how many turns the sun has been out
+int sunTurns = 0;
+
+// ===== PLANT STATES =====
+
+enum PlantState { dry, fine, soaked }
+
+// ===== HELPER FUNCTIONS =====
+
+// prints an amount of water, like "3 cups" or "1 cup"
+void printCups(int n, bool withWord = true) {
+    print(n);
+    if (withWord == true) {
+        if (n == 1) {
+            print(" cup");
+        } else {
+            print(" cups");
+        }
+    }
+}
+
+// says how full the can is as a word
+string canWord(int w) {
+    switch (w) {
+        case 0: return "empty";
+        case 1 to 2: return "low";
+        case 3 to 4: return "half full";
+        default: return "full";
+    }
+}
+
+// "is" or "are"
+string isAre(int n) {
+    return (n == 1) ? "is" : "are";
+}
+
+// prints the name of a state
+void printState(PlantState s) {
+    switch (s) {
+        case PlantState.dry: print("dry");
+        case PlantState.fine: print("fine");
+        case PlantState.soaked: print("soaked");
+    }
+}
+
+// ===== PLANTS =====
+
+class Plant : object {
+    // how much water is in the soil
+    int water = 2;
+    // how many turns it has been fine (it flowers at 3)
+    int growth = 0;
+    // has it flowered?
+    bool flowered = false;
+    // what kind of plant it is (a word)
+    string kind;
+    string description;
+
+    // the most water it likes before it is soaked
+    int maxWater() {
+        return 4;
+    }
+
+    // works out the state from the water
+    PlantState state() {
+        if (water <= 0) {
+            return PlantState.dry;
+        }
+        if (water > maxWater()) {
+            return PlantState.soaked;
+        }
+        return PlantState.fine;
+    }
+
+    // says how it is doing
+    void sayState() {
+        stringObj line = $"The {kind} is ";
+        print(line);
+        printState(state());
+        print(" (");
+        printCups(water);
+        print(")");
+        if (flowered == true) {
+            print(" and has a flower");
+        }
+        print(".^");
+    }
+
+    // one turn of sun
+    void dryOut() {
+        if (water > 0) {
+            water = water - 1;
+        }
+        if (state() == PlantState.fine) {
+            growth++;
+            if (growth >= 3 && flowered == false) {
+                flowered = true;
+                if (location == roomA) {
+                    print($"^The {kind} flowers.^");
+                }
+            }
+        } else {
+            growth = 0;
+        }
+    }
+
+    bool before() {
+        if (action == Take) {
+            print("It is planted in the ground.^");
+            rtrue;
+        }
+        if (action == Smell) {
+            if (flowered == true) {
+                print($"The {kind} smells sweet.^");
+            } else {
+                print($"The {kind} smells of earth.^");
+            }
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a cactus is a plant that does not like much water
+class Cactus : Plant {
+    replace int maxWater() {
+        return 2;
+    }
+}
+
+// ===== THE GARDEN LIST =====
+
+// all the plants, so the sun can dry them
+array<Plant> garden[6];
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. Plants grow in a bed here. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. There is a tap on the wall. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE BED AND THE PLANTS =====
+
+object bed {
+    "bed";
+    parent = roomA;
+    name = {.bed, .soil};
+    string description = "A bed of soil.";
+    attributes = {static, supporter};
+}
+
+Plant rose {
+    "rose";
+    parent = bed;
+    name = {.rose};
+    kind = "rose";
+    description = "A rose bush.";
+    attributes = {static};
+}
+
+Plant fern {
+    "fern";
+    parent = bed;
+    name = {.fern};
+    kind = "fern";
+    water = 4;
+    description = "A green fern.";
+    attributes = {static};
+}
+
+Plant tulip {
+    "tulip";
+    parent = bed;
+    name = {.tulip};
+    kind = "tulip";
+    water = 1;
+    description = "A tulip.";
+    attributes = {static};
+}
+
+Cactus smallCactus {
+    "cactus";
+    parent = bed;
+    name = {.cactus};
+    kind = "cactus";
+    water = 1;
+    description = "A small cactus.";
+    attributes = {static};
+}
+
+// ===== THE CAN AND THE TAP =====
+
+object can {
+    "watering can";
+    parent = roomA;
+    name = {.watering, .can};
+    attributes = {container, open};
+    bool description() {
+        print($"A watering can. It is {canWord(canWater)} (");
+        printCups(canWater);
+        print(").^");
+        rtrue;
+    }
+    bool before() {
+        if (action == Fill) {
+            if (location != roomB) {
+                print("There is no water here.^");
+                rtrue;
+            }
+            if (canWater == CAN_SIZE) {
+                print("The can is already full.^");
+                rtrue;
+            }
+            canWater = CAN_SIZE;
+            fills++;
+            print("You fill the can at the tap.^");
+            rtrue;
+        }
+        if (action == Empty) {
+            if (canWater == 0) {
+                print("The can is already empty.^");
+                rtrue;
+            }
+            print("You pour out ");
+            printCups(canWater);
+            print(".^");
+            canWater = 0;
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+object tap {
+    "tap";
+    parent = roomB;
+    name = {.tap};
+    string description = "A metal tap.";
+    attributes = {static};
+}
+
+// ===== THE SUN =====
+
+object sun {
+    "sun";
+    name = {.sun};
+    void daemon() {
+        sunTurns++;
+        if (raining == true) {
+            // the rain stops after one turn
+            raining = false;
+            if (location == roomA) {
+                print("^The rain stops.^");
+            }
+            return;
+        }
+        // every second turn, the plants dry a little
+        if (sunTurns % 2 == 0) {
+            for (Plant p in garden) {
+                p.dryOut();
+            }
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    garden.append(rose);
+    garden.append(fern);
+    garden.append(tulip);
+    garden.append(smallCactus);
+    StartDaemon(sun);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the garden) =====
+
+// how many plants are dry
+int countDry() {
+    return garden.filter((Plant p) => p.state() == PlantState.dry).count();
+}
+
+// gives one plant some water from the can
+void giveWater(Plant p, int cups = 1) {
+    if (canWater == 0) {
+        print("The can is empty.^");
+        return;
+    }
+    if (cups > canWater) {
+        cups = canWater;
+    }
+    canWater = canWater - cups;
+    p.water = p.water + cups;
+    waterUsed += cups;
+    print($"You water the {p.kind}. ");
+    p.sayState();
+}
+
+// ===== VERBS =====
+
+// WATER - water one plant
+verb WaterPlant {
+    grammar = {.water, NOUN};
+    void handler() {
+        if (!(noun.is(Plant))) {
+            print("That doesn't need water.^");
+            return;
+        }
+        if (can.parent != player) {
+            print("You need the watering can.^");
+            return;
+        }
+        Plant p = (Plant)noun;
+        giveWater(p);
+    }
+}
+
+// POUR - pour all the water on one plant
+verb PourOn {
+    grammar = {.pour, NOUN};
+    void handler() {
+        if (!(noun.is(Plant))) {
+            print("That doesn't need water.^");
+            return;
+        }
+        if (can.parent != player) {
+            print("You need the watering can.^");
+            return;
+        }
+        giveWater((Plant)noun, canWater);
+    }
+}
+
+// CHECK - how every plant is doing
+verb CheckPlants {
+    grammar = {.check};
+    void handler() {
+        for (Plant p in garden) {
+            p.sayState();
+        }
+        int dry = countDry();
+        print($"{dry} {isAre(dry)} dry.^");
+    }
+}
+
+// THIRSTY - which plants need water (the ones with 1 cup or less)
+verb Thirsty {
+    grammar = {.thirsty};
+    void handler() {
+        int limit = 1;
+        array<Plant> needy = garden.filter((Plant p) => p.water <= limit);
+        if (needy.length == 0) {
+            print("No plant is thirsty.^");
+            return;
+        }
+        stringObj list = "Thirsty: ";
+        int i = 0;
+        while (i < needy.length) {
+            list += needy[i].kind;
+            if (i < needy.length - 1) {
+                list += ", ";
+            }
+            i++;
+        }
+        list = list + ".";
+        print(list);
+        print("^");
+        if (garden.all((Plant p) => p.water <= limit)) {
+            print("Every plant is thirsty!^");
+        }
+    }
+}
+
+// RANK - the plants from wettest to driest
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        array<Plant> order = garden.orderBy((Plant a, Plant b) => b.water - a.water);
+        for (int i in 1 to order.length) {
+            Plant p = order[i - 1];
+            print($"{i}. {p.kind} ({p.water})^");
+        }
+    }
+}
+
+// SORT - sorts the garden list itself by name
+verb SortGarden {
+    grammar = {.sort};
+    void handler() {
+        garden.sort((Plant a, Plant b) => a.kind.compareTo(b.kind));
+        print("Sorted:");
+        for (Plant p in garden) {
+            print(" ");
+            print(p.kind);
+        }
+        print(".^");
+    }
+}
+
+// RAIN - it rains once and waters everything
+verb MakeRain {
+    grammar = {.rain};
+    void handler() {
+        if (rainedOnce == true) {
+            print("It won't rain again.^");
+            return;
+        }
+        rainedOnce = true;
+        raining = true;
+        for (Plant p in garden) {
+            p.water += 2;
+        }
+        print("It rains on the garden.^");
+        if (garden.any((Plant p) => p.state() == PlantState.soaked)) {
+            print("Some plants are soaked.^");
+        }
+    }
+}
+
+// GARDEN - what is in the bed, as a list with "and"
+verb ShowBed {
+    grammar = {.garden};
+    void handler() {
+        int total = 0;
+        for (object o in bed.children) {
+            total++;
+        }
+        stringObj list = "In the bed: ";
+        int done = 0;
+        for (object o in bed.children) {
+            list += $"{o}";
+            done++;
+            if (done == total - 1) {
+                list += " and ";
+            } else if (done < total) {
+                list += ", ";
+            }
+        }
+        list += ".";
+        print(list);
+        print("^");
+        int flowers = 0;
+        for (Plant p in garden) {
+            if (p.flowered) {
+                flowers++;
+            }
+        }
+        print($"{flowers} {isAre(flowers)} in flower.^");
+    }
+}
+
+// TOTALS - how much water was used
+verb Totals {
+    meta = true;
+    grammar = {.totals};
+    void handler() {
+        print("Used: ");
+        printCups(waterUsed);
+        print(". Fills: ");
+        printCups(fills, false);
+        print(". Can: ");
+        print(canWord(canWater));
+        print(".^");
+        // count down the can in a do/until
+        int left = canWater;
+        stringObj drops = "";
+        do {
+            if (left > 0) {
+                drops += "o";
+                left--;
+            }
+        } until (left == 0);
+        print($"[{drops}]^");
+    }
+}
+
+// NAME - looks a plant up by its kind word
+verb NamePlant {
+    grammar = {.name, NOUN};
+    void handler() {
+        if (!(noun.is(Plant))) {
+            print("That isn't a plant.^");
+            return;
+        }
+        Plant p = (Plant)noun;
+        switch (p.kind) {
+            case "rose": print("A rose is red.^");
+            case "cactus": print("A cactus is prickly.^");
+            default:
+                stringObj word = p.kind;
+                print($"A {word.toUpper()} is a plant.^");
+        }
+    }
+}
+
+// RESET - put every plant back the way it was
+verb ResetGarden {
+    grammar = {.reset};
+    void handler() {
+        for (Plant p in garden) {
+            p.water = 2;
+            p.growth = 0;
+            p.flowered = false;
+        }
+        canWater = 0;
+        waterUsed = 0;
+        fills = 0;
+        print($"{garden.length} plants are reset.^");
+    }
+}

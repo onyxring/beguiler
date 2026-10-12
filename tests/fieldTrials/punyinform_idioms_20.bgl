@@ -1,0 +1,438 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twentieth PunyInform program, written plainly: three rooms (a lit Room A, a lit Room B
+// to the north and a dark Room C below) with OPTIONAL_SCORED and OPTIONAL_EXTENDED_VERBSET; a can
+// filled at a tap through `Fill` in `before`, with an enum state and a `switch` over it; a pot class
+// owning a value-class `Moisture` member with `operator ()`, `=` and `-=`, and a pooled `Sprout` class
+// made with `new` by a `plant HELD in NOUN` verb, grown by a daemon over an `array<Pot>` with `for …
+// in`, printed through `short_name` from an `array<string>` indexed by an enum cast; a torch whose
+// battery a daemon drains, giving and taking `light`; a seed packet counting down and leaving play with
+// `parent = null`; a recursive weight sum over `children` read by a `weigh NOUN` verb; a gardener with
+// `life` (Ask through NextWord, Give of a blooming pot); a `stringObj` journal appended with `+=` and
+// interpolated strings, read by a meta verb with `.length`; a helper with a default argument; a
+// `before` on a room reading `selected_direction`; and a `bgl.world.instances` count over a class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+#defineI6 OPTIONAL_EXTENDED_VERBSET
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+    object d_to;
+    object u_to;
+    int weight;
+}
+
+// --- shared types -----------------------------------------------------------------------------------
+
+enum eCan { empty, half, full }
+enum eGrowth { seed, shoot, bud, bloom }
+
+value class Moisture {
+    int _level = 0;
+
+    int  operator ()          { return _level; }
+    void operator = (int v)   { _level = v < 0 ? 0 : (v > 6 ? 6 : v); }
+    void operator -= (int v) {
+        _level = _level - v;
+        if (_level < 0) _level = 0;
+    }
+
+    bool dry() {
+        return _level == 0;
+    }
+}
+
+array<string> stageNames = {"seed", "shoot", "bud", "flower"};
+
+stringObj notes;
+int entries   = 0;
+int planted   = 0;
+bool bloomed  = false;
+
+void jot(string what, int n = -1) {
+    entries++;
+    if (n < 0) notes += $"{entries}: {what}. ";
+    else notes += $"{entries}: {what} {n}. ";
+}
+
+int weightOf(object o) {
+    int w = 0;
+    if (o.provides(weight)) w = o.weight;
+    for (object c in o.children) w += weightOf(c);
+    return w;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A tap is on the wall. Room B is north. Steps lead down.";
+    n_to = roomB;
+    d_to = roomC;
+
+    bool before() {
+        if (action == Go && selected_direction == (property)d_to && torch.hasnt(on))
+            rtrue("The steps are too dark to risk without a light.^");
+        rfalse;
+    }
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    s_to = roomA;
+}
+
+object roomC {
+    "Room C";
+    description = "Room C. Steps lead up.";
+    u_to = roomA;
+}
+
+// --- the tap and the can ----------------------------------------------------------------------------
+
+object tap {
+    "tap";
+    parent = roomA;
+    name = {.tap};
+    description = "A tap.";
+    attributes = {static, scenery};
+}
+
+object can {
+    "can";
+    parent = roomA;
+    name = {.can};
+    weight = 2;
+    eCan state = eCan.empty;
+
+    bool before() {
+        switch (action) {
+            case Fill:
+                if (location != roomA) rtrue("There is no water here.^");
+                if (state == eCan.full) rtrue("The can is already full.^");
+                state = eCan.full;
+                weight = 6;
+                rtrue("You fill the can at the tap.^");
+            case Examine:
+                switch (state) {
+                    case eCan.empty: rtrue("A can. It is empty.^");
+                    case eCan.half:  rtrue("A can. It is half full.^");
+                    case eCan.full:  rtrue("A can. It is full.^");
+                }
+        }
+        rfalse;
+    }
+
+    bool pour() {
+        if (state == eCan.empty) return false;
+        if (state == eCan.full) {
+            state = eCan.half;
+            weight = 4;
+        } else {
+            state = eCan.empty;
+            weight = 2;
+        }
+        return true;
+    }
+}
+
+// --- pots and sprouts -------------------------------------------------------------------------------
+
+class Sprout[2] : object {
+    eGrowth stage = eGrowth.seed;
+    int age = 0;
+    name = {.sprout, .shoot, .bud, .flower, .plant};
+    weight = 1;
+
+    void create(object pot) {
+        parent = pot;
+        planted++;
+    }
+
+    bool short_name() {
+        print(stageNames[(int)stage - 1]);
+        rtrue;
+    }
+
+    bool grow() {
+        if (stage == eGrowth.bloom) return false;
+        age++;
+        if (age < 2) return false;
+        age = 0;
+        stage = (eGrowth)((int)stage + 1);
+        return true;
+    }
+}
+
+class Pot : object {
+    Moisture soil;
+    name = {.pot};
+    weight = 3;
+    attributes = {container, open};
+
+    Sprout plant() {
+        for (object o in children) {
+            if (o.is(Sprout)) return (Sprout)o;
+        }
+        return null;
+    }
+
+    bool blooming() {
+        Sprout s = plant();
+        if (!(s?)) return false;
+        return s.stage == eGrowth.bloom;
+    }
+}
+
+Pot clayPot {
+    "clay pot";
+    parent = roomA;
+    name = {.clay, .pot};
+    description = "A clay pot.";
+}
+
+Pot tinPot {
+    "tin pot";
+    parent = roomB;
+    name = {.tin, .pot};
+    description = "A tin pot.";
+}
+
+array<Pot> pots = {clayPot, tinPot};
+
+object packet {
+    "seed packet";
+    parent = roomC;
+    name = {.seed, .seeds, .packet};
+    weight = 1;
+    int seeds = 2;
+
+    bool before() {
+        if (action == Examine) rtrue($"A seed packet holding {seeds} seeds.^");
+        rfalse;
+    }
+}
+
+// The daemon that grows every planted pot.
+object greenhouse {
+    "greenhouse";
+
+    void daemon() {
+        for (Pot p in pots) {
+            Sprout s = p.plant();
+            if (!(s?)) continue;
+            if (p.soil.dry()) continue;
+            p.soil -= 1;
+            if (s.grow()) {
+                if (p.parent == location || p.parent == player)
+                    printLine($"The {s} in {the(p)} has grown.");
+                if (s.stage == eGrowth.bloom && !bloomed) {
+                    bloomed = true;
+                    score++;
+                    jot("bloom in", (int)p.soil);
+                }
+            }
+        }
+    }
+}
+
+// --- the torch --------------------------------------------------------------------------------------
+
+object torch {
+    "torch";
+    parent = roomB;
+    name = {.torch};
+    description = "A torch.";
+    weight = 2;
+    int charge = 8;
+    attributes = {switchable};
+
+    bool before() {
+        if (action == SwitchOn && charge == 0) rtrue("The torch is flat.^");
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        charge--;
+        if (charge == 1) printLine("The torch flickers.");
+        if (charge == 0) {
+            ungive(on);
+            ungive(light);
+            StopDaemon(self);
+            printLine("The torch goes out.");
+            jot("torch out");
+        }
+    }
+}
+
+// --- the scale --------------------------------------------------------------------------------------
+
+object scale {
+    "scale";
+    parent = roomA;
+    name = {.scale};
+    description = "A scale.";
+    attributes = {supporter, static};
+}
+
+// --- the gardener -----------------------------------------------------------------------------------
+
+object gardener {
+    "gardener";
+    parent = roomB;
+    name = {.gardener};
+    description = "A gardener.";
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .seeds || w == .seed) rtrue("The gardener says: the seeds are below Room A.^");
+                if (w == .water) rtrue("The gardener says: fill the can at the tap.^");
+                if (w == .torch) rtrue($"The gardener says: it has {torch.charge} left.^");
+                rtrue("The gardener shrugs.^");
+            case Give:
+                if (noun.is(Pot) && ((Pot)noun).blooming()) {
+                    noun.parent = self;
+                    score++;
+                    jot("pot given");
+                    rtrue($"The gardener takes {the(noun)} and smiles.^");
+                }
+                rtrue("The gardener shakes their head.^");
+        }
+        rfalse;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Plant {
+    grammar = {.plant, HELD, .in, NOUN};
+    void handler() {
+        if (noun != packet) {
+            printLine("You can only plant seeds.");
+            return;
+        }
+        if (!second.is(Pot)) {
+            printLine($"You can't plant anything in {the(second)}.");
+            return;
+        }
+        Pot p = (Pot)second;
+        if (p.plant()?) {
+            printLine($"Something already grows in {the(p)}.");
+            return;
+        }
+        Sprout s = new Sprout(p);
+        if (!(s?)) {
+            printLine("Nothing takes.");
+            return;
+        }
+        packet.seeds--;
+        if (planted == 1) score++;
+        jot("planted", planted);
+        printLine($"You plant a seed in {the(p)}.");
+        if (packet.seeds == 0) {
+            packet.parent = null;
+            printLine("The packet is empty, and you throw it away.");
+        }
+    }
+}
+
+verb Water {
+    grammar = {.water, NOUN};
+    void handler() {
+        if (!noun.is(Pot)) {
+            printLine("That doesn't need water.");
+            return;
+        }
+        if (can.parent != player) {
+            printLine("You have nothing to water it with.");
+            return;
+        }
+        if (!can.pour()) {
+            printLine("The can is empty.");
+            return;
+        }
+        Pot p = (Pot)noun;
+        p.soil = p.soil + 4;
+        printLine($"You water {the(p)}. Soil {(int)p.soil}.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        printLine($"{cThe(noun)} weighs {weightOf(noun)}.");
+    }
+}
+
+verb Journal {
+    meta = true;
+    grammar = {.journal};
+    void handler() {
+        if (notes.length == 0) {
+            printLine("The journal is empty.");
+            return;
+        }
+        printLine($"Journal ({entries}): {notes}");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        printLine($"Score {score} of {MAX_SCORE}, planted {planted}, torch {torch.charge}.");
+        for (Pot p in pots) {
+            Sprout s = p.plant();
+            if (s?) printLine($"{cThe(p)}: soil {(int)p.soil}, {s} age {s.age}.");
+            else printLine($"{cThe(p)}: soil {(int)p.soil}, empty.");
+        }
+        int growing = bgl.world.instances(Sprout).length;
+        printLine($"Sprouts {growing}, blooming {bloomed}.");
+    }
+}
+
+bool Initialise() {
+    StartDaemon(greenhouse);
+    rfalse;
+}

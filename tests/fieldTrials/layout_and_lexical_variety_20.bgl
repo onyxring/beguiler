@@ -1,0 +1,417 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a tap on a timer,
+// three jars that are filled, poured and drained, and paper slips torn from a pad. A jar class with an
+// enum member, a capacity and a `stringObj` label; `before` rules on the library's `Fill` and on
+// `SwitchOn`, an `after` rule that starts a timer with `time_left`/`time_out`; a pooled slip class with
+// `create`/`destroy`, a `short_name` routine and a class-wide counter, slips moved into the player by
+// `parent`; a value class returned from a routine and copied; an `array<Jar>` of objects sorted with a
+// comparator lambda and filtered with <linq>; a scratch `array<object>` collected before deleting pool
+// slots; a switch with ranges and a multi-value case; `NUMBER` and `TOPIC`-free grammar with
+// alternation; interpolated strings with ternaries and calls; `stringObj` labels set from a fixed list
+// and built with `+=`; hex and binary literals; mixed brace styles, mixed-case keywords, comments inside
+// argument lists and between tokens, a function with no spaces, a declaration split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include   <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+//-- Constants and kinds --------------------------------------------------------------------------------
+
+const int TAP_TURNS = $03 ;           // the tap runs three turns
+CONST INT SLIP_MAX  = 3 ;
+const int BIG_JAR   = $$110 ;         // six
+
+enum eLiquid
+{
+    none ,            // 0
+    water ,           // 1
+    oil   = $10 ,     // a gap on purpose
+    vinegar           // 17
+}
+
+//-- Rooms ----------------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+int turnsHere = 0 ;
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A tap is fixed to the wall. Room B is north." ;
+    object n_to = roomB ;
+    void each_turn() { turnsHere++ ; }
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. Room A is south." ;
+    object s_to = roomA ;
+}
+
+//-- Jars -----------------------------------------------------------------------------------------------
+
+class Jar : object
+{
+    /// Units held now.
+    int amount = 0 ;
+    int cap    = 4 ;                  /// Units it can hold.
+    eLiquid holds = eLiquid.none ;
+    stringObj label ;
+    string description = "A glass jar." ;
+
+    int room () { return cap - amount ; }
+
+    string liquidName ()
+    {
+        Switch (holds)
+        {
+            CASE eLiquid.water   : return "water" ;
+            case eLiquid.oil     : return "oil" ;
+            Case eLiquid.vinegar : return "vinegar" ;
+            default              : return "nothing" ;
+        }
+    }
+
+    string state () {
+        switch (amount) {
+            case 0          : return "empty" ;
+            case 1 to 2     : return "low" ;
+            default         :
+                if (amount == cap) return "full" ;
+                return "part full" ;
+        }
+    }
+
+    void show ()
+    {
+        print($"{self}: {amount}/{cap} {liquidName()} ({state()})") ;
+        if (!label.isEmpty()) { print(", labelled ~") ; label.print() ; print("~") ; }
+    }
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Fill :
+                if (tap.hasnt(on))       rtrue("The tap is off.^") ;
+                if (location != roomA)   rtrue("There is no tap here.^") ;
+                if (holds != eLiquid.none && holds != eLiquid.water)
+                    rtrue($"The {self} holds {liquidName()}.^") ;
+                if (amount == cap)       rtrue($"The {self} is already full.^") ;
+                amount = cap ;
+                holds  = eLiquid.water ;
+                rtrue($"You fill the {self} with water.^") ;
+            case Eat ,
+                 Drink :
+                rtrue("No.^") ;
+        }
+        rfalse ;
+    }
+}
+
+Jar smallJar { "small jar" ; parent = roomA ; name = { .small , .jar } ; cap = 2 ; }
+Jar wideJar
+{
+    "wide jar" ;
+    parent = roomA ;
+    name   = { .wide , .jar } ;
+    cap    = BIG_JAR ;
+}
+Jar oilJar   { "oil jar" ; parent = roomB ; name = { .oil , .jar } ; amount = 3 ; holds = eLiquid.oil ; }
+
+array<Jar> shelf = { smallJar , wideJar , oilJar } ;
+
+//-- The tap --------------------------------------------------------------------------------------------
+
+object tap
+{
+    "tap" ;
+    parent     = roomA ;
+    name       = { .tap } ;
+    attributes = { switchable , static } ;
+    int time_left ;
+    int runs = 0 ;
+    string description = "A metal tap." ;
+
+    bool before ()
+    {
+        switch (action) {
+            case SwitchOn :
+                if (runs >= 2) rtrue("The tap is stuck.^") ;
+        }
+        rfalse ;
+    }
+    bool after ()
+    {
+        switch (action)
+        {
+            case SwitchOn :
+                runs++ ;
+                StartTimer(self , TAP_TURNS) ;
+            case SwitchOff :
+                StopTimer(self) ;
+        }
+        rfalse ;
+    }
+    void time_out ()
+    {
+        ungive(on) ;
+        printLine("The tap shuts itself off.") ;
+    }
+}
+
+//-- Slips ----------------------------------------------------------------------------------------------
+
+class Slip[SLIP_MAX] : object
+{
+    int number ;
+    int total ;
+    static int torn = 0 ;
+    name = { .slip , .paper } ;
+    string description = "A paper slip." ;
+
+    void create ( int n , int t )
+    {
+        number = n ;
+        total  = t ;
+        Slip.torn++ ;
+        parent = player ;
+    }
+    void destroy () { parent = null ; }
+
+    bool short_name () { print($"slip {number}") ; rtrue ; }
+}
+
+int nextSlip = 1 ;
+
+//-- A reading of the shelf, as a value -----------------------------------------------------------------
+
+value class Reading
+{
+    int total ;
+    int full ;
+    int empty ;
+    Reading operator = ( Reading o ) { total = o.total ; full = o.full ; empty = o.empty ; return self ; }
+}
+
+Reading takeReading ()
+{
+    Reading r ;
+    for (Jar j in shelf)
+    {
+        r.total += j.amount ;
+        if (j.amount == j.cap) r.full++ ;
+        if (j.amount == 0)     r.empty++ ;
+    }
+    return r ;
+}
+
+Reading lastReading ;
+
+int pct(int a,int b){if(b==0)return 0;return a*100/b;}
+
+int moveUnits ( Jar from , Jar into )
+{
+    int n = from.amount ;
+    if (n > into.room()) n = into.room() ;
+    from.amount -= n ;
+    into.amount += n ;
+    if (n > 0) into.holds = from.holds ;
+    if (from.amount == 0) from.holds = eLiquid.none ;
+    return n ;
+}
+
+//-- Initialise -----------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+//-- Commands -------------------------------------------------------------------------------------------
+
+verb Pour
+{
+    grammar = {
+        { ( .pour | .tip ) , NOUN , .into , NOUN } ,
+        { .pour , NOUN , .in , NOUN } ,
+    } ;
+    void handler ()
+    {
+        if (!(noun.is(Jar)) || !(second.is(Jar))) { printLine("You can only pour from jar to jar.") ; return ; }
+        if (noun == second) { printLine("That is the same jar.") ; return ; }
+        Jar a = (Jar) noun ;
+        Jar b = (Jar) second ;
+        if (a.amount == 0) { print($"The {a} is empty.^") ; return ; }
+        if (b.holds != eLiquid.none && b.holds != a.holds)
+        {
+            print($"The {b} holds {b.liquidName()}; it won't mix.^") ;
+            return ;
+        }
+        int moved = moveUnits(a , /* into */ b) ;
+        if (moved == 0) { print($"The {b} is full.^") ; return ; }
+        print($"You pour {moved} unit{moved == 1 ? "" : "s"} into the {b}") ;
+        printLine(a.amount == 0 ? ", emptying it." : ".") ;
+    }
+}
+
+verb Drain
+{
+    grammar = { .drain , NOUN } ;
+    void handler ()
+    {
+        if (!(noun.is(Jar))) { printLine("Only jars can be drained.") ; return ; }
+        Jar j = (Jar)noun ;
+        if (j.amount == 0) { print($"The {j} is already empty.^") ; return ; }
+        print($"You drain {j.amount} unit{j.amount == 1 ? "" : "s"} of {j.liquidName()} from the {j}.^") ;
+        j.amount = 0 ;
+        j.holds  = eLiquid.none ;
+    }
+}
+
+verb Mark
+{
+    grammar = {
+        { .mark , NOUN , .with , NUMBER } ,
+        { .mark , NOUN , NUMBER } ,
+    } ;
+    void handler ()
+    {
+        if (!(noun.is(Jar))) { printLine("Only jars take a mark.") ; return ; }
+        Jar j = (Jar) noun ;
+        int which = (int) second ;
+        switch (which)
+        {
+            case 1 : j.label = "keep" ;
+            case 2 : j.label = "use first" ;
+            case 3 ,
+                 4 : j.label = "spare" ;
+                     j.label += $" {which}" ;
+            default:
+                print($"There is no mark {which}.^") ;
+                return ;
+        }
+        print($"You mark the {j} ~") ;
+        j.label.print() ;
+        printLine("~.") ;
+    }
+}
+
+verb ListJars
+{
+    meta = true ;
+    grammar = { { ( .shelf | .jars ) } } ;
+    void handler ()
+    {
+        shelf.sort( ( Jar a , Jar b ) => b.amount - a.amount ) ;
+        int i = 0 ;
+        for (Jar j in shelf)
+        {
+            i++ ;
+            print($"{i}. ") ;
+            j.show() ;
+            printLine(".") ;
+        }
+        int holding = shelf.filter(( Jar j ) => j.amount > 0).count() ;
+        printLine($"{holding} of {shelf.length} hold something.") ;
+    }
+}
+
+verb Gauge
+{
+    meta = true ;
+    grammar = { .gauge } ;
+    void handler ()
+    {
+        Reading now = takeReading() ;
+        int capTotal = 0 ;
+        for (Jar j in shelf) capTotal += j.cap ;
+        print($"Total {now.total}/{capTotal} ({pct(now.total , capTotal)}%), ") ;
+        printLine($"{now.full} full, {now.empty} empty.") ;
+        if (lastReading.total != 0 || lastReading.full != 0)
+            printLine($"Last time: total {lastReading.total}, change {now.total - lastReading.total}.") ;
+        lastReading = now ;
+    }
+}
+
+verb Note
+{
+    grammar = { { .tear , .slip } , { .note , .total } } ;
+    void handler ()
+    {
+        Reading r = takeReading() ;
+        Slip s = new Slip(nextSlip , r.total) ;
+        if (s == null) { printLine("The pad is used up.") ; return ; }
+        nextSlip++ ;
+        print("You tear off ") ;
+        print(s) ;
+        printLine($" and write {r.total} on it.") ;
+    }
+}
+
+verb ReadSlips
+{
+    meta = true ;
+    grammar = { { .read , .slips } , { .slips } } ;
+    void handler ()
+    {
+        stringObj line ;
+        int count = 0 ;
+        for (object o in player.children)
+        {
+            if (!(o.is(Slip))) continue ;
+            Slip s = (Slip) o ;
+            if (count > 0) line += ", " ;
+            line += $"{s.number}:{s.total}" ;
+            count++ ;
+        }
+        if (count == 0) { printLine("You hold no slips.") ; return ; }
+        print($"{count} slip{count == 1 ? "" : "s"} ({Slip.torn} torn in all): ") ;
+        line.print() ;
+        printLine(".") ;
+    }
+}
+
+verb Scrap
+{
+    grammar = { .scrap , .slips } ;
+    void handler ()
+    {
+        array<object> doomed[SLIP_MAX] ;
+        for (object o in player.children)
+            if (o.is(Slip)) doomed.append(o) ;
+        if (doomed.length == 0) { printLine("You hold no slips.") ; return ; }
+        for (object o in doomed)
+        {
+            Slip s = (Slip) o ;
+            delete s ;
+        }
+        print($"You scrap {doomed.length} slip{doomed.length == 1 ? "" : "s"}.^") ;
+    }
+}
+
+verb Status
+{
+    meta = true ;
+    grammar = { .status } ;
+    void handler ()
+    {
+        print($"Tap {tap.has(on) ? "on" : "off"}") ;
+        if (tap.has(on)) print($" ({tap.time_left} left)") ;
+        printLine($", runs {tap.runs}, turns in A {turnsHere}.") ;
+    }
+}

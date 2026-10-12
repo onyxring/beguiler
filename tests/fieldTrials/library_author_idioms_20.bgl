@@ -1,0 +1,481 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a notice-bus kit and its consumer. The kit declares an enum of notice kinds; a routine
+// that turns a kind into a bit with <<; a primitive mask over int whose emitters add a kind and test
+// one by calling that routine; a value class of stamps with a copy operator, <=> (giving < and >), ==
+// and != and a show method; a pooled notice class with create/destroy, static counters, an owned
+// stamp, an object member and an instance <=> that puts alerts first for sort(); a listener class
+// with a required mask, a required hear() routine, a default rank() and a method testing the mask; a
+// tally subclass with a member array counted by a cast enum index; a gate subclass that throws the
+// notice it refuses. The bus object is a namespace (alias … for the enum and the stamp) and holds an
+// array of listeners kept sorted by a comparator lambda, a backlog of notices, a stringObj log, an
+// owned stamp, and an inline accessor that counts its flips through outer.; its methods post with new
+// (null when the pool is empty), deliver in a try/catch that breaks on a veto, name a kind through a
+// switch on aliased values, flush the backlog by sort() and dequeue() with delete, and walk the
+// listeners with a func<> parameter. The consumer binds an I6 routine with extern, extends the
+// notice class with a test and the bus with a capturing linq count and a ternary summary, and its
+// verbs post, hold and flush, subscribe and drop listeners, report with <linq> filter/count/any/
+// first and ?? / ?., compare stamps, and run an #if trace line under a #define.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA20_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+}
+
+object tinBox {
+    "tin box";
+    parent = roomA;
+    name = {.tin, .box};
+}
+
+// ==== The kit: a small notice bus. ====
+
+/// What a notice is about.
+enum eLa20Kind { arrive, leave, tick, alert }
+
+/// The bit that stands for a kind in a mask.
+int la20Bit(eLa20Kind k) {
+    return 1 << ((int)k - 1);
+}
+
+/// A set of notice kinds, one bit each, held as a bare word.
+primitive class La20Mask {
+    emitter void     operator = (int v)        { $self = $v; }
+    emitter int      operator ()               { ($self) }
+    /// The set with one more kind in it.
+    emitter La20Mask operator + (eLa20Kind k)  { ($self | la20Bit($k)) }
+    /// True when the kind is in the set.
+    emitter bool     covers(eLa20Kind k)       { (($self & la20Bit($k)) ~= 0) }
+}
+
+/// When a notice was posted: the turn, then the order within the turn.
+value class La20Stamp {
+    int turn;
+    int seq;
+    La20Stamp operator = (La20Stamp o) {
+        turn = o.turn;
+        seq = o.seq;
+        return self;
+    }
+    /// Orders two stamps by turn, then by sequence.
+    int operator <=> (La20Stamp o) {
+        if (turn != o.turn) return turn - o.turn;
+        return seq - o.seq;
+    }
+    /// True when both stamps name the same moment.
+    bool operator == (La20Stamp o) { return turn == o.turn && seq == o.seq; }
+    /// True when the stamps differ.
+    bool operator != (La20Stamp o) { return turn != o.turn || seq != o.seq; }
+    /// Prints the stamp as turn.seq.
+    void show() { print($"{turn}.{seq}"); }
+}
+
+/// A notice: a kind, a subject and a line of text; made with new and handed back with delete.
+class La20Notice[5] : object {
+    eLa20Kind kind = eLa20Kind.tick;
+    La20Stamp at;
+    object subject;
+    string text;
+    int seen = 0;
+    /// Notices made so far.
+    static int posted = 0;
+    /// Notices handed back so far.
+    static int dropped = 0;
+
+    void create(eLa20Kind k, object s, string t) {
+        kind = k;
+        subject = s;
+        text = t;
+        posted++;
+    }
+
+    void destroy() {
+        dropped++;
+    }
+
+    /// Alerts first; otherwise in the order they were posted.
+    int operator <=> (La20Notice o) {
+        if (kind == eLa20Kind.alert && o.kind != eLa20Kind.alert) return -1;
+        if (o.kind == eLa20Kind.alert && kind != eLa20Kind.alert) return 1;
+        return at <=> o.at;
+    }
+
+    /// Prints the stamp and the text.
+    void show() {
+        at.show();
+        print($" {text}");
+    }
+}
+
+/// Something that hears notices of the kinds in its mask.
+class La20Listener : object {
+    /// The kinds the listener hears.
+    required La20Mask wants;
+    int heard = 0;
+
+    /// Takes one notice.
+    required void hear(La20Notice n);
+
+    /// Lower ranks hear first.
+    default int rank() { return 5; }
+
+    /// True when the listener hears notices of this kind.
+    bool wantsKind(eLa20Kind k) { return wants.covers(k); }
+}
+
+/// A listener that counts the notices it hears, kind by kind.
+class La20Tally : La20Listener {
+    array<int> perKind[4];
+
+    void hear(La20Notice n) {
+        perKind[(int)n.kind - 1]++;
+        heard++;
+    }
+
+    /// Prints the counts for each kind.
+    void showCounts() {
+        for (int i in 0 to 3) print($" {perKind[i]}");
+    }
+}
+
+/// A listener that lets a few notices through, then refuses the rest by throwing them.
+class La20Gate : La20Listener {
+    int limit = 2;
+
+    void hear(La20Notice n) {
+        if (heard >= limit) throw n;
+        heard++;
+    }
+
+    int rank() { return 1; }
+}
+
+// ==== The bus. ====
+
+/// The bus: posts notices to its listeners, or keeps them back while held.
+object la20Bus {
+    "bus";
+    alias kind  for eLa20Kind;
+    alias stamp for La20Stamp;
+    array<La20Listener> subs[4];
+    array<La20Notice> backlog[5];
+    stringObj log;
+    int turn = 1;
+    int seq = 0;
+    int flips = 0;
+    stamp last;
+
+    /// True while notices are kept back; each change counts a flip.
+    auto held = {
+        bool _on = false;
+        bool operator () { return _on; }
+        void operator = (bool v) {
+            if (v != _on) outer.flips++;
+            _on = v;
+        }
+    }
+
+    /// Adds a listener in rank order; false when it is already there or there is no room.
+    bool subscribe(La20Listener l) {
+        if (subs.contains(l)) return false;
+        if (!subs.append(l)) return false;
+        subs.sort((La20Listener a, La20Listener b) => a.rank() - b.rank());
+        return true;
+    }
+
+    /// Drops a listener; false when it was not there.
+    bool unsubscribe(La20Listener l) {
+        if (!subs.contains(l)) return false;
+        subs -= l;
+        return true;
+    }
+
+    /// One letter for a kind.
+    string letter(kind k) {
+        switch (k) {
+            case kind.arrive: return "A";
+            case kind.leave:  return "L";
+            case kind.tick:   return "T";
+            default:          return "!";
+        }
+    }
+
+    /// Hands a notice to every listener that wants it, until one refuses it. Returns how many heard it.
+    int deliver(La20Notice n) {
+        int count = 0;
+        for (La20Listener l in subs) {
+            if (!l.wantsKind(n.kind)) continue;
+            try {
+                l.hear(n);
+                count++;
+            } catch (La20Notice v) {
+                log += $"[{l} refused {v.text}] ";
+                break;
+            }
+        }
+        n.seen = count;
+        log += $"{letter(n.kind)}{n.at.seq}:{count} ";
+        return count;
+    }
+
+    /// Posts a notice: delivered now, or kept back while held. False when no notice could be made.
+    bool post(kind k, object s, string t) {
+        La20Notice n = new La20Notice(k, s, t);
+        if (!(n?)) return false;
+        seq++;
+        n.at.turn = turn;
+        n.at.seq = seq;
+        last = n.at;
+        if (held) {
+            backlog.append(n);
+            return true;
+        }
+        deliver(n);
+        delete n;
+        return true;
+    }
+
+    /// Delivers the kept-back notices, alerts first. Returns how many hearings there were.
+    int flush() {
+        backlog.sort();
+        int total = 0;
+        while (backlog.length > 0) {
+            La20Notice n = backlog.dequeue();
+            total += deliver(n);
+            delete n;
+        }
+        return total;
+    }
+
+    /// Starts the next turn.
+    void nextTurn() {
+        turn++;
+        seq = 0;
+    }
+
+    /// Runs a step on each listener, in rank order.
+    void each(func<void, La20Listener> step) {
+        for (La20Listener l in subs) step(l);
+    }
+}
+
+// ==== The consumer. ====
+
+La20Tally tallyA {
+    "tally A";
+    wants = 15;
+}
+
+La20Gate gateA {
+    "gate A";
+    wants = 8;
+}
+
+La20Listener echoA {
+    "echo A";
+    wants = 3;
+    int rank() { return 9; }
+    void hear(La20Notice n) {
+        heard++;
+        log2 += $"<{n.subject ?? roomA}>";
+    }
+    stringObj log2;
+}
+
+#i6 {
+[ La20Scale n m; return n * 10 + m; ];
+}
+
+/// Folds a turn and a sequence into one figure; the consumer wrote it in I6.
+extern int La20Scale(int n, int m);
+
+/// Every notice can be asked about its subject and folded into a figure.
+extend class La20Notice {
+    /// True when the notice is about the object.
+    bool about(object o) { return subject == o; }
+    /// The stamp folded into one figure.
+    int figure() { return La20Scale(at.turn, at.seq); }
+}
+
+/// The bus can count what it holds back about an object, and sum it up in a word.
+extend la20Bus {
+    /// How many kept-back notices are about the object.
+    int countAbout(object o) {
+        return backlog.filter((La20Notice n) => n.about(o)).count();
+    }
+
+    /// A one-word state.
+    string state() {
+        return held ? "held" : "open";
+    }
+}
+
+/// Prints a listener's line.
+void la20ShowListener(La20Listener l) {
+    print($"{l} r{l.rank()} h{l.heard}");
+}
+
+// ==== Verbs. ====
+
+verb La20Arrive {
+    grammar = {.arrive, NOUN};
+    void handler() {
+        la20Bus.log = "";
+        if (!la20Bus.post(la20Bus.kind.arrive, noun, "in")) print("no notice; ");
+        print($"{la20Bus.log.trim()}.^");
+    }
+}
+
+verb La20Leave {
+    grammar = {.depart, NOUN};
+    void handler() {
+        la20Bus.log = "";
+        if (!la20Bus.post(eLa20Kind.leave, noun, "out")) print("no notice; ");
+        print($"{la20Bus.log.trim()}.^");
+    }
+}
+
+verb La20Alarm {
+    grammar = {.alarm};
+    void handler() {
+        la20Bus.log = "";
+        if (!la20Bus.post(eLa20Kind.alert, null, "bell")) print("no notice; ");
+        print($"{la20Bus.log.trim()}.^");
+    }
+}
+
+verb La20Tick {
+    grammar = {.tick, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        la20Bus.log = "";
+        int made = 0;
+        for (int k in 1 to n) {
+            if (la20Bus.post(eLa20Kind.tick, roomA, "tick")) made++;
+        }
+        la20Bus.nextTurn();
+        print($"ticks {made} of {n}; {la20Bus.log.trim()}; turn {la20Bus.turn}.^");
+    }
+}
+
+verb La20Hold {
+    grammar = {.hold};
+    void handler() {
+        la20Bus.held = !la20Bus.held;
+        print($"bus {la20Bus.state()}, flips {la20Bus.flips}, backlog {la20Bus.backlog.length}.^");
+    }
+}
+
+verb La20Flush {
+    grammar = {.flush};
+    void handler() {
+        la20Bus.log = "";
+        int keys = la20Bus.countAbout(brassKey);
+        int total = la20Bus.flush();
+        print($"flushed {total} (key {keys}): {la20Bus.log.trim()}.^");
+    }
+}
+
+verb La20Join {
+    grammar = {.join};
+    void handler() {
+        int added = 0;
+        if (la20Bus.subscribe(echoA)) added++;
+        if (la20Bus.subscribe(tallyA)) added++;
+        if (la20Bus.subscribe(gateA)) added++;
+        if (la20Bus.subscribe(tallyA)) added++;
+        print($"joined {added}:");
+        la20Bus.each((La20Listener l) => print($" {l}"));
+        print(".^");
+    }
+}
+
+verb La20Drop {
+    grammar = {.unjoin};
+    void handler() {
+        bool a = la20Bus.unsubscribe(gateA);
+        bool b = la20Bus.unsubscribe(gateA);
+        print($"dropped {a} {b}; left {la20Bus.subs.length}.^");
+    }
+}
+
+verb La20Report {
+    grammar = {.report};
+    void handler() {
+        int busy = la20Bus.subs.filter((La20Listener l) => l.heard > 0).count();
+        bool deaf = la20Bus.subs.any((La20Listener l) => l.heard == 0);
+        print($"listeners {la20Bus.subs.length}, busy {busy}");
+        if (deaf) print(", one deaf");
+        La20Listener lead = la20Bus.subs.first();
+        object who = lead ?? roomA;
+        print($"; lead {who}^");
+        int sum = 0;
+        la20Bus.each((La20Listener l) => {
+            la20ShowListener(l);
+            print("^");
+            sum += l.heard;
+        });
+        print("counts");
+        tallyA.showCounts();
+        print($"; heard {sum}; echo {echoA.log2}^");
+#if LA20_TRACE
+        print($"posted {La20Notice.posted} dropped {La20Notice.dropped}^");
+#endif
+    }
+}
+
+verb La20Stamps {
+    grammar = {.stamps};
+    void handler() {
+        la20Bus.stamp a = la20Bus.last;
+        La20Stamp b;
+        b.turn = a.turn;
+        b.seq = a.seq + 2;
+        La20Stamp c = b;
+        c.seq = c.seq - 2;
+        a.show();
+        print(" ");
+        b.show();
+        print(" ");
+        c.show();
+        print(":");
+        if (a < b) print(" a<b");
+        if (b > c) print(" b>c");
+        if (a == c) print(" a=c");
+        if (a != b) print(" a!=b");
+        print($" {b <=> a}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,154 @@
+Room A
+Room A. A tap is on the wall. Room B is north. Steps lead down.
+You can see a can, a clay pot (which is empty) and a scale here.
+> status
+Score 0 of 3, planted 0, torch 8.
+The clay pot: soil 0, empty.
+The tin pot: soil 0, empty.
+Sprouts 0, blooming false.
+> journal
+The journal is empty.
+> down
+The steps are too dark to risk without a light.
+> examine can
+A can. It is empty.
+> fill can
+You fill the can at the tap.
+> take can
+Taken.
+> fill can
+The can is already full.
+> examine can
+A can. It is full.
+> weigh can
+The can weighs 6.
+> north
+Room B
+Room B. Room A is south.
+You can see a tin pot (which is empty), a torch and a gardener here.
+> ask gardener about seeds
+The gardener says: the seeds are below Room A.
+> ask gardener about torch
+The gardener says: it has 8 left.
+> take torch
+Taken.
+> turn on torch
+You switch the torch on.
+> south
+Room A
+You can see a clay pot (which is empty) and a scale here.
+> down
+Room C
+Room C. Steps lead up.
+You can see a seed packet here.
+> take packet
+Taken.
+> examine packet
+A seed packet holding 2 seeds.
+> up
+Room A
+You can see a clay pot (which is empty) and a scale here.
+> turn off torch
+You switch the torch off.
+> plant packet in clay pot
+You plant a seed in the clay pot.
+[The score has just gone up by 1 point.]
+> plant packet in clay pot
+Something already grows in the clay pot.
+> plant can in tin pot
+You can't see any such thing.
+> water pot
+You water the clay pot. Soil 4.
+> status
+Score 1 of 3, planted 1, torch 2.
+The clay pot: soil 3, seed age 1.
+The tin pot: soil 0, empty.
+Sprouts 1, blooming false.
+> wait
+Nothing happens.
+The shoot in the clay pot has grown.
+> wait
+Nothing happens.
+> status
+Score 1 of 3, planted 1, torch 2.
+The clay pot: soil 1, shoot age 1.
+The tin pot: soil 0, empty.
+Sprouts 1, blooming false.
+> put pot on scale
+(first taking the clay pot)
+You put the clay pot on the scale.
+> weigh scale
+The scale weighs 4.
+> weigh gardener
+You can't see any such thing.
+> take clay pot
+Taken.
+> north
+Room B
+You can see a tin pot (which is empty) and a gardener here.
+> give clay pot to gardener
+The gardener shakes their head.
+> plant packet in tin pot
+You plant a seed in the tin pot.
+The packet is empty, and you throw it away.
+> water tin pot
+You water the tin pot. Soil 4.
+> water tin pot
+The can is empty.
+The shoot in the tin pot has grown.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+The bud in the tin pot has grown.
+> status
+Score 1 of 3, planted 2, torch 2.
+The clay pot: soil 0, bud age 0.
+The tin pot: soil 0, bud age 0.
+Sprouts 2, blooming false.
+> give clay pot to gardener
+The gardener shakes their head.
+> ask gardener about water
+The gardener says: fill the can at the tap.
+> status
+Score 1 of 3, planted 2, torch 2.
+The clay pot: soil 0, bud age 0.
+The tin pot: soil 0, bud age 0.
+Sprouts 2, blooming false.
+> south
+Room A
+You can see a scale here.
+> fill can
+You fill the can at the tap.
+> water clay pot
+You water the clay pot. Soil 4.
+> wait
+Nothing happens.
+The flower in the clay pot has grown.
+[The score has just gone up by 1 point.]
+> status
+Score 2 of 3, planted 2, torch 2.
+The clay pot: soil 2, flower age 0.
+The tin pot: soil 0, bud age 0.
+Sprouts 2, blooming true.
+> north
+Room B
+You can see a tin pot (which contains a bud) and a gardener here.
+> give clay pot to gardener
+The gardener takes the clay pot and smiles.
+[The score has just gone up by 1 point.]
+> turn on torch
+You switch the torch on.
+The torch flickers.
+> wait
+Nothing happens.
+The torch goes out.
+> turn on torch
+The torch is flat.
+> status
+Score 3 of 3, planted 2, torch 0.
+The clay pot: soil 0, flower age 0.
+The tin pot: soil 0, bud age 0.
+Sprouts 2, blooming true.
+> journal
+Journal (5): 1: planted 1. 2: planted 2. 3: bloom in 2. 4: pot given. 5: torch out.

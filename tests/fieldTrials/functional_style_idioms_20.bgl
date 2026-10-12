@@ -1,0 +1,378 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small job runner written in a functional style on z5. Jobs are objects of a class
+// with an enum kind and a literal func<int, int> effect given by lambdas in their definitions; a
+// priority order made by <linq> orderBy with a two-key comparator, returned from a function over a
+// global array and captured into typed locals; a hand-written fold that runs the effects in order
+// with a defaulted, named bool parameter; a budget plan chosen by takeWhile with a block lambda that
+// writes a captured local, priced by a sum over a func<> key; `?.` and `??` on a chain's first();
+// a value class of bounds returned by value from a fold and captured by a predicate lambda; grouping
+// by enum with a loop variable captured by a filter; a block lambda that switches on the enum and
+// returns from each case; memoized recursion in a global array; tail-recursive helpers with
+// accumulators (collatz steps and peak, run-length encoding); a prime filter whose predicate runs a
+// takeWhile/all chain over the same array (a chain in a chain); a global func<> holding a recursive
+// lambda; an array of `string | func<int, int>` steps discriminated with typeof; local func<>
+// predicates combined by a capturing lambda; stringObj built up with `+=` in a fold.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+//-- Jobs -----------------------------------------------------------------------------------------
+
+enum eKind { fix, build, check }
+
+class Job : object {
+    string tag;
+    eKind kind;
+    int cost;
+    int prio;
+    literal func<int, int> effect;
+    int apply(int x) { return effect(x); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Job jobA { "job A"; tag = "A"; kind = eKind.fix;   cost = 3; prio = 2; effect = (int x) => x + 3; }
+Job jobB { "job B"; tag = "B"; kind = eKind.build; cost = 5; prio = 1; effect = (int x) => x * 2; }
+Job jobC { "job C"; tag = "C"; kind = eKind.check; cost = 2; prio = 3; effect = (int x) => x > 10 ? x - 10 : x; }
+Job jobD { "job D"; tag = "D"; kind = eKind.build; cost = 4; prio = 2; effect = (int x) => x + 10; }
+Job jobE { "job E"; tag = "E"; kind = eKind.fix;   cost = 1; prio = 1; effect = (int x) => x - 1; }
+
+array<Job> jobs = {jobA, jobB, jobC, jobD, jobE};
+array<eKind> kinds = {eKind.fix, eKind.build, eKind.check};
+
+//-- Bounds (a value class) -----------------------------------------------------------------------
+
+value class Bounds {
+    int lo = 0;
+    int hi = 0;
+    bool seen = false;
+
+    Bounds operator = (Bounds o) {
+        lo = o.lo;
+        hi = o.hi;
+        seen = o.seen;
+        return self;
+    }
+
+    void take(int v) {
+        if (!seen || v < lo) lo = v;
+        if (!seen || v > hi) hi = v;
+        seen = true;
+    }
+
+    bool has(int v) { return seen && v >= lo && v <= hi; }
+    int width() { return hi - lo; }
+}
+
+//-- Pure helpers ---------------------------------------------------------------------------------
+
+int costOf(Job j) { return j.cost; }
+int prioOf(Job j) { return j.prio; }
+
+int twice(int n)  { return n * 2; }
+int inc(int n)    { return n + 1; }
+int square(int n) { return n * n; }
+
+int byPrioThenCost(Job a, Job b) {
+    if (a.prio != b.prio) return a.prio - b.prio;
+    return a.cost - b.cost;
+}
+
+array<Job> inOrder() {
+    return jobs.orderBy(byPrioThenCost);
+}
+
+int sumBy(array<Job> js, func<int, Job> key) {
+    int acc = 0;
+    for (Job j in js) acc += key(j);
+    return acc;
+}
+
+Bounds boundsOf(array<Job> js, func<int, Job> key) {
+    Bounds b;
+    for (Job j in js) b.take(key(j));
+    return b;
+}
+
+int runJobs(array<Job> js, int start, bool show = false) {
+    int x = start;
+    if (show) print(x);
+    for (Job j in js) {
+        x = j.apply(x);
+        if (show) print($" -> {j.tag} {x}");
+    }
+    return x;
+}
+
+void showJobs(array<Job> js) {
+    if (js.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < js.length; i++) {
+        if (i > 0) print(" ");
+        print(js[i].tag);
+    }
+}
+
+void showInts(array<int> xs) {
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(" ");
+        print(xs[i]);
+    }
+}
+
+string kindName(eKind k) {
+    switch (k) {
+        case eKind.fix:   return "fix";
+        case eKind.build: return "build";
+        default:          return "check";
+    }
+}
+
+//-- Recursion ------------------------------------------------------------------------------------
+
+array<int> memo[24];
+
+int fib(int n) {
+    if (n < 2) return n;
+    if (memo[n] != 0) return memo[n];
+    int v = fib(n - 1) + fib(n - 2);
+    memo[n] = v;
+    return v;
+}
+
+int collatzSteps(int n, int steps) {
+    if (n == 1) return steps;
+    return collatzSteps(n % 2 == 0 ? n / 2 : 3 * n + 1, steps + 1);
+}
+
+int collatzPeak(int n, int peak) {
+    int top = n > peak ? n : peak;
+    if (n == 1) return top;
+    return collatzPeak(n % 2 == 0 ? n / 2 : 3 * n + 1, top);
+}
+
+// Length of the run of `v` starting at `i`.
+int runFrom(array<int> xs, int i, int v) {
+    if (i >= xs.length || xs[i] != v) return 0;
+    return 1 + runFrom(xs, i + 1, v);
+}
+
+void rle(array<int> xs, int i) {
+    if (i >= xs.length) return;
+    int n = runFrom(xs, i, xs[i]);
+    if (i > 0) print(" ");
+    print($"{xs[i]}x{n}");
+    rle(xs, i + n);
+}
+
+array<int> sample = {1, 1, 2, 2, 2, 3, 1, 1, 1, 1};
+array<int> span[64];
+
+void fillSpan(int lo, int hi) {
+    span.clear();
+    for (int i = lo; i <= hi; i++) span += i;
+}
+
+func<int, int> fact;
+
+//-- Steps: labels and functions in one array -----------------------------------------------------
+
+array<string | func<int, int>> script = {"start", twice, inc, "mid", square, "end"};
+
+int runScript(int x) {
+    int v = x;
+    for (string | func<int, int> s in script) {
+        if (typeof(s) == eType.string) {
+            print($"{(string)s}:{v} ");
+        } else {
+            func<int, int> f = (func<int, int>)s;
+            v = f(v);
+        }
+    }
+    return v;
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb JobsVerb {
+    grammar = {{.jobs}};
+    void handler() {
+        for (Job j in jobs) print($"{j.tag}:{kindName(j.kind)} c{j.cost} p{j.prio} ");
+        print("^order: ");
+        array<Job> order = inOrder();
+        showJobs(order);
+        print($"^total cost {sumBy(jobs, costOf)} prio sum {sumBy(jobs, prioOf)}^");
+    }
+}
+
+verb RunVerb {
+    grammar = {{.run, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<Job> order = inOrder();
+        int quiet = runJobs(order, n);
+        runJobs(order, n, show: true);
+        print($"^quiet {quiet}^");
+        int backward = runJobs(order.orderBy((Job a, Job b) => byPrioThenCost(b, a)), n);
+        print($"backward {backward}^");
+    }
+}
+
+verb PlanVerb {
+    grammar = {{.plan, NUMBER}};
+    void handler() {
+        int budget = parsed_number;
+        int spent = 0;
+        array<Job> plan = inOrder().takeWhile((Job j) => {
+            spent += j.cost;
+            return spent <= budget;
+        });
+        int cost = sumBy(plan, costOf);
+        print("plan: ");
+        showJobs(plan);
+        print($" cost {cost} left {budget - cost}^");
+        Job over = jobs.filter((Job j) => j.cost > budget).first();
+        print($"first over budget: {over?.tag ?? "none"}^");
+        Job pick = over ?? jobE;
+        print($"pick {pick.tag}^");
+    }
+}
+
+verb KindsVerb {
+    grammar = {{.kinds}};
+    void handler() {
+        for (eKind k in kinds) {
+            array<Job> group = jobs.filter((Job j) => j.kind == k);
+            print($"{kindName(k)}: ");
+            showJobs(group);
+            print($" (cost {sumBy(group, costOf)})^");
+        }
+        int weighted = sumBy(jobs, (Job j) => {
+            switch (j.kind) {
+                case eKind.fix:   return j.cost;
+                case eKind.build: return j.cost * 2;
+                default:          return j.cost * 3;
+            }
+        });
+        print($"weighted {weighted}^");
+        Bounds cb = boundsOf(jobs, costOf);
+        Bounds pb = boundsOf(jobs, prioOf);
+        print($"cost {cb.lo}..{cb.hi} width {cb.width()}; prio {pb.lo}..{pb.hi} width {pb.width()}^");
+        Bounds cheap;
+        cheap.take(1);
+        cheap.take(3);
+        print("cheap: ");
+        showJobs(jobs.filter((Job j) => cheap.has(j.cost)));
+        print("^");
+    }
+}
+
+verb FibVerb {
+    grammar = {{.fib, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n < 0 || n >= memo.size) {
+            print("Out of range.^");
+            return;
+        }
+        print($"fib {n} = {fib(n)}; fact {n % 8} = {fact(n % 8)}^");
+    }
+}
+
+verb CollatzVerb {
+    grammar = {{.collatz, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n < 1) {
+            print("Must be positive.^");
+            return;
+        }
+        print($"collatz {n}: {collatzSteps(n, 0)} steps, peak {collatzPeak(n, 0)}^");
+    }
+}
+
+verb PrimesVerb {
+    grammar = {{.primes, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n < 2 || n > 64) {
+            print("Out of range.^");
+            return;
+        }
+        fillSpan(2, n);
+        array<int> primes = span.filter((int x) =>
+            span.takeWhile((int d) => d * d <= x).all((int d) => x % d != 0));
+        print($"primes to {n}: ");
+        showInts(primes);
+        int total = 0;
+        for (int p in primes) total += p;
+        print($"^count {primes.count()} sum {total} largest {primes.last()}^");
+    }
+}
+
+verb RleVerb {
+    grammar = {{.rle}};
+    void handler() {
+        showInts(sample);
+        print(" => ");
+        rle(sample, 0);
+        print("^");
+    }
+}
+
+verb ScriptVerb {
+    grammar = {{.script, NUMBER}};
+    void handler() {
+        int v = runScript(parsed_number);
+        print($"=> {v}^");
+    }
+}
+
+verb PickVerb {
+    grammar = {{.pick, NUMBER}};
+    void handler() {
+        int limit = parsed_number;
+        func<bool, Job> cheapJob = (Job j) => j.cost <= limit;
+        func<bool, Job> urgent = (Job j) => j.prio == 1;
+        print("cheap: ");
+        showJobs(jobs.filter(cheapJob));
+        print("^urgent: ");
+        showJobs(jobs.filter(urgent));
+        print("^both: ");
+        showJobs(jobs.filter((Job j) => cheapJob(j) && urgent(j)));
+        print("^either: ");
+        showJobs(jobs.filter((Job j) => cheapJob(j) || urgent(j)));
+        stringObj line;
+        line = "tags";
+        for (Job j in jobs.filter(cheapJob).orderBy(byPrioThenCost)) {
+            line += "-";
+            line += j.tag;
+        }
+        print($"^{line} ({line.length})^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    fact = (int n) => n <= 1 ? 1 : n * fact(n - 1);
+    location = roomA;
+    rfalse;
+}

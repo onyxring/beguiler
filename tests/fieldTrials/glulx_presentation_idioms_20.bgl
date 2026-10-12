@@ -1,0 +1,507 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a mini-map of seven rooms drawn into a text grid above the main window, with a trail
+// panel split to its right. A class Place : object with grid coordinates, a letter, an enum mark,
+// visit counts, exits declared as object properties and methods that return char and Place; an
+// object mapView with an inline auto { } accessor (zoom, clamped, reaching outer) and ++/-- on it;
+// a breadth-first route search over a local array<int> and an <array> queue with enqueue/dequeue,
+// a tracked route array built with += and reverse(); a SCOPE(Routine) grammar token that puts every
+// room in scope; NewRoom and LookRoutine entry points; hyperlinked exits whose named-function targets
+// call Go.perform() and redraw the status line; a replaced DrawStatusLine with a float percentage;
+// a textGridWindowHorz global resized through height; styleSheets passed to splits and childStyles;
+// checkStyle, measureStyle, distinguishes and supports; <linq> filter, count, distinct, orderBy with
+// a comparator, any and first over an array<Place>; stringObj padding; and switch over enums.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define MAX_PLACES 7
+#define TRAIL_SIZE 12
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+enum eMark { none, star, cross, ring }
+enum eDir  { north, south, east, west }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet mapLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ reverse = true; };
+};
+styleSheet trailLook = styleSheet{
+    normal     = style{ sizeAdjustment = -1; };
+    emphasized = style{ italics = true; foreColor = color.darkGray; };
+};
+styleSheet noteLook = styleSheet{
+    normal = style{ foreColor = $006000; };
+};
+
+// ---- placeList --------------------------------------------------------------------------------------
+
+class Place : object {
+    int    col = 0;
+    int    row = 0;
+    int    idx = 0;
+    char   letter = '?';
+    eMark  mark = eMark.none;
+    int    visits = 0;
+    int    firstTurn = -1;
+    string description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    attributes = {light};
+
+    char glyph() {
+        if (self == location) return '@';
+        if (visits == 0) return '.';
+        switch (mark) {
+            case eMark.star:  return '*';
+            case eMark.cross: return 'x';
+            case eMark.ring:  return 'o';
+        }
+        return letter;
+    }
+
+    Place toward(eDir d) {
+        object o = null;
+        switch (d) {
+            case eDir.north: o = n_to;
+            case eDir.south: o = s_to;
+            case eDir.east:  o = e_to;
+            case eDir.west:  o = w_to;
+        }
+        if (o == null || !o.is(Place)) return null;
+        return (Place)o;
+    }
+
+    int exitCount() {
+        int n = 0;
+        for (int k = 1; k <= 4; k++) {
+            if (toward((eDir)k) != null) n++;
+        }
+        return n;
+    }
+}
+
+Place redRoom {
+    "Red room";
+    name = {.red, .room};
+    description = "Red room. Plain walls.";
+    col = 0; row = 0; idx = 0; letter = 'R';
+    e_to = greenRoom;
+    s_to = pinkRoom;
+}
+
+Place greenRoom {
+    "Green room";
+    name = {.green, .room};
+    description = "Green room. Plain walls.";
+    col = 1; row = 0; idx = 1; letter = 'G';
+    w_to = redRoom;
+    e_to = blueRoom;
+}
+
+Place blueRoom {
+    "Blue room";
+    name = {.blue, .room};
+    description = "Blue room. Plain walls.";
+    col = 2; row = 0; idx = 2; letter = 'B';
+    w_to = greenRoom;
+    s_to = tealRoom;
+}
+
+Place pinkRoom {
+    "Pink room";
+    name = {.pink, .room};
+    description = "Pink room. Plain walls.";
+    col = 0; row = 1; idx = 3; letter = 'P';
+    n_to = redRoom;
+}
+
+Place whiteRoom {
+    "White room";
+    name = {.white, .room};
+    description = "White room. Plain walls.";
+    col = 1; row = 1; idx = 4; letter = 'W';
+    e_to = tealRoom;
+}
+
+Place tealRoom {
+    "Teal room";
+    name = {.teal, .room};
+    description = "Teal room. Plain walls.";
+    col = 2; row = 1; idx = 5; letter = 'T';
+    n_to = blueRoom;
+    w_to = whiteRoom;
+}
+
+Place grayRoom {
+    "Gray room";
+    name = {.gray, .room};
+    description = "Gray room. No way in or out.";
+    col = 3; row = 1; idx = 6; letter = 'Y';
+}
+
+array<Place> placeList = { redRoom, greenRoom, blueRoom, pinkRoom, whiteRoom, tealRoom, grayRoom };
+
+// ---- view settings -------------------------------------------------------------------------------
+
+object mapView {
+    int  resizes = 0;
+    bool showRoute = false;
+    auto zoom = {
+        int _z = 1;
+        int operator () { return _z; }
+        void operator = (int v) {
+            if (v < 1) v = 1;
+            if (v > 3) v = 3;
+            if (v != _z) outer.resizes++;
+            _z = v;
+        }
+    }
+}
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz mapWin = null;
+textBufferWindow   trailWin = null;
+array<Place> route[MAX_PLACES];
+array<Place> history[TRAIL_SIZE];
+int entries = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+string dirName(eDir d) {
+    switch (d) {
+        case eDir.north: return "north";
+        case eDir.south: return "south";
+        case eDir.east:  return "east";
+        case eDir.west:  return "west";
+    }
+    return "?";
+}
+
+string markName(eMark m) {
+    switch (m) {
+        case eMark.star:  return "star";
+        case eMark.cross: return "cross";
+        case eMark.ring:  return "ring";
+    }
+    return "none";
+}
+
+stringObj oneDecimal(float f) {
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+int seenCount() {
+    return placeList.filter((Place p) => p.visits > 0).count();
+}
+
+int stepX() { return 2 + 2 * mapView.zoom; }
+int stepY() { return 1 + mapView.zoom; }
+int mapHeight() { return stepY() + 1; }
+
+bool onRoute(Place p) {
+    if (!mapView.showRoute) return false;
+    for (Place r in route) {
+        if (r == p) return true;
+    }
+    return false;
+}
+
+// Breadth-first search; fills route with the rooms from `from` to `to` and returns the number of
+// moves, or -1 when there is no way.
+int findRoute(Place from, Place to) {
+    array<int> prev[MAX_PLACES];
+    array<Place> queue[MAX_PLACES];
+    for (int i = 0; i < placeList.length; i++) prev[i] = -2;
+    prev[from.idx] = -1;
+    queue.enqueue(from);
+    while (queue.length > 0) {
+        Place p = queue.dequeue();
+        if (p == to) break;
+        for (int k = 1; k <= 4; k++) {
+            Place q = p.toward((eDir)k);
+            if (q != null && prev[q.idx] == -2) {
+                prev[q.idx] = p.idx;
+                queue.enqueue(q);
+            }
+        }
+    }
+    route.clear();
+    if (prev[to.idx] == -2) return -1;
+    int at = to.idx;
+    while (at != -1) {
+        route += placeList[at];
+        at = prev[at];
+    }
+    route.reverse();
+    return route.length - 1;
+}
+
+eDir dirBetween(Place a, Place b) {
+    for (int k = 1; k <= 4; k++) {
+        if (a.toward((eDir)k) == b) return (eDir)k;
+    }
+    return eDir.north;
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawMap() {
+    if (mapWin == null) return;
+    mapWin.clear();
+    int sx = stepX();
+    int sy = stepY();
+    for (Place p in placeList) {
+        int x = p.col * sx;
+        int y = p.row * sy;
+        mapWin.moveCursor(x, y);
+        bool hot = onRoute(p);
+        mapWin.print(hot ? '<' : '[');
+        mapWin.print(p.glyph());
+        mapWin.print(hot ? '>' : ']');
+        if (p.toward(eDir.east) != null) {
+            for (int i = x + 3; i < x + sx; i++) {
+                mapWin.moveCursor(i, y);
+                mapWin.print('-');
+            }
+        }
+        if (p.toward(eDir.south) != null) {
+            for (int j = y + 1; j < y + sy; j++) {
+                mapWin.moveCursor(x + 1, j);
+                mapWin.print('|');
+            }
+        }
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    float part = (float)seenCount() / placeList.length;
+    bgl.ui.statusBar.print($"{location} | seen {seenCount()}/{placeList.length} ({oneDecimal(part * 100)}%) | moves {turns}");
+    drawMap();
+}
+
+void openWindows() {
+    bgl.ui.mainWin.childStyles = noteLook;
+    mapWin = bgl.ui.mainWin.splitUpGrid(mapHeight(), fixed, noBorder, styles: mapLook);
+    trailWin = bgl.ui.mainWin.splitRightBuffer(30, proportional, border, styles: trailLook);
+    trailWin?.printLine($"{italics}Trail{roman}");
+}
+
+bool Initialise() {
+    bglInit();
+    location = redRoom;
+    openWindows();
+    rfalse;
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+void NewRoom() {
+    if (!location.is(Place)) return;
+    Place here = (Place)location;
+    bool fresh = here.visits == 0;
+    here.visits++;
+    if (fresh) here.firstTurn = turns;
+    entries++;
+    if (history.length == history.size) history.remove(0);
+    history += here;
+    if (fresh) trailWin?.printLine($"{entries}. {here} (new)");
+    else trailWin?.printLine($"{entries}. {here}");
+}
+
+void goNorth() { Go.perform(n_obj); DrawStatusLine(); }
+void goSouth() { Go.perform(s_obj); DrawStatusLine(); }
+void goEast()  { Go.perform(e_obj); DrawStatusLine(); }
+void goWest()  { Go.perform(w_obj); DrawStatusLine(); }
+
+void printExitLink(eDir d) {
+    switch (d) {
+        case eDir.north: print($"{link("north", goNorth)}");
+        case eDir.south: print($"{link("south", goSouth)}");
+        case eDir.east:  print($"{link("east", goEast)}");
+        case eDir.west:  print($"{link("west", goWest)}");
+    }
+}
+
+void LookRoutine() {
+    if (!location.is(Place)) return;
+    Place here = (Place)location;
+    int n = here.exitCount();
+    if (n == 0) {
+        printLine("Exits: none.");
+        return;
+    }
+    print("Exits: ");
+    int shown = 0;
+    for (int k = 1; k <= 4; k++) {
+        if (here.toward((eDir)k) == null) continue;
+        if (shown > 0) print(shown == n - 1 ? " and " : ", ");
+        printExitLink((eDir)k);
+        shown++;
+    }
+    printLine(".");
+}
+
+// ---- scope ---------------------------------------------------------------------------------------
+
+bool allPlaces() {
+    if (scope_stage == 2) {
+        for (Place p in placeList) PlaceInScope(p);
+        return true;
+    }
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb RouteTo {
+    grammar = {.route, .to, SCOPE(allPlaces)};
+    meta = true;
+    void handler() {
+        if (!noun.is(Place)) { printLine("That is not a room."); return; }
+        Place target = (Place)noun;
+        Place here = (Place)location;
+        if (target == here) {
+            printLine("You are there.");
+            mapView.showRoute = false;
+            return;
+        }
+        int moves = findRoute(here, target);
+        if (moves < 0) {
+            printLine($"No route to {the(target)}.");
+            mapView.showRoute = false;
+            return;
+        }
+        mapView.showRoute = true;
+        print($"{moves} {moves == 1 ? "move" : "moves"} to {the(target)}:");
+        for (int i = 0; i + 1 < route.length; i++) {
+            print($" {dirName(dirBetween(route[i], route[i + 1]))}");
+        }
+        printLine(".");
+    }
+}
+
+verb Unroute {
+    grammar = {.unroute};
+    meta = true;
+    void handler() {
+        mapView.showRoute = false;
+        printLine("Route cleared.");
+    }
+}
+
+verb MarkRoom {
+    grammar = {.mark};
+    void handler() {
+        Place here = (Place)location;
+        switch (here.mark) {
+            case eMark.none:  here.mark = eMark.star;
+            case eMark.star:  here.mark = eMark.cross;
+            case eMark.cross: here.mark = eMark.ring;
+            default:          here.mark = eMark.none;
+        }
+        printLine($"{cThe(here)} is marked: {markName(here.mark)}.");
+    }
+}
+
+verb ZoomIn {
+    grammar = {.zoom, .in};
+    meta = true;
+    void handler() {
+        int before = mapView.zoom;
+        mapView.zoom++;
+        if (mapView.zoom == before) { printLine("The map is at its largest."); return; }
+        if (mapWin != null) mapWin.height = mapHeight();
+        printLine($"Zoom {mapView.zoom}; map height {mapWin != null ? mapWin.height : 0}.");
+    }
+}
+
+verb ZoomOut {
+    grammar = {.zoom, .out};
+    meta = true;
+    void handler() {
+        int before = mapView.zoom;
+        mapView.zoom--;
+        if (mapView.zoom == before) { printLine("The map is at its smallest."); return; }
+        if (mapWin != null) mapWin.height = mapHeight();
+        printLine($"Zoom {mapView.zoom}; map height {mapWin != null ? mapWin.height : 0}.");
+    }
+}
+
+verb Trail {
+    grammar = {.trail};
+    meta = true;
+    void handler() {
+        if (history.length == 0) { printLine("No trail yet."); return; }
+        print($"{history.length} entries:");
+        for (Place p in history) print($" {p.letter}");
+        printLine(".");
+        int different = history.distinct().count();
+        printLine($"{different} different rooms; any marked: {yn(history.any((Place p) => p.mark != eMark.none))}.");
+    }
+}
+
+verb Rooms {
+    grammar = {.rooms};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{padRight("Room", 11)} vis first exits mark{roman}");
+        array<Place> byVisits = placeList.orderBy((Place a, Place b) => b.visits - a.visits);
+        for (Place p in byVisits) {
+            stringObj name = $"{p}";
+            stringObj first = "-";
+            if (p.firstTurn >= 0) first = $"{p.firstTurn}";
+            stringObj vis = $"{p.visits}";
+            printLine($"{fixed}{padRight(name, 11)} {padRight(vis, 3)} {padRight(first, 5)} {p.exitCount()}     {markName(p.mark)}{roman}");
+        }
+        Place most = byVisits.first();
+        printLine($"Most visited: {the(most)} ({most.visits}).");
+    }
+}
+
+verb Looks {
+    grammar = {.looks};
+    meta = true;
+    void handler() {
+        if (mapWin == null || trailWin == null) { printLine("A panel is missing."); return; }
+        style probe = style{ reverse = true; };
+        eStyleCheck r = mapWin.checkStyle(eGlulxStyleType.alert, probe);
+        printLine($"Map alert check known: {yn(r.known)}; applied: {yn(r.isApplied)}.");
+        int fg = trailWin.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.foreColor);
+        printLine($"Trail color reported: {yn(fg != styleUnset)}.");
+        printLine($"Trail tells normal from emphasized: {yn(trailWin.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.emphasized))}.");
+        printLine($"Links in the main window: {yn(bgl.ui.mainWin.supports.hyperlinks)}.");
+        printLine($"Map {mapWin.height} lines; zoom changes {mapView.resizes}.");
+    }
+}
+
+#includeI6 "grammar"

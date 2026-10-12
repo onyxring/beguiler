@@ -1,0 +1,270 @@
+#grids
+Red room
+Red room. Plain walls.
+Exits: south and east.
+[win 1] Trail
+[win 1] 1. Red room (new)
+[grid 1]
+|[@]-[.]-[.]                                       |
+| |       |                                        |
+|[.] [.]-[.] [.]                                   |
+[grid 2]
+|Red room | seen 1/7 (14.3%) | moves 0             |
+> rooms
+Room        vis first exits mark
+Red room    1   0     2     none
+Green room  0   -     2     none
+Blue room   0   -     2     none
+Pink room   0   -     1     none
+White room  0   -     1     none
+Teal room   0   -     2     none
+Gray room   0   -     0     none
+Most visited: the Red room (1).
+[grid 1]
+|[@]-[.]-[.]                                       |
+| |       |                                        |
+|[.] [.]-[.] [.]                                   |
+[grid 2]
+|Red room | seen 1/7 (14.3%) | moves 0             |
+> zoom out
+The map is at its smallest.
+[grid 1]
+|[@]-[.]-[.]                                       |
+| |       |                                        |
+|[.] [.]-[.] [.]                                   |
+[grid 2]
+|Red room | seen 1/7 (14.3%) | moves 0             |
+> east
+Green room
+Green room. Plain walls.
+Exits: east and west.
+[win 1] 2. Green room (new)
+[grid 1]
+|[R]-[@]-[.]                                       |
+| |       |                                        |
+|[.] [.]-[.] [.]                                   |
+[grid 2]
+|Green room | seen 2/7 (28.6%) | moves 1           |
+> east
+Blue room
+Blue room. Plain walls.
+Exits: south and west.
+[win 1] 3. Blue room (new)
+[grid 1]
+|[R]-[G]-[@]                                       |
+| |       |                                        |
+|[.] [.]-[.] [.]                                   |
+[grid 2]
+|Blue room | seen 3/7 (42.9%) | moves 2            |
+> mark
+The Blue room is marked: star.
+[grid 1]
+|[R]-[G]-[@]                                       |
+| |       |                                        |
+|[.] [.]-[.] [.]                                   |
+[grid 2]
+|Blue room | seen 3/7 (42.9%) | moves 3            |
+> south
+Teal room
+Teal room. Plain walls.
+Exits: north and west.
+[win 1] 4. Teal room (new)
+[grid 1]
+|[R]-[G]-[*]                                       |
+| |       |                                        |
+|[.] [.]-[@] [.]                                   |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> route to red room
+3 moves to the Red room: north west west.
+[grid 1]
+|<R>-<G>-<*>                                       |
+| |       |                                        |
+|[.] [.]-<@> [.]                                   |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> route to gray room
+No route to the Gray room.
+[grid 1]
+|[R]-[G]-[*]                                       |
+| |       |                                        |
+|[.] [.]-[@] [.]                                   |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> route to white room
+1 move to the White room: west.
+[grid 1]
+|[R]-[G]-[*]                                       |
+| |       |                                        |
+|[.] <.>-<@> [.]                                   |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> route to teal room
+You are there.
+[grid 1]
+|[R]-[G]-[*]                                       |
+| |       |                                        |
+|[.] [.]-[@] [.]                                   |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> route to pink room
+4 moves to the Pink room: north west west south.
+[grid 1]
+|<R>-<G>-<*>                                       |
+| |       |                                        |
+|<.> [.]-<@> [.]                                   |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> zoom in
+Zoom 2; map height 4.
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|<.>   [.]---<@>   [.]                             |
+[grid 2]
+|Teal room | seen 4/7 (57.1%) | moves 4            |
+> @link 8
+White room
+White room. Plain walls.
+Exits: east.
+[win 1] 5. White room (new)
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|<.>   [@]---<T>   [.]                             |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 4           |
+> trail
+5 entries: R G B T W.
+5 different rooms; any marked: yes.
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|<.>   [@]---<T>   [.]                             |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 4           |
+> mark
+The White room is marked: star.
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|<.>   [@]---<T>   [.]                             |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 5           |
+> mark
+The White room is marked: cross.
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|<.>   [@]---<T>   [.]                             |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 6           |
+> rooms
+Room        vis first exits mark
+Red room    1   0     2     none
+Green room  1   0     2     none
+Blue room   1   1     2     star
+White room  1   4     1     cross
+Teal room   1   3     2     none
+Pink room   0   -     1     none
+Gray room   0   -     0     none
+Most visited: the Red room (1).
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|<.>   [@]---<T>   [.]                             |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 6           |
+> zoom in
+Zoom 3; map height 5.
+[grid 1]
+|<R>-----<G>-----<*>                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|<.>     [@]-----<T>     [.]                       |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 6           |
+> zoom in
+The map is at its largest.
+[grid 1]
+|<R>-----<G>-----<*>                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|<.>     [@]-----<T>     [.]                       |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 6           |
+> looks
+Map alert check known: no; applied: no.
+Trail color reported: no.
+Trail tells normal from emphasized: no.
+Links in the main window: yes.
+Map 5 lines; zoom changes 2.
+[grid 1]
+|<R>-----<G>-----<*>                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|<.>     [@]-----<T>     [.]                       |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 6           |
+> unroute
+Route cleared.
+[grid 1]
+|[R]-----[G]-----[*]                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|[.]     [@]-----[T]     [.]                       |
+[grid 2]
+|White room | seen 5/7 (71.4%) | moves 6           |
+> @link 9
+Teal room
+Teal room. Plain walls.
+Exits: north and west.
+[win 1] 6. Teal room
+[grid 1]
+|[R]-----[G]-----[*]                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|[.]     [x]-----[@]     [.]                       |
+[grid 2]
+|Teal room | seen 5/7 (71.4%) | moves 6            |
+> trail
+6 entries: R G B T W T.
+5 different rooms; any marked: yes.
+[grid 1]
+|[R]-----[G]-----[*]                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|[.]     [x]-----[@]     [.]                       |
+[grid 2]
+|Teal room | seen 5/7 (71.4%) | moves 6            |
+> route to red
+3 moves to the Red room: north west west.
+[grid 1]
+|<R>-----<G>-----<*>                               |
+| |               |                                |
+| |               |                                |
+| |               |                                |
+|[.]     [x]-----<@>     [.]                       |
+[grid 2]
+|Teal room | seen 5/7 (71.4%) | moves 6            |
+> zoom out
+Zoom 2; map height 4.
+[grid 1]
+|<R>---<G>---<*>                                   |
+| |           |                                    |
+| |           |                                    |
+|[.]   [x]---<@>   [.]                             |
+[grid 2]
+|Teal room | seen 5/7 (71.4%) | moves 6            |

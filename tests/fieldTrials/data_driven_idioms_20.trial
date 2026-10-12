@@ -1,0 +1,119 @@
+Room A
+Room A.
+You can see a panel here.
+> table
+         arm      start    stop     reset
+idle     armed    -        -        idle
+armed    -        running  idle     idle
+running  -        -        halted   -
+halted   -        -        -        idle
+> lamps
+idle: green
+armed: amber
+running: green blue
+halted: red
+Ever lit: green amber red blue.
+> state
+State idle after 0 steps; lamps green.
+2 events accepted: arm reset.
+> send start
+idle refuses start.
+> send arm
+Panel armed.
+idle -> armed.
+> send fly
+No such event.
+> state
+State armed after 1 steps; lamps amber.
+3 events accepted: start stop reset.
+> describe running
+running: 1 ways in, lamps green blue.
+> describe halted
+halted: 1 ways in, lamps red.
+> describe sideways
+No such state.
+> check 10
+10: fives=true low=false even=true high=true (3 of 4).
+> check 2
+2: fives=false low=true even=true high=false (2 of 4).
+> job 2 3
+Job 1 queued (priority 2, cost 3); light.
+> job 5 4
+Job 2 queued (priority 5, cost 4); light.
+> job 1 6
+Job 3 queued (priority 1, cost 6); busy.
+> jobs
+#2  p5 c4
+#1  p2 c3
+#3  p1 c6
+3 jobs, cost 13, 1 over 4.
+> work
+Not running (armed).
+> send start
+Panel running.
+armed -> running.
+> work
+Ran job 2 (cost 4); 2 left, 4 spent.
+> work
+Ran job 1 (cost 3); 1 left, 7 spent.
+> job 3 2
+Job 4 queued (priority 3, cost 2); light.
+> job 4 1
+Job 5 queued (priority 4, cost 1); busy.
+> job 9 9
+Job 6 queued (priority 9, cost 9); busy.
+> job 1 1
+Job 7 queued (priority 1, cost 1); busy.
+> job 2 2
+Queue full.
+> jobs
+#6  p9 c9
+#5  p4 c1
+#4  p3 c2
+#3  p1 c6
+#7  p1 c1
+5 jobs, cost 19, 2 over 4.
+> work
+Ran job 6 (cost 9); 4 left, 16 spent.
+Panel halted.
+> state
+State halted after 3 steps; lamps red.
+1 events accepted: reset.
+> send reset
+Panel clear.
+halted -> idle.
+> send arm
+Panel armed.
+idle -> armed.
+> send stop
+Panel clear.
+armed -> idle.
+> history
+Visited: armed running halted idle armed idle.
+6 kept, 4 kinds, 2 idle, halted: true.
+Entered: idle 2 armed 2 running 1 halted 1.
+> lamps
+idle: green
+armed: amber
+running: green blue
+halted: red
+Ever lit: green amber red blue.
+> urgent 3
+2 of 4 at priority 3 or more; cheap one: true.
+> urgent 1
+4 of 4 at priority 1 or more; cheap one: true.
+> urgent 9
+0 of 4 at priority 9 or more; cheap one: false.
+> script arm start fly stop
+Panel armed.
+Panel running.
+Panel halted.
+idle > armed > running > halted (1 refused).
+> script reset arm start
+Panel clear.
+Panel armed.
+Panel running.
+halted > idle > armed > running (0 refused).
+> state
+State running after 12 steps; lamps green blue.
+1 events accepted: stop.

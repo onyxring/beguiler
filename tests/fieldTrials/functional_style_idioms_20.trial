@@ -1,0 +1,86 @@
+Room A
+Room A.
+
+> jobs
+A:fix c3 p2 B:build c5 p1 C:check c2 p3 D:build c4 p2 E:fix c1 p1
+order: E B A D C
+total cost 15 prio sum 9
+
+> run 5
+5 -> E 4 -> B 8 -> A 11 -> D 21 -> C 11
+quiet 11
+backward 35
+
+> run 20
+20 -> E 19 -> B 38 -> A 41 -> D 51 -> C 41
+quiet 41
+backward 45
+
+> plan 10
+plan: E B A cost 9 left 1
+first over budget: none
+pick E
+
+> plan 0
+plan: (none) cost 0 left 0
+first over budget: A
+pick A
+
+> plan 20
+plan: E B A D C cost 15 left 5
+first over budget: none
+pick E
+
+> kinds
+fix: A E (cost 4)
+build: B D (cost 9)
+check: C (cost 2)
+weighted 28
+cost 1..5 width 4; prio 1..3 width 2
+cheap: A C E
+
+> fib 10
+fib 10 = 55; fact 2 = 2
+
+> fib 23
+fib 23 = 28657; fact 7 = 5040
+
+> fib 30
+Out of range.
+
+> collatz 6
+collatz 6: 8 steps, peak 16
+
+> collatz 27
+collatz 27: 111 steps, peak 9232
+
+> primes 30
+primes to 30: 2 3 5 7 11 13 17 19 23 29
+count 10 sum 129 largest 29
+
+> primes 64
+primes to 64: 2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61
+count 18 sum 501 largest 61
+
+> rle
+1 1 2 2 2 3 1 1 1 1 => 1x2 2x3 3x1 1x4
+
+> script 3
+start:3 mid:7 end:49 => 49
+
+> script 0
+start:0 mid:1 end:1 => 1
+
+> pick 3
+cheap: A C E
+urgent: B E
+both: E
+either: A B C E
+tags-E-A-C (10)
+
+> pick 0
+cheap: (none)
+urgent: B E
+both: (none)
+either: B E
+tags (4)

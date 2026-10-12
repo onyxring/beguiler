@@ -1,0 +1,55 @@
+Room A
+Room A.
+You can see a brass key and a tin box here.
+> join
+joined 3: gate A tally A echo A.
+> report
+listeners 3, busy 0, one deaf; lead gate A
+gate A r1 h0
+tally A r5 h0
+echo A r9 h0
+counts 0 0 0 0; heard 0; echo
+posted 0 dropped 0
+> arrive key
+A1:2.
+> depart box
+L2:2.
+> alarm
+!3:2.
+> alarm
+!4:2.
+> alarm
+[gate A refused bell] !5:0.
+> tick 2
+ticks 2 of 2; T6:1 T7:1; turn 2.
+> report
+listeners 3, busy 3; lead gate A
+gate A r1 h2
+tally A r5 h6
+echo A r9 h2
+counts 1 1 2 2; heard 10; echo <brass key><tin box>
+posted 7 dropped 7
+> hold
+bus held, flips 1, backlog 0.
+> arrive key
+.
+> alarm
+.
+> depart key
+.
+> tick 3
+ticks 2 of 3; ; turn 3.
+> hold
+bus held, flips 2, backlog 5.
+> flush
+flushed 6 (key 2): [gate A refused bell] !2:0 A1:2 L3:2 T4:1 T5:1.
+> unjoin
+dropped true false; left 2.
+> stamps
+2.5 2.7 2.5: a<b b>c a=c a!=b 2.
+> report
+listeners 2, busy 2; lead tally A
+tally A r5 h10
+echo A r9 h4
+counts 2 2 4 2; heard 14; echo <brass key><tin box><brass key><brass key>
+posted 12 dropped 12
