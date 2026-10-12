@@ -94,6 +94,12 @@ array<Room> visited[20];
 Subscripts are zero-based. `size` is the number of elements allocated for the array, whether or
 not those slots hold meaningful values. It is read-only.
 
+Every subscript of an `array<T>` is checked against its `size`, for reads and writes alike. A
+constant index outside `0` to `size - 1` of an array whose size is declared is a compile-time error;
+any other out-of-range index prints a run-time message, and the read (which yields `0`) or the write
+is skipped. A subscript never consults or changes the length. `rawArray<T>` subscripts are not
+checked (§12.8).
+
 An array also carries an explicit *length*, the count of in-use entries. Length is set at allocation
 (N for an initializer list, 0 for a sized array) and changes only through explicit operations:
 assigning `length`, `clear()`, and the mutators of `<array>` (§22.4). A slot write (`arr[i] = v`) does
@@ -106,8 +112,9 @@ Every traversal in `<array>` (`indexOf()`, `contains()`, `removeValue()`, `sort(
 `clear()` is the one capacity-wide operation. A sized array filled only by slot writes therefore has
 `length == 0` and reads as empty; use `+=`, `insert()` or assign `length` to make the slots live.
 
-On an `array<char>` (§12.4), `size` and `length` both read the buffer's length word, which starts
-at the declared capacity; assigning its `length` needs `<buf>` (§22.4). On a `rawArray<T>` (§12.8) `size`, `length` and `for … in` are
+On an `array<char>` (§12.4), `size` is its capacity, kept in the word just before the buffer, and
+`length` is the buffer's own length word, which starts at the declared capacity (with `<buf>`, a
+sized declaration starts empty); assigning its `length` needs `<buf>` (§22.4). On a `rawArray<T>` (§12.8) `size`, `length` and `for … in` are
 compile-time errors, except that a raw member array reports its property length from both. `isTracked()`
 (§22.4) tells a tracked array from an untracked one.
 

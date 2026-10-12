@@ -833,9 +833,15 @@ extend [ extern ] class ⟨name⟩ { ⟨member⟩ … }
 
 **Description**
 
-`extend class` adds members to an already-declared class. An `extern` class accepts what its
-declaration does (§8.2.2): member declarations, emitters and `static` members; a class declared in
-Beguile accepts any member. `extend class` may not change a type parameter (§8.1.1), a pool size
+`extend class` adds members to an already-declared class. A class declared in Beguile accepts any
+member, and every instance gets each new variable with its initializer, or the type's default (`0`)
+when it has none.
+
+Inform 6 owns an `extern` class's instances, including objects the library declares, so no
+extension can give them new storage. `extend class` on an `extern` class adds only emitters and
+`static` members; a variable declaration there is a compile-time error. `extend extern class`
+accepts what an `extern class` declaration does (§8.2.2): it gives the types of properties Inform 6
+already provides, as well as emitters and `static` members. `extend class` may not change a type parameter (§8.1.1), a pool size
 (§8.2.6) or the class's form (`value`, `primitive`, `superposed`). An `inline` member or
 `inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
 member; a `replace` that names no existing member is a warning, and the member is added.
@@ -859,6 +865,9 @@ extend class Counter {
 }
 extend extern class int {
     emitter string asHex(){ $self.toHexString() }
+}
+extend extern class object {
+    string description;       // the library's property, typed for Beguile
 }
 ```
 
