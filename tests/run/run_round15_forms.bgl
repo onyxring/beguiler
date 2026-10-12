@@ -1,0 +1,166 @@
+/*  run_round15_forms — forms the round-15 field trials found broken (D1048–D1089).  */
+// EXPECT_OUTPUT: 7 7 9 | 3 7 3 2 | 3 12 11 | 1 1 | 3 1 9 0 | 2 2 | 60 60 | 3 9 3 2 | ay dx | 4 Room A. | 12 12 | [EXIT!] [EXIT] | box box set Room A. | 0 zero
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+#include <linq>
+
+// D1071: an array element's implicit conversion is sent to the element, not the index.
+class Num { int n; int operator () { return n; } }
+Num n7 { n = 7; }
+Num n9 { n = 9; }
+array<Num> nums = { n7, n9 };
+array<array<Num>> numRows = { {n7, n9} };
+
+// D1070: a class's routine operator [] / []= on an array element.
+array<int> cells = {1, 2, 3, 4};
+class Bin { ref array<int> data; int operator [] (int i) { return data[i]; } void operator []= (int i, int v) { self.data[i] = v; } }
+Bin c1 { }
+array<Bin> flat = { c1 };
+array<array<Bin>> shelf = { {c1} };
+
+// D1085: an inline object written through a type alias path.
+value class pairV { inline int a; inline int b; pairV operator = (pairV o) { a = o.a; b = o.b; return self; } }
+object ns { alias pair for pairV; }
+ns.pair home = ns.pair{1, 2};
+#using ns
+pair q = pair{5, 6};
+
+// D1079: $target in an emitter class's parameter copy-in.
+int live = 0;
+emitter class Span {
+    emitter void init() { $self = 0; live++; }
+    emitter void deinit() { live--; }
+    emitter Span operator = (Span v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+int widen(Span s) { return s + 1; }
+
+// D1080: array operations on a static member array.
+array<int> src = {4, 5, 6};
+class Store { static array<int> kept[8] = {1, 2}; }
+
+// D1077: a receiver of operator [] captured by a lambda.
+class Rack : object {
+    int base = 5;
+    int operator [] (int i) { return base + i; }
+    int overSelf() { return cells.filter((int x) => x > self[0] - 3).count(); }
+}
+Rack rackA { }
+int overFirst(Rack r) { return cells.filter((int x) => x > r[0] - 3).count(); }
+
+// D1078: a recursive call inside a capturing lambda keeps this activation's captures.
+int apply(func<int> f) { return f(); }
+int ladder(int n) {
+    if (n <= 0) return 0;
+    int mine = n * 10;
+    return apply(=> { int rest = ladder(n - 1); return rest + mine; });
+}
+int ladderAfter(int n) {
+    if (n <= 0) return 0;
+    int mine = n * 10;
+    int rest = apply(=> ladderAfter(n - 1) + 0 * mine);
+    return rest + mine;
+}
+
+// D1048, D1089: an array-of-arrays member written in place; each instance owns its rows.
+object holder { array<array<int>> rows = { {1, 2}, {3} }; }
+class Grid { array<array<int>> rows = { {1, 2}, {3} }; }
+Grid ga { }
+Grid gb { }
+
+// D1069, D1068: string slots own their text, in a list initializer and a nested store.
+array<stringObj> words = { "a", "c" };
+array<array<stringObj>> wordRows = { {"a", "b"}, {"c"} };
+
+// D1050, D1051, D1053, D1054, D1049: accessors read through their getters.
+object roomA { "Room A"; }
+object box { "box"; parent = roomA; }
+object plate {
+    auto Caption = {
+        stringObj _s;
+        stringObj operator ()      { return _s; }
+        void operator = (string v) { _s = v; _s = _s.toUpper(); }
+    }
+}
+object keeper {
+    object Fallback = roomA;
+    auto Target = {
+        object _o;
+        object operator ()           { return _o; }
+        void   operator = (object v) { _o = v; }
+    }
+    void Show() {
+        print(Target ?? Fallback); print(" ");
+        print(self.Target ?? Fallback); print(" ");
+        if (Target?) print("set"); else print("unset");
+        print(" "); print(Target?.parent); print(".");
+    }
+}
+object meter {
+    auto Reading = {
+        int _raw;
+        int  operator ()        { return _raw * outer.Base; }
+        void operator = (int v) { _raw = v; }
+    }
+    int Base = 3;
+    int Twice() { return Reading + Reading; }
+}
+object heater {
+    auto Level = {
+        int _v;
+        int  operator ()        { return _v; }
+        void operator = (int v) { _v = v; }
+    }
+    void Show() {
+        print(Level); print(" ");
+        switch (Level) { case 0: print("zero"); default: print("other"); }
+    }
+}
+
+void main() {
+    bglInit();
+    int a = nums[0];
+    int t = numRows[0][1];
+    Num x = numRows[0][0];
+    int c = x;
+    print($"{a} {c} {t} | ");
+    c1.data := cells;
+    print(flat[0][2]); print(" ");
+    flat[0][1] = 7;
+    print(cells[1]); print(" ");
+    print(shelf[0][0][2]); print(" ");
+    shelf[0][0][1] = 2;
+    print(cells[1]); print(" | ");
+    ns.pair p = ns.pair{3, 4};
+    print($"{home.a + home.b} {p.a * p.b} {q.a + q.b} | ");
+    Span sa;
+    print($"{widen(sa)} {live} | ");
+    Store.kept = src;
+    print($"{Store.kept.length} ");
+    Store.kept.clear(); Store.kept += 9; Store.kept += 8; Store.kept.popEnd();
+    print($"{Store.kept.length} {Store.kept[0]} ");
+    Store.kept.length = 0;
+    print($"{Store.kept.length} | ");
+    print($"{overFirst(rackA)} {rackA.overSelf()} | ");
+    print($"{ladder(3)} {ladderAfter(3)} | ");
+    ga.rows[1][0] = 9;
+    print($"{holder.rows[1][0]} {ga.rows[1][0]} {gb.rows[1][0]} {gb.rows[0].length} | ");
+    words[0] += "y";
+    wordRows[1][0] = "d";
+    wordRows[1][0] += "x";
+    print($"{words[0]} {wordRows[1][0]} | ");
+    plate.Caption = "exit";
+    print($"{plate.Caption.length} ");
+    keeper.Target = box;
+    print(keeper.Target.parent); print(". | ");
+    meter.Reading = 2;
+    print($"{meter.Reading + meter.Reading} {meter.Twice()} | ");
+    stringObj copy = plate.Caption;
+    copy += "!";
+    print($"[{copy}] [{plate.Caption}] | ");
+    keeper.Show(); print(" | ");
+    heater.Level = 0;
+    heater.Show();
+    print("^");
+}

@@ -1,0 +1,5 @@
+// Negative test: a routine that returns on some paths only is told so.
+// EXPECT_ERROR: Not every path through
+#beguilerSettings { target = z5; informName = "none"; }
+int c(int n){ if (n > 0) return 1; }
+void main(){ print(c(1)); }

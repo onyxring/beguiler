@@ -9,6 +9,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -33,8 +34,8 @@ _bglClass_Room r2
 ;
 array g_rooms table r1 r2;
 [main v v2;
-     g_rooms-->(0+1) .visit();
+    ( g_rooms-->(0+1) ).visit();
     v=( g_rooms-->(0+1) ).visits;
     v2=( g_rooms-->(0+1) ).getvisits();
-     g_rooms-->(1+1) .visit();
+    ( g_rooms-->(1+1) ).visit();
 ];

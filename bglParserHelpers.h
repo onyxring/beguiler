@@ -32,6 +32,9 @@ std::string mangleOperatorName(const std::string& opName);
 // any execution path. Used for lambda return-type inference: a lambda body
 // without any return is inferred `void`; otherwise the inferred type is `var`.
 bool hasReturn(statementBlock* blk);
+bool sameParamTypes(functionDef* a, functionDef* b);
+std::vector<std::string> funcSignatureArgs(const std::string& t);   // a func<…> type's top-level arguments
+string missingReturnMessage(functionDef& fd);
 
 // True iff every execution path through `blk` is guaranteed to terminate with a
 // `return` statement. Criteria: a top-level return; an if-else where both arms

@@ -1,0 +1,102 @@
+/*  run_round17_forms — forms the round-17 field trials found broken (D1127–D1151).  */
+// EXPECT_OUTPUT: 0 4 | 23 207 | 3 4 | 5 6 | 1 | 5 9 | 7 5 | 5 | a@b 2@2 | second | 6 10 | 3 40
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+// D1127, D1134: a static array of a value class draws a slot's instance; accessor members read it.
+value class Coin {
+    int worth;
+    auto weight = { int _w; int operator () { return _w; } void operator = (int v) { _w = v; } }
+    Coin operator = (Coin o) { worth = o.worth; return self; }
+}
+class Till { static array<Coin> slots[3]; }
+
+// D1128: a class's `operator []` / `[]=` on an element of a member array.
+class Bin : object {
+    int base = 20;
+    int operator [] (int i) { return base + i; }
+    void operator []= (int i, int v) { base = i * 100 + v; }
+}
+Bin binA { }
+object holder { array<Bin> bins = { binA }; }
+
+// D1129, D1130, D1132, D1133: aliases and dotted paths in lambda and array parameter types.
+class Crate : object { int weight = 1; }
+Crate c1 { weight = 1; }
+Crate c2 { weight = 2; }
+object kinds { alias crate for Crate; }
+#using kinds
+array<Crate> crates = { c1, c2 };
+int total(array<crate> list) { int t = 0; for (crate c in list) t += c.weight; return t; }
+int totalDotted(array<kinds.crate> list) { func<int, kinds.crate> w = (kinds.crate c) => c.weight; return w(list[0]) + w(list[1]) + 1; }
+
+// D1135, D1136: an array member inside an inline accessor is tracked.
+object meter {
+    auto log = {
+        array<int> _seen[3];
+        int  operator () { return _seen.length * 2 + _seen.size; }
+        void operator = (int v) { _seen.append(v); }
+    }
+}
+
+// D1137, D1141: an object's own `[]=`, and `outer[i]` on its host.
+object crateRow {
+    array<int> slots[4];
+    int  operator [] (int i) { return slots[i]; }
+    void operator []= (int i, int v) { if (slots.length <= i) slots.length = i + 1; slots[i] = v; }
+    auto first = { int operator () { return outer[0]; } void operator = (int v) { outer[0] = v; } }
+}
+
+// D1142: postfix `?` on a member reached through `outer`.
+class Rack : object { Rack peer; }
+Rack r1 { }
+Rack r2 { peer = r1; }
+object deck {
+    Rack one = r2;
+    auto ready = { int _r; int operator () { return _r; } void operator = (int v) { _r = 0; if (outer.one.peer?) _r = v; } }
+}
+
+// D1143: an object method copies a value-class parameter.
+value class Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
+object scale { int weigh(Pair p) { int r = p.a; p.a = 0; return r; } }
+Pair g;
+
+// D1146: a `ref` local of a value-class array.
+value class Span { int hi; Span operator = (Span o) { hi = o.hi; return self; } }
+array<Span> spans[2];
+
+// D1147, D1148: arrays and accessors imported by #using, named bare.
+object catalog {
+    array<string> notes = { "first", "second" };
+    auto level = { int _l; int operator () { return _l; } void operator = (int v) { _l = v * 2; } }
+}
+#using catalog
+void useCatalog() { print(notes[1]); print(" | "); level = 3; print(level); print(" "); level = 5; print(level); }
+
+// D1150: an overloaded method with an `array<alias>` parameter; D1151: an accessor used above its declaration.
+class Grid : object {
+    int total;
+    void collect(array<crate> from) { for (crate c in from) total += c.weight; }
+    void collect(int x) { total += x; }
+    void Stamp() { Last = 4; }
+    auto Last = { int _n; int operator () { return _n; } void operator = (int v) { _n = v * 10; } }
+}
+Grid gridA { }
+
+void main() {
+    bglInit();
+    print(Till.slots[1].worth); print(" ");
+    Till.slots[0].weight = 4; print(Till.slots[0].weight); print(" | ");
+    print(holder.bins[0][3]); print(" "); holder.bins[0][2] = 7; print(binA.base); print(" | ");
+    print($"{total(crates)} {totalDotted(crates)} | ");
+    meter.log = 5; print(meter.log); print(" "); meter.log = 6; print(meter.log - 1); print(" | ");
+    crateRow.first = 1; print(crateRow[0]); print(" | ");
+    deck.ready = 5; print(deck.ready); print(" "); r2.peer = r1; deck.ready = 9; print(deck.ready); print(" | ");
+    g.a = 7; print(scale.weigh(g)); print(" "); print(g.a - 2); print(" | ");
+    ref array<Span> t := spans;
+    t[0].hi = 5; print(spans[0].hi); print(" | ");
+    print("a@b"); print(" "); int n = 2; print($"{n}@{n}"); print(" | ");
+    useCatalog();
+    gridA.collect(crates); gridA.Stamp(); print($" | {gridA.total} {gridA.Last}");
+    print("^");
+}

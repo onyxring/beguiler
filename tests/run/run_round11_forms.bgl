@@ -1,0 +1,91 @@
+/*  run_round11_forms — forms the round-11 field trials found broken (D899–D936).  */
+// EXPECT_OUTPUT: #5 #5 | shelf | 7 | 0 | 3 3 | 1 2 3 | 2 3 | 5 5 | yes | null | 6 | 13 | 3 | 8 | 15 | 3 wide | true | 5 | 7 | 50 30 | 12
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+primitive class Notch {
+    emitter void operator = (int n) { $target = $n; }
+    emitter int operator () { ($self) }
+    replace emitter void print() { print "#", $val; }
+}
+class Shelf : object { int operator () { return 7; } }
+Shelf shelfA { "shelf"; }
+emitter int plusOne(int v) { $target = $v + 1; }
+bnum flag { lit, open }
+alias class place for object { }
+object anyRoom { }
+enum eGrade { low = 1, mid, high }
+class Thing { inline eGrade grade; inline int n; }
+Thing t1 { eGrade.high, 3; }
+class Trio { inline int a; required inline int b; inline int c; }
+Trio tr { 1, 2, 3; }
+object reg { alias tier for eGrade; }
+#using reg
+array<eGrade> grades = { mid, high };
+class Acct : object { bool real = true; Acct up; emitter eBool operator ? () { ($self ~= nothing && $self.$i6Name(Acct.real)) } }
+Acct a1 { up = null; }
+Acct a2 { up = a1; }
+Acct ghost { real = false; }
+class Coin : object { int cents; static int operator + (Coin a, Coin b) { return a.cents + b.cents; } }
+Coin dime { cents = 10; }
+Coin nickel { cents = 5; }
+class Item : object { int weight; }
+Item key { weight = 3; }
+class Tagged : object { inline int n; inline string label; }
+class Gate : object { bool open = true; eBool operator || (bool b) { return open || b; } eBool operator ! () { return !open; } }
+Gate gateA { }
+class Shelf2 : object { Item operator [] (int i) { return key; } }
+Shelf2 rack { }
+value class Tens { int raw = 0; int operator () { return raw * 10; } void operator = (int v) { raw = v; } }
+class Slip[3] : object, bglAllocated { Tens count; }
+class Scaler : object { int score(int k) { return k * 4; } int via(int x) { return score(x); } }
+Scaler sc { }
+
+int Count() { return 7; }
+int sumWith(Item i, property p) { int t = 10; t += i.p; return t; }
+int apply(Item i, func<int, Item> f) { return f(i); }
+int readVia(Item i, property p) { return apply(i, (Item x) => x.p); }
+string show(Tagged t) { print($"{t.n} {t.label}"); return ""; }
+
+void main() {
+    bglInit();
+    Notch nt = 5;
+    print(nt); print(" "); print(nt);
+    print(" | "); print(shelfA); print(" | ");
+    int r = plusOne(6); plusOne(99); print(r); print(" | ");
+    flag f = 0;
+    switch(f){ case 0: print("0"); default: print("x"); }
+    place here = anyRoom;
+    print(" | "); print($"{(int)t1.grade} {t1.n}");
+    print(" | "); print($"{tr.a} {tr.b} {tr.c}");
+    print(" | "); for(tier g in grades) print($"{(int)g} "); print("|");
+    Acct m = null;
+    print(" "); print((m ?? a2).up == a1 ? 5 : 0); print(" "); print((m ?? a1) == a1 ? 5 : 0);
+    print(" | "); if(a2.up?) print("yes");
+    Acct gone = ghost?.up ?? null;
+    print(" | "); if(gone == null) print("null");
+    print(" | "); print(sc.via(1) + 2);
+    print(" | "); print(sumWith(key, weight));
+    print(" | "); print(readVia(key, weight));
+    print(" | ");
+    try { throw (func<int, int>)((int n) => n * 2); }
+    catch (func<int, int> found) { print(found(4)); }
+    print(" | ");
+    func<int, Coin, Coin> add = Coin::operator +;
+    print(add(dime, nickel));
+    print(" | ");
+    string tag = "wide"; int k = 3;
+    show({ k, tag });
+    print(" | ");
+    eBool e = !gateA;
+    if(gateA || e) print("true");
+    print(" | ");
+    rack[0].weight = 5; print(key.weight);
+    print(" | ");
+    int count = Count(); print(count);
+    print(" | ");
+    Slip s1 = new Slip(); Slip s2 = new Slip();
+    s1.count = 3; s2.copy(s1); s1.count = 5;
+    print($"{s1.count} {s2.count}");
+    print(" | "); print(sc.via(3));
+}

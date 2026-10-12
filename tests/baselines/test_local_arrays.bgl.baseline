@@ -6,6 +6,7 @@ Constant beguiler = 5;
 Constant _BGL_TRACKED_ARRAYS;
    Array _bglFramePool --> 64;
    Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
       if (_bglFrameTop + size > 64) {
          print "^[Beguile runtime error: frame pool exhausted]^";
@@ -84,6 +85,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -190,14 +192,14 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       copy [dobj dprop sobj sprop n cap i;
+       copy [dobj dprop sobj sprop assign n cap i;
     n=self.length(sobj,sprop);
     cap=self.size(dobj,dprop);
     if (n > cap) {
         n=cap;
     }
     for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
     }
     self.setlength(dobj, dprop, n);
   ],

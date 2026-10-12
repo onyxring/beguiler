@@ -1,0 +1,25 @@
+// run_round18_forms_glulx — Glulx forms the round-18 field trials found broken (D1157, D1158, D1161).
+// EXPECT_OUTPUT: 0.5000 | 2 -3 | not below below in out
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+#include <linq>
+
+// D1157: a cast before a two-call chain applies to the chain's result.
+array<int> xs = {1, 2, 3};
+
+// D1158: try and catch bodies that end in `return`.
+int half(int v) { if (v % 2 == 1) throw v; return v / 2; }
+int safeHalf(int v) { try { return half(v); } catch (int e) { return -e; } }
+
+// D1161: a float switch's guard and range cases compare as floats.
+string below(float f) { switch (f) { case < -1.0: return "below"; default: return "not below"; } }
+string within(float f) { switch (f) { case -2.0 to -1.0: return "in"; default: return "out"; } }
+
+void main() {
+    bglInit(); glulxConsole();
+    float a = (float)xs.filter((int p) => p > 1).count() / 4;
+    print(a); print(" | ");
+    print($"{safeHalf(4)} {safeHalf(3)} | ");
+    print($"{below(-0.5)} {below(-1.5)} {within(-1.5)} {within(-0.5)}^");
+}

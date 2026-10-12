@@ -1,0 +1,6 @@
+// Negative test: a stringObj isn't a string; the error says so and how to take one.
+// EXPECT_ERROR: is a stringObj, which isn't a string
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+int byName(string s){ return 1; }
+void main(){ stringObj t = "a"; print(byName(t)); }

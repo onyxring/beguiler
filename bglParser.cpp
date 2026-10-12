@@ -277,6 +277,7 @@ void bglParser::reset(){
     currentFunc = nullptr;
     // Reset definedSymbols to only the built-in version symbols
     definedSymbols.clear();
+    i6DefinedSymbols.clear();
     definedSymbols["beguiler"] = to_string(BEGUILER_VERSION);
     definedSymbols["beguilermajor"]   = to_string(BEGUILER_VERSION / 1000);
     definedSymbols["beguilerminor"]   = to_string((BEGUILER_VERSION % 1000) / 10);
@@ -414,12 +415,17 @@ static string mangleObjectMethodName(functionDef* fd){
 // or the class emits the same I6 property twice ("Property given twice in the same
 // declaration") and will not assemble.
 static void mangleOverloadSet(vector<typeMember*>& members, const string& methodName){
+    // Pre-scan stubs count: a call parsed before the class itself names the overload by its stub,
+    // which mangles exactly as the definition replacing it will. A stub and its definition are one
+    // signature, so a set is two distinct signatures.
     vector<functionDef*> group;
     for(typeMember* m : members)
         if(auto* fd = dynamic_cast<functionDef*>(m))
-            if(fd->name == methodName && !fd->isEmitter && !fd->isPrePassStub)
+            if(fd->name == methodName && !fd->isEmitter)
                 group.push_back(fd);
-    if(group.size() < 2) return;
+    set<string> signatures;
+    for(functionDef* fd : group) signatures.insert(mangleObjectMethodName(fd));
+    if(signatures.size() < 2) return;
     for(functionDef* fd : group){
         // Conversion operators take no parameters; they are told apart by result type, which their
         // declaration already put in the name (`_opconv_int`).
@@ -533,6 +539,7 @@ void bglParser::validateRoutinePropertyClashes(){
             src = od->src; kind = "object";
         } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
             if(vd->isExternal || vd->isConst || vd->isNamespaceAlias() || vd->isPrePassStub) continue;
+            if(vd->type.name == "property") continue;   // declares the very property the methods give
             src = vd->src; kind = "global";
         } else continue;
         string name = g->i6name.empty() ? g->dName() : g->i6name;
@@ -573,16 +580,69 @@ void bglParser::validateGlobalNameClashes(){
             "in one namespace, ignoring case, so rename one of them or give one an `asI6` name.",
             src.file, src.line, kind, g->dName(), it->second.kind, it->second.def->dName(), at(it->second.src)));
     }
+    // A name the library binding declares (a global, an attribute, an object) is taken in Inform 6 too.
+    // A library routine is left out: a program defines the library's entry points under their names.
+    map<string, typeDef*> library;
+    for(typeDef* g : languageService.globals){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal && vd->type.name != "property")
+            library.emplace(lower(vd->i6name.empty() ? vd->dName() : vd->i6name), g);
+        else if(auto* od = dynamic_cast<objectDef*>(g); od && od->isExternal && !dynamic_cast<verbObjectDef*>(od))
+            library.emplace(lower(od->i6name.empty() ? od->dName() : od->i6name), g);
+    }
+    // A library routine is taken too, by anything but a routine of the program's own.
+    map<string, functionDef*> libraryRoutines;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->isExternal && !fd->isEmitter
+           && fd->src.file.find("bindings") != string::npos)
+            libraryRoutines.emplace(lower(fd->i6name.empty() ? fd->dName() : fd->i6name), fd);
+    for(auto& [name, sym] : seen){
+        if(sym.kind == "function" || sym.src.file.find("beguiLib") != string::npos) continue;
+        if(auto r = libraryRoutines.find(name); r != libraryRoutines.end())
+            parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library routine '{4}'; Inform 6 keeps "
+                "these in one namespace, ignoring case, so rename the {2} or give it an `asI6` name.",
+                sym.src.file, sym.src.line, sym.kind, sym.def->dName(), r->second->dName()));
+    }
+    for(auto& [name, sym] : seen){
+        auto lib = library.find(name);
+        if(lib == library.end() || sym.src.file.find("beguiLib") != string::npos) continue;
+        auto* lv = dynamic_cast<variableDeclaration*>(lib->second);
+        string what = lv != nullptr && lv->type.name == "attribute" ? "attribute" : lv != nullptr ? "global" : "object";
+        parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library's {4} '{5}'; Inform 6 keeps these "
+            "in one namespace, ignoring case, so rename the {2} or give it an `asI6` name.",
+            sym.src.file, sym.src.line, sym.kind, sym.def->dName(), what, lib->second->dName()));
+    }
 }
 
 // A program's verb is a global name (§3.1): no other global may share it, ignoring case, and it may
 // not redeclare a verb the binding already declares — that one is extended, not declared again. Its
 // I6 names are prefixed, so the I6-level check above never sees these clashes.
-void bglParser::validateVerbNameClashes(){
+// `early`: run on the pre-scan's stubs, before a clash can derail the parse (an `extend` or a use of
+// the name then resolves to the wrong one and fails with an unrelated error).
+void bglParser::validateVerbNameClashes(bool early){
     auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
     auto at = [](const sourceLocation& src){ return src.file.empty() ? string("an included file") : format("{0}:{1}", src.file, src.line); };
     for(verbObjectDef* v : languageService.verbs){
-        if(v->isExternal || v->src.file.empty()) continue;
+        // A library verb is a global name too: the program's own globals mustn't take it.
+        if(v->isExternal){
+            string name = lower(v->dName());
+            for(typeDef* g : languageService.globals){
+                if(g == v || lower(g->dName()) != name) continue;
+                sourceLocation gsrc; string kind;
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+                    if(vd->isExternal || vd->isNamespaceAlias() || vd->isInstanceBacking || vd->isSynthetic) continue;
+                    kind = dynamic_cast<arrayDeclaration*>(vd) || vd->type.name.rfind("array", 0) == 0 ? "array" : "variable";
+                    gsrc = vd->src;
+                } else if(auto* od = dynamic_cast<objectDef*>(g)){
+                    if(od->isExternal || dynamic_cast<verbObjectDef*>(od)) continue;
+                    kind = "object"; gsrc = od->src;
+                } else continue;   // a function is called, never named bare, so it can't be taken for the verb
+                if(gsrc.file.empty() || gsrc.file.find("beguiLib") != string::npos) continue;
+                parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library verb '{4}'; a verb is a "
+                    "global name, so rename the {2}.", gsrc.file, gsrc.line, kind, g->dName(), v->dName()));
+            }
+            continue;
+        }
+        if(v->src.file.empty()) continue;
         string name = lower(v->dName());
         for(verbObjectDef* o : languageService.verbs)
             if(o != v && o->isExternal && lower(o->dName()) == name)
@@ -597,13 +657,15 @@ void bglParser::validateVerbNameClashes(){
             if(g == v || lower(g->dName()) != name) continue;
             string kind; sourceLocation gsrc;
             if(auto* fd = dynamic_cast<functionDef*>(g)){
-                if(fd->isEmitter || fd->isPrePassStub || fd->isReplacedDead) continue;
+                if(fd->isEmitter || (fd->isPrePassStub && !early) || fd->isReplacedDead) continue;
                 kind = "function"; gsrc = fd->src;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
-                if(vd->isNamespaceAlias() || vd->isPrePassStub || vd->isInstanceBacking || vd->isSynthetic) continue;
-                kind = dynamic_cast<arrayDeclaration*>(vd) ? "array" : "variable"; gsrc = vd->src;
+                if(vd->isNamespaceAlias() || (vd->isPrePassStub && !early) || vd->isInstanceBacking || vd->isSynthetic) continue;
+                kind = dynamic_cast<arrayDeclaration*>(vd) || vd->type.name.rfind("array", 0) == 0 || vd->type.name.rfind("rawarray", 0) == 0
+                     ? "array" : vd->type.name == "property" ? "property" : "variable";
+                gsrc = vd->src;
             } else if(auto* od = dynamic_cast<objectDef*>(g)){
-                if(dynamic_cast<verbObjectDef*>(od) || od->isPrePassStub) continue;
+                if(dynamic_cast<verbObjectDef*>(od) || (od->isPrePassStub && !early)) continue;
                 kind = "object"; gsrc = od->src;
             } else continue;
             parsingError(format("{0}:{1}:1: verb '{2}' has the same name as {3} '{4}' ({5}); a verb is a "
@@ -791,8 +853,23 @@ void bglParser::checkTypedPropertyMemberTypes(){
             // variableDeclaration whose type is inherited from a base member — which is itself
             // checked here. Its own type is empty at this point, so it is not a scalar to reject.
             if(ad == nullptr && vd->type.name.empty()) continue;
-            // A string is one word that the library prints (`each_turn "Water drips.";`).
-            if(ad == nullptr && (vd->type.name == "string" || vd->type.name == "stringorroutine")) continue;
+            // A string is one word that the library prints (`each_turn "Water drips.";`) — unless the
+            // property is declared as an array of words (`name`), which a string can't join.
+            auto declaredAsArray = [&](const string& prop){
+                for(typeDef* g : languageService.objectTypes)
+                    if(auto* cd = dynamic_cast<classDef*>(g))
+                        for(typeMember* cm : cd->members)
+                            if(auto* cad = dynamic_cast<arrayDeclaration*>(cm); cad && cad != ad && propOf(cad) == prop) return true;
+                return false;
+            };
+            bool isText = vd->type.name == "string" || vd->type.name == "stringorroutine";
+            if(ad == nullptr && isText && !declaredAsArray(propName)) continue;
+            if(ad == nullptr && isText){
+                string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
+                parsingError(where + format("'{0}.{1}' is declared '{2}', but '{3}' is the ADDITIVE property that "
+                    "holds an object's words, so it takes a `rawArray<T>`. Give the member another name.",
+                    ownerLabel, vd->dName(), typeDisplayName(vd->type.name), propName));
+            }
             string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
             if(ad != nullptr)
                 parsingError(where + format("'{0}.{1}' is declared 'array<{2}>', but '{3}' is an ADDITIVE "
@@ -801,8 +878,9 @@ void bglParser::checkTypedPropertyMemberTypes(){
                     ownerLabel, vd->dName(), typeDisplayName(ad->elementType), propName));
             else
                 parsingError(where + format("'{0}.{1}' is declared '{2}', but '{3}' is an ADDITIVE "
-                    "property: its contributions accumulate into one shared run of words, so each must be "
-                    "a `rawArray<T>`, a routine or a string. A scalar cannot bind to it.",
+                    "property: it holds a list of every class's and object's contributions, so the member is "
+                    "a `rawArray<T>`, a routine or a string. A single value is a one-element list "
+                    "(`rawArray<int> {1} = 3;`).",
                     ownerLabel, vd->dName(), typeDisplayName(vd->type.name), propName));
         }
     };
@@ -871,6 +949,75 @@ void bglParser::recordObjectMemberInits(){
         size_t b = v.find_last_not_of(" \t\n\r");
         return v.substr(a, b - a + 1);
     };
+    objectDef* curObj = nullptr;
+    // A class-typed member may itself hold class-typed members needing init — an object
+    // whose field is a class with a stringObj in it. Walk down as the backing synthesis
+    // does, tracking the path, and guarding against a type that contains its own type.
+    // Descends as far as backing synthesis does. `onPath` stops a type that contains its
+    // own type from recursing forever — the same guard synthesizeFieldBackings uses, and
+    // the reason both stop at the same place, so an init is never emitted for a path whose
+    // intermediate instance was not created.
+    std::function<void(vector<variableDeclaration*>&, const string&, set<classDef*>&)> sweepMembers =
+    [&](vector<variableDeclaration*>& members, const string& basePath, set<classDef*>& onPath){
+    for(variableDeclaration* vd : members){
+        if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
+        if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
+        auto* cls = languageService.findClass(vd->type.name);
+        if(cls == nullptr) continue;
+        string path = basePath + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
+        functionDef* initFn = nullptr;
+        if(typeMember* im = findMemberInHierarchy(cls, [&](typeMember* mm){
+                auto* f = dynamic_cast<functionDef*>(mm);
+                return f && f->name == "init" && f->isEmitter && f->params.empty()
+                       && dynamic_cast<i6Block*>(f->body) != nullptr;
+           })) initFn = dynamic_cast<functionDef*>(im);
+        // No init of its own — but an instance it owns may CONTAIN something that needs one. A
+        // reference member refers to an instance owned elsewhere and is empty here.
+        if(initFn == nullptr){
+            if(isValueClass(cls) && onPath.insert(cls).second){
+                vector<variableDeclaration*> nested;
+                set<string> nseen;
+                cls->forEachMember([&](typeMember* nm){
+                    if(auto* nvd = dynamic_cast<variableDeclaration*>(nm))
+                        if(nseen.insert(nvd->name).second) nested.push_back(nvd);
+                });
+                sweepMembers(nested, path, onPath);
+                onPath.erase(cls);
+            }
+            continue;
+        }
+
+        emitterBindings ib; ib.self = path; ib.val = path;
+        string body = initFn == nullptr ? string()
+                    : trim(expandEmitterBody(dynamic_cast<i6Block*>(initFn->body), ib));
+        languageService.globalInits.push_back({path, body});
+
+        // The declared value goes through the type's operator= after init, for the same
+        // reason it does at file scope: the slot holds what init put there.
+        if(vd->declaredExpressionValue != nullptr){
+            string rhsText = vd->declaredExpressionValue->text();
+            string rhsType = vd->declaredExpressionValue->resolvedType;
+            // The class's own emitter operator (an inherited pass-through store changes nothing
+            // the static property doesn't already hold).
+            functionDef* opFn = findAssignOperator(cls, rhsType, [](functionDef* f){
+                return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
+            if(opFn != nullptr){
+                emitterBindings ob; ob.self = path; ob.val = path;
+                ob.fn = opFn; ob.args.push_back(rhsText);
+                string ab = trim(expandEmitterBody(dynamic_cast<i6Block*>(opFn->body), ob));
+                languageService.globalInits.push_back({path, ab});
+                // Only clear the value when it is declared ON THIS OBJECT. An inherited
+                // member's value belongs to the class and is shared by every instance —
+                // clearing it would strip the default from all of them. Leaving it emits
+                // a literal default in the Class directive that bglInit then overwrites
+                // per instance, which is harmless.
+                bool ownMember = false;
+                if(curObj != nullptr) for(typeMember* om : curObj->members) if(om == vd){ ownMember = true; break; }
+                if(ownMember) vd->declaredExpressionValue = nullptr;
+            }
+        }
+    }
+    };
     for(typeDef* g : languageService.globals){
         auto* obj = dynamic_cast<objectDef*>(g);
         if(obj == nullptr || obj->isExternal) continue;
@@ -892,76 +1039,32 @@ void bglParser::recordObjectMemberInits(){
                     if(seen.insert(vd->name).second) candidates.push_back(vd);
             });
 
-        // A class-typed member may itself hold class-typed members needing init — an object
-        // whose field is a class with a stringObj in it. Walk down as the backing synthesis
-        // does, tracking the path, and guarding against a type that contains its own type.
-        // Descends as far as backing synthesis does. `onPath` stops a type that contains its
-        // own type from recursing forever — the same guard synthesizeFieldBackings uses, and
-        // the reason both stop at the same place, so an init is never emitted for a path whose
-        // intermediate instance was not created.
-        std::function<void(vector<variableDeclaration*>&, const string&, set<classDef*>&)> sweep =
-        [&](vector<variableDeclaration*>& members, const string& basePath, set<classDef*>& onPath){
-        for(variableDeclaration* vd : members){
-            if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
-            if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
-            auto* cls = languageService.findClass(vd->type.name);
-            if(cls == nullptr) continue;
-            string path = basePath + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
-            functionDef* initFn = nullptr;
-            if(typeMember* im = findMemberInHierarchy(cls, [&](typeMember* mm){
-                    auto* f = dynamic_cast<functionDef*>(mm);
-                    return f && f->name == "init" && f->isEmitter && f->params.empty()
-                           && dynamic_cast<i6Block*>(f->body) != nullptr;
-               })) initFn = dynamic_cast<functionDef*>(im);
-            // No init of its own — but it may CONTAIN something that needs one.
-            if(initFn == nullptr){
-                if(onPath.insert(cls).second){
-                    vector<variableDeclaration*> nested;
-                    set<string> nseen;
-                    cls->forEachMember([&](typeMember* nm){
-                        if(auto* nvd = dynamic_cast<variableDeclaration*>(nm))
-                            if(nseen.insert(nvd->name).second) nested.push_back(nvd);
-                    });
-                    sweep(nested, path, onPath);
-                    onPath.erase(cls);
-                }
-                continue;
-            }
-
-            emitterBindings ib; ib.self = path; ib.val = path;
-            string body = initFn == nullptr ? string()
-                        : trim(expandEmitterBody(dynamic_cast<i6Block*>(initFn->body), ib));
-            languageService.globalInits.push_back({path, body});
-
-            // The declared value goes through the type's operator= after init, for the same
-            // reason it does at file scope: the slot holds what init put there.
-            if(vd->declaredExpressionValue != nullptr){
-                string rhsText = vd->declaredExpressionValue->text();
-                string rhsType = vd->declaredExpressionValue->resolvedType;
-                // The class's own emitter operator (an inherited pass-through store changes nothing
-                // the static property doesn't already hold).
-                functionDef* opFn = findAssignOperator(cls, rhsType, [](functionDef* f){
-                    return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
-                if(opFn != nullptr){
-                    emitterBindings ob; ob.self = path; ob.val = path;
-                    ob.fn = opFn; ob.args.push_back(rhsText);
-                    string ab = trim(expandEmitterBody(dynamic_cast<i6Block*>(opFn->body), ob));
-                    languageService.globalInits.push_back({path, ab});
-                    // Only clear the value when it is declared ON THIS OBJECT. An inherited
-                    // member's value belongs to the class and is shared by every instance —
-                    // clearing it would strip the default from all of them. Leaving it emits
-                    // a literal default in the Class directive that bglInit then overwrites
-                    // per instance, which is harmless.
-                    bool ownMember = false;
-                    for(typeMember* om : obj->members) if(om == vd){ ownMember = true; break; }
-                    if(ownMember) vd->declaredExpressionValue = nullptr;
-                }
-            }
-        }
-        };
         set<classDef*> onPath;
-        sweep(candidates, obj->dName(), onPath);
+        curObj = obj;
+        sweepMembers(candidates, obj->dName(), onPath);
+        curObj = nullptr;
     }
+    // A value-class variable's instance (a global's, a local's or a parameter's backing): its members
+    // need the same once-only init (a local's per-call reset leaves a stringObj member's buffer alone).
+    set<string> backingsDone;
+    auto sweepBacking = [&](variableDeclaration* vd){
+        if(vd == nullptr || vd->isExternal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) return;
+        classDef* cls = languageService.findClass(vd->type.name);
+        if(cls == nullptr || !isValueClass(cls) || cls->isEmitterClass || cls->isAlias || cls->isExternal) return;
+        // A file-scope variable of a value class owns `_bglGlobal_<name>`, which the emitter makes.
+        string inst = vd->isInstanceBacking ? (vd->i6name.empty() ? vd->dName() : vd->i6name)
+                                            : "_bglGlobal_" + (vd->i6name.empty() ? vd->dName() : vd->i6name);
+        if(!backingsDone.insert(inst).second) return;
+        vector<variableDeclaration*> members;
+        set<string> seen;
+        cls->forEachMember([&](typeMember* m){
+            if(auto* mv = dynamic_cast<variableDeclaration*>(m)) if(seen.insert(mv->name).second) members.push_back(mv);
+        });
+        set<classDef*> onPath{cls};
+        sweepMembers(members, inst, onPath);
+    };
+    for(typeDef* g : languageService.globals) sweepBacking(dynamic_cast<variableDeclaration*>(g));
+    for(typeDef* g : languageService.objectInstances) sweepBacking(dynamic_cast<variableDeclaration*>(g));
 }
 
 // Global functions overload the same way methods do — resolveGlobalCall already picks the
@@ -974,7 +1077,7 @@ void bglParser::mangleGlobalOverloadSet(const string& name){
     vector<functionDef*> group;
     for(typeDef* g : languageService.globals)
         if(auto* fd = dynamic_cast<functionDef*>(g))
-            if(fd->name == name && !fd->isEmitter && !fd->isExternal)
+            if(fd->name == name && !fd->isEmitter && !fd->isExternal && !fd->isReplaceStub)
                 group.push_back(fd);
     // Count distinct SIGNATURES, not declarations: a pre-scan stub and the real definition it
     // stands for are one function seen twice, and they mangle identically. Only a genuine second
@@ -1010,6 +1113,7 @@ void bglParser::assignObjectMethodOverloadMangling(){
         if(auto* od = dynamic_cast<objectDef*>(g))       manglePerType(od->members);
         else if(auto* cd = dynamic_cast<classDef*>(g))   manglePerType(cd->members);
     }
+    syncOverrideNames();
 }
 
 
@@ -1034,6 +1138,52 @@ static functionDef* copyInitEmitter(classDef* cls){
                && fn->params[0]->type.name == cls->name && dynamic_cast<i6Block*>(fn->body))
                 return fn;
     return nullptr;
+}
+
+// An emitter class's value is the variable's own word, which I6 can't pass by address: a `ref`
+// parameter of one is copied back to the argument after the call.
+bool bglParser::refCopiesBack(const paramDef* p){
+    if(p == nullptr || !p->isRef || p->type.name.find('<') != string::npos
+       || isWordArrayType(p->type.name) || p->type.name == "bytearray") return false;
+    classDef* cls = languageService.findClass(p->type.name);
+    if(cls == nullptr || !cls->isEmitterClass || cls->isPrimitive || cls->isAlias) return false;
+    return findMemberInHierarchy(cls, [](typeMember* m){
+        auto* fd = dynamic_cast<functionDef*>(m);
+        return fd && fd->isEmitter && (fd->name == "init" || fd->name == "deinit"); }) != nullptr;
+}
+
+string bglParser::refBackGlobal(size_t index){
+    string name = format("_bglRefBack{0}", index);
+    if(refBackGlobals.insert((int)index).second){
+        auto* g = new variableDeclaration();
+        g->name = g->displayName = name;
+        g->type.name = "var";
+        g->needsEarlyGlobalDecl = true;
+        languageService.globals.insert(languageService.globals.begin(), g);
+    }
+    return name;
+}
+
+// The call's value, with its copied-back arguments set right after it. `&&` is the I6 operator with a
+// fixed order: `_bglKeepTake(_bglKeepPut(call) && ((arg = _bglRefBackN) | 1))`. A call in the arguments
+// finishes inside them, so one held value serves nested calls too.
+string bglParser::wrapRefBacks(const string& callText){
+    if(lastRefBacks.empty()) return callText;
+    string assigns;
+    for(i6RawNode* back : lastRefBacks){
+        string t = back->text;
+        if(!t.empty() && t.back() == ';') t.pop_back();
+        assigns += " && ((" + t + ") | 1)";
+        postInjections.erase(remove(postInjections.begin(), postInjections.end(), back), postInjections.end());
+    }
+    lastRefBacks.clear();
+    if(!refKeepEmitted){
+        i6RawNode* keep = new i6RawNode();
+        keep->text = "Global _bglKeepV;\n[ _bglKeepPut v; _bglKeepV = v; rtrue; ];\n[ _bglKeepTake x; x = _bglKeepV; return x; ];\n";
+        languageService.globals.insert(languageService.globals.begin(), keep);
+        refKeepEmitted = true;
+    }
+    return "_bglKeepTake(_bglKeepPut(" + callText + ")" + assigns + ")";
 }
 
 bool bglParser::synthesizeLifecycleParamCopy(functionDef& funcDef, paramDef& p, classDef* cls){
@@ -1063,7 +1213,10 @@ bool bglParser::synthesizeLifecycleParamCopy(functionDef& funcDef, paramDef& p, 
     auto expand = [&](functionDef* fn, const string& arg){
         emitterBindings b; b.self = p.name; b.val = p.name; b.selfType = p.type.name; b.trim = emitterTrim::wsSemi;
         if(!arg.empty()){ b.fn = fn; b.args.push_back(arg); }
-        return expandEmitterBody(dynamic_cast<i6Block*>(fn->body), b) + ";";
+        string text = expandEmitterBody(dynamic_cast<i6Block*>(fn->body), b);
+        for(size_t at = text.find("$target"); at != string::npos; at = text.find("$target", at + p.name.size()))
+            text.replace(at, 7, p.name);   // the parameter is the assignment's target
+        return text + ";";
     };
     if(!op->isEmitter && op->i6name.empty())
         op->i6name = mangleOperatorName(op->name);
@@ -1093,7 +1246,10 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
     // the argument is assigned to it through the class's `operator =`. The root assignment makes the
     // parameter refer to the argument, which it already does, so only a class with a copying
     // `operator =` needs an instance: the argument is copied into it at entry.
-    for(paramDef* p : funcDef.params){
+    for(size_t pi = 0; pi < funcDef.params.size(); pi++){
+        paramDef* p = funcDef.params[pi];
+        // A `ref` to a value held in the word itself: the routine hands the word back on every exit.
+        if(refCopiesBack(p)) funcDef.cleanups.push_back({p->name, refBackGlobal(pi) + " = " + p->name + ";"});
         if(p->isRef) continue;
         classDef* cls = languageService.findClass(p->type.name);
         // Only an emitter class manages its own storage: a reference class's parameter shares, and a value
@@ -1162,6 +1318,35 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
     }
 }
 
+// True when the two take the same parameter types: one overrides the other.
+bool sameParamTypes(functionDef* a, functionDef* b){
+    if(a->params.size() != b->params.size()) return false;
+    for(size_t i = 0; i < a->params.size(); i++)
+        if(a->params[i]->type.name != b->params[i]->type.name) return false;
+    return true;
+}
+
+// An override is the same I6 property as the method it overrides, so it keeps that method's name
+// whichever of the two an overload set mangled.
+void bglParser::syncOverrideNames(){
+    function<functionDef*(classDef*, functionDef*)> overridden = [&](classDef* c, functionDef* fd) -> functionDef* {
+        for(classDef* b : c->baseClasses){
+            for(typeMember* m : b->members)
+                if(auto* bf = dynamic_cast<functionDef*>(m); bf && bf->name == fd->name && !bf->isEmitter && !bf->isStatic
+                   && !bf->isPrePassStub && sameParamTypes(bf, fd))
+                    return bf;
+            if(functionDef* f = overridden(b, fd)) return f;
+        }
+        return nullptr;
+    };
+    for(typeDef* g : languageService.globals)
+        if(auto* cd = dynamic_cast<classDef*>(g); cd && !cd->baseClasses.empty())
+            for(typeMember* m : cd->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && !fd->isEmitter && !fd->isStatic && !fd->isPrePassStub
+                   && fd->name.rfind("operator", 0) != 0 && isalpha((unsigned char)(fd->name.empty() ? '_' : fd->name[0])))
+                    if(functionDef* up = overridden(cd, fd)) fd->i6name = up->i6name;
+}
+
 void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, const string& methodName){
     if(receiverTypeName.empty() || methodName.empty()) return;
     // Strip a generic suffix on the receiver type name (`array<int>` → `array`) since
@@ -1181,6 +1366,7 @@ void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, con
         for(classDef* b : c->baseClasses) walk(b);
     };
     walk(languageService.classOf(base));
+    syncOverrideNames();
 }
 
 void bglParser::detectInfModeI6Collisions(){
@@ -1939,9 +2125,11 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
     bool first = true;
     while(true){
         token tt = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        if(tt.is(eTokenType::identifier)) tt = consumeTypeToken(tt);   // an alias or dotted type path
         string typeName = tt.value;
         if(typeName == "func") typeName = parseFuncType();  // nested func<>
         else if(typeName == "array" || typeName == "rawarray") typeName = parseArrayTypeTail(typeName);
+        typeName = maybeParseUnionTail(typeName);   // func<A | B, …>, as array<A | B>
         if(!first) result += ",";
         result += typeName;
         first = false;
@@ -2038,6 +2226,7 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
 
     // Early exits
     if(tok.is(token::braceClose)) return true;
+    if(tok.is(token::endStatement)) return false;   // an empty statement (`default: ;`, `if (c) ;`)
     // A local or parameter named like a class (a library's `int win` beside a program's `class win`)
     // lexes as a type; at the start of a statement, followed by an assignment, a member access, a
     // subscript, a call or ++/--, it is the variable.
@@ -2134,7 +2323,13 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     // #using type import: if tok is an identifier that matches an alias member (isAlias=true)
     // of any imported scope, resolve it to the flat type name.
     // e.g., after `#using bgl.glulx;`, bare `window` resolves to `glulxWindow`.
-    if(tok.is(eTokenType::identifier) && !tok.isDataType()){
+    // A parameter or local of that name is the variable (imports are the lowest tier, §10.4).
+    bool namesLocal = false;
+    if(tok.is(eTokenType::identifier) && getCurrentCompileContext() == eCompileContext::codeBlock)
+        if(auto* f = dynamic_cast<functionDef*>(&contextObject))
+            namesLocal = qualifyFromParams(tok.value, f) || qualifyFromBodyLocals(tok.value, dynamic_cast<statementBlock*>(f->body))
+                      || qualifyFromAncestorBlocks(tok.value, dynamic_cast<statementBlock*>(f->body));
+    if(tok.is(eTokenType::identifier) && !tok.isDataType() && !namesLocal){
         for(objectDef* imp : usingObjectImports)
             for(typeMember* m : imp->members)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -2259,9 +2454,11 @@ string bglParser::parseFuncType(){
     bool first = true;
     while(true){
         token t = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        if(t.is(eTokenType::identifier)) t = consumeTypeToken(t);   // `func<int, kinds.crate>`, an alias
         string typeName = t.value;
         if(typeName == "func") typeName = parseFuncType();
         else if(typeName == "array" || typeName == "rawarray") typeName = parseArrayTypeTail(typeName);
+        typeName = maybeParseUnionTail(typeName);   // func<A | B, …>, as array<A | B>
         if(!first) result += ",";
         result += typeName;
         first = false;
@@ -2282,7 +2479,9 @@ string bglParser::parseFuncType(){
 // nested close we deliver one `>` here and stash the other for the enclosing level.
 string bglParser::parseArrayTypeTail(const string& base){
     file.getToken("<");
-    string elem = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+    token et = file.getToken({eTokenType::dataType, eTokenType::identifier});
+    if(et.is(eTokenType::identifier)) et = consumeTypeToken(et);   // `array<array<ns.code>>`, an imported alias
+    string elem = et.value;
     if(elem == "func")                             elem = parseFuncType();
     else if(elem == "array" || elem == "rawarray") elem = parseArrayTypeTail(elem);   // nested array-of-arrays
     elem = maybeParseUnionTail(elem);                                                 // array<A | B>
@@ -2321,6 +2520,7 @@ string bglParser::readArrayElementType(){
         pendingLiteralElements = true;
         t = file.getToken({eTokenType::dataType, eTokenType::identifier});
     }
+    if(t.is(eTokenType::identifier)) t = consumeTypeToken(t);   // `array<stock.grade>`, an imported alias
     string elemType = t.value;
     if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
     else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
@@ -2404,16 +2604,10 @@ bool bglParser::processParameterList(functionDef& funcDef){
             // consume <ElementType> and store the full "array<T>" / "rawarray<T>" name for
             // for-in / type-compat / subscript-dispatch resolution.
             string base = paramTypeName;
-            file.getToken("<");
-            string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
-            if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
-            else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
-            file.getToken(">");
+            paramTypeName = parseArrayTypeTail(base);   // the element type resolves aliases and dotted paths
             // array<char> maps to bytearray (byte-access operators); others keep the <T> format.
-            if(base == "array" && (elemType == "char" || elemType == "charliteral"))
+            if(paramTypeName == "array<char>" || paramTypeName == "array<charliteral>")
                 paramTypeName = "bytearray";
-            else
-                paramTypeName = format("{0}<{1}>", base, elemType);
         }
         if(firstIsLiteral) pendingLiteralMembers.push_back(paramTypeName);
         paramTypeName = maybeParseUnionTail(paramTypeName);  // A | B | ... union parameter type
@@ -2441,25 +2635,34 @@ bool bglParser::processParameterList(functionDef& funcDef){
             // they're I6 constants used in grammar/give/provides contexts, not writable storage,
             // so a parameter of the same name doesn't actually shadow anything reachable in code.
             if(!funcDef.isEmitter && !funcDef.isExternal){
+                // Reported at the parameter, once each: a member may be listed more than once.
+                set<string> said;
+                sourceLocation savedSrc = currentStatementSrc;
+                if(tok.src.line > 0) currentStatementSrc = tok.src;
+                auto warnOnce = [&](const string& msg){ if(said.insert(msg).second) parsingWarning(msg); };
                 for(typeDef* g : languageService.globals)
                     if(g->name == param.name){
                         if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
                             const string& t = vd->type.name;
                             if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                         }
-                        parsingWarning("Parameter '" + param.name + "' shadows global of the same name; '::" + param.name + "' reaches the global.");
+                        if(auto* cd = dynamic_cast<classDef*>(g))   // a type, not a global `::` reaches
+                            warnOnce("Parameter '" + param.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
+                                + "'; in this routine the name means the parameter, though it still names the type in declarations.");
+                        else
+                            warnOnce("Parameter '" + param.name + "' shadows global of the same name; '::" + param.name + "' reaches the global.");
                     }
                 // A static method has no receiver, so a member can't be shadowed.
                 if(currentClass != nullptr && !funcDef.isStatic){
                     for(typeMember* m : currentClass->members)
                         if(m->name == param.name)
-                            parsingWarning("Parameter '" + param.name + "' shadows a member of class '" + currentClass->name + "'.");
+                            warnOnce("Parameter '" + param.name + "' shadows a member of class '" + currentClass->dName() + "'.");
                     // Walk base class hierarchy for inherited members (vars and functions) — warning only
                     function<void(classDef*)> checkBases = [&](classDef* c){
                         for(typeMember* m : c->members)
                             if(m->name == param.name)
                                 if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
-                                    parsingWarning("Parameter '" + param.name + "' shadows inherited member '" + param.name + "' from class '" + c->dName() + "'.");
+                                    warnOnce("Parameter '" + param.name + "' shadows inherited member '" + param.name + "' from class '" + c->dName() + "'.");
                         for(classDef* base : c->baseClasses) checkBases(base);
                     };
                     for(classDef* base : currentClass->baseClasses) checkBases(base);
@@ -2467,7 +2670,8 @@ bool bglParser::processParameterList(functionDef& funcDef){
                 if(currentObject != nullptr)
                     for(typeMember* m : currentObject->members)
                         if(m->name == param.name)
-                            parsingWarning("Parameter '" + param.name + "' shadows a member of object '" + currentObject->name + "'.");
+                            warnOnce("Parameter '" + param.name + "' shadows a member of object '" + currentObject->dName() + "'.");
+                currentStatementSrc = savedSrc;
             }
             tok=file.getToken(); // "=", ",", or ")"
         }
@@ -2521,12 +2725,25 @@ typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(t
 // matches the existing findArraySubscriptOp leak convention.
 // Replace a pre-scan stub in a member list with the real definition.
 bool bglParser::replaceStubMember(vector<typeMember*>& members, functionDef& newDef){
-    for(auto it = members.begin(); it != members.end(); ++it)
-        if(auto* fd = dynamic_cast<functionDef*>(*it))
-            if(fd->name == newDef.name && fd->isPrePassStub){
-                *it = &newDef;
-                return true;
-            }
+    // The pre-scan leaves one stub per overload, so the stub with this definition's parameter types
+    // is the one it replaces; a stub without parameters stands for any overload of the name.
+    auto sameSignature = [&](functionDef* fd){
+        if(fd->params.size() != newDef.params.size()) return false;
+        for(size_t i = 0; i < fd->params.size(); i++)
+            if(fd->params[i]->type.name != newDef.params[i]->type.name) return false;
+        return true;
+    };
+    for(int pass = 0; pass < 3; pass++)
+        for(auto it = members.begin(); it != members.end(); ++it)
+            if(auto* fd = dynamic_cast<functionDef*>(*it))
+                if(fd->name == newDef.name && fd->isPrePassStub
+                   && (pass == 2 || (pass == 0 ? sameSignature(fd) : fd->params.empty()))){
+                    // An emitter an `extend` later replaces: every use expands the replacement.
+                    if(fd->isReplaceStub && fd->isEmitter && newDef.isEmitter && dynamic_cast<i6Block*>(fd->body) != nullptr)
+                        newDef.body = fd->body;
+                    *it = &newDef;
+                    return true;
+                }
     return false;
 }
 
@@ -2546,8 +2763,8 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             char nc = file.readChar();
             if     (nc == 'n')  currentStr += '^';      // \n  → I6 newline
             else if(nc == '"')  currentStr += '~';      // \"  → I6 double-quote
-            else if(nc == '\\') currentStr += "@@92";   // \\  → literal backslash
-            else if(nc == '@')  currentStr += "@@64";   // \@  → literal at-sign
+            else if(nc == '\\') currentStr += i6CharCode(92, file.peekChar());   // \\  → literal backslash
+            else if(nc == '@')  currentStr += i6CharCode(64, file.peekChar());   // \@  → literal at-sign
             else if(nc == '{')  currentStr += '{';       // \{  → literal brace (not an expression)
             else if(nc == '$') {                          // \$XX → @{XX} (hex character code)
                 string hex;
@@ -2564,17 +2781,18 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             // \^^ = forced literal caret, \~~ = forced literal tilde.
             else if(nc == '^') {
                 char xc = file.peekChar();
-                if(xc == '^') { file.readChar(); currentStr += "@@94"; }
-                else if(string("aeiouyAEIOUY").find(xc) != string::npos) {
+                if(xc == '^') { file.readChar(); currentStr += i6CharCode(94, file.peekChar()); }
+                else if(xc == 'y' || xc == 'Y'){ file.readChar(); currentStr += xc == 'y' ? "@{177}" : "@{176}"; }
+                else if(string("aeiouAEIOU").find(xc) != string::npos) {
                     file.readChar(); currentStr += "@^"; currentStr += xc;
-                } else { currentStr += "@@94"; }
+                } else { currentStr += i6CharCode(94, file.peekChar()); }
             }
             else if(nc == '~') {
                 char xc = file.peekChar();
-                if(xc == '~') { file.readChar(); currentStr += "@@126"; }
+                if(xc == '~') { file.readChar(); currentStr += i6CharCode(126, file.peekChar()); }
                 else if(string("anoANO").find(xc) != string::npos) {
                     file.readChar(); currentStr += "@~"; currentStr += xc;
-                } else { currentStr += "@@126"; }
+                } else { currentStr += i6CharCode(126, file.peekChar()); }
             }
             else if(nc == '\'') {
                 char xc = file.peekChar();
@@ -2634,6 +2852,8 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
                 segments.push_back(seg);
                 currentStr = "";
             }
+            size_t setUpAt = pendingInjections.size();   // earlier set-up (a `?.` guard) belongs to the statement
+            file.prevTokenType = eTokenType::symbol; file.prevTokenValue = "{";   // not the `$`: a string here is plain
             token exprFirst = file.getToken();
             // An interpolation segment prints a value but CALLS a routine: a void call is valid here
             // (emitInterpolatedSegments lowers a void-typed segment to a bare `expr;` statement — the
@@ -2643,7 +2863,9 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
             allowVoidReturnExpr = savedAllowVoid;
             // A property accessor prints its value, as `print(x)` does — unless its class prints itself.
-            if(functionDef* getter = nativeGetterOf(exprNode->resolvedType)){
+            // An object prints as itself: its class's conversion operator isn't a property getter.
+            if(functionDef* getter = nativeGetterOf(exprNode->resolvedType);
+               getter != nullptr && !isObjectBackedClass(getDispatchClass(exprNode->resolvedType))){
                 classDef* cls = getDispatchClass(exprNode->resolvedType);
                 bool printsItself = false;
                 if(cls != nullptr)
@@ -2656,11 +2878,12 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
                     exprNode->resolvedType = getter->returnType.name;
                 }
             }
+            convertStoragelessForPrint(exprNode);
             interpolatedSegment seg;
             seg.isExpr = true;
             seg.expr = exprNode;
-            seg.injections = pendingInjections;
-            pendingInjections.clear();
+            seg.injections.assign(pendingInjections.begin() + setUpAt, pendingInjections.end());
+            pendingInjections.resize(setUpAt);
             segments.push_back(seg);
         } else if((unsigned char)c >= 0x80) {
             // Directly-typed non-ASCII (smart quotes, accented characters): decode and translate
@@ -2675,6 +2898,8 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
         } else if(c == '`') {
             // Reverse tick: same target-dependent fold as a plain string literal.
             string tr; i6TranslateStringCodepoint('`', tr); currentStr += tr;
+        } else if(c == '@') {
+            currentStr += i6CharCode(64, file.peekChar());   // a plain at-sign (I6 reads `@` as an escape)
         } else {
             currentStr += c;
         }
@@ -2840,6 +3065,25 @@ void bglParser::emitOpenBlockCleanups(statementBlock* body){
     }
 }
 
+// A `break` or `continue` leaves the blocks inside the innermost loop — or, for a `break`, the innermost
+// switch when that is nearer — so their deinits run first.
+void bglParser::emitLoopExitCleanups(statementBlock* body, bool isBreak){
+    if(body == nullptr) return;
+    size_t boundary = loopBlockDepths.empty() ? 0 : loopBlockDepths.back();
+    if(isBreak && !switchBlockDepths.empty()) boundary = max(boundary, switchBlockDepths.back());
+    if(loopBlockDepths.empty() && !(isBreak && !switchBlockDepths.empty())) return;
+    for(size_t i = activeBlockStack.size(); i > boundary; i--){
+        auto it = blockCleanups.find(activeBlockStack[i - 1]);
+        if(it == blockCleanups.end()) continue;
+        for(auto r = it->second.rbegin(); r != it->second.rend(); ++r){
+            i6RawNode* node = new i6RawNode();
+            node->text = *r;
+            node->cooked = true;
+            body->statements.push_back(node);
+        }
+    }
+}
+
 void bglParser::openCompileContext(eCompileContext newScope, statementBlock* body){
     compileContextStack.push_front(newScope);
     // For codeBlock contexts, always push to the active block stack (nullptr if no body provided).
@@ -2875,6 +3119,10 @@ void bglParser::closeCompileContext(eCompileContext expectedScope){
         auto it = blockCleanups.find(closing);
         bool endsInReturn = !closing->statements.empty()
                          && dynamic_cast<returnStatement*>(closing->statements.back()) != nullptr;
+        // A `break` or `continue` ran them too (emitLoopExitCleanups).
+        if(!closing->statements.empty())
+            if(auto* raw = dynamic_cast<i6RawNode*>(closing->statements.back()); raw && (raw->text == "break;" || raw->text == "continue;"))
+                endsInReturn = true;
         if(it != blockCleanups.end() && endsInReturn) blockCleanups.erase(it);
         else if(it != blockCleanups.end()){
             for(auto r = it->second.rbegin(); r != it->second.rend(); ++r){

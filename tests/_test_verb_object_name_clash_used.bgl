@@ -1,0 +1,6 @@
+// Negative test: a verb named like an object is reported as the clash, even when the name is used in the handler.
+// EXPECT_ERROR: has the same name as object
+#beguilerSettings { target = z5; informName = "none"; }
+object gauge { int reading = 5; }
+verb Gauge { grammar = {{.gauge}}; void handler() { print(gauge.reading); } }
+void main(){ }

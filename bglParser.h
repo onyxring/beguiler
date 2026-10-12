@@ -267,7 +267,8 @@ class bglParser {
         // Inform 6 keeps both in one namespace.
         void validateRoutinePropertyClashes();
         void validateGlobalNameClashes();
-        void validateVerbNameClashes();
+        void validateVerbNameClashes(bool early = false);
+        void resolveStubParamAliases();
         void validateEqualityPairs();
         void validateRequiredMembers();
         void resolveDeletes();   // pick each `delete`'s pool once every class is known
@@ -299,6 +300,9 @@ class bglParser {
         std::map<statementBlock*, std::vector<std::string>> blockCleanups;
         // Append the deinits of every nested block currently open, innermost first, to `body`.
         void emitOpenBlockCleanups(statementBlock* body);
+        string paramDefaultText(paramDef* p);
+        void convertToParam(expression* e, const string& valueType, const string& paramType);   // int → float etc.
+        string valueSlotText(const string& elemText, const string& elemType);   // a value-class element's own instance   // a parameter's default as I6 text (parses a pre-scan stub's)
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         // `T name` where T is not a declared type: names the library include that declares T, if any.
@@ -526,6 +530,7 @@ class bglParser {
         set<string> i6ExprMemberArrays;
         int anonObjectCounter = 0;          // counter for unique _bglAnonN inline-object names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
+        vector<size_t> tryBlockDepths;      // activeBlockStack's size where each enclosing try body begins
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
         // Every `continue` parsed, with the loopDepth it belongs to — a do loop whose condition needs
         // set-up retargets its own to run that set-up first.
@@ -536,6 +541,7 @@ class bglParser {
         // `setup; if (~~cond) break;` and the loop tests `true`.
         void moveConditionIntoBody(expression*& condition, vector<statement*> setup, statementBlock* loopBody);
         set<string> currentLoopVars;        // names of active for-loop init variables (for capture warnings)
+        vector<size_t> switchBlockDepths;   // activeBlockStack's size where each enclosing switch begins
         vector<size_t> loopBlockDepths;     // activeBlockStack's size where each enclosing loop's body begins
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
@@ -583,6 +589,12 @@ class bglParser {
         // record it on the method. Ignored on operators, whose i6name the overload mangler owns.
         void consumeMethodI6Alias(functionDef& funcDef);
         bool namesLibraryGlobal(const string& name);
+        bool namesLibraryMethod(const string& name);
+        bool isUpcast(const string& castType, const string& actualType);
+        void syncOverrideNames();
+        void emitLoopExitCleanups(statementBlock* body, bool isBreak = false);
+        string objectsClassName(const string& t);
+        void hoistOpcodeOperands(functionCallStatement& cs);   // a method of a library (beguiLib) class or object
         struct PendingDelete { i6RawNode* node; classDef* cls; string var; };
         vector<PendingDelete> pendingDeletes;
         string copyInitSource;   // a sized local array's initializer, re-read as an assignment
@@ -618,6 +630,16 @@ class bglParser {
         bool isLiteralQualifierAhead();     // after `literal`: a type follows, so it qualifies that type
         vector<string> pendingLiteralMembers; // union members read with `literal`, for the parameter being parsed
         bool declLiteral = false;             // the declaration being parsed was qualified `literal`
+        classDef* owningValueElementClass(const string& elementType);
+        void ensureOwnPrintOverload(const string& typeName);
+        functionDef* replaceOwner();
+        map<string, string> forwardReplaceBodies;   // a global `replace emitter`'s body, by emitterSignatureKey
+        bool preScanIsReplace = false;              // the pre-scanned declaration carries `replace`
+        static string emitterSignatureKey(const functionDef& fd);
+        void noteMethodRecursion(functionDef* called);   // the routine being parsed, past any lambdas it encloses
+        string pendingStatementCast;   // a `((T)a.b).m…` statement's cast, carried into its re-read
+        void rejectRunTimeMemberRead(class expression* e, const string& memberName);
+        void noteValueElementArray(arrayDeclaration& arr, classDef* hostClass, bool isLocal);
         bool pendingLiteralElements = false;  // the array type just read was `array<literal T>`
         // Reads an array's element type after `<`, noting a leading `literal` in pendingLiteralElements.
         string readArrayElementType();
@@ -693,6 +715,17 @@ class bglParser {
         // `grid[i][j]...[k] = v;` — chained subscript write into an array of arrays.
         bool processChainedSubscriptWrite(const string& arrPath, expression* indexExpr, StatementContext& sc);
         // `a[i] = v;` — a single-subscript element write.
+        bool declaringRefArray = false;   // the array being declared is `ref` (bound with :=)
+        void rejectMemberArrayBind(expression* rhs, functionDef* func, statementBlock* body);
+        string objectI6Name(const string& name);
+        functionDef* findQueryOp(classDef* cls, const string& type);
+        bool sealedSlotTakes(const string& sealedType, const string& written);
+        bool refCopiesBack(const paramDef* p);
+        bool verbShadowedByMember(const string& name, const string& memberType, const string& methodName);
+        void convertStoragelessForPrint(expression* arg);
+        string refBackGlobal(size_t index);
+        string wrapRefBacks(const string& callText);
+        string chainedSubscriptRead(functionDef* gm, const string& readText, const string& idxText, const string& curType);
         bool processSubscriptWrite(string arrPath, expression* indexExpr, StatementContext& sc);
         // `lhs = rhs;` / `lhs := rhs;` — plain assignment and reference binding.
         bool processAssignmentStatement(token tok, token symbol, StatementContext& sc);
@@ -781,9 +814,11 @@ class bglParser {
             int parenDepth = 0;
             int startParenDepth = 0;
             token cur;                          // token being processed this iteration
+            string entryExpectedType;           // the expected type the whole expression was parsed under
             optional<token> prefetched;         // a token a sub-parse produced that the loop must see next
             string castType;  // set when a (TypeName) cast prefix is detected
             bool receiverCast = false;  // `((T)obj).member`: castType retypes obj itself
+            string chainResultCast;     // `(T)a.f().g()`: the cast waits for the chain's last call
             // `<expr>?.member`: the receiver already parsed into expr, for parseExprOptionalChain.
             string chainRecvText, chainRecvType;
             // When a cast prefix is followed by '(', the cast applies to the result of the
@@ -811,6 +846,8 @@ class bglParser {
             functionDef* func = nullptr;
             statementBlock* body = nullptr;
         };
+        bool nextOperatorIsOwn(ExprParseState& st, const string& memberType);
+        bool declaresOwnOperator(const string& type, const string& op);   // the type's own operator, not a root class's
         // What the main loop does once a branch method returns: fall through to the loop's own
         // `cur = exprNext(st)` (Advance), skip it because the branch already advanced (Continue),
         // or leave the loop (Break).
@@ -830,6 +867,12 @@ class bglParser {
         ExprStep parseExprFloatLiteral(ExprParseState& st);
         ExprStep parseExprNew(ExprParseState& st);
         ExprStep parseExprInlineObject(ExprParseState& st);
+        bool aliasedInlineObjectAhead(const token& first);
+        void chainSubscripts(expression* expr, string& subscriptText, functionDef* func, statementBlock* body);
+        bool isOwnMember(const string& type, const string& name);
+        bool absorbPostfixQuery(expression* sub);
+        bool bareAccessorRead(const string& name, functionDef* func, statementBlock* body, string& text, string& type);
+        bool pathGoesOnToOwnMember(ExprParseState& st, const string& type);
         ExprStep parseExprIdentifier(ExprParseState& st);
         ExprStep parseExprOperator(ExprParseState& st);
         class functionDef* negationThroughInt(const string& type);
@@ -886,6 +929,7 @@ class bglParser {
         // arrayDeclaration in any reachable scope. Walks locals, class/object members, globals.
         string resolveArrayElementType(const string& name, functionDef* func, statementBlock* body);
         // Same for dotted access — objName.propName where propName is an arrayDeclaration member.
+        string resolveArrayElementTypeDottedRaw(const string& objName, const string& propName, functionDef* func, statementBlock* body);
         string resolveArrayElementTypeDotted(const string& objName, const string& propName,
                                               functionDef* func, statementBlock* body);
         // Look up operator[] / operator[]= on an array class hierarchy matching a specific element
@@ -918,9 +962,9 @@ class bglParser {
         // the caller's vector and returns void.
 
         // One file-scope match for resolveIdentifierType: the type plus where it came from.
-        struct TypeCandidate { string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; };
+        struct TypeCandidate { string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; bool isLibraryRoutine = false; };
         // One file-scope match for qualifyIdentifier: also carries the I6 emission to use.
-        struct QualifyCandidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; };
+        struct QualifyCandidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; bool isLibraryRoutine = false; };
         // When the expected type is an enumeration: the enum candidates that fit it, provided no
         // non-enum candidate does. Empty otherwise — the caller keeps its usual rules.
         bool expectedTypeIsEnum();
@@ -967,6 +1011,7 @@ class bglParser {
         optional<string> qualifyFromParams(const string& name, functionDef* func);
         optional<string> qualifyFromBodyLocals(const string& name, statementBlock* body);
         optional<string> qualifyFromAncestorBlocks(const string& name, statementBlock* body);
+        bool isConstName(const string& name, functionDef* func, statementBlock* body);   // the nearest declaration of the name is const
         optional<string> qualifyFromCurrentObject(const string& name);
         optional<string> qualifyFromCurrentClass(const string& name);
         optional<string> qualifyFromCaptures(const string& name);
@@ -1086,6 +1131,7 @@ class bglParser {
         // values. For a classDef-typed name, returns that classDef. For an objectDef-typed
         // name, returns the objectDef's `objectClass`. nullptr if `typeName` isn't a class
         // or instance type. Use anywhere dispatch needs to walk methods/operators by type.
+        string currentSelfTypeName();
         classDef* getDispatchClass(const string& typeName);
     private:
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
@@ -1286,6 +1332,7 @@ class bglParser {
         sourceLocation currentStatementSrc;  // location of the first token of the current statement
 
         map<string,string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
+        map<string, string> i6DefinedSymbols;   // #defineI6 symbols: used by name (their I6 Constant)
         // Snapshot of definedSymbols taken at the top-level pre-scan entry — captures only the
         // programmatically-seeded symbols (version + target defines set before pre-scan), NOT the
         // source `#define`s the pre-scan then accumulates. Restored at the top-level main-pass
@@ -1338,6 +1385,7 @@ class bglParser {
         // If typeTok is a generic base type (array/func) and the next token is '<', consume
         // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller
         // can continue reading the identifier name. Used by pre-scan member header recognition.
+        bool preScanIsMemberQualifier(const token& t);
         string preScanConsumeGenericSuffix(const token& typeTok);   // returns the `<…>` read, if any
         // Pre-scan one `emitter <type> name(params){body}` member inside an enum body (the `emitter`
         // keyword already consumed) into a companion functionDef stub — capturing params and the
@@ -1374,9 +1422,19 @@ class bglParser {
         // targets one, so a call of the name belongs to a same-named function.
         bool isUsingImportedValueEmitter(const string& name);
         std::set<std::string> paramBackingNames;   // parameter instances already named (overloads repeat a name)
+        std::set<int> refBackGlobals;              // `_bglRefBack<N>` globals already declared
+        std::string lastPrescanUnion;              // the union preScanConsumeGenericSuffix last read, canonical
+        std::vector<i6RawNode*> lastRefBacks;      // the copy-backs the call bound last queued after its statement
+        bool refKeepEmitted = false;
         string listElementType(const string& typeName);
         initializerList* asSingleElementList(expression* expr, const string& typeName);
         variableDeclaration* asInheritedArrayOverride(variableDeclaration& value, const vector<classDef*>& bases);
+        void giveInstanceOwnRows(objectDef& obj);
+        void prebuildInlineAccessors(classDef& cls);
+        map<pair<classDef*, string>, string> earlyAccessorClass;   // (host class, member) → its accessor class
+        objectDef* pushOwnTypeAliases(objectDef& obj);
+        void syncOwnTypeAliases(objectDef& obj, objectDef* view);
+        void adoptInitialElements(const string& arrName, const string& elementType, initializerList* list);
 
         vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
         vector<statement*> postInjections;     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)

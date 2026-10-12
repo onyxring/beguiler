@@ -1,0 +1,7 @@
+// Negative test: a method on an additive property contributes alongside its class's; it can't replace it.
+// EXPECT_ERROR: is additive: every class's and object's contribution is kept, so it can't be replaced
+#beguilerSettings { target = z5; informName = "none"; }
+additive property hook;
+class Base : object { void hook() { print("base"); } }
+Base a { replace void hook() { print("a"); } }
+void main(){ }

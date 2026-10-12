@@ -1,0 +1,36 @@
+/*  run_selftype — `selfType`: the receiver's own class, in a mixin's or base class's members.  */
+// EXPECT_OUTPUT: 7 | 3 | 8 2 | 2 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+// A mixin's parameter: `copy` takes this class or a subclass of it.
+class Chip[2] : object, bglAllocated { int w = 1; }
+class BigChip[2] : Chip { int h = 2; }
+
+// A fluent method keeps the subclass type, so the chain reaches the subclass's method.
+class Widget : object { int width; selfType wide(int n) { width = n; return self; } }
+class Button : Widget { int col; selfType color(int c) { col = c; return self; } }
+Button okButton { }
+
+// A base class's operator over its own kind; the ordering operators derive from it.
+class Keyed : object { int key; int operator <=> (selfType o) { return key - o.key; } }
+class Crate : Keyed { }
+Crate c1 { key = 8; }
+Crate c2 { key = 2; }
+
+// A base class's fields of its own kind are the subclass's on a subclass.
+class Node : object { int key; selfType next; array<selfType> kids[4]; }
+class Room2 : Node { int area = 5; }
+Room2 r1 { key = 1; }
+Room2 r2 { key = 2; area = 3; }
+
+void main(){
+    bglInit();
+    Chip c = new Chip(); BigChip b = new BigChip(); b.w = 7;
+    c.copy(b); print(c.w); print(" | ");
+    okButton.wide(5).color(3); print(okButton.col); print(" | ");
+    print(c1 > c2 ? 8 : 0); print(" "); print(c2 < c1 ? 2 : 0); print(" | ");
+    r1.next = r2; r1.kids += r2;
+    print(r1.next.key); print(" "); print(r1.kids[0].area);
+    print("^");
+}

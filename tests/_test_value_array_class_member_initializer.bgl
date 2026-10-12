@@ -1,0 +1,8 @@
+// Negative test: a class's member array of a value class can't take initial elements — every instance would share them.
+// EXPECT_ERROR: a class can't give it initial elements
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+value class Pt { int x; Pt operator = (Pt o){ x = o.x; return self; } }
+class Holder : object { array<Pt> pts = { Pt{ x = 1; } }; }
+Holder h1 { }
+void main(){ print(h1.pts[0].x); }

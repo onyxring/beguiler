@@ -1,0 +1,7 @@
+// run_round20_forms_glulx — an int variable given to a class's float operator converts (D1218).
+// EXPECT_OUTPUT: 1.5000 6.0000
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+class Gauge : object { float v = 0.5; float operator * (float k) { return v * k; } }
+Gauge g { }
+void main() { bglInit(); glulxConsole(); int n = 3; print(g * n); print(" "); print(g * 12); print("^"); }

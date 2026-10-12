@@ -18,6 +18,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     bufa_raw->0 = $90;
     bufa_raw->1 = $84;
     (bufa_raw + 2)-->0 = 64;
@@ -95,7 +96,10 @@ object _bglBuf
         buf->(pos + WORDSIZE) = val;
     }
   ],
-       set [buf stringVal;
+       set_2_bytearray_var [buf stringVal;
+    return self.setany(buf,stringval);
+  ],
+       setAny [buf stringVal;
     if (self.istracked(stringVal)) {
         self.setfrombuffer(buf, stringVal);
     }
@@ -305,13 +309,28 @@ object _bglBuf
     self.setLength(toBuf, len + charcount);
     return tobuf;
   ],
-       prepend [toBuf fromBuf;
+       prepend_2_bytearray_bytearray [toBuf fromBuf;
+    return self.prependbuffer(tobuf,frombuf);
+  ],
+       prependBuffer [toBuf fromBuf;
     self.insert(toBuf, fromBuf, 0, self.length(fromBuf));
     return tobuf;
   ],
-       append [toBuf fromBuf;
+       append_2_bytearray_bytearray [toBuf fromBuf;
+    return self.appendbuffer(tobuf,frombuf);
+  ],
+       appendBuffer [toBuf fromBuf;
     self.copy(toBuf, fromBuf, -1, self.length(toBuf), 0);
     return tobuf;
+  ],
+       reverseRange [buf from _l_to w c;
+    w=WORDSIZE;
+    for (_l_to = _l_to - 1 : from < _l_to : from++) {
+        c=buf->(from + w);
+        buf->(from + w) = buf->(_l_to + w);
+        buf->(_l_to + w) = c;
+        _l_to--;
+    }
   ],
        delete [buf pos count len;
     len=self.length(buf);
@@ -329,11 +348,17 @@ object _bglBuf
     self.insert(buf, replaceTextBuf, pos, 0);
     return buf;
   ],
-       replaceAll [buf searchTextBuf replaceTextBuf startingIndex rtlen;
+       replaceAll [buf searchTextBuf replaceTextBuf startingIndex searchLen rtlen pos;
+    searchLen=self.length(searchTextBuf);
     rtlen=self.length(replaceTextBuf);
-    while (startingindex ~= -1) {
-        self.replace(buf, searchTextBuf, replaceTextBuf);
-        startingIndex=self.indexof(buf,searchTextBuf,startingindex + rtlen);
+    if (searchlen == 0) {
+        return buf;
+    }
+    pos=self.indexof(buf,searchTextBuf,startingIndex);
+    while (pos ~= -1) {
+        self.delete(buf, pos, searchLen);
+        self.insert(buf, replaceTextBuf, pos, 0);
+        pos=self.indexof(buf,searchTextBuf,pos + rtlen);
     }
     return buf;
   ],
@@ -424,6 +449,35 @@ object _bglBuf
     if (sz == -1 || sz > pos) {
         buf->(pos + WORDSIZE) = val;
     }
+  ],
+       set_2_bytearray_bytearray [buf src;
+    return self.setfrombuffer(buf,src);
+  ],
+       append_2_bytearray_string [toBuf text len sz n saved;
+    len=self.length(toBuf);
+    sz=self.size(toBuf);
+    if (sz < 0) {
+        sz=bglstringdefaultsize;
+    }
+    n = 0;
+    saved = 0;
+    
+            saved = (toBuf + len)-->0;
+            text.print_to_array(toBuf + len, sz - len);
+            n = (toBuf + len)-->0;
+            (toBuf + len)-->0 = saved;
+        
+    self.setLength(toBuf, len + n);
+    return tobuf;
+  ],
+       prepend_2_bytearray_string [toBuf text len total;
+    len=self.length(toBuf);
+    self.append_2_bytearray_string(toBuf, text);
+    total=self.length(toBuf);
+    self.reverserange(toBuf, 0, total);
+    self.reverserange(toBuf, 0, total - len);
+    self.reverserange(toBuf, total - len, total);
+    return tobuf;
   ]
 ;
 array bufa_raw -> (2 + 2*WORDSIZE + 64);
@@ -457,8 +511,8 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     cOut=_bglbuf.getchar(bufsmall, 100);
 ];
 [exerciseSet;
-    _bglbuf.set(bufa, "hello world");
-    _bglbuf.set(bufb, bufa);
+    _bglbuf.set_2_bytearray_var(bufa, "hello world");
+    _bglbuf.set_2_bytearray_bytearray(bufb, bufa);
     _bglbuf.setfromliteral(bufsmall, "tight");
     _bglbuf.setfrombuffer(bufb, bufsmall);
 ];
@@ -505,8 +559,8 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
 [exerciseInsert;
     _bglbuf.insert(bufa, bufb, 0, 3);
     _bglbuf.insert(bufa, bufb, 5, 0);
-    _bglbuf.prepend(bufa, bufb);
-    _bglbuf.append(bufa, bufb);
+    _bglbuf.prepend_2_bytearray_bytearray(bufa, bufb);
+    _bglbuf.append_2_bytearray_bytearray(bufa, bufb);
     _bglbuf.delete(bufa, 0, 1);
     _bglbuf.delete(bufa, 3, 2);
 ];

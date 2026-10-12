@@ -1,0 +1,30 @@
+// run_round19_forms_glulx — Glulx forms the round-19 field trials found broken (D1198, D1206).
+// EXPECT_OUTPUT: 7.0000 2.0000 5.0000 | 3
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+
+// D1206: an int given to an operator's float parameter is converted.
+class Tank : object {
+    float level = 0.0;
+    Tank operator += (float v) { level = level + v; return self; }
+    Tank operator + (float v) { level = level + v; return self; }
+}
+Tank tankA { }
+value class Meter {
+    float v;
+    Meter operator = (Meter o) { v = o.v; return self; }
+    Meter operator -= (float d) { v = v - d; return self; }
+}
+
+// D1198: a static scalar member of an extern class.
+#i6 { Class Gauge with g_level 0; Gauge gaugeA; }
+extern class Gauge : object { int g_level; static int peak = 0; static void note(int x) { if (x > peak) peak = x; } }
+
+void main() {
+    bglInit(); glulxConsole();
+    Meter m; m.v = 10.0; int hits = 3; m -= hits; print(m.v); print(" ");
+    tankA += 2; print(tankA.level); print(" ");
+    Tank t = tankA + 3; print(tankA.level); print(" | ");
+    Gauge.note(3); Gauge.note(1); print(Gauge.peak);
+    print("^");
+}

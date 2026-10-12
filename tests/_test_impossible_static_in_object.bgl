@@ -1,0 +1,6 @@
+// Negative test: `static` belongs to a class; an object body refuses it.
+// EXPECT_ERROR: 'static' is not valid inside an object body
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object host { static array<int> seen[4]; }
+void main(){ print(1); }

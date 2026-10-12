@@ -1,0 +1,62 @@
+// run_class_and_object_forms — a local of an object class from bare braces; a member named like a type;
+// a member typed by a namespace path; an ancestor cast on `self` in an object's own override; static
+// func<> members called directly and static methods used as values; named-union comparison and its
+// print overload in interpolation; `new` with defaults and named arguments; a pooled subclass keeping
+// its base's create/destroy; an owned member's class-body initializer; a method named like a program
+// routine; a routine named like a <linq> method.
+// EXPECT_OUTPUT: 20,21 | 4 | 2 | 5 heavy | 5 8 10 | true false thing,text | 1 7 9 2 | 50 1 0 | 3 3 | 3 5 | 2 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+class point : object { inline int x; inline int y; }
+class Row : object { int w; }
+class Ticket : object { int row = 0; void setRow(int r) { row = r; } }
+Ticket t1 { }
+bnum eFlag { fragile, urgent, heavy }
+object tables { alias flag for eFlag; }
+class Crate : object { tables.flag flags = urgent; }
+Crate c1 { }
+class Block : object { inline int weight; default void report() { print(weight); } }
+Block blueBlock { 5; void report() { ((Block)self).report(); print(" heavy"); } }
+int halve(int n) { return n / 2; }
+class Policy { static func<int, int> step = halve; static int twice(int n) { return n * 2; } }
+class Thing { int n; }
+Thing tt { n = 1; }
+union Res = Thing | string;
+Res pickRes(int i) { if (i == 1) return tt; return "text"; }
+void print(Res r) { if (typeof(r) == string) print((string)r); else print("thing"); }
+class Tok[3] { int A; int B; void create(int first, int second = 7) { A = first; B = second; } }
+value class amt { int units; amt operator = (amt o) { units = o.units; return self; } amt operator = (int n) { units = n; return self; } }
+class pass[2] : object {
+    int serial; amt value; static int live = 0;
+    void create(int s) { serial = s; pass.live++; }
+    void destroy() { pass.live--; }
+}
+class stub[2] : pass { }
+value class coins { inline int cents; coins operator = (coins o) { cents = o.cents; return self; } }
+class item : object { coins price = coins{ cents = 3; }; }
+item plain { }
+class item2[2] : object { coins price = coins{ cents = 3; }; }
+class Box : object { int size = 3; int report() { return size; } }
+Box bx { }
+int report() { return 5; }
+array<int> nums = {3, 9, 4};
+int first(int n) { return n + 1; }
+void main(){
+    bglInit();
+    point q = { 20, 21 };
+    print($"{q.x},{q.y} | ");
+    t1.setRow(4); print($"{t1.row} | {(int)c1.flags} | ");
+    blueBlock.report(); print(" | ");
+    func<int, int> f = Policy.twice;
+    print($"{Policy.step(10)} {Policy.twice(4)} {f(5)} | ");
+    Res r1 = pickRes(1); Res r2 = pickRes(1); Res r3 = pickRes(2);
+    print($"{r1 == r2} {r1 == r3} {r1},{r3} | ");
+    Tok k1 = new Tok(1); Tok k2 = new Tok(second: 2, first: 9);
+    print($"{k1.A} {k1.B} {k2.A} {k2.B} | ");
+    stub s = new stub(50);
+    print($"{s.serial} {pass.live} ");
+    delete s;
+    print($"{pass.live} | ");
+    item2 i2 = new item2();
+    print($"{plain.price.cents} {i2.price.cents} | {bx.report()} {report()} | {first(1)} {nums.first()}");
+}

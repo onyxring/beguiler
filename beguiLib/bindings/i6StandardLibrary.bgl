@@ -78,6 +78,40 @@ extern const int    PRESENT_TENSE;     /// The `narrative_tense` value for prese
 extern const int    PAST_TENSE;        /// The `narrative_tense` value for past-tense responses.
 
 
+//-- Arrays  ------------------------------------------------------------------------
+extern rawArray<char> buffer;                  /// The player's input line.
+extern rawArray<char> buffer2;                 /// Input to a supplementary question.
+extern rawArray<char> buffer3;                 /// The input kept for "again".
+extern rawArray<char> parse;                   /// The words parsed from `buffer`.
+extern rawArray<char> parse2;                  /// The words parsed from `buffer2`.
+extern rawArray<char> oops_workspace;          /// Scratch space for "oops" corrections.
+extern rawArray<char> gg_tokenbuf;             /// Scratch space for a dictionary word on Glulx.
+extern rawArray<char> AnyToStrArr;             /// Scratch space for printing any value to a string on Glulx.
+extern rawArray<char> StorageForShortName;     /// Scratch space for an object's short name.
+extern rawArray<int>  the_timers;              /// The running timers and daemons.
+extern rawArray<int>  inputobjs;               /// The objects the parser matched for the action.
+extern rawArray<int>  multiple_object;         /// The objects of a multiple-object command.
+extern rawArray<int>  kept_results;            /// A command delayed while an implicit take runs.
+extern rawArray<int>  pattern;                 /// The grammar line being matched.
+extern rawArray<int>  pattern2;                /// The best grammar line matched so far.
+extern rawArray<int>  line_ttype;              /// The token types of the grammar line being analyzed.
+extern rawArray<int>  line_tdata;              /// The token data of the grammar line being analyzed.
+extern rawArray<int>  line_token;              /// The tokens of the grammar line being analyzed.
+extern rawArray<int>  match_list;              /// The objects matched so far.
+extern rawArray<int>  match_classes;           /// The equivalence classes of the matched objects.
+extern rawArray<int>  match_scores;            /// The scores of the matched objects.
+extern rawArray<int>  gg_event;                /// The last Glk event on Glulx.
+extern rawArray<int>  gg_arguments;            /// Arguments passed to a Glk call on Glulx.
+extern rawArray<int>  GlulxColourValues;       /// The Glulx color palette.
+extern rawArray<int>  PowersOfTwo_TB;          /// Powers of two, for article case lookups.
+extern rawArray<int>  magic_array;             /// Interpreter typo-correction data.
+extern rawArray<int>  LanguagePronouns;        /// The pronouns the parser recognizes.
+extern rawArray<int>  LanguageDescriptors;     /// The descriptor words the parser recognizes.
+extern rawArray<int>  LanguageNumbers;         /// The number words the parser recognizes.
+extern rawArray<int>  LanguageArticles;        /// The articles for each case and gender.
+extern rawArray<int>  LanguageGNAsToArticles;  /// The article set for each gender-number-animation.
+
+
 //-- Global variables  ---------------------------------------------------------------
 extern object       location;              /// current room
 extern object       real_location;         /// actual location when in darkness
@@ -104,7 +138,7 @@ extern bool         meta;                  /// true if verb is a meta-command (I
 extern int          multiflag;             /// multiple-object flag
 extern int          keep_silent;           /// suppress action output
 extern int          reason_code;           /// reason for "life" rule
-extern int          receive_action;        /// ##PutOn or ##Insert
+extern verb         receive_action;        /// ##PutOn or ##Insert
 extern int          lm_n;                  /// LibraryMessages: message number
 extern int          lm_o;                  /// LibraryMessages: message object
 extern int          lm_s;                  /// LibraryMessages: message second parameter
@@ -254,7 +288,7 @@ enum eParserError {
     itGone     = 14,  /// "You can't see 'it' at the moment."
     junkAfter  = 15,  /// "I didn't understand the way that finished."
     tooFew     = 16,  /// "Only … of those are available."
-    nothing    = 17,  /// "Nothing to do!"
+    nothingToDo = 17, /// "Nothing to do!"
     askScope   = 18   /// a scope routine reported the error
 }
 
@@ -569,6 +603,318 @@ replace void Banner(){
     }
     print("^");
 }
+
+//-- Remaining library routines
+// Every other routine parser.h, verblib.h and english.h define, so a member named like one is renamed rather than clashing
+// in Inform 6. Inform 6 does not separate parameters from locals, so each takes its first locals as
+// optional parameters; an omitted one is 0, as Inform 6 leaves it.
+extern var AnalyseToken(var token = 0, var m = 0);
+extern var UnpackGrammarLine(var line_address = 0, var i = 0, var m = 0);
+extern var GGWordCompare(var str1 = 0, var str2 = 0, var ix = 0, var jx = 0);
+extern var GetNthChar(var a_buffer = 0, var n = 0, var i = 0);
+extern var KeyboardPrimitive(var a_buffer = 0, var a_table = 0);
+extern var KeyCharPrimitive(var win = 0, var key = 0);
+extern var KeyTimerInterrupt();
+extern var KeyDelay(var tenths = 0, var key = 0);
+extern var Keyboard(var a_buffer = 0, var a_table = 0, var nw = 0, var i = 0, var w = 0, var w2 = 0, var x1 = 0);
+extern var PerformUndo(var i = 0);
+extern var DictionaryWordToVerbNum(var dword = 0, var verbnum = 0);
+extern var ScopeCeiling(var person = 0, var act = 0);
+extern var ResetDescriptors();
+extern var Descriptors(var allows_multiple = 0, var o = 0, var x = 0, var y = 0, var flag = 0, var cto = 0, var type = 0);
+extern var CreatureTest(var obj = 0);
+extern var PrepositionChain(var wd = 0, var index = 0);
+extern var ParseToken(var given_ttype = 0, var given_tdata = 0, var token_n = 0, var x = 0, var y = 0);
+extern var AskPlayer(var context = 0, var i = 0, var j = 0, var k = 0, var l = 0, var first_word = 0, var answer_words = 0);
+extern var Adjudicate(var context = 0, var i = 0, var j = 0, var k = 0, var good_flag = 0, var good_ones = 0, var last = 0);
+extern var ReviseMulti(var second_p = 0, var i = 0, var low = 0);
+extern var ScoreMatchL(var context = 0, var its_owner = 0, var its_score = 0, var obj = 0, var i = 0, var j = 0, var threshold = 0);
+extern var BestGuess(var earliest = 0, var its_score = 0, var best = 0, var i = 0);
+extern var SingleBestGuess(var earliest = 0, var its_score = 0, var best = 0, var i = 0);
+extern var Identical(var o1 = 0, var o2 = 0, var p1 = 0, var p2 = 0, var n1 = 0, var n2 = 0, var i = 0);
+extern var MatchWord(var p_obj = 0, var p_word_no = 0, var len_name = 0, var len_input = 0, var start_input = 0, var i = 0);
+extern var PrintCommand(var from = 0, var i = 0, var k = 0, var spacing_flag = 0);
+extern var CantSee(var i = 0, var w = 0, var e = 0);
+extern var MultiFilter(var attr = 0, var i = 0, var j = 0, var o = 0);
+extern var UserFilter(var obj = 0);
+extern var MoveWord(var at1 = 0, var b2 = 0, var at2 = 0, var x = 0, var y = 0);
+extern var SearchScope(var domain1 = 0, var domain2 = 0, var context = 0, var i = 0, var is = 0);
+extern var IsSeeThrough(var o = 0);
+extern var DoScopeAction(var thing = 0, var s = 0, var p1 = 0);
+extern var ScopeWithin_O(var domain = 0, var nosearch = 0, var context = 0, var i = 0, var ad = 0, var n = 0);
+extern var MakeMatch(var obj = 0, var quality = 0, var i = 0);
+extern var TryGivenObject(var obj = 0, var threshold = 0, var k = 0, var w = 0, var j = 0);
+extern var Refers(var obj = 0, var wnum = 0, var wd = 0, var k = 0, var l = 0, var m = 0);
+extern var WordInProperty(var wd = 0, var obj = 0, var prop = 0, var k = 0, var l = 0, var m = 0);
+extern var DictionaryLookup(var b = 0, var l = 0, var i = 0);
+extern var NounWord(var i = 0, var j = 0, var s = 0);
+extern var WordAddress(var wordnum = 0, var p = 0, var b = 0);
+extern var WordLength(var wordnum = 0, var p = 0);
+extern var WordValue(var wordnum = 0, var p = 0);
+extern var NumberWords(var p = 0);
+extern var GetKeyBufLength(var b = 0);
+extern var SetKeyBufLength(var n = 0, var b = 0);
+extern var TryNumber(var wordnum = 0, var i = 0, var j = 0, var c = 0, var num = 0, var len = 0, var mul = 0);
+extern var GetGender(var person = 0);
+extern var GetGNAOfObject(var obj = 0, var case = 0, var gender = 0);
+extern var CopyBuffer(var bto = 0, var bfrom = 0, var i = 0, var size = 0);
+extern var LTI_Insert(var i = 0, var ch = 0, var b = 0, var y = 0);
+extern var PronounsSub(var x = 0, var y = 0, var c = 0, var d = 0);
+extern var PronounValue(var dword = 0, var x = 0);
+extern var ResetVagueWords(var obj = 0);
+extern var PronounOldEnglish();
+extern var GamePrologue(var i = 0, var j = 0);
+extern var GameEpilogue();
+extern var AdvanceWorldClock();
+extern var RunTimersAndDaemons(var i = 0, var j = 0);
+extern var RunEachTurnProperties();
+extern var ActionPrimitive();
+extern var NoteObjectAcquisitions(var i = 0);
+extern var LoopOverScope(var routine = 0, var act = 0, var x = 0, var y = 0, var a = 0, var al = 0);
+extern var BeforeRoutines(var rv = 0);
+extern var AfterRoutines(var rv = 0);
+extern var RunLife(var a = 0, var j = 0);
+extern var ZRegion(var addr = 0);
+extern var ValueOrRun(var obj = 0, var prop = 0);
+extern var ChangeDefault(var prop = 0, var val = 0, var a = 0, var b = 0);
+extern var SetTime(var t = 0, var s = 0);
+extern var AdjustLight(var flag = 0, var i = 0);
+extern var OffersLight(var i = 0, var j = 0);
+extern var HidesLightSource(var obj = 0);
+extern var HasLightSource(var i = 0, var j = 0, var ad = 0);
+extern var DebugParameter(var w = 0);
+extern var DebugAction(var a = 0, var anames = 0);
+extern var DebugAttribute(var a = 0, var anames = 0);
+extern var TraceAction(var source = 0, var ar = 0);
+extern var DebugToken(var token = 0);
+extern var DebugGrammarLine(var pcount = 0);
+extern var ShowVerbSub(var grammar = 0, var lines = 0, var j = 0);
+extern var ShowObjSub(var c = 0, var f = 0, var l = 0, var a = 0, var n = 0, var x = 0, var numattr = 0);
+extern var ShowDictSub_helper(var x = 0);
+extern var MoveCursorV6(var line = 0, var column = 0, var charw = 0);
+extern var MainWindow();
+extern var ScreenWidth(var width = 0, var charw = 0);
+extern var ScreenHeight();
+extern var MoveCursor(var line = 0, var column = 0);
+extern var MakeColourWord(var c = 0);
+extern var SetClr(var f = 0, var b = 0, var w = 0);
+extern var RestoreColours();
+extern var ZZInitialise();
+extern var GGInitialise(var res = 0);
+extern var GGRecoverObjects(var id = 0);
+extern var DecimalNumber(var num = 0);
+extern var PrintToBuffer(var buf = 0, var len = 0, var a = 0, var b = 0, var c = 0, var d = 0, var e = 0);
+extern var StringSize(var a = 0, var b = 0, var c = 0, var d = 0, var e = 0);
+extern var PrintCapitalised(var a = 0, var b = 0, var no_break = 0, var no_caps = 0, var centred = 0);
+extern var Centre(var a = 0, var b = 0);
+extern var Cap(var str = 0, var no_caps = 0);
+extern var PrefaceByArticle(var o = 0, var acode = 0, var pluralise = 0, var capitalise = 0, var i = 0, var artform = 0, var findout = 0);
+extern var Indefart(var o = 0, var saveIndef = 0);
+extern var CInDefArt(var o = 0, var saveIndef = 0, var saveCaps = 0);
+extern var Defart(var o = 0, var saveIndef = 0);
+extern var CDefart(var o = 0, var saveIndef = 0, var saveCaps = 0);
+extern var PrintShortName(var o = 0, var saveIndef = 0);
+extern var EnglishNumber(var n = 0);
+extern var SerialComma(var n = 0);
+extern var NumberWord(var o = 0, var i = 0, var n = 0);
+extern var RandomEntry(var tab = 0);
+extern var UnsignedCompare(var x = 0, var y = 0, var u = 0, var v = 0);
+extern var ObjectsSub();
+extern var ObjectsTallSub();
+extern var ObjectsWideSub();
+extern var PlacesSub();
+extern var PlacesTallSub();
+extern var PlacesWideSub();
+extern var VersionSub(var ix = 0);
+extern var RunTimeError(var n = 0, var p1 = 0, var p2 = 0);
+extern var NextEntry(var o = 0, var odepth = 0);
+extern var WillRecurs(var o = 0);
+extern var ListEqual(var o1 = 0, var o2 = 0);
+extern var SortTogether(var obj = 0, var value = 0);
+extern var SortOutList(var obj = 0, var i = 0, var k = 0, var l = 0);
+extern var WriteListR(var o = 0, var depth = 0, var stack_pointer = 0, var classes_p = 0, var sizes_p = 0, var i = 0, var j = 0);
+extern var LowKey_Menu(var menu_choices = 0, var EntryR = 0, var ChoiceR = 0, var lines = 0, var main_title = 0, var i = 0, var j = 0);
+extern var DoMenu(var menu_choices = 0, var EntryR = 0, var ChoiceR = 0);
+extern var MovePlayer(var direc = 0);
+extern var QuitSub();
+extern var RestartSub();
+extern var RestoreSub();
+extern var SaveSub(var flag = 0);
+extern var VerifySub();
+extern var ScriptOnSub();
+extern var ScriptOffSub();
+extern var CommandsOnSub();
+extern var CommandsOffSub();
+extern var CommandsReadSub();
+extern var NotifyOnSub();
+extern var NotifyOffSub();
+extern var Places1TallSub();
+extern var Places1WideSub();
+extern var Places1Sub(var i = 0, var j = 0, var k = 0);
+extern var Objects1TallSub();
+extern var Objects1WideSub();
+extern var Objects1Sub(var i = 0, var j = 0, var f = 0, var object_count = 0);
+extern var PANum(var m = 0, var n = 0);
+extern var FullScoreSub(var i = 0);
+extern var InvWideSub();
+extern var InvTallSub();
+extern var InvSub(var x = 0);
+extern var CommonAncestor(var o1 = 0, var o2 = 0, var i = 0, var j = 0);
+extern var IndirectlyContains(var o1 = 0, var o2 = 0);
+extern var ObjectScopedBySomething(var item = 0, var i = 0, var j = 0, var k = 0, var l = 0, var m = 0);
+extern var ObjectIsUntouchable(var item = 0, var flag1 = 0, var flag2 = 0, var ancestor = 0, var i = 0);
+extern var ImplicitUnlock(var obj = 0);
+extern var TakeSub();
+extern var RemoveSub(var i = 0);
+extern var DropSub();
+extern var PutOnSub(var ancestor = 0);
+extern var InsertSub(var ancestor = 0);
+extern var TransferSub(var ks = 0, var i = 0);
+extern var EmptySub();
+extern var EmptyTSub(var i = 0, var j = 0, var k = 0, var flag = 0);
+extern var GiveSub();
+extern var GiveRSub();
+extern var ShowSub();
+extern var ShowRSub();
+extern var EnterSub(var ancestor = 0, var j = 0, var ks = 0);
+extern var GetOffSub();
+extern var ExitSub(var p = 0);
+extern var VagueGoSub();
+extern var GoInSub();
+extern var GoSub(var i = 0, var j = 0, var k = 0, var movewith = 0, var thedir = 0, var next_loc = 0);
+extern var SayWhatsOn(var descon = 0, var j = 0, var f = 0);
+extern var NotSupportingThePlayer(var o = 0, var i = 0);
+extern var LMode1Sub();
+extern var LMode2Sub();
+extern var LMode3Sub();
+extern var LModeNormalSub();
+extern var NoteArrival(var descin = 0);
+extern var NoteDeparture();
+extern var ScoreArrival();
+extern var FindVisibilityLevels(var visibility_levels = 0);
+extern var LookSub(var allow_abbrev = 0, var visibility_levels = 0, var i = 0, var j = 0, var k = 0, var nl_flag = 0);
+extern var ExamineSub(var i = 0);
+extern var LookUnderSub();
+extern var VisibleContents(var o = 0, var i = 0, var f = 0);
+extern var SearchSub(var f = 0);
+extern var UnlockSub();
+extern var LockSub();
+extern var SwitchOnSub();
+extern var SwitchOffSub();
+extern var OpenSub();
+extern var CloseSub();
+extern var DisrobeSub();
+extern var WearSub();
+extern var EatSub();
+extern var AllowPushDir(var i = 0);
+extern var AnswerSub();
+extern var AskSub();
+extern var AskForSub();
+extern var AskToSub();
+extern var AttackSub();
+extern var BlowSub();
+extern var BurnSub();
+extern var BuySub();
+extern var ClimbSub();
+extern var ConsultSub();
+extern var CutSub();
+extern var DigSub();
+extern var DrinkSub();
+extern var FillSub();
+extern var JumpSub();
+extern var JumpInSub();
+extern var JumpOnSub();
+extern var JumpOverSub();
+extern var KissSub();
+extern var ListenSub();
+extern var MildSub();
+extern var NoSub();
+extern var PraySub();
+extern var PullSub();
+extern var PushSub();
+extern var PushDirSub();
+extern var RubSub();
+extern var SetSub();
+extern var SetToSub();
+extern var SingSub();
+extern var SleepSub();
+extern var SmellSub();
+extern var SorrySub();
+extern var SqueezeSub();
+extern var StrongSub();
+extern var SwimSub();
+extern var SwingSub();
+extern var TasteSub();
+extern var TellSub();
+extern var ThinkSub();
+extern var ThrowAtSub();
+extern var TieSub();
+extern var TouchSub();
+extern var TurnSub();
+extern var WaitSub();
+extern var WakeSub();
+extern var WakeOtherSub();
+extern var WaveSub();
+extern var WaveHandsSub();
+extern var YesSub();
+extern var TraceOnSub();
+extern var TraceLevelSub();
+extern var TraceOffSub();
+extern var RoutinesOnSub();
+extern var RoutinesOffSub();
+extern var RoutinesVerboseSub();
+extern var ActionsOnSub();
+extern var ActionsOffSub();
+extern var TimersOnSub();
+extern var TimersOffSub();
+extern var ChangesOnSub();
+extern var ChangesOffSub();
+extern var PredictableSub(var i = 0);
+extern var XTestMove(var obj = 0, var dest = 0);
+extern var XPurloinSub();
+extern var XAbstractSub();
+extern var XObj(var obj = 0, var f = 0);
+extern var XTreeSub(var i = 0);
+extern var GotoSub();
+extern var GoNearSub(var x = 0);
+extern var Print_ScL(var obj = 0);
+extern var ScopeSub();
+extern var GlkListSub(var id = 0, var val = 0);
+extern var LanguageToInformese();
+extern var LanguageContraction(var text = 0);
+extern var LanguageDirection(var d = 0);
+extern var LanguageNumber(var n = 0, var f = 0);
+extern var LanguageTimeOfDay(var hours = 0, var mins = 0, var i = 0);
+extern var LanguageVerb(var i = 0);
+extern var LanguageVerbIsDebugging(var w = 0);
+extern var LanguageVerbLikesAdverb(var w = 0);
+extern var LanguageVerbMayBeName(var w = 0);
+extern var ThatOrThose(var obj = 0);
+extern var ItOrThem(var obj = 0);
+extern var CThatOrThose(var obj = 0);
+extern var CTheyreOrThats(var obj = 0);
+extern var IsOrAre(var obj = 0);
+extern var nop(var x = 0);
+extern var SubjectNotPlayer(var obj = 0, var reportage = 0, var nocaps = 0, var v2 = 0, var v3 = 0, var past = 0);
+extern var CSubjectVoice(var obj = 0, var v1 = 0, var v2 = 0, var v3 = 0, var past = 0);
+extern var CSubjectIs(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var CSubjectIsnt(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var CSubjectHas(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var CSubjectWill(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var CSubjectCan(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var CSubjectCant(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var CSubjectDont(var obj = 0, var reportage = 0, var nocaps = 0);
+extern var OnesSelf(var obj = 0);
+extern var Possessive(var obj = 0, var caps = 0);
+extern var PossessiveCaps(var obj = 0);
+extern var theActor(var obj = 0);
+extern var SupportObj(var obj = 0, var s1 = 0, var s2 = 0);
+extern var PluralObj(var obj = 0, var s1 = 0, var s2 = 0, var past = 0);
+extern var Tense(var present = 0, var past = 0);
+extern var DecideAgainst();
+extern var LowerCase(var c = 0);
+extern var UpperCase(var c = 0);
+extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
 
 // Automatically start up the Beguile run-time environment...
 #if bglAutoInitialize

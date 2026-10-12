@@ -1,0 +1,68 @@
+/*  run_round22_forms — forms the round-22 field trials found broken (D1251–D1259).  */
+// EXPECT_OUTPUT: 6 3 | 8 | 2 | 1 8 | 8 8 | 4 | 9 ghjk | 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+
+// D1251: an ancestor-cast call with a local named like the method.
+class Part : object { int worth() { return 3; } }
+class Chip : Part { int worth() { return 6; } }
+Chip chipA { }
+int worths() { int worth = chipA.worth(); int base = ((Part)chipA).worth(); return worth * 10 + base; }
+
+// D1252: a call through a local func<> named like a routine.
+int twice(int v) { return v + 100; }
+int viaLocal() { func<int, int> twice = (int v) => v * 2; return twice(4); }
+
+// D1254: `operator +=` declared in an `extend <object>` body.
+object counter { int n = 0; }
+extend counter { int operator += (int v) { n = n + v; return n; } }
+
+// D1255: a one-line `#i6` in a method, then `!` before a `{`, then a method declared later.
+attribute shut;
+class Bin : object {
+    int fill(object o, int w) {
+        int k = 0;
+        #i6 k = w;
+        if (!o.has(shut)) { k = k - 2; }
+        return k;
+    }
+}
+Bin binA { }
+
+// D1256: a `replace` method above the methods code before it calls.
+class Shelf : object { int report() { return 0; } }
+Shelf bench {
+    auto level = { int _v; int operator () { return _v; } void operator = (int v) { _v = outer.doubled(v); } }
+    int first() { return doubled(4); }
+    replace int report() { return 1; }
+    int doubled(int n) { return n * 2; }
+}
+
+// D1257: a pooled-class local named like one of its members.
+class Pair[2] : object { int a = 0; int b = 0; }
+int pairB() { Pair b = new Pair(); b.b = 4; int v = b.b; delete b; return v; }
+
+// D1258: static members of owning types.
+value class Cell { int n; Cell operator = (Cell o) { n = o.n; return self; } }
+class Crate : object { static Cell kept; static stringObj journal; }
+
+// D1259: a reused pool slot empties an owned member's array.
+value class Stack { int pushes = 0; array<int> items[3]; Stack operator = (Stack o) { pushes = o.pushes; return self; } }
+class Slot[1] : object { Stack st; }
+int reused() { Slot s = new Slot(); s.st.items.append(4); delete s; Slot r = new Slot(); int n = r.st.items.length; delete r; return n; }
+
+void main() {
+    bglInit();
+    print($"{worths() / 10} {worths() % 10} | ");
+    print(viaLocal()); print(" | ");
+    counter += 2; print(counter.n); print(" | ");
+    print(binA.fill(binA, 3)); print(" ");
+    bench.level = 4; print($"{bench.level} | ");
+    print($"{bench.first()} {bench.doubled(4)} | ");
+    print(pairB()); print(" | ");
+    Cell c; c.n = 9; Crate.kept = c; c.n = 1; Crate.journal = "gh"; Crate.journal += "jk";
+    print(Crate.kept.n); print(" "); Crate.journal.print(); print(" | ");
+    print(reused());
+    print("^");
+}

@@ -1,0 +1,84 @@
+/*  run_round20_forms — forms the round-20 field trials found broken (D1211–D1233).  */
+// EXPECT_OUTPUT: 5 | 500 500 | hi | ok ?5 | 12 | 7 2 | true true | 30 | one two | 40 70 40 | 31 43 | 3 4 | 4 | 3 | 7 | 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+
+// D1211: a global named like an I6 grammar token.
+int held = 4;
+
+// D1212: an emitter-class value prints through its implicit conversion.
+emitter class tenths { emitter void operator = (int v) { $self = $v; } emitter int operator () { ($self * 100) } }
+
+// D1213: a pooled class's stringObj member; D1214: a reference member whose class holds one.
+class Tag[2] : object { stringObj note; }
+class Holder : object { Tag owner; }
+Holder holderA { }
+
+// D1215: an interpolated stringObj local in a routine with a try.
+void probe(int r) { try { if (r > 2) throw r; print("ok "); } catch (int bad) { stringObj note = $"?{bad}"; note.print(); } }
+
+// D1216: an object's `[]` used above its declaration.
+object crate {
+    int scale = 4;
+    int triple() { return self[3]; }
+    int operator [] (int i) { return scale * i; }
+}
+
+// D1217: $i6Expr of a member beside a local of the same name.
+class Spot : object { int col; }
+Spot spotA { col = 7; }
+int showCol() { int col = 2; int m = 0; #i6 { m = $i6Expr(spotA.col) * 10 + col; } return m; }
+
+// D1221: stringObj compared with a string.
+// D1222: an empty statement as a case body.
+string middle = "mid";
+
+// D1223: a value class's stringObj member, in a local and in array slots.
+value class Word { stringObj text; Word operator = (Word o) { text = o.text; return self; } }
+array<Word> words[2];
+
+// D1224, D1225, D1226: value-class array slots — a converting store, a method `+=`, an ancestor call.
+value class Num {
+    int n;
+    Num operator = (Num o) { n = o.n; return self; }
+    Num operator = (int v) { n = v * 10; return self; }
+    Num operator += (Num o) { n = n + o.n; return self; }
+}
+value class Base { int k; Base operator = (Base o) { k = o.k; return self; } int size() { return 3; } }
+value class Wide : Base { Wide operator = (Wide o) { k = o.k; return self; } int size() { return 4; } }
+
+// D1227: a block-local array read in a nested if.
+int blockLocal() { int z = 0; { array<int> row = {3, 4}; if (z == 0) z = row[1]; } return z; }
+
+// D1229: a local named like an imported alias.
+enum eMode { idle, low, high }
+object kit { alias mode for eMode; }
+#using kit
+int localMode() { int mode = 0; mode = 3; return mode; }
+
+void main() {
+    bglInit();
+    held = held + 1; print(held); print(" | ");
+    tenths t = 5; print(t); print($" {t} | ");
+    Tag g = new Tag(); g.note = "hi"; g.note.print(); print(" | ");
+    probe(1); probe(5); print(" | ");
+    print(crate.triple()); print(" | ");
+    print($"{showCol() / 10} {showCol() % 10} | ");
+    stringObj s; s = "low";
+    print(s != middle ? "true" : "false"); print(" "); print(s =~ "LOW" ? "true" : "false");
+    switch (1) { case 0: ; default: ; }
+    print(" | ");
+    Num w; w = 3; print(w.n); print(" | ");
+    words[0].text = "one"; words[1].text = "two"; words[0].text.print(); print(" "); words[1].text.print(); print(" | ");
+    array<Num> list[2]; list[0] = 7; list[1] = w;
+    print($"{w.n + 10} {list[0].n} {list[1].n + 10} | ");
+    array<Num> row[2]; row[0] = 2; row[1] = 1; row[0] += row[1]; print($"{row[0].n + 1} {row[1].n + 33} | ");
+    array<Wide> wides[1]; Wide wd; wides[0] = wd;
+    print($"{((Base)wides[0]).size()} {wides[0].size()} | ");
+    print(blockLocal()); print(" | ");
+    print(localMode()); print(" | ");
+    print(spotA.col); print(" | ");
+    print(holderA.owner == null ? 7 : 0);
+    print("^");
+}

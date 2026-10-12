@@ -253,9 +253,13 @@ object _bglBuf {
     }
 
     // ── Copy / write ──────────────────────────────────────────────────────────
-    // set(buf, val) writes the contents of `val` into `buf`. `val` may be
-    // another tracked buf or a packed string literal — dispatch on isTracked.
-    array<char> set(array<char> buf, var stringVal){
+    // set(buf, val) writes the contents of `val` into `buf`: a packed string literal, or another
+    // buffer, tracked or not.
+    array<char> set(array<char> buf, var stringVal){ return setAny(buf, stringVal); }
+    array<char> set(array<char> buf, array<char> src){ return setFromBuffer(buf, src); }
+
+    // setAny: a value only known at run time — a tracked buffer, else a packed string literal.
+    array<char> setAny(array<char> buf, var stringVal){
         if(isTracked(stringVal)) setFromBuffer(buf, stringVal);
         else                     setFromLiteral(buf, stringVal);
         return buf;
@@ -495,15 +499,57 @@ object _bglBuf {
     }
 
     // prepend: insert fromBuf at the start of toBuf.
-    array<char> prepend(array<char> toBuf, array<char> fromBuf){
+    array<char> prepend(array<char> toBuf, array<char> fromBuf){ return prependBuffer(toBuf, fromBuf); }
+    array<char> prependBuffer(array<char> toBuf, array<char> fromBuf){
         insert(toBuf, fromBuf, 0, length(fromBuf));
         return toBuf;
     }
 
     // append: copy fromBuf onto the end of toBuf.
-    array<char> append(array<char> toBuf, array<char> fromBuf){
+    array<char> append(array<char> toBuf, array<char> fromBuf){ return appendBuffer(toBuf, fromBuf); }
+    array<char> appendBuffer(array<char> toBuf, array<char> fromBuf){
         copy(toBuf, fromBuf, -1, length(toBuf), 0);
         return toBuf;
+    }
+
+    // append a string: print_to_array renders it straight after the text. Its length word lands on the
+    // text's last few characters (or the buffer's own length word), which are saved and put back.
+    array<char> append(array<char> toBuf, string text){
+        int len = length(toBuf);
+        int sz = size(toBuf);
+        if(sz < 0) sz = bglStringDefaultSize;
+        int n = 0;
+        int saved = 0;
+        #i6 {
+            saved = (toBuf + len)-->0;
+            text.print_to_array(toBuf + len, sz - len);
+            n = (toBuf + len)-->0;
+            (toBuf + len)-->0 = saved;
+        }
+        setLength(toBuf, len + n);
+        return toBuf;
+    }
+
+    // prepend a string: appended, then rotated to the front.
+    array<char> prepend(array<char> toBuf, string text){
+        int len = length(toBuf);
+        append(toBuf, text);
+        int total = length(toBuf);
+        reverseRange(toBuf, 0, total);
+        reverseRange(toBuf, 0, total - len);
+        reverseRange(toBuf, total - len, total);
+        return toBuf;
+    }
+
+    // reverseRange: reverse the characters in [from, to).
+    void reverseRange(array<char> buf, int from, int to){
+        int w = bgl.wordsize;
+        for(to = to - 1; from < to; from++){
+            int c = _bglGetByte(buf, from + w);
+            _bglSetByte(buf, from + w, _bglGetByte(buf, to + w));
+            _bglSetByte(buf, to + w, c);
+            to--;
+        }
     }
 
     // delete: remove `count` chars starting at `pos`, shifting trailing chars
@@ -530,10 +576,16 @@ object _bglBuf {
     // replaceAll: replace every occurrence of searchTextBuf with replaceTextBuf,
     // starting at `startingIndex`.
     array<char> replaceAll(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf, int startingIndex = 0){
+        int searchLen = length(searchTextBuf);
         int rtlen = length(replaceTextBuf);
-        while(startingIndex != -1){
-            self.replace(buf, searchTextBuf, replaceTextBuf);
-            startingIndex = indexOf(buf, searchTextBuf, startingIndex + rtlen);
+        if(searchLen == 0) return buf;
+        // Each match is replaced where it was found, and the search resumes after the inserted text,
+        // so a replacement containing the search text isn't matched again.
+        int pos = indexOf(buf, searchTextBuf, startingIndex);
+        while(pos != -1){
+            self.delete(buf, pos, searchLen);
+            insert(buf, replaceTextBuf, pos, 0);
+            pos = indexOf(buf, searchTextBuf, pos + rtlen);
         }
         return buf;
     }

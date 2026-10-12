@@ -1,0 +1,5 @@
+// A routine that calls itself holding a local array warns when the set framePoolSize can't hold four of its calls.
+// EXPECT_WARNING: calls itself and takes about
+#beguilerSettings { target = z5; informName = "none"; framePoolSize = 20; }
+int depth(int n) { array<int> seen[8]; seen[0] = n; if (n <= 0) return 0; return 1 + depth(n - 1); }
+void main(){ print(depth(2)); }

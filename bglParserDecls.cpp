@@ -305,6 +305,53 @@ void bglParser::bakeInlineArrayAggregate(const string& innerElemType, const stri
         }
     inner.declaredExpressionValue = il;
     languageService.registerInstance(inner);   // file-scope global; emitted as its own `array` directive
+    adoptInitialElements(anonName, innerElemType, il);
+}
+
+// A global array whose element type owns storage (publishes a static `operator =`) is compiled holding
+// its initial values; bglInit hands each value of another type (a literal) to that operator, so the
+// slot owns its own instance.
+void bglParser::adoptInitialElements(const string& arrName, const string& elementType, initializerList* list){
+    if(list == nullptr || list->elements.empty()) return;
+    string assign = operatorRef(elementType, "=");
+    if(assign.empty() || assign == "0") return;
+    for(size_t i = 0; i < list->elements.size(); i++){
+        expression* e = list->elements[i];
+        if(e == nullptr || e->resolvedType == elementType || e->text() == "0") continue;
+        string slot = format("{0}-->{1}", arrName, i + 1);
+        languageService.globalInits.push_back({arrName, format("{0} = {1}(0, {0});", slot, assign)});
+    }
+}
+
+// The value class an array's slots own instances of, or null when its elements are plain words.
+classDef* bglParser::owningValueElementClass(const string& elementType){
+    classDef* cls = elementType.empty() ? nullptr : languageService.findClass(elementType);
+    if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal || !isValueClass(cls) || !classHasStoredFields(cls))
+        return nullptr;
+    return cls;
+}
+
+// Records an array of a value class, so the emitter can size the pool its slots draw instances from.
+void bglParser::noteValueElementArray(arrayDeclaration& arr, classDef* hostClass, bool isLocal){
+    classDef* cls = owningValueElementClass(arr.elementType);
+    if(cls == nullptr) return;
+    if(arr.src.file.find("beguiLib") != string::npos) return;
+    if(isLocal && arr.arraySize <= 0 && !dynamic_cast<initializerList*>(arr.declaredExpressionValue))
+        parsingError(format("Array '{0}' holds '{1}' values, each in an instance of its own, so it needs a "
+            "capacity: `array<{1}> {0}[n]`.", arr.dName(), typeDisplayName(arr.elementType)));
+    // A class's member array is created with every instance, so an initial element would be shared by all of them.
+    if(auto* list = dynamic_cast<initializerList*>(arr.declaredExpressionValue); list != nullptr && !isLocal){
+        if(hostClass != nullptr && !list->elements.empty())
+            parsingError(format("Array '{0}' holds '{1}' values, so every '{2}' needs instances of its own; a class "
+                "can't give it initial elements. Give it a capacity and append them in a routine.", arr.dName(), typeDisplayName(arr.elementType),
+                hostClass->dName()));
+    }
+    languageService.valueElementArrays[cls].push_back({&arr, hostClass, isLocal});
+    if(functionDef* copyOp = findAssignOperator(cls, arr.elementType, [](functionDef*){ return true; }, /*allowInherited*/true);
+       copyOp != nullptr && !copyOp->isEmitter){
+        if(copyOp->i6name.empty()) copyOp->i6name = mangleOperatorName(copyOp->name);
+        languageService.valueElementCopyOps[cls] = copyOp->i6name;
+    }
 }
 
 bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal, bool isSuperposed, bool isConst) {
@@ -315,6 +362,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         parsingError(format("'const' doesn't apply to array '{0}': an array is storage.",
             name.originalValue.empty() ? (string)name : name.originalValue));
     arrDecl.src = file.currentLocation();
+    arrDecl.inLoop = loopDepth > 0;
     arrDecl.name = (string)name;
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
@@ -394,12 +442,15 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             if(!elementType.empty() && elementType != "var"){
                 for(size_t i = 0; i < list->elements.size(); i++){
                     expression* elem = list->elements[i];
+                    if(!elem->resolvedType.empty() && !isArrayElementCompatible(elem->resolvedType, elementType))
+                        applyAssignOperatorAsValue(elem, elementType);   // a primitive's `$target = $v` operator =
                     if(!elem->resolvedType.empty() && !zeroFitsBnum(elem, elementType) && !isArrayElementCompatible(elem->resolvedType, elementType))
                         parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, typeDisplayName(elem->resolvedType), typeDisplayName(elementType)));
                     checkByteElementRange(elem, elementType);
                 }
             }
             arrDecl.declaredExpressionValue = list;
+            if(func == nullptr) adoptInitialElements(arrDecl.name, elementType, list);
         } else {
             // Bare (brace-less) RHS. Two meanings, disambiguated by the RHS's resolved type:
             //
@@ -512,6 +563,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     if(auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
        seed != nullptr && seed->elements.empty() && arrDecl.arraySize <= 0 && !isExternal)
         parsingError(format("Array '{0}' has no storage: give it a capacity ([n]) or at least one element; declare it 'ref' to share another array.", arrDecl.dName()));
+    if(!isExternal && !arrDecl.isRefLocal && !declaringRefArray) noteValueElementArray(arrDecl, nullptr, body != nullptr);
 
     // An initialized local byte array (`= "…"` or `= {…}`) is drawn from the framePool on each
     // call and filled from a hidden file-scope array holding the initializer, laid out alike.
@@ -536,6 +588,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     if(arrDecl.literalElements)
         if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
             checkLiteralElements(arrDecl, list->elements);
+    // A verb named as an element is its action (`{ Take, Drop }` → ##Take ##Drop).
+    if(arrDecl.elementType == "verb")
+        if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
+            for(expression* e : list->elements) if(e != nullptr) applyActionConstant(e);
 
     if(body != nullptr){
         // Set-up an element needs (a `?.` test, a temp) runs before the elements are stored.
@@ -543,6 +599,26 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         pendingInjections.clear();
         string valueSource = copyInitSource;
         copyInitSource.clear();
+        string srcPath = valueSource;
+        srcPath.erase(0, srcPath.find_first_not_of(" \t\r\n"));
+        srcPath.erase(srcPath.find_last_not_of(" \t\r\n") + 1);
+        string srcOwner, srcProp;
+        bool plainPath = !srcPath.empty() && srcPath.find_first_not_of(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") == string::npos;
+        if(!arrDecl.copySource.empty() && plainPath && splitQualifiedMember(srcPath, func, body, srcOwner, srcProp)
+           && !memberArrayIsRef(srcOwner, srcProp, func, body)){
+            // A member array is property data: size the storage from its length, then copy as `name = value;`.
+            file.openText("int " + arrDecl.copyHeld + ";", arrDecl.src.file, arrDecl.src.line);
+            try { processStatementDispatch(file.getToken(), *func); } catch(...) { file.close(); throw; }
+            file.close();
+            file.openText(srcPath + ".length;", arrDecl.src.file, arrDecl.src.line);
+            expression* len = nullptr;
+            try { len = parseExpression(file.getToken(), {token::endStatement}, func, body); }
+            catch(...) { file.close(); throw; }
+            file.close();
+            arrDecl.copyLength = len->text();
+            arrDecl.copySource.clear();
+        }
         if(!arrDecl.copySource.empty()){
             string text = "int " + arrDecl.copyHeld + "; " + (string)dataType + "<" + elementType + "> "
                         + arrDecl.copySource + " = " + valueSource + ";";
@@ -612,11 +688,12 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                     const string& t = vd->type.name;
                     if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                 }
-                if(dynamic_cast<classDef*>(g) != nullptr)
-                    parsingWarning("Local variable '" + varDecl.name + "' has the name of class '" + g->dName()
+                if(auto* cd = dynamic_cast<classDef*>(g))
+                    parsingWarning("Local variable '" + varDecl.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                         + "'; in this routine the name means the variable, though the class still declares types.");
                 else
                     parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; '::" + varDecl.name + "' reaches the global.");
+                break;   // one warning, however many overloads the name has
             }
         if(currentClass != nullptr){
             for(typeMember* m : currentClass->members)
@@ -846,6 +923,8 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
                                          token symbol, bool isAuto, bool isRef, functionDef* func, statementBlock* body){
     if(symbol.value==token::assignment || symbol.value==token::bindAssignment){
         token first = file.getToken();
+        if(first.is(token::endStatement))
+            parsingError(format("'{0}' has '{1}' but no value after it.", varDecl.dName(), symbol.value));
         // Inline-aggregate folding: for a FILE-SCOPE object-backed class variable, `Type name = {...}`
         // and `Type name = Type{...}` are the same declaration as `Type name {...}` — bake the fields
         // straight into the object `name` (§6.2.1) instead of building an intermediate anonymous object
@@ -856,9 +935,9 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
                 return true;   // folded into the object declaration — nothing more to build
         }
         classDef* declCls = getDispatchClass((string)dataType);
-        if(first.is(token::braceOpen) && declCls != nullptr && !isObjectBackedClass(declCls)
+        if(first.is(token::braceOpen) && declCls != nullptr && (!isObjectBackedClass(declCls) || func != nullptr)
            && isInlineConstructible(declCls) && ((string)dataType).find('<') == string::npos){
-            // A value class with `inline` members: `Pair q = { 5, 6 };` is `Pair q = Pair{ 5, 6 };`.
+            // A class with `inline` members: `Pair q = { 5, 6 };` is `Pair q = Pair{ 5, 6 };`.
             string anonName = format("_bglanon{0}", anonObjectCounter++);
             bakeInlineObjectAggregate(declCls, (string)dataType, anonName, func, body);
             file.getToken(token::endStatement);
@@ -1040,6 +1119,7 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
                 if(fn->name == "init"){
                     i6RawNode& initNode = *(new i6RawNode());
                     initNode.text = substituted;
+                    initNode.cooked = true;   // names the local: it follows the local's rename
                     // insert before varDecl (which is currently the last element)
                     body->statements.insert(body->statements.end()-1, &initNode);
                 } else if(fn->name == "deinit"){
@@ -1182,6 +1262,12 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     else if(!variableName.docComment.empty()) varDecl.docComment = variableName.docComment;
     varDecl.type=languageService.getType((string) dataType);
     if(!i6alias.empty()) varDecl.i6name = i6alias;
+    // A global named like an Inform 6 word (`held`) is renamed here, before any use is emitted.
+    else if(!isExternal && getCurrentCompileContext() == eCompileContext::global
+            && bglLanguageService::isI6StatementKeyword(varDecl.name)){
+        varDecl.i6name = "_" + varDecl.dName();
+        varDecl.i6nameAvoidsKeyword = true;
+    }
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
     varDecl.isRefLocal=isRef;
@@ -1251,6 +1337,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
 
     if(parseVariableInitializer(varDecl, dataType, variableName, symbol, isAuto, isRef, func, body))
         return false;   // folded into an object declaration — no variable emitted
+    if(isRef && symbol.value == token::bindAssignment) rejectMemberArrayBind(varDecl.declaredExpressionValue, func, body);
 
     // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
@@ -1340,6 +1427,10 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         funcDef.i6name = "_" + funcDef.dName();
         funcDef.i6nameAvoidsKeyword = true;
     }
+    // Named like a library class's method (`<linq>`'s `first`): one I6 namespace holds both.
+    if(!isEmitter && !isExternal && getCurrentCompileContext() == eCompileContext::global && funcDef.i6name.empty()
+       && funcDef.src.file.find("beguiLib") == string::npos && namesLibraryMethod(funcDef.name))
+        funcDef.i6name = "_" + funcDef.dName();
 
     // Register into globals EARLY (replacing any pre-scan stub) so that LSP error recovery
     // preserves partial parse state even if the body parse throws. The full body and params
@@ -1361,6 +1452,14 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // mistake (a name collision, or a missing `default`). A `default` extern is dropped here so the
     // real definition takes over cleanly. `replace` has its own path (below) and is exempt.
     functionDef* overriddenDefault = nullptr;   // the `extern default` this definition takes over
+    // A program's own `extern` for a routine a binding declares is the signature it means to use.
+    if(isExternal && funcDef.src.file.find("beguiLib") == string::npos)
+        languageService.globals.erase(remove_if(languageService.globals.begin(), languageService.globals.end(),
+            [&](typeDef* g){
+                auto* ex = dynamic_cast<functionDef*>(g);
+                return ex && ex != &funcDef && ex->isExternal && !ex->isPrePassStub && ex->name == funcDef.name
+                    && ex->src.file.find("beguiLib") != string::npos;
+            }), languageService.globals.end());
     if(!isExternal && !isReplace){
         // Every declaration of it goes: the program may repeat the binding's `extern default`.
         for(auto it = languageService.globals.begin(); it != languageService.globals.end(); ){
@@ -1406,6 +1505,14 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             registeredEarly = true;
         }
     }
+    // A library global of the name: reported here, before a use of the function reads the global instead.
+    if(!funcDef.isExternal && !funcDef.isEmitter && funcDef.i6name.empty() && funcDef.src.file.find("beguiLib") == string::npos)
+        for(typeDef* g : languageService.globals)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal && vd->name == funcDef.name
+               && vd->type.name != "property" && vd->i6name.empty())
+                parsingError(format("function '{0}' has the same name as the library's {1} '{2}'; Inform 6 keeps these "
+                    "in one namespace, ignoring case, so rename the function or give it an `asI6` name.",
+                    funcDef.dName(), vd->type.name == "attribute" ? "attribute" : "global", vd->dName()));
 
     processParameterList(funcDef);
 
@@ -1508,6 +1615,10 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         file.getToken(token::braceOpen);
         i6Block& rawblock=*(new i6Block());
         rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+        // A later `replace emitter` of this signature is the body every use sees, wherever it sits.
+        if(!isReplace && currentClass == nullptr && currentObject == nullptr)
+            if(auto it = forwardReplaceBodies.find(emitterSignatureKey(funcDef)); it != forwardReplaceBodies.end())
+                rawblock.i6Body = it->second;
         funcDef.body=&rawblock;
     } else if(isExternal){
         // extern non-emitter routine: declared bodyless with ';'. The implementation lives in I6
@@ -1537,7 +1648,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         closeCompileContext(eCompileContext::codeBlock);
         currentFunc = savedFunc;
         if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
-            parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+            parsingError(missingReturnMessage(funcDef));
         saveBackingsAcrossRecursion(funcDef);
     }
 
@@ -1774,6 +1885,9 @@ grammarLine bglParser::parseGrammarLineContent(){
     // multi-trigger lines (e.g. `.type|.enter|.put`). Extras land in additionalVerbWords;
     // they emit as one combined `verb 'w1' 'w2' 'w3' ...` directive when all are first-
     // occurrence, or fan out to per-trigger directives otherwise (see emitGrammarLines).
+    // The trigger group may be parenthesized, as any other group: `{ (.chip | .nick), noun }`.
+    bool triggerParens = file.peekToken().is("(");
+    if(triggerParens) file.getToken();
     token trigger = file.getToken(eTokenType::dictionaryWord);
     line.verbWord = trigger.value;   // raw word, e.g. "put"
     while(file.peekToken().is("|")) {
@@ -1781,6 +1895,7 @@ grammarLine bglParser::parseGrammarLineContent(){
         token alt = file.getToken(eTokenType::dictionaryWord);
         line.additionalVerbWords.push_back(alt.value);
     }
+    if(triggerParens) file.getToken(")");
 
     // Remaining pattern tokens, comma-separated until }
     token tok = file.getToken({token::comma, token::braceClose});

@@ -1,0 +1,6 @@
+// Negative test: an object's method is not a function value; the message suggests a lambda.
+// EXPECT_ERROR: Pass a lambda that calls it: `(int n) => fx.succ(n)`
+#beguilerSettings { target = z5; informName = "none"; }
+object fx { int succ(int n){ return n + 1; } }
+int applyTwice(func<int, int> f, int x){ return f(f(x)); }
+void main(){ print(applyTwice(fx.succ, 3)); }

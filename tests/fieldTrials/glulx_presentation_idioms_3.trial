@@ -143,100 +143,69 @@ Done.
 > hudoff
 HUD closed.
 [win 1] 6. hud closed
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 5                                        |
+
 > hudoff
 HUD already closed.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 5                                        |
+
 > grow
 No HUD.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 5                                        |
+
 > layout
 HUD open: no; notes open: yes.
 Notes width > 0: yes, height > 0: yes.
 Status bar height 1.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 5                                        |
+
 > pick
 Choose heavier or lighter.
 Limit is 2.0 kg.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 6                                        |
+
 > hudon
 HUD open.
 [win 1] 7. hud opened
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 6                                        |
 [grid 3]
 |Room A  turn 6                    |
 |load 1.9/2.0 kg [##########]      |
+
 > hudon
 HUD already open.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 6                                        |
 [grid 3]
 |Room A  turn 6                    |
 |load 1.9/2.0 kg [##########]      |
+
 > drop anvil
 Dropped.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 7                                        |
 [grid 3]
 |Room A  turn 7                    |
 |load 0.0/2.0 kg [..........]      |
+
 > weigh
 Carrying 0.0 kg of 2.0; 1.8% full.
 [....................] ok
 [win 1] 8. weighed 0.0 kg
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 8                                        |
 [grid 3]
 |Room A  turn 8                    |
 |load 0.0/2.0 kg [..........]      |
+
 > redraws
 HUD redrawn more than 20 times: yes.
-[grid 1]
-|Room A  turn 5                                    |
-|load 1.9/2.0 kg [##########]                      |
-|                                                  |
 [grid 2]
 |Room A | 8                                        |
 [grid 3]

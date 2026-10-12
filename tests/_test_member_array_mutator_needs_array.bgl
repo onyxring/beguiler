@@ -1,0 +1,5 @@
+// A member array's mutators come from <array>, as a global's do.
+// EXPECT_ERROR: comes from `<array>`: add `#include <array>`
+#beguilerSettings { target = z5; informName = "none"; }
+object holder { array<int> held[4]; void add(int v) { held.append(v); } }
+void main() { holder.add(1); }

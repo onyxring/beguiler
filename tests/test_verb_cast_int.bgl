@@ -1,6 +1,7 @@
 // test_verb_cast_int.bgl — a verb named directly and cast to int is its action number: `(int)PutOn`
-// emits ##PutOn, so it compares with an int that holds an action (receive_action).
+// emits ##PutOn, so it compares with an int that holds an action.
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <bindings/i6StandardLibrary>
-bool sameAction(){ return (int)PutOn == receive_action; }
+int lastAction = 0;
+bool sameAction(){ return (int)PutOn == lastAction; }
 void main(){ }

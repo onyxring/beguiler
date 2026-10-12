@@ -1,0 +1,84 @@
+/*  run_round14_forms — forms the round-14 field trials found broken (D1005–D1033).  */
+// EXPECT_OUTPUT: true true | 0 7 | var int var | 9 10 3 | 10 12 | 6 | -3 false | 1 | 16 | 7 | 1 | 30 10 20 | 0 0 1 0 | 8
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+class Box : object { }
+class Bag : object { }
+bglClass pick(int n) { if (n == 1) return Box; return Bag; }
+
+value class Span {
+    int lo = 0;
+    int hi = 0;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    Span grown(int n) { Span s; s.lo = lo - n; s.hi = hi + n; return s; }
+}
+
+class D {
+    static void Show(int n)    { print("int "); }
+    static void Show(string s) { print("string "); }
+    static void Show(var v)    { print("var "); }
+}
+
+class Calc {
+    static array<int> table = {1, 2, 3};
+    static int sum() { int t = 0; for (int v in table) t += v; table[0] = 10; return t + table.length; }
+    static int dbl(int n) { return n * 2; }
+    static array<func<int, int>> ops = {dbl};
+}
+array<literal func<int, int>> doublers = { Calc.dbl };
+
+int inc(int n) { return n + 1; }
+int twice(int n) { return n * 2; }
+class Fx : object { array<func<int, int>> steps[2]; }
+Fx fxBox { steps = { inc, twice }; }
+
+array<int> shared[4];
+void addTo(array<int> into, int n) { into -= n; into += n; }
+
+class Holder : object { inline int id; inline array<int> vals[2]; }
+int showHolder(Holder h) { return h.id + h.vals[0] + h.vals[1]; }
+
+value class Node { int id; Node operator = (Node o) { id = o.id; return self; } }
+
+class First : object { inline int a; }
+class Second : object { inline int b; }
+class Both : First, Second { inline int c; }
+Both pos1 { 30, 10, 20, "pos one"; }
+
+int depth = 0;
+emitter class scope {
+    emitter void init() { depth++; }
+    emitter void deinit() { depth--; }
+}
+int lateReturn(bool early) { if (early) return depth; scope s; return depth; }
+
+void Main() {
+    bglInit();
+    bglClass k = pick(1);
+    print(k == Box); print(" "); print(k != pick(2)); print(" | ");
+    Span a;
+    a.lo = 2; a.hi = 5;
+    print(a.grown(1).grown(1).lo); print(" "); print(a.grown(1).grown(1).hi); print(" | ");
+    var v = a;
+    D.Show(v); D.Show(5); D.Show(v); print("| ");
+    print(Calc.sum()); print(" "); print(Calc.table[0]); print(" "); print(Calc.table.length); print(" | ");
+    print(doublers[0](5)); print(" "); print(Calc.dbl(6)); print(" | ");
+    print(fxBox.steps[1](3)); print(" | ");
+    char ch = 'a';
+    int n = -(int)ch + 94;
+    bool t = !(bool)n;
+    print(n); print(" "); print(t); print(" | ");
+    addTo(shared, 7);
+    print(shared.length); print(" | ");
+    int m = 4;
+    print(showHolder({ m, {m, m * 2} })); print(" | ");
+    array<Node> ring[2];
+    ring[0].id = 7;
+    print(ring[0].id); print(" | ");
+    ref array<int> r := shared;
+    print(r.length); print(" | ");
+    print(pos1.c); print(" "); print(pos1.a); print(" "); print(pos1.b); print(" | ");
+    print(lateReturn(true)); print(" "); print(depth); print(" "); print(lateReturn(false)); print(" "); print(depth);
+    print(" | "); print(Calc.ops[0](4));
+}

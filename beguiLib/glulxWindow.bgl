@@ -72,6 +72,7 @@ class window[16] : _bglObject {
     int id = 0;
     int _type = 0;   // its eGlulxWindowType, for `supports`
     int _bglChildStyles = 0;   // the sheet `childStyles` refers to, or 0
+    int _splitMethod = 0;      // how its split placed it (placement|scale|border)
     /// The look every window split from this one gets: the sheet itself, not a copy. A sheet passed to
     /// the split wins over it. Set it to null for none.
     typesealed childStylesRef childStyles;
@@ -83,6 +84,7 @@ class window[16] : _bglObject {
 
     void _bind(int newId, bGlulxWindowMethodFlags method = noBorder){
         self.id = newId;
+        self._splitMethod = (int)method;
         self.width._id  = newId; self.width._axis  = 0; self.width._method  = (int)method;
         self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
     }
@@ -99,6 +101,12 @@ class window[16] : _bglObject {
     // Re-runs glk_window_set_arrangement on the parent and updates the stored split method on both
     // proxies, so which axis is subsequently writable follows the new placement.
     void _rearrange(bGlulxWindowMethodFlags method, int size){
+        // Glk keeps a split's axis: Up/Down stays Up/Down, Left/Right stays Left/Right.
+        if(((self._splitMethod % 4) >= 2) != (((int)method % 4) >= 2)){
+            print("^[** Programming error: a window split across can't move up or down, and one split up or down can't move across **]^");
+            return;
+        }
+        self._splitMethod = (int)method;
         self.width._method  = (int)method;
         self.height._method = (int)method;
         bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), method, size, self.id);
@@ -155,12 +163,12 @@ class graphicsWindow[8]   : window {
 // (no own Class directive, no pool). A split `new`s the pooled content type and cast-labels the result
 // with the orientation view. Hold the result as the content type — or cast `(textGridWindow)w` — to
 // regain both writable axes (runtime-guarded); the cast is VM-sound because `hide` is front-end only.
-alias class textGridWindowHorz   for textGridWindow   { hide width.operator =; }
-alias class textGridWindowVert   for textGridWindow   { hide height.operator =; }
-alias class textBufferWindowHorz for textBufferWindow { hide width.operator =; }
-alias class textBufferWindowVert for textBufferWindow { hide height.operator =; }
-alias class graphicsWindowHorz   for graphicsWindow   { hide width.operator =; }
-alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; }
+alias class textGridWindowHorz   for textGridWindow   { hide width.operator =; hide moveLeft; hide moveRight; }
+alias class textGridWindowVert   for textGridWindow   { hide height.operator =; hide moveUp; hide moveDown; }
+alias class textBufferWindowHorz for textBufferWindow { hide width.operator =; hide moveLeft; hide moveRight; }
+alias class textBufferWindowVert for textBufferWindow { hide height.operator =; hide moveUp; hide moveDown; }
+alias class graphicsWindowHorz   for graphicsWindow   { hide width.operator =; hide moveLeft; hide moveRight; }
+alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; hide moveUp; hide moveDown; }
 
 // Shared split machinery — allocates the pooled CONTENT subtype, opens the glk window, binds. Orientation
 // is purely a compile-time label: each split method casts this result to its `…Horz`/`…Vert` alias view

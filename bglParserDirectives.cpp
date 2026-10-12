@@ -320,6 +320,7 @@ bool bglParser::evaluateCondition(const string& expr){
                 if(it==syms.end()) return "0";               // undefined → value 0 (lastSymbolDefined stays false)
                 lastSymbolDefined = true;
                 string v = it->second.empty() ? "1" : it->second; // bare #define → value 1
+                if(v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);   // a string's text
                 // Normalize a symbol whose value is the keyword true/false for comparisons.
                 string vl=v; transform(vl.begin(),vl.end(),vl.begin(),::tolower);
                 if(vl=="true")  return "1";
@@ -826,7 +827,8 @@ bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
         string name = sym.originalValue.empty() ? sym.value : sym.originalValue;
         string i6Val = valStr.empty() ? "" : " " + valStr;
         languageService.emitFirstBlocks.push_back("Constant " + name + i6Val + ";");
-    }
+        if(!valStr.empty()) i6DefinedSymbols[sym.value] = name;
+    } else i6DefinedSymbols.erase(sym.value);
     return false;
 }
 
@@ -1083,6 +1085,11 @@ bool bglParser::directiveI6Block(statementBlock* body, abstractObject& contextOb
                     if(file.peekChar() == (char)EOF) break;
                     token nt = file.getToken();
                     if(nt.is(eTokenType::eof)) break;
+                    if((nt.is(eTokenType::dataType) || nt.value == "auto" || nt.value == "var")
+                       && (file.peekToken().is(eTokenType::name) || file.peekToken().is(eTokenType::identifier)
+                           || file.peekToken().value == "<"))
+                    { currentStatementSrc = sourceLocation{};   // report at the declaration, not the enclosing routine
+                        parsingError("A Beguile island can't declare a variable: list it among the enclosing I6 routine's locals."); }
                     // processStatementDispatch returns true when it consumes a stray
                     // `}` — shouldn't happen in well-formed bgl content, but guard anyway.
                     if(processStatementDispatch(nt, subContext)) break;
@@ -1382,7 +1389,7 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "framepoolsize"){
             int sz = stoi(strVal);
             if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");
-            if(cfg.framePoolSize == -1) cfg.framePoolSize = sz;  // -1 = unset sentinel
+            if(cfg.framePoolSize == -1){ cfg.framePoolSize = sz; cfg.framePoolSizeSet = true; }  // -1 = unset sentinel
         }
         else if(key == "linqscratchsize"){
             int sz = stoi(strVal);

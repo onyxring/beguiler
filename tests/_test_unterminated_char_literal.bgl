@@ -1,0 +1,6 @@
+// Negative test: an unclosed character literal is reported on its own line, not at the end of the file.
+// EXPECT_ERROR: Unterminated character literal
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    int c = 'ab
+;}

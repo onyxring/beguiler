@@ -1,0 +1,96 @@
+/*  run_round21_forms — forms the round-21 field trials found broken (D1236–D1249).  */
+// EXPECT_OUTPUT: 30 | 3 3 | true false true | 2 2 | 7 5 | ssgg 2 | above 5 4 | 8 8 | 2 | true | r 1 3 r -5 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <buf>
+
+// D1236: a frame-slot local passed bare to an emitter `[]` in a routine with a try.
+#i6 { Array cells --> 10 20 30 40; Class Row; Row rowA; }
+extern class Row : object { emitter int operator [] (int i) { (cells-->$i) } }
+extern Row rowA;
+int cellAt(int i) { int r = 0; try { if (i > 3) throw 1; Row w = rowA; r = w[i]; } catch (int e) { r = -1; } return r; }
+
+// D1237: a static array read through an instance.
+class Tag : object { static array<int> marks[4]; static int made; }
+Tag tagA { }
+
+// D1239, D1240, D1249: bare `parent?`, `!parent?` and `parent.children` in a class method; `x.parent.children` in for-in.
+object roomA { }
+object box { object parent = roomA; }
+class Item : object {
+    bool placed() { if (parent?) return true; return false; }
+    bool loose() { if (!parent?) return true; return false; }
+    int siblings() { int n = 0; for (object o in parent.children) n++; return n; }
+}
+Item pin { object parent = box; }
+Item nut { }
+object peg { object parent = box; }
+
+// D1241: an extend-class method whose parameter is named like a type.
+union Label = string | object;
+value class Cell { int x; Cell operator = (Cell o) { x = o.x; return self; } }
+extend class Item { int mark(var label, ref Cell acc) { acc.x += 5; return 7; } }
+
+// D1242: a local array in an inline accessor's operators.
+class Holder : object {
+    auto level = {
+        int _v;
+        int operator () { array<char> m[2]; bgl.util.buf.set(m, "g"); bgl.util.buf.print(m); return _v; }
+        void operator = (int v) { _v = v; array<char> m[2]; bgl.util.buf.set(m, "s"); bgl.util.buf.print(m); }
+    }
+}
+Holder holderA { }
+
+// D1244: a class-body call of a method and an operator a later `extend class` overloads.
+class Tile : object {
+    int hue = 0;
+    int operator <=> (Tile o) { return hue - o.hue; }
+    bool above(Tile o) { return self > o; }
+    int shift(int n) { return hue + n; }
+    int use() { return shift(3); }
+}
+extend class Tile {
+    int operator <=> (int n) { return hue - n; }
+    int shift(Tile o) { return hue + o.hue; }
+}
+Tile tileA { hue = 2; }
+Tile tileB { hue = 5; }
+
+// D1245: an object's emitter used above its declaration.
+object gadget {
+    int show(int v) { int d = twice(v); return d * 10 + twice(v) / 2 - 4; }
+    emitter int twice(int n) { ($n * 2) }
+}
+
+// D1246: `+= { … }` on an array parameter.
+int appendTwo(array<int> a) { a += {3, 1}; return a.length; }
+array<int> spare[5];
+
+// D1247: postfix `?` on a call result.
+string label(int n) { if (n == 1) return "one"; return null; }
+
+// D1248: a throw past two nested sends, caught and returned through a send.
+object inner { int fail(int v) { if (v > 2) throw v; return v; } }
+object middle { int pass(int v) { return inner.fail(v); } }
+object sifter {
+    int size = 3;
+    int sift(int v) { int r = 0; try { r = middle.pass(v); } catch (int e) { r = -e; } return r; }
+    void run(int v) { int r = sift(v); print($"r {r} {size}"); }
+}
+
+void main() {
+    bglInit();
+    print(cellAt(2)); print(" | ");
+    Tag.marks[0] = 3; Tag.made = 3; print($"{tagA.marks[0]} {tagA.made} | ");
+    print($"{pin.placed()} {nut.placed()} {nut.loose()} | ");
+    int k = 0; for (object o in pin.parent.children) k++;
+    print($"{pin.siblings()} {k} | ");
+    Cell c; print($"{pin.mark("t", c)} {c.x} | ");
+    holderA.level = 1; holderA.level = 2; int n = holderA.level; n = holderA.level; print($" {n} | ");
+    if (tileB.above(tileA)) print("above "); print($"{tileA.use()} {tileA.shift(tileA)} | ");
+    print($"{gadget.show(4) / 10} {gadget.show(4) % 10 + 8} | ");
+    print(appendTwo(spare)); print(" | ");
+    bool b = label(1)?; print(b); print(" | ");
+    sifter.run(1); print(" "); sifter.run(5);
+    print("^");
+}

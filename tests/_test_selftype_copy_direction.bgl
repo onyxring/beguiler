@@ -1,0 +1,6 @@
+// Negative test: copy's parameter is the receiver's own class, so a base-class instance can't be copied into a subclass's.
+// EXPECT_ERROR: is not compatible with parameter 'selfType src'
+#beguilerSettings { target = z5; informName = "none"; }
+class Chip[2] : object, bglAllocated { int w = 1; }
+class BigChip[2] : Chip { int h = 2; }
+void main(){ bglInit(); Chip c = new Chip(); BigChip b = new BigChip(); b.copy(c); }

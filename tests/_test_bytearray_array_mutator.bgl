@@ -1,0 +1,6 @@
+// The <array> operations work on word arrays; an array<char> takes <buf>'s instead.
+// EXPECT_ERROR: from <array> works on word arrays; an array<char> doesn't take it
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<char> row[10];
+void main() { row.append('#'); }

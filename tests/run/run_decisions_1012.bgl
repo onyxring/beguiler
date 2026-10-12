@@ -1,0 +1,57 @@
+/*  run_decisions_1012 — language decisions of 2026-10-12, as running programs.  */
+// EXPECT_OUTPUT: 30 8 | 7 1 | 302 5 | 1 1 1 | caught 30 | total: 3 and 4 | XYabcde 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+#include <buf>
+
+// A class's own method is nearer than a global function of its name; `::` reaches the global.
+int twice(int n) { return n * 2; }
+class Scaler : object {
+    int factor = 10;
+    int twice(int n) { return n * factor; }
+    int viaBare(int n) { return twice(n); }
+    int viaGlobal(int n) { return ::twice(n); }
+}
+Scaler scalerA { }
+
+// A member named like its value class is the member; `::Spot` names the type.
+value class Spot { int x; Spot operator = (Spot o) { x = o.x; return self; } }
+class Board : object {
+    Spot spot;
+    int setIt() { spot.x = 7; return spot.x; }
+    bool isSpot(var v) { return ((object)v).is(::Spot); }
+}
+Board boardA { }
+
+// An accessor member's class's own operator applies to the member.
+value class Meter {
+    int _v;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v; }
+    int  operator + (int n) { return _v * 100 + n; }
+}
+object gauge { Meter level; }
+
+// A local array declared in a loop body starts each pass empty.
+int passes() { int r = 0; for (int i = 0; i < 3; i++) { array<int> held[4]; held.append(i); r = r * 10 + held.length; } return r; }
+
+// A throw releases the owning locals of the blocks it leaves.
+int risky(int n) { stringObj s = "tmp"; if (n >= 0) { stringObj t = "inner"; throw n; } return 0; }
+
+array<char> letters[20];
+
+void main() {
+    bglInit();
+    print($"{scalerA.viaBare(3)} {scalerA.viaGlobal(4)} | ");
+    Spot t; print($"{boardA.setIt()} {boardA.isSpot(t) ? 1 : 0} | ");
+    gauge.level = 3; print($"{gauge.level + 2} {2 + gauge.level} | ");
+    int p = passes(); print($"{p / 100} {p / 10 % 10} {p % 10} | ");
+    int c = 0;
+    for (int i = 0; i < 30; i++) { try { risky(i); } catch (int e) { c++; } }
+    print($"caught {c} | ");
+    stringObj s = "total:"; int a = 3; s += $" {a} and {a + 1}"; s.print(); print(" | ");
+    bgl.util.buf.set(letters, "abc"); bgl.util.buf.append(letters, "de"); bgl.util.buf.prepend(letters, "XY");
+    bgl.util.buf.print(letters); print(" "); print(bgl.util.buf.length(letters));
+    print("^");
+}

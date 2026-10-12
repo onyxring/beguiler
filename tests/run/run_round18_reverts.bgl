@@ -1,0 +1,39 @@
+/*  run_round18_reverts — forms found while reverting the round-18 workarounds (D1186, D1187).  */
+// EXPECT_OUTPUT: same 3 | 1 5 | 1 2 a 1 b 2
+#beguilerSettings { target = z5; informName = "none"; }
+
+// D1186: `==` above a class that declares its own operator, against null and an instance.
+// D1187: a static method added by `extend class`, called above the class.
+class Maker : object {
+    static Token issue(int m) {
+        Token t = new Token(m);
+        if (t == null) print("(none) ");
+        Token u = new Token(m);
+        if (t == u) print("same ");
+        return t;
+    }
+    static int fill() { Token c = new Token(5); return Token.count(c); }
+}
+class Token[4] : object {
+    int mark;
+    void create(int m) { mark = m; }
+    bool operator == (Token o) { return mark == o.mark; }
+}
+extend class Token { static int count(Token t) { return t.mark - 4; } }
+
+// D1174: two calls in one statement, each with a copied-back `ref`.
+emitter class Cell {
+    emitter void init() { $self = 0; }
+    emitter void set(int v) { $self = $v; }
+    emitter int value { $self }
+}
+int peek(ref Cell x) { return x.value; }
+
+void main() {
+    Token t = Maker.issue(3);
+    print($"{t.mark} | {Maker.fill()} ");
+    Token v = new Token(5); print(v.mark);
+    Cell a; Cell b; a.set(1); b.set(2);
+    print($" | {peek(a)} {peek(b)} a {a.value} b {b.value}");
+    print("^");
+}

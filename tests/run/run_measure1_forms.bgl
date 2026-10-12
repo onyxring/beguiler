@@ -1,0 +1,26 @@
+/*  run_measure1_forms — forms measurement round 1 found broken (D1261, D1266, D1268).  */
+// EXPECT_OUTPUT: 7 | 3 | 7 2
+#beguilerSettings { target = z5; informName = "none"; }
+
+// D1261: a class member named `length`.
+class Plank : object { int length; }
+Plank plankA { length = 3; }
+
+// D1266: a local named like a global const, assigned in a nested block.
+const int HEAVY = 10;
+int heavies() { int heavy = 0; for (int i = 0; i < 3; i++) { if (i >= 0) heavy++; } return heavy; }
+
+// D1268: a bare call to a sibling overload, inside an expression.
+class Box : object {
+    int total;
+    int add(int n) { total += n; return total; }
+    int add(int a, int b) { int x = add(a); return x + add(b) - x; }
+}
+Box boxA { }
+
+void main() {
+    plankA.length = 7; print(plankA.length); print(" | ");
+    print(heavies()); print(" | ");
+    print(boxA.add(2, 5)); print(" "); print(boxA.add(0) - 5);
+    print("^");
+}

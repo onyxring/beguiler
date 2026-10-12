@@ -4,6 +4,7 @@
 // See bglParserHelpers.h for usage notes.
 // ═══════════════════════════════════════════════════════════════════════════════
 #include "bglParserHelpers.h"
+#include "helpers.h"
 #include "bglLanguageService.h"
 #include <cctype>
 
@@ -25,13 +26,19 @@ string replaceWord(string str, const string& from, const string& to){
     while((pos = findCI(str, from, pos)) != string::npos){
         bool leftOk  = pos == 0 || !(isalnum(str[pos-1]) || str[pos-1] == '_' || str[pos-1] == '$');
         bool rightOk = pos + from.size() >= str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()] == '_');
-        if(leftOk && rightOk){ str.replace(pos, from.size(), to); pos += to.size(); }
+        // `##$v` on a verb argument, which already names its action (`##Take`), keeps one `##`.
+        if(leftOk && rightOk && pos >= 2 && to.rfind("##", 0) == 0 && str.compare(pos - 2, 2, "##") == 0){
+            str.replace(pos - 2, from.size() + 2, to); pos += to.size() - 2;
+        }
+        else if(leftOk && rightOk){ str.replace(pos, from.size(), to); pos += to.size(); }
         else pos += from.size();
     }
     return str;
 }
 
 string typeDisplayName(const string& typeName){
+    if(typeName == "bytearray") return "array<char>";
+    if(typeName == "selftype") return "selfType";
     typeDef& td = languageService.getType(typeName);
     if(&td != &emptyTDef && !td.displayName.empty()) return td.displayName;
     return typeName;
@@ -64,6 +71,13 @@ string mangleOperatorName(const string& opName){
         else if(ch != ' ') safe += ch;
     }
     return safe;
+}
+
+// The error for a value-returning routine that can reach its end without returning.
+string missingReturnMessage(functionDef& fd){
+    return hasReturn(dynamic_cast<statementBlock*>(fd.body))
+        ? format("Not every path through '{0}' returns a value; add a return (or a throw) at the end.", fd.dName())
+        : format("'{0}' must return a value, but has no return statement.", fd.dName());
 }
 
 bool hasReturn(statementBlock* blk){
@@ -146,6 +160,9 @@ bool allPathsReturn(statementBlock* blk){
     if(blk == nullptr) return false;
     for(statement* s : blk->statements){
         if(dynamic_cast<returnStatement*>(s)) return true;
+        if(dynamic_cast<throwStatement*>(s)) return true;   // a throw leaves the routine too
+        if(auto* tc = dynamic_cast<tryCatchStatement*>(s))
+            if(allPathsReturn(tc->tryBody) && allPathsReturn(tc->catchBody)) return true;
         if(auto* raw = dynamic_cast<i6RawNode*>(s)) if(i6IslandMayReturn(raw)) return true;
         // An infinite loop (`while(true)` / `for(;;)`) with no `break` that escapes it never falls
         // through — control leaves only via a `return` inside, so the code after it (and a trailing

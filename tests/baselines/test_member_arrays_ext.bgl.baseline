@@ -53,6 +53,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 
     _bglLinqS0A-->(_bglLinqS0A-->0) = $9084;  _bglLinqS0A-->(_bglLinqS0A-->0 - 1) = 0;
     _bglLinqS0B-->(_bglLinqS0B-->0) = $9084;  _bglLinqS0B-->(_bglLinqS0B-->0 - 1) = 0;
@@ -88,7 +89,7 @@ object widget
     _bglArray.sortDefault(self, nums, 0);
   ],
        pushIt [v;
-    _bglArray.push(self, nums, v);
+    _bglArray.push(self, nums, v, 0);
   ],
        sumGt [n;
     _bglCap0 = n;
@@ -114,8 +115,11 @@ array g table 30 10 20 3 $9084;
 [namedPred;
     return _bglArray.length(_bglArray.filter(g, 0, isodd), 0);
 ];
-[_bglLambda_0 x;
-    return x > _bglCap0;
+[_bglLambda_0 x _bglret _bglcl0;
+    _bglcl0 = _bglCap0;
+    _bglret = x > _bglcl0;
+    _bglCap0 = _bglcl0;
+    return _bglret;
 ];
 [_bglLambda_1 x;
     return x > 15;
@@ -209,8 +213,8 @@ object _bglArray
     self.setLength(obj, prop, len + 1);
     return true;
   ],
-       push [obj prop val;
-    self.insert(obj, prop, 0, val, 0);
+       push [obj prop val assign;
+    self.insert(obj, prop, 0, val, assign);
   ],
        sortDefault [obj prop cmp;
     if (cmp==0) {

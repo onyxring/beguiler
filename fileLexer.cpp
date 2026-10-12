@@ -11,6 +11,13 @@
 #include "helpers.h"
 #include "bglLanguageService.h"
 
+// An I6 character code for `code`: `@@NN`, unless a digit follows, which `@@` would read as part of
+// the number — then the brace form, which ends where it says.
+std::string i6CharCode(int code, char next){
+    if(isdigit((unsigned char)next)){ char b[16]; snprintf(b, sizeof(b), "@{%X}", code); return b; }
+    return "@@" + std::to_string(code);
+}
+
 // Unicode codepoint → {ZSCII code, I6 accent string}
 // Used to translate raw diacritical characters in source to I6-compatible output.
 struct ZsciiEntry { int code; const char* i6Accent; };
@@ -123,6 +130,16 @@ using namespace std;
 
 //----------------------------------------------------------------------------------------
 //--Opening and closing files, and managing which of these is the "current file"
+// Steps over a UTF-8 byte-order mark at the start of a stream (editors may save one).
+static void skipByteOrderMark(istream* s){
+    s->clear();
+    s->seekg(0);
+    if(s->peek() == 0xEF){
+        char b[3] = {0, 0, 0};
+        s->read(b, 3);
+        if(!(s->gcount() == 3 && (unsigned char)b[1] == 0xBB && (unsigned char)b[2] == 0xBF)){ s->clear(); s->seekg(0); }
+    }
+}
 void fileLexer::open(string filename){
     lastTokenLine = -1; lastTokenFile.clear();
     // Virtual-file overlay (LSP mode only; g_virtualBglFiles is empty during compiles):
@@ -130,6 +147,7 @@ void fileLexer::open(string filename){
     string virtualContent;
     if(lookupVirtualFile(filename, virtualContent)){
         istringstream* stream = new istringstream(virtualContent);
+        skipByteOrderMark(stream);
         files.push(make_tuple(static_cast<istream*>(stream), filename, 1, 0));
         return;
     }
@@ -138,13 +156,16 @@ void fileLexer::open(string filename){
         delete inputFileStream;
         parser.parsingError("Unable to open file "+filename+".");
     }
+    skipByteOrderMark(inputFileStream);
     files.push(make_tuple(static_cast<istream*>(inputFileStream), filename, 1, 0));
 }
 void fileLexer::openText(const std::string& content, const std::string& virtualName, int startLine){
     lastTokenLine = -1; lastTokenFile.clear();
+    prevTokenType = eTokenType::unknown; prevTokenValue.clear();   // the text starts fresh: no `$` before its first quote
     // Push a stringstream as a virtual file. Used to parse #bgl{} blocks extracted from
     // surrounding raw I6 — gives Beguile its normal token-fetching path over an in-memory buffer.
     istringstream* stream = new istringstream(content);
+    skipByteOrderMark(stream);
     files.push(make_tuple(static_cast<istream*>(stream), virtualName, startLine, 0));
 }
 void fileLexer::close(){
@@ -168,7 +189,7 @@ int fileLexer::getNumberOfOpenFiles(){
     return files.size();
 }
 void fileLexer::moveToStart(){
-    currentStream()->seekg(0);
+    skipByteOrderMark(currentStream());
     lastTokenLine = -1; lastTokenFile.clear();
 }
 istream* fileLexer::currentStream(){
@@ -256,6 +277,30 @@ token fileLexer::getBasicToken(bool suppressBleed){
             
             if(twoChars=="//" || twoChars=="/*")
                 retval.tokenType=eTokenType::comment;
+            else if(c=='\"' && prevTokenValue == "$"){
+                // An interpolated string is one token to anything that looks ahead over it: its `{…}`
+                // spans hold expressions, with strings (and apostrophes) of their own. The interpolation
+                // parser itself reads the characters after the `$` directly.
+                int span = 0;
+                auto takeEscape = [&](char ch){ if(ch == '\\'){ char e = peekChar(); if(e != EOF){ readChar(); retval.value += e; } } };
+                char ch = peekChar();
+                while(ch != EOF && !(ch == '"' && span == 0)){
+                    readChar(); retval.value += ch;
+                    if(ch == '\\') takeEscape(ch);
+                    else if(ch == '{') span++;
+                    else if(ch == '}' && span > 0) span--;
+                    else if(ch == '"' && span > 0){
+                        char d = peekChar();
+                        while(d != EOF && d != '"' && d != '\n'){ readChar(); retval.value += d; takeEscape(d); d = peekChar(); }
+                        if(d == '"'){ readChar(); retval.value += d; }
+                    }
+                    ch = peekChar();
+                }
+                if(ch == '"'){ readChar(); retval.value += '"'; }
+                retval.tokenType = eTokenType::quote;
+                prevTokenType = eTokenType::quote;
+                return retval;
+            }
             else if(c=='\"')
                 retval.tokenType=eTokenType::quote;
             else if(c=='@' && nc=='"') {
@@ -322,6 +367,12 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 // the parser emits it as an I6 `$+`/`$-` Glulx float constant.
                 bool isFloat = (c == '.');
                 while(isdigit((unsigned char)peekChar())) retval.value += readChar();
+                if(retval.value == "0" && (peekChar() == 'x' || peekChar() == 'X')){
+                    readChar();
+                    string hex;
+                    while(isxdigit((unsigned char)peekChar())) hex += readChar();
+                    parser.parsingError(format("'0x{0}' is C's hex notation; Beguile writes hex as '${0}'.", hex));
+                }
                 if(!isFloat && peekChar() == '.' && isdigit((unsigned char)peekChar2())){
                     retval.value += readChar();                                   // consume '.'
                     while(isdigit((unsigned char)peekChar())) retval.value += readChar();
@@ -332,6 +383,9 @@ token fileLexer::getBasicToken(bool suppressBleed){
             }
             else if(isValidIdentifierChar(c))
                 retval.tokenType=eTokenType::unclassifiedText;
+            else if(c == '\\' && nc == '"')
+                parser.parsingError("'\\\"' is an escape for inside a string. In an interpolation's `{…}`, write "
+                    "a string with plain quotes: `$\"{ok ? \"yes\" : \"no\"}\"`.");
             else {
                 if(find(languageService.operators.begin(), languageService.operators.end(), retval.value)!=languageService.operators.end()){
                     retval.tokenType=eTokenType::oper; 
@@ -365,8 +419,8 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 readChar();
                 if     (c=='n')  retval.value+='^';          // \n  -> ^ (I6 newline)
                 else if(c=='"')  retval.value+='~';          // \"  -> ~ (I6 double-quote)
-                else if(c=='\\') retval.value+="@@92";        // \\  -> @@92 (literal backslash)
-                else if(c=='@')  retval.value+="@@64";       // \@  -> @@64 (literal at-sign)
+                else if(c=='\\') retval.value+=i6CharCode(92, peekChar());   // \\  -> literal backslash
+                else if(c=='@')  retval.value+=i6CharCode(64, peekChar());   // \@  -> literal at-sign
                 else if(c=='$') {                             // \$XX -> @{XX} (hex character code)
                     string hex;
                     while(isxdigit(peekChar())) { hex += readChar(); }
@@ -383,17 +437,18 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 // \^^ = forced literal caret, \~~ = forced literal tilde.
                 else if(c=='^') {
                     char nc = peekChar();
-                    if(nc == '^') { readChar(); retval.value += "@@94"; }       // \^^ -> literal caret (forced)
-                    else if(string("aeiouyAEIOUY").find(nc) != string::npos) {
+                    if(nc == '^') { readChar(); retval.value += i6CharCode(94, peekChar()); }       // \^^ -> literal caret (forced)
+                    else if(nc == 'y' || nc == 'Y'){ readChar(); retval.value += nc == 'y' ? "@{177}" : "@{176}"; }   // ŷ Ŷ: no I6 accent code
+                    else if(string("aeiouAEIOU").find(nc) != string::npos) {
                         readChar(); retval.value += "@^"; retval.value += nc;   // \^a -> @^a (â)
-                    } else { retval.value += "@@94"; }                          // \^  -> literal caret
+                    } else { retval.value += i6CharCode(94, peekChar()); }                          // \^  -> literal caret
                 }
                 else if(c=='~') {
                     char nc = peekChar();
-                    if(nc == '~') { readChar(); retval.value += "@@126"; }      // \~~ -> literal tilde (forced)
+                    if(nc == '~') { readChar(); retval.value += i6CharCode(126, peekChar()); }      // \~~ -> literal tilde (forced)
                     else if(string("anoANO").find(nc) != string::npos) {
                         readChar(); retval.value += "@~"; retval.value += nc;   // \~n -> @~n (ñ)
-                    } else { retval.value += "@@126"; }                         // \~  -> literal tilde
+                    } else { retval.value += i6CharCode(126, peekChar()); }                         // \~  -> literal tilde
                 }
                 else if(c=='\'') {
                     char nc = peekChar();
@@ -468,6 +523,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 // Reverse tick: target-dependent (Z-code folds to a straight apostrophe; Glulx keeps the glyph).
                 string tr; i6TranslateStringCodepoint('`', tr); retval.value += tr;
             }
+            else if(c=='@') retval.value += i6CharCode(64, peekChar());   // a plain at-sign (I6 reads `@` as an escape)
             else{
                 retval.value+=c;
                 if(c=='\"')  break; //closing quote
@@ -483,10 +539,10 @@ token fileLexer::getBasicToken(bool suppressBleed){
             if(c=='\\' && peekChar()=='"'){ readChar(); retval.value+='~'; retval.originalValue+="\\\""; c=peekChar(); continue; }
             retval.originalValue+=c;
             if     (c=='"')   { retval.value+=c; break; }  // closing quote
-            else if(c=='~')   retval.value+="@@126";        // literal tilde
-            else if(c=='^')   retval.value+="@@94";         // literal caret
-            else if(c=='\\')  retval.value+="@@92";         // literal backslash
-            else if(c=='@')   retval.value+="@@64";         // literal at-sign
+            else if(c=='~')   retval.value+=i6CharCode(126, peekChar());        // literal tilde
+            else if(c=='^')   retval.value+=i6CharCode(94, peekChar());         // literal caret
+            else if(c=='\\')  retval.value+=i6CharCode(92, peekChar());         // literal backslash
+            else if(c=='@')   retval.value+=i6CharCode(64, peekChar());         // literal at-sign
             else if((unsigned char)c >= 0x80){
                 // A typed non-ASCII character is the character, as in any string (Appendix D).
                 uint32_t codepoint = decodeUtf8((unsigned char)c,
@@ -596,6 +652,8 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
              parser.parsingError("Unexpected end of file — missing closing '}'");
              break;
          }
+         // A one-line `#i6 …;` has no region: what follows it isn't its `{`.
+         if(pendingI6 && c != '{' && !isspace((unsigned char)c)) pendingI6 = false;
          // Directive word (e.g. `#i6`): pass through as text, and if it's `#i6`, arm i6-region
          // tracking so its `{` opens an I6-content region. (`#prop`, `##Take`, etc. are harmless.)
          if(c=='#'){
@@ -694,7 +752,7 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          if(c=='\''){
              bool beguileEscapes = !(isI6Content || i6Depth != -1);
              retval += c; c = readChar();
-             while(c != '\'' && c != EOF){
+             while(c != '\'' && c != EOF && c != '\n'){   // a literal never spans lines; an unclosed one is reported where it is
                  if(beguileEscapes && c == '\\'){
                      retval += c; c = readChar();
                      if(c == EOF) break;
@@ -783,7 +841,7 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
         // Char/dict-word literals
         if(c == '\''){
             retval += c; c = readChar();
-            while(c != '\'' && c != EOF){ retval += c; c = readChar(); }
+            while(c != '\'' && c != EOF && c != '\n'){ retval += c; c = readChar(); }
             if(c == '\''){ retval += c; c = readChar(); }
             continue;
         }
@@ -910,6 +968,7 @@ sourceLocation fileLexer::currentLocation(){
     identifier:         The next token is a valid identifier, but not a data type.
     integer:            The next token is an integer number.
     directive:          The next token encountered was a compiler directive (e.g., #include).
+
     operator:           The next token encountered is a recognized language operator.
     symbol:             The next token encountered is a single symbol which was not matched to an operator.
                         Note: multiple symbols may appear contiguously in the file, but each will be 
@@ -1224,6 +1283,9 @@ token fileLexer::lexCharLiteralToken(token retval){
         // character code (`\55`), so `'7'` written as `7` would mean the character numbered 7.
         charVal += to_string((int)c);
         rawCode = true;
+    } else if(c == '@'){
+        charVal += "64";   // I6 reads a bare `@` as the start of an escape
+        rawCode = true;
     } else {
         charVal += c;
     }
@@ -1243,9 +1305,12 @@ token fileLexer::lexCharLiteralToken(token retval){
     // word `.sword` (`..swords` for the plural form).
     if(peekChar() != '\''){
         string rest;
-        while(peekChar() != '\'' && peekChar() != '\n' && peekChar() != 0 && rest.size() < 32)
+        while(peekChar() != '\'' && peekChar() != '\n' && peekChar() != 0 && peekChar() != EOF && rest.size() < 32)
             rest += readChar();
-        if(peekChar() == '\'') readChar();
+        if(peekChar() != '\'')
+            parser.parsingError(format("Unterminated character literal '{0}{1}: a character literal is one "
+                "character between single quotes (e.g. 'a').", charVal, rest));
+        readChar();
         parser.parsingError(format("'{0}{1}' is not a valid character literal — a character literal "
             "holds a single character (e.g. 'a'). Inform 6's dictionary-word form is not Beguile "
             "syntax: write the dictionary word as .{0}{1} (or ..{0}{1} for the plural form).",
@@ -1266,10 +1331,18 @@ bool fileLexer::tryLexDictionaryWordToken(token& retval){
     bool prevIsExprEnd = (prevTokenType == eTokenType::identifier || prevTokenType == eTokenType::dataType
                           || prevTokenType == eTokenType::quote || prevTokenType == eTokenType::rawQuote
                           || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
-                          || prevTokenType == eTokenType::directive
+                          || prevTokenType == eTokenType::dictionaryWord || prevTokenType == eTokenType::directive
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
     // A keyword that a value follows (`return .lamp;`, `case .take:`) is not a receiver.
     if(prevIsExprEnd && (prevTokenValue == "return" || prevTokenValue == "case")) prevIsExprEnd = false;
+    // `.lamp.addr()` sends to the word; `.card .a` (spaced) is a second word.
+    if(prevIsExprEnd && prevTokenType == eTokenType::dictionaryWord && retval.is(".")){
+        auto here = currentStream()->tellg();
+        currentStream()->seekg((streamoff)here - 2);
+        if(isspace(currentStream()->peek())) prevIsExprEnd = false;
+        currentStream()->clear();
+        currentStream()->seekg(here);
+    }
     // `(int).bounce`: a cast never takes a member, so the '.' after it starts a dictionary word.
     if(prevIsExprEnd && prevTokenValue == ")" && retval.is(".")){
         auto here = currentStream()->tellg();
@@ -1338,7 +1411,8 @@ bool fileLexer::tryLexDictionaryWordToken(token& retval){
                     }
                 }
             }
-            if(ch == '.'){
+            // `.lamp.addr()`: a name after the '.' is a member of the word, not more of it.
+            if(ch == '.' && !isValidIdentifierChar(peekChar2())){
                 auto loc = currentLocation();
                 cerr << loc.file << ":" << loc.line << ": warning: character '.' is not valid for dictionary words. ignoring.\n";
                 readChar(); // discard the period

@@ -17,6 +17,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
     _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
     _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
@@ -93,7 +94,10 @@ object _bglBuf
         buf->(pos + WORDSIZE) = val;
     }
   ],
-       set [buf stringVal;
+       set_2_bytearray_var [buf stringVal;
+    return self.setany(buf,stringval);
+  ],
+       setAny [buf stringVal;
     if (self.istracked(stringVal)) {
         self.setfrombuffer(buf, stringVal);
     }
@@ -303,13 +307,28 @@ object _bglBuf
     self.setLength(toBuf, len + charcount);
     return tobuf;
   ],
-       prepend [toBuf fromBuf;
+       prepend_2_bytearray_bytearray [toBuf fromBuf;
+    return self.prependbuffer(tobuf,frombuf);
+  ],
+       prependBuffer [toBuf fromBuf;
     self.insert(toBuf, fromBuf, 0, self.length(fromBuf));
     return tobuf;
   ],
-       append [toBuf fromBuf;
+       append_2_bytearray_bytearray [toBuf fromBuf;
+    return self.appendbuffer(tobuf,frombuf);
+  ],
+       appendBuffer [toBuf fromBuf;
     self.copy(toBuf, fromBuf, -1, self.length(toBuf), 0);
     return tobuf;
+  ],
+       reverseRange [buf from _l_to w c;
+    w=WORDSIZE;
+    for (_l_to = _l_to - 1 : from < _l_to : from++) {
+        c=buf->(from + w);
+        buf->(from + w) = buf->(_l_to + w);
+        buf->(_l_to + w) = c;
+        _l_to--;
+    }
   ],
        delete [buf pos count len;
     len=self.length(buf);
@@ -327,11 +346,17 @@ object _bglBuf
     self.insert(buf, replaceTextBuf, pos, 0);
     return buf;
   ],
-       replaceAll [buf searchTextBuf replaceTextBuf startingIndex rtlen;
+       replaceAll [buf searchTextBuf replaceTextBuf startingIndex searchLen rtlen pos;
+    searchLen=self.length(searchTextBuf);
     rtlen=self.length(replaceTextBuf);
-    while (startingindex ~= -1) {
-        self.replace(buf, searchTextBuf, replaceTextBuf);
-        startingIndex=self.indexof(buf,searchTextBuf,startingindex + rtlen);
+    if (searchlen == 0) {
+        return buf;
+    }
+    pos=self.indexof(buf,searchTextBuf,startingIndex);
+    while (pos ~= -1) {
+        self.delete(buf, pos, searchLen);
+        self.insert(buf, replaceTextBuf, pos, 0);
+        pos=self.indexof(buf,searchTextBuf,pos + rtlen);
     }
     return buf;
   ],
@@ -422,6 +447,35 @@ object _bglBuf
     if (sz == -1 || sz > pos) {
         buf->(pos + WORDSIZE) = val;
     }
+  ],
+       set_2_bytearray_bytearray [buf src;
+    return self.setfrombuffer(buf,src);
+  ],
+       append_2_bytearray_string [toBuf text len sz n saved;
+    len=self.length(toBuf);
+    sz=self.size(toBuf);
+    if (sz < 0) {
+        sz=bglstringdefaultsize;
+    }
+    n = 0;
+    saved = 0;
+    
+            saved = (toBuf + len)-->0;
+            text.print_to_array(toBuf + len, sz - len);
+            n = (toBuf + len)-->0;
+            (toBuf + len)-->0 = saved;
+        
+    self.setLength(toBuf, len + n);
+    return tobuf;
+  ],
+       prepend_2_bytearray_string [toBuf text len total;
+    len=self.length(toBuf);
+    self.append_2_bytearray_string(toBuf, text);
+    total=self.length(toBuf);
+    self.reverserange(toBuf, 0, total);
+    self.reverserange(toBuf, 0, total - len);
+    self.reverserange(toBuf, total - len, total);
+    return tobuf;
   ]
 ;
 
@@ -431,6 +485,8 @@ object _bglBuf
     Global _bglStringLockStackTop = 0;
     Array _bglStringLockStackMarks --> bglStringLockStackSize;  ! the slot height at each open mark
     Global _bglStringLockStackMarkTop = 0;
+    Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
+    Global _bglStrAppendTop = 0;
     Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
@@ -602,17 +658,17 @@ object _bglStr
         
     return retval;
   ],
-       format [s pattern p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
-    lk_pattern=self.ambiguouslock(pattern);
+       format [s _l_pattern p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
+    lk_pattern=self.ambiguouslock(_l_pattern);
     lk_p1=self.ambiguouslock(p1);
     lk_p2=self.ambiguouslock(p2);
     lk_p3=self.ambiguouslock(p3);
     str = self.new(s);
-     tmp = str.format(pattern, p1, p2, p3); str.free(); 
+     tmp = str.format(_l_pattern, p1, p2, p3); str.free(); 
     self.ambiguousfree(p3, lk_p3);
     self.ambiguousfree(p2, lk_p2);
     self.ambiguousfree(p1, lk_p1);
-    self.ambiguousfree(pattern, lk_pattern);
+    self.ambiguousfree(_l_pattern, lk_pattern);
     return tmp;
   ],
        toAmbiguousBuffer [unkStr retval;
@@ -706,6 +762,15 @@ object _bglStr
     str = self.new(s);
      r = str.isEmpty(); str.free(); 
     return r;
+  ],
+       beginAppend [s t;
+    t = self.new(0);
+     _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t.capture(); 
+    return s;
+  ],
+       endAppend [s t;
+     _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t.release(); s.setFromStr(s.append(t)); t.free(); 
+    return s;
   ],
        append [s text lk_text str tmp;
     lk_text=self.ambiguouslock(text);
@@ -804,9 +869,9 @@ object _bglStr
         
     return tmpstr;
   ],
-       print [buf prop;
+       print [buf _l_prop;
     
-            if(prop ~= 0) buf = buf.prop;
+            if(_l_prop ~= 0) buf = buf._l_prop;
             if(buf provides print) {
                 buf.print();
                 return;
@@ -874,7 +939,7 @@ class _bglString(bglstringpoolreserve)
             lckSelf = _bglStr.ambiguousLock(self);
             ab      = _bglStr.toAmbiguousBuffer(unkStr);
             lckBuf  = _bglStr.ambiguousLock(ab);
-            _bglBuf.set(self.getBuf(), ab);
+            _bglBuf.setAny(self.getBuf(), ab);
             _bglStr.ambiguousFree(ab, lckBuf);
             _bglStr.ambiguousFree(self, lckSelf);
         
@@ -953,7 +1018,6 @@ class _bglString(bglstringpoolreserve)
             if((~~(buf2 == true or false)) && self.equals(buf2, caseInsensitive) == true) rtrue;
             if((~~(buf3 == true or false)) && self.equals(buf3, caseInsensitive) == true) rtrue;
             if((~~(buf4 == true or false)) && self.equals(buf4, caseInsensitive) == true) rtrue;
-            rfalse;
         
         return false;
     ],
@@ -993,7 +1057,6 @@ class _bglString(bglstringpoolreserve)
             if((~~(buf2 == true or false)) && self.startsWith(buf2, caseInsensitive) == true) rtrue;
             if((~~(buf3 == true or false)) && self.startsWith(buf3, caseInsensitive) == true) rtrue;
             if((~~(buf4 == true or false)) && self.startsWith(buf4, caseInsensitive) == true) rtrue;
-            rfalse;
         
         return false;
     ],
@@ -1010,7 +1073,6 @@ class _bglString(bglstringpoolreserve)
             if((~~(buf2 == true or false)) && self.endsWith(buf2, caseInsensitive) == true) rtrue;
             if((~~(buf3 == true or false)) && self.endsWith(buf3, caseInsensitive) == true) rtrue;
             if((~~(buf4 == true or false)) && self.endsWith(buf4, caseInsensitive) == true) rtrue;
-            rfalse;
         
         return false;
     ],
@@ -1077,7 +1139,7 @@ class _bglString(bglstringpoolreserve)
     append[text retval;
         
             retval = self.clone();
-            _bglBuf.append(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            _bglBuf.appendBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         
         return retval;
@@ -1094,7 +1156,7 @@ class _bglString(bglstringpoolreserve)
     prepend[text retval;
         
             retval = self.clone();
-            _bglBuf.prepend(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            _bglBuf.prependBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         
         return retval;
@@ -1163,19 +1225,19 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    format[pattern p1 p2 p3 retval;
+    format[_l_pattern p1 p2 p3 retval;
         
             retval = _bglStr.new();
-            if(pattern == 0) pattern = "$0";
-            pattern = _bglStr.new(pattern);  ! convert literal-or-otherwise to _bglString
-            pattern.set(pattern.replaceAll("$0", self));
+            if(_l_pattern == 0) _l_pattern = "$0";
+            _l_pattern = _bglStr.new(_l_pattern);  ! convert literal-or-otherwise to _bglString
+            _l_pattern.set(_l_pattern.replaceAll("$0", self));
 
-            if(p1 ~= 0) pattern.set(pattern.replaceAll("$1", p1));
-            if(p2 ~= 0) pattern.set(pattern.replaceAll("$2", p2));
-            if(p3 ~= 0) pattern.set(pattern.replaceAll("$3", p3));
+            if(p1 ~= 0) _l_pattern.set(_l_pattern.replaceAll("$1", p1));
+            if(p2 ~= 0) _l_pattern.set(_l_pattern.replaceAll("$2", p2));
+            if(p3 ~= 0) _l_pattern.set(_l_pattern.replaceAll("$3", p3));
 
-            retval.set(pattern);
-            pattern.free();
+            retval.set(_l_pattern);
+            _l_pattern.free();
             retval = retval.free();
         
         return retval;
@@ -1241,14 +1303,14 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       copy [dobj dprop sobj sprop n cap i;
+       copy [dobj dprop sobj sprop assign n cap i;
     n=self.length(sobj,sprop);
     cap=self.size(dobj,dprop);
     if (n > cap) {
         n=cap;
     }
     for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
     }
     self.setlength(dobj, dprop, n);
   ],

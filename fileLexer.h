@@ -30,6 +30,9 @@ enum class eBglDirective {
 uint32_t decodeUtf8(unsigned char lead, function<char()> readNext, function<char()> peekNext);
 bool i6TranslateStringCodepoint(uint32_t codepoint, string& out);
 
+// An I6 character code for `code` that a following digit can't run into (`@@94`, or `@{5E}` before a digit).
+std::string i6CharCode(int code, char next);
+
 class fileLexer{
     public:
         // Stream pointer is istream so the stack can hold both ifstream (file-backed) and

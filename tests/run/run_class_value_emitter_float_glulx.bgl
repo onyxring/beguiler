@@ -1,0 +1,12 @@
+// run_class_value_emitter_float_glulx — a class's value emitter read bare in its method has its type, so it
+// converts as a float operand (D1126).
+// EXPECT_OUTPUT: 5.2500 5.2500
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+class Inv : object {
+    emitter int Slots { 4 }
+    float avg(int sum) { return (float)sum / Slots; }
+    float avg2(int sum) { return (float)sum / Inv.Slots; }
+}
+Inv store { }
+void main() { bglInit(); glulxConsole(); print(store.avg(21)); print(" "); print(store.avg2(21)); print("^"); }

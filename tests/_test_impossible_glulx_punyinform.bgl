@@ -1,0 +1,9 @@
+// Negative test: PunyInform is Z-machine only, so a Glulx target is refused by name (impossible pair glulx × punyinform).
+// EXPECT_ERROR: PunyInform runs only on the Z-machine
+#beguilerSettings { target = Glulx; includePaths = "../../inform6/puny/lib"; }
+const object INITIAL_LOCATION_VALUE = roomA;
+#includeI6 "globals"
+#include <bindings/punyInform>
+#includeI6 "puny"
+object roomA { "Room A"; attributes = {light}; }
+bool Initialise() { rfalse; }

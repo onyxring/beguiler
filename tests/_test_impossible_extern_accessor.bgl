@@ -1,0 +1,9 @@
+// Negative test: an extern object can't hold an inline accessor, and so can't use `outer` either
+// (impossible pairs auto_accessor × extern, extern × outer).
+// EXPECT_ERROR: can't be an inline accessor
+#beguilerSettings { target = z5; informName = "none"; }
+extern object lib {
+    int base;
+    auto level = { int _v; int operator () { return outer.base + _v; } void operator = (int v) { _v = v; } }
+}
+void main(){ print(1); }

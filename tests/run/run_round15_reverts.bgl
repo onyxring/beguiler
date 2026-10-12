@@ -1,0 +1,68 @@
+/*  run_round15_reverts — forms found while reverting the round-15 workarounds (D1090–D1096).  */
+// EXPECT_OUTPUT: 12 0 8 12 | 98 | 14 | 3 | 10
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <buf>
+
+// D1090: a sized array<char> member is a tracked buffer, one per instance.
+class Tag { array<char> text[12]; }
+Tag ta { }
+Tag tb { }
+
+// D1091: a ref member given a tracked global array in an object body.
+array<char> shared[12];
+class Label { ref array<char> text; }
+Label la { text = shared; }
+
+// D1092: a chained store into the object's own array-of-arrays member.
+object ledger {
+    array<array<int>> Tbl = { {1, 2}, {3} };
+    void put(int r, int v) { Tbl[r][0] = v; }
+}
+
+// D1093, D1095: a chained store through a renamed member; a class with only operator []=.
+int grid = 0;
+array<array<int>> cells = { {1, 2}, {3, 4} };
+class Board : object { ref array<array<int>> grid; }
+extend class Board { int operator []= (int r, int v) { for (int i = 0; i < grid[r].length; i++) grid[r][i] = v; return v; } }
+Board bd { }
+
+// D1094, D1096: an object's own aliases named bare in its methods, before the class they name.
+primitive class codeT : int {
+    emitter void operator = (codeT v) { $target = $v; }
+    replace emitter void operator = (int v) { $target = $v; }
+    replace explicit emitter int operator () { ($self) }
+}
+object kit {
+    alias code for codeT;
+    alias row for rowV;
+    void bump(ref row r, int i) { code c = r[i]; r[i] = (int)c + 1; }
+}
+value class rowV {
+    inline codeT a; inline codeT b;
+    rowV operator = (rowV o) { a = o.a; b = o.b; return self; }
+    codeT operator [] (int i) { if (i == 0) return a; return b; }
+    codeT operator []= (int i, kit.code v) { if (i == 0) a = v; else b = v; return v; }
+}
+rowV rr = rowV{1, 2};
+
+class Crate : object { int tier = 1; }
+Crate c1 { }
+object stock {
+    alias box for Crate;
+    int count(object o) { if (o.is(Crate)) return 1; return 0; }
+}
+
+void main() {
+    bglInit();
+    bgl.util.buf.set(ta.text, "abcdefgh");
+    print($"{ta.text.size} {tb.text.length} {ta.text.length} {la.text.size} | ");
+    ledger.put(1, 9); ledger.Tbl[0][1] = 8;
+    print($"{ledger.Tbl[1][0]}{ledger.Tbl[0][1]} | ");
+    bd.grid := cells;
+    bd[1] = 7;
+    print($"{cells[1][0] + cells[1][1]} | ");
+    kit.bump(rr, 1);
+    print($"{(int)rr.b} | ");
+    print($"{stock.count(c1)}{stock.count(bd)}^");
+}

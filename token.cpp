@@ -29,6 +29,9 @@ const token _nullToken;
         return false;
     }
     bool token::isOneOf(vector<string> vals){
+        // A literal's text is its content: the string ";" or the character '(' is not punctuation.
+        if(tokenType == eTokenType::quote || tokenType == eTokenType::rawQuote || tokenType == eTokenType::charLiteral)
+            return false;
         for (string &val : vals) {
             if(value==val) return true;
         }

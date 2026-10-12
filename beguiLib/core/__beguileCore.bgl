@@ -88,7 +88,10 @@ emitter class _bglObject{
     }
 }
 /// A reference to a class, as `obj.is(cls)` takes.
-primitive class bglClass{ }
+primitive class bglClass{
+    emitter bool operator == (bglClass c){ ($val == $c) }   /// True when both name the same class.
+    emitter bool operator != (bglClass c){ ($val ~= $c) }   /// True when they name different classes.
+}
 
 //-- Global routines -----------------------------------------------------------
 emitter void print(var val){ print $val; }                                                           /// Print a value of a type with no print() of its own.

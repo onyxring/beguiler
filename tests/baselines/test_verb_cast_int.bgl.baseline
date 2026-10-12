@@ -13,10 +13,12 @@ Replace banner;
     
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global lastAction = 0;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -61,7 +63,7 @@ object bgl
     print (string)"^";
 ];
 [sameAction;
-    return ##puton == receive_action;
+    return ##puton == lastaction;
 ];
 [main;
 ];

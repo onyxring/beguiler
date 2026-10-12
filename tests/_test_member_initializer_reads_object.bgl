@@ -1,0 +1,7 @@
+// Negative test: an object's member initializer is fixed at compile time, so it can't read another object's member.
+// EXPECT_ERROR: is fixed when the program is compiled, so it can't read 'holder.v'
+#beguilerSettings { target = z5; informName = "none"; }
+class Thing { inline int n; inline int m; }
+object holder { int v = 7; }
+Thing t1 { n = 1; m = holder.v; }
+void main(){ print(t1.m); }

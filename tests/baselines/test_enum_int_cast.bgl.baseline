@@ -6,6 +6,7 @@ Constant beguiler = 5;
 Constant _BGL_TRACKED_ARRAYS;
    Array _bglFramePool --> 64;
    Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
       if (_bglFrameTop + size > 64) {
          print "^[Beguile runtime error: frame pool exhausted]^";
@@ -87,6 +88,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _glulx
@@ -96,20 +98,20 @@ object _glulx
 ];
 [_bglResumeLineInput buffer typed;
 ];
-[_bglGlkEvent event context buffer target typed;
+[_bglGlkEvent event context buffer _l_target typed;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
-    target = _bgl_bglOpCodes_aload(event, 2);
+    _l_target = _bgl_bglOpCodes_aload(event, 2);
     __glkHook(258, _bgl_bglOpCodes_aload(event, 1));
-    if ((~~(metaclass(target) == Routine))) {
+    if ((~~(metaclass(_l_target) == Routine))) {
         return false;
     }
     typed = 0;
     if (context == 0) {
         typed=_bglsuspendlineinput(buffer);
     }
-     target(); 
+     _l_target(); 
     if (context == 0) {
         _bglresumelineinput(buffer, typed);
     }

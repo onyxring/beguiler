@@ -35,6 +35,8 @@
     Global _bglStringLockStackTop = 0;
     Array _bglStringLockStackMarks --> bglStringLockStackSize;  ! the slot height at each open mark
     Global _bglStringLockStackMarkTop = 0;
+    Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
+    Global _bglStrAppendTop = 0;
     Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
@@ -411,6 +413,17 @@ object _bglStr {
         #i6 { r = str.isEmpty(); str.free(); }
         return r;
     }
+    // `s += $"…"`: the interpolation is captured into a temporary, then appended.
+    var beginAppend(var s) {
+        var t = self.new();
+        #i6 { _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t.capture(); }
+        return s;
+    }
+    var endAppend(var s) {
+        var t;
+        #i6 { _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t.release(); s.setFromStr(s.append(t)); t.free(); }
+        return s;
+    }
     var append(var s, var text) {
         bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
@@ -689,7 +702,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             lckSelf = _bglStr.ambiguousLock(self);
             ab      = _bglStr.toAmbiguousBuffer(unkStr);
             lckBuf  = _bglStr.ambiguousLock(ab);
-            _bglBuf.set(self.getBuf(), ab);
+            _bglBuf.setAny(self.getBuf(), ab);
             _bglStr.ambiguousFree(ab, lckBuf);
             _bglStr.ambiguousFree(self, lckSelf);
         }
@@ -793,7 +806,6 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             if((~~(buf2 == true or false)) && self.equals(buf2, caseInsensitive) == true) rtrue;
             if((~~(buf3 == true or false)) && self.equals(buf3, caseInsensitive) == true) rtrue;
             if((~~(buf4 == true or false)) && self.equals(buf4, caseInsensitive) == true) rtrue;
-            rfalse;
         }
         return false;
     }
@@ -848,7 +860,6 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             if((~~(buf2 == true or false)) && self.startsWith(buf2, caseInsensitive) == true) rtrue;
             if((~~(buf3 == true or false)) && self.startsWith(buf3, caseInsensitive) == true) rtrue;
             if((~~(buf4 == true or false)) && self.startsWith(buf4, caseInsensitive) == true) rtrue;
-            rfalse;
         }
         return false;
     }
@@ -868,7 +879,6 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             if((~~(buf2 == true or false)) && self.endsWith(buf2, caseInsensitive) == true) rtrue;
             if((~~(buf3 == true or false)) && self.endsWith(buf3, caseInsensitive) == true) rtrue;
             if((~~(buf4 == true or false)) && self.endsWith(buf4, caseInsensitive) == true) rtrue;
-            rfalse;
         }
         return false;
     }
@@ -960,7 +970,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         var retval;
         #i6 {
             retval = self.clone();
-            _bglBuf.append(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            _bglBuf.appendBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         }
         return retval;
@@ -981,7 +991,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         var retval;
         #i6 {
             retval = self.clone();
-            _bglBuf.prepend(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            _bglBuf.prependBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         }
         return retval;
@@ -1204,9 +1214,9 @@ extend class string {
     /// Return a copy with EVERY `searchText` swapped for `replaceText`.
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
     /// Substitute `$0`, `$1`… in `pattern` with this string and any extra arguments.
-    emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
-    emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
-    emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
+    emitter stringObj  format(var pattern)                                               { _bglStr.format($val, $pattern) }
+    emitter stringObj  format(var pattern, string | stringObj p1)                        { _bglStr.format($val, $pattern, $p1) }
+    emitter stringObj  format(var pattern, string | stringObj p1, string | stringObj p2) { _bglStr.format($val, $pattern, $p1, $p2) }
     /// How many characters, not counting a terminator.
     emitter int     length                                { _bglStr.getLength($val) }
     /// Order two strings by content: <0, 0 or >0. This is the comparison to hand `sort`.
@@ -1298,6 +1308,7 @@ emitter class stringObj {
     emitter stringObj operator += (stringObj v)        { $self.setFromStr($self.append($v)) }
     emitter stringObj operator += (string v)           { $self.setFromStr(_bglStr.append($self, $v)) }
     emitter stringObj operator += (char c)             { $self.setFromStr(_bglStr.appendChar($self, $c)) }
+    emitter stringObj operator += (interpolatedStringLiteral v) { _bglStr.beginAppend($self); $v; _bglStr.endAppend($self); }
 
     // Equality — Phase B typed dispatch
     // `replace` — core declares these as address equality; <string> upgrades them to
@@ -1305,10 +1316,13 @@ emitter class stringObj {
     // disagree (content vs address) on the same pair of values.
     emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
     emitter eBool operator == (stringObj v)        { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator == (string v)           { _bglStr.areEqual($val, $v, false) }
     emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
     emitter eBool operator != (stringObj v)        { (~~_bglStr.areEqual($val, $v, false)) }
+    emitter eBool operator != (string v)           { (~~_bglStr.areEqual($val, $v, false)) }
     emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
     // Switch comparison — Phase B typed dispatch
     emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
@@ -1367,8 +1381,8 @@ emitter class stringObj {
 
     // Indexed character access
     emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
-    emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
-    emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
+    emitter char operator[]=(int pos, char c)         { $val.setChar($pos,$c) }
+    emitter char operator[]=(int pos, charLiteral c)  { $val.setChar($pos,$c) }
 
     // Query — enables ?., ??, and postfix ? for null (unallocated) checks
     emitter eBool operator ?() { $self ~= 0 }
@@ -1394,9 +1408,9 @@ emitter class stringObj {
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
-    emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
-    emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
-    emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
+    emitter stringObj  format(var pattern)                                               { _bglStr.format($val, $pattern) }
+    emitter stringObj  format(var pattern, string | stringObj p1)                        { _bglStr.format($val, $pattern, $p1) }
+    emitter stringObj  format(var pattern, string | stringObj p1, string | stringObj p2) { _bglStr.format($val, $pattern, $p1, $p2) }
     emitter int     length                                { _bglStr.getLength($val) }
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
     emitter int compareTo(array<char> other) { _bglStr.compareValues($val, _bglStr.fromChars($other), false) }

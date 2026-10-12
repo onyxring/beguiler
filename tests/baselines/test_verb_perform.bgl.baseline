@@ -20,24 +20,25 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _glulx
 ;
-[_bglGlkEvent event context buffer target typed;
+[_bglGlkEvent event context buffer _l_target typed;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
-    target = _bgl_bglOpCodes_aload(event, 2);
+    _l_target = _bgl_bglOpCodes_aload(event, 2);
     __glkHook(258, _bgl_bglOpCodes_aload(event, 1));
-    if ((~~(metaclass(target) == Routine))) {
+    if ((~~(metaclass(_l_target) == Routine))) {
         return false;
     }
     typed = 0;
     if (context == 0) {
         typed=_bglsuspendlineinput(buffer);
     }
-     target(); 
+     _l_target(); 
     if (context == 0) {
         _bglresumelineinput(buffer, typed);
     }
@@ -106,11 +107,11 @@ verb 'wibble'
 [f;
     takesub();
     <(##take)>;
-    <(##take) ball>;
-    <(##take) ball key>;
-    <(##glonk) ball>;
-    <(##wibble) ball>;
-    <(##take) ball>;
+    <(##take) (ball)>;
+    <(##take) (ball) (key)>;
+    <(##glonk) (ball)>;
+    <(##wibble) (ball)>;
+    <(##take) (ball)>;
     rtrue;
 ];
 [_bgl_float__oplteqgt a b;
@@ -129,7 +130,7 @@ verb 'wibble'
 
 
         Array _bglLineEvent --> 4;
-        [ _bglSuspendLineInput buffer;
+        [ _bglSuspendLineInput;   ! no buffer local: Glk reports the count
             glk_cancel_line_event(gg_mainwin, _bglLineEvent);
             return _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
         ];

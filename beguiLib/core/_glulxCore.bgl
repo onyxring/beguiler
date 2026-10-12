@@ -65,7 +65,7 @@ extern default int HandleGlkEvent(var event, var context, var buffer);
     extern void _bglResumeLineInput(var buffer, int typed);
     #emitlast {
         Array _bglLineEvent --> 4;
-        [ _bglSuspendLineInput buffer;
+        [ _bglSuspendLineInput;   ! no buffer local: Glk reports the count
             glk_cancel_line_event(gg_mainwin, _bglLineEvent);
             return _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
         ];

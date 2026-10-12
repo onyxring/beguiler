@@ -9,6 +9,7 @@
 template framePool($size) {{{
    Array _bglFramePool --> $size;
    Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
       if (_bglFrameTop + size > $size) {
          print "^[Beguile runtime error: frame pool exhausted]^";

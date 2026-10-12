@@ -1,0 +1,78 @@
+// run_round10_zcode_forms — prefix `&` after a binary operator; a whole member array as a copy's target
+// and source; a static method as a value in a global array and an object member; `pull` into a
+// variable; a union inside func<>; `break`/`continue` running block deinits; `#define` word and string
+// values; `#if` inside object and array-extend bodies; members of a pool of 1 reset by `new`.
+// EXPECT_OUTPUT: 106 2 | 2 5 | 2 8 | 6 6 | 9 7 | big | open close open close open close | corner match | 9 5 | 3 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+#define SHOP corner
+#define TITLE "corner shop"
+#define HARD
+array<int> tbl = {1, 2, 3};
+object holder { array<int> rows[3]; }
+object shelf { array<int> stock[3] = {7, 8}; }
+array<int> src = {4, 5};
+class Calc { static int twice(int n) { return n * 2; } }
+array<func<int, int>> ops = { Calc.twice };
+object worker { func<int, int> op = Calc.twice; }
+int twice(int n) { return n * 2; }
+string | func<int, int> pick(int k) { return k > 2 ? "big" : twice; }
+int guardOpen(){ print("open "); return 1; }
+void guardClose(int g){ print("close "); }
+emitter class Guard {
+    emitter void init()   { $self = guardOpen(); }
+    emitter void deinit() { guardClose($self); }
+}
+array<int> nums = {1, 2};
+extend nums {
+    #if HARD
+        inject 9 first;
+    #else
+        inject 7 first;
+    #endif
+}
+object level {
+    #if HARD
+        int value = 5;
+    #else
+        int value = 1;
+    #endif
+}
+value class Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
+class Purse[1] : object { Coins price = Coins{ cents = 3; }; int plain = 3; }
+void main(){
+    bglInit();
+    int a = 100; int b = 6;
+    print($"{a + &b} {(&tbl + 2) - &tbl} | ");
+    holder.rows = src;
+    print($"{holder.rows.length} {holder.rows[1]} | ");
+    array<int> d[3];
+    d = shelf.stock;
+    print($"{d.length} {d[1]} | ");
+    print($"{ops[0](3)} {worker.op(3)} | ");
+    bgl.asm.push(7); bgl.asm.push(9);
+    int x; int y; bgl.asm.pull(x); bgl.asm.pull(y);
+    print($"{x} {y} | ");
+    func<string | func<int, int>, int> chooser = pick;
+    string | func<int, int> c = chooser(5);
+    print((string)c); print(" | ");
+    for (int i = 0; i < 3; i++) {
+        Guard g;
+        if (i == 1) continue;
+        if (i == 2) break;
+    }
+    print("| ");
+    print($"{SHOP} ");
+    #if TITLE == "corner shop"
+        print("match | ");
+    #else
+        print("no match | ");
+    #endif
+    print($"{nums[0]} {level.value} | ");
+    Purse p = new Purse();
+    p.price.cents = 9; p.plain = 9;
+    delete p;
+    Purse q = new Purse();
+    print($"{q.price.cents} {q.plain}");
+}

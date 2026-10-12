@@ -1,0 +1,7 @@
+// Negative test: delete takes a variable or member; an array element is copied to a local first.
+// EXPECT_ERROR: delete takes a variable or member, not an array element
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Token[2] : object { }
+array<Token> pile[2];
+void main(){ pile[0] = new Token(); delete pile[0]; }

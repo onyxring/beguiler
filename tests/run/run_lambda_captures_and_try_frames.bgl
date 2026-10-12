@@ -1,0 +1,48 @@
+// run_lambda_captures_and_try_frames — a lambda inside a chain nested in another lambda's chain reaches
+// the outer local; a lambda in a method calls a method and reads a member, and the routine that called
+// it keeps its own `self`; a lambda in a for-in source; a throw out of a chain predicate leaves later
+// chains working; a try's parameter named like a member; a returned value read before its frame is
+// freed; try/catch and throw as return paths.
+// EXPECT_OUTPUT: 1 | 2 2 | 5 9 | -1 2 -1 2 | 5 | 3 | 3 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+array<int> data = {3, 9, 4, 12};
+array<int> nums = {1, 5, 9};
+class Picker {
+    int Min = 4;
+    bool Ok(int n) { return n >= Min; }
+    int CountByMember() { return nums.filter((int x) => x >= Min).count(); }
+    int CountByMethod() { return nums.filter((int x) => Ok(x)).count(); }
+}
+Picker pk { }
+class Pair { int a; }
+int addOne(int a) {
+    int result = 0;
+    try { result = a + 1; }
+    catch (int e) { result = e; }
+    return result;
+}
+int zero() { int pad = 0; int more = 0; return pad + more; }
+int countBad(int n) {
+    int bad = 0;
+    try { for (int i = 0; i < n; i += 2) bad++; }
+    catch (int e) { bad = -e; }
+    return bad + zero();
+}
+int either(int n) { try { if (n > 0) throw n; return 0; } catch (int e) { return e; } }
+int firstOver(int n) { for (int i = 0; i < 10; i++) if (i * i > n) return i; throw 99; }
+int probe(int k) {
+    try { return data.filter((int x) => { if (x == k) throw -1; return true; }).count(); }
+    catch (int e) { return e; }
+}
+void main(){
+    bglInit();
+    int n = 3;
+    print($"{data.filter((int x) => x > n && data.any((int y) => y == x * n)).count()} | ");
+    print($"{pk.CountByMember()} {pk.CountByMethod()} | ");
+    int min = 4;
+    for (int v in nums.filter((int x) => x >= min)) { print(v); print(" "); }
+    print("| ");
+    for (int r = 0; r < 2; r++) print($"{probe(9)} {data.filter((int x) => x > 5).count()} ");
+    print($"| {addOne(4)} | {countBad(6)} | {either(3)} {firstOver(40)}");
+}

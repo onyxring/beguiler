@@ -1,0 +1,15 @@
+// run_startup_text_glulx — text a startup value prints into a buffer reaches it on Glulx, though bglInit
+// runs before any library selects Glk output (D1088).
+// EXPECT_OUTPUT: abc n2 n1!
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <array>
+#include <string>
+#include "glulxConsole.bgl"
+stringObj greeting = "abc";
+array<array<stringObj>> notes = { {"n0"}, {"n1", "n2"} };
+void main(){
+    bglInit(); glulxConsole();
+    stringObj n = notes[1][0];
+    n += "!";
+    print($"{greeting} {notes[1][1]} {n}^");
+}

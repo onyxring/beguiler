@@ -1,0 +1,18 @@
+/*  run_member_array_element_member_write — `holder.list[i].field = v` writes through the element.
+
+    A member array is a property array, so the element is read `holder.&list-->i`; reading it as a
+    global array read the wrong word and the write crashed the interpreter.  */
+// EXPECT_OUTPUT: 5 6
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class R : object { int x; }
+R r1 { x = 1; }
+R r2 { x = 2; }
+class Holder : object { array<R> pts[2]; }
+Holder h1 { pts = { r1, r2 }; }
+void main(){
+    bglInit();
+    h1.pts[0].x = 5;
+    h1.pts[1].x += 4;
+    print($"{r1.x} {r2.x}");
+}

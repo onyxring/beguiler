@@ -1,0 +1,5 @@
+// A #defineI6 symbol is an I6 Constant, and Beguile code reads it by name.
+#beguilerSettings { target = z5; informName = "none"; }
+#defineI6 LAMP_FULL 8
+int oil = 0;
+void main(){ oil = LAMP_FULL; print(oil); }

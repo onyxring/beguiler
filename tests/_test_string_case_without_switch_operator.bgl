@@ -1,0 +1,7 @@
+// A string literal case needs the condition type's operator switch (string's comes with <string>).
+// EXPECT_ERROR: declares no operator switch, so a string literal can't be a case value
+#beguilerSettings { target = z5; informName = "none"; }
+void main() {
+    string s = "red";
+    switch (s) { case "red": print("r"); default: print("?"); }
+}

@@ -1,0 +1,11 @@
+// Negative test: `outer` exists only in an object's inline accessor, not a class's — so never in a class with
+// several parents (impossible pair multi_parent × outer).
+// EXPECT_ERROR: 'outer' exists only in an inline accessor declared in an object
+#beguilerSettings { target = z5; informName = "none"; }
+class A : object { int a; }
+class B : object { int b; }
+class C : A, B {
+    auto level = { int _v; int operator () { return outer.a; } void operator = (int v) { _v = v; } }
+}
+C c1 { }
+void main(){ print(c1.level); }

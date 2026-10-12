@@ -1,0 +1,18 @@
+/*  run_round20_reverts — forms found while reverting the round-20 workarounds (D1234, D1235).  */
+// EXPECT_OUTPUT: 1 1 1
+#beguilerSettings { target = z5; informName = "none"; }
+
+// D1234: a bare inherited value emitter (`child`); D1235: a cast over one (`(Shelf)self.child`).
+class Shelf : object {
+    object firstItem() { return child; }
+    Shelf firstShelf() { return (Shelf)self.child; }
+}
+Shelf top { }
+Shelf low { parent = top; }
+
+void main() {
+    print(top.firstItem() == low ? 1 : 0); print(" ");
+    print(top.firstShelf() == low ? 1 : 0); print(" ");
+    Shelf s = (Shelf)top.child; print(s == low ? 1 : 0);
+    print("^");
+}

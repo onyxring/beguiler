@@ -1,0 +1,7 @@
+// Negative test: an extension adds members, never parents.
+// EXPECT_ERROR: can't add parents; list them on the class's own declaration
+#beguilerSettings { target = z5; informName = "none"; }
+class A : object { }
+class C : object { }
+extend class C : A { int k; }
+void main(){ }

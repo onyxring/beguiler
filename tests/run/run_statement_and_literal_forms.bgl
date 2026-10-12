@@ -1,0 +1,44 @@
+// run_statement_and_literal_forms — punctuation character literals, char literals as ints, `)` in an
+// $i6Expr string, enum emitter methods as statements, `?.` statements on an element and on a call's
+// result, `::print` with program overloads, opcode emitters given expressions, and lambdas whose body
+// is an assignment.
+// EXPECT_OUTPUT: 40 41 59 44 | 97 100 | ) | 5 5 5 | m- n2 | 4 | 9 | 3
+#beguilerSettings { target = z5; informName = "none"; }
+attribute marked;
+enum eTone { plain = 0, alarm = 5, emitter void show() { print $self; } }
+class shelfC : object {
+    array<object> slots[2];
+    object operator [] (int i) { return slots[i]; }
+}
+object item { }
+shelfC sh { }
+class box : object { int n = 0; void bump() { n++; } }
+box thing { }
+box pick() { return thing; }
+union txt = string | func<void>;
+void print(txt t) { print((string)t); }
+class amt { int units; void print() { ::print(units); } }
+amt a { }
+int hits = 0;
+void twice(func<void> f) { f(); f(); }
+string echo(string s) { return s; }
+int code(int c) { return c; }
+void main(){
+    print($"{(int)'('} {(int)')'} {(int)';'} {(int)','} | ");
+    int n = 'a';
+    print($"{n} {code('a' + 3)} | ");
+    #i6 print (string) $i6Expr(echo(")")), " | ";
+    eTone t = eTone.alarm;
+    t.show(); print(" "); eTone.alarm.show(); print(" "); alarm.show(); print(" | ");
+    sh.slots[0] = item;
+    sh[0]?.give(marked);
+    sh[1]?.give(marked);
+    print(item.has(marked) ? "m" : "-"); print(sh[1] == null ? "- " : "x ");
+    pick()?.bump(); pick()?.bump();
+    print($"n{thing.n} | ");
+    a.units = 4; print(a); print(" | ");
+    int k = 4;
+    bgl.asm.printNum(k + 5); print(" | ");
+    twice(=> hits += 1); hits++;
+    print(hits);
+}

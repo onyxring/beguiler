@@ -186,6 +186,7 @@ void beguiler::extractBlorbSettings(const string& filename) {
                     if(vs != string::npos){
                         size_t ve = blockLower.find_first_of(" \t\r\n;}", vs);
                         string val = blockLower.substr(vs, ve - vs);
+                        if(val.rfind("etarget.", 0) == 0) val = val.substr(8);   // the qualified form
                         if(!val.empty() && val.front() == '"') val = val.substr(1);
                         if(!val.empty() && val.back() == '"') val.pop_back();
                         // The lexer reads the target too (a Glulx character literal is Unicode), and
@@ -359,6 +360,8 @@ void beguiler::preScanSourceSettings(CompileJob& job) {
 // main pass. True on a parse error.
 bool beguiler::parseSource() {
     parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
+    parser.resolveStubParamAliases();
+    parser.validateVerbNameClashes(true);
     if(parser.parseFile(settings.inFile)) return true;
 
     return false;
@@ -855,7 +858,10 @@ bool beguiler::go(int argc, char* argv[]) {
 };
 
 bool beguiler::parseArgs(int argc, char* argv[]) {
-    if(argc==1){
+    bool help = argc == 1;
+    for(int i = 1; i < argc; i++)
+        if(string a = argv[i]; a == "--help" || a == "-h" || a == "-?" || a == "/?") help = true;
+    if(help){
         cout << "Usage: beguiler [options] <sourcefile.bgl> [<outputfile>]\n\n";
         cout << "Options:\n";
         cout << "  -o <dir>              Output directory for compiled files\n";
@@ -935,6 +941,10 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         }
     }
 
+    if(settings.inFile.empty()){
+        cerr << "No source file specified." << endl;
+        return true;
+    }
     if(settings.debugMode) settings.switches += " -D";
 
     #if defined(_WIN32) || defined(_WIN64)

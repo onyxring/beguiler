@@ -1,0 +1,54 @@
+/*  run_array_value_class_slots — each slot of an array of a value class owns an instance.
+
+    Storing into a slot (append, `[i] =`, push, a list initializer, a whole-array copy) copies into the
+    slot's own instance through the class's copy operator, so later changes to the source don't reach
+    the array. A local array's instances are per call, and removed elements give theirs back.  */
+// EXPECT_OUTPUT: append 1 5, store 5, local 10 11 12 10 11 12, copy 7 2, push 0, remove 9 2, member 3 1 4 5, iterate 0,7,2,
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+value class Pt {
+    int x;
+    int y = 9;
+    Pt operator = (Pt o){ x = o.x; y = o.y; return self; }
+}
+
+Pt g;
+array<Pt> gs[3];
+array<Pt> gl = { Pt{ x = 1; }, Pt{ x = 2; } };
+class Holder : object { array<Pt> pts[2]; }
+Holder h1 { }
+Holder h2 { }
+object solo { array<Pt> marks[2]; }
+class Item[2] : object { array<Pt> trail[2]; }
+
+void depth(int n){
+    array<Pt> loc = { Pt{ x = 10; } };
+    loc[0].x = loc[0].x + n;
+    print($" {loc[0].x}");
+    if(n < 2) depth(n + 1);
+}
+
+void main(){
+    bglInit();
+    g.x = 1; gs += g; g.x = 5; gs += g;
+    print($"append {gs[0].x} {gs[1].x}, ");
+    gs[0] = g; g.x = 7;
+    print($"store {gs[0].x}, local");
+    depth(0); depth(0);
+    gl[0].x = 7;
+    array<Pt> c[3];
+    c = gl;
+    gl[0].x = 8;
+    print($", copy {c[0].x} {c[1].x}, ");
+    g.x = 0; c.push(g); g.x = 99;
+    print($"push {c[0].x}, ");
+    gl.remove(0); gl += g;
+    print($"remove {gl[1].y} {gl.length}, ");
+    g.x = 1; h1.pts += g; g.x = 2; h2.pts += g; g.x = 3;
+    h1.pts[0] = g; g.x = 4;
+    solo.marks += g; g.x = 5;
+    Item it = new Item(); it.trail += g; g.x = 6;
+    print($"member {h1.pts[0].x} {h1.pts.length} {solo.marks[0].x} {it.trail[0].x}, iterate ");
+    for(Pt p in c) print($"{p.x},");
+}

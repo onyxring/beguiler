@@ -1,0 +1,6 @@
+// Negative test: a program function may not take the name of a global the library binding declares.
+// EXPECT_ERROR: has the same name as the library's global 'score'
+#beguilerSettings { target = z5; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+int Score(int n){ return n; }
+void main(){ }

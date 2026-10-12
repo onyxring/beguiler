@@ -1,0 +1,7 @@
+// Negative test: <linq> works on word arrays, not array<char> (impossible pair byte_array × linq).
+// EXPECT_ERROR: an array<char> doesn't take it
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+array<char> word = "hello";
+void main(){ int n = word.filter((char c) => c == 'l').count(); print(n); }

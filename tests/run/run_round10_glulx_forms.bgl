@@ -1,0 +1,18 @@
+// run_round10_glulx_forms — a parenthesized left operand of a float or uint operator; a decimal
+// `#define` as a float; an int default for a float parameter.
+// EXPECT_OUTPUT: 1.5000 10.0000 1 3.0000 | 0.5000 | 2.5000 2.5000
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#define HALF 0.5
+float scaled(float x, float by = 2) { return x * by; }
+void main(){
+    bglInit(); glulxConsole();
+    float a = 1.0; float b = 4.0;
+    uint m = 3; uint n = 4;
+    float w = 1.5;
+    print((b - a) / 2.0); print(" "); print((b + a) * 2.0); print(" ");
+    print((m + n) / 7); print(" "); print((w) * 2); print(" | ");
+    float h = HALF;
+    print(h); print(" | ");
+    print(scaled(1.25)); print(" "); print(scaled(1.25, 2));
+}

@@ -6,6 +6,10 @@
     Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
    -----------------------------------------------------------------------------*/
 #once
+#if TARGET_GLULX
+#else
+    #error "float needs a Glulx target: the Z-machine has no floating point. Set `target = Glulx` in #beguilerSettings."
+#endif
 
 //-- The float type ------------------------------------------------------------
 /// A single-precision floating-point number, written `1.5`, `.3` or `-2.0`.
@@ -21,8 +25,8 @@ primitive class float {
     emitter float operator / (float v){ _bglFloatFdiv($val, $v) }  /// The quotient.
     emitter float operator % (float v){ _bglFloatFmod($val, $v) }  /// The remainder.
 
-    emitter bool operator == (float v){ $val == $v }  /// True when the values are equal.
-    emitter bool operator != (float v){ $val ~= $v }  /// True when the values differ.
+    emitter bool operator == (float v){ _bglFloatEq($val, $v) }  /// True when the values are equal.
+    emitter bool operator != (float v){ (~~_bglFloatEq($val, $v)) }  /// True when the values differ.
 
     replace emitter void print(){ _bglFloatPrintDecimal($val); }  /// Print the value as a decimal rounded to four places.
 
@@ -51,8 +55,8 @@ primitive class float {
     emitter float operator * (int v){ _bglFloatFmul($val, _bglFloatNumtof($v)) }          /// The product.
     emitter float operator / (int v){ _bglFloatFdiv($val, _bglFloatNumtof($v)) }          /// The quotient.
     emitter float operator % (int v){ _bglFloatFmod($val, _bglFloatNumtof($v)) }          /// The remainder.
-    emitter bool  operator == (int v){ $val == _bglFloatNumtof($v) }                      /// True when the values are equal.
-    emitter bool  operator != (int v){ $val ~= _bglFloatNumtof($v) }                      /// True when the values differ.
+    emitter bool  operator == (int v){ _bglFloatEq($val, _bglFloatNumtof($v)) }                      /// True when the values are equal.
+    emitter bool  operator != (int v){ (~~_bglFloatEq($val, _bglFloatNumtof($v))) }                      /// True when the values differ.
     emitter bool  operator <  (int v){ _bglFloatLt($val, _bglFloatNumtof($v)) }           /// True when this is less than `v`.
     emitter bool  operator <= (int v){ _bglFloatLe($val, _bglFloatNumtof($v)) }           /// True when this is at most `v`.
     emitter bool  operator >  (int v){ _bglFloatGt($val, _bglFloatNumtof($v)) }           /// True when this is greater than `v`.
@@ -61,6 +65,7 @@ primitive class float {
     emitter float operator -= (int v){ $val = _bglFloatFsub($val, _bglFloatNumtof($v)) }  /// Subtract `v` from the variable.
     emitter float operator *= (int v){ $val = _bglFloatFmul($val, _bglFloatNumtof($v)) }  /// Multiply the variable by `v`.
     emitter float operator /= (int v){ $val = _bglFloatFdiv($val, _bglFloatNumtof($v)) }  /// Divide the variable by `v`.
+    emitter float operator %= (int v){ $val = _bglFloatFmod($val, _bglFloatNumtof($v)) }  /// Set the variable to its remainder after dividing by `v`.
 
     explicit emitter int operator(){ _bglFloatFtonumz($val) }  /// Convert to an `int`, truncating toward zero.
 }
@@ -74,8 +79,8 @@ extend extern class int {
     emitter float operator * (float v){ _bglFloatFmul(_bglFloatNumtof($val), $v) }  /// The product.
     emitter float operator / (float v){ _bglFloatFdiv(_bglFloatNumtof($val), $v) }  /// The quotient.
     emitter float operator % (float v){ _bglFloatFmod(_bglFloatNumtof($val), $v) }  /// The remainder.
-    emitter bool  operator == (float v){ _bglFloatNumtof($val) == $v }              /// True when the values are equal.
-    emitter bool  operator != (float v){ _bglFloatNumtof($val) ~= $v }              /// True when the values differ.
+    emitter bool  operator == (float v){ _bglFloatEq(_bglFloatNumtof($val), $v) }              /// True when the values are equal.
+    emitter bool  operator != (float v){ (~~_bglFloatEq(_bglFloatNumtof($val), $v)) }              /// True when the values differ.
     emitter bool  operator <  (float v){ _bglFloatLt(_bglFloatNumtof($val), $v) }   /// True when this is less than `v`.
     emitter bool  operator <= (float v){ _bglFloatLe(_bglFloatNumtof($val), $v) }   /// True when this is at most `v`.
     emitter bool  operator >  (float v){ _bglFloatGt(_bglFloatNumtof($val), $v) }   /// True when this is greater than `v`.
@@ -117,7 +122,10 @@ superposed float _bglFloatAbs(float v){
     return v;
 }
 
-// Comparisons; NaN compares false.
+// Comparisons; NaN compares false. Equality is IEEE's, so -0.0 equals 0.0.
+superposed bool _bglFloatEq(float x, float y){
+    #i6 { @jfeq x y 0 ?yes; rfalse; .yes; rtrue; }
+}
 superposed bool _bglFloatLt(float x, float y){
     #i6 { @jflt x y ?yes; rfalse; .yes; rtrue; }
 }

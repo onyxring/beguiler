@@ -1,0 +1,140 @@
+/*  run_round18_forms — forms the round-18 field trials found broken (D1159–D1185).  */
+// EXPECT_OUTPUT: 3 | 10 10 | 10 10 | 6 6 | key | 10 6 | 3 3 | 12 6 true | false 0 0 | 2 5 | 1 | row 0 row 1 | 8 | 4 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+
+// D1159: `new` above the pooled class's declaration.
+Token makeToken() { return new Token(); }
+class Token[2] : object { int n = 3; }
+
+// D1162, D1168: try/catch and a local array in a static method of an extern class.
+#i6 { Class Tray with tray_load 0; Tray trayA with tray_load 2; }
+extern class Tray : object {
+    int tray_load;
+    static int band(int g) {
+        array<int> seen[2];
+        seen.append(g);
+        try { if (g < 0) throw -1; return seen[0] * 2; } catch (int e) { return e; }
+    }
+    static int twice(Tray t, int i) { return t.tray_load * i; }
+    emitter int tw(int i) { $i6Name(Tray.twice)($val, $i) }
+}
+extern Tray trayA;
+
+// D1163: a primitive member on the left of an emitter operator.
+primitive class grams {
+    emitter void  operator = (int v)    { $self = $v; }
+    emitter int   operator ()           { ($self) }
+    emitter grams operator + (grams v)  { ($self + $v) }
+}
+class Pack { grams g; }
+Pack boxA { g = 7; }
+
+// D1165, D1166, D1167: $i6Expr($self) in an emitter `[]`; $i6Name of an extern static; `??` in $i6Expr.
+class Plate : object { int weight = 2; emitter int operator [] (int i) { $i6Expr($self.weight * $i) } }
+Plate plateA { }
+object keyA { }
+emitter object pick(object a, object b) { $i6Expr($a ?? $b) }
+
+// D1171, D1175: a method call statement and a method `+=` / `++` on an array element.
+class Meter : object {
+    int level;
+    void bump(int k) { level += k; }
+    Meter operator += (int n) { level += n; return self; }
+    Meter operator ++ () { level++; return self; }
+}
+Meter m1 { }
+Meter m2 { }
+array<Meter> meters = { m1, m2 };
+
+// D1176, D1177, D1178, D1180: emitter operators in an object body; an instance renamed for I6.
+object crate {
+    int count = 4;
+    emitter int  operator [] (int i)  { ($val.count * $i) }
+    emitter void operator += (int v)  { $val.count = $val.count + $v; }
+    emitter bool operator ?           { ($val.count > 5) }
+}
+class Boxy : object { int count = 2; emitter int operator [] (int i) { ($val.count * $i) } }
+Boxy box { }
+
+// D1172, D1183: a pooled class's ref member and array-of-arrays member.
+value class Slot { int n; Slot operator = (Slot o) { n = o.n; return self; } }
+Slot shared;
+class Lease[2] : object {
+    ref Slot spot;
+    array<array<int>> rows = { {0, 0}, {0} };
+    bool bound() { if (!spot) return false; return true; }
+}
+
+// D1173, D1179: #if in an extend class body and in an extern object body.
+class Bin : object { int cap; }
+extend class Bin {
+    #if 1
+        int audits;
+    #endif
+    int full() { int x = 3; if (x > 1) { x = 2; } return x; }
+}
+Bin binA { }
+#i6 { Object shelf "shelf" with load 4; }
+extern object shelf {
+    int load;
+    #if 1
+    emitter int plus(int v) { ($val.load + $v) }
+    #endif
+}
+
+// D1181: `new` through a bare alias.
+object kit { alias tok for Token; }
+#using kit
+
+// D1184: a stringObj appended to an object's member array is copied.
+object holder {
+    array<stringObj> lines[3];
+    void fill() { for (int r = 0; r < 2; r++) { stringObj s = "row "; s += (char)('0' + r); lines += s; } }
+}
+
+// D1174: a ref parameter of an emitter class with init and deinit.
+int total = 0;
+emitter class counter {
+    emitter void init()              { $self = 1; total++; }
+    emitter void deinit()            { total = total - $self; }
+    emitter void operator += (int n) { $self = $self + $n; total = total + $n; }
+    emitter int  operator ()         { ($self) }
+}
+void lend(ref counter c, int n) { c += n; }
+
+// D1185: a member named like an I6 library array.
+object planner { int pattern = 8; }
+
+// D1160: `delete outer.member` in an inline accessor.
+object dock {
+    Token held;
+    auto clear = { int _c; int operator () { return _c; } void operator = (int v) { delete outer.held; _c = v; } }
+}
+
+// D1182: an extern `[]` class used before its declaration keeps its parent's members.
+object chipHome(Chip c) { return c.parent; }
+#i6 { Class Chip(2) with w 0; }
+extern class Chip[] : object { int w; }
+
+void main() {
+    bglInit();
+    Token t = makeToken(); print(t.n); print(" | ");
+    print($"{Tray.band(5)} {trayA.tw(5)} | ");
+    grams k = 3; grams a = boxA.g + k; grams b = k + boxA.g; print($"{(int)a} {(int)b} | ");
+    print($"{plateA[3]} {trayA.tw(3)} | ");
+    object none = null; if (pick(none, keyA) == keyA) print("key"); print(" | ");
+    meters[0].bump(5); meters[1] += 3; meters[1]++; meters[1]++; meters[1]++;
+    print($"{m1.level + m1.level} {m2.level} | ");
+    print($"{crate[3] / 4} "); crate += 2; print($"{crate.count / 2} | ");
+    print($"{box[6]} {crate.count} "); print(crate?); print(" | ");
+    Lease l1 = new Lease(); l1.spot := shared; l1.rows[0][0] = 7; delete l1;
+    Lease l2 = new Lease(); print(l2.bound()); print($" {l2.rows[0][0]} {l2.rows[1][0]} | ");
+    print($"{binA.full()} {shelf.plus(1)} | ");
+    Token u = new tok(); dock.held = u; dock.clear = 1; print($"{dock.clear} | ");
+    holder.fill(); print($"{holder.lines[0]} {holder.lines[1]} | ");
+    print($"{planner.pattern} | ");
+    { counter c; lend(c, 3); print($"{(int)c} "); } print(total);
+    print("^");
+}

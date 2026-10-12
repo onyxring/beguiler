@@ -1,0 +1,6 @@
+// Negative test: a string member named `name` would bind the additive property that holds an object's words.
+// EXPECT_ERROR: is the ADDITIVE property that holds an object's words
+#beguilerSettings { target = z5; informName = "none"; }
+class Person : object { string Name; }
+Person bob { Name = "Bob"; }
+void main(){ print(bob.Name); }

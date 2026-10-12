@@ -1,0 +1,6 @@
+// Negative test: floats need Glulx, so <_float> on a Z-machine target says so (impossible pair float × punyinform).
+// EXPECT_ERROR: float needs a Glulx target
+#beguilerSettings { target = z5; informName = "none"; }
+#include <_float>
+float f = 1.5;
+void main(){ print(1); }

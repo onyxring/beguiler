@@ -87,6 +87,11 @@ static string fixPrintedParenValues(const string& in){
 
 string i6Emitter::resolvedOutput(){
     string buf = out.str();
+    // A pooled class with owned members copies through its own routine (synthesizePooledOwnedMembers).
+    for(const auto& [cls, routine] : ownedCopyRoutines)
+        for(size_t at = buf.find(cls + ".copy("); at != string::npos; at = buf.find(cls + ".copy(", at + routine.size()))
+            if(at == 0 || !(isalnum((unsigned char)buf[at - 1]) || buf[at - 1] == '_' || buf[at - 1] == '('))
+                buf.replace(at, cls.size() + 6, routine + "(");
     auto substitute = [&](const char* marker, const map<string,string>& blocks){
         size_t pos = buf.find(marker);
         if(pos == string::npos) return;
@@ -491,6 +496,12 @@ static string mapOutsideLiterals(const string& text, const std::function<string(
 // Bracket each frame slot (`_bglFrm-->N`) that an adjacent ++/--, unary -/~, call `(` or property
 // `.` would otherwise bind to: those all bind tighter than `-->`, so `_bglFrm-->3++` increments the 3
 // and `_bglFrm-->1()` calls routine 1, not the slot.
+// A `required` routine declared without a body: its stub takes no locals, since nothing could use them.
+static bool isRequiredStub(functionDef* fd){
+    auto* body = dynamic_cast<statementBlock*>(fd->body);
+    return fd->isRequired && (fd->body == nullptr || (body != nullptr && body->statements.empty()));
+}
+
 static string groupFrameSlots(string text){
     static const string slot = "_bglFrm-->";
     size_t pos = 0;
@@ -502,6 +513,7 @@ static string groupFrameSlots(string text){
         bool group = text.compare(r, 2, "++") == 0 || text.compare(r, 2, "--") == 0
                   || (r < text.size() && (text[r] == '(' || text[r] == '.'));
         if(!group && l >= 2 && (text.compare(l-2, 2, "++") == 0 || text.compare(l-2, 2, "--") == 0)) group = true;
+        if(!group && l >= 2 && text.compare(l-2, 2, "->") == 0) group = true;   // `cells-->(_bglFrm-->0)`
         if(!group && l >= 1 && (text[l-1] == '-' || text[l-1] == '~')){
             size_t b = l - 1; while(b > 0 && text[b-1] == ' ') b--;
             group = b == 0 || !(isI6WordChar(text[b-1]) || text[b-1] == ')' || text[b-1] == ']');
@@ -516,6 +528,7 @@ static string groupFrameSlots(string text){
 }
 
 string i6Emitter::replaceOperand(string str, const string& from, const string& to){
+    if(to.rfind("##", 0) == 0) return replaceWord(str, from, to);   // an action name is one operand
     string valOp; bool uniform = false, prefix = false;
     int valPrec = i6LoosestOperator(to, valOp, uniform, prefix);
     if(valPrec <= 0 || valPrec == INT_MAX) return replaceWord(str, from, to);
@@ -523,6 +536,8 @@ string i6Emitter::replaceOperand(string str, const string& from, const string& t
     size_t pos = 0;
     while((pos = findWordCI(str, from, pos)) != string::npos){
         bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$' || str[pos-1]=='.');
+        // `obj.&width` / `obj.#width` name the property too (a `$token` there is still substituted).
+        if(leftOk && pos >= 2 && from[0] != '$' && (str[pos-1]=='&' || str[pos-1]=='#') && str[pos-2]=='.') leftOk = false;
         bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
         if(!(leftOk && rightOk)){ pos += from.size(); continue; }
         bool group = false;
@@ -567,8 +582,15 @@ string i6Emitter::replaceWord(string str, const string& from, const string& to){
         // Word-boundary check. '.' on the left disqualifies so we don't rewrite property
         // accesses (`obj.width` must stay intact when renaming a local `width`).
         bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$' || str[pos-1]=='.');
+        // `obj.&width` / `obj.#width` name the property too (a `$token` there is still substituted).
+        if(leftOk && pos >= 2 && from[0] != '$' && (str[pos-1]=='&' || str[pos-1]=='#') && str[pos-2]=='.') leftOk = false;
+        if(leftOk && pos >= 2 && str.compare(pos - 2, 2, "::") == 0) leftOk = false;   // `obj.Class::prop`
         bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-        if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
+        // `##$v` on a verb argument, which already names its action (`##Take`), keeps one `##`.
+        if(leftOk && rightOk && pos >= 2 && to.rfind("##", 0) == 0 && str.compare(pos - 2, 2, "##") == 0){
+            str.replace(pos - 2, from.size() + 2, to); pos += to.size() - 2;
+        }
+        else if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
         else pos+=from.size();
     }
     return str;
@@ -672,6 +694,9 @@ vector<string> i6Emitter::glulxTryLocals(functionDef* fd){
         names.push_back("_bgl_cv" + id);
         names.push_back("_bgl_cvs" + id);
         if(frameAllocEmitted) names.push_back("_bgl_ft" + id);
+        if(languageService.linqInUse) names.push_back("_bgl_ld" + id);
+        names.push_back("_bgl_sf" + id);
+        names.push_back("_bgl_sn" + id);
     }
     return names;
 }
@@ -760,7 +785,7 @@ void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, 
                 if(!fm || fm->isStatic || fm->isPrePassStub || isHeaderMember(fm->name)) continue;
                 if(fm->type.name == "attributelist") continue;
                 if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
-                if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive) continue;   // compile-time members (parent, children): no property
+                if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive && !ft->isUnion()) continue;   // compile-time members (parent, children): no property
                 if(dynamic_cast<arrayDeclaration*>(fm)) continue;   // inline property data: not a single word
                 if(classDef* owned = ownedFieldClass(fm, visited)){
                     visited.insert(owned);
@@ -781,9 +806,21 @@ void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, 
 // the caller's argument, which is copied into the param's own instance before the param is pointed at
 // it. operator= methods are exempt (synthesizeParamBackings), so this is a no-op for them.
 // The fall-through cleanups after a body that ends in `return` could never run (the return ran them).
+// So does an if/else whose branches both end in one, and a switch with a default whose every case does.
 static bool endsInReturn(statementBlock* body){
-    return body != nullptr && !body->statements.empty()
-        && dynamic_cast<returnStatement*>(body->statements.back()) != nullptr;
+    if(body == nullptr || body->statements.empty()) return false;
+    statement* last = body->statements.back();
+    if(dynamic_cast<returnStatement*>(last) != nullptr) return true;
+    if(auto* is = dynamic_cast<ifStatement*>(last)) return endsInReturn(is->thenBlock) && endsInReturn(is->elseBlock);
+    if(auto* sw = dynamic_cast<switchStatement*>(last)){
+        bool hasDefault = false;
+        for(switchCase* c : sw->cases){
+            if(c->entries.empty()) hasDefault = true;
+            if(!endsInReturn(c->body)) return false;
+        }
+        return hasDefault;
+    }
+    return false;
 }
 
 void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
@@ -798,12 +835,9 @@ void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
             for(size_t at = text.find(kParamArgMarker); at != string::npos; at = text.find(kParamArgMarker, at + arg.size()))
                 text.replace(at, strlen(kParamArgMarker), arg);
         }
-        // A parameter past the fifth lives in a spill global on the Z-machine.
-        if(!currentSpillAliases.empty())
-            text = mapOutsideLiterals(text, [&](string code){
-                for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
-                return groupFrameSlots(code);
-            });
+        // A parameter past the fifth lives in a spill global on the Z-machine; one named like a
+        // property has its local's new name.
+        text = spillWord(text);
         out << indent << text << "\n";
         if(!p->backingName.empty())
             out << format("{0}{1} = {2};\n", indent, spillWord(p->name), p->backingName);
@@ -830,6 +864,32 @@ bool i6Emitter::funcNeedsSpill(functionDef* fd){
     return (effectiveParams + (int)locals.size()) > 14;
 }
 
+// About how many frame-pool words one call of the routine takes: its local arrays, and on Z its spilled
+// locals and try frames. An estimate for sizing the pool, not the exact allocation.
+int i6Emitter::estimateFrameWords(functionDef* fd){
+    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
+    if(body == nullptr) return 0;
+    vector<variableDeclaration*> locals;
+    set<string> seen;
+    collectBodyLocals(body, locals, seen);
+    int words = 0;
+    int ws = isZTarget(currentTarget) ? 2 : 4;
+    std::function<int(initializerList*)> listWords = [&](initializerList* l){
+        int w = (int)l->elements.size() + 3;
+        for(expression* e : l->elements) if(auto* in = dynamic_cast<initializerList*>(e)) w += listWords(in);
+        return w;
+    };
+    for(variableDeclaration* vd : locals)
+        if(auto* arr = dynamic_cast<arrayDeclaration*>(vd)){
+            if(arr->isByteArray) words += 1 + (max(arr->arraySize, 0) + ws - 1) / ws;
+            else if(auto* l = dynamic_cast<initializerList*>(arr->declaredExpressionValue)) words += max(listWords(l), arr->arraySize + 3);
+            else if(arr->arraySize > 0) words += arr->arraySize + 3;
+            else if(!arr->copySource.empty() || !arr->copyLength.empty()) words += 8;
+        }
+    if(funcNeedsSpill(fd)) words += (int)fd->params.size() + (int)locals.size() + 6;
+    return words;
+}
+
 bool i6Emitter::funcHasLocalArrays(functionDef* fd){
     statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
     if(body == nullptr) return false;
@@ -842,7 +902,7 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
         // Any local array that draws framePool backing forces pool emission:
         //   • sized word/byte array (arraySize > 0)
         //   • list-initialized word array (arraySize == 0 with an initializer list)
-        if(arr->arraySize > 0 || !arr->localInitSource.empty() || !arr->copySource.empty()) return true;
+        if(arr->arraySize > 0 || !arr->localInitSource.empty() || !arr->copySource.empty() || !arr->copyLength.empty()) return true;
         if(!arr->isByteArray && dynamic_cast<initializerList*>(arr->declaredExpressionValue)) return true;
     }
     return false;
@@ -905,9 +965,13 @@ void i6Emitter::buildSpillMap(functionDef* fd){
             currentSpillAliases[vd->name] = format("_bglFrm-->{0}", currentSpillCount++);
         vector<tryCatchStatement*> tries;
         collectTryStatements(body, tries);
+        int selfSlot = -1;   // self, then sender: a routine's own, so its tries share them
         for(tryCatchStatement* tc : tries){
             int cookie = currentSpillCount++;
             currentTrySlots[tc->id] = {cookie, currentSpillCount++};
+            if(languageService.linqInUse) currentTryLinqSlots[tc->id] = currentSpillCount++;
+            if(selfSlot < 0){ selfSlot = currentSpillCount; currentSpillCount += 2; }
+            currentTrySelfSlots[tc->id] = selfSlot;
         }
         return;
     }
@@ -924,8 +988,11 @@ void i6Emitter::clearSpillMap(){
     currentSpillAliases.clear();
     currentDisplayNames.clear();
     currentLocalRenames.clear();
+    currentCallEscapes.clear();
     currentTryParamRaw.clear();
     currentTrySlots.clear();
+    currentTryLinqSlots.clear();
+    currentTrySelfSlots.clear();
     currentSpillCount = 0;
 }
 
@@ -1026,6 +1093,7 @@ static void collectRawI6Text(statementBlock* body, string& out){
     for(statement* s : body->statements){
         if(auto* raw = dynamic_cast<i6RawNode*>(s)){
             if(raw->cooked) continue;   // cooked nodes ARE renamed by the emitter — don't block the rename
+            if(raw->isI6Island && raw->parts.empty()) continue;   // emitRawNode renames a plain island too
             out += raw->text; out += "\n";
             for(auto& part : raw->parts){ out += part.text; out += "\n"; }
         } else if(auto* ifs = dynamic_cast<ifStatement*>(s)){
@@ -1063,10 +1131,7 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     // Inform 6 reads these as part of a statement or condition when a local carries the name
     // (`move x to to;`, `if (x in in)`), though a global or object of the same name is fine.
     static const set<string> statementWords = {"to", "has", "in"};
-    // Names referenced verbatim inside a raw `#i6` block can't be rewritten (raw I6 is emitted
-    // as-is), so renaming them in the header/body would desync from that raw reference. Leave such
-    // names raw — I6 lets a routine local safely shadow a property of the same name, so this is
-    // correct (and matches how these methods emitted before per-name renaming existed).
+    // Raw I6 that nothing renames (compiler-written nodes, islands with parts) keeps a local's name.
     string rawI6; collectRawI6Text(body, rawI6);
     transform(rawI6.begin(), rawI6.end(), rawI6.begin(), ::tolower);
     // Mangle params and locals whose canonical name matches a used property name.
@@ -1077,9 +1142,12 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
         // local x in scope as the property numbered by the local, wherever the access sits.
         if(!propNames.count(canonical) && !languageService.isKnownPropertyName(canonical)
            && !fd->globalEscapes.count(canonical) && !statementWords.count(canonical)) return;
-        if(rawTextHasWord(rawI6, canonical)) return;   // verbatim in raw I6 → keep the raw name
+        if(rawTextHasWord(rawI6, canonical)) return;   // named in raw I6 nothing renames → keep the raw name
         const string& shown = display.empty() ? canonical : display;
         currentLocalRenames[canonical] = "_l_" + shown;
+        // A routine of the name this function calls: a call in the body still reaches the routine.
+        if(fd->globalEscapes.count(canonical) && languageService.findGlobalAs<functionDef>(canonical) != nullptr)
+            currentCallEscapes[canonical] = canonical;
     };
     for(paramDef* p : fd->params) maybeRename(p->name, p->displayName);
     vector<variableDeclaration*> locals;
@@ -1113,10 +1181,27 @@ string i6Emitter::exprText(expression* expr){
     // so property accesses (`info.width`) stay intact.
     if(currentLocalRenames.empty() && currentSpillAliases.empty()) return result;
     return mapOutsideLiterals(result, [&](string code){
+        for(auto& [from, to] : currentSpillAliases)  code = replaceWord(code, from, to);   // a frame slot wins over a rename
         for(auto& [from, to] : currentLocalRenames)  code = replaceWord(code, from, to);
-        for(auto& [from, to] : currentSpillAliases)  code = replaceWord(code, from, to);
+        code = restoreCallEscapes(code);
         return currentSpillAliases.empty() ? code : groupFrameSlots(code);
     });
+}
+
+// `_l_count(` (or its frame slot) back to `count(`: the hidden routine, called, is still the routine.
+string i6Emitter::restoreCallEscapes(string code){
+    for(auto& [name, unused] : currentCallEscapes){
+        // The local's own text in this routine: a frame slot when it spilled, else its rename.
+        auto sp = currentSpillAliases.find(name);
+        auto rn = currentLocalRenames.find(name);
+        string renamed = sp != currentSpillAliases.end() ? sp->second : rn != currentLocalRenames.end() ? rn->second : name;
+        if(renamed == name) continue;
+        string from = renamed + "(";
+        for(size_t at = code.find(from); at != string::npos; at = code.find(from, at + name.size() + 1))
+            if(at == 0 || !(isalnum((unsigned char)code[at - 1]) || code[at - 1] == '_' || code[at - 1] == '.'))
+                code.replace(at, from.size(), name + "(");
+    }
+    return code;
 }
 
 // Single name lookup. Resolution order:
@@ -1146,6 +1231,7 @@ string i6Emitter::spillWord(const string& text){
     return mapOutsideLiterals(text, [&](string code){
         for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
         for(auto& [from, to] : currentLocalRenames) code = replaceWord(code, from, to);
+        code = restoreCallEscapes(code);
         return currentSpillAliases.empty() ? code : groupFrameSlots(code);
     });
 }
@@ -1522,7 +1608,8 @@ if(languageService.tryCatchNeeded){
         out << "global _bgl_thrown;\n";      // set by a throw, so a lifted try's return value reads as thrown
         out << "global _bgl_tryrc;\n";       // the lifted try's result: thrown value, or 0/1/2/3 (done/return/break/continue)
         out << "global _bgl_tryret;\n";      // the value of a `return` inside the try
-    }
+    } else
+        out << "global _bgl_tryret;\n";      // a `return`'s value, computed before the try's cookie is restored
 }
 }
 
@@ -1530,10 +1617,18 @@ if(languageService.tryCatchNeeded){
 void i6Emitter::emitPhaseRuntimeNeedsScan(vector<typeDef*>& nodeList){
     bool needsPool = false;
     int maxXP = 0;
+    // The pool holds the largest routine frame a nominal four calls deep, unless the program sets its size;
+    // a routine that calls itself holding local storage is checked against a size the program set.
+    const int depth = 4;
+    int maxFrame = 0;
+    vector<pair<functionDef*, int>> recursive;
     auto scanFd = [&](functionDef* fd){
         if(fd->isEmitter || fd->isExternal) return;
         if(funcNeedsSpill(fd) || funcHasLocalArrays(fd) || (fd->callsItself && !fd->ownBackings.empty())) needsPool = true;
         maxXP = max(maxXP, max(0, (int)fd->params.size() - 5));
+        int words = estimateFrameWords(fd);
+        maxFrame = max(maxFrame, words);
+        if(fd->callsItself && words > 0 && funcHasLocalArrays(fd)) recursive.push_back({fd, words});
     };
     for(typeDef* node : nodeList){
         if(auto* fd = dynamic_cast<functionDef*>(node)) scanFd(fd);
@@ -1549,6 +1644,21 @@ void i6Emitter::emitPhaseRuntimeNeedsScan(vector<typeDef*>& nodeList){
             for(typeMember* m : obj->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
     }
+    // Static methods emit from the type registry (emitAllStaticClassRoutines), which also holds
+    // extern classes that never reach nodeList.
+    for(typeDef* td : languageService.objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(td))
+            for(typeMember* m : cd->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd != nullptr && fd->isStatic) scanFd(fd);
+    if(needsPool && !beguilerSettings.framePoolSizeSet)
+        framePoolSize = max(framePoolSize, maxFrame * depth);
+    if(needsPool && beguilerSettings.framePoolSizeSet)
+        for(auto& [fd, words] : recursive)
+            if(words * depth > framePoolSize)
+                cerr << format("{0}:{1}:1: warning: '{2}' calls itself and takes about {3} words of the frame pool "
+                               "per call; framePoolSize = {4} holds {5} of its calls. Raise framePoolSize if it goes "
+                               "deeper.\n", fd->src.file, fd->src.line, fd->dName(), words, framePoolSize,
+                               framePoolSize / words);
     if(needsPool){
         applyTemplate("framePool", {{"size", to_string(framePoolSize)}}, "");
         frameAllocEmitted = true;
@@ -1706,6 +1816,37 @@ if(languageService.bufInUse){
             out << format("global {0} = 0;\n", arr->dName());
         }
     }
+    // An object's sized `array<char>` members are tracked buffers too: bglInit points each at its raw allocation.
+    for(typeDef* g : languageService.globals){
+        auto* obj = dynamic_cast<objectDef*>(g);
+        if(obj == nullptr || obj->isExternal) continue;
+        vector<typeMember*> members = obj->members;
+        for(arrayDeclaration* a : inheritedByteArrays(obj)) members.push_back(a);
+        for(typeMember* m : members){
+            auto* arr = dynamic_cast<arrayDeclaration*>(m);
+            if(arr == nullptr || !arr->isByteArray || arr->isRefLocal || arr->isStatic || arr->arraySize <= 0
+               || !arr->stringInitializer.empty() || arr->declaredExpressionValue != nullptr) continue;
+            string raw = "_" + obj->name + "_" + arr->name + "_raw";
+            string objName = obj->i6name.empty() ? obj->name : obj->i6name;
+            string prop = arr->i6name.empty() ? arr->dName() : arr->i6name;
+            trackedByteMembers.push_back({raw, objName + "." + prop, arr->arraySize});
+            trackedByteMemberRaws.insert(raw);
+        }
+        // A member given a tracked byte array (a pointer set at startup) takes it in bglInit.
+        for(typeMember* m : obj->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || vd->declaredExpressionValue == nullptr || dynamic_cast<initializerList*>(vd->declaredExpressionValue)) continue;
+            string v = vd->declaredExpressionValue->text();
+            string lv = v; transform(lv.begin(), lv.end(), lv.begin(), ::tolower);
+            for(const string& t : trackedByteArraysNeedingMagicInit){
+                string lt = t; transform(lt.begin(), lt.end(), lt.begin(), ::tolower);
+                if(lt != lv) continue;
+                string objName = obj->i6name.empty() ? obj->name : obj->i6name;
+                runtimeMemberValues.insert(vd);
+                runtimeMemberInits.push_back(objName + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name) + " = " + t + ";");
+            }
+        }
+    }
 }
 // Same reason, for any global bglInit assigns to — a class-typed one whose value is applied
 // through its type's operator=, or one whose initializer is not a compile-time constant (see
@@ -1784,12 +1925,25 @@ for(typeDef* g : languageService.globals){
         if(cd == nullptr || cd->isExternal || cd->isEmitterClass || cd->isAlias) continue;
         for(typeMember* m : cd->members){
             auto* vd = dynamic_cast<variableDeclaration*>(m);
-            if(vd == nullptr || !vd->isStatic || dynamic_cast<arrayDeclaration*>(vd) != nullptr) continue;
+            if(vd == nullptr || !vd->isStatic || vd->staticHasGlobal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) continue;
             string value = vd->declaredExpressionValue != nullptr ? staticText(vd->declaredExpressionValue) : "";
             if(!value.empty() && !plain(value)) continue;
             string name = format("_bgl_{0}_{1}", cd->dName(), vd->dName());
             out << "global " << name << (value.empty() ? "" : " = " + value) << ";\n";
             earlyStaticGlobals.insert(name);
+        }
+    }
+    // An extern class has no directive of its own to bring its statics; they are declared here.
+    for(typeDef* td : languageService.objectTypes){
+        auto* cd = dynamic_cast<classDef*>(td);
+        if(cd == nullptr || !cd->isExternal || cd->isEmitterClass || cd->isAlias) continue;
+        for(typeMember* m : cd->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || !vd->isStatic || vd->isPrePassStub || vd->staticHasGlobal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) continue;
+            string name = format("_bgl_{0}_{1}", cd->dName(), vd->dName());
+            if(!earlyStaticGlobals.insert(name).second) continue;
+            string value = vd->declaredExpressionValue != nullptr ? staticText(vd->declaredExpressionValue) : "";
+            out << "global " << name << (value.empty() ? "" : " = " + value) << ";\n";
         }
     }
 }
@@ -1807,6 +1961,9 @@ out << "global _bglInitDone = 0;\n";
 out << "[bglInit;\n";
 out << "    if(_bglInitDone) return;\n";
 out << "    _bglInitDone = 1;\n";
+// Glulx starts with no output system until the library selects Glk, so text a startup value prints
+// into a buffer (a string literal) would be lost.
+out << "    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;\n";
 // Stamp the $9084 magic onto every sized-uninitialized tracked array.
 // (List-initialized arrays bake the magic in at compile time and don't need this.)
 // Form: `arr-->(arr-->0) = $9084;` — write the last slot of the allocation.
@@ -1852,12 +2009,21 @@ for(const string& arrName : trackedByteArraysNeedingMagicInit){
     out << "    " << arrName << " = " << raw << " + WORDSIZE + 2;\n";
     out << "    _bglBuf._registerTracked(" << arrName << ");\n";   // <buf> knows a tracked buffer by its registry
 }
+for(const TrackedByteMember& t : trackedByteMembers){
+    out << "    " << t.raw << "->0 = $90;\n";
+    out << "    " << t.raw << "->1 = $84;\n";
+    out << "    (" << t.raw << " + 2)-->0 = " << t.size << ";\n";
+    out << "    " << t.lvalue << " = " << t.raw << " + WORDSIZE + 2;\n";
+    out << "    _bglBuf._registerTracked(" << t.lvalue << ");\n";
+}
+for(const string& init : runtimeMemberInits)
+    out << "    " << init << "\n";
 for(const string& block : languageService.startupBlocks)
     out << block << "\n";
 for(auto& [varName, body] : languageService.globalInits)
     out << "    " << body << "\n";
 out << "];\n";
-bglInitHasWork = !trackedArraysNeedingMagicInit.empty() || !trackedByteArraysNeedingMagicInit.empty()
+bglInitHasWork = !trackedArraysNeedingMagicInit.empty() || !trackedByteArraysNeedingMagicInit.empty() || !trackedByteMembers.empty() || !runtimeMemberInits.empty()
               || !languageService.startupBlocks.empty() || !languageService.globalInits.empty();
 }
 
@@ -2015,6 +2181,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             }
     synthesizeChildrenPlacement();
     synthesizePooledOwnedMembers();
+    synthesizeValueElementPools();
 
     // .inf-mode with zero #bgl/#bglDecl/#bglStmt islands: the file is pure I6. None of
     // the BLR-derived output (bglInit, _bglUtil, bgl, _glulx, __glkHook, etc.) is
@@ -2336,7 +2503,7 @@ static std::string findStaticDeinit(classDef* cd){
 void i6Emitter::emitClassStaticGlobals(classDef* classNode){
 for(typeMember* m : classNode->members)
     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-        if(vd->isStatic){
+        if(vd->isStatic && !vd->staticHasGlobal && dynamic_cast<arrayDeclaration*>(vd) == nullptr){   // a static array is a global array
             if(earlyStaticGlobals.count(format("_bgl_{0}_{1}", classNode->dName(), vd->dName()))) continue;   // declared early
             out << format("global _bgl_{0}_{1}", classNode->dName(), vd->dName());
             if(vd->declaredExpressionValue != nullptr && !staticText(vd->declaredExpressionValue).empty())
@@ -2349,6 +2516,8 @@ for(typeMember* m : classNode->members)
 void i6Emitter::emitClassByteArrayMembers(classDef* classNode, map<string, string>& externalArrayNames){
 for(typeMember* m : classNode->members){
     if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
+        if(arr->isStatic) continue;   // its storage is the class's global array
+        if(arr->isByteArray && arr->isRefLocal){ externalArrayNames[arr->name] = "0"; continue; }   // bound with :=
         if(arr->isByteArray){
             string mangledName = "_" + classNode->name + "_" + arr->name;
             // Emit as an I6 hybrid buffer (length word at -->0, data bytes at
@@ -2359,12 +2528,14 @@ for(typeMember* m : classNode->members){
                 out << format("Array {0} buffer {1};\n", mangledName, arr->stringInitializer);
             } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
                 out << format("Array {0} buffer", mangledName);
+                bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
+                if(bracketed) out << " [";
                 for(expression* elem : list->elements){
                     string t = staticText(elem);
                     if(!t.empty() && t.front() == '-') out << " (" << t << ")";
                     else                                out << " " << t;
                 }
-                out << ";\n";
+                out << (bracketed ? " ];\n" : ";\n");
             } else {
                 out << format("Array {0} buffer {1};\n", mangledName, arr->arraySize);
             }
@@ -2472,10 +2643,11 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             out << sep << "\n";
         }
         else if(auto* fd = dynamic_cast<functionDef*>(m)){
+            prepareRecursionSave(fd);
             buildSpillMap(fd);
             out << format("    {0}[", fd->i6name.empty() ? fd->dName() : fd->i6name);
             string sp;
-            for(paramDef* p : fd->params)
+            for(paramDef* p : fd->params) if(!isRequiredStub(fd))
                 if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
                     { out << sp << spillName(p->name); sp=" "; }
                 else if(currentTryParamRaw.count(p->name))
@@ -2494,6 +2666,8 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             out << ";\n";
             if(currentSpillCount > 0)
                 out << format("        _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+            if(!fd->entrySetUp.empty())
+                out << "        " << spillWord(fd->entrySetUp) << "\n";
             emitTryParamCopyIns("        ");
             // Per-call copy-in for params that own an instance, on class/object member methods (same
             // shape as top-level functions, just with a deeper indent).
@@ -2505,6 +2679,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             // exit path via currentCleanups, mirroring emitFunction.
             emitLocalArrayAllocs(fd, locals, body, "        ");
             currentCleanups = fd->cleanups.empty() ? nullptr : &fd->cleanups;
+            armCleanups(body);
             if(body != nullptr)
                 for(statement* s : body->statements)
                     emitStatement(s, "        ");
@@ -2512,7 +2687,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                 for(auto& [varName, cbody] : *currentCleanups)
                     out << "        " << spillWord(cbody) << "\n";
             currentCleanups = nullptr;
-            if(currentSpillCount > 0)
+            if(currentSpillCount > 0 && !endsInReturn(body))
                 out << format("        _bglFrameFree({0});\n", currentSpillCount);
             out << "    ]" << sep << "\n";
             clearSpillMap();
@@ -2656,6 +2831,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     emitLocalArrayAllocs(funcNode, locals, body, "    ");
 
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
+    armCleanups(body);
     if(body != nullptr)
         for(statement* stmt : body->statements)
             emitStatement(stmt, "    ");
@@ -2663,7 +2839,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(currentCleanups != nullptr && !endsInReturn(body))
         for(auto& [varName, body] : *currentCleanups)
             out << "    " << spillWord(body) << "\n";   // a spilled local is freed through its frame slot
-    if(currentSpillCount > 0)
+    if(currentSpillCount > 0 && !endsInReturn(body))   // a final return freed the frame already
         out << format("    _bglFrameFree({0});\n", currentSpillCount);
     currentCleanups = nullptr;
     clearSpillMap();
@@ -2677,10 +2853,15 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
     // declaration statement. rawArray<T> is a bare flat block; array<char> uses the byte layout.
     // Shared by top-level functions and class/object member methods.
     if(body == nullptr) return;
+    // A routine emitted twice (an inline accessor's) keeps one free per array.
+    for(variableDeclaration* vd : locals)
+        if(dynamic_cast<arrayDeclaration*>(vd) != nullptr)
+            fn->cleanups.erase(remove_if(fn->cleanups.begin(), fn->cleanups.end(),
+                [&](auto& c){ return c.first == vd->name; }), fn->cleanups.end());
     for(variableDeclaration* vd : locals){
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
         if(arr == nullptr) continue;
-        if(!arr->copySource.empty()){   // allocated where it's declared, sized from its value
+        if(!arr->copySource.empty() || !arr->copyLength.empty()){   // allocated where it's declared, sized from its value
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->copyHeld)});
             continue;
         }
@@ -2720,6 +2901,7 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
         if(languageService.arrayInUse && !arr->isRaw){
             out << format("{0}{1} = _bglArrayLocalAlloc({2});\n", indent, name, count);
             std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
+            if(dtor.empty()) dtor = valueElementRoutine(arr->elementType, "_bglValFree_");
             if(!dtor.empty())
                 fn->cleanups.push_back({arr->name, format("_bglArray.freeAll({0}, 0, {1});", name, dtor)});
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
@@ -2740,6 +2922,12 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
 // assignment of the RHS expression. No allocation — caller owns the storage.
 // A local `array<T>` declaration: alias-assign, seed a list initializer, or nothing.
 void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string& indent){
+    if(!arrLoc->copyLength.empty()){   // from a member array: storage sized from its length; the copy follows
+        string name = spillName(arrLoc->name), held = spillName(arrLoc->copyHeld);
+        out << format("{0}{1} = _bglArrayLocalCopyAlloc({2}, 0, {1}); {3} = {3} + _bglFrameTaken;\n",
+                      indent, name, spillWord(arrLoc->copyLength), held);
+        return;
+    }
     if(!arrLoc->copySource.empty()){   // the copy itself is the assignment that follows
         string name = spillName(arrLoc->name), held = spillName(arrLoc->copyHeld);
         string src = spillName(arrLoc->copySource);
@@ -2777,6 +2965,8 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
                     auto* inner = arrLoc->isRaw ? nullptr : dynamic_cast<initializerList*>(elem);
                     if(inner != nullptr)
                         fill(format("({0}-->{1})", ptr, i + 1), inner, max(1, (int)inner->elements.size()));
+                    else if(string copy = valueElementRoutine(arrLoc->elementType, "_bglValAssign_"); !copy.empty())
+                        out << format("{0}{1}-->{2} = {3}(0, {4});\n", indent, ptr, i + 1, copy, exprText(elem));
                     else   // a rawArray has no length header: its elements start at slot 0
                         out << format("{0}{1}-->{2} = {3};\n", indent, ptr, i + (arrLoc->isRaw ? 0 : 1), exprText(elem));
                     i++;
@@ -2787,9 +2977,15 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
             return;
         }
     }
-    // Other arrayDeclaration shapes (sized) are handled via the framePool path
-    // in emitFunction / the global-emission path in emitGlobal; no per-statement
-    // work needed here.
+    // A sized word array declared in a loop body starts each pass empty, as a block-scoped local does:
+    // its elements and, when tracked, the length slot past them.
+    if(arrLoc->inLoop && !arrLoc->isByteArray && arrLoc->arraySize > 0 && arrLoc->declaredExpressionValue == nullptr
+       && arrLoc->copySource.empty() && arrLoc->copyLength.empty()){
+        string name = spillName(arrLoc->name);
+        int last = arrLoc->arraySize + ((languageService.arrayInUse && !arrLoc->isRaw) ? 1 : 0);
+        for(int k = arrLoc->isRaw ? 0 : 1; k <= last; k++)
+            out << format("{0}{1}-->{2} = 0;\n", indent, name, k);
+    }
     return;
 }
 // A local variable declaration's initializer assignment (plain, emitter-bodied, or interpolated).
@@ -2808,6 +3004,7 @@ void i6Emitter::emitLocalDeclaration(variableDeclaration* var, const string& ind
             string b = var->initEmitterBody;
             b = replaceWord(b, "$self", selfText);
             b = replaceWord(b, "$val",  selfText);
+            if(!currentSpillAliases.empty()) b = groupFrameSlots(b);   // `(_bglFrm-->2).capture()`
             emitInterpolatedEmitterBody(b, var->initEmitterParam, var->interpSegments, indent);
         } else if(!var->initEmitterBody.empty()){
             string b = var->initEmitterBody;
@@ -2838,6 +3035,7 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
         string b = assign->emitterBody;
         b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
         b=replaceWord(b,"$val",  spillName(assign->variableLeft));
+        if(!currentSpillAliases.empty()) b = groupFrameSlots(b);
         emitInterpolatedEmitterBody(b, assign->emitterParam, assign->interpSegments, indent);
     } else if(!assign->emitterBody.empty()){
         string b = assign->emitterBody;
@@ -2846,7 +3044,7 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
         // Substitute params before $self to avoid double-substitution when param name matches the LHS variable
         b=replaceOperand(b,"$" + assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
         b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
-        if(!assign->emitterProp.empty()) b=replaceWord(b,"$prop", assign->emitterProp);
+        b=replaceWord(b,"$prop", assign->emitterProp.empty() ? string("0") : assign->emitterProp);   // 0: not a member
         b=replaceWord(b,"$val",  spillName(assign->variableLeft));
         b=replaceWord(b,"$target", spillName(assign->variableLeft));
         if(!currentSpillAliases.empty()) b = groupFrameSlots(b);
@@ -2876,27 +3074,44 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
         out << indent << "return 1;\n";
         return;
     }
-    // Leaving every active try: the cookie goes back to what it was outside the outermost.
-    if(!glulxTryStack.empty())
-        out << indent << "_bgl_catch_cookie = " << glulxTryStack.front().first << ";\n";
-    // A value the cleanups could disturb is computed into the routine's return slot first.
     const string& rx = ret->returnExpression;
     // Only a whole literal is constant: `1 + f(x)` starts with a digit but runs a call.
     static const std::regex literalValue(R"re(^(-?\d+|\$\$?[0-9A-Fa-f]+|\$[+-][0-9.eE+-]+|"[^"]*"|'[^']*')$)re");
     bool constantValue = rx.empty() || rx == "rtrue" || rx == "rfalse" || rx == "true" || rx == "false"
         || std::regex_match(rx, literalValue);
-    bool holdValue = !currentReturnSlot.empty() && !constantValue
-                  && (currentCleanups != nullptr || currentSpillCount > 0);
+    // Leaving every active try: the cookie goes back to what it was outside the outermost — after the
+    // value is computed, since computing it may throw to this try's catch.
+    if(!glulxTryStack.empty()){
+        if(!constantValue && rx != "_bgl_tryret"){
+            out << indent << "_bgl_tryret = " << spillWord(rx) << ";\n";
+            returnStatement held = *ret;
+            held.returnExpression = "_bgl_tryret";
+            emitReturn(&held, indent);
+            return;
+        }
+        out << indent << "_bgl_catch_cookie = " << glulxTryStack.front().first << ";\n";
+    }
+    // A value the cleanups could disturb is computed into the routine's return slot first.
+    bool holdValue = !constantValue && (currentCleanups != nullptr || currentSpillCount > 0)
+                  && (!currentReturnSlot.empty() || currentSpillCount > 0);
+    // The routine's own slot, unless it lives in the frame being freed: then a global holds it.
+    string hold = currentReturnSlot.empty() ? "" : spillName(currentReturnSlot);
+    if(hold.empty() || hold.find("-->") != string::npos) hold = "_bglRetHold";
+    // A global hold could be overwritten by a routine a cleanup calls: park it on the stack meanwhile.
+    bool parked = holdValue && hold == "_bglRetHold" && currentCleanups != nullptr;
+    bool glulx = currentTarget == "glulx";
     if(holdValue)
-        out << indent << spillName(currentReturnSlot) << " = " << spillWord(rx) << ";\n";
+        out << indent << hold << " = " << spillWord(rx) << ";\n";
+    if(parked) out << indent << (glulx ? "@copy _bglRetHold sp;\n" : "@push _bglRetHold;\n");
     // emit deinit cleanups before every return
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
-            out << indent << spillWord(body) << "\n";
+            if(!undeclaredTopLocals.count(varName)) out << indent << spillWord(body) << "\n";
     if(currentSpillCount > 0)
         out << format("{0}_bglFrameFree({1});\n", indent, currentSpillCount);
+    if(parked) out << indent << (glulx ? "@copy sp _bglRetHold;\n" : "@pull _bglRetHold;\n");
     if(holdValue){
-        out << format("{0}return {1};\n", indent, spillName(currentReturnSlot));
+        out << format("{0}return {1};\n", indent, hold);
         return;
     }
     if(ret->returnExpression == "rtrue" || ret->returnExpression == "rfalse")
@@ -2933,9 +3148,14 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
         // $target here. Guarded on presence so void emitter statements are untouched.
         if(b.find("$target") != string::npos)
             b = replaceWord(b, "$target", "sp");
+        // `give obj (expr)` reads in I6 as a call of obj; `give obj 0+(expr)` is the attribute.
+        {
+            static const regex giveParen(R"((\bgive\s+[^\s~]+\s+)\()");
+            if(b.find("give") != string::npos) b = regex_replace(b, giveParen, "$010+(");   // $01: group 1, then "0+("
+        }
         if(interpArgIdx >= 0){
             // Splice interpolated print-block at the interpolated parameter's position
-            emitInterpolatedEmitterBody(b, call->emitterParams[interpArgIdx],
+            emitInterpolatedEmitterBody(spillWord(b), call->emitterParams[interpArgIdx],
                 call->interpSegmentsPerArg[interpArgIdx], indent);
         } else {
             while(!b.empty() && b.back()==';') b.pop_back();
@@ -3075,7 +3295,7 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
     // Member (property) WORD array: element n at obj.&prop-->n, with the length the parser
     // worked out for its layout (a tracked member keeps it in its last word). Globals/locals keep
     // the count-prefixed/tracked path.
-    bool isMemberArr = !fi->isByteArray && arrayVarS.find('.') != string::npos;
+    bool isMemberArr = !fi->isByteArray && !fi->viaPointer && arrayVarS.find('.') != string::npos;
     string arrayArg = arrayVarS;
     string lengthExpr;
     if(!fi->memberBase.empty()){
@@ -3104,6 +3324,10 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
         {{"counter", spillName(fi->counterVar)}, {"array", arrayArg},
          {"element", spillName(fi->elementVar)}, {"lengthExpr", lengthExpr}},
         indent);
+    if(!fi->elementConversion.empty()){
+        string el = spillName(fi->elementVar);
+        out << indent << "    " << el << " = " << replaceWord(fi->elementConversion, "@@ELEM@@", el) << ";\n";
+    }
     if(fi->body != nullptr)
         for(statement* s : fi->body->statements)
             emitStatement(s, indent + "    ");
@@ -3226,7 +3450,11 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
         out << indent << "@catch " << cvName << " ?" << tryLabel << ";\n";
         // Catch body (reached via @throw)
         out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
+        // A throw from another object's method left self and sender there; a send's return reads both.
+        out << indent << "    self = _bgl_sf" << id << "; sender = _bgl_sn" << id << ";\n";
         if(frameAllocEmitted) out << indent << "    _bglFrameTop = " << frameTop << ";\n";
+        // A throw out of a <linq> predicate skipped the chain's exit, which lowers its depth.
+        if(languageService.linqInUse) out << indent << "    _bglLinqActiveDepth = _bgl_ld" << id << ";\n";
         out << indent << "    " << spillName(tc->catchVarName) << " = " << cvName << ";\n";
         if(tc->catchBody != nullptr)
             for(statement* s : tc->catchBody->statements){
@@ -3234,20 +3462,26 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
                     if(vd->name == tc->catchVarName) continue;
                 emitStatement(s, indent + "    ");
             }
-        out << indent << "    jump " << endLabel << ";\n";
+        // A body that ends in `return` has already left, so what follows it can't run.
+        bool catchReturns = endsInReturn(tc->catchBody), tryReturns = endsInReturn(tc->tryBody);
+        if(!catchReturns) out << indent << "    jump " << endLabel << ";\n";
         // Try body (normal execution — branched here by @catch)
         out << indent << "." << tryLabel << ";\n";
         out << indent << "    " << cvSave << " = _bgl_catch_cookie;\n";
+        out << indent << "    _bgl_sf" << id << " = self; _bgl_sn" << id << " = sender;\n";
         if(frameAllocEmitted) out << indent << "    " << frameTop << " = _bglFrameTop;\n";
+        if(languageService.linqInUse) out << indent << "    _bgl_ld" << id << " = _bglLinqActiveDepth;\n";
         out << indent << "    _bgl_catch_cookie = " << cvName << ";\n";
         glulxTryStack.push_back({cvSave, liftedLoopDepth});
         if(tc->tryBody != nullptr)
             for(statement* s : tc->tryBody->statements)
                 emitStatement(s, indent + "    ");
         glulxTryStack.pop_back();
-        out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
-        out << indent << "." << endLabel << ";\n";
-        out << indent << "    _bgl_catch_cookie = _bgl_catch_cookie;\n";  // no-op to satisfy I6 label requirement
+        if(!tryReturns) out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
+        if(!(catchReturns && tryReturns)){
+            out << indent << "." << endLabel << ";\n";
+            out << indent << "    _bgl_catch_cookie = _bgl_catch_cookie;\n";  // no-op to satisfy I6 label requirement
+        }
     } else {
         // Z-machine: the try body runs in its own routine, which catches; a throw returns from it.
         string routine = "_bgl_try" + id;
@@ -3268,7 +3502,10 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
             if(tc->tryBody != nullptr)
                 for(statement* s : tc->tryBody->statements)
                     emitStatement(s, "    ");
-            out << "    return 0;\n];\n";
+            // A body that ends in `return` has already left; a second return would be unreachable.
+            bool bodyReturns = tc->tryBody != nullptr && !tc->tryBody->statements.empty()
+                            && dynamic_cast<returnStatement*>(tc->tryBody->statements.back()) != nullptr;
+            out << (bodyReturns ? "];\n" : "    return 0;\n];\n");
             inLiftedTry = prevLifted; liftedLoopDepth = prevDepth;
             sourceMapTarget = prevTarget;
             std::swap(out, captured);
@@ -3281,12 +3518,20 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
         string top    = format("_bglFrm-->{0}", topSlot);
         out << indent << cookie << " = _bgl_catch_cookie;\n";
         out << indent << top << " = _bglFrameTop;\n";
+        string linqSlot = currentTryLinqSlots.count(tc->id) ? format("_bglFrm-->{0}", currentTryLinqSlots[tc->id]) : "";
+        if(!linqSlot.empty()) out << indent << linqSlot << " = _bglLinqActiveDepth;\n";
+        string selfSlot = currentTrySelfSlots.count(tc->id) ? format("_bglFrm-->{0}", currentTrySelfSlots[tc->id]) : "";
+        string senderSlot = currentTrySelfSlots.count(tc->id) ? format("_bglFrm-->{0}", currentTrySelfSlots[tc->id] + 1) : "";
+        if(!selfSlot.empty()) out << indent << selfSlot << " = self; " << senderSlot << " = sender;\n";
         out << indent << "_bgl_tryrc = " << routine << "(_bglFrm);\n";
         out << indent << "_bgl_catch_cookie = " << cookie << ";\n";
         out << indent << "if (_bgl_thrown) {\n";
         out << indent << "    _bgl_thrown = 0;\n";
         // A throw skipped the returns of every routine between it and here, frees included.
         out << indent << "    _bglFrameTop = " << top << ";\n";
+        if(!linqSlot.empty()) out << indent << "    _bglLinqActiveDepth = " << linqSlot << ";\n";
+        // A throw from another object's method left self and sender there; a send's return reads both.
+        if(!selfSlot.empty()) out << indent << "    self = " << selfSlot << "; sender = " << senderSlot << ";\n";
         out << indent << "    " << spillName(tc->catchVarName) << " = _bgl_tryrc;\n";
         if(tc->catchBody != nullptr)
             for(statement* s : tc->catchBody->statements){
@@ -3325,6 +3570,13 @@ void i6Emitter::emitThrow(throwStatement* th, const string& indent){
     out << indent << "}\n";
     // @throw takes a variable or constant, not an expression.
     out << indent << "_bgl_throwv = " << val << ";\n";
+    // Then the locals it leaves are released (not the one being thrown, which goes with it).
+    string thrown = th->value != nullptr && th->value->tokens.size() == 1 ? th->value->tokens[0] : "";
+    auto names = [&](const string& text){ return !thrown.empty() && rawTextHasWord(text, thrown); };
+    for(const string& r : th->releases) if(!names(r)) out << indent << spillWord(r) << "\n";
+    if(th->leavesRoutine && currentCleanups != nullptr)
+        for(auto& [name, text] : *currentCleanups)   // not a local the routine hasn't reached yet
+            if(name != thrown && !names(text) && !undeclaredTopLocals.count(name)) out << indent << spillWord(text) << "\n";
     if(isZTarget(currentTarget)) out << indent << "_bgl_thrown = 1;\n";
     out << indent << "@throw _bgl_throwv _bgl_catch_cookie;\n";
 }
@@ -3348,12 +3600,54 @@ void i6Emitter::emitRawNode(i6RawNode* raw, const string& indent){
             for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
             return groupFrameSlots(code);
         });
+    // A renamed local, everywhere the island names it: in I6 a local's name means the local even after
+    // `.` (`obj.prop` reads the property numbered by local `prop`), so the rename keeps every meaning.
+    // Strings, `!` comments and quoted dictionary words are left alone.
+    if(raw->isI6Island && raw->parts.empty() && !currentLocalRenames.empty()){
+        string outText;
+        size_t i = 0;
+        auto isWordChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+        while(i < text.size()){
+            char c = text[i];
+            if(c == '"'){ size_t e = text.find('"', i + 1); e = e == string::npos ? text.size() : e + 1; outText += text.substr(i, e - i); i = e; continue; }
+            if(c == '!'){ size_t e = text.find('\n', i); e = e == string::npos ? text.size() : e; outText += text.substr(i, e - i); i = e; continue; }
+            if(c == '\''){
+                size_t e = text.find('\'', i + 1);
+                if(e != string::npos && e - i <= 12 && text.substr(i, e - i).find_first_of(" \n") == string::npos){
+                    outText += text.substr(i, e + 1 - i); i = e + 1; continue;
+                }
+            }
+            if((isalpha((unsigned char)c) || c == '_') && (i == 0 || (!isWordChar(text[i-1]) && text[i-1] != '$'))){
+                size_t e = i; while(e < text.size() && isWordChar(text[e])) e++;
+                string w = text.substr(i, e - i), lw = w;
+                transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
+                auto it = currentLocalRenames.find(lw);
+                // After `.`, a real property's name is the property ($i6Expr writes `obj.col`); any other
+                // word there is the local whose value names the property (`obj.prop`, an I6 idiom).
+                size_t b = i; while(b > 0 && text[b-1] == ' ') b--;
+                bool afterDot = b > 0 && (text[b-1] == '.' || ((text[b-1] == '&' || text[b-1] == '#') && b > 1 && text[b-2] == '.'));
+                bool keep = afterDot && languageService.isKnownPropertyName(lw);
+                outText += it != currentLocalRenames.end() && !keep ? it->second : w;
+                i = e; continue;
+            }
+            outText += c; i++;
+        }
+        text = outText;
+    }
     emitRawTextWithSourceMap(text, raw->src);
     out << "\n";
+}
+// A local's deinit runs on a `return` only once its declaration has been passed.
+void i6Emitter::armCleanups(statementBlock* body){
+    undeclaredTopLocals.clear();
+    if(body != nullptr)
+        for(statement* s : body->statements)
+            if(typeid(*s) == typeid(variableDeclaration)) undeclaredTopLocals.insert(((variableDeclaration*)s)->name);
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
     if(!stmt->src.file.empty())
         pushSourceMap(currentLine(), stmt->src.file, stmt->src.line);
+    if(typeid(*stmt) == typeid(variableDeclaration)) undeclaredTopLocals.erase(((variableDeclaration*)stmt)->name);
     if(auto* arrLoc = dynamic_cast<arrayDeclaration*>(stmt)){ emitLocalArrayDeclaration(arrLoc, indent); return; }
     if(typeid(*stmt) == typeid(variableDeclaration)) emitLocalDeclaration((variableDeclaration*)stmt, indent);
     else if(typeid(*stmt) == typeid(assignmentStatement)) emitAssignment((assignmentStatement*)stmt, indent);
@@ -3381,6 +3675,25 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
             string rt = seg.expr->resolvedType;
             string exprStr = exprText(seg.expr);
 
+            // A `print` overload declared for exactly this type (`void print(Res r)`) prints it.
+            {
+                functionDef* overload = nullptr;
+                for(typeDef* g : languageService.globals)
+                    if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == "print"
+                       && (!fd->isEmitter || dynamic_cast<i6Block*>(fd->body) != nullptr)
+                       && !fd->isPrePassStub && fd->params.size() == 1 && fd->params[0]->type.name == rt){ overload = fd; break; }
+                if(overload != nullptr && !rt.empty() && overload->isEmitter){
+                    emitterBindings ob; ob.fn = overload; ob.args.push_back(exprStr); ob.trim = emitterTrim::wsSemi;
+                    string body = parser.expandEmitterBody(dynamic_cast<i6Block*>(overload->body), ob);
+                    out << indent << (currentSpillAliases.empty() ? body : groupFrameSlots(body)) << ";\n";
+                    continue;
+                }
+                if(overload != nullptr && !rt.empty()){
+                    string call = (overload->i6name.empty() ? overload->dName() : overload->i6name) + "(" + exprStr + ");";
+                    out << indent << (currentSpillAliases.empty() ? call : groupFrameSlots(call)) << "\n";
+                    continue;
+                }
+            }
             // The value's own print(): an object declared as its own type looks at its members, then its
             // class's.
             auto isPrint = [](typeMember* m){
@@ -3545,6 +3858,15 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
         // Synthesize a backing instance global. Recurse for its own fields. The backing's
         // mangled name uses the field's display form for human readability.
         string backingName = format("_bglField_{0}_{1}", instanceName, vd->dName());
+        // The field's class comes first (an inline accessor's class is declared after its host's
+        // instances otherwise); `emittedClasses` keeps its source-order emit from repeating it.
+        function<void(classDef*)> emitFirst = [&](classDef* c){
+            if(c != nullptr && c->isSuperposed){ emitDeferredBackingClass(c); return; }
+            if(c == nullptr || !emittedClasses.insert(c).second) return;
+            for(classDef* b : c->baseClasses) emitFirst(b);
+            generateI6(c);
+        };
+        emitFirst(fieldCls);
         visited.insert(fieldCls);
         string subClause = synthesizeFieldBackings(fieldCls, backingName, visited);
         visited.erase(fieldCls);
@@ -3555,6 +3877,25 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
         if(first){ clause = "with "; first = false; } else { clause += ", "; }
         clause += format("{0} {1}", vd->i6name.empty() ? vd->dName() : vd->i6name, backingName);
     }
+    // The instance's own `array<char>` buffers, as an object of the class gets.
+    set<string> seen;
+    cls->forEachMember([&](typeMember* m){
+        auto* ad = dynamic_cast<arrayDeclaration*>(m);
+        if(ad == nullptr || !ad->isByteArray || ad->isRefLocal || ad->isStatic || !seen.insert(ad->name).second) return;
+        string buf = format("{0}_{1}", instanceName, ad->name);
+        if(!ad->stringInitializer.empty())
+            out << format("Array {0} buffer {1};\n", buf, ad->stringInitializer);
+        else if(auto* list = dynamic_cast<initializerList*>(ad->declaredExpressionValue)){
+            out << "Array " << buf << " buffer";
+            bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
+            if(bracketed) out << " [";
+            for(expression* e : list->elements){ string t = staticText(e); out << (t.front() == '-' ? " (" + t + ")" : " " + t); }
+            out << (bracketed ? " ];\n" : ";\n");
+        } else
+            out << format("Array {0} buffer {1};\n", buf, max(1, ad->arraySize));
+        if(first){ clause = "with "; first = false; } else { clause += ", "; }
+        clause += format("{0} {1}", ad->i6name.empty() ? ad->dName() : ad->i6name, buf);
+    });
     return clause;
 }
 
@@ -3613,13 +3954,15 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
                    "is included (the SizedBuffer allocation is stamped at startup). Declare it as "
                    "`array<char> name = {...}` to size it from the seed, or assign elements at runtime.");
         out << format("array {0} buffer", arr->dName());
+        bool bracketed = max((int)byteSeed->elements.size(), arr->arraySize) == 1;
+        if(bracketed) out << " [";
         for(expression* elem : byteSeed->elements){
             string t = staticText(elem);
             if(!t.empty() && t.front() == '-') out << " (" << t << ")";
             else                                out << " " << t;
         }
         for(int pad = (int)byteSeed->elements.size(); pad < arr->arraySize; pad++) out << " 0";
-        out << ";\n";
+        out << (bracketed ? " ];\n" : ";\n");
         return;
     }
     if(arr->arraySize > 0) {
@@ -3641,12 +3984,14 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
     }
     if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
         out << format("array {0} buffer", arr->dName());
+        bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
+        if(bracketed) out << " [";
         for(expression* elem : list->elements){
             string t = staticText(elem);
             if(!t.empty() && t.front() == '-') out << " (" << t << ")";
             else                                out << " " << t;
         }
-        out << ";\n";
+        out << (bracketed ? " ];\n" : ";\n");
         return;
     }
     throw runtime_error("i6Emitter: unable to emit byte array.");
@@ -3895,9 +4240,28 @@ scan(obj->objectClass);
 }
 
 // Standalone I6 buffers for this instance's `array<char>` members; records each mangled global name.
+// The class's `array<char>` members this object doesn't declare itself: storage is per instance, so
+// each gets a buffer of its own (named like an own member's), filled from the class's initializer.
+vector<arrayDeclaration*> i6Emitter::inheritedByteArrays(objectDef* obj){
+    vector<arrayDeclaration*> out;
+    set<string> own;
+    for(typeMember* m : obj->members) own.insert(m->name);
+    if(obj->objectClass != nullptr)
+        obj->objectClass->forEachMember([&](typeMember* m){
+            auto* a = dynamic_cast<arrayDeclaration*>(m);
+            if(a == nullptr || !a->isByteArray || a->isRefLocal || a->isStatic || own.count(a->name)) return;
+            own.insert(a->name);
+            out.push_back(a);
+        });
+    return out;
+}
+
 void i6Emitter::emitObjectByteArrayMembers(objectDef* obj, map<string, string>& externalArrayNames){
-    for(typeMember* m : obj->members){
+    vector<typeMember*> members = obj->members;
+    for(arrayDeclaration* a : inheritedByteArrays(obj)) members.push_back(a);
+    for(typeMember* m : members){
 if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
+    if(arr->isByteArray && arr->isRefLocal){ externalArrayNames[arr->name] = "0"; continue; }   // bound with :=
     if(arr->isByteArray){
         string mangledName = "_" + obj->name + "_" + arr->name;
         // Emit as an I6 hybrid buffer (length word at -->0, data bytes at
@@ -3908,12 +4272,18 @@ if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
             out << format("Array {0} buffer {1};\n", mangledName, arr->stringInitializer);
         } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
             out << format("Array {0} buffer", mangledName);
+            bool bracketed = list->elements.size() == 1;   // `buffer 113` would read as a size
+            if(bracketed) out << " [";
             for(expression* elem : list->elements){
                 string t = staticText(elem);
                 if(!t.empty() && t.front() == '-') out << " (" << t << ")";
                 else                                out << " " << t;
             }
-            out << ";\n";
+            out << (bracketed ? " ];\n" : ";\n");
+        } else if(trackedByteMemberRaws.count(mangledName + "_raw")){
+            out << format("Array {0}_raw -> (2 + 2*WORDSIZE + {1});\n", mangledName, arr->arraySize);
+            externalArrayNames[arr->name] = "0";   // bglInit points it at the raw allocation
+            continue;
         } else {
             out << format("Array {0} buffer {1};\n", mangledName, arr->arraySize);
         }
@@ -3965,6 +4335,21 @@ auto consider = [&](variableDeclaration* vd){
     // got this; object members were emitted bare, so nesting stopped after one level.
     set<classDef*> nestedVisited;
     string nestedClause = synthesizeFieldBackings(cls, backing, nestedVisited);
+    // A class-body initializer (`coins price = coins{ cents = 3; };`) is every instance's starting
+    // value: each backing takes its fields.
+    if(vd->declaredExpressionValue != nullptr)
+        if(objectDef* init = languageService.findObjectType(vd->declaredExpressionValue->text())){
+            set<string> nestedNames;
+            for(typeMember* m : init->members)
+                if(auto* fv = dynamic_cast<variableDeclaration*>(m); fv && fv->declaredExpressionValue != nullptr){
+                    string val = staticText(fv->declaredExpressionValue);
+                    if(val.empty()) continue;
+                    string prop = fv->i6name.empty() ? fv->dName() : fv->i6name;
+                    if(nestedClause.find(" " + prop + " ") != string::npos) continue;   // a nested backing already holds it
+                    nestedClause += nestedClause.empty() ? "with " : ", ";
+                    nestedClause += prop + " " + val;
+                }
+        }
     out << format("{0} {1}", cls->i6Name(), backing);
     if(!nestedClause.empty()) out << " " << nestedClause;
     out << ";\n";
@@ -3995,6 +4380,11 @@ if(obj->objectClass != nullptr)
                 inheritedOwned.push_back({a->dName(), promotedArrayName(obj->dName(), a->dName())});
             }
     });
+    }
+    for(arrayDeclaration* a : inheritedByteArrays(obj)){
+        string buffer = "_" + obj->name + "_" + a->name;
+        inheritedOwned.push_back({a->i6name.empty() ? a->dName() : a->i6name,
+                                  trackedByteMemberRaws.count(buffer + "_raw") ? "0" : buffer});   // bglInit sets a tracked one
     }
     {
 set<string> ownMemberNames;
@@ -4074,14 +4464,18 @@ for(typeMember* m : obj->members){
             out << ownIt->second;
         } else if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
             for(expression* elem : list->elements) out << staticText(elem) << " ";
-        } else if(vd->declaredExpressionValue) out << propertyValueText(vd->declaredExpressionValue);
+        } else if(vd->declaredExpressionValue && runtimeMemberValues.count(vd))
+            out << "0";   // a run-time value: bglInit assigns it
+        else if(vd->declaredExpressionValue) out << propertyValueText(vd->declaredExpressionValue);
         first = false;
     } else if(auto* fd = dynamic_cast<functionDef*>(m)){
         if(fd->isEmitter) continue; // emitter methods are inlined at call sites, not emitted as properties
+        prepareRecursionSave(fd);
         buildSpillMap(fd);
         out << (first ? "  with " : ",\n       ");
         out << (fd->i6name.empty() ? fd->dName() : fd->i6name) << " [";
         string sp;
+        if(!isRequiredStub(fd))
         // Emit param/local names through spillName so the header matches the body: it
         // applies the property-shadow rename map (`width` → `_l_width` when a param/local
         // collides with a used property name) that buildSpillMap just built. Emitting the
@@ -4107,6 +4501,8 @@ for(typeMember* m : obj->members){
         out << ";\n";
         if(currentSpillCount > 0)
             out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+        if(!fd->entrySetUp.empty())
+            out << "    " << spillWord(fd->entrySetUp) << "\n";
         emitTryParamCopyIns("    ");
         emitParamCopyIns(fd, "    ");
         emitOwnedLocalSetup(locals, "    ");
@@ -4115,6 +4511,7 @@ for(typeMember* m : obj->members){
         // got a null slot that crashed glk_select. Frees run on every exit via currentCleanups.
         emitLocalArrayAllocs(fd, locals, body, "    ");
         currentCleanups = fd->cleanups.empty() ? nullptr : &fd->cleanups;
+        armCleanups(body);
         if(body)
             for(statement* s : body->statements)
                 emitStatement(s, "    ");
@@ -4122,7 +4519,7 @@ for(typeMember* m : obj->members){
             for(auto& [varName, cbody] : *currentCleanups)
                 out << "    " << spillWord(cbody) << "\n";
         currentCleanups = nullptr;
-        if(currentSpillCount > 0)
+        if(currentSpillCount > 0 && !endsInReturn(body))
             out << format("    _bglFrameFree({0});\n", currentSpillCount);
         out << "  ]";
         clearSpillMap();
@@ -4372,12 +4769,17 @@ void i6Emitter::synthesizeChildrenPlacement(){
 }
 
 void i6Emitter::synthesizePooledOwnedMembers(){
+    bool needRowSets = false;    // a pool slot's array-of-arrays rows are its own, refilled at create()
+    bool needByteFill = false;   // a pool slot's array<char> buffer is refilled from the class's at create()
     // An owned value-helper member: a non-`object`, non-initialized member whose class needs a live
     // instance — it has stored state, OR a non-emitter method/operator that dispatches on an instance
     // (e.g. a fieldless getter/setter accessor that reaches the host through `outer`).
     auto ownedClass = [&](variableDeclaration* vd) -> classDef* {
-        if(!vd || vd->isExternal || vd->isStatic || isHeaderMember(vd->name)) return nullptr;
-        if(vd->type.name.empty() || vd->declaredExpressionValue) return nullptr;
+        if(!vd || vd->isExternal || vd->isStatic || vd->isRefLocal || isHeaderMember(vd->name)) return nullptr;
+        if(vd->type.name.empty()) return nullptr;
+        // An inline-object initializer is the starting value of the member's own instance; any other
+        // initializer points the member at something that lives elsewhere.
+        if(vd->declaredExpressionValue && vd->declaredExpressionValue->text().rfind("_bglanon", 0) != 0) return nullptr;
         auto* cls = languageService.findClass(vd->type.name);
         if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal) return nullptr;   // nothing to instantiate
         if(!isValueClass(cls)) return nullptr;             // a reference: refers to an instance owned elsewhere
@@ -4415,12 +4817,36 @@ void i6Emitter::synthesizePooledOwnedMembers(){
 
         // Owned members: own declarations plus those inherited from the class chain (dedup by name).
         vector<variableDeclaration*> owned;
+        vector<arrayDeclaration*> bytes;   // array<char> members: a buffer per slot, not the class's one
+        vector<arrayDeclaration*> nested;  // array-of-arrays members: a set of rows per slot, not the class's one
         set<string> seenName;
         cd->forEachMember([&](typeMember* m){
             auto* vd = dynamic_cast<variableDeclaration*>(m);
             if(vd && !seenName.count(vd->name) && ownedClass(vd)){ owned.push_back(vd); seenName.insert(vd->name); }
+            auto* ad = dynamic_cast<arrayDeclaration*>(m);
+            if(ad && ad->isByteArray && !ad->isRefLocal && !ad->isStatic && !seenName.count(ad->name)){
+                bytes.push_back(ad); seenName.insert(ad->name);
+            }
+            if(ad && !ad->isByteArray && !ad->isRefLocal && !ad->isStatic && isArrayOfArraysElement(ad->elementType)
+               && dynamic_cast<initializerList*>(ad->declaredExpressionValue) && !seenName.count(ad->name)){
+                nested.push_back(ad); seenName.insert(ad->name);
+            }
         });
-        if(owned.empty()) continue;
+        // Members whose type manages its own storage (stringObj): taken at create(), released at destroy().
+        string lifecycleCreate, lifecycleDestroy;
+        {
+            set<string> seenLife;
+            cd->forEachMember([&](typeMember* m){
+                auto* fvd = dynamic_cast<variableDeclaration*>(m);
+                if(fvd == nullptr || !seenLife.insert(fvd->name).second) return;
+                string path = "self." + (fvd->i6name.empty() ? fvd->dName() : fvd->i6name);
+                lifecycleCreate  += memberLifecycleText(fvd, path, "init");
+                lifecycleDestroy += memberLifecycleText(fvd, path, "deinit");
+            });
+            if(!lifecycleCreate.empty()) lifecycleCreate += "\n";
+            if(!lifecycleDestroy.empty()) lifecycleDestroy += "\n";
+        }
+        if(owned.empty() && bytes.empty() && nested.empty() && lifecycleCreate.empty()) continue;
 
         // Insertion point: just before the pooled class in `globals`, so the backing instances and
         // free-list precede any create/destroy references. (Pass-3 lazy emission pulls the member's
@@ -4432,7 +4858,32 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             g.insert(g.begin() + pos, node);
         };
 
-        string createInject, destroyInject;
+        string createInject = lifecycleCreate, destroyInject = lifecycleDestroy;
+        // `copy()` is the I6 class message, which copies every property — an owned member's pointer to
+        // its backing included. The class's own copy routine keeps dst's backings and copies into them.
+        if(classDef* alloc = languageService.findClass("bglallocated"); alloc != nullptr && cd->hasAncestor(alloc)){
+            string routine = "_bglOwnedCopy_" + cd->dName();
+            string locals, save, restore, fields;
+            for(size_t k = 0; k < owned.size(); k++){
+                variableDeclaration* vd = owned[k];
+                string memI6 = vd->i6name.empty() ? vd->dName() : vd->i6name;
+                string slot = "s" + to_string(k);
+                locals += " " + slot;
+                save += format(" {0} = dst.{1};", slot, memI6);
+                restore += format(" dst.{0} = {1};", memI6, slot);
+                ownedClass(vd)->forEachMember([&](typeMember* cm){
+                    auto* fvd = dynamic_cast<variableDeclaration*>(cm);
+                    if(!fvd || fvd->isExternal || fvd->isStatic || dynamic_cast<arrayDeclaration*>(fvd) || ownedClass(fvd)) return;
+                    string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                    fields += format(" {0}.{1} = (src.{2}).{1};", slot, fi6, memI6);
+                });
+            }
+            i6RawNode* cp = new i6RawNode();
+            cp->text = "[ " + routine + " dst src" + locals + ";\n " + save + "\n  (" + cd->i6Name() + ").copy(dst, src);\n "
+                     + restore + "\n " + fields + "\n];\n";
+            insertBefore(cp);
+            ownedCopyRoutines[cd->i6Name()] = routine;
+        }
         for(variableDeclaration* vd : owned){
             classDef* mc = ownedClass(vd);
             string base  = "_" + cd->name + "_" + vd->name;                 // e.g. _thing_b
@@ -4451,22 +4902,87 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             }
             // Compile-time free-list: array of the backings + a top-of-stack counter (starts full).
             i6RawNode* fl = new i6RawNode();
-            fl->text = format("Array {0}_free -->{1};\nGlobal {0}_top = {2};\n", base, elems, N);
+            // Inform 6 reads a lone value as an array's size, so a one-slot list gets an unused second word.
+            fl->text = format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
             insertBefore(fl);
 
             // create(): pop a free backing, wire it, reset its scalar fields to their defaults.
             createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top;\n", base, memI6);
+            // The member's initializer (`coins price = coins{ cents = 3; };`) beats the type's defaults.
+            objectDef* init = vd->declaredExpressionValue ? languageService.findObjectType(vd->declaredExpressionValue->text()) : nullptr;
             for(typeMember* cm : mc->members){
                 auto* fvd = dynamic_cast<variableDeclaration*>(cm);
                 if(!fvd || fvd->isExternal || fvd->isStatic) continue;
                 if(ownedClass(fvd)) continue;   // nested owned instance: keeps its baked backing
                 string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                // A word array member is emptied: its elements and the length in its last word.
+                if(auto* fad = dynamic_cast<arrayDeclaration*>(fvd)){
+                    if(!fad->isByteArray && !fad->isRefLocal && fad->arraySize > 0)
+                        for(int k = 0; k <= fad->arraySize; k++)
+                            createInject += format("self.{0}.&{1}-->{2} = 0;\n", memI6, fi6, k);
+                    continue;
+                }
                 string def = fvd->declaredExpressionValue ? staticText(fvd->declaredExpressionValue) : "0";
+                if(init != nullptr)
+                    for(typeMember* im : init->members)
+                        if(auto* iv = dynamic_cast<variableDeclaration*>(im); iv && iv->name == fvd->name && iv->declaredExpressionValue)
+                            def = staticText(iv->declaredExpressionValue);
                 if(def.empty()) def = "0";
                 createInject += format("self.{0}.{1} = {2};\n", memI6, fi6, def);
             }
             // destroy(): return the backing to the free-list.
             destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
+        }
+        for(arrayDeclaration* ad : bytes){
+            string base  = "_" + cd->name + "_" + ad->name;               // the class's own buffer is `base`
+            string memI6 = ad->i6name.empty() ? ad->dName() : ad->i6name;
+            string cap = ad->arraySize > 0 ? to_string(ad->arraySize) : "(" + base + "-->0)";
+            i6RawNode* bufs = new i6RawNode();
+            string elems;
+            for(int k = 0; k < N; k++){
+                bufs->text += ad->arraySize <= 0 && !ad->stringInitializer.empty()
+                            ? format("Array {0}_{1} buffer {2};\n", base, k, ad->stringInitializer)   // as long as the class's
+                            : format("Array {0}_{1} buffer {2};\n", base, k, ad->arraySize > 0 ? ad->arraySize : 1);
+                elems += format(" {0}_{1}", base, k);
+            }
+            bufs->text += format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
+            insertBefore(bufs);
+            // create(): a free buffer holding the class's initial characters.
+            createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top;"
+                                   " _bglByteFill(self.{1}, {0}, {2});\n", base, memI6, cap);
+            destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
+            needByteFill = true;
+        }
+
+        for(arrayDeclaration* ad : nested){
+            vector<arrayDeclaration*> proto;
+            for(expression* e : dynamic_cast<initializerList*>(ad->declaredExpressionValue)->elements)
+                if(auto* row = e != nullptr ? languageService.findGlobalAs<arrayDeclaration>(e->text()) : nullptr) proto.push_back(row);
+            if(proto.empty()) continue;
+            string base  = "_" + cd->name + "_" + ad->name;
+            string memI6 = ad->i6name.empty() ? ad->dName() : ad->i6name;
+            size_t R = proto.size();
+            string set, protoList, freeList;
+            for(int k = 0; k < N; k++){
+                for(size_t i = 0; i < R; i++){
+                    auto* mine = new arrayDeclaration(*proto[i]);
+                    mine->name = mine->displayName = format("{0}_{1}_{2}", base, k, i);
+                    insertBefore(mine);
+                    set += " " + mine->name;
+                }
+                freeList += " " + to_string(k);
+            }
+            for(arrayDeclaration* row : proto) protoList += " " + row->name;
+            i6RawNode* tabs = new i6RawNode();
+            tabs->text = format("Array {0}_set -->{1};\nArray {0}_proto -->{2}{5};\nArray {0}_free -->{3}{5};\nGlobal {0}_top = {4};\n",
+                                base, set + (N * R == 1 ? " 0" : ""), protoList, freeList, N, (R == 1 || N == 1) ? " 0" : "");
+            insertBefore(tabs);
+            // create(): a free set of rows, holding the class's initial elements.
+            createInject += format("{0}_top = {0}_top - 1; _bglRowsTake(self.&{1}, {0}_set, {0}_proto, {2}, {0}_free-->{0}_top);\n",
+                                   base, memI6, R);
+            destroyInject += format("{0}_free-->{0}_top = _bglRowsSlot(self.&{1}, {0}_set, {2}, {3}); {0}_top = {0}_top + 1;\n",
+                                    base, memI6, R, N);
+            needRowSets = true;
         }
 
         // Inject into create()/destroy(): prepend to an existing method, or synthesize one.
@@ -4480,7 +4996,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             raw->cooked = true;   // compiler-made: it must not stop the routine's parameters being renamed
             if(fn){
                 auto* body = dynamic_cast<statementBlock*>(fn->body);
-                if(body){ body->statements.insert(body->statements.begin(), raw); return; }
+                if(body){ body->statements.insert(body->statements.begin(), raw); poolHookSetUp.insert(raw); return; }
                 // Non-statement body (e.g. raw i6 create) — fall through to synthesize instead.
             }
             functionDef* nf = new functionDef();
@@ -4489,11 +5005,173 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             nf->returnType.name = "void";
             statementBlock* sb = new statementBlock();
             sb->statements.push_back(raw);
+            // The hook this class would have inherited still runs: its parameters and statements
+            // follow this class's own set-up (not the ancestor's, which attaches the ancestor's pool).
+            function<functionDef*(classDef*)> inherited = [&](classDef* c) -> functionDef* {
+                for(classDef* b : c->baseClasses){
+                    for(typeMember* m : b->members)
+                        if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == hookName) return f;
+                    if(functionDef* f = inherited(b)) return f;
+                }
+                return nullptr;
+            };
+            if(functionDef* up = inherited(cd))
+                if(auto* upBody = dynamic_cast<statementBlock*>(up->body)){
+                    nf->params = up->params;
+                    for(statement* st : upBody->statements)
+                        if(!poolHookSetUp.count(st)) sb->statements.push_back(st);
+                }
+            poolHookSetUp.insert(raw);
             nf->body = sb;
             cd->members.push_back(nf);
         };
         injectHook("create",  createInject);
         injectHook("destroy", destroyInject);
+    }
+    if(needRowSets){
+        i6RawNode* rows = new i6RawNode();
+        rows->text = "[ _bglRowsTake dst set proto r k i j s d;\n"
+                     "    for(i = 0: i < r: i++){ d = set-->(k*r + i); s = proto-->i; for(j = 0: j <= s-->0: j++) d-->j = s-->j; dst-->i = d; }\n];\n"
+                     "[ _bglRowsSlot dst set r n k; for(k = 0: k < n: k++) if(set-->(k*r) == dst-->0) return k; return 0; ];\n";
+        languageService.globals.push_back(rows);
+    }
+    if(needByteFill){
+        i6RawNode* fill = new i6RawNode();
+        fill->text = "[ _bglByteFill dst src n i; for(i = 0: i < n: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i); ];\n";
+        languageService.globals.push_back(fill);
+    }
+}
+
+// `_bglValAssign_<C>` / `_bglValFree_<C>` when the element type is a value class held in arrays, else "".
+string i6Emitter::valueElementRoutine(const string& elemType, const string& prefix){
+    classDef* cls = elemType.empty() ? nullptr : languageService.findClass(elemType);
+    if(cls == nullptr || !languageService.valueElementArrays.count(cls)) return "";
+    if(prefix == "_bglValAssign_" && !languageService.valueElementCopyOps.count(cls)) return "";   // nothing to copy with
+    return prefix + cls->dName();
+}
+
+// Each value class held in arrays gets one pool of instances, sized by the capacities of those
+// arrays, plus the routines `array<T>` calls through $opref: `_bglValAssign_<C>(slot, v)` copies v
+// into the slot's instance (drawing one from the pool for an empty slot) and `_bglValFree_<C>(v)`
+// returns a pool instance. An instance not from the pool (an initializer's inline object) is
+// copied into but never returned.
+// A member whose type manages its own storage (`stringObj`): its type's `init` or `deinit` emitter,
+// expanded for the member at `path`; "" when the type has none.
+string i6Emitter::memberLifecycleText(variableDeclaration* fvd, const string& path, const string& which){
+    if(fvd == nullptr || fvd->isStatic || fvd->isExternal || fvd->isRefLocal || fvd->isConst) return "";
+    classDef* fc = languageService.findClass(fvd->type.name);
+    if(fc == nullptr || !fc->isEmitterClass) return "";
+    functionDef* fn = nullptr;
+    function<void(classDef*)> walk = [&](classDef* c){
+        if(c == nullptr || fn != nullptr) return;
+        for(typeMember* m : c->members)
+            if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == which && f->isEmitter && f->params.empty()
+               && dynamic_cast<i6Block*>(f->body) != nullptr){ fn = f; return; }
+        for(classDef* b : c->baseClasses) walk(b);
+    };
+    walk(fc);
+    if(fn == nullptr) return "";
+    emitterBindings b; b.self = path; b.val = path; b.trim = emitterTrim::wsSemi;
+    string t = parser.expandEmitterBody(dynamic_cast<i6Block*>(fn->body), b);
+    while(!t.empty() && (t.back() == ';' || isspace((unsigned char)t.back()))) t.pop_back();
+    return t.empty() ? t : t + ";";
+}
+
+void i6Emitter::synthesizeValueElementPools(){
+    auto derivesFrom = [](classDef* c, classDef* base){
+        function<bool(classDef*)> walk = [&](classDef* k){
+            if(k == nullptr) return false;
+            if(k == base) return true;
+            for(classDef* b : k->baseClasses) if(walk(b)) return true;
+            return false;
+        };
+        return walk(c);
+    };
+    for(auto& [cls, arrays] : languageService.valueElementArrays){
+        int N = 0;
+        for(auto& rec : arrays){
+            int cap = rec.decl->arraySize;
+            if(auto* list = dynamic_cast<initializerList*>(rec.decl->declaredExpressionValue))
+                cap = max(cap, (int)list->elements.size());
+            int copies = 1;
+            if(rec.hostClass != nullptr){
+                copies = 0;
+                for(typeDef* g : languageService.globals){
+                    if(auto* od = dynamic_cast<objectDef*>(g); od && derivesFrom(od->objectClass, rec.hostClass)) copies++;
+                    if(auto* cd = dynamic_cast<classDef*>(g); cd && cd->poolSize > 0 && derivesFrom(cd, rec.hostClass)) copies += cd->poolSize;
+                }
+            }
+            N += cap * copies;
+        }
+        if(N < 1) N = 1;
+        string base = "_bglVal_" + cls->dName();
+        auto& g = languageService.globals;
+        size_t at = g.size();
+        for(size_t i = 0; i < g.size(); i++) if(g[i] == (typeDef*)cls){ at = i + 1; break; }
+        string elems;
+        for(int k = 0; k < N; k++){
+            objectDef* box = new objectDef();
+            box->name = format("{0}_{1}", base, k);
+            box->objectClass = cls;
+            g.insert(g.begin() + at++, box);
+            elems += " " + box->name;
+            // Its stringObj (or other self-managing) members get their storage once, at startup.
+            cls->forEachMember([&](typeMember* m){
+                auto* fvd = dynamic_cast<variableDeclaration*>(m);
+                if(fvd == nullptr) return;
+                string path = box->name + "." + (fvd->i6name.empty() ? fvd->dName() : fvd->i6name);
+                if(string init = memberLifecycleText(fvd, path, "init"); !init.empty())
+                    languageService.globalInits.push_back({box->name, init});
+            });
+        }
+        // An instance drawn for an empty slot starts from the class's defaults, as a fresh variable does.
+        string reset;
+        cls->forEachMember([&](typeMember* m){
+            auto* fvd = dynamic_cast<variableDeclaration*>(m);
+            if(!fvd || fvd->isExternal || fvd->isStatic || isHeaderMember(fvd->name)) return;
+            if(fvd->type.name == "attributelist" || fvd->type.name == "grammarrulelist" || fvd->type.name == "grammarrule") return;
+            if(classDef* fc = languageService.findClass(fvd->type.name); fc && !fvd->isRefLocal && !fc->isEmitterClass && isValueClass(fc)) return;
+            if(!memberLifecycleText(fvd, "x", "init").empty()) return;   // keeps the storage it was given at startup
+            if(dynamic_cast<arrayDeclaration*>(fvd)) return;
+            string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+            string def = fvd->declaredExpressionValue ? staticText(fvd->declaredExpressionValue) : "0";
+            if(def.empty()) def = "0";
+            reset += format(" _bglcur.{0} = {1};", fi6, def);
+        });
+        string copy;
+        if(auto it = languageService.valueElementCopyOps.find(cls); it != languageService.valueElementCopyOps.end())
+            copy = format(" _bglcur.{0}(_bglv);", it->second);
+        i6RawNode* raw = new i6RawNode();
+        string n = to_string(N), cn = cls->dName();
+        raw->text =
+            "Array " + base + "_pool -->" + elems + (N == 1 ? " 0" : "") + ";\n"
+            "Array " + base + "_used -> " + n + ";\n"
+            "[ _bglValAssign_" + cn + " _bglcur _bglv _bgli;\n"
+            "  if(_bglv == 0) return _bglcur;\n"
+            "  if(_bglcur == 0){\n"
+            "    for(_bgli = 0: _bgli < " + n + ": _bgli++) if(" + base + "_used->_bgli == 0) break;\n"
+            "    if(_bgli == " + n + "){ print \"^[** Programming error: all " + n + " array slots for "
+                 + cls->dName() + " values are in use **]^\"; return 0; }\n"
+            "    " + base + "_used->_bgli = 1; _bglcur = " + base + "_pool-->_bgli;" + reset + "\n"
+            "  }\n"
+            " " + copy + "\n"
+            "  return _bglcur;\n"
+            "];\n"
+            + (languageService.valueSlotClasses.count(cls) ? string(
+            "[ _bglValSlot_") + cn + " _bgla _bgli _bglcur _bglk;\n"
+            "  _bglcur = _bgla-->_bgli;\n"
+            "  if(_bglcur ~= 0) return _bglcur;\n"
+            "  for(_bglk = 0: _bglk < " + n + ": _bglk++) if(" + base + "_used->_bglk == 0) break;\n"
+            "  if(_bglk == " + n + "){ print \"^[** Programming error: all " + n + " array slots for "
+                 + cls->dName() + " values are in use **]^\"; return 0; }\n"
+            "  " + base + "_used->_bglk = 1; _bglcur = " + base + "_pool-->_bglk;" + reset + "\n"
+            "  _bgla-->_bgli = _bglcur;\n"
+            "  return _bglcur;\n"
+            "];\n" : string()) +
+            "[ _bglValFree_" + cn + " _bglv _bgli;\n"
+            "  for(_bgli = 0: _bgli < " + n + ": _bgli++) if(" + base + "_pool-->_bgli == _bglv){ " + base + "_used->_bgli = 0; return; }\n"
+            "];\n";
+        g.insert(g.begin() + at, raw);
     }
 }
 
@@ -4870,6 +5548,7 @@ void i6Emitter::emitVerbObject(verbObjectDef* vd){
         emitVerbGrammar(vd->name, vd->priority, vd->isMeta, vd->grammarLines);
         std::swap(out, captured);
         deferredLibraryGrammar += captured.str();
+        deferredGrammarVerbs.insert(vd->name);
         return;
     }
     emitVerbGrammar(vd->name, vd->priority, vd->isMeta, vd->grammarLines);
@@ -4914,10 +5593,13 @@ void i6Emitter::emitVerbSynonym(verbSynonymDecl* vsd){
     for(verbObjectDef* v : languageService.verbs)
         if(v->name == vsd->anchorVerb){ if(!v->verbWords.empty()) anchor = v->verbWords[0]; break; }
 
-    out << "verb";
+    string line = "verb";
     for(const string& w : vsd->synonymWords)
-        out << " " << w;                 // already I6-ready (quoted, with //p / // flags)
-    out << " = " << toI6Word(anchor) << ";\n";
+        line += " " + w;                 // already I6-ready (quoted, with //p / // flags)
+    line += " = " + toI6Word(anchor) + ";\n";
+    // An alias follows its verb's `Verb` directive, which may have moved to after the library's grammar.
+    if(deferredGrammarVerbs.count(vsd->anchorVerb)) deferredLibraryGrammar += line;
+    else out << line;
 }
 
 // Group grammar lines by verb trigger word; emit one Verb/Extend block per unique trigger word.
@@ -5003,6 +5685,15 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
             // word append with plain `extend`. (The `withI6Synonyms` modifier opts OUT of this, into
             // the whole-group `Extend` below.)
             if(splitEmitted.insert(word).second){
+                // Inform 6 keeps `meta` on the word's own Verb, which the split can't change.
+                if(isMeta){
+                    verbObjectDef* owner = nullptr;
+                    for(verbObjectDef* vd : languageService.verbs) if(vd->name == verbNameLower){ owner = vd; break; }
+                    string where = owner != nullptr && owner->src.line > 0
+                                 ? format("{0}:{1}:{2}: ", owner->src.file, owner->src.line, max(1, owner->src.col)) : string();
+                    std::cerr << format("{0}WARNING: meta verb '{1}' takes the library word {2}, which stays a non-meta "
+                        "word: commands using it take a turn. Use a word of its own.\n", where, owner != nullptr ? owner->dName() : verbName, toI6Word(word));
+                }
                 switch(mode){
                     case extendDirective::First:   out << format("extend only {0} first\n",   toI6Word(word)); break;
                     case extendDirective::Last:    out << format("extend only {0}\n",         toI6Word(word)); break;

@@ -4,10 +4,11 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 Constant _BGL_TRACKED_ARRAYS;
-   Array _bglFramePool --> 64;
+   Array _bglFramePool --> 76;
    Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
-      if (_bglFrameTop + size > 64) {
+      if (_bglFrameTop + size > 76) {
          print "^[Beguile runtime error: frame pool exhausted]^";
          quit;
       }
@@ -37,11 +38,11 @@ Constant _BGL_TRACKED_ARRAYS;
       _bglFrameSrc = src;
       if (cur ~= 0 && cur-->(cur-->0) == $9084 && cur-->0 - 2 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (src < top || src >= _bglFramePool + 64 * WORDSIZE) {
+      if (src < top || src >= _bglFramePool + 76 * WORDSIZE) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }
-      if (_bglFrameTop + n + 3 > 64) {
+      if (_bglFrameTop + n + 3 > 76) {
          print "^[Beguile runtime error: frame pool exhausted]^";
          quit;
       }
@@ -84,6 +85,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     dst-->(dst-->0) = $9084;
 ];
  Constant NO_ATTRIBUTE 0; 
@@ -104,11 +106,11 @@ array dst table 10;
 [main keep _bglheld_picked _bglsrc_picked picked;
     keep = _bglArrayLocalAlloc(8);
     bglinit();
-    _bglArray.copy(dst, 0, src, 0);
-    _bglArray.copy(keep, 0, src, 0);
+    _bglArray.copy(dst, 0, src, 0, 0);
+    _bglArray.copy(keep, 0, src, 0, 0);
     _bglsrc_picked = dst;
     picked = _bglArrayLocalCopyAlloc(_bglArray.length(_bglsrc_picked, 0), _bglsrc_picked, picked); _bglheld_picked = _bglheld_picked + _bglFrameTaken; _bglsrc_picked = _bglFrameSrc;
-    _bglArray.copy(picked, 0, _bglsrc_picked, 0);
+    _bglArray.copy(picked, 0, _bglsrc_picked, 0, 0);
     _bglFrameFree(11);
     _bglFrameFree(_bglheld_picked);
 ];
@@ -128,14 +130,14 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       copy [dobj dprop sobj sprop n cap i;
+       copy [dobj dprop sobj sprop assign n cap i;
     n=self.length(sobj,sprop);
     cap=self.size(dobj,dprop);
     if (n > cap) {
         n=cap;
     }
     for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
     }
     self.setlength(dobj, dprop, n);
   ],
@@ -171,5 +173,13 @@ object _bglArray
     if (self.istracked(obj,prop)) {
         self.set(obj, prop, self.size(obj,prop), n);
     }
+  ],
+       setOwned [obj prop n v assign;
+    if (assign==0) {
+        self.set(obj, prop, n, v);
+        return;
+    }
+     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
+    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ]
 ;

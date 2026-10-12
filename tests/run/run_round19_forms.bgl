@@ -1,0 +1,138 @@
+/*  run_round19_forms — forms the round-19 field trials found broken (D1189–D1210).  */
+// EXPECT_OUTPUT: 3 | 10 20 | 9 | 9 2 | a... .b.. | 3 8 | true | 30 130 | 3 103 | 7 | 6 6 | 6 | 6 6 | 10 | 8 | 7 | 4 1 | 5 | true
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+// D1189: a value class with an inline accessor member.
+value class Spot {
+    int row;
+    auto drops = { int _n = 0; int operator () { return _n; } void operator = (int v) { _n = v; } }
+    Spot operator = (Spot o) { row = o.row; drops = o.drops; return self; }
+}
+Spot spotA;
+Spot spotB;
+
+// D1190, D1191: a static array named bare in its class's code; a static method in an inline accessor.
+class StatHolder : object {
+    static array<int> marks = {10, 20, 50};
+    int pair() { return marks[0] * 100 + marks[1]; }
+}
+StatHolder hd { }
+object meterA {
+    auto dial = {
+        static int clampTo(int v) { if (v > 9) return 9; return v; }
+        int _u = 0;
+        int operator () { return _u; }
+        void operator = (int v) { _u = clampTo(v); }
+    }
+}
+
+// D1193: an instance's own rows for its class's array-of-arrays member.
+class Shelf : object { array<array<int>> rows = { {1, 2, 3}, {4, 5} }; }
+Shelf shelfB { rows = { {9}, {1, 1} }; }
+
+// D1194: a pooled class's string-initialized array<char> member.
+#include <buf>
+class Slip[2] : object { array<char> code = "...."; }
+
+// D1195: a local named like a member, in a routine with an #i6 island.
+object box { int n = 3; }
+int shadow() { int n = 8; #i6 { n = n; } return box.n * 10 + n; }
+
+// D1196: a value-class local's union member starts empty on each call.
+union token = string | object;
+value class Note { token last; Note operator = (Note o) { last = o.last; return self; } }
+bool fresh() { Note t; bool wasEmpty = t.last == null; t.last = box; return wasEmpty; }
+
+// D1197: compound and step operators of an inline accessor, used as expressions.
+class Dial : object {
+    auto level = {
+        int _raw;
+        int operator () { return _raw; }
+        void operator = (int v) { _raw = v; }
+        int operator += (int v) { _raw = _raw + v * 10; return _raw; }
+        int operator ++ () { _raw = _raw + 100; return _raw; }
+    }
+}
+Dial dialA { }
+
+// D1199: a method added by `extend class` with a union parameter.
+class Bin : object { int n = 3; }
+extend class Bin { static int pick(int k, string | object hint) { if (typeof(hint) == eType.string) return k; return k + 100; } }
+
+// D1200: a value-class element's method inside `operator []`.
+value class Span { int hi; Span operator = (Span o) { hi = o.hi; return self; } int size() { return hi; } }
+class Rack : object {
+    static array<Span> spans[2];
+    int operator [] (int i) { return Rack.spans[i].size(); }
+}
+Rack rackA { }
+
+// D1201: an object's own `<=>` gives it the ordering operators.
+object gauge { int level = 6; int operator <=> (int v) { return level - v; } }
+
+// D1202: a verb's member renamed for a library-attribute clash.
+verb Poke {
+    grammar = {.poke};
+    int Visited;
+    auto Step = { int _n; int operator () { return _n; } void operator = (int v) { _n = v; outer.Visited++; } }
+    void bump() { Visited = 5; Step = 1; }
+    void handler() { }
+}
+
+// D1203: for-in over an object's `ref array<int>` member.
+array<int> nums = {1, 2, 3};
+object holder { ref array<int> items; int total() { int t = 0; for (int x in items) t += x; return t; } }
+
+// D1204, D1205: `replace emitter` in `extend <object>` reaches every use; a bare call to an
+// object's own emitter written with $i6Expr($self …).
+object knob {
+    int n = 2;
+    emitter int twice() { ($self.n * 2) }
+    emitter int lifted(int v) { $i6Expr($v * $self.n) }
+    int early() { return twice(); }
+    int use() { return lifted(5); }
+}
+extend knob { replace emitter int twice() { ($self.n * 3) } }
+
+// D1207: a verb's func<> member called through its name.
+verb TallyVerb { grammar = {.tallyv}; func<int, int> twice = (int x) => x * 2; void handler() { } }
+
+// D1208: an accessor member named like a library routine.
+value class Lvl { int _r; int operator () { return _r; } void operator = (int v) { _r = v; } }
+class Host : object { Lvl cap; void copyFrom(Host o) { cap = o.cap; } }
+Host h1 { }
+Host h2 { }
+
+// D1210: `self` after catching a throw raised in another object's method.
+object thrower { void boom() { throw 4; } }
+object catcher {
+    int faults = 0;
+    int run() { try { thrower.boom(); } catch (int e) { faults++; return e; } return 0; }
+}
+
+void main() {
+    bglInit();
+    spotA.drops = 3; spotB = spotA; print(spotB.drops); print(" | ");
+    print($"{hd.pair() / 100} {StatHolder.marks[1]} | ");
+    meterA.dial = 12; print(meterA.dial); print(" | ");
+    print($"{shelfB.rows[0][0]} {shelfB.rows[1].length} | ");
+    Slip a = new Slip(); Slip b = new Slip();
+    bgl.util.buf.setChar(a.code, 0, 'a'); bgl.util.buf.setChar(b.code, 1, 'b');
+    bgl.util.buf.print(a.code); print(" "); bgl.util.buf.print(b.code); print(" | ");
+    print($"{shadow() / 10} {shadow() % 10} | ");
+    fresh(); print(fresh()); print(" | ");
+    int n = dialA.level += 3; int m = dialA.level++; print($"{n} {m} | ");
+    print($"{Bin.pick(3, "s")} {Bin.pick(3, box)} | ");
+    print(rackA[0] + 7); print(" | ");
+    print($"{(gauge > 5) ? 6 : 0} {gauge >= 6 ? 6 : 0} | ");
+    Poke.bump(); print(Poke.Visited); print(" | ");
+    holder.items := nums; print($"{holder.total()} {knob.early()} | ");
+    print(knob.use()); print(" | ");
+    print(TallyVerb.twice(4)); print(" | ");
+    h1.cap = 7; h2.copyFrom(h1); print(h2.cap); print(" | ");
+    print($"{catcher.run()} {catcher.faults} | ");
+    print(knob.twice() - 1); print(" | ");
+    print(fresh());
+    print("^");
+}

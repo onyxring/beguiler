@@ -14,6 +14,8 @@ class i6Emitter{
     public:
         stringstream out;
         vector<pair<string,string>>* currentCleanups = nullptr; // set during emitFunction; used by emitStatement for return
+        set<string> undeclaredTopLocals;   // the routine's top-level locals a `return` reached so far precedes
+        void armCleanups(statementBlock* body);
         vector<tuple<int,string,int>> sourceMap;  // (i6Line, bglFile, bglLine)
         // When non-null, sourceMap pushes are redirected here instead of `sourceMap`. Set while
         // capturing a `superposed` body so its entries are recorded with capture-relative i6Lines,
@@ -118,6 +120,10 @@ class i6Emitter{
         // reaches them through the same `_bglFrm-->N` aliases.
         map<string,string> currentTryParamRaw;             // param → its header local, copied into the frame at entry
         map<int,pair<int,int>> currentTrySlots;            // try id → frame slots saving the catch cookie and _bglFrameTop
+        map<int,int> currentTrySelfSlots;                  // try id → frame slot saving `self` (a throw skips its restores)
+        map<int,int> currentTryLinqSlots;
+        set<statement*> poolHookSetUp;
+        set<string> deferredGrammarVerbs;                  // verbs whose grammar goes after the library's                     // the pool set-up injected into create()/destroy() hooks                  // try id → frame slot saving <linq>'s chain depth
         bool inLiftedTry = false;                          // emitting a lifted try body
         int liftedLoopDepth = 0;                           // loops entered within the current lifted body
         bool funcHasZTry(functionDef* fd);
@@ -152,6 +158,12 @@ class i6Emitter{
         // magic-hi $90, magic-lo $84) so `_bglBuf` can detect tracked bufs and read length.
         // Names registered here get their magic+length stamped at startup.
         vector<string> trackedByteArraysNeedingMagicInit;
+        // Sized `array<char>` members under <buf>: (raw array, the property it points at, capacity).
+        struct TrackedByteMember { string raw; string lvalue; int size; };
+        vector<TrackedByteMember> trackedByteMembers;
+        set<string> trackedByteMemberRaws;
+        set<const variableDeclaration*> runtimeMemberValues;   // object member values bglInit assigns
+        vector<string> runtimeMemberInits;
 
         static string replaceWord(string str, const string& from, const string& to);
         // replaceWord for an expression value: each substitution is bracketed when the operators
@@ -174,6 +186,7 @@ class i6Emitter{
         // (sized, not byte). Such locals get framePool-backed allocation at function
         // entry and free at every return path (managed via cleanups). Used to drive
         // the framePool emission on both Z and Glulx targets.
+        int estimateFrameWords(functionDef* fd);
         bool funcHasLocalArrays(functionDef* fd);
         // Recursively collect variableDeclarations from a function body, walking into the
         // sub-blocks of control-flow statements (if/for/while/do/switch/try-catch). Deduped by name
@@ -184,6 +197,7 @@ class i6Emitter{
         // (class member methods) with their respective body-indentation strings.
         string globalInstanceName(variableDeclaration* varNode);
         bool globalOwnsInstance(variableDeclaration* vd);
+        string memberLifecycleText(variableDeclaration* fvd, const string& path, const string& which);
         string staticText(expression* e);
         string propertyValueText(expression* e);   // staticText, bracketed when it is an arithmetic expression
         map<string, string> ownedGlobalInstances;   // class-typed global (I6 name, lowercase) → its instance
@@ -242,6 +256,7 @@ class i6Emitter{
         void emitObjectPromotedArrays(objectDef* obj);
         // Standalone I6 buffers for this instance's `array<char>` members; records each mangled global name.
         void emitObjectByteArrayMembers(objectDef* obj, map<string, string>& externalArrayNames);
+        vector<arrayDeclaration*> inheritedByteArrays(objectDef* obj);
         // Bakes one backing instance per owned value-helper member (own and inherited), recording name + decl.
         void emitObjectOwnedMemberInstances(objectDef* obj, map<string, string>& ownedInstanceNames, map<string, variableDeclaration*>& ownedMemberDecl);
         // Collects `with` wirings for owned/promoted members inherited from the class chain, not redeclared here.
@@ -321,6 +336,11 @@ class i6Emitter{
         // into create() and push into destroy() so every `new`/`delete` gets an independent,
         // reset-to-defaults backing. The static analogue is create+populate in emitObject.
         void synthesizePooledOwnedMembers();
+        void synthesizeValueElementPools();
+        map<string, string> ownedCopyRoutines;
+        map<string, string> currentCallEscapes;   // routines this function calls that a local of the name hides
+        string restoreCallEscapes(string code);   // pooled class's I6 name → its owned-member-aware copy routine
+        string valueElementRoutine(const string& elemType, const string& prefix);
         // Pre-emit pass: desugar each object's `children = { a, b, c }` placement list into a `parent`
         // set on the listed objects, so world-tree population written on the container reuses the
         // compile-time positional-parent tree. The inverse of writing `parent` on each child.

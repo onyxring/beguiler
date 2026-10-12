@@ -9,6 +9,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -117,11 +118,11 @@ object _bglWorld
     _bglworldstamp(buf, n);
     return buf;
 ];
-[_bglWorldInParent parent pred buf o n;
+[_bglWorldInParent _l_parent pred buf o n;
     buf = _bglworldnextbuf();
     n = 0;
     
-        objectloop(o in parent) {
+        objectloop(o in _l_parent) {
             if(n >= _bglWorldBufSize) break;
             if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }

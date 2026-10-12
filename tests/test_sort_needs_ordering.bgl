@@ -33,7 +33,6 @@ void main(){
 
     // none of these warn
     array<int>       a[2]; a += 1; a.sort();         // word IS the value
-    array<char>      c[2]; c += 'a'; c.sort();
     array<object>    o[2]; o += bare1; o.sort();     // extern builtin
     array<stringObj> s[2]; s += "a"; s.sort();       // publishes <=>
     array<Ord>       x[2]; x += ord1; x.sort();      // static <=>

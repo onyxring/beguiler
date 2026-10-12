@@ -1,0 +1,6 @@
+// Negative test: a range case can't use a type's operator switch, which tests one value.
+// EXPECT_ERROR: compares cases with its operator switch, which tests one value, so a range case
+#beguilerSettings { target = z5; informName = "none"; }
+class Part { int row; emitter eBool operator switch (int r) { ($self.row == $r) } }
+Part a { row = 0; }
+void main(){ switch(a){ case 0 to 1: print("low"); default: print("other"); } }

@@ -1,0 +1,116 @@
+/*  run_round16_forms — forms the round-16 field trials found broken (D1097–D1125).  */
+// EXPECT_OUTPUT: true1true449 | true false true | 120 | 4444 | 23 | 2 | 7 | 6 7 | 4 5 3 2 | 1 3 | 8 2 | 10 | 11
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+
+// D1102, D1107, D1103: static member arrays keep their element type; nested ones chain.
+class Store {
+    static array<int> kept[6] = {3, 4};
+    static array<array<int>> grid = { {1, 2}, {3, 4} };
+    static bool has(int v) { return kept.contains(v); }
+}
+
+// D1097, D1112: postfix `?` binds tighter than `!` and the binary operators.
+class Vault : object { object keeper; object keeperFn() { return keeper; } }
+Vault v { }
+object o1 { }
+
+// D1104: `[]=` by the value's type.
+class Cells : object {
+    int last;
+    int  operator [] (int i)          { return last; }
+    void operator []= (int i, char c) { last = c; }
+}
+Cells cellsA { }
+
+// D1105: a class's value emitter read bare in its method.
+class Shelf : object {
+    emitter int Slots { 4 }
+    int Bare() { return Slots; }
+}
+Shelf shelfA { }
+
+// D1099, D1118: `outer.member[i]` and `outer.call()` on a capitalized host.
+object Meter {
+    array<int> marks[4] = {2, 3};
+    int base = 1;
+    int addOne(int v) { return v + base; }
+    void note(int v) { base = v; }
+    auto level = {
+        int _raw;
+        int  operator () { return outer.marks[0] * 10 + outer.marks[1]; }
+        void operator = (int v) { _raw = v; outer.note(1); outer.marks[1] = outer.addOne(v); }
+    }
+}
+
+// D1108: an array a lambda captures keeps its element type.
+int capturedSum() {
+    array<int> w[4] = {1, 2};
+    func<void, int> add = (int k) => { w.append(k); };
+    add(3);
+    func<int, int> at = (int i) => w[i];
+    return at(0) + at(1) - 1;
+}
+
+// D1109: a static member in an inline accessor.
+object meter2 {
+    int limit = 5;
+    auto over = {
+        static int reads = 0;
+        int operator () { reads++; return outer.limit + reads; }
+        void operator = (int v) { outer.limit = v; }
+    }
+}
+
+// D1114, D1115: `length =` and methods on an array parameter's elements.
+array<array<int>> stacks = { {5, 1, 4}, {9, 2, 6} };
+void trim(array<array<int>> t) { t[0].reverse(); t[1].length = 1; }
+
+// D1116: an object's own operators.
+object dial {
+    int level = 2;
+    eBool operator == (int v) { return level == v; }
+    int operator [] (int i) { return level * i; }
+}
+
+// D1119, D1122: an alias as a base class and in a copy-chaining cast.
+value class Base1 { int n; Base1 operator = (Base1 o) { n = o.n; return self; } }
+object ns { alias base for Base1; }
+#using ns
+value class Kid : base {
+    int m;
+    Kid operator = (Kid o) { m = o.m; (base)self = o; return self; }
+}
+
+// D1125: a local func<> named like an object method.
+class Tag : object {
+    int n = 2;
+    int count(int x) { func<bool, int> has = (int k) => k > n; int c = 0; if (has(x)) c++; return c; }
+}
+Tag tagA { }
+
+// D1123: an object named by an I6 statement word, with a member array.
+object box { array<int> hist[4]; }
+
+void main() {
+    bglInit();
+    print(Store.kept.contains(4)); print(Store.kept.indexOf(4)); print(Store.has(3));
+    int m = Store.kept.popEnd(); print(m);
+    int b = Store.grid[1][1]; print(b);
+    Store.grid[0][1] = 9; print(Store.grid[0][1]); print(" | ");
+    print(!v.keeper?); print(" "); print(o1? && v.keeper?); print(" "); print(!v.keeperFn()?); print(" | ");
+    cellsA[0] = 'x'; print(cellsA[0]); print(" | ");
+    print(shelfA.Bare()); print(shelfA.Slots); print(Shelf.Slots); print(shelfA.Bare()); print(" | ");
+    print(Meter.level); print(" | ");
+    print(capturedSum()); print(" | ");
+    Meter.level = 6; print(Meter.marks[1]); print(" | ");
+    print(meter2.over); print(" "); meter2.over = 5; print(meter2.over); print(" | ");
+    trim(stacks);
+    print($"{stacks[0][0]} {stacks[0][2]} {stacks[0][1] + 2} {stacks[1].length + 1} | ");
+    print(dial == 2 ? 1 : 0); print(" "); print(dial[3] / 2); print(" | ");
+    Kid a; a.n = 8; a.m = 2; Kid k = a; print($"{k.n} {k.m} | ");
+    print(tagA.count(5)); print(tagA.count(1)); print(" | ");
+    box.hist.append(3); print(box.hist.length); print(box.hist[0] - 2);
+    print("^");
+}

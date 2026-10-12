@@ -1,0 +1,24 @@
+// run_glulx_guarded_window_print — `win?.printLine($"…")` on a null window skips the whole call, the
+// stream switch included; opcode emitters take expressions; a qualified print rule as a statement.
+// EXPECT_OUTPUT: after plain
+// EXPECT_OUTPUT: after interp
+// EXPECT_OUTPUT: 4 7 5
+// EXPECT_OUTPUT: done
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxWindow>
+textBufferWindow panel = null;
+object box { int count = 7; }
+void main(){
+    bglInit(); glulxConsole();
+    int n = 3;
+    panel?.printLine("plain");
+    printLine("after plain");
+    panel?.printLine($"interp {n}");
+    printLine("after interp");
+    bgl.asm.streamnum(n + 1); print(" ");
+    bgl.asm.streamnum(box.count); print(" ");
+    bgl.asm.streamnum((n * 4) / 2 - 1);
+    bgl.printRules.bold; printLine(""); bgl.printRules.roman;
+    print("done");
+}

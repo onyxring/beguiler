@@ -16,7 +16,7 @@ extern class beguilerSettingsType {
     eErrorFormat errorFormat        = E1;          /// The format for error messages: E1 (Microsoft) or E2 (Macintosh).
     int          release            = 0;           /// The story's release number.
     string       serial             = "";          /// The story's serial number: exactly six digits, such as "250328".
-    int          framePoolSize      = 64;          /// How many overflow slots the Z-machine has for local variables.
+    int          framePoolSize      = 64;          /// Words in the frame pool for local arrays and overflow locals; unset, the pool is sized from the program (at least 64).
     int          linqScratchSize    = 32;          /// The capacity of each buffer that chained array queries use.
     int          worldBufSize       = 128;         /// The most objects a `bgl.world` query can return; raise it for very large worlds.
     int          forInScratchSize   = 31;          /// The most values a `for(x in {a, b, c})` list can hold; raise it if a list overflows.

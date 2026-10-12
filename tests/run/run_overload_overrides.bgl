@@ -1,0 +1,47 @@
+// run_overload_overrides — an override of one overload dispatches through a base-typed variable; two
+// overridden overloads stay distinct when one calls the base through an ancestor cast; a declared object
+// is an exact match for its class; a call to an overloaded method of a class declared later; a
+// stringObj local named like a method.
+// EXPECT_OUTPUT: base int, derived string | derived P, base P | derived G | P G G | item int | a;b a;b
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+class Base { default void Show(int n) { print("base int"); } default void Show(string s) { print("derived?"); } }
+class Derived : Base { void Show(string s) { print("derived string"); } }
+Derived d { }
+class P { }
+class Q : P { }
+class G : P { }
+class B2 {
+    default void Show(P p) { print("base P"); }
+    default void Show(Q q) { print("base Q"); }
+    default void Show(G g) { print("base G"); }
+}
+class D2 : B2 {
+    void Show(P p) { print("derived P, "); ((B2)self).Show(p); }
+    void Show(G g) { print("derived G"); }
+}
+D2 dd { }
+P p1 { }
+G g1 { }
+void Pick(P p) { print("P"); }
+void Pick(G g) { print("G"); }
+class Item { void Accept(Visitor v) { v.Visit(self); print(" "); v.Visit(3); } }
+class Visitor { void Visit(Item i) { print("item"); } void Visit(int n) { print("int"); } }
+Item it { }
+Visitor vis { }
+class Repo { stringObj Csv() { stringObj line; line += "a;b"; return line; } }
+Repo store { }
+void main(){
+    bglInit();
+    Base b = d;
+    b.Show(1); print(", "); b.Show("x"); print(" | ");
+    P asP = p1;
+    dd.Show(asP); print(" | ");
+    G g = g1;
+    dd.Show(g); print(" | ");
+    Pick(p1); print(" "); Pick(g1); print(" "); Pick(g); print(" | ");
+    it.Accept(vis); print(" | ");
+    stringObj other = store.Csv();
+    stringObj csv = store.Csv();
+    print(other); print(" "); print(csv);
+}

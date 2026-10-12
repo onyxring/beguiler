@@ -42,6 +42,13 @@ class bglLanguageService{
     bool forInScratchInUse = false; // set true when `for(x in {literal,list})` is lowered; drives _BGL_FORIN_SCRATCH_CAP constant emission (paired with the #storedEmitFirst scratchSupport block)
     bool bufInUse = false;          // set true when `#include <buf>` resolved; gates tracked-length byteArray layout (length+magic suffix at end)
 
+    // Arrays of a value class own an instance per slot, drawn from one pool per class. The emitter
+    // sizes each pool from the arrays recorded here; the copy operator is the one each slot store calls.
+    struct valueElementArray { class arrayDeclaration* decl; class classDef* hostClass; bool isLocal; };
+    map<class classDef*, vector<valueElementArray>> valueElementArrays;
+    map<class classDef*, string> valueElementCopyOps;   // class → its copy operator's I6 property name
+    set<classDef*> valueSlotClasses;   // classes whose array slots a member access reaches (_bglValSlot_<C>)
+
     // .inf-mode anchor regions extracted from the source .inf file. When non-empty,
     // signal the emitter to skip its own ICL generation (the user's `!%` block goes at
     // the very top of the output) and to splice the trailer (from the first `end;`

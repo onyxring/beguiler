@@ -552,6 +552,7 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
                     if(vs != string::npos) {
                         size_t ve = lower.find_first_of(" \t\r\n;}", vs);
                         string val = lower.substr(vs, ve - vs);
+                        if(val.rfind("etarget.", 0) == 0) val = val.substr(8);   // the qualified form
                         if(val == "glulx") parser.defineSymbol("target_glulx");
                         else if(val.size() == 2 && val[0] == 'z' && isdigit(val[1]))
                             parser.defineSymbol("target_zcode");
@@ -623,6 +624,7 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
     vector<string> errors;
     try {
         parser.preScanFile(entryPointPath, &entryContent);
+        parser.resolveStubParamAliases();
         parser.parseFile(entryPointPath, &entryContent);
     } catch(exception& e) { errors.push_back(e.what()); }
       catch(...) { errors.push_back("Unknown compilation error"); }
@@ -731,6 +733,7 @@ void LspServer::parseDocument(const string& uri) {
                     if(vs != string::npos) {
                         size_t ve = lower.find_first_of(" \t\r\n;}", vs);
                         string val = lower.substr(vs, ve - vs);
+                        if(val.rfind("etarget.", 0) == 0) val = val.substr(8);   // the qualified form
                         if(val == "glulx")                              parser.defineSymbol("target_glulx");
                         else if(val.size() == 2 && val[0] == 'z' && isdigit(val[1]))
                             parser.defineSymbol("target_zcode");
@@ -815,6 +818,7 @@ void LspServer::parseDocument(const string& uri) {
     vector<string> errors;
     try {
         parser.preScanFile(path, content);
+        parser.resolveStubParamAliases();
         parser.parseFile(path, content);
     } catch(exception& e) {
         errors.push_back(e.what());

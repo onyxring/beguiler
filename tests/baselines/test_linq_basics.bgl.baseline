@@ -52,6 +52,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     g_empty-->(g_empty-->0) = $9084;
 
     _bglLinqS0A-->(_bglLinqS0A-->0) = $9084;  _bglLinqS0A-->(_bglLinqS0A-->0 - 1) = 0;

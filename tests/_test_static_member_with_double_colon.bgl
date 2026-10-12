@@ -1,0 +1,5 @@
+// Negative test: `Box::sum` names a class member with `::`; the message points at `Box.sum`.
+// EXPECT_ERROR: a class's member is reached with '.': `Box.sum`
+#beguilerSettings { target = z5; informName = "none"; }
+class Box { static int sum(int a, int b) { return a + b; } }
+void main(){ print(Box::sum(1, 2)); }

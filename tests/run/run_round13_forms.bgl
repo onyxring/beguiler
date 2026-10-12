@@ -1,0 +1,114 @@
+/*  run_round13_forms — forms the round-13 field trials found broken (D970–D1003).  */
+// EXPECT_OUTPUT: 1 q | a w | aXc c | neg neg | 4 -3 1 | 45 | 45 70 45 70 | 6 8 | 4 | 6 | 3 8 3 12 | 3 8 12 | 5 abc | 9 | 2 | 12 12
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+
+array<char> one = {'q'};
+array<array<char>> codes = { {'a', 'b'}, {'x', 'y', 'z'} };
+array<stringObj> slots[2];
+
+void show(int v) { print("int"); }
+void show(negativeIntLiteral v) { print("neg"); }
+
+void early() { print(twice()); print(" "); print(neg()); print(" "); print(counter.bump()); }
+int twice(int v = 2) { return v * 2; }
+int neg(int v = -3) { return v; }
+object counter { int tally; int bump(int by = 1) { tally += by; return tally; } }
+
+array<int> cells = { 0, 0, 0, 0, 40, 70 };
+emitter class Cell {
+    emitter void init() { $self = 0; }
+    emitter void deinit() { }
+    emitter Cell operator = (int v) { $target = $v; }
+    emitter int operator () { (cells-->($val+1)) }
+    emitter Cell operator += (int v) { cells-->($self+1) = cells-->($self+1) + $v; }
+    int operator auto();
+}
+array<Cell> list = { 4, 5 };
+
+value class Shelf {
+    int a; int b;
+    Shelf operator = (Shelf o) { a = o.a; b = o.b; return self; }
+    int operator [] (int i) { if (i == 0) return a; return b; }
+    int operator []= (int i, int v) { if (i == 0) a = v; else b = v; return v; }
+}
+class Gadget : object { Shelf rack; }
+Gadget widget { }
+
+value class Tally {
+    int n;
+    Tally operator = (Tally o) { n = o.n; return self; }
+    Tally operator = (int v) { n = v; return self; }
+}
+
+primitive class steps {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter steps operator + (int v) { ($val + $v) }
+}
+
+extend extern class array {
+    emitter int used() { $i6Expr($self.length) }
+    emitter int cap()  { $i6Expr($self.size) }
+    emitter T Last()   { $i6Expr($self[$self.length - 1]) }
+}
+class Holder : object { array<int> values[8]; }
+Holder h { values = { 3, 8, 12 }; }
+
+int addDe(stringObj s) { s += "de"; return s.length; }
+int seen = 0;
+void note(int n) { seen = n; }
+void run0(func<void> f) { f(); }
+
+enum eEdge { top, bottom }
+class node : object { inline eEdge edge; inline int size; }
+object ns { alias edge for eEdge; }
+node nd { ns.edge.bottom, 3; }
+
+void Main() {
+    bglInit();
+    print(one.length); print(" "); print(one[0]); print(" | ");
+    codes[1][2] = 'w';
+    print(codes[0][0]); print(" "); print(codes[1][2]); print(" | ");
+    slots[0] = "abc";
+    slots[0][1] = 'X';
+    char c = slots[0][2];
+    print(slots[0]); print(" "); print(c); print(" | ");
+    show(-7); print(" "); show((-7)); print(" | ");
+    early(); print(" | ");
+    list[0] += 5;
+    print((int)list[0]); print(" | ");
+    for (auto v in list) { print(v); print(" "); }
+    for (int w in list) { print(w); if (w == 45) print(" "); }
+    print(" | ");
+    widget.rack[1] = 6;
+    print(widget.rack[1]); print(" ");
+    widget.rack[1] += 2;
+    print(widget.rack[1]); print(" | ");
+    array<Tally> tallies[2];
+    Tally t1;
+    t1 = 4;
+    tallies[0] = t1;
+    print(tallies[0].n); print(" | ");
+    steps s = 4;
+    s++;
+    s++;
+    int sn = s;
+    print(sn); print(" | ");
+    print(h.values.used()); print(" "); print(h.values.cap()); print(" ");
+    array<int> init = h.values;
+    print(init.length); print(" "); print(init[2]); print(" | ");
+    print(init[0]); print(" "); print(init[1]); print(" "); print(init[2]); print(" | ");
+    stringObj src = "abc";
+    func<int, stringObj> lam = (stringObj p) => { p += "de"; return p.length; };
+    print(lam(src)); print(" "); print(src); print(" | ");
+    run0(=> note(9));
+    print(seen); print(" | ");
+    print((int)nd.edge); print(" | ");
+    paintValues();
+}
+void paintValues() {
+    array<int> values = h.values;
+    print(h.values.Last()); print(" "); print(values.Last());
+}

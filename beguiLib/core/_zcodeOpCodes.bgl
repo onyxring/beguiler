@@ -36,10 +36,10 @@ superposed class bglOpCodes {
     emitter void storeb(int arr, int idx, int v) { @storeb $arr $idx $v; }
 
     //-- Stack Operations (all versions) ---------------------------------------
-    /// Push a value onto the Z-machine's evaluation stack (`@push`). `pull()` takes it back.
+    /// Push a value onto the Z-machine's evaluation stack (`@push`). `pull(x)` takes it back.
     emitter void push(int v)             { @push $v; }
-    /// Pop the top of the evaluation stack (`@pull`).
-    static superposed int pull(){ int result; #i6 { @pull result; } return result; }
+    /// Pop the top of the evaluation stack into the variable `into` (`@pull`).
+    emitter void pull(var into)          { @pull $into; }
 
     //-- Object Tree (all versions) --------------------------------------------
     static superposed int getParent(int obj){ int result; #i6 { @get_parent obj -> result; } return result; }  /// Return the object's parent, or 0 (`@get_parent`).

@@ -1,0 +1,7 @@
+// Negative test: a rawArray contribution to an additive property can't be marked replace.
+// EXPECT_ERROR: is additive: every class's and object's contribution is kept, so it can't be replaced
+#beguilerSettings { target = z5; informName = "none"; }
+additive property hook;
+class Base : object { rawArray<int> hook = 3; }
+Base a { replace rawArray<int> hook = {4}; }
+void main(){ }

@@ -1,0 +1,30 @@
+/*  run_puny_accessor_multi_parent — an inline accessor in a class with two parents, on PunyInform.  */
+// EXPECT_OUTPUT: level 7 marked 1 lit 1
+// INPUT: quit
+#beguilerSettings { target = z5; includePaths = "../../../inform6/puny/lib"; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+class Marked : object { int marks = 0; }
+class Lit : object { bool glowing = false; }
+class Lamp : Marked, Lit {
+    auto level = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) { _v = v; }
+    }
+    void raise(int v) { level = v; marks++; glowing = level > 0; }
+}
+
+object roomA { "Room A"; attributes = {light}; }
+Lamp lampA { "lamp"; }
+
+bool Initialise() {
+    lampA.raise(7);
+    print($"level {lampA.level} marked {lampA.marks} lit {lampA.glowing ? 1 : 0}^");
+    rtrue;
+}

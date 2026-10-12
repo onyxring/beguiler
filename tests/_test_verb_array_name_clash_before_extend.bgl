@@ -1,0 +1,8 @@
+// Negative test: a verb named like an array is reported as the clash, even when an extend of the array comes first.
+// EXPECT_ERROR: has the same name as array
+#beguilerSettings { target = z5; informName = "none"; }
+object apple { }
+array<object> lineup = { apple };
+extend lineup { inject apple first; }
+verb Lineup { grammar = {.lineup}; void handler() { print(lineup.length); } }
+void main(){ }

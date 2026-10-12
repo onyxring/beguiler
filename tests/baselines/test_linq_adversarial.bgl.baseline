@@ -7,6 +7,7 @@ Constant _BGL_LINQ_SCRATCH_SIZE = 32;
 Constant _BGL_TRACKED_ARRAYS;
    Array _bglFramePool --> 64;
    Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
       if (_bglFrameTop + size > 64) {
          print "^[Beguile runtime error: frame pool exhausted]^";
@@ -126,6 +127,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     g_empty-->(g_empty-->0) = $9084;
 
     _bglLinqS0A-->(_bglLinqS0A-->0) = $9084;  _bglLinqS0A-->(_bglLinqS0A-->0 - 1) = 0;
@@ -160,7 +162,7 @@ array g_empty table 10;
     if(_bglArray.all(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_3), 0, _bglLambda_4), 0, _bglLambda_5) == true) print "true"; else print "false";
     _bglsrc_result = _bglArray.filter(g_nums, 0, _bglLambda_7);
     result = _bglArrayLocalCopyAlloc(_bglArray.length(_bglsrc_result, 0), _bglsrc_result, result); _bglheld_result = _bglheld_result + _bglFrameTaken; _bglsrc_result = _bglFrameSrc;
-    _bglArray.copy(result, 0, _bglsrc_result, 0);
+    _bglArray.copy(result, 0, _bglsrc_result, 0, 0);
     print _bglArray.length(result, 0);
     print  result-->(0+1) ;
     print  result-->(4+1) ;
@@ -353,14 +355,14 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       copy [dobj dprop sobj sprop n cap i;
+       copy [dobj dprop sobj sprop assign n cap i;
     n=self.length(sobj,sprop);
     cap=self.size(dobj,dprop);
     if (n > cap) {
         n=cap;
     }
     for (i = 0 : i < n : i++) {
-        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
     }
     self.setlength(dobj, dprop, n);
   ],
@@ -396,6 +398,14 @@ object _bglArray
     if (self.istracked(obj,prop)) {
         self.set(obj, prop, self.size(obj,prop), n);
     }
+  ],
+       setOwned [obj prop n v assign;
+    if (assign==0) {
+        self.set(obj, prop, n, v);
+        return;
+    }
+     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
+    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ],
        sortDefault [obj prop cmp;
     if (cmp==0) {

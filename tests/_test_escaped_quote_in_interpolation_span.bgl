@@ -1,0 +1,6 @@
+// Negative test: `\"` is an escape for inside a string; an interpolation span takes plain quotes.
+// EXPECT_ERROR: is an escape for inside a string
+#beguilerSettings { target = z5; informName = "none"; }
+int n = 1;
+void main(){ print($"Pick {(n == 1) ? \"A\" : \"B\"}.^"); }
+void other(){ print("other"); }

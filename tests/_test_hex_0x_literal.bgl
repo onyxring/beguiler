@@ -1,0 +1,4 @@
+// Negative test: C hex notation is named, with the Beguile spelling.
+// EXPECT_ERROR: Beguile writes hex as '$41'
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int a = 0x41; print(a); }

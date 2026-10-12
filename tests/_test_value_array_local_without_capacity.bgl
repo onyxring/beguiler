@@ -1,0 +1,7 @@
+// Negative test: a local array of a value class sized from another array has no capacity to give instances to.
+// EXPECT_ERROR: so it needs a capacity
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+value class Pt { int x; Pt operator = (Pt o){ x = o.x; return self; } }
+array<Pt> src[2];
+void main(){ array<Pt> c = src; print(c.length); }

@@ -1,0 +1,5 @@
+// Negative test: a postfix `?` on a type with no operator ?() says so.
+// EXPECT_ERROR: has no operator ?(), so a postfix
+#beguilerSettings { target = z5; informName = "none"; }
+object holder { int count; }
+void main(){ bool b = holder.count?; print(b); }

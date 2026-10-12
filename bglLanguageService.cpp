@@ -128,6 +128,7 @@ bglLanguageService::bglLanguageService(){
     registerType("var");
     registerType("auto");
     registerType("func");
+    registerType("selftype");   // the receiver's own class, bound at each call
     // intliteral, stringliteral, charliteral are now declared as extern class in __beguileCore.bgl
 }
 void bglLanguageService::reset(){
@@ -142,6 +143,9 @@ void bglLanguageService::reset(){
     storedEmitFirstBlocks.clear();
     storedEmitLastBlocks.clear();
     firedStoredNames.clear();
+    valueElementArrays.clear();
+    valueElementCopyOps.clear();
+    valueSlotClasses.clear();
     verbs.clear();
     ternaryTempCount = 0;
     tryCatchNeeded = false;
@@ -157,6 +161,7 @@ void bglLanguageService::reset(){
     registerType("var");
     registerType("auto");
     registerType("func");
+    registerType("selftype");   // the receiver's own class, bound at each call
 }
 bool bglLanguageService::isObjectType(string name){
     if(getType(name)==emptyTDef) return false;
@@ -232,7 +237,9 @@ bool bglLanguageService::isI6StatementKeyword(const string& name){
     static const std::set<string> keywords = {
         "box", "break", "continue", "do", "font", "for", "give", "if", "inversion", "jump", "move",
         "new_line", "objectloop", "print", "print_ret", "quit", "read", "remove", "restore", "return",
-        "rfalse", "rtrue", "save", "spaces", "string", "style", "switch", "while"
+        "rfalse", "rtrue", "save", "spaces", "string", "style", "switch", "while",
+        // grammar-token words: read as tokens in array data (`Array a --> held;`)
+        "held", "multi", "multiheld", "multiexcept", "multiinside", "creature", "topic", "number", "scope", "special"
     };
     return keywords.count(name) > 0;
 }
@@ -398,6 +405,9 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
             for(typeDef*& g : globals)
                 if(g == existing){ g = &varDef; break; }
             varDef.isPrePassStub = false;
+            if(varDef.i6name.empty() && existing->i6nameAvoidsKeyword){   // uses already emit the new name
+                varDef.i6name = existing->i6name; varDef.i6nameAvoidsKeyword = true;
+            }
             // An earlier deferred initializer that reads this global marked the stub.
             if(existing->needsEarlyGlobalDecl) varDef.needsEarlyGlobalDecl = true;
             return varDef;

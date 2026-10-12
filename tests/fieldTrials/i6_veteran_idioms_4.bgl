@@ -192,7 +192,7 @@ object bin {
         switch (action) {
             case Receive:
                 g_received++;
-                if ((int)PutOn == receive_action) rtrue("Nothing goes on a bin.^");
+                if (PutOn == receive_action) rtrue("Nothing goes on a bin.^");
                 if (noun == goldCoin) rtrue("The bin spits out the gold coin.^");
             case LetGo:
                 if (noun == copperCoin) rtrue("The copper coin is stuck.^");

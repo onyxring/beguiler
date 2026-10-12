@@ -7,6 +7,9 @@
     PunyInform: copyright (c) Fredrik Ramsberg and Johan Berntsson. MIT License.
    -----------------------------------------------------------------------------*/
 #once
+#if TARGET_GLULX
+    #error "PunyInform runs only on the Z-machine. Set `target = z5` (or z3/z8) in #beguilerSettings."
+#endif
 #declare PUNYINFORM
 
 //-- Attributes ------------------------------------------
@@ -112,6 +115,7 @@ extern object   herobj;                     /// object currently referred to as 
 extern object   themobj;                    /// object currently referred to as "them"
 extern int      notify_mode;                /// score notification on/off
 extern int      inventory_style;            /// inventory display style
+extern int      inventory_stage;            /// 1 or 2: which pass of an inventory listing is calling `invent`
 extern int      screen_width;               /// screen width in characters
 extern int      statusline_height;          /// The status-window height the library restores each turn, in lines.
 extern int      statusline_current_height;  /// The status window's current height, in lines.
@@ -243,9 +247,6 @@ extern verb Ask       { .ask }                                                  
 extern verb AskFor    { .ask }                                                  /// ask noun for second
 extern verb AskTo     { .ask|.tell }                                            /// ask noun to do something
 extern verb Attack    { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  /// attack noun [with second]
-extern verb Blow      { .blow }                                                 /// blow noun
-extern verb Burn      { .burn|.light }                                          /// burn noun [with second]
-extern verb Buy       { .buy|.purchase }                                        /// buy noun
 extern verb Climb     { .climb|.scale }                                         /// climb noun
 extern verb Close     { .close|.cover|.shut }                                   /// close noun
 extern verb Consult   { .consult }                                              /// look up a topic in noun
@@ -255,8 +256,6 @@ extern verb Disrobe   { .shed|.disrobe|.doff }                                  
 extern verb Drink     { .drink|.sip|.swallow }                                  /// drink noun
 extern verb Drop      { .drop|.discard|.throw }                                 /// drop noun
 extern verb Eat       { .eat }                                                  /// eat noun
-extern verb Empty     { .empty }                                                /// empty noun
-extern verb EmptyT    { .empty }                                                /// empty noun into second
 extern verb Enter     { .enter|.sit|.lie }                                      /// enter noun
 extern verb Examine   { .examine|.x|.read }                                     /// examine noun
 extern verb Exit      { .exit|.leave|.stand }                                   /// get out [of noun]
@@ -264,19 +263,14 @@ extern verb Fill      { .fill }                                                 
 extern verb GetOff    { .get }                                                  /// get off noun
 extern verb Give      { .give|.feed|.offer|.pay }                               /// give noun to second
 extern verb Go        { .go }                                                   /// go in a direction; see selected_direction
-extern verb GoIn      { .enter|.in|.inside }                                    /// go in
 extern verb Insert    { .insert }                                               /// put noun in second
 extern verb Inv       { .inventory|.i }                                         /// list what the player carries
 extern verb Jump      { .jump }                                                 /// jump
 extern verb JumpOver  { .jump }                                                 /// jump over noun
-extern verb Kiss      { .kiss|.embrace|.hug }                                   /// kiss noun
 extern verb Listen    { .listen }                                               /// listen [to noun]
 extern verb Lock      { .lock }                                                 /// lock noun with second
 extern verb Look      { .look|.l }                                              /// look around
-extern verb Mild      { .bother|.curses|.darn|.drat }                           /// mild swearing
-extern verb No        { .no }                                                   /// answer no
 extern verb Open      { .open|.uncover|.unwrap }                                /// open noun
-extern verb Pray      { .pray }                                                 /// pray
 extern verb Pull      { .pull|.drag }                                           /// pull noun
 extern verb Push      { .push|.clear|.move|.press|.shift }                      /// push noun
 extern verb PushDir   { .push|.clear|.move|.press|.shift }                      /// push noun in direction second
@@ -284,25 +278,14 @@ extern verb PutOn     { .put|.place }                                           
 extern verb Remove    { .remove }                                               /// take noun out of second
 extern verb Rub       { .rub|.clean|.dust|.polish|.scrub|.shine|.sweep|.wipe }  /// rub noun
 extern verb Search    { .search }                                               /// search noun
-extern verb Set       { .set|.adjust }                                          /// set noun
-extern verb SetTo     { .set|.adjust }                                          /// set noun to second
 extern verb Shout     { .shout|.scream|.yell }                                  /// shout [a topic]
 extern verb ShoutAt   { .shout|.scream|.yell }                                  /// shout at noun
 extern verb Show      { .show|.display|.present }                               /// show noun to second
-extern verb Sing      { .sing }                                                 /// sing
-extern verb Sleep     { .sleep|.nap }                                           /// sleep
 extern verb Smell     { .smell|.sniff }                                         /// smell [noun]
-extern verb Sorry     { .sorry }                                                /// apologize
-extern verb Squeeze   { .squeeze|.squash }                                      /// squeeze noun
-extern verb Strong    { .shit|.damn|.fuck|.sod }                                /// strong swearing
-extern verb Swim      { .swim|.dive }                                           /// swim
-extern verb Swing     { .swing }                                                /// swing noun
 extern verb SwitchOff { .switch|.turn }                                         /// switch off noun
 extern verb SwitchOn  { .switch|.turn }                                         /// switch on noun
 extern verb Take      { .take|.carry|.hold|.get|.pick|.peel }                   /// take noun
-extern verb Taste     { .taste }                                                /// taste noun
 extern verb Tell      { .tell }                                                 /// tell noun about a topic
-extern verb Think     { .think }                                                /// think
 extern verb ThrowAt   { .throw }                                                /// throw noun at second
 extern verb Tie       { .tie|.attach|.fasten|.fix }                             /// tie noun [to second]
 extern verb Touch     { .touch|.feel|.fondle|.grope }                           /// touch noun
@@ -310,12 +293,36 @@ extern verb Transfer  { .transfer }                                             
 extern verb Turn      { .turn|.rotate|.screw|.twist|.unscrew }                  /// turn noun
 extern verb Unlock    { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }       /// unlock noun with second
 extern verb Wait      { .wait|.z }                                              /// wait
-extern verb Wake      { .wake|.awake|.awaken }                                  /// wake up
-extern verb WakeOther { .wake|.awake|.awaken }                                  /// wake noun
-extern verb Wave      { .wave }                                                 /// wave noun
-extern verb WaveHands { .wave }                                                 /// wave
 extern verb Wear      { .wear }                                                 /// wear noun
-extern verb Yes       { .yes|.y }                                               /// answer yes
+
+#if OPTIONAL_EXTENDED_VERBSET   // the library defines these actions only with its extended verb set
+    extern verb Blow      { .blow }                                                 /// blow noun
+    extern verb Burn      { .burn|.light }                                          /// burn noun [with second]
+    extern verb Buy       { .buy|.purchase }                                        /// buy noun
+    extern verb Empty     { .empty }                                                /// empty noun
+    extern verb EmptyT    { .empty }                                                /// empty noun into second
+    extern verb GoIn      { .enter|.in|.inside }                                    /// go in
+    extern verb Kiss      { .kiss|.embrace|.hug }                                   /// kiss noun
+    extern verb Mild      { .bother|.curses|.darn|.drat }                           /// mild swearing
+    extern verb No        { .no }                                                   /// answer no
+    extern verb Pray      { .pray }                                                 /// pray
+    extern verb Set       { .set|.adjust }                                          /// set noun
+    extern verb SetTo     { .set|.adjust }                                          /// set noun to second
+    extern verb Sing      { .sing }                                                 /// sing
+    extern verb Sleep     { .sleep|.nap }                                           /// sleep
+    extern verb Sorry     { .sorry }                                                /// apologize
+    extern verb Squeeze   { .squeeze|.squash }                                      /// squeeze noun
+    extern verb Strong    { .shit|.damn|.fuck|.sod }                                /// strong swearing
+    extern verb Swim      { .swim|.dive }                                           /// swim
+    extern verb Swing     { .swing }                                                /// swing noun
+    extern verb Taste     { .taste }                                                /// taste noun
+    extern verb Think     { .think }                                                /// think
+    extern verb Wake      { .wake|.awake|.awaken }                                  /// wake up
+    extern verb WakeOther { .wake|.awake|.awaken }                                  /// wake noun
+    extern verb Wave      { .wave }                                                 /// wave noun
+    extern verb WaveHands { .wave }                                                 /// wave
+    extern verb Yes       { .yes|.y }                                               /// answer yes
+#endif
 
 //-- Meta actions
 extern verb Again          { .again|.g }            /// repeat the last command (meta)
@@ -406,6 +413,174 @@ extend _bglStatus {
 }
 
 // Automatically start up the Beguile run-time environment, unless the program asked to do it itself.
+//-- Remaining library routines
+// Every other routine PunyInform's core files define, so a member named like one is renamed rather than clashing
+// in Inform 6. Inform 6 does not separate parameters from locals, so each takes its first locals as
+// optional parameters; an omitted one is 0, as Inform 6 leaves it.
+extern var ADirection();
+extern var AnswerSub();
+extern var AskSub();
+extern var AskToSub();
+extern var AskForSub();
+extern var AttackSub();
+extern var ClimbSub();
+extern var CloseSub();
+extern var ConsultSub();
+extern var CutSub();
+extern var DigSub();
+extern var DisrobeSub();
+extern var DrinkSub();
+extern var DropSub();
+extern var EatSub();
+extern var EnterSub(var _door_dir = 0);
+extern var ExamineSub(var x = 0);
+extern var ExitSub(var _p = 0);
+extern var FillSub();
+extern var GetOffSub();
+extern var GiveSub();
+extern var GoSub(var _prop = 0);
+extern var InsertSub();
+extern var InvSub(var _mode = 0);
+extern var JumpSub();
+extern var JumpOverSub();
+extern var ListenSub();
+extern var LockSub();
+extern var LookSub(var _old_lookmode = 0);
+extern var OpenSub();
+extern var PullSub();
+extern var PushSub();
+extern var PushDirSub();
+extern var PutOnSub();
+extern var RemoveSub(var _i = 0);
+extern var RubSub();
+extern var SearchSub(var _i = 0, var _plural = 0);
+extern var ShoutSub();
+extern var ShoutAtSub();
+extern var ShowSub();
+extern var SmellSub();
+extern var SwitchOffSub();
+extern var SwitchOnSub();
+extern var TakeSub();
+extern var TieSub();
+extern var TellSub();
+extern var ThrowAtSub();
+extern var TouchSub();
+extern var TransferSub(var _work_to_do = 0);
+extern var TurnSub();
+extern var UnlockSub();
+extern var WaitSub();
+extern var WearSub();
+extern var BlowSub();
+extern var BurnSub();
+extern var BuySub();
+extern var EmptySub();
+extern var EmptyTSub(var _i = 0, var _n = 0, var _obj = 0, var _recipient = 0);
+extern var GoInSub();
+extern var KissSub();
+extern var MildSub();
+extern var NoSub();
+extern var PraySub();
+extern var SetSub();
+extern var SetToSub();
+extern var SingSub();
+extern var SleepSub();
+extern var SorrySub();
+extern var StrongSub();
+extern var SqueezeSub();
+extern var SwimSub();
+extern var SwingSub();
+extern var TasteSub();
+extern var ThinkSub();
+extern var WakeSub();
+extern var WakeOtherSub();
+extern var WaveSub();
+extern var WaveHandsSub();
+extern var YesSub();
+extern var AgainSub();
+extern var FullScoreSub(var _i = 0, var _score_sum = 0, var _sc = 0);
+extern var LookModeNormalSub();
+extern var LookModeLongSub();
+extern var LookModeShortSub();
+extern var NotifyOnSub();
+extern var NotifyOffSub();
+extern var OopsSub();
+extern var OopsCorrectionSub();
+extern var QuitSub();
+extern var RestartSub();
+extern var RestoreSub();
+extern var SaveSub();
+extern var ScoreSub();
+extern var VersionSub();
+extern var CommandsOnSub();
+extern var CommandsOffSub();
+extern var CommandsReadSub();
+extern var PlacesSub(var _i = 0);
+extern var ObjectsSub(var _i = 0, var _j = 0, var _f = 0);
+extern var ScriptOnSub();
+extern var ScriptOffSub();
+extern var VerifySub();
+extern var GoNearSub(var _obj = 0);
+extern var GotoSub(var _obj = 0);
+extern var PronounsSub();
+extern var PurloinSub();
+extern var RandomSeedSub(var _i = 0);
+extern var ScopeSub();
+extern var TreeSub(var p_real_location = 0, var _p = 0);
+extern var ForestSub();
+extern var RoomsSub();
+extern var MayBeRoutine(var p_obj = 0, var p_prop = 0, var _val = 0);
+extern var DebugSub(var _w = 0, var _o = 0);
+extern var RoutinesOnSub();
+extern var RoutinesOffSub();
+extern var ActionsOnSub();
+extern var ActionsOffSub();
+extern var TimersOnSub();
+extern var TimersOffSub();
+extern var PANum(var p_m = 0, var _n = 0);
+extern var TryToTakeNoun(var p_suppress_before_after = 0, var _i = 0, var _k = 0, var _r = 0, var _ancestor = 0, var _after_recipient = 0);
+extern var GoDir(var p_property = 0, var _new_location = 0, var _old_location = 0, var _vehicle = 0, var _vehicle_mode = 0, var _saved_location = 0);
+extern var VerbName(var p_v = 0);
+extern var ThatorThose(var p_obj = 0);
+extern var ItorThem(var p_obj = 0);
+extern var CObjIs(var p_obj = 0);
+extern var ObjIs(var p_obj = 0);
+extern var DoOrDoes(var p_obj = 0);
+extern var HaveOrHas(var p_obj = 0);
+extern var IsorAre(var p_obj = 0);
+extern var CTheyreorThats(var p_obj = 0);
+extern var CTheyreorIts(var p_obj = 0);
+extern var OnOff(var p_obj = 0);
+extern var SingularS(var p_obj = 0);
+extern var ResetInputAction(var p_action = 0);
+extern var UnsignedCompare(var p_x = 0, var p_y = 0, var _u = 0, var _v = 0);
+extern var RunEntryPointRoutine(var p_routine = 0);
+extern var PrintShortName(var o = 0);
+extern var CalculateVisibilityCeiling();
+extern var Superparent(var p_obj = 0, var _parent = 0);
+extern var ActionPrimitive();
+extern var PerformPreparedAction(var _ret_val = 0, var _action_returned = 0);
+extern var RunEachTurn();
+extern var BeforeRoutines();
+extern var AfterRoutines();
+extern var RunLife(var p_actor = 0, var p_reason = 0);
+extern var DebugAttribute(var p_attr = 0);
+extern var DebugParameter(var p_w = 0);
+extern var DebugAction(var p_a = 0, var _anames = 0);
+extern var TraceAction();
+extern var PerformAction(var p_action = 0, var p_noun = 0, var p_second = 0, var _sa = 0, var _sn = 0, var _ss = 0, var _sdi = 0);
+extern var R_Process(var p_action = 0, var p_noun = 0, var p_second = 0, var _s1 = 0, var _s2 = 0);
+extern var CDefArt(var p_obj = 0, var _result = 0);
+extern var DefArt(var p_obj = 0, var _result = 0);
+extern var IndefArt(var p_obj = 0, var _result = 0);
+extern var RunTimersAndDaemons(var _j = 0, var _t = 0);
+extern var EndTurnSequence();
+extern var PerformUndo(var _i = 0);
+extern var DirPropToFakeObj(var p_dir_prop = 0);
+extern var FakeObjToDirProp(var p_fake_obj = 0);
+extern var GetScopeCopy(var p_actor = 0, var p_reason = 0, var _i = 0);
+extern var ScopeCeiling(var p_actor = 0, var p_stop_before = 0, var _parent = 0);
+extern var TouchCeiling(var p_actor = 0, var _parent = 0);
+
 #if bglAutoInitialize
     #emitfirst{
         replace main _oldmain;

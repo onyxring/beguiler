@@ -1,0 +1,76 @@
+/*  run_round12_forms — forms the round-12 field trials found broken (D937–D968).  */
+// EXPECT_OUTPUT: a^1 b~2 c\3 d@4 | 64 | 7 | 10 7 | 15 | 2 3 | yes 6 | 5 | 0 1 2 | 4 4 4 | 10 10 10 | 5 6 13 | 3 3 | 8 2 2 | open-close
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+int addUp(int a, int b) { return a + b; }
+int twice(int n) { return n * 2; }
+func<int, int, int> pick2(int k) { return addUp; }
+func<int, int> pick1(int k) { return twice; }
+int applyTwice(int n, func<int, int> f) { return f(f(n)); }
+int adjust(int n) { return n + 1; }
+replace int adjust(int n) { return applyTwice(n, (int k) => replaced(k)); }
+eBool same(int a, int b) { return a == b; }
+class Gauge { int level; static int operator <=> (Gauge a, Gauge b) { return a.level - b.level; } }
+Gauge g1 { level = 5; }
+Gauge g2 { level = 3; }
+class Acct : object { int n = 4; }
+Acct ledgerA { }
+value class Pair { int A; Pair operator = (Pair o) { A = o.A; return self; } }
+class Counter : object {
+    void Down(int n) {
+        Pair mine;
+        mine.A = n;
+        if (n > 0) Down(n - 1);
+        print(mine.A); if (n < 2) print(" ");
+    }
+}
+Counter cnt { }
+value class Clamp { int Raw; int operator () { return Raw; } void operator = (int v) { Raw = v > 9 ? 9 : v; } }
+class Meter : object {
+    Clamp Level;
+    array<int> History[4];
+    void Push(int v) { Level = v; History += Level; History.append(Level); int c = Level; History += c; }
+}
+Meter m1 { }
+emitter int scale(int v) { ($v * 3) }
+int early(int n) { return scale(n); }
+replace emitter int scale(int v) { ($v * 5) }
+int score(int n) { return n * 2; }
+int both(int n) { return score(n) + 1; }
+replace int score(int n, int bonus = 0) { return replaced(n) + bonus; }
+enum eHint { width = 7, depth }
+value class Inner { int width = 3; Inner operator = (Inner o) { width = o.width; return self; } }
+value class Outer { Inner part; Outer operator = (Outer o) { part = o.part; return self; } }
+value class Dim { int raw = 4; int writes = 0; int operator () { return raw; } void operator = (int v) { raw = v; writes = writes + 1; } }
+class Box : object { Dim size; int count() { return self.size.writes; } }
+Box b1 { }
+int TrackOpen() { print("open"); return 1; }
+void TrackClose(int id) { print("-close"); }
+emitter class Ticket { emitter void init() { $self = TrackOpen(); } emitter void deinit() { TrackClose($self); } }
+void viaBreak(int n) {
+    switch (n) {
+        case 1: { Ticket s; if (n == 1) break; print("unreached"); }
+        default: print("default");
+    }
+}
+
+void main() {
+    bglInit();
+    print("a\^1 b\~2 c\\3 d\@4");
+    print(" | "); char at = '@'; print((int)at);
+    print(" | "); print(adjust(5));
+    print(" | "); int a = pick1(0)(5); int c = 0; c = pick2(0)(3, 4); print($"{a} {c}");
+    print(" | "); func<int, Gauge, Gauge> cmp = Gauge :: operator <=>; print(cmp(g1, g2) * 5 + 5);
+    print(" | "); int n = ledgerA.n == 4 ? 2 : 9; print(n); print(" "); print(ledgerA.n == 4 ? 3 : 9);
+    print(" | "); if (same(1, 1)) print("yes"); print(" "); print(id6());
+    print(" | "); print(typeof(null) == eType.unknown ? 5 : 0);
+    print(" | "); cnt.Down(2);
+    print(" | "); m1.Push(4); for (int h in m1.History) { print(h); if (h != 0 && m1.History.indexOf(h) >= 0) print(" "); }
+    print("| "); print($"{early(2)} {scale(2)} {early(2)}");
+    print(" | "); print($"{both(2)} {score(3)} {score(3, 7)}");
+    print(" | "); Outer o; print($"{(int)o.part.width} {o.part.width}");
+    print(" | "); b1.size = 7; b1.size = 8; print($"{(int)b1.size} {b1.size.writes} {b1.count()}");
+    print(" | "); viaBreak(1);
+}
+int id6() { return 6; }

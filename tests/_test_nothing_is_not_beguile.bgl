@@ -1,0 +1,5 @@
+// Negative test: `nothing` is Inform 6's; Beguile writes null, so the name is undeclared.
+// EXPECT_ERROR: Undeclared identifier 'nothing'
+#beguilerSettings { target = z5; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+void main(){ object o = null; if (o == nothing) print(1); }

@@ -1,0 +1,36 @@
+/*  run_once_impossible_pairs — three area pairs once marked impossible, which valid code does combine:
+    `static` in an object's inline accessor read through `outer`, an `extend class` of a class with
+    several parents, and an object's own compound operator beside its type alias (D1152).  */
+// EXPECT_OUTPUT: 6 | 3 7 | 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+object host {
+    int base = 10;
+    auto level = {
+        static array<int> seen[4];
+        int  operator () { return outer.base + seen.length; }
+        void operator = (int v) { seen.append(v); outer.base = v; }
+    }
+}
+
+class A : object { int a = 7; }
+class B : object { int b = 8; }
+class C : object, A, B { int c = 1; }
+extend class C { int d = 2; }
+C c1 { }
+
+class Cell { int n; }
+object ns {
+    alias cell for Cell;
+    int total;
+    int operator += (int v) { total = total + v; return total; }
+}
+
+void main() {
+    bglInit();
+    host.level = 5; print(host.level); print(" | ");
+    print(c1.c + c1.d); print(" "); print(c1.a); print(" | ");
+    ns += 4; ns += 3; print(ns.total);
+    print("^");
+}

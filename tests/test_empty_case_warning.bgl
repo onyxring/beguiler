@@ -1,0 +1,4 @@
+// An empty case straight before another does nothing (no fall-through), so it warns.
+// EXPECT_WARNING: This case is empty and cases don't fall through
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int x = 0; switch (x) { case 1: case 2: x++; default: x--; } }

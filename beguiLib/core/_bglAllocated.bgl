@@ -9,6 +9,6 @@
 
 /// Adds `copy()` and `remaining()` to a pooled class.
 emitter class bglAllocated {
-    emitter void copy(var src) { $class.copy($self, $src); }   /// Copy every property of `src` into this object.
+    emitter void copy(selfType src) { $class.copy($self, $src); }   /// Copy every property of `src` (this class, or a subclass of it) into this object.
     emitter int remaining() { $class.remaining() }             /// Return how many free slots this class's pool has left.
 }

@@ -1,0 +1,6 @@
+// A bare call in a method to an inherited method with the wrong arity reports it (D1219).
+// EXPECT_ERROR: expects 0 argument(s), but 1 were supplied
+#beguilerSettings { target = z5; informName = "none"; }
+class Box : object { int child() { return 1; } int f() { return child(self); } }
+Box b { }
+void main() { print(b.f()); }

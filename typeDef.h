@@ -177,6 +177,8 @@ class paramDef:public abstractObject{
         typeDef type;
         string defaultValue;  // "" if no default; otherwise the default expression text
         string defaultSource; // the default as written, when it was one token (for hover / signature help)
+        bool defaultUnparsed = false;   // pre-scan stub: defaultValue is the source text, parsed at first use
+        sourceLocation defaultSrc;      // where that source text starts
         // Set by synthesizeParamBackings when the param's class copies (its `operator =` is not the
         // root's): the param owns an instance, a per-(function, param) global I6 object, and at
         // routine entry the argument is copied into it and the param pointed at it, so changes
@@ -307,6 +309,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool isClassLocalWithBacking = false;
         string backingName;   // the local's backing instance; the local is set to it at routine entry
         bool isInstanceBacking = false;   // this global IS an instance (a local's or parameter's backing), not a variable
+        bool staticHasGlobal = false;     // a static member of an owning type: its storage is a program global
         // `ref` local: the user opted in to reference semantics for this variable. Skip
         // backing synthesis, skip operator= dispatch on assignment, skip the no-operator=
         // error — every assignment is plain pointer-alias. Same I6 emission as object-
@@ -375,12 +378,16 @@ class functionDef:public typeMember, public typeDef{
         bool replaceFoundNothing = false;    // a `replace` with no earlier function of its name to replace
         functionDef* replacedFunc = nullptr;  // pointer to predecessor functionDef
         bool replacedWasCalled = false;       // set when replaced() is encountered during body parsing
+        bool isReplaceStub = false;           // a pre-scan stub for a `replace` declaration: it takes the name's place, not an overload
         bool isReplacedDead = false;          // true when this replaced version is unreachable (no successor calls replaced())
         // Closure captures: variables from the enclosing scope referenced by a lambda.
         // Each entry maps: {outer variable name, capture global name, type name}
         // isConstant: a `const` local with a compile-time initializer — every load writes the same
         // value, so the capture cannot go stale and still counts as `literal`.
-        struct Capture { string outerName; string globalName; string typeName; bool isConstant = false; };
+        // localName: the lambda's own copy, loaded at entry and written back on exit, so a recursive call
+        // that reloads the global can't change what this activation reads ("" for `self`).
+        struct Capture { string outerName; string globalName; string typeName; bool isConstant = false; string localName;
+                         const string& bodyName() const { return localName.empty() ? globalName : localName; } };
         vector<Capture> captures;
 
     using abstractObject::name;
@@ -480,6 +487,7 @@ class forStatement : public statement {
 class forInStatement : public statement {
     public:
         string elementVar;   // iteration variable name, e.g. "item"
+        string elementConversion;   // the element's conversion to the loop variable's type, @@ELEM@@ = the raw element
         string arrayVar;     // array name, e.g. "scores"
         string counterVar;   // unique index variable, e.g. "_bglfi0"
         bool isByteArray = false; // true when iterating array<char> — use byte for-in template
@@ -494,6 +502,7 @@ class forInStatement : public statement {
         vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
         string memberBase;     // a member word array: its first element's address (`obj.&prop`)
         string memberLength;   // and its length, as the parser reads it (tracked or raw layout)
+        bool viaPointer = false;   // a dotted path read as a value: a `ref` member's array, not property data
 };
 
 
@@ -541,6 +550,8 @@ class tryCatchStatement : public statement {
 class throwStatement : public statement {
     public:
         expression* value = nullptr;        // the thrown value expression
+        vector<string> releases;            // deinits of the blocks the throw leaves, innermost first
+        bool leavesRoutine = false;         // nothing in this routine catches it: its own cleanups run too
 };
 
 // An array<T> declaration — global emits as I6 Array directive; property emits inline values
@@ -562,6 +573,8 @@ class arrayDeclaration : public variableDeclaration {
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
         string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time
         string copyHeld;             //   and the local counting the frame words its storage took
+        string copyLength;           //   or, from a member array (no address to alias), the member's length
+        bool inLoop = false;         // a local declared in a loop body: each pass's declaration empties it
 };
 
 // a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings.
@@ -673,6 +686,7 @@ class beguilerSettingsDef : public typeDef {
 
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
+        bool framePoolSizeSet = false; // the program gave framePoolSize; otherwise the pool is sized from the program
         int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
         int forInScratchSize = -1;     // literal-list for-in scratch capacity, max elements (-1 = unset; default 31 from schema)

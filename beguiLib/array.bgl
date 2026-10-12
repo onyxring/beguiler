@@ -70,7 +70,7 @@ extend extern class array {
     // is `array<...>` is routed to the array-member-declaration parser, which can't parse
     // an `operator` name. The assignment emit path emits the body as a statement and
     // ignores the operator's return value anyway, so `void` is correct here.
-    emitter void operator = (array<T> v)  { _bglArray.copy($self, 0, $v, 0) }
+    emitter void operator = (array<T> v)  { _bglArray.copy($self, $prop, $v, 0, $opref(=)) }
 
     // Ownership-aware slot write, used ONLY when the element type publishes a static
     // `operator =` (stringObj). core's raw `$val-->($i+1) = $v` still handles every plain
@@ -118,13 +118,13 @@ extend extern class array {
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
     /// Stack push — onto the FRONT. `pop()` takes it back off.
-    emitter void push(literal T item)               { _bglArray.push($self, $prop, $item) }
+    emitter void push(literal T item)               { _bglArray.push($self, $prop, $item, $opref(=)) }
     /// Stack pop — take the front element off and return it. 0 when empty.
     emitter T    pop()                      { _bglArray.pop($self, $prop) }
     /// Queue take — the front element, removed. Pairs with `enqueue`.
     emitter T    dequeue()                  { _bglArray.dequeue($self, $prop) }
     /// Queue add — onto the END. Pairs with `dequeue`.
-    emitter void enqueue(literal T item)            { _bglArray.enqueue($self, $prop, $item) }
+    emitter void enqueue(literal T item)            { _bglArray.enqueue($self, $prop, $item, $opref(=)) }
     /// The front element, left in place. 0 when empty.
     emitter T    peek()                     { _bglArray.peek($self, $prop) }
     /// The last element, left in place. 0 when empty.
@@ -208,12 +208,14 @@ superposed object _bglArray {
     // set dest's length. Clamps to dest capacity if the source is longer. Backs the
     // `array<T> operator=` copy-on-assign. Word arrays only — byteArray overrides its
     // own operator= (byte-form) so char arrays never route through this.
-    void copy(var dobj, var dprop, var sobj, var sprop){
+    void copy(var dobj, var dprop, var sobj, var sprop, var assign = 0){
         int n = length(sobj, sprop);
         int cap = size(dobj, dprop);
         if(n > cap) n = cap;
+        // An element type that owns storage copies into dest's own slots. Slots past the new length
+        // keep what they own, as after remove(); clear() and scope exit release them.
         for(int i = 0; i < n; i++)
-            set(dobj, dprop, i, get(sobj, sprop, i));
+            setOwned(dobj, dprop, i, get(sobj, sprop, i), assign);
         setLength(dobj, dprop, n);
     }
 
@@ -459,8 +461,8 @@ superposed object _bglArray {
     // The orientation differs from JavaScript (where push appends); see the
     // project_array_deque_naming memory for the rationale.
 
-    void push(var obj, var prop, var val){
-        insert(obj, prop, 0, val);   // bool result intentionally discarded; full-array detection is via .length/.size
+    void push(var obj, var prop, var val, var assign = 0){
+        insert(obj, prop, 0, val, assign);   // bool result intentionally discarded; full-array detection is via .length/.size
     }
 
     var pop(var obj, var prop){
@@ -474,8 +476,8 @@ superposed object _bglArray {
         return pop(obj, prop);
     }
 
-    void enqueue(var obj, var prop, var val){
-        append(obj, prop, val);
+    void enqueue(var obj, var prop, var val, var assign = 0){
+        append(obj, prop, val, assign);
     }
 
     var peek(var obj, var prop){

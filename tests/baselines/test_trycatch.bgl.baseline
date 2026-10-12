@@ -10,6 +10,7 @@ global _bgl_tryrc;
 global _bgl_tryret;
    Array _bglFramePool --> 64;
    Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
       if (_bglFrameTop + size > 64) {
          print "^[Beguile runtime error: frame pool exhausted]^";
@@ -88,6 +89,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -107,15 +109,17 @@ object bgl
     }
 ];
 [doubleRisky x _bglFrm;
-    _bglFrm = _bglFrameAlloc(4);
+    _bglFrm = _bglFrameAlloc(6);
     _bglFrm-->0 = x;
     _bglFrm-->2 = _bgl_catch_cookie;
     _bglFrm-->3 = _bglFrameTop;
+    _bglFrm-->4 = self; _bglFrm-->5 = sender;
     _bgl_tryrc = _bgl_try0(_bglFrm);
     _bgl_catch_cookie = _bglFrm-->2;
     if (_bgl_thrown) {
         _bgl_thrown = 0;
         _bglFrameTop = _bglFrm-->3;
+        self = _bglFrm-->4; sender = _bglFrm-->5;
         _bglFrm-->1 = _bgl_tryrc;
         if (_bgl_catch_cookie == 0) {
             print "^[Unhandled exception]^";
@@ -125,7 +129,7 @@ object bgl
         _bgl_thrown = 1;
         @throw _bgl_throwv _bgl_catch_cookie;
     }
-    _bglFrameFree(4);
+    _bglFrameFree(6);
 ];
 [deep;
     if (_bgl_catch_cookie == 0) {
@@ -158,53 +162,63 @@ class _bglClass_Risk
 _bglClass_Risk g_risk
 ;
 [main _bglFrm;
-    _bglFrm = _bglFrameAlloc(18);
+    _bglFrm = _bglFrameAlloc(20);
     _bglFrm-->6 = _bgl_catch_cookie;
     _bglFrm-->7 = _bglFrameTop;
+    _bglFrm-->8 = self; _bglFrm-->9 = sender;
     _bgl_tryrc = _bgl_try1(_bglFrm);
     _bgl_catch_cookie = _bglFrm-->6;
     if (_bgl_thrown) {
         _bgl_thrown = 0;
         _bglFrameTop = _bglFrm-->7;
+        self = _bglFrm-->8; sender = _bglFrm-->9;
         _bglFrm-->0 = _bgl_tryrc;
     }
-    _bglFrm-->8 = _bgl_catch_cookie;
-    _bglFrm-->9 = _bglFrameTop;
+    _bglFrm-->10 = _bgl_catch_cookie;
+    _bglFrm-->11 = _bglFrameTop;
+    _bglFrm-->8 = self; _bglFrm-->9 = sender;
     _bgl_tryrc = _bgl_try2(_bglFrm);
-    _bgl_catch_cookie = _bglFrm-->8;
+    _bgl_catch_cookie = _bglFrm-->10;
     if (_bgl_thrown) {
         _bgl_thrown = 0;
-        _bglFrameTop = _bglFrm-->9;
+        _bglFrameTop = _bglFrm-->11;
+        self = _bglFrm-->8; sender = _bglFrm-->9;
         _bglFrm-->2 = _bgl_tryrc;
-    }
-    _bglFrm-->12 = _bgl_catch_cookie;
-    _bglFrm-->13 = _bglFrameTop;
-    _bgl_tryrc = _bgl_try4(_bglFrm);
-    _bgl_catch_cookie = _bglFrm-->12;
-    if (_bgl_thrown) {
-        _bgl_thrown = 0;
-        _bglFrameTop = _bglFrm-->13;
-        _bglFrm-->3 = _bgl_tryrc;
     }
     _bglFrm-->14 = _bgl_catch_cookie;
     _bglFrm-->15 = _bglFrameTop;
-    _bgl_tryrc = _bgl_try5(_bglFrm);
+    _bglFrm-->8 = self; _bglFrm-->9 = sender;
+    _bgl_tryrc = _bgl_try4(_bglFrm);
     _bgl_catch_cookie = _bglFrm-->14;
     if (_bgl_thrown) {
         _bgl_thrown = 0;
         _bglFrameTop = _bglFrm-->15;
-        _bglFrm-->4 = _bgl_tryrc;
+        self = _bglFrm-->8; sender = _bglFrm-->9;
+        _bglFrm-->3 = _bgl_tryrc;
     }
     _bglFrm-->16 = _bgl_catch_cookie;
     _bglFrm-->17 = _bglFrameTop;
-    _bgl_tryrc = _bgl_try6(_bglFrm);
+    _bglFrm-->8 = self; _bglFrm-->9 = sender;
+    _bgl_tryrc = _bgl_try5(_bglFrm);
     _bgl_catch_cookie = _bglFrm-->16;
     if (_bgl_thrown) {
         _bgl_thrown = 0;
         _bglFrameTop = _bglFrm-->17;
+        self = _bglFrm-->8; sender = _bglFrm-->9;
+        _bglFrm-->4 = _bgl_tryrc;
+    }
+    _bglFrm-->18 = _bgl_catch_cookie;
+    _bglFrm-->19 = _bglFrameTop;
+    _bglFrm-->8 = self; _bglFrm-->9 = sender;
+    _bgl_tryrc = _bgl_try6(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->18;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->19;
+        self = _bglFrm-->8; sender = _bglFrm-->9;
         _bglFrm-->5 = _bgl_tryrc;
     }
-    _bglFrameFree(18);
+    _bglFrameFree(20);
 ];
 [ _bgl_try0 _bglFrm _bgl_cv;
     @catch -> _bgl_cv;
@@ -230,13 +244,15 @@ _bglClass_Risk g_risk
 [ _bgl_try2 _bglFrm _bgl_cv;
     @catch -> _bgl_cv;
     _bgl_catch_cookie = _bgl_cv;
-    _bglFrm-->10 = _bgl_catch_cookie;
-    _bglFrm-->11 = _bglFrameTop;
+    _bglFrm-->12 = _bgl_catch_cookie;
+    _bglFrm-->13 = _bglFrameTop;
+    _bglFrm-->8 = self; _bglFrm-->9 = sender;
     _bgl_tryrc = _bgl_try3(_bglFrm);
-    _bgl_catch_cookie = _bglFrm-->10;
+    _bgl_catch_cookie = _bglFrm-->12;
     if (_bgl_thrown) {
         _bgl_thrown = 0;
-        _bglFrameTop = _bglFrm-->11;
+        _bglFrameTop = _bglFrm-->13;
+        self = _bglFrm-->8; sender = _bglFrm-->9;
         _bglFrm-->1 = _bgl_tryrc;
         if (_bgl_catch_cookie == 0) {
             print "^[Unhandled exception]^";
