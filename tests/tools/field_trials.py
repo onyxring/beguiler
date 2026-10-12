@@ -94,10 +94,16 @@ def check(path, keep, show):
     opening, steps, grids = read_trial(trial)
     work = os.path.join(keep or tempfile.mkdtemp(prefix='trial-'), name)
     os.makedirs(work, exist_ok=True)
+    # A reused --keep directory holds the last build's story: clear it, or a failed build runs that.
+    for f in os.listdir(work):
+        if f.endswith(('.z5', '.z8', '.ulx')):
+            os.remove(os.path.join(work, f))
     code, out = run([BEGUILER, '-o', work, path], os.path.dirname(path))
     stories = [f for f in os.listdir(work) if f.endswith(('.z5', '.z8', '.ulx'))]
-    # Inform 6 can leave a story behind after reporting errors, so its error count decides too.
-    if not stories or re.search(r'Compiled with \d+ errors?', out) or 'Error running I6' in out:
+    # Inform 6 can leave a story behind after reporting errors, so its error count decides too; a
+    # beguiler error stops before Inform 6 runs.
+    if (not stories or re.search(r'Compiled with \d+ errors?', out) or 'Error running I6' in out
+            or re.search(r': ERROR: ', out)):
         err = next((l for l in out.split('\n') if 'ERROR' in l or 'Error' in l), out.strip()[-300:])
         return name, 'COMPILE-FAIL', re.sub(r'^.*?/(?=[^/]*\.(bgl|inf)[:(])', '', err.strip())[:300], out
     # A split library verb's emptied-declaration warning is beguiler's to hide (filterVerbSplitWarnings).

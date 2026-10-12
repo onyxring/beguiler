@@ -130,6 +130,11 @@ glkote.error = (msg) => {
     finish();
 };
 glkote.update = (arg) => {
+    // A window list comes with every change of layout: a grid no longer in it has closed.
+    if(Array.isArray(arg.windows)){
+        const live = new Set(arg.windows.map(w => w.id));
+        for(const id of [...grids.keys()]) if(!live.has(id)) grids.delete(id);
+    }
     if(tagWindows && mainWin === null){
         // The main window is the one the player types into. Until it asks for input, hold the text,
         // so what other windows print before then is still told apart.

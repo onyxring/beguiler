@@ -260,6 +260,13 @@ def report(rows, probes, by, md):
            f"Defects: {len(rows)} ({sum(1 for r in rows if not r['fixed_date'])} open, "
            f"{sum(1 for r in rows if not r['found_date'])} undated). Newest ledger entry: {max(dated)}."]
 
+    try:   # the interaction coverage, at the top beside the defect count (detail in its own section)
+        import interaction_map as _im
+        _c, _t = _im.summary(_im.scan()[0])
+        out[-1] += f" Interaction coverage: {_c} of {_t} feature pairs ({100 * _c / _t:.1f}%)."
+    except Exception:
+        pass
+
     first = week_of(min(r['found_date'] for r in rows if r['found_date'] and r['found_date'] >= '2026-03-01'))
     work = new_lines_by_week()
     rates = weekly_rates(rows, active_weeks(rows, probes, first, work), work)
@@ -294,6 +301,71 @@ def report(rows, probes, by, md):
             n = sum(1 for r in rows if r['found_by'] == p['found_by'] and p['date'] <= r['found_date'] < end)
         prow.append([p['date'], p['found_by'], f"{p['units']} {p['unit']}s", n, f"{n / int(p['units']):.3f}"])
     out.append(table(['date', 'probe', 'size', 'found', 'per unit'], prow, md))
+
+    # Feature-interaction coverage: new defects mostly come from two features meeting for the first time.
+    try:
+        import interaction_map as im
+        pairs, used = im.scan()
+        covered, total = im.summary(pairs)
+        hist = im.history()
+        out.append(h('Interaction coverage (pairs of language areas some passing program combines)'))
+        out.append(f"{covered} of {total} pairs ({100 * covered / total:.1f}%) across {len(im.KEYS)} areas, "
+                   f"{len(im.corpus())} programs. Untested pairs are where new defects come from; "
+                   "a round that closes many of them and finds few defects is the sign the drop is near.")
+        if hist:
+            pct = [int(r['covered']) * 100 / int(r['total']) for r in hist] + [100 * covered / total]
+            out.append(('`' if md else '') + sparkline(pct) + ('`' if md else '')
+                       + f"  {hist[0]['label']} → now, {pct[0]:.1f}% → {pct[-1]:.1f}%")
+            rows_h, prev = [], None
+            for r in hist:
+                c = int(r['covered'])
+                rows_h.append([r['date'], r['label'], f"{c} / {r['total']}", f"{100 * c / int(r['total']):.1f}%",
+                               '' if prev is None else f"+{c - prev}"])
+                prev = c
+            if prev is not None and covered != prev:
+                rows_h.append([datetime.date.today().isoformat(), 'now', f'{covered} / {total}',
+                               f'{100 * covered / total:.1f}%', f'+{covered - prev}'])
+            out.append(table(['date', 'after', 'pairs covered', '%', 'new'], rows_h, md))
+        worst = sorted(im.uncovered_by_area(pairs).items(), key=lambda kv: -kv[1])[:10]
+        out.append('Most uncovered pairs, by area: ' + ', '.join(f'{k} {n}' for k, n in worst) + '.')
+        # All-area triples: the campaign toward every triple accounted for (covered, or a held compile error).
+        ac, at = im.all_triple_summary()
+        ahist = im.all_triple_history()
+        out.append(h('All-area triple coverage (every three areas meeting in one declaration)'))
+        out.append(f"{ac} of {at} triples accounted for ({100 * ac / at:.1f}%) across {len(im.KEYS)} areas. A triple "
+                   "counts when some passing program combines it; one that can't occur in valid code is removed from "
+                   "the total and held by a negative test.")
+        if ahist:
+            pct = [int(r['covered']) * 100 / int(r['total']) for r in ahist]
+            out.append(('`' if md else '') + sparkline(pct) + ('`' if md else '')
+                       + f"  {ahist[0]['label']} → {ahist[-1]['label']}, {pct[0]:.1f}% → {pct[-1]:.1f}%")
+            rows_a, prev = [], None
+            for r in ahist:
+                c = int(r['covered'])
+                rows_a.append([r['date'], r['label'], f"{c} / {r['total']}", f"{100 * c / int(r['total']):.1f}%",
+                               '' if prev is None else f"+{c - prev}"])
+                prev = c
+            out.append(table(['date', 'after', 'triples accounted for', '%', 'new'], rows_a, md))
+        # Triples: with nearly every pair covered, the rounds aim at three areas meeting.
+        tc, tt = im.triple_summary()
+        thist = im.triple_history()
+        out.append(h('Triple coverage (three focus areas meeting in one declaration)'))
+        out.append(f"{tc} of {tt} triples ({100 * tc / tt:.1f}%) among {len(im.FOCUS)} focus areas: "
+                   + ', '.join(im.FOCUS) + '.')
+        if thist:
+            pct = [int(r['covered']) * 100 / int(r['total']) for r in thist] + [100 * tc / tt]
+            out.append(('`' if md else '') + sparkline(pct) + ('`' if md else '')
+                       + f"  {thist[0]['label']} → now, {pct[0]:.1f}% → {pct[-1]:.1f}%")
+            rows_t, prev = [], None
+            for r in thist:
+                c = int(r['covered'])
+                rows_t.append([r['date'], r['label'], f"{c} / {r['total']}", f"{100 * c / int(r['total']):.1f}%",
+                               '' if prev is None else f"+{c - prev}"])
+                prev = c
+            out.append(table(['date', 'after', 'triples covered', '%', 'new'], rows_t, md))
+    except Exception as e:   # the report still runs if the map can't
+        out.append(h('Interaction coverage'))
+        out.append(f'(unavailable: {e})')
 
     today = datetime.date.today().isoformat()
     weeks = [week_of((datetime.date.today() - datetime.timedelta(weeks=k)).isoformat()) for k in range(11, -1, -1)]
