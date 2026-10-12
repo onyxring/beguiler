@@ -1,0 +1,76 @@
+Room A
+Room A.
+> seek shiny
+seeking [ shiny ]: mirror knife lamp coin
+matched 4, their traits [ shiny sharp warm ], 3 bits, any also warm: yes
+> seek heavy
+seeking [ heavy ]: anvil stove saw
+matched 3, their traits [ heavy sharp warm ], 3 bits, any also warm: yes
+> lift knife
+You lift the knife.
+> lift stove
+You can't see any such thing.
+> mode 2
+lift rule 2, liftable: mirror lamp coin
+> lift stove
+You can't see any such thing.
+> lift mirror
+You lift the mirror.
+> mode 4
+lift rule 1, liftable: mirror knife lamp coin
+> lift knife
+You lift the knife.
+> lift mirror
+You lift the mirror.
+> sense lamp
+You sense the lamp in Room B.
+> sense saw
+Nothing like that shines from Room B.
+> sense coin
+You sense the coin in Room B.
+> examine crate
+The crate has been looked at 0 times.
+> examine crate
+The crate has been looked at 1 times.
+> relabel 0
+routine: yes
+A relabelled crate.
+> relabel 1
+routine: yes
+A crate, described by a named function.
+> relabel 2
+routine: no
+A crate with a string description.
+> examine crate
+A crate with a string description.
+> examine shelf
+On the shelf: mirror knife.
+> tally 5
+mapped 175, counted 3, named 70, even 3
+printed: 3 8 1 12 5 6 -> -1
+> capture 4
+seen 6, above 4: 4 -> 8 12 5 6, sum 31
+> spaces 3
+grow 6, step 2 9, all 64, bare 64, bare grow 6
+after: grow 9, all 16, routine: yes
+> pick 2
+before: 3, after: 4
+> pick 5
+before: 6, after: 25
+> steps 40
+doubling: 1 2 4 8 16 32
+squaring from 2: 2 4 16
+> dial 2
+default 4, named 15, ordered 34, positional 30
+> table 7
+size 3: 14 -7 8, second -7, mapped sum 18
+> letters
+not a: 3, distinct: b a n, sorted: aaabnn, offsets 27, has n: yes
+> points 3
+x over y: 2, any x 3: yes
+by x: (1,5) (3,3) (4,2) (6,1)
+areas 28, first after skip 3: 6
+> points 1
+x over y: 2, any x 1: yes
+by x: (1,5) (3,3) (4,2) (6,1)
+areas 28, first after skip 1: 4

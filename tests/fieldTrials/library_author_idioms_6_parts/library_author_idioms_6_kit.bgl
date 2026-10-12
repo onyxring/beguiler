@@ -1,0 +1,151 @@
+/*  Field trial part — included by library_author_idioms_6.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+
+// ---- Helpers every array gets. ----
+
+// Counts the elements in use that equal an item: by the element type's == when it publishes one
+// (a routine for a static operator, a property for an instance one), by the word otherwise.
+#i6 {
+    [ La6_CountOf arr n item eq  i c v;
+        for (i = 1 : i <= n : i++) {
+            v = arr-->i;
+            if (eq == 0) { if (v == item) c++; }
+            else if (metaclass(eq) == Routine) { if (eq(v, item)) c++; }
+            else { if (v.eq(item)) c++; }
+        }
+        return c;
+    ];
+    [ La6_SumRaw addr n  i t;
+        for (i = 0 : i < n : i++) t = t + addr-->i;
+        return t;
+    ];
+}
+
+extern int La6_SumRaw(int addr, int n) asBgl la6SumRaw;
+
+extend extern class array {
+    /// The element after the first.
+    emitter T second()          { $i6Expr($self[1]) }
+    /// The last element in use.
+    emitter T tail()            { $i6Expr($self[$self.length - 1]) }
+    /// How many elements in use equal an item; global and local arrays only.
+    emitter int countOf(T item) { La6_CountOf($self, $i6Expr($self.length), $item, $opref(==)) }
+    /// True for an array that is an object's member.
+    emitter bool isMember       { ($prop ~= 0) }
+}
+
+// ---- Coins. ----
+
+/// A coin: its name, then its value, given positionally.
+class la6Coin : object {
+    inline instanceName;
+    inline int value;
+    static bool operator ==  (la6Coin a, la6Coin b) { return a.value == b.value; }
+    static bool operator !=  (la6Coin a, la6Coin b) { return a.value != b.value; }
+    static int  operator <=> (la6Coin a, la6Coin b) { return a.value - b.value; }
+}
+
+/// Something with a label.
+class la6Labelled : object {
+    required string label();
+    void showLabel() { print($"[{label()}]"); }
+}
+
+/// Something that counts what it is given.
+class la6Counted : object {
+    int count = 0;
+    void tick() { count++; }
+}
+
+/// A labelled, counted holder of a few coins.
+class la6Bin : la6Labelled, la6Counted {
+    const int capacity = 3;
+    array<la6Coin> held[4];
+
+    /// Bins compare by capacity.
+    bool operator == (la6Bin o) { return capacity == o.capacity; }
+    bool operator != (la6Bin o) { return capacity != o.capacity; }
+
+    /// Puts a coin in, within the capacity.
+    void put(la6Coin c) {
+        if (held.length >= capacity) { showLabel(); print(" is full.^"); return; }
+        bool same = held.contains(c);
+        held += c;
+        tick();
+        showLabel();
+        print($" takes {c}; {held.length} of {capacity}");
+        if (same) print(", one of equal value already");
+        print(".^");
+    }
+}
+
+// ---- Marks: an additive property every layer contributes to. ----
+
+additive property la6Marks;
+
+class la6Marked : object {
+    rawArray<int> la6Marks = {1, 2};
+}
+
+/// The sum of an object's marks, every layer included.
+int la6MarkSum(la6Marked m) {
+    int t = 0;
+    for (int i in 0 to m.la6Marks.length - 1) t = t + m.la6Marks[i];
+    return t;
+}
+
+/// Reads a numeric property of any object, or -1 when it has none.
+int la6Read(object o, property p) {
+    if (!o.provides(p)) return -1;
+    return o.p;
+}
+
+// ---- Handles: lent out by number, given back when an array drops them. ----
+
+int la6Issued = 0;
+int la6Drops = 0;
+int la6Returned = 0;
+
+/// A numbered handle.
+primitive class la6Handle {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int  operator ()        { ($self) }
+    int operator auto();
+    static void deinit(la6Handle h) {
+        la6Drops++;
+        la6Returned = la6Returned + (int)h;
+    }
+}
+
+/// Lends the next handle.
+la6Handle la6Next() {
+    la6Issued++;
+    la6Handle h = la6Issued * 10;
+    return h;
+}
+
+// ---- Traced scopes. ----
+
+int la6Depth = 0;
+int la6Enter() { la6Depth++; print($"[+{la6Depth}]"); return la6Depth; }
+void la6Leave(int d) { print($"[-{d}]"); la6Depth--; }
+
+/// A scope that prints a mark when it opens and again when it closes.
+emitter class la6Span {
+    void init()   { $self = la6Enter(); }
+    void deinit() { la6Leave($self); }
+    int  depth    { ($self) }
+}
+
+/// Opens a traced scope and leaves it early or late.
+int la6Probe(bool early) {
+    la6Span s;
+    if (early) return s.depth;
+    print("(late)");
+    return 0;
+}
+
+/// Raw weights handed to I6 by address.
+rawArray<int> la6Weights = {3, 5, 9};

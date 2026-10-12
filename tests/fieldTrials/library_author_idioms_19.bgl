@@ -1,0 +1,415 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a job-queue kit and its consumer. The kit declares an enum of priorities; a value class
+// of tick spans with two copy operators, + over ints, <=> (from which < and > are derived), == and !=;
+// a pooled job class with create/destroy, static counters, an owned span member, an object member,
+// an instance <=> used by sort(), and a show method; a value-class rate accessor that clamps; a
+// worker class with a required positional capacity, a required accepts() routine, a default kind(),
+// a run method that throws a cost, and a subclass that hides the rate's setter and overrides kind().
+// The queue object is a namespace (alias … for the enum and the span), holds arrays of jobs and
+// workers, a stringObj log, an inline accessor that counts rounds through outer., and methods that
+// sort, pick a worker by a loop returning null, try/catch a thrown cost, copy a local array back over
+// a member array, walk the queue with a func<> parameter, switch on aliased enum values, and query
+// with postfix ? and ??. Verbs make jobs from a table with new, submit them, run rounds, report with
+// <linq> filter/count/any/first, sweep finished jobs with delete, and compare spans; a #define
+// switches an #if audit line on. The consumer adds an I6 routine bound with extern, an extend class
+// giving jobs a weight and an urgency test, and an extend of the queue object with a summing method
+// and one returning a stringObj; a verb weighs the queue and counts through a capturing lambda.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA19_AUDIT
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ==== The kit: a small job queue. ====
+
+/// How soon a job wants running.
+enum eLa19Pri { low, normal, urgent }
+
+/// A length of time in ticks, copied on assignment.
+value class La19Span {
+    int n;
+    La19Span operator = (La19Span o) { n = o.n; return self; }
+    La19Span operator = (int v) { n = v; return self; }
+    /// The span with some ticks added.
+    La19Span operator + (int v) {
+        La19Span r;
+        r.n = n + v;
+        return r;
+    }
+    /// Orders two spans by length.
+    int operator <=> (La19Span o) { return n - o.n; }
+    /// True when both spans are the same length.
+    bool operator == (La19Span o) { return n == o.n; }
+    /// True when the spans differ in length.
+    bool operator != (La19Span o) { return n != o.n; }
+}
+
+/// A job: a tag, a priority and a cost; made with new and handed back with delete.
+class La19Job[6] : object {
+    string tag;
+    eLa19Pri pri = eLa19Pri.normal;
+    La19Span cost;
+    object owner;
+    /// Jobs made so far.
+    static int made = 0;
+    /// Jobs handed back so far.
+    static int freed = 0;
+
+    void create(string t, eLa19Pri p, int c) {
+        tag = t;
+        pri = p;
+        cost = c;
+        La19Job.made++;
+    }
+
+    void destroy() {
+        La19Job.freed++;
+    }
+
+    /// Urgent jobs first; within a priority, the cheaper first.
+    int operator <=> (La19Job o) {
+        if (pri != o.pri) return (int)o.pri - (int)pri;
+        return cost <=> o.cost;
+    }
+
+    /// Prints the tag and the cost.
+    void show() { print($"{tag}:{cost.n}"); }
+}
+
+/// A rate in ticks of work per tick; never below one.
+value class La19Rate {
+    int _v = 1;
+    int operator () { return _v; }
+    void operator = (int v) {
+        if (v < 1) _v = 1;
+        else _v = v;
+    }
+}
+
+/// Something that runs jobs; each worker says which jobs it takes.
+class La19Worker : object {
+    /// How many jobs the worker runs in one round.
+    required inline int capacity;
+    La19Rate rate;
+    int work = 0;
+    int busy = 0;
+
+    /// True when the worker will take the job.
+    required bool accepts(La19Job j);
+
+    /// A one-word note on the worker.
+    default string kind() { return "plain"; }
+
+    /// Runs a job, or throws its cost when the worker is full this round.
+    void run(La19Job j) {
+        if (busy >= capacity) throw j.cost.n;
+        busy++;
+        work += j.cost.n * rate;
+        j.owner = self;
+    }
+
+    /// Ends a round: the worker is free again.
+    void rest() { busy = 0; }
+}
+
+/// A worker whose rate is set once, where it is declared.
+class La19FixedWorker : La19Worker {
+    hide rate.operator =;
+    string kind() { return "fixed"; }
+}
+
+// ==== The consumer. ====
+
+La19Worker workerA {
+    2, "worker A";
+    bool accepts(La19Job j) { return j.pri != eLa19Pri.low; }
+}
+
+La19FixedWorker workerB {
+    1, "worker B";
+    rate = La19Rate{ _v = 3; };
+    bool accepts(La19Job j) { return j.cost.n <= 4; }
+}
+
+/// The queue: jobs wait here until a round runs them.
+object la19Sched {
+    "queue";
+    alias pri  for eLa19Pri;
+    alias span for La19Span;
+    array<La19Job> waiting[6];
+    array<La19Job> finished[6];
+    array<La19Worker> crew = { workerA, workerB };
+    stringObj log;
+    int rounds = 0;
+    span longest;
+
+    /// The ticks all rounds have spent; each setting counts a round.
+    auto spent = {
+        int _t = 0;
+        int operator () { return _t; }
+        void operator = (int v) {
+            _t = v;
+            outer.rounds++;
+        }
+    }
+
+    /// Queues a job; false when there is no job or the queue is full.
+    bool submit(La19Job j) {
+        if (!(j?)) return false;
+        return waiting.append(j);
+    }
+
+    /// The first worker that takes a job, or null.
+    La19Worker pick(La19Job j) {
+        for (La19Worker w in crew) {
+            if (w.accepts(j)) return w;
+        }
+        return null;
+    }
+
+    /// Prints one letter for a priority.
+    void say(pri p) {
+        switch (p) {
+            case pri.urgent: print("U");
+            case pri.normal: print("N");
+            default:         print("L");
+        }
+    }
+
+    /// Runs every waiting job it can, most urgent first; what no worker can run waits. Returns how many ran.
+    int runRound() {
+        waiting.sort();
+        array<La19Job> left[6];
+        int ran = 0;
+        int ticks = 0;
+        for (La19Job j in waiting) {
+            La19Worker w = pick(j);
+            if (!(w?)) {
+                left.append(j);
+                log += "-";
+                continue;
+            }
+            try {
+                w.run(j);
+                ran++;
+                ticks += j.cost.n;
+                if (j.cost > longest) longest = j.cost;
+                finished.append(j);
+                log += j.tag;
+                log += " ";
+            } catch (int c) {
+                left.append(j);
+                log += "!";
+            }
+        }
+        waiting = left;
+        for (La19Worker w in crew) w.rest();
+        spent = spent + ticks;
+        return ran;
+    }
+
+    /// Runs a step on each waiting job, in queue order.
+    void each(func<void, La19Job> step) {
+        for (La19Job j in waiting) step(j);
+    }
+}
+
+// ---- The table jobs are made from. ----
+
+array<string> la19Tags = { "alpha", "beta", "gamma", "delta", "omega" };
+array<eLa19Pri> la19Pris = { eLa19Pri.normal, eLa19Pri.urgent, eLa19Pri.low, eLa19Pri.urgent, eLa19Pri.normal };
+array<int> la19Costs = { 3, 5, 2, 2, 6 };
+
+/// The next row of the table to use.
+int la19Next = 0;
+
+/// Makes the job for the next row of the table; null when the pool is empty.
+La19Job la19Make() {
+    int i = la19Next % la19Tags.length;
+    la19Next++;
+    return new La19Job(la19Tags[i], la19Pris[i], la19Costs[i]);
+}
+
+/// Prints a worker's line.
+void la19ShowWorker(La19Worker w) {
+    print($"{w} {w.kind()} r{w.rate} w{w.work}");
+}
+
+// ---- The consumer's additions to the kit. ----
+
+#i6 {
+[ La19Weigh n m; return n * m + 1; ];
+}
+
+/// Weighs a cost against a rate; the consumer wrote it in I6.
+extern int La19Weigh(int n, int m);
+
+/// Every job can be weighed and asked whether it is urgent.
+extend class La19Job {
+    /// The job's cost weighed against a rate.
+    int weight(int rate) { return La19Weigh(cost.n, rate); }
+    /// True when the job is urgent.
+    bool isUrgent() { return pri == eLa19Pri.urgent; }
+}
+
+/// The queue can weigh what is waiting and name its heaviest job.
+extend la19Sched {
+    /// The waiting jobs' weights at a rate, summed.
+    int load(int rate) {
+        int total = 0;
+        for (La19Job j in waiting) total += j.weight(rate);
+        return total;
+    }
+
+    /// The heaviest waiting job's tag, or "none".
+    stringObj heaviest(int rate) {
+        stringObj name = "none";
+        int best = -1;
+        for (La19Job j in waiting) {
+            int w = j.weight(rate);
+            if (w > best) {
+                best = w;
+                name = j.tag;
+            }
+        }
+        return name;
+    }
+}
+
+// ==== Verbs. ====
+
+verb La19Add {
+    grammar = {.add, NUMBER};
+    void handler() {
+        int asked = (int)noun;
+        int queued = 0;
+        int none = 0;
+        for (int k in 1 to asked) {
+            La19Job j = la19Make();
+            if (!(j?)) none++;
+            else if (la19Sched.submit(j)) queued++;
+            else delete j;
+        }
+        print($"queued {queued} of {asked}");
+        if (none > 0) print($", {none} not made");
+        print($"; waiting {la19Sched.waiting.length}.^");
+    }
+}
+
+verb La19Run {
+    grammar = {.run};
+    void handler() {
+        la19Sched.log = "";
+        int ran = la19Sched.runRound();
+        print($"ran {ran}: {la19Sched.log.trim()}; ");
+        print($"left {la19Sched.waiting.length}, round {la19Sched.rounds}, spent {la19Sched.spent}.^");
+    }
+}
+
+verb La19Queue {
+    grammar = {.queue};
+    void handler() {
+        print("queue:");
+        la19Sched.each((La19Job j) => {
+            print(" ");
+            la19Sched.say(j.pri);
+            j.show();
+        });
+        print(".^");
+    }
+}
+
+verb La19Status {
+    grammar = {.status};
+    void handler() {
+        int urgent = la19Sched.finished.filter((La19Job j) => j.pri == eLa19Pri.urgent).count();
+        bool big = la19Sched.finished.any((La19Job j) => j.cost.n >= 5);
+        print($"finished {la19Sched.finished.length}, urgent {urgent}");
+        if (big) print(", big");
+        La19Job top = la19Sched.finished.first();
+        if (top?) {
+            print("; first ");
+            top.show();
+            object by = top.owner ?? roomA;
+            print($" by {by}");
+        }
+        print($"; longest {la19Sched.longest.n}^");
+        for (La19Worker w in la19Sched.crew) {
+            la19ShowWorker(w);
+            print("^");
+        }
+#if LA19_AUDIT
+        print($"made {La19Job.made} freed {La19Job.freed}^");
+#endif
+    }
+}
+
+verb La19Sweep {
+    grammar = {.sweep};
+    void handler() {
+        int n = 0;
+        for (La19Job j in la19Sched.finished) {
+            delete j;
+            n++;
+        }
+        la19Sched.finished.clear();
+        print($"swept {n}; made {La19Job.made} freed {La19Job.freed}.^");
+    }
+}
+
+verb La19Weighing {
+    grammar = {.weigh, NUMBER};
+    void handler() {
+        int rate = (int)noun;
+        stringObj top = la19Sched.heaviest(rate);
+        int urgent = 0;
+        la19Sched.each((La19Job j) => {
+            if (j.isUrgent()) urgent++;
+        });
+        print($"load {la19Sched.load(rate)} at {rate}, heaviest {top.toUpper()}, urgent {urgent}.^");
+    }
+}
+
+verb La19Spans {
+    grammar = {.spans};
+    void handler() {
+        la19Sched.span a = 4;
+        La19Span b = a + 3;
+        La19Span c = b;
+        c = c + -2;
+        print($"{a.n} {b.n} {c.n}:");
+        if (a < b) print(" a<b");
+        if (c > a) print(" c>a");
+        if (a == c) print(" a=c");
+        if (b != c) print(" b!=c");
+        print($" {b <=> a}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

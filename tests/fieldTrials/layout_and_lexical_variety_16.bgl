@@ -1,0 +1,509 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where up to eighteen language areas meet inside one declaration.
+// A value subclass with `+` (returning a local copy), `==`/`!=`/`<=>`, `[]`/`[]=` over a global
+// `array<char>`, a method holding an emitter-class local with init/deinit, a `stringObj`, a local
+// `array<char>` loaded through `bgl.util.buf`, a local `array<Bin>` of objects switched on with ranges,
+// an ancestor call through a cast, a `var` told apart by `typeof` and a performed verb; its `extend`
+// adding an emitter `operator switch`, `operator +=` taking the class, an `explicit` conversion and a
+// method that throws `self`, caught by type in a routine taking a `ref array<Dial>`; a value class with
+// `+=` taking a primitive class, `++`, `<`, `==`, a switching `[]`, and a method that walks a nested
+// list initializer inside `try`, throws out of the loop, switches on `typeof` of a named union and
+// performs a verb; its `extend` under `#IF` (tab-indented) adding `-=` that throws, `--`, `prefix++` and a
+// method taking a `ref array<string>` that catches per row; an emitter class with `+=`, `?` and an
+// `operator switch`; an extern class bound to I6 objects with emitter `()`, `[]`, `==`, `!=` and a
+// static `<=>`, holding a static method with a local `array<string>`, a `stringObj`, a ref bound with
+// `:=` to a value-class global, an enum from a ranged/guarded switch and a performed verb; a value class
+// with a converting `operator =`, a regular-method conversion, `==`/`!=` against strings, an instance
+// `<=>` that `sort()` uses on an `array<Word>`, and a method that switches on string and enum cases and
+// calls an extern routine renamed with `asBgl`; verbs whose handlers mix all of these (an
+// `array<stringObj>`, a ref rebound with `:=` across value-class slots, a string `switch`).
+// Lexically: `#Define`/`#DEFINE`/`#IF`/`#EndIf` in mixed case, `$` hex and `$$` binary literals in
+// directives and code, keywords in odd case (`TRY`, `Catch`, `THROW`, `SWITCH`, `Case`, `TO`, `EXPLICIT`,
+// `Static`), comments between `operator` and its symbol and inside argument and parameter lists, an
+// expression continued on a leading operator, a tab-indented extension, K&R and Allman braces mixed, and
+// an empty statement.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define WIDE                            // a flag
+#DEFINE TWO     $$10                    // binary: two
+#define TEN     $A                      // hex: ten
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+extend class object { string description ; }
+
+object roomA { "Room A" ; description = "A plain room." ; attributes = light ; }
+
+bool Initialise() { location = roomA ; rfalse ; }
+
+int pings = 0 ;
+
+//-- A verb the code below performs --------------------------------------------------------------------
+
+class loudVerb : verb
+{
+    meta = true ;
+    default void handler() { pings++ ; print("[ping]") ; }
+}
+
+loudVerb V_ping { grammar = { .ping } ; }
+
+//-- Shared types ------------------------------------------------------------------------------------------
+
+enum eShade { pale = 1 , plain , deep }
+
+union Tag = string | object ;
+
+#i6 Global tallyDepth = 0 ;
+extern int tallyDepth ;
+
+emitter class Tally
+{
+    void init ()   { tallyDepth++ ; $self = tallyDepth ; }
+    void deinit () { tallyDepth-- ; }
+    int  operator () { ($val) }
+}
+
+primitive class Cents : int
+{
+    replace emitter void operator = ( int v ) { $target = $v ; }
+    replace emitter int  operator () { ($val) }
+    emitter int  dimes ()    { ($val / 10) }
+}
+
+class Bin : object { int load ; }
+Bin binA { "bin A" ; load = 3 ; }
+Bin binB { "bin B" ; load = 8 ; }
+Bin binC { "bin C" ; load = 5 ; }
+
+array<char> dialText[12] ;
+
+value class Gauge
+{
+    int lo ;
+    int hi ;
+    Gauge operator = ( Gauge o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    int width () { return hi - lo ; }
+}
+
+//-- Cluster 1: a value subclass with + == != <=> [] []= and one dense method -----------------------------
+
+value class Dial : Gauge
+{
+    int step ;
+    Dial operator = ( Dial o ) { step = o.step ; (Gauge)self = o ; return self ; }
+    Dial operator + ( int n /* steps */ )
+    {
+        Dial d = self ;
+        d.hi = hi + n ;
+        return d ;
+    }
+    eBool operator == ( Dial o ) { return width() == o.width() ; }
+    eBool operator != ( Dial o ) { return width() != o.width() ; }
+    int   operator /* by width */ <=> ( Dial o ) { return width() - o.width() ; }
+    char  operator [] ( int i ) { return dialText[(lo + i) % 12] ; }
+    void  operator []= ( int i , char c ) { dialText[(lo + i) % 12] = c ; }
+    replace int width () { return (hi - lo) * step ; }
+
+    int survey ( var what )
+    {
+        Tally       t ;
+        stringObj   s ;
+        array<char> word[8] ;
+        array<Bin>  bins = { binA , binB , binC } ;
+        int base = ((Gauge)self).width() ;
+        int sum  = 0 ;
+        for (int i = 0 ; i < bins.length ; i++)
+        {
+            switch (bins[i].load)
+            {
+                case 0 TO $3 : sum += 1 ;
+                Case 4 , $5  : sum += 10 ;
+                default     : sum += 100 ;
+            }
+        }
+        s = "dial" ;
+        bgl.util.buf.set( word /* dest */ , "al" ) ;
+        int at = s.indexOf(word) ;
+        self[0] = 'D' ;
+        Dial twin = self + TWO ;
+        if (twin != self) sum += 1000 ;
+        if (twin > self)  sum += $3E8 ;
+        if (typeof(what) == eType.object) V_ping.perform() ;
+        print(self[0]) ; print(self[1]) ; print(" ") ;
+        print(sum) ; print(" ") ;
+        return base * 100 + at * 10 + t ;
+    }
+}
+
+//-- More of Dial: an operator switch, += taking a Dial, an explicit conversion and a throw of self ----------
+
+extend class Dial
+{
+    emitter eBool operator switch ( int v ) { ($self.step == $v) }
+    Dial operator += ( Dial o ) { hi = hi + o.width() ; return self ; }
+    EXPLICIT int operator () { return lo * 100 + hi ; }
+    int check ( int most )
+    {
+        if (width() > most) throw self ;
+        return width() ;
+    }
+}
+
+int   sweep ( ref array<Dial> row , int most )
+{
+    int   ok = 0 ;
+    Tally t ;
+    for (int i = 0 ; i < row.length ; i++)
+    {
+        try { ok += row[i].check(most) ; }
+        catch (Dial bad)
+        {
+            print("[") ; print((int)bad) ; print(":") ; print(((Gauge)bad).width()) ; print("]") ;
+        }
+    }
+    SWITCH (row[0]) { case 1 : print("s1") ; case 2 : print("s2") ; default : print("s?") ; }
+    print(" ") ;;
+    return ok * 10
+         + t ;
+}
+
+//-- Cluster 2: a value class with += ++ < == [] and a method with try/throw over a nested list ----------
+
+value class Purse {
+    int total ;
+    int moves ;
+    Purse operator =  ( Purse o ) { total = o.total ; moves = o.moves ; return self ; }
+    Purse operator += ( Cents c ) { total = total + c ; moves++ ; return self ; }
+    Purse operator ++ () { total = total + 1 ; moves = moves + 1 ; return self ; }
+    eBool operator <  ( Purse o ) { return total < o.total ; }
+    eBool operator == ( Purse o ) { return total == o.total ; }
+    eBool operator != ( Purse o ) { return total != o.total ; }
+    int   operator [] ( int i )
+    {
+        switch (i) { case 0 : return total ; case 1 : return moves ; default : return -1 ; }
+    }
+
+    int fill ( Tag src , int limit )
+    {
+        array<array<int>> grid = { { 1 , 2 } , { 30 , 40 , 50 } } ;
+        array<char> note[16] ;
+        stringObj   s ;
+        Cents       c = 0 ;
+        int caught = 0 ;
+        try
+        {
+            for (int r = 0 ; r < grid.length ; r++)
+                for (int k = 0 ; k < grid[r].length ; k++)
+                {
+                    c = grid[r][k] ;
+                    self += c ;
+                    if (total > limit) throw total ;
+                }
+        }
+        catch (int e) { caught = e ; }
+        self++ ;
+        bgl.util.buf.set(note, "coins") ;
+        s = "purse" ;
+        s += " of " ;
+        s = s.append(note) ;
+        var v = src ;
+        switch (typeof(v))
+        {
+            case eType.string : print((string)v) ;
+            case eType.object : print((object)v) ;
+            default           : print("?") ;
+        }
+        print(" ") ; s.print() ; print(" ") ;
+        Purse other ;
+        other.total = limit ;
+        if (other < self) V_ping.perform() ;
+        return caught * 100 + self[1] * 10 + c.dimes() ;
+    }
+}
+
+//-- Cluster 3: an extern class with () [] == and static <=>, and a static method ------------------------
+
+#i6 {
+Class   KnobI6  with knob_pos 0 ;
+KnobI6  knobA "knob A" with knob_pos 2 ;
+KnobI6  knobB "knob B" with knob_pos 7 ;
+}
+
+extern class KnobI6 : object
+{
+    int knob_pos ;
+    emitter int   operator ()  { ($val.knob_pos) }
+    emitter int   operator [] ( int i ) { ($val.knob_pos + $i) }
+    emitter eBool operator == ( KnobI6 k ) { ($val.knob_pos == $k.knob_pos) }
+    emitter eBool operator != ( KnobI6 k ) { ($val.knob_pos ~= $k.knob_pos) }
+    Static int operator <=> ( KnobI6 a , KnobI6 b ) { return a.knob_pos - b.knob_pos ; }
+
+    static int read ( KnobI6 k , KnobI6 other , Tag why )
+    {
+        array<string> names = { "low" , "mid" , "high" } ;
+        stringObj     s ;
+        ref Gauge     r := spare ;
+        eShade        shade = eShade.plain ;
+        int n = k ;
+        switch (n)
+        {
+            case 0 to 3 : shade = eShade.pale ;
+            case >= 7   : shade = eShade.deep ;
+        }
+        s = names[(int)shade - 1] ;
+        string head = names[0] ;
+        if (s != head) s += "*" ;
+        r.lo = k[1] ;
+        r.hi = other[2] ;
+        if (k <=> other < 0) s += "<" ;
+        if (k != other) s += "!" ;
+        if (typeof(why) == eType.string) { print((string)why) ; print(" ") ; }
+        s.print() ;
+        print(" ") ;
+        if (shade == eShade.deep) V_ping.perform() ;
+        return r.width() ;
+    }
+}
+
+extern KnobI6 knobA ;
+extern KnobI6 knobB ;
+
+Gauge spare ;
+
+//-- More of Purse, under a flag: -= -- prefix++ and a method that catches per row ----------------------
+
+array<string> rowNames   = { "one" , "two" , "three" } ;
+array<string> levelNames = { "low" , "mid" , "high" , "mid" } ;
+
+#IF WIDE
+extend class Purse
+{
+	Purse operator -= ( Cents c )
+	{
+		if (total - c < 0) THROW c ;
+		total = total - c ; moves++ ;
+		return self ;
+	}
+	Purse operator --       () { total-- ; return self ; }
+	Purse operator prefix++ () { total = total + TEN ; return self ; }
+
+	int drain ( ref array<string> labels , Tag who )
+	{
+		array<array<int>> plan = { { 5 } , { 20 , 90 } , { 1 , 1 , 1 } } ;
+		stringObj trail ;
+		int fails = 0 ;
+		for (int r = 0 ; r < plan.length ; r++)
+		{
+			TRY
+			{
+				for (int k = 0 ; k < plan[r].length ; k++) { Cents c = plan[r][k] ; self -= c ; }
+				trail += labels[r] ;
+			}
+			Catch ( int e )
+			{
+				fails++ ;
+				trail += "(" ; trail += labels[r] ; trail += ")" ;
+				if (e > 50) self-- ;
+			}
+			trail += " " ;
+		}
+		SWITCH (self[1])
+		{
+			Case 0 to 4 : trail += "few" ;
+			Case 5 , 6  : trail += "some" ;
+			Default     : trail += "many" ;
+		}
+		if (typeof(who) == eType.object) V_ping.perform() ;
+		trail.print() ;
+		return fails * 1000 + total ;
+	}
+}
+#EndIf
+
+//-- An emitter counter with += ? and an operator switch on its tens digit ---------------------------------
+
+emitter class Mark
+{
+    void  init   ()               { $self = 0 ; }
+    void  deinit ()               { }
+    void  operator =  ( int v )   { $target = $v ; }
+    int   operator () ;
+    void  operator += ( int v )   { $self = $self + $v ; }
+    eBool operator ?  ()          { ($self ~= 0) }
+    eBool operator switch ( int v ) { ($self / 10 == $v) }
+}
+
+//-- Words: a value class with a stringObj member, a conversion, ordering and a subscript ---------------
+
+extern void PrintShortName ( object o ) asBgl showName ;
+
+value class Word
+{
+    stringObj text ;
+    eShade    tone ;
+    Word  operator =   ( Word o )   { text = o.text ; tone = o.tone ; return self ; }
+    Word  operator =   ( string s ) { text = s ; tone = eShade.plain ; return self ; }
+    int   operator ()  { return text.length ; }
+    eBool operator ==  ( string s ) { return text == s ; }
+    eBool operator !=  ( string s ) { return text != s ; }
+    int   operator <=> ( Word o )   { return text <=> o.text ; }
+    char  operator []  ( int i )    { return text[i] ; }
+
+    int classify ( ref array<string> pool , Tag from )
+    {
+        ref Word me := self ;
+        int hits = 0 ;
+        for (int i = 0 ; i < pool.length ; i++) if (me == pool[i]) hits++ ;
+        switch (text)
+        {
+            case "low"  : tone = eShade.pale ;
+            case "high" : tone = eShade.deep ;
+            default     : tone = eShade.plain ;
+        }
+        switch (tone) { case eShade.deep : V_ping.perform() ; default : ; }
+        if (typeof(from) == eType.object) { showName((object)from) ; print(":") ; }
+        int n = self ;
+        return hits * 100 + n * 10 + (int)tone ;
+    }
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------------
+
+verb V_dial
+{
+    meta = true ; grammar = { .dial } ;
+    void handler()
+    {
+        bgl.util.buf.set(dialText, "abcdefghijkl") ;
+        Dial a ;
+        a.lo = 1 ; a.hi = 4 ; a.step = 2 ;
+        print(a.survey(roomA)) ; print(" ") ;
+        printLine($"{tallyDepth} {pings}") ;
+    }
+}
+
+verb V_purse
+{
+    meta = true ; grammar = { .purse } ;
+    void handler()
+    {
+        Purse p ;
+        print(p.fill("first", 60)) ; print(" ") ;
+        printLine($"{p[0]} {p[1]} {pings}") ;
+    }
+}
+
+verb V_knob
+{
+    meta = true ; grammar = { .knob } ;
+    void handler()
+    {
+        print(KnobI6.read(knobA, knobB, "a")) ; print(" ") ;
+        print(KnobI6.read(knobB, knobA, roomA)) ; print(" ") ;
+        printLine($"{spare.lo} {spare.hi} {pings}") ;
+    }
+}
+
+verb V_drain
+{
+    meta = true ; grammar = { .drain } ;
+    void handler()
+    {
+        Purse p ;
+        ++p ; ++p ;
+        p.total = p.total + 30 ;
+        print(p.drain(rowNames, roomA)) ; print(" ") ;
+        p.total = 4 ;
+        print(p.drain(rowNames, "x")) ; print(" ") ;
+        printLine($"{p[0]} {p[1]} {pings}") ;
+    }
+}
+
+verb V_mix
+{
+    meta = true ; grammar = { .mix | .blend } ;
+    void handler()
+    {
+        array<Dial>      dials[3] ;
+        array<stringObj> said[2] ;
+        Dial  d ;
+        Mark  m ;
+        Purse p ;
+        d.lo = 0 ; d.hi = 3 ; d.step = 1 ;
+        dials[0] = d ;
+        dials[1] = d + 4 ;
+        dials[2] = d + 1 ;
+        ref Dial best := dials[0] ;
+        for (int i = 1 ; i < 3 ; i++) if (dials[i] > best) best := dials[i] ;
+        best.step = 2 ;
+        print(dials[1].width()) ; print(" ") ; print(dials[0] <=> dials[2]) ; print(" ") ;
+        m += 23 ;
+        switch (m) { case 1 : print("teens") ; case 2 : print("twenties") ; default : print("other") ; }
+        if (m?) print("+") ;
+        print(" ") ;
+        Cents c = 7 ;
+        p += c ; ++p ;
+        said[0] = "north" ;
+        said[1] = said[0] + "east" ;
+        string dir = "north" ;
+        switch (dir) { case "south" : print("S") ; case "north" : print("N") ; default : print("?") ; }
+        eShade sh = (eShade)2 ;
+        switch (sh) { case eShade.pale : print("p") ; case eShade.plain : print("m") ; case eShade.deep : print("d") ; }
+        Tag tg = knobB ;
+        KnobI6 k = (KnobI6)tg ;
+        int pos = k ;
+        print(" ") ; said[1].print() ;
+        printLine($" {p[0]} {p[1]} {pos} {k[1]} {(int)m} {tallyDepth}") ;
+    }
+}
+
+verb V_words
+{
+    meta = true ; grammar = { .words } ;
+    void handler()
+    {
+        array<Word> list[4] ;
+        list[0] = "mid"  ;
+        list[1] = "high" ;
+        list[2] = "low"  ;
+        list[3] = "mid"  ;
+        print(list[1].classify(rowNames, knobA)) ; print(" ") ;
+        print(list[3].classify(levelNames, "s")) ; print(" ") ;
+        list.length = 4 ;
+        list.sort() ;
+        for (int i = 0 ; i < 4 ; i++) { print(list[i].text) ; print(",") ; }
+        Word w = list[3] ;
+        int len = w ;
+        printLine($" {len} {list[0][0]} {w[1]} {list[0] == "high"} {w != "high"} {pings}") ;
+    }
+}
+
+verb V_sweep
+{
+    meta = true ; grammar = { .rows } ;
+    void handler()
+    {
+        array<Dial> row[3] ;
+        row.length = 3 ;
+        row[0].lo = 1 ; row[0].hi = 3 ; row[0].step = 2 ;
+        row[1].lo = 0 ; row[1].hi = 9 ; row[1].step = 1 ;
+        row[2].lo = 2 ; row[2].hi = 4 ; row[2].step = 3 ;
+        row[2] += row[0] ;
+        print(sweep(row, 5)) ; print(" ") ;
+        printLine($"{row[2].hi} {(int)row[1]} {((Gauge)row[2]).width()} {typeof(row[0]) == eType.object} {tallyDepth}") ;
+    }
+}
+
+#includeI6 "grammar"

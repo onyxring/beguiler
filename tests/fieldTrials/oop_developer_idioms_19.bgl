@@ -1,0 +1,431 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, nineteenth pass: a small job scheduler.
+// A value class for durations with arithmetic, ordering through `<=>` (and the derived `<`/`>`), `==`/`!=`,
+// a static factory and positional inline-object values; a clamping property accessor class used as an
+// owned member; a template-method base class whose `default` methods are overridden by three subclasses,
+// one of them mixing in an "interface" base through multiple inheritance with a `const` member and a
+// `default` method of its own; a pooled error class thrown from inside a virtual call and caught in a
+// typed `catch`, with `is` tests and casts to the mixin; a scheduler class holding an `array<Job>` queue
+// (append, sort with a comparator lambda, dequeue, enqueue, clear) and an observer list of `func<>`
+// listeners; a `ref stringObj` journal threaded through the calls; static counters and a static method; enum
+// switches and a name-lookup helper; a summary value class returned from a method; `?.` and `??`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum ePriority { Low, Normal, High }
+enum eOutcome { Done, Retry, Failed }
+
+//-- Duration: a value type with arithmetic and ordering ---------------------------------------------------
+
+value class Duration {
+    inline int Ticks;
+
+    Duration operator = (Duration o) { Ticks = o.Ticks; return self; }
+    Duration operator + (Duration o) { return Duration{ Ticks + o.Ticks }; }
+    Duration operator - (Duration o) { return Duration{ Ticks - o.Ticks }; }
+    int operator <=> (Duration o) { return Ticks - o.Ticks; }
+    bool operator == (Duration o) { return Ticks == o.Ticks; }
+    bool operator != (Duration o) { return Ticks != o.Ticks; }
+
+    static Duration FromUnits(int units) { return Duration{ units * 10 }; }
+
+    bool IsZero() { return Ticks == 0; }
+}
+
+//-- Percent: a clamping property accessor -------------------------------------------------------------------
+
+value class Percent {
+    int _value;
+    int operator () { return _value; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        _value = v;
+    }
+}
+
+//-- Errors thrown by jobs ---------------------------------------------------------------------------------
+
+class JobError[3] : object {
+    int Code;
+    string Reason;
+    static int Raised;
+
+    void create(int errorCode, string why) {
+        Code = errorCode;
+        Reason = why;
+        JobError.Raised++;
+    }
+}
+
+//-- An "interface" for jobs that may be retried -------------------------------------------------------------
+
+class Retryable : object {
+    int Attempts;
+    const int MaxAttempts = 2;
+
+    default bool CanRetry() { return Attempts < MaxAttempts; }
+}
+
+//-- The job hierarchy: a template method that calls an overridable step -----------------------------------
+
+class Job : object {
+    inline instanceName;
+    inline ePriority Priority;
+    Duration Cost;
+    int Runs;
+    static int TotalRuns;
+
+    default eOutcome Execute(ref stringObj journal) {
+        journal += "noop";
+        return eOutcome.Done;
+    }
+
+    default string Kind() { return "job"; }
+
+    // Runs the job once and counts the run.
+    eOutcome Run(ref stringObj journal) {
+        Runs++;
+        Job.TotalRuns++;
+        return Execute(journal);
+    }
+
+    bool IsUrgent() { return Priority == ePriority.High; }
+}
+
+class EchoJob : Job {
+    string Text;
+
+    eOutcome Execute(ref stringObj journal) {
+        journal += Text;
+        return eOutcome.Done;
+    }
+
+    string Kind() { return "echo"; }
+}
+
+class CountJob : Job {
+    int From;
+
+    eOutcome Execute(ref stringObj journal) {
+        int total = 0;
+        for (int i = From; i > 0; i--) total += i;
+        stringObj part = $"sum{From}={total}";
+        journal += part;
+        return eOutcome.Done;
+    }
+
+    string Kind() { return "count"; }
+}
+
+class FlakyJob : Job, Retryable {
+    int SucceedOn;
+
+    eOutcome Execute(ref stringObj journal) {
+        Attempts++;
+        if (Attempts < SucceedOn) {
+            JobError err = new JobError(Attempts, "not yet");
+            if (err == null) return eOutcome.Failed;
+            throw err;
+        }
+        stringObj part = $"ok@{Attempts}";
+        journal += part;
+        return eOutcome.Done;
+    }
+
+    string Kind() { return "flaky"; }
+}
+
+class StrictJob : Job, Retryable {
+    eOutcome Execute(ref stringObj journal) {
+        Attempts++;
+        JobError err = new JobError(90 + Attempts, "strict");
+        if (err == null) return eOutcome.Failed;
+        throw err;
+    }
+
+    string Kind() { return "strict"; }
+
+    replace bool CanRetry() { return false; }
+}
+
+//-- A summary returned by value ---------------------------------------------------------------------------
+
+value class Summary {
+    int Count;
+    Duration Total;
+    Duration Longest;
+
+    Summary operator = (Summary o) {
+        Count = o.Count;
+        Total = o.Total;
+        Longest = o.Longest;
+        return self;
+    }
+}
+
+//-- The scheduler -------------------------------------------------------------------------------------------
+
+class Scheduler : object {
+    inline instanceName;
+    array<Job> Queue[4];
+    array<func<void, Job, eOutcome>> Listeners[3];
+    int Completed;
+    int Failed;
+    Duration Elapsed;
+    Percent Load;
+
+    static string OutcomeName(eOutcome o) {
+        switch (o) {
+            case eOutcome.Done:  return "done";
+            case eOutcome.Retry: return "retry";
+            default:             return "failed";
+        }
+    }
+
+    bool Submit(Job j) {
+        if (Queue.length >= Queue.size) return false;
+        Queue.append(j);
+        Load = Queue.length * 100 / Queue.size;
+        return true;
+    }
+
+    // Submits each job in turn; returns how many were accepted.
+    int Submit(array<Job> jobs) {
+        int accepted = 0;
+        for (Job j in jobs) {
+            if (Submit(j)) accepted++;
+        }
+        return accepted;
+    }
+
+    void Reset(bool clearListeners = false, int keep = 0) {
+        Queue.clear();
+        Completed = 0;
+        Failed = 0;
+        Elapsed = Duration{ keep };
+        if (clearListeners) Listeners.clear();
+        Load = 0;
+    }
+
+    void SortByCost(bool descending = false) {
+        if (descending) Queue.sort((Job a, Job b) => b.Cost <=> a.Cost);
+        else Queue.sort((Job a, Job b) => a.Cost <=> b.Cost);
+    }
+
+    // The queued jobs' names, in queue order.
+    stringObj Describe() {
+        stringObj text = "";
+        for (int i = 0; i < Queue.length; i++) {
+            if (i > 0) text += ", ";
+            Job j = Queue[i];
+            stringObj name = $"{j}";
+            text += name;
+        }
+        return text;
+    }
+
+    void Subscribe(func<void, Job, eOutcome> listener) {
+        Listeners.append(listener);
+    }
+
+    void Notify(Job j, eOutcome o) {
+        for (func<void, Job, eOutcome> l in Listeners) l(j, o);
+    }
+
+    void SortByPriority() {
+        Queue.sort((Job a, Job b) => (int)b.Priority - (int)a.Priority);
+    }
+
+    // Runs every queued job, highest priority first, retrying the ones that ask for it.
+    int RunAll(ref stringObj journal) {
+        SortByPriority();
+        int ran = 0;
+        while (Queue.length > 0) {
+            Job j = Queue.dequeue();
+            eOutcome result = eOutcome.Failed;
+            try {
+                result = j.Run(journal);
+            } catch (JobError e) {
+                journal += "!";
+                journal += e.Reason;
+                if (j.is(Retryable) && ((Retryable)j).CanRetry()) result = eOutcome.Retry;
+                else result = eOutcome.Failed;
+                delete e;
+            }
+            switch (result) {
+                case eOutcome.Done:
+                    Completed++;
+                    Elapsed += j.Cost;
+                case eOutcome.Retry:
+                    Queue.enqueue(j);
+                case eOutcome.Failed:
+                    Failed++;
+            }
+            Notify(j, result);
+            journal += " ";
+            ran++;
+        }
+        Load = 0;
+        return ran;
+    }
+
+    // Totals the cost of the given jobs and finds the longest one.
+    Summary Summarize(array<Job> jobs) {
+        Summary s;
+        for (Job j in jobs) {
+            s.Count++;
+            s.Total = s.Total + j.Cost;
+            if (j.Cost > s.Longest) s.Longest = j.Cost;
+        }
+        return s;
+    }
+}
+
+//-- Objects -------------------------------------------------------------------------------------------------
+
+Scheduler mainQueue { "main queue"; }
+
+EchoJob jobA   { "job A", Normal; Text = "hello"; Cost = Duration{ 3 }; }
+CountJob jobB  { "job B", High;   From = 4;       Cost = Duration{ 5 }; }
+FlakyJob jobC  { "job C", Low;    SucceedOn = 2;  Cost = Duration{ 2 }; }
+StrictJob jobD { "job D", Normal;                 Cost = Duration{ 7 }; }
+EchoJob jobE   { "job E", Low;    Text = "bye";   Cost = Duration{ 1 }; }
+
+array<Job> AllJobs = { jobA, jobB, jobC, jobD, jobE };
+
+//-- Listeners -----------------------------------------------------------------------------------------------
+
+int DoneCount;
+
+void CountDone(Job finished, eOutcome o) {
+    if (o == eOutcome.Done) DoneCount++;
+}
+
+void TraceProblems(Job j, eOutcome o) {
+    if (o != eOutcome.Done) print($"[{j} {j.Kind()} {Scheduler.OutcomeName(o)}]");
+}
+
+//-- Helpers -------------------------------------------------------------------------------------------------
+
+// The first job of the given kind, or null.
+Job FindByKind(string kind) {
+    for (Job j in AllJobs) {
+        if (j.Kind() == kind) return j;
+    }
+    return null;
+}
+
+int CountRetryable() {
+    int n = 0;
+    for (Job j in AllJobs) {
+        if (j.is(Retryable)) n++;
+    }
+    return n;
+}
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb QueueJobs {
+    grammar = {.queue};
+    void handler() {
+        int accepted = 0;
+        int rejected = 0;
+        for (Job j in AllJobs) {
+            if (mainQueue.Submit(j)) accepted++;
+            else rejected++;
+        }
+        printLine($"Queued {accepted}, rejected {rejected}, load {mainQueue.Load}.");
+    }
+}
+
+verb RunJobs {
+    grammar = {.run};
+    void handler() {
+        mainQueue.Subscribe(CountDone);
+        mainQueue.Subscribe(TraceProblems);
+        stringObj journal = "";
+        int ran = mainQueue.RunAll(journal);
+        printLine("");
+        printLine($"Log: {journal}");
+        printLine($"Ran {ran}, done {mainQueue.Completed}, failed {mainQueue.Failed}, listened {DoneCount}.");
+        printLine($"Elapsed {mainQueue.Elapsed.Ticks}, runs {Job.TotalRuns}, errors {JobError.Raised}, load {mainQueue.Load}.");
+    }
+}
+
+verb Stats {
+    grammar = {.stats};
+    void handler() {
+        Summary s = mainQueue.Summarize(AllJobs);
+        printLine($"Jobs {s.Count}, total {s.Total.Ticks}, longest {s.Longest.Ticks}.");
+        for (Job j in AllJobs) {
+            string urgent = j.IsUrgent() ? "urgent" : "normal";
+            printLine($"{j}: {j.Kind()}, {urgent}, runs {j.Runs}.");
+        }
+        Duration unit = Duration.FromUnits(1);
+        Duration gap = unit - jobD.Cost;
+        bool shorter = jobE.Cost < jobA.Cost;
+        bool same = jobA.Cost == Duration{ 3 };
+        printLine($"Unit {unit.Ticks}, gap {gap.Ticks}, shorter {shorter}, same {same}, zero {gap.IsZero()}.");
+        Job flaky = FindByKind("flaky");
+        Job missing = FindByKind("sleep");
+        string found = flaky?.Kind() ?? "none";
+        string lost = missing?.Kind() ?? "none";
+        printLine($"Found {found}, lost {lost}, retryable {CountRetryable()}, attempts {jobC.Attempts}/{jobC.MaxAttempts}.");
+    }
+}
+
+verb Reorder {
+    grammar = {.reorder};
+    void handler() {
+        mainQueue.Reset(clearListeners: true);
+        int accepted = mainQueue.Submit(AllJobs);
+        mainQueue.SortByCost();
+        stringObj up = mainQueue.Describe();
+        mainQueue.SortByCost(descending: true);
+        stringObj down = mainQueue.Describe();
+        printLine($"Accepted {accepted}; by cost {up}; reversed {down}.");
+        mainQueue.Reset(keep: 4);
+        printLine($"After reset: queued {mainQueue.Queue.length}, elapsed {mainQueue.Elapsed.Ticks}, listeners {mainQueue.Listeners.length}.");
+    }
+}
+
+verb Clamp {
+    grammar = {.clamp};
+    void handler() {
+        mainQueue.Load = 250;
+        int high = mainQueue.Load;
+        mainQueue.Load = -5;
+        int low = mainQueue.Load;
+        mainQueue.Load = 40;
+        printLine($"Clamped {high} {low} {mainQueue.Load}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

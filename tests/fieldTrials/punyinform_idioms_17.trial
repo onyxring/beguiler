@@ -1,0 +1,34 @@
+Room A
+Room A.
+You can see a rack here.
+> racks
+Rack: total 0 left -100 level 0 writes 0 shade 1.
+Stock 2: grid 60 pick 2 span 62 plus 21 mark 20.
+Tally 1.
+Stock 5: grid 150 pick 2 span 152 plus 51 mark 50.
+Tally 2.
+Stock 5: grid 150 pick 2 span 152 plus 51 mark 50.
+Stock 140 180 220 plus 9 lit true.
+Rack: total 120 left 20 level 7 writes 4 shade 1.
+> gizmos
+gizmo A: sum 30 big 2 plus 10 tenths 40 weigh 8 snap 32.
+Owned by rack.
+Bad value -3.
+gizmo B: sum 24 big 1 plus 12 tenths 90 weigh 27 snap 57.
+Lit.
+Tally 3.
+A lighter.
+Loads 10 12 acc 54 3 uses 1 1.
+> piles
+Deep.
+Piles total 58 best 11 at 2 tenths 110 lit true.
+Again 1.
+> racks
+Rack: total 120 left 20 level 7 writes 4 shade 1.
+Stock 2: grid 60 pick 2 span 62 plus 21 mark 20.
+Tally 4.
+Stock 5: grid 150 pick 2 span 152 plus 51 mark 50.
+Tally 5.
+Stock 5: grid 150 pick 2 span 152 plus 51 mark 50.
+Stock 260 300 340 plus 9 lit false.
+Rack: total 240 left 140 level 7 writes 8 shade 1.

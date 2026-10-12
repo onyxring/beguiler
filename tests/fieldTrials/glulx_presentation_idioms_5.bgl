@@ -1,0 +1,352 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a program that builds its own presentation vocabulary on top of Glk. An enum whose values
+// are Glk style numbers, carrying emitter methods and values (declared in the enum and added by
+// extend enum), switched on and off inside interpolated text and walked through an array<eTone>; an
+// author's emitter namespace and a global emitter value used as print rules in interpolation, with
+// ##if TARGET_GLULX inside a body; a class that customizes its own print() and is printed by {g} into
+// the main window, a child window and a text grid; a value class with a copy operator and its own
+// print() built from interpolated text; an object with an inline auto { }
+// accessor whose setter clamps, counts through outer and redraws a text-grid window; direct Glk calls
+// through bgl.asm: putCharUni and streamunichar beyond Latin-1, charToUpper, a Unicode memory stream
+// over an array<int> that captures printed text, upper-cased with bufferToUpperCaseUni and replayed
+// with putBufferUni and putCharUni; an echo stream copying main-window output into a side panel;
+// and the window tree walked with windowIterate, windowGetType, windowGetParent and windowGetSibling.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+// The values are Glk style numbers, so an emitter hands them straight to glk_set_style.
+enum eTone {
+    plain = 0, stress = 1, mono = 2, head = 3, alarm = 5, aside = 6,
+    emitter void on()  { glk_set_style($self); }
+    emitter int  code  { ($self) }
+}
+
+extend enum eTone {
+    emitter void off()  { glk_set_style(0); }
+    emitter bool loud   { ($self == 3 || $self == 5) }
+}
+
+// The author's own print rules.
+emitter mark {
+    void open()  { print "<<"; }
+    void close() { print ">>"; }
+    void arrow() {
+##if TARGET_GLULX
+        glk_put_char_uni($2192);
+##else
+        print "->";
+##endif
+    }
+    void glyph(int cp) { glk_put_char_uni($cp); }
+}
+
+emitter void rule { print "--------"; }
+
+class gauge : object {
+    int   level;
+    eTone tone;
+    void print() {
+        bgl.printRules.bold;
+        printName(self);
+        bgl.printRules.roman;
+        bgl.printRules.fixed;
+        for (int i = 0; i < 5; i++) {
+            if (i < level) bgl.asm.putCharUni($2588);
+            else bgl.asm.putCharUni($2591);
+        }
+        bgl.printRules.roman;
+        bgl.asm.putChar((int)' ');
+        bgl.asm.streamnum(level);
+    }
+}
+
+// A run of text in one tone; prints itself.
+value class span {
+    string text;
+    eTone  tone;
+    span operator = (span o) { text = o.text; tone = o.tone; return self; }
+    void print() {
+        tone.on();
+        print(text);
+        tone.off();
+    }
+}
+
+span spanA;
+span spanB;
+
+gauge fuel  { "fuel";  level = 4; tone = eTone.stress; }
+gauge water { "water"; level = 1; tone = eTone.alarm; }
+
+array<gauge>  gaugeList = { fuel, water };
+array<eTone>  toneList = { eTone.plain, eTone.stress, eTone.mono, eTone.head, eTone.alarm, eTone.aside };
+array<int>    uni[48];
+array<int>    codes  = { $41, $E9, $3A9, $2603, $1F600 };
+
+textGridWindow   hud   = null;
+textBufferWindow panel = null;
+
+object meter {
+    "meter";
+    int writes = 0;
+    int clamped = 0;
+    auto reading = {
+        int _v = 0;
+        int  operator ()        { return _v; }
+        void operator = (int v) {
+            outer.writes++;
+            if (v < 0)  { v = 0;  outer.clamped++; }
+            if (v > 10) { v = 10; outer.clamped++; }
+            _v = v;
+            drawHud(v);
+        }
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object key {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+}
+
+// ---- helpers -----------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+void drawHud(int v) {
+    if (hud == null) return;
+    hud.clear();
+    hud.moveCursor(0, 0);
+    stringObj bar = "";
+    for (int i = 0; i < 10; i++) bar += i < v ? '#' : '.';
+    hud.print($"meter {v < 10 ? " " : ""}{v} [{bar}] writes {meter.writes}");
+}
+
+string toneName(eTone t) {
+    switch (t) {
+        case eTone.plain:  return "plain";
+        case eTone.stress: return "stress";
+        case eTone.mono:   return "mono";
+        case eTone.head:   return "head";
+        case eTone.alarm:  return "alarm";
+        default:           return "aside";
+    }
+}
+
+// Writes into `uni` through a Unicode memory stream; returns the number of characters written.
+int captureUni(object o) {
+    int old = bgl.asm.streamGetCurrent();
+    int str = bgl.asm.streamOpenMemoryUni((int)uni + bgl.wordsize, uni.size, 1, 0);
+    bgl.asm.streamSetCurrent(str);
+    print($"{cThe(o)} ");
+    mark.arrow();
+    print($" {printName(o)}");
+    int n = bgl.asm.streamGetPosition(str);
+    bgl.asm.streamSetCurrent(old);
+    bgl.asm.streamClose(str, 0);
+    return n;
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    hud = bgl.ui.mainWin.splitUpGrid(1, fixed, noBorder);
+    meter.reading = 3;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Tones {
+    grammar = {.tones};
+    void handler() {
+        for (eTone t in toneList) {
+            printLine($"{t.on()}{toneName(t)}{t.off()} = {t.code}{t.loud ? " (loud)" : ""}");
+        }
+        eTone pick = eTone.head;
+        printLine($"Picked {pick.on()}{toneName(pick)}{pick.off()}; loud: {yn(pick.loud)}; plain loud: {yn(eTone.plain.loud)}.");
+        printLine($"Sum of codes {eTone.alarm.code + eTone.aside.code}.");
+    }
+}
+
+verb Marks {
+    grammar = {.marks};
+    void handler() {
+        printLine($"{mark.open()}{cThe(key)}{mark.close()} {mark.arrow()} {the(roomA)}");
+        rule; printLine();
+        printLine($"{rule} {bold}between{roman} {rule}");
+        printLine($"Snow {mark.glyph($2744)}, star {mark.glyph($2605)}, end.");
+    }
+}
+
+verb Glyphs {
+    grammar = {.glyphs};
+    void handler() {
+        printLine($"Unicode supported: {yn(bgl.glulx.supports.unicode)}.");
+        for (int c in codes) {
+            eCharOutput how = bgl.glulx.supports.charOutput(c);
+            print($"code {c} ");
+            bgl.asm.streamunichar(c);
+            printLine($" {how == eCharOutput.none ? "none" : "shown"}");
+        }
+        int up = bgl.asm.charToUpper((char)'é');
+        printLine($"Upper of 233 is {up}; lower of 201 is {bgl.asm.charToLower(201)}.");
+        bgl.asm.putCharUni(up);
+        bgl.asm.putCharUni($2192);
+        bgl.asm.putChar((char)'E');
+        printLine();
+    }
+}
+
+verb CaptureTest {
+    grammar = {.capture};
+    void handler() {
+        int n = captureUni(key);
+        printLine($"Captured {n} characters.");
+        bgl.asm.putBufferUni((int)uni + bgl.wordsize, n);
+        printLine();
+        int m = bgl.asm.bufferToUpperCaseUni((int)uni + bgl.wordsize, uni.size, n);
+        printLine($"Upper-cased length {m}.");
+        bgl.asm.putBufferUni((int)uni + bgl.wordsize, m);
+        printLine();
+        for (int i = m - 1; i >= 0; i--) bgl.asm.putCharUni(uni[i]);
+        printLine();
+        int arrows = 0;
+        for (int i = 0; i < m; i++) if (uni[i] == $2192) arrows++;
+        printLine($"Arrows: {arrows}; first code {uni[0]}; last code {uni[m - 1]}.");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges};
+    void handler() {
+        for (gauge g in gaugeList) printLine($"{g} {g.tone.on()}{toneName(g.tone)}{g.tone.off()}");
+        print(fuel); printLine();
+        if (panel == null) { printLine("No panel."); return; }
+        for (gauge g in gaugeList) panel.printLine($"{g}");
+        panel.print(water);
+        panel.printLine();
+        printLine("Written to the panel.");
+    }
+}
+
+verb OpenPanel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        if (panel != null) { printLine("Panel already open."); return; }
+        panel = bgl.ui.mainWin.splitRightBuffer(30, proportional);
+        if (panel == null) { printLine("No panel."); return; }
+        panel.printLine("panel open");
+        printLine("Panel open.");
+    }
+}
+
+verb Echo {
+    grammar = {.echo};
+    meta = true;
+    void handler() {
+        if (panel == null) { printLine("No panel."); return; }
+        int before = bgl.asm.windowGetEchoStream(bgl.ui.mainWin.id);
+        bgl.asm.windowSetEchoStream(bgl.ui.mainWin.id, bgl.asm.windowGetStream(panel.id));
+        printLine($"Echoed: {cThe(key)} in {the(roomA)}.");
+        printLine($"{italics}also echoed{roman} {mark.open()}{meter.reading}{mark.close()}");
+        panel.printLine("written straight to the panel");
+        bgl.asm.windowSetEchoStream(bgl.ui.mainWin.id, 0);
+        printLine($"Not echoed; echo was off before: {yn(before == 0)}.");
+    }
+}
+
+verb TreeTest {
+    grammar = {.tree};
+    meta = true;
+    void handler() {
+        int count = 0;
+        int buffers = 0;
+        int grids = 0;
+        int w = bgl.asm.windowIterate(0, 0);
+        while (w != 0) {
+            count++;
+            int t = bgl.asm.windowGetType(w);
+            if (t == (int)eWinType.textBuffer) buffers++;
+            if (t == (int)eWinType.textGrid) grids++;
+            w = bgl.asm.windowIterate(w, 0);
+        }
+        printLine($"Windows {count}: {buffers} buffer, {grids} grid, {count - buffers - grids} other.");
+        printLine($"Main is a buffer: {yn(bgl.asm.windowGetType(bgl.ui.mainWin.id) == (int)eWinType.textBuffer)}.");
+        printLine($"Root is set: {yn(bgl.asm.windowGetRoot() != 0)}.");
+        if (panel != null) {
+            int pair = bgl.asm.windowGetParent(panel.id);
+            printLine($"Panel's parent is a pair: {yn(pair != 0 && bgl.asm.windowGetType(pair) != (int)eWinType.textBuffer)}.");
+            printLine($"Panel's sibling is main: {yn(bgl.asm.windowGetSibling(panel.id) == bgl.ui.mainWin.id)}.");
+        }
+        if (hud != null) printLine($"HUD is a grid: {yn(bgl.asm.windowGetType(hud.id) == (int)eWinType.textGrid)}.");
+    }
+}
+
+verb Spans {
+    grammar = {.spans};
+    void handler() {
+        spanA.text = "alpha";
+        spanA.tone = eTone.alarm;
+        spanB = spanA;
+        spanB.text = "beta";
+        printLine($"{spanA} and {spanB}; tones {spanA.tone.code} {spanB.tone.code}.");
+        spanB.tone = eTone.aside;
+        print(spanB); printLine($" is {toneName(spanB.tone)}; the first is still {toneName(spanA.tone)}.");
+        if (hud != null) {
+            hud.moveCursor(0, 0);
+            hud.print($"{mark.open()}{spanA}{mark.close()} {fuel}");
+        }
+        panel?.printLine($"{spanB.tone.on()}{spanB}{spanB.tone.off()} {meter.reading}");
+    }
+}
+
+verb Dial {
+    grammar = {.dial, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        meter.reading = n;
+        printLine($"Meter {meter.reading}; writes {meter.writes}; clamped {meter.clamped}.");
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge};
+    meta = true;
+    void handler() {
+        meter.reading = meter.reading + 4;
+        meter.reading += 4;
+        meter.reading++;
+        printLine($"Meter {meter.reading}; writes {meter.writes}; clamped {meter.clamped}.");
+    }
+}
+
+#includeI6 "grammar"

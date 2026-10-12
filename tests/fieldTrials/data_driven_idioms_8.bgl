@@ -1,0 +1,468 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a price table as a file-scope array<Money> of inline value-class instances, where Money
+// publishes an instance == and !=, a static <=> and a static ==(Money, int), so sort(), indexOf(),
+// contains() and -= use them, < and >= are derived from <=>, and the static operators are passed as
+// Money::operator <=> and Money::operator ==(int) to sort and to func<> locals; Money's arithmetic
+// operators (+, -, * int) returning fresh values, chained, and reached by += and -= through the
+// compound fallback, a setter-style operator = (int), an explicit emitter int conversion read through
+// a cast inside a switch with ranges and guards, a custom ?= comparison, an emitter ? with postfix ?
+// and ?? (also on a call result), a non-emitter !, and a print() method used by interpolation; a
+// pooled class with a literal pool size, create() with a defaulted third argument called positionally
+// and by name through new, destroy(), statics counting both, an owned getter/setter accessor member
+// (clamping, counting writes per instance and in a static) driven by =, +=, -=, *=, ++ and -- and read in comparisons
+// and as an argument, an owned Money member with an inline-object starting value reset by new, a const
+// member re-given by a pooled subclass that hides the accessor's operator = and is written again
+// through a cast, and drained lots collected in a local array and deleted; a value class whose owned
+// Money member is copied with the line into array<Line> slots, summed through a ref parameter beside a
+// by-value parameter that does not reach the caller, and sorted by <=> on two method results; distinct
+// postfix ++ and prefix++ operators on a value class; a replace chain with replaced(); and address-of
+// on an array.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+
+//-- Constants -----------------------------------------------------------------
+
+const int NONE = -1;
+const int LINE_MAX = 6;
+
+//-- Money ---------------------------------------------------------------------
+
+value class Money {
+    int cents;
+    Money operator = (Money o) { cents = o.cents; return self; }
+    Money operator = (int c) { cents = c; return self; }
+    Money operator + (Money o) { Money r; r.cents = cents + o.cents; return r; }
+    Money operator - (Money o) { Money r; r.cents = cents - o.cents; return r; }
+    Money operator * (int n) { Money r; r.cents = cents * n; return r; }
+    bool operator == (Money o) { return cents == o.cents; }
+    bool operator != (Money o) { return cents != o.cents; }
+    static int operator <=> (Money a, Money b) { return a.cents - b.cents; }
+    static bool operator == (Money a, int b) { return a.cents == b; }
+    bool operator ?= (int c) { int d = cents - c; if (d < 0) d = -d; return d <= 10; }
+    emitter eBool operator ? () { ($self.cents ~= 0) }
+    bool operator ! () { return cents == 0; }
+    explicit emitter int operator () { $self.cents }
+    void print() {
+        int c = cents;
+        if (c < 0) { print("-"); c = -c; }
+        print($"{c / 100}.");
+        if (c % 100 < 10) print("0");
+        print(c % 100);
+    }
+}
+
+array<Money> prices = {
+    Money{ cents = 250; },
+    Money{ cents = 99; },
+    Money{ cents = 1200; },
+    Money{ cents = 99; },
+    Money{ cents = 405; }
+};
+
+void listPrices() {
+    print($"{prices.length}:");
+    for (Money m in prices) print($" {m}");
+    print("^");
+}
+
+int markdown(int cents) { return cents; }
+replace int markdown(int cents) { return replaced(cents) - cents / 10; }
+replace int markdown(int cents) { int r = replaced(cents); return r - r % 5; }
+
+//-- Stock accessor ------------------------------------------------------------
+
+value class Stock {
+    int _n;
+    int writes = 0;
+    static int total = 0;
+    int operator () { return _n; }
+    void operator = (int v) {
+        writes++;
+        Stock.total++;
+        if (v < 0) v = 0;
+        if (v > 99) v = 99;
+        _n = v;
+    }
+}
+
+//-- Lots ----------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Lot[3] : object {
+    int code = NONE;
+    Stock stock;
+    Money price = Money{ cents = 100; };
+    const int shelfLife = 10;
+    static int made = 0;
+    static int freed = 0;
+    void create(int c, int qty, int cents = 0) {
+        code = c;
+        stock = qty;
+        if (cents > 0) price = cents;
+        Lot.made++;
+    }
+    void destroy() {
+        Lot.freed++;
+        print($"[lot {code} freed]^");
+    }
+    void print() { print($"lot {code}"); }
+}
+
+class SealedLot[1] : Lot {
+    const int shelfLife = 4;
+    hide stock.operator =;
+}
+
+array<Lot> live[4];
+
+int findLot(int c) {
+    for (int i = 0; i < live.length; i++)
+        if (live[i].code == c) return i;
+    return NONE;
+}
+
+void showLot(Lot l) {
+    print($"{l}: stock {l.stock} ({l.stock.writes} writes so far), price {l.price}, life {l.shelfLife}^");
+}
+
+//-- Order lines ---------------------------------------------------------------
+
+value class Line {
+    int code;
+    int qty;
+    Money unit;
+    Line operator = (Line o) { code = o.code; qty = o.qty; unit = o.unit; return self; }
+    Money total() { return unit * qty; }
+}
+
+array<Line> lines[LINE_MAX];
+
+void addLine(int c, int q, int cents) {
+    Line l;
+    l.code = c;
+    l.qty = q;
+    l.unit = cents;
+    lines += l;
+}
+
+void accumulate(ref Money sum, Money add) {
+    sum += add;
+    add.cents = 0;
+}
+
+//-- Counters ------------------------------------------------------------------
+
+value class Tick {
+    int n;
+    Tick operator = (Tick o) { n = o.n; return self; }
+    Tick operator ++ () { n = n + 1; return self; }
+    Tick operator prefix++ () { n = n + 10; return self; }
+}
+
+Tick ticks;
+
+//-- Validation ----------------------------------------------------------------
+
+int validate() {
+    int bad = 0;
+    if (&prices != (int)prices) { print("Prices: address wrong.^"); bad++; }
+    if (prices.length != 5) { print("Prices: length wrong.^"); bad++; }
+    for (int i = 0; i < prices.length; i++) {
+        if (!prices[i]) { print($"Price {i}: zero.^"); bad++; }
+    }
+    addLine(1, 3, 250);
+    addLine(2, 1, 1200);
+    addLine(3, 4, 99);
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}, {lines.length} lines.^");
+    return bad;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb PricesTest {
+    grammar = {.prices};
+    void handler() { listPrices(); }
+}
+
+verb SortTest {
+    grammar = {.sort};
+    void handler() {
+        prices.sort();
+        listPrices();
+        prices.sort((Money a, Money b) => b.cents - a.cents);
+        listPrices();
+        prices.reverse();
+        prices.sort(Money::operator <=>);
+        listPrices();
+    }
+}
+
+verb FindTest {
+    grammar = {.find, NUMBER};
+    void handler() {
+        Money m = (int)noun;
+        int at = prices.indexOf(m);
+        print($"{m}: at {at}, ");
+        if (prices.contains(m)) print("present"); else print("absent");
+        func<bool, Money, int> isCents = Money::operator ==(int);
+        int hits = 0;
+        for (Money p in prices) if (isCents(p, (int)noun)) hits++;
+        print($", {hits} equal.^");
+    }
+}
+
+verb NearTest {
+    grammar = {.near, NUMBER};
+    void handler() {
+        print($"Near {(int)noun}:");
+        int n = 0;
+        for (int i = 0; i < prices.length; i++) {
+            if (prices[i] ?= (int)noun) { print($" [{i}] {prices[i]}"); n++; }
+        }
+        if (n == 0) print(" none");
+        print(".^");
+    }
+}
+
+verb BandsTest {
+    grammar = {.bands};
+    void handler() {
+        for (Money m in prices) {
+            print($"{m} ");
+            switch ((int)m) {
+                case 0: print("free");
+                case 1 to 99: print("small");
+                case 100, 250: print("round");
+                case >= 1000: print("large");
+                default: print("mid");
+            }
+            print("^");
+        }
+    }
+}
+
+verb DropPriceTest {
+    grammar = {.unprice, NUMBER};
+    void handler() {
+        Money m = (int)noun;
+        prices -= m;
+        listPrices();
+        prices += m;
+        prices += Money{ cents = 5; };
+        listPrices();
+    }
+}
+
+verb MathTest {
+    grammar = {.math};
+    void handler() {
+        Money a = prices[0];
+        Money b = prices[1];
+        Money sum = a + b;
+        Money diff = b - a;
+        Money triple = a * 3;
+        Money chain = a + b + prices[2];
+        print($"sum {sum}, diff {diff}, triple {triple}, chain {chain}^");
+        if (sum != a + b) print("sum mismatch^");
+        if (a == b) print("a equals b^"); else print("a differs from b^");
+        func<int, Money, Money> cmp = Money::operator <=>;
+        print($"a<b {a < b ? 1 : 0}, a>=b {a >= b ? 1 : 0}, cmp {cmp(a, b) > 0 ? "after" : "before"}^");
+        Money run = a;
+        run += b;
+        run -= prices[2];
+        print($"run {run}, a still {a}^");
+    }
+}
+
+verb ZeroTest {
+    grammar = {.zero};
+    void handler() {
+        Money z;
+        Money p = prices[0];
+        print($"z? {z? ? 1 : 0}, p? {p? ? 1 : 0}, !z {!z ? 1 : 0}, !p {!p ? 1 : 0}^");
+        Money pick = z ?? p;
+        Money keep = p ?? z;
+        print($"pick {pick}, keep {keep}^");
+    }
+}
+
+Money cheapestOver(int floor) {
+    Money best;
+    for (Money m in prices) {
+        if ((int)m <= floor) continue;
+        if (!best || m < best) best = m;
+    }
+    return best;
+}
+
+verb BestTest {
+    grammar = {.best, NUMBER};
+    void handler() {
+        Money b = cheapestOver((int)noun) ?? prices[0];
+        print($"Cheapest over {(int)noun}: {b}^");
+    }
+}
+
+verb MarkTest {
+    grammar = {.mark, NUMBER};
+    void handler() {
+        int c = (int)noun;
+        Money m = markdown(c);
+        print($"{c} marked down: {m}^");
+    }
+}
+
+verb LotTest {
+    grammar = {.lot, NUMBER};
+    void handler() {
+        int c = (int)noun;
+        Lot l = new Lot(c, c * 2, c * 50);
+        if (l == null) { print($"No slot for lot {c}.^"); return; }
+        live += l;
+        showLot(l);
+    }
+}
+
+verb LotsTest {
+    grammar = {.lots};
+    void handler() {
+        if (live.length == 0) print("No lots.^");
+        for (Lot l in live) showLot(l);
+        print($"made {Lot.made}, freed {Lot.freed}^");
+    }
+}
+
+verb RestockTest {
+    grammar = {.restock, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        for (Lot l in live) {
+            l.stock += n;
+            l.stock++;
+            showLot(l);
+        }
+    }
+}
+
+verb DrainTest {
+    grammar = {.drain, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        array<Lot> empty[4];
+        for (Lot l in live) {
+            l.stock -= n;
+            l.stock--;
+            if (l.stock > 0 && l.stock < 20) l.stock *= 2;
+            print($"{l}: {l.stock}, larger {bgl.util.math.max(l.stock, 10)}^");
+            if (l.stock == 0) empty += l;
+        }
+        for (Lot l in empty) {
+            live -= l;
+            delete l;
+        }
+        print($"{live.length} lots left, {Stock.total} writes so far.^");
+    }
+}
+
+verb FreeTest {
+    grammar = {.free, NUMBER};
+    void handler() {
+        int at = findLot((int)noun);
+        if (at == NONE) { print($"No lot {(int)noun}.^"); return; }
+        Lot l = live[at];
+        live.remove(at);
+        delete l;
+        print($"{live.length} lots left.^");
+    }
+}
+
+verb SealTest {
+    grammar = {.seal};
+    void handler() {
+        SealedLot s = new SealedLot(9, 4);
+        if (s == null) { print("No sealed slot.^"); return; }
+        print($"sealed {s}: stock {s.stock}, price {s.price}^");
+        ((Lot)s).stock = 150;
+        s.price = 777;
+        print($"forced: stock {s.stock} ({Stock.total} writes so far), price {s.price}, life {s.shelfLife}^");
+        delete s;
+        SealedLot t = new SealedLot(qty: 2, c: 8);
+        print($"again {t}: stock {t.stock} ({Stock.total} writes so far), price {t.price}^");
+        delete t;
+    }
+}
+
+verb OrderTest {
+    grammar = {.lines};
+    void handler() {
+        Money sum;
+        for (int i = 0; i < lines.length; i++) {
+            Money t = lines[i].total();
+            accumulate(sum, t);
+            print($"#{lines[i].code}: {lines[i].qty} x {lines[i].unit} = {t}^");
+        }
+        print($"total {sum}^");
+    }
+}
+
+verb BumpTest {
+    grammar = {.bump, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= lines.length) { print($"No line {i}.^"); return; }
+        Line copy = lines[i];
+        copy.unit = copy.unit + prices[1];
+        copy.qty++;
+        lines += copy;
+        print($"line {i}: {lines[i].qty} x {lines[i].unit}; new line: {copy.qty} x {copy.unit}^");
+    }
+}
+
+verb RankTest {
+    grammar = {.rank};
+    void handler() {
+        lines.sort((Line a, Line b) => a.total() <=> b.total());
+        for (Line l in lines) print($" #{l.code}={l.total()}");
+        print("^");
+        if (lines[0].total() < lines[1].total()) print("first is cheaper^");
+        Money both = lines[0].total() + lines[1].total();
+        print($"first two: {both}^");
+    }
+}
+
+verb TickTest {
+    grammar = {.tick};
+    void handler() {
+        ticks++;
+        print($"after ++: {ticks.n}; ");
+        ++ticks;
+        print($"after prefix: {ticks.n}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    rfalse;
+}
+
+#includeI6 "grammar"

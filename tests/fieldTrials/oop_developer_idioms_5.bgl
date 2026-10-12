@@ -1,0 +1,447 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, fifth pass. A visitor with
+// `Visit` overloaded by class and double dispatch through `default` `Accept` overrides, one overload
+// overridden in a subclass and chained with an ancestor cast; a pooled entity whose `create` takes
+// default parameters and is called through `new` with named arguments; a repository holding an
+// `array<T>` of pooled instances, with an event list of `literal func` members fed by a named
+// function and a lambda; a method returning a named union (`Order | string`) printed through a
+// program `print` overload and discriminated with `typeof`; a fluent builder whose methods return
+// `self`, run as one chained expression, with a member-reading lambda inside a `<linq>` chain;
+// `<linq>` over class elements with a static method as comparator, captured locals, `map`,
+// `distinct`, `any`/`all` and a nested chain; a `throw` out of a chain predicate, and a rethrow from
+// a `catch` to the caller's `try`; a namespace object with type aliases, a class value alias and an
+// `auto` member, then reached through `#using`, and a static-only class imported with `#using`;
+// `extend` on an object to replace a `default` method; a `stringObj` built by a method and returned;
+// `switch` on a string from a virtual call and on an int with guards and ranges; `do`/`until`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+enum eStatus { Open = 1, Held, Shipped, Cancelled }
+
+//-- Errors ----------------------------------------------------------------------------------------
+
+class AppError : object {
+    const string Message;
+    default string Code() { return "E500"; }
+    void print() { print($"{Code()} {Message}"); }
+}
+
+class NotFoundError : AppError {
+    string Code() { return "E404"; }
+}
+
+class ValidationError : AppError {
+    string Code() { return "E422"; }
+}
+
+NotFoundError ErrNoOrder     { Message = "no such order"; }
+ValidationError ErrBadQty    { Message = "quantity too large"; }
+ValidationError ErrClosed    { Message = "order is closed"; }
+AppError ErrPoolFull         { Message = "no free order slot"; }
+
+//-- A visitor and products ------------------------------------------------------------------------
+
+class Product : object {
+    inline const string Sku;
+    inline int PriceCents;
+    default string Category() { return "product"; }
+    default void Accept(Visitor v) { v.Visit(self); }
+}
+
+class Book : Product {
+    int Pages;
+    string Category() { return "book"; }
+    void Accept(Visitor v) { v.Visit(self); }
+}
+
+class Gadget : Product {
+    int Watts;
+    string Category() { return "gadget"; }
+    void Accept(Visitor v) { v.Visit(self); }
+}
+
+class Visitor : object {
+    int Seen;
+    default void Visit(Product p) { Seen++; printLine($"  {p.Sku}: {p.Category()} at {p.PriceCents}"); }
+    default void Visit(Book b)    { Seen++; printLine($"  {b.Sku}: book of {b.Pages} pages"); }
+    default void Visit(Gadget g)  { Seen++; printLine($"  {g.Sku}: gadget drawing {g.Watts}W"); }
+}
+
+class PriceVisitor : Visitor {
+    int TotalCents;
+    void Visit(Product p) { TotalCents += p.PriceCents; ((Visitor)self).Visit(p); }
+    void Visit(Gadget g)  { TotalCents += g.PriceCents * 2; Seen++; printLine($"  {g.Sku}: doubled"); }
+}
+
+Product pen = Product{ "P-1", 150 };
+Book manual  { "B-1", 1250; Pages = 300; }
+Gadget lamp  { "G-1", 2400; Watts = 40; }
+Product cable { Sku = "P-2"; PriceCents = 600; }
+
+array<Product> Products = { pen, manual, lamp, cable };
+
+Visitor printer { }
+PriceVisitor pricer { }
+
+//-- Orders ----------------------------------------------------------------------------------------
+
+class Order[5] : object {
+    static int NextId = 101;
+    int Id;
+    Product Item;
+    int Qty;
+    eStatus Status;
+
+    // Not `item`/`qty`/`status`: names are case-insensitive, so those would be the members.
+    void create(Product goods, int count = 1, eStatus state = eStatus.Open) {
+        Id = Order.NextId++;
+        Item = goods;
+        Qty = count;
+        Status = state;
+    }
+    void destroy() { printLine($"Released #{Id}."); }
+
+    int Total() { return Item.PriceCents * Qty; }
+    bool IsOpen() { return Status == eStatus.Open || Status == eStatus.Held; }
+    void print() { print($"#{Id} {Qty} x {Item.Sku} {Order.StatusName(Status)}"); }
+
+    static string StatusName(eStatus s) {
+        switch (s) {
+            case eStatus.Open:      return "open";
+            case eStatus.Held:      return "held";
+            case eStatus.Shipped:   return "shipped";
+            case eStatus.Cancelled: return "cancelled";
+        }
+        return "?";
+    }
+    static int ByTotal(Order a, Order b) { return a.Total() - b.Total(); }
+}
+
+union LookupResult = Order | string;
+
+void print(LookupResult r) {
+    if (typeof(r) == eType.string) print($"<{(string)r}>");
+    else print((Order)r);
+}
+
+//-- Repository with events ------------------------------------------------------------------------
+
+class Repository : object {
+    array<Order> Items[5];
+    array<literal func<void, Order>> Listeners[3];
+
+    default string Label() { return "repository"; }
+
+    void Subscribe(literal func<void, Order> handler) { Listeners += handler; }
+
+    Order Add(Order o) {
+        if (o == null) throw ErrPoolFull;
+        Items += o;
+        for (func<void, Order> h in Listeners) h(o);
+        return o;
+    }
+    Order Get(int id) {
+        for (Order o in Items) if (o.Id == id) return o;
+        throw ErrNoOrder;
+        return null;    // a throw does not end a path for return-path analysis
+    }
+    LookupResult Find(int id) {
+        for (Order o in Items) if (o.Id == id) return o;
+        return "no order";
+    }
+    void Remove(Order o) {
+        Items -= o;
+        delete o;
+    }
+    int Count() { return Items.length; }
+
+    stringObj Csv() {
+        stringObj line;
+        for (Order o in Items) {
+            if (!line.isEmpty()) line += ";";
+            line += o.Item.Sku;
+        }
+        return line;
+    }
+}
+
+Repository mainRepo { }
+
+extend mainRepo {
+    int Revision = 2;
+    replace string Label() { return "main repository"; }
+}
+
+int BigOrders = 0;
+
+void LogPlaced(Order o) { printLine($"[log] placed {o}"); }
+
+//-- Fluent query ----------------------------------------------------------------------------------
+
+class OrderQuery : object {
+    int _min;
+    int _limit;
+    bool _anyStatus;
+    eStatus _status;
+
+    OrderQuery Reset() { _min = 0; _limit = 99; _anyStatus = true; return self; }
+    OrderQuery MinTotal(int cents) { _min = cents; return self; }
+    OrderQuery WithStatus(eStatus s) { _status = s; _anyStatus = false; return self; }
+    OrderQuery Limit(int n) { _limit = n; return self; }
+
+    bool Matches(Order o) { return o.Total() >= _min && (_anyStatus || o.Status == _status); }
+
+    int Run(Repository repo) {
+        int shown = 0;
+        for (Order o in repo.Items.filter((Order x) => Matches(x)).take(_limit)) {
+            printLine($"  {o} = {o.Total()}");
+            shown++;
+        }
+        return shown;
+    }
+}
+
+OrderQuery query { }
+
+//-- Pricing rules and a namespace -----------------------------------------------------------------
+
+class PriceRules : object {
+    static int TaxPercent = 8;
+    static int WithTax(int cents) { return cents + cents / 10 * PriceRules.TaxPercent / 10; }
+}
+
+object Shop {
+    alias Query for OrderQuery;
+    alias Status for eStatus;
+    alias Pricing = PriceRules;
+    auto Repo = mainRepo;
+}
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Catalog {
+    grammar = {.catalog};
+    void handler() {
+        printLine("Printer:");
+        for (Product p in Products) p.Accept(printer);
+        printLine("Pricer:");
+        for (Product p in Products) p.Accept(pricer);
+        Product asBase = manual;
+        asBase.Accept(pricer);
+        printLine($"Seen {printer.Seen} and {pricer.Seen}; priced total {pricer.TotalCents}.");
+    }
+}
+
+void PlaceOne(Product item, int count, eStatus state) {
+    try {
+        Order o = mainRepo.Add(new Order(item, count, state));
+        printLine($"Placed {o}.");
+    } catch (AppError e) {
+        printLine($"Could not place {item.Sku}: {e}.");
+    }
+}
+
+verb PlaceOrders {
+    grammar = {.place};
+    void handler() {
+        mainRepo.Add(new Order(pen, 3));
+        mainRepo.Add(new Order(lamp));
+        mainRepo.Add(new Order(manual, state: eStatus.Held, count: 2));
+        mainRepo.Add(new Order(goods: cable, count: 5));
+        PlaceOne(lamp, 2, eStatus.Held);
+        PlaceOne(pen, 1, eStatus.Open);
+        printLine($"{mainRepo.Label()} r{mainRepo.Revision}: {mainRepo.Count()} orders, {BigOrders} big.");
+    }
+}
+
+verb Lookup {
+    grammar = {.lookup};
+    void handler() {
+        printLine($"Find 102: {mainRepo.Find(102)}.");
+        printLine($"Find 999: {mainRepo.Find(999)}.");
+        LookupResult r = mainRepo.Find(103);
+        if (typeof(r) == eType.object) {
+            Order o = (Order)r;
+            printLine($"Order 103 totals {o.Total()} for {o.Item.Category()}.");
+        }
+        LookupResult r104 = mainRepo.Find(104);
+        LookupResult r105 = mainRepo.Find(105);
+        if (r104 != r105) printLine("104 and 105 differ.");
+    }
+}
+
+verb QueryOrders {
+    grammar = {.query};
+    void handler() {
+        printLine("At least 1000, first two:");
+        int n = query.Reset().MinTotal(1000).Limit(2).Run(mainRepo);
+        printLine($"Shown {n}.");
+        printLine("Held:");
+        n = query.Reset().WithStatus(eStatus.Held).Run(mainRepo);
+        printLine($"Shown {n}.");
+    }
+}
+
+bool IsPricey(Order o) { return o.Total() > 2000; }
+
+verb LinqOrders {
+    grammar = {.linq};
+    void handler() {
+        print("By total:");
+        for (Order o in mainRepo.Items.orderBy(Order.ByTotal)) print($" {o.Id}={o.Total()}");
+        printLine();
+        int threshold = 1000;
+        array<Order> big[5];
+        big = mainRepo.Items.filter((Order o) => o.Total() >= threshold);
+        printLine($"{big.length} of {mainRepo.Items.count()} reach {threshold}.");
+        printLine($"Any pricey: {mainRepo.Items.any(IsPricey)}; all open: {mainRepo.Items.all((Order o) => o.IsOpen())}.");
+        int units = 0;
+        for (var q in mainRepo.Items.map((Order o) => o.Qty)) units += q;
+        printLine($"Units {units}; distinct products {mainRepo.Items.map((Order o) => o.Item).distinct().count()}.");
+        print("Ordered products:");
+        for (Product p in Products.filter((Product candidate) => mainRepo.Items.any((Order o) => o.Item == candidate))) print($" {p.Sku}");
+        printLine();
+        Order last = mainRepo.Items.orderBy(Order.ByTotal).last();
+        printLine($"Largest {last}.");
+    }
+}
+
+void CancelOrder(int id) {
+    try {
+        Order o = mainRepo.Get(id);
+        if (!o.IsOpen()) throw ErrClosed;
+        o.Status = eStatus.Cancelled;
+        printLine($"Cancelled {o}.");
+    } catch (AppError e) {
+        if (e.is(NotFoundError)) {
+            printLine($"Ignored {id}: {e}.");
+            return;
+        }
+        throw e;
+    }
+}
+
+verb CancelOrders {
+    grammar = {.cancel};
+    void handler() {
+        for (int id in {102, 999, 102}) {
+            try {
+                CancelOrder(id);
+            } catch (AppError e) {
+                printLine($"Failed {id}: {e}.");
+            }
+        }
+    }
+}
+
+verb Validate {
+    grammar = {.validate};
+    void handler() {
+        int limit = 4;
+        try {
+            bool ok = mainRepo.Items.all((Order o) => {
+                if (o.Qty > limit) throw ErrBadQty;
+                return true;
+            });
+            printLine($"All valid: {ok}.");
+        } catch (ValidationError e) {
+            printLine($"Invalid: {e}.");
+        }
+        print("Still ordered:");
+        for (Product p in Products.filter((Product candidate) => mainRepo.Items.any((Order o) => o.Item == candidate && o.IsOpen()))) print($" {p.Sku}");
+        printLine();
+    }
+}
+
+string SizeOf(int cents) {
+    switch (cents) {
+        case < 500:        return "small";
+        case 500 to 1999:  return "medium";
+        default:           return "large";
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        stringObj csv = mainRepo.Csv();
+        printLine($"Csv {csv} ({csv.length} chars); has G-1: {csv.contains("G-1")}.");
+        for (Order o in mainRepo.Items) {
+            string kind;
+            switch (o.Item.Category()) {
+                case "book":   kind = "reading";
+                case "gadget": kind = "device";
+                default:       kind = "misc";
+            }
+            printLine($"  {o.Id}: {kind}, {SizeOf(o.Total())}");
+        }
+    }
+}
+
+verb Paths {
+    grammar = {.paths};
+    void handler() {
+        Shop.Query q = query;
+        Shop.Status held = Shop.Status.Held;
+        int n = q.Reset().WithStatus(held).Run(Shop.Repo);
+        printLine($"Held via path: {n}; taxed 1000 = {Shop.Pricing.WithTax(1000)}; repo has {Shop.Repo.Count()}.");
+    }
+}
+
+#using Shop
+#using PriceRules
+
+verb Ship {
+    grammar = {.ship};
+    void handler() {
+        array<Order> queue[5];
+        queue = Repo.Items.filter((Order o) => o.Status == Status.Open || o.Status == Status.Held);
+        if (queue.length == 0) { printLine("Nothing to ship."); return; }
+        int billed = 0;
+        do {
+            Order o = queue.dequeue();
+            o.Status = Status.Shipped;
+            billed += Pricing.WithTax(o.Total());
+            printLine($"Shipped {o}.");
+        } until (queue.length == 0);
+        printLine($"Billed {billed} at {TaxPercent}%.");
+    }
+}
+
+verb Purge {
+    grammar = {.purge};
+    void handler() {
+        array<Order> done[5];
+        done = Repo.Items.filter((Order o) => !o.IsOpen());
+        for (Order o in done) Repo.Remove(o);
+        printLine($"{Repo.Count()} left.");
+        Order again = Repo.Add(new Order(lamp));
+        printLine($"Reused slot for {again}.");
+    }
+}
+
+#includeI6 "grammar"
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+bool Initialise() {
+    location = roomA;
+    mainRepo.Subscribe(LogPlaced);
+    mainRepo.Subscribe((Order o) => { if (o.Total() >= 2000) BigOrders++; });
+    rfalse;
+}

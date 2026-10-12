@@ -1,0 +1,102 @@
+Room A
+Room A. Room B is east.
+You can see a rack, a brass key and a tin here.
+> look
+Room A
+Room A. Room B is east.
+You can see a rack, a brass key and a tin here.
+> slot key at 2
+- - brass key
+> slot tin at 0
+tin - brass key
+> slot rack at 7
+No such slot.
+> peek 2
+Slot 2: A brass key.
+> peek 1
+Slot 1: Empty.
+> peek 0
+Slot 0: A tin.
+> charge tin
+The tin is charged.
+> charge tin
+The tin is already charged.
+> clue tin
+It points to the tin.
+It points to the tin.
+A pointer.
+> clue key
+It says nothing special.
+It says unmarked.
+> probe tin
+reading -1, flag 1.
+> probe key
+reading -1, flag -1.
+> sorting
+crate three (3) crate two (2) crate five (5) crate four (4) crate seven (7)
+crate two (2) crate three (3) crate four (4) crate five (5) crate seven (7)
+crate seven (7) crate five (5) crate four (4) crate three (3) crate two (2)
+crate two (2) crate three (3) crate four (4) crate five (5) crate seven (7)
+A crate of 5 is at 3.
+The first is lighter.
+The second and third differ.
+loose crate weighs 9.
+small crate weighs 1.
+named crate weighs 10.
+Descending again: crate seven first.
+> meters
+A 3, B 8.
+A 4, B 10.
+Drained copy reads 0; B 20, via A 20.
+A 4, B 25.
+> relay 4
+Twice: 8. Plus three: 7. Square: 16.
+Pipeline: 128; tripled 384.
+> notes
+A plain note.
+Turn 13.
+Another note.
+1 routine(s).
+Heavy note. Weight 3.
+Turn 13. Weight 1.
+Light note. Weight 0.
+> cells
+4 rows, total 19.
+Row 3 ends in 7; row 2 has 4.
+> spell
+BRASSKEY (4 early, 4 late): 2 vowels, first code 98.
+Seventh is a k.
+> calc
+32 100 7 9 -1
+Top 65535, half 32767, ordered true.
+> flags
+5 7 4 20 2 13.
+Cracked.
+Q is 11.
+> bump
+Member 2, global 20.
+Heaviest is crate seven; log holds 2, last 20.
+Total 22.
+> e
+Room B
+Room B. Room A is west.
+You can see a panel and a gauge here.
+> probe gauge
+reading 6, flag -1.
+> push panel
+The panel clicks to 1.
+> push panel
+The panel clicks to 2.
+> unset panel
+The panel is back to 0.
+> unset gauge
+Only panels unset.
+> levels
+The gauge reads 7 at high.
+Current is mid; now high.
+> levels
+The gauge reads 8 at high.
+Current is high; now low.
+> levels
+The gauge reads 9 at high.
+Current is low; now mid.

@@ -1,0 +1,67 @@
+Room A
+Room A. Room B is fore.
+You can see a relay box, a left gauge, a middle gauge and a right gauge here.
+> look
+Room A
+Room A. Room B is fore.
+You can see a relay box, a left gauge, a middle gauge and a right gauge here.
+> relay
+Charge 3 -> 4 -> 8; report 16, seen 20 x1; now 10, doubled 20.
+Dial provided: box true, cup false; in Room A.
+> mode
+== mode rank 2, live true ==
+== lamps 7, green true ==
+== z5 ==
+> mode
+== mode rank 3, live false ==
+== lamps 7, green true ==
+== z5 ==
+> literals
+[42] 10 65 true false
+<5> 20 10 36
+> probe
+Tray: cup spoon; cup is in tray.
+Pulled 22 then 11.
+Third 30, last 55, 40 found true, at slot 3.
+Shifts 12 -4; call 21.
+OK
+> twiddle left gauge
+The left gauge reads 1; matches 1.
+> twiddle middle gauge
+The middle gauge reads 4; matches 2.
+> twiddle
+I think you wanted to say "adjust something". Please try again.
+> dial dozen
+Dial set to 12.
+> dial score
+Dial set to 20.
+> dial 7
+Dial set to 7.
+> take relay-box
+That's fixed in place.
+> fore
+Room B
+Room B. Room A is aft.
+You can see a tray (on which are a cup and a spoon), a brass key and a chest (which is closed) here.
+> unlock chest
+(assuming with the brass key)
+(first taking the brass key)
+You unlock the chest.
+> open chest
+You open the chest, revealing nothing.
+> helm
+Compass directions off.
+> aft
+Room A
+You can see a relay box, a left gauge, a middle gauge and a right gauge here.
+> north
+That is not a verb I recognize.
+> helm
+Compass directions on.
+> south
+You can't go that way.
+> expire
+You expire.
+(You are revived.)
+> status
+Release 1; hyphen fixes 1; revivals 1; prompts seen true.

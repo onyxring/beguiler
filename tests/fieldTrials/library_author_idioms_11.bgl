@@ -1,0 +1,311 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit part whose namespace object aliases a primitive code type, two part classes, a
+// piece with both as parents, an enum of faults and a value class, and holds helpers that walk
+// arrays of arrays, throw and catch the faults, recurse over a code list, fall back with ?? and ?.,
+// dispatch to each ancestor by cast, take a union, a var and a ref parameter; extend class of the
+// primitive with value emitters, an emitter method, an emitter [] and an explicit bool conversion;
+// #using the namespace before a value class written with the aliased types: inline codes, [] and []=
+// that throw through an aliased enum path, == and !=, an explicit conversion and a print method;
+// extend of the namespace object with a further type alias and a helper taking a ref row; the
+// consumer's extend class of the board with a ref value-class member, a part member read through ?.
+// and ??, a recursive sum through the board's [], a guarded read that catches, and a local array of
+// arrays; extend class of a pooled class with a static recursive take and an issue that throws when
+// the pool is empty; dotted type paths for locals, parameters and globals; inline objects of the
+// value class; a ref local bound to a ref member and written through.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_11_parts/library_author_idioms_11_kit"
+
+#using bgl.printRules
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- The consumer's additions to the kit's types. ----
+
+extend class la11Board {
+    ref la11Row focus;
+    La11Part keeper;
+
+    /// The sum of one row; a fault off the board.
+    int operator [] (int r) {
+        reads++;
+        if (r < 0 || r >= grid.length) throw eLa11Fault.la11Bounds;
+        int t = 0;
+        for (int v in grid[r]) t += v;
+        return t;
+    }
+
+    /// Fills one row with a value.
+    int operator []= (int r, int v) {
+        for (int i = 0; i < grid[r].length; i++) grid[r][i] = v;
+        return v;
+    }
+
+    /// The whole board's sum.
+    explicit int operator () {
+        int t = 0;
+        for (int r = 0; r < grid.length; r++) t += self[r];
+        return t;
+    }
+
+    /// Binds the board to a grid.
+    void attach(array<array<int>> cells) { grid := cells; }
+
+    /// The sum of the first cell of the first and last rows.
+    int cornerSum() {
+        array<array<int>> corners = { {0, 0}, {grid.length - 1, 0} };
+        int t = 0;
+        for (array<int> at in corners) t += grid[at[0]][at[1]];
+        return t;
+    }
+
+    /// The rows summed from one on, recursively.
+    int sumFrom(int r) {
+        if (r >= grid.length) return 0;
+        return self[r] + sumFrom(r + 1);
+    }
+
+    /// A row's sum, or -1 when the row is off the board.
+    int safeRow(int r) {
+        int v = -1;
+        try {
+            v = self[r];
+        } catch (eLa11Fault f) {
+            print($"[off {r}]");
+        }
+        return v;
+    }
+
+    /// The focused row's sum, or 0 with nothing in focus.
+    int focusSum() {
+        if (!focus) return 0;
+        return (int)focus;
+    }
+
+    /// Who keeps the board.
+    void report() {
+        print("kept by ");
+        keeper?.portray();
+        print($"; weight {(keeper ?? la11Spare).weight}");
+    }
+}
+
+extend class la11Ticket {
+    static int issued = 0;
+
+    /// The ticket's number.
+    explicit int operator () { return (int)no; }
+
+    /// Takes up to n tickets, then gives them back; how many it got.
+    static int take(int n) {
+        if (n <= 0) return 0;
+        la11Ticket t = new la11Ticket(n);
+        if (t == null) return 0;
+        issued++;
+        int got = 1 + take(n - 1);
+        delete t;
+        return got;
+    }
+
+    /// A ticket; a fault when the pool is empty.
+    static la11Ticket issue(int n) {
+        la11Ticket t = new la11Ticket(n);
+        if (t == null) throw eLa11Fault.la11Empty;
+        issued++;
+        return t;
+    }
+}
+
+// ---- The consumer's things. ----
+
+La11Piece cog   { "cog";   parent = roomA; name = .cog;   weight = 3; tag = 7; }
+La11Part  plate { "plate"; parent = roomA; name = .plate; weight = 5; }
+
+array<array<int>> la11Cells = { {1, 2, 3}, {4, 5}, {6} };
+array<la11Code> la11Codes = {2, 3, 5, 7};
+
+la11Board boardA { "board A"; }
+
+la11.code la11Limit = 4;
+
+la11.row la11Home = la11.row{1, 2, 3};
+
+/// Describes a part through the kit's type paths.
+void la11Show(la11.part p, la11.code c) {
+    la11.tell(p);
+    print($" at {c}");
+}
+
+// ---- Verbs that report. ----
+
+verb Codes {
+    grammar = {.codes};
+    void handler() {
+        la11.code a = 5;
+        la11Code b = a.twice();
+        la11.code c = a + b;
+        print($"{a} {b} {c}; odd {a.odd} {b.odd}; over {c.over(la11Limit)} {a.over(la11Limit)}; ");
+        la11.code none = 0;
+        la11.code big = 4096;
+        print($"same {a == 5} {b != a}; set {(bool)a} {(bool)none}; digits {big[0]}{big[1]}{big[2]}{big[3]}; ");
+        print($"sum {la11.sumFrom(la11Codes, 0)} {la11.sumFrom(la11Codes, 2)}.^");
+    }
+}
+
+verb Grid {
+    grammar = {.grid};
+    void handler() {
+        print($"Total {la11.total(la11Cells)}; cell {la11.cellAt(la11Cells, 1, 1)}; ");
+        print($"or {la11.cellOr(la11Cells, 2, 0, -1)} {la11.cellOr(la11Cells, 2, 1, -1)} ");
+        print($"{la11.cellOr(la11Cells, 5, 0, 0)}.^");
+    }
+}
+
+verb Deep {
+    grammar = {.deep};
+    void handler() {
+        array<la11Code> short = {1, 2, 3};
+        array<la11Code> longer = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+        try {
+            print($"Sum {la11.sumFrom(short, 0)}; ");
+            print($"sum {la11.sumFrom(longer, 0)}.^");
+        } catch (eLa11Fault f) {
+            print($"fault {(int)f}.^");
+        }
+    }
+}
+
+verb Board {
+    grammar = {.board};
+    void handler() {
+        boardA.attach(la11Cells);
+        print($"Rows {boardA[0]} {boardA[1]} {boardA[2]}; all {(int)boardA}; ");
+        print($"safe {boardA.safeRow(1)} {boardA.safeRow(3)}; ");
+        boardA[1] = 10;
+        print($"filled {la11Cells[1][0]} {la11Cells[1][1]}, all {(int)boardA}, from 1 {boardA.sumFrom(1)}; ");
+        print($"corners {boardA.cornerSum()}, reads {boardA.reads}.^");
+        boardA[1] = 0;
+        la11Cells[1][0] = 4;
+        la11Cells[1][1] = 5;
+    }
+}
+
+verb Focus {
+    grammar = {.focus};
+    void handler() {
+        print($"Focus {boardA.focusSum()}; ");
+        boardA.focus := la11Home;
+        print($"home {boardA.focusSum()}; ");
+        la11.bump(la11Home, 2);
+        boardA.focus[0] = 10;
+        print($"bumped {la11Home} {boardA.focusSum()}.^");
+        la11Home = la11.row{1, 2, 3};
+    }
+}
+
+verb Keeper {
+    grammar = {.keeper};
+    void handler() {
+        la11.board b = boardA;
+        b.report();
+        print("; ");
+        b.keeper = plate;
+        boardA.report();
+        print(".^");
+        boardA.keeper = null;
+    }
+}
+
+verb Parts {
+    grammar = {.parts};
+    void handler() {
+        la11.piece p = cog;
+        p.portray();
+        print("; ");
+        la11.both(p);
+        print("; ");
+        la11Show(plate, 9);
+        print("; ");
+        la11Show(null, 0);
+        print($"; weights {la11.weightOf(plate)} {la11.weightOf(null)}.^");
+    }
+}
+
+verb Names {
+    grammar = {.names};
+    void handler() {
+        la11.label("label");
+        print(", ");
+        la11.label(plate);
+        print(", ");
+        la11.any("note");
+        print(", ");
+        la11.any(cog);
+        print(".^");
+    }
+}
+
+verb Rows {
+    grammar = {.rows};
+    void handler() {
+        la11.row r = la11.row{4, 5, 6};
+        la11.row s = r;
+        s[1] = 9;
+        print($"{r} {s} same {r == s} {r != s}; sums {(int)r} {(int)s}; ");
+        s = r;
+        print($"copied {s == r}; ");
+        try {
+            s[3] = 1;
+            print("no fault");
+        } catch (eLa11Fault f) {
+            print($"fault {(int)f}");
+        }
+        print(".^");
+    }
+}
+
+verb Tickets {
+    grammar = {.tickets};
+    void handler() {
+        print($"Took {la11Ticket.take(5)} of 5; ");
+        la11Ticket a = la11Ticket.issue(1);
+        la11Ticket b = la11Ticket.issue(2);
+        la11Ticket c = la11Ticket.issue(3);
+        print($"held {(int)a} {(int)b} {(int)c}; ");
+        try {
+            la11Ticket d = la11Ticket.issue(4);
+            print($"got {(int)d}");
+        } catch (eLa11Fault f) {
+            print($"fault {(int)f}");
+        }
+        delete a;
+        delete b;
+        delete c;
+        print($"; issued {la11Ticket.issued}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

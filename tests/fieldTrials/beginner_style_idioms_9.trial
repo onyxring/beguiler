@@ -1,0 +1,78 @@
+Room A
+Room A. Room B is to the east.
+You can see a widget, a gizmo and a brass box (which is empty) here.
+> i6
+Poke is 3. First mark is 11.
+Poke is now 7.
+Twice 21 is 42. Last helper of 5 is 105.
+Counted sum: 12. Loose sum: 16.
+Helped: 2 3, calls 2.
+Extras: extras on.
+Bag count from I6: 3.
+Box from I6: brass box.
+Zap! The widget has 5.
+Widget charge from I6: 5.
+Zap! The gizmo has 5.
+Gizmo charge: 5.
+> steps
+Steps: 7.
+Steps after setting: 10.
+Steps right in the text: 10, plus a: 13, together: 7.
+Widget reach: 6. Path: 6, second step 2.
+> shelf
+(no such spot)
+Spots: 10 20 35 40, outside -1.
+Copy first: 99, shelf first: 10.
+Shelf total: 105.
+> tally
+Empty tally.
+Tally says none.
+After += 3: 3, a few.
+After ++: 4.
+After prefix ++: 14.
+After -= 4: 10, lots.
+About eleven.
+Not about twenty.
+Not empty.
+> rows
+Second counted: 4. Second word: beta.
+row one: number 1, cells 4 5 6, note first.
+row two: number 2, cells 7 8 9, note plain.
+Second local: 40.
+> shiny
+Shiny things: 2.
+The cupboard is not lit.
+Room B is lit.
+Shiny things now: 3.
+The widget is dull.
+The brass box is open.
+The brass box is shut.
+(it said no)
+The cupboard is shut.
+Room B is a room.
+The cupboard is not a room.
+> e
+Room B
+Room B. Room A is to the west.
+You can see a cupboard (which is closed) here.
+> mix
+Widget rack: 8. Gizmo rack: 1.
+Bumped: 1 9. Rack still: 0 8.
+Widget uses: 3, a few.
+The gizmo was never used.
+Scores: 4 7 13.
+Reach together: 8.
+Gizmo reach: 5.
+Poke: 10. Gizmo charge: 6.
+Second row number: 2, note plain.
+Counted up to 5 in 5 steps.
+> w
+Room A
+Room A. Room B is to the east.
+You can see a widget, a gizmo and a brass box (which is closed) here.
+> x box
+The brass box is shut, widget reach 6.
+> open box
+You open the brass box, revealing nothing.
+> x box
+The brass box is open, widget reach 6.

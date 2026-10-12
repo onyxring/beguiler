@@ -1,0 +1,108 @@
+Room A
+Room A. Room B is east.
+You can see a lantern, a cloth, a red tag and a blue tag here.
+> look
+Room A
+Room A. Room B is east.
+You can see a lantern, a cloth, a red tag and a blue tag here.
+> status
+Mass 3, heft 6, lumens 0 of 6, bright false.
+Here: Room A. Room B is east.
+Gauge 0; load 0; red on 90, blue on 60.
+Level cleared.
+> notes
+Number 4.
+Text four.
+Thing the lantern.
+Pair 4 and 5.
+4 notes; second mark 8; second shelf the blue tag.
+lantern weighted object var object
+Var held the lantern, then 12.
+Address set true; scalar 7; helper 105, 103.
+Object address matches true; base cast cap 6; both true.
+Last text: four
+Raw: C:\bin^x~y
+Total 45.
+Level two.
+> take cloth
+Taken.
+> polish lantern with cloth
+Mass 3, heft 6, lumens 4 of 6, bright false.
+> buff lantern using cloth
+Mass 3, heft 6, lumens 6 of 6, bright true.
+> polish lantern
+You achieve nothing by this.
+> buff red tag with cloth
+The red tag does not shine.
+> x closely lantern
+Up close, the lantern: kind object.
+> examine closely cloth
+Up close, the cloth: kind object.
+> x lantern
+A lantern.
+> weigh lantern
+The lantern: 840 g, 30 oz, raw 845, tenth 84.
+Scales: metric, plain, plain, metric.
+> weigh cloth
+The cloth: 0 g, 0 oz, raw 5, tenth 0.
+Scales: metric, plain, plain, metric.
+> heft cloth
+The cloth: 0 g, 0 oz, raw 5, tenth 0.
+Scales: metric, plain, plain, metric.
+> heft lantern carefully
+The lantern: 840 g, 30 oz, raw 845, tenth 84.
+Scales: metric, plain, plain, metric.
+> weigh cloth carefully
+The cloth: 0 g, 0 oz, raw 5, tenth 0.
+Scales: metric, plain, plain, metric.
+> label lantern
+Label: THE LANTERN (11 letters).
+A light.
+that lantern here
+> label cloth
+Label: THE CLOTH (9 letters).
+A rag.
+that cloth here
+> label red tag
+Label: THE RED TAG (11 letters).
+Something else.
+that red tag here
+> shelve red tag
+Code 4: shelf height 90, 1 slot(s); top is 90.
+> shelve blue tag
+Code 2: shelf height 60, 2 slot(s); top is 90.
+Moved up to 90.
+> shelve blue tag
+Code 2: shelf height 90, 1 slot(s); top is 90.
+> shelve cloth
+Only tags shelve.
+> take lantern
+Taken.
+> east
+Room B
+Room B. Room A is west.
+You can see a gauge and a crate (which is empty) here.
+> calibrate gauge to 23
+The gauge reads 3.
+> calibrate crate to 1
+Only the gauge calibrates.
+> pack all in crate
+lantern: Packed.
+cloth: Packed.
+> pack cloth in gauge
+Only the crate takes things.
+> drop lantern
+You aren't holding it.
+> stow lantern into crate
+Packed.
+> look in crate
+The crate contains a lantern and a cloth.
+> status
+Mass 3, heft 6, lumens 6 of 6, bright true.
+Here: Room B. Room A is west.
+Gauge 3; load 0; red on 90, blue on 90.
+Level cleared.
+> chains
+Ounces 304; second load 560 is 20 oz, metric.
+Heights: 30/3 90/1 60/2; second 90, last 2.
+3 shelved; 90 first, mark sum 13.

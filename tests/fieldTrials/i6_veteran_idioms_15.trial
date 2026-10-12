@@ -1,0 +1,76 @@
+Room A
+Room A.
+
+> purse
+purse 0/40 [] [audit peek 0, caught 0]
+
+> limit 150
+Limit refused: 1150; limit 40.
+
+> limit 30
+Limit 30.
+
+> deposit 0 5
+Deposit 5; coins 5, caught 0, peek 5.
+
+> deposit 1 12
+Deposit 17; coins 17, caught 0, peek 17.
+
+> deposit 2 20
+Deposit -1; coins 17, caught 37, peek 17.
+
+> deposit 9 1
+Deposit -1; coins 17, caught 909, peek 17.
+
+> purse
+purse 17/30 [5,12,20] [audit peek 17, caught 909]
+
+> plus 7
+spare purse 24/0 [77], wallet purse 17/30 [5,12,20]; diff 7, copy 1, slot0 5/77.
+
+> peek 1
+Slot 1: 12.
+
+> peek 3
+No slot: 803.
+
+> gauge
+ |..........| 0/0 as 0, weight 0, base 0.
+
+> turn 3
+Turned: |***.......| 3/2 as 32, weight 8, base 3.
+
+> turn 2
+Turned: |-----.....| 5/4 as 54, weight 14, base 5.
+
+> mark
+label north |-----.....| 5/4 as 54, weight 14, base 5.
+at Room A |++++++....| 6/5 as 65, weight 17, base 6.
+Moved 1.
+
+> history
+History: 3 5 6 56; copy 566, gauge 65.
+
+> turn 4
+Turned: |##########| 10/7 as 107, weight 27, base 10.
+
+> history
+History: 6 56 10 60; copy 608, gauge 107.
+
+> meter
+Meter raw 0, reading 0, scaled 0, made 0, faults 0, peek 0.
+
+> set 6
+[mode 2, sets 1] Meter raw 6, reading 6, scaled 18, made 1, faults 0, peek 0.
+Set 6.
+
+> label
+[mode 3, sets 1] Meter raw 6, reading 6, scaled 18, made 1, faults 1, peek 500.
+Set 6.
+
+> drain 4
+[mode 3, sets 2] Meter raw 6, reading 6, scaled 18, made 1, faults 2, peek 4.
+Set 6; prior 6/2, last 6/3.
+
+> meter
+Meter raw 6, reading 6, scaled 18, made 1, faults 2, peek 4.

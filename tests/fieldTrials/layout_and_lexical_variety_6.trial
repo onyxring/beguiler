@@ -1,0 +1,57 @@
+Room A
+A plain room.
+You can see a rope and a post here.
+> pool
+pool empty
+1a 2b 3c
+destroy 2
+destroy 1
+reused 5e
+destroy 3
+destroy 5
+> owned
+3c 9c
+3c
+> cells
+[1,2,-][3,4,-][5,6,p][7,8,-][9,10,q]
+[11,12,-][13,14,r][27,0,-]
+rex 3 tib 4
+> grid
+312 total 57 corner 6
+bc 22
+> raws
+raw 100 30
+m4 m1 m3 (3)
+> strs
+<BRASS BELL> 10
+BRASS-BELL!
+matched
+same ignoring case
+-1 6
+> linq
+0 4 7 9
+4 true true 7
+> props
+7 -1 1
+40 13 13
+> marks
+10 42
+> probe
+lash rope to post
+lash post to rope
+> lash rope to post
+lash rope to post
+> moor rope with post
+lash post to rope
+> tether post using rope
+lash rope to post
+> fix rope with post
+lash post to rope
+> bind rope to post
+lash rope to post
+> knot rope round post
+lash rope to post
+> rig rope to post
+lash rope to post
+> lash loose
+You can't see any such thing.

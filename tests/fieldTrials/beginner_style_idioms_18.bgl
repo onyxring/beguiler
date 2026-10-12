@@ -1,0 +1,532 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an eighteenth first-time-programmer program, with nearly everything in two big
+// declarations. A pooled class (tokens), written straight after #using of a namespace object, with a
+// static array of strings, a static counter, a static method that calls new and tests the result with
+// a postfix ?, a primitive-class member, a value-class member and one through the imported alias, a ref
+// member bound with :=, a var member, an enum member, a member array, operator [] / []= over it, a
+// replaced method that still calls the base class's version through a cast and follows ?. up the
+// tree, a local array of arrays built from a nested list, linq chains on its inner arrays with a
+// block lambda, switches with ranges, recursive methods (one walking up the tree through ?., one
+// saying the marks through [] inside an #i6 island with $i6Expr, one adding up an inner array),
+// stringObj, typeof, moves in the object tree and perform. An object (a bench) with an alias in its
+// body, an array of arrays from a nested list, an array of strings, a primitive member, a member of
+// the pooled class, an inline accessor holding a static counter and a static array and reaching the
+// bench through outer (its rows, its strings, its primitive, its token through ?. and ?, its [], its
+// recursive method), operator [] / []= over the rows, a replaced method, recursive methods with an
+// #i6 island, linq with block lambdas, a switch on typeof, a walk over its children, delete and
+// perform. Verbs that drive all of it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <linq>
+
+// ===== GRAMS (an int that is a weight) =====
+primitive class grams : int {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+
+    // whole hundreds of grams
+    emitter int hundreds() { ($val / 100) }
+}
+
+// ===== BANDS (how heavy something is) =====
+enum eBand { low, mid, high }
+
+// ===== SPOT (a row and a column) =====
+value class Spot {
+    int row;
+    int col;
+
+    Spot operator = (Spot o) {
+        row = o.row;
+        col = o.col;
+        return self;
+    }
+
+    void place(int r, int c) {
+        row = r;
+        col = c;
+    }
+}
+
+// ===== BIN (something that holds things and can say so) =====
+class Bin : object {
+    int count = 0;
+
+    void report() {
+        print($"({self} holds {count})^");
+    }
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+object boxA {
+    "box A";
+    parent = roomA;
+    string description = "A plain box A.";
+    attributes = {container, openable};
+}
+
+object brassKey {
+    "brass key";
+    parent = boxA;
+    string description = "A brass key.";
+}
+
+object coin {
+    "coin";
+    parent = roomA;
+    string description = "A coin.";
+}
+
+object pebble {
+    "pebble";
+    parent = roomA;
+    string description = "A pebble.";
+}
+
+object bell {
+    "bell";
+    parent = roomB;
+    string description = "A bell.";
+}
+
+object stone {
+    "stone";
+    parent = roomB;
+    string description = "A stone.";
+}
+
+// ===== SHOP (just a place to keep type names) =====
+object shop {
+    alias slot for Spot;
+    alias band for eBand;
+}
+
+// ===== TOKENS (up to three at a time; each one weighs something and keeps marks) =====
+#using shop
+class Token[3] : Bin {
+    string short_name = "token";
+
+    static array<string> bandWords = { "low", "mid", "high" };
+    static int made = 0;
+
+    grams heft;
+    Spot first;
+    slot latest;
+    ref Spot cur;
+    var tag;
+    eBand kind = eBand.low;
+    object home;
+    array<int> marks[4];
+
+    void create(int w, object h) {
+        heft = w;
+        home = h;
+        Token.made++;
+    }
+
+    void destroy() {
+        print($"({self} of {heft.hundreds()} hundred goes back, {count} inside)^");
+    }
+
+    // a mark, or -1 if there is none
+    int operator [] (int i) {
+        if (i < 0 || i >= marks.length) {
+            return -1;
+        }
+        return marks[i];
+    }
+
+    // writes a mark; one past the end adds it, if there is room
+    void operator []= (int i, int v) {
+        if (i >= 0 && i < marks.length) {
+            marks[i] = v;
+        } else if (i == marks.length && marks.length < marks.size) {
+            marks.append(v);
+        }
+    }
+
+    // makes a token for a place and gives it a first mark, or says there is none left
+    static Token make(int w, object h) {
+        Token t = new Token(w, h);
+        if (t?) {
+            t[0] = w;
+            print($"(token {Token.made} made for {h})^");
+            return t;
+        }
+        print($"(no token left for {h})^");
+        return null;
+    }
+
+    // the class says how many it holds; a token also says where it is from
+    replace void report() {
+        ((Bin)self).report();
+        object up = home?.parent;
+        stringObj s = $"from {home}";
+        if (up?) {
+            stringObj part = $" in {up}";
+            s += part;
+        }
+        print($"({s}, {heft.hundreds()} hundred, {marks.length} marks, first {self[0]}, band {Token.bandWords[(int)kind - 1]})^");
+    }
+
+    // how many parents up a thing is from the top of the tree
+    int depthOf(object o) {
+        object up = o?.parent;
+        if (up?) {
+            return 1 + depthOf(up);
+        }
+        return 0;
+    }
+
+    // says the marks from i to the end, through I6
+    void sayMarks(int i) {
+        if (i >= marks.length) {
+            print("^");
+            return;
+        }
+        #i6 print " ", $i6Expr(self[i]);
+        sayMarks(i + 1);
+    }
+
+    // adds up a row from i to its end
+    int addUp(array<int> row, int i) {
+        if (i >= row.length) {
+            return 0;
+        }
+        return row[i] + addUp(row, i + 1);
+    }
+
+    // weighs a thing, writes the weight down, and puts the thing in the token
+    void take(object o, int w) {
+        array<array<int>> limits = { { 0, 99 }, { 100, 499 }, { 500, 9999 } };
+        func<bool, int> under = (int n) => {
+            if (n < 0) {
+                return false;
+            }
+            return n <= w;
+        };
+        heft = w;
+        tag = o;
+        int b = 0;
+        for (int r = 0; r < limits.length; r++) {
+            if (limits[r][0] <= w && w <= limits[r][1]) {
+                b = r;
+            }
+        }
+        switch (b) {
+            case 0: kind = eBand.low;
+            case 1: kind = band.mid;
+            default: kind = shop.band.high;
+        }
+        self[marks.length] = w;
+        latest.place(b, marks.length);
+        if (marks.length == 1) {
+            first = latest;
+        }
+        cur := latest;
+        stringObj word = Token.bandWords[b];
+        print($"({o} weighs {heft.hundreds()} hundred: {word}, {limits[b].filter(under).count()} limits under it, band sum {addUp(limits[b], 0)}, depth {depthOf(o)})^");
+        #i6 print "(band ", $i6Expr(b), ", spot ", $i6Expr(cur.row), "/", $i6Expr(cur.col), ")^";
+        if (o.has(container)) {
+            if (!o.has(open)) {
+                o.give(open);
+                print($"({o} opened for weighing)^");
+            }
+        }
+        o.parent = self;
+        count++;
+    }
+
+    // looks over the token and the last thing in it
+    void survey() {
+        switch (marks.length) {
+            case 0: print("No marks.^");
+            case 1 to 2: print("A few marks:");
+            default: print("Many marks:");
+        }
+        if (marks.length > 0) {
+            sayMarks(0);
+        }
+        print($"Spots: first {first.row}/{first.col}, latest {latest.row}/{latest.col}.^");
+        if (typeof(tag) == eType.object) {
+            object t = (object)tag;
+            print($"Last in: {t}, depth {depthOf(t)}.^");
+            Examine.perform(t);
+        }
+    }
+
+    // puts everything back in the token's home
+    void empty() {
+        for (object o in self.children) {
+            o.parent = home;
+            count--;
+        }
+        tag = null;
+    }
+}
+
+// ===== THE BENCH (three rows of numbers, and a token on it) =====
+Bin bench {
+    "bench";
+    parent = roomA;
+    string description = "A bench.";
+
+    alias place for Spot;
+
+    array<array<int>> rows = { { 0, 0, 0 }, { 0, 0 }, { 0 } };
+    array<string> labels = { "left", "middle", "right" };
+    grams load;
+    Token held;
+    place here;
+    var lastSeen;
+
+    // which row is picked; setting it says how that row stands
+    auto level = {
+        static int sets = 0;
+        static array<int> seen[4];
+        int _v = 0;
+
+        int operator () {
+            return _v;
+        }
+
+        void operator = (int v) {
+            sets++;
+            switch (v) {
+                case < 0: v = 0;
+                case 3 to 99: v = 2;
+            }
+            _v = v;
+            if (seen.length < seen.size) {
+                seen.append(v);
+            }
+            stringObj s = outer.labels[v];
+            object from = outer.held?.home;
+            if (outer.held?) {
+                stringObj part = $", token from {from}";
+                s += part;
+            }
+            int n = 0;
+            for (int i = 0; i < outer.rows[v].length; i++) {
+                n = n + outer.rows[v][i];
+            }
+            print($"(level {v}: {s}, row sum {n}, load {outer.load.hundreds()} hundred, set {sets} times, seen {seen.length})^");
+            if (outer.held?) {
+                print($"(token depth {outer.depthOf(outer.held)}, first mark {outer.held[0]}, row total {outer[v]})^");
+            }
+        }
+    }
+
+    // the class says how many it holds; I also want the rows
+    replace void report() {
+        ((Bin)self).report();
+        stringObj line = "rows:";
+        for (int r = 0; r < rows.length; r++) {
+            stringObj n = $" {self[r]}";
+            line += n;
+        }
+        print($"({line})^");
+    }
+
+    // how many parents up a thing is from the top of the tree
+    int depthOf(object o) {
+        object up = o?.parent;
+        if (up?) {
+            return 1 + depthOf(up);
+        }
+        return 0;
+    }
+
+    // the sum of one row, or -1
+    int operator [] (int r) {
+        if (r < 0 || r >= rows.length) {
+            return -1;
+        }
+        int n = 0;
+        for (int i = 0; i < rows[r].length; i++) {
+            n = n + rows[r][i];
+        }
+        return n;
+    }
+
+    // puts a number in the first empty slot of a row
+    void operator []= (int r, int v) {
+        if (r < 0 || r >= rows.length) {
+            return;
+        }
+        for (int i = 0; i < rows[r].length; i++) {
+            if (rows[r][i] == 0) {
+                rows[r][i] = v;
+                return;
+            }
+        }
+        print($"(row {r} is full)^");
+    }
+
+    // prints the chain of parents, top first, from I6
+    void trace(object o) {
+        object up = o?.parent;
+        if (up?) {
+            trace(up);
+        }
+        #i6 print "/", (name) $i6Expr(o);
+    }
+
+    // puts a token on the bench in a row
+    void put(Token t, int r) {
+        if (!(t?)) {
+            print("(nothing to put)^");
+            return;
+        }
+        func<bool, int> full = (int n) => {
+            return n > 0;
+        };
+        held = t;
+        lastSeen = t;
+        load = t.heft;
+        here.place(r, rows[r].filter(full).count());
+        self[r] = t[0];
+        t.parent = self;
+        count++;
+        print($"({t} on the {labels[r]} row at {here.row}/{here.col}; path ");
+        trace(t);
+        print(")^");
+        level = r;
+    }
+
+    // looks over the rows and the last thing put down
+    void survey() {
+        func<bool, string> longWord = (string s) => {
+            stringObj w = s;
+            return w.length > 4;
+        };
+        int busy = 0;
+        for (int r = 0; r < rows.length; r++) {
+            if (rows[r].any((int n) => n > 0)) {
+                busy++;
+            }
+        }
+        print($"Busy rows: {busy}. Long labels: {labels.filter(longWord).count()}. Row totals: {self[0]} {self[1]} {self[2]} {self[9]}.^");
+        switch (typeof(lastSeen)) {
+            case eType.object: {
+                object o = (object)lastSeen;
+                print($"Last put: {o}, depth {depthOf(o)}.^");
+            }
+            default: print("Nothing put yet.^");
+        }
+        for (object o in self.children) {
+            print($"On the bench: {o}.^");
+        }
+    }
+
+    // takes the tokens off and sends them back
+    void clearOff() {
+        for (object o in self.children) {
+            o.parent = parent;
+            count--;
+        }
+        Token t = held;
+        held = null;
+        lastSeen = null;
+        if (t?) {
+            t.empty();
+            delete t;
+        }
+        print($"(bench cleared; {count} left)^");
+        Examine.perform(self);
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// TOKENS - the pooled tokens
+verb TokensVerb {
+    meta = true;
+    grammar = {.tokens};
+    void handler() {
+        Token a = Token.make(900, roomA);
+        Token b = Token.make(40, roomB);
+        Token c = Token.make(250, roomA);
+        Token d = Token.make(5, roomB);
+        print($"Made: {Token.made}. D is set: {d?}.^");
+        a.take(coin, 900);
+        a.take(boxA, 40);
+        a.take(pebble, 120);
+        a.take(bell, 600);
+        b.take(stone, 250);
+        a.report();
+        b.report();
+        a.survey();
+        print($"Marks: {a[0]} {a[1]} {a[2]} {a[3]} {a[4]} (past end {a[9]}).^");
+        a[1] = 45;
+        print("Again:");
+        a.sayMarks(0);
+        print($"Brass key depth {a.depthOf(brassKey)}. Box A is open: {boxA.has(open)}.^");
+        a.empty();
+        print($"Coin is in {coin.parent}. Stone is in {stone.parent}.^");
+        delete b;
+        Token e = Token.make(77, roomB);
+        e?.take(stone, 7);
+        e?.report();
+        delete a;
+        delete c;
+        delete e;
+    }
+}
+
+// BENCH - the bench and a token on it
+verb BenchVerb {
+    meta = true;
+    grammar = {.bench};
+    void handler() {
+        print($"Level {bench.level} before anything.^");
+        bench.survey();
+        Token t = Token.make(300, roomB);
+        t?.take(stone, 300);
+        bench.put(t, 1);
+        bench.level = 0;
+        bench.level = 7;
+        bench.level = -3;
+        bench[0] = 4;
+        bench[2] = 6;
+        bench[2] = 8;
+        bench.survey();
+        bench.report();
+        bench.clearOff();
+        print($"Stone is in {stone.parent}. Level {bench.level}.^");
+        bench.put(null, 0);
+    }
+}

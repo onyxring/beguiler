@@ -1,0 +1,483 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a ninth first-time-programmer program, the one where the author finds out Beguile can talk
+// to Inform 6 and starts making their own little types. #if on a symbol that is #declare'd further down
+// (with a value used inline); #emitfirst and #emitlast blocks; a file-scope #i6 island with a global and
+// routines; extern variables (read and written) and an extern const; extern functions, one renamed with
+// asBgl and one defined in #emitlast; asI6 on a global, an object, an attribute, a member and a method,
+// all reached by their I6 names from #i6; & on a tracked array and on a raw array passed to I6; a
+// primitive class over int (operator = from int, conversion to int, its own +); a value class with
+// regular-method operator [] and []= over a member array, used in loops and with += on an element; a
+// value class with only + and a copy operator so += and -= fall back, separate ++ and prefix++, an
+// explicit string conversion, operator ! and operator ?=; extend extern class array with a T emitter
+// called on int, string and member arrays; inline members re-listed and appended by extend class,
+// with nested { } aggregates for an array member; attributes with ! on a class's attribute, give / ungive
+// / has at run time, counted from I6; rtrue( ) and rfalse( ) with interpolated text (one in a before()
+// with a ternary inside the span); my types as class members (an owned Shelf subscripted in place, a
+// Tally, a steps with a starting value bumped with +=), as parameters and returns, in an array<steps>
+// walked with for-in and an array of a value class with += on a slot; and a superposed function and
+// global, one used and one never used.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+// (I wrote this before the #declare at the bottom of this part. The spec says that is OK for #declare.)
+#if HAS_EXTRAS
+#define EXTRA_TEXT "extras on"
+#else
+#define EXTRA_TEXT "extras off"
+#endif
+
+// put a constant right at the top of the I6
+#emitfirst {
+    Constant FIRST_MARK = 11;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+#declare HAS_EXTRAS
+#declare START_POKE 4
+
+// ===== THINGS WRITTEN IN I6 =====
+// my shiny attribute is called polished in the I6
+attribute shiny asI6 polished;
+
+#i6 {
+    Global poke = 3;
+    [ I6Twice x; return x * 2; ];
+    [ SumRaw arr n i t; for (i = 0: i < n: i++) t = t + arr-->i; return t; ];
+    [ CountShiny o i; objectloop (o has polished) i++; return i; ];
+}
+
+// this one goes at the very end of the I6
+#emitlast {
+    [ LastHelper x; return x + 100; ];
+}
+
+extern int poke;
+extern const int FIRST_MARK;
+extern int I6Twice(int x) asBgl twice;
+extern int LastHelper(int x);
+extern int SumRaw(int addr, int n);
+extern int CountShiny();
+
+// ===== GLOBALS =====
+int bagCount asI6 bag_count = 2;
+int startPoke = START_POKE;
+array<int> counted = {2, 4, 6};
+rawArray<int> loose = {1, 3, 5, 7};
+array<string> words = {"alpha", "beta", "gamma"};
+array<steps> path = {1, 2, 3};
+
+// only used by the I6 verb
+superposed int helperCalls = 0;
+superposed int helped(int n) {
+    helperCalls++;
+    return n + helperCalls;
+}
+// never used anywhere (so it should not be in the game at all)
+superposed int neverUsed(int n) {
+    return n * 1000;
+}
+
+// ===== EVERY ARRAY GETS A second() =====
+extend extern class array {
+    emitter T second() { $i6Expr($self[1]) }
+}
+
+// ===== STEPS (an int, but its own type) =====
+primitive class steps {
+    // (the spec says $target for a store and $val for the value, so it works on members too)
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter steps operator + (steps v) { ($val + $v) }
+}
+
+// ===== A SHELF WITH FOUR SPOTS =====
+value class Shelf {
+    array<int> spots[4];
+    Shelf operator = (Shelf o) {
+        for (int i = 0; i < 4; i++) {
+            spots[i] = o.spots[i];
+        }
+        return self;
+    }
+    int operator [] (int i) {
+        if (i < 0 || i > 3) {
+            return -1;
+        }
+        return spots[i];
+    }
+    int operator []= (int i, int v) {
+        if (i < 0 || i > 3) {
+            print("(no such spot)");
+            return -1;
+        }
+        spots[i] = v;
+        return v;
+    }
+}
+
+// ===== A TALLY =====
+value class Tally {
+    int n;
+    Tally operator = (Tally o) { n = o.n; return self; }
+    Tally operator = (int v) { n = v; return self; }
+    Tally operator + (int v) {
+        Tally t;
+        t.n = n + v;
+        return t;
+    }
+    Tally operator - (int v) {
+        Tally t;
+        t.n = n - v;
+        return t;
+    }
+    Tally operator ++ () { n = n + 1; return self; }
+    Tally operator prefix++ () { n = n + 10; return self; }
+    explicit string operator () {
+        if (n == 0) {
+            return "none";
+        }
+        if (n < 5) {
+            return "a few";
+        }
+        return "lots";
+    }
+    eBool operator ! () { return n == 0; }
+    eBool operator ?= (int v) { return n >= v - 1 && n <= v + 1; }
+}
+
+// ===== A SCORE (like a tally but simpler) =====
+value class Score {
+    int n;
+    Score operator = (Score o) { n = o.n; return self; }
+    Score operator + (int v) {
+        Score t;
+        t.n = n + v;
+        return t;
+    }
+}
+
+// ===== ROWS (I wanted to write them in one line each) =====
+class Row : object {
+    inline instanceName;
+    inline int number;
+    inline array<int> cells[3];
+    string note = "plain";
+}
+
+// (later I wanted the note in the line as well)
+extend class Row {
+    inline note;
+}
+
+Row rowOne { "row one", 1, {4, 5, 6}, "first"; }
+Row rowTwo { "row two", 2, {7, 8, 9}; }
+
+// ===== ROOMS =====
+class Lit : object {
+    attributes = {light};
+}
+
+Lit roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+}
+
+Lit roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+}
+
+// a lit thing that is not lit
+Lit cupboard {
+    "cupboard";
+    attributes = {!light, container, openable, shiny};
+    parent = roomB;
+}
+
+// ===== GADGETS =====
+class Gadget : object {
+    int charge asI6 gadget_charge = 0;
+    Shelf rack;
+    Tally uses;
+    steps reach = 2;
+    void zap() asI6 GadgetZap {
+        charge = charge + 5;
+        print($"Zap! The {self} has {charge}.^");
+    }
+}
+
+Gadget widget {
+    "widget";
+    parent = roomA;
+    attributes = {shiny};
+}
+
+Gadget gizmo {
+    "gizmo";
+    parent = roomA;
+}
+
+object brassBox asI6 brass_box {
+    "brass box";
+    name = {.brass, .box};
+    parent = roomA;
+    attributes = {container, openable, open};
+    bool before() {
+        if (action == Examine) {
+            rtrue($"The brass box is {(brassBox.has(open) ? "open" : "shut")}, widget reach {widget.reach}.^");
+        }
+        rfalse;
+    }
+}
+
+// ===== FUNCTIONS =====
+// adds one to every spot (gets its own copy)
+Shelf bumped(Shelf s) {
+    for (int i = 0; i < 4; i++) {
+        s[i] += 1;
+    }
+    return s;
+}
+
+// how far two reaches go together
+steps together(steps a, steps b) {
+    return a + b;
+}
+
+bool checkBox(object o) {
+    if (o.has(open)) {
+        rtrue($"The {o} is open.^");
+    }
+    rfalse($"The {o} is shut.^");
+}
+
+bool isRoom(object o) {
+    if (o == roomA || o == roomB) rtrue;
+    rfalse;
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// I6 - things in Inform 6
+verb TalkI6 {
+    meta = true;
+    grammar = {.i6};
+    void handler() {
+        print($"Poke is {poke}. First mark is {FIRST_MARK}.^");
+        poke = poke + startPoke;
+        print($"Poke is now {poke}.^");
+        print($"Twice 21 is {twice(21)}. Last helper of 5 is {LastHelper(5)}.^");
+        print($"Counted sum: {SumRaw(&counted + 2, counted.size)}. Loose sum: {SumRaw(&loose, 4)}.^");
+        print($"Helped: {helped(1)} {helped(1)}, calls {helperCalls}.^");
+        print($"Extras: {EXTRA_TEXT}.^");
+        bagCount++;
+        #i6 {
+            print "Bag count from I6: ", bag_count, ".^";
+            print "Box from I6: ", (name) brass_box, ".^";
+            widget.GadgetZap();
+            print "Widget charge from I6: ", widget.gadget_charge, ".^";
+        }
+        gizmo.zap();
+        print($"Gizmo charge: {gizmo.charge}.^");
+    }
+}
+
+// STEPS - my int type
+verb StepsVerb {
+    meta = true;
+    grammar = {.steps};
+    void handler() {
+        steps a = 3;
+        steps b = 4;
+        steps c = a + b;
+        int plain = c;
+        print($"Steps: {plain}.^");
+        c = 10;
+        int back = c;
+        print($"Steps after setting: {back}.^");
+        print($"Steps right in the text: {c}, plus a: {c + a}, together: {together(a, b)}.^");
+        widget.reach += 3;
+        widget.reach++;
+        int far = 0;
+        for (steps p in path) {
+            far = far + p;
+        }
+        print($"Widget reach: {widget.reach}. Path: {far}, second step {path.second()}.^");
+    }
+}
+
+// SHELF - my shelf with [ ]
+verb ShelfVerb {
+    meta = true;
+    grammar = {.shelf};
+    void handler() {
+        Shelf s;
+        for (int i = 0; i < 4; i++) {
+            s[i] = (i + 1) * 10;
+        }
+        s[2] += 5;
+        s[7] = 1;
+        print("^");
+        print($"Spots: {s[0]} {s[1]} {s[2]} {s[3]}, outside {s[9]}.^");
+        Shelf copy = s;
+        copy[0] = 99;
+        print($"Copy first: {copy[0]}, shelf first: {s[0]}.^");
+        int total = 0;
+        int k = 0;
+        while (k < 4) {
+            total += s[k];
+            k++;
+        }
+        print($"Shelf total: {total}.^");
+    }
+}
+
+// TALLY - my counter
+verb TallyVerb {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        Tally t;
+        if (!t) {
+            print("Empty tally.^");
+        }
+        print($"Tally says {(string)t}.^");
+        t += 3;
+        print($"After += 3: {t.n}, {(string)t}.^");
+        t++;
+        print($"After ++: {t.n}.^");
+        ++t;
+        print($"After prefix ++: {t.n}.^");
+        t -= 4;
+        print($"After -= 4: {t.n}, {(string)t}.^");
+        if (t ?= 11) {
+            print("About eleven.^");
+        }
+        if (t ?= 20) {
+            print("About twenty.^");
+        } else {
+            print("Not about twenty.^");
+        }
+        if (!t) {
+            print("Still empty?^");
+        } else {
+            print("Not empty.^");
+        }
+    }
+}
+
+// ROWS - the second() on arrays and rows written in one line
+verb RowsVerb {
+    meta = true;
+    grammar = {.rows};
+    void handler() {
+        print($"Second counted: {counted.second()}. Second word: {words.second()}.^");
+        print($"{rowOne}: number {rowOne.number}, cells {rowOne.cells[0]} {rowOne.cells.second()} {rowOne.cells[2]}, note {rowOne.note}.^");
+        print($"{rowTwo}: number {rowTwo.number}, cells {rowTwo.cells[0]} {rowTwo.cells.second()} {rowTwo.cells[2]}, note {rowTwo.note}.^");
+        array<int> local = {30, 40, 50};
+        print($"Second local: {local.second()}.^");
+    }
+}
+
+// SHINY - attributes
+verb ShinyVerb {
+    meta = true;
+    grammar = {.shiny};
+    void handler() {
+        print($"Shiny things: {CountShiny()}.^");
+        if (cupboard.has(light)) {
+            print("The cupboard is lit.^");
+        } else {
+            print("The cupboard is not lit.^");
+        }
+        if (roomB.has(light) == true) {
+            print("Room B is lit.^");
+        }
+        gizmo.give(shiny);
+        brassBox.give(shiny);
+        widget.ungive(shiny);
+        print($"Shiny things now: {CountShiny()}.^");
+        if (widget.has(shiny) == false) {
+            print("The widget is dull.^");
+        }
+        checkBox(brassBox);
+        brassBox.ungive(open);
+        bool r = checkBox(brassBox);
+        if (r == false) {
+            print("(it said no)^");
+        }
+        checkBox(cupboard);
+        if (isRoom(roomB)) {
+            print("Room B is a room.^");
+        }
+        if (!isRoom(cupboard)) {
+            print("The cupboard is not a room.^");
+        }
+    }
+}
+
+// MIX - my types inside other things
+verb MixVerb {
+    meta = true;
+    grammar = {.mix};
+    void handler() {
+        widget.rack[1] = 6;
+        widget.rack[1] += 2;
+        gizmo.rack[1] = 1;
+        print($"Widget rack: {widget.rack[1]}. Gizmo rack: {gizmo.rack[1]}.^");
+        Shelf b = bumped(widget.rack);
+        print($"Bumped: {b[0]} {b[1]}. Rack still: {widget.rack[0]} {widget.rack[1]}.^");
+        widget.uses += 2;
+        widget.uses++;
+        print($"Widget uses: {widget.uses.n}, {(string)widget.uses}.^");
+        if (!gizmo.uses) {
+            print("The gizmo was never used.^");
+        }
+        array<Tally> scores[3];
+        Tally start;
+        start.n = 4;
+        scores[0] = start;
+        scores[1] = scores[0] + 3;
+        scores[2] = start;
+        scores[2] += 9;
+        print($"Scores: {scores[0].n} {scores[1].n} {scores[2].n}.^");
+        int far = together(widget.reach, gizmo.reach);
+        print($"Reach together: {far}.^");
+        gizmo.reach = 5;
+        steps r = gizmo.reach;
+        int rr = r;
+        print($"Gizmo reach: {rr}.^");
+        poke++;
+        poke += 2;
+        gizmo.charge += 1;
+        print($"Poke: {poke}. Gizmo charge: {gizmo.charge}.^");
+        array<object> rowList = {rowOne, rowTwo};
+        Row secondRow = (Row)rowList.second();
+        print($"Second row number: {secondRow.number}, note {secondRow.note}.^");
+        int guard = 0;
+        Tally w;
+        while (!(w ?= 6)) {
+            w++;
+            guard++;
+        }
+        print($"Counted up to {w.n} in {guard} steps.^");
+    }
+}

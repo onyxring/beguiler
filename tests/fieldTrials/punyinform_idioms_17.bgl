@@ -1,0 +1,353 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a seventeenth PunyInform program, built from two dense declarations over area triples:
+// an object of a class whose inline `auto { }` accessor holds a `static array<int>`, an `operator []`
+// and a setter writing its host through `outer.` and performing a verb, beside `operator +=` and `-` on
+// the object, a `replace`d inherited method, an `array<Chip>` member of a pooled class filled with
+// `new`/`delete` and read through `??`, a `ref` value-class local bound with `:=`, an array of arrays,
+// a block-bodied lambda reading the accessor, an emitter-class local, an `#i6` line using `$i6Expr`,
+// a `switch` over an enum member and `has()`/`give()`/`ungive()`; and an `extend class` of a class
+// with two parents, opened with `#using` of an object namespace whose `alias … for` names a value
+// class, adding `operator +`/`<`, a `replace`d method, a recursive method, and a method taking an
+// `array<int>` parameter walked in `try`/`catch` with `throw`, filtered with `<linq>`, an emitter-class
+// local, an `#i6` line, `#if`/`#else`, postfix `?`, `has()` and `perform()` of a verb; a verb handler
+// filling a local `array<Chip>` from row sums of an array of arrays taken by a recursive method added
+// with `extend` on an object, read through `??` and a block lambda, with `$i6Name` in an `#i6` line;
+// and a global function `replace`d with `replaced()`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#include <linq>
+
+#includeI6 "puny"
+
+#define TRACE_LEVEL 2
+
+// --- shared types -----------------------------------------------------------------------------------
+
+enum eShade { pale, mid, deep }
+
+value class Pair {
+    int a;
+    int b;
+
+    Pair operator = (Pair o) {
+        a = o.a;
+        b = o.b;
+        return self;
+    }
+
+    int sum() {
+        return a + b;
+    }
+}
+
+emitter class tenths {
+    emitter void operator = (int v) { $self = $v * 10; }
+    emitter int  operator ()        { ($self / 10) }
+    emitter int  raw()              { ($self) }
+}
+
+class Chip[4] : object {
+    int worth = 0;
+
+    void create(int w) {
+        worth = w;
+    }
+}
+
+int tallies = 0;
+
+int twice(int n) {
+    return n * 2;
+}
+
+int bonus(int n) {
+    return n;
+}
+
+replace int bonus(int n) {
+    return replaced(n) + 100;
+}
+
+// --- rooms and things -------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+class Shelf : object {
+    int slots = 2;
+
+    void report() {
+        printLine($"{self}: slots {slots}.");
+    }
+}
+
+class Tagged : object {
+    object owner;
+}
+
+// --- cluster 1: an object with an inline accessor ---------------------------------------------------
+
+Shelf rack {
+    "rack";
+    parent = roomA;
+    int total = 0;
+    int writes = 0;
+    Pair span;
+    array<Chip> chips[3];
+    eShade shade = eShade.pale;
+
+    auto level = {
+        static array<int> marks[4];
+        int _raw = 0;
+        int operator () { return _raw; }
+        int operator [] (int i) { return marks[i]; }
+        void operator = (int v) {
+            _raw = v;
+            marks[outer.writes % 4] = v;
+            outer.writes++;
+            if (v > 40) Tally.perform();
+        }
+    };
+
+    int operator += (int n) {
+        total = total + n;
+        return total;
+    }
+
+    int operator - (int n) {
+        return total - n;
+    }
+
+    replace void report() {
+        printLine($"Rack: total {total} left {self - 100} level {level} writes {writes} shade {(int)shade}.");
+    }
+
+    int stock(int seed) {
+        array<array<int>> grid = {{1, 2}, {3, 4, 5}};
+        ref Pair p := span;
+        Chip made = new Chip(seed);
+        int slot = seed % 3;
+        Chip pick = chips[slot] ?? made;
+        tenths t = seed;
+        int n = 0;
+        func<int, int> clamp = (int x) => {
+            int k = x + level;
+            if (k > 40) k = 40;
+            return k;
+        };
+        for (int i = 0; i < grid.length; i++) {
+            for (int j = 0; j < grid[i].length; j++) n += grid[i][j] * seed;
+        }
+        #i6 n = $i6Expr(twice(n));
+        p.a = n;
+        p.b = pick.worth;
+        self += clamp(p.sum());
+        level = t.raw();
+        switch (shade) {
+            case eShade.pale: shade = eShade.mid;
+            case eShade.mid:  shade = eShade.deep;
+            default:          shade = eShade.pale;
+        }
+        if (self.has(light)) self.ungive(light);
+        else self.give(light);
+        if (chips[slot] == null) chips[slot] = made;
+        else delete made;
+        printLine($"Stock {seed}: grid {n} pick {pick.worth} span {span.sum()} plus {level + 1} mark {level.marks[(writes - 1) % 4]}.");
+        return bonus(total);
+    }
+}
+
+// --- cluster 2: extending a class with two parents ----------------------------------------------------
+
+class Gizmo : Shelf, Tagged {
+    int heft = 0;
+    int uses = 0;
+
+    int weigh() {
+        return heft;
+    }
+}
+
+Gizmo gizmoA {
+    "gizmo A";
+    heft = 4;
+}
+
+Gizmo gizmoB {
+    "gizmo B";
+    heft = 9;
+    slots = 3;
+}
+
+object kit {
+    alias duo for Pair;
+    alias tone for eShade;
+}
+
+#using kit
+extend class Gizmo {
+    int operator + (int n) {
+        return heft + n;
+    }
+
+    bool operator < (Gizmo o) {
+        return heft < o.heft;
+    }
+
+    replace int weigh() {
+        return heft * slots;
+    }
+
+    int depth(int n) {
+        if (n <= 0) return 0;
+        return n + depth(n - 1);
+    }
+
+    int load(array<int> vals, ref duo acc) {
+        int n = 0;
+        tenths t = heft;
+        Pair snap;
+        try {
+            for (int v in vals) {
+                if (v < 0) throw v;
+                n += v;
+            }
+        } catch (int e) {
+            printLine($"Bad value {e}.");
+        }
+        int big = vals.filter((int x) => x > heft).count();
+        #i6 n = $i6Expr(twice(n));
+        acc.a += n;
+        acc.b += big;
+        snap = acc;
+        int s = self + depth(big + 1);
+        #if TRACE_LEVEL > 1
+            printLine($"{self}: sum {n} big {big} plus {s} tenths {t.raw()} weigh {weigh()} snap {snap.sum()}.");
+        #else
+            printLine($"{self}: sum {n}.");
+        #endif
+        if (owner?) printLine($"Owned by {owner}.");
+        if (self.has(light)) printLine("Lit.");
+        uses++;
+        if (s > 10) Tally.perform();
+        return s;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        tallies++;
+        printLine($"Tally {tallies}.");
+    }
+}
+
+verb Racks {
+    meta = true;
+    grammar = {.racks};
+    void handler() {
+        rack.report();
+        int a = rack.stock(2);
+        int b = rack.stock(5);
+        int c = rack.stock(5);
+        rack.level = 7;
+        printLine($"Stock {a} {b} {c} plus {rack.level + 2} lit {rack.has(light)}.");
+        rack.report();
+    }
+}
+
+verb Gizmos {
+    meta = true;
+    grammar = {.gizmos};
+    void handler() {
+        Pair acc;
+        array<int> first = {1, 6, 8};
+        array<int> second = {12, -3, 2};
+        gizmoA.owner = rack;
+        int a = gizmoA.load(first, acc);
+        gizmoB.give(light);
+        int b = gizmoB.load(second, acc);
+        if (gizmoA < gizmoB) printLine("A lighter.");
+        printLine($"Loads {a} {b} acc {acc.a} {acc.b} uses {gizmoA.uses} {gizmoB.uses}.");
+    }
+}
+
+// --- a verb handler over pooled chips ---------------------------------------------------------------
+
+extend rack {
+    int fold(array<int> vals, int i) {
+        if (i >= vals.length) return 0;
+        return vals[i] + fold(vals, i + 1);
+    }
+}
+
+verb Piles {
+    meta = true;
+    grammar = {.piles};
+    void handler() {
+        array<Chip> pile[3];
+        array<array<int>> rows = {{2, 7}, {5}, {1, 1, 9}};
+        Pair best;
+        ref Pair b := best;
+        eShade s = eShade.deep;
+        tenths t = 0;
+        for (int i = 0; i < pile.size; i++) {
+            int sum = rack.fold(rows[i], 0);
+            if (sum > 5) pile[i] = new Chip(sum);
+        }
+        func<int, Chip> worthOf = (Chip c) => {
+            if (c == null) return 0;
+            return c.worth;
+        };
+        int total = 0;
+        for (int i = 0; i < pile.size; i++) {
+            Chip c = pile[i] ?? pile[0];
+            int w = worthOf(c);
+            total += w;
+            if (w > b.a) {
+                b.a = w;
+                b.b = i;
+            }
+        }
+        #i6 total = $i6Name(twice)(total);
+        t = b.a;
+        switch (s) {
+            case eShade.deep: printLine("Deep.");
+            default:          printLine("Other.");
+        }
+        printLine($"Piles total {total} best {best.a} at {best.b} tenths {t.raw()} lit {rack.has(light)}.");
+        for (int i = 0; i < pile.size; i++) {
+            Chip gone = pile[i];
+            if (gone != null) delete gone;
+        }
+        Chip again = new Chip(1);
+        printLine($"Again {again.worth}.");
+        delete again;
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

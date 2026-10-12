@@ -1,0 +1,411 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a lamp whose oil a
+// daemon burns down, lighting a dark room; a lockable chest with with_key; a scale whose after rule
+// on the Receive fake action weighs what it holds through a recursive child/sibling walk over a
+// Weighted class (is() and a cast); a Coin subclass with list_together; a door with door_to and
+// door_dir; a found_in backdrop; an NPC whose life switches on Give and Ask (NextWord against
+// dictionary words); an enum state method switched over; a meta verb class shared by two verbs; a
+// sized array<int> used as a ring of readings with a separate count; an #i6 island of a global and
+// a routine reached through extern; NewRoom and GamePreRoutine entry points; #defineI6 and const.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 LAMP_FULL 8
+
+const int MAX_SCORE = 3;
+const int RING = 4;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Take:
+                if (lm_n == 1 && ((object)lm_o).is(Coin)) rtrue("Pocketed.^");
+            case Miscellany:
+                if (lm_n == 9) rtrue("^All goes black.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+#i6 {
+    Global weighings = 0;
+    [ PrintGrams n;
+        print n, " gram";
+        if (n ~= 1) print "s";
+    ];
+}
+
+extern int weighings;
+extern void PrintGrams(int n);
+
+extend class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object with_key;
+}
+
+enum eLamp { dry, unlit, burning }
+
+class Weighted : object {
+    int grams;
+}
+
+class Coin : Weighted {
+    string list_together = "coins";
+    description = "A coin.";
+    bool invent() {
+        if (inventory_stage == 2) {
+            print(" (");
+            PrintGrams(grams);
+            print(")");
+        }
+        rfalse;
+    }
+}
+
+int g_rooms;            // rooms entered
+int g_acts;             // actions seen by GamePreRoutine
+int g_paid;             // grams of coin handed to the clerk
+array<int> readings[RING];
+int nReadings;
+
+// ---------------------------------------------------------------- weighing
+
+int WeighTree(object o) {
+    int n = 0;
+    object x;
+    if (o.is(Weighted)) n = ((Weighted)o).grams;
+    for (x = o.child; x; x = x.sibling) n = n + WeighTree(x);
+    return n;
+}
+
+void Record(int g) {
+    readings[nReadings % RING] = g;
+    nReadings++;
+    weighings++;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east; an oak door is north.";
+    e_to = roomB;
+    n_to = oakDoor;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+}
+
+object roomC {
+    short_name = "Room C";
+    description = "Room C. The oak door is south.";
+    s_to = oakDoor;
+    attributes = {light};
+}
+
+object oakDoor {
+    short_name = "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {roomA, roomC};
+    description = "An oak door.";
+    object door_to() {
+        if (location == roomA) return roomC;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)n_to;
+        return (property)s_to;
+    }
+    attributes = {door, static, openable};
+}
+
+object dust {
+    short_name = "dust";
+    name = {.dust};
+    rawArray<object> found_in = {roomA, roomB};
+    description = "Grey dust.";
+    attributes = {scenery};
+}
+
+// ---------------------------------------------------------------- the lamp
+
+Weighted lamp {
+    short_name = "brass lamp";
+    name = {.brass, .lamp};
+    parent = roomA;
+    grams = 20;
+    int oil = 0;
+
+    eLamp state() {
+        if (has(on)) return eLamp.burning;
+        if (oil <= 0) return eLamp.dry;
+        return eLamp.unlit;
+    }
+
+    void description() {
+        switch (state()) {
+            case eLamp.burning: print($"The lamp burns ({oil} left).^");
+            case eLamp.unlit:   print($"The lamp is unlit ({oil} left).^");
+            case eLamp.dry:     print("The lamp is dry.^");
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case SwitchOn:
+                if (oil <= 0) rtrue("The lamp is dry.^");
+            case Fill:
+                if (flask.parent != player) rtrue("You have nothing to fill it with.^");
+                oil = LAMP_FULL;
+                flask.remove();
+                score++;
+                rtrue("You fill the lamp from the flask.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+                rtrue("The lamp is now burning.^");
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        oil--;
+        if (oil == 1) printLine("^The lamp flickers.");
+        if (oil <= 0) {
+            ungive(on);
+            ungive(light);
+            StopDaemon(self);
+            printLine("^The lamp goes out.");
+        }
+    }
+
+    attributes = {switchable};
+}
+
+Weighted flask {
+    short_name = "oil flask";
+    name = {.oil, .flask};
+    parent = roomA;
+    grams = 6;
+    description = "A flask of oil.";
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = roomA;
+    description = "A brass key.";
+}
+
+// ---------------------------------------------------------------- the scale
+
+object scale {
+    short_name = "scale";
+    name = {.scale, .pan};
+    parent = roomA;
+    void description() {
+        print("A scale with a single pan. The needle reads ");
+        PrintGrams(WeighTree(self));
+        print(".^");
+    }
+    bool after() {
+        switch (action) {
+            case Receive:
+                int g = WeighTree(self);
+                Record(g);
+                print($"You put {the(noun)} on the scale. The needle swings to ");
+                PrintGrams(g);
+                print(".^");
+                rtrue;
+            case LetGo:
+                Record(WeighTree(self));
+        }
+        rfalse;
+    }
+    attributes = {supporter, static};
+}
+
+// ---------------------------------------------------------------- the chest
+
+object chest {
+    short_name = "iron chest";
+    name = {.iron, .chest};
+    parent = roomB;
+    description = "An iron chest.";
+    with_key = brassKey;
+    children = {copper, silver, gold};
+    bool after() {
+        switch (action) {
+            case Unlock:
+                if (hasnt(general)) {
+                    give(general);
+                    score++;
+                }
+                rfalse;
+            case Open:
+                print("The lid creaks up.^");
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {container, openable, lockable, locked, static};
+}
+
+Coin copper {
+    short_name = "copper coin";
+    name = {.copper, .coin};
+    grams = 3;
+}
+
+Coin silver {
+    short_name = "silver coin";
+    name = {.silver, .coin};
+    grams = 5;
+}
+
+Coin gold {
+    short_name = "gold coin";
+    name = {.gold, .coin};
+    grams = 8;
+}
+
+// ---------------------------------------------------------------- the clerk
+
+object clerk {
+    short_name = "clerk";
+    name = {.clerk, .man};
+    parent = roomC;
+    description = "A clerk behind a counter.";
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Give:
+                if (!noun.is(Coin)) rtrue("The clerk shakes his head.^");
+                g_paid = g_paid + ((Coin)noun).grams;
+                noun.parent = self;
+                if (g_paid >= 10 && hasnt(general)) {
+                    give(general);
+                    score++;
+                    StartTimer(self, 2);
+                }
+                print($"The clerk takes the {noun}. ");
+                print("Paid so far: ");
+                PrintGrams(g_paid);
+                rtrue(".^");
+            case Ask:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .coin || w == .coins) rtrue("~Weigh them first.~^");
+                if (w == .lamp) rtrue("~Oil is in Room A.~^");
+                rtrue("The clerk shrugs.^");
+            case Attack:
+                rtrue("The clerk steps back.^");
+        }
+        rfalse;
+    }
+    int time_left;
+    void time_out() {
+        printLine("^The clerk stamps a receipt.");
+        receipt.parent = location;
+    }
+    attributes = {animate, male};
+}
+
+object receipt {
+    short_name = "receipt";
+    name = {.receipt};
+    description = "A stamped receipt.";
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+bool GamePreRoutine() {
+    g_acts++;
+    rfalse;
+}
+
+// ---------------------------------------------------------------- verbs
+
+class infoVerb : verb {
+    meta = true;
+}
+
+infoVerb ListReadings {
+    grammar = {.readings};
+    void handler() {
+        int i;
+        int n = nReadings;
+        if (n == 0) { printLine("No readings."); return; }
+        if (n > RING) n = RING;
+        print("Readings:");
+        for (i = 0; i < n; i++) print($" {readings[i]}");
+        print($" (of {nReadings}, {weighings} by I6).^");
+    }
+}
+
+infoVerb Tally {
+    grammar = {.tally};
+    void handler() {
+        print($"Rooms {g_rooms}, acts {g_acts}, paid {g_paid}, score {score}.^");
+        print($"Lamp: oil {lamp.oil}, ");
+        switch (lamp.state()) {
+            case eLamp.burning: print("burning");
+            case eLamp.unlit:   print("unlit");
+            default:            print("dry");
+        }
+        print(". Carrying ");
+        PrintGrams(WeighTree(player));
+        print(".^");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        int g = WeighTree(noun);
+        Record(g);
+        print($"{cThe(noun)} weighs ");
+        PrintGrams(g);
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

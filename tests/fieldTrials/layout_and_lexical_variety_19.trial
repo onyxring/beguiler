@@ -1,0 +1,91 @@
+Room A
+Room A. A door leads east.
+> tally
+Nothing weighed yet.
+> take red token
+Taken.
+> take green token
+Taken.
+> take gray token
+Taken.
+> weigh green token
+The green token weighs 3 (light).
+> weigh grey
+The gray token weighs 4 (light).
+> put red token in tray
+You put the red token into the tray.
+> put green token in tray
+You put the green token into the tray.
+> put gray token in tray
+You put the gray token into the tray.
+> take key
+Taken.
+> put key in tray
+You put the brass key into the tray.
+> weigh tray
+The tray holds 3 tokens, weight 8 (fair), rating 83.
+> tally
+Weighed: 3,4,8 (total 15, mean 5)
+> chip gray token
+You chip the gray token; it now weighs 3.
+> nick gray token
+The gray token is already marked.
+> scratch key
+Only tokens can be marked.
+> weigh all in tray
+The tray holds 3 tokens, weight 7 (fair), rating 73.
+> survey
+0 loose, 0 heavy, 0 marked.
+Tray 3/3, moved 3, turns in A 15, ticks 0.
+Door locked, heavy at 10.
+> set counter to 5
+The counter reads 5.
+> start counter
+The counter starts.
+[tick 6]
+> wait
+Time passes.
+[tick 7]
+> stop counter
+The counter stops.
+> wait
+Time passes.
+> set counter 0
+The counter reads 0 (reset).
+> set counter to 300
+The counter only goes to 255.
+> unlock door with key
+(first taking the brass key)
+You unlock the brass door.
+> open door
+You open the brass door.
+> east
+Room B
+Room B. A door leads west.
+You can see a brass door and a white token here.
+> survey
+1 loose, 0 heavy, 0 marked: pale.
+Tray 3/3, moved 3, turns in A 24, ticks 0.
+Door open, heavy at 10.
+> take white token
+Taken.
+> weigh white
+The pale token weighs 2 (light).
+> west
+Room A
+Room A. A door leads east.
+You can see a brass door, a tray (in which are a gray token, a green token and a red token) and a counter here.
+> put white token in tray
+The tray already holds 3 tokens.
+> take red token
+Taken.
+> put white token in tray
+You put the white token into the tray.
+> weigh tray
+The tray holds 3 tokens, weight 8 (fair), rating 83.
+> survey
+0 loose, 0 heavy, 0 marked.
+Tray 3/3, moved 5, turns in A 29, ticks 0.
+Door open, heavy at 10.
+> tally
+Weighed: 3,4,8,7,2,8 (total 32, mean 5)

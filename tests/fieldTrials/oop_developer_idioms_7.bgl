@@ -1,0 +1,431 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, seventh pass. A value class kept
+// in collections: a class's `array<Money>` member and a local `array<Money>`, stores that copy (from
+// a variable, a by-value parameter and a returned value), element member writes, `sort()` through an
+// instance `<=>`, `indexOf`/`contains`/`-=` through an instance `==`, `remove`/`clear` returning
+// slots to the pool and a refill after them; a `ref` local bound to an array element and a swap
+// through two `ref` parameters; a method returning a value-class local by value; an owning
+// collection of a pooled reference class whose `static deinit` deletes the dropped element (remove,
+// `-=`, clear and a local array's scope exit), with `dequeue` handing one back; a diamond
+// (`Service : Logged, Cached`, both over `Component`) with a template method, depth-first member
+// lookup, ancestor-cast dispatch to either branch, a `typesealed` member, a static counter reached
+// through the diamond, and `hide` of one overload; `&&`/`||`/`!` overloaded on a class, with `eBool`
+// right-hand overloads for mixed chains; a null-object pattern through an `operator ?` that reads a
+// member with `$i6Name`, driving `?.`, `??` and postfix `?`; a registry with `operator []`/`[]=` and
+// member access on the subscript result; a named union with `static` members; `operator auto()` on
+// a primitive class; `rtrue(…)`/`rfalse(…)` with interpolation in methods; array `insert`, `prepend`,
+// `removeValue`, `reverse` and `swap` on class elements.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Money, a value class kept in collections ------------------------------------------------------
+
+value class Money {
+    int Cents;
+
+    Money operator = (Money o)      { Cents = o.Cents; return self; }
+    Money operator = (int c)        { Cents = c; return self; }
+    bool  operator == (Money o)     { return Cents == o.Cents; }
+    bool  operator != (Money o)     { return Cents != o.Cents; }
+    int   operator <=> (Money o)    { return Cents - o.Cents; }
+
+    void print() {
+        int part = Cents % 100;
+        print($"{Cents / 100}.");
+        if (part < 10) print("0");
+        print(part);
+    }
+}
+
+Money Of(int cents) {
+    Money m;
+    m = cents;
+    return m;
+}
+
+void Swap(ref Money a, ref Money b) {
+    Money t = a;
+    a = b;
+    b = t;
+}
+
+void Inflate(Money m) {
+    m.Cents *= 10;
+    printLine($"  inside: {m}");
+}
+
+class Ledger : object {
+    array<Money> Entries[6];
+
+    void Post(Money m) { Entries += m; }
+
+    Money Total() {
+        Money sum;
+        for (int i = 0; i < Entries.length; i++) sum.Cents += Entries[i].Cents;
+        return sum;
+    }
+
+    void Show(string label) {
+        print($"{label} ({Entries.length}):");
+        for (int i = 0; i < Entries.length; i++) print($" {Entries[i]}");
+        printLine();
+    }
+}
+
+Ledger books { }
+
+//-- An owning collection of pooled references -----------------------------------------------------
+
+class Ticket[3] : object {
+    static int Live = 0;
+    int Num;
+
+    void create(int n) { Num = n; Ticket.Live++; }
+    void destroy()     { Ticket.Live--; }
+
+    static void deinit(Ticket t) { delete t; }
+
+    void print() { print($"T{Num}"); }
+}
+
+array<Ticket> Queue[3];
+
+void ShowQueue(string label) {
+    print($"{label}: live {Ticket.Live}, queued {Queue.length}:");
+    for (Ticket t in Queue) print($" {t}");
+    printLine();
+}
+
+int Burst() {
+    array<Ticket> batch[2];
+    int made = 0;
+    for (int i = 1; i <= 2; i++) {
+        Ticket t = new Ticket(90 + i);
+        if (t != null) { batch += t; made++; }
+    }
+    printLine($"  in burst: live {Ticket.Live}, batch {batch.length}");
+    return made;
+}
+
+//-- A diamond with a template method --------------------------------------------------------------
+
+class Component : object {
+    static int Built = 0;
+    typesealed int Priority;
+    string Title;
+
+    void Run()               { Begin(); Body(); Finish(); }
+    default void Begin()     { print("["); }
+    default void Body()      { print(Title); }
+    default void Finish()    { printLine("]"); }
+    default string Tag()     { return "component"; }
+
+    void Configure(int p)    { Priority = p; Component.Built++; }
+    void Configure(string n) { Title = n; Component.Built++; }
+}
+
+class Logged : Component {
+    default void Begin()     { print("log "); ((Component)self).Begin(); }
+    default string Tag()     { return "logged"; }
+}
+
+class Cached : Component {
+    default void Finish()    { print(" cached"); ((Component)self).Finish(); }
+    default string Tag()     { return "cached"; }
+}
+
+class Service : Logged, Cached {
+    hide Configure(string);
+    string Tag() { return "service"; }
+    void Lineage() { printLine($"{Tag()} over {((Logged)self).Tag()} and {((Cached)self).Tag()}"); }
+    void Body()  { print($"{Title}#{Priority}"); }
+}
+
+Service svc   { Title = "svc"; Priority = 3; }
+Cached  store { Title = "store"; }
+
+//-- Overloaded logical operators ------------------------------------------------------------------
+
+class Gate : object {
+    bool Open;
+    string Label;
+
+    eBool operator && (Gate o) { return Open && o.Open; }
+    eBool operator || (Gate o) { return Open || o.Open; }
+    eBool operator && (bool b)  { return Open && b; }
+    eBool operator || (bool b)  { return Open || b; }
+    eBool operator ! ()        { return !Open; }
+}
+
+Gate gateA { Label = "A"; Open = true; }
+Gate gateB { Label = "B"; }
+Gate gateC { Label = "C"; Open = true; }
+
+string YesNo(bool b) { return b ? "yes" : "no"; }
+
+//-- Null object -----------------------------------------------------------------------------------
+
+class Customer : object {
+    int Id;
+    string Title;
+    bool Real = true;
+    Customer Referrer;
+
+    emitter eBool operator ? () { ($self ~= nothing && $self.$i6Name(Customer.Real)) }
+
+    bool Greet() {
+        if (!Real) rfalse("  (no one to greet)");
+        rtrue($"  Hello, {Title} (#{Id}).");
+    }
+}
+
+Customer NoCustomer { Title = "none"; Real = false; }
+Customer ann  { Id = 1; Title = "Ann"; Referrer = NoCustomer; }
+Customer bob  { Id = 2; Title = "Bob"; Referrer = ann; }
+Customer cyd  { Id = 3; Title = "Cyd"; }
+
+//-- A registry with a subscript -------------------------------------------------------------------
+
+union Lookup = Customer | string {
+    static bool   Found(Lookup r)    { return typeof(r) == eType.object; }
+    static string Describe(Lookup r) { return Lookup.Found(r) ? ((Customer)r).Title : (string)r; }
+}
+
+class Registry : object {
+    array<Customer> Items[5];
+
+    Customer operator [] (int id) {
+        for (Customer c in Items) if (c.Id == id) return c;
+        return NoCustomer;
+    }
+
+    Customer operator []= (int id, Customer c) {
+        c.Id = id;
+        if (!Items.contains(c)) Items += c;
+        return c;
+    }
+
+    Lookup Find(int id) {
+        Customer c = self[id];
+        if (c?) return c;
+        return "missing";
+    }
+
+    void Show(string label) {
+        print($"{label}:");
+        for (Customer c in Items) print($" {c.Title}#{c.Id}");
+        printLine();
+    }
+}
+
+Registry reg { }
+
+//-- A primitive with operator auto ----------------------------------------------------------------
+
+primitive class Percent {
+    emitter void operator = (int n)     { $target = $n; }
+    emitter void operator = (Percent p) { $target = $p; }
+    emitter int operator ()             { ($val) }
+    int operator auto();
+    emitter Percent Half                { ($val / 2) }
+    replace emitter void print()        { print $val, "%"; }
+}
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Ledgers {
+    grammar = {.ledger};
+    void handler() {
+        Money price = Of(250);
+        books.Post(price);
+        price.Cents = 999;
+        books.Post(Of(75));
+        books.Post(price);
+        books.Entries += Of(1200);
+        books.Show("posted");
+        books.Entries[1].Cents += 5;
+        books.Entries[3] = price;
+        books.Show("edited");
+        books.Entries.sort();
+        books.Show("sorted");
+        Money probe = Of(999);
+        printLine($"999 at {books.Entries.indexOf(probe)}; has 80: {books.Entries.contains(Of(80))}.");
+        books.Entries -= probe;
+        books.Show("minus 9.99");
+        books.Entries.remove(0);
+        books.Show("removed first");
+        Money total = books.Total();
+        printLine($"Total {total}.");
+        books.Entries.clear();
+        for (int i = 1; i <= 6; i++) books.Post(Of(i * 11));
+        books.Show("refilled");
+        printLine($"Full: {books.Entries.append(Of(1))}.");
+    }
+}
+
+verb Refs {
+    grammar = {.refs};
+    void handler() {
+        ref Money slot := books.Entries[2];
+        slot.Cents = 4000;
+        books.Show("through ref");
+        Money a = Of(100);
+        Money b = Of(300);
+        Swap(a, b);
+        printLine($"Swapped: a {a}, b {b}.");
+        Inflate(a);
+        printLine($"  after: {a}");
+        array<Money> local[3];
+        local += a;
+        local += b;
+        local[0].Cents = 1;
+        printLine($"Local {local[0]} {local[1]}; a still {a}; {local[0] < local[1]}.");
+    }
+}
+
+verb Tickets {
+    grammar = {.tickets};
+    void handler() {
+        for (int i = 1; i <= 4; i++) {
+            Ticket t = new Ticket(i);
+            if (t == null) printLine($"Ticket {i}: pool empty.");
+            else Queue += t;
+        }
+        ShowQueue("made");
+        Queue.remove(0);
+        ShowQueue("removed first");
+        Ticket again = new Ticket(5);
+        Queue += again;
+        ShowQueue("reused");
+        Queue -= again;
+        ShowQueue("minus T5");
+        Ticket head = Queue.dequeue();
+        printLine($"Dequeued {head}.");
+        ShowQueue("dequeued");
+        int fromBurst = Burst();
+        printLine($"Burst made {fromBurst}.");
+        ShowQueue("after burst");
+        delete head;
+        Queue += new Ticket(6);
+        Queue += new Ticket(7);
+        ShowQueue("two more");
+        Queue.clear();
+        ShowQueue("cleared");
+    }
+}
+
+verb Diamond {
+    grammar = {.diamond};
+    void handler() {
+        svc.Run();
+        store.Run();
+        ((Cached)svc).Finish();
+        ((Component)svc).Body();
+        printLine();
+        svc.Lineage();
+        Component asBase = svc;
+        printLine($"{asBase.Tag()} / {((Component)svc).Tag()} / {store.Tag()}");
+        svc.Configure(7);
+        ((Component)svc).Configure("svc2");
+        store.Configure("store2");
+        svc.Run();
+        printLine($"Built {Service.Built}; {Component.Built}; priority {svc.Priority}.");
+        printLine($"svc is Cached {svc.is(Cached)}, Logged {svc.is(Logged)}; store is Logged {store.is(Logged)}.");
+    }
+}
+
+verb Gates {
+    grammar = {.gates};
+    void handler() {
+        printLine($"A&&B {YesNo(gateA && gateB)}, A||B {YesNo(gateA || gateB)}, !B {YesNo(!gateB)}.");
+        printLine($"A&&C {YesNo(gateA && gateC)}, B||!A {YesNo(gateB || !gateA)}.");
+        bool mixed = gateB || gateA && gateC;
+        printLine($"B||A&&C {YesNo(mixed)}.");
+        int count = 0;
+        for (Gate g in {gateA, gateB, gateC}) if (g && true) count++;
+        printLine($"Open: {count}.");
+        gateB.Open = true;
+        if (gateA && gateB && gateC) printLine("All open.");
+    }
+}
+
+verb Customers {
+    grammar = {.customers};
+    void handler() {
+        for (Customer c in {ann, bob, cyd, NoCustomer}) {
+            string ref1 = c.Referrer?.Title ?? "nobody";
+            string ref2 = (c.Referrer ?? NoCustomer).Referrer?.Title ?? "-";
+            printLine($"{c.Title}: present {YesNo(c?)}, referred by {ref1}, grand {ref2}");
+            bool ok = c.Greet();
+            if (!ok) print(" [failed]");
+            printLine();
+            c.Referrer?.Greet();
+            if (c.Referrer?) printLine();
+        }
+        Customer pick = cyd.Referrer ?? bob;
+        printLine($"Fallback: {pick.Title}.");
+    }
+}
+
+verb Registers {
+    grammar = {.registry};
+    void handler() {
+        reg[10] = ann;
+        reg[20] = bob;
+        reg[30] = cyd;
+        reg[20] = bob;
+        reg.Show("registered");
+        printLine($"reg[20] is {reg[20].Title}; reg[99] is {reg[99].Title}.");
+        reg[30].Title = "Cyd2";
+        printLine($"Lookup 30: {Lookup.Describe(reg.Find(30))}; 40: {Lookup.Describe(reg.Find(40))}.");
+        Lookup hit = reg.Find(10);
+        if (Lookup.Found(hit)) printLine($"Found {((Customer)hit).Title}.");
+        reg.Items.insert(1, NoCustomer);
+        reg.Items.prepend(cyd);
+        reg.Show("inserted");
+        reg.Items.removeValue(cyd);
+        reg.Items.reverse();
+        reg.Items.swap(0, 1);
+        reg.Show("reshuffled");
+    }
+}
+
+verb Percents {
+    grammar = {.percent};
+    void handler() {
+        Percent p = 40;
+        auto raw = p;
+        raw += 5;
+        Percent q = p.Half;
+        auto same = q;
+        print(p);
+        print(" ");
+        print(raw);
+        print(" ");
+        print(same);
+        printLine($" / {q} / {(int)q + 1}");
+    }
+}
+
+#includeI6 "grammar"
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

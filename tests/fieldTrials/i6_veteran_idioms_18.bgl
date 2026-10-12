@@ -1,0 +1,445 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, three dense declarations each packing an area cluster into one unit.
+// A class written after #using a namespace object, with inline (positional) members, operator == and
+// <=> (so > derives), operator [], a replace of its parent's default method, a static member array of
+// strings, a recursive method, and a static method taking an array<Bin>, a var, a ref value-class
+// parameter and a primitive-class value: it filters with a block-bodied lambda that tests an attribute
+// and compares with >, asks any() through another block lambda that compares, falls back with ??, walks
+// a nested-literal array of arrays, news and deletes a pooled tag, switches with ranges, builds a
+// stringObj, uses ?. and postfix ?, gives an attribute and performs. A value class with operator +, *
+// and ==, a static member array, and a method using an expression lambda, a capturing block lambda in a
+// <linq> filter, ?. into the object tree with ??, a nested array of bands, a recursive climb, a pooled
+// tag and a perform. An extend of an object adding an inline accessor that writes outer., a recursive
+// method, and a method over a nested-literal array of arrays with <linq> any() on a row, an extern I6
+// routine, an #i6 statement with $i6Expr, ?. into the object tree with ??, a children loop, a pooled
+// tag, a switch, a ref value-class parameter, a var and a perform. Verbs drive each declaration.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <linq>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global bin_peek = 0;
+Global span_peek = 0;
+Global rack_peek = 0;
+[ PlanMix a b;
+  return a * 10 + b;
+];
+}
+
+extern int bin_peek;
+extern int span_peek;
+extern int rack_peek;
+extern int PlanMix(int a, int b);
+
+attribute sealed;
+
+enum eTier { small, medium, large }
+
+object roomA { "Room A"; string description = "Room A."; attributes = {light}; }
+object roomB { "Room B"; string description = "Room B."; attributes = {light}; }
+object shelf { "shelf"; name = {.shelf}; object parent = roomA; attributes = {supporter, static}; }
+
+object kit {
+    alias tier for eTier;
+}
+
+primitive class grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+
+class Tag[3] : object {
+    int code;
+    void create(int c) { code = c; }
+}
+
+class Holder : object {
+    int shown;
+    default void show() { print("holder"); }
+}
+
+// ---------------------------------------------------------------- cluster 1: bins
+
+#using kit
+class Bin : Holder {
+    inline instanceName;
+    inline int weight;
+    inline int rank;
+    tier size = tier.small;
+    array<int> marks[4];
+    static int equals = 0;
+    static array<string> labels[3] = {"small", "medium", "large"};
+
+    bool operator == (Bin o) {
+        equals++;
+        return weight == o.weight && rank == o.rank;
+    }
+
+    int operator <=> (Bin o) {
+        if (weight != o.weight) return weight - o.weight;
+        return rank - o.rank;
+    }
+
+    int operator [] (int i) {
+        if (i < 0 || i >= marks.length) return -1;
+        return marks[i];
+    }
+
+    replace void show() {
+        shown++;
+        print($"bin {weight}/{rank}");
+    }
+
+    int stack(int n) {
+        if (n <= 0) return 0;
+        return weight + stack(n - 1);
+    }
+
+    static Bin pick(array<Bin> list, Bin fallback, var how, ref Span out, grams g) {
+        int limit = g;
+        array<Bin> fits = list.filter((Bin b) => {
+            if (b.has(sealed)) return false;
+            return b.weight <= limit;
+        });
+        Bin best = null;
+        for (Bin b in fits) {
+            if (best?) {
+                if (b > best) best = b;
+            } else {
+                best = b;
+            }
+        }
+        bool over = list.any((Bin b) => {
+            if (b.has(sealed)) return false;
+            return b > fallback;
+        });
+        Bin got = best ?? fallback;
+
+        array<array<int>> plan = { {1, 2}, {3, 4, 5} };
+        int planSum = 0;
+        for (array<int> row in plan) {
+            for (int j = 0; j < row.length; j++) planSum += row[j];
+        }
+        Tag t = new Tag(planSum + fits.length);
+        out.lo = fits.length;
+        out.hi = t.code;
+        delete t;
+
+        stringObj s = "pick";
+        if (typeof(how) == eType.string) {
+            s += " ";
+            s += (string)how;
+        }
+        switch (fits.length) {
+            case 0:       s += " none";
+            case 1 to 2:  s += " few";
+            default:      s += " many";
+        }
+        s.print();
+        print(" -> ");
+        got?.show();
+        int k = 0;
+        switch (got.weight) {
+            case 0 to 3:  got.size = tier.small;  k = 0;
+            case 4 to 6:  got.size = tier.medium; k = 1;
+            default:      got.size = tier.large;  k = 2;
+        }
+        got.marks.append(limit);
+        print($" [{Bin.labels[k]}] stack {got.stack(2)} marks {got.marks.length} first {got[0]}");
+        if (got == fallback) print(" (fallback)");
+        if (got.parent == shelf) print(" shelved");
+        if (over) print("; over");
+        if (best?) got.give(sealed);
+        bin_peek = got.weight;
+        BinShow.perform();
+        return got;
+    }
+}
+
+Bin binA { "bin A", 3, 1; object parent = shelf; }
+Bin binB { "bin B", 5, 2; object parent = shelf; }
+Bin binC { "bin C", 5, 1; object parent = roomA; }
+Bin binD { "bin D", 8, 3; object parent = shelf; }
+
+array<Bin> pool = {binA, binB, binC, binD};
+
+// ---------------------------------------------------------------- cluster 2: spans
+
+value class Span {
+    int lo;
+    int hi;
+    static int adds = 0;
+    static array<int> steps[3] = {1, 2, 4};
+
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+
+    Span operator + (Span o) {
+        adds++;
+        Span r = self;
+        r.lo += o.lo;
+        r.hi += o.hi;
+        return r;
+    }
+
+    Span operator * (int k) {
+        Span r = self;
+        r.lo *= k;
+        r.hi *= k;
+        return r;
+    }
+
+    bool operator == (Span o) { return lo == o.lo && hi == o.hi; }
+
+    int climb(object o, int n) {
+        if (o == null) return n;
+        return climb(o.parent, n + 1);
+    }
+
+    int widen(Bin b, var tag, array<Bin> from, int seen) {
+        func<int, int> twice = (int n) => n * 2;
+        object at = b?.parent ?? roomB;
+        int w = 0;
+        if (b?) w = b.weight;
+
+        Span add;
+        add.lo = twice(w);
+        add.hi = twice(w) + Span.steps[seen % 3];
+        Span sum = self + add;
+        if (sum == self) sum = sum * 2;
+
+        int heavier = from.filter((Bin x) => {
+            if (!(b?)) return true;
+            return x.weight > w;
+        }).count();
+
+        array<array<int>> bands = { {0, 9}, {10, 19}, {20, 999} };
+        array<string> names = {"narrow", "middle", "wide"};
+        int band = 0;
+        for (int i = 0; i < bands.length; i++) {
+            if (sum.hi >= bands[i][0] && sum.hi <= bands[i][1]) band = i;
+        }
+
+        Tag t = new Tag(band);
+        stringObj s = "span ";
+        s += names[t.code];
+        delete t;
+        switch (typeof(tag)) {
+            case eType.string: s += " "; s += (string)tag;
+            case eType.object: stringObj w2 = $" {(object)tag}"; s += w2;
+            default:           s += " -";
+        }
+        s.print();
+
+        lo = sum.lo;
+        hi = sum.hi;
+        widenCount++;
+        print($" {lo}..{hi} heavier {heavier} at {at} depth {climb(at, 0)}");
+        span_peek = hi - lo;
+        SpanShow.perform();
+        return hi - lo;
+    }
+}
+
+Span reach;
+Span picked;
+int widenCount = 0;
+
+// ---------------------------------------------------------------- cluster 3: rack
+
+object rack {
+    "rack";
+    int scale = 1;
+    int writes = 0;
+    int total = 0;
+}
+
+extend rack {
+    auto load = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            outer.writes++;
+            _raw = v * outer.scale;
+            outer.total += _raw;
+        }
+    }
+
+    int digits(int n) {
+        if (n < 10) return n;
+        return n % 10 + digits(n / 10);
+    }
+
+    int plan(int row, var how, ref Span into, Bin near) {
+        array<array<int>> grid = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9} };
+        array<string> heads = {"top", "mid", "low"};
+        if (row < 0 || row >= grid.length) row = 0;
+        int sum = 0;
+        for (int j = 0; j < grid[row].length; j++) sum += grid[row][j];
+        load = sum;
+        int mixed = PlanMix(row, grid[row][2]);
+        bool big = grid[row].any((int x) => {
+            if (x <= 5) return false;
+            return x % 2 == 0;
+        });
+        into.lo = grid[row][0];
+        into.hi = grid[row][2];
+
+        stringObj s = "plan ";
+        s += heads[row];
+        switch (sum) {
+            case 0 to 9:    s += " light";
+            case 10 to 19:  s += " fair";
+            default:        s += " full";
+        }
+        if (typeof(how) == eType.string) {
+            s += " ";
+            s += (string)how;
+        }
+        s.print();
+        #i6 print " (mix ", $i6Expr(mixed), ")";
+        if (big) print(" even-big");
+        object spot = near?.parent ?? roomB;
+        int held = 0;
+        for (object o in spot.children) held++;
+        Tag t = new Tag(held);
+        print($" load {load} near ");
+        if (near?) near.show();
+        else print("none");
+        print($" holds {t.code} digits {digits(mixed)}");
+        delete t;
+        rack_peek = mixed;
+        RackShow.perform();
+        return sum;
+    }
+}
+
+// ---------------------------------------------------------------- verbs: bins
+
+verb BinShow {
+    grammar = {.bins};
+    meta = true;
+    void handler() {
+        print(" <");
+        for (Bin b in pool) {
+            print($"{b}");
+            if (b.has(sealed)) print("*");
+            print(" ");
+        }
+        print($"equals {Bin.equals}, picked {picked.lo}/{picked.hi}, peek {bin_peek}>^");
+    }
+}
+
+verb BinPick {
+    grammar = {.pick, NUMBER};
+    meta = true;
+    void handler() {
+        Bin r = Bin.pick(pool, binB, "num", picked, (int)noun);
+        printLine($"Picked {r}.");
+    }
+}
+
+verb BinOrder {
+    grammar = {.order};
+    meta = true;
+    void handler() {
+        array<Bin> sorted = pool.orderBy((Bin x, Bin y) => {
+            if (x > y) return -1;
+            if (x < y) return 1;
+            return 0;
+        });
+        for (Bin b in sorted) print($"{b}; ");
+        printLine($"top equals binD: {sorted[0] == binD}.");
+    }
+}
+
+verb BinReset {
+    grammar = {.unseal};
+    meta = true;
+    void handler() {
+        for (Bin b in pool) b.ungive(sealed);
+        print("Unsealed.");
+        BinShow.perform();
+    }
+}
+
+// ---------------------------------------------------------------- verbs: spans
+
+verb SpanShow {
+    grammar = {.spans};
+    meta = true;
+    void handler() {
+        print($" <reach {reach.lo}..{reach.hi}, adds {Span.adds}, widened {widenCount}, peek {span_peek}>^");
+    }
+}
+
+verb SpanWiden {
+    grammar = {.widen, NUMBER};
+    meta = true;
+    void handler() {
+        int i = (int)noun;
+        Bin b = null;
+        if (i >= 1 && i <= pool.length) b = pool[i - 1];
+        int r = reach.widen(b, "num", pool, widenCount);
+        printLine($"Width {r}.");
+    }
+}
+
+verb SpanPlace {
+    grammar = {.place};
+    meta = true;
+    void handler() {
+        int r = reach.widen(binC, roomB, pool, widenCount);
+        printLine($"Width {r}.");
+    }
+}
+
+// ---------------------------------------------------------------- verbs: rack
+
+verb RackShow {
+    grammar = {.rack};
+    meta = true;
+    void handler() {
+        print($" <writes {rack.writes}, total {rack.total}, load {rack.load}, picked {picked.lo}/{picked.hi}, peek {rack_peek}>^");
+    }
+}
+
+verb RackPlan {
+    grammar = {.plan, NUMBER};
+    meta = true;
+    void handler() {
+        Bin near = null;
+        if ((int)noun < pool.length) near = pool[(int)noun];
+        int r = rack.plan((int)noun, "row", picked, near);
+        printLine($"Planned {r}.");
+    }
+}
+
+verb RackScale {
+    grammar = {.scale, NUMBER};
+    meta = true;
+    void handler() {
+        rack.scale = (int)noun;
+        print("Scale set.");
+        RackShow.perform();
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

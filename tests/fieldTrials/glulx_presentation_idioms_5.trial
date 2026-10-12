@@ -1,0 +1,142 @@
+#grids
+Room A
+Room A.
+You can see a brass key here.
+[grid 1]
+|meter  3 [###.......] writes 1                    |
+[grid 2]
+| Room A                                     0/0   |
+> tones
+plain = 0
+stress = 1
+mono = 2
+head = 3 (loud)
+alarm = 5 (loud)
+aside = 6
+Picked head; loud: yes; plain loud: no.
+Sum of codes 11.
+[grid 1]
+|meter  3 [###.......] writes 1                    |
+[grid 2]
+| Room A                                     0/1   |
+> marks
+<<The brass key>> → the Room A
+--------
+-------- between --------
+Snow ❄, star ★, end.
+[grid 1]
+|meter  3 [###.......] writes 1                    |
+[grid 2]
+| Room A                                     0/2   |
+> glyphs
+Unicode supported: yes.
+code 65 A shown
+code 233 é shown
+code 937 Ω shown
+code 9731 ☃ shown
+code 128512 😀 shown
+Upper of 233 is 201; lower of 201 is 233.
+É→E
+[grid 1]
+|meter  3 [###.......] writes 1                    |
+[grid 2]
+| Room A                                     0/3   |
+> capture
+Captured 25 characters.
+The brass key → brass key
+Upper-cased length 25.
+THE BRASS KEY → BRASS KEY
+YEK SSARB → YEK SSARB EHT
+Arrows: 1; first code 84; last code 89.
+[grid 1]
+|meter  3 [###.......] writes 1                    |
+[grid 2]
+| Room A                                     0/4   |
+> spans
+alpha and beta; tones 5 5.
+beta is aside; the first is still alarm.
+[grid 1]
+|<<alpha>> fuel████░ 4 writes 1                    |
+[grid 2]
+| Room A                                     0/5   |
+> panel
+Panel open.
+[win 1] panel open
+[grid 1]
+|<<alpha>> fuel████░ 4 writes 1                    |
+[grid 2]
+| Room A                                     0/5   |
+> gauges
+fuel████░ 4 stress
+water█░░░░ 1 alarm
+fuel████░ 4
+Written to the panel.
+[win 1] fuel████░ 4
+[win 1] water█░░░░ 1
+[win 1] water█░░░░ 1
+[grid 1]
+|<<alpha>> fuel████░ 4 writes 1                    |
+[grid 2]
+| Room A                                     0/6   |
+> echo
+Echoed: The brass key in the Room A.
+also echoed <<3>>
+Not echoed; echo was off before: yes.
+[win 1] Echoed: The brass key in the Room A.
+[win 1] also echoed <<3>>
+[win 1] written straight to the panel
+[grid 1]
+|<<alpha>> fuel████░ 4 writes 1                    |
+[grid 2]
+| Room A                                     0/6   |
+> spans
+alpha and beta; tones 5 5.
+beta is aside; the first is still alarm.
+[win 1] beta 3
+[grid 1]
+|<<alpha>> fuel████░ 4 writes 1                    |
+[grid 2]
+| Room A                                     0/7   |
+> tree
+Windows 7: 2 buffer, 2 grid, 3 other.
+Main is a buffer: yes.
+Root is set: yes.
+Panel's parent is a pair: yes.
+Panel's sibling is main: yes.
+HUD is a grid: yes.
+[grid 1]
+|<<alpha>> fuel████░ 4 writes 1                    |
+[grid 2]
+| Room A                                     0/7   |
+> dial 7
+Meter 7; writes 2; clamped 0.
+[grid 1]
+|meter  7 [#######...] writes 2                    |
+[grid 2]
+| Room A                                     0/7   |
+> dial 15
+Meter 10; writes 3; clamped 1.
+[grid 1]
+|meter 10 [##########] writes 3                    |
+[grid 2]
+| Room A                                     0/7   |
+> dial 0
+Meter 0; writes 4; clamped 1.
+[grid 1]
+|meter  0 [..........] writes 4                    |
+[grid 2]
+| Room A                                     0/7   |
+> nudge
+Meter 9; writes 7; clamped 1.
+[grid 1]
+|meter  9 [#########.] writes 7                    |
+[grid 2]
+| Room A                                     0/7   |
+> look
+Room A
+Room A.
+You can see a brass key here.
+[grid 1]
+|meter  9 [#########.] writes 7                    |
+[grid 2]
+| Room A                                     0/8   |

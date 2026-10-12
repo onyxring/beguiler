@@ -1,0 +1,16 @@
+Room A
+Room A.
+> chips
+<4> made 4; (4 out) 1 odd; (4 out) 4 heavy worn; (4 out) 2 even; (4 out) 6 heavy worn; stocked 104; released odd,heavy,even,heavy; out 0, made 4.
+> trays
+Fourth true; out 0; tray 1: 23 415 sealed; tray 2: 93 415 sealed; [1=15][2=22]; tray 5: 23 415 sealed; made 24.
+> sort
+2 3 4 2 3 4 sorted -*-/*-*! spare; out 0.
+> lease
+Inner out 4; e false; weights 8 8; outer out 1.
+> report
+SS noted 2: tray 7: 33 000 sealed A; tray 8: 22 000 sealed C; out 0.
+> sort
+2 3 4 2 3 4 sorted -*-/*-*! spare; out 0.
+> trays
+Fourth true; out 0; tray 1: 23 415 sealed; tray 2: 93 415 sealed; [1=15][2=22]; tray 5: 23 415 sealed; made 64.

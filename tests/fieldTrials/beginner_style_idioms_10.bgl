@@ -1,0 +1,588 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a tenth first-time-programmer program, the one where the author reads the chapters on
+// references and namespaces and tries to build "real" data structures. A value class with a ref member
+// of its own type chained with := (globals, locals, a ref parameter, array<V> slots linked into a
+// ring), a walk that rebinds a ref local in a while loop until it runs out, = through a ref copying
+// into the referent, a copy made by passing that loses the links, a ref member on an object bound at
+// run time and tested with !; namespace objects with alias for a class and an enum (dotted types on a
+// global, a parameter, a return and a local, an enum value through the path), auto and alias value
+// members (one onto a superposed object), #using an object branch; emitter classes composed with alias
+// members three deep and #using of the root; a primitive class with operator auto(), static == and <=>
+// (ordering operators derived from <=>, array<T> sort and indexOf through them); a typesealed member
+// re-initialized by a subclass and an object; a pooled class and a pooled subclass with its own pool
+// that inherits create()/destroy(), new until the pool is empty, pooled things moved with
+// children += and parent =, counted with .length, walked through a bgl.world.inParent snapshot while
+// deleted; #once in the main file; and #exit with a verb after it that must never be compiled.
+
+#once
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+// ===== NODES (a chain of things that point at each other) =====
+value class Node {
+    int id;
+    ref Node next;
+    Node operator = (Node o) {
+        id = o.id;
+        return self;
+    }
+}
+
+Node n1;
+Node n2;
+Node n3;
+
+// ===== A KIT (my little library) =====
+class Crate : object {
+    int size = 1;
+}
+
+enum eShade { dark, pale, bright }
+
+object _kitParts {
+    alias crate for Crate;
+    alias shade for eShade;
+    alias token for Token;
+}
+
+// the tools only get compiled in if I use them (the spec said so)
+superposed object _kitTools {
+    int twice(int n) {
+        return n * 2;
+    }
+}
+
+object _kitCounter {
+    int hits = 0;
+    void hit() {
+        hits++;
+    }
+}
+
+object kit { }
+
+extend kit {
+    auto parts = _kitParts;
+    alias tools = _kitTools;
+    auto clicker = _kitCounter;
+}
+
+// ===== A SHOP (emitter classes inside emitter classes) =====
+emitter class shopShelf {
+    int perBox { 12 }
+    int boxes(int n) { ($n * 12) }
+    void ping { print "ping^"; }
+}
+
+emitter class shopRoom {
+    shopShelf shelf;
+}
+
+emitter class shop { }
+
+extend class shop {
+    shopRoom room;
+}
+
+// ===== METERS (an int, but they sort backwards and match by tens) =====
+primitive class meters {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    int operator auto();
+    static bool operator == (meters a, meters b) {
+        int x = a;
+        int y = b;
+        return x / 10 == y / 10;
+    }
+    static bool operator != (meters a, meters b) {
+        int x = a;
+        int y = b;
+        return x / 10 != y / 10;
+    }
+    static int operator <=> (meters a, meters b) {
+        int x = a;
+        int y = b;
+        // backwards on purpose: bigger ones come first
+        return y - x;
+    }
+}
+
+array<meters> lengths = {14, 37, 5, 22};
+
+// ===== GEARS (teeth is always an int) =====
+class Gear : object {
+    typesealed int teeth = 8;
+}
+
+class BigGear : Gear {
+    teeth = 20;
+}
+
+// ===== TOKENS (pooled) =====
+class Token[2] : object {
+    string short_name = "token";
+    int worth = 1;
+    void create(int w) {
+        worth = w;
+    }
+    void destroy() {
+        print($"(a token worth {worth} goes away)^");
+    }
+}
+
+class BigToken[1] : Token {
+    short_name = "big token";
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+class Holder : object {
+    ref Node pick;
+    ref array<int> log;
+}
+
+array<int> sharedLog[6];
+
+Holder tray {
+    "tray";
+    parent = roomA;
+    attributes = {supporter};
+}
+
+Crate crateA {
+    "small crate";
+    size = 3;
+    parent = roomB;
+}
+
+Crate crateB {
+    "large crate";
+    size = 7;
+    parent = roomB;
+}
+
+Gear gearOne {
+    "plain gear";
+    parent = roomB;
+}
+
+Gear gearTwo {
+    "odd gear";
+    teeth = 12;
+    parent = roomB;
+}
+
+BigGear gearThree {
+    "big gear";
+    parent = roomB;
+}
+
+// ===== GLOBALS WITH MY KIT TYPES =====
+kit.parts.crate chosen = crateA;
+kit.parts.shade tone = kit.parts.shade.pale;
+
+// ===== FUNCTIONS =====
+// hooks b on after a (a is a ref so the real one changes)
+void link(ref Node a, ref Node b) {
+    a.next := b;
+}
+
+// counts how long a chain is
+int chainLength(ref Node start) {
+    int count = 0;
+    ref Node cur := start;
+    while (cur != null) {
+        count++;
+        cur := cur.next;
+    }
+    return count;
+}
+
+// this one gets a copy (I think)
+int copyLength(Node start) {
+    return chainLength(start);
+}
+
+kit.parts.crate bigger(kit.parts.crate a, kit.parts.crate b) {
+    if (a.size > b.size) {
+        return a;
+    }
+    return b;
+}
+
+string shadeName(kit.parts.shade s) {
+    if (s == kit.parts.shade.dark) return "dark";
+    if (s == kit.parts.shade.pale) return "pale";
+    return "bright";
+}
+
+// the same thing with a switch this time
+int shadeCode(kit.parts.shade s) {
+    switch (s) {
+        case kit.parts.shade.dark:
+            return 1;
+        case kit.parts.shade.pale:
+            return 2;
+        default:
+            return 3;
+    }
+}
+
+// puts two numbers on the end of somebody else's array
+void addTwo(ref array<int> a, int x) {
+    a += x;
+    a += x + 1;
+}
+
+// adds some text to somebody else's text
+void shout(ref stringObj s) {
+    s += "!";
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// CHAIN - the nodes
+verb ChainVerb {
+    meta = true;
+    grammar = {.chain};
+    void handler() {
+        n1.id = 1;
+        n2.id = 2;
+        n3.id = 3;
+        n1.next := n2;
+        link(n2, n3);
+        print($"Chain length: {chainLength(n1)}.^");
+        print("Ids:");
+        ref Node cur := n1;
+        while (cur != null) {
+            print($" {cur.id}");
+            cur := cur.next;
+        }
+        print(".^");
+        // change them through the reference
+        cur := n1;
+        while (cur != null) {
+            cur.id = cur.id * 10;
+            cur := cur.next;
+        }
+        print($"After times ten: {n1.id} {n2.id} {n3.id}.^");
+        print($"Through the links: {n1.next.id} {n1.next.next.id}.^");
+        // = through a ref copies into the one it points at
+        ref Node r := n2;
+        r = n3;
+        print($"n2 after copy: {n2.id}, still linked: {chainLength(n1)}.^");
+        // a copy only has the id, not the links
+        print($"Copy length: {copyLength(n1)}.^");
+        if (!n3.next) {
+            print("n3 is the end.^");
+        }
+    }
+}
+
+// RING - nodes in an array that go round
+verb RingVerb {
+    meta = true;
+    grammar = {.ring};
+    void handler() {
+        array<Node> ring[3];
+        for (int i = 0; i < 3; i++) {
+            ring[i].id = 100 + i;
+        }
+        ring[0].next := ring[1];
+        ring[1].next := ring[2];
+        ring[2].next := ring[0];
+        print("Round:");
+        ref Node cur := ring[1];
+        int steps = 0;
+        while (steps < 5) {
+            print($" {cur.id}");
+            cur := cur.next;
+            steps++;
+        }
+        print(".^");
+        ring[2].id = 7;
+        print($"Back to start: {ring[1].next.next.id}, then {ring[0].next.next.id}.^");
+    }
+}
+
+// TRAY - a ref on an object
+verb TrayVerb {
+    meta = true;
+    grammar = {.tray};
+    void handler() {
+        if (!tray.pick) {
+            print("The tray holds no node.^");
+        }
+        tray.pick := n3;
+        if (!tray.pick) {
+            print("Still nothing?^");
+        } else {
+            print($"The tray holds node {tray.pick.id}.^");
+        }
+        tray.pick.id = 55;
+        print($"n3 is now {n3.id}.^");
+        tray.pick := n1;
+        print($"Now the tray holds node {tray.pick.id}, next {tray.pick.next.id}.^");
+    }
+}
+
+// LOG - a ref array on an object, and ref text
+verb LogVerb {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        tray.log := sharedLog;
+        tray.log += 4;
+        addTwo(tray.log, 10);
+        addTwo(sharedLog, 20);
+        print($"Shared log has {sharedLog.length}:");
+        for (int v in sharedLog) {
+            print($" {v}");
+        }
+        print(".^");
+        print($"Through the tray: {tray.log[0]} and {tray.log.length} in all.^");
+        ref array<int> r := sharedLog;
+        r += 30;
+        print($"Last one: {sharedLog[sharedLog.length - 1]}.^");
+        stringObj word = "hello";
+        ref stringObj same := word;
+        same += " there";
+        shout(same);
+        shout(word);
+        print($"Word: {word}.^");
+    }
+}
+
+// KIT - my namespace
+verb KitVerb {
+    meta = true;
+    grammar = {.kit};
+    void handler() {
+        print($"Chosen: {chosen} size {chosen.size}. Tone: {shadeName(tone)}.^");
+        kit.parts.crate big = bigger(crateA, crateB);
+        print($"Bigger: {big}.^");
+        tone = kit.parts.shade.bright;
+        kit.parts.shade other = kit.parts.shade.dark;
+        print($"Tone now: {shadeName(tone)}, other: {shadeName(other)}.^");
+        print($"Twice 21: {kit.tools.twice(21)}.^");
+        kit.clicker.hit();
+        kit.clicker.hit();
+        print($"Hits: {kit.clicker.hits}, same as {_kitCounter.hits}.^");
+        if (kit.clicker == _kitCounter) {
+            print("The clicker is the counter.^");
+        }
+        chosen = crateB;
+        print($"Chosen now: {chosen}.^");
+        print($"Shade codes: {shadeCode(kit.parts.shade.dark)} {shadeCode(tone)}.^");
+        int crates = 0;
+        int sizes = 0;
+        for (object o in roomB.children) {
+            if (o.is(kit.parts.crate)) {
+                kit.parts.crate c = (kit.parts.crate)o;
+                crates++;
+                sizes = sizes + c.size;
+            }
+        }
+        print($"Crates in Room B: {crates}, sizes {sizes}.^");
+    }
+}
+
+#using kit.parts
+
+// KITSHORT - the kit without writing kit.parts
+verb ShortVerb {
+    meta = true;
+    grammar = {.kitshort};
+    void handler() {
+        crate c = crateB;
+        shade s = shade.dark;
+        print($"Short crate: {c} size {c.size}, shade {shadeName(s)}.^");
+        if (s == eShade.dark) {
+            print("Same as eShade.dark.^");
+        }
+    }
+}
+
+#using shop
+
+// SHOP - emitter classes all the way down
+verb ShopVerb {
+    meta = true;
+    grammar = {.shop};
+    void handler() {
+        print($"Per box: {shop.room.shelf.perBox}. Three boxes: {shop.room.shelf.boxes(3)}.^");
+        shop.room.shelf.ping;
+        int fromUsing = room.shelf.perBox + room.shelf.boxes(2);
+        print($"From using: {fromUsing}.^");
+        room.shelf.ping;
+    }
+}
+
+// METERS - my backwards type
+verb MetersVerb {
+    meta = true;
+    grammar = {.meters};
+    void handler() {
+        meters a = 31;
+        meters b = 38;
+        meters c = 12;
+        if (a == b) {
+            print("31 and 38 match.^");
+        }
+        if (a != c) {
+            print("31 and 12 do not match.^");
+        }
+        if (a < c) {
+            print("31 comes before 12.^");
+        }
+        if (c > a) {
+            print("12 comes after 31.^");
+        }
+        if (a <= b) {
+            print("31 is at or before 38.^");
+        }
+        if (a >= b) {
+            print("31 is at or after 38.^");
+        }
+        auto plain = a;
+        plain = plain + 1;
+        print($"Plain: {plain}.^");
+        lengths.sort();
+        print("Sorted:");
+        for (meters m in lengths) {
+            int v = m;
+            print($" {v}");
+        }
+        print(".^");
+        meters probe = 29;
+        print($"Index of 29: {lengths.indexOf(probe)}.^");
+        probe = 50;
+        print($"Index of 50: {lengths.indexOf(probe)}.^");
+    }
+}
+
+// GEARS - typesealed
+verb GearsVerb {
+    meta = true;
+    grammar = {.gears};
+    void handler() {
+        print($"Teeth: {gearOne.teeth} {gearTwo.teeth} {gearThree.teeth}.^");
+        gearThree.teeth += 2;
+        int total = 0;
+        for (object o in roomB.children) {
+            if (o.is(Gear)) {
+                Gear g = (Gear)o;
+                total = total + g.teeth;
+            }
+        }
+        print($"All the teeth: {total}.^");
+    }
+}
+
+// TOKENS - pooled things in the world
+verb TokensVerb {
+    meta = true;
+    grammar = {.tokens};
+    void handler() {
+        int made = 0;
+        int k = 5;
+        while (true) {
+            Token t = new Token(k);
+            if (t == null) {
+                break;
+            }
+            made++;
+            k = k + 5;
+            if (made == 1) {
+                t.parent = player;
+            } else {
+                roomA.children += {t};
+            }
+        }
+        print($"Made {made} tokens.^");
+        BigToken b = new BigToken(50);
+        if (b != null) {
+            print($"Big token worth {b.worth}.^");
+            roomA.children += {b};
+        }
+        BigToken b2 = new BigToken(60);
+        if (b2 == null) {
+            print("No more big tokens.^");
+        }
+        print($"Things in Room A: {roomA.children.length}. Carried: {player.children.length}.^");
+    }
+}
+
+// CLEARUP - delete every token in Room A
+verb SweepVerb {
+    meta = true;
+    grammar = {.clearup};
+    void handler() {
+        int gone = 0;
+        array<object> here = bgl.world.inParent(roomA);
+        for (object o in here) {
+            if (o.is(BigToken)) {
+                BigToken bt = (BigToken)o;
+                delete bt;
+                gone++;
+            } else if (o.is(Token)) {
+                Token t = (Token)o;
+                delete t;
+                gone++;
+            }
+        }
+        print($"Swept {gone}. Things in Room A: {roomA.children.length}.^");
+        kit.parts.token again = new kit.parts.token(99);
+        if (again != null) {
+            print($"A new token worth {again.worth}.^");
+            again.parent = roomA;
+        }
+        BigToken big = new BigToken(70);
+        if (big != null) {
+            print($"A new big token worth {big.worth}.^");
+            delete big;
+        }
+    }
+}
+
+#exit
+
+// I stopped here. Nothing below this line should be in the game.
+verb UnusedVerb {
+    meta = true;
+    grammar = {.unused};
+    void handler() {
+        print("This should never print.^");
+    }
+}

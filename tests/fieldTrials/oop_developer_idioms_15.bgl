@@ -1,0 +1,453 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, fifteenth pass: nine features meeting
+// inside one declaration, three times. An object with `attributes =`, an owned value-class member and an
+// `array<Span>` of them, its own comparison operators (`==`, `!=`, `<=>`), an inline accessor whose
+// setter throws, opens an emitter-class scope guard, queries a `<linq>` chain and reaches its host through
+// `outer` (gives attributes, calls host methods that `perform()` a verb), recursive methods (one nesting
+// scope guards, one throwing an index out of a recursive scan), and `try`/`catch` around the accessor; an
+// `extern class` with two I6 parents whose static methods take `array<int>` / `array<Box>` parameters,
+// move objects in the tree, recurse through children, branch on `#if` symbols, return and switch on an
+// enum, build a `stringObj`, use value-class locals and `perform()` a verb; an `extend class` of a class with
+// three parents (as a C# partial class) that adds a primitive-newtype member switched
+// through its `operator switch`, an emitter reaching another through `$i6Expr`, `<linq>` filters over a
+// value-class parameter, a `switch` on a `stringObj` and a verb run from a method; and a verb holding its
+// own state with an inline accessor reaching it through `outer` and a recursive tree walk.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#define TRACE_LEVEL 2
+#define STRICT_BAYS
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute flagged;
+
+enum Grade { Empty, Partial, Full }
+
+int PingCount;
+
+//-- A closed interval, copied by value ---------------------------------------------------------------------
+
+value class Span {
+    int Lo;
+    int Hi;
+    Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }
+    bool Holds(int v) { return v >= Lo && v <= Hi; }
+    bool operator == (Span o) { return Lo == o.Lo && Hi == o.Hi; }
+    bool operator != (Span o) { return Lo != o.Lo || Hi != o.Hi; }
+    int operator <=> (Span o) { return (Hi - Lo) - (o.Hi - o.Lo); }
+}
+
+//-- Scope guard: an emitter class whose init/deinit track nesting depth ------------------------------------
+
+int GuardDepth;
+int GuardPeak;
+
+int GuardOpen() {
+    GuardDepth++;
+    if (GuardDepth > GuardPeak) GuardPeak = GuardDepth;
+    return GuardDepth;
+}
+
+void GuardClose(int level) {
+    if (level == GuardDepth) GuardDepth--;
+}
+
+emitter class Guard {
+    emitter void init()   { $self = GuardOpen(); }
+    emitter void deinit() { GuardClose($self); }
+    emitter int Level     { ($self) }
+}
+
+//-- Grams: a primitive newtype over int, switched by tens ---------------------------------------------------
+
+emitter int Twice(int v) { ($v * 2) }
+
+primitive class Grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter Grams operator + (Grams g) { ($val + $g) }
+    emitter eBool operator switch (int tens) { ($val / 10 == $tens) }
+    emitter bool Heavy { ($val >= 10) }
+}
+
+//-- A verb the classes below run from code ------------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        PingCount++;
+        print($"(ping {noun})");
+    }
+}
+
+//-- Cluster 1: an object whose accessor reaches its host -----------------------------------------------------
+
+object meter {
+    "meter";
+    attributes = {general};
+    Span Band;
+    array<int> Samples[8] = { 4, 9, 2, 7 };
+    array<Span> History[4];
+    int Reading;
+    int Rejects;
+
+    auto Level = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) {
+            if (v < 0 || outer.Samples.length >= outer.Samples.size) {
+                outer.Rejects++;
+                throw v;
+            }
+            Guard g;
+            _v = v;
+            outer.Reading = v;
+            outer.Samples.append(v);
+            if (outer.History.length < outer.History.size && !outer.History.contains(outer.Band)) {
+                outer.History.append(outer.Band);
+            }
+            if (outer.Samples.any((int x) => x > outer.Band.Hi)) outer.give(flagged);
+            else outer.ungive(flagged);
+            if (outer.InBand()) outer.Echo(g.Level);
+        }
+    }
+
+    bool operator == (Span s) { return s.Holds(Reading); }
+    bool operator != (Span s) { return !s.Holds(Reading); }
+    int operator <=> (int v) { return Reading - v; }
+
+    // Sum of the samples from index i to the end.
+    int SumFrom(int i) {
+        if (i >= Samples.length) return 0;
+        return Samples[i] + SumFrom(i + 1);
+    }
+
+    // Nests n scope guards deep and reports the innermost level.
+    int Nest(int n) {
+        Guard g;
+        if (n <= 0) return g.Level;
+        return Nest(n - 1);
+    }
+
+    bool InBand() { return self == Band; }
+
+    void Echo(int level) {
+        if (level > 0 && has(general)) Ping.perform(self);
+    }
+
+    int CountInBand() { return Samples.filter((int x) => Band.Holds(x)).count(); }
+
+    // Index of the first sample equal to v, found by a recursive scan that throws the index; -1 if absent.
+    int Locate(int v) {
+        try {
+            Scan(0, v);
+        } catch (int at) {
+            return at;
+        }
+        return -1;
+    }
+
+    void Scan(int i, int v) {
+        if (i >= Samples.length) return;
+        if (Samples[i] == v) throw i;
+        Scan(i + 1, v);
+    }
+
+    // How many recorded bands differ from the current one, and whether any is wider.
+    int Drift() {
+        int differ = History.filter((Span s) => s != Band).count();
+        if (History.any((Span s) => s > Band)) differ += 100;
+        return differ;
+    }
+
+    bool Set(int v) {
+        try {
+            Level = v;
+        } catch (int bad) {
+            print($"[reject {bad}]");
+            return false;
+        }
+        return true;
+    }
+}
+
+//-- Cluster 2: a typed view of a class written in I6, with two parents ---------------------------------------
+
+#i6 {
+Class Shelf
+  with shelf_slots 0,
+  has container open;
+Class Lidded
+  with lid_state 0;
+Class Bay
+  class Shelf Lidded
+  with bay_code 0;
+Bay bayA "bay A" with shelf_slots 3, bay_code 11;
+Bay bayB "bay B" with shelf_slots 1, bay_code 12, lid_state 1;
+}
+
+extern class Shelf : object {
+    int shelf_slots;
+}
+
+extern class Lidded : object {
+    int lid_state;
+    static bool IsShut(Lidded l) { return l.lid_state != 0; }
+}
+
+class Box : object {
+    int Mass;
+    string Label;
+}
+
+Box boxA { "box A"; Mass = 2; Label = "A"; parent = roomA; }
+Box boxB { "box B"; Mass = 5; Label = "B"; parent = roomA; }
+Box boxC { "box C"; Mass = 4; Label = "C"; parent = roomA; }
+
+extern class Bay : Shelf, Lidded {
+    int bay_code;
+
+    // Grades a bay against a list of loads it would carry.
+    static Grade Rate(Bay b, array<int> loads) {
+        Span band;
+        band.Lo = 1;
+        band.Hi = b.shelf_slots * 3;
+        int total = b.children.length;
+        for (int v in loads) total += v;
+        #if STRICT_BAYS
+            if (Lidded.IsShut(b)) total += band.Hi;
+        #endif
+        if (total < band.Lo) return Grade.Empty;
+        if (band.Holds(total)) return Grade.Partial;
+        return Grade.Full;
+    }
+
+    // Total mass held under o, counting boxes inside boxes.
+    static int MassOf(object o) {
+        int m = 0;
+        for (object c in o.children) {
+            Box x = (Box)c;
+            m += x.Mass + MassOf(x);
+        }
+        return m;
+    }
+
+    // Moves boxes into the bay while it has room; returns a label of what went in.
+    static stringObj Fill(Bay b, array<Box> boxes) {
+        stringObj names = "";
+        Span room;
+        room.Lo = 0;
+        room.Hi = b.shelf_slots;
+        for (Box x in boxes) {
+            if (!room.Holds(b.children.length + 1) || Lidded.IsShut(b)) break;
+            x.parent = b;
+            if (names.length > 0) names += ", ";
+            names += x.Label;
+            #if TRACE_LEVEL > 1
+                Ping.perform(x);
+            #endif
+        }
+        array<int> none[1];
+        Grade g = Rate(b, none);
+        switch (g) {
+            case Grade.Empty:   names += " (empty)";
+            case Grade.Partial: names += " (partial)";
+            case Grade.Full:    names += " (full)";
+        }
+        return names;
+    }
+}
+
+extern Bay bayA;
+extern Bay bayB;
+
+//-- Cluster 3: a class given more members by a later part, like a partial class -----------------------------
+
+class Tagged : object {
+    string Tag = "none";
+}
+
+class Counted : object {
+    int Uses;
+}
+
+class Widget : object, Tagged, Counted {
+    int Id;
+}
+
+extend class Widget {
+    array<int> Readings[6] = { 3, 14, 8 };
+    Grams Load;
+
+    emitter int Code() { $i6Expr(Twice($self.Id)) }
+
+    // Names the weight class of the current load.
+    string Weight() {
+        switch (Load) {
+            case 0:  return "light";
+            case 1:  return "medium";
+            default: return "heavy";
+        }
+    }
+
+    // Adds every reading inside the band to the load; returns how many counted.
+    int Absorb(Span band) {
+        array<int> picked = Readings.filter((int r) => band.Holds(r));
+        for (int r in picked) {
+            Grams g = r;
+            Load = Load + g;
+        }
+        Uses++;
+        return picked.length;
+    }
+
+    // How many readings, smallest first, come before the first one at or over the cap.
+    int LightCount(Grams cap) {
+        int limit = cap;
+        return Readings.orderBy().takeWhile((int r) => r < limit).count();
+    }
+
+    // A label built from the tag, the code and the load.
+    stringObj Label() {
+        stringObj s = Tag;
+        switch (s) {
+            case "red":  s += "/R";
+            case "blue": s += "/B";
+            default:     s += "/?";
+        }
+        stringObj tail = $"{Code()}-{Weight()}";
+        s += tail;
+        if (Load.Heavy) Ping.perform(self);
+        return s;
+    }
+}
+
+Widget widgetA { "widget A"; Id = 3; Tag = "red"; }
+Widget widgetB { "widget B"; Id = 5; Tag = "green"; }
+Widget widgetC { "widget C"; Id = 1; Tag = "blue"; Readings = { 11, 2 }; }
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Meters {
+    grammar = {.meters};
+    void handler() {
+        meter.Band.Lo = 3;
+        meter.Band.Hi = 8;
+        bool a = meter.Set(5);
+        print(" ");
+        bool b = meter.Set(-2);
+        bool c = meter.Set(12);
+        print(" ");
+        printLine($"; sets {a} {b} {c}, level {meter.Level}, rejects {meter.Rejects}.");
+        printLine($"Sum {meter.SumFrom(0)}, in band {meter.CountInBand()}, nest {meter.Nest(3)}, peak {GuardPeak}, depth {GuardDepth}.");
+        bool above = meter > 10;
+        bool inside = meter == meter.Band;
+        printLine($"Above {above}, inside {inside}, flagged {meter.has(flagged)}, pings {PingCount}.");
+        meter.Band.Lo = 1;
+        meter.Band.Hi = 20;
+        bool d = meter.Set(7);
+        meter.Band.Hi = 4;
+        bool e = meter.Set(3);
+        printLine($"; again {d} {e}, history {meter.History.length}, drift {meter.Drift()}, at {meter.Locate(9)} {meter.Locate(7)} {meter.Locate(99)}.");
+    }
+}
+
+verb Bays {
+    grammar = {.bays};
+    void handler() {
+        array<Box> boxes = { boxA, boxB, boxC };
+        stringObj a = Bay.Fill(bayA, boxes);
+        printLine($"; A: {a}.");
+        stringObj b = Bay.Fill(bayB, boxes);
+        printLine($"B: {b}.");
+        array<int> loads = { 1, 2 };
+        Grade g = Bay.Rate(bayA, loads);
+        printLine($"Rate {(int)g}, in A {bayA.children.length}, in room {roomA.children.length}.");
+        boxC.parent = boxB;
+        printLine($"Mass {Bay.MassOf(bayA)} {Bay.MassOf(boxB)} {Bay.MassOf(bayB)}.");
+    }
+}
+
+verb Widgets {
+    grammar = {.widgets};
+    void handler() {
+        Span band;
+        band.Lo = 5;
+        band.Hi = 20;
+        int n = widgetA.Absorb(band);
+        int m = widgetB.Absorb(band);
+        int k = widgetC.Absorb(band);
+        stringObj la = widgetA.Label();
+        stringObj lb = widgetB.Label();
+        stringObj lc = widgetC.Label();
+        printLine($"; absorbed {n} {m} {k}, labels {la} {lb} {lc}, uses {widgetA.Uses}.");
+        Grams cap = 9;
+        printLine($"Light {widgetA.LightCount(cap)} {widgetC.LightCount(cap)}, weights {widgetC.Weight()} {widgetA.Weight()}.");
+    }
+}
+
+//-- A verb that keeps its own state, like a command object -------------------------------------------------
+
+verb Survey {
+    grammar = {.survey};
+    int Visited;
+    Span Limits;
+    auto Deepest = {
+        int _d;
+        int operator () { return _d; }
+        void operator = (int d) {
+            if (d > _d && outer.Limits.Holds(d)) _d = d;
+            outer.Visited++;
+        }
+    }
+
+    // Walks the tree under o, recording each depth; returns how many things it holds at any depth.
+    int Walk(object o, int depth) {
+        Deepest = depth;
+        int n = 0;
+        for (object c in o.children) {
+            n++;
+            n += Walk(c, depth + 1);
+        }
+        return n;
+    }
+
+    void handler() {
+        Limits.Lo = 0;
+        Limits.Hi = 1;
+        int all = Walk(roomA, 0);
+        int deep = Deepest;
+        Limits.Hi = 5;
+        Visited = 0;
+        boxA.parent = player;
+        int again = Walk(roomA, 0);
+        printLine($"Survey {all} {again}, deepest {deep} then {Deepest}, visits {Visited}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

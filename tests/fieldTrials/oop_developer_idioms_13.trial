@@ -1,0 +1,28 @@
+Room A
+Room A.
+
+> tallies
+Recorded 2 2 0 2; read 10 -1.
+counts 5 4 10 0 flags +++-, writes 8, recent bolt gear.
+n 3 sum 18 mean 6.
+
+> phrases
+red/2/1/2 one/1/2/1 x/3/3/3 bank 3.
+
+> catalogs
+bolt 3 2; gear 12 1; plate 6 3; groups 3 total 21.
+stock plate:2 bolt:0 gear:1; edge none gear.
+
+> tokens
+Stamp -1 -1 13; code 2472; second 4, out ?, last stamped (1) none, other t---.
+
+> boards
+gamma delta; lines 4, alpha none.
+Sets 2, misses 2, seen 2/5.
+*-.
+
+> kits
+kit:gear kit:none kit:plate; parts 3, weight 16, first bolt.
+
+> shelves
+plate bolt; picks 2; right right.

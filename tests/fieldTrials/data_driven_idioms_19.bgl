@@ -1,0 +1,504 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small routing-and-production model kept entirely in tables. An enum of stations
+// indexing parallel string and bnum tables; a road table as an array of arrays read [from][to]; a
+// shortest-path search over it with local dist/done/prev arrays, the path rebuilt by walking prev
+// into an array and reversed; a value-class trip summary filled through a ref parameter; recipe
+// records as objects with member arrays of goods and amounts, matched against a TOPIC word; a
+// stock table indexed by a good's bit position; recipes filtered, counted and ordered with <linq>
+// lambdas that capture locals; a report table of dictionary words paired with an array<func<void>>
+// and dispatched by indexOf; a string switch on station names; a switch with ranges and guards
+// banding distances; stringObj rows padded to columns; a do/while drain loop; and for-in over
+// ranges, arrays, inline lists and an object's children.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int STATIONS = 5;
+const int NO_ROAD = 0;
+const int FAR = 999;
+const int NOT_FOUND = -1;
+#define GOOD_KINDS 5
+#define COLUMN 8
+
+enum eStation { depot = 0, mill, farm, mine, port }
+bnum eGood { grain, ore, flour, metal, tools }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> stationNames = { "depot", "mill", "farm", "mine", "port" };
+
+// What each station takes in, indexed by (int)eStation.
+array<eGood> stationWants = {
+    tools,
+    grain,
+    tools | metal,
+    tools,
+    flour | metal | ore
+};
+
+// Road lengths, read roads[from][to]; NO_ROAD where there is none.
+//                    depot mill farm mine port
+array<array<int>> roads = {
+    {                   0,   4,   0,   7,   0 },   // depot
+    {                   4,   0,   3,   0,   9 },   // mill
+    {                   0,   3,   0,   0,   2 },   // farm
+    {                   7,   0,   0,   0,   6 },   // mine
+    {                   0,   9,   2,   6,   0 }    // port
+};
+
+array<string> goodNames = { "grain", "ore", "flour", "metal", "tools" };
+array<int> stock[GOOD_KINDS] = { 6, 4, 0, 0, 0 };
+array<int> priceOf = { 2, 3, 5, 8, 20 };
+
+//-- Records -------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+class Recipe : object {
+    eGood output;
+    int yield;
+    int minutes;
+    eStation at;
+    array<eGood> inputs[3];
+    array<int> amounts[3];
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object recipeBook {
+    "recipe book";
+    name = {.recipe, .book};
+    parent = roomA;
+}
+
+Recipe millFlour   { "flour";  name = {.flour};  parent = recipeBook; output = flour; yield = 2; minutes = 5;
+                     at = eStation.mill; inputs = { grain };        amounts = { 3 }; }
+Recipe smeltMetal  { "metal";  name = {.metal};  parent = recipeBook; output = metal; yield = 1; minutes = 8;
+                     at = eStation.mine; inputs = { ore };          amounts = { 2 }; }
+Recipe forgeTools  { "tools";  name = {.tools};  parent = recipeBook; output = tools; yield = 1; minutes = 12;
+                     at = eStation.depot; inputs = { metal, flour }; amounts = { 1, 1 }; }
+Recipe bakeBread   { "bread";  name = {.bread};  parent = recipeBook; output = flour; yield = 0; minutes = 3;
+                     at = eStation.farm; inputs = { flour, grain }; amounts = { 2, 1 }; }
+
+array<Recipe> recipes = { millFlour, smeltMetal, forgeTools, bakeBread };
+
+value class Trip {
+    int legs;
+    int length;
+    int toll;
+    Trip operator = (Trip o) { legs = o.legs; length = o.length; toll = o.toll; return self; }
+}
+
+Trip lastTrip;
+int made = 0;
+
+//-- Lookups -------------------------------------------------------------------
+
+// The bit position of a single good, or NOT_FOUND.
+int goodIndex(eGood g) {
+    for (int i = 0; i < GOOD_KINDS; i++) {
+        if ((eGood)(1 << i) == g) return i;
+    }
+    return NOT_FOUND;
+}
+
+void printGoods(eGood set) {
+    if (set == 0) { print("nothing"); return; }
+    bool first = true;
+    for (int i in 0 to GOOD_KINDS - 1) {
+        if ((set & (eGood)(1 << i)) == 0) continue;
+        if (!first) print(", ");
+        print(goodNames[i]);
+        first = false;
+    }
+}
+
+int stationByName(stringObj s) {
+    switch (s) {
+        case "depot": return (int)eStation.depot;
+        case "mill":  return (int)eStation.mill;
+        case "farm":  return (int)eStation.farm;
+        case "mine":  return (int)eStation.mine;
+        case "port":  return (int)eStation.port;
+    }
+    return NOT_FOUND;
+}
+
+Recipe recipeByWord(dictionaryWord w) {
+    for (Recipe r in recipes) {
+        if (r.name[0] == w) return r;
+    }
+    return null;
+}
+
+bool canMake(Recipe r) {
+    for (int i = 0; i < r.inputs.length; i++) {
+        int k = goodIndex(r.inputs[i]);
+        if (stock[k] < r.amounts[i]) return false;
+    }
+    return true;
+}
+
+void printBand(int d) {
+    switch (d) {
+        case NO_ROAD:  print("none");
+        case 1 to 3:   print("short");
+        case 4 to 6:   print("middling");
+        case >= FAR:   print("unreachable");
+        default:       print("long");
+    }
+}
+
+// Pads s with spaces to at least w characters.
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+//-- Routing -------------------------------------------------------------------
+
+// Shortest road distance from a to b. Fills t with the legs, length and toll, and path with the
+// stations from a to b in order.
+int route(int a, int b, ref Trip t, array<int> path) {
+    array<int> dist[STATIONS];
+    array<bool> done[STATIONS];
+    array<int> prev[STATIONS];
+    for (int i = 0; i < STATIONS; i++) {
+        dist[i] = FAR;
+        done[i] = false;
+        prev[i] = NOT_FOUND;
+    }
+    dist[a] = 0;
+    for (int pass = 0; pass < STATIONS; pass++) {
+        int u = NOT_FOUND;
+        for (int i = 0; i < STATIONS; i++) {
+            if (done[i]) continue;
+            if (u == NOT_FOUND || dist[i] < dist[u]) u = i;
+        }
+        if (u == NOT_FOUND || dist[u] == FAR) break;
+        done[u] = true;
+        for (int v = 0; v < STATIONS; v++) {
+            int w = roads[u][v];
+            if (w == NO_ROAD) continue;
+            if (dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                prev[v] = u;
+            }
+        }
+    }
+    path.clear();
+    t.legs = 0;
+    t.length = dist[b];
+    t.toll = 0;
+    if (dist[b] == FAR) return FAR;
+    int at = b;
+    while (at != NOT_FOUND) {
+        path.append(at);
+        at = prev[at];
+    }
+    path.reverse();
+    t.legs = path.length - 1;
+    for (int i = 1; i < path.length; i++) {
+        int leg = roads[path[i - 1]][path[i]];
+        t.toll += leg > 5 ? 2 : 1;
+    }
+    return dist[b];
+}
+
+//-- Reports -------------------------------------------------------------------
+
+void showRoads() {
+    for (int from in 0 to STATIONS - 1) {
+        stringObj row = stationNames[from];
+        padTo(row, COLUMN);
+        row.print();
+        int n = 0;
+        for (int to = 0; to < STATIONS; to++) {
+            if (roads[from][to] == NO_ROAD) continue;
+            if (n > 0) print(", ");
+            print($"{stationNames[to]} {roads[from][to]}");
+            n++;
+        }
+        print("^");
+    }
+}
+
+void showWants() {
+    for (int s = 0; s < STATIONS; s++) {
+        print($"{stationNames[s]}: ");
+        printGoods(stationWants[s]);
+        print("^");
+    }
+}
+
+void showStock() {
+    int worth = 0;
+    for (int i = 0; i < GOOD_KINDS; i++) {
+        stringObj row = goodNames[i];
+        padTo(row, COLUMN);
+        row.print();
+        print($"{stock[i]} x {priceOf[i]}^");
+        worth += stock[i] * priceOf[i];
+    }
+    print($"Worth {worth}.^");
+}
+
+array<dictionaryWord> reportWords = { .roads, .wants, .stock };
+array<func<void>> reportFns = { showRoads, showWants, showStock };
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb RouteTest {
+    grammar = {.route, NUMBER, NUMBER};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        if (a >= STATIONS || b >= STATIONS) { print("No such station.^"); return; }
+        array<int> path[STATIONS];
+        int d = route(a, b, lastTrip, path);
+        print($"{stationNames[a]} to {stationNames[b]}: ");
+        if (d == FAR) { print("no route.^"); return; }
+        for (int i = 0; i < path.length; i++) {
+            if (i > 0) print(" > ");
+            print(stationNames[path[i]]);
+        }
+        print($" ({d}, ");
+        printBand(d);
+        print($", {lastTrip.legs} legs, toll {lastTrip.toll}).^");
+    }
+}
+
+verb GoTest {
+    grammar = {.go, TOPIC};
+    void handler() {
+        wn = consult_from;
+        array<int> stops[6];
+        for (int k = 0; k < consult_words; k++) {
+            dictionaryWord w = NextWord();
+            int s = NOT_FOUND;
+            switch (w) {
+                case .depot: s = (int)eStation.depot;
+                case .mill:  s = (int)eStation.mill;
+                case .farm:  s = (int)eStation.farm;
+                case .mine:  s = (int)eStation.mine;
+                case .port:  s = (int)eStation.port;
+            }
+            if (s == NOT_FOUND) { print("? "); continue; }
+            stops += s;
+        }
+        if (stops.length < 2) { print("^Need two stops.^"); return; }
+        Trip total;
+        array<int> path[STATIONS];
+        for (int i = 1; i < stops.length; i++) {
+            Trip leg;
+            route(stops[i - 1], stops[i], leg, path);
+            total.legs += leg.legs;
+            total.length += leg.length;
+            total.toll += leg.toll;
+        }
+        lastTrip = total;
+        print($"{stops.length} stops, {total.legs} legs, length {total.length}, toll {total.toll}.^");
+    }
+}
+
+verb BandTest {
+    grammar = {.band};
+    void handler() {
+        Trip t;
+        array<int> path[STATIONS];
+        for (int b in 1 to STATIONS - 1) {
+            int d = route(0, b, t, path);
+            print($"{stationNames[b]} {d} ");
+            printBand(d);
+            print("^");
+        }
+    }
+}
+
+verb WantsTest {
+    grammar = {.wants, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        array<string> words = { "grain", "ore", "flour", "metal", "tools" };
+        int g = NOT_FOUND;
+        switch (w) {
+            case .grain: g = 0;
+            case .ore:   g = 1;
+            case .flour: g = 2;
+            case .metal: g = 3;
+            case .tools: g = 4;
+        }
+        if (g == NOT_FOUND) { print("No such good.^"); return; }
+        eGood good = (eGood)(1 << g);
+        print($"{words[g]} wanted at:");
+        int n = 0;
+        for (int s = 0; s < STATIONS; s++) {
+            if ((stationWants[s] & good) == 0) continue;
+            print($" {stationNames[s]}");
+            n++;
+        }
+        if (n == 0) print(" nowhere");
+        print($" ({n}).^");
+    }
+}
+
+verb StationTest {
+    grammar = {.station, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        stringObj typed;
+        typed.capture();
+        print(w);
+        typed.release();
+        int s = stationByName(typed);
+        if (s == NOT_FOUND) { print("No such station.^"); return; }
+        int links = 0;
+        int longest = 0;
+        for (int d in roads[s]) {
+            if (d == NO_ROAD) continue;
+            links++;
+            if (d > longest) longest = d;
+        }
+        print($"{stationNames[s]} is station {s}: {links} roads, longest {longest}, wants ");
+        printGoods(stationWants[s]);
+        print(".^");
+    }
+}
+
+verb MakeTest {
+    grammar = {.make, TOPIC};
+    void handler() {
+        wn = consult_from;
+        Recipe r = recipeByWord(NextWord());
+        if (r == null) { print("No such recipe.^"); return; }
+        if (!canMake(r)) {
+            print("Short of");
+            for (int i = 0; i < r.inputs.length; i++) {
+                int k = goodIndex(r.inputs[i]);
+                if (stock[k] < r.amounts[i]) print($" {goodNames[k]} ({stock[k]}/{r.amounts[i]})");
+            }
+            print(".^");
+            return;
+        }
+        for (int i = 0; i < r.inputs.length; i++) {
+            stock[goodIndex(r.inputs[i])] -= r.amounts[i];
+        }
+        int out = goodIndex(r.output);
+        stock[out] += r.yield;
+        made++;
+        print($"Made {r.yield} {goodNames[out]} at {stationNames[(int)r.at]} in {r.minutes} minutes.^");
+    }
+}
+
+verb CanTest {
+    grammar = {.can};
+    void handler() {
+        int ready = recipes.filter((Recipe r) => canMake(r)).count();
+        print($"{ready} of {recipes.length} ready:");
+        for (Recipe r in recipes.filter((Recipe r) => canMake(r))) {
+            print(" "); printName(r);
+        }
+        print(".^");
+        int limit = 6;
+        int quick = recipes.filter((Recipe r) => r.minutes <= limit).count();
+        bool anyFree = recipes.any((Recipe r) => r.yield == 0);
+        bool allOne = recipes.all((Recipe r) => r.inputs.length >= 1);
+        print($"Quick (<= {limit}): {quick}, any yield 0: {anyFree}, all have inputs: {allOne}.^");
+    }
+}
+
+verb PlanTest {
+    grammar = {.plan};
+    void handler() {
+        array<Recipe> order = recipes.orderBy((Recipe a, Recipe b) => a.minutes - b.minutes);
+        int clock = 0;
+        for (Recipe r in order) {
+            clock += r.minutes;
+            stringObj row;
+            row.capture();
+            printName(r);
+            row.release();
+            padTo(row, COLUMN);
+            row.print();
+            print($"{r.minutes} -> {clock}^");
+        }
+        array<var> mins = recipes.map((Recipe r) => r.minutes * 60);
+        int secs = 0;
+        for (var m in mins) secs += (int)m;
+        print($"Total {clock} minutes, {secs} seconds.^");
+    }
+}
+
+verb ReportTest {
+    grammar = {.report, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        int at = reportWords.indexOf(w);
+        if (at == NOT_FOUND) { print("No such report.^"); return; }
+        reportFns[at]();
+    }
+}
+
+verb DrainTest {
+    grammar = {.drain, NUMBER};
+    void handler() {
+        int want = (int)noun;
+        int taken = 0;
+        int i = GOOD_KINDS - 1;
+        do {
+            while (stock[i] > 0 && taken < want) {
+                stock[i]--;
+                taken++;
+            }
+            i--;
+        } while (i >= 0 && taken < want);
+        print($"Drained {taken} of {want}.^");
+    }
+}
+
+verb BookTest {
+    grammar = {.book};
+    void handler() {
+        int n = 0;
+        int mins = 0;
+        for (object o in recipeBook.children) {
+            Recipe r = (Recipe)o;
+            n++;
+            mins += r.minutes;
+        }
+        print($"{n} recipes in the book, {mins} minutes in all, {made} made so far.^");
+        for (eStation s in { eStation.depot, eStation.mill, eStation.mine }) {
+            int here = 0;
+            for (Recipe r in recipes) if (r.at == s) here++;
+            print($"{stationNames[(int)s]} {here}^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

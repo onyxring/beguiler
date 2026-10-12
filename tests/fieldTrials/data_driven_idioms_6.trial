@@ -1,0 +1,103 @@
+Rule set 2: 1 bad rule.
+Data check: 1 problem, 6 rules.
+Room A
+Room A.
+> table
+weight price stock trend value kind
+2 15 4 -3 60 plain (brass key)
+3 4 10 5 36 perishable (bread loaf)
+20 6 12 -1 64 bulk (coal sack)
+1 3 0 2 0 plain (tin cup)
+8 9 6 -6 44 perishable (apple box)
+5 2 30 4 54 bulk (nail tub)
+> cell 13
+bread loaf trend = 5.
+> cell 52
+nail tub stock = 30.
+> cell 74
+No cell 74.
+> base
+bread loaf: 36 / 40
+coal sack: 64 / 72
+apple box as Item: 44 / 44
+> rules
+Set 0: weight>2 price<9 stock>0 trend>-2
+Set 1: stock=0
+Set 2: price>10
+> match 0
+Set 0 matches: bread loaf coal sack nail tub (3).
+> match 1
+Set 1 matches: tin cup (1).
+> match 2
+Set 2 matches: brass key (1).
+> match 3
+No set 3.
+> sort 0
+By weight: tin cup=1 brass key=2 bread loaf=3 nail tub=5 apple box=8 coal sack=20.
+Lowest tin cup, next brass key.
+> sort 1
+By price: nail tub=2 tin cup=3 bread loaf=4 coal sack=6 apple box=9 brass key=15.
+Lowest nail tub, next tin cup.
+> sort 3
+By trend: apple box=-6 brass key=-3 coal sack=-1 tin cup=2 nail tub=4 bread loaf=5.
+Lowest apple box, next brass key.
+> sort 4
+No column 4.
+> names
+Names: apple box brass key bread loaf coal sack nail tub tin cup.
+First apple box, second brass key.
+> stats
+weight: mean 6.5000, range 1..20
+price: mean 6.5000, range 2..15
+stock: mean 10.3333, range 0..30
+trend: mean 0.1667, range -6..5
+trend deviation 3.8909
+price per unit 4.6129
+means sorted: 0.1667 6.5000 6.5000 10.3333
+trend per weight sorted: -1.5000 -0.7500 -0.0500 0.8000 1.6667 2.0000
+> find 3
+First at price 3 or less: tin cup (3).
+> find 5
+First at price 5 or less: bread loaf (4).
+> find 1
+Nothing at price 1 or less.
+> hash
+Hash 3971060658, top nibble 14.
+> restock 4
+brass key 0 [-4,0,0]
+bread loaf 6 [-4,0,0]
+coal sack 16 [4,0,0]
+tin cup 0 [-4,0,0]
+apple box 2 [-4,0,0]
+nail tub 20 [4,0,0]
+> restock 9
+brass key 0 [-9,-4,0]
+bread loaf 0 [-9,-4,0]
+coal sack 20 [9,4,0]
+tin cup 0 [-9,-4,0]
+apple box 0 [-9,-4,0]
+nail tub 20 [9,4,0]
+> table
+weight price stock trend value kind
+2 15 0 -3 0 plain (brass key)
+3 4 0 5 -4 perishable (bread loaf)
+20 6 20 -1 108 bulk (coal sack)
+1 3 0 2 0 plain (tin cup)
+8 9 0 -6 -10 perishable (apple box)
+5 2 20 4 36 bulk (nail tub)
+> match 1
+Set 1 matches: brass key bread loaf tin cup apple box (4).
+> sort 2
+By stock: brass key=0 bread loaf=0 tin cup=0 apple box=0 coal sack=20 nail tub=20.
+Lowest brass key, next bread loaf.
+> stats
+weight: mean 6.5000, range 1..20
+price: mean 6.5000, range 2..15
+stock: mean 6.6667, range 0..20
+trend: mean 0.1667, range -6..5
+trend deviation 3.8909
+price per unit 4.0000
+means sorted: 0.1667 6.5000 6.5000 6.6667
+trend per weight sorted: -1.5000 -0.7500 -0.0500 0.8000 1.6667 2.0000
+> hash
+Hash 2703616988, top nibble 10.

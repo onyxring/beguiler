@@ -1,0 +1,57 @@
+Room A
+A plain room.
+You can see a dial and a slab here.
+> directives
+brass dial knob 6 z5 1
+4
+> aliases
+4 2 8 22
+15 15
+7 A dial.
+9 4 130
+> notches
+#5 #7
+7 notch int int
+equal
+21
+> seconds
+9 dial 10
+> funcs
+7 12 -6
+5 40 -8 42
+-21
+20
+> replaces
+1105 1000
+31
+> unsigned
+65000 32500 65535
+big is large
+as int it is negative
+4062 -34
+5 65530
+255 64464 13333 true
+> maths
+1024 100 -1 5
+-3 3 1
+> buffers
+brass key ring 14 40
+6 true
+BRASS BELL RING
+[AC][B42] 2 0 2 3
+> push dial
+shove dial
+> pull dial
+Nothing obvious happens.
+> pull dial hard
+yank dial
+> push slab
+shove slab
+> twist dial
+twist dial
+> rotate dial
+twist dial
+> screw dial
+twist dial
+> turn slab
+twist slab

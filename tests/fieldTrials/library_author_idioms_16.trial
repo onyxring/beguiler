@@ -1,0 +1,16 @@
+Room A
+Room A.
+> crates
+box 1apple!:<2>[ping 6] box 2thing!:<2>[ping 15] box 3?!:<2>[ping 36] laa. hbt. hc?.; bins 126 -1; spare true.
+crate 12/box 2.
+> crates
+box 1apple!:<2>[ping 6] box 2thing!:<2>[ping 15] box 3?!:<2>[ping 36] laa. hbt. hc?.; bins 126 -1; spare true.
+crate 12/box 2.
+> ledger
+page 0[ping 8] page 1[ping 10] refused[ping 10] page 0[ping 12]; figures 10 0 0 2 0; <12>.
+> ledger
+page 0[ping 20] page 1[ping 22] refused[ping 22] page 0[ping 22]; figures 10 8 0 2 2; <22>.
+> racks
+ RK-MANY/ tag 90 <4>[ping 3] <6> crate 1/box 7 RK-FEW/ brass key 90 <7>[ping 2] <8>.
+> racks
+ RK-MANY/ tag 90 <4>[ping 3] <6> crate 1/box 7 RK-FEW/ brass key 90 <7>[ping 2] <8>.

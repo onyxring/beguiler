@@ -1,0 +1,108 @@
+Room A
+Room A.
+You can see a recipe book here.
+> report roads
+depot   mill 4, mine 7
+mill    depot 4, farm 3, port 9
+farm    mill 3, port 2
+mine    depot 7, port 6
+port    mill 9, farm 2, mine 6
+> report wants
+depot: tools
+mill: grain
+farm: metal, tools
+mine: tools
+port: ore, flour, metal
+> report stock
+grain   6 x 2
+ore     4 x 3
+flour   0 x 5
+metal   0 x 8
+tools   0 x 20
+Worth 24.
+> report weather
+No such report.
+> route 0 4
+depot to port: depot > mill > farm > port (9, long, 3 legs, toll 3).
+> route 3 2
+mine to farm: mine > port > farm (8, long, 2 legs, toll 3).
+> route 4 4
+port to port: port (0, none, 0 legs, toll 0).
+> route 9 1
+No such station.
+> band
+mill 4 middling
+farm 7 long
+mine 7 long
+port 9 long
+> go depot farm mine
+3 stops, 4 legs, length 15, toll 5.
+> go mill fox port
+? 2 stops, 2 legs, length 5, toll 2.
+> go mill
+Need two stops.
+> wants metal
+metal wanted at: farm port (2).
+> wants tools
+tools wanted at: depot farm mine (3).
+> wants sand
+No such good.
+> station farm
+farm is station 2: 2 roads, longest 3, wants metal, tools.
+> station mine
+mine is station 3: 2 roads, longest 7, wants tools.
+> station quarry
+No such station.
+> can
+2 of 4 ready: flour metal.
+Quick (<= 6): 2, any yield 0: true, all have inputs: true.
+> make tools
+Short of metal (0/1) flour (0/1).
+> make flour
+Made 2 flour at mill in 5 minutes.
+> make flour
+Made 2 flour at mill in 5 minutes.
+> make flour
+Short of grain (0/3).
+> make bread
+Short of grain (0/1).
+> make metal
+Made 1 metal at mine in 8 minutes.
+> make metal
+Made 1 metal at mine in 8 minutes.
+> make tools
+Made 1 tools at depot in 12 minutes.
+> make glue
+No such recipe.
+> can
+1 of 4 ready: tools.
+Quick (<= 6): 2, any yield 0: true, all have inputs: true.
+> plan
+bread   3 -> 3
+flour   5 -> 8
+metal   8 -> 16
+tools   12 -> 28
+Total 28 minutes, 1680 seconds.
+> book
+4 recipes in the book, 28 minutes in all, 5 made so far.
+depot 1
+mill 1
+mine 1
+> report stock
+grain   0 x 2
+ore     0 x 3
+flour   3 x 5
+metal   1 x 8
+tools   1 x 20
+Worth 43.
+> drain 3
+Drained 3 of 3.
+> drain 50
+Drained 2 of 50.
+> report stock
+grain   0 x 2
+ore     0 x 3
+flour   0 x 5
+metal   0 x 8
+tools   0 x 20
+Worth 0.

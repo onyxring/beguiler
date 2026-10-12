@@ -1,0 +1,18 @@
+Ready.
+> survey
+LOW/RED row -- d1 L1 (2, acc -20)
+Ping brass key.
+HIGH/BLUE ++! d2 L1 (2, acc -7)
+loose (0, acc -7)
+scans 3, totals 4, leases 0, history -20 -7, B general true
+> slots 2
+A: 3 1 2 -1, weighs 6, plus 7, mid, crate
+> rate
+crate A=33 crate B=74 crate C=123 crate D=5 acc 40
+> manifest shelf
+manifest: holder span3 kids 4 mass 22 in Room A L1
+count light heavy heavy n=3
+> manifest crate b
+manifest: crate span0 kids 0 mass 0 in shelf L1
+> manifest brass key
+manifest: thing span0 kids 0 mass 0 in shelf L1

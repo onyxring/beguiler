@@ -1,0 +1,558 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a sixteenth first-time-programmer program, the one where the author puts nearly
+// everything into three big declarations. An object of a class that replaces the class's method and
+// still calls the class's version through a cast on self, with a type alias in its own body, an
+// array of arrays read and written through its own operator [] and []=, a primitive-class member, a
+// value-class member and a ref member bound with :=, a var member, an inline accessor that reads the
+// host through outer (its rows, its [] and its primitive), a switch with guards and ranges, moves in
+// the object tree, a walk over its children, a linq chain on an inner array, func<> values, an #i6
+// island and perform. A class written straight after #using of a namespace object, with static
+// arrays, a replaced method, operator [] / []= that throw, try/catch, block lambdas with a switch
+// inside, ?., stringObj, a switch on strings, var/typeof, a value-class member (through its imported
+// alias) with its own operator [] / []=, and perform. A value class with operator [] / []= and a
+// switch. Global replace chains with replaced() that use lambdas, try and strings. Verbs that drive
+// all of it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <linq>
+
+// ===== GRAMS (an int that is a weight) =====
+primitive class grams : int {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+
+    // whole hundreds of grams
+    emitter int hundreds() { ($val / 100) }
+}
+
+// ===== SPOT (a row and a column, and who it is for) =====
+value class Spot {
+    int row;
+    int col;
+    object owner;
+
+    Spot operator = (Spot o) {
+        row = o.row;
+        col = o.col;
+        owner = o.owner;
+        return self;
+    }
+
+    void place(int r, int c, object o) {
+        row = r;
+        col = c;
+        owner = o;
+    }
+}
+
+// ===== TALLY (up to four numbers, read and written with []) =====
+value class Tally {
+    int a;
+    int b;
+    int c;
+    int d;
+    int used;
+
+    Tally operator = (Tally o) {
+        a = o.a;
+        b = o.b;
+        c = o.c;
+        d = o.d;
+        used = o.used;
+        return self;
+    }
+
+    int operator [] (int i) {
+        switch (i) {
+            case 0: return a;
+            case 1: return b;
+            case 2: return c;
+            case 3: return d;
+        }
+        return -1;
+    }
+
+    void operator []= (int i, int v) {
+        switch (i) {
+            case 0: a = v;
+            case 1: b = v;
+            case 2: c = v;
+            case 3: d = v;
+        }
+    }
+
+    // adds a number at the end, if there is room
+    void add(int v) {
+        if (used < 4) {
+            self[used] = v;
+            used++;
+        }
+    }
+
+    int sum() {
+        int n = 0;
+        for (int i = 0; i < used; i++) {
+            n = n + self[i];
+        }
+        return n;
+    }
+}
+
+// ===== BIN (something that holds things and can say so) =====
+class Bin : object {
+    int count = 0;
+
+    void report() {
+        print($"({self} holds {count})^");
+    }
+
+    default string kindWord() {
+        return "bin";
+    }
+}
+
+// ===== SHOP (just a place to keep type names) =====
+object shop {
+    alias tally for Tally;
+    alias spot for Spot;
+}
+
+// ===== GLOBAL HELPERS, AND THEIR REPLACEMENTS =====
+
+// how heavy a thing counts as
+int weighOf(object o) {
+    return 100;
+}
+
+// the replacement asks a lambda first, and keeps the old answer for anything else
+replace int weighOf(object o) {
+    func<int, object> known = (object x) => {
+        switch (x) {
+            case brassKey: return 50;
+            case coin: return 900;
+        }
+        return -1;
+    };
+    int w = known(o);
+    if (w < 0) {
+        return replaced(o);
+    }
+    return w;
+}
+
+// a word for a number of grams
+string sizeWord(int g) {
+    return "some";
+}
+
+// the replacement throws for a weight it can't name and catches it here
+replace string sizeWord(int g) {
+    func<string, int> name = (int n) => {
+        if (n < 0) {
+            throw n;
+        }
+        switch (n) {
+            case 0 to 99: return "light";
+            case 100 to 499: return "middling";
+        }
+        return "heavy";
+    };
+    try {
+        stringObj s = name(g);
+        if (s.length > 5) {
+            return name(g);
+        }
+        return replaced(g);
+    } catch (int e) {
+        print($"(no word for {e})^");
+    }
+    return replaced(g);
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+Bin boxA {
+    "box A";
+    parent = roomA;
+    string description = "A plain box A.";
+    count = 1;
+}
+
+object brassKey {
+    "brass key";
+    parent = boxA;
+    string description = "A brass key.";
+}
+
+object coin {
+    "coin";
+    parent = roomA;
+    string description = "A coin.";
+}
+
+object boxB {
+    "box B";
+    parent = roomB;
+    string description = "A plain box B.";
+}
+
+// ===== SORTER (puts things in rows by weight) =====
+Bin sorter {
+    "sorter";
+    parent = roomA;
+    string description = "A sorter.";
+
+    alias slot for Spot;
+
+    array<array<int>> rows = { { 0, 0 }, { 0, 0, 0 }, { 0 } };
+    grams heft;
+    slot home;
+    ref Spot cur;
+    var lastSeen;
+
+    // which row is picked; setting it says how full that row is
+    auto pick = {
+        int _r = 0;
+        int operator () {
+            return _r;
+        }
+        void operator = (int v) {
+            if (v < 0) {
+                v = 0;
+            }
+            if (v >= outer.rows.length) {
+                v = outer.rows.length - 1;
+            }
+            _r = v;
+            int sum = 0;
+            for (int i = 0; i < outer.rows[v].length; i++) {
+                sum = sum + outer.rows[v][i];
+            }
+            stringObj s = "row ";
+            stringObj part = $"{v} has {outer.rows[v].length} slots, {sum} in them";
+            s += part;
+            if (outer.heft.hundreds() > 0) {
+                part = $", last {outer.heft.hundreds()} hundred";
+                s += part;
+            }
+            print($"({s}, first number {outer[0]})^");
+        }
+    }
+
+    // all the numbers in all the rows, counted one after another
+    int operator [] (int i) {
+        int r = 0;
+        while (r < rows.length) {
+            if (i < rows[r].length) {
+                return rows[r][i];
+            }
+            i = i - rows[r].length;
+            r++;
+        }
+        return -1;
+    }
+
+    void operator []= (int i, int v) {
+        int r = 0;
+        while (r < rows.length) {
+            if (i < rows[r].length) {
+                rows[r][i] = v;
+                return;
+            }
+            i = i - rows[r].length;
+            r++;
+        }
+    }
+
+    // the class says how many it holds; I also want the rows
+    replace void report() {
+        ((Bin)self).report();
+        stringObj line = "rows:";
+        for (int r = 0; r < rows.length; r++) {
+            stringObj n = $" {rows[r].length}";
+            line += n;
+        }
+        print($"({line}, kind {kindWord()})^");
+    }
+
+    string kindWord() {
+        return "sorter";
+    }
+
+    // puts a thing in, picks its row by weight, and remembers where
+    void sortIn(object o, int w) {
+        heft = w;
+        int row;
+        switch (w) {
+            case < 0: row = 0;
+            case 0 to 99: row = 0;
+            case 100 to 499: row = 1;
+            default: row = 2;
+        }
+        int col = heft.hundreds() % rows[row].length;
+        rows[row][col] = rows[row][col] + 1;
+        o.parent = self;
+        count++;
+        home.place(row, col, o);
+        cur := home;
+        lastSeen = o;
+        print($"({o} goes to row {row} slot {col}, {sizeWord(w)})^");
+        #i6 print "(I6: row ", $i6Expr(cur.row), ", slot ", $i6Expr(cur.col), ")^";
+    }
+
+    // how many rows have something in them
+    int busyRows() {
+        func<bool, int> nonzero = (int n) => n > 0;
+        int busy = 0;
+        for (int r = 0; r < rows.length; r++) {
+            if (rows[r].any(nonzero)) {
+                busy++;
+            }
+        }
+        return busy;
+    }
+
+    // the biggest number in one row
+    int biggest(int r) {
+        array<int> sorted = rows[r].orderBy();
+        return sorted.last();
+    }
+
+    // looks at everything inside, and says what the last thing was
+    void survey() {
+        int n = 0;
+        for (object o in self.children) {
+            n++;
+            stringObj s = $"{o}";
+            switch (o) {
+                case brassKey: s += " (small)";
+                case coin: s += " (round)";
+                default: s += " (other)";
+            }
+            print($"Inside: {s}.^");
+        }
+        print($"{n} inside, {busyRows()} busy rows.^");
+        if (typeof(lastSeen) == eType.object) {
+            object last = (object)lastSeen;
+            print($"Last in: {last}, at {cur.row}/{cur.col}.^");
+            Examine.perform(last);
+        }
+    }
+
+    // takes everything back out into the room the sorter is in
+    void empty() {
+        func<void, object> out = (object x) => {
+            x.parent = parent;
+        };
+        for (object o in self.children) {
+            out(o);
+            count--;
+        }
+        lastSeen = null;
+        print($"(sorter emptied into {parent}, {count} left)^");
+    }
+}
+
+// ===== LEDGERS (write down marks; all ledgers share the same marks) =====
+#using shop
+class Ledger : Bin {
+    static array<int> marks[4];
+    static array<string> bands = { "low", "mid", "high" };
+    tally recent;
+
+    replace void report() {
+        print($"({self}: {marks.length} marks");
+        if (marks.length > 0) {
+            print($", first {self[0]}");
+        }
+        print($", recent sum {recent.sum()})^");
+    }
+
+    int operator [] (int i) {
+        if (i < 0 || i >= marks.length) {
+            throw i;
+        }
+        return marks[i];
+    }
+
+    void operator []= (int i, int v) {
+        if (i < 0 || i >= marks.size) {
+            throw i;
+        }
+        marks[i] = v;
+    }
+
+    // writes down a mark for a thing, and says which band it is
+    void note(int v, object o) {
+        func<int, int> band = (int n) => {
+            switch (n) {
+                case < 10: return 0;
+                case 10 to 49: return 1;
+            }
+            return 2;
+        };
+        try {
+            self[marks.length] = v;
+            marks.length = marks.length + 1;
+        } catch (int e) {
+            print($"(no room for mark {e})^");
+        }
+        recent.add(v);
+        count++;
+        stringObj s = bands[band(v)];
+        var up = o?.parent;
+        if (typeof(up) == eType.object) {
+            stringObj where = $" in {(object)up}";
+            s += where;
+        }
+        print($"({self} notes {v}: {s})^");
+    }
+
+    // reads a mark, or says it is not there
+    int peek(int i) {
+        try {
+            return self[i];
+        } catch (int e) {
+            print($"(no mark {e})^");
+        }
+        return -1;
+    }
+
+    // what to do with a band word
+    void act(string word, object o) {
+        func<void, string> say = (string w) => {
+            stringObj t = w;
+            print($"({t.toUpper()})^");
+        };
+        switch (word) {
+            case "low": say("ignore");
+            case "mid": say("watch");
+            case "high": {
+                say("look");
+                Examine.perform(o);
+            }
+        }
+    }
+
+    // goes through every mark, banding each one
+    void review(object o) {
+        for (int i = 0; i < marks.length; i++) {
+            int m = marks[i];
+            string w = bands[0];
+            if (m >= 50) {
+                w = bands[2];
+            } else if (m >= 10) {
+                w = bands[1];
+            }
+            print($"Mark {i} is {m}: ");
+            act(w, o?.parent ?? o);
+        }
+    }
+}
+
+Ledger ledgerA {
+    "ledger A";
+    parent = roomB;
+    string description = "Ledger A.";
+}
+
+Ledger ledgerB {
+    "ledger B";
+    parent = roomB;
+    string description = "Ledger B.";
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// SORTING - the sorter object
+verb SortingVerb {
+    meta = true;
+    grammar = {.sorting};
+    void handler() {
+        sorter.sortIn(brassKey, weighOf(brassKey));
+        sorter.sortIn(boxB, weighOf(boxB));
+        sorter.sortIn(coin, weighOf(coin));
+        sorter.report();
+        sorter.pick = 1;
+        print($"Numbers: {sorter[0]} {sorter[1]} {sorter[2]} {sorter[3]} {sorter[4]} {sorter[5]} (past end {sorter[9]}).^");
+        sorter[0] = 5;
+        sorter[5] = 3;
+        sorter.pick = 0;
+        sorter.pick = 7;
+        print($"Biggest in row 0: {sorter.biggest(0)}. Busy rows: {sorter.busyRows()}.^");
+        sorter.survey();
+        print($"Picked row {sorter.pick}, heft {sorter.heft.hundreds()} hundred.^");
+        sorter.empty();
+        sorter.survey();
+        print($"Brass key is in {brassKey.parent}. Box B is in {boxB.parent}.^");
+    }
+}
+
+// MARKS - the ledgers
+verb MarksVerb {
+    meta = true;
+    grammar = {.marks};
+    void handler() {
+        ledgerA.note(5, brassKey);
+        ledgerB.note(20, coin);
+        ledgerA.note(60, boxB);
+        ledgerB.note(75, roomA);
+        ledgerA.note(99, coin);
+        ledgerA.report();
+        ledgerB.report();
+        print($"Peek: {ledgerA.peek(1)} {ledgerB.peek(3)}.^");
+        print($"Peek past: {ledgerA.peek(4)}.^");
+        ledgerB.review(brassKey);
+        print($"Kind: {ledgerA.kindWord()}. Ledger A holds {ledgerA.count}, B {ledgerB.count}.^");
+    }
+}
+
+// TALLIES - the tally value class through its alias
+verb TalliesVerb {
+    meta = true;
+    grammar = {.tallies};
+    void handler() {
+        shop.tally t;
+        t.add(3);
+        t.add(4);
+        t[1] = 40;
+        shop.tally u = t;
+        u.add(9);
+        u[0] = 1;
+        print($"T: {t[0]} {t[1]} sum {t.sum()} used {t.used}. U: {u[0]} {u[1]} {u[2]} sum {u.sum()}.^");
+        print($"Words: {sizeWord(10)}, {sizeWord(300)}, {sizeWord(700)}, {sizeWord(-4)}.^");
+        print($"Weights: {weighOf(brassKey)}, {weighOf(coin)}, {weighOf(boxA)}.^");
+    }
+}

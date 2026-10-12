@@ -1,0 +1,28 @@
+Room A
+
+> probemeter
+low meter 2 [0] 4 [1] 3.
+Add 3: meter 6 kept 6 held 47 tag ab.
+Ping panel.
+Add 5: meter 110 kept 116 held 42 tag bx pings 1.
+low-high meter 105.
+Down: meter 104 open false seen high high.
+
+> probereport
+Report 50 hits 2.
+low-high! report 10120 hits 11.
+least meter 1.
+
+> proberack
+Rack 2533 slot 3 made 1 label two code 114.
+Rack 9516 slot -14 made 2 label caught shelf 0 1 1.
+Step 14.
+Fill 24.
+Thrown 24, box -12.
+
+> proberegistry
+adeepbpalecmidddeep sweep 1913 work 3 1 2 2 marks 3.
+Depth 46 spare 4 out 0 overflow 1.
+Deep 208 spare 4 out 0 overflow 4.
+pip walk 2.
+After 9 sum 3.

@@ -1,0 +1,31 @@
+Room A
+
+> probeledger
+Tap tin box.
+exact-a tail total 142 slot1 5 last tin box.
+exact-a tail total 135 last exact pair 5.
+Sweep 123, a 144, b 11, slots 0 15 20 30.
+Unbound 4, weighed 12 4, through 136 136.
+
+> probesorter
+greengreenred.
+Ping tin box.
+Best 9, hits 2, label blue, marks 2 2 0.
+
+> probeshelf
+Ping wood peg.
+Stock 1, hits 10421, label green, tags long green.
+Rows red blue gray amber, spots 3 2.
+-blue graygreenamber
+
+> probevault
+low level 8 writes 1 kept 4.
+Tap vault.
+high level 22 writes 2 kept 20 taps 2.
+Coin 4 15.
+highodd steps 2 seen 6.
+highoddeven steps 6 seen 18.
+
+> probeusing
+Using 24 44.
+

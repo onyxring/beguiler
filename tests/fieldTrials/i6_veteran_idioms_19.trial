@@ -1,0 +1,122 @@
+Room A
+Room A. Room B is east; an oak door is north.
+You can see an oak door, a brass lamp, an oil flask, a brass key and a scale here.
+> examine scale
+A scale with a single pan. The needle reads 0 grams.
+> take lamp
+Taken.
+> examine lamp
+The lamp is dry.
+The brass lamp is currently switched off.
+> turn on lamp
+The lamp is dry.
+> fill lamp
+You have nothing to fill it with.
+> take flask
+Taken.
+> weigh flask
+The oil flask weighs 6 grams.
+> fill lamp
+You fill the lamp from the flask.
+[The score has just gone up by one point.]
+> examine lamp
+The lamp is unlit (8 left).
+The brass lamp is currently switched off.
+> tally
+Rooms 1, acts 10, paid 0, score 1.
+Lamp: oil 8, unlit. Carrying 20 grams.
+> take key
+Taken.
+> east
+Darkness
+It is pitch dark, and you can't see a thing.
+> turn on lamp
+The lamp is now burning.
+Room B
+Room B. Room A is west.
+You can see an iron chest (which is closed) here.
+> look
+Room B
+Room B. Room A is west.
+You can see an iron chest (which is closed) here.
+> unlock chest with key
+You unlock the iron chest.
+[The score has just gone up by one point.]
+> open chest
+The lid creaks up.
+> take all from chest
+copper coin: Removed.
+silver coin: Removed.
+gold coin: Removed.
+> inventory
+You're carrying:
+  three coins:
+    a gold coin (8 grams)
+    a silver coin (5 grams)
+    a copper coin (3 grams)
+  a brass key
+  a brass lamp (providing light)
+> wait
+Time passes.
+The lamp flickers.
+> examine lamp
+The lamp burns (1 left).
+The brass lamp is currently switched on.
+The lamp goes out.
+All goes black.
+> west
+Room A
+Room A. Room B is east; an oak door is north.
+You can see an oak door and a scale here.
+> examine lamp
+The lamp is dry.
+The brass lamp is currently switched off.
+> put copper on scale
+You put the copper coin on the scale. The needle swings to 3 grams.
+> put silver on scale
+You put the silver coin on the scale. The needle swings to 8 grams.
+> put gold on scale
+You put the gold coin on the scale. The needle swings to 16 grams.
+> examine scale
+A scale with a single pan. The needle reads 16 grams.
+> take silver
+Pocketed.
+> readings
+Readings: 11 3 8 16 (of 5, 5 by I6).
+> weigh scale
+The scale weighs 11 grams.
+> take copper
+Pocketed.
+> take gold
+Pocketed.
+> open door
+You open the oak door.
+> north
+Room C
+Room C. The oak door is south.
+You can see an oak door and a clerk here.
+> ask clerk about coins
+"Weigh them first."
+> ask clerk about lamp
+"Oil is in Room A."
+> give key to clerk
+The clerk shakes his head.
+> give gold to clerk
+The clerk takes the gold coin. Paid so far: 8 grams.
+> give silver to clerk
+The clerk takes the silver coin. Paid so far: 13 grams.
+[The score has just gone up by one point.]
+> wait
+Time passes.
+> wait
+Time passes.
+The clerk stamps a receipt.
+> take receipt
+Taken.
+> tally
+Rooms 4, acts 44, paid 13, score 3.
+Lamp: oil 0, dry. Carrying 23 grams.
+> readings
+Readings: 11 11 8 0 (of 8, 8 by I6).
+> score
+You have so far scored 3 out of a possible 3, in 39 turns.

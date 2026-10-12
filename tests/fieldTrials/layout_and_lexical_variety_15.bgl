@@ -1,0 +1,377 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where up to seventeen language areas meet inside one declaration.
+// An emitter class with init/deinit and emitter `operator []`/`[]=` over an I6 word array, used as a
+// local in value-class methods and in a replaced routine; a value class that windows a global
+// `array<char>` with `operator []`, extended under `#IF` to `replace` its subscript and its `default`
+// method, add `operator []=`, read a member with `??`, load the buffer through `bgl.util.buf`, take a
+// `var` parameter told apart by `typeof`, test a `#if` symbol and perform a verb; a value class and a
+// value subclass whose copy operator chains with `(Span)self = o`; an I6 class bound as an extern
+// class and extended (twice) with a static array, static methods that cast a value-class local to its
+// base, run <linq> `filter`/`count`/`any` over the static array, walk `?.`, test `var` with `typeof`,
+// and (after `#using`) hold a `stringObj`, a local `array<char>`, a namespace-aliased value class, `??`,
+// `has()` and `perform()`; a named union extended with a static member; a class with a static
+// `array<Span>` of value-class slots, a static `array<int>` read with `orderBy().last()`, `operator []`,
+// a `default` method and a subclass and tab-indented instance that call the base through a cast; a
+// replaced routine taking a value class, calling `replaced()` under `#if`; an `extern object` with
+// emitter subscripts; `extend` on a namespace object adding type aliases; a verb written after
+// `#using` and `#if` whose handler mixes all of these, then `extend`ed with `replace grammar =` under
+// `#IF`.
+// Lexically: `#Define`/`#DEFINE`/`#IF`/`#EndIf` in mixed case, `$` hex and `$$` binary literals in
+// directives, keywords in odd case (`STATIC`, `Replace`, `VAR`), a comment between `operator` and `[]`,
+// a tab-indented object, aligned declarations and an empty statement.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define LOUD                            // a flag
+#DEFINE STEP    $$10                    // binary: two
+#define REACH   $C                      // hex: twelve
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend class object { string description ; }
+
+object roomA { "Room A" ; description = "A plain room." ; attributes = light ; }
+
+bool Initialise() { location = roomA ; crateB.parent = crateA ; rfalse ; }
+
+int pings = 0 ;
+
+//-- Verbs the code below performs ---------------------------------------------------------------------
+
+class loudVerb : verb
+{
+    meta = true ;
+    default void handler() { pings++ ; print("[ping]") ; }
+}
+
+loudVerb V_ping { grammar = { .ping } ; }
+
+//-- A frame counter: an emitter class with init/deinit and a subscript over an I6 word array -----------
+
+#i6 Global frameDepth = 0 ;
+#i6 Array  frameLog --> 16 ;
+extern int frameDepth ;
+
+emitter class Frame
+{
+    void init()   { frameDepth++; $self = frameDepth; }
+    void deinit() { frameDepth--; }
+    int  operator []  ( int i )         { (frameLog-->(($self % 4) * 4 + $i)) }
+    void operator []= ( int i , int v ) { frameLog-->(($self % 4) * 4 + $i) = $v; }
+}
+
+//-- A tape: a value class that windows a global character buffer --------------------------------------
+
+array<char> tapeBuf[16] ;
+
+value class Tape
+{
+    int    head ;
+    int    len ;
+    object holder ;
+    Tape operator = ( Tape o ) { head = o.head ; len = o.len ; holder = o.holder ; return self ; }
+    char operator [] ( int i ) { return tapeBuf[head + i] ; }
+    default int span () { return len - head ; }
+}
+
+#IF LOUD
+extend class Tape
+{
+    replace char operator /* clamped */ [] ( int i )
+    {
+        Frame f ;
+        f[0] = i ;
+        if (i >= span()) return '-' ;
+        return tapeBuf[head + i] ;
+    }
+    void operator []= ( int i , char c ) { if (i < span()) tapeBuf[head + i] = c ; }
+    replace default int span () { var n = len - head ; return n ; }
+    object owner () { return holder ?? roomA ; }
+    int load ( string s , string | object tag )
+    {
+        Frame f ;
+        bgl.util.buf.set(tapeBuf, s) ;
+        head = 0 ;
+        len  = tapeBuf.length ;
+#if STEP > 1
+        head = 1 ;
+#endif
+        if (typeof(tag) == eType.object) holder = (object)tag ;
+        else { bgl.util.buf.append(tapeBuf, tapeBuf) ; len = tapeBuf.length ; }
+        object o = holder ?? roomA ;
+        if (o == roomA) V_ping.perform() ;
+        f[1] = len ;
+        return f[1] * 10 + frameDepth ;
+    }
+}
+#EndIf
+
+//-- Spans: a value class and a value subclass ---------------------------------------------------------
+
+value class Span
+{
+    int lo ;
+    int hi ;
+    Span operator = ( Span o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    default int size () { return hi - lo ; }
+}
+
+value class Wide : Span
+{
+    int step ;
+    Wide operator = ( Wide o ) { step = o.step ; (Span)self = o ; return self ; }
+    int size () { return (hi - lo) / step ; }
+}
+
+//-- Crates: an I6 class bound with extern class --------------------------------------------------------
+
+#i6 {
+Class   BinI6    with bin_size 3 ;
+Class   CrateI6  class BinI6  with crate_weight 0 ;
+CrateI6 crateA "crate A" with crate_weight 4 ;
+CrateI6 crateB "crate B" with crate_weight 7 , bin_size 5 , has container open ;
+}
+
+extern class BinI6   : object { int bin_size ; }
+extern class CrateI6 : BinI6  { int crate_weight ; }
+extern CrateI6 crateA ;
+extern CrateI6 crateB ;
+
+extend extern class CrateI6
+{
+    static array<int> loads = { 4 , 7 , 2 , 9 , 5 } ;
+    static int survey ( CrateI6 c , var extra )
+    {
+        Wide w ;
+        w.lo = 1 ; w.hi = 9 ; w.step = STEP ;
+        int whole = ((Span)w).size() ;
+        int part  = w.size() ;
+        int heavy = CrateI6.loads.filter((int n) => n > c?.crate_weight).count() ;
+        object up = c?.parent ;
+        int bump = 0 ;
+        if (typeof(extra) == eType.object) bump = 1 ;
+        if (up?) bump += 2 ;
+        if (CrateI6.loads.any((int n) => n == part)) V_ping.perform() ;
+        return whole * 1000 + part * 100 + heavy * 10 + bump ;
+    }
+}
+
+//-- A namespace ------------------------------------------------------------------------------------------
+
+object kit
+{
+    alias span  for Span ;
+    alias tape  for Tape ;
+    alias crate for CrateI6 ;
+}
+
+#using kit
+extend extern class CrateI6
+{
+    static int label ( crate c , Hint hint )
+    {
+        stringObj s ;
+        array<char> word[12] ;
+        span t ;
+        s = "crate" ;
+        if (c.has(open)) s += " open" ;
+        bgl.util.buf.set(word, "open") ;
+        t.lo = s.indexOf(word) ;
+        t.hi = s.length ;
+        object o = c?.parent ?? roomA ;
+        var v = hint ;
+        if (typeof(v) == eType.string) { print((string)v) ; print(" ") ; }
+        s.print() ; print(" ") ;
+        if (o == roomA) V_ping.perform() ;
+        return t.size() * 10 + t.lo ;
+    }
+}
+
+//-- A named union with a static member ----------------------------------------------------------------------
+
+union Hint = string | object ;
+
+extend Hint
+{
+    static bool isThing ( Hint h ) { return typeof(h) == eType.object ; }
+}
+
+//-- Shelves: static arrays of a value class, a subscript, and a subclass that calls its base ----------------
+
+class Shelf : object
+{
+    STATIC array<Span> spans[3] ;
+    static array<int>  marks = { 3 , 1 , 4 , 1 , 5 } ;
+    Shelf next ;
+    int operator [] ( int i ) { return Shelf.spans[i % 3].size() ; }
+    default int widest () { return Shelf.marks.orderBy().last() ; }
+    int fill ( var lo )
+    {
+        Wide w ;
+        w.lo = lo ; w.hi = lo + REACH ; w.step = STEP ;
+        Shelf.spans[0] = w ;
+        Shelf.spans[1].lo = 2 ; Shelf.spans[1].hi = 3 ;
+        int k = Shelf.marks.filter((int m) => m > 1).count() ;
+        if (next?.next?) V_ping.perform() ;
+        return k * 100 + self[0] * 10 + self[1] ;
+    }
+}
+
+class TallShelf : Shelf
+{
+    int widest () { return ((Shelf)self).widest() * 10 + Shelf.marks.length ; }
+}
+
+Shelf     shelfC { }
+TallShelf shelfB { next = shelfC ; }
+	TallShelf shelfA
+	{
+		next = shelfB ;
+		replace int widest () { return next?.widest() + ((TallShelf)next).widest() ; }
+	}
+
+//-- A routine and its replacement ---------------------------------------------------------------------------
+
+int measure ( Tape t ) { return t.span() ; }
+
+Replace int measure ( Tape t )
+{
+    Frame f ;
+    f[2] = REACH ;
+#if REACH > $A
+    var r = replaced(t) + f[2] ;
+#else
+    var r = replaced(t) ;
+#endif
+    object o = t.holder ?? shelfC ;
+    bgl.util.buf.set(tapeBuf, "rod") ;
+    if (t[0] == 'o') V_ping.perform() ;
+    if (o == shelfC) r += 100 ;
+    return r ;
+}
+
+//-- An I6 object bound with extern object, and more of the namespace ----------------------------------------
+
+#i6 { Object dial "dial" with setting 3 , has general ; }
+
+extern object dial
+{
+    int setting ;
+    emitter int  operator []  ( int i )         { ($val.setting * $i) }
+    emitter void operator []= ( int i , int v ) { $val.setting = $v + $i; }
+}
+
+extend kit
+{
+    alias frame for Frame ;
+    alias hint  for Hint ;
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------------
+
+#using kit
+#if LOUD
+verb V_label
+{
+    meta = true ; grammar = { .label } ;
+    void handler()
+    {
+        stringObj   s ;
+        array<char> raw[10] ;
+        span        t ;
+        frame       f ;
+        hint        h = dial ;
+        VAR v = h ;
+        s = "dial" ;
+        if (dial.has(general)) { s += " set" ; dial.ungive(general) ; }
+        bgl.util.buf.set(raw, "set") ;
+        t.lo = s.indexOf(raw) ;
+        t.hi = s.length ;
+        object o = dial?.parent ?? roomA ;
+        dial[2] = 5 ;
+        f[3] = dial.setting ;
+        s.print() ;
+        printLine($" {t.size()} {dial[3]} {f[3]} {o} {Hint.isThing(h)} {typeof(v) == eType.object}") ;;
+        if (!dial.has(general)) V_ping.perform() ;
+    }
+}
+#endif
+
+extend V_label
+{
+#IF STEP == 2
+    replace grammar = { .label | .tag } ;
+#EndIf
+}
+
+verb V_shelf
+{
+    meta = true ; grammar = { .shelf } ;
+    void handler()
+    {
+        print(shelfA.fill(1)) ; print(" ") ; print(shelfB.fill(4)) ; print(" ") ;
+        printLine($"{shelfA[0]} {shelfA[1]} {shelfA[2]} {pings}") ;
+        print(shelfC.widest()) ; print(" ") ; print(shelfB.widest()) ; print(" ") ;
+        print(shelfA.widest()) ; print(" ") ;
+        print(((Shelf)shelfB).widest()) ;
+        print(" ") ; print(Hint.isThing(shelfA)) ; print(" ") ; printLine(Hint.isThing("x")) ;
+    }
+}
+
+#using kit
+verb V_measure
+{
+    meta = true ; grammar = { .measure } ;
+    void handler()
+    {
+        tape t ;
+        print(t.load("chain", "none")) ; print(" ") ;
+        print(measure(t)) ; print(" ") ;
+        t.holder = roomA ;
+        print(measure(t)) ; print(" ") ;
+        printLine($"{t.span()} {frameDepth} {pings}") ;
+    }
+}
+
+verb V_tape
+{
+    meta = true ; grammar = { .tape } ;
+    void handler()
+    {
+        Tape a ;
+        print(a.load("brass key", "none")) ; print(" ") ;
+        print(a[0]) ; print(a[1]) ; print(a[20]) ; print(" ") ;
+        printLine($"{a.span()} {frameDepth} {pings}") ;
+        Tape b = a ;
+        b[0] = 'X' ;
+        print(a[0]) ; print(" ") ;
+        print(b.load("lamp", roomA)) ; print(" ") ;
+        printLine($"{b.owner()} {a.owner()} {pings}") ;
+    }
+}
+
+verb V_crate
+{
+    meta = true ; grammar = { .crate } ;
+    void handler()
+    {
+        print(CrateI6.survey(crateA, roomA)) ; print(" ") ;
+        print(CrateI6.survey(crateB, 0)) ; print(" ") ;
+        printLine($"{pings}") ;
+        print(CrateI6.label(crateA, "first")) ; print(" ") ;
+        print(CrateI6.label(crateB, crateA)) ; print(" ") ;
+        printLine($"{pings}") ;
+    }
+}
+
+#includeI6 "grammar"

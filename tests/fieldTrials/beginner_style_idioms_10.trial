@@ -1,0 +1,87 @@
+Room A
+Room A. Room B is to the east.
+You can see a tray here.
+> chain
+Chain length: 3.
+Ids: 1 2 3.
+After times ten: 10 20 30.
+Through the links: 20 30.
+n2 after copy: 30, still linked: 3.
+Copy length: 1.
+n3 is the end.
+> ring
+Round: 101 102 100 101 102.
+Back to start: 100, then 7.
+> tray
+The tray holds no node.
+The tray holds node 30.
+n3 is now 55.
+Now the tray holds node 10, next 30.
+> log
+Shared log has 5: 4 10 11 20 21.
+Through the tray: 4 and 5 in all.
+Last one: 30.
+Word: hello there!!.
+> kit
+Chosen: small crate size 3. Tone: pale.
+Bigger: large crate.
+Tone now: bright, other: dark.
+Twice 21: 42.
+Hits: 2, same as 2.
+The clicker is the counter.
+Chosen now: large crate.
+Shade codes: 1 3.
+Crates in Room B: 2, sizes 10.
+> kitshort
+Short crate: large crate size 7, shade dark.
+Same as eShade.dark.
+> shop
+Per box: 12. Three boxes: 36.
+ping
+From using: 36.
+ping
+> meters
+31 and 38 match.
+31 and 12 do not match.
+31 comes before 12.
+12 comes after 31.
+31 is at or after 38.
+Plain: 32.
+Sorted: 37 22 14 5.
+Index of 29: 1.
+Index of 50: -1.
+> gears
+Teeth: 8 12 20.
+All the teeth: 42.
+> tokens
+Made 2 tokens.
+Big token worth 50.
+No more big tokens.
+Things in Room A: 4. Carried: 1.
+> i
+You're carrying:
+  a token
+> look
+Room A
+Room A. Room B is to the east.
+You can see a big token, a token and a tray here.
+> clearup
+(a token worth 50 goes away)
+(a token worth 10 goes away)
+Swept 2. Things in Room A: 2.
+A new token worth 99.
+A new big token worth 70.
+(a token worth 70 goes away)
+> look
+Room A
+Room A. Room B is to the east.
+You can see a token and a tray here.
+> i
+You're carrying:
+  a token
+> unused
+That's not a verb I recognise.
+> e
+Room B
+Room B. Room A is to the west.
+You can see a small crate, a large crate, a plain gear, an odd gear and a big gear here.

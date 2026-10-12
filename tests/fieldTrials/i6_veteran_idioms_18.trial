@@ -1,0 +1,61 @@
+Room A
+Room A.
+> bins
+ <bin A bin B bin C bin D equals 0, picked 0/0, peek 0>
+> pick 5
+pick num many -> bin 5/2 [medium] stack 10 marks 1 first 5 (fallback) shelved; over <bin A bin B* bin C bin D equals 1, picked 3/18, peek 5>
+Picked bin B.
+> pick 5
+pick num few -> bin 5/1 [medium] stack 10 marks 1 first 5; over <bin A bin B* bin C* bin D equals 2, picked 2/17, peek 5>
+Picked bin C.
+> pick 9
+pick num few -> bin 8/3 [large] stack 16 marks 1 first 9 shelved; over <bin A bin B* bin C* bin D* equals 3, picked 2/17, peek 8>
+Picked bin D.
+> pick 2
+pick num none -> bin 5/2 [medium] stack 10 marks 2 first 5 (fallback) shelved <bin A bin B* bin C* bin D* equals 4, picked 0/15, peek 5>
+Picked bin B.
+> pick 1
+pick num none -> bin 5/2 [medium] stack 10 marks 3 first 5 (fallback) shelved <bin A bin B* bin C* bin D* equals 5, picked 0/15, peek 5>
+Picked bin B.
+> unseal
+Unsealed. <bin A bin B bin C bin D equals 5, picked 0/15, peek 5>
+> order
+bin D; bin B; bin C; bin A; top equals binD: true.
+> pick 4
+pick num few -> bin 3/1 [small] stack 6 marks 1 first 4 shelved; over <bin A* bin B bin C bin D equals 7, picked 1/16, peek 3>
+Picked bin A.
+> spans
+ <reach 0..0, adds 0, widened 0, peek 0>
+> widen 1
+span narrow num 6..7 heavier 3 at shelf depth 2 <reach 6..7, adds 1, widened 1, peek 1>
+Width 1.
+> widen 4
+span wide num 22..25 heavier 0 at shelf depth 2 <reach 22..25, adds 2, widened 2, peek 3>
+Width 3.
+> widen 0
+span wide num 22..29 heavier 4 at Room B depth 1 <reach 22..29, adds 3, widened 3, peek 7>
+Width 7.
+> place
+span wide Room B 32..40 heavier 1 at Room A depth 1 <reach 32..40, adds 4, widened 4, peek 8>
+Width 8.
+> widen 2
+span wide num 42..52 heavier 1 at shelf depth 2 <reach 42..52, adds 5, widened 5, peek 10>
+Width 10.
+> rack
+ <writes 0, total 0, load 0, picked 1/16, peek 0>
+> plan 0
+plan top light row (mix 3) load 6 near bin 3/1 holds 3 digits 3 <writes 1, total 6, load 6, picked 1/3, peek 3>
+Planned 6.
+> plan 1
+plan mid fair row (mix 16) even-big load 15 near bin 5/2 holds 3 digits 7 <writes 2, total 21, load 15, picked 4/6, peek 16>
+Planned 15.
+> scale 2
+Scale set. <writes 2, total 21, load 15, picked 4/6, peek 16>
+> plan 2
+plan low full row (mix 29) even-big load 48 near bin 5/1 holds 3 digits 11 <writes 3, total 69, load 48, picked 7/9, peek 29>
+Planned 24.
+> plan 7
+plan top light row (mix 3) load 12 near none holds 0 digits 3 <writes 4, total 81, load 12, picked 1/3, peek 3>
+Planned 6.
+> rack
+ <writes 4, total 81, load 12, picked 1/3, peek 3>

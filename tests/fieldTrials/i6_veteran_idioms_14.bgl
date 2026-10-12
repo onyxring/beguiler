@@ -1,0 +1,354 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, the old pooled-class and replace habits meeting new syntax. An
+// I6 `Class Chip(3)` bound as a pooled extern class, then extended: its identity == replaced by a
+// value comparison, != and <=> added (so < > <= >= derive), static methods that call new and delete on
+// it, open an emitter-class lease and bind ref value-class slots with :=; an extern emitter class
+// with two extern emitter parents, init/deinit over I6 routines, == != <=> emitters, a replaced
+// inherited emitter, and static methods that walk a slot chain by rebinding and allocate a pooled
+// Beguile class; that pooled Beguile class with two parents, create(args)/destroy, non-emitter == !=
+// <=>, a replaced method and an overridden default one, ref locals bound and rebound with :=, and a
+// lease opened in create; the library's ScoreSub replaced, calling replaced() and touching all of it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global lease_open = 0;
+Global lease_peak = 0;
+Global lease_seq = 0;
+Global lease_last = 0;
+Global chip_made = 0;
+Global chip_freed = 0;
+
+[ LeaseOpen;
+    lease_open++;
+    if (lease_open > lease_peak) lease_peak = lease_open;
+    lease_seq++;
+    return lease_seq;
+];
+
+[ LeaseClose n;
+    lease_open--;
+    lease_last = n;
+];
+
+Class Chip(3)
+  with chip_val 0,
+       chip_tag 0,
+       create [ v; self.chip_val = v; chip_made++; ],
+       destroy [; chip_freed++; ];
+
+Chip chipK "chip K" with chip_val 50;
+}
+
+extern int lease_open;
+extern int lease_peak;
+extern int lease_seq;
+extern int lease_last;
+extern int chip_made;
+extern int chip_freed;
+
+int tokens_made;
+int tokens_freed;
+
+// ---------------------------------------------------------------- slots
+
+value class Slot {
+    int n;
+    ref Slot next;
+    Slot operator = (Slot o) { n = o.n; next := o.next; return self; }
+}
+
+Slot slotA;
+Slot slotB;
+Slot slotC;
+
+// ---------------------------------------------------------------- leases
+
+extern emitter class Ticket {
+    emitter int number() { $self }
+    emitter void show() { print "#", $self; }
+}
+
+extern emitter class Stamped {
+    emitter bool latest() { ($self == lease_seq) }
+}
+
+extern emitter class Lease : Ticket, Stamped {
+    emitter void init() { $self = LeaseOpen(); }
+    emitter void deinit() { LeaseClose($self); }
+    emitter eBool operator == (Lease v) { ($self == $v) }
+    emitter eBool operator != (Lease v) { ($self ~= $v) }
+    emitter int operator <=> (Lease v) { ($self - $v) }
+    replace emitter void show() { print "lease ", $self; }
+
+    static int chainLength(ref Slot head) {
+        int n = 0;
+        ref Slot s := head;
+        while (true) {
+            if (!s) break;
+            n++;
+            s := s.next;
+        }
+        return n;
+    }
+
+    static Token issue(int m, int r) {
+        Token t = new Token(m, r);
+        if (t == null) print("(no token) ");
+        return t;
+    }
+}
+
+// ---------------------------------------------------------------- tokens
+
+class Marked : object {
+    int mark;
+    default void label() { print($"mark {mark}"); }
+}
+
+class Ranked : object {
+    int rank;
+    int weight() { return rank * 10; }
+}
+
+class Token[4] : Marked, Ranked {
+    ref Slot spot;
+    int leased;
+
+    void create(int m, int r) {
+        Lease l;
+        mark = m;
+        rank = r;
+        leased = l.number();
+        tokens_made++;
+    }
+    void destroy() {
+        tokens_freed++;
+    }
+
+    bool operator == (Token o) { return mark == o.mark && rank == o.rank; }
+    bool operator != (Token o) { return !(self == o); }
+    int operator <=> (Token o) {
+        if (rank != o.rank) return rank - o.rank;
+        return mark - o.mark;
+    }
+
+    replace int weight() { return rank * 10 + mark; }
+    void label() { print($"token {mark}/{rank}"); }
+
+    void park(ref Slot s) {
+        spot := s;
+        spot.n++;
+    }
+    int spotN() {
+        if (!spot) return -1;
+        return spot.n;
+    }
+}
+
+// ---------------------------------------------------------------- chips
+
+extern class Chip[] : object {
+    int chip_val;
+    int chip_tag;
+    emitter eBool operator == (Chip v) { ($self == $v) }
+}
+
+extern Chip chipK;
+
+extend extern class Chip {
+    replace emitter eBool operator == (Chip v) { ($self.chip_val == $v.chip_val) }
+    emitter eBool operator != (Chip v) { ($self.chip_val ~= $v.chip_val) }
+    emitter int operator <=> (Chip v) { ($self.chip_val - $v.chip_val) }
+
+    static Chip mint(int v) {
+        Lease l;
+        Chip c = new Chip(v);
+        if (c == null) return null;
+        c.chip_tag = l.number();
+        return c;
+    }
+    static void scrap(Chip c) {
+        delete c;
+    }
+    static int link(ref Slot a, ref Slot b, int v) {
+        a.next := b;
+        a.n = v;
+        return Lease.chainLength(a);
+    }
+    static Token wrap(Chip c) {
+        Token t = new Token(c.chip_val, c.chip_tag);
+        return t;
+    }
+}
+
+// ---------------------------------------------------------------- the library's SCORE
+
+replace void ScoreSub() {
+    Lease l;
+    print("[pool] ");
+    replaced();
+    ref Slot s := slotA;
+    print($"chips {chip_made}/{chip_freed}, tokens {tokens_made}/{tokens_freed}, chain {Lease.chainLength(s)}, ");
+    print($"lease {l.number()} open {lease_open} peak {lease_peak}.^");
+}
+
+// ---------------------------------------------------------------- the room
+
+object roomA { "Room A"; string description = "Room A."; attributes = {light}; }
+
+array<Chip> chips[3];
+array<Token> tokens[4];
+
+// ---------------------------------------------------------------- verbs
+
+verb ChipMint {
+    grammar = {.mint, NUMBER};
+    meta = true;
+    void handler() {
+        Chip c = Chip.mint((int)noun);
+        if (c == null) {
+            printLine($"No chip. made {chip_made}, open {lease_open}, last {lease_last}.");
+            return;
+        }
+        chips.append(c);
+        printLine($"Chip {c.chip_val} tag {c.chip_tag}; made {chip_made}, open {lease_open}, last {lease_last}.");
+    }
+}
+
+verb ChipCompare {
+    grammar = {.chips};
+    meta = true;
+    void handler() {
+        for (int i = 0; i < chips.length; i++) {
+            Chip c = chips[i];
+            print($"{c.chip_val}: ==K {c == chipK}, !=K {c != chipK}, <K {c < chipK}, >=K {c >= chipK}, <=> {c <=> chipK}; ");
+        }
+        if (chips.length >= 2) printLine($"first==second {chips[0] == chips[1]}.");
+        else printLine("one chip.");
+    }
+}
+
+verb ChipScrap {
+    grammar = {.scrap};
+    meta = true;
+    void handler() {
+        int n = 0;
+        while (chips.length > 0) {
+            Chip c = chips.popEnd();
+            Chip.scrap(c);
+            n++;
+        }
+        printLine($"Scrapped {n}; freed {chip_freed}.");
+    }
+}
+
+verb TokenIssue {
+    grammar = {.issue, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        Token t = Lease.issue((int)noun, (int)second);
+        if (t == null) {
+            printLine($"tokens {tokens_made}.");
+            return;
+        }
+        tokens.append(t);
+        print("Issued ");
+        t.label();
+        printLine($", weight {t.weight()}, lease {t.leased}, spot {t.spotN()}, open {lease_open}.");
+    }
+}
+
+verb TokenWrap {
+    grammar = {.wrap};
+    meta = true;
+    void handler() {
+        if (chips.length == 0) { printLine("No chip."); return; }
+        Token t = Chip.wrap(chips[0]);
+        if (t == null) { printLine("No token."); return; }
+        tokens.append(t);
+        print("Wrapped ");
+        t.label();
+        printLine($", weight {t.weight()}, as Ranked {((Ranked)t).weight()}.");
+    }
+}
+
+verb TokenCompare {
+    grammar = {.tcmp};
+    meta = true;
+    void handler() {
+        for (int i = 0; i + 1 < tokens.length; i++) {
+            Token a = tokens[i];
+            Token b = tokens[i + 1];
+            print($"[{i}] == {a == b}, != {a != b}, < {a < b}, > {a > b}, <=> {a <=> b}; ");
+        }
+        printLine("done.");
+    }
+}
+
+verb TokenPark {
+    grammar = {.park};
+    meta = true;
+    void handler() {
+        print($"chain {Chip.link(slotA, slotB, 7)}, ");
+        print($"chain {Chip.link(slotB, slotC, 8)}; ");
+        for (int i = 0; i < tokens.length; i++) {
+            if (i % 2 == 0) tokens[i].park(slotA);
+            else tokens[i].park(slotC);
+        }
+        for (int i = 0; i < tokens.length; i++) print($"{tokens[i].spotN()} ");
+        Slot copy = slotA;
+        copy.n = 99;
+        printLine($"slots {slotA.n}/{slotB.n}/{slotC.n}, copy {copy.n}, copy chain {Lease.chainLength(copy)}.");
+    }
+}
+
+verb TokenFree {
+    grammar = {.free};
+    meta = true;
+    void handler() {
+        int n = 0;
+        while (tokens.length > 0) {
+            Token t = tokens.popEnd();
+            delete t;
+            n++;
+        }
+        printLine($"Freed {n}; tokens {tokens_made}/{tokens_freed}.");
+    }
+}
+
+verb LeaseNest {
+    grammar = {.lease};
+    meta = true;
+    void handler() {
+        Lease a;
+        print("Holding ");
+        a.show();
+        for (int i = 0; i < 2; i++) {
+            Lease b;
+            print(", ");
+            b.show();
+            print($" (b>a {b > a}, b==a {b == a}, b!=a {b != a}, latest {b.latest()}, open {lease_open})");
+        }
+        printLine($"; a latest {a.latest()}, last closed {lease_last}, open {lease_open}, peak {lease_peak}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

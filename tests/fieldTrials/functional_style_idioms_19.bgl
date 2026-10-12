@@ -1,0 +1,433 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small stock ledger written in a functional style on Glulx. Crates of a class with an
+// enum category, held in a global array and on shelf objects; predicates and projections as named
+// functions, lambdas and arrays of `func<>`s; hand-written map/fold/compose helpers over `func<>`
+// parameters (including folding into a value class returned by value); a value class of running
+// figures with a copy operator, a float mean and a method that folds an array; <linq> chains
+// (filter, map, orderBy with comparators, take, skip, distinct, any, all, first, last, count) on
+// array<Crate> and array<int>, captured into typed locals; tail-recursive helpers with accumulators
+// and a recursive walk over the object tree; a lookup table of lambdas indexed by an enum; `??` on a
+// chain's first(); a `string | int` union discriminated by the author's own test; a lambda that
+// throws through a fold into a try/catch; stringObj built up with `+=` and `+`, compared by content
+// and switched on; ternaries choosing between functions; named and defaulted `func<>` parameters;
+// `var` and `auto` loop variables; and a ranged switch over a computed figure.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- World ----------------------------------------------------------------------------------------
+
+enum eCat { tool, food, part }
+
+class Crate : object {
+    string label;
+    eCat cat;
+    int units;
+    int weight;
+    int total() { return units * weight; }
+}
+
+object roomA  { "Room A"; description = "Room A."; attributes = {light}; }
+object shelfA { "shelf A"; parent = roomA; }
+object shelfB { "shelf B"; parent = roomA; }
+object binA   { "bin A"; parent = shelfB; }
+
+Crate crateA { "crate A"; label = "A"; cat = eCat.tool; units = 3;  weight = 4; parent = shelfA; }
+Crate crateB { "crate B"; label = "B"; cat = eCat.food; units = 10; weight = 1; parent = shelfA; }
+Crate crateC { "crate C"; label = "C"; cat = eCat.part; units = 0;  weight = 6; parent = shelfB; }
+Crate crateD { "crate D"; label = "D"; cat = eCat.food; units = 5;  weight = 2; parent = binA; }
+Crate crateE { "crate E"; label = "E"; cat = eCat.tool; units = 7;  weight = 3; parent = shelfB; }
+
+array<Crate> stock = {crateA, crateB, crateC, crateD, crateE};
+array<int> requests = {2, 5, 1, 5, 8, 3, 2};
+
+//-- Running figures (a value class) ---------------------------------------------------------------
+
+value class Figures {
+    int n = 0;
+    int sum = 0;
+    int lo = 0;
+    int hi = 0;
+
+    Figures operator = (Figures o) {
+        n = o.n;
+        sum = o.sum;
+        lo = o.lo;
+        hi = o.hi;
+        return self;
+    }
+
+    void add(int v) {
+        if (n == 0 || v < lo) lo = v;
+        if (n == 0 || v > hi) hi = v;
+        n++;
+        sum += v;
+    }
+
+    void addAll(array<int> vs) {
+        for (int v in vs) add(v);
+    }
+
+    float mean() {
+        if (n == 0) return 0.0;
+        return (float)sum / n;
+    }
+
+    void show() {
+        print($"n {n} sum {sum} lo {lo} hi {hi} mean {mean()}");
+    }
+}
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int byUnits(Crate c)  { return c.units; }
+int byWeight(Crate c) { return c.weight; }
+int byTotal(Crate c)  { return c.total(); }
+
+bool inStock(Crate c) { return c.units > 0; }
+bool isHeavy(Crate c) { return c.weight >= 4; }
+
+int add(int a, int b) { return a + b; }
+int maxOf(int a, int b) { return a > b ? a : b; }
+int minOf(int a, int b) { return a < b ? a : b; }
+
+int twice(int n) { return n * 2; }
+int inc(int n)   { return n + 1; }
+int neg(int n)   { return -n; }
+
+// A projection per category, looked up by the enum's value (enums start at 1).
+array<func<int, Crate>> scoreFor = {
+    (Crate c) => c.units * 2,          // tool
+    (Crate c) => c.units - c.weight,   // food
+    byWeight                           // part
+};
+
+int scoreOf(Crate c) {
+    func<int, Crate> f = scoreFor[(int)c.cat - 1];
+    return f(c);
+}
+
+//-- Higher-order helpers -------------------------------------------------------------------------
+
+int foldInts(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int foldCrates(array<Crate> cs, int seed, func<int, int, int> f, func<int, Crate> key = byUnits) {
+    int acc = seed;
+    for (Crate c in cs) acc = f(acc, key(c));
+    return acc;
+}
+
+Figures gather(array<Crate> cs, func<int, Crate> key) {
+    Figures fig;
+    for (Crate c in cs) fig.add(key(c));
+    return fig;
+}
+
+int applyAll(int x, array<func<int, int>> fs) {
+    return foldIndex(x, fs, 0);
+}
+
+// Tail-recursive: carries the running value through each function in turn.
+int foldIndex(int x, array<func<int, int>> fs, int i) {
+    if (i >= fs.length) return x;
+    func<int, int> f = fs[i];
+    return foldIndex(f(x), fs, i + 1);
+}
+
+int countWhere(array<Crate> cs, func<bool, Crate> pred) {
+    return foldCrates(cs, 0, (int acc, int one) => acc + one, (Crate c) => pred(c) ? 1 : 0);
+}
+
+void eachCrate(array<Crate> cs, func<void, Crate> f) {
+    for (Crate c in cs) f(c);
+}
+
+void showCrates(array<Crate> cs) {
+    if (cs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < cs.length; i++) {
+        if (i > 0) print(" ");
+        print(cs[i].label);
+    }
+}
+
+void showInts(array<int> xs) {
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(" ");
+        print(xs[i]);
+    }
+}
+
+// Recursive with an accumulator: weight of every crate at or below an object.
+int weightUnder(object o, int acc) {
+    int here = acc;
+    if (o.is(Crate)) here += ((Crate)o).total();
+    for (object k in o.children) here = weightUnder(k, here);
+    return here;
+}
+
+// Depth of an object below Room A, by recursion on the parent.
+int depthOf(object o) {
+    object up = o.parent;
+    if (!up?) return 0;
+    return 1 + depthOf(up);
+}
+
+string catName(eCat c) {
+    switch (c) {
+        case eCat.tool: return "tool";
+        case eCat.food: return "food";
+        default:        return "part";
+    }
+}
+
+// Either a crate's label or a count of matches, depending on how many matched.
+string | int lookup(func<bool, Crate> pred) {
+    array<Crate> hits = stock.filter(pred);
+    if (hits.length == 1) return hits[0].label;
+    return hits.length;
+}
+
+void showLookup(string | int v) {
+    if ((int)v < 100) print($"{(int)v} matches");
+    else print($"just {(string)v}");
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb ListVerb {
+    grammar = {{.list}};
+    void handler() {
+        eachCrate(stock, (Crate c) => print($"{c.label}:{catName(c.cat)} {c.units}x{c.weight} "));
+        print("^");
+        print("In stock: ");
+        showCrates(stock.filter(inStock));
+        print("^Heavy: ");
+        showCrates(stock.filter(isHeavy));
+        print("^Heavy and in stock: ");
+        showCrates(stock.filter(isHeavy).filter(inStock));
+        print("^By total, high first: ");
+        showCrates(stock.orderBy((Crate a, Crate b) => byTotal(b) - byTotal(a)));
+        print("^");
+    }
+}
+
+verb SumVerb {
+    grammar = {{.sum}};
+    void handler() {
+        int units = foldCrates(stock, 0, add);
+        int heaviest = foldCrates(stock, 0, maxOf, byWeight);
+        int lightest = foldCrates(stock, 99, minOf, key: byWeight);
+        int mass = foldCrates(key: byTotal, f: add, seed: 0, cs: stock);
+        print($"units {units} heaviest {heaviest} lightest {lightest} mass {mass}^");
+        Figures byU = gather(stock, byUnits);
+        Figures byT = gather(stock, byTotal);
+        print("units: ");
+        byU.show();
+        print("^totals: ");
+        byT.show();
+        print("^");
+        Figures both = byU;
+        both.addAll(requests);
+        print("with requests: ");
+        both.show();
+        print($"^units still n {byU.n}^");
+    }
+}
+
+verb ScoreVerb {
+    grammar = {{.score}};
+    void handler() {
+        for (auto c in stock) print($"{c.label} {scoreOf(c)} ");
+        print("^");
+        array<Crate> ranked = stock.orderBy((Crate a, Crate b) => scoreOf(b) - scoreOf(a));
+        print("ranked: ");
+        showCrates(ranked);
+        print($"^top {ranked.first().label} bottom {ranked.last().label}^");
+        Figures fig = gather(stock, scoreOf);
+        print("scores: ");
+        fig.show();
+        print("^");
+    }
+}
+
+verb OrdersVerb {
+    grammar = {{.orders, NUMBER}};
+    void handler() {
+        int min = parsed_number;
+        print("requests: ");
+        showInts(requests);
+        array<int> big = requests.filter((int n) => n >= min);
+        print($"^at least {min}: ");
+        showInts(big);
+        print("^distinct, sorted: ");
+        showInts(requests.distinct().orderBy());
+        print("^largest three: ");
+        showInts(requests.orderBy((int a, int b) => b - a).take(3));
+        print("^after two: ");
+        showInts(requests.skip(2));
+        int total = foldInts(requests, 0, add);
+        int bigTotal = foldInts(big, 0, add);
+        print($"^total {total} big total {bigTotal} count {big.count()}^");
+        print($"any over {min}: {requests.any((int n) => n > min) ? "yes" : "no"}; ");
+        print($"all positive: {requests.all((int n) => n > 0) ? "yes" : "no"}^");
+        array<var> doubled = requests.map((int n) => n * 2);
+        var dsum = 0;
+        for (var d in doubled) dsum += d;
+        print($"doubled sum {dsum}^");
+    }
+}
+
+verb PipeVerb {
+    grammar = {{.pipe, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<func<int, int>> steps = {twice, inc, (int x) => x * x};
+        print($"pipe {n} -> {applyAll(n, steps)}^");
+        array<func<int, int>> back = {(int x) => x * x, inc, twice};
+        print($"back {n} -> {applyAll(n, back)}^");
+        func<int, int> pick = n % 2 == 0 ? twice : neg;
+        print($"pick {pick(n)}^");
+        func<int, int> twiceInc = (int x) => inc(twice(x));
+        print($"twiceInc {twiceInc(n)} twiceInc twice {twiceInc(twiceInc(n))}^");
+    }
+}
+
+verb FindVerb {
+    grammar = {{.find, NUMBER}};
+    void handler() {
+        int w = parsed_number;
+        Crate hit = stock.filter((Crate c) => c.weight == w).first();
+        Crate shown = hit ?? crateC;
+        print($"weight {w}: {shown.label}{hit == null ? " (fallback)" : ""}^");
+        string | int got = lookup((Crate c) => c.weight >= w);
+        print($"at least {w}: ");
+        showLookup(got);
+        print("^");
+        int heavyCount = countWhere(stock, (Crate c) => c.weight >= w);
+        print($"count {heavyCount}^");
+    }
+}
+
+verb TreeVerb {
+    grammar = {{.tree}};
+    void handler() {
+        print($"room {weightUnder(roomA, 0)} shelf A {weightUnder(shelfA, 0)} ");
+        print($"shelf B {weightUnder(shelfB, 0)} bin A {weightUnder(binA, 0)}^");
+        for (Crate c in stock) print($"{c.label}@{depthOf(c)} ");
+        print("^");
+    }
+}
+
+verb MoveVerb {
+    grammar = {{.move, NUMBER}};
+    void handler() {
+        int i = parsed_number;
+        if (i < 0 || i >= stock.length) {
+            print("No such crate.^");
+            return;
+        }
+        Crate c = stock[i];
+        object from = c.parent;
+        object to = from == shelfA ? binA : shelfA;
+        c.parent = to;
+        print($"{c.label} from {from} to {to}; ");
+        print($"shelf A {weightUnder(shelfA, 0)} bin A {weightUnder(binA, 0)}^");
+    }
+}
+
+verb TakeVerb {
+    grammar = {{.take, NUMBER}};
+    void handler() {
+        int want = parsed_number;
+        // Takes units from crates in label order, failing if the whole order can't be met.
+        int need = want;
+        func<int, int, int> draw = (int left, int have) => {
+            if (left <= 0) return 0;
+            if (have >= left) return 0;
+            return left - have;
+        };
+        try {
+            int remaining = foldCrates(stock, need, (int left, int have) => {
+                int r = draw(left, have);
+                if (r > 20) throw r;
+                return r;
+            });
+            if (remaining > 0) print($"short by {remaining}^");
+            else print($"filled {want}^");
+        } catch (int e) {
+            print($"refused at {e}^");
+        }
+    }
+}
+
+verb TagVerb {
+    grammar = {{.tag, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        stringObj line;
+        line = "tags:";
+        for (Crate c in stock.filter((Crate x) => x.units >= n)) {
+            line += " ";
+            line += c.label;
+        }
+        stringObj upper = line.toUpper();
+        print($"{line} / {upper} / len {line.length}^");
+        stringObj key = line.right(1);
+        switch (key) {
+            case "B": print("ends with B^");
+            case "E": print("ends with E^");
+            case ":": print("empty^");
+            default:  print("ends elsewhere^");
+        }
+        stringObj joined = key + "-" + line.left(4);
+        print($"joined {joined} same {joined == "E-tags" ? "yes" : "no"}^");
+    }
+}
+
+verb BandVerb {
+    grammar = {{.band}};
+    void handler() {
+        for (Crate c in stock) {
+            int t = c.total();
+            string band = "";
+            switch (t) {
+                case 0:       band = "empty";
+                case 1 to 9:  band = "light";
+                case 10 to 19: band = "middle";
+                default:      band = "heavy";
+            }
+            print($"{c.label} {t} {band}^");
+        }
+        int busy = countWhere(stock, (Crate c) => c.total() >= 10);
+        print(busy > 2 ? "mostly heavy^" : busy > 0 ? "some heavy^" : "all light^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,422 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, sixteenth pass: twelve features meeting
+// inside one declaration, three times. A derived class (a collection with an indexer) whose `operator []`
+// / `operator []=` front an `array<string>`, the setter throwing an out-of-range index that a method
+// catches under an emitter-class scope guard; `replace` overrides of its base's methods, one switching a
+// `<linq>` count into an enum; a local nested-literal table (`array<array<int>>`) classifying counts; a
+// named union (string | object) returned and narrowed with `typeof` through a `var`; a value-class member
+// band; and a verb performed from a method. An `extern class` over an I6 class with emitter `operator []`,
+// `[]=`, `+` and `-`, whose recursive static method holds a pooled instance per level (so the deepest
+// level finds the pool empty), writes into a `<buf>` parameter by range `switch`, reads a nested-array
+// table, keeps a value-class local, gives an attribute and performs a verb. And an `extend class` of a
+// class with three parents (like a C# partial class) that adds an inline accessor, an indexer, a
+// `ref` value-class parameter widened in place, an enum member set by `switch`, a union-returning
+// method narrowed through `var`/`typeof`, and a `stringObj` label.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    framePoolSize = 160;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <buf>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute marked;
+
+enum Kind { None, Low, Mid, High }
+
+union Entry = string | object;
+
+int PingCount;
+
+//-- A closed interval, copied by value ---------------------------------------------------------------------
+
+value class Span {
+    int Lo;
+    int Hi;
+    Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }
+    bool Holds(int v) { return v >= Lo && v <= Hi; }
+}
+
+//-- Scope guard: an emitter class whose init/deinit track nesting depth ------------------------------------
+
+int GuardDepth;
+int GuardPeak;
+
+int GuardOpen() {
+    GuardDepth++;
+    if (GuardDepth > GuardPeak) GuardPeak = GuardDepth;
+    return GuardDepth;
+}
+
+void GuardClose(int level) {
+    if (level == GuardDepth) GuardDepth--;
+}
+
+emitter class Guard {
+    emitter void init()   { $self = GuardOpen(); }
+    emitter void deinit() { GuardClose($self); }
+    emitter int Level     { ($self) }
+}
+
+//-- A verb the classes below run from code ------------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        PingCount++;
+        print($"(ping {noun})");
+    }
+}
+
+//-- Cluster 1: a collection class with an indexer, overriding its base -------------------------------------
+
+class Book : object {
+    int Pages;
+    string Title() { return "book"; }
+    Kind Rank() { return Kind.None; }
+}
+
+class Ledger : Book {
+    array<string> Names[5] = { "alpha", "beta", "gamma" };
+    array<int> Counts[5] = { 2, 7, 4 };
+    Span Band;
+    int Faults;
+
+    // The name at i, or "-" past the end.
+    string operator [] (int i) {
+        if (i < 0 || i >= Names.length) return "-";
+        return Names[i];
+    }
+
+    // Stores a name at i, growing the list with "?" up to it; an index past the capacity is thrown.
+    string operator []= (int i, string s) {
+        if (i < 0 || i >= Names.size) throw i;
+        while (Names.length <= i) {
+            Names.append("?");
+            Counts.append(0);
+        }
+        Names[i] = s;
+        return s;
+    }
+
+    replace string Title() { return self[0]; }
+
+    // How many counts fall in the band, as a kind.
+    replace Kind Rank() {
+        int inside = Counts.filter((int c) => Band.Holds(c)).count();
+        switch (inside) {
+            case 0:  return Kind.None;
+            case 1:  return Kind.Low;
+            case 2:  return Kind.Mid;
+            default: return Kind.High;
+        }
+    }
+
+    // Writes a name and its count under a scope guard; a fault is reported and counted.
+    bool Post(int i, string s, int count) {
+        Guard g;
+        try {
+            self[i] = s;
+            Counts[i] = count;
+        } catch (int bad) {
+            Faults++;
+            print($"[fault {bad} at depth {g.Level}]");
+            return false;
+        }
+        return true;
+    }
+
+    // The kind of the count at i, from a table of { lo, hi, kind } rows.
+    Kind Classify(int i) {
+        array<array<int>> table = { {0, 2, 1}, {3, 6, 2}, {7, 99, 3} };
+        int c = Counts[i];
+        for (array<int> row in table) {
+            if (c >= row[0] && c <= row[1]) {
+                switch (row[2]) {
+                    case 1:  return Kind.Low;
+                    case 2:  return Kind.Mid;
+                    default: return Kind.High;
+                }
+            }
+        }
+        return Kind.None;
+    }
+
+    // A name, or past the list, what holds the ledger.
+    Entry At(int i) {
+        if (i < Names.length) return Names[i];
+        return parent;
+    }
+
+    void Show(int i) {
+        Entry e = At(i);
+        var raw = e;
+        switch (typeof(raw)) {
+            case eType.string: print((string)e);
+            case eType.object: print($"in {(object)e}");
+            default:           print("?");
+        }
+    }
+
+    // The second name, and the largest count.
+    string Second() { return Names.skip(1).first(); }
+    int Largest() { return Counts.orderBy().last(); }
+
+    void Report() {
+        Kind k = Rank();
+        switch (k) {
+            case Kind.High: Ping.perform(self);
+            case Kind.None: print("(none)");
+            default:        print("(some)");
+        }
+        print($"{Title()} rank {(int)k} faults {Faults}");
+    }
+}
+
+Ledger ledgerA { "ledger A"; parent = roomA; }
+
+//-- Cluster 2: a typed view of a class written in I6, with an indexer and arithmetic -----------------------
+
+#i6 {
+Class Rack
+  with rack_load 0,
+       rack_cells 0 0 0 0,
+  has container open;
+Rack rackA "rack A" with rack_load 3, rack_cells 1 4 0 7;
+Rack rackB "rack B" with rack_load 9, rack_cells 2 2 2 2;
+}
+
+class Cell[3] : object {
+    int Value;
+    void create(int v) { Value = v; }
+}
+
+int CellMisses;
+int RackPeak;
+
+extern class Rack : object {
+    int rack_load;
+
+    emitter int operator [] (int i)         { ($val.&rack_cells-->$i) }
+    emitter void operator []= (int i, int v) { $val.&rack_cells-->$i = $v; }
+    emitter int operator + (int n)           { ($val.rack_load + $n) }
+    emitter int operator - (int n)           { ($val.rack_load - $n) }
+
+    // Walks the cells from i on, writing a letter per cell into trail and doubling each cell. Each level
+    // holds a pooled cell until it returns, so a level past the pool's size gets none. Returns the sum
+    // of the values the held cells carried.
+    static int Walk(Rack r, int i, array<char> trail) {
+        if (i >= 4) return 0;
+        array<array<int>> bands = { {0, 0}, {1, 3}, {4, 99} };
+        Span band;
+        band.Lo = bands[2][0];
+        band.Hi = bands[2][1];
+        int v = r[i];
+        Cell c = new Cell(v);
+        if (c == null) CellMisses++;
+        array<char> mark[2];
+        switch (v) {
+            case 0:      bgl.util.buf.set(mark, "z");
+            case 1 to 3: bgl.util.buf.set(mark, "s");
+            default:     bgl.util.buf.set(mark, "L");
+        }
+        bgl.util.buf.append(trail, mark);
+        var over = r + v;
+        int load = over;
+        if (load > RackPeak) RackPeak = load;
+        if (band.Holds(v) && !r.has(marked)) {
+            r.give(marked);
+            Ping.perform(r);
+        }
+        r[i] = v * 2;
+        int below = Walk(r, i + 1, trail);
+        if (c != null) {
+            below += c.Value;
+            delete c;
+        }
+        return below;
+    }
+
+    // The load less the sum of the cells.
+    static int Spare(Rack r) {
+        int used = 0;
+        for (int i = 0; i < 4; i++) used += r[i];
+        return r - used;
+    }
+}
+
+extern Rack rackA;
+extern Rack rackB;
+
+array<char> RackLog[12];
+
+//-- Cluster 3: a class given more members by a later part, like a partial class -----------------------------
+
+class Tagged : object {
+    string Tag = "none";
+}
+
+class Counted : object {
+    int Uses;
+}
+
+class Widget : object, Tagged, Counted {
+    int Id;
+}
+
+extend class Widget {
+    array<int> Readings[6] = { 3, 14, 8 };
+    Kind Mode;
+
+    auto Level = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) {
+            if (v < 0) _v = 0;
+            else _v = v;
+        }
+    }
+
+    // The reading at i, or -1 outside the list.
+    int operator [] (int i) {
+        if (i < 0 || i >= Readings.length) return -1;
+        return Readings[i];
+    }
+
+    // Overwrites the reading at i; an index outside the list is ignored.
+    void operator []= (int i, int v) {
+        if (i >= 0 && i < Readings.length) Readings[i] = v;
+    }
+
+    // Counts the readings inside the caller's band, widening its top to any reading above it.
+    Kind Grade(ref Span band) {
+        int inside = 0;
+        for (int i = 0; i < Readings.length; i++) {
+            int r = self[i];
+            if (band.Holds(r)) inside++;
+            else if (r > band.Hi) band.Hi = r;
+        }
+        Level = inside;
+        switch (inside) {
+            case 0:  Mode = Kind.None;
+            case 1:  Mode = Kind.Low;
+            case 2:  Mode = Kind.Mid;
+            default: Mode = Kind.High;
+        }
+        Uses++;
+        return Mode;
+    }
+
+    // The tag, or when marked, what holds the widget.
+    Entry Owner() {
+        if (self.has(marked)) return parent;
+        return Tag;
+    }
+
+    stringObj Label() {
+        stringObj s = Tag;
+        s += "/";
+        Entry e = Owner();
+        var raw = e;
+        if (typeof(raw) == eType.object) s += "held";
+        else s += (string)e;
+        switch (Mode) {
+            case Kind.High: s += "!";
+            default:        s += ".";
+        }
+        if (Level > 1) Ping.perform(self);
+        return s;
+    }
+}
+
+Widget widgetA { "widget A"; Id = 1; Tag = "red"; }
+Widget widgetB { "widget B"; Id = 2; Tag = "blue"; Readings = { 5, 6, 7, 30 }; parent = roomA; }
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Ledgers {
+    grammar = {.ledgers};
+    void handler() {
+        ledgerA.Band.Lo = 3;
+        ledgerA.Band.Hi = 8;
+        printLine($"Read {ledgerA[1]} {ledgerA[9]}, second {ledgerA.Second()}, largest {ledgerA.Largest()}.");
+        bool a = ledgerA.Post(3, "delta", 5);
+        bool b = ledgerA.Post(7, "eta", 1);
+        printLine($"; posts {a} {b}, names {ledgerA.Names.length}, depth {GuardDepth}, peak {GuardPeak}.");
+        printLine($"Kinds {(int)ledgerA.Classify(0)} {(int)ledgerA.Classify(1)} {(int)ledgerA.Classify(3)}.");
+        ledgerA.Show(1);
+        print(" ");
+        ledgerA.Show(5);
+        printLine(".");
+        ledgerA.Report();
+        printLine(".");
+        Book plain = ledgerA;
+        printLine($"As book: {plain.Title()} {(int)plain.Rank()}.");
+    }
+}
+
+verb Racks {
+    grammar = {.racks};
+    void handler() {
+        bgl.util.buf.set(RackLog, ">");
+        int a = Rack.Walk(rackA, 0, RackLog);
+        int b = Rack.Walk(rackB, 0, RackLog);
+        print("; ");
+        bgl.util.buf.print(RackLog);
+        printLine($" sums {a} {b}, misses {CellMisses}, peak {RackPeak}.");
+        printLine($"Cells {rackA[0]} {rackA[1]} {rackA[2]} {rackA[3]}, spare {Rack.Spare(rackB)}, marked {rackA.has(marked)} {rackB.has(marked)}.");
+        Cell c = new Cell(1);
+        Cell d = new Cell(2);
+        Cell e = new Cell(3);
+        Cell f = new Cell(4);
+        printLine($"Pool {c != null} {d != null} {e != null} {f == null}.");
+        delete c;
+        delete d;
+        delete e;
+    }
+}
+
+verb Widgets {
+    grammar = {.widgets};
+    void handler() {
+        Span band;
+        band.Lo = 4;
+        band.Hi = 10;
+        Kind a = widgetA.Grade(band);
+        int topA = band.Hi;
+        widgetB.give(marked);
+        Kind b = widgetB.Grade(band);
+        widgetA[1] = 9;
+        widgetA[7] = 1;
+        stringObj la = widgetA.Label();
+        stringObj lb = widgetB.Label();
+        printLine($"; kinds {(int)a} {(int)b}, tops {topA} {band.Hi}, labels {la} {lb}.");
+        widgetA.Level = -5;
+        printLine($"Read {widgetA[1]} {widgetA[7]}, levels {widgetA.Level} {widgetB.Level}, uses {widgetA.Uses} {widgetB.Uses}, pings {PingCount}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,389 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits on Glulx, applied to the value types and run-time helpers the
+// first seven trials left alone. Float literals glued to operators (`x=.5`, `x-.5`, `x- -.5`, `x*-1.5`,
+// `(float)7/2`), mixed int/float arithmetic on both sides, float compound assignment, truncating casts
+// of negatives, float parameters, returns, ternaries and arrays, `bgl.util.math` float forms; operator
+// references written tight and with the operator and its operand type split over lines
+// (`Gauge::operator<=>`, `float::operator<=>`, an overload picked by `( int )`), stored in `func<>`
+// locals, members and an array whose type closes with `>>`, and passed to `sort`; prefix `&` next to `&&` and binary `&` (`a& &n`, `&&&`-adjacent spacing);
+// `var` overloads as the fallback; `dictionaryWord` locals compared with `==.word` and `!=..words`
+// glued; `attributeList` with `!` entries split over lines, `give`/`ungive`/`has`/`hasnt` and `is()`;
+// `bgl.printRules` articles and styles qualified, in mixed case and through `#using`; a
+// `stringOrRoutine` member holding text, a named routine and a lambda; `bgl.world` queries with
+// predicates spread over lines; `children +=` and `parent =`; seeded `bgl.util.random`; `typeof` on
+// `var`; and `do`/`until` driving a float loop.
+
+#beguilerSettings
+{
+    target       = Glulx ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object { string description; }
+
+//-- World -----------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+object roomB { "Room B"; description = "A second room."; attributes = { light }; }
+
+class Fitting : object
+{
+    attributeList attributes =
+    {
+        static ,
+        scenery
+    };
+    int heft = 1;
+}
+
+class Lever : Fitting
+{
+    attributeList attributes = {
+        !scenery,           // a lever is listed
+        switchable
+    };
+}
+
+Fitting shelf { "shelf"; parent = roomA; name = { .shelf }; heft = 3; description = "A shelf."; }
+
+Lever leverA { "red lever"; parent = roomA; name = { .red , .lever , ..levers }; heft = 2;
+    description = "A red lever."; }
+
+Lever leverB
+{
+    "blue lever";
+    parent = roomB;
+    name = { .blue, .lever, ..levers };
+    attributes = { on };
+    heft = 5;
+    description = "A blue lever.";
+}
+
+object brick { "brick"; parent = roomA; name = { .brick }; description = "A brick."; }
+object Fred  { "Fred"; parent = roomA; name = { .fred }; attributes = { animate, proper };
+    description = "Fred."; }
+
+object panel
+{
+    "panel";
+    parent = roomA;
+    name = { .panel };
+    stringOrRoutine description;
+}
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Floats ----------------------------------------------------------------------------------------
+
+float half(float v) { return v/2; }
+float pick(bool b, float x, float y) { return b?x:y; }
+
+verb Floats
+{
+    meta = true; grammar = { .floats };
+    void handler()
+    {
+        float x=.5;
+        float y=x-.5;            // 0
+        float z=x- -.5;          // 1
+        float w=x*-1.5;          // -0.75
+        printLine($"{x} {y} {z} {w}");
+        printLine($"{(float)7/2} {7/2} {(float)(7/2)} {7/(float)2} {7/2.0} {2.0/3} {0.99999}");
+        printLine($"{(int)-2.7} {(int)2.7} {(int)(x*7)} {(int)(-x*7)}");
+        float acc = 1;
+        acc += 2;  acc*=.5;  acc -= 0.25;  acc /= 2;
+        printLine(acc);           // 0.625
+        acc = 7.5;
+        acc %= 2;
+        printLine(acc);           // 1.5
+        printLine($"{half(3)} {half(.5)} {half( - 9.0 )}");
+        printLine($"{pick(x<z, 1.25, 2.5)} {pick(x>z,1.25,2.5)} {(x < 1 ? x : 1.0)}");
+        printLine($"{3 < 3.5} {3.5 <= 3} {2 == 2.0} {2.0 != 2} {x >= .5} {-x < .0}");
+        printLine($"{1 + .5} {10 - .25} {3 * .5} {10 % 4.0} {.5 + 1}");
+        float nz = w*0;           // negative zero
+        printLine($"{nz == 0} {nz < 0} {nz}");
+    }
+}
+
+verb FMath
+{
+    meta = true; grammar = { .fmath };
+    void handler()
+    {
+        printLine($"{bgl.util.math.sqrt(2.0)} {bgl.util.math.floor(-1.5)} {bgl.util.math.ceil(1.2)}");
+        printLine($"{bgl.util.math.abs(-2.5)} {bgl.util.math.abs(-3)} {bgl.util.math.pow(2.0, 10.0)} {bgl.util.math.pow(2, 10)}");
+        printLine($"{BGL.Util.Math.atan2(1.0, 1.0) * 4} {bgl . util . math . cos ( 0.0 )}");
+        array<float> fs = { 2.5, -1.0, .75, 10.0, 0.0 };
+        float total = 0;
+        for (float f in fs) total += f;
+        printLine($"{fs.length} {total} {fs[2] * 4} {fs[fs.length - 2]}");
+        float step = 0.0;
+        int n = 0;
+        do { step += .25; n++; } until (step >= 1.0);
+        printLine($"{n} {step}");
+    }
+}
+
+//-- Operator references ---------------------------------------------------------------------------
+
+class Gauge : object
+{
+    int level;
+    static int  operator<=>(Gauge a, Gauge b) { return a.level - b.level < 0 ? -1 : a.level == b.level ? 0 : 1; }
+    static bool operator == ( Gauge a , int b ) { return a.level == b; }
+    static bool operator == ( Gauge a , Gauge b ) { return a.level == b.level; }
+    static bool operator != ( Gauge a , Gauge b ) { return a.level != b.level; }
+    void print() { print($"G{level}"); }
+}
+
+Gauge g1 { level = 7; }
+Gauge g2 { level = 2; }
+Gauge g3 { level = 9; }
+Gauge g4 { level = 2; }
+
+class Ruler : object
+{
+    func<int, Gauge, Gauge> rule = Gauge::operator <=>;
+}
+
+Ruler measure { }
+
+int addUp(int a, int b) { return a + b; }
+int takeAway(int a, int b) { return a - b; }
+
+class Pair : object
+{
+    static int combine(int a, int b) { return a * 10 + b; }
+}
+
+verb OpRef
+{
+    meta = true; grammar = { .opref };
+    void handler()
+    {
+        func<int,Gauge,Gauge> cmp = Gauge::operator<=>;
+        func< bool , Gauge , int > eqInt = Gauge :: operator == ( int );
+        func<bool, Gauge, Gauge> eqG =
+            Gauge::operator
+                    ==
+                        (Gauge);
+        printLine($"{cmp(g1, g2)} {cmp(g2, g1)} {cmp(g2, g4)} {measure.rule(g3, g1)}");
+        printLine($"{eqInt(g1, 7)} {eqInt(g1, 8)} {eqG(g2, g4)} {eqG(g1, g4)}");
+        printLine($"{g2 < g1} {g3 <= g1} {g2 >= g4} {g1 > g3}");
+
+        array<Gauge> gs[6];
+        gs += { g1, g2, g3, g4 };
+        gs.sort(Gauge::operator <=>);
+        for (Gauge g in gs) print($"{g} ");
+        printLine();
+        gs.sort((Gauge a, Gauge b) => -cmp(a, b));
+        for (Gauge g in gs) print($"{g} ");
+        printLine();
+
+        array<float> fs[6];
+        fs += { 2.5, -1.0, .75, 10.0 };
+        fs.sort(float :: operator<=>);
+        for (float f in fs) print($"{f} ");
+        printLine();
+        fs.sort();
+        printLine($"{fs[0]} {fs[3]}");
+
+        array<func<int,int,int>> ops = { addUp, takeAway, Pair.combine };
+        for (func<int,int,int> op in ops) print($"{op(7, 3)} ");
+        printLine();
+        printLine($"{ops[2](4, 5)} {ops.length}");
+    }
+}
+
+//-- Address-of and its neighbours -----------------------------------------------------------------
+
+array<int> cells = { 4, 5, 6 };
+
+verb Addr
+{
+    meta = true; grammar = { .addr };
+    void handler()
+    {
+        int n = 12;
+        int a = 10;
+        printLine($"{&n} {& n} {a& &n} {a & & n} {(a&n)!=0&&(n&a)!=0} {a!=0&&&n!=0}");
+        printLine($"{&cells == (int)cells} {&cells != 0} {(int)&cells == &cells}");
+        printLine($"{&roomA == (int)roomA}");
+    }
+}
+
+//-- var overloads -----------------------------------------------------------------------------------
+
+void show(int n)    { print($"int {n}; "); }
+void show(object o) { print($"object {o}; "); }
+void show(var v)    { print($"var {typeof(v) == eType.string ? "string" : typeof(v) == eType.routine ? "routine" : "other"}; "); }
+
+verb Vars
+{
+    meta = true; grammar = { .vars };
+    void handler()
+    {
+        show(3); show(brick); show("text"); show(addUp);
+        printLine();
+        var v = brick;
+        var w = 5;
+        var s = "str";
+        printLine($"{typeof(v) == eType.object} {typeof(w) == eType.int} {typeof(s) == eType.string}");
+        printLine($"{typeof(Fitting) == eType.class} {typeof(null) == eType.unknown}");
+        int back = w;
+        object o = v;
+        printLine($"{back + 1} {o}");
+    }
+}
+
+//-- Dictionary words ------------------------------------------------------------------------------
+
+dictionaryWord fixedWord = .shelf;
+
+verb Words
+{
+    meta = true; grammar = { .words };
+    void handler()
+    {
+        dictionaryWord w=.lever;
+        dictionaryWord p=..levers;
+        printLine($"{w} {p} {fixedWord} {leverA.name[1]} {leverB.name[0]}");
+        printLine($"{w==.lever} {w!=..levers} {p==leverA.name[2]} {leverA.name[1]==leverB.name[1]}");
+        printLine($"{w==.shelf} {fixedWord==shelf.name[0]} {leverA.name.length}");
+        w = leverB.name[0];
+        printLine(w);
+    }
+}
+
+//-- Attributes --------------------------------------------------------------------------------------
+
+void flags(object o)
+{
+    print($"{o}:");
+    if (o.has(static))     print(" static");
+    if (o.has(scenery))    print(" scenery");
+    if (o.has(switchable)) print(" switchable");
+    if (o.has(on))         print(" on");
+    printLine();
+}
+
+verb Attrs
+{
+    meta = true; grammar = { .attrs };
+    void handler()
+    {
+        flags(shelf); flags(leverA); flags(leverB); flags(brick);
+        leverA.give(on);  leverB.ungive(on);  brick.give(static);
+        flags(leverA); flags(leverB); flags(brick);
+        brick.ungive(static);
+        printLine($"{leverA.is(Fitting)} {leverA.is(Lever)} {shelf.is(Lever)} {brick.is(Fitting)}");
+        printLine($"{leverB.hasnt(on)} {brick.hasnt(static)} {shelf.hasnt(scenery)}");
+    }
+}
+
+//-- Print rules -------------------------------------------------------------------------------------
+
+verb Arts
+{
+    meta = true; grammar = { .arts };
+    void handler()
+    {
+        printLine($"{bgl.printRules.a(brick)} / {bgl.printRules.cA(brick)} / {bgl.printRules.the(brick)} / {bgl.printRules.cThe(brick)}");
+        printLine($"{Bgl.PrintRules.The(Fred)} / {BGL.printrules.CA(Fred)}");
+        bgl.printRules.cThe(leverA); print(" is "); printName(leverA); printLine(".");
+        printLine($"{bgl.printRules.bold}bold{bgl.printRules.roman} and {bgl.printRules.italics}italic{bgl.printRules.roman}.");
+        withUsing();
+    }
+}
+
+#using bgl.printRules;
+
+void withUsing()
+{
+    printLine($"{cThe(leverB)} is near {the(shelf)}, {a(brick)} and {the(Fred)}.");
+    printLine($"{bold}{a( leverA )}{roman} / {fixed}{cA(shelf)}{roman}");
+}
+
+//-- String-or-routine -------------------------------------------------------------------------------
+
+void panelText() { print("The panel hums."); }
+
+verb Sor
+{
+    meta = true; grammar = { .sor };
+    void handler()
+    {
+        panel.description = "A grey panel.";
+        printLine($"{panel.description.isRoutine()}");
+        print(panel.description); printLine();
+        panel.description = panelText;
+        printLine($"{panel.description.isRoutine()}");
+        print(panel.description); printLine();
+        panel.description =
+            => print("The panel clicks.");
+        print(panel.description); printLine();
+    }
+}
+
+//-- World queries -----------------------------------------------------------------------------------
+
+verb World
+{
+    meta = true; grammar = { .world };
+    void handler()
+    {
+        for (object o in bgl.world.instances(Fitting)) print($"{o}; ");
+        printLine();
+        for (object o in bgl.world.instances(
+                Fitting,
+                (object v) =>
+                    v.has(switchable)
+                    && v.parent == roomA
+            )) print($"{o}; ");
+        printLine();
+        int heavy = 3;
+        for (object o in bgl.world.inParent(roomA, (object v) => {
+                if (!v.is(Fitting)) return false;
+                Fitting f = (Fitting)v;
+                return f.heft >= heavy;
+            }))
+            print($"{o}; ");
+        printLine();
+        printLine($"{roomA.children.length} {roomB.children.length}");
+        roomB.children += { brick };
+        leverB.parent = roomA;
+        printLine($"{roomA.children.length} {roomB.children.length} {brick.parent} {leverB.parent}");
+        brick.parent = roomA;
+        leverB.parent = roomB;
+        printLine($"{roomA.children.length} {roomB.children.length}");
+    }
+}
+
+//-- Random ------------------------------------------------------------------------------------------
+
+verb Rand
+{
+    meta = true; grammar = { .rand };
+    void handler()
+    {
+        bgl.util.random.seed(42);
+        int ok = 0;
+        for (int i = 0; i < 20; i++)
+        {
+            int d = bgl.util.random.get(6);
+            if (d >= 1 && d <= 6) ok++;
+        }
+        object pickA = bgl.util.random.get(brick, brick);
+        int same = bgl.util.random.get(4, 4, 4);
+        printLine($"{ok} {pickA} {same} {bgl.util.random.get(1)}");
+    }
+}
+
+#includeI6 "grammar"

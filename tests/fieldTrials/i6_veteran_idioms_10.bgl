@@ -1,0 +1,436 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, packing data into words. A primitive class over int holding a
+// row and column in one word (operator = from int and from itself, an explicit conversion back,
+// emitter values, +, == and != emitters, operator switch, ?= calling a Beguile routine, static ==
+// and <=> published for array<T>, a replaced print); a second primitive class of flag bits with |,
+// &, operator !, operator ? driving postfix ? and ??, and |= through the fallback; both held as
+// members of a pooled class, as locals, parameters and array elements; a pooled class whose
+// create() takes three arguments (z5's limit) with an owned value member reset on new, a static
+// live count kept by create/destroy, pool exhaustion and slot reuse; a value class with distinct
+// postfix ++ and prefix++ and an explicit regular-method conversion; a class with non-emitter
+// operator [] and []= over a member array, with ?. and ?? on the subscript result; an alias class
+// for object with a typed member, an emitter and a static method; extend extern class int and
+// extend extern class array emitters (T bound to the element type); operator references
+// (cell::operator <=>) passed to sort and held in a func<>; & of an array handed to an I6 routine
+// with bgl.wordsize; an I6 routine with a #bgl island calling a Beguile routine; uint ordering,
+// division and printing; bgl.util.math helpers; += and |= on primitive members of a pooled instance;
+// a primitive parameter with a default, a const primitive global and an array<cell> literal; a
+// value-class member passed by value and by ref in one call; a ternary of primitives; a lambda
+// capturing a primitive local and using ?= as a bgl.world.instances predicate.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global trial_noted = 0;
+
+[ SumWords addr n  i t;
+    for (i = 0 : i < n : i++) t = t + addr-->i;
+    return t;
+];
+
+[ TwiceThenNote x  y;
+    y = x * 2;
+    #bgl { noteValue(y); }
+    return y;
+];
+}
+
+extern int trial_noted;
+extern int SumWords(int addr, int n);
+extern int TwiceThenNote(int x);
+
+void noteValue(int v) {
+    trial_noted = trial_noted + v;
+    print($"[noted {v}]");
+}
+
+// ---------------------------------------------------------------- packed words
+
+bool cellsTouch(int a, int b) {
+    int dr = bgl.util.math.abs(a / 16 - b / 16);
+    int dc = bgl.util.math.abs(a % 16 - b % 16);
+    return dr <= 1 && dc <= 1 && a != b;
+}
+
+primitive class cell {
+    emitter void operator = (int v)   { $target = $v; }
+    emitter void operator = (cell c)  { $target = $c; }
+    explicit emitter int operator ()  { ($val) }
+    emitter int row                   { ($val / 16) }
+    emitter int col                   { ($val % 16) }
+    emitter cell operator + (int d)   { ($val + $d) }
+    emitter eBool operator == (cell c) { ($val == $c) }
+    emitter eBool operator != (cell c) { ($val ~= $c) }
+    emitter eBool operator switch (int v) { ($val == $v) }
+    emitter eBool operator ?= (cell c) { (cellsTouch($val, $c)) }
+    static bool operator == (cell a, cell b) { return (int)a == (int)b; }
+    static int operator <=> (cell a, cell b) { return (int)a - (int)b; }
+    replace emitter void print()      { print (char) 97 + ($val % 16), ($val / 16); }
+}
+
+cell at(int r, int c) {
+    cell x = r * 16 + c;
+    return x;
+}
+
+const int F_SEEN = 1;
+const int F_HOT  = 2;
+const int F_LOCK = 4;
+
+primitive class flagWord {
+    emitter void operator = (int v)      { $target = $v; }
+    emitter void operator = (flagWord f) { $target = $f; }
+    emitter int operator ()              { ($val) }
+    emitter flagWord operator | (int b)  { ($val | $b) }
+    emitter flagWord operator & (int b)  { ($val & $b) }
+    emitter eBool holds(int b)           { (($val & $b) ~= 0) }
+    emitter eBool operator ! ()          { ($val == 0) }
+    emitter eBool operator ? ()          { ($val ~= 0) }
+}
+
+void showFlags(flagWord f) {
+    if (!f) { print("none"); return; }
+    if (f.holds(F_SEEN)) print("S");
+    if (f.holds(F_HOT))  print("H");
+    if (f.holds(F_LOCK)) print("L");
+}
+
+// ---------------------------------------------------------------- a counter value
+
+value class Tally {
+    int n;
+    int bumps;
+    Tally operator = (Tally o)  { n = o.n; bumps = o.bumps; return self; }
+    void  operator = (int v)    { n = v; }
+    Tally operator ++ ()        { n = n + 1; bumps = bumps + 1; return self; }
+    Tally operator prefix++ ()  { n = n + 10; bumps = bumps + 1; return self; }
+    explicit int operator ()    { return n; }
+}
+
+// ---------------------------------------------------------------- markers in a pool
+
+class Marker[3] : object {
+    cell spot;
+    int tag;
+    Tally hits = Tally{ n = 5; };
+    flagWord flags;
+    static int live = 0;
+    void create(int r, int c, int t) {
+        spot = at(r, c);
+        tag = t;
+        Marker.live++;
+    }
+    void destroy() {
+        Marker.live--;
+    }
+    bool short_name() { print($"marker {tag}"); rtrue; }
+}
+
+class Board : object {
+    array<object> slots[6];
+    int used;
+    object operator [] (int i) {
+        if (i < 0 || i >= used) return null;
+        return slots[i];
+    }
+    void operator []= (int i, object m) {
+        slots[i] = m;
+        if (i >= used) used = i + 1;
+    }
+}
+
+Board grid { "grid"; }
+
+int nextTag = 1;
+
+// ---------------------------------------------------------------- places
+
+alias class place for object {
+    string description;
+    cell origin;
+    emitter eBool isLit() { ($self has light) }
+    static int litCount() {
+        int k = 0;
+        for (object o in bgl.world.instances(object)) if (o.has(light) && o.provides(origin)) k++;
+        return k;
+    }
+}
+
+place roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+    origin = 33;
+}
+
+place roomB {
+    "Room B";
+    description = "Room B.";
+    origin = 18;
+}
+
+// ---------------------------------------------------------------- extensions of built-ins
+
+extend extern class int {
+    emitter int hiByte() { ($self / 256) }
+    emitter int loByte() { ($self & 255) }
+}
+
+extend extern class array {
+    emitter T second() { $i6Expr($self[1]) }
+}
+
+array<int> weights = {3, 5, 7, 11};
+array<cell> trail[6];
+array<cell> corners = {0, 15, 240, 255};
+const cell home = 17;
+
+// ---------------------------------------------------------------- helpers
+
+Marker markerAt(int i) {
+    object o = grid[i];
+    if (o == null) return null;
+    return (Marker)o;
+}
+
+void bumpBoth(Tally byValue, ref Tally byRef) {
+    byValue++;
+    byRef++;
+}
+
+void showCell(cell c = 17) {
+    print($"[{c}]");
+}
+
+void describeSpot(cell c) {
+    switch (c) {
+        case 0:  print("corner");
+        case 17: print("near corner");
+        case 33: print("middle");
+        default: print("elsewhere");
+    }
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb PlaceMarker {
+    grammar = {.place, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        Marker m = new Marker((int)noun, (int)second, nextTag);
+        if (m == null) { printLine("No free marker."); return; }
+        nextTag++;
+        int i = 0;
+        while (grid[i] != null) i++;
+        grid[i] = m;
+        printLine($"{m} at {m.spot} (row {m.spot.row}, col {m.spot.col}), slot {i}, live {Marker.live}.");
+    }
+}
+
+verb Lift {
+    grammar = {.lift, NUMBER};
+    meta = true;
+    void handler() {
+        int i = (int)noun;
+        Marker m = markerAt(i);
+        if (m == null) { printLine("Nothing there."); return; }
+        print($"Lifted {m}");
+        delete m;
+        grid[i] = null;
+        printLine($"; live {Marker.live}.");
+    }
+}
+
+verb ListMarkers {
+    grammar = {.list};
+    meta = true;
+    void handler() {
+        for (int i in 0 to grid.used - 1) {
+            object o = grid[i] ?? roomB;
+            if (o == roomB) { printLine($"{i}: empty"); continue; }
+            Marker m = (Marker)o;
+            print($"{i}: {m} at {m.spot}, hits {(int)m.hits}/{m.hits.bumps}, flags ");
+            showFlags(m.flags);
+            print(", ");
+            describeSpot(m.spot);
+            printLine(".");
+        }
+        printLine($"Live {Marker.live}.");
+    }
+}
+
+verb Bump {
+    grammar = {.bump, NUMBER};
+    meta = true;
+    void handler() {
+        Marker m = markerAt((int)noun);
+        if (m == null) { printLine("Nothing there."); return; }
+        m.hits++;
+        printLine($"Hits {(int)m.hits}.");
+    }
+}
+
+verb Boost {
+    grammar = {.boost, NUMBER};
+    meta = true;
+    void handler() {
+        Marker m = markerAt((int)noun);
+        if (m == null) { printLine("Nothing there."); return; }
+        ++m.hits;
+        Tally copy = m.hits;
+        copy++;
+        printLine($"Hits {(int)m.hits}, copy {(int)copy}, bumps {copy.bumps}.");
+    }
+}
+
+verb FlagMarker {
+    grammar = {.flag, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        Marker m = markerAt((int)noun);
+        if (m == null) { printLine("Nothing there."); return; }
+        flagWord f = m.flags;
+        f |= (int)second;
+        m.flags = f;
+        flagWord hot = f & F_HOT;
+        print("Flags ");
+        showFlags(m.flags);
+        if (hot?) print(", hot");
+        flagWord shown = hot ?? f;
+        print($", shown {(int)shown}");
+        printLine(".");
+    }
+}
+
+verb Adjoin {
+    grammar = {.adjoin, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        Marker a = markerAt((int)noun);
+        Marker b = markerAt((int)second);
+        if (a == null || b == null) { printLine("Need two markers."); return; }
+        if (a.spot ?= b.spot) print("touching");
+        else print("apart");
+        if (a.spot == b.spot) print(", same");
+        if (a.spot != b.spot) print(", different");
+        cell next = a.spot + 1;
+        printLine($", right of first is {next}.");
+    }
+}
+
+verb Slide {
+    grammar = {.slide, NUMBER};
+    meta = true;
+    void handler() {
+        Marker m = markerAt((int)noun);
+        if (m == null) { printLine("Nothing there."); return; }
+        m.spot += 16;
+        m.flags |= F_SEEN;
+        bumpBoth(m.hits, m.hits);
+        switch (m.spot) {
+            case 33: print("middle");
+            default: print("moved");
+        }
+        cell shown = m.spot.row > 2 ? m.spot : at(0, 0);
+        showCell();
+        showCell(shown);
+        printLine($" to {m.spot}, next {m.spot + 1}, row {m.spot.row}, hits {(int)m.hits}/{m.hits.bumps}, flags {(int)m.flags}.");
+    }
+}
+
+verb Near {
+    grammar = {.near, NUMBER};
+    meta = true;
+    void handler() {
+        Marker m = markerAt((int)noun);
+        if (m == null) { printLine("Nothing there."); return; }
+        cell target = m.spot;
+        array<object> found = bgl.world.instances(Marker, (object o) => ((Marker)o).spot ?= target);
+        print($"Near {target}:");
+        for (object o in found) print($" {o}");
+        if ((int)m.hits > 10) print(", busy");
+        if (target == home) print(", home");
+        printLine($"; corners {corners.length}, last {corners[3]}, has p15 {corners.contains(at(15, 15))}, has b1 {corners.contains(home)}.");
+    }
+}
+
+verb ShowTrail {
+    grammar = {.trail};
+    meta = true;
+    void handler() {
+        trail.clear();
+        for (int i in 0 to grid.used - 1) {
+            Marker m = markerAt(i);
+            if (m != null) trail += m.spot;
+        }
+        trail += at(0, 0);
+        print("Unsorted:");
+        for (cell c in trail) print($" {c}");
+        trail.sort(cell::operator <=>);
+        print("; sorted:");
+        for (cell c in trail) print($" {c}");
+        func<int, cell, cell> cmp = cell::operator <=>;
+        cell last = trail[trail.length - 1];
+        printLine($"; second {trail.second()}, index of a0 {trail.indexOf(at(0, 0))}, cmp {cmp(last, trail[0]) > 0}.");
+    }
+}
+
+verb Rooms {
+    grammar = {.rooms};
+    meta = true;
+    void handler() {
+        print($"{roomA.description} origin {roomA.origin}, lit {roomA.isLit()}; ");
+        print($"{roomB.description} origin {roomB.origin}, lit {roomB.isLit()}; ");
+        describeSpot(roomA.origin);
+        printLine($"; lit places {place.litCount()}.");
+    }
+}
+
+verb Sums {
+    grammar = {.sums};
+    meta = true;
+    void handler() {
+        int total = SumWords(&weights + bgl.wordsize, weights.length);
+        int twice = TwiceThenNote(total);
+        printLine($" Sum {total}, twice {twice}, noted {trial_noted}, second weight {weights.second()}.");
+    }
+}
+
+verb Numbers {
+    grammar = {.numbers};
+    meta = true;
+    void handler() {
+        int packed = $1234;
+        print($"hi {packed.hiByte()} lo {packed.loByte()}; ");
+        uint big = 40000;
+        uint small = 3;
+        if (big > small) print("big wins; ");
+        uint part = big / small;
+        print(big);
+        print(" / 3 = ");
+        print(part);
+        print($"; signed {(int)big}; ");
+        print($"pow {bgl.util.math.pow(2, 10)}, clamp {bgl.util.math.clamp(250, 0, 99)}, ");
+        print($"sign {bgl.util.math.sign(-4)}, min {bgl.util.math.min(7, -2)}, max {bgl.util.math.max(7, -2)}, ");
+        printLine($"shl {bgl.util.math.shiftLeft(1, 4)}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

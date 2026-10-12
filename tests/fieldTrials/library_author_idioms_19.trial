@@ -1,0 +1,45 @@
+Room A
+Room A.
+> add 3
+queued 3 of 3; waiting 3.
+> queue
+queue: Nalpha:3 Ubeta:5 Lgamma:2.
+> weigh 2
+load 23 at 2, heaviest BETA, urgent 1.
+> run
+ran 3: beta alpha gamma; left 0, round 1, spent 10.
+> status
+finished 3, urgent 1, big; first beta:5 by worker A; longest 5
+worker A plain r1 w8
+worker B fixed r3 w6
+made 3 freed 0
+> add 4
+queued 3 of 4, 1 not made; waiting 3.
+> queue
+queue: Udelta:2 Nomega:6 Nalpha:3.
+> weigh 1
+load 14 at 1, heaviest OMEGA, urgent 1.
+> run
+ran 2: delta alpha !; left 1, round 2, spent 15.
+> run
+ran 1: omega; left 0, round 3, spent 21.
+> weigh 3
+load 0 at 3, heaviest NONE, urgent 0.
+> status
+finished 6, urgent 2, big; first beta:5 by worker A; longest 6
+worker A plain r1 w19
+worker B fixed r3 w6
+made 6 freed 0
+> sweep
+swept 6; made 6 freed 6.
+> add 2
+queued 2 of 2; waiting 2.
+> run
+ran 2: delta gamma; left 0, round 4, spent 25.
+> status
+finished 2, urgent 1; first delta:2 by worker A; longest 6
+worker A plain r1 w21
+worker B fixed r3 w12
+made 8 freed 6
+> spans
+4 7 5: a<b c>a b!=c 3.

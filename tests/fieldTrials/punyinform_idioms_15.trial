@@ -1,0 +1,53 @@
+Room A
+Room A.
+> racks
+Ping 1.
+Level 120 peak 3 fills 2.
+Stock 80 40 eighth 10, set 1.
+Stock 10 40 eighth 1, set 0.
+Total 170 made 2 freed 2.
+Two fills.
+Quarter 50.
+> meters
+Dial 7 plus 17 sets 1.
+Gauge 0.
+Meter 1.
+Zero.
+Scaled 1, reads 2.
+Pool 0 left 7.
+Gauge 7.
+Meter 8.
+Low.
+Scaled 15, reads 4.
+Pool 7 left 0.
+Gauge 60.
+Meter 61.
+High.
+Scaled 121, reads 6.
+Pool 60 left -53.
+Ping 2.
+Gauge 30.
+Meter 31.
+Mid.
+Scaled 61, reads 8.
+Pool 30 left -23.
+Ping 3.
+Ping 4.
+Sets 3.
+> crates
+Hefts 40 40 10 0.
+(i6 40)
+tag A
+Chain 75 twice 100 second 25.
+Ping 5.
+(i6 10)
+hook C
+Chain 10 twice 20 second 0.
+> bins
+bin B full.
+bin B full.
+Counts 2 3 first 5 30 fills 5.
+B holds more.
+Fit 5 20 20 0.
+String plain.
+Ping 6.

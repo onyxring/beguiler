@@ -1,0 +1,92 @@
+Room A
+Room A.
+You can see a brass lamp, a sealed lamp, a canvas satchel and a glass fuse here.
+> report brass lamp
+lamp 40W; device 101-1/5V; portable, bulk 5. Label lamp, age 9, bulk 5.
+> report sealed lamp
+sealed lamp 60W; device 102-2/12V; portable, bulk 5. Label lamp, age 8, bulk 5.
+> report satchel
+portable, bulk 2. Label satchel, age 6, bulk 2.
+> report fuse
+device 55-9/5V. Label fuse, age 1, bulk 5.
+> report me
+Nothing to report.
+> poke brass lamp
+[device] Nothing happens.
+> poke sealed lamp
+[sealed][device] Nothing happens.
+> poke fuse
+[fuse] Handled.
+> poke satchel
+[device] Nothing happens.
+> marks brass lamp
+3: 2 3 1
+> marks sealed lamp
+4: 7 2 3 1
+> marks satchel
+1: 1
+> marks fuse
+3: 8 9 1
+> heft brass lamp
+The brass lamp weighs 5.
+> heft sealed lamp
+The sealed lamp weighs 5.
+> heft satchel
+The canvas satchel weighs 2.
+> heft fuse
+You cannot heft that.
+> build
+Device 11, Portable 3, Lamp 11, sealed 11, satchel 3.
+> build
+Device 22, Portable 6, Lamp 22, sealed 22, satchel 6.
+> charge brass lamp to 40
+Charge 40.
+> charge brass lamp to 250
+Charge 100.
+> charge sealed lamp to 70
+Forced: 70.
+> charge fuse to 5
+Charge 5.
+> appraise brass lamp
+Listed 0.26, copy 0.30, copy dearer, differs (4).
+> appraise brass lamp
+Listed 0.27, copy 0.31, copy dearer, differs (4).
+> reprice fuse to 30
+Now 0.30.
+> appraise fuse
+Listed 0.31, copy 0.35, copy dearer, differs (4).
+> reprice brass lamp to 33
+Now 0.33.
+> appraise brass lamp
+Listed 0.34, copy 0.38, copy dearer, differs (4).
+> pool
+Kitty holds 2: 0.65; plain 0.65; local 99.
+> cue 0
+text: a chalk mark / Room A / true.
+> cue 1
+thing: the brass lamp / Room A / false.
+> cue 2
+text: a scratch / late / true.
+> cue 3
+thing: the glass fuse / late / false.
+> cue 4
+No such cue.
+> total
+Watts 100, serials 265, pockets 3.
+> survey
+brass lamp: lamp 40W; device 101-1/5V; portable, bulk 5
+sealed lamp: sealed lamp 60W; device 102-2/12V; portable, bulk 5
+canvas satchel: portable, bulk 2
+glass fuse: device 55-9/5V
+> rank
+7 55 101 102 (4)
+> weigh brass lamp against fuse
+gt ge ne 3
+> weigh fuse against brass lamp
+lt le ne -3
+> reprice fuse to 34
+Now 0.34.
+> weigh fuse against brass lamp
+le ge eq 0
+> weigh satchel against fuse
+lt le ne -9

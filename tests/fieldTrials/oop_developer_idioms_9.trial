@@ -1,0 +1,62 @@
+Room A
+Room A.
+
+> pipeline
+neg#7 half#4 double#2 inc#3 cap#5 (5 of 6)
+neg:-10 half:-5 double:-10 inc:-9 cap:-9 = -9
+Run 150: -149.
+double#2 inc#3 half#4 cap#5 neg#7 (5 of 6)
+Run 60: -60; run 150: -100.
+Without half: -100.
+cap at 3; audit kept false; last neg#7; runs 5.
+
+> reflect
+A volume 7, B speed 9.
+Hidden: A -1, B 1.
+Scale A by 3: 21; offset B by 1: 10.
+Through a local: A 5, B 9.
+Sums: A 11, B 13; reads 10.
+
+> extensions
+last 9, empty false true, capacity 3.
+9 25 false true 36.
+tally last 15/15, row last 10, step last neg.
+
+> folders
+root 1 (total 15)
+  docs 2 (total 2)
+  src 4 (total 12)
+    lib 8 (total 8)
+lib depth 2, root depth 0.
+After moves: root 31, docs 10, src 4, lib depth 2.
+Archived: root 1 with 0, archive 62 with 3.
+archive 32 (total 62)
+  src 4 (total 4)
+  docs 2 (total 10)
+    lib 8 (total 8)
+  tmp 16 (total 16)
+Folders over 4: 3.
+
+> ranges
+low 1..9: 3
+range 5..15: 4
+high 15..30: 2
+1:2 2:1 3:1 total 4.
+Constant site shared: true.
+Run-time site shared: true, first now 7..8.
+
+> matrix
+trace 15, row 2 sum 34, widest 4.
+scaled: trace 30, [0][2] 6, row 1 sum 30, rows 3.
+all 110.
+
+> hashing
+7 chars: 47106; 6 chars: 3120.
+buckets 0 3; a above b true; high bit true.
+top 65535, top >> 8 = 255, compare 1.
+
+> cloning
+T1/10 T2/20; free 2.
+after copy: T1/99 T1/10; same false.
+T3/30; free 3.
+

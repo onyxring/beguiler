@@ -1,0 +1,418 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, fourteenth pass: eight features meeting
+// inside one declaration. An `extern class` over an I6 class whose static methods open an emitter-class
+// scope guard (init/deinit), cost a crate through a jagged nested-literal table into a primitive newtype,
+// test and give attributes, branch on `#if` symbols and discriminate a `var` with `typeof`; an `extend
+// extern class` on the same class adding static methods that walk a nested literal of crates, return a
+// named union, and narrow it; an `extend class` on a Beguile class adding a nested-literal member, a
+// primitive member and `#if`-guarded statements in methods taking a `var` and a named union, with attribute
+// tests and scope guards; an `extend` on an object adding the same mix plus `attributes =`; and an
+// `extern object` bound to an I6 object whose methods are called beside all of it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+#define AUDIT_LEVEL 2
+#define STRICT_MASS
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute sealed;
+
+//-- Scope guard: an emitter class whose init/deinit track nesting depth ----------------------------------
+
+int AuditDepth;
+int AuditPeak;
+int AuditOpened;
+
+int AuditOpen() {
+    AuditDepth++;
+    AuditOpened++;
+    if (AuditDepth > AuditPeak) AuditPeak = AuditDepth;
+    return AuditDepth;
+}
+
+void AuditClose(int level) {
+    if (level == AuditDepth) AuditDepth--;
+}
+
+emitter class AuditScope {
+    emitter void init()   { $self = AuditOpen(); }
+    emitter void deinit() { AuditClose($self); }
+    emitter int Level     { ($self) }
+}
+
+//-- Grams: a primitive newtype over int ------------------------------------------------------------------
+
+primitive class Grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter Grams operator + (Grams g) { ($val + $g) }
+    emitter bool Heavy { ($val >= 10) }
+}
+
+//-- A label is either text or a thing --------------------------------------------------------------------
+
+union Label = string | object;
+
+//-- Crates are made in I6 --------------------------------------------------------------------------------
+
+#i6 {
+Class Crate
+  with crate_mass 0,
+       crate_slots 0,
+  has container open;
+Crate crateA "crate A" with crate_mass 4, crate_slots 2;
+Crate crateB "crate B" with crate_mass 9, crate_slots 3;
+Crate crateC "crate C" with crate_mass 3;
+Object counterI6 "counter"
+  with count 0,
+       bump [ n; self.count = self.count + n; return self.count; ];
+}
+
+extern class Crate : object {
+    int crate_mass;
+    int crate_slots;
+
+    // Mass of a crate: its own, plus a per-slot overhead from a jagged table, plus a lid when sealed.
+    static Grams Weigh(Crate c) {
+        AuditScope scope;
+        array<array<int>> overhead = { {0}, {1, 1}, {1, 2, 3}, {2, 2, 2, 2} };
+        Grams total = c.crate_mass;
+        int slots = c.crate_slots;
+        if (slots >= overhead.length) slots = overhead.length - 1;
+        for (int v in overhead[slots]) {
+            Grams g = v;
+            total = total + g;
+        }
+        #if STRICT_MASS
+            if (c.has(sealed)) {
+                Grams lid = 1;
+                total = total + lid;
+            }
+        #endif
+        var probe = c;
+        if (typeof(probe) != eType.object) return 0;
+        #if AUDIT_LEVEL > 1
+            print($"[{scope.Level}]");
+        #endif
+        return total;
+    }
+
+    // Seals every crate heavy enough, from rows of candidates; returns how many were sealed.
+    static int SealHeavy() {
+        AuditScope scope;
+        array<array<Crate>> rows = { {crateA, crateB}, {crateC} };
+        int sealedCount = 0;
+        for (array<Crate> row in rows) {
+            for (Crate c in row) {
+                Grams w = Crate.Weigh(c);
+                var seen = c;
+                if (typeof(seen) == eType.object && w.Heavy && !c.has(sealed)) {
+                    c.give(sealed);
+                    sealedCount++;
+                }
+            }
+        }
+        #if AUDIT_LEVEL >= 3
+            print("never");
+        #endif
+        return sealedCount;
+    }
+}
+
+extern Crate crateA;
+extern Crate crateB;
+extern Crate crateC;
+
+extern object counterI6 {
+    int count;
+    int bump(int n);
+}
+
+//-- More statics, added to the extern class later --------------------------------------------------------
+
+extend extern class Crate {
+    // The heaviest unsealed crate across the rows, or the fallback label when none qualifies.
+    static Label Heaviest(Label fallback) {
+        AuditScope scope;
+        array<array<Crate>> rows = { {crateA}, {crateB, crateC} };
+        int best = -1;
+        var pick = fallback;
+        for (int r = 0; r < rows.length; r++) {
+            for (Crate c in rows[r]) {
+                #if STRICT_MASS
+                    if (c.has(sealed)) continue;
+                #endif
+                Grams w = Crate.Weigh(c);
+                int m = w;
+                if (m > best) {
+                    best = m;
+                    pick = c;
+                }
+            }
+        }
+        Label result = pick;
+        return result;
+    }
+
+    // Describes a label: a crate by name and mass, text as itself.
+    static void Describe(Label l) {
+        AuditScope scope;
+        array<array<string>> words = { {"text"}, {"thing", "crate"} };
+        if (typeof(l) == eType.object) {
+            object o = (object)l;
+            #if AUDIT_LEVEL
+                if (o.provides(crate_mass)) {
+                    Crate c = (Crate)l;
+                    Grams w = Crate.Weigh(c);
+                    int m = w;
+                    print($"{words[1][1]}: {o}, {m}");
+                    if (c.has(sealed)) print(" sealed");
+                } else {
+                    print($"{words[1][0]}: {o}");
+                }
+            #endif
+        } else {
+            print($"{words[0][0]}: ");
+            print((string)l);
+        }
+    }
+
+    // Unseals the crates named in a nested list of indices; returns the total counted by the I6 counter.
+    static int Unseal(int round) {
+        AuditScope scope;
+        array<array<int>> plan = { {0, 2}, {1} };
+        array<Crate> all = { crateA, crateB, crateC };
+        int total = 0;
+        for (int i in plan[round % plan.length]) {
+            Crate c = all[i];
+            var flag = c.has(sealed);
+            if (flag) {
+                c.ungive(sealed);
+                Grams w = c.crate_mass;
+                total = counterI6.bump(w);
+            }
+        }
+        #if !STRICT_MASS
+            total = -1;
+        #endif
+        return total;
+    }
+}
+
+//-- A Beguile class, extended with the same mix --------------------------------------------------------------
+
+class Bin : object {
+    int Capacity;
+    Label Tag;
+}
+
+extend class Bin {
+    array<array<int>> Layout = { {1, 2}, {3, 4, 5} };
+    Grams Load;
+    int Stowed;
+    #if AUDIT_LEVEL > 1
+        int Audits;
+    #endif
+
+    // Takes anything; a thing is weighed, stowed and packed, text is noted and refused.
+    bool Stow(var thing) {
+        AuditScope scope;
+        #if AUDIT_LEVEL > 1
+            Audits++;
+        #endif
+        if (typeof(thing) == eType.object) {
+            object o = thing;
+            if (o.has(sealed) || Stowed >= Capacity) return false;
+            Grams w = 2;
+            if (o.provides(crate_mass)) {
+                Crate c = thing;
+                w = Crate.Weigh(c);
+            }
+            Load = Load + w;
+            Stowed++;
+            o.give(sealed);
+            Tag = o;
+            Pack(Stowed - 1);
+            return true;
+        }
+        if (typeof(thing) == eType.string) {
+            Label note = (string)thing;
+            Tag = note;
+        }
+        return false;
+    }
+
+    // Sums one row of the layout into the load, guarded by the depth of the caller's scope.
+    int Pack(int row) {
+        AuditScope scope;
+        int sum = 0;
+        for (int v in Layout[row % Layout.length]) sum += v;
+        Grams extra = sum;
+        Load = Load + extra;
+        if (scope.Level > 1) give(general);
+        return scope.Level;
+    }
+
+    void Report() {
+        int raw = Load;
+        print($"{self}: load {raw}, stowed {Stowed}");
+        #if AUDIT_LEVEL > 1
+            print($", audits {Audits}");
+        #endif
+        if (has(general)) print(", nested");
+        if (Load.Heavy) print(", heavy");
+        print(", tag ");
+        Crate.Describe(Tag);
+    }
+}
+
+Bin binA { "bin A"; Capacity = 2; Tag = "empty"; }
+Bin binB { "bin B"; Capacity = 1; Tag = "empty"; }
+
+//-- An object, extended the same way --------------------------------------------------------------------
+
+object ledger {
+    "ledger";
+    int Entries;
+}
+
+extend ledger {
+    array<array<int>> Pages = { {10, 20}, {30} };
+    Grams Total = 5;
+    Label Last = "none";
+    attributes = {sealed};
+
+    // Posts a label with a weight; a sealed ledger posts nothing, and only things weigh in full.
+    bool Post(Label l, int weight) {
+        AuditScope scope;
+        if (has(sealed)) return false;
+        var who = l;
+        if (typeof(who) != eType.object) weight = weight / 10;
+        Grams g = weight;
+        Total = Total + g;
+        Last = l;
+        Entries++;
+        #if AUDIT_LEVEL == 2
+            print($"(post {Entries} at {scope.Level})");
+        #endif
+        return true;
+    }
+
+    // Opens the ledger, then posts every page entry inside a nested scope.
+    int PostPages() {
+        AuditScope outerScope;
+        ungive(sealed);
+        int n = 0;
+        for (array<int> page in Pages) {
+            AuditScope pageScope;
+            for (int v in page) {
+                if (Post("page", v)) n++;
+            }
+        }
+        return n;
+    }
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------------
+
+verb Weighs {
+    grammar = {.weighs};
+    void handler() {
+        Grams ga = Crate.Weigh(crateA);
+        print(" ");
+        Grams gb = Crate.Weigh(crateB);
+        print(" ");
+        Grams gc = Crate.Weigh(crateC);
+        print(" ");
+        int ma = ga;
+        int mb = gb;
+        int mc = gc;
+        Grams b = Crate.Weigh(crateB);
+        printLine($"; masses {ma} {mb} {mc}, heavy {b.Heavy}, depth {AuditDepth}, peak {AuditPeak}.");
+    }
+}
+
+verb Seals {
+    grammar = {.seals};
+    void handler() {
+        int n = Crate.SealHeavy();
+        printLine($"; sealed {n}.");
+        Label h = Crate.Heaviest("nothing left");
+        Crate.Describe(h);
+        printLine(".");
+        crateC.give(sealed);
+        Label none = Crate.Heaviest("nothing left");
+        Crate.Describe(none);
+        printLine($"; depth {AuditDepth}.");
+    }
+}
+
+verb Unseals {
+    grammar = {.unseals};
+    void handler() {
+        int t0 = Crate.Unseal(0);
+        int t1 = Crate.Unseal(1);
+        int t2 = Crate.Unseal(0);
+        printLine($"Counter {t0} {t1} {t2}, I6 count {counterI6.count}.");
+    }
+}
+
+verb Bins {
+    grammar = {.bins};
+    void handler() {
+        bool s1 = binA.Stow(crateA);
+        print(" ");
+        bool s2 = binA.Stow(crateA);
+        bool s3 = binA.Stow(roomA);
+        bool s4 = binA.Stow("loose text");
+        bool s5 = binB.Stow(crateC);
+        print(" ");
+        bool s6 = binB.Stow(crateB);
+        printLine($"; stows {s1} {s2} {s3} {s4} {s5} {s6}.");
+        int lv = binA.Pack(1);
+        printLine($"Packed at level {lv}.");
+        binA.Report();
+        printLine(".");
+        binB.Report();
+        printLine(".");
+    }
+}
+
+verb Ledgers {
+    grammar = {.ledgers};
+    void handler() {
+        bool p = ledger.Post(crateB, 3);
+        int n = ledger.PostPages();
+        bool q = ledger.Post(crateB, 3);
+        int total = ledger.Total;
+        print($"; first {p}, pages {n}, thing {q}, entries {ledger.Entries}, total {total}, last ");
+        Crate.Describe(ledger.Last);
+        printLine($"; depth {AuditDepth}, peak {AuditPeak}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

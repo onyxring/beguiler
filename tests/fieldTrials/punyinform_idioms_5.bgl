@@ -1,0 +1,460 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fifth PunyInform program, on what the first four did not touch: the entry points
+// GamePreRoutine, GamePostRoutine, TimePasses, LookRoutine, ChooseObjects, InScope, UnknownVerb and
+// DisallowTakeAnimate; a pooled class (`new`/`delete`, create/destroy, a static counter) whose slots
+// carry an owned value-class accessor and print through a `short_name` routine; an inline `auto`
+// accessor reaching its host with `outer`, driven by `+=` inside do/until; `inline` positional members
+// with a `required` member and a `default` method overridden by an object that calls the base version
+// through an ancestor cast; `children` placement, `for … in obj.children` while moving, and
+// `children +=`; bgl.world.instances/inParent copied into an array<object> and sorted by a lambda;
+// a NOUN(filter) token and a general parsing routine token; `grammar -=` eviction reclaimed by a native
+// verb; `replace grammar =` on a library verb; a grammar object with a per-rule priority; perform() on
+// library verbs; `door_to`/`door_dir` routines and a direction routine; `invent`; switch ranges and
+// guards; try/catch/throw; `?.`, `??` and postfix `?`; a replaced global with replaced(); named and
+// default arguments; and `extend` of an object replacing its `life`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_EXTENDED_VERBSET
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+
+#using bgl.printRules;
+
+int ticks    = 0;
+int looks    = 0;
+int postHits = 0;
+int unitWord = 0;
+
+// PunyInform tests for its entry points with #Ifdef, so they come before "puny".
+bool GamePreRoutine() {
+    if (action == Sing && location == roomB) rtrue("Not in Room B.^");
+    rfalse;
+}
+
+bool GamePostRoutine() {
+    if (action == Drop && noun.is(Token)) postHits++;
+    rfalse;
+}
+
+void TimePasses() {
+    ticks++;
+}
+
+void LookRoutine() {
+    looks++;
+    if (location == roomB) printLine("A hum fills Room B.");
+}
+
+// Both blocks answer to "block"; the heavier one wins.
+int ChooseObjects(object o, int code) {
+    if (code == 2 && o.is(Block)) return ((Block)o).weight;
+    return 0;
+}
+
+bool InScope(object who) {
+    if (location == roomB && who == player) PlaceInScope(bell);
+    rfalse;
+}
+
+dictionaryWord UnknownVerb(dictionaryWord w) {
+    if (w == .gaze) return .examine;
+    return null;
+}
+
+bool DisallowTakeAnimate(object o) {
+    return o == guard;
+}
+
+#includeI6 "puny"
+
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+int bonus(int n) {
+    return n * 2;
+}
+
+replace int bonus(int n) {
+    return replaced(n) + 1;
+}
+
+void report(string label, int n = 0, bool brief = false) {
+    if (brief) printLine($"{label}: {n}.");
+    else printLine($"{label} stands at {n}.");
+}
+
+value class Clamp {
+    int _v = 0;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v < 0 ? 0 : (v > 9 ? 9 : v); }
+}
+
+class Room : object {
+    attributes = {light};
+}
+
+class Block : object {
+    inline int weight;
+    required string label;
+    name = {.block};
+    description = "A block.";
+
+    default void report() {
+        printLine($"{label} block, weight {weight}.");
+    }
+
+    bool invent() {
+        if (inventory_stage == 2) print($" (weight {weight})");
+        rfalse;
+    }
+}
+
+class Token[3] : object {
+    static int made = 0;
+    Clamp charge;
+    name = {.token};
+
+    void create(int c) {
+        charge = c;
+        Token.made++;
+        parent = location;
+    }
+
+    void destroy() {
+        printLine($"Token {charge} is gone.");
+    }
+
+    bool short_name() {
+        print($"token {charge}");
+        rtrue;
+    }
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    children = {redBlock, blueBlock, bin};
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is west; a hatch is above.";
+    w_to = roomA;
+    object u_to = hatch;
+
+    var n_to() {
+        print("A wall stops you.^");
+        return true;
+    }
+}
+
+Room loft {
+    "Loft";
+    description = "Loft. A hatch is below.";
+    object d_to = hatch;
+}
+
+object hatch {
+    "hatch";
+    name = {.hatch};
+    description = "A hatch.";
+    rawArray<object> found_in = {roomB, loft};
+
+    object door_to() {
+        if (location == roomB) return loft;
+        return roomB;
+    }
+
+    property door_dir() {
+        if (location == roomB) return (property)u_to;
+        return (property)d_to;
+    }
+
+    attributes = {door, openable, open, static, scenery};
+}
+
+Block redBlock {
+    3, "red block";
+    label = "Red";
+    name = {.red};
+}
+
+Block blueBlock {
+    5, "blue block";
+    label = "Blue";
+    name = {.blue};
+
+    void report() {
+        ((Block)self).report();
+        printLine("It is the heavy one.");
+    }
+}
+
+object bin {
+    "bin";
+    name = {.bin};
+    description = "A bin.";
+    int capacity = 10;
+    attributes = {container, open, static};
+}
+
+object bell {
+    "bell";
+    name = {.bell};
+    description = "A bell, heard from outside.";
+}
+
+object kitten {
+    "kitten";
+    parent = roomB;
+    name = {.kitten};
+    description = "A kitten.";
+
+    bool life() {
+        rfalse;
+    }
+
+    attributes = {animate};
+}
+
+extend kitten {
+    int purrs = 0;
+
+    replace bool life() {
+        if (action == Kiss) {
+            purrs++;
+            rtrue($"The kitten purrs ({purrs}).^");
+        }
+        rfalse;
+    }
+}
+
+object guard {
+    "guard";
+    parent = roomB;
+    name = {.guard};
+    description = "A guard.";
+    attributes = {animate};
+}
+
+object dial {
+    "dial";
+    parent = roomB;
+    name = {.dial};
+    int turnsMade = 0;
+
+    auto setting = {
+        int _raw = 0;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v % 10; outer.turnsMade++; }
+    }
+
+    bool description() {
+        rtrue($"The dial reads {setting}; moved {turnsMade} time(s).^");
+    }
+
+    attributes = {static};
+}
+
+bool isToken() {
+    return noun.is(Token);
+}
+
+int parseUnit() {
+    dictionaryWord w = NextWord();
+    if (w == .grams)  { unitWord = 1; return 0; }
+    if (w == .ounces) { unitWord = 2; return 0; }
+    return -1;
+}
+
+void inspect(object o) {
+    if (o.has(animate)) throw 2;
+    if (!o.is(Block)) throw 1;
+}
+
+verb Mint {
+    grammar = { {.mint, NUMBER} };
+    void handler() {
+        Token t = new Token(parsed_number);
+        if (t == null) {
+            printLine("The pool is empty.");
+            return;
+        }
+        printLine($"Minted {the(t)}; {Token.made} made.");
+    }
+}
+
+verb Melt {
+    grammar = { {.melt, NOUN(isToken)} };
+    void handler() {
+        Token t = (Token)noun;
+        delete t;
+    }
+}
+
+verb Weigh {
+    grammar = { {.weigh, NOUN}, {.weigh, NOUN, .in, parseUnit} };
+    void handler() {
+        int u = unitWord;
+        unitWord = 0;
+        if (!noun.is(Block)) {
+            printLine($"{cThe(noun)} will not fit on the scale.");
+            return;
+        }
+        int w = ((Block)noun).weight;
+        if (u == 1) w = w * 100;
+        if (u == 2) w = w * 4;
+        print($"{cThe(noun)} weighs {w}: ");
+        switch (w) {
+            case 1 to 3: printLine("light.");
+            case 4, 20:  printLine("middling.");
+            case >= 300: printLine("very heavy.");
+            case >= 5:   printLine("heavy.");
+            default:     printLine("odd.");
+        }
+    }
+}
+
+verb Tune {
+    grammar = { {.tune, NOUN, .to, NUMBER} };
+    void handler() {
+        if (noun != dial) {
+            printLine("Only the dial tunes.");
+            return;
+        }
+        int target = (int)second % 10;
+        int steps = 0;
+        if (dial.setting == target) {
+            printLine("Already there.");
+            return;
+        }
+        do {
+            dial.setting += 1;
+            steps++;
+        } until (dial.setting == target);
+        printLine($"Tuned in {steps} step(s).");
+    }
+}
+
+verb Tip {
+    grammar = { {.tip, NOUN} };
+    void handler() {
+        int n = 0;
+        for (object o in noun.children) {
+            o.parent = location;
+            n++;
+        }
+        printLine($"{n} thing(s) tipped out.");
+    }
+}
+
+verb Stow {
+    grammar = {.stow, .blocks};
+    void handler() {
+        bin.children += {redBlock, blueBlock};
+        printLine($"The bin holds {bin.children.length}.");
+    }
+}
+
+array<object> ranked[8];
+
+verb Rank {
+    meta = true;
+    grammar = {.rank};
+    void handler() {
+        ranked = bgl.world.instances(Block);
+        ranked.sort((object a, object b) => ((Block)a).weight - ((Block)b).weight);
+        for (object o in ranked) ((Block)o).report();
+        int here = bgl.world.inParent(location, (object v) => v.is(Block)).length;
+        printLine($"{here} here.");
+    }
+}
+
+verb Fetch {
+    grammar = { {.fetch, NOUN} };
+    void handler() {
+        Take.perform(noun);
+        if (noun.parent == player) Insert.perform(noun, bin);
+    }
+}
+
+verb Check {
+    grammar = { {.check, NOUN} };
+    void handler() {
+        try {
+            inspect(noun);
+            printLine("Fine.");
+        } catch (int code) {
+            printLine($"Fault {code}.");
+        }
+    }
+}
+
+verb Where {
+    meta = true;
+    grammar = { {.where, NOUN} };
+    void handler() {
+        object p = noun.parent;
+        if (!p?) {
+            printLine("Nowhere.");
+            return;
+        }
+        object outside = p?.parent ?? p;
+        printLine($"In {the(p)}, under {the(outside)}.");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        report(n: ticks, label: "Ticks");
+        report("Turns", turns, true);
+        report("Looks", looks, brief: true);
+        report(label: "Bonus", n: bonus(looks));
+        report("Drops", brief: true, n: postHits);
+        report("Purrs", kitten.purrs);
+    }
+}
+
+extend Pray {
+    grammar -= { {.pray} };
+}
+
+verb PrayAt {
+    grammar = { {.pray, .at, NOUN} };
+    void handler() {
+        printLine($"You pray at {the(noun)}.");
+    }
+}
+
+extend Sleep {
+    replace grammar = { {.sleep, .on, NOUN} };
+}
+
+grammar extraLines {
+    grammarRule liftRule = {Take, {.lift, NOUN}};
+    array<grammarRule> moreRules = {
+        {Examine, {.peer, .at, NOUN}, 5},
+        {Kiss, {.pat, NOUN}},
+    };
+}
+
+bool Initialise() {
+    rfalse;
+}

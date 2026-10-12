@@ -1,0 +1,108 @@
+Room A
+Room A.
+
+You can see a shelf A and a shelf B here.
+
+> list
+A:tool 3x4 B:food 10x1 C:part 0x6 D:food 5x2 E:tool 7x3
+In stock: A B D E
+Heavy: A C
+Heavy and in stock: A
+By total, high first: E A B D C
+
+> sum
+units 25 heaviest 6 lightest 1 mass 53
+units: n 5 sum 25 lo 0 hi 10 mean 5.0000
+totals: n 5 sum 53 lo 0 hi 21 mean 10.6000
+with requests: n 12 sum 51 lo 0 hi 10 mean 4.2500
+units still n 5
+
+> score
+A 6 B 9 C 6 D 3 E 14
+ranked: E B A C D
+top E bottom D
+scores: n 5 sum 38 lo 3 hi 14 mean 7.6000
+
+> orders 4
+requests: 2 5 1 5 8 3 2
+at least 4: 5 5 8
+distinct, sorted: 1 2 3 5 8
+largest three: 8 5 5
+after two: 1 5 8 3 2
+total 26 big total 18 count 3
+any over 4: yes; all positive: yes
+doubled sum 52
+
+> pipe 3
+pipe 3 -> 49
+back 3 -> 20
+pick -3
+twiceInc 7 twiceInc twice 15
+
+> pipe 4
+pipe 4 -> 81
+back 4 -> 34
+pick 8
+twiceInc 9 twiceInc twice 19
+
+> find 6
+weight 6: C
+at least 6: just C
+count 1
+
+> find 4
+weight 4: A
+at least 4: 2 matches
+count 2
+
+> find 9
+weight 9: C (fallback)
+at least 9: 0 matches
+count 0
+
+> find 2
+weight 2: D
+at least 2: 4 matches
+count 4
+
+> tree
+room 53 shelf A 22 shelf B 31 bin A 10
+A@2 B@2 C@2 D@3 E@2
+
+> move 3
+D from bin A to shelf A; shelf A 32 bin A 0
+
+> move 0
+A from shelf A to bin A; shelf A 20 bin A 12
+
+> take 12
+filled 12
+
+> take 40
+refused at 37
+
+> take 3
+filled 3
+
+> tag 3
+tags: A B D E / TAGS: A B D E / len 13
+ends with E
+joined E-tags same yes
+
+> tag 6
+tags: B E / TAGS: B E / len 9
+ends with E
+joined E-tags same yes
+
+> tag 99
+tags: / TAGS: / len 5
+empty
+joined :-tags same no
+
+> band
+A 12 middle
+B 10 middle
+C 0 empty
+D 10 middle
+E 21 heavy
+mostly heavy

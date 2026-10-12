@@ -1,0 +1,54 @@
+Tables loaded.
+> sizes
+0:empty 3:light 5:light 6:heavy 9:heavy 10:huge 40:huge -2:heavy
+> codes
+crate A=red crate B=blue crate C=green crate D=red brass key=none none
+> zones
+crate A:shelf crate C:bin crate D:floor brass key:shelf shelf B:floor bin C:shelf Room A:elsewhere
+> tags
+code blank text S F+ B thing
+lost <?+> <F+> <F+> <S+> lost
+> load
+Room A: 1 crates, 12 (I6 says 12), heaviest [huge]12
+shelf A: 2 crates, 10 (I6 says 10), heaviest 7
+shelf B: 0 crates, 0 (I6 says 0), heaviest -1
+bin C: 1 crates, 0 (I6 says 0), heaviest [empty]0
+> survey
+Room A (elsewhere): first crate D huge; tags F F+ F+ F
+shelf A (floor): first crate A light; tags S S
+shelf B (floor): none; tags S+ S
+bin C (shelf): first crate C empty; tags B
+> route
+crate A kept; crate B moved; crate C kept; crate D moved; moves 2
+3 under Room A, first yourself
+2 under shelf A, first crate D
+3 under shelf B, first crate B
+1 under bin C, first crate C
+> route
+crate A kept; crate B kept; crate C kept; crate D kept; moves 2
+3 under Room A, first yourself
+2 under shelf A, first crate D
+3 under shelf B, first crate B
+1 under bin C, first crate C
+> load
+Room A: 0 crates, 0 (I6 says 0), heaviest -1
+shelf A: 2 crates, 15 (I6 says 15), heaviest [huge]12
+shelf B: 1 crates, 7 (I6 says 7), heaviest 7
+bin C: 1 crates, 0 (I6 says 0), heaviest [empty]0
+> survey
+Room A (elsewhere): none; tags F F+ F+
+shelf A (floor): first crate D huge; tags S S
+shelf B (floor): first crate B heavy; tags S S+ S
+bin C (shelf): first crate C empty; tags B
+> drop all crates
+Dropped 4; floor holds 22 in 4.
+> zones
+crate A:floor crate C:floor crate D:floor brass key:shelf shelf B:floor bin C:shelf Room A:elsewhere
+> tags
+code blank text F F+ F thing
+lost <?+> <F> <F+> <S> lost
+> survey
+Room A (elsewhere): first crate C empty; tags F F F F F F F+
+shelf A (floor): none; tags
+shelf B (floor): none; tags S S
+bin C (shelf): none; tags

@@ -1,0 +1,526 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an eighteenth PunyInform program, built from four dense declarations over all-area
+// triples: an I6 class with two I6 parents bound as `extern class Crate : Marked, Stacked`, opened with
+// `#using` of an object namespace, carrying a conversion `operator ()`, `==`/`!=`/`<`, an emitter
+// `operator +=`, a `replace`d inherited emitter, and static methods (one recursive) that walk the chain
+// with postfix `?`, `?.` and `??`, fill an `array<Crate>`, sort and `popEnd()` an `array<int>`, sum an
+// array of arrays, bind a `ref` alias-typed value class with `:=`, use emitter-class and primitive
+// locals, a `stringObj`, a tracked `array<char>` driven by `bgl.util.buf` under `#if`, and a cast
+// dispatch to a Beguile class's base method; an `extend extern class` that `replace`s the conversion,
+// adds `operator >`, and a static method taking an `array<int>` that maps it through a block lambda
+// held in `func<>`, filters it with `<linq>`, makes and deletes a pooled instance, moves the crate in
+// the object tree, walks `children` and an `array<Crate>` with `for … in` and uses `has()`/`give()`;
+// an `extend class` of a class with two parents, under `#using`, adding a static array and counter,
+// `operator ()`/`[]`/`+`/`<`/`+=`, an emitter method, a `replace`d method, a recursive method, and a
+// method taking an `array<int>` and a `ref` alias-typed value class that throws and catches, fills an
+// `array<Chip>` with `new`, reads it with `??`, filters with `<linq>`, writes a buf, switches on an
+// alias-typed enum, narrows a named union with `typeof`, reads `owner?.parent` and calls both bases'
+// methods through a cast; and an object with an inline `auto { }` accessor writing its host through
+// `outer.`, beside `operator +`/`<`/`[]`, an emitter method, a recursive fold over `array<int>`, and a
+// method with a nested-list array, a `ref` to a global `array<string>`, a block lambda reading the
+// object's `<`, an `#i6` line using `$i6Expr`, an enum switch and a buf filled under `#if`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+    framePoolSize = 256;
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#include <linq>
+
+#includeI6 "puny"
+
+#define TRACE_LEVEL 2
+
+// --- shared types -----------------------------------------------------------------------------------
+
+enum eShade { pale, mid, deep }
+
+value class Pair {
+    int a;
+    int b;
+
+    Pair operator = (Pair o) {
+        a = o.a;
+        b = o.b;
+        return self;
+    }
+
+    int sum() {
+        return a + b;
+    }
+}
+
+primitive class grams {
+    emitter void  operator = (int v)    { $self = $v; }
+    emitter int   operator ()           { ($self) }
+    emitter grams operator + (grams v)  { ($self + $v) }
+    emitter bool  operator < (grams v)  { ($self < $v) }
+    emitter bool  operator == (grams v) { ($self == $v) }
+    emitter bool  operator != (grams v) { ($self ~= $v) }
+}
+
+emitter class tenths {
+    emitter void operator = (int v) { $self = $v * 10; }
+    emitter int  operator ()        { ($self / 10) }
+    emitter int  raw()              { ($self) }
+}
+
+class Chip[4] : object {
+    int worth = 0;
+
+    void create(int w) {
+        worth = w;
+    }
+}
+
+union tagValue = string | func<void>;
+
+Pair ledger;
+array<string> bandNames = {"red", "green", "blue"};
+int pings = 0;
+
+int twice(int n) {
+    return n * 2;
+}
+
+object kit {
+    alias duo for Pair;
+    alias tone for eShade;
+    alias weight for grams;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+object bin {
+    "bin";
+}
+
+// --- cluster 1: an I6 class with two parents, bound with extern --------------------------------------
+
+#i6 {
+    Class Marked
+        with mark 0;
+    Class Stacked
+        with next 0;
+    Class Crate
+        class Marked Stacked
+        with heft 0;
+    Crate crateA "crate A"
+        with heft 40,
+             mark 1,
+             next crateB;
+    Crate crateB "crate B"
+        with heft 25,
+             next crateC;
+    Crate crateC "crate C"
+        with heft 10,
+             next 0;
+}
+
+extern class Marked : object {
+    int mark;
+
+    emitter int tag() { ($self.mark) }
+}
+
+extern class Stacked : object {
+    object next;
+}
+
+#using kit
+extern class Crate : Marked, Stacked {
+    int heft;
+
+    emitter int  operator ()           { ($self.heft) }
+    emitter bool operator == (Crate c) { ($self.heft == $c.heft) }
+    emitter bool operator != (Crate c) { ($self.heft ~= $c.heft) }
+    emitter bool operator < (Crate c)  { ($self.heft < $c.heft) }
+    emitter void operator += (int n)   { $self.heft = $self.heft + $n; }
+    replace emitter int tag()          { ($self.mark + 100) }
+
+    static int chain(Crate c) {
+        if (!(c?)) return 0;
+        return c.heft + chain((Crate)c.next);
+    }
+
+    static int survey(Crate c, int depth) {
+        array<Crate> seen[4];
+        array<int> weights[6];
+        array<array<int>> grid = {{1, 2}, {3}};
+        array<char> code[16];
+        stringObj line;
+        ref duo acc := ledger;
+        tenths t = c.heft;
+        weight g = c.heft;
+        Crate nx = (Crate)c.next;
+        Crate pick = nx ?? c;
+        int w = c;
+        int n = 0;
+        Crate p = c;
+        while (p?) {
+            seen.append(p);
+            weights.append(p.heft);
+            p = (Crate)p.next;
+        }
+        weights.sort();
+        int low = weights[0];
+        int top = weights.popEnd();
+        for (int i = 0; i < grid.length; i++) {
+            for (int j = 0; j < grid[i].length; j++) n += grid[i][j] * depth;
+        }
+        acc.a += n;
+        acc.b = seen.length;
+        if (pick < c) c += 1;
+        int nh = nx?.heft;
+        #if TRACE_LEVEL > 1
+            bgl.util.buf.set(code, "crate");
+        #else
+            bgl.util.buf.set(code, "box");
+        #endif
+        bgl.util.buf.toUpper(code);
+        line = "survey ";
+        line += "done";
+        ((Shelf)gizmoA).report();
+        bgl.util.buf.print(code);
+        printLine($" {line}: heft {w} chain {chain(c)} seen {seen.length} low {low} top {top} grid {n} next {nh} tenths {t.raw()} grams {(int)g} tag {c.tag()} same {pick == c} acc {acc.a} {acc.b}.");
+        return w + depth;
+    }
+}
+
+extern Crate crateA;
+extern Crate crateB;
+extern Crate crateC;
+
+// --- cluster 2 and 4: extending the extern class ---------------------------------------------------
+
+extend extern class Crate {
+    replace emitter int operator ()    { ($self.heft + $self.mark) }
+    emitter bool operator > (Crate c)  { ($self.heft > $c.heft) }
+
+    static int sortOut(Crate c, array<int> extra) {
+        array<int> picks[6];
+        array<Crate> row[3];
+        func<int, int> half = (int x) => {
+            int h = x / 2;
+            if (h > 15) h = 15;
+            return h;
+        };
+        for (int v in extra) picks.append(half(v));
+        picks.sort();
+        int big = picks.filter((int x) => x > 4).count();
+        weight g = c.heft;
+        Chip made = new Chip(c.heft);
+        int conv = c;
+        c.parent = bin;
+        int inBin = 0;
+        for (object o in bin.children) inBin++;
+        if (!c.has(light)) c.give(light);
+        Crate nx = (Crate)c.next;
+        int nh = nx?.heft;
+        if (nx?) row.append(nx);
+        row.append(c);
+        int heavier = 0;
+        for (Crate r in row) {
+            if (r > c) heavier++;
+        }
+        printLine($"Sort {c.heft}: picks {picks.length} big {big} top {picks[picks.length - 1]} conv {conv} chip {made.worth} grams {(int)g} in bin {inBin} next {nh} heavier {heavier} lit {c.has(light)}.");
+        delete made;
+        return big;
+    }
+}
+
+// --- cluster 1 and 2: extending a class with two parents ---------------------------------------------
+
+class Shelf : object {
+    int slots = 2;
+    string label = "shelf";
+
+    void report() {
+        printLine($"Shelf {label}: slots {slots}.");
+    }
+}
+
+class Tagged : object {
+    object owner;
+    int tagNo = 0;
+}
+
+class Gizmo : Shelf, Tagged {
+    int heft = 0;
+    int uses = 0;
+
+    replace void report() {
+        printLine($"Gizmo {label}: heft {heft} uses {uses}.");
+    }
+}
+
+Gizmo gizmoA {
+    "gizmo A";
+    heft = 4;
+    label = "A";
+}
+
+Gizmo gizmoB {
+    "gizmo B";
+    heft = 9;
+    slots = 3;
+    label = "B";
+}
+
+#using kit
+extend class Gizmo {
+    static array<int> history = {0, 0, 0, 0};
+    static int loads = 0;
+    eShade tint = eShade.pale;
+
+    emitter int operator ()        { ($self.heft) }
+    int  operator [] (int i)       { return Gizmo.history[i % 4]; }
+    int  operator + (int n)        { return heft + n; }
+    bool operator < (Gizmo o)      { return heft < o.heft; }
+    int  operator += (int n)       { heft = heft + n; return heft; }
+    emitter int doubled()          { ($self.heft * 2) }
+
+    replace void report() {
+        printLine($"Gizmo {label}: heft {heft} uses {uses} tint {(int)tint}.");
+    }
+
+    int depth(int n) {
+        if (n <= 0) return 0;
+        return n + depth(n - 1);
+    }
+
+    int load(array<int> vals, ref duo acc) {
+        array<Chip> chips[3];
+        array<int> kept[6];
+        array<char> code[12];
+        array<array<int>> grid = {{1, 2}, {3, 4}};
+        array<string> words = {"low", "high"};
+        stringObj note;
+        tenths t = heft;
+        weight g = heft;
+        tone shade = tone.mid;
+        var seen = vals.length;
+        tagValue tv = "tag";
+        int n = 0;
+        func<int, int> clamp = (int x) => {
+            int k = x;
+            if (k > 20) k = 20;
+            return k;
+        };
+        try {
+            for (int v in vals) {
+                if (v < 0) throw v;
+                n += v;
+            }
+        } catch (int e) {
+            printLine($"Bad value {e}.");
+        }
+        for (int v in vals) {
+            if (v > 0) kept.append(v);
+        }
+        kept.sort();
+        int top = kept.popEnd();
+        int big = kept.filter((int x) => x > heft).count();
+        for (int i = 0; i < kept.length && i < 3; i++) chips[i] = new Chip(kept[i]);
+        Chip first = chips[0] ?? chips[1];
+        int cells = 0;
+        for (int i = 0; i < grid.length; i++) {
+            for (int j = 0; j < grid[i].length; j++) cells += grid[i][j];
+        }
+        ref Pair mine := acc;
+        mine.a += n;
+        mine.b += big;
+        self += clamp(n);
+        int plus = self + depth(big + 1);
+        int conv = self;
+        Gizmo.history[Gizmo.loads % 4] = plus;
+        Gizmo.loads++;
+        if (self[0] > 20) tint = eShade.deep;
+        bgl.util.buf.set(code, words[n > 10 ? 1 : 0]);
+        bgl.util.buf.toUpper(code);
+        note = "load ";
+        note += label;
+        object who = owner?.parent;
+        if (owner?) printLine($"Owned by {owner}.");
+        if (who?) printLine($"In {who}.");
+        switch (shade) {
+            case tone.pale: printLine("Pale.");
+            case tone.mid:  printLine("Mid.");
+            default:        printLine("Deep.");
+        }
+        if (typeof(tv) == eType.string) printLine((string)tv);
+        if (self.has(light)) printLine("Lit.");
+        #if TRACE_LEVEL > 1
+            bgl.util.buf.print(code);
+            printLine($" {note}: sum {n} top {top} big {big} first {first.worth} cells {cells} seen {(int)seen} plus {plus} conv {conv} doubled {doubled()} tenths {t.raw()} grams {(int)g}.");
+        #else
+            printLine($"{note}: sum {n}.");
+        #endif
+        ((Shelf)self).report();
+        report();
+        uses++;
+        for (int i = 0; i < 3; i++) {
+            Chip gone = chips[i];
+            if (gone?) delete gone;
+        }
+        if (plus > 10) Tally.perform();
+        return plus;
+    }
+}
+
+// --- cluster 3: an object with an inline accessor --------------------------------------------------
+
+class Holder : object {
+    int total = 0;
+}
+
+Holder rack {
+    "rack";
+    int writes = 0;
+    int peak = 0;
+    array<char> stamp[10];
+    array<string> names = {"low", "mid", "high"};
+    eShade shade = eShade.pale;
+    Gizmo held;
+
+    auto level = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v;
+            outer.writes++;
+            if (v > outer.peak) outer.peak = v;
+            if (outer.held?) outer.held.tagNo = v;
+            if (v > 40) Tally.perform();
+        }
+    };
+
+    int operator + (int n) {
+        return level + n;
+    }
+
+    bool operator < (int n) {
+        return level < n;
+    }
+
+    int operator [] (int i) {
+        return names[i].length;
+    }
+
+    emitter int twiceOf(int k) { ($k * 2) }
+
+    int fold(array<int> vals, int i) {
+        if (i >= vals.length) return 0;
+        return vals[i] + fold(vals, i + 1);
+    }
+
+    int stock(int seed) {
+        array<array<int>> rows = {{1, 2}, {3, 4, 5}};
+        array<Chip> pile[3];
+        array<int> sums[4];
+        ref array<string> ns := bandNames;
+        tenths t = seed;
+        weight g = seed;
+        Chip made = new Chip(seed);
+        int n = 0;
+        func<bool, int> under = (int x) => {
+            bool r = self < x;
+            return r;
+        };
+        for (array<int> r in rows) sums.append(fold(r, 0));
+        n = sums.filter((int x) => x > 2).count();
+        pile.append(made);
+        Chip pick = pile[0] ?? made;
+        Gizmo h = held;
+        int hv = h?.heft;
+        #i6 n = $i6Expr(twice(n)) + 1;
+        level = seed * 10 + n;
+        switch (shade) {
+            case eShade.pale: shade = eShade.mid;
+            case eShade.mid:  shade = eShade.deep;
+            default:          shade = eShade.pale;
+        }
+        bgl.util.buf.set(stamp, ns[seed % 3]);
+        int first = stamp[0];
+        #if TRACE_LEVEL > 1
+            bgl.util.buf.print(stamp);
+            printLine($": seed {seed} n {n} level {level} plus {self + 1} under {under(100)} pick {pick.worth} held {hv} sub {self[seed % 3]} shade {(int)shade} first {first} twice {twiceOf(seed)} tenths {t.raw()} grams {(int)g} writes {writes} peak {peak}.");
+        #endif
+        delete made;
+        return level;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        pings++;
+        printLine($"Tally {pings}.");
+    }
+}
+
+verb Crates {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        int a = Crate.survey(crateA, 2);
+        int b = Crate.survey(crateB, 3);
+        array<int> extra = {4, 12, 40};
+        int c = Crate.sortOut(crateB, extra);
+        int d = Crate.sortOut(crateC, extra);
+        printLine($"Crates {a} {b} {c} {d} ledger {ledger.a} {ledger.b}.");
+    }
+}
+
+verb Gizmos {
+    meta = true;
+    grammar = {.gizmos};
+    void handler() {
+        Pair acc;
+        array<int> first = {1, 6, 8};
+        array<int> second = {12, -3, 2};
+        gizmoA.owner = crateA;
+        int a = gizmoA.load(first, acc);
+        gizmoB.give(light);
+        int b = gizmoB.load(second, acc);
+        if (gizmoA < gizmoB) printLine("A lighter.");
+        printLine($"Loads {a} {b} acc {acc.a} {acc.b} loads {Gizmo.loads} last {Gizmo.history[1]}.");
+    }
+}
+
+verb Racks {
+    meta = true;
+    grammar = {.racks};
+    void handler() {
+        rack.held = gizmoB;
+        int a = rack.stock(2);
+        int b = rack.stock(5);
+        printLine($"Racks {a} {b} level {rack.level} held tag {gizmoB.tagNo}.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

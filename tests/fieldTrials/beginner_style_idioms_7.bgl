@@ -1,0 +1,409 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a seventh first-time-programmer program, the one where the author finds the object tree
+// and the parser. The z8 target; rooms from an alias class of object; a class whose objects are written
+// positionally (the name re-listed first, a value left at its default, positional then named) and that
+// adds to the additive `name` with a class rawArray<dictionaryWord>; a class with a regular-method
+// operator [] (the nth child) and a regular-method int conversion read from a bare object; a data member
+// named like a global (`count`) beside `::count` in methods and a local that shadows it; property
+// parameters read (o.p) and sent as messages (o.p()), and provides() on them; perform() with one and two
+// arguments from a verb handler; before / after on objects using action ==, != and switch (action) with a
+// two-verb case; extend on objects replacing a value given positionally, adding a member and replacing a
+// description; grammar with a first-position alternation, a middle alternation in parentheses, REVERSE, a
+// NOUN(filter) routine, a meta verb with two words, grammar -= of one line and synonyms on my own verb;
+// a byte array from a string read, written and compared; a file-scope rawArray passed with its length;
+// and #i6 islands with $i6Expr and $i6Name inside functions.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+// ===== GLOBALS =====
+// how many times I used a tool (lots of things are called count, this is the real one)
+int count = 0;
+// how many things got sorted
+int sortedCount = 0;
+// the letters of the box code
+array<char> code = "cab";
+// what the player has worked out so far (starts empty)
+array<char> guess[3];
+// the weights of the four tools in order (a raw array has no length so I keep TOOL_COUNT)
+rawArray<int> toolWeights = {2, 1, 4, 3};
+const int TOOL_COUNT = 4;
+
+// my own attribute
+attribute sorted;
+
+// ===== ROOMS (I found alias class, so I don't have to extend object any more) =====
+alias class place for object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+place roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+place roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+// ===== TOOLS =====
+// you can write a tool as { "name", price, weight; } now (the name goes first like in the spec)
+class Tool : object {
+    inline instanceName;
+    inline int price;
+    inline int weight = 1;
+    // every tool is called "tool" too (the objects add their own word)
+    rawArray<dictionaryWord> name = {.tool};
+    int uses = 0;
+    default void use() {
+        uses++;
+        ::count++;
+        print($"You use the {self}.^");
+    }
+}
+
+Tool hammer {
+    "hammer", 3, 2;
+    name = {.hammer};
+    parent = roomA;
+    // the hammer says something when you pick it up
+    bool after() {
+        if (action != Take) {
+            rfalse;
+        }
+        print("You heft the hammer.^");
+        rtrue;
+    }
+}
+
+// (the saw weighs 1, I left the weight out)
+Tool saw { "saw", 5; name = .saw; parent = roomA; }
+
+Tool drill {
+    "drill", 9, 4;
+    name = {.drill};
+    parent = roomA;
+    void use() {
+        uses += 2;
+        ::count++;
+        print("Bzzz.^");
+    }
+}
+
+Tool rasp { "rasp", 1, 3; name = .rasp; parent = roomB; }
+
+// ===== SHELVES =====
+class Shelf : object {
+    // how many things have been put on this shelf (my count, not the global one)
+    int count = 0;
+    int capacity = 2;
+    // shelf[n] is the nth thing on the shelf, counting from 0
+    object operator [] (int n) {
+        int i = 0;
+        for (object o in self.children) {
+            if (i == n) {
+                return o;
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+    // a shelf turns into a number: how many things are on it
+    int operator () {
+        return self.children.length;
+    }
+    void added(object o) {
+        self.count++;
+        print($"The {o} is now on the {self} (put on it {count} times, tools used {::count} times).^");
+    }
+}
+
+Shelf shelfA {
+    "wooden shelf";
+    name = {.wooden, .shelf};
+    parent = roomA;
+    attributes = {supporter};
+}
+
+Shelf shelfB {
+    "steel shelf";
+    name = {.steel, .shelf};
+    parent = roomB;
+    attributes = {supporter};
+    capacity = 3;
+}
+
+// ===== THE BOX =====
+object box {
+    "metal box";
+    name = {.metal, .box};
+    parent = roomB;
+    attributes = {container, openable};
+    bool before() {
+        if (action == Open && ::count < 2) {
+            print("The box won't open until you have used two tools.^");
+            rtrue;
+        }
+        switch (action) {
+            case Take:
+                print("The box is too heavy.^");
+                rtrue;
+            case Push, Pull:
+                print("It doesn't move.^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ===== CHANGES (I changed my mind about some things) =====
+extend saw {
+    // the saw went up in price
+    replace int price = 6;
+    int teeth = 40;
+}
+
+extend roomB {
+    replace string description = "Room B, with a steel shelf. Room A is to the west.";
+}
+
+// ===== HELPERS =====
+
+// prints any number property of any object (properties can be passed around!)
+void showNumber(object o, property p, string label) {
+    if (o.provides(p)) {
+        int v = o.p;
+        print($"The {label} of the {o} is {v}.^");
+    } else {
+        print($"The {o} has no {label}.^");
+    }
+}
+
+// runs any method of an object by its property
+void runIt(object o, property p) {
+    o.p();
+}
+
+// only tools can be sorted or used
+bool isTool() {
+    return noun.is(Tool);
+}
+
+// counts the tools in a room (this count is just mine, the global is ::count)
+int toolsIn(object room) {
+    int count = 0;
+    for (object o in room.children) {
+        if (o.is(Tool)) {
+            count++;
+        }
+    }
+    for (object s in room.children) {
+        if (s.is(Shelf)) {
+            for (object t in s.children) {
+                if (t.is(Tool)) {
+                    count = count + 1;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// adds up a raw array (I have to say how long it is)
+int addUp(rawArray<int> w, int n) {
+    int total = 0;
+    int i = 0;
+    while (i < n) {
+        total = total + w[i];
+        i++;
+    }
+    return total;
+}
+
+// doubles a number the I6 way (I wanted to try #i6)
+int doubled(int n) {
+    int r = 0;
+    #i6 r = $i6Expr(n) * 2;
+    return r;
+}
+
+// prints the global count from I6
+void i6Count() {
+    #i6 {
+        print "(I6 sees ", $i6Name(count), " uses.)^";
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// SORT - picks up a tool and puts it on the shelf that has room
+verb Sort {
+    grammar = {
+        {.sort|.arrange, NOUN(isTool)},
+    };
+    void handler() {
+        if (noun.has(sorted)) {
+            print("That is already sorted.^");
+            return;
+        }
+        if (noun.parent != player) {
+            Take.perform(noun);
+        }
+        Shelf s = shelfA;
+        int onA = shelfA;
+        if (onA >= shelfA.capacity) {
+            s = shelfB;
+        }
+        PutOn.perform(noun, s);
+        if (noun.parent == s) {
+            noun.give(sorted);
+            sortedCount++;
+            s.added(noun);
+        }
+    }
+}
+
+// a word I like better
+extend Sort {
+    synonyms = {.tidy};
+}
+
+// STOCK SHELF WITH HAMMER / LOAD HAMMER ONTO SHELF
+verb Stock {
+    grammar = {
+        {.stock, NOUN, (.with|.using), HELD, REVERSE},
+        {.load, HELD, .onto, NOUN},
+        {.load, HELD, .on, NOUN},
+    };
+    void handler() {
+        if (!(second.is(Shelf))) {
+            print("That is not a shelf.^");
+            return;
+        }
+        Shelf s = (Shelf)second;
+        noun.parent = s;
+        s.added(noun);
+    }
+}
+
+// (load ... on ... sounded wrong, only onto now)
+extend Stock {
+    grammar -= { {.load, HELD, .on, NOUN} };
+}
+
+// USE TOOL
+verb Operate {
+    grammar = {.use|.operate, NOUN(isTool)};
+    void handler() {
+        runIt(noun, use);
+    }
+}
+
+// PRICES - the price and weight of everything here
+verb Prices {
+    meta = true;
+    grammar = {.prices};
+    void handler() {
+        for (object o in location.children) {
+            if (o.is(Tool)) {
+                showNumber(o, price, "price");
+                showNumber(o, weight, "weight");
+            }
+        }
+        showNumber(shelfA, price, "price");
+        showNumber(saw, teeth, "teeth");
+        showNumber(hammer, teeth, "teeth");
+    }
+}
+
+// SHELVES - what is on the shelves
+verb Shelves {
+    meta = true;
+    grammar = {.shelves};
+    void handler() {
+        int a = shelfA;
+        int b = shelfB;
+        print($"Wooden shelf: {a} things. Steel shelf: {b} things.^");
+        object first = shelfA[0];
+        if (first != null) {
+            print($"First on the wooden shelf: {first}.^");
+        } else {
+            print("The wooden shelf is empty.^");
+        }
+        object second2 = shelfA[1];
+        if (second2 == null) {
+            print("Nothing second on the wooden shelf.^");
+        } else {
+            print($"Second on the wooden shelf: {second2}.^");
+        }
+        print($"Tools in Room A: {toolsIn(roomA)}. Tools in Room B: {toolsIn(roomB)}.^");
+        print($"Sorted: {sortedCount}. Words for the hammer: {hammer.name.length}.^");
+    }
+}
+
+// WEIGHTS - the weights from my raw array
+verb Weights {
+    meta = true;
+    grammar = {.weights};
+    void handler() {
+        int total = addUp(toolWeights, TOOL_COUNT);
+        print($"Total weight: {total}. Doubled: {doubled(total)}.^");
+        i6Count();
+    }
+}
+
+// CODE / DECODE - works out the box code one letter at a time
+verb Decode {
+    meta = true;
+    grammar = {.code|.decode};
+    void handler() {
+        // copy one more letter of the code into the guess each time
+        int i = 0;
+        while (i < 3) {
+            if (guess[i] == 0) {
+                guess[i] = code[i];
+                break;
+            }
+            i++;
+        }
+        int right = 0;
+        print("Guess: ");
+        for (int j = 0; j < 3; j++) {
+            if (guess[j] == 0) {
+                print("-");
+            } else {
+                print(guess[j]);
+            }
+            if (guess[j] == code[j]) {
+                right++;
+            }
+        }
+        print($". Right: {right} of 3.^");
+        if (right == 3) {
+            int first = code[0];
+            print($"The first letter is number {first}.^");
+        }
+    }
+}

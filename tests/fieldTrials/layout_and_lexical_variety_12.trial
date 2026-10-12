@@ -1,0 +1,35 @@
+Room A
+A plain room.
+> gauge
+9 10 1 4
+0 1 true false
+4 10 10 g2
+false true true false true
+none set
+high low 3
+> values
+CA!5
+2 7 7 7
+> buffers
+TWO1 0
+true true false
+cen INK
+gone 1
+> refs
+2 50 3
+12 12 3
+6 12 6
+10 true false
+> ops
+blue green *** 3
+39 8
+8 20
+p;q;
+101 202
+2 2 70
+28
+> tap
+uses 2
+> knock
+uses 5
+noted

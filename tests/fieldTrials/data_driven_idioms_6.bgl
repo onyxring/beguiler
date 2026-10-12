@@ -1,0 +1,407 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a catalog of objects read column by column through an array<property> and computed
+// property access (obj.p on a property local and parameter), a method sent through a property value
+// so it dispatches to subclass overrides of default methods, an ancestor call through a cast, emitter
+// methods added to every array with extend extern class array and used on global, local and member
+// arrays, filter rules parsed at startup from strings with s[i], char classification and =~ into
+// value-class records, a table of comparison lambdas chosen by an operator char, a sort column held
+// in a global and read by a named comparator, float statistics (means, a weighted mean, a standard
+// deviation through bgl.util.math.sqrt) sorted with float::operator <=>, names sorted with
+// string::operator <=>, a uint checksum with wrapping multiply and logical shift, clamp/min/max,
+// a var-returning cell reader, and postfix ? on a search result.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+//-- Constants -----------------------------------------------------------------
+
+const int NONE = -1;
+const int COL_COUNT = 4;
+const int ROW_COUNT = 6;
+const int RULE_MAX = 8;
+const int STOCK_MAX = 20;
+
+//-- Array extensions ----------------------------------------------------------
+
+extend extern class array {
+    emitter T head() { $i6Expr($self[0]) }
+    emitter T second() { $i6Expr($self[1]) }
+}
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Item : object {
+    int rowId = NONE;
+    string label;
+    int weight = 0;
+    int price = 0;
+    int stock = 0;
+    int trend = 0;
+    array<int> history = {0, 0, 0};
+    default int value() { return price * stock; }
+    default string kind() { return "plain"; }
+    void restock(int n) {
+        history[2] = history[1];
+        history[1] = history[0];
+        history[0] = n;
+        stock = bgl.util.math.clamp(stock + n, 0, STOCK_MAX);
+    }
+}
+
+class Perishable : Item {
+    int days = 0;
+    int value() { return ((Item)self).value() - days * 2; }
+    string kind() { return "perishable"; }
+}
+
+class Bulk : Item {
+    int value() { return ((Item)self).value() * 9 / 10; }
+    string kind() { return "bulk"; }
+}
+
+Item       brassKey  { "brass key";  rowId = 0; label = "brass key";  weight = 2;  price = 15; stock = 4;  trend = -3; }
+Perishable breadLoaf { "bread loaf"; rowId = 1; label = "bread loaf"; weight = 3;  price = 4;  stock = 10; trend = 5;  days = 2; }
+Bulk       coalSack  { "coal sack";  rowId = 2; label = "coal sack";  weight = 20; price = 6;  stock = 12; trend = -1; }
+Item       tinCup    { "tin cup";    rowId = 3; label = "tin cup";    weight = 1;  price = 3;  stock = 0;  trend = 2; }
+Perishable appleBox  { "apple box";  rowId = 4; label = "apple box";  weight = 8;  price = 9;  stock = 6;  trend = -6; days = 5; }
+Bulk       nailTub   { "nail tub";   rowId = 5; label = "nail tub";   weight = 5;  price = 2;  stock = 30; trend = 4; }
+
+//-- Tables --------------------------------------------------------------------
+
+array<Item> catalog = { brassKey, breadLoaf, coalSack, tinCup, appleBox, nailTub };
+
+// Indexed by column number.
+array<property> cols       = { weight, price, stock, trend };
+array<string>   colNames   = { "weight", "price", "stock", "trend" };
+array<char>     colLetters = "wpst";
+
+// Indexed by the position of the operator in opChars.
+array<char> opChars = "<>=";
+array<func<bool, int, int>> opTests = {
+    (int a, int b) => a < b,
+    (int a, int b) => a > b,
+    (int a, int b) => a == b
+};
+
+// Rule sets as text: column letter (any case), operator, signed number; ';' separates rules.
+array<string> ruleSets = { "W>2;p<9;S>0;t>-2", "s=0", "x>1;P>10" };
+
+value class Rule {
+    int col = NONE;
+    int op = NONE;
+    int limit = 0;
+    Rule operator = (Rule o) { col = o.col; op = o.op; limit = o.limit; return self; }
+}
+
+array<Rule> rules[RULE_MAX];
+array<int>  ruleStart[4];       // first rule of each set, plus one past the end
+int sortCol = 0;
+
+//-- Cells ---------------------------------------------------------------------
+
+int cell(Item it, property p) {
+    return it.p;
+}
+
+var cellVar(int row, int c) {
+    property p = cols[c];
+    Item it = catalog[row];
+    return it.p;
+}
+
+int sendValue(Item it) {
+    property m = (property)value;
+    return it.m();
+}
+
+//-- Rule parsing --------------------------------------------------------------
+
+int colFor(char c) {
+    for (int i = 0; i < colLetters.length; i++) {
+        if (c =~ colLetters[i]) return i;
+    }
+    return NONE;
+}
+
+int opFor(char c) {
+    for (int i = 0; i < opChars.length; i++) {
+        if (opChars[i] == c) return i;
+    }
+    return NONE;
+}
+
+// Parses one rule set into rules; returns the number of bad rules skipped.
+int parseSet(string text) {
+    int bad = 0;
+    int i = 0;
+    while (i < text.length) {
+        int col = NONE;
+        int op = NONE;
+        int sign = 1;
+        int n = 0;
+        int digits = 0;
+        if (text[i].isAlpha()) { col = colFor(text[i]); i++; }
+        if (i < text.length) { op = opFor(text[i]); i++; }
+        if (i < text.length && text[i] == '-') { sign = -1; i++; }
+        while (i < text.length && text[i].isNumeric()) {
+            n = n * 10 + (text[i] - '0');
+            digits++;
+            i++;
+        }
+        while (i < text.length && text[i] != ';') i++;
+        i++;
+        if (col == NONE || op == NONE || digits == 0) { bad++; continue; }
+        Rule made;
+        made.col = col;
+        made.op = op;
+        made.limit = sign * n;
+        rules += made;
+    }
+    return bad;
+}
+
+bool passes(Item it, int first, int last) {
+    for (int r = first; r < last; r++) {
+        Rule entry = rules[r];
+        func<bool, int, int> test = opTests[entry.op];
+        if (!test(cell(it, cols[entry.col]), entry.limit)) return false;
+    }
+    return true;
+}
+
+//-- Sorting -------------------------------------------------------------------
+
+int byCol(Item a, Item b) {
+    property p = cols[sortCol];
+    int d = a.p - b.p;
+    if (d == 0) d = a.rowId - b.rowId;
+    return d;
+}
+
+//-- Validation ----------------------------------------------------------------
+
+int validate() {
+    int bad = 0;
+    for (int i = 0; i < catalog.length; i++) {
+        if (catalog[i].rowId != i) { print($"Row {i}: id {catalog[i].rowId}.^"); bad++; }
+    }
+    if (colNames.length != COL_COUNT || colLetters.length != COL_COUNT) { print("Columns: length wrong.^"); bad++; }
+    if (opChars.length != opTests.length) { print("Operators: length wrong.^"); bad++; }
+    for (int s = 0; s < ruleSets.length; s++) {
+        ruleStart[s] = rules.length;
+        int skipped = parseSet(ruleSets[s]);
+        if (skipped > 0) { print($"Rule set {s}: {skipped} bad rule{skipped == 1 ? "" : "s"}.^"); bad++; }
+    }
+    ruleStart[ruleSets.length] = rules.length;
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}, {rules.length} rules.^");
+    return bad;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb TableTest {
+    grammar = {.table};
+    void handler() {
+        for (int c = 0; c < COL_COUNT; c++) print($"{colNames[c]} ");
+        print("value kind^");
+        for (Item it in catalog) {
+            for (property p in cols) print($"{it.p} ");
+            print($"{sendValue(it)} {it.kind()} ({it.label})^");
+        }
+    }
+}
+
+verb CellTest {
+    grammar = {.cell, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        int row = n / 10;
+        int c = n % 10;
+        if (row >= ROW_COUNT || c >= COL_COUNT) { print($"No cell {n}.^"); return; }
+        int v = cellVar(row, c);
+        print($"{catalog[row].label} {colNames[c]} = {v}.^");
+    }
+}
+
+verb BaseTest {
+    grammar = {.base};
+    void handler() {
+        print($"bread loaf: {breadLoaf.value()} / {((Item)breadLoaf).value()}^");
+        print($"coal sack: {coalSack.value()} / {((Item)coalSack).value()}^");
+        Item it = appleBox;
+        print($"apple box as Item: {it.value()} / {((Item)it).value()}^");
+    }
+}
+
+verb RulesTest {
+    grammar = {.rules};
+    void handler() {
+        for (int s = 0; s < ruleSets.length; s++) {
+            print($"Set {s}:");
+            for (int r = ruleStart[s]; r < ruleStart[s + 1]; r++) {
+                Rule entry = rules[r];
+                print($" {colNames[entry.col]}{opChars[entry.op]}{entry.limit}");
+            }
+            print("^");
+        }
+    }
+}
+
+verb MatchTest {
+    grammar = {.match, NUMBER};
+    void handler() {
+        int s = (int)noun;
+        if (s >= ruleSets.length) { print($"No set {s}.^"); return; }
+        int hits = 0;
+        print($"Set {s} matches:");
+        for (Item it in catalog) {
+            if (!passes(it, ruleStart[s], ruleStart[s + 1])) continue;
+            print($" {it.label}");
+            hits++;
+        }
+        if (hits == 0) print(" nothing");
+        print($" ({hits}).^");
+    }
+}
+
+verb SortTest {
+    grammar = {.sort, NUMBER};
+    void handler() {
+        int c = (int)noun;
+        if (c >= COL_COUNT) { print($"No column {c}.^"); return; }
+        sortCol = c;
+        array<Item> view[ROW_COUNT];
+        view = catalog;
+        view.sort(byCol);
+        print($"By {colNames[c]}:");
+        for (Item it in view) print($" {it.label}={cell(it, cols[c])}");
+        print($".^Lowest {view.head().label}, next {view.second().label}.^");
+    }
+}
+
+verb NamesTest {
+    grammar = {.names};
+    void handler() {
+        array<string> names[ROW_COUNT];
+        for (Item it in catalog) names += it.label;
+        names.sort(string::operator <=>);
+        print("Names:");
+        for (string s in names) print($" {s}");
+        print($".^First {names.head()}, second {names.second()}.^");
+    }
+}
+
+verb StatsTest {
+    grammar = {.stats};
+    void handler() {
+        array<float> means[COL_COUNT];
+        for (int c = 0; c < COL_COUNT; c++) {
+            int sum = 0;
+            int lo = cell(catalog[0], cols[c]);
+            int hi = lo;
+            for (Item it in catalog) {
+                int v = cell(it, cols[c]);
+                sum += v;
+                lo = bgl.util.math.min(lo, v);
+                hi = bgl.util.math.max(hi, v);
+            }
+            float mean = (float)sum / catalog.length;
+            means += mean;
+            print($"{colNames[c]}: mean {mean}, range {lo}..{hi}^");
+        }
+        float spread = 0.0;
+        for (Item it in catalog) {
+            float d = it.trend - means[3];
+            spread += d * d;
+        }
+        float sd = bgl.util.math.sqrt(spread / catalog.length);
+        print($"trend deviation {sd}^");
+        int units = 0;
+        int paid = 0;
+        for (Item it in catalog) {
+            units += it.stock;
+            paid += it.price * it.stock;
+        }
+        float weighted = (float)paid / units;
+        print($"price per unit {weighted}^");
+        means.sort(float::operator <=>);
+        print("means sorted:");
+        for (float m in means) print($" {m}");
+        array<float> ratios[ROW_COUNT];
+        for (Item it in catalog) ratios += (float)it.trend / it.weight;
+        ratios.sort(float::operator <=>);
+        print("^trend per weight sorted:");
+        for (float r in ratios) print($" {r}");
+        print("^");
+    }
+}
+
+verb RestockTest {
+    grammar = {.restock, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        for (Item it in catalog) {
+            if (it.is(Bulk)) it.restock(n);
+            else it.restock(-n);
+        }
+        for (Item it in catalog) {
+            print($"{it.label} {it.stock} [{it.history.head()},{it.history.second()},{it.history[2]}]^");
+        }
+    }
+}
+
+verb FindTest {
+    grammar = {.find, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        Item found = null;
+        for (Item it in catalog) {
+            if (it.price <= limit) { found = it; break; }
+        }
+        if (found?) print($"First at price {limit} or less: {found.label} ({found.price}).^");
+        else print($"Nothing at price {limit} or less.^");
+    }
+}
+
+verb HashTest {
+    grammar = {.hash};
+    void handler() {
+        uint h = 5381;
+        for (int row = 0; row < catalog.length; row++) {
+            for (int c = 0; c < COL_COUNT; c++) {
+                int v = cellVar(row, c);
+                h = h * 33 + (uint)v;
+            }
+        }
+        uint top = h >> 28;
+        print($"Hash {h}, top nibble {top}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    rfalse;
+}
+
+#includeI6 "grammar"

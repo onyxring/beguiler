@@ -1,0 +1,292 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit on Glulx split over core and kit parts, levelled by a #define the consumer sets
+// before it and defaulted with #if/#define when absent; #if/#elif/#else inside a class body, an
+// extend class body and an array's extend body; an optional raw (?@) include that finds nothing;
+// a default chain three classes deep, kept alive by replace default in an extend class, with
+// ancestor-qualified calls at two levels; hide of one overload of a method, reached again by an
+// upcast; statics shadowed by a subclass and reached through a subclass name; a static func<>
+// member called directly and reassigned to a lambda; a static method as a function value; replace
+// of a kit function calling replaced(), reached from a kit routine written before it, and replace
+// of a kit emitter; an emitter overloaded on interpolatedStringLiteral and string;
+// a switch mixing guards, ranges and value lists; extend extern class array with an emitter used
+// on nested arrays, and extend extern class intLiteral; an extern object with a defaulted method
+// parameter and a typed member, bound to an I6 object; a method given an asI6 name and sent
+// from an I6 objectloop through $i6Name; array extend with inject before/first, move, remove by
+// index and an inline object; a pool sized by a const; bare inline objects as positional and
+// named arguments with run-time members; a ref array member bound with := and appended through;
+// a value class with prefix and postfix ++, !, ?=, [] and []=, and an explicit conversion; a kit
+// before rule switching on action with rtrue of interpolated text.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#define LA8_LEVEL 2
+#include "library_author_idioms_8_parts/library_author_idioms_8_kit"
+
+#using bgl.printRules
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+// ---- The consumer's shapes. ----
+
+extend class la8Box {
+    replace default string kind() { return "case"; }
+#if LA8_LEVEL >= 2
+    int depth = 3;
+#else
+    int depth = 1;
+#endif
+}
+
+/// A box that marks its own description.
+class la8Crate : la8Box {
+    string kind() { return "crate"; }
+    void portray() {
+        ((la8Box)self).portray();
+        print(" [crate]");
+    }
+}
+
+la8Shape disc   { "disc";   parent = roomA; name = .disc;   size = 2; }
+la8Box   carton { "carton"; parent = roomA; name = .carton; size = 3; }
+la8Crate pallet { "pallet"; parent = roomA; name = .pallet; size = 4; }
+la8Lid   topper { "topper"; parent = roomA; name = .topper; }
+
+la8Watched widget { "widget"; parent = roomA; name = .widget; }
+
+la8Gauge gaugeOne { "gauge one"; parent = roomB; name = .one; }
+la8Gauge gaugeTwo { "gauge two"; parent = roomB; name = .two; reading = 10; }
+
+// ---- The consumer's plan. ----
+
+la8Step stepWeigh { "weigh"; cost = 5; }
+
+extend la8Plan {
+    inject stepWeigh before stepSeal;
+    move stepOpen last;
+    remove [1];
+#if LA8_LEVEL >= 2
+    inject la8Step{ "ship"; cost = 4; } first;
+#else
+    inject stepWeigh first;
+#endif
+    move [0] after stepSeal;
+}
+
+// ---- Replacements of kit routines. ----
+
+replace int la8Score(int n, int bonus = 0) { return replaced(n) + bonus; }
+
+replace emitter int la8Scale(int v) { ($v * 5) }
+
+// ---- The consumer's own value type. ----
+
+/// Two numbers that copy, index and compare by sum.
+value class la8Pair {
+    int a;
+    int b;
+    la8Pair operator = (la8Pair o)         { a = o.a; b = o.b; return self; }
+    la8Pair operator ++ ()                 { b++; return self; }
+    la8Pair operator prefix++ ()           { a++; return self; }
+    bool    operator ! ()                  { return a == 0 && b == 0; }
+    bool    operator ?= (la8Pair o)        { return a + b == o.a + o.b; }
+    int     operator [] (int i)            { if (i == 0) return a; return b; }
+    int     operator []= (int i, int v)    { if (i == 0) a = v; else b = v; return v; }
+    explicit string operator ()            { return "a pair"; }
+}
+
+array<int> nums = {4, 8, 15};
+array<array<int>> la8Grid = { {1, 2, 3}, {4, 5} };
+array<int> tally[6];
+la8Dims square = {5, 5};
+
+// ---- Verbs that report. ----
+
+verb Shapes {
+    grammar = {.shapes};
+    void handler() {
+        for (object o in bgl.world.instances(la8Shape)) {
+            la8Shape s = (la8Shape)o;
+            s.portray();
+            print($", tier {s.tier}.^");
+        }
+        print($"Carton depth {carton.depth}.^");
+    }
+}
+
+verb Resize {
+    grammar = {.resize};
+    void handler() {
+        topper.resize(5);
+        print($"Topper {topper.size}; ");
+        ((la8Shape)topper).resize(2, 3);
+        disc.resize(3, 3);
+        print($"topper {topper.size}, disc {disc.size}.^");
+    }
+}
+
+verb Census {
+    grammar = {.census};
+    void handler() {
+        for (object o in bgl.world.instances(la8Shape)) la8Made((la8Shape)o);
+        print($"Shapes {la8Shape.made}, boxes {la8Box.made}, all {la8Lid.count}.^");
+    }
+}
+
+verb Funcs {
+    grammar = {.funcs};
+    void handler() {
+        func<int, int> f = la8Shape.twice;
+        print($"Twice {f(7)}; apply {la8Policy.apply(5)}; ");
+        la8Policy.step = (int n) => n + 100;
+        print($"now {la8Policy.apply(5)}, step {la8Policy.step(1)}.^");
+        la8Policy.step = la8Double;
+    }
+}
+
+verb Scores {
+    grammar = {.scores};
+    void handler() {
+        print($"Both {la8Both(2)}, score {la8Score(3)}, bonus {la8Score(3, 7)}, scale {la8Scale(2)}.^");
+    }
+}
+
+verb Notes {
+    grammar = {.notes};
+    void handler() {
+        string t = "kept";
+        la8Note($"disc {disc.size}, band {la8Band(disc.size)}");
+        la8Note("plain");
+        la8Note(t);
+    }
+}
+
+verb Bands {
+    grammar = {.bands};
+    void handler() {
+        array<int> vals = {-5, 0, 7, 20, 50, 150};
+        for (int v in vals) print($"{v}:{la8Band(v)} ");
+        print("^");
+    }
+}
+
+verb Tails {
+    grammar = {.tails};
+    void handler() {
+        print($"Nums {nums.la8Tail()}, rows {la8Grid[0].la8Tail()} {la8Grid[1].la8Tail()}");
+        print($", last row first {la8Grid.la8Tail()[0]}, tens {3.la8Tens()}.^");
+    }
+}
+
+verb Meter {
+    grammar = {.meter};
+    void handler() {
+        int a = La8_Meter.la8_add(5);
+        int b = La8_Meter.la8_add(2, 3);
+        print($"Added {a} then {b}; total {La8_Meter.la8_total}, over {La8_Meter.over(10)}");
+        La8_Meter.la8_clear();
+        print($"; cleared {La8_Meter.la8_total}, over {La8_Meter.over(10)}.^");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges};
+    void handler() {
+        La8_BumpAll(3);
+        print($"Bumped: {gaugeOne.reading}, {gaugeTwo.reading}; ");
+        gaugeOne.bump(4);
+        print($"then {gaugeOne.reading}.^");
+    }
+}
+
+verb Plan {
+    grammar = {.plan};
+    void handler() {
+        print("Plan: ");
+        la8ShowPlan();
+        print($"; tail {la8Plan.la8Tail()}.^");
+    }
+}
+
+verb Tickets {
+    grammar = {.tickets};
+    void handler() {
+        la8Ticket t1 = new la8Ticket(1);
+        la8Ticket t2 = new la8Ticket(2);
+        la8Ticket t3 = new la8Ticket(3);
+        print($"Got {t1.no} and {t2.no}; third none {t3 == null}; ");
+        delete t1;
+        t3 = new la8Ticket(9);
+        print($"reissued {t3?.no}.^");
+        delete t2;
+        delete t3;
+    }
+}
+
+verb Areas {
+    grammar = {.areas};
+    void handler() {
+        int total = 0;
+        for (int i in 1 to 3) total += la8Area(d: {i, i + 1});
+        print($"Area {la8Area({3, 4})}, square {la8Area(square)}, run {total}.^");
+    }
+}
+
+verb Logs {
+    grammar = {.logs};
+    void handler() {
+        la8Log.entries := tally;
+        la8Log.entries += 5;
+        la8Log.entries += {6, 7};
+        print($"Tally {tally.length}, tail {tally.la8Tail()}, through log {la8Log.entries.length}.^");
+        tally.clear();
+    }
+}
+
+verb Pairs {
+    grammar = {.pairs};
+    void handler() {
+        la8Pair p;
+        la8Pair q;
+        print($"Empty {!p}; ");
+        p[0] = 2;
+        p[1] = 5;
+        ++p;
+        p++;
+        p++;
+        print($"p {p[0]},{p[1]}; ");
+        q = p;
+        q[0] = 10;
+        q[1] = 0;
+        print($"q {q[0]},{q[1]}, p {p[0]},{p[1]}; same sum {p ?= q}, empty {!q}, {(string)p}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

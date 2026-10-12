@@ -1,0 +1,62 @@
+/*  Field trial part — included by library_author_idioms_7.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_7_core"
+
+#using bgl.printRules
+
+// ---- Array helpers: the smallest element by the element type's ordering. ----
+
+#i6 {
+    [ La7_Least arr n cmp  i best v;
+        if (n == 0) return 0;
+        best = arr-->1;
+        for (i = 2 : i <= n : i++) {
+            v = arr-->i;
+            if (cmp == 0) { if (v < best) best = v; }
+            else if (metaclass(cmp) == Routine) { if (cmp(v, best) < 0) best = v; }
+            else { if (v.cmp(best) < 0) best = v; }
+        }
+        return best;
+    ];
+}
+
+extend extern class array {
+    /// The least element by the element type's <=>; global and local arrays only.
+    emitter T least() { La7_Least($self, $i6Expr($self.length), $oprefReq(<=>)) }
+}
+
+// ---- Queries over the ledger. ----
+
+/// Items of a class in a place, lightest first.
+array<object> la7Sorted(bglClass c, object where) {
+    return bgl.world.instances(c, (object o) => o.parent == where)
+        .orderBy((object a, object b) => ((la7Item)a).weight - ((la7Item)b).weight);
+}
+
+/// Prints a list of items with their kinds.
+void la7Show(array<object> items) {
+    bool first = true;
+    for (object o in items) {
+        if (!first) print(", ");
+        first = false;
+        print($"{o} ({((la7Item)o).kind()})");
+    }
+    if (first) print("none");
+}
+
+// ---- Kit verbs. ----
+
+/// Puts one item inside another; "fill" names them the other way round.
+verb Stow {
+    grammar = {
+        {.stow, NOUN, .in, NOUN},
+        {.fill, NOUN, .with, NOUN, REVERSE},
+    };
+    void handler() {
+        if (noun == second) { print("Not inside itself.^"); return; }
+        if (!second.is(la7Crate)) { print($"{cThe(second)} is not a crate.^"); return; }
+        noun.parent = second;
+        print($"{cThe(noun)} goes in {the(second)}.^");
+    }
+}

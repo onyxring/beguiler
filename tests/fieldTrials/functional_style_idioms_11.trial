@@ -1,0 +1,81 @@
+Room A
+Room A.
+> loads 14
+heavy total 29, light: 4 7 2, heaviest first: 15 12 7, sum 40, any over 14: yes
+> loads 20
+heavy total 29, light: 4 7 2, heaviest first: 15 12 7, sum 40, any over 20: no
+> rows 2
+longer than 2: 2
+over 2 per row: 1 2 4 1
+row 2 after skip: 7, any has 2: yes, widths 3 2 4 1
+near: rows with 3: 1, max row 3, deep 16
+row sum 99, deep count 8
+> rows 3
+longer than 3: 1
+over 3 per row: 0 2 4 1
+row 2 after skip: 7, any has 3: yes, widths 3 2 4 1
+near: rows with 4: 1, max row 3, deep 24
+row sum 99, deep count 8
+> rows 5
+longer than 5: 0
+over 5 per row: 0 0 4 1
+row 2 after skip: 7, any has 5: yes, widths 3 2 4 1
+near: rows with 6: 1, max row 3, deep 40
+row sum 90, deep count 12
+> ladder 3
+ladder 60, fold 321, sum fold 108
+hops 7, hops 1 is 0, tally 32
+> ladder 6
+ladder 210, fold 321, sum fold 216
+hops 8, hops 1 is 0, tally 32
+> gauge 2
+direct 6, countdown 12, level now 5
+over 2: 2, raw sum 11, lowest gauge c
+> gauge 5
+direct 6, countdown 9, level now 2
+over 5: 2, raw sum 11, lowest gauge c
+> spans 3
+within 3 to 7: 3, live 0, made 2
+from 3: 4, kept 3, live 1, by ref: 4, now 3, live 1, made 4
+> spans 7
+within 7 to 11: 3, live 0, made 6
+from 7: 2, kept 7, live 1, by ref: 2, now 7, live 1, made 8
+> entries
+entry a 23, entry b 42
+base over: 2 2, base bonus of b 4
+ranked: 2 1
+live 0
+> rack 7
+slots: 5 1 9 7, above 4: 3, first over 5: 9, over first: 2
+> rack 2
+slots: 5 1 9 2, above 4: 2, first over 5: 9, over first: 1
+> sieve 4
+above 4: 4, odd 6, passes 2, kept over 4: 4, last kept 11
+> sieve 9
+above 9: 1, odd 6, passes 4, kept over 9: 1, last kept 11
+> sizes 4
+over 4: many, over 8: few, over 20: none, buckets 312
+pick 4: 2
+> sizes 1
+over 1: many, over 8: few, over 20: none, buckets 312
+pick 1: 4
+> sizes 5
+over 5: many, over 8: few, over 20: none, buckets 312
+pick 5: 2
+> interop 3
+scaled odd 60, twice each 12, lambda 16, island 4
+picked 10, mapped 12, odd count 6, via island 12
+> interop 4
+scaled odd 60, twice each 16, lambda 18, island 5
+picked 6, mapped 9, odd count 6, via island 16
+> labels
+4 banana 3, 2 kiwi 2
+> weigh coin
+The coin weighs 1.
+> weigh crate
+The crate weighs 20.
+> weighall
+The crate weighs 20.
+The box weighs 5.
+The coin weighs 1.
+weighed 3

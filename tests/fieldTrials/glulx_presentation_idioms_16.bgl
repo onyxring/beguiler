@@ -1,0 +1,571 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: swatches, a mixer and a light board drawn into a text grid. A pooled class Swatch[4]
+// with two parents (Shade, Tagged) whose methods use arithmetic operators, an enum-typed member,
+// func<> parameters, array<array<int>> parameters and locals, ?. over a Swatch link, #if over
+// #define'd symbols and perform(); an `extend class Swatch` adding more operators and methods that
+// allocate and delete slots with the same mix of areas. A value class Tint with a copy operator; a
+// Panel/SidePanel pair dispatched to the base with a cast; a union reading of float or string. An
+// object mixer with an inline float accessor that reaches its host through outer, binds a ref Tint
+// with := and throws an enum fault, an object `operator +`, and a method using a block lambda, var,
+// typeof, try/catch and perform(); an `extend mixer` adding a second outer accessor over an owned
+// Tint, an object `operator -` and a method of the same kind. A Lamp object board whose accessor
+// reaches its host through outer under #if, with object comparison operators, a `replace` method
+// walking its children, allocating pooled Chips moved into the tree, a <linq> chain over floats, an
+// array<string> and a Tint copy. Meta verbs drive each and draw the grid.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GPI_TRACE
+#define GPI_DEPTH 3
+#define GPI_GAIN 1.5
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+textGridWindow grid = null;
+
+enum eTone { dim = 0, mid, bright }
+enum eFault { none = 0, negative, overflow }
+
+array<string> toneNames = { "dim", "mid", "bright" };
+array<array<int>> ramps = { {1, 2, 3}, {4, 5}, {6, 7, 8, 9} };
+
+eTone toneFor(float l) {
+    if (l < 0.3) return eTone.dim;
+    if (l < 0.7) return eTone.mid;
+    return eTone.bright;
+}
+
+float halve(float x) { return x / 2; }
+
+// ---- swatches ------------------------------------------------------------------------------------
+
+class Shade : object {
+    float lum = 0.0;
+}
+
+class Tagged : object {
+    eTone tone = eTone.mid;
+    int marks = 0;
+}
+
+int swatchesMade = 0;
+
+class Swatch[4] : Shade, Tagged {
+    int hue = 0;
+    Swatch link = null;
+
+    void create(int h, float l) {
+        hue = h;
+        lum = l;
+        tone = toneFor(l);
+        swatchesMade++;
+    }
+
+    void destroy() {
+        link = null;
+    }
+
+    float operator * (float k) { return lum * k; }
+    int operator + (int d) { return hue + d; }
+
+    string toneName() {
+        int t = (int)tone;
+        if (t < toneNames.length) return toneNames[t];
+        return "none";
+    }
+
+    float shaded(func<float, float> curve) {
+        float v = curve(lum);
+#if GPI_TRACE
+        print("[shade] ");
+#endif
+        if (v > GPI_GAIN) Glare.perform();
+        return v;
+    }
+
+    int rampSum(array<array<int>> rows) {
+        int n = 0;
+        int r = (int)tone;
+        if (r < rows.length) {
+            for (int x in rows[r]) n += x;
+        }
+        int lh = link?.hue;
+        marks = n + lh;
+        return marks;
+    }
+
+    float chainLum(func<float, Swatch> pick) {
+        float s = 0.0;
+        Swatch c = self;
+        int steps = 0;
+#if GPI_DEPTH > 2
+        while (c != null && steps < GPI_DEPTH) {
+            s += pick(c);
+            c = c.link;
+            steps++;
+        }
+#else
+        s = pick(self);
+#endif
+        return s;
+    }
+
+    int toneGrid(array<array<int>> rows, func<int, int> weigh) {
+        array<array<int>> seen = { {0, 0, 0}, {0, 0, 0} };
+        Swatch c = self;
+        int total = 0;
+        while (c != null) {
+            int t = (int)c.tone;
+            seen[0][t] = seen[0][t] + 1;
+            seen[1][t] = weigh(c + 0);
+            c = c.link;
+        }
+        for (int i = 0; i < 3; i++) total += seen[0][i] * rows[0][i] + seen[1][i];
+        if (link?.tone == eTone.bright) total++;
+        return total;
+    }
+}
+
+extend class Swatch {
+    float operator - (Swatch o) { return lum - o?.lum; }
+    int operator / (int d) { return hue / d; }
+
+    Swatch blend(Swatch o, func<float, float, float> mix) {
+        Swatch s = new Swatch(self + o.hue, mix(lum, o?.lum));
+        if (s == null) {
+            Pool.perform();
+            return null;
+        }
+        s.link = o;
+#if GPI_TRACE
+        print("[blend] ");
+#endif
+        return s;
+    }
+
+    float spread(array<array<int>> rows, func<float, float> curve) {
+        array<array<int>> picks = { {0, 1}, {2} };
+        float sum = 0.0;
+        for (int i = 0; i < picks.length; i++) {
+            for (int j in picks[i]) {
+                if (j < rows.length) sum += curve(self * rows[j].length);
+            }
+        }
+        switch (tone) {
+            case eTone.dim:    sum = sum / 2;
+            case eTone.bright: sum = sum * 2;
+        }
+        if (link?.link != null) Glare.perform();
+        return sum;
+    }
+
+    void dropChain() {
+        Swatch c = link;
+        link = null;
+        while (c != null) {
+            Swatch n = c.link;
+            delete c;
+            c = n;
+        }
+#if GPI_DEPTH > 2
+        print("[dropped] ");
+#endif
+    }
+}
+
+// ---- tints and panels ----------------------------------------------------------------------------
+
+value class Tint {
+    float r = 0.0;
+    float g = 0.0;
+    void operator = (Tint o) {
+        r = o.r;
+        g = o.g;
+    }
+}
+
+Tint spareTint;
+
+class Panel : object {
+    int width = 10;
+    default string label() { return "panel"; }
+    default float weight() { return 1.0; }
+}
+
+class SidePanel : Panel {
+    string label() { return "side"; }
+    float weight() { return ((Panel)self).weight() * 2; }
+}
+
+SidePanel sideA {
+    "side A";
+    width = 4;
+}
+
+union reading = float | string;
+
+// ---- the mixer -----------------------------------------------------------------------------------
+
+object mixer {
+    "mixer";
+    float gainF = 2.0;
+    int sets = 0;
+    int faults = 0;
+    Tint base;
+    auto level = {
+        float _f = 0.0;
+        float operator () { return _f * outer.gainF; }
+        void operator = (float v) {
+            if (v < 0.0) {
+                outer.faults++;
+                throw eFault.negative;
+            }
+            _f = v;
+            outer.sets++;
+            ref Tint t := outer.base;
+            t.g = v;
+        }
+    };
+
+    int operator + (int v) { return sets + v; }
+
+    float mix(SidePanel p, reading extra) {
+        ref Tint t := base;
+        float w = ((Panel)p).weight();
+        func<float, float> scale = (float x) => {
+            float y = x * w;
+            if (y > 4.0) y = 4.0;
+            return y;
+        };
+        try {
+            level = scale(t.r) - 1.0;
+        } catch (eFault f) {
+            print("[fault] ");
+            level = 0.0;
+        }
+        var count = self + 1;
+        if (typeof(extra) == eType.string) print((string)extra);
+        else print((float)extra);
+        print(" ");
+        if (count > 2) Mixed.perform();
+        return level;
+    }
+}
+
+extend mixer {
+    float trim = 0.5;
+    auto balance = {
+        Tint _t;
+        float operator () { return _t.r - _t.g; }
+        void operator = (reading v) {
+            if (typeof(v) == eType.string) throw eFault.overflow;
+            float f = (float)v;
+            _t.r = f * outer.trim;
+            _t.g = outer.trim;
+            ref Tint b := outer.base;
+            b = _t;
+        }
+    };
+
+    int operator - (int v) { return sets - v; }
+
+    float settle(SidePanel p, reading r) {
+        ref Tint keep := spareTint;
+        keep = base;
+        float w = ((Panel)p).weight() + p.weight();
+        func<float, float> fold = (float x) => {
+            if (x > w) return w;
+            return x * trim;
+        };
+        var left = self - 1;
+        try {
+            balance = r;
+        } catch (eFault f) {
+            faults++;
+            print("[overflow] ");
+        }
+        if (typeof(r) != eType.string) level = fold((float)r);
+        if (left > 1) Mixed.perform();
+        return balance;
+    }
+}
+
+// ---- the light board -----------------------------------------------------------------------------
+
+class Chip[3] : object {
+    float glow = 0.0;
+    void create(float g) { glow = g; }
+}
+
+class Lamp : object {
+    int lit = 0;
+    string note = "plain";
+    void tally() { print("lamp"); }
+}
+
+Lamp board {
+    "board";
+    parent = roomA;
+    attributes = {scenery};
+    float scale = 1.5;
+    Tint shade;
+    auto glowLevel = {
+        float _g = 0.0;
+        float operator () { return _g * outer.scale; }
+        void operator = (float v) {
+            _g = v;
+            outer.lit++;
+#if GPI_TRACE
+            print("[glow] ");
+#endif
+        }
+    };
+
+    eBool operator == (int n) { return lit == n; }
+    eBool operator < (int n) { return lit < n; }
+
+    replace void tally() {
+        array<string> names = { "none", "one", "many" };
+        array<float> glows = { 0.0, 0.0, 0.0, 0.0 };
+        int n = 0;
+        for (object o in children) {
+            Chip c = (Chip)o;
+            if (n < glows.length) glows[n] = c.glow;
+            n++;
+        }
+        int bright = glows.filter((float g) => g > 0.5).count();
+        Tint t;
+        t = shade;
+        t.r = t.r + bright;
+        shade = t;
+        int k = n;
+        if (k > 2) k = 2;
+#if GPI_TRACE
+        print("[tally] ");
+#endif
+        print($"{names[k]} {bright} ");
+        print(shade.r);
+        printLine("");
+        if (self < 3) Lit.perform();
+    }
+
+    void fill(float a, float b) {
+        Chip x = new Chip(a);
+        Chip y = new Chip(b);
+        if (x != null) x.parent = self;
+        if (y != null) y.parent = self;
+        glowLevel = a + b;
+        note = self == 1 ? "one" : "more";
+    }
+
+    void clearOut() {
+        while (self.child != null) {
+            object o = self.child;
+            Chip c = (Chip)o;
+            c.parent = null;
+            delete c;
+        }
+    }
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+Swatch head = null;
+
+void drawGrid() {
+    if (grid == null) return;
+    grid.clear();
+    grid.moveCursor(0, 0);
+    grid.print($"swatches {swatchesMade} head {head?.hue}");
+    grid.moveCursor(0, 1);
+    grid.print($"mixer sets {mixer.sets} faults {mixer.faults}");
+    grid.moveCursor(0, 2);
+    grid.print($"board lit {board.lit} note {board.note}");
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    spareTint.r = 0.25;
+    mixer.base.r = 1.5;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Glare {
+    grammar = {.glare};
+    meta = true;
+    void handler() {
+        printLine("Glare.");
+    }
+}
+
+verb Pool {
+    grammar = {.pool};
+    meta = true;
+    void handler() {
+        printLine($"Pool full after {swatchesMade}.");
+    }
+}
+
+verb Mixed {
+    grammar = {.mixed};
+    meta = true;
+    void handler() {
+        printLine($"Mixed: sets {mixer.sets}, faults {mixer.faults}.");
+    }
+}
+
+verb Lit {
+    grammar = {.lit};
+    meta = true;
+    void handler() {
+        printLine($"Lit {board.lit}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        if (grid == null) grid = bgl.ui.mainWin.splitUpGrid(3);
+        drawGrid();
+        printLine("Panels open.");
+    }
+}
+
+verb Swatches {
+    grammar = {.swatches};
+    meta = true;
+    void handler() {
+        Swatch a = new Swatch(2, 0.2);
+        Swatch b = new Swatch(5, 0.5);
+        if (a == null || b == null) return;
+        a.link = b;
+        head = a;
+        print($"{a.toneName()} {b.toneName()} ");
+        print(a * 3.0);
+        printLine($" {a + 1} {b / 2}");
+        print(a.shaded((float x) => x * 10));
+        printLine("");
+        printLine($"Ramps {a.rampSum(ramps)} {b.rampSum(ramps)}.");
+        print(a.chainLum((Swatch s) => s.lum));
+        print(" ");
+        print(a - b);
+        print(" ");
+        print(b - a.link?.link);
+        printLine("");
+        printLine($"Grid {a.toneGrid(ramps, (int h) => h * 2)}.");
+        drawGrid();
+    }
+}
+
+verb Blend {
+    grammar = {.blend};
+    meta = true;
+    void handler() {
+        if (head == null) return;
+        Swatch c = head.blend(head.link, (float x, float y) => x + y);
+        if (c != null) {
+            printLine($"Blended {c.hue} {c.toneName()} {c.link?.hue}.");
+            print(c.spread(ramps, halve));
+            printLine("");
+        }
+        Swatch d = head.blend(head, (float x, float y) => x * y);
+        if (d != null) printLine($"Again {d.hue}.");
+        Swatch e = head.blend(head, (float x, float y) => x - y);
+        if (e == null) printLine("No slot.");
+        if (c != null) {
+            c.link = null;
+            head.link.link = c;
+        }
+        print(head.spread(ramps, (float x) => x + 1));
+        printLine("");
+        print(head.chainLum((Swatch s) => s.lum));
+        printLine("");
+        head.dropChain();
+        if (d != null) delete d;
+        printLine($"Left {head.link?.hue}.");
+        drawGrid();
+    }
+}
+
+verb Mix {
+    grammar = {.mix};
+    meta = true;
+    void handler() {
+        print(mixer.mix(sideA, "first"));
+        printLine("");
+        mixer.base.r = 0.25;
+        print(mixer.mix(sideA, 0.5));
+        printLine("");
+        mixer.base.r = 0.75;
+        print(mixer.mix(sideA, "third"));
+        printLine("");
+        printLine($"{sideA.label()} {((Panel)sideA).label()} {mixer + 10}");
+        print(mixer.base.g);
+        printLine("");
+        drawGrid();
+    }
+}
+
+verb Settle {
+    grammar = {.settle};
+    meta = true;
+    void handler() {
+        print(mixer.settle(sideA, 3.0));
+        printLine("");
+        print(mixer.settle(sideA, "bad"));
+        printLine("");
+        print(mixer.base.r);
+        print(" ");
+        print(spareTint.r);
+        print(" ");
+        print(mixer.level);
+        printLine($" {mixer - 1}");
+        drawGrid();
+    }
+}
+
+verb Lights {
+    grammar = {.lights};
+    meta = true;
+    void handler() {
+        board.fill(0.25, 0.75);
+        board.tally();
+        board.fill(0.9, 0.1);
+        board.tally();
+        print(board.glowLevel);
+        printLine($" {board.note} {board == 3}");
+        board.clearOut();
+        board.tally();
+        drawGrid();
+    }
+}
+
+#includeI6 "grammar"

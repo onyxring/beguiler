@@ -1,0 +1,76 @@
+Room A
+Room A. Room B is to the east.
+You can see a brass key, a lamp and a sorter here.
+> sort
+(lit) A plain lamp.
+[first] ok.
+You see nothing special about the brass key.
+[first] ok.
+[first] seen before.
+[first] nothing there.
+You see nothing special about the red ball.
+[first] ok.
+[first] full.
+[first] checked 3, last red ball, 3 remembered.
+The ball was looked at.
+> coins
+wallet A holds 10 cents.
+unnamed holds 4 cents.
+(different amounts)
+A plus 5 is 15, A minus B is 6.
+Bigger plus 1: 11.
+After taking: A 14, B 0.
+(the same amount)
+A and B match.
+Changed: A 28, B 17.
+Bigger plus 0: 28.
+> spend
+After += 4: 5.
+After += 2 and ++: 8.
+The label holds the wallet.
+Copy 9, wallet 8.
+> label
+The label reads: brass key.
+Length 9, first vowel at 2.
+The label reads: BRASS KEY.
+(stuck on brass key, which is in Room A)
+Short label: -1.
+Stamps: new, used, old.
+> meter
+(the meter reads 2, low)
+Meter: 2, plus two 6, two steps ahead 6.
+(the meter reads 12, high)
+(the meter reads 3, low)
+(the meter reads 6, middle)
+(the meter reads 9, high)
+(the meter reads 15, high)
+(the meter reads 18, high)
+Last mark leaves 18.
+Mark row 1, item 2: 6.
+> grid
+At 0,2: 3. At 1,2: -1. At 2,0: 6.
+Row totals: 6 9 6.
+Row 1 now: 45. Reads: 3.
+> kit
+Moved 4: A 2, B 4.
+Moved 2: A 0, B 6.
+> crates
+Crates weigh 11.
+First full: Room B.
+First full now: crate B.
+Crate A weighs 4, scores 7.
+Crate B is size 5, scores 0.
+> walk
+(depth 1: Room B)
+(depth 2: crate B)
+(depth 3: red ball)
+(depth 2: crate A)
+(I6 says red ball is in crate B)
+(no thing)
+> list
+one, two, three, four.
+one, two, three, and lamp.
+> look
+Room A
+Room A. Room B is to the east.
+You can see a brass key, a lamp and a sorter here.

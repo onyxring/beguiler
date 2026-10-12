@@ -1,0 +1,459 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, eighteenth pass: as many features as fit
+// meeting inside one declaration, three times. A derived class (a shelf), written after `#using` of a
+// namespace object, that keeps static counters and `static array<string>` / `static array<int>` tables,
+// a value-class member and a primitive-newtype member through the imported aliases, a `ref stringObj`
+// member bound to a shared journal, an indexer, a `replace` override of its base's method that calls the
+// base's version through a cast, a recursive static depth walk over the object tree through `?.` and a
+// postfix `?`, an `#i6` island with `$i6Expr`, and a stocking method that walks its children with a
+// nested-literal band table (`array<array<int>>`), a range and guard `switch`, a pooled token per child
+// read back through `?.`, `<linq>` chains with expression and block lambdas, a positional value-class
+// instance, a named union narrowed through `var` / `typeof`, interpolated strings and a verb performed.
+// An object of that class, declared positionally, that adds an inline accessor reaching its host through
+// `outer`, an `operator []=`, its own `alias`, a per-instance `replace`, a recursive method and a report
+// method taking a `ref stringObj` (linq, block lambda, nested literal, pooled token, `#i6`, union). A
+// verb, also after `#using`, with a recursive helper method and a handler that moves children between
+// shelves (nested arrays, a `ref` local, linq, a positional value class, `#i6`, union, switch). And a
+// replaced global routine that recurses through its replacement.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    framePoolSize = 200;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute marked;
+
+union Entry = string | object;
+
+int PingCount;
+
+//-- A closed interval, copied by value, written positionally ------------------------------------------------
+
+value class Span {
+    inline int Lo;
+    inline int Hi;
+    Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }
+    bool Holds(int v) { return v >= Lo && v <= Hi; }
+}
+
+//-- Grams: a primitive newtype over int -------------------------------------------------------------------
+
+primitive class Grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter bool Heavy { ($val >= 10) }
+}
+
+//-- A small pooled class --------------------------------------------------------------------------------------
+
+class Token[3] : object {
+    int Value;
+    void create(int v) { Value = v; }
+}
+
+//-- A namespace object holding type aliases ------------------------------------------------------------------
+
+object Kit {
+    alias band for Span;
+    alias weight for Grams;
+}
+
+//-- A verb the declarations below run from code -------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        PingCount++;
+        print($"(ping {noun})");
+    }
+}
+
+//-- Base classes ----------------------------------------------------------------------------------------------
+
+class Fixture : object {
+    inline instanceName;
+    inline int Slot;
+    int Stocked;
+
+    stringObj Summary() {
+        stringObj s = "fixture";
+        return s;
+    }
+}
+
+class Item : object {
+    inline instanceName;
+    inline int Size;
+}
+
+//-- Cluster 1: a shelf class with shared tables -------------------------------------------------------------
+
+#using Kit
+class Shelf : Fixture {
+    static int Built;
+    static array<string> Names[4] = { "empty", "small", "medium", "large" };
+    static array<int> Hits[4] = { 0, 0, 0, 0 };
+
+    band Range;
+    weight Load;
+    ref stringObj Journal;
+    Entry Last;
+
+    // Hits for tier i; past the tiers, how many things the shelf holds.
+    int operator [] (int i) {
+        if (i >= 0 && i < Hits.length) return Hits[i];
+        return children.length;
+    }
+
+    // How many parents up o is from the top of the tree.
+    static int Depth(object o) {
+        object up = o?.parent;
+        if (up?) return 1 + Depth(up);
+        return 0;
+    }
+
+    replace stringObj Summary() {
+        stringObj s = ((Fixture)self).Summary();
+        stringObj tail = $" {Slot}/{Stocked}";
+        s += tail;
+        return s;
+    }
+
+    // The load packed with the slot, computed in I6.
+    int Packed() {
+        int ld = Load;
+        int sl = Slot;
+        int out;
+        #i6 { $i6Expr(out) = $i6Expr(sl) * 100 + $i6Expr(ld); }
+        return out;
+    }
+
+    // Sorts each child into a tier, adds a tier name per child to the journal, and returns the total size.
+    int Stock() {
+        array<array<int>> table = { {0, 0, 0}, {1, 3, 1}, {4, 9, 2}, {10, 99, 3} };
+        int total = 0;
+        Built++;
+        for (object o in children) {
+            int sz = ((Item)o).Size;
+            int tier = 3;
+            for (array<int> row in table) {
+                if (sz >= row[0] && sz <= row[1]) tier = row[2];
+            }
+            Hits[tier] = Hits[tier] + 1;
+            switch (sz) {
+                case 0:      o.give(marked);
+                case 1 to 3: Stocked++;
+                case > 9:    Stocked += 2;
+                default:     Stocked++;
+            }
+            Token tk = new Token(sz);
+            total += tk?.Value;
+            if (tk?) delete tk;
+            if (Journal?) {
+                Journal += Names[tier];
+                Journal += " ";
+            }
+        }
+        Load = total;
+        Range = Span{ 1, total };
+        int used = Hits.filter((int h) => h > 0).count();
+        bool crowded = Hits.skip(1).any((int h) => {
+            int limit = 2;
+            return h >= limit;
+        });
+        if (crowded) Last = Names[3];
+        else Last = parent;
+        var raw = Last;
+        switch (typeof(raw)) {
+            case eType.string: printLine($"({self}: {used} tiers, crowded, {(string)Last})");
+            case eType.object: printLine($"({self}: {used} tiers, in {(object)Last})");
+            default:           printLine("(?)");
+        }
+        Grams limit = 10;
+        if (Load.Heavy && Range.Holds(limit)) Ping.perform(self);
+        return total;
+    }
+}
+
+//-- Cluster 3: more shared members added by an extension (like a C# partial class) ------------------------
+
+extend class Shelf {
+    static array<array<int>> Bands[3] = { {0, 3}, {4, 9}, {10, 99} };
+    static array<string> Marks[3] = { "low", "mid", "top" };
+    static int Ranked;
+
+    // The band v falls in, searched from band i on; -1 past the last band.
+    static int BandOf(int v, int i) {
+        if (i >= Bands.length) return -1;
+        if (v >= Bands[i][0] && v <= Bands[i][1]) return i;
+        return BandOf(v, i + 1);
+    }
+
+    // Ranks the shelf's children into into: each child's band mark, then the heaviest band, the count of
+    // children over the cutoff, and the cutoff's band packed in I6.
+    static int Rank(Shelf s, ref band cutoff, weight extra, ref stringObj into) {
+        Ranked++;
+        array<int> sizes[6];
+        for (object o in s.children) sizes.append(((Item)o).Size + (int)extra);
+        func<int, int> toBand = (int v) => BandOf(v, 0);
+        int over = sizes.filter((int v) => {
+            int b = BandOf(v, 0);
+            return b >= 0 && !cutoff.Holds(v);
+        }).count();
+        int top = -1;
+        for (int v in sizes) {
+            int b = toBand(v);
+            switch (b) {
+                case < 0:  into += "?";
+                case 0 to 2: into += Marks[b];
+            }
+            into += " ";
+            if (b > top) top = b;
+        }
+        Token tk = new Token(top);
+        object first = s.children.length > 0 ? s.parent?.parent : null;
+        Entry e = Marks[0];
+        if (tk?.Value > 0 && !(first?)) e = s;
+        var raw = e;
+        if (typeof(raw) == eType.object) into += "shelf";
+        else into += (string)e;
+        int lo = cutoff.Lo;
+        int code;
+        #i6 { $i6Expr(code) = $i6Expr(lo) * 10 + $i6Expr(over); }
+        stringObj tail = $" [{s[9]} held, {code}]";
+        into += tail;
+        cutoff = Span{ cutoff.Lo, cutoff.Hi + 1 };
+        if (tk?) delete tk;
+        if (over > 1) Ping.perform(s);
+        return top;
+    }
+}
+
+//-- Cluster 2: an object of that class with a property that reaches back to it ------------------------------
+
+Shelf shelfA {
+    "shelf A", 1;
+    parent = roomA;
+    alias span for Span;
+    int Writes;
+    int Rejects;
+    array<string> Tags[4] = { "a", "b" };
+    array<array<int>> Steps[2];
+
+    auto Level = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) {
+            span ok = { 0, 5 };
+            if (!ok.Holds(v)) {
+                outer.Rejects++;
+                return;
+            }
+            _v = v;
+            outer.Writes++;
+            switch (v) {
+                case 0:      outer.Tags[0] = "zero";
+                case 1 to 2: outer.Tags[0] = "low";
+                default:     outer.Tags[0] = "high";
+            }
+            object up = outer.parent?.parent;
+            if (!(up?) && v > 4) Ping.perform(outer);
+            outer[1] = v;
+        }
+    }
+
+    // Writes v into tag slot i as a word; past the tags, nothing.
+    void operator []= (int i, int v) {
+        if (i < 0 || i >= Tags.size) return;
+        if (Tags.length <= i) Tags.length = i + 1;
+        Tags[i] = Shelf.Names[v / 2];
+    }
+
+    replace stringObj Summary() {
+        stringObj s = $"{Tags[0]}-{Tags[1]}";
+        return s;
+    }
+
+    // Adds the set tags and a code for them to into; returns the code, set tags times ten plus the spread
+    // of the step table.
+    int Report(ref stringObj into) {
+        array<array<int>> marks = { {1, 2}, {3, 6} };
+        Grams floor = 2;
+        int set = Tags.filter((string t) => t != null).count();
+        bool full = Tags.all((string t) => {
+            if (t == null) return false;
+            return true;
+        });
+        int spread = 0;
+        for (array<int> r in marks) spread += r[1] - r[0];
+        Token tk = new Token(spread);
+        int held = tk?.Value;
+        if (tk?) delete tk;
+        int code;
+        #i6 { $i6Expr(code) = $i6Expr(set) * 10 + $i6Expr(held); }
+        Entry e = Tags[0];
+        if (full || set < (int)floor) e = self;
+        var raw = e;
+        switch (typeof(raw)) {
+            case eType.string: into += (string)e;
+            case eType.object: into += "self";
+            default:           into += "?";
+        }
+        stringObj tail = $" {set}/{code}";
+        into += tail;
+        return code;
+    }
+
+    // The sum of a run of steps, counted down recursively.
+    int Sum(int n) {
+        if (n <= 0) return 0;
+        return n + Sum(n - 1);
+    }
+}
+
+Shelf shelfB {
+    "shelf B", 2;
+    parent = roomA;
+}
+
+Item boltA  { "bolt A", 2;  parent = shelfA; }
+Item gearB  { "gear B", 5;  parent = shelfA; }
+Item plateC { "plate C", 12; parent = shelfA; }
+Item pinD   { "pin D", 0;   parent = shelfB; }
+Item tubeE  { "tube E", 7;  parent = shelfB; }
+
+//-- A replaced global routine -------------------------------------------------------------------------------
+
+int Tally(int n) { return n; }
+
+replace int Tally(int n) {
+    if (n <= 0) return replaced(n);
+    return replaced(n) + Tally(n - 1);
+}
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        stringObj trail = "";
+        shelfA.Journal := trail;
+        shelfB.Journal := trail;
+        int a = shelfA.Stock();
+        int b = shelfB.Stock();
+        printLine($"Trail {trail}; totals {a} {b}, built {Shelf.Built}.");
+        printLine($"Hits {shelfA[0]} {shelfA[1]} {shelfA[2]} {shelfA[3]}, held {shelfA[9]} {shelfB[9]}, pin marked {pinD.has(marked)}.");
+        printLine($"Packed {shelfA.Packed()} {shelfB.Packed()}, depth {Shelf.Depth(boltA)} {Shelf.Depth(roomA)}, pings {PingCount}.");
+        stringObj d = shelfB.Summary();
+        printLine($"Described {d}.");
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    void handler() {
+        shelfA.Level = 2;
+        shelfA.Level = 9;
+        shelfA.Level = 5;
+        shelfA.Level = -1;
+        stringObj d = shelfA.Summary();
+        stringObj r = "";
+        int code = shelfA.Report(r);
+        printLine($" report {r} {code}.");
+        printLine($"Level {shelfA.Level}, writes {shelfA.Writes}, rejects {shelfA.Rejects}, described {d}, sum {shelfA.Sum(4)}, tally {Tally(3)}.");
+    }
+}
+
+// Moves what fits from shelf B onto shelf A, smallest first, and says what moved and what stayed.
+#using Kit
+verb Sweep {
+    grammar = {.sweep};
+
+    // How many of the sizes from i on fit in the room left, taking each one that does.
+    int Fit(array<int> sizes, int i, int room) {
+        if (i >= sizes.length) return 0;
+        if (sizes[i] <= room) return 1 + Fit(sizes, i + 1, room - sizes[i]);
+        return Fit(sizes, i + 1, room);
+    }
+
+    void handler() {
+        array<array<int>> limits = { {1, 8}, {2, 4} };
+        array<string> verdicts = { "kept", "moved" };
+        array<int> sizes[4];
+        for (object o in shelfB.children) sizes.append(((Item)o).Size);
+        array<int> order = sizes.orderBy();
+        band allowed = Span{ 0, limits[0][1] };
+        weight room = limits[0][1] - (int)shelfA.Load / 4;
+        int fits = Fit(order, 0, (int)room);
+        stringObj said = "";
+        ref stringObj journal := said;
+        int moved = 0;
+        for (object o in shelfB.children) {
+            int sz = ((Item)o).Size;
+            bool ok = allowed.Holds(sz) && order.take(fits).any((int s) => s == sz);
+            if (ok) {
+                o.parent = shelfA;
+                moved++;
+            }
+            journal += verdicts[(int)ok];
+            journal += " ";
+        }
+        Token tk = new Token(moved);
+        object top = shelfB.parent?.parent;
+        int code;
+        #i6 { $i6Expr(code) = $i6Expr(fits) * 10 + $i6Expr(moved); }
+        Entry e = verdicts[1];
+        if (top?) e = top;
+        var raw = e;
+        switch (typeof(raw)) {
+            case eType.string: journal += (string)e;
+            default:           journal += "top";
+        }
+        int left = order.filter((int s) => {
+            return s > (int)room;
+        }).count();
+        switch (code) {
+            case 0:       printLine("Nothing fits.");
+            case 1 to 99: printLine($"Swept: {said} (code {code}, room {(int)room}, left {left}, token {tk?.Value}, A holds {shelfA[9]}, B holds {shelfB[9]}).");
+        }
+        if (tk?) delete tk;
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        Span cut = Span{ 0, 6 };
+        stringObj a = "";
+        stringObj b = "";
+        int ta = Shelf.Rank(shelfA, cut, 1, a);
+        int tb = Shelf.Rank(shelfB, cut, 0, b);
+        printLine($"A: {a} ({ta}); B: {b} ({tb}); cutoff {cut.Lo}-{cut.Hi}, ranked {Shelf.Ranked}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

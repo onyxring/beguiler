@@ -1,0 +1,248 @@
+/*  Field trial part — included by library_author_idioms_12.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+#include <string>
+
+// ---- Codes: a number that can be absent. ----
+
+/// A shelf code; zero is no code.
+primitive class la12Code : int {
+    emitter void operator = (la12Code v) { $target = $v; }
+    replace emitter void operator = (int v) { $target = $v; }
+    replace explicit emitter int operator () { ($self) }
+    /// A code is present when it isn't zero.
+    emitter eBool operator ? () { ($self ~= 0) }
+    /// Moves a code on in place.
+    replace emitter la12Code operator += (int v) { $val = $val + $v }
+
+    /// The first present code of two, or none.
+    static la12Code either(la12Code a, la12Code b) {
+        if (a?) return a;
+        if (b? && (int)b > 0) return b;
+        return 0;
+    }
+}
+
+// ---- Gears: a class written in I6, adopted here. ----
+
+#i6 {
+    Class La12GearI6 with la12Teeth 0;
+}
+
+/// A gear; its class lives on the I6 side.
+extern class La12GearI6 : object {
+    int la12Teeth;
+    static array<int> turns[6];
+
+    /// Logs one turn of a gear and says where it sits; the teeth logged from one turn on.
+    static int turn(La12GearI6 g, int from) {
+        La12GearI6.turns += g.la12Teeth;
+        print($"{g} in {g?.parent}: ");
+        func<int, int> since = (int at) => {
+            int t = 0;
+            for (int i = at; i < La12GearI6.turns.length; i++) t += La12GearI6.turns[i];
+            return t;
+        };
+        return since(from);
+    }
+}
+
+// ---- Shelves: shared slots and bays. ----
+
+/// A shelf; every shelf shares one list of slots and one set of bays.
+class La12Shelf : object {
+    int got = 0;
+    ref array<int> view;
+    static array<int> slots[12] = {1, 2};
+    static array<array<int>> bays = { {1, 2, 3}, {4, 5}, {6} };
+
+    /// Adds a value to the shared slots.
+    La12Shelf operator += (int v) {
+        La12Shelf.slots += v;
+        got++;
+        return self;
+    }
+
+    /// True once this shelf has added anything.
+    emitter bool busy() { ($self.got > 0) }
+
+    /// Points the shelf's view at the shared slots.
+    void watch() { view := La12Shelf.slots; }
+
+    /// The shared slots summed from one place on.
+    static int sumFrom(int i) {
+        if (i >= La12Shelf.slots.length) return 0;
+        return La12Shelf.slots[i] + sumFrom(i + 1);
+    }
+
+    /// One cell of a bay.
+    static int cell(int b, int c) {
+        return La12Shelf.bays[b][c];
+    }
+
+    /// Every bay's cells summed.
+    static int bayTotal() {
+        int t = 0;
+        for (array<int> bay in La12Shelf.bays) {
+            for (int v in bay) t += v;
+        }
+        return t;
+    }
+
+    /// Takes a thing through the library's own action, then logs it when it was taken.
+    void stock(object o) {
+        Take.perform(o);
+        if (o.parent == player) self += 100;
+    }
+}
+
+// ---- Tags: words linked in a chain. ----
+
+/// A word with a link to the next.
+class La12Tag : object {
+    string word = "tag";
+    La12Tag next;
+
+    /// True when another tag follows.
+    emitter bool linked() { ($self.next ~= 0) }
+
+    /// Prints the tag and the next one's, upper-cased, with the length.
+    void shout() {
+        array<char> b[32];
+        bgl.util.buf.capture(b);
+        print(word);
+        if (next?) {
+            print("/");
+            print(next.word);
+        }
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(b);
+        bgl.util.buf.print(b);
+        print($" ({b.length})");
+    }
+
+    /// How many tags of a list have a next one.
+    int countLinked(array<La12Tag> tags) {
+        func<bool, La12Tag> has = (La12Tag t) => {
+            if (!t?) return false;
+            return t.next?;
+        };
+        int c = 0;
+        for (La12Tag t in tags) if (has(t)) c++;
+        return c;
+    }
+}
+
+// ---- Counts in units: two value bases. ----
+
+/// A count of something.
+value class La12Qty {
+    int n;
+    La12Qty operator = (La12Qty o) { n = o.n; return self; }
+}
+
+/// What a count is counted in.
+value class La12Unit {
+    la12Code unit;
+    La12Unit operator = (La12Unit o) { unit = o.unit; return self; }
+}
+
+// ---- The kit's namespace. ----
+
+/// Types and helpers, reached as la12.
+object la12 {
+    alias code  for la12Code;
+    alias qty   for La12Qty;
+    alias unit  for La12Unit;
+    alias shelf for La12Shelf;
+    alias tag   for La12Tag;
+
+    /// Default spans, row by row.
+    array<array<code>> spans = { {1, 2}, {0, 4, 5} };
+
+    /// One span; none off the table.
+    code spanAt(int r, int c) {
+        if (r >= spans.length || c >= spans[r].length) return 0;
+        return spans[r][c];
+    }
+
+    /// The name of a unit code.
+    string unitName(code u) {
+        switch ((int)u) {
+            case 1: return "box";
+            case 2: return "crate";
+        }
+        return "unit";
+    }
+}
+
+#using la12
+
+/// A count in a unit: added, scaled, compared and printed.
+value class La12Amount : qty, unit {
+    La12Amount operator = (La12Amount o) {
+        (qty)self = o;
+        (unit)self = o;
+        return self;
+    }
+    La12Amount operator + (La12Amount o) {
+        La12Amount r = self;
+        r.n = n + o.n;
+        return r;
+    }
+    La12Amount operator - (La12Amount o) {
+        La12Amount r = self;
+        r.n = n - o.n;
+        return r;
+    }
+    La12Amount operator * (int k) {
+        La12Amount r = self;
+        r.n = n * k;
+        return r;
+    }
+    La12Amount operator += (La12Amount o) {
+        n = n + o.n;
+        return self;
+    }
+    bool operator == (La12Amount o) { return n == o.n && unit == o.unit; }
+    bool operator != (La12Amount o) { return !(self == o); }
+
+    /// Twice the count, worked out where it is used.
+    emitter int twice() { $i6Expr(bgl.asm.add($self.n, $self.n)) }
+
+    /// Adds every amount of a list in.
+    void addAll(array<La12Amount> list) {
+        for (La12Amount a in list) self += a;
+    }
+
+    /// Adds this amount into one held elsewhere.
+    void into(ref La12Amount dst) { dst += self; }
+
+    /// How many amounts of a list, doubled, are above this one scaled.
+    int countOver(array<La12Amount> list, int k) {
+        func<bool, La12Amount> over = (La12Amount a) => {
+            La12Amount both = a + a;
+            La12Amount big = self * k;
+            return both.n > big.n;
+        };
+        int c = 0;
+        for (La12Amount a in list) if (over(a)) c++;
+        return c;
+    }
+
+    /// The amount in words.
+    stringObj text() {
+        stringObj s = $"{n}";
+        s += " ";
+        s += la12.unitName(unit);
+        return s;
+    }
+
+    /// Prints the amount.
+    void print() { ::print($"{n}/{(int)unit}"); }
+}
+
+extend la12 {
+    alias amount for La12Amount;
+}

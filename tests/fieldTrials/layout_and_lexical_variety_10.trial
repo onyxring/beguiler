@@ -1,0 +1,35 @@
+Room A
+A plain room.
+> hier
+widget[named|coloured]
+gadget>widget[named|coloured]
+gizmo>gadget>widget[named|coloured]
+1 1 1 7 9 5
+NNN
+coloured named widget[named|coloured]
+gizmo>gadget>widget[named|coloured]
+41 42 43
+> objs
+gB\>gadget>widget[named|coloured]
+nN
+3 44 7
+gB\>gadget>widget[named|coloured]
+45 1 90
+> text
+one two
+7 8
+raw\one raw\two
+1 12 15
+> slots
+10 20 30
+1 2 3
+100 200 300
+> statics
+3 3 105 105
+8 10 20
+11
+10 4
+> loops
+3 -2
+zero few some many negative
+5

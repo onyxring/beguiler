@@ -1,0 +1,200 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit split over kit and verbs parts; extend extern class array with T-typed emitters,
+// $i6Expr subscripts, $opref(==) handed to an I6 routine (static and instance operators) and an emitter
+// value reading $prop, used on global, local and inline member arrays; a separately stored member
+// array on z5; a class re-listing instanceName as positional, extended by the consumer with a further
+// inline member between its objects; static ==, != and <=> used by contains/indexOf/sort and as
+// Type::operator; multiple inheritance with a required method, a const member set per object and an
+// object with two bases; an additive property with rawArray contributions from class and object;
+// property parameters with computed access; a primitive class with a static deinit value form and
+// operator auto, dropped by remove, -=, clear and scope exit; an emitter class with init/deinit traced
+// through nested blocks and an early return; a file-scope rawArray passed by address; a verb class
+// with meta and a default body; NOUN(filter), SCOPE(routine) and a general parsing routine; perform()
+// of a native verb; a grammar object with per-rule priorities, one taking a library word ahead of the
+// library; grammar -= and replace grammar from the consumer; #using bgl.printRules in interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_6_parts/library_author_idioms_6_verbs"
+
+#using bgl.printRules
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+// Coins declared before the consumer adds the year slot; they still give it positionally.
+la6Coin penny  { "penny", 1, 1990; parent = roomA; name = {.penny}; }
+la6Coin nickel { "nickel", 5, 1985; parent = roomA; name = {.nickel}; }
+
+extend class la6Coin {
+    inline int year;
+}
+
+la6Coin token  { "token", 1, 2020; parent = roomA; name = {.token}; }
+la6Coin crown  { "crown", 25, 1970; parent = roomB; name = {.crown}; }
+
+la6Bin bin {
+    "bin";
+    parent = roomA;
+    name = {.bin};
+    capacity = 2;
+    string label() { return "Bin"; }
+}
+
+la6Bin cup {
+    "cup";
+    parent = roomB;
+    name = {.cup};
+    capacity = 2;
+    string label() { return "Cup"; }
+}
+
+object strongbox : la6Bin, la6Marked {
+    "strongbox";
+    parent = roomA;
+    name = {.strongbox};
+    la6Marks = {7};
+    array<int> log[40];
+    string label() { return "Strongbox"; }
+}
+
+array<int> tally = {4, 9, 7, 4};
+array<la6Coin> purse[6];
+
+extend Flip {
+    grammar -= { {.spin} };
+}
+
+extend Stack {
+    replace grammar = { {.pile, la6ParseCount, .coins} };
+}
+
+la6Report Holdings {
+    grammar = {.holdings};
+    heading = "Holdings";
+    void body() {
+        print($"bin {bin.count}, strongbox {strongbox.count}, flips {la6Flips}, turns {turns}");
+    }
+}
+
+la6Report Marks {
+    grammar = {.marks};
+    heading = "Marks";
+    void body() {
+        print($"{strongbox.la6Marks.length} marks, first {strongbox.la6Marks[0]}, sum {la6MarkSum(strongbox)}");
+        print($"; count {la6Read(strongbox, count)}, value {la6Read(token, value)}");
+        print($", year {la6Read(token, year)}, none {la6Read(roomA, count)}");
+    }
+}
+
+verb Bank {
+    grammar = {.bank, NOUN(la6IsCoin), .in, NOUN};
+    void handler() {
+        if (!second.is(la6Bin)) { print($"{cThe(second)} holds no coins.^"); return; }
+        la6Bin b = (la6Bin)second;
+        b.put((la6Coin)noun);
+        strongbox.log += ((la6Coin)noun).value;
+    }
+}
+
+verb Arrays {
+    grammar = {.arrays};
+    void handler() {
+        print($"Tally: second {tally.second()}, tail {tally.tail()}, fours {tally.countOf(4)}");
+        print($", member {tally.isMember}.^");
+        purse.clear();
+        purse += {nickel, penny, crown, token};
+        print($"Purse: pennies {purse.countOf(penny)}, crowns {purse.countOf(crown)}");
+        print($", token at {purse.indexOf(token)}, second {purse.second()}, tail {purse.tail()}.^");
+        purse.sort();
+        for (la6Coin c in purse) print($"{c} ");
+        purse.sort((la6Coin a, la6Coin b) => b.year - a.year);
+        for (la6Coin c in purse) print($"{c.year} ");
+        purse.sort(la6Coin::operator <=>);
+        print($"{purse[0] == purse[1]} {purse[1] != purse[2]} {purse[2] < purse[3]}.^");
+        array<int> local = {2, 2, 8};
+        print($"Local: fours {local.countOf(4)}, twos {local.countOf(2)}, second {local.second()}");
+        print($", member {local.isMember}.^");
+        array<la6Bin> bins = {bin, strongbox, cup};
+        print($"Bins: like bin {bins.countOf(bin)}, like strongbox {bins.countOf(strongbox)}, {bin != strongbox} {bin == cup}.^");
+        if (strongbox.log.length > 0)
+            print($"Log: {strongbox.log.length}, first {strongbox.log[0]}, second {strongbox.log.second()}, tail {strongbox.log.tail()}");
+        else
+            print("Log: empty");
+        print($"; held member {bin.held.isMember}.^");
+        print($"Weights {la6SumRaw(&la6Weights, 3)}.^");
+    }
+}
+
+verb Trace {
+    grammar = {.trace};
+    void handler() {
+        {
+            la6Span outer;
+            print($" d{outer.depth}");
+            for (int i in 1 to 2) {
+                la6Span inner;
+                print($" d{inner.depth}");
+            }
+            if (la6Probe(true) > 0) print(" early");
+            if (la6Probe(false) == 0) print(" late");
+        }
+        print($" depth {la6Depth}.^");
+    }
+}
+
+verb Lend {
+    grammar = {.lend};
+    void handler() {
+        array<la6Handle> out[4];
+        for (int i in 1 to 4) out += la6Next();
+        out.remove(1);
+        la6Handle h = out[0];
+        out -= h;
+        print($"Out {out.length}, drops {la6Drops}, returned {la6Returned}.^");
+        auto n = out[0];
+        n = n + 100;
+        print($"Auto {n}.^");
+    }
+}
+
+verb Settle {
+    grammar = {.settle};
+    void handler() {
+        array<la6Handle> out[3];
+        out += la6Next();
+        out += la6Next();
+        out.clear();
+        print($"Cleared {out.length}; drops {la6Drops}, returned {la6Returned}, issued {la6Issued}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la6Vault = crown;
+    rfalse;
+}
+
+#includeI6 "grammar"

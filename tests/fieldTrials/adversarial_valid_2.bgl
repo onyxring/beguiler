@@ -1,0 +1,451 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual combinations, nine areas at a time, on the Z-machine. A value class
+// with arithmetic overloads (one taking an enum operand), an emitter `operator switch` that lets the
+// class itself be switched on, emitter members whose $i6Expr bodies chain through the class's own
+// operators, a named-union member, and a method that keeps a local array<string>, tests and gives
+// attributes, switches on an enum, on ranges and on itself, narrows a var with typeof and performs
+// a verb; an object with an inline accessor that declares its own `operator +=` and `operator ++`
+// and reaches its host through outer (moving children, writing a value-class member), and methods
+// taking array<object> parameters that move objects by parent, switch on ranges, keep var locals,
+// run #i6 islands over their locals with $i6Expr, and perform verbs; a value class deriving from
+// another that subscripts its ancestor through a cast (also inside an emitter's $i6Expr), stores
+// through its own `operator []=`, scans an array<char> parameter with a char-range switch, and
+// performs a verb; enum emitter members reached from $i6Expr; verbs whose handlers combine the same
+// areas again, walk children, switch on action and read a byte array through a value class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>   // element stores into arrays of value classes
+
+extend class object {
+    string description;
+}
+
+attribute tagged;
+attribute weighed;
+
+enum eShade {
+    pale, dim, deep, black,
+    emitter int depth()       { ($self * 3) }
+    emitter int lean(int by)  { $i6Expr((int)$self + $by) }
+}
+
+bnum eMark { scuffed, bent, polished }
+
+union token = string | object;
+
+void print(token t) {
+    if (typeof(t) == eType.string) print((string)t);
+    else print((object)t);
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+object brassKey  { "brass key";  parent = roomA; }
+object tinBox    { "tin box";    parent = roomA; attributes = {container, open}; }
+object glassBead { "glass bead"; parent = tinBox; }
+object woodPeg   { "wood peg";   parent = roomB; }
+object ironRing  { "iron ring";  parent = roomB; }
+
+int taps = 0;
+int pings = 0;
+
+// ---- cluster 1: a value class with arithmetic, enum and attribute work ---------------------------
+
+value class Tally {
+    int n;
+    eShade shade;
+    eMark marks;
+    token last;
+
+    Tally operator = (Tally o) {
+        n = o.n;
+        shade = o.shade;
+        marks = o.marks;
+        last = o.last;
+        return self;
+    }
+    Tally operator = (int v) { n = v; return self; }
+    int operator + (int k)    { return n + k; }
+    int operator + (eShade s) { return n + s.depth(); }
+    int operator * (Tally o)  { return n * o.n; }
+    int operator % (int k)    { return n % k; }
+    int operator - (int k)    { return n - k; }
+    emitter eBool operator switch (int v) { ($self.n == $v) }
+
+    emitter int weight()   { $i6Expr($self + $self.shade) }
+    emitter int squared()  { $i6Expr($self * $self) }
+    emitter int leaned()   { $i6Expr($self.shade.lean($self.n)) }
+
+    string grade(object o) {
+        array<string> names = {"none", "low", "mid", "high", "full"};
+        var seen = o;
+        if (o.has(tagged)) n = self + 2;
+        else o.give(tagged);
+        switch (shade) {
+            case pale:      last = names[0];
+            case dim, deep: last = names[2];
+            default:        last = o;
+        }
+        switch (self) {
+            case 0:  marks = scuffed;
+            case 3:  marks = bent;
+            default: marks = polished | bent;
+        }
+        if (typeof(seen) == eType.object && o.has(weighed)) {
+            o.ungive(weighed);
+            Tap.perform(o);
+        }
+        int score = self % 5;
+        switch (score) {
+            case 0 to 1: return names[1];
+            case 2 to 3: return names[3];
+            default:     return names[4];
+        }
+    }
+
+    int markCount() {
+        int c = 0;
+        if (marks & scuffed)  c++;
+        if (marks & bent)     c++;
+        if (marks & polished) c++;
+        return c;
+    }
+}
+
+// ---- cluster 2: an object whose inline accessor has its own compound operators -------------------
+
+object rack {
+    "rack";
+    parent = roomA;
+    attributes = {supporter};
+    int moved = 0;
+    int bumps = 0;
+    var lastMoved;
+    Tally kept;
+
+    auto load = {
+        int _w = 0;
+        int operator () { return _w; }
+        void operator = (int v) {
+            switch (v) {
+                case < 0:    _w = 0;
+                case 0 to 9: _w = v;
+                default:
+                _w = 9;
+                Tap.perform(outer);
+            }
+            outer.moved++;
+            outer.kept.n = _w;
+        }
+        int operator += (int v) {
+            _w = _w + v;
+            outer.moved += 10;
+            for (object o in outer.children) {
+                if (_w > 20) o.parent = roomB;
+            }
+            outer.kept.n = _w;
+            return _w;
+        }
+        int operator ++ () {
+            _w = _w + 100;
+            outer.bumps++;
+            var host = outer.lastMoved;
+            if (typeof(host) == eType.object) outer.kept.last = (object)host;
+            return _w;
+        }
+    };
+
+    int shift(array<object> items, object dest) {
+        int n = 0;
+        Tally t;
+        for (int i = 0; i < items.length; i++) {
+            object o = items[i];
+            var v = o;
+            if (o.parent == dest) continue;
+            switch (n) {
+                case 0:      t.shade = pale;
+                case 1 to 2: t.shade = deep;
+                default:     t.shade = black;
+            }
+            o.parent = dest;
+            lastMoved = v;
+            n++;
+        }
+        #i6 { n = n * 10; }
+        #i6 n = n + $i6Expr(t.weight());
+        t.n = n;
+        kept = t;
+        if (n > 0) Ping.perform(dest);
+        return n;
+    }
+
+    int census(array<object> items) {
+        int inside = 0;
+        for (object o in items) {
+            if (o.parent == self) inside++;
+        }
+        #i6 inside = inside + $i6Expr(self.children.length) * 100;
+        return inside;
+    }
+}
+
+// ---- cluster 3: a value class over another, subscripting its ancestor ----------------------------
+
+value class Cell {
+    int v;
+    eShade tint;
+    Cell operator = (Cell o) { v = o.v; tint = o.tint; return self; }
+    int operator [] (int i) { return v + i; }
+    int describe() { return v * 2; }
+}
+
+value class Row : Cell {
+    int w;
+    array<char> code[6];
+
+    Row operator = (Row o) {
+        w = o.w;
+        for (int i = 0; i < 6; i++) code[i] = o.code[i];
+        (Cell)self = o;
+        return self;
+    }
+    replace int operator [] (int i) { return ((Cell)self)[i] * 10 + code[i]; }
+    int operator []= (int i, int x) { code[i] = x; return x; }
+    int describe() { return ((Cell)self).describe() + w; }
+
+    emitter int peek(int i)  { $i6Expr($self[$i] + 1) }
+    emitter int base(int i)  { $i6Expr(((Cell)$self)[$i]) }
+
+    int scan(array<char> text, object o) {
+        int hits = 0;
+        var first = text[0];
+        for (int i = 0; i < text.length; i++) {
+            switch (text[i]) {
+                case 'a' to 'm': hits++;
+                case 'n' to 'z': hits += 2;
+                default:         self[i % 6] = text[i] - '0';
+            }
+        }
+        if (typeof(first) == eType.int && hits > 3) Ping.perform(o);
+        return hits;
+    }
+}
+
+// ---- verbs reached by perform() ------------------------------------------------------------------
+
+verb Tap {
+    grammar = {.tap, NOUN};
+    void handler() {
+        taps++;
+        printLine($"Tap {noun}.");
+    }
+}
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        pings++;
+        printLine($"Ping {noun}.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs ---------------------------------------------------------------------------------
+
+verb ProbeTally {
+    grammar = {.probetally};
+    meta = true;
+    void handler() {
+        Tally a;
+        Tally b;
+        a.n = 3;
+        a.shade = dim;
+        b = a;
+        b.n = 4;
+        printLine($"Plus {a + 5}, shade-plus {a + deep}, times {a * b}, minus {b - 1}.");
+        printLine($"Weight {a.weight()}, squared {b.squared()}, leaned {a.leaned()}.");
+        print(a.grade(brassKey));
+        print(" ");
+        print(a.last);
+        printLine($" marks {a.markCount()} key {brassKey.has(tagged)}.");
+        brassKey.give(weighed);
+        a.shade = black;
+        print(a.grade(brassKey));
+        print(" ");
+        print(a.last);
+        printLine($" n {a.n} marks {a.markCount()} taps {taps}.");
+        b.shade = pale;
+        print(b.grade(tinBox));
+        print(" ");
+        print(b.last);
+        printLine($" marks {b.markCount()}.");
+    }
+}
+
+array<object> loose = {brassKey, tinBox, woodPeg};
+
+verb ProbeRack {
+    grammar = {.proberack};
+    meta = true;
+    void handler() {
+        rack.load = 4;
+        printLine($"Load {rack.load}, moved {rack.moved}, kept {rack.kept.n}.");
+        rack.load = 40;
+        printLine($"Load {rack.load}, moved {rack.moved}.");
+        int got = rack.shift(loose, rack);
+        printLine($"Shifted {got}, kept {rack.kept.n}, census {rack.census(loose)}, pings {pings}.");
+        rack.load += 5;
+        printLine($"Load {rack.load}, moved {rack.moved}, kept {rack.kept.n}.");
+        rack.load += 20;
+        printLine($"Load {rack.load}, census {rack.census(loose)}.");
+        rack.load++;
+        print($"Load {rack.load}, bumps {rack.bumps}, last ");
+        print(rack.kept.last);
+        printLine(".");
+        int count = 0;
+        for (object o in roomB.children) count++;
+        printLine($"Room B holds {count}.");
+    }
+}
+
+array<char> sample = "ab9zq7";
+array<Row> rows[2];
+
+verb ProbeRow {
+    grammar = {.proberow};
+    meta = true;
+    void handler() {
+        Row r;
+        r.v = 2;
+        r.w = 5;
+        r[1] = 3;
+        printLine($"Sub {r[0]} {r[1]}, peek {r.peek(1)}, base {r.base(4)}, describe {r.describe()}.");
+        int hits = r.scan(sample, glassBead);
+        printLine($"Hits {hits}, slot2 {r[2]}, slot5 {r[5]}, pings {pings}.");
+        Row s;
+        s = r;
+        s.v = 1;
+        printLine($"Copy {s[2]} {s[5]} {s.describe()}, original {r.describe()}.");
+        Cell c;
+        c = s;
+        printLine($"Cell {c[2]} {c.describe()}.");
+        rows[0] = r;
+        rows[1] = s;
+        rows[1][4] = 8;
+        printLine($"Rows {rows[0][2]} {rows[1][4]} {rows[1].peek(5)} {rows[0].describe()}, s4 {s[4]}.");
+    }
+}
+
+verb ProbeShade {
+    grammar = {.probeshade};
+    meta = true;
+    void handler() {
+        array<string> words = {"pale", "dim", "deep", "black"};
+        eShade s = pale;
+        for (int i = 0; i < 4; i++) {
+            switch (s) {
+                case pale:  s = dim;
+                case dim:   s = deep;
+                case deep:  s = black;
+                default:    s = pale;
+            }
+            int k = s.depth();
+            #i6 k = k + $i6Expr(s.lean(1));
+            print($"{words[i]}:{k} ");
+        }
+        printLine("");
+        switch (action) {
+            case ProbeShade: printLine("Action is ProbeShade.");
+            default:         printLine("Action is other.");
+        }
+    }
+}
+
+// ---- mixed: a ref Tally, a by-value Tally and a var, over an array<string> parameter -------------
+
+extend token {
+    emitter bool isText() { $i6Expr(typeof($self) == eType.string) }
+}
+
+array<Tally> tallies[3];
+
+int ledger(array<string> labels, ref Tally acc, Tally copyOf, var extra) {
+    int total = 0;
+    copyOf.n = copyOf.n + 100;
+    for (int i = 0; i < labels.length; i++) {
+        token t = labels[i];
+        switch (i) {
+            case 0:      acc.shade = dim;
+            case 1 to 2: acc.shade = deep;
+            default:     acc.shade = black;
+        }
+        acc += 2;
+        tallies[i % 3] = acc;
+        if (t.isText()) total = total + acc.weight();
+    }
+    switch (typeof(extra)) {
+        case eType.object:
+            object o = (object)extra;
+            if (o.has(tagged)) total += 1000;
+        case eType.string:
+            total += 500;
+        default:
+            total += 7;
+    }
+    Tap.perform(woodPeg);
+    return total + copyOf.n;
+}
+
+string firstNote(bool fill) {
+    Tally t;
+    string said = "empty";
+    if (t.last != null) said = "stale";
+    if (fill) t.last = "kept";
+    return said;
+}
+
+verb ProbeLedger {
+    grammar = {.probeledger};
+    meta = true;
+    void handler() {
+        Tally start;
+        Tally other;
+        start.n = 1;
+        other.n = 50;
+        array<string> labels = {"one", "two", "three", "four"};
+        int r = ledger(labels, start, other, brassKey);
+        printLine($"Ledger {r}, start {start.n}, other {other.n}, slots {tallies[0].n} {tallies[1].n} {tallies[2].n}.");
+        r = ledger(labels, start, other, "text");
+        printLine($"Ledger {r}, start {start.n}, slot shade-plus {tallies[1] + pale}.");
+        r = ledger(labels, tallies[2], start, 3);
+        printLine($"Ledger {r}, slot2 {tallies[2].n}, start {start.n}, taps {taps}.");
+        print(firstNote(true));
+        print(" ");
+        printLine(firstNote(false));
+    }
+}

@@ -1,0 +1,107 @@
+Room A
+Room A.
+
+
+> ledger
+ [total 0, cells 0, last 0/0, peek 0]
+
+> postn 3
+post n (low) = 3; big 0 [total 3, cells 1, last 3/1, peek 3]
+Posted 3.
+
+> postn 0
+post n (nil) = 0; big 0 [total 3, cells 2, last 0/2, peek 3]
+Posted 0.
+
+> postn 12
+post n (mid) = 24; big 1, nine+ [total 27, cells 3, last 24/3, peek 27]
+Posted 24.
+
+> postr 5
+post Room B (mid) = 12; big 2, nine+ [total 39, cells 4, last 12/4, peek 39]
+Posted 12; B tagged true, A tagged true.
+
+> postr 4
+post Room B (mid) = 10; big 3, nine+ [total 49, cells 5, last 10/5, peek 49]
+Posted 10; B tagged true, A tagged true.
+
+> posth 25
+post Room A (cap) = 40; big 4, nine+ [total 89, cells 6, last 40/6, peek 89]
+Posted 40; A tagged true.
+
+> ledger
+ [total 89, cells 6, last 40/6, peek 89]
+
+> lplus 7
+Copy total 96, cells 6, last cell 40; book total 89, cells 6, cell 9 -1.
+
+> ledger
+ [total 89, cells 6, last 40/6, peek 89]
+
+> panel
+<level 0, hits 0, pair 0/0, peek 0>
+
+> sample 2 1
+num (trace 1) <level 6, hits 0, pair 2/2, peek 6>
+Sampled 6.
+
+> sample 4 3
+num (trace 2) <level 14, hits 0, pair 3/3, peek 14>
+Sampled 14.
+
+> probe
+[probe 3 / deep probe 30] (trace 3) <level 12, hits 0, pair 2/3, peek 12>
+Probed 12.
+
+> scale 3
+Scale set. <level 12, hits 0, pair 2/3, peek 12>
+
+> sample 2 1
+num (trace 4) <level 9, hits 1, pair 2/2, peek 10>
+Sampled 10.
+
+> sample 2 1
+num (trace 5) <level 9, hits 1, pair 2/2, peek 11>
+Sampled 11.
+
+> panel
+<level 9, hits 1, pair 2/2, peek 11>
+
+> crates
+No crate.
+
+> mkcrate 3
+Crate made, weight 3.
+
+> stow
+(crate w8 h2 kind 2 seen 1 in shelf; tickets 1/1, caught 0)
+Stowed 2.
+
+> stow
+Stowed -1.
+
+> stowb
+(crate w13 h3 kind 3 seen 2 in Room B; tickets 1/1, caught 950)
+Stowed 3.
+
+> stowx
+Stowed -1; caught 900, tickets 0.
+
+> slot 0
+Slot 0: 8.
+
+> slot 1
+Slot 1: 13.
+
+> slot 3
+No slot: 703.
+
+> mkcrate 8
+Crate made, weight 8.
+
+> stow
+(crate w13 h2 kind 3 seen 1 in shelf; tickets 1/1, caught 900)
+Stowed 3.
+
+> crates
+(crate w13 h2 kind 3 seen 1 in shelf; tickets 0/1, caught 900)

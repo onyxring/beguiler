@@ -1,0 +1,176 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a float kit on Glulx split over units and kit parts, guarded by #error on the target,
+// with a float #define the consumer sets before it (used in an expression) and a #defineI6 the kit
+// defaults and reads from an emitter body; const float, a float emitter value written in I6 float
+// syntax, extend extern class float with emitters calling kit routines; a primitive newtype over float
+// with its own and replacing operators, an explicit conversion, a static <=> and a global print
+// overload, as a global, a member and an array element sorted by a comparator; a value class of floats
+// with a method print(), copy, == and !=, ref and by-copy parameters, filled by an extern I6 routine
+// that works in float; an inline float accessor on an object with outer; a pooled class with a four-float create (Glulx
+// forwards them all), a static count and a local float array sorted by float::operator <=>; func<>
+// callbacks over array<float> with capturing lambdas; float default and named arguments; replace of a
+// kit float function with replaced(); NUMBER tokens converted to float; mixed int/float arithmetic,
+// truncating casts and bgl.util.math in float; a stored emit block no template asks for.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#define LA10_STEP 0.25
+#include "library_author_idioms_10_parts/library_author_idioms_10_kit"
+
+#using bgl.printRules
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- The consumer's things. ----
+
+extend class la10Weighed {
+    /// How tightly packed the thing is.
+    float density = 1.0;
+}
+
+la10Weighed brick  { "brick";  parent = roomA; name = .brick;  mass = 12.5; density = 2.0; }
+la10Weighed pebble { "pebble"; parent = roomA; name = .pebble; mass = 0.75; }
+object      shadow { "shadow"; parent = roomA; name = .shadow; }
+
+/// Tare is a quarter more than the kit's.
+replace float la10Tare(float v) { return replaced(v) + 0.25; }
+
+array<la10Grams> la10Loads[4] = {4.5, 1.25, 9.0, 2.0};
+
+// ---- Verbs that report. ----
+
+verb Floats {
+    grammar = {.floats};
+    void handler() {
+        float a = 7;
+        float b = a / 2;
+        int whole = 7 / 2;
+        float mixed = 3 + b;
+        print($"{a} {b} {whole} {mixed}; ");
+        print($"step {LA10_STEP} {b.stepUp()}; one {la10One}; half {LA10_HALF}; ");
+        float neg = -2.5;
+        print($"near {b.nearest()} {neg.nearest()} {(int)neg}; ");
+        la10Show(neg, 3);
+        print(" ");
+        mixed.show();
+        printLine(".");
+    }
+}
+
+verb Maths {
+    grammar = {.maths};
+    void handler() {
+        float r = bgl.util.math.sqrt(2);
+        float f = bgl.util.math.floor(-1.5);
+        float c = bgl.util.math.ceil(1.25);
+        float p = bgl.util.math.pow(1.5, 2);
+        print($"{r} {f} {c} {p} {bgl.util.math.abs(-0.5)}; ");
+        print($"{r > 1} {f <= -2} {c == 2} {p != 2.25} {7.5 % 2}.^");
+    }
+}
+
+verb Points {
+    grammar = {.points};
+    void handler() {
+        la10Point a = la10Point{1.0, 2.0};
+        la10Point b = a;
+        b.shift(3, 4);
+        print($"{a} {b} dist {a.distanceTo(b)}; same {a == b}; ");
+        la10Point m;
+        la10Midpoint(m, a, b);
+        print($"mid {m}; ");
+        b = m;
+        b.shift(0.5, -0.5);
+        print($"{m} {b} {m == b} {m != b}.^");
+    }
+}
+
+verb Dial {
+    grammar = {.dial, NUMBER};
+    void handler() {
+        float before = la10Dial.level;
+        la10Dial.level = (int)noun;
+        print($"Dial {before} to {la10Dial.level} after {la10Dial.sets} sets.^");
+    }
+}
+
+verb Lower {
+    grammar = {.lower};
+    void handler() {
+        la10Dial.level = -3.5;
+        print($"Dial {la10Dial.level} after {la10Dial.sets} sets.^");
+    }
+}
+
+verb Sample {
+    grammar = {.sample};
+    void handler() {
+        la10Sample s = new la10Sample(1, 2.5, 4, -0.5);
+        if (s == null) {
+            print("Pool empty.^");
+            return;
+        }
+        print($"Mean {s.mean()}, spread {s.spread()}, made {la10Sample.made}.^");
+        delete s;
+    }
+}
+
+verb Masses {
+    grammar = {.masses};
+    void handler() {
+        la10Grams total = 0.0;
+        for (la10Grams g in la10Loads) total = total + g;
+        print($"Total {total}; ");
+        la10Loads.sort(la10Grams::operator <=>);
+        for (la10Grams g in la10Loads) print($"{g} ");
+        float raw = (float)la10Packing;
+        print($"packing {raw}.^");
+    }
+}
+
+verb Maps {
+    grammar = {.maps};
+    void handler() {
+        array<float> vals = {1.0, 2.5, -4.0};
+        float factor = 1.5;
+        la10Map(vals, (float v) => v * factor);
+        for (float v in vals) print($"{v} ");
+        float sum = la10Fold(vals, 0, (float acc, float v) => acc + v);
+        float big = la10Fold(vals, -100, la10Max);
+        print($"sum {sum} big {big}; ");
+        print($"{la10Lerp(2, 4)} {la10Lerp(2, 4, 0.25)} {la10Lerp(t: 0.75, from: 10, to: 20)}.^");
+    }
+}
+
+verb Mix {
+    grammar = {.mix, NUMBER, NUMBER};
+    void handler() {
+        float x = (int)noun;
+        float y = (int)second;
+        print($"Mix {La10_Mix(x, y)} of {x} and {y}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

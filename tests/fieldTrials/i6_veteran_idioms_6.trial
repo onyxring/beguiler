@@ -1,0 +1,112 @@
+Room A
+Room A. Room B is north.
+You can see a tray, a box (in which are a red bead, a blue bead and some pins), a green bead and a dial here.
+> look
+Room A
+Room A. Room B is north.
+You can see a tray, a box (in which are a red bead, a blue bead and some pins), a green bead and a dial here.
+> calc
+9 7 -16 15 6 42
+> measure red bead
+Words: 3 by opcode, 3 by length; first red.
+> measure dial
+Words: 1 by opcode, 1 by length; first dial.
+> walk box
+red bead, blue bead, pins (3/3, in Room A)
+> walk tray
+empty (0/0, in Room A)
+> grade red bead
+Good (3, three), finish 1.
+> grade blue bead
+Fair (2, two), finish 12.
+> grade green bead
+Good (3, three), finish 2.
+> grade dial
+Poor (1, one).
+> price red bead
+Three cost 6; a pair 4; bumped 13. Bumps: 2.
+> price blue bead
+Three cost 4; a pair 4; bumped 13. Bumps: 7.
+> price green bead
+Three cost 103; a pair 202; bumped 13. Bumps: 9.
+> price blue bead
+Three cost 4; a pair 4; bumped 13. Bumps: 14.
+> price dial
+Not for sale.
+> lookup blue
+blue is entry 1, cost 20: 40 21 120 -20
+> lookup white
+white is entry 3, cost 40: 80 41 140 -40
+> lookup purple
+Not listed.
+> pairs
+10+40 (1)
+> report
+Shiny: 2. Last found in Room A. [the stamp][0 points][5 pence][bead]
+> seek
+The green bead gleams, in Room A.
+> report
+Shiny: 2. Last found in Room A. [the stamp][0 points][5 pence][bead]
+> x dial
+The dial reads 0.
+> tune dial to 4
+Set to 4.
+> x dial
+The dial reads 4 and hums.
+> tune dial to 40
+Set to 9.
+> tune dial to 0
+Set to 0.
+> x dial
+The dial reads 0.
+> take coin
+Taken.
+> stack green bead and coin on tray
+green bead: Stacked: 1 of 3.
+coin: Stacked: 2 of 3.
+> walk tray
+coin, green bead (2/2, in Room A)
+> sift all from box
+red bead: Out of the box: the red bead.
+blue bead: Out of the box: the blue bead.
+pins: Out of the box: the pins.
+> drop pins
+The pins are already here.
+> stack all on tray
+There is nothing to stack.
+> take red bead and blue bead
+red bead: Taken.
+blue bead: Taken.
+> stack all on tray
+blue bead: Stacked: 3 of 3.
+red bead: No room.
+> walk tray
+blue bead, coin, green bead (3/3, in Room A)
+> n
+Room B
+Room B. Room A is south.
+You can see a sack (in which is a pouch (in which is a tin (in which is a ring))) and a stamp here.
+> seek
+Too deep at 3.
+> mark stamp
+Stamp 1, global 10.
+> mark stamp
+Stamp 2, global 20.
+> polish stamp
+You polish the stamp.
+> take stamp
+Taken.
+> seek
+The stamp gleams, in yourself.
+> report
+Shiny: 3. Last found in yourself. [the stamp][20 points][5 pence][bead]
+> polish stamp
+The stamp already shines.
+> s
+Room A
+Room A. Room B is north.
+You can see some pins, a tray (on which are a blue bead and a green bead), a box (which is empty) and a dial here.
+> polish red bead
+You polish the red bead.
+> grade red bead
+Fine (10, ten), finish 3.

@@ -1,0 +1,20 @@
+Room A
+Room A.
+> slips
+[note 5] [note 12] ; codes ..as .zo.; sums 3 2; totals <3><10>; spare true.
+> slips
+[note 5] [note 12] ; codes ..as .zo.; sums 3 2; totals <3><10>; spare true.
+> shelves
+cup <15> (4/4)[note 7]; brass key <11> (1/-1); slots 1 5 -1; order 4 -1; sums 15 14; ? <15> (4/4)[note 7].
+> shelves
+cup <15> (4/4)[note 7]; brass key <14> (4/-1); slots 1 5 -1; order 1 -1; sums 15 14; ? <15> (4/4)[note 7].
+> logs
+{6}[note 6] {9}[note 5] {3}[note 8]; ranks 0 3; kinds 3, counts 111; costs<6><9><3>; text plain:yz; history 2: PLAIN:YZ QUIET.
+> logs
+{6}[note 6] {9}[note 5] {3}[note 8]; ranks 0 3; kinds 6, counts 222; costs<6><9><3><6>; text plain:yz; history 1: QUIET .
+> grades
+Letters LMH; bumps 0 1 2; <33>.
+> chips
+[1][2][3] L+- M+- H+-; order true false; grades <8><15><33>; said 3: chip 1/chip 3; tags 3, brass key.
+> chips
+[1][2][3] L+- M+- H+-; order true false; grades <8><15><33>; said 3: chip 1/chip 3; tags 4, brass key.

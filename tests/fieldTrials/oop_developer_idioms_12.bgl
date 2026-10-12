@@ -1,0 +1,426 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, twelfth pass, on Glulx: features
+// meeting inside one class. A class with a `static array<int>` read and written by its indexer
+// (`operator []` / `[]=`), by an arithmetic operator, by an operator taking an `array<int>` parameter,
+// through a cast and inside interpolated strings, bounded by an emitter value, with `?.` on a peer; a
+// class whose indexer reads a `<buf>` buffer and whose `array<Badge>` member is sorted (through `<=>`
+// added by `extend class`), captured into the buffer and queried with `<linq>`; an `extern class` over
+// an I6 class from an `#i6` island, carrying emitter arithmetic operators and static methods that
+// switch on a property, test with postfix `?`, append to an `array<int>` parameter and append to a
+// `ref stringObj` parameter; a class with two parents holding an `array<string>` and a `float`, a
+// `default` method overridden below it, a `throw` caught inside the class, and an `#if` on the target;
+// a class with its own `operator ?` used through `??` beside `operator +=` / `--`, a nested list
+// initializer and `append`; an inline accessor whose setter runs a block-bodied lambda; a ref chain
+// rebound with `:=` and read through `$i6Expr`; an object with attributes and an `array<char>` member.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Shared per-class totals behind an indexer -------------------------------------------------------
+
+class Inventory : object {
+    static array<int> Totals[4];
+    static int Writes;
+    emitter int Slots { 4 }
+    int Bias;
+    Inventory Peer;
+
+    int operator [] (int i) {
+        if (i < 0 || i >= Slots) return -1;
+        return Inventory.Totals[i];
+    }
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= Slots) return -1;
+        Inventory.Totals[i] = v + Bias;
+        Inventory.Writes++;
+        return v;
+    }
+    int operator + (int v) { return Inventory.Totals[0] + v + Bias; }
+    int operator - (array<int> drop) {
+        int left = 0;
+        for (int i = 0; i < drop.length && i < Slots; i++) {
+            Inventory.Totals[i] = Inventory.Totals[i] - drop[i];
+            left += Inventory.Totals[i];
+        }
+        return left;
+    }
+    int PeerBias() { return Peer?.Bias; }
+    void Report() {
+        int sum = 0;
+        for (int i = 0; i < Slots; i++) sum += Inventory.Totals[i];
+        float avg = (float)sum / Slots;
+        print($"totals {Inventory.Totals[0]} {Inventory.Totals[1]} {Inventory.Totals[2]} {Inventory.Totals[3]}");
+        print($", sum {sum}, mean {avg}, writes {Inventory.Writes}");
+    }
+}
+
+Inventory shelfA { "shelf A"; Bias = 1; }
+Inventory shelfB { "shelf B"; Peer = shelfA; }
+
+array<int> Returns = { 2, 1, 1 };
+
+//-- An indexer over a text buffer, and a sorted member array -----------------------------------------
+
+class Badge : object {
+    int Code;
+}
+
+extend class Badge {
+    int operator <=> (Badge other) { return Code - other.Code; }
+}
+
+Badge badgeA { "badge A"; Code = 7; }
+Badge badgeB { "badge B"; Code = 3; }
+Badge badgeC { "badge C"; Code = 9; }
+
+array<char> BoardText[40];
+
+class Board : object {
+    array<Badge> Badges[4];
+
+    int  operator [] (int i)          { return bgl.util.buf.getChar(BoardText, i); }
+    void operator []= (int i, char c) { bgl.util.buf.setChar(BoardText, i, c); }
+
+    int Render() {
+        Badges.sort();
+        bgl.util.buf.capture(BoardText);
+        for (Badge b in Badges) print($"{b.Code} ");
+        bgl.util.buf.release();
+        bgl.util.buf.trimRight(BoardText);
+        return Badges.filter((Badge b) => b.Code > 5).count();
+    }
+    bool AnyAbove(int n) { return Badges.any((Badge b) => b.Code > n); }
+}
+
+Board boardA { "board"; Badges = {badgeC, badgeA, badgeB}; }
+
+//-- A typed view of a class written in I6 -----------------------------------------------------------
+
+#i6 {
+    Class Meter with reading 0, limit 9;
+    Meter meterA "meter A" with reading 3;
+    Meter meterB "meter B" with reading 12;
+    Meter meterC "meter C";
+}
+
+extern class Meter : object {
+    int reading;
+    int limit;
+    emitter int operator + (int v) { ($self.reading + $v) }
+    emitter int operator * (int v) { ($self.reading * $v) }
+
+    static string Grade(Meter m) {
+        switch (m.reading) {
+            case 0:      return "empty";
+            case 1 to 4: return "low";
+            default:     return "high";
+        }
+    }
+    static bool Live(Meter m) {
+        if (!m?) return false;
+        return m.reading > 0;
+    }
+    static void Collect(array<int> into, Meter m) {
+        into.append(m.reading);
+        into.append(m + 1);
+    }
+    static void log(Meter m, ref stringObj notes) {
+        if (notes.length > 0) notes += ", ";
+        notes += Grade(m);
+        if (m.reading > m.limit) notes += "!";
+    }
+}
+
+extern Meter meterA;
+extern Meter meterB;
+extern Meter meterC;
+
+//-- Two parents, a string table, a float --------------------------------------------------------------
+
+class Powered : object {
+    int Watts = 10;
+}
+
+class Labeled : object {
+    string Tag = "plain";
+}
+
+class Panel : Powered, Labeled {
+    array<string> Lines[4] = { "alpha", "beta" };
+    float Ratio = 0.5;
+
+    default string Heading() { return "panel"; }
+    string LineAt(int i) {
+        if (i < 0 || i >= Lines.length) throw i;
+        return Lines[i];
+    }
+    string SafeLine(int i) {
+        try {
+            return LineAt(i);
+        } catch (int bad) {
+            print($"[bad {bad}] ");
+            return "none";
+        }
+    }
+    void AddLine(string s) {
+        if (Lines.length >= Lines.size) throw Lines.length;
+        Lines.append(s);
+    }
+    void Report() {
+        print($"{Heading()} {Tag}: {Lines.length} lines, first {Lines[0]}, ");
+        #if TARGET_GLULX
+            float load = Ratio * Watts;
+            print($"load {load}");
+        #else
+            print($"load {Watts / 2}");
+        #endif
+    }
+}
+
+class WidePanel : Panel {
+    string Heading() { return "wide panel"; }
+}
+
+Panel panelA { "panel A"; Tag = "left"; }
+WidePanel panelB { "panel B"; Tag = "right"; Watts = 30; Ratio = 1.25; Lines = { "one", "two", "three" }; }
+
+//-- A class with its own idea of presence ------------------------------------------------------------
+
+class Bin : object {
+    int Count;
+    array<array<int>> Packs = { {1, 2}, {3, 4, 5} };
+    array<Bin> Chain[4];
+
+    emitter eBool operator ? () { ($self ~= nothing && $self.Count > 0) }
+    Bin operator += (int pack) {
+        for (int v in Packs[pack]) Count += v;
+        return self;
+    }
+    Bin operator -- () {
+        if (Count > 0) Count--;
+        return self;
+    }
+    Bin Pick(Bin other) { return self ?? other; }
+    void Link(Bin next) { Chain.append(next ?? self); }
+}
+
+Bin binA { "bin A"; }
+Bin binB { "bin B"; Count = 2; }
+
+//-- A setter that clamps through a block lambda -------------------------------------------------------
+
+object thermostat {
+    "thermostat";
+    int Low = 10;
+    int High = 30;
+    int Applied;
+    auto Target = {
+        int _t;
+        int operator () { return _t; }
+        void operator = (int v) {
+            func<int, int> clamp = (int x) => {
+                if (x < 10) return 10;
+                if (x > 30) return 30;
+                return x;
+            };
+            _t = clamp(v);
+            outer.Applied++;
+        }
+    }
+}
+
+//-- A ref chain read through I6 -----------------------------------------------------------------------
+
+value class Link {
+    int id;
+    ref Link next;
+    Link operator = (Link o) { id = o.id; return self; }
+}
+
+Link linkA;
+Link linkB;
+Link linkC;
+
+int Digits(int steps) {
+    ref Link cur := linkA;
+    int total = 0;
+    for (int i = 0; i < steps; i++) {
+        #i6 $i6Expr(total) = $i6Expr(total) * 10 + $i6Expr(cur.id);
+        cur := cur.next;
+    }
+    return total;
+}
+
+//-- Attributes beside a byte array --------------------------------------------------------------------
+
+object lamp {
+    "lamp";
+    parent = roomA;
+    attributes = {switchable};
+    array<char> Glyph = {'-', '*'};
+    void Toggle() {
+        if (has(on)) ungive(on);
+        else give(on);
+    }
+    void Show() {
+        char g = Glyph[has(on) ? 1 : 0];
+        print(g);
+        print($" {Glyph.length}");
+    }
+}
+
+//-- Verbs --------------------------------------------------------------------------------------------
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        shelfA[0] = 5;
+        shelfB[1] = 4;
+        shelfA[2] = 10;
+        shelfB[9] = 1;
+        printLine($"Read {shelfA[0]} {shelfB[1]} {shelfA[9]}; plus {shelfA + 3} {shelfB + 3}.");
+        shelfA.Report();
+        printLine(".");
+        printLine($"After returns {shelfB - Returns}; peer bias {shelfB.PeerBias()} {shelfA.PeerBias()}.");
+        shelfB.Report();
+        printLine(".");
+    }
+}
+
+verb Badges {
+    grammar = {.badges};
+    void handler() {
+        int high = boardA.Render();
+        print("Board [");
+        bgl.util.buf.print(BoardText);
+        printLine($"] {high} above five, length {BoardText.length}.");
+        boardA[0] = '1';
+        printLine($"First char {boardA[0]}, above 8 {boardA.AnyAbove(8)}, above 9 {boardA.AnyAbove(9)}.");
+        print("Board [");
+        bgl.util.buf.print(BoardText);
+        printLine("].");
+    }
+}
+
+verb Meters {
+    grammar = {.meters};
+    void handler() {
+        printLine($"Grades {Meter.Grade(meterA)} {Meter.Grade(meterB)} {Meter.Grade(meterC)}.");
+        printLine($"Live {Meter.Live(meterA)} {Meter.Live(meterC)} {Meter.Live(null)}.");
+        printLine($"Sums {meterA + 2} {meterB * 2}.");
+        array<int> seen[6];
+        Meter.Collect(seen, meterA);
+        Meter.Collect(seen, meterB);
+        print("Seen");
+        for (int v in seen) print($" {v}");
+        printLine($"; {seen.length} kept.");
+        stringObj notes;
+        Meter.log(meterA, notes);
+        Meter.log(meterB, notes);
+        Meter.log(meterC, notes);
+        printLine($"Log: {notes}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    void handler() {
+        panelA.Report();
+        printLine(".");
+        panelB.Report();
+        printLine(".");
+        printLine($"Lines {panelA.SafeLine(1)} {panelA.SafeLine(5)} {panelB.SafeLine(2)}.");
+        try {
+            panelA.AddLine("gamma");
+            panelA.AddLine("delta");
+            panelA.AddLine("epsilon");
+            printLine("Not reached.");
+        } catch (int full) {
+            printLine($"Full at {full}; last {panelA.Lines[3]}.");
+        }
+    }
+}
+
+verb Bins {
+    grammar = {.bins};
+    void handler() {
+        printLine($"Pick {binA.Pick(binB)} {binB.Pick(binA)}.");
+        binA += 1;
+        binA--;
+        printLine($"Bin A {binA.Count}; pick {binA.Pick(binB)}.");
+        binB += 0;
+        binB.Link(binA);
+        binB.Link(binB);
+        binA.Count = 0;
+        binB.Link(binA);
+        print("Chain");
+        for (Bin b in binB.Chain) print($" {b}");
+        printLine($"; bin B {binB.Count}.");
+    }
+}
+
+verb Heat {
+    grammar = {.heat};
+    void handler() {
+        thermostat.Target = 4;
+        print($"{thermostat.Target} ");
+        thermostat.Target = 22;
+        print($"{thermostat.Target} ");
+        thermostat.Target = 99;
+        printLine($"{thermostat.Target}; applied {thermostat.Applied}.");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    void handler() {
+        linkA.id = 1;
+        linkB.id = 2;
+        linkC.id = 3;
+        linkA.next := linkB;
+        linkB.next := linkC;
+        linkC.next := linkA;
+        printLine($"Digits {Digits(3)} {Digits(5)}.");
+    }
+}
+
+verb Switching {
+    grammar = {.switching};
+    void handler() {
+        lamp.Show();
+        print("; ");
+        lamp.Toggle();
+        lamp.Show();
+        print("; ");
+        lamp.Toggle();
+        lamp.Show();
+        printLine(".");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

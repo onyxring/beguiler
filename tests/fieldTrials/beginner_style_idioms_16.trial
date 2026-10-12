@@ -1,0 +1,55 @@
+Room A
+Room A. Room B is to the east.
+You can see a box A, a coin and a sorter here.
+> sorting
+(brass key goes to row 0 slot 0, some)
+(I6: row 0, slot 0)
+(box B goes to row 1 slot 1, middling)
+(I6: row 1, slot 1)
+(coin goes to row 2 slot 0, some)
+(I6: row 2, slot 0)
+(sorter holds 3)
+(rows: 2 3 1, kind sorter)
+(row 1 has 3 slots, 1 in them, last 9 hundred, first number 1)
+Numbers: 1 0 0 1 0 1 (past end -1).
+(row 0 has 2 slots, 5 in them, last 9 hundred, first number 5)
+(row 2 has 1 slots, 3 in them, last 9 hundred, first number 5)
+Biggest in row 0: 5. Busy rows: 3.
+Inside: coin (round).
+Inside: box B (other).
+Inside: brass key (small).
+3 inside, 3 busy rows.
+Last in: coin, at 2/0.
+A coin.
+Picked row 2, heft 9 hundred.
+(sorter emptied into Room A, 0 left)
+0 inside, 3 busy rows.
+Brass key is in Room A. Box B is in Room A.
+> marks
+(ledger A notes 5: low in Room A)
+(ledger B notes 20: mid in Room A)
+(ledger A notes 60: high in Room A)
+(ledger B notes 75: high)
+(no room for mark 4)
+(ledger A notes 99: high in Room A)
+(ledger A: 4 marks, first 5, recent sum 164)
+(ledger B: 4 marks, first 5, recent sum 95)
+Peek: 20 75.
+Peek past: (no mark 4)
+-1.
+Mark 0 is 5: (IGNORE)
+Mark 1 is 20: (WATCH)
+Mark 2 is 60: (LOOK)
+Room A. Room B is to the east.
+Mark 3 is 75: (LOOK)
+Room A. Room B is to the east.
+Kind: bin. Ledger A holds 3, B 2.
+> tallies
+T: 3 40 sum 43 used 2. U: 1 40 9 sum 50.
+Words: some, middling, some, (no word for -4)
+some.
+Weights: 50, 900, 100.
+> look
+Room A
+Room A. Room B is to the east.
+You can see a brass key, a box B, a coin, a box A and a sorter here.

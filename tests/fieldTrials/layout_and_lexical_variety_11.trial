@@ -1,0 +1,50 @@
+Room A
+A plain room.
+> cells
+5 50 50
+4.7 9.4
+47 65
+15 7 30 true false
+50
+49 9
+> tree
+-
+.A crate.
+..A tin.
+...A bead.
+.-
+5
+5 2
+...-
+....A crate.
+[too deep at 5]
+-1
+true true true false false
+> heaviest
+w2 w1 true
+383
+> bytes
+aZ# 3 3 3
+AZ#
+> kit
+[7] t[4] t[4] [4]
+10 3
+[now lit] [lit already]
+tools open
+tools shut
+> chips
+1015
+9 1003
+extern low low-high huge other
+> chains
+3 -2 true
+14;12;-2;
+> probe
+code 7 > 5 50 50
+4.7 9.4
+47 65
+15 7 30 true false
+50
+49 9
+> prod
+code 2

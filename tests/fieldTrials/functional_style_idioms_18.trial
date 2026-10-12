@@ -1,0 +1,58 @@
+Room A
+Room A.
+
+You can see a tray A here.
+
+> board 1
+[lv 3] [b] board/panel 1 GREEN wide 1 total 18 best 12 at 1 over 3 held 3 plus 4 tier 31 ticks 5 rank 2 band 2 chip 1 worth 2 base 1
+board 10.0000 first 4
+
+> board 4
+[lv 3] [b] board/panel 1 GREEN wide 1 total 24 best 12 at 1 over 1 held 4 plus 5 tier 32 ticks 8 rank 3 band 3 chip 4 worth 8 base 4
+board 14.0000 first 4
+
+> board 2
+[lv 3] (cleared) [b] board/panel 1 BLUE wide 1 total 20 best 12 at 1 over 2 held 6 plus 7 tier 33 ticks 11 rank 3 band 3 chip 2 worth 4 base 2
+board 10.0000 first 4
+
+> desk 0
+desk 0: got 3 depth 1 sum 4 gauge 4 peak 4 turns 2 mode 2 fold 0 twice 6 plus 4 t 4 lit false
+desk 0 depth now 0
+
+> desk 1
+desk 1: got 3 depth 1 sum 21 gauge 22 peak 22 turns 3 mode 4 fold 2 twice 6 plus 23 t 8 lit true
+desk 2 depth now 0
+
+> desk 3
+(no word 3) desk 3: got -1 depth 1 sum 21 gauge 24 peak 24 turns 4 mode 4 fold 12 twice -2 plus 27 t 14 lit true
+desk 12 depth now 0
+
+> desk 2
+desk 2: got 5 depth 1 sum 4 gauge 6 peak 24 turns 5 mode 3 fold 6 twice 10 plus 8 t 14 lit true
+desk 6 depth now 0
+
+> scan 1
+scan 1: hits 3 mark 4 grade 3 home cup A depth 2 anc 3 kids 1 pin in cup A
+scan 2: hits 3 mark 5 grade 3 home tray A depth 1 anc 6 kids 1 pin in cup A
+scan 3, 3
+
+> scan 4
+scan 4: hits 3 mark 7 grade 4 home Room A depth 0 anc 12 kids 1 pin in tray A
+scan 5: hits 2 mark 7 grade 4 home Room A depth 0 anc 15 kids 2 pin in tray A
+scan 3, 2
+
+> board 9
+[lv 3] [b] board/panel 1 RED wide 1 total 34 best 19 at 2 over 0 held 6 plus 7 tier 34 ticks 14 rank 3 band 4 chip 9 worth 18 base 9
+board 18.0000 first 4
+
+> tally 1
+mid BB sum 15 tally 16 ratio 4.0000 runs 1 chip 1 top 1 big 3 sq 9 depth 1 tray lit true
+
+> tally 6
+(released) high A sum 20 tally 26 ratio 6.5000 runs 2 chip 6 top 6 big 1 sq 1 depth 1 tray lit true
+
+> tally 20
+(capped 34) high CCC sum 34 tally 30 ratio 7.5000 runs 3 chip 20 top 20 big 0 sq 0 depth 1 tray lit true
+
+> tally 3
+(released) mid A sum 17 tally 20 ratio 5.0000 runs 4 chip 3 top 3 big 2 sq 4 depth 1 tray lit true

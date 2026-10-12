@@ -1,0 +1,46 @@
+Room A
+Room A.
+
+You can see a brick, a pebble and a shadow here.
+
+> floats
+7.0000 3.5000 3 6.5000; step 0.2500 3.7500; one 1.0000; half 0.5000; near 4 -3 -2; -2.500 6.50.
+
+> maths
+1.4142 -2.0000 2.0000 2.2500 0.5000; true true true false 1.5000.
+
+> points
+(1.00, 2.00) (4.00, 6.00) dist 5.0000; same false; mid (2.50, 4.00); (2.50, 4.00) (3.00, 3.50) false true.
+
+> dial 3
+Dial 0.0000 to 6.0000 after 1 sets.
+
+> dial 5
+Dial 6.0000 to 10.0000 after 2 sets.
+
+> lower
+Dial 0.0000 after 3 sets.
+
+> sample
+Mean 1.7500, spread 4.5000, made 1.
+
+> sample
+Mean 1.7500, spread 4.5000, made 2.
+
+> masses
+Total 16.8g; 1.3g 2.0g 4.5g 9.0g packing 1.5000.
+
+> maps
+1.5000 3.7500 -6.0000 sum -0.7500 big 3.7500; 3.0000 2.5000 17.5000.
+
+> mix 3 8
+Mix 5.5000 of 3.0000 and 8.0000.
+
+> weigh brick
+The brick: 12.5g, gross 15.7g.
+
+> weigh pebble
+The pebble: 0.8g, gross 2.7g.
+
+> weigh shadow
+The shadow has no mass to speak of.

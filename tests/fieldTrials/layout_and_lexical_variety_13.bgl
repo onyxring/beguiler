@@ -1,0 +1,396 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where three language areas meet inside one declaration.
+// A value class with static `array<string>`s, an `array<char>` member, two inline accessors (one
+// appending to a static array), a copy operator that copies the byte array, `operator []`/`[]=` over the
+// bytes, a postfix `?` on a string read from the static array, a block lambda in a method taking an
+// `array<Cell>` parameter and one subscripting `self`; an `extend class` giving it an emitter
+// `operator ?`. A routine whose block lambda captures a value-class local and subscripts it; one that
+// walks an `array<Tag>` parameter. A class with an `array<array<int>>` member read by its
+// `operator []`, an `array<char>` member, an `array<Cell>` member, an inline accessor and a block
+// lambda over the rows. An `extend class` written straight after `#using`, adding static arrays of
+// strings, of an aliased reference class, of an aliased value class and of `array<string>` rows, an
+// `operator []=`, an accessor reading a static `array<string>`, a block lambda subscripting `self`,
+// a `for … in` over the static rows, a local `array<char>` and member writes on static value-class
+// slots. An object whose inline accessor writes the object's `array<char>`, its nested array and its
+// value-class member (also through that member's `operator []=`) via `outer`, beside a type alias and
+// an `array<Cell>` parameter; an `extend` of that object adding an alias and an accessor testing
+// `outer.near?`; an object whose accessor runs a block lambda that reads `outer`'s nested rows, beside
+// an `array<array<char>>`. Lexically: `#Define`/`#DEFINE` in mixed case, `$` hex and `$$` binary
+// literals, keywords in odd case (`STATIC`, `Return`, `FOR`), comments between tokens, a tab-indented
+// object and an empty statement.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define WIDE                            // a flag
+#DEFINE SPAN    $3                      // hex: three
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+
+extend class object { string description; }
+
+object roomA { "Room A"; description = "A plain room."; attributes = light; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Cells: plain instances that fill arrays ----------------------------------------------------------
+
+class Cell : object { inline int n ; }
+
+Cell c1 { 3 ; }
+Cell c2 { $5 ; }
+Cell c3 { $$111 ; }                     // seven
+
+array<Cell> trio = { c1 , c2 , c3 } ;
+array<Cell> pair = { c3 , c1 } ;
+
+//-- A value class: names, bytes, an accessor and a lambda ----------------------------------------------
+
+value class Tag
+{
+    int code ;
+    array<char> mark[4] ;
+    STATIC array<string> names = { "nil" , "one" , "two" , "three" } ;
+    static int copies = 0 ;
+    static array<string> heard[6] ;
+    auto label = {
+        int _i = 0 ;
+        string operator ()        { return Tag.names[_i] ; }
+        void   operator = (int v) { _i = v % Tag.names.length ; Tag.heard += Tag.names[_i] ; }
+    } ;
+    auto weight = {
+        int _raw = 0 ;
+        int  operator ()        { return _raw ; }
+        void operator = (int v) { _raw = v > 9 ? 9 : v ; }
+    } ;
+    Tag operator = ( Tag o )
+    {
+        code = o.code ;
+        weight = o.weight ;
+        mark = o.mark ;                 // the bytes and their length
+        Tag.copies++ ;
+        Return self ;
+    }
+    char operator [] ( int i ) { return mark[i] ; }
+    void operator []= ( int i , char c ) { mark[i] = c ; }
+    string name()
+    {
+        string s ;
+        if (code >= 0 && code < Tag.names.length) s = Tag.names[code] ;
+        if (s?) return s ;
+        return "?" ;
+    }
+    int score(array<Cell> cs)
+    {
+        func<int, int> fold = (int k) =>
+        {
+            int t = k + code ;
+            if (t > 9) t = t - 9 ;
+            return t ;
+        } ;
+        int sum = 0 ;
+        FOR (Cell c in cs) sum += fold(c.n) ;
+        return sum + weight ;
+    }
+    int letters()
+    {
+        func<int, int> at = (int i) =>
+        {
+            int c = self[i] ;
+            if (c == 0) return 0 ;
+            return c - 'a' + 1 ;                        // a is 1
+        } ;
+        int t = 0 ;
+        for (int i = 0 ; i < 4 ; i++) t = t * 10 + at(i) ;
+        return t ;
+    }
+}
+
+extend class Tag
+{
+    emitter eBool operator ? () { ($self ~= 0 && $self.code ~= 0) }   // an empty slot holds 0
+}
+
+Tag tagA ;
+Tag tagB ;
+
+int peek(int k)
+{
+    Tag t ;;                                     // empty statement
+    t[0] = 'c' ; t[1] = 'a' ;
+    func<int, int> f = (int i) =>
+    {
+        int c = t[i] ;
+        return c - 'a' + i ;
+    } ;
+    return f(0) * 100 + f(1) * 10 + k ;
+}
+
+int best(array<Tag> list, int floor)
+{
+    int top = floor ;
+    string who ;
+    for (Tag t /* each slot */ in list) if (t.weight > top) { top = t.weight ; who = t.name() ; }
+    if (who?) print(who) ; else print("-") ;
+    return top ;
+}
+
+array<Tag> crew[3] ;
+
+//-- A grid of rows behind a subscript --------------------------------------------------------------
+
+class Grid : object
+{
+    array<array<int>> cells = { { 1 , 2 , 3 } , { 4 , 5 , 6 } } ;
+    array<char> code[8] ;
+    array<Cell> held[SPAN] ;
+    auto cursor = {
+        int _raw = 0 ;
+        int  operator ()        { return _raw ; }
+        void operator = (int v) { _raw = v % 6 ; }
+    } ;
+    int operator [] /* row-major */ ( int i ) { return cells[i / SPAN][i % SPAN] ; }
+    int rowSum(int r)
+    {
+        func<int, int> at = (int c) =>
+        {
+            int v = cells[r][c] ;
+            if (v < 0) return 0 ;
+            return v ;
+        } ;
+        int t = 0 ;
+        for (int c = 0 ; c < cells[r].length ; c++) t += at(c) ;
+        return t ;
+    }
+    int heldTotal()
+    {
+        int t = 0 ;
+        for (Cell c in held) t += c.n ;
+        return t + held.length * 100 ;
+    }
+}
+
+Grid gridA { held = { c2 } ; }
+
+//-- A namespace and an extension written after importing it ----------------------------------------
+
+object kit
+{
+    alias piece for Cell ;
+    alias badge for Tag ;
+}
+
+#using kit
+extend class Grid
+{
+    static array<string> labels = { "north" , "south" , "east" } ;
+    static array<piece>  picks[4] ;
+    static array<badge>  tags[2] ;
+    static array<array<string>> pairs = { { "a" , "b" } , { "c" } } ;
+    void operator []= ( int i , int v )
+    {
+        cells[i / SPAN][i % SPAN] = v ;
+        cursor = i ;
+    }
+    auto lastLabel = {
+        int _idx = 0 ;
+        string operator ()        { return Grid.labels[_idx] ; }
+        void   operator = (int v) { _idx = v % Grid.labels.length ; }
+    } ;
+    void collect(array<piece> from)
+    {
+        for (piece p in from) if (p.n > 3) Grid.picks += p ;
+    }
+    int fold()
+    {
+        func<int, int> g = (int i) =>
+        {
+            int v = self[i] ;
+            if (v > 5) return v - 5 ;
+            return v ;
+        } ;
+        int t = 0 ;
+        for (int i = 0 ; i < 6 ; i++) t += g(i) ;
+        return t ;
+    }
+    void spell(int which)
+    {
+        array<char> tmp[8] ;
+        bgl.util.buf.set(tmp, Grid.labels[which]) ;
+        bgl.util.buf.toUpper(tmp) ;
+        code = tmp ;
+    }
+    bool named(int i)
+    {
+        string s ;
+        if (i < Grid.labels.length) s = Grid.labels[i] ;
+        return s? ;
+    }
+    int badgeTotal()
+    {
+        Tag t ;
+        t.code = 2 ; t.weight = 4 ;
+        Grid.tags += t ;
+        t.code = 3 ;
+        Grid.tags += t ;
+        int sum = 0 ;
+        for (badge b in Grid.tags) sum += b.code * 10 + b.weight ;
+        return sum ;
+    }
+    int retag()
+    {
+        Grid.tags[0].weight = 7 ;
+        Grid.tags[1].code = 0 ;
+        return Grid.tags[0].weight * 10 + Grid.tags[1].code ;
+    }
+    string pairAt(int i, int j) { return Grid.pairs[i][j] ; }
+    int pairCount()
+    {
+        int n = 0 ;
+        for (array<string> row in Grid.pairs) n = n * 10 + row.length ;
+        return n ;
+    }
+}
+
+//-- An object whose accessor writes through outer ------------------------------------------------------
+
+object panel
+{
+    alias slot for Tag ;
+    int scale = 2 ;
+    array<char> label[6] ;
+    array<array<int>> rows = { { 1 , 2 } , { 3 , 4 , 5 } } ;
+    slot held ;
+    auto total = {
+        int _raw = 0 ;
+        int  operator ()        { return _raw ; }
+        void operator = (int v)
+        {
+            _raw = v * outer.scale + outer.rows[1][2] ;
+            outer.label[0] = 'a' + v ;
+            outer.held.code = v ;
+            outer.held[0] = 'k' ;
+        }
+    } ;
+    int sum(array<Cell> cs)
+    {
+        int t = 0 ;
+        for (Cell c in cs) t += c.n ;
+        return t * scale ;
+    }
+}
+
+extend panel
+{
+    alias pin for Cell ;
+    object near = roomA ;
+    auto watch = {
+        int _raw = 0 ;
+        int  operator ()        { return _raw ; }
+        void operator = (int v) { if (outer.near?) _raw = v + outer.scale ; else _raw = - v ; }
+    } ;
+    int pinned(array<pin> ps) { return ps.length ; }
+}
+
+object meter
+{
+	array<array<int>>  bands  = { { 1 , 2 } , { $A } } ;
+	array<array<char>> glyphs = { { 'x' , 'y' } , { 'z' } } ;
+	array<string> names = { "lo" , "hi" } ;
+	string lastName ;
+	auto pick = {
+		int _raw = 0 ;
+		int  operator ()        { return _raw ; }
+		void operator = (int v)
+		{
+			func<int, int> rowSum = (int r) =>
+			{
+				int t = 0 ;
+				for (int x in outer.bands[r]) t += x ;
+				return t ;
+			} ;
+			_raw = rowSum(v % 2) * 10 + outer.glyphs[v % 2].length ;
+			outer.lastName = outer.names[v % 2] ;
+		}
+	} ;
+}
+
+//-- Verbs -------------------------------------------------------------------------------------------
+
+verb V_tags
+{
+    meta = true ; grammar = { .tags } ;
+    void handler()
+    {
+        tagA.code = 2 ;
+        tagA.weight = 12 ;                              // clamps to 9
+        bgl.util.buf.set(tagA.mark, "ab") ;
+        tagA[1] = 'z' ;
+        tagB = tagA ;
+        tagA[0] = 'q' ;
+        print(tagB[0]) ; print(tagB[1]) ; print(" ") ; print(tagA[0]) ;
+        printLine($" {tagB.weight} {Tag.copies} {tagB.name()}") ;
+        tagB.code = 7 ;
+        printLine($"{tagB.name()} {tagA.score(trio)} {tagA.score(pair)}") ;
+        tagA.label = 5 ; tagA.label = 2 ; tagB.label = 7 ;
+        printLine($"{tagA.label} {tagB.label} {Tag.heard.length} {Tag.heard[0]}{Tag.heard[2]}") ;
+        printLine(tagA.letters()) ;
+        crew += tagA ; crew += tagB ;
+        crew[1].weight = 4 ;
+        print(Tag.copies) ; print(" ") ;
+        print(best(crew, 0)) ; print(" ") ; print(best(crew, 9)) ;
+        printLine($" {crew.length} {tagB.weight} {crew[0]?} {crew[2]?} {tagB?}") ;
+        printLine(peek(3)) ;
+    }
+}
+
+verb V_grid
+{
+    meta = true ; grammar = { .grid } ;
+    void handler()
+    {
+        printLine($"{gridA[4]} {gridA.rowSum(0)} {gridA.rowSum(1)} {gridA.heldTotal()}") ;
+        gridA[4] = 9 ;
+        printLine($"{gridA[4]} {gridA.cursor} {gridA.fold()}") ;
+        gridA.lastLabel = 4 ;
+        printLine($"{gridA.lastLabel} {gridA.named(2)} {gridA.named(3)}") ;
+        gridA.spell(1) ;
+        bgl.util.buf.print(gridA.code) ; printLine($" {gridA.code.length}") ;
+        gridA.collect(trio) ;
+        printLine($"{Grid.picks.length} {Grid.picks[0].n} {Grid.picks[1].n}") ;
+        printLine($"{gridA.badgeTotal()} {Grid.tags.length} {gridA.pairAt(0, 1)}{gridA.pairAt(1, 0)} {gridA.pairCount()}") ;
+        printLine($"{gridA.retag()} {Grid.tags[0]?} {Grid.tags[1]?}") ;
+    }
+}
+
+verb V_panel
+{
+    meta = true ; grammar = { .panel } ;
+    void handler()
+    {
+        panel.total = 3 ;
+        print(panel.total) ; print(" ") ; print(panel.label[0]) ;
+        printLine($" {panel.held.code} {panel.held.name()} {panel.sum(pair)} {panel.held[0]}") ;
+        panel.watch = 4 ;
+        print(panel.watch) ; print(" ") ;
+        panel.near = null ;
+        panel.watch = 4 ;
+        printLine($"{panel.watch} {panel.pinned(trio)}") ;
+        meter.pick = 1 ;
+        print(meter.pick) ; print(" ") ; print(meter.lastName) ; print(" ") ;
+        meter.pick = 2 ;
+        print(meter.pick) ; print(" ") ; print(meter.lastName) ; print(" ") ;
+        print(meter.glyphs[0][1]) ; printLine(meter.glyphs[1][0]) ;
+    }
+}
+
+#includeI6 "grammar"

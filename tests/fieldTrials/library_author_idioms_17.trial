@@ -1,0 +1,10 @@
+Room A
+Room A.
+> shelves
+shelf A(11) SM-apple be 8 3 1 low[ping 2] shelf A(22) MD-thing be 20 11 1 +owner low[ping 5] shelf A(33) LG-none be 44 7 -1 high full[ping 11]; names be gamma alpha; level 11; medium be.
+> shelves
+shelf A(14) SM-apple be 8 12 1 high[ping 2] shelf A(25) MD-thing be 20 11 1 +owner high[ping 5] shelf A(36) LG-none be 44 16 -1 high[ping 11]; names be gamma alpha; level 11; medium be.
+> racks
+rack/shelf 2 tag 22 3 60 1 apart[ping 61] <61> rack/shelf 2 brass key 49 9 46 1 apart[ping 107] <107>; depth 0.
+> racks
+rack/shelf 2 tag 22 3 132 1 apart[ping 133] <133> rack/shelf 2 brass key 49 9 100 1 apart[ping 233] <233>; depth 0.

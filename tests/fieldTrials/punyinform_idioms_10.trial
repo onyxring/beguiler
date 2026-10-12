@@ -1,0 +1,97 @@
+Room A
+Room A. Room B is north.
+You can see a red panel here.
+> look
+Room A
+Room A. Room B is north.
+You can see a red panel here.
+> peer blue panel
+The blue panel is blank. (routine false)
+> peer red panel
+The red panel shows three bars. (routine true)
+> tap blue panel
+Click. The blue panel has been tapped 1 time.
+> peer blue panel
+The blue panel shows a grid. (routine true)
+> tap red panel
+Bzzt. The red panel has been tapped 1 time.
+> tap red
+Bzzt. The red panel has been tapped 2 times.
+> kinds
+2 2 1 0 class true, panel is fixture true, crate is fixture false.
+> examine red panel
+Panel: The red panel shows three bars.
+> chain
+Chained true true false.
+Grown 5 0.
+[busy]
+omega west plaque theta plaque B
+Kinds true false true.
+Audit 2 0 after 2; depth 1 3.
+Audit 1.
+> survey
+yourself
+blue panel
+red panel
+Seen 3, deepest 1.
+> filters
+0 2 2 3 3 true
+Pebble passes 2 of 3.
+> tally
+Local 6, global 38.
+> tally
+Local 6, global 76.
+> plaques
+north plaque in Room A: alpha omega (2)
+south plaque in Room B: g
+east plaque in Room A: d ? ?
+> spans
+q 2-5 / 1-6; r 9-5 / 9-5; width 5.
+Ranges: blue 1-4, red 2-10.
+> spans
+q 2-5 / 1-6; r 9-5 / 9-5; width 5.
+Ranges: blue 1-4, red 2-11.
+> strings
+[text][The red panel shows three bars.][literal][Bzzt. ]
+> split
+Height 1 -> 2 -> 1.
+> north
+Room B
+Room B. Room A is south.
+You can see a wooden crate (which contains a marble) here.
+> survey
+yourself
+wooden crate
+-marble
+--pebble
+Seen 4, deepest 3.
+> filters
+1 0 4 2 4 false
+Pebble passes 2 of 3.
+> take widget
+You can't see any such thing.
+> summon
+A spare box appears.
+> take widget
+Taken.
+> survey
+spare box
+yourself
+-widget
+wooden crate
+-marble
+--pebble
+Seen 6, deepest 3.
+> kinds
+2 2 1 0 class true, panel is fixture true, crate is fixture false.
+> filters
+2 0 6 3 6 false
+Pebble passes 2 of 3.
+> chain
+Chained true true false.
+Grown 5 0.
+[busy]
+omega west plaque theta plaque B
+Kinds true false true.
+Audit 0 1 after 5; depth 1 3.
+Audit 1.

@@ -1,0 +1,528 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twelfth PunyInform program, built on area pairs no earlier program combined: a value
+// class with arithmetic operators (`+` over itself, `*` over an enum reading a nested list literal),
+// compound operators `+=`/`-=` that write through a `ref` member bound with `:=`, and a `<linq>`
+// filter over an array parameter; a pooled class with two parents whose `+=` and `++` operators
+// feed a method that runs a verb with `perform()`; a class with an inline `auto { }` accessor beside
+// `==`/`!=`/`<=>` operators; an object's `auto { }` setter testing `outer.x?`; a class with a
+// `static array<string>`, a static counter, a static block-bodied lambda given to `bgl.util.buf`, a
+// static `array<char>` captured into, and `$i6Expr` in an `#i6` island over the static members; a
+// container class with an `array<string>` member, children walks, `has()`/`give()`/`ungive()` and a
+// buf filled by attribute; a class with an emitter member queried with postfix `?` inside `try`,
+// whose `catch` prints through `$i6Expr`, and an array of arrays read by an `#i6` island; a class
+// holding a `ref` value-class member bound with `:=` beside a `func<>` member; and an `extern class`
+// pooled in I6 (`[]` marker) whose static methods call `new`/`delete` and build an inline object.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#include <buf>
+#include <linq>
+
+#using bgl.printRules;
+
+#includeI6 "puny"
+
+// --- enums ------------------------------------------------------------------------------------------
+
+enum eGrade { low = 1, mid, high }
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+object store {
+    "store";
+}
+
+// --- a value class with arithmetic and compound operators -------------------------------------------
+
+value class Purse {
+    int coins;
+    eGrade grade = eGrade.low;
+    ref Purse backup;
+
+    Purse operator = (Purse o) {
+        coins = o.coins;
+        grade = o.grade;
+        return self;
+    }
+
+    Purse operator + (Purse o) {
+        Purse r;
+        r.coins = coins + o.coins;
+        r.grade = grade;
+        if ((int)o.grade > (int)grade) r.grade = o.grade;
+        return r;
+    }
+
+    int operator * (eGrade g) {
+        array<array<int>> rates = { {1, 2, 3}, {2, 4, 6}, {3, 6, 9} };
+        return coins * rates[(int)grade - 1][(int)g - 1];
+    }
+
+    Purse operator += (int n) {
+        coins += n;
+        if (backup) backup.coins += n;
+        return self;
+    }
+
+    Purse operator -= (int n) {
+        coins -= n;
+        return self;
+    }
+
+    void keepBackup(ref Purse p) {
+        backup := p;
+    }
+
+    int above(array<int> marks) {
+        int floor = coins;
+        return marks.filter((int m) => m > floor).count();
+    }
+}
+
+Purse spare;
+
+// --- a pooled class with two parents ----------------------------------------------------------------
+
+class Fixture : object {
+    attributeList attributes = {scenery};
+}
+
+class Counter : object {
+    int count;
+    void reset() {
+        count = 0;
+    }
+}
+
+class Tally[3] : Fixture, Counter {
+    int step = 1;
+    void create(int s) {
+        step = s;
+        reset();
+    }
+    Tally operator += (int n) {
+        count += n * step;
+        return self;
+    }
+    Tally operator ++ () {
+        count += step;
+        return self;
+    }
+    void announce() {
+        if (count > 5) Ping.perform();
+        else printLine($"Quiet at {count}.");
+    }
+}
+
+// --- an inline accessor beside comparison operators -------------------------------------------------
+
+class Plaque : object {
+    int rank;
+    auto label = {
+        string _text = "blank";
+        string operator () { return _text; }
+        void operator = (string v) { _text = v; }
+    }
+    replace eBool operator == (Plaque o) { return rank == o.rank; }
+    replace eBool operator != (Plaque o) { return rank != o.rank; }
+    int operator <=> (Plaque o) { return rank - o.rank; }
+    bool outranks(Plaque o) {
+        if (self > o) {
+            label = "top";
+            return true;
+        }
+        if (self == o) label = "even";
+        return false;
+    }
+}
+
+Plaque plaqueA {
+    "plaque A";
+    rank = 2;
+}
+
+Plaque plaqueB {
+    "plaque B";
+    rank = 2;
+}
+
+Plaque plaqueC {
+    "plaque C";
+    rank = 5;
+}
+
+// --- an object's accessor reaching its host ---------------------------------------------------------
+
+object warden {
+    "warden";
+    object holding;
+    int handoffs = 0;
+    auto charge = {
+        object _held;
+        object operator () { return _held; }
+        void operator = (object v) {
+            _held = v;
+            if (outer.holding?) outer.handoffs++;
+            outer.holding = v;
+        }
+    }
+}
+
+// --- static members: strings, a buffer, a lambda, I6 ------------------------------------------------
+
+class Ledger : object {
+    static array<string> names = {"alpha", "beta", "gamma"};
+    static array<char> scratch[24];
+    static int lookups = 0;
+
+    static string nameAt(int i) {
+        Ledger.lookups++;
+        return Ledger.names[i];
+    }
+
+    static void spell(int i) {
+        func<bool, char> vowel = (char c) => {
+            if (c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U') return true;
+            return false;
+        };
+        bgl.util.buf.capture(Ledger.scratch);
+        print(Ledger.nameAt(i));
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(Ledger.scratch);
+        bgl.util.buf.print(Ledger.scratch);
+        int at = bgl.util.buf.indexOfFirstTrue(Ledger.scratch, vowel);
+        #i6 print " len ", $i6Expr(Ledger.scratch.length), " vowel ", $i6Expr(at), " lookups ", $i6Expr(Ledger.lookups), "^";
+    }
+}
+
+// --- a container class: tags, children, attributes, a buffer ----------------------------------------
+
+class Shelf : object {
+    attributeList attributes = {container, open};
+    array<string> tags[4];
+
+    void tag(string t) {
+        tags.append(t);
+    }
+
+    void survey() {
+        int n = 0;
+        for (object o in self.children) n++;
+        print($"{self}: {n} items, tags");
+        for (string t in tags) print($" {t}");
+        printLine($", open {self.has(open)}.");
+    }
+
+    void state(array<char> out) {
+        if (self.has(open)) bgl.util.buf.set(out, "open");
+        else bgl.util.buf.set(out, "shut");
+    }
+
+    void flip() {
+        if (self.has(open)) self.ungive(open);
+        else self.give(open);
+    }
+}
+
+Shelf shelfA {
+    "shelf A";
+    parent = store;
+}
+
+Shelf shelfB {
+    "shelf B";
+    parent = store;
+    attributes = {!open};
+}
+
+object brassKey {
+    "brass key";
+    parent = shelfA;
+}
+
+object tinBox {
+    "tin box";
+    parent = shelfA;
+}
+
+// --- emitters, exceptions, nested arrays and I6 -----------------------------------------------------
+
+class Vault : object {
+    int code;
+    int tries = 0;
+    object keeper;
+    emitter object keeperOf() { ($self.keeper) }
+
+    bool attempt(int guess) {
+        tries++;
+        try {
+            if (!keeperOf()?) throw 0;
+            if (guess != code) throw guess;
+        } catch (int e) {
+            #i6 print "Miss ", $i6Expr(e), " on try ", $i6Expr(tries), ".^";
+            return false;
+        }
+        printLine("Opened.");
+        return true;
+    }
+
+    int pad(int r, int c) {
+        array<array<int>> keys = { {1, 2, 3}, {4, 5, 6} };
+        int v = keys[r][c];
+        #i6 print "pad ", $i6Expr(keys[r][c] * 10), " ";
+        return v;
+    }
+}
+
+Vault vaultA {
+    "vault A";
+    code = 5;
+    keeper = warden;
+}
+
+Vault vaultB {
+    "vault B";
+    code = 9;
+}
+
+// --- a ref member beside a func<> member ------------------------------------------------------------
+
+class Dial : object {
+    ref Purse source;
+    func<int, int> scale;
+    int reads = 0;
+
+    void hook(ref Purse p, func<int, int> f) {
+        source := p;
+        scale = f;
+    }
+
+    int reading() {
+        reads++;
+        if (!source) return -1;
+        return scale(source.coins);
+    }
+}
+
+Dial dialA {
+    "dial A";
+}
+
+// --- an I6 pooled class, declared extern ------------------------------------------------------------
+
+class Pin : object {
+    inline int x;
+    inline int y;
+}
+
+#i6 {
+    Class Chip(3)
+        with worth 0,
+             create [ n; self.worth = n; ];
+}
+
+extern class Chip[] : object {
+    int worth;
+
+    static int spin(int n) {
+        Chip c = new Chip(n);
+        if (!c?) return -1;
+        Pin p = Pin{ n, n * 2 };
+        int r = c.worth + p.x + p.y;
+        delete c;
+        return r;
+    }
+
+    static int fill() {
+        Chip a = new Chip(1);
+        Chip b = new Chip(2);
+        Chip c = new Chip(3);
+        Chip d = new Chip(4);
+        int got = 0;
+        if (a?) got++;
+        if (b?) got++;
+        if (c?) got++;
+        if (d?) got++;
+        int sum = a.worth + b.worth + c.worth;
+        delete a;
+        delete b;
+        delete c;
+        return got * 100 + sum;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Ping {
+    meta = true;
+    grammar = {.ping};
+    void handler() {
+        printLine("Ping.");
+    }
+}
+
+verb ShowPurse {
+    meta = true;
+    grammar = {.purse};
+    void handler() {
+        Purse a;
+        a.coins = 4;
+        a.grade = eGrade.mid;
+        Purse b;
+        b.coins = 10;
+        b.grade = eGrade.high;
+        Purse c = a + b;
+        printLine($"Sum {c.coins} grade {(int)c.grade}.");
+        printLine($"Rate {a * eGrade.high} {b * eGrade.low}.");
+        spare.coins = 0;
+        a.keepBackup(spare);
+        a += 5;
+        a -= 2;
+        printLine($"After {a.coins} spare {spare.coins}.");
+        array<int> marks = {3, 6, 8, 12};
+        printLine($"Above {a.above(marks)} {b.above(marks)} {c.above(marks)}.");
+    }
+}
+
+verb ShowTally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        Tally t = new Tally(2);
+        Tally u = new Tally(3);
+        t += 2;
+        t++;
+        u += 1;
+        t.announce();
+        u.announce();
+        printLine($"Counts {t.count} {u.count}, scenery {t.has(scenery)}.");
+        delete t;
+        delete u;
+        Tally v = new Tally(1);
+        v++;
+        v++;
+        printLine($"Fresh {v.count}.");
+        delete v;
+    }
+}
+
+verb ShowPlaques {
+    meta = true;
+    grammar = {.plaques};
+    void handler() {
+        plaqueA.label = "first";
+        printLine($"{plaqueA.label} {plaqueB.label} {plaqueC.label}");
+        printLine($"Eq {plaqueA == plaqueB} {plaqueA != plaqueC} {plaqueA == plaqueC}.");
+        printLine($"Order {plaqueC > plaqueA} {plaqueA < plaqueB} {plaqueA <=> plaqueC}.");
+        bool w1 = plaqueC.outranks(plaqueA);
+        bool w2 = plaqueB.outranks(plaqueA);
+        printLine($"Outranks {w1} {w2}: {plaqueA.label} {plaqueB.label} {plaqueC.label}");
+    }
+}
+
+verb ShowWarden {
+    meta = true;
+    grammar = {.warden};
+    void handler() {
+        warden.charge = brassKey;
+        warden.charge = tinBox;
+        printLine($"Holds {warden.charge}, last {warden.holding}, handoffs {warden.handoffs}.");
+    }
+}
+
+verb ShowLedger {
+    meta = true;
+    grammar = {.ledger};
+    void handler() {
+        printLine($"Names {Ledger.names.length}.");
+        Ledger.spell(1);
+        Ledger.spell(2);
+        Ledger.spell(0);
+    }
+}
+
+verb ShowShelves {
+    meta = true;
+    grammar = {.shelves};
+    void handler() {
+        shelfA.tag("upper");
+        shelfA.tag("oak");
+        shelfA.survey();
+        shelfB.survey();
+        array<char> st[8];
+        shelfA.state(st);
+        bgl.util.buf.print(st);
+        print(" ");
+        shelfB.state(st);
+        bgl.util.buf.print(st);
+        shelfA.flip();
+        shelfB.flip();
+        print(" / ");
+        shelfA.state(st);
+        bgl.util.buf.print(st);
+        print(" ");
+        shelfB.state(st);
+        bgl.util.buf.print(st);
+        printLine();
+    }
+}
+
+verb ShowVault {
+    meta = true;
+    grammar = {.vault};
+    void handler() {
+        vaultA.attempt(3);
+        vaultA.attempt(5);
+        vaultB.attempt(9);
+        int p = vaultA.pad(1, 2);
+        int q = vaultB.pad(0, 1);
+        printLine($"Pad {p} {q}, tries {vaultA.tries} {vaultB.tries}.");
+    }
+}
+
+verb ShowDial {
+    meta = true;
+    grammar = {.dial};
+    void handler() {
+        printLine($"Unhooked {dialA.reading()}.");
+        spare.coins = 5;
+        dialA.hook(spare, (int n) => n * 3);
+        printLine($"Hooked {dialA.reading()}.");
+        spare.coins = 2;
+        printLine($"Live {dialA.reading()} reads {dialA.reads}.");
+    }
+}
+
+verb ShowChips {
+    meta = true;
+    grammar = {.chips};
+    void handler() {
+        printLine($"Spin {Chip.spin(4)} {Chip.spin(1)}.");
+        printLine($"Fill {Chip.fill()}.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

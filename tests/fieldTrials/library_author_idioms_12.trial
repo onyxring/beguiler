@@ -1,0 +1,26 @@
+Room A
+Room A.
+You can see a coin and a gear A here.
+> shelves
+Busy false; busy true true; sum 15 9; view 5 5; slots 5, got 2; slots 5, got 1.
+> shelves
+Busy true; busy true true; sum 27 21; view 8 5; slots 8, got 4; slots 8, got 2.
+> bays
+Bays 3, total 21, cells 3 5 6.
+> stock
+Taken.
+Logged 1; last 100.
+> gears
+gear A in Room A: 12; gear B in nothing: 17; gear A in Room A: 17; logged 3.
+> tags
+ALPHA/BETA (10); GAMMA (5); linked true false; count 2.
+> codes
+Either 7 7 0; moved 2; present 3 of 5.
+> amounts
+3/1 6/1 9/1 6/1; same true false false; twice 18; total 18/2; over 2 3; held 16/0; 18 crate, 3 box.
+> ledger
+beta, alpha; level 6; log 2; marks ---xx-; pick beta none; spare unbound two; first alpha.
+> ledger
+beta, alpha; level 6; log 4; marks ---xx-; pick beta none; spare one two; first alpha.
+> ledger
+beta, alpha; level 6; log 2; marks ---xx-; pick beta none; spare one two; first alpha.

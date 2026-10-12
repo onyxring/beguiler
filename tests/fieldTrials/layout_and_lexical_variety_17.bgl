@@ -1,0 +1,368 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where up to eighteen language areas meet inside one declaration.
+// A class with two parents holding static members, a static array<string> and static array<int>, an
+// inline `auto` accessor, a `replace` of an inherited method, `+=`, `[]`/`[]=` over the static array, an
+// `explicit` conversion and a static method; its dense method holds an emitter-class local, a
+// `stringObj`, a local array<Cell> of a value class, a block-bodied lambda that throws (caught by the
+// caller), compound assignment through the accessor and the static array, a ranged/guarded switch, a
+// `var` told apart by `typeof` and a performed verb; a second static method walks an array<Panel> with a
+// block lambda. A pooled class (create/destroy) with static members, a static array<string> and
+// static array<int>, an emitter member, a `replace` calling the ancestor through a cast, a `[]`, and a
+// static method taking a `ref stringObj` and a `var` that does `new`/`delete`, `??`, a <linq> chain with
+// a capturing lambda, an `#if`/`#else` inside the body, an in-routine `#i6` block reading a local, a ref
+// bound with `:=` to a value-class global, a switch on `typeof` and a performed verb; a `replace`d global
+// routine calling `replaced()` with `??` and `#if`; verbs that drive them.
+// Lexically: `#Define`/`#IF`/`#ELSE`/`#endif` in mixed case, `$` hex and `$$` binary literals in
+// directives and code, keywords in odd case (`STATIC`, `Static`, `TRY`, `Catch`, `THROW`, `Switch`,
+// `CASE`, `Explicit`, `New`, `Delete`, `Replace`), comments between `operator` and its symbol and inside
+// parameter lists, a lambda body in Allman braces, an expression continued on a leading operator, a
+// tab-indented class body, and an empty statement.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define HEAVY                           // a flag
+#DEFINE THREE   $$11                    // binary: three
+#define SIXTEEN $10                     // hex: sixteen
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend class object { string description ; }
+
+object roomA { "Room A" ; description = "A plain room." ; attributes = light ; }
+
+bool Initialise() { location = roomA ; rfalse ; }
+
+int pings = 0 ;
+
+//-- A verb the code below performs --------------------------------------------------------------------
+
+class loudVerb : verb
+{
+    meta = true ;
+    default void handler() { pings++ ; print("[ping]") ; }
+}
+
+loudVerb V_ping { grammar = { .ping } ; }
+
+//-- Shared types ------------------------------------------------------------------------------------------
+
+union Tag = string | object ;
+
+#i6 Global tallyDepth = 0 ;
+extern int tallyDepth ;
+
+emitter class Tally
+{
+    void init ()   { tallyDepth++ ; $self = tallyDepth ; }
+    void deinit () { tallyDepth-- ; }
+    int  operator () { ($val) }
+}
+
+value class Cell
+{
+    int v ;
+    Cell operator = ( Cell o ) { v = o.v ; return self ; }
+}
+
+value class Gauge
+{
+    int lo ;
+    int hi ;
+    Gauge operator = ( Gauge o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    int width () { return hi - lo ; }
+}
+
+Gauge spare ;
+
+//-- Cluster 1: a class with two parents and one dense method ----------------------------------------------
+
+class Frame : object
+{
+    int width = 2 ;
+    int areaOf () { return width * 2 ; }
+}
+
+class Badge : object
+{
+    int rank = 1 ;
+}
+
+class Panel : Frame , Badge
+{
+	Static int made = 0 ;
+	static array<string> names = { "off" , "low" , "high" } ;
+	STATIC array<int>    hits[3] ;
+	int dial ;
+	auto level = {
+		int _raw = 0 ;
+		int  operator ()          { return _raw ; }
+		void operator = ( int v ) { _raw = v * 2 ; }
+	}
+
+	replace int areaOf () { return width * 3 ; }
+	Panel operator /* bump */ += ( int n ) { dial = dial + n ; return self ; }
+	int   operator [] ( int i ) { return hits[i] ; }
+	void  operator []= ( int i , int v ) { hits[i] = v ; }
+	Explicit int operator () { return dial * 10 + rank ; }
+
+	static int bump ( Panel p , int n /* steps */ ) { p += n ; made++ ; return made ; }
+
+	static int heaviest ( int floor )
+	{
+		array<Panel> row = { panelA , panelB } ;
+		int best = 0 ;
+		func<int, Panel> score = ( Panel p ) =>
+		{
+			int n = (int)p ;
+			if (n < floor) THROW n ;
+			return n + p.areaOf() ;
+		} ;
+		for (int i = 0 ; i < row.length ; i++)
+		{
+			TRY { int s = score(row[i]) ; if (s > best) best = s ; }
+			Catch ( int low ) { best -= low ; }
+		}
+		return best ;
+	}
+
+	int survey ( Tag why , int limit )
+	{
+		Tally         t ;
+		stringObj     s ;
+		array<Cell>   cells[3] ;
+		var           got = why ;
+		int sum = 0 ;
+		func<int, int> clamp = ( int x ) => {
+			if (x > limit) throw x ;
+			return x * 2 ;
+		} ;
+		cells.length = 3 ;
+		for (int i = 0 ; i < 3 ; i++) cells[i].v = i + 1 ;
+		TRY
+		{
+			for (int i = 0 ; i < cells.length ; i++) sum += clamp(cells[i].v) ;
+		}
+		Catch ( int e ) { sum += 100 * e ; }
+		self += THREE ;
+		level = dial ;
+		level += 1 ;
+		self[1] = level ;
+		hits[2]++ ;
+		made += 1 ;
+		Switch (level)
+		{
+			CASE 0 to 9 : s = names[1] ;
+			CASE > 9    : s = names[2] ;
+			default     : s = names[0] ;
+		}
+		s += "/" ;
+		s += names[(int)self % 3] ;
+		if (typeof(got) == eType.string) { print((string)got) ; print(" ") ; }
+		else V_ping.perform() ;
+		s.print() ; print(" ") ;
+		return sum * 10
+		     + t ;
+	}
+}
+
+Panel panelA { "panel A" ; dial = 1 ; }
+Panel panelB { "panel B" ; dial = 0 ; rank = 2 ; width = 5 ; }
+
+array<Panel> allPanels = { panelA , panelB } ;
+
+//-- More of Panel, under a flag: -= that throws, ++ and a static method over a ref array<Panel> -----------
+
+#IF HEAVY
+extend class Panel
+{
+	Panel operator -= ( int n )
+	{
+		if (dial - n < 0) THROW dial ;
+		dial = dial - n ;
+		return self ;
+	}
+	Panel operator ++ () { dial++ ; return self ; }
+
+	static int spread ( ref array<Panel> row , Tag who , int cut )
+	{
+		stringObj trail ;
+		int fails = 0 ;
+		for (int i = 0 ; i < row.length ; i++)
+		{
+			TRY { row[i] -= cut ; trail += names[1] ; }
+			Catch ( int had ) { fails++ ; trail += "(" ; trail += names[had % 3] ; trail += ")" ; }
+			trail += " " ;
+		}
+		row[0]++ ;
+		int up = row.filter(( Panel p ) => { int d = p.dial ; return d > 1 ; }).count() ;
+		Switch (up) { CASE 0 : trail += "none" ; CASE 1 : trail += "one" ; default : trail += "both" ; }
+		if (typeof(who) == eType.object) V_ping.perform() ;
+		trail.print() ;
+		return fails * 100 + up * 10 + row[0].dial ;
+	}
+}
+#endif
+
+//-- Cluster 2: a pooled class with statics, an emitter member, an ancestor call and a dense static method --
+
+class Box : object
+{
+    int size = 1 ;
+    int weigh () { return size * 10 ; }
+}
+
+Box boxA { "box A" ; parent = roomA ; size = 3 ; }
+Box boxB { "box B" ; size = 6 ; }
+
+class Crate[3] : Box {
+    static int live = 0 ;
+    static array<string> tags  = { "small" , "mid" , "large" } ;
+    static array<int>    sizes = { 2 , 5 , 9 , 4 } ;
+
+    void create ( int n ) { size = n ; live++ ; }
+    void destroy ()       { live-- ; }
+    emitter int doubled () { ($self.size * 2) }
+    replace int weigh ()  { return ((Box)self).weigh() + size ; }
+    int operator [] ( int i ) { return sizes[i] + size ; }
+
+    static int stack ( ref stringObj note , var extra , object spot )
+    {
+        Gauge     g ;
+        ref Gauge r := spare ;
+        Crate c = New Crate(4) ;
+        if (c == null) return -1 ;
+        Crate d = new Crate(7) ;
+        object where = spot.parent ?? spot ;
+        int big = sizes.filter((int x) => x > c.size).count() ;
+        int w = c.weigh() + ((Box)d).weigh() ;
+        #IF HEAVY
+            w += d.doubled() ;
+        #ELSE
+            w -= 1 ;
+        #endif
+        #i6 { w = w + SIXTEEN_I6 ; }
+        Switch (typeof(extra))
+        {
+            CASE eType.string : note += (string)extra ;
+            CASE eType.object : note += "obj" ;
+            default           : note += "?" ;
+        }
+        note += "-" ;
+        switch (big) { case 0 to 1 : note += tags[0] ; case 2 : note += tags[1] ; default : note += tags[2] ; }
+        g.lo = c[0] ;
+        g.hi = d[2] ;
+        r = g ;
+        print(where) ; print(" ") ;
+        Delete c ;
+        delete d ;
+        if (live == 0) V_ping.perform() ;
+        return w * 10 + big ;
+    }
+}
+
+#i6 Constant SIXTEEN_I6 = $10 ;
+
+//-- A replaced global routine calling its predecessor ----------------------------------------------------
+
+int fallback ( object o ) { return 1 ; }
+
+Replace int fallback ( object o )
+{
+    object up = o.parent ?? o ;
+    #if HEAVY
+        return replaced(up) + SIXTEEN ;
+    #else
+        return replaced(up) ;
+    #endif
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------------
+
+verb V_panel
+{
+    meta = true ; grammar = { .panel } ;
+    void handler()
+    {
+        print(panelA.survey("a", 2)) ; print(" ") ;
+        printLine($"{panelA.dial} {panelA.level} {panelA[1]} {panelA[2]} {Panel.made} {(int)panelA} {panelA.areaOf()} {tallyDepth}") ;
+        print(panelB.survey(roomA, 5)) ; print(" ") ;
+        printLine($"{panelB.dial} {panelB.level} {panelB[1]} {panelB[2]} {Panel.made} {(int)panelB} {panelB.areaOf()} {pings}") ;
+    }
+}
+
+verb V_bump
+{
+    meta = true ; grammar = { .bump } ;
+    void handler()
+    {
+        print(Panel.bump(panelB, 2)) ; print(" ") ;
+        print(Panel.heaviest(0)) ; print(" ") ;
+        print(Panel.heaviest(45)) ; print(" ") ;
+        printLine($"{panelB.dial} {Panel.made} {((Frame)panelB).areaOf()}") ;
+    }
+}
+
+verb V_crate
+{
+    meta = true ; grammar = { .crate | .stack } ;
+    void handler()
+    {
+        stringObj note ;
+        note = "n:" ;
+        print(Crate.stack(note, "x", boxA)) ; print(" ") ; note.print() ; print(" ") ;
+        printLine($"{spare.lo} {spare.hi} {spare.width()} {Crate.live} {pings}") ;
+        note = "" ;;
+        print(Crate.stack(note, roomA, boxB)) ; print(" ") ; note.print() ; print(" ") ;
+        printLine($"{fallback(boxA)} {fallback(boxB)} {Crate.live}") ;
+    }
+}
+
+verb V_spread
+{
+    meta = true ; grammar = { .spread } ;
+    void handler()
+    {
+        print(Panel.spread(allPanels, roomA, 4)) ; print(" ") ;
+        printLine($"{panelA.dial} {panelB.dial} {pings}") ;
+        print(Panel.spread(allPanels, "s", 2)) ; print(" ") ;
+        printLine($"{panelA.dial} {panelB.dial} {pings}") ;
+    }
+}
+
+verb V_pool
+{
+    meta = true ; grammar = { .pool } ;
+    void handler()
+    {
+        array<Crate> held[4] ;
+        int full = 0 ;
+        for (int i = 0 ; i < 4 ; i++)
+        {
+            Crate c = new Crate(i + THREE) ;
+            if (c == null) full++ ; else held.append(c) ;
+        }
+        object first = held[0] ?? boxB ;
+        int fat = held.filter((Crate k) => k.size > 4).count() ;
+        bool any = held.any((Crate k) => { return k.weigh() > 60 ; }) ;
+        print(first == held[0]) ; print(" ") ;
+        print(held.length) ; print(" ") ; print(full) ; print(" ") ;
+        print(fat) ; print(" ") ; print(any) ; print(" ") ;
+        print(held[2][1] + held[1].doubled()) ; print(" ") ;
+        print(Crate.live) ; print(" ") ;
+        for (int i = 0 ; i < held.length ; i++) { Crate k = held[i] ; delete k ; }
+        printLine($"{Crate.live}") ;
+    }
+}
+
+#includeI6 "grammar"

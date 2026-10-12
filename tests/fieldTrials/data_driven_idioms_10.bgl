@@ -1,0 +1,424 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a rule book as an array of object records written as bare { … } with positional
+// members of type verb, an anonymous union (object | func<bool, object>) and func<eVerdict, object>,
+// where the union holds an object, a named predicate or null and is discriminated with typeof and
+// narrowed by casts; a rule injected at build time as a bare { … } carrying a lambda; the book run
+// from a room's before() with action compared against a verb member, and a switch on action inside
+// a rule body; an array<verb> tally table searched with indexOf(action); an array<attribute> flag
+// table driving give/ungive/has across bgl.world.instances; a tree of nodes declared as standalone
+// inline objects whose re-listed positional parent places them in the object tree, each with an
+// inline dictionary-word array and an inline sized int array as nested aggregates; a recursive walk
+// over children passing a run-time inline-object argument (with the documented re-entry of a
+// per-site instance); words of a TOPIC matched against every node's word array; a jagged
+// array<array<func<int, int, int>>> of named routines and lambdas folded over the nodes' costs; an
+// array of string | func<void> filled and overwritten from ternaries over unrelated types; rows of
+// that jagged table iterated with for-in and called through parenthesized subscripts; a rule's union
+// and func<> members reassigned at run time (to an object and a lambda, then back); an inline-object
+// local in a verb handler, placed in the tree at compile time and given costs at run time; and a
+// bgl.world.inParent snapshot filtered by a lambda capturing a local.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int NONE = -1;
+const int HEAVY = 5;
+
+enum eVerdict { pass, halt, note }
+
+attribute tagged;
+attribute spent;
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+    bool before() { return runBook(); }
+}
+
+class Thing : object {
+    inline instanceName;
+    inline int weight;
+}
+
+Thing brassKey   { "brass key", 2;   name = {.brass, .key};    parent = roomA; description = "A brass key."; }
+Thing tinCup     { "tin cup", 1;     name = {.tin, .cup};      parent = roomA; description = "A tin cup."; }
+Thing stoneBlock { "stone block", 9; name = {.stone, .block};  parent = roomA; description = "A stone block."; }
+Thing ironBar    { "iron bar", 6;    name = {.iron, .bar};     parent = roomA; description = "An iron bar."; }
+
+//-- Rule book -----------------------------------------------------------------
+
+class Rule : object {
+    inline verb act;
+    inline object | func<bool, object> match;
+    inline func<eVerdict, object> body;
+    int fired = 0;
+}
+
+bool dropLocked = false;
+int noted = 0;
+
+bool isHeavy(object o) {
+    if (o == null || !o.is(Thing)) return false;
+    return ((Thing)o).weight >= HEAVY;
+}
+
+eVerdict refuseHeavy(object o) {
+    print($"The {o} is too heavy for the rule.^");
+    return eVerdict.halt;
+}
+
+eVerdict noteKey(object o) {
+    print("(key rule)^");
+    return eVerdict.note;
+}
+
+eVerdict lockDrop(object o) {
+    if (dropLocked) {
+        print("Dropping is locked.^");
+        return eVerdict.halt;
+    }
+    return eVerdict.pass;
+}
+
+eVerdict anyAction(object o) {
+    switch (action) {
+        case Take, Drop: print("(carry rule)^");
+        case Examine:    return eVerdict.pass;
+        default:         print("(other rule)^");
+    }
+    return eVerdict.note;
+}
+
+array<Rule> book = {
+    { Take, isHeavy, refuseHeavy },
+    { Take, brassKey, noteKey },
+    { Drop, null, lockDrop },
+    { null, tinCup, anyAction },
+};
+
+extend book {
+    inject { Examine, stoneBlock, (object o) => { print("(block rule)^"); return eVerdict.note; } } first;
+}
+
+bool matches(object | func<bool, object> m, object o) {
+    if (m == null) return true;
+    if (typeof(m) == eType.routine) {
+        func<bool, object> test = (func<bool, object>)m;
+        return test(o);
+    }
+    return (object)m == o;
+}
+
+array<verb> watched[4] = { Take, Drop, Examine, Look };
+array<int>  seenCount[4] = { 0, 0, 0, 0 };
+
+bool runBook() {
+    int at = watched.indexOf(action);
+    if (at != NONE) seenCount[at]++;
+    for (Rule r in book) {
+        if (r.act != null && r.act != action) continue;
+        if (!matches(r.match, noun)) continue;
+        r.fired++;
+        eVerdict v = r.body(noun);
+        switch (v) {
+            case eVerdict.halt: return true;
+            case eVerdict.note: noted++;
+            default:            continue;
+        }
+    }
+    return false;
+}
+
+enum eMatch { anyNoun = 0, testNoun, oneObject }
+
+array<string> matchNames = { "any", "test", "object" };
+
+eMatch matchKind(object | func<bool, object> m) {
+    if (m == null) return eMatch.anyNoun;
+    if (typeof(m) == eType.routine) return eMatch.testNoun;
+    return eMatch.oneObject;
+}
+
+//-- Flags ---------------------------------------------------------------------
+
+array<attribute> flags     = { tagged, spent, light };
+array<string>    flagNames = { "tagged", "spent", "light" };
+
+//-- Node tree -----------------------------------------------------------------
+
+class Node : object {
+    inline parent;
+    inline string title;
+    required inline array<dictionaryWord> words;
+    inline array<int> costs[3];
+}
+
+object treeRoot { "tree root"; }
+
+Node{ treeRoot, "alpha", {.alpha, .first}, {1, 2, 3} };
+Node nodeB = { treeRoot, "beta", {.beta}, {4} };
+Node{ nodeB, "gamma", {.gamma, .third, .last}, {5, 6} };
+Node{ nodeB, "delta", {.delta}, {7, 8, 9} };
+Node{ treeRoot, "epsilon", {.epsilon, .last}, {10} };
+
+class Ctx : object {
+    inline int depth;
+    inline int total;
+}
+
+int walk(object n, Ctx c) {
+    int d = c.depth;
+    int sum = c.total;
+    for (int i = 0; i < d; i++) print("  ");
+    if (n.is(Node)) {
+        Node nd = (Node)n;
+        int own = 0;
+        for (int x in nd.costs) own += x;
+        sum += own;
+        print($"{nd.title} costs {own}, running {sum}^");
+    } else {
+        print($"{n}^");
+    }
+    for (object ch in n.children) {
+        sum = walk(ch, { d + 1, sum });
+    }
+    if (n.children.length > 0 && d > 0) {
+        for (int i = 0; i < d; i++) print("  ");
+        print($"end {d}, site depth {c.depth}^");
+    }
+    return sum;
+}
+
+void collectNodes(object n, array<Node> into) {
+    for (object ch in n.children) {
+        if (ch.is(Node)) into += (Node)ch;
+        collectNodes(ch, into);
+    }
+}
+
+array<Node> allNodes[8];
+
+Node nodeByWord(dictionaryWord w) {
+    for (Node nd in allNodes) {
+        if (nd.words.indexOf(w) != NONE) return nd;
+    }
+    return null;
+}
+
+//-- Operation sets ------------------------------------------------------------
+
+int addOp(int a, int b) { return a + b; }
+int subOp(int a, int b) { return a - b; }
+int modOp(int a, int b) { return b == 0 ? a : a % b; }
+
+array<array<func<int, int, int>>> opSets = {
+    { addOp, subOp },
+    { (int a, int b) => a * b % 1000, (int a, int b) => a > b ? a : b, modOp },
+    { (int a, int b) => a | b },
+};
+
+array<string> opSetNames = { "add/sub", "mul/max/mod", "or" };
+
+int foldSet(int s) {
+    array<func<int, int, int>> ops = opSets[s];
+    int acc = 0;
+    int k = 0;
+    for (Node nd in allNodes) {
+        for (int x in nd.costs) {
+            func<int, int, int> f = ops[k % ops.length];
+            acc = f(acc, x);
+            k++;
+        }
+    }
+    return acc;
+}
+
+//-- Labels --------------------------------------------------------------------
+
+void blankLabel() { print("(single cost)"); }
+
+array<string | func<void>> labels[8];
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb LockTest {
+    grammar = {.lockdrop};
+    void handler() {
+        dropLocked = !dropLocked;
+        print(dropLocked ? "Drop lock on.^" : "Drop lock off.^");
+    }
+}
+
+verb RulesTest {
+    grammar = {.rules};
+    void handler() {
+        int i = 0;
+        for (Rule r in book) {
+            eMatch k = matchKind(r.match);
+            print($"Rule {i}: {matchNames[(int)k]}");
+            if (k == eMatch.oneObject) print($" {(object)r.match}");
+            print($", fired {r.fired}^");
+            i++;
+        }
+        print($"Noted {noted}.^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        array<string> names = { "take", "drop", "examine", "look" };
+        for (int i = 0; i < watched.length; i++) print($"{names[i]} {seenCount[i]}^");
+    }
+}
+
+verb FlagTest {
+    grammar = {.flag, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 0 || n >= flags.length) { print($"No flag {n}.^"); return; }
+        attribute a = flags[n];
+        int moved = 0;
+        for (object o in bgl.world.instances(Thing)) {
+            if (((Thing)o).weight % 2 == n % 2) continue;
+            if (o.has(a)) o.ungive(a); else o.give(a);
+            moved++;
+        }
+        print($"Toggled {flagNames[n]} on {moved}.^");
+        for (object o in bgl.world.instances(Thing)) {
+            print($"{o}:");
+            for (int f = 0; f < flags.length; f++) {
+                if (o.has(flags[f])) print($" {flagNames[f]}");
+            }
+            print("^");
+        }
+    }
+}
+
+verb TreeTest {
+    grammar = {.tree};
+    void handler() {
+        int total = walk(treeRoot, { 0, 0 });
+        print($"Total {total}.^");
+    }
+}
+
+verb FindTest {
+    grammar = {.find, TOPIC};
+    void handler() {
+        wn = consult_from;
+        for (int k = 0; k < consult_words; k++) {
+            dictionaryWord w = NextWord();
+            Node nd = nodeByWord(w);
+            if (nd == null) { print("? "); continue; }
+            print($"{nd.title}({nd.words.length}/{nd.costs.length}) ");
+        }
+        print("^");
+    }
+}
+
+verb FoldTest {
+    grammar = {.fold, NUMBER};
+    void handler() {
+        int s = (int)noun;
+        if (s >= opSets.length) { print($"No set {s}.^"); return; }
+        print($"Set {s} ({opSetNames[s]}, {opSets[s].length} ops): {foldSet(s)}^");
+    }
+}
+
+verb SwapTest {
+    grammar = {.swap};
+    void handler() {
+        Rule r = book[1];
+        if (typeof(r.match) == eType.routine) {
+            r.match = ironBar;
+            r.body = (object o) => { print("(bar rule)^"); return eVerdict.halt; };
+        } else {
+            r.match = isHeavy;
+            r.body = refuseHeavy;
+        }
+        print($"Rule 1 is now {matchNames[(int)matchKind(book[1].match)]}.^");
+    }
+}
+
+verb ZetaTest {
+    grammar = {.zeta, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        Node z = { treeRoot, "zeta", {.zeta}, {n, n * 2} };
+        allNodes.clear();
+        collectNodes(treeRoot, allNodes);
+        print($"Nodes {allNodes.length}.^");
+    }
+}
+
+verb SetsTest {
+    grammar = {.sets};
+    void handler() {
+        int s = 0;
+        for (array<func<int, int, int>> row in opSets) {
+            print($"{s}:");
+            for (func<int, int, int> f in row) print($" {f(12, 5)}");
+            print($" first {(row[0])(7, 3)}^");
+            s++;
+        }
+        print($"direct {(opSets[1][2])(17, 5)}^");
+    }
+}
+
+verb LabelTest {
+    grammar = {.labels};
+    void handler() {
+        labels.clear();
+        for (Node nd in allNodes) {
+            labels += nd.costs.length > 1 ? nd.title : blankLabel;
+        }
+        labels[0] = labels.length > 4 ? blankLabel : "first";
+        for (int i = 0; i < labels.length; i++) {
+            string | func<void> v = labels[i];
+            print($"{i}: ");
+            if (typeof(v) == eType.routine) ((func<void>)v)();
+            else print((string)v);
+            print("^");
+        }
+    }
+}
+
+verb HeavyTest {
+    grammar = {.heavy, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        int n = 0;
+        for (object o in bgl.world.inParent(roomA, (object v) => v.is(Thing) && ((Thing)v).weight >= limit)) {
+            print($"{o} ");
+            n++;
+        }
+        print($"({n} at {limit} or more)^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    collectNodes(treeRoot, allNodes);
+    print($"Nodes {allNodes.length}, rules {book.length}.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

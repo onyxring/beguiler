@@ -1,0 +1,95 @@
+Room A
+Room A.
+
+You can see a widget, a gadget, a card A and a card B here.
+
+> chars
+lower upper digit gap gap other ; vowels 6, find 3, miss -1, same true.
+
+> texts
+B.K. ab.... abcdefgh; lan/tern; copy 10, own lantern!.
+
+> texts
+B.K. ab.... abcdefgh; lan/tern; copy 10, own lantern!.
+
+> compare
+true false -1 -1; fig; sorted: Fig apple fig pear.
+
+> caught
+Got 12 chars: <THE WIDGET>.
+
+> notes
+first! / first and second / 16.
+
+> notes
+first! / first and second / 16.
+
+> bytes
+ABC-12z 65 7.
+
+> whats
+int string other.
+
+> tickets
+Own 1, live 1; copy 10102; shared 101; live 1, copies 1.
+
+> tickets
+Own 2, live 1; copy 10202; shared 201; live 1, copies 2.
+
+> passes
+1:1 3:1 4:1 after 0; at end 0.
+
+> labels
+plain(false) beep(true) none beep beep.
+
+> sums
+Total 31, big 3; low 4, high 1.
+
+> shelf
+2: gAmma b....., has true, <n5|x> b-----.
+
+> shelf
+2: gAmma b....., has true, <n5|x> b-----.
+
+> shelf
+2: gAmma b....., has true, <n5|x> b-----.
+
+> shelf
+2: gAmma b....., has true, <n5|x> b-----.
+
+> later
+beep stamp 7
+
+> later
+ stamp 7 stamp 7
+
+> status
+All clear.
+
+> idle
+Nothing to report.
+
+> blast
+Zapped the air.
+
+> zap widget
+[4 left] Zapped the widget.
+
+> zap widget with gadget
+[3 left] Zapped the widget.
+
+> jolt gadget
+The gadget is drained.
+
+> zap softly widget
+Softly: [2 left] Zapped the widget.
+
+> blast widget
+[1 left] Zapped the widget.
+
+> zap widget
+The widget is drained.
+
+> jolt gadget
+The gadget is drained.
+

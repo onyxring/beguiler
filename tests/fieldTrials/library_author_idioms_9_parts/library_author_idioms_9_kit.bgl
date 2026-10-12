@@ -1,0 +1,130 @@
+/*  Field trial part — included by library_author_idioms_9.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_9_text"
+
+#using bgl.printRules
+
+// ---- Tickets: a handle the I6 side issues, owned by each variable. ----
+
+#i6 {
+    Global la9_live = 0;
+    Global la9_issued = 0;
+    Global la9_copies = 0;
+    [ La9_Issue;
+        la9_live++;
+        la9_issued++;
+        return la9_issued;
+    ];
+    [ La9_IssueCopy src;
+        la9_copies++;
+        la9_live++;
+        return src + 100;
+    ];
+    [ La9_Return h;
+        h = 0;
+        la9_live--;
+    ];
+}
+
+extern int la9_live   asBgl la9Live;
+extern int la9_copies asBgl la9Copies;
+extern int La9_Issue();
+extern int La9_IssueCopy(int src);
+extern void La9_Return(int h);
+
+/// A numbered handle: issued on entry to a scope, returned on exit.
+emitter class la9Ticket {
+    void init()                { $self = La9_Issue(); }
+    void init(la9Ticket src)   { $self = La9_IssueCopy($src); }
+    void deinit()              { La9_Return($self); }
+    la9Ticket operator = (la9Ticket v) { $self = $v; }
+    /// The handle's number.
+    int no { ($self) }
+}
+
+/// How many handles are out while a copy is held.
+int la9HeldCopy(la9Ticket t) { return t.no * 100 + la9Live; }
+
+/// How many handles are out while the caller's is shared.
+int la9HeldShared(ref la9Ticket t) { return t.no * 100 + la9Live; }
+
+/// Takes a handle on each pass, skipping one pass and stopping early.
+void la9Passes(int skip, int stop) {
+    for (int i in 1 to 6) {
+        la9Ticket t;
+        if (i == skip) continue;
+        if (i == stop) break;
+        print($"{i}:{la9Live} ");
+    }
+    print($"after {la9Live}");
+}
+
+// ---- Labels: a text or a routine, told apart at run time. ----
+
+union la9Label = string | func<void>;
+
+/// Prints a label, running it when it is a routine.
+void la9Show(la9Label l) {
+    switch (typeof(l)) {
+        case eType.string:  print((string)l);
+        case eType.routine: ((func<void>)l)();
+        default:            print("?");
+    }
+}
+
+void la9Beep() { print("beep"); }
+
+array<la9Label> la9Labels = {"plain", la9Beep};
+
+// ---- Callbacks that the kit calls before returning. ----
+
+/// Calls a function on each element.
+void la9Each(array<int> a, func<void, int> f) {
+    for (int x in a) f(x);
+}
+
+/// A bin that counts what overflows it.
+class la9Bin : object {
+    int limit = 5;
+    /// How many elements are over the limit.
+    int over(array<int> a) {
+        int n = 0;
+        la9Each(a, (int x) => { if (x > limit) n++; });
+        return n;
+    }
+}
+
+/// A routine kept to run later.
+literal func<void> la9Later = la9Beep;
+
+/// Keeps a routine for later.
+void la9Keep(literal func<void> f) { la9Later = f; }
+
+// ---- An action the I6 side defines. ----
+
+#i6 {
+    [ La9ZapSub;
+        if (noun == 0) "Zapped the air.";
+        print "Zapped ", (the) noun, ".^";
+    ];
+    Verb 'zap' 'blast'
+        *               -> La9Zap
+        * noun          -> La9Zap;
+}
+
+/// The I6 side's action, and the words it claims.
+extern verb La9Zap { .zap|.blast }
+
+/// Things that react to the I6 side's action.
+class la9Charged : object {
+    int charge = 2;
+    bool before() {
+        if (action == La9Zap) {
+            charge--;
+            if (charge <= 0) rtrue($"{cThe(self)} is drained.^");
+            print($"[{charge} left] ");
+        }
+        rfalse;
+    }
+}

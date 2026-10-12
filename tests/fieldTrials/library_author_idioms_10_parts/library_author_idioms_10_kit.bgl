@@ -1,0 +1,127 @@
+/*  Field trial part — included by library_author_idioms_10.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_10_units"
+
+#using bgl.printRules
+
+// A helper no template asks for: it should cost nothing.
+#storedEmitLast la10Spare {
+    [ La10_SpareHelper; return 0; ];
+}
+
+// ---- Work done on the I6 side, in float. ----
+
+#i6 {
+    [ La10_Mix a b  r;
+        @fadd a b r;
+        @fmul r $+0.5 r;
+        return r;
+    ];
+}
+
+/// The mean of two floats, worked out on the I6 side.
+extern float La10_Mix(float a, float b);
+
+// ---- A point on a plane, held by value. ----
+
+/// A point on a plane.
+value class la10Point {
+    inline float x;
+    inline float y;
+    la10Point operator = (la10Point o) { x = o.x; y = o.y; return self; }
+    bool operator == (la10Point o) { return x == o.x && y == o.y; }
+    bool operator != (la10Point o) { return x != o.x || y != o.y; }
+    /// Moves the point by an offset.
+    void shift(float dx, float dy) {
+        x += dx;
+        y += dy;
+    }
+    /// The distance to another point.
+    float distanceTo(la10Point o) {
+        float dx = x - o.x;
+        float dy = y - o.y;
+        return bgl.util.math.sqrt(dx * dx + dy * dy);
+    }
+    /// Prints the point.
+    void print() {
+        ::print("(");
+        x.show();
+        ::print(", ");
+        y.show();
+        ::print(")");
+    }
+}
+
+/// Sets a point halfway between two others.
+void la10Midpoint(ref la10Point out, la10Point a, la10Point b) {
+    out.x = La10_Mix(a.x, b.x);
+    out.y = La10_Mix(a.y, b.y);
+}
+
+// ---- A dial that keeps twice what it is set to. ----
+
+/// The kit's dial: stores twice what it is set to, never below zero, and counts its settings.
+object la10Dial {
+    int sets = 0;
+    auto level = {
+        float _raw = 0.0;
+        float operator () { return _raw; }
+        void operator = (float v) {
+            _raw = la10Max(v * 2, 0.0);
+            outer.sets++;
+        }
+    }
+}
+
+// ---- Readings drawn from a pool. ----
+
+/// Four values read together.
+class la10Sample[3] : object {
+    float a;
+    float b;
+    float c;
+    float d;
+    static int made = 0;
+    void create(float p, float q, float r, float s) {
+        a = p;
+        b = q;
+        c = r;
+        d = s;
+        made++;
+    }
+    /// The mean of the four values.
+    float mean() { return (a + b + c + d) / 4; }
+    /// The gap between the largest and smallest values.
+    float spread() {
+        array<float> v = {a, b, c, d};
+        v.sort(float::operator <=>);
+        return v[3] - v[0];
+    }
+}
+
+// ---- Things with a mass. ----
+
+/// A thing with a mass.
+class la10Weighed : object {
+    la10Grams mass = 0.0;
+    /// The mass with packing and tare added.
+    la10Grams gross() {
+        la10Grams g = mass + la10Packing;
+        float t = la10Tare((float)g);
+        return g + t;
+    }
+}
+
+/// Reports a thing's mass.
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(la10Weighed)) {
+            print($"{cThe(noun)} has no mass to speak of.^");
+            return;
+        }
+        la10Weighed w = (la10Weighed)noun;
+        print($"{cThe(w)}: {w.mass}, gross {w.gross()}.^");
+    }
+}

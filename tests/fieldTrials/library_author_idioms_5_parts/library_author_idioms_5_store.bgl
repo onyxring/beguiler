@@ -1,0 +1,110 @@
+/*  Field trial part — included by library_author_idioms_5.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_5_types"
+#include <array>
+
+/// A slip drawn from a fixed pool of three.
+class la5Ticket[3] : object {
+    inline int serial;
+    la5Amount value;
+    static int live = 0;
+
+    void create(int s, int u) {
+        serial = s;
+        value = u;
+        la5Ticket.live++;
+    }
+    void destroy() { la5Ticket.live--; }
+    int operator <=> (la5Ticket o) { return serial - o.serial; }
+    void print() { ::print($"ticket {serial} ({(int)value})"); }
+}
+
+/// A ticket stub; a pool of its own, the ticket's create and count.
+class la5Stub[2] : la5Ticket {
+    replace void print() { ::print($"stub {serial} ({(int)value})"); }
+}
+
+/// A row of slots that reads and writes by index.
+class la5Shelf : object {
+    array<object> slots[4];
+    int filled = 0;
+    la5Amount fee = la5Amount{ units = 3; };
+    ref la5Amount linked;
+
+    object operator [] (int i) {
+        if (i < 0 || i >= slots.size) throw eLa5Fault.la5NoSlot;
+        return slots[i];
+    }
+    void operator []= (int i, object o) {
+        if (i < 0 || i >= slots.size) throw eLa5Fault.la5NoSlot;
+        if (filled == slots.size) throw eLa5Fault.la5Full;
+        if (slots[i] == null) filled++;
+        slots[i] = o;
+    }
+    static bool operator == (la5Shelf a, int n) { return a.filled == n; }
+    static bool operator != (la5Shelf a, int n) { return a.filled != n; }
+}
+
+/// One check the kit runs over a shelf.
+class la5Rule : object {
+    inline string tag;
+    inline int limit;
+    inline literal func<bool, la5Shelf, int> test;
+}
+
+bool la5AtMost(la5Shelf s, int n) { return s.filled <= n; }
+
+/// The checks, in order; a consumer may inject more.
+array<la5Rule> la5Rules = {
+    { "most", 3, la5AtMost },
+    { "exact", 2, la5Shelf::operator == },
+};
+
+/// Called with the count after each run.
+array<literal func<void, int>> la5Listeners[3];
+
+/// Registers a listener; false when the list is full.
+bool la5Listen(literal func<void, int> f) { return la5Listeners.append(f); }
+
+/// Runs every rule over a shelf; returns how many passed.
+int la5Run(la5Shelf s, int bias = 0, bool verbose = false) {
+    int passed = 0;
+    for (la5Rule r in la5Rules) {
+        bool ok = r.test(s, r.limit + bias);
+        if (verbose) print($"[{r.tag} {r.limit + bias} {ok}]");
+        if (ok) passed++;
+    }
+    if (verbose) print("^");
+    for (func<void, int> f in la5Listeners) f(passed);
+    return passed;
+}
+
+/// Adds to an amount the caller owns.
+void la5Bump(ref la5Amount a, int n) { a.add(n); }
+
+/// Works on a copy; the caller's amount is unchanged.
+int la5Probe(la5Amount a) {
+    a.add(100);
+    return (int)a;
+}
+
+/// Names a fault.
+string la5FaultName(eLa5Fault f) {
+    switch (f) {
+        case la5Empty:            return "empty";
+        case la5Full, la5NoSlot:  return f == la5Full ? "full" : "no slot";
+        default:                  return "?";
+    }
+}
+
+/// A note whose body is text or a routine.
+class la5Note : object {
+    inline la5Text body;
+    inline int weight = 1;
+}
+
+array<la5Note> la5Notes = {
+    { "first note", 2 },
+    la5Note{ body = "second note"; },
+};

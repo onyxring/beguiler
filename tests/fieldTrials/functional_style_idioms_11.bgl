@@ -1,0 +1,460 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <linq> chains meeting other areas in one declaration — over an array of a primitive class
+// (an emitter value, implicit conversion in `>` and `-`, a cast in a mapper); over arrays of arrays
+// (global and local, rows as lambda parameters, a chain in a chain's predicate, an array<array<int>>
+// parameter of a recursive function, a row passed as an array); in a class with regular-method
+// operator [] / []=; in a class with an implicit regular-method conversion (a static method's
+// predicate, an orderBy comparator `a - b`, and a recursive function's assignment) and an emitter value
+// mapped by a lambda; in static methods taking a func<>; as a switch subject and around a switch in a
+// block lambda; through a `ref array<int>` local rebound with `:=`; in a `replace`d function calling
+// `replaced()`; in an `#i6` island's `$i6Expr` and a global emitter's `$i6Expr` with a lambda in the
+// payload; with an author's emitter class (init/deinit counting live instances) as locals captured by
+// lambdas, a by-value and a `ref` parameter, and locals in a method of a class with two parents,
+// positional members and a re-listed inherited member, overridden by a subclass and reached by an
+// ancestor cast inside a lambda. Recursion: through a lambda, a right fold over a func<> parameter, a
+// recursive `replace` whose base case calls `replaced()`, a tree walk running `perform()` at each node.
+// I6 routines declared `extern` taking and returning func<> values (a named function, a capturing
+// lambda, a routine named by `$i6Name`); a positional member beside an array<char> member.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Plain functions -------------------------------------------------------------------------
+int twice(int n)   { return n * 2; }
+bool isOdd(int n)  { return n % 2 == 1; }
+int inc(int n)     { return n + 1; }
+
+array<int> spread = {1, 3, 5, 7, 9, 11};
+array<int> mixed  = {3, -1, 4, -1, 5};
+array<int> digits = {1, 2, 3};
+array<int> evens  = {2, 4, 6, 8};
+array<int> odds   = {1, 3, 5, 7, 9};
+
+//-- A newtype over int ----------------------------------------------------------------------
+primitive class Grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter Grams operator + (Grams g) { ($val + $g) }
+    emitter bool heavy { ($val >= 10) }
+}
+
+array<Grams> loads = {4, 12, 7, 15, 2};
+
+int heavyTotal(array<Grams> gs) {
+    int t = 0;
+    for (var v in gs.filter((Grams g) => g.heavy).map((Grams g) => (int)g + 1)) t += (int)v;
+    return t;
+}
+
+//-- Arrays of arrays, walked recursively ------------------------------------------------------
+array<array<int>> grid = { {1, 2, 3}, {4, 5}, {6, 7, 8, 9}, {10} };
+
+int rowSum(array<array<int>> g, int row, int over) {
+    if (row >= g.length) return 0;
+    int here = 0;
+    for (var v in g[row].filter((int x) => x > over).map((int x) => x * row)) here += (int)v;
+    return here + rowSum(g, row + 1, over);
+}
+
+int countDeep(array<int> a, int limit) {
+    if (limit <= 0) return 0;
+    int here = a.filter((int x) => x >= limit).count();
+    return here + countDeep(a, limit / 2);
+}
+
+//-- Recursion through lambdas -----------------------------------------------------------------
+int ladder(int n) {
+    if (n <= 0) return 0;
+    int mine = n * 10;
+    func<int> below = => ladder(n - 1) + mine;
+    return below();
+}
+
+int foldRight(array<int> a, int i, func<int, int, int> f, int seed) {
+    if (i >= a.length) return seed;
+    int rest = foldRight(a, i + 1, f, seed);
+    return f(a[i], rest);
+}
+
+//-- Replaced functions --------------------------------------------------------------------------
+int hops(int n) { return 0; }
+
+replace int hops(int n) {
+    if (n <= 1) return replaced(n);
+    return 1 + hops(n % 2 == 0 ? n / 2 : 3 * n + 1);
+}
+
+int tally(array<int> a) { return a.filter((int x) => x > 0).count(); }
+
+replace int tally(array<int> a) {
+    return replaced(a) * 10 + a.filter((int x) => x < 0).count();
+}
+
+//-- A class that converts to int -----------------------------------------------------------
+class Gauge : object {
+    int level;
+    int operator () { return level * 2; }
+    emitter int raw { ($self.level) }
+    static int countOver(array<Gauge> gs, int n) { return gs.filter((Gauge g) => g > n).count(); }
+    static Gauge lowest(array<Gauge> gs) { return gs.orderBy((Gauge a, Gauge b) => a - b).first(); }
+    static int rawSum(array<Gauge> gs) {
+        int t = 0;
+        for (var v in gs.map((Gauge g) => g.raw)) t += (int)v;
+        return t;
+    }
+}
+
+Gauge gaugeA { "gauge a"; level = 3; }
+Gauge gaugeB { "gauge b"; level = 7; }
+Gauge gaugeC { "gauge c"; level = 1; }
+
+array<Gauge> gauges = {gaugeA, gaugeB, gaugeC};
+
+int countdown(Gauge g, int steps) {
+    if (steps == 0) { int v = g; return v; }
+    g.level = g.level - 1;
+    return countdown(g, steps - 1) + 1;
+}
+
+//-- An emitter class with a lifecycle --------------------------------------------------------
+int spansLive = 0;
+int spansMade = 0;
+
+emitter class Span {
+    emitter void init() { $self = 0; spansLive++; spansMade++; }
+    emitter void deinit() { spansLive--; }
+    emitter Span operator = (int v) { $target = $v; }
+    emitter Span operator = (Span v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+
+int countWithin(array<int> xs, int lo, int hi) {
+    Span from;  from = lo;
+    Span to;    to = hi;
+    return xs.filter((int x) => x >= from && x <= to).count();
+}
+
+int countFrom(array<int> xs, Span lo) {
+    lo = lo + 1;
+    return xs.filter((int x) => x >= lo).count();
+}
+
+int countFromRef(array<int> xs, ref Span lo) {
+    return xs.filter((int x) => x >= lo + 1).count();
+}
+
+//-- Two parents, positional members ---------------------------------------------------------
+class Scored : object {
+    int points;
+    default int bonus(int k) { return points * k; }
+}
+
+class Tagged : object { int tagNo; }
+
+class Entry : Scored, Tagged {
+    inline int rank;
+    inline tagNo;
+    int spreadOver(array<int> ks) {
+        Span floor;
+        floor = tagNo;
+        int t = 0;
+        for (var v in ks.filter((int k) => k > floor).map((int k) => bonus(k) + rank)) t += (int)v;
+        return t;
+    }
+    int baseOver(array<int> ks) {
+        Span floor;
+        floor = tagNo;
+        return ks.filter((int k) => ((Scored)self).bonus(k) > floor * 4).count();
+    }
+}
+
+class LateEntry : Entry {
+    int bonus(int k) { return points * k * 2; }
+}
+
+Entry entryA     { 1, 2, "entry a"; points = 3; }
+LateEntry entryB { 2, 1, "entry b"; points = 2; }
+
+array<Entry> entryList = {entryA, entryB};
+array<int> ks = {1, 2, 3, 4};
+
+//-- A rack with its own subscript ----------------------------------------------------------
+class Rack : object {
+    array<int> slots[6] = {5, 1, 9};
+    int operator [] (int i) { return slots[i]; }
+    void operator []= (int i, int v) { if (i >= slots.length) slots.length = i + 1; slots[i] = v; }
+    int above(int n) { return slots.filter((int x) => x > n).count(); }
+    int firstOver(int n) { return slots.skipWhile((int x) => x <= n).first(); }
+    int overFirst() {
+        return slots.filter((int x) => x > self[0]).count();
+    }
+}
+
+Rack rackA { "rack"; }
+
+//-- Static helpers --------------------------------------------------------------------------
+class Sieve {
+    static int passes = 0;
+    static array<int> kept[8];
+    static int keep(array<int> a, func<bool, int> p) {
+        Sieve.passes++;
+        Sieve.kept = a.filter(p);
+        return Sieve.kept.count();
+    }
+    static int keptOver(int n) { return Sieve.kept.filter((int x) => x > n).count(); }
+}
+
+//-- Switches over chains --------------------------------------------------------------------
+string sizeWord(array<int> a, int over) {
+    switch (a.filter((int x) => x > over).count()) {
+        case 0:      return "none";
+        case 1 to 2: return "few";
+        case >= 3:   return "many";
+    }
+    return "odd";
+}
+
+int bucketSum(array<int> a) {
+    int t = 0;
+    for (var v in a.map((int x) => {
+        switch (x) {
+            case 0 to 3: return 1;
+            case 4 to 6: return 10;
+            default:     return 100;
+        }
+    })) t += (int)v;
+    return t;
+}
+
+//-- References to arrays ---------------------------------------------------------------------
+int pickCount(bool wantOdd, int over) {
+    ref array<int> src := evens;
+    if (wantOdd) src := odds;
+    return src.filter((int x) => x > over).count();
+}
+
+//-- Inform 6 ---------------------------------------------------------------------------------
+#i6 {
+    [ TwiceEach f n; return f(f(n)); ];
+    [ PickFn which; if (which) return $i6Name(twice); return $i6Name(inc); ];
+}
+
+extern int TwiceEach(func<int, int> f, int n);
+extern func<int, int> PickFn(int which);
+
+emitter int oddCount(array<int> a) { $i6Expr($a.filter((int x) => x % 2 == 1).count()) }
+
+int scaledOdd(array<int> a) {
+    int n = 0;
+    #i6 n = $i6Expr(a.filter((int x) => x % 2 == 1).count()) * 10;
+    return n;
+}
+
+//-- Labels: a positional byte array ---------------------------------------------------------
+class Label : object {
+    inline int width;
+    array<char> glyphs[8];
+    int vowels() {
+        int n = 0;
+        for (char c in glyphs) switch (c) { case 'a', 'e', 'i', 'o', 'u': n++; }
+        return n;
+    }
+    void show() { for (char c in glyphs) if (c != 0) print(c); }
+}
+
+Label labelA { 4, "label a"; glyphs = "banana"; }
+Label labelB { 2, "label b"; glyphs = "kiwi"; }
+
+//-- Things to weigh -------------------------------------------------------------------------
+class Item : object { Grams mass; }
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Item crate { "crate"; name = {.crate}; mass = 20; parent = roomA; attributes = {container, open}; }
+Item box   { "box";   name = {.box};   mass = 5;  parent = crate; attributes = {container, open}; }
+Item coin  { "coin";  name = {.coin};  mass = 1;  parent = box; }
+
+int weighedCount = 0;
+
+void weighDown(object o) {
+    if (o.is(Item)) Weigh.perform(o);
+    for (object c in o.children) weighDown(c);
+}
+
+//-- Verbs ------------------------------------------------------------------------------------
+verb Weigh {
+    grammar = {{.weigh, NOUN}};
+    void handler() {
+        if (!noun.is(Item)) { print("Not weighable.^"); return; }
+        Grams g = ((Item)noun).mass;
+        weighedCount++;
+        print($"The {noun} weighs {(int)g}.^");
+    }
+}
+
+verb WeighAll {
+    grammar = {{.weighall}};
+    void handler() {
+        weighedCount = 0;
+        weighDown(crate);
+        print($"weighed {weighedCount}^");
+    }
+}
+
+verb LoadsVerb {
+    grammar = {{.loads, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"heavy total {heavyTotal(loads)}, light:");
+        for (Grams g in loads.filter((Grams g) => !g.heavy)) print($" {(int)g}");
+        print(", heaviest first:");
+        for (Grams g in loads.orderBy((Grams a, Grams b) => b - a).take(3)) print($" {(int)g}");
+        Grams s = 0;
+        for (Grams g in loads) s = s + g;
+        print($", sum {(int)s}, any over {n}: {loads.any((Grams g) => g > n) ? "yes" : "no"}^");
+    }
+}
+
+verb RowsVerb {
+    grammar = {{.rows, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"longer than {n}: {grid.filter((array<int> r) => r.length > n).count()}^");
+        print($"over {n} per row:");
+        for (array<int> row in grid) print($" {row.filter((int x) => x > n).count()}");
+        print($"^row 2 after skip: {grid[2].skip(1).first()}, any has {n}: ");
+        print(grid.any((array<int> r) => r.any((int x) => x == n)) ? "yes" : "no");
+        print(", widths");
+        for (var w in grid.map((array<int> r) => r.length)) print($" {(int)w}");
+        array<array<int>> near = { {n, n + 1, n + 2}, {n * 2}, {n - 1, n * 3} };
+        print($"^near: rows with {n + 1}: {near.filter((array<int> r) => r.any((int x) => x == n + 1)).count()}, ");
+        print($"max row {near.orderBy((array<int> a, array<int> b) => b.length - a.length).first().length}, deep {rowSum(near, 0, n)}^");
+        print($"row sum {rowSum(grid, 0, n)}, deep count {countDeep(grid[2], n)}^");
+    }
+}
+
+verb LadderVerb {
+    grammar = {{.ladder, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"ladder {ladder(n)}, ");
+        print($"fold {foldRight(digits, 0, (int x, int acc) => acc * 10 + x, 0)}, ");
+        print($"sum fold {foldRight(spread, 0, (int x, int acc) => acc + x * n, 0)}^");
+        print($"hops {hops(n)}, hops 1 is {hops(1)}, tally {tally(mixed)}^");
+    }
+}
+
+verb GaugeVerb {
+    grammar = {{.gauge, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int direct = gaugeA;
+        int c = countdown(gaugeB, n);
+        print($"direct {direct}, countdown {c}, level now {gaugeB.level}^");
+        gaugeB.level = 7;
+        print($"over {n}: {Gauge.countOver(gauges, n)}, raw sum {Gauge.rawSum(gauges)}, lowest {(object)Gauge.lowest(gauges)}^");
+    }
+}
+
+verb SpansVerb {
+    grammar = {{.spans, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int c = countWithin(spread, n, n + 4);
+        print($"within {n} to {n + 4}: {c}, live {spansLive}, made {spansMade}^");
+        Span mark;
+        mark = n;
+        int byVal = countFrom(spread, mark);
+        print($"from {(int)mark}: {byVal}, kept {(int)mark}, live {spansLive}, ");
+        int byRef = countFromRef(spread, mark);
+        print($"by ref: {byRef}, now {(int)mark}, live {spansLive}, made {spansMade}^");
+    }
+}
+
+verb EntriesVerb {
+    grammar = {{.entries}};
+    void handler() {
+        print($"{(object)entryA} {entryA.spreadOver(ks)}, {(object)entryB} {entryB.spreadOver(ks)}^");
+        print($"base over: {entryA.baseOver(ks)} {entryB.baseOver(ks)}, base bonus of b {((Scored)entryB).bonus(2)}^");
+        print("ranked:");
+        for (Entry e in entryList.orderBy((Entry x, Entry y) => y.spreadOver(ks) - x.spreadOver(ks))) print($" {e.rank}");
+        print($"^live {spansLive}^");
+    }
+}
+
+verb RackVerb {
+    grammar = {{.rack, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        rackA[3] = n;
+        print("slots:");
+        for (int i in 0 to rackA.slots.length - 1) print($" {rackA[i]}");
+        print($", above 4: {rackA.above(4)}, first over 5: {rackA.firstOver(5)}, over first: {rackA.overFirst()}^");
+    }
+}
+
+verb SieveVerb {
+    grammar = {{.sieve, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int big = Sieve.keep(spread, (int x) => x > n);
+        int odd = Sieve.keep(spread, isOdd);
+        print($"above {n}: {big}, odd {odd}, passes {Sieve.passes}, kept over {n}: {Sieve.keptOver(n)}, last kept {Sieve.kept.last()}^");
+    }
+}
+
+verb SizesVerb {
+    grammar = {{.sizes, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"over {n}: {sizeWord(spread, n)}, over 8: {sizeWord(spread, 8)}, over 20: {sizeWord(spread, 20)}, buckets {bucketSum(spread)}^");
+        print($"pick {n}: {pickCount(n % 2 == 1, n)}^");
+    }
+}
+
+verb InteropVerb {
+    grammar = {{.interop, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<int, int> f = (int k) => k + n;
+        int r = 0;
+        #i6 r = $i6Expr(f(1));
+        print($"scaled odd {scaledOdd(spread)}, twice each {TwiceEach(twice, n)}, lambda {TwiceEach(f, 10)}, island {r}^");
+        func<int, int> g = PickFn(n % 2);
+        int t = 0;
+        for (var v in digits.map(g)) t += (int)v;
+        print($"picked {g(5)}, mapped {t}, odd count {oddCount(spread)}, via island {TwiceEach(PickFn(1), n)}^");
+    }
+}
+
+verb LabelsVerb {
+    grammar = {{.labels}};
+    void handler() {
+        print($"{labelA.width} ");
+        labelA.show();
+        print($" {labelA.vowels()}, {labelB.width} ");
+        labelB.show();
+        print($" {labelB.vowels()}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,63 @@
+/*  Field trial part — included by library_author_idioms_5.bgl. Not a trial on its own.  */
+
+#once
+
+/// Faults the kit raises with throw.
+enum eLa5Fault { la5Empty = 1, la5Full, la5NoSlot }
+
+/// An amount in whole units; every holder owns its own copy.
+value class la5Amount {
+    inline int units;
+
+    la5Amount operator = (la5Amount o) { units = o.units; return self; }
+    la5Amount operator = (int n)       { units = n; return self; }
+    bool operator == (la5Amount o)     { return units == o.units; }
+    bool operator != (la5Amount o)     { return units != o.units; }
+    int  operator <=> (la5Amount o)    { return units - o.units; }
+    explicit int operator ()           { return units; }
+
+    /// Adds to the amount.
+    void add(int n) { units = units + n; }
+    /// The amount with more added, as a new value.
+    la5Amount plus(int n) {
+        la5Amount r = self;
+        r.add(n);
+        return r;
+    }
+    void print() { ::print(units); ::print("u"); }
+    la5Amount operator + (int n) { return plus(n); }
+}
+
+/// An amount with a tax part; copies both.
+value class la5Price : la5Amount {
+    int tax;
+    la5Price operator = (la5Price o) {
+        tax = o.tax;
+        (la5Amount)self = o;
+        return self;
+    }
+}
+
+/// A size band held as a bare word; cases compare by tens.
+primitive class la5Band {
+    emitter void operator = (int v) { $self = $v; }
+    emitter int  operator ()        { ($self) }
+    emitter eBool operator switch (int v) { (($val / 10) == ($v / 10)) }
+    emitter bool small { ($self < 10) }
+    /// Orders bands by their last digit.
+    static int operator <=> (la5Band a, la5Band b) { return ((int)a % 10) - ((int)b % 10); }
+}
+
+/// Text, or a routine that prints it.
+union la5Text = string | func<void> {
+    static bool isCall(la5Text t) { return typeof(t) == eType.routine; }
+}
+
+void print(la5Text t) {
+    if (la5Text.isCall(t)) {
+        func<void> f = (func<void>)t;
+        f();
+    } else {
+        print((string)t);
+    }
+}

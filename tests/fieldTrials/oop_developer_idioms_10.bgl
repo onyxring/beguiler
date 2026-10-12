@@ -1,0 +1,439 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, tenth pass, over the world model.
+// The command pattern with undo: an abstract-feeling `Command` base (a one-slot pool) with pooled subclasses
+// (`MoveCmd`, `GrabCmd`, `FlagCmd`), each with its own `create` and fields captured at construction,
+// pushed on an `array<Command>` history, undone in reverse through a base-typed `pop()` and deleted
+// through the base type; a command that launches a library action with `perform()` from inside its
+// own method, refused by a class-level `before` that switches on `action`, and reports by reading
+// `parent` afterwards; a template-method verb base class (`class TracedVerb : verb`) whose `handler()`
+// calls a `required` hook and a `default` guard, with a `static` call counter, and several verbs
+// declared through it; interfaces by convention under multiple inheritance over `object`
+// (`Switchable`, `IChargeable`) discovered with `is` while walking `children`, and cast to each;
+// in-place `auto { … }` accessors in a class body (clamping, on every instance) and in an object
+// body reaching its host through `outer`, driven by `=`, `+=` and `--`; `var` locals and overloads
+// with a `var` fallback, a `typeof` switch on a `var`; a union element type
+// (`array<object | string>`) discriminated with `typeof` and narrowed by cast; a file-scope
+// `rawArray<object>` and a class `rawArray<int>` member read by index with an explicit count;
+// `do`/`while` and `do`/`until` with `continue` and `break`; a `bnum` member tested with `&`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+attribute marked;
+
+bnum Caps { CanMove, CanFlag, CanGrab }
+
+//-- Interfaces by convention ----------------------------------------------------------------------
+
+class Switchable : object {
+    bool IsOn;
+    required string Label();
+    default void Toggle() {
+        IsOn = !IsOn;
+        printLine($"{Label()} is now {IsOn ? "on" : "off"}.");
+    }
+}
+
+class IChargeable : object {
+    auto Charge = {
+        int _raw = 50;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v < 0 ? 0 : (v > 100 ? 100 : v); }
+    }
+    default int Drain() { return 10; }
+}
+
+class Lamp : Switchable, IChargeable {
+    string Label() { return "brass lamp"; }
+    void Toggle() {
+        if (!IsOn && Charge == 0) {
+            printLine("The brass lamp has no charge.");
+            return;
+        }
+        ((Switchable)self).Toggle();
+        if (IsOn) Charge -= Drain();
+    }
+}
+
+class Radio : Switchable {
+    string Label() { return "radio"; }
+}
+
+class Cell : IChargeable {
+    int Drain() { return 30; }
+}
+
+//-- World items -----------------------------------------------------------------------------------
+
+class Item : object {
+    Caps Allowed = CanMove | CanFlag | CanGrab;
+    rawArray<int> Weights = {1, 2, 3};
+    int WeightAt(int i) { return Weights[i]; }
+}
+
+class Fragile : Item {
+    bool Careful;
+    bool before() {
+        switch (action) {
+            case Take:
+                if (Careful) rfalse;
+                printLine($"The {self} is too fragile to grab.");
+                rtrue;
+            default:
+                rfalse;
+        }
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object redBox {
+    "red box";
+    name = {.red, .box};
+    parent = roomA;
+    attributes = {container, open, static};
+}
+
+Item brassKey  { "brass key";  name = {.brass, .key};  parent = roomA; Weights = {4, 5, 6}; }
+Item greenCube { "green cube"; name = {.green, .cube}; parent = roomA; Allowed = CanMove; }
+Fragile glassVial { "glass vial"; name = {.glass, .vial}; parent = roomA; }
+
+Lamp brassLamp { "lamp"; name = {.lamp}; parent = roomA; }
+Radio radioSet { "radio set"; name = {.radio}; parent = roomA; }
+Cell spareCell { "spare cell"; name = {.spare, .cell}; parent = roomA; }
+
+object meter {
+    "meter";
+    int Scale = 2;
+    int Writes;
+    auto Reading = {
+        int _raw;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v * outer.Scale; outer.Writes++; }
+    }
+}
+
+rawArray<object> Watched = { brassKey, greenCube, glassVial };
+const int WATCHED_COUNT = 3;
+
+//-- Commands with undo ----------------------------------------------------------------------------
+
+// A one-slot pool on the base only so commands can be deleted through `Command` (delete needs a pooled type).
+class Command[1] : object {
+    static int Done;
+    default string Title() { return "command"; }
+    default bool Do() { return false; }
+    default void Undo() { }
+    void print() { print(Title()); }
+}
+
+class MoveCmd[4] : Command {
+    object Target;
+    object From;
+    object To;
+    void create(object t, object dest) { Target = t; From = t.parent; To = dest; }
+    string Title() { return "move"; }
+    bool Do() {
+        Target.parent = To;
+        printLine($"Moved the {Target} to the {To}.");
+        return true;
+    }
+    void Undo() {
+        Target.parent = From;
+        printLine($"Put the {Target} back in the {From}.");
+    }
+}
+
+class GrabCmd[2] : Command {
+    object Target;
+    object From;
+    void create(object t) { Target = t; From = t.parent; }
+    string Title() { return "grab"; }
+    bool Do() {
+        Take.perform(Target);
+        return Target.parent == player;
+    }
+    void Undo() {
+        Target.parent = From;
+        printLine($"Dropped the {Target} back.");
+    }
+}
+
+class FlagCmd[3] : Command {
+    object Target;
+    bool Had;
+    void create(object t) { Target = t; Had = t.has(marked); }
+    string Title() { return Had ? "unflag" : "flag"; }
+    bool Do() {
+        if (Had) Target.ungive(marked);
+        else Target.give(marked);
+        printLine($"The {Target} is {Target.has(marked) ? "" : "not "}marked.");
+        return true;
+    }
+    void Undo() {
+        if (Had) Target.give(marked);
+        else Target.ungive(marked);
+        printLine($"The {Target} is {Had ? "" : "not "}marked again.");
+    }
+}
+
+class History : object {
+    array<Command> Stack[8];
+
+    void Run(Command c) {
+        if (c == null) {
+            printLine("No command slot free.");
+            return;
+        }
+        if (c.Do()) {
+            Stack.push(c);
+            Command.Done++;
+        } else {
+            printLine($"The {c} did nothing.");
+            delete c;
+        }
+    }
+
+    void UndoLast() {
+        if (Stack.length == 0) {
+            printLine("Nothing to revert.");
+            return;
+        }
+        Command c = Stack.pop();
+        print($"Reverting {c}: ");
+        c.Undo();
+        delete c;
+    }
+
+    void Show() {
+        print($"History ({Stack.length}):");
+        for (Command c in Stack) print($" {c}");
+        printLine(".");
+    }
+}
+
+History hist { }
+
+bool CanDo(object o, Caps need) {
+    if (!o.is(Item)) return true;
+    return (((Item)o).Allowed & need) != 0;
+}
+
+//-- var and overloads -----------------------------------------------------------------------------
+
+class Describer {
+
+    static void Show(int n)    { print($"int {n}"); }
+    static void Show(string s) { print($"string {s}"); }
+    static void Show(var v)    { print($"var {(int)typeof(v)}"); }
+
+    static string Kind(var v) {
+        switch (typeof(v)) {
+            case eType.object:  return "object";
+            case eType.string:  return "string";
+            case eType.routine: return "routine";
+            case eType.unknown: return "nothing";
+            default:            return "scalar";
+        }
+    }
+}
+
+int Seven() { return 7; }
+
+array<object | string> Mixed = { brassKey, "loose text", greenCube, "more text" };
+
+//-- Template-method verbs -------------------------------------------------------------------------
+
+class TracedVerb : verb {
+    static int Calls;
+    required void Body();
+    default bool Allowed() { return true; }
+    void handler() {
+        TracedVerb.Calls++;
+        if (!Allowed()) {
+            printLine($"[{TracedVerb.Calls}] Not allowed.");
+            return;
+        }
+        Body();
+    }
+}
+
+TracedVerb Stash {
+    grammar = {.stash, NOUN};
+    bool Allowed() { return CanDo(noun, CanMove); }
+    void Body() { hist.Run(new MoveCmd(noun, redBox)); }
+}
+
+TracedVerb Grab {
+    grammar = {.grab, NOUN};
+    bool Allowed() { return CanDo(noun, CanGrab); }
+    void Body() { hist.Run(new GrabCmd(noun)); }
+}
+
+TracedVerb Mark {
+    grammar = {.mark, NOUN};
+    bool Allowed() { return CanDo(noun, CanFlag); }
+    void Body() { hist.Run(new FlagCmd(noun)); }
+}
+
+TracedVerb Revert {
+    grammar = {.revert};
+    void Body() { hist.UndoLast(); }
+}
+
+TracedVerb Careful {
+    grammar = {.careful};
+    void Body() {
+        glassVial.Careful = !glassVial.Careful;
+        printLine($"Careful: {glassVial.Careful}.");
+    }
+}
+
+TracedVerb ShowHistory {
+    grammar = {.history};
+    void Body() { hist.Show(); printLine($"Done {Command.Done}, verb calls {TracedVerb.Calls}."); }
+}
+
+verb Switches {
+    grammar = {.switches};
+    void handler() {
+        for (object o in roomA.children) {
+            if (o.is(Switchable)) ((Switchable)o).Toggle();
+        }
+        for (object o in roomA.children) {
+            if (o.is(IChargeable)) {
+                IChargeable c = (IChargeable)o;
+                print($"{o} charge {c.Charge}");
+                if (o.is(Switchable)) print($", on {((Switchable)o).IsOn}");
+                printLine(".");
+            }
+        }
+    }
+}
+
+verb Charging {
+    grammar = {.charging};
+    void handler() {
+        brassLamp.Charge = 150;
+        spareCell.Charge = -5;
+        printLine($"Set: lamp {brassLamp.Charge}, cell {spareCell.Charge}.");
+        brassLamp.Charge += 20;
+        spareCell.Charge += spareCell.Drain();
+        spareCell.Charge--;
+        printLine($"Adjusted: lamp {brassLamp.Charge}, cell {spareCell.Charge}.");
+        brassLamp.Charge = 0;
+        if (brassLamp.IsOn) brassLamp.Toggle();
+        brassLamp.Toggle();
+        brassLamp.Charge = 15;
+        brassLamp.Toggle();
+        brassLamp.Toggle();
+        brassLamp.Toggle();
+        printLine($"Lamp charge {brassLamp.Charge}, on {brassLamp.IsOn}.");
+        meter.Reading = 4;
+        meter.Reading += 3;
+        meter.Scale = 10;
+        meter.Reading = meter.Reading + 1;
+        printLine($"Meter {meter.Reading} after {meter.Writes} writes.");
+    }
+}
+
+verb Vars {
+    grammar = {.vars};
+    void handler() {
+        var a = -5;
+        var b = brassKey;
+        var c = Seven;
+        var d = "words";
+        var e = null;
+        printLine($"{Describer.Kind(a)} {Describer.Kind(b)} {Describer.Kind(c)} {Describer.Kind(d)} {Describer.Kind(e)}.");
+        Describer.Show(3);       print("; ");
+        Describer.Show("hi");    print("; ");
+        Describer.Show(b);       print("; ");
+        Describer.Show(a);       printLine(".");
+        int n = a;
+        object o = b;
+        func<int> f = c;
+        printLine($"Back: {n + 1}, {o}, {f()}.");
+        int objects = 0;
+        for (object | string m in Mixed) {
+            if (typeof(m) == eType.object) {
+                objects++;
+                print($"[{(object)m}]");
+            } else {
+                print($"<{(string)m}>");
+            }
+        }
+        printLine($" {objects} objects.");
+        Mixed[1] = redBox;
+        printLine($"Now {Describer.Kind(Mixed[1])}, then {Describer.Kind(Mixed[3])}.");
+    }
+}
+
+verb Raw {
+    grammar = {.raw};
+    void handler() {
+        int total = 0;
+        for (int i = 0; i < WATCHED_COUNT; i++) {
+            object o = Watched[i];
+            Item it = (Item)o;
+            total += it.WeightAt(i);
+            print($"{o}:{it.WeightAt(i)} ");
+        }
+        printLine($"total {total}.");
+        printLine($"glass vial weights {glassVial.Weights[0]} {glassVial.Weights[2]}; key {brassKey.Weights[1]}.");
+    }
+}
+
+verb Loops {
+    grammar = {.loops};
+    void handler() {
+        int i = 0;
+        int sum = 0;
+        do {
+            i++;
+            if (i % 2 == 0) continue;
+            sum += i;
+        } while (i < 9);
+        printLine($"odd sum {sum}, i {i}.");
+        int n = 40;
+        int steps = 0;
+        do {
+            steps++;
+            if (n % 3 == 0) break;
+            n = n - 7;
+        } until (n < 0);
+        printLine($"n {n} after {steps} steps.");
+        int marked_count = 0;
+        int idx = 0;
+        do {
+            object o = Watched[idx];
+            if (o.has(marked)) marked_count++;
+            idx++;
+        } while (idx < WATCHED_COUNT);
+        printLine($"marked {marked_count} of {idx}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

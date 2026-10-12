@@ -1,0 +1,458 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a sixth first-time-programmer program, the one where the author "organizes" the code.
+// The Glulx target (to get float), #define switches with a number, a string and a bare flag, #redef
+// and #undef, #if / #elif / #else inside function bodies and around a whole global function, the
+// define used as a global's starting value and as a const; a global function replaced twice with
+// replaced() (the chain), home-made global emitters (a function, a value, a void value and an emitter
+// namespace used inside interpolation); a class tree with a static counter, required members met by a
+// subclass and by an object body, a default method overridden without replace, a non-default one
+// overridden with replace, a call to the ancestor's version through ((Animal)self), a hidden inherited
+// method reached through a base-typed parameter and an upcast, multiple inheritance, extend class with
+// a replaced float member and a new method; declared attributes and a free property with provides();
+// a namespace object with type aliases, an auto member, #using of it and of a branch; float sums and
+// averages printed and truncated; and a library verb extended with a lower-priority grammar line.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+// ===== SWITCHES (change these to turn things on and off) =====
+#define SHOW_EXTRA
+#define START_COINS 5
+// how much food a puppy gets (half a bag)
+#define PUPPY_FOOD 0.5
+#define SHOP_NAME "corner shop"
+#define LEVEL 1
+#redef LEVEL 2          // (changed my mind, level 2 is better)
+#define OLD_PRICES
+#undef OLD_PRICES       // (the old prices are gone now)
+
+// ===== GLOBALS =====
+int coins = START_COINS;
+int fedCount = 0;
+// total weight of all the food given out (it has to be a float because of the halves)
+float foodGiven = 0;
+const int MAX_LEVEL = LEVEL;
+// how much food is in each bag in the shop
+array<float> bagSizes = {0.5, 1.5, 2.5};
+
+// my own attributes
+attribute fed;
+attribute Brushed;
+// a property that nobody has (just to test provides)
+property trick;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// ===== MY OWN EMITTERS (I found out you can write the I6 yourself!) =====
+// doubles a number
+emitter int twice(int n) { ($n * 2) }
+// the number ten
+emitter int ten { 10 }
+// prints a dash
+emitter void dash { print "-"; }
+// brackets for printing
+emitter fmt {
+    void open() { print "["; }
+    void close() { print "]"; }
+}
+
+// ===== PRICES =====
+// the price of n bags of food
+int price(int n) {
+    return n;
+}
+
+// there is a tax of one coin now
+replace int price(int n) {
+    return replaced(n) + 1;
+}
+
+// big orders get one coin off (this calls the tax one above)
+replace int PRICE(int n) {
+    if (n > 3) {
+        return replaced(n) - 1;
+    }
+    return replaced(n);
+}
+
+#if OLD_PRICES
+int oldPrice(int n) { return n * 3; }
+#else
+int oldPrice(int n) { return 0; }
+#endif
+
+// ===== ANIMALS =====
+
+class Animal : object {
+    // how many times any animal has spoken
+    static int speeches = 0;
+    // every animal has to say how many legs it has
+    required int legs;
+    // every animal has to have a noise
+    required string noise();
+    int meals = 0;
+    float weight = 1.5;
+    // what an animal says (you can change this in your own class)
+    default void speak() {
+        Animal.speeches = Animal.speeches + 1;
+        print($"The {self} says {noise()}.^");
+    }
+    void eat() {
+        meals = meals + 1;
+        print($"The {self} eats.^");
+    }
+}
+
+class Dog : Animal {
+    int legs = 4;
+    string noise() { return "woof"; }
+    // dogs eat twice as much
+    replace void eat() {
+        meals += 2;
+        print($"The {self} gulps the food.^");
+    }
+    // dogs bark first and then do the normal thing
+    void speak() {
+        print("Bark! ");
+        ((Animal)self).speak();
+    }
+}
+
+class Puppy : Dog {
+    replace string noise() { return "yip"; }
+    replace void speak() {
+        print($"The {self} only yaps.^");
+    }
+    // puppies are not allowed to eat by themselves
+    hide eat();
+}
+
+// things that fly
+class Flyer : object {
+    int altitude = 0;
+    void flap() {
+        altitude = altitude + 3;
+    }
+}
+
+// a bird is an animal AND a flyer
+class Bird : Animal, Flyer {
+    int legs = 2;
+    string noise() { return "tweet"; }
+}
+
+// (I forgot weight should be bigger by default, and I wanted a heavy check)
+extend class Animal {
+    replace float weight = 2.0;
+    bool isHeavy() {
+        if (weight > 3) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
+// ===== NAMESPACE (a tidy place to keep my types) =====
+object _petTypes {
+    alias animal for Animal;
+    alias pup for Puppy;
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is to the east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is to the west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE ANIMALS =====
+
+Dog rex {
+    "dog";
+    parent = roomA;
+    name = {.dog, .rex};
+    weight = 4.5;
+    attributes = {animate};
+}
+
+Puppy pip {
+    "puppy";
+    parent = roomA;
+    name = {.puppy, .pip};
+    attributes = {animate};
+}
+
+Bird tweety {
+    "grey bird";
+    parent = roomA;
+    name = {.grey, .bird};
+    weight = 0.5;
+    attributes = {animate};
+}
+
+// the snake gives its own legs and noise (it is not a dog or a bird)
+Animal snake {
+    "green snake";
+    parent = roomB;
+    name = {.green, .snake};
+    legs = 0;
+    attributes = {animate};
+    string noise() { return "hiss"; }
+}
+
+// the zoo keeps the types and remembers the first animal
+object zoo {
+    auto types = _petTypes;
+    auto first = rex;
+    int visits = 0;
+    void report() {
+        print($"Zoo visits: {visits}. First animal: {first}.^");
+    }
+}
+
+#using zoo
+#using zoo.types     // (now I can write pup and animal on their own too)
+
+// ===== HELPERS =====
+
+// the average of two whole numbers (it can be a half)
+float average(int a, int b) {
+    return (float)(a + b) / 2;
+}
+
+// feeds any animal (the puppy too, because this takes an Animal)
+void feedIt(Animal a, float amount = 1) {
+    a.eat();
+    a.give(fed);
+    fedCount = fedCount + 1;
+    foodGiven = foodGiven + amount;
+}
+
+// prints the animal with a dash and its legs
+void showAnimal(types.animal a) {
+    dash;
+    print($" {a}: {a.legs} legs, {a.meals} meals");
+    if (a.has(fed) == true) {
+        print(", fed");
+    }
+    if (a.has(Brushed)) {
+        print(", brushed");
+    }
+    if (a.isHeavy() == true) {
+        print(", heavy");
+    }
+    print("^");
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// FEED - gives one bag of food to an animal (puppies get half)
+verb Feed {
+    grammar = {.feed, NOUN};
+    void handler() {
+        if (noun.is(Animal) == false) {
+            print("You can only feed animals.^");
+            return;
+        }
+        if (noun.is(Puppy)) {
+            // the puppy can't eat() itself (it is hidden), so the helper does it
+            feedIt((Animal)noun, PUPPY_FOOD);
+        } else {
+            feedIt((Animal)noun);
+        }
+    }
+}
+
+// HEAR - makes an animal speak
+verb Hear {
+    grammar = {.hear, NOUN};
+    void handler() {
+        if (!(noun.is(Animal))) {
+            print("It makes no sound.^");
+            return;
+        }
+        Animal a = (Animal)noun;
+        a.speak();
+    }
+}
+
+// FORMAL - makes the puppy speak the way a plain animal does
+verb Formal {
+    grammar = {.formal};
+    void handler() {
+        ((Animal)pip).speak();
+        // the puppy eats the plain animal way too (eat is hidden on Puppy)
+        ((Animal)pip).eat();
+        print($"Speeches: {Animal.speeches}.^");
+    }
+}
+
+// ANIMALS - lists the animals and works out averages
+verb Animals {
+    meta = true;
+    grammar = {.animals};
+    void handler() {
+        int count = 0;
+        int totalLegs = 0;
+        float totalWeight = 0;
+        for (object o in roomA.children) {
+            if (o.is(Animal)) {
+                Animal a = (Animal)o;
+                showAnimal(a);
+                count = count + 1;
+                totalLegs += a.legs;
+                totalWeight += a.weight;
+            }
+        }
+        showAnimal(snake);
+        count++;
+        totalLegs = totalLegs + snake.legs;
+        totalWeight = totalWeight + snake.weight;
+        float avgLegs = (float)totalLegs / count;
+        print($"Animals: {count}. Legs: {totalLegs}. Average legs: ");
+        print(avgLegs);
+        print(".^");
+        print("Total weight: ");
+        print(totalWeight);
+        print(". Rounded down: ");
+        print((int)totalWeight);
+        print(".^");
+        print("Food given: ");
+        print(foodGiven);
+        print($" in {fedCount} feeds.^");
+    }
+}
+
+// FLY - the bird flies up
+verb Fly {
+    grammar = {.fly};
+    void handler() {
+        tweety.flap();
+        tweety.flap();
+        print($"The bird is at {tweety.altitude}.^");
+        // the bird is still an animal
+        tweety.speak();
+    }
+}
+
+// BRUSH - brushes an animal
+verb Brush {
+    grammar = {.brush, NOUN};
+    void handler() {
+        if (noun.is(Animal)) {
+            if (noun.has(Brushed)) {
+                print("Already brushed.^");
+            } else {
+                noun.give(Brushed);
+                print($"You brush the {noun}.^");
+            }
+        } else {
+            print("You can't brush that.^");
+        }
+        if (noun.provides(trick)) {
+            print("It knows a trick.^");
+        }
+    }
+}
+
+// SHOP - prices of food
+verb Shop {
+    meta = true;
+    grammar = {.shop};
+    void handler() {
+        print($"The {SHOP_NAME} has {coins} coins for you.^");
+        int n = 1;
+        while (n <= 5) {
+            print($"{n} bags cost {price(n)}");
+            if (oldPrice(n) != 0) {
+                print($" (was {oldPrice(n)})");
+            }
+            print(".^");
+            n = n + 1;
+        }
+        // the price function kept in a variable (it should still be the newest one)
+        func<int, int> priceOf = price;
+        print($"Price of 4 through a variable: {priceOf(4)}.^");
+        // all the bag sizes added up
+        float allBags = 0;
+        for (float b in bagSizes) {
+            allBags += b;
+        }
+        print($"Bags: {bagSizes.length}, biggest {bagSizes[2]}, all together {allBags}.^");
+        print($"Average of 3 and 4 is {average(3, 4)}.^");
+        print($"Twice ten is {twice(ten)}. ");
+        print($"{fmt.open()}level {LEVEL} of {MAX_LEVEL}{fmt.close()}^");
+    }
+}
+
+// SWITCHES - says which switches are on
+verb Switches {
+    meta = true;
+    grammar = {.switches};
+    void handler() {
+#if SHOW_EXTRA
+        print("Extra: on.^");
+#else
+        print("Extra: off.^");
+#endif
+#if LEVEL > 2
+        print("Level: high.^");
+#elif LEVEL == 2
+        print("Level: two.^");
+#else
+        print("Level: low.^");
+#endif
+#if SHOP_NAME == "corner shop"
+        print("Shop: named.^");
+#else
+        print("Shop: no name.^");
+#endif
+#if TARGET_GLULX && !OLD_PRICES
+        print("Glulx, new prices.^");
+#endif
+        // using the zoo without writing zoo. in front
+        visits = visits + 1;
+        report();
+        // the types through the partial path (types.pup)
+        types.pup p = pip;
+        print($"The pup type holds the {p}.^");
+        pup again = p;
+        animal anyOne = again;
+        print($"As an animal it has {anyOne.legs} legs.^");
+    }
+}
+
+// a quick way to look (it should come before the normal look)
+extend Look {
+    priority = 5;
+    grammar += { {.peek} };
+}

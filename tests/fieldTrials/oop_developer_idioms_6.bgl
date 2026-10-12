@@ -1,0 +1,408 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, sixth pass, on Glulx. A shape
+// hierarchy computing in `float` (members, `const float`, mixed int/float arithmetic, float returns
+// from overridden `default` methods) with an `explicit` float conversion on a reference class, an
+// instance `<=>` driving `array<T>.sort()` and a static method as comparator, and `array<float>`
+// sorted and searched through float's static operators; a pooled class whose `create` takes four
+// parameters (Glulx only) behind a validating static factory that throws, and a pooled subclass with
+// its own pool and a static factory; a strongly-typed id as a `primitive class` newtype over int with
+// `$target` assignment, an explicit conversion, an emitter value and a `print()`, overloads told apart
+// from `int`; "extension members" on an enum and a bnum (emitter methods and values, one added with
+// `extend enum`); type-pattern matching through an `operator switch (bglClass)` on a class; a composite
+// tree of reference nodes built by a fluent `Add`, with recursive virtual methods, a member that shadows
+// a global reached with `::`, and a recursive search taking a capturing predicate; an RAII scope guard
+// as an `emitter class` with `init`/`deinit`, released at block end, in loop bodies and before early
+// returns; a decorated global function through `replace` and `replaced()`; functions returning
+// non-capturing lambdas and higher-order calls; `static superposed` methods; ternaries and `auto`.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+const float PI = 3.14159;
+
+//-- Enums with members ----------------------------------------------------------------------------
+
+enum eUnit {
+    Mm = 1, Cm = 10, M = 1000,
+    emitter int ToMm(int n) { ($n * $self) }
+}
+
+extend enum eUnit {
+    emitter int Factor { ($self) }
+}
+
+bnum eCaps {
+    Fillable, Strokable, Scalable,
+    emitter bool Has(eCaps f) { (($self & $f) ~= 0) }
+}
+
+//-- A strongly-typed id ---------------------------------------------------------------------------
+
+primitive class ShapeId {
+    emitter void operator = (ShapeId v)  { $target = $v; }
+    emitter void operator = (int n)      { $target = $n; }
+    explicit emitter int operator ()     { ($self) }
+    emitter bool operator == (ShapeId v) { ($val == $v) }
+    emitter bool operator != (ShapeId v) { ($val ~= $v) }
+    emitter ShapeId Next { ($self + 1) }
+    replace emitter void print()         { print "S-", $val; }
+}
+
+string Lookup(int n)      { return "number"; }
+string Lookup(ShapeId id) { return "id"; }
+
+//-- Errors ----------------------------------------------------------------------------------------
+
+class ShapeError : object {
+    const string Message;
+    ShapeId Culprit;
+    void print() { print($"error on {Culprit}: {Message}"); }
+}
+
+ShapeError ErrNegative { Message = "negative size"; }
+ShapeError ErrPoolFull { Message = "no free slot"; }
+
+//-- Shapes ----------------------------------------------------------------------------------------
+
+class Shape : object {
+    static int Made = 0;
+    ShapeId Id;
+    eCaps Caps;
+
+    default string Kind()      { return "shape"; }
+    default float Area()       { return 0.0; }
+    default float Perimeter()  { return 0.0; }
+
+    int operator <=> (Shape o) {
+        float a = Area();
+        float b = o.Area();
+        return a < b ? -1 : (a > b ? 1 : 0);
+    }
+    explicit float operator () { return Area(); }
+    emitter eBool operator switch (bglClass c) { ($val ofclass $c) }
+
+    void print() { print($"{Kind()} {Id}"); }
+
+    static int ByPerimeter(Shape a, Shape b) {
+        return (int)((a.Perimeter() - b.Perimeter()) * 100);
+    }
+    static superposed string Banner() { return "shape registry"; }
+    static superposed string NeverCalled() { return "unused"; }
+}
+
+class Circle : Shape {
+    float Radius = 1.0;
+    string Kind()      { return "circle"; }
+    float Area()       { return PI * Radius * Radius; }
+    float Perimeter()  { return 2 * PI * Radius; }
+}
+
+class Rect[4] : Shape {
+    float W;
+    float H;
+
+    void create(int ident, float width, float height, eCaps flags) {
+        Id = ident;
+        W = width;
+        H = height;
+        Caps = flags;
+        Shape.Made++;
+    }
+
+    default string Kind()      { return "rect"; }
+    float Area()               { return W * H; }
+    float Perimeter()          { return (W + H) * 2; }
+
+    static Rect Make(int id, float w, float h, eCaps caps = eCaps.Fillable) {
+        if (w < 0 || h < 0) {
+            ErrNegative.Culprit = id;
+            throw ErrNegative;
+        }
+        Rect r = new Rect(id, w, h, caps);
+        if (r == null) { ErrPoolFull.Culprit = id; throw ErrPoolFull; }
+        return r;
+    }
+}
+
+class Square[2] : Rect {
+    string Kind() { return "square"; }
+    static Square Of(int id, float side) {
+        return new Square(id, side, side, eCaps.Fillable | eCaps.Scalable);
+    }
+}
+
+Circle discA { Id = 1; Radius = 1.5; Caps = eCaps.Fillable; }
+Circle discB { Id = 2; Radius = 0.5; Caps = eCaps.Strokable | eCaps.Scalable; }
+
+array<Shape> AllShapes[8];
+
+//-- Composite tree --------------------------------------------------------------------------------
+
+int Total = 0;
+
+class Node : object {
+    string Label;
+    Node Up;
+    array<Node> Kids[4];
+    int Total;
+
+    Node Add(Node kid) {
+        Kids += kid;
+        kid.Up = self;
+        return self;
+    }
+
+    default int Weight() { return 0; }
+
+    int Count() {
+        int n = 1;
+        for (Node k in Kids) n += k.Count();
+        return n;
+    }
+
+    int Depth() { return Up == null ? 0 : Up.Depth() + 1; }
+
+    int Rollup() {
+        Total = Weight();
+        for (Node k in Kids) Total += k.Rollup();
+        ::Total += Weight();
+        return Total;
+    }
+
+    void Render() {
+        int d = Depth();
+        for (int i = 0; i < d; i++) print("  ");
+        printLine($"{Label} w={Weight()} t={Total}");
+        for (Node k in Kids) k.Render();
+    }
+
+    Node Find(func<bool, Node> pred) {
+        if (pred(self)) return self;
+        for (Node k in Kids) {
+            Node hit = k.Find(pred);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+}
+
+class Leaf : Node {
+    Shape Item;
+    int Weight() { return (int)Item.Area(); }
+}
+
+Node rootNode { Label = "root"; }
+Node groupB   { Label = "group B"; }
+Leaf leafA    { Label = "leaf A"; Item = discA; }
+Leaf leafB    { Label = "leaf B"; Item = discB; }
+Leaf leafC    { Label = "leaf C"; }
+
+//-- Scope guard -----------------------------------------------------------------------------------
+
+int TraceDepth = 0;
+
+int TraceOpen() {
+    TraceDepth++;
+    printLine($"  [open {TraceDepth}]");
+    return TraceDepth;
+}
+
+void TraceClose(int level) {
+    printLine($"  [close {level}]");
+    TraceDepth--;
+}
+
+emitter class TraceScope {
+    emitter void init()   { $self = TraceOpen(); }
+    emitter void deinit() { TraceClose($self); }
+    emitter int Level     { ($self) }
+}
+
+int Guarded(int n) {
+    TraceScope guard;
+    if (n < 0) return -1;
+    {
+        TraceScope inner;
+        printLine($"  work at level {inner.Level}");
+        if (n == 0) return 0;
+    }
+    printLine($"  after inner, level {guard.Level}");
+    return n * 2;
+}
+
+//-- Decorated and higher-order functions ----------------------------------------------------------
+
+int Rate(Shape s) { return (int)s.Area(); }
+
+replace int Rate(Shape s) {
+    int raw = replaced(s);
+    return s.Caps.Has(eCaps.Scalable) ? raw * 2 : raw;
+}
+
+func<float, float> ScalerFor(eUnit u) {
+    switch (u) {
+        case eUnit.Cm: return (float x) => x / 10;
+        case eUnit.M:  return (float x) => x / 1000;
+    }
+    return (float x) => x;
+}
+
+float ApplyTwice(func<float, float> f, float v) { return f(f(v)); }
+
+string Classify(Shape s) {
+    switch (s) {
+        case Square: return "a square";
+        case Rect:   return "a rectangle";
+        case Circle: return "a circle";
+    }
+    return "unknown";
+}
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb MakeShapes {
+    grammar = {.make};
+    void handler() {
+        try {
+            AllShapes += Rect.Make(3, 2.0, 4.5);
+            AllShapes += Rect.Make(4, 1, 3, eCaps.Strokable);
+            AllShapes += Square.Of(5, 3.0);
+            AllShapes += Rect.Make(6, -1.0, 2.0);
+            printLine("not reached");
+        } catch (ShapeError e) {
+            printLine($"Caught {e}.");
+        }
+        Square s6 = Square.Of(7, 0.5);
+        AllShapes += s6;
+        leafC.Item = s6;
+        rootNode.Add(leafC);
+        Square s7 = Square.Of(8, 9.0);
+        printLine($"Third square: {s7 == null ? "none" : "made"}.");
+        printLine($"{Shape.Banner()}: {Shape.Made} made, {AllShapes.length} listed.");
+    }
+}
+
+verb ListShapes {
+    grammar = {.list};
+    void handler() {
+        for (Shape s in AllShapes) {
+            float area = (float)s;
+            printLine($"{s}: area {area}, perimeter {s.Perimeter()}, {Classify(s)}");
+        }
+    }
+}
+
+verb SortShapes {
+    grammar = {.sort};
+    void handler() {
+        AllShapes.sort();
+        print("By area:");
+        for (Shape s in AllShapes) print($" {s.Id}");
+        printLine();
+        AllShapes.sort(Shape.ByPerimeter);
+        print("By perimeter:");
+        for (Shape s in AllShapes) print($" {s.Id}");
+        printLine();
+        array<float> areas[8];
+        for (Shape s in AllShapes) areas += s.Area();
+        areas.sort();
+        print("Areas:");
+        for (float a in areas) print($" {a}");
+        printLine();
+        printLine($"9.0 at {areas.indexOf(9.0)}; 1.5 at {areas.indexOf(1.5)}.");
+    }
+}
+
+verb Ids {
+    grammar = {.ids};
+    void handler() {
+        ShapeId a = 4;
+        ShapeId b = a.Next;
+        ShapeId c = b;
+        printLine($"{a} then {b}; same: {b == c}; differ: {a != b}.");
+        printLine($"{Lookup(7)} / {Lookup(b)} / {(int)b * 10}");
+        auto first = AllShapes[0];
+        printLine($"First is {first.Id}, a {first.Kind()}.");
+        printLine($"25 cm = {eUnit.Cm.ToMm(25)} mm; m factor {eUnit.M.Factor}.");
+        eUnit u = eUnit.Cm;
+        printLine($"Unit factor {u.Factor}; 3 of it = {u.ToMm(3)} mm.");
+        eCaps caps = discB.Caps;
+        printLine($"discB fill {caps.Has(eCaps.Fillable)}, scale {caps.Has(eCaps.Scalable)}.");
+    }
+}
+
+verb Tree {
+    grammar = {.tree};
+    void handler() {
+        ::Total = 0;
+        int sum = rootNode.Rollup();
+        rootNode.Render();
+        printLine($"Nodes {rootNode.Count()}; rollup {sum}; global {::Total}.");
+        int limit = 5;
+        Node big = rootNode.Find((Node n) => n.Weight() > limit);
+        printLine($"Over {limit}: {big?.Label ?? "none"} at depth {big.Depth()}.");
+        limit = 100;
+        Node none = rootNode.Find((Node n) => n.Weight() > limit);
+        printLine($"Over {limit}: {none == null ? "none" : none.Label}.");
+    }
+}
+
+verb Trace {
+    grammar = {.trace};
+    void handler() {
+        printLine("Negative:");
+        int r = Guarded(-1);
+        printLine($"= {r}");
+        printLine("Zero:");
+        r = Guarded(0);
+        printLine($"= {r}");
+        printLine("Five:");
+        r = Guarded(5);
+        printLine($"= {r}");
+        printLine("Loop:");
+        for (int i = 0; i < 3; i++) {
+            TraceScope pass;
+            if (i == 1) { printLine("  skip 1"); continue; }
+            printLine($"  pass {i} at level {pass.Level}");
+        }
+        printLine($"Depth now {TraceDepth}.");
+    }
+}
+
+verb Units {
+    grammar = {.units};
+    void handler() {
+        func<float, float> toCm = ScalerFor(eUnit.Cm);
+        func<float, float> toM = ScalerFor(eUnit.M);
+        func<float, float> same = ScalerFor(eUnit.Mm);
+        printLine($"2500 mm = {toCm(2500)} cm = {toM(2500)} m = {same(2500)} mm.");
+        printLine($"Twice by cm: {ApplyTwice(toCm, 2500)}.");
+        for (Shape s in AllShapes) print($" {s.Id}={Rate(s)}");
+        printLine();
+    }
+}
+
+#includeI6 "grammar"
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+bool Initialise() {
+    location = roomA;
+    AllShapes += discA;
+    AllShapes += discB;
+    rootNode.Add(groupB.Add(leafA).Add(leafB));
+    rfalse;
+}

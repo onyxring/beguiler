@@ -1,0 +1,140 @@
+Boards bound, 4 point rows.
+Room A
+Room A.
+
+> points
+row 0: 60 high, first round, last mid
+row 1: 95 high, first mid, last high
+row 2: 5, first low, last low
+row 3: 300 high, first high, last top
+> bump 1
+row 1: first 45, total 101, band mid
+> bump 2
+row 2: first 11, total 11, band mid
+> points
+row 0: 60 high, first round, last mid
+row 1: 101 high, first mid, last high
+row 2: 11, first mid, last mid
+row 3: 300 high, first high, last top
+> peek 0
+A[0] = 1 (1 reads)
+> peek 4
+A[4] = 5 (2 reads)
+> peek 7
+A[7] = 8 (3 reads)
+> peek 8
+A[8] fault 3
+> peek 9
+A[9] fault 2
+> peek 12
+A[12] fault 2
+> poke 7 50
+A[7] set; gridA row 2 now 7 50
+> poke 8 1
+A[8] fault 3
+> peek 7
+A[7] = 50 (4 reads)
+> boards
+A: total 78, link B width 2, marked
+B: total 23, link R width 2, marked
+C: total 0, link C width -1
+R: total 23, link R width -1, marked
+A over B
+C under B
+A <=> B true
+C fault 1
+> grid 1
+A=78 [1]=2; B=23 down [1]=9; C=0 [1]!1; R=23 up [1]=9;
+Best 9.
+> grid 5
+A=78 [5]=6; B=23 down [5]=2; C=0 [5]!1; R=23 up [5]=2;
+Best 6.
+> rank
+R is rank 2; rank 2; R[1] 9, R[4] 2
+> find 5
+5 at 1,1; above 5: 1; cursors live 0, opened 4
+> find 50
+50 at 2,1; above 50: 0; cursors live 0, opened 8
+> find 99
+99 not found; above 99: 0; cursors live 0, opened 12
+> find 0
+0 not found; above 0: 2; cursors live 0, opened 15
+> cell 0 1
+B 0,1 = 9 of 3 rows
+> cell 2 1
+B 2,1 = 2 of 3 rows
+> cell 1 1
+No cell 1,1.
+> deal 0
+Dealt 3, misses 0, tray holds 3: 3/0 2/0 1/0
+> deal 1
+Dealt 2, misses 1, tray holds 5: 5/1 4/1 3/0 2/0 1/0
+> sweep
+Swept 5, tray holds 0.
+> deal 2
+Dealt 2, misses 1, tray holds 2: 50/2 7/2
+> shelve
+Moved 4.
+0,0: brass key on shelf A (2 there)
+0,1: hole, defaults to Room A (4 there)
+2,1: iron bar on tray (3 there)
+cup sealed
+> profile 0
+tin cup: marked; meets 1 of 3, lead dropped
+> profile 1
+tin cup: marked sealed; meets 2 of 3, lead dropped
+> profile 2
+tin cup: sealed light; meets 1 of 3, lead dropped
+> profile 3
+No profile 3.
+> reach 0
+0
+ 1
+  3
+ 2
+  4
+   5
+Reached 6.
+> reach 4
+4
+ 0
+  1
+   3
+  2
+ 5
+Reached 6.
+> reach 3
+3
+Reached 1.
+> limit 9
+Edges 7, deepest 3.
+> limit 2
+Too deep at node 0, deepest 2.
+> limit 1
+Too deep at node 3, deepest 1.
+> weigh
+A weighs 83, B weighs 53, links weigh 76.
+> labels
+0: north/south (11) NORTH/SOUTH
+1: up (2) UP
+2: in/out/down (11) IN/OUT/DOWN
+dirs 222, up at 1,0: true
+notes 2/2: n2 n1! true
+> menu
+head is text
+0: first (key routine)
+1: (bar routine)
+2: last end
+0: first (key routine)
+1: middle
+2: last (key routine)
+Calls 4.
+> menu
+head is text
+0: first (key routine)
+1: middle
+2: last (key routine)
+0: first (key routine)
+1: middle
+2: last (key routine)
+Calls 4.

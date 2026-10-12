@@ -1,0 +1,662 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: arrays of arrays meeting the rest of the language, one table at a time: a jagged
+// array<array<Pts>> of a primitive newtype summed with its emitter +, converted, written through its
+// emitter operator = (plain and compound) and banded by a switch with ranges and guards; boards as
+// positional objects whose ref array<array<int>> member is bound with := and read and written
+// through operator [] / []= over a flat index, which throw an enum fault caught by the caller,
+// convert to int through operator (), order through <=> (and the < > it derives), give and ungive an
+// attribute, and follow a board link with ?. and ??; a table of boards walked with conversions,
+// derived comparisons and subscripts under try/catch; a two-parent subclass ranking itself against
+// a nested table, inheriting the subscript operator and dispatching to an ancestor by cast; an
+// emitter class with init/deinit whose static methods read a nested table, used as a scan cursor
+// left through return, continue and break; global emitter functions over a nested table through
+// $i6Expr; a pooled class dealt out of a table row with new until the pool runs dry and taken back
+// with delete; a jagged table of objects with null holes moved into the object tree and queried
+// with ?., ?? and postfix ?; a jagged table of attribute profiles given and tested with has; a
+// recursive reachability walk over an adjacency table, and a depth-limited one with a per-call
+// local nested array that throws out of the recursion; a replaced function and replaced() over a
+// nested table; nested tables of strings joined into a stringObj, switched on by content, and of
+// stringObj read into a copy; a nested table of string | func<void> discriminated with typeof and
+// var, and rewritten at run time; and a local ref to a nested table rebound with :=.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int NONE = -1;
+const int NODES = 6;
+
+enum eFault { none = 0, noRows, badRow, badCol }
+
+attribute marked;
+attribute sealed;
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelfA { "shelf A"; parent = roomA; attributes = {supporter}; }
+object shelfB { "shelf B"; parent = roomA; attributes = {supporter}; }
+object tray   { "tray";    parent = roomA; attributes = {container, open}; }
+
+object brassKey   { "brass key";   name = {.brass, .key};   parent = roomA; }
+object tinCup     { "tin cup";     name = {.tin, .cup};     parent = roomA; }
+object stoneBlock { "stone block"; name = {.stone, .block}; parent = roomA; }
+object ironBar    { "iron bar";    name = {.iron, .bar};    parent = roomA; }
+
+//-- Points: a primitive newtype in a jagged table -----------------------------
+
+primitive class Pts {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter Pts operator + (Pts p) { ($val + $p) }
+    emitter bool high { ($val >= 50) }
+}
+
+array<array<Pts>> pointTable = { {10, 20, 30}, {40, 55}, {5}, {60, 70, 80, 90} };
+
+Pts rowPoints(array<array<Pts>> t, int r) {
+    Pts acc = 0;
+    for (Pts p in t[r]) acc = acc + p;
+    return acc;
+}
+
+string band(array<array<Pts>> t, int r, int c) {
+    int v = t[r][c];
+    switch (v) {
+        case 0:        return "zero";
+        case 1 to 9:   return "low";
+        case 10, 20:   return "round";
+        case >= 75:    return "top";
+        case < 50:     return "mid";
+        default:       return "high";
+    }
+}
+
+//-- Boards: positional objects over a ref nested table ------------------------
+
+// The tables live at file scope, each board binding one with :=; they are also passed to functions,
+// which a member array can't be.
+array<array<int>> gridA = { {1, 2, 3}, {4, 5, 6}, {7, 8} };
+array<array<int>> gridB = { {9, 9}, {1}, {2, 2} };
+
+class Board : object {
+    inline string title;
+    inline int width;
+    ref array<array<int>> rows;
+    Board link;
+    int reads = 0;
+
+    int operator [] (int i) {
+        if (!rows) throw eFault.noRows;
+        int r = i / width;
+        int c = i % width;
+        if (r >= rows.length) throw eFault.badRow;
+        if (c >= rows[r].length) throw eFault.badCol;
+        reads++;
+        return rows[r][c];
+    }
+
+    void operator []= (int i, int v) {
+        if (!rows) throw eFault.noRows;
+        int r = i / width;
+        int c = i % width;
+        if (r >= rows.length) throw eFault.badRow;
+        if (c >= rows[r].length) throw eFault.badCol;
+        rows[r][c] = v;
+    }
+
+    int total() {
+        int s = 0;
+        if (!rows) return 0;
+        for (array<int> row in rows) {
+            for (int x in row) s += x;
+        }
+        return s;
+    }
+
+    int operator () { return total(); }
+
+    int operator <=> (Board o) { return total() - o.total(); }
+
+    void stamp(int limit) {
+        if (total() > limit) self.give(marked);
+        else self.ungive(marked);
+    }
+
+    string linkTitle() {
+        Board b = link ?? self;
+        return b.title;
+    }
+
+    int linkWidth() {
+        if (!link?) return NONE;
+        return link?.width;
+    }
+}
+
+Board boardA { "A", 3, "board A"; }
+Board boardB { "B", 2, "board B"; }
+Board boardC { "C", 4, "board C"; }
+
+class Ranked : object {
+    int rank = 0;
+    default void describeRank() { print($"rank {rank}"); }
+}
+
+class RankedBoard : Board, Ranked {
+    void rankAmong(array<array<int>> table) {
+        int mine = ((Board)self).total();
+        rank = 1;
+        for (array<int> row in table) {
+            int s = 0;
+            for (int x in row) s += x;
+            if (s > mine) rank++;
+        }
+    }
+    void describeRank() { print($"{title} is rank {rank}"); }
+}
+
+RankedBoard boardR { "R", 2, "ranked board"; }
+
+array<array<Board>> boardRows = { {boardA, boardB}, {boardC, boardR} };
+
+int boardGrid(array<array<Board>> rows, int cell) {
+    int best = NONE;
+    for (int r = 0; r < rows.length; r++) {
+        for (int c = 0; c < rows[r].length; c++) {
+            int t = rows[r][c];
+            print($"{rows[r][c].title}={t}");
+            if (c > 0) print(rows[r][c - 1] < rows[r][c] ? " up" : " down");
+            try {
+                int v = rows[r][c][cell];
+                print($" [{cell}]={v}");
+                if (v > best) best = v;
+            } catch (eFault f) {
+                print($" [{cell}]!{(int)f}");
+            }
+            print("; ");
+        }
+    }
+    print("^");
+    return best;
+}
+
+//-- Cursor: an emitter class with a lifecycle ---------------------------------
+
+int liveCursors = 0;
+int openedCursors = 0;
+
+int cursorOpen() { liveCursors++; openedCursors++; return 0; }
+void cursorClose() { liveCursors--; }
+
+emitter class Cursor {
+    emitter void init() { $self = cursorOpen(); }
+    emitter void deinit() { cursorClose(); }
+    emitter Cursor operator = (int v) { $self = $v; }
+    emitter int operator ();
+    emitter int row { ($self / 100) }
+    emitter int col { ($self % 100) }
+    static int at(array<array<int>> t, int packed) { return t[packed / 100][packed % 100]; }
+    static int pack(int r, int c) { return r * 100 + c; }
+}
+
+int scanFor(array<array<int>> t, int want) {
+    Cursor cur;
+    for (int r = 0; r < t.length; r++) {
+        for (int c = 0; c < t[r].length; c++) {
+            cur = Cursor.pack(r, c);
+            if (Cursor.at(t, cur) == want) return cur;
+        }
+    }
+    return NONE;
+}
+
+int countAbove(array<array<int>> t, int floor) {
+    int n = 0;
+    for (int r = 0; r < t.length; r++) {
+        Cursor cur;
+        cur = Cursor.pack(r, 0);
+        if (t[r].length == 0) continue;
+        if (Cursor.at(t, cur) > floor) n++;
+        if (n >= 2) break;
+    }
+    return n;
+}
+
+//-- Emitter functions over a nested table -------------------------------------
+
+emitter int cellAt(array<array<int>> t, int r, int c) { $i6Expr($t[$r][$c]) }
+emitter int rowsIn(array<array<int>> t) { $i6Expr($t.length) }
+emitter int widthOf(array<array<int>> t, int r) { $i6Expr($t[$r].length) }
+
+//-- Chips: a pooled class dealt from a table row ------------------------------
+
+class Chip[5] : object {
+    int value;
+    int fromRow;
+    void create(int v, int r) { value = v; fromRow = r; }
+}
+
+int chipMisses = 0;
+
+int dealRow(array<array<int>> src, int r) {
+    int dealt = 0;
+    for (int x in src[r]) {
+        Chip ch = new Chip(x, r);
+        if (ch == null) { chipMisses++; continue; }
+        ch.parent = tray;
+        dealt++;
+    }
+    return dealt;
+}
+
+//-- Shelves: objects with holes, moved into the tree --------------------------
+
+array<array<object>> shelves = { {brassKey, null, tinCup}, {stoneBlock}, {null, ironBar} };
+array<object> shelfOf = { shelfA, shelfB, tray };
+
+int shelveAll(array<array<object>> s) {
+    int moved = 0;
+    for (int r = 0; r < s.length; r++) {
+        for (object o in s[r]) {
+            if (o == null) continue;
+            o.parent = shelfOf[r];
+            moved++;
+        }
+    }
+    return moved;
+}
+
+void whereIs(array<array<object>> s, int r, int c) {
+    object holder = s[r][c]?.parent ?? roomA;
+    print($"{r},{c}: ");
+    if (s[r][c]?) print($"{s[r][c]} on {holder}");
+    else print($"hole, defaults to {holder}");
+    print($" ({holder.children.length} there)^");
+}
+
+//-- Attribute profiles --------------------------------------------------------
+
+array<array<attribute>> profiles = { {marked}, {marked, sealed}, {sealed, light} };
+array<string> attrNames = { "marked", "sealed", "light" };
+array<attribute> allAttrs = { marked, sealed, light };
+
+attribute firstOf(array<array<attribute>> p, int k) {
+    if (p[k].length == 0) return null;
+    return p[k][0];
+}
+
+void applyProfile(array<array<attribute>> p, int k, object o) {
+    for (attribute a in allAttrs) o.ungive(a);
+    for (attribute a in p[k]) o.give(a);
+    print($"{o}:");
+    for (int i = 0; i < allAttrs.length; i++) {
+        if (o.has(allAttrs[i])) print($" {attrNames[i]}");
+    }
+    int full = 0;
+    for (array<attribute> row in p) {
+        bool all = true;
+        for (attribute a in row) if (!o.has(a)) all = false;
+        if (all) full++;
+    }
+    print($"; meets {full} of {p.length}");
+    attribute lead = firstOf(p, k);
+    o.ungive(p[k][0]);
+    print(o.has(lead) ? ", lead kept^" : ", lead dropped^");
+}
+
+//-- Adjacency: recursion over a nested table ----------------------------------
+
+array<array<int>> links = { {1, 2}, {3}, {3, 4}, {}, {0, 5}, {} };
+array<bool> seen[NODES];
+
+int reach(array<array<int>> g, int n, int depth) {
+    if (seen[n]) return 0;
+    seen[n] = true;
+    for (int i = 0; i < depth; i++) print(" ");
+    print($"{n}^");
+    int count = 1;
+    for (int m in g[n]) count += reach(g, m, depth + 1);
+    return count;
+}
+
+int deepest = 0;
+
+int reachLimited(array<array<int>> g, int n, int depth, int limit) {
+    array<array<int>> trail = { {n, depth}, {g[n].length} };
+    if (depth > limit) throw n;
+    if (seen[n]) return 0;
+    seen[n] = true;
+    if (depth > deepest) deepest = depth;
+    int count = trail[1][0];
+    for (int m in g[n]) count += reachLimited(g, m, depth + 1, limit);
+    if (trail[0][0] != n || trail[0][1] != depth) print("(trail clobbered)");
+    return count;
+}
+
+//-- Weights: a replaced function ---------------------------------------------
+
+int weigh(array<array<int>> t) {
+    int s = 0;
+    for (array<int> row in t) s += row.length;
+    return s;
+}
+
+replace int weigh(array<array<int>> t) {
+    return replaced(t) * 10 + t.length;
+}
+
+//-- Labels: strings in a nested table ----------------------------------------
+
+array<array<string>> labelRows = { {"north", "south"}, {"up"}, {"in", "out", "down"} };
+
+array<array<stringObj>> notes = { {"n0"}, {"n1", "n2"} };
+
+stringObj joinRow(array<array<string>> t, int r, string sep) {
+    stringObj acc;
+    for (int i = 0; i < t[r].length; i++) {
+        if (i > 0) acc += sep;
+        acc += t[r][i];
+    }
+    return acc;
+}
+
+int countDirs(array<array<string>> t) {
+    int n = 0;
+    for (array<string> row in t) {
+        for (string w in row) {
+            switch (w) {
+                case "north", "south": n += 10;
+                case "up", "down":     n += 1;
+                default:               n += 100;
+            }
+        }
+    }
+    return n;
+}
+
+//-- Menu: a nested table of string | func<void> -------------------------------
+
+void showKey() { print("(key routine)"); }
+void showBar() { print("(bar routine)"); }
+
+array<array<string | func<void>>> menu = { {"first", showKey}, {showBar}, {"last", "end"} };
+
+int runMenu(array<array<string | func<void>>> m) {
+    int calls = 0;
+    for (int r = 0; r < m.length; r++) {
+        print($"{r}:");
+        for (string | func<void> e in m[r]) {
+            print(" ");
+            if (typeof(e) == eType.routine) { ((func<void>)e)(); calls++; }
+            else print((string)e);
+        }
+        print("^");
+    }
+    return calls;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb PointsTest {
+    grammar = {.points};
+    void handler() {
+        for (int r = 0; r < pointTable.length; r++) {
+            Pts p = rowPoints(pointTable, r);
+            int n = p;
+            print($"row {r}: {n}{p.high ? " high" : ""}, first {band(pointTable, r, 0)}, last ");
+            print(band(pointTable, r, pointTable[r].length - 1));
+            print("^");
+        }
+    }
+}
+
+verb BumpTest {
+    grammar = {.bump, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (r >= pointTable.length) { print($"No row {r}.^"); return; }
+        pointTable[r][0] = pointTable[r][0] + 5;
+        pointTable[r][pointTable[r].length - 1] += 1;
+        Pts p = rowPoints(pointTable, r);
+        int n = p;
+        int first = pointTable[r][0];
+        print($"row {r}: first {first}, total {n}, band {band(pointTable, r, 0)}^");
+    }
+}
+
+verb PeekTest {
+    grammar = {.peek, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        try {
+            int v = boardA[i];
+            print($"A[{i}] = {v} ({boardA.reads} reads)^");
+        } catch (eFault f) {
+            print($"A[{i}] fault {(int)f}^");
+        }
+    }
+}
+
+verb PokeTest {
+    grammar = {.poke, NUMBER, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        int v = (int)second;
+        try {
+            boardA[i] = v;
+            print($"A[{i}] set; gridA row {i / boardA.width} now");
+            for (int x in gridA[i / boardA.width]) print($" {x}");
+            print("^");
+        } catch (eFault f) {
+            print($"A[{i}] fault {(int)f}^");
+        }
+    }
+}
+
+verb BoardsTest {
+    grammar = {.boards};
+    void handler() {
+        array<Board> all = { boardA, boardB, boardC, boardR };
+        for (Board b in all) {
+            int t = b;
+            b.stamp(20);
+            print($"{b.title}: total {t}, link {b.linkTitle()} width {b.linkWidth()}");
+            print(b.has(marked) ? ", marked^" : "^");
+        }
+        print(boardA > boardB ? "A over B^" : "A not over B^");
+        print(boardC < boardB ? "C under B^" : "C not under B^");
+        print($"A <=> B {(boardA <=> boardB) > 0}^");
+        try {
+            int x = boardC[0];
+            print($"C[0] {x}^");
+        } catch (eFault f) {
+            print($"C fault {(int)f}^");
+        }
+    }
+}
+
+verb GridTest {
+    grammar = {.grid, NUMBER};
+    void handler() {
+        int best = boardGrid(boardRows, (int)noun);
+        print($"Best {best}.^");
+    }
+}
+
+verb RankTest {
+    grammar = {.rank};
+    void handler() {
+        boardR.rankAmong(gridA);
+        boardR.describeRank();
+        print("; ");
+        ((Ranked)boardR).describeRank();
+        print($"; R[1] {boardR[1]}, R[4] {boardR[4]}^");
+    }
+}
+
+verb FindTest {
+    grammar = {.find, NUMBER};
+    void handler() {
+        int want = (int)noun;
+        int at = scanFor(gridA, want);
+        if (at == NONE) print($"{want} not found");
+        else print($"{want} at {at / 100},{at % 100}");
+        print($"; above {want}: {countAbove(gridA, want)}; cursors live {liveCursors}, opened {openedCursors}^");
+    }
+}
+
+verb CellTest {
+    grammar = {.cell, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        int c = (int)second;
+        if (r >= rowsIn(gridB) || c >= widthOf(gridB, r)) { print($"No cell {r},{c}.^"); return; }
+        print($"B {r},{c} = {cellAt(gridB, r, c)} of {rowsIn(gridB)} rows^");
+    }
+}
+
+verb DealTest {
+    grammar = {.deal, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (r >= gridA.length) { print($"No row {r}.^"); return; }
+        int n = dealRow(gridA, r);
+        print($"Dealt {n}, misses {chipMisses}, tray holds {tray.children.length}:");
+        for (object o in tray.children) {
+            if (o.is(Chip)) print($" {((Chip)o).value}/{((Chip)o).fromRow}");
+        }
+        print("^");
+    }
+}
+
+verb SweepTest {
+    grammar = {.sweep};
+    void handler() {
+        int n = 0;
+        for (object o in bgl.world.instances(Chip)) {
+            Chip ch = (Chip)o;
+            delete ch;
+            n++;
+        }
+        print($"Swept {n}, tray holds {tray.children.length}.^");
+    }
+}
+
+verb ShelveTest {
+    grammar = {.shelve};
+    void handler() {
+        print($"Moved {shelveAll(shelves)}.^");
+        whereIs(shelves, 0, 0);
+        whereIs(shelves, 0, 1);
+        whereIs(shelves, 2, 1);
+        shelves[0][1]?.give(sealed);
+        (shelves[0][2])?.give(sealed);
+        print(tinCup.has(sealed) ? "cup sealed^" : "cup open^");
+    }
+}
+
+verb ProfileTest {
+    grammar = {.profile, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        if (k >= profiles.length) { print($"No profile {k}.^"); return; }
+        applyProfile(profiles, k, tinCup);
+    }
+}
+
+verb ReachTest {
+    grammar = {.reach, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= NODES) { print($"No node {n}.^"); return; }
+        seen.clear();
+        int k = reach(links, n, 0);
+        print($"Reached {k}.^");
+    }
+}
+
+verb LimitTest {
+    grammar = {.limit, NUMBER};
+    void handler() {
+        int lim = (int)noun;
+        seen.clear();
+        deepest = 0;
+        try {
+            int k = reachLimited(links, 0, 0, lim);
+            print($"Edges {k}, deepest {deepest}.^");
+        } catch (int at) {
+            print($"Too deep at node {at}, deepest {deepest}.^");
+        }
+    }
+}
+
+verb WeighTest {
+    grammar = {.weigh};
+    void handler() {
+        ref array<array<int>> t := gridA;
+        print($"A weighs {weigh(t)}, ");
+        t := gridB;
+        print($"B weighs {weigh(t)}, links weigh {weigh(links)}.^");
+    }
+}
+
+verb LabelTest {
+    grammar = {.labels};
+    void handler() {
+        for (int r = 0; r < labelRows.length; r++) {
+            stringObj s = joinRow(labelRows, r, "/");
+            print($"{r}: {s} ({s.length}) {s.toUpper()}^");
+        }
+        print($"dirs {countDirs(labelRows)}, up at 1,0: {labelRows[1][0] == "up"}^");
+        notes[1][0] = "n1";
+        notes[1][0] += "!";
+        print($"notes {notes.length}/{notes[1].length}: {notes[1][1]} {notes[1][0]} {notes[1][0] == "n1!"}^");
+    }
+}
+
+verb MenuTest {
+    grammar = {.menu};
+    void handler() {
+        var head = menu[0][0];
+        print(typeof(head) == eType.string ? "head is text^" : "head is other^");
+        int calls = runMenu(menu);
+        menu[2][1] = showKey;
+        menu[1][0] = "middle";
+        calls += runMenu(menu);
+        print($"Calls {calls}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    boardA.rows := gridA;
+    boardB.rows := gridB;
+    boardR.rows := gridB;
+    boardA.link = boardB;
+    boardB.link = boardR;
+    print($"Boards bound, {pointTable.length} point rows.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

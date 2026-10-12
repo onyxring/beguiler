@@ -1,0 +1,21 @@
+Room A
+A plain room.
+> tags
+az q 9 1 two
+? 30 23
+two three 3 onethree
+19600
+3 two9 -9 2 9 true false true
+213
+> grid
+5 6 15 105
+9 4 15
+south true false
+SOUTH 5
+2 5 7
+58 2 bc 21
+70 true false
+> panel
+11 d 3 three 20 k
+6 -4 3
+101 hi 32 lo yz

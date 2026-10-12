@@ -1,0 +1,539 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, eleventh pass: properties everywhere.
+// In-place `auto { … }` accessors on objects, each reaching its host through `outer`, met with one other
+// area in the same object: a primitive-class backing word read through an explicit cast, an enum host
+// member set from a ranged `switch` in the setter, a `throw` from the setter caught by the caller (also
+// through `+=`), and a host method switching on the property; an indexer (`operator []`) and an
+// `operator +=` beside the getter and setter, summing an `array<array<int>>` through a recursive host
+// method; an object with two class parents whose override calls an ancestor through a cast; an accessor
+// added by `extend`; a namespace object (`alias … for`) carrying accessors; a setter that masks through
+// an `#i6` island and `$i6Expr`, and an accessor read inside `$i6Expr`; a setter split by `#if`, and an
+// accessor declared under `#if`; an RAII emitter-class guard (init/deinit) in a setter that reads an
+// emitter value of its host; an object-typed accessor with `?.`, `??` and postfix `?`; a setter that
+// recycles a pooled instance with `delete` and `new`; a `stringObj` property compared and switched on
+// by content; positional (`inline`) host members bounding a setter; and an indexed class with two
+// parents (`operator []` / `[]=`, `+=` on an element) dispatching to an ancestor through a cast.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+
+#define MAX_SPEND 90
+
+extend class object {
+    stringOrRoutine description;
+}
+
+enum Mode { Off, Low, High }
+
+primitive class Percent {
+    emitter void operator = (int v) { $target = $v; }
+    explicit emitter int operator () { ($val) }
+}
+
+emitter class ScopeGuard {
+    emitter void init()   { $self = 0; print "<"; }
+    emitter void deinit() { print ">"; }
+}
+
+class Part[2] : object {
+    int Code;
+    void create(int c) { Code = c; }
+    void print() { print($"part {Code}"); }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Validation in a setter: primitive backing, enum state, switch, throw ----------------------------
+
+object heater {
+    "heater";
+    Mode State = Mode.Off;
+    int Rejected;
+    auto Level = {
+        Percent _p;
+        int operator () { return (int)_p; }
+        void operator = (int v) {
+            if (v < 0 || v > 100) {
+                outer.Rejected++;
+                throw v;
+            }
+            _p = v;
+            switch (v) {
+                case 0:       outer.State = Mode.Off;
+                case 1 to 49: outer.State = Mode.Low;
+                default:      outer.State = Mode.High;
+            }
+        }
+    }
+    string Band() {
+        switch (Level) {
+            case 0:       return "cold";
+            case 1 to 49: return "warm";
+            case >= 90:   return "hot";
+            default:      return "high";
+        }
+    }
+    string StateName() {
+        switch (State) {
+            case Mode.Off: return "off";
+            case Mode.Low: return "low";
+            default:       return "high";
+        }
+    }
+}
+
+//-- An indexer and += on a property, over a jagged table --------------------------------------------
+
+// At file scope: the table is passed to SumFrom, and a member array can't be an argument.
+array<array<int>> LedgerRows = { {5, 10, 15}, {1, 2}, {7} };
+
+object ledger {
+    "ledger";
+    int Current;
+    int Adds;
+    auto Total = {
+        int _unused;
+        int  operator ()         { return outer.SumFrom(LedgerRows, outer.Current, 0); }
+        void operator = (int r)  { outer.Current = r; }
+        int  operator [] (int r) { return outer.SumFrom(LedgerRows, r, 0); }
+        void operator += (int v) {
+            LedgerRows[outer.Current][0] = LedgerRows[outer.Current][0] + v;
+            outer.Adds++;
+        }
+    }
+    int SumFrom(array<array<int>> rows, int r, int i) {
+        if (i >= rows[r].length) return 0;
+        return rows[r][i] + SumFrom(rows, r, i + 1);
+    }
+}
+
+//-- Two parents, ancestor dispatch from an override -------------------------------------------------
+
+class Powered : object {
+    int Watts = 10;
+    default string Describe() { return "powered"; }
+}
+
+class Labeled : object {
+    string Tag = "unlabeled";
+}
+
+object fan : Powered, Labeled {
+    "fan";
+    Tag = "desk";
+    auto Speed = {
+        int _s;
+        int  operator ()        { return _s; }
+        void operator = (int v) { _s = v; outer.Watts = 10 + v * 5; }
+    }
+    string Describe() {
+        print($"{Tag} fan at {Speed}, ");
+        return ((Powered)self).Describe();
+    }
+}
+
+extend fan {
+    auto Tilt = {
+        int _deg;
+        int  operator ()        { return _deg; }
+        void operator = (int v) { _deg = v; if (v > 30) outer.Speed = 1; }
+    }
+}
+
+//-- An indexed class with two parents ---------------------------------------------------------------
+
+class Indexed : object {
+    default int Count() { return 0; }
+}
+
+class Rack : Powered, Indexed {
+    array<int> Slots[4];
+    int operator [] (int i) {
+        if (i < 0 || i >= 4) return -1;
+        return Slots[i];
+    }
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= 4) return -1;
+        Slots[i] = v;
+        Watts = Watts + v;
+        return v;
+    }
+    int Count() {
+        int n = 0;
+        for (int v in Slots) if (v != 0) n++;
+        return n;
+    }
+    string Describe() {
+        print($"{Count()} filled, base count {((Indexed)self).Count()}, ");
+        return ((Powered)self).Describe();
+    }
+}
+
+Rack shelfRack { "rack"; }
+
+//-- A namespace object that also carries a property -------------------------------------------------
+
+object Units {
+    alias mode    for Mode;
+    alias percent for Percent;
+    int Base = 100;
+    auto Factor = {
+        int _f = 1;
+        int  operator ()        { return _f; }
+        void operator = (int v) { _f = v; outer.Base = 100 * v; }
+    }
+    auto Share = {
+        Units.percent _p;
+        Units.mode _band = Units.mode.Off;
+        int operator () { return (int)_p; }
+        void operator = (int v) {
+            _p = v * outer.Factor;
+            _band = v == 0 ? Units.mode.Off : (v < 20 ? Units.mode.Low : Units.mode.High);
+        }
+        Units.mode Band() { return _band; }
+    }
+}
+
+//-- Interop inside a setter -------------------------------------------------------------------------
+
+object mask {
+    "mask";
+    int Bits;
+    auto Low = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) {
+            #i6 { $i6Expr(_v) = $i6Expr(v) & $0F; }
+            outer.Bits = outer.Bits | _v;
+        }
+    }
+}
+
+//-- A setter split by conditional compilation --------------------------------------------------------
+
+object budget {
+    "budget";
+    int Cap = MAX_SPEND;
+    int Clamped;
+    auto Spend = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) {
+            #if TARGET_ZCODE
+                if (v > outer.Cap) {
+                    outer.Clamped++;
+                    v = outer.Cap;
+                }
+            #else
+                outer.Clamped = 0;
+            #endif
+            _v = v;
+        }
+    }
+    #if TARGET_ZCODE
+        auto Reserve = {
+            int _r;
+            int operator () { return _r; }
+            void operator = (int v) { _r = v; outer.Cap = MAX_SPEND - v; }
+        }
+    #endif
+}
+
+//-- An RAII guard in a setter, an emitter value on the host ------------------------------------------
+
+object dial {
+    "dial";
+    emitter int Limit { 40 }
+    int Sets;
+    auto Position = {
+        int _p;
+        int operator () { return _p; }
+        void operator = (int v) {
+            ScopeGuard guard;
+            outer.Sets++;
+            if (v > outer.Limit) {
+                print("over");
+                _p = outer.Limit;
+                return;
+            }
+            print(v);
+            _p = v;
+        }
+    }
+}
+
+//-- An object-typed property with null handling -----------------------------------------------------
+
+object pointer {
+    "pointer";
+    object Fallback = roomA;
+    auto Target = {
+        object _o;
+        object operator ()        { return _o; }
+        void   operator = (object v) { _o = v ?? outer.Fallback; }
+    }
+    void Report() {
+        object t = Target;
+        print($"target {t}, inside {t?.parent ?? Fallback}, set {t?}");
+    }
+    void ReportDirect() {
+        print($"direct {Target ?? Fallback}, inside {Target?.parent ?? Fallback}, set {Target?}");
+    }
+}
+
+//-- A setter that recycles a pooled instance --------------------------------------------------------
+
+object factory {
+    "factory";
+    int Made;
+    auto Current = {
+        Part _p;
+        Part operator () { return _p; }
+        void operator = (int code) {
+            if (_p != null) delete _p;
+            _p = new Part(code);
+            outer.Made++;
+        }
+    }
+}
+
+//-- A stringObj backing member ----------------------------------------------------------------------
+
+object crate { "crate"; parent = roomA; }
+
+object nameplate {
+    "nameplate";
+    parent = crate;
+    int Renames;
+    auto Caption = {
+        stringObj _t;
+        stringObj operator () { return _t; }
+        void operator = (string v) {
+            _t = v;
+            _t = _t.trim().toUpper();
+            outer.Renames++;
+        }
+    }
+}
+
+//-- Positional members read by a property -----------------------------------------------------------
+
+class Span : object {
+    inline int Lo;
+    inline int Hi;
+}
+
+Span window { 10, 20, "window";
+    auto Value = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) { _v = v < outer.Lo ? outer.Lo : (v > outer.Hi ? outer.Hi : v); }
+    }
+}
+
+object gauge {
+    inline int Min = 0;
+    inline int Max = 5;
+    auto Needle = {
+        int _n;
+        int operator () { return _n; }
+        void operator = (int v) { _n = v > outer.Max ? outer.Max : v; }
+    }
+}
+
+//-- Verbs that drive it all --------------------------------------------------------------------------
+
+void TrySet(int v) {
+    try {
+        heater.Level = v;
+        printLine($"Level {heater.Level}, {heater.StateName()}, {heater.Band()}.");
+    } catch (int bad) {
+        printLine($"Rejected {bad} ({heater.Rejected} so far); level stays {heater.Level}.");
+    }
+}
+
+verb Heat {
+    grammar = {.heat};
+    void handler() {
+        TrySet(30);
+        TrySet(120);
+        TrySet(75);
+        TrySet(-4);
+        TrySet(0);
+        TrySet(75);
+        try {
+            heater.Level += 20;
+            heater.Level += 20;
+            printLine("Not reached.");
+        } catch (int bad) {
+            printLine($"Bump rejected at {bad}; level {heater.Level}, {heater.StateName()}.");
+        }
+        Units.mode m = Units.mode.High;
+        printLine($"Mode as int {(int)heater.State}, high is {(int)m}.");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        printLine($"Rows {ledger.Total[0]} {ledger.Total[1]} {ledger.Total[2]}.");
+        ledger.Total = 1;
+        ledger.Total += 9;
+        ledger.Total += 1;
+        printLine($"Row {ledger.Current} now {ledger.Total}, first cell {LedgerRows[1][0]}, adds {ledger.Adds}.");
+        int all = 0;
+        for (int r = 0; r < LedgerRows.length; r++) all += ledger.Total[r];
+        printLine($"All rows {all}.");
+    }
+}
+
+verb Spin {
+    grammar = {.spin};
+    void handler() {
+        fan.Speed = 2;
+        printLine($"{fan.Describe()}; {fan.Watts} W.");
+        fan.Tilt = 45;
+        printLine($"Tilt {fan.Tilt}, speed {fan.Speed}, {fan.Watts} W.");
+        fan.Speed += 3;
+        printLine($"Speed {fan.Speed}, {fan.Watts} W.");
+    }
+}
+
+verb Stack {
+    grammar = {.stack};
+    void handler() {
+        shelfRack[0] = 4;
+        shelfRack[2] = 6;
+        shelfRack[7] = 1;
+        shelfRack[2] += 1;
+        print($"Slots {shelfRack[0]} {shelfRack[1]} {shelfRack[2]} {shelfRack[7]}; ");
+        printLine($"{shelfRack.Describe()}; {shelfRack.Watts} W.");
+    }
+}
+
+verb Scale {
+    grammar = {.scale};
+    void handler() {
+        Units.percent p = 40;
+        Units.Factor = 3;
+        printLine($"Factor {Units.Factor}, base {Units.Base}, percent {(int)p}.");
+        Units.Share = 5;
+        print($"Share {Units.Share}, band {(int)Units.Share.Band()}; ");
+        Units.Share = 25;
+        printLine($"share {Units.Share}, band {(int)Units.Share.Band()}.");
+    }
+}
+
+verb Masking {
+    grammar = {.masking};
+    void handler() {
+        mask.Low = 18;
+        print($"low {mask.Low}, ");
+        mask.Low = 36;
+        printLine($"low {mask.Low}, bits {mask.Bits}.");
+        int scaled = 0;
+        #i6 $i6Expr(scaled) = $i6Expr(mask.Low) * 10 + $i6Expr(mask.Bits);
+        printLine($"scaled {scaled}.");
+    }
+}
+
+verb Spending {
+    grammar = {.spending};
+    void handler() {
+        budget.Spend = 50;
+        print($"spend {budget.Spend}, ");
+        budget.Spend = 200;
+        printLine($"spend {budget.Spend}, clamped {budget.Clamped}.");
+        budget.Reserve = 30;
+        budget.Spend = 80;
+        printLine($"reserve {budget.Reserve}, cap {budget.Cap}, spend {budget.Spend}, clamped {budget.Clamped}.");
+    }
+}
+
+verb Twist {
+    grammar = {.twist};
+    void handler() {
+        dial.Position = 12;
+        print(" ");
+        dial.Position = 99;
+        printLine($" position {dial.Position} after {dial.Sets} sets.");
+    }
+}
+
+verb Aim {
+    grammar = {.aim};
+    void handler() {
+        pointer.Report();
+        printLine(".");
+        pointer.Target = nameplate;
+        pointer.Report();
+        printLine(".");
+        pointer.ReportDirect();
+        printLine(".");
+        pointer.Target = null;
+        pointer.Report();
+        printLine(".");
+    }
+}
+
+verb Build {
+    grammar = {.build};
+    void handler() {
+        factory.Current = 7;
+        factory.Current = 8;
+        factory.Current = 9;
+        printLine($"Current {factory.Current}, made {factory.Made}.");
+    }
+}
+
+verb Label {
+    grammar = {.label};
+    void handler() {
+        nameplate.Caption = "  left door ";
+        printLine($"[{nameplate.Caption}] length {nameplate.Caption.length}.");
+        nameplate.Caption = "exit";
+        stringObj copy = nameplate.Caption;
+        copy += "!";
+        printLine($"[{copy}] [{nameplate.Caption}] after {nameplate.Renames}.");
+        switch (nameplate.Caption) {
+            case "LEFT DOOR": printLine("Caption is the left door.");
+            case "EXIT":      printLine("Caption is the exit.");
+            default:          printLine("Caption is something else.");
+        }
+        if (nameplate.Caption == "EXIT" && nameplate.Caption != copy) printLine("Compared by content.");
+    }
+}
+
+verb Bounds {
+    grammar = {.bounds};
+    void handler() {
+        window.Value = 5;
+        print($"{window.Value} ");
+        window.Value = 15;
+        print($"{window.Value} ");
+        window.Value = 50;
+        print($"{window.Value}; ");
+        gauge.Needle = 9;
+        printLine($"needle {gauge.Needle} of {gauge.Max}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

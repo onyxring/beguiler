@@ -1,0 +1,77 @@
+Room A
+Room A.
+You can see a brass key, an iron bar and a glass jar here.
+> props 2
+weights 10, prices 15
+weights times 2: 20, prices plus one: 18
+scaled by 2: 20, marked by 2: 21
+heaviest iron bar, dearest glass jar
+weight over 2: 2, price over 2: 2
+> rules 5
+heavy: iron bar glass jar
+cheap: brass key iron bar
+key: brass key
+twelve: glass jar
+wide: iron bar glass jar
+matches 5, first rule on iron bar: yes
+> rules 1
+heavy: iron bar glass jar
+cheap: brass key iron bar
+key: brass key
+twelve: glass jar
+narrow: iron bar glass jar
+matches 5, first rule on iron bar: yes
+> steps 3
+plan on 3: 7
+twice three times: 24, inc 3 times: 3
+copy runs 6, original still 3
+plan steps 6, first is twice
+> funcs
+length 5, halve at 2, distinct 3
+has inc: yes
+names: twice inc halve twice inc
+after removing twice: 3, first inc
+f is halve: yes, f is inc: no
+found halve, gives 4
+> scale 4
+member 12, global 8, both 20
+fold with member 18, fold with global 12
+> shapes 3
+plain 6
+square 14
+cube 36
+cube as square 14, as shape 6
+> coins 1
+ordered: penny cent nickel dime quarter
+worth 1: 2, total 42
+dime vs nickel 5, together 15, again 15, cent at 1, penny at 1
+distinct coins 5, worth over 1 40
+> coins 5
+ordered: penny cent nickel dime quarter
+worth 5: 1, total 42
+dime vs nickel 5, together 15, again 15, cent at 1, penny at 1
+distinct coins 5, worth over 5 35
+> gates 4
+open for 4: low gate even gate
+gates 3, any open for 7: yes
+> gates 7
+open for 7: seven gate
+gates 3, any open for 7: yes
+> gather
+Taken.
+Taken.
+Taken.
+holding 3, weight 10
+> i
+You're carrying:
+  a glass jar
+  an iron bar
+  a brass key
+> shed
+Dropped.
+Dropped.
+still holding 1
+> look
+Room A
+Room A.
+You can see an iron bar and a glass jar here.

@@ -1,0 +1,188 @@
+#grids
+Room A
+Room A.
+> outline
+Section A (depth 1)
+  Part A1 (depth 2)
+  Part A3 (depth 2)
+    Note A3x (depth 3)
+Section B (depth 1)
+  Part B1 (depth 2)
+  [stop]
+Section C (depth 1)
+Drawn 7; depth back to 0; scopes 15.
+Section A (depth 1)
+  ...
+Section B (depth 1)
+  ...
+Section C (depth 1)
+Shallow 3; depth back to 0; scopes 9.
+[grid 1]
+| Room A                                     0/0   |
+> rules
+============
+======
+Half 6; active still 12.
+####################
+Bold now 24; plain 12.
+++++++++++++++++++++++++
+Bold copied from plain: = 12; plain =.
+Active - 12.
+[grid 1]
+| Room A                                     0/0   |
+> menu
+Labels (4): Help Open Swap Rule. Second: Open.
+Cells: (1,0) (1,1) (1,2) (1,3). Second at col 1, line 1.
+[win 1] - Help
+[win 1] - Open
+[win 1] - Swap
+[win 1] - Rule
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> @link 4
+[Rule chosen]
+============
+[win 1] Clicked Rule (1).
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> @link 3 abc
+[Swap chosen]
+Swapped 1 at depth 0.
+[win 1] Clicked Swap (2).
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> kit
+Kit state 1; clicks 2; depth 0.
+History 2, second Swap.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> @link 1
+[Help chosen]
+[win 1] Clicked Help (3).
+[win 1] Help: click a label. Back
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> @link 5
+[Back chosen]
+[win 1] Clicked Back (4).
+[win 1] Back at depth 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> @link 4
+[Rule chosen]
+####################
+[win 1] Clicked Rule (5).
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> @link 2
+[Open chosen]
+Opened at depth 1.
+[win 1] Clicked Open (6).
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                [B]   |
+|              [A]          |
+> menu
+Labels (4): Help Open Swap Rule. Second: Open.
+Cells: (1,0) (1,1) (1,2) (1,3). Second at col 1, line 1.
+[win 1] * Help
+[win 1] * Open
+[win 1] * Swap
+[win 1] * Rule
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help                      |
+| Open                      |
+| Swap                      |
+| Rule                      |
+|                     [B]   |
+> compose
+Line 1: 10 chars, depth 1.
+Line 2: 8 chars, depth 1.
+Line 3: 5 chars, depth 1.
+Wrote 25 bytes in 3 lines; depth 0.
+Last line at (14,2); next at (14,3).
+Widths 8 and 12; bold 8.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help         * width 20   |
+| Open         * mark #     |
+| Swap         * end        |
+| Rule                      |
+|                     [B]   |
+> probe
+Inside 1, after 0.
+Deep 1: yes; deep 2: no; after 0.
+Late early 0, late 1, after 0.
+Kinds zero, low, high; after 0.
+Count down 2; after 0.
+[-=12][*#20][o-9]
+---------
+Plain still 12; copy in slot 12.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help         * width 20   |
+| Open         * mark #     |
+| Swap         * end        |
+| Rule                      |
+|                     [B]   |
+> kit
+Kit state 1; clicks 6; depth 0.
+History 6, second Swap.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+| Help         * width 20   |
+| Open         * mark #     |
+| Swap         * end        |
+| Rule                      |
+|                     [B]   |

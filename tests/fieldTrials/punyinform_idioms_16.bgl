@@ -1,0 +1,391 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a sixteenth PunyInform program, built from three dense declarations over area triples:
+// an object whose inline `auto { }` accessor throws from its setter and writes its host through
+// `outer.`, beside `operator ==`/`!=`/`<` and `operator +=` on the object, a method taking an
+// `array<int>` parameter walked inside `try`/`catch` with `throw`, a `<linq>` filter over that
+// parameter, `new`/`delete` of a pooled class read through `??`, a `stringObj` member set from an
+// interpolated string, `#if`/`#else` on a defined symbol and `perform()` of a verb; a class with two
+// parents carrying a primitive newtype member and a value-class member, comparison and `+=`
+// operators, a method binding a `ref` local with `:=`, copying through a `ref` parameter, a
+// block-bodied lambda, `?.` over an inherited member, `var` told apart with `typeof`, `#if` and
+// `perform()`; and an I6 class bound with `extern class` whose emitter `operator +=` and static
+// method combine an emitter-class local, an array of arrays, a `switch` choosing text set into a
+// `bgl.util.buf` buffer, a `ref` value-class parameter, `?.`, a cast dispatch to a base class and
+// `perform()`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#include <buf>
+#include <linq>
+
+#includeI6 "puny"
+
+#define TRACE_LEVEL 2
+
+// --- shared types -----------------------------------------------------------------------------------
+
+primitive class grams {
+    emitter void  operator = (int v)    { $self = $v; }
+    emitter int   operator ()           { ($self) }
+    emitter grams operator + (grams g)  { ($self + $g) }
+    emitter bool  operator < (grams g)  { ($self < $g) }
+}
+
+value class Pair {
+    int a;
+    int b;
+
+    Pair operator = (Pair o) {
+        a = o.a;
+        b = o.b;
+        return self;
+    }
+
+    int sum() {
+        return a + b;
+    }
+}
+
+emitter class tenths {
+    emitter void operator = (int v) { $self = $v * 10; }
+    emitter int  operator ()        { ($self / 10) }
+    emitter int  raw()              { ($self) }
+}
+
+class Token[2] : object {
+    int worth = 0;
+
+    void create(int w) {
+        worth = w;
+    }
+}
+
+int pings = 0;
+array<char> label[24];
+
+// --- rooms and things -------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+object boxA {
+    "box A";
+    parent = roomA;
+}
+
+// --- cluster 1: a ledger object ---------------------------------------------------------------------
+
+object ledger {
+    "ledger";
+    int total = 0;
+    int sets = 0;
+    int rejects = 0;
+    object holder;
+    stringObj note;
+
+    auto cap = {
+        int _v = 5;
+        int operator () { return _v; }
+        void operator = (int v) {
+            if (v < 0) throw 100 + outer.sets;
+            _v = v;
+            outer.sets++;
+        }
+    }
+
+    bool operator == (int n) {
+        return total == n;
+    }
+
+    bool operator != (int n) {
+        return total != n;
+    }
+
+    bool operator < (int n) {
+        return total < n;
+    }
+
+    int operator += (int n) {
+        total = total + n;
+        return total;
+    }
+
+    int load(array<int> vals, Token tag) {
+        int added = 0;
+        try {
+            for (int v in vals) {
+                if (v > cap) throw v;
+                self += v;
+                added++;
+            }
+        } catch (int e) {
+            rejects++;
+            note = $"rejected {e}";
+            printLine(note);
+        }
+        int big = vals.filter((int x) => x >= 3).count();
+        Token t = new Token(big);
+        Token use = t ?? tag;
+        printLine($"Token worth {use.worth}.");
+        if (t != null) delete t;
+        object at = holder ?? roomA;
+        #if TRACE_LEVEL > 1
+            printLine($"Loaded {added} at {at} big {big}.");
+        #else
+            printLine($"Loaded {added}.");
+        #endif
+        if (self == 10) Ping.perform();
+        if (self < 4) printLine("Under four.");
+        return added;
+    }
+
+    void setCap(int c) {
+        try {
+            cap = c;
+        } catch (int e) {
+            printLine($"Cap refused {e}.");
+        }
+    }
+}
+
+// --- cluster 2: a class with two parents ------------------------------------------------------------
+
+class Shelf : object {
+    int slots = 2;
+}
+
+class Tagged : object {
+    object owner;
+}
+
+class Gadget : Shelf, Tagged {
+    grams heft = 0;
+    Pair span;
+    int bumps = 0;
+
+    bool operator == (Gadget o) {
+        return (int)heft == (int)o.heft;
+    }
+
+    bool operator != (Gadget o) {
+        return (int)heft != (int)o.heft;
+    }
+
+    bool operator < (Gadget o) {
+        return heft < o.heft;
+    }
+
+    Gadget operator += (int n) {
+        grams g = n;
+        heft = heft + g;
+        bumps++;
+        return self;
+    }
+
+    int survey(var extra, ref Pair out) {
+        ref Pair r := span;
+        r.a = (int)heft;
+        r.b = slots;
+        out = span;
+        func<int, int> scaled = (int n) => {
+            int k = n * slots;
+            if (k > 50) k = 50;
+            return k;
+        };
+        object where = owner?.parent;
+        int s = scaled(r.sum());
+        #if TRACE_LEVEL > 1
+            printLine($"{self}: heft {(int)heft} span {span.sum()} scaled {s}.");
+        #endif
+        if (typeof(extra) == eType.string) printLine($"Extra text {(string)extra}.");
+        else printLine("No extra.");
+        if (where != null) printLine($"Owner in {where}.");
+        if (s >= 50) Ping.perform();
+        return s;
+    }
+}
+
+Gadget gadgetA {
+    "gadget A";
+}
+
+Gadget gadgetB {
+    "gadget B";
+    slots = 3;
+}
+
+// --- cluster 3: an I6 class bound with extern -------------------------------------------------------
+
+#i6 {
+    Class Crate
+        with heft 0,
+             next 0;
+    Crate crateA "crate A"
+        with heft 12,
+             next crateB;
+    Crate crateB "crate B"
+        with heft 40,
+             next 0;
+}
+
+class Gauge : object {
+    int reads = 0;
+
+    void show(int v) {
+        reads++;
+        printLine($"Gauge {v}.");
+    }
+}
+
+class Meter : Gauge {
+    replace void show(int v) {
+        reads++;
+        printLine($"Meter {v}.");
+    }
+}
+
+Meter meterA {
+    "meter A";
+}
+
+extern class Crate : object {
+    int heft;
+    object next;
+
+    emitter void operator += (int v) { $self.heft = $self.heft + $v; }
+
+    static int inspect(Crate c, ref Pair acc) {
+        tenths t = c.heft;
+        array<array<int>> bands = {{0, 9}, {10, 29}, {30, 99}};
+        int band = 0;
+        for (int i = 0; i < bands.length; i++) {
+            if (c.heft >= bands[i][0] && c.heft <= bands[i][1]) band = i;
+        }
+        switch (band) {
+            case 0:  bgl.util.buf.set(label, "light");
+            case 1:  bgl.util.buf.set(label, "medium");
+            default: bgl.util.buf.set(label, "heavy");
+        }
+        acc.a += c.heft;
+        acc.b++;
+        c += 1;
+        object n = c?.next;
+        ((Gauge)meterA).show(t.raw());
+        meterA.show(t);
+        bgl.util.buf.print(label);
+        printLine($" crate {c.heft} band {band}.");
+        if (n != null) printLine($"Next {n}.");
+        if (band == 2) Ping.perform();
+        return band;
+    }
+}
+
+extern Crate crateA;
+extern Crate crateB;
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Ping {
+    meta = true;
+    grammar = {.ping};
+    void handler() {
+        pings++;
+        printLine($"Ping {pings}.");
+    }
+}
+
+verb Ledgers {
+    meta = true;
+    grammar = {.ledgers};
+    void handler() {
+        Token keep1 = new Token(1);
+        Token keep2 = new Token(2);
+        array<int> first = {1, 2, 3};
+        array<int> second = {4, 9, 2};
+        ledger.load(first, keep1);
+        delete keep2;
+        ledger.holder = boxA;
+        ledger.load(second, keep1);
+        ledger.setCap(-1);
+        ledger.setCap(20);
+        printLine($"Cap {ledger.cap} sets {ledger.sets} total {ledger.total} rejects {ledger.rejects}.");
+        if (ledger != 3) printLine("Not three.");
+        delete keep1;
+        ledger.cap += 3;
+        ledger.cap++;
+        printLine($"Cap now {ledger.cap} sets {ledger.sets}.");
+        ledger.note += "!";
+        printLine($"Note {ledger.note} length {ledger.note.length} upper {ledger.note.toUpper()}.");
+        try {
+            ledger.cap = -5;
+        } catch (int e) {
+            printLine($"Direct {e}.");
+        }
+        Token z = new Token(7);
+        int w = z?.worth;
+        printLine($"Worth {w}.");
+        delete z;
+    }
+}
+
+verb Gadgets {
+    meta = true;
+    grammar = {.gadgets};
+    void handler() {
+        gadgetA += 4;
+        gadgetA += 3;
+        gadgetB += 7;
+        if (gadgetA == gadgetB) printLine("Same heft.");
+        gadgetB += 1;
+        if (gadgetA < gadgetB) printLine("A lighter.");
+        Pair got;
+        gadgetA.owner = boxA;
+        int s = gadgetA.survey("note", got);
+        printLine($"Got {got.a} {got.b} scaled {s} bumps {gadgetA.bumps}.");
+        gadgetB.survey(null, got);
+        gadgetB += 10;
+        s = gadgetB.survey(null, got);
+        printLine($"Got {got.a} {got.b} scaled {s} bumps {gadgetB.bumps}.");
+    }
+}
+
+verb Crates {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        Pair acc;
+        int b1 = Crate.inspect(crateA, acc);
+        int b2 = Crate.inspect(crateB, acc);
+        grams g1 = 5;
+        grams g2 = 9;
+        if (g1 < g2) printLine("Lighter.");
+        ref Pair pr := acc;
+        pr.a += 100;
+        crateB += 2;
+        tenths tt = 3;
+        printLine($"Ref {acc.a} tenths {tt} raw {tt.raw()} heft {crateB.heft}.");
+        printLine($"Bands {b1} {b2} acc {acc.a} {acc.b} heft {crateA.heft} reads {meterA.reads}.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

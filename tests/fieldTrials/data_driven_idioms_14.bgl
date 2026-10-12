@@ -1,0 +1,380 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: lookup tables meeting I6 in threes. An I6 island declares a class, globals and
+// routines, one with a #bgl island calling a Beguile routine on an I6 local; an extern class over
+// that I6 class carries static methods whose bodies bind ref locals to file-scope string tables
+// (:=), switch with values, ranges and guards, walk an object's children, narrow a var to the
+// extern class, and write an I6 global from an in-routine #i6 line; extern routines and an extern
+// variable read back what the island holds; extend extern class object adds a static zone lookup
+// and a second extend replaces it with one that switches on typeof of a var and on an object,
+// binds a string table and calls an I6 routine through #i6; a global tag routine is replaced by
+// one that switches on typeof and on string content, rebinds a string table, reads the tree and
+// falls back to replaced(); a named union of string and object is discriminated with typeof in a
+// switch; an object with ref string-table members moves crates between holders by a switch on a
+// code, rebinding a ref local, and counts children with an #i6 line; verbs walk children, switch on
+// a var's category, read a local and a ref-bound string table, call an I6 routine from an #i6 line,
+// and move objects by parent assignment.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>   // switch on a string needs it
+
+#i6 {
+Class Crate with weight 0, code 0;
+Global lastSweep = 0;
+Global sweeps = 0;
+[ CrateTotal o  c t;
+    objectloop (c in o) if (c ofclass Crate) t = t + c.weight;
+    return t;
+];
+[ ListTags o  c;
+    objectloop (c in o) {
+        #bgl { print(tagOf(c)); }
+        print " ";
+    }
+];
+[ DepthOf o  d;
+    while (parent(o) ~= nothing) { d++; o = parent(o); }
+    return d;
+];
+}
+
+extern int CrateTotal(object o);
+extern int DepthOf(object o);
+extern int lastSweep;
+extern void ListTags(object o);
+
+extend class object {
+    string description;
+}
+
+//-- Tables ---------------------------------------------------------------------
+
+const int NONE = -1;
+
+array<string> zoneNames = { "floor", "shelf", "bin", "elsewhere" };
+array<string> shortZones = { "F", "S", "B", "?" };
+array<string> heldZones = { "F+", "S+", "B+", "?+" };
+array<string> routeNotes = { "moved", "kept", "lost" };
+array<string> routeMarks = { "*", "-", "!" };
+
+union Label = string | object;
+
+//-- The I6 class, seen from Beguile ---------------------------------------------
+
+extern class Crate : object {
+    int weight;
+    int code;
+
+    static string sizeOf(int w) {
+        array<string> names = { "empty", "light", "heavy", "huge" };
+        switch (w) {
+            case 0: return names[0];
+            case 1 to 5: return names[1];
+            case < 10: return names[2];
+            default: return names[3];
+        }
+    }
+
+    static string codeOf(var v) {
+        array<string> names = { "none", "red", "blue", "green" };
+        if (typeof(v) != eType.object) return names[0];
+        object o = (object)v;
+        if (!o.is(Crate)) return names[0];
+        Crate c = (Crate)v;
+        switch (c.code) {
+            case 1, 2, 3: return names[c.code];
+            default: return names[0];
+        }
+    }
+
+    static int shelfLoad(object holder) {
+        int t = 0;
+        int n = 0;
+        for (object o in holder.children) {
+            var v = o;
+            if (o.is(Crate)) {
+                Crate c = (Crate)v;
+                t += c.weight;
+                n++;
+            }
+        }
+        #i6 lastSweep = $i6Expr(n); sweeps++;
+        return t;
+    }
+
+    static int heaviestIn(object holder) {
+        int best = NONE;
+        array<string> names = { "empty", "light", "heavy", "huge" };
+        for (object o in holder.children) {
+            if (o.is(Crate)) {
+                var v = o;
+                Crate c = (Crate)v;
+                switch (c.weight) {
+                    case > 9: print($"[{names[3]}]");
+                    case 0: print($"[{names[0]}]");
+                }
+                if (c.weight > best) best = c.weight;
+            }
+        }
+        return best;
+    }
+}
+
+//-- Zones: a lookup added to every object, then replaced ---------------------------
+
+extend extern class object {
+    static int zoneOf(object o) {
+        if (o.parent == null) return 3;
+        return 0;
+    }
+}
+
+extend extern class object {
+    replace static int zoneOf(object o) {
+        var where = o.parent;
+        ref array<string> names := zoneNames;
+        int depth = 0;
+        #i6 depth = DepthOf($i6Expr(o));
+        if (typeof(where) != eType.object) return names.length - 1;
+        object p = (object)where;
+        switch (p) {
+            case roomA: return 0;
+            case shelfA, shelfB: return 1;
+        }
+        switch (depth) {
+            case 3 to 4: return 2;
+            default: return names.length - 1;
+        }
+    }
+}
+
+//-- Tags: a plain routine, then a richer one that falls back to it ------------------
+
+string tagOf(var v) {
+    return "thing";
+}
+
+replace string tagOf(var v) {
+    ref array<string> zones := shortZones;
+    switch (typeof(v)) {
+        case eType.string:
+            string s = (string)v;
+            switch (s) {
+                case "red", "blue", "green": return "code";
+                case "": return "blank";
+            }
+            return "text";
+        case eType.object:
+            object o = (object)v;
+            int z = object.zoneOf(o);
+            #i6 if (z < 0) z = 3;
+            if (o.children.length > 0) zones := heldZones;
+            return zones[z];
+    }
+    return replaced(v);
+}
+
+void showLabel(Label l) {
+    switch (typeof(l)) {
+        case eType.string: print((string)l);
+        case eType.object: print($"<{tagOf((object)l)}>");
+        default: print("?");
+    }
+}
+
+//-- The world -----------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelfA { "shelf A"; object parent = roomA; attributes = {static}; }
+object shelfB { "shelf B"; object parent = roomA; attributes = {static}; }
+object binC { "bin C"; object parent = shelfB; attributes = {static}; }
+
+Crate crateA { "crate A"; weight = 3; code = 1; object parent = shelfA; }
+Crate crateB { "crate B"; weight = 7; code = 2; object parent = shelfA; }
+Crate crateC { "crate C"; weight = 0; code = 3; object parent = binC; }
+Crate crateD { "crate D"; weight = 12; code = 1; object parent = roomA; }
+object brassKey { "brass key"; object parent = shelfB; }
+
+//-- The stock ledger -------------------------------------------------------------------
+
+object ledger {
+    "ledger";
+    ref array<string> notes;
+    ref array<string> marks;
+    array<object> holders = { roomA, shelfA, shelfB, binC };
+    int moves = 0;
+
+    // Code 1 crates go to shelf A, code 2 to shelf B, code 3 into the bin.
+    string route(Crate c) {
+        ref array<string> words := notes;
+        object dest = null;
+        switch (c.code) {
+            case 1: dest = shelfA;
+            case 2: dest = shelfB;
+            case 3: dest = binC;
+        }
+        if (dest == null) {
+            words := marks;
+            return words[2];
+        }
+        if (c.parent == dest) return words[1];
+        c.parent = dest;
+        moves++;
+        return words[0];
+    }
+
+    int census(object holder) {
+        int n = 0;
+        #i6 n = children($i6Expr(holder));
+        var first = null;
+        for (object o in holder.children) {
+            if (first == null) first = o;
+        }
+        switch (typeof(first)) {
+            case eType.object: print($"{n} under {holder}, first {(object)first}");
+            default: print($"{n} under {holder}");
+        }
+        return n;
+    }
+
+    Label labelFor(int i) {
+        if (i < 0 || i >= holders.length) return notes[2];
+        return holders[i];
+    }
+}
+
+//-- Verbs -----------------------------------------------------------------------------
+
+verb SizesTest {
+    grammar = {.sizes};
+    void handler() {
+        array<int> ws = { 0, 3, 5, 6, 9, 10, 40, -2 };
+        for (int w in ws) print($"{w}:{Crate.sizeOf(w)} ");
+        print("^");
+    }
+}
+
+verb LoadTest {
+    grammar = {.load};
+    void handler() {
+        for (object h in ledger.holders) {
+            int t = Crate.shelfLoad(h);
+            print($"{h}: {lastSweep} crates, {t} (I6 says {CrateTotal(h)}), heaviest ");
+            int b = Crate.heaviestIn(h);
+            print($"{b}^");
+        }
+    }
+}
+
+verb CodesTest {
+    grammar = {.codes};
+    void handler() {
+        array<object> things = { crateA, crateB, crateC, crateD, brassKey };
+        for (object o in things) print($"{o}={Crate.codeOf(o)} ");
+        print($"{Crate.codeOf(0)}^");
+    }
+}
+
+verb ZonesTest {
+    grammar = {.zones};
+    void handler() {
+        array<object> things = { crateA, crateC, crateD, brassKey, shelfB, binC, roomA };
+        for (object o in things) {
+            int z = object.zoneOf(o);
+            print($"{o}:{zoneNames[z]} ");
+        }
+        print("^");
+    }
+}
+
+verb TagsTest {
+    grammar = {.tags};
+    void handler() {
+        print($"{tagOf("red")} {tagOf("")} {tagOf("tan")} {tagOf(crateA)} {tagOf(shelfB)} {tagOf(crateC)} {tagOf(null)}^");
+        for (int i = -1; i < 5; i++) {
+            showLabel(ledger.labelFor(i));
+            print(" ");
+        }
+        print("^");
+    }
+}
+
+verb RouteTest {
+    grammar = {.route};
+    void handler() {
+        array<Crate> crates = { crateA, crateB, crateC, crateD };
+        for (Crate c in crates) print($"{c} {ledger.route(c)}; ");
+        print($"moves {ledger.moves}^");
+        for (object h in ledger.holders) {
+            ledger.census(h);
+            print("^");
+        }
+    }
+}
+
+verb DropTest {
+    grammar = {.drop, .all, .crates};
+    void handler() {
+        int n = 0;
+        for (object h in ledger.holders) {
+            for (object o in h.children) {
+                if (o.is(Crate)) {
+                    o.parent = roomA;
+                    n++;
+                }
+            }
+        }
+        print($"Dropped {n}; floor holds {Crate.shelfLoad(roomA)} in {lastSweep}.^");
+    }
+}
+
+verb SurveyTest {
+    grammar = {.survey};
+    void handler() {
+        array<string> heads = { "first", "none", "tags" };
+        ref array<string> zones := zoneNames;
+        for (object h in ledger.holders) {
+            var first = null;
+            for (object o in h.children) {
+                if (o.is(Crate)) {
+                    first = o;
+                    break;
+                }
+            }
+            print($"{h} ({zones[object.zoneOf(h)]}): ");
+            switch (typeof(first)) {
+                case eType.object:
+                    Crate c = (Crate)first;
+                    print($"{heads[0]} {c} {Crate.sizeOf(c.weight)}");
+                default:
+                    print(heads[1]);
+            }
+            print($"; {heads[2]} ");
+            #i6 ListTags($i6Expr(h));
+            print("^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    ledger.notes := routeNotes;
+    ledger.marks := routeMarks;
+    print("Tables loaded.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

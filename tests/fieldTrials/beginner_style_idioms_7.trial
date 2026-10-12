@@ -1,0 +1,103 @@
+Room A
+Room A. Room B is to the east.
+You can see a hammer, a saw, a drill and a wooden shelf here.
+> prices
+The price of the hammer is 3.
+The weight of the hammer is 2.
+The price of the saw is 6.
+The weight of the saw is 1.
+The price of the drill is 9.
+The weight of the drill is 4.
+The wooden shelf has no price.
+The teeth of the saw is 40.
+The hammer has no teeth.
+> shelves
+Wooden shelf: 0 things. Steel shelf: 0 things.
+The wooden shelf is empty.
+Nothing second on the wooden shelf.
+Tools in Room A: 3. Tools in Room B: 1.
+Sorted: 0. Words for the hammer: 2.
+> weights
+Total weight: 10. Doubled: 20.
+(I6 sees 0 uses.)
+> code
+Guess: c--. Right: 1 of 3.
+> x tool
+Which do you mean, the hammer, the saw or the drill?
+> hammer
+You see nothing special about the hammer.
+> sort hammer
+You heft the hammer.
+You put the hammer on the wooden shelf.
+The hammer is now on the wooden shelf (put on it 1 times, tools used 0 times).
+> arrange saw
+Taken.
+You put the saw on the wooden shelf.
+The saw is now on the wooden shelf (put on it 2 times, tools used 0 times).
+> tidy drill
+Taken.
+You put the drill on the steel shelf.
+The drill is now on the steel shelf (put on it 1 times, tools used 0 times).
+> shelves
+Wooden shelf: 2 things. Steel shelf: 1 things.
+First on the wooden shelf: saw.
+Second on the wooden shelf: hammer.
+Tools in Room A: 2. Tools in Room B: 2.
+Sorted: 3. Words for the hammer: 2.
+> sort hammer
+That is already sorted.
+> sort shelf
+You can't see any such thing.
+> use hammer
+You use the hammer.
+> operate drill
+You can't see any such thing.
+> take saw
+Taken.
+> load saw on steel shelf
+I didn't understand that sentence.
+> e
+Room B
+Room B, with a steel shelf. Room A is to the west.
+You can see a rasp, a steel shelf (on which is a drill) and a metal box (which is closed) here.
+> load saw onto shelf
+The saw is now on the steel shelf (put on it 2 times, tools used 1 times).
+> stock shelf using rasp
+(first taking the rasp)
+The rasp is now on the steel shelf (put on it 3 times, tools used 1 times).
+> take rasp
+Taken.
+> stock shelf with rasp
+The rasp is now on the steel shelf (put on it 4 times, tools used 1 times).
+> prices
+The wooden shelf has no price.
+The teeth of the saw is 40.
+The hammer has no teeth.
+> shelves
+Wooden shelf: 1 things. Steel shelf: 3 things.
+First on the wooden shelf: hammer.
+Nothing second on the wooden shelf.
+Tools in Room A: 1. Tools in Room B: 3.
+Sorted: 3. Words for the hammer: 2.
+> push box
+It doesn't move.
+> take box
+The box is too heavy.
+> open box
+The box won't open until you have used two tools.
+> use rasp
+You use the rasp.
+> open box
+You open the metal box, revealing nothing.
+> code
+Guess: ca-. Right: 2 of 3.
+> decode
+Guess: cab. Right: 3 of 3.
+The first letter is number 99.
+> weights
+Total weight: 10. Doubled: 20.
+(I6 sees 2 uses.)
+> look
+Room B
+Room B, with a steel shelf. Room A is to the west.
+You can see a steel shelf (on which are a rasp, a saw and a drill) and a metal box (which is empty) here.

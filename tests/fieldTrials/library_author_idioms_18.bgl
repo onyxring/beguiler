@@ -1,0 +1,534 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit configured by #define symbols; a primitive newtype of cents; an emitter class scope
+// guard; a trail array the kit's accessors append to. An extern class over an I6 class declares emitter
+// operators + and () and ==, and static methods that bind a ref array<int> to an array parameter with :=,
+// test and give an attribute, convert an instance to int and compare two. A bin class with two parents
+// holds a nested array<array<int>> with a nested initializer, a string array, a primitive member, a static
+// counter and a static array, an inline accessor declared in the class body, operator == and operator [],
+// an emitter method using $i6Expr of a #define; its methods #using a namespace object's aliases inside a
+// switch, read parent and parent?.parent, query with postfix ?, run #if and an #i6 line, move things by
+// assigning parent, throw a full bin's code and catch it, sum a nested row recursively, and iterate
+// children while moving them. An extend class adds an array<char> label and an $i6Expr emitter; a label
+// class holds an array<char> with operator + and operator (); an extend of an object adds a primitive
+// member and an inline accessor using ??, postfix ?, parent and array append. A routine opens the guard,
+// builds a block lambda and runs #if/#else. A pooled class with create(), a primitive member, a nested
+// array, a string array, operator + and ==, a block lambda that throws, try/catch and recursion. Verbs
+// hold an array<char>, an array of a class and an #i6 block with $i6Expr, and new/delete the pool.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA18_STEP 3
+#define LA18_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <buf>
+#include <string>
+#include <array>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ==== The kit. ====
+
+/// The last note any kit piece left; the ping verb prints it.
+int la18Last = 0;
+
+/// Prints the last note; the kit's pieces run it from code.
+verb La18Ping {
+    grammar = {.ping};
+    void handler() { print($"[ping {la18Last}]"); }
+}
+
+/// A price in cents, held as a bare word.
+primitive class La18Cents {
+    emitter void      operator = (int v)       { $self = $v; }
+    emitter int       operator ()              { ($self) }
+    emitter La18Cents operator + (La18Cents v) { ($self + $v) }
+}
+
+/// How deep the kit's scope guards are nested.
+int la18Depth = 0;
+
+/// Opens one guard level.
+int la18Open() {
+    la18Depth++;
+    return la18Depth;
+}
+
+/// Closes a guard level.
+void la18Close(int level) {
+    la18Depth = level - 1;
+}
+
+/// A scope guard: opening it nests one level deeper, leaving the scope closes it.
+emitter class La18Guard {
+    emitter void init()   { $self = la18Open(); }
+    emitter void deinit() { la18Close($self); }
+    emitter int depth     { ($self) }
+}
+
+/// Every figure the kit's accessors were set to, oldest first.
+array<int> la18Trail[16];
+
+/// Prints the trail and empties it.
+void la18FlushTrail() {
+    print("trail");
+    for (int v in la18Trail) print($" {v}");
+    la18Trail.clear();
+}
+
+// ---- A tally implemented in I6; the kit only describes it. ----
+
+#i6 {
+Class La18Tally with tally 0, tallyCap 0;
+}
+
+/// A counter kept by I6 code: adding to it adds to its count, reading it reads the count.
+extern class La18Tally : object {
+    int tally;
+    int tallyCap;
+
+    /// The count with some added.
+    emitter int operator + (int v) { ($self.tally + $v) }
+    /// The count, read as a figure.
+    emitter int operator () { ($self.tally) }
+    /// True when both tallies hold the same count.
+    emitter eBool operator == (La18Tally o) { ($self.tally == $o.tally) }
+
+    /// Adds a row of figures from index from on; lights the tally once it reaches its cap. Returns what was added.
+    static int fill(La18Tally t, array<int> row, int from) {
+        ref array<int> r := row;
+        int added = 0;
+        for (int i = from; i < r.length; i++) {
+            t.tally = t + r[i];
+            added += r[i];
+        }
+        if (t.tally >= t.tallyCap && !t.has(light)) t.give(light);
+        return added;
+    }
+
+    /// Prints a tally's count, whether it is lit, and whether it matches another.
+    static void report(La18Tally t, La18Tally other) {
+        int n = t;
+        print($"{n}");
+        if (t.has(light)) print(" lit");
+        if (t == other) print(" same");
+        else print(" apart");
+    }
+}
+
+// ---- Bins: coded, refusing containers. ----
+
+/// How full a bin is.
+enum eLa18Kind { empty, some, full }
+
+/// The kit's namespace: its types under short names.
+object la18Kit {
+    alias kind  for eLa18Kind;
+    alias cents for La18Cents;
+}
+
+#i6 {
+Global la18Marks = 0;
+}
+
+/// The codes of every bin summarized so far, summed; kept by I6.
+extern int la18Marks;
+
+/// Something that carries a numbered code.
+class La18Coded : object {
+    int code;
+    /// Prints the code.
+    void showCode() { print($"#{code}"); }
+}
+
+/// Something that counts how often it refused a thing.
+class La18Refusing : object {
+    int refusals;
+}
+
+/// A bin: a coded, refusing container with a capacity, a watched load and rows of slot weights.
+class La18Bin : La18Coded, La18Refusing {
+    int limit = 2;
+    array<array<int>> weights = { {1, 2, 3}, {4, 5} };
+    array<string> tags = { "low", "mid", "high" };
+    La18Cents fee = 3;
+    /// How many bins have been summarized.
+    static int summarized = 0;
+    /// The loads at which a bin counts as some, then full.
+    static array<int> marks = { 1, 3 };
+
+    /// One of the tags, wrapping round.
+    string operator [] (int i) { return tags[i % tags.length]; }
+
+    /// A figure padded by the kit's step.
+    emitter int padded(int v) { ($v + $i6Expr(LA18_STEP)) }
+
+    /// How full the bin is, by the kit's marks.
+    eLa18Kind grade() {
+        #using la18Kit
+        int k = 0;
+        for (int m in marks) {
+            if (load >= m) k++;
+        }
+        switch (k) {
+            case 0:  return kind.empty;
+            case 1:  return kind.some;
+            default: return kind.full;
+        }
+    }
+
+    /// Prints where the bin stands, its grade's tag, its fee and its padded load.
+    void summarize() {
+        summarized++;
+        object at = self.parent;
+        object top = self.parent?.parent;
+        print($"{self}");
+        if (at?) print($" in {at}");
+        if (top?) print($" under {top}");
+        eLa18Kind k = grade();
+        print($" {self[(int)k - 1]}");
+        fee = fee + 2;
+        print($" fee {(int)fee} pad {padded(load)}");
+#if LA18_TRACE
+        print($" #{summarized}");
+#endif
+        #i6 la18Marks = la18Marks + $i6Expr(code);
+    }
+
+    /// How many things the bin has taken; every setting goes on the kit's trail.
+    auto load = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            if (v < 0) _v = 0;
+            else _v = v;
+            la18Trail.append(_v);
+        }
+    }
+
+    /// True when both bins carry the same code.
+    bool operator == (La18Bin o) { return code == o.code; }
+
+    /// Moves a thing in; a full bin throws its code instead.
+    void take(object o) {
+        if (self.children.length >= limit) {
+            refusals++;
+            throw code;
+        }
+        o.parent = self;
+        load = load + 1;
+    }
+
+    /// The weight of row r summed from column c on.
+    int rowWeight(int r, int c) {
+        if (c >= weights[r].length) return 0;
+        return weights[r][c] + rowWeight(r, c + 1);
+    }
+
+    /// Moves each thing in turn; a refusal prints the code and adds that row's weight. Returns the weight.
+    int takeAll(array<object> things) {
+        int weight = 0;
+        int row = 0;
+        for (object o in things) {
+            try {
+                take(o);
+                print($" {o}>");
+                showCode();
+            } catch (int e) {
+                weight += rowWeight(row % weights.length, 0);
+                row++;
+                print($" !{e}");
+            }
+        }
+        return weight;
+    }
+
+    /// Pours every thing into another bin; what it refuses goes back to Room A.
+    void pourInto(La18Bin other) {
+        if (other == self) return;
+        for (object o in self.children) {
+            try {
+                other.take(o);
+                load = load - 1;
+            } catch (int e) {
+                o.parent = roomA;
+                load = load - 1;
+                print($" {o}^{e}");
+            }
+        }
+        weights[1][0] = weights[1][0] + self.refusals;
+    }
+}
+
+// ---- Shelves: numbered, labelled, scaled by the kit's step. ----
+
+/// A numbered shelf.
+class La18Shelf : object {
+    int shelfId;
+    /// Prints the shelf's number.
+    void show() { print($"shelf {shelfId}"); }
+}
+
+/// Every shelf carries a byte-array label and scales figures by the kit's step.
+extend class La18Shelf {
+    array<char> label[12];
+    /// A figure scaled by the kit's step.
+    emitter int scaled(int v) { ($v * $i6Expr(LA18_STEP)) }
+    /// Writes the label from a word, uppercased, and prints it with a scaled figure.
+    void relabel(string word, int v) {
+        bgl.util.buf.set(label, word);
+        bgl.util.buf.toUpper(label);
+        bgl.util.buf.print(label);
+        print($":{scaled(v)}");
+    }
+}
+
+// ---- Labels: a byte-array text with a mark count. ----
+
+/// A label: adding to it adds to its marks; reading it as a figure reads its marks.
+class La18Label : object {
+    array<char> text[16];
+    int marks;
+    /// The marks with some added.
+    int operator + (int n) { return marks + n; }
+    /// The marks, read as a figure.
+    int operator () { return marks; }
+    /// Writes the text and adds marks.
+    void stamp(string word, int n) {
+        bgl.util.buf.set(text, word);
+        marks = self + n;
+        bgl.util.buf.print(text);
+    }
+}
+
+/// Runs a step over each figure under a guard, clamping each result; returns the total.
+int la18Sweep(array<int> figures, func<int, int> step) {
+    La18Guard g;
+    func<int, int> clamp = (int v) => {
+        if (v > 9) return 9;
+        if (v < 0) return 0;
+        return v;
+    };
+    int total = 0;
+    for (int v in figures) total += clamp(step(v));
+#if LA18_TRACE
+    print($"[sweep d{g.depth} {total}]");
+#else
+    print($"[sweep {total}]");
+#endif
+    return total;
+}
+
+// ---- Chits: a pool of four. ----
+
+/// A chit drawn from a pool of four: a worth in cents, rows of stamps and a note per use.
+class La18Chit[4] : object {
+    La18Cents worth;
+    int uses;
+    array<array<int>> stamps = { {1, 1}, {2} };
+    array<string> notes = { "fresh", "used", "worn" };
+
+    void create(int w) { worth = w; }
+
+    /// The worth with some cents added.
+    int operator + (int c) { return (int)worth + c; }
+
+    /// True when both chits are worth the same.
+    bool operator == (La18Chit o) { return (int)worth == (int)o.worth; }
+
+    /// The stamps of row r summed from column c on.
+    int stampSum(int r, int c) {
+        if (c >= stamps[r].length) return 0;
+        return stamps[r][c] + stampSum(r, c + 1);
+    }
+
+    /// Spends n cents; the rule may adjust what is left, and a rule that throws leaves the chit unspent.
+    /// Returns what is left, or minus the thrown figure.
+    int spend(int n, func<int, int> rule) {
+        func<int, int> strict = (int v) => {
+            if (v < 0) throw 100 - v;
+            return rule(v);
+        };
+        try {
+            worth = strict((int)worth - n);
+        } catch (int e) {
+            return -e;
+        }
+        stamps[uses % 2][0] = stamps[uses % 2][0] + 1;
+        uses++;
+        return (int)worth;
+    }
+
+    /// Prints the chit's worth, its note and its stamps.
+    void show() {
+        print($"{(int)worth}c {notes[uses < 2 ? uses : 2]} s{stampSum(0, 0)}/{stampSum(1, 0)}");
+    }
+}
+
+// ==== The consumer. ====
+
+object redBall  { "red ball"; }
+object blueBall { "blue ball"; }
+object tinCup   { "tin cup"; }
+object crateA   { "crate A"; object parent = roomA; }
+
+La18Tally tallyA { "tally A"; tally = 1; tallyCap = 6; }
+La18Tally tallyB { "tally B"; tally = 4; tallyCap = 20; }
+
+La18Bin binA { "bin A"; code = 11; limit = 2; object parent = roomA; }
+La18Bin binB { "bin B"; code = 12; limit = 3; object parent = crateA; }
+
+La18Shelf shelfA {
+    "shelf A";
+    shelfId = 1;
+}
+
+/// The shelf gains a fee and a spot it points at.
+extend shelfA {
+    La18Cents fee = 5;
+    /// Where the shelf points; a cleared spot reads as Room A. Each setting trails 1 in Room A, else 2, or 0 when cleared.
+    auto spot = {
+        object _at;
+        La18Cents _paid;
+        object operator () { return _at ?? roomA; }
+        void operator = (object o) {
+            _at = o;
+            _paid = _paid + 1;
+            if (!(o?)) la18Trail.append(0);
+            else if (o.parent == roomA) la18Trail.append(1);
+            else la18Trail.append(2);
+        }
+    }
+}
+
+La18Label labelA { "label A"; marks = 2; }
+
+// ==== Verbs. ====
+
+verb Tallies {
+    grammar = {.tallies};
+    void handler() {
+        array<int> row[6] = { 1, 2, 3 };
+        int a = La18Tally.fill(tallyA, row, 0);
+        int b = La18Tally.fill(tallyB, row, 1);
+        print($"added {a} {b}: ");
+        La18Tally.report(tallyA, tallyB);
+        print("; ");
+        La18Tally.report(tallyB, tallyA);
+        la18Last = tallyA.tally;
+        print(" ");
+        La18Ping.perform();
+        print(".^");
+    }
+}
+
+verb Bins {
+    grammar = {.bins};
+    void handler() {
+        array<char> note[16];
+        array<La18Bin> bins = { binA, binB };
+        array<object> things = { redBall, blueBall, tinCup };
+        bgl.util.buf.set(note, "bins:");
+        bgl.util.buf.print(note);
+        int w = binA.takeAll(things);
+        print($" w{w};");
+        binA.pourInto(binB);
+        for (La18Bin b in bins) {
+            print($" {b}={b.children.length}/{b.load}/{b.refusals}");
+        }
+        int total = 0;
+        #i6 {
+            total = $i6Expr(bins[0].rowWeight(1, 0)) + $i6Expr(bins[1].rowWeight(1, 0));
+        }
+        print($" rows {total}; ");
+        la18FlushTrail();
+        for (La18Bin b in bins) {
+            print("; ");
+            b.summarize();
+        }
+        print($"; marks {la18Marks}");
+        print(".^");
+    }
+}
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        shelfA.show();
+        print(" ");
+        shelfA.relabel("top", 2);
+        shelfA.spot = redBall;
+        print($" at {shelfA.spot}");
+        redBall.parent = roomA;
+        shelfA.spot = redBall;
+        shelfA.spot = null;
+        print($" at {shelfA.spot} fee {(int)shelfA.fee}; ");
+        la18FlushTrail();
+        print(".^");
+    }
+}
+
+verb Labels {
+    grammar = {.labels};
+    void handler() {
+        labelA.stamp("mark", 3);
+        int m = labelA;
+        print($" {m} {labelA + 10}");
+        array<int> figs = { 2, 5, 8 };
+        int s = la18Sweep(figs, (int v) => v * 2 - 3);
+        print($" {s} d{la18Depth}.^");
+    }
+}
+
+verb Chits {
+    grammar = {.chits};
+    void handler() {
+        La18Chit a = new La18Chit(20);
+        La18Chit b = new La18Chit(20);
+        if (!(a?) || !(b?)) {
+            print("no chits.^");
+            return;
+        }
+        if (a == b) print("even; ");
+        int left = a.spend(5, (int v) => v);
+        print($"{left} ");
+        left = a.spend(30, (int v) => v);
+        print($"{left} ");
+        left = b.spend(4, (int v) => {
+            if (v > 10) return v - 1;
+            return v;
+        });
+        print($"{left} {a + 1} ");
+        if (a == b) print("even; ");
+        else print("apart; ");
+        a.show();
+        print(" / ");
+        b.show();
+        delete a;
+        delete b;
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

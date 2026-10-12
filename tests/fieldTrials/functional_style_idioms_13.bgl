@@ -1,0 +1,426 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: three areas meeting in one declaration, written functionally. A value class with a copy
+// operator and an emitter `?`; a namespace object whose type aliases (a value class, an enum) are
+// named bare in its own methods over array<string> parameters, an array<char> work buffer, a nested
+// member array and an inline accessor reading it through `outer`; an `extend` of that namespace adding
+// a type alias and a postfix-`?` count over strings; `#using` the namespace in a class of static
+// arrays (int, an aliased value class) beside a local array of arrays, `operator []` / `[]=` and an
+// inline accessor that appends to a static array; an `extend class` adding a static array fed by an
+// array parameter, a fold over an array<array<int>> parameter driven by a block lambda, an inline
+// accessor owning a value class, and member array<char> / array of value class; a class with a static
+// array<char>, a char `operator []` / `[]=`, a block-lambda predicate and a nested span table; an
+// object of value-class cells with `operator []` / `[]=`, a block lambda testing `?`, and an inline accessor
+// reading its host through `outer`; an `extend` of that object adding an array<char> and an
+// accessor over it; free functions folding arrays of arrays and strings with block lambdas.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <buf>
+#include <string>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+enum eShape { shapeDot, shapeBar, shapeBox }
+
+//-- A value class ---------------------------------------------------------------------------
+value class Cell {
+    int v;
+    int w;
+    Cell operator = (Cell o) { v = o.v; w = o.w; return self; }
+    emitter eBool operator ? () { ($self.v ~= 0) }
+    int weight() { return v * (w + 1); }
+}
+
+//-- A tape of bytes -------------------------------------------------------------------------
+class Tape : object {
+    static array<char> scratch[24];
+    static int writes = 0;
+    array<char> data[16];
+    char operator [] (int i) {
+        if (i < 0 || i >= data.length) return '-';
+        return data[i];
+    }
+    void operator []= (int i, char c) {
+        data[i] = c;
+        Tape.scratch[Tape.writes % 24] = c;
+        Tape.writes++;
+    }
+    auto marks = {
+        int _seen;
+        int operator () {
+            int n = 0;
+            for (int i in 0 to Tape.writes - 1) if (Tape.scratch[i] == '*') n++;
+            return n + _seen;
+        }
+        void operator = (int v) { _seen = v; }
+    };
+    void load(string s) {
+        if (!s?) { bgl.util.buf.set(data, "?"); return; }
+        bgl.util.buf.set(data, s);
+    }
+    int count(func<bool, char> p) {
+        int n = 0;
+        for (char c in data) if (p(c)) n++;
+        return n;
+    }
+    int vowels() {
+        return count((char c) => {
+            switch (c) {
+                case 'a', 'e', 'i', 'o', 'u': return true;
+            }
+            return false;
+        });
+    }
+    int spanSum() {
+        array<array<int>> spans = {{0, 1}, {2, 4}, {5, 5}};
+        int t = 0;
+        for (array<int> sp in spans) {
+            for (int i in sp[0] to sp[1]) {
+                if (i < data.length) t += data[i] - 'a' + 1;
+            }
+        }
+        return t;
+    }
+}
+
+//-- A namespace object ----------------------------------------------------------------------
+object kit {
+    alias cell  for Cell;
+    alias shape for eShape;
+    array<array<int>> layers = {{1, 2, 3}, {4, 5}, {6}};
+    int floor = 2;
+    auto deep = {
+        int _sets;
+        int operator () {
+            int n = 0;
+            for (array<int> row in outer.layers)
+                for (int x in row) if (x > outer.floor) n++;
+            return n;
+        }
+        void operator = (int v) { _sets++; outer.floor = v; }
+    };
+    int letters(array<string> ws) {
+        int t = 0;
+        for (string s in ws) t += s.length;
+        return t;
+    }
+    int vowelsIn(array<string> ws) {
+        array<char> b[32];
+        int n = 0;
+        for (string s in ws) {
+            bgl.util.buf.set(b, s);
+            for (char c in b) switch (c) { case 'a', 'e', 'i', 'o', 'u': n++; }
+        }
+        return n;
+    }
+    int weigh(array<string> ws) {
+        cell c;
+        c.w = 1;
+        for (string s in ws) c.v += s.length;
+        cell d = c;
+        d.w = 2;
+        return c.weight() * 1000 + d.weight();
+    }
+    shape shapeOf(array<string> ws) {
+        switch (ws.length) {
+            case 0, 1: return shape.shapeDot;
+            case 2, 3: return shape.shapeBar;
+            default:   return shape.shapeBox;
+        }
+    }
+}
+
+extend kit {
+    alias tape for Tape;
+    int present(array<string> ws) {
+        int n = 0;
+        for (string s in ws) if (s?) n++;
+        return n;
+    }
+    int tapeVowels(tape t) { return t.vowels(); }
+}
+
+//-- Static arrays, through the namespace ----------------------------------------------------
+#using kit
+class Ledger : object {
+    static array<int> totals[6];
+    static array<cell> best[3];
+    static int rounds = 0;
+    array<int> marks[4];
+    int operator [] (int i) {
+        if (i >= marks.length) return -1;
+        return marks[i];
+    }
+    void operator []= (int i, int v) {
+        if (marks.length <= i) marks.length = i + 1;
+        marks[i] = v;
+    }
+    auto top = {
+        int _adds;
+        int operator () {
+            int m = 0;
+            for (int t in Ledger.totals) if (t > m) m = t;
+            return m;
+        }
+        void operator = (int v) { _adds++; Ledger.totals.append(v); }
+    };
+    static int tally(int k) {
+        array<array<int>> plan = {{1, 2}, {3, 4, 5}, {6}};
+        Ledger.rounds++;
+        for (array<int> row in plan) {
+            int s = 0;
+            for (int x in row) s += x * k;
+            if (Ledger.totals.length < Ledger.totals.size) Ledger.totals.append(s);
+        }
+        return Ledger.totals.length;
+    }
+    static int keep(int v) {
+        cell c;
+        c.v = v;
+        c.w = Ledger.rounds;
+        if (c? && Ledger.best.length < Ledger.best.size) Ledger.best.append(c);
+        int live = 0;
+        for (cell b in Ledger.best) if (b?) live++;
+        return live;
+    }
+    int bestRow(int r) {
+        array<array<int>> pick = {{0, 1}, {1, 2}};
+        int t = 0;
+        for (int i in pick[r]) if (i < Ledger.best.length) t += Ledger.best[i].weight();
+        self[r] = t;
+        return self[r];
+    }
+}
+
+extend class Ledger {
+    static array<int> seen[8];
+    array<char> code[8];
+    array<Cell> history[3];
+    auto last = {
+        Cell _c;
+        int operator () { return _c.weight(); }
+        void operator = (int v) { _c.v = v; _c.w = 1; }
+    };
+    static int absorb(array<int> src) {
+        for (int x in src) if (!Ledger.seen.contains(x)) Ledger.seen.append(x);
+        return Ledger.seen.length;
+    }
+    static int fold(array<array<int>> g, func<int, int, int> f) {
+        int acc = 0;
+        for (array<int> row in g) for (int x in row) acc = f(acc, x);
+        return acc;
+    }
+    static int over(int lim) {
+        array<array<int>> g = {{2, 9}, {4}, {7, 1, 8}};
+        return Ledger.fold(g, (int acc, int x) => {
+            if (x > lim) return acc + 1;
+            return acc;
+        });
+    }
+    void stamp(string s, int v) {
+        bgl.util.buf.set(code, s);
+        Cell c;
+        c.v = v;
+        c.w = code.length;
+        history.append(c);
+    }
+    int historyWeight() {
+        int t = 0;
+        for (Cell c in history) t += c.weight();
+        return t;
+    }
+}
+
+Ledger ledgerA { "ledger"; }
+
+//-- An object of cells ----------------------------------------------------------------------
+object board {
+    "board";
+    array<Cell> cells[4];
+    int floor = 1;
+    int operator [] (int i) {
+        if (i < 0 || i >= cells.length) return 0;
+        return cells[i].v;
+    }
+    void operator []= (int i, int v) {
+        if (cells.length <= i) cells.length = i + 1;
+        cells[i].v = v;
+        cells[i].w = i;
+    }
+    auto live = {
+        int _reads;
+        int operator () {
+            _reads++;
+            func<bool, Cell> ok = (Cell c) => {
+                if (!c?) return false;
+                return c.v >= outer.floor;
+            };
+            int n = 0;
+            for (Cell c in outer.cells) if (ok(c)) n++;
+            return n * 10 + _reads;
+        }
+        void operator = (int v) { outer.floor = v; outer[0] = v; }
+    };
+    int heaviest() {
+        int best = -1;
+        int at = -1;
+        for (int i in 0 to cells.length - 1) {
+            if (cells[i]? && cells[i].weight() > best) { best = cells[i].weight(); at = i; }
+        }
+        return at;
+    }
+}
+
+extend board {
+    array<char> label = "board";
+    auto caps = {
+        int _k;
+        int operator () {
+            int n = 0;
+            for (char c in outer.label) if (c >= 'A' && c <= 'Z') n++;
+            return n;
+        }
+        void operator = (int v) {
+            _k = v;
+            if (v < outer.label.length) outer.label[v] = outer.label[v] - 32;
+        }
+    };
+}
+
+//-- Free functions --------------------------------------------------------------------------
+int gridScore(array<array<int>> g, int bonus) {
+    func<int, array<int>> rowScore = (array<int> row) => {
+        int t = 0;
+        for (int x in row) t += x;
+        if (row.length > 2) t += bonus;
+        return t;
+    };
+    int total = 0;
+    for (array<int> row in g) total += rowScore(row);
+    return total;
+}
+
+int presentLetters(array<string> ws) {
+    func<int, string> len = (string s) => {
+        if (!s?) return 0;
+        return s.length;
+    };
+    int t = 0;
+    for (string s in ws) t += len(s);
+    return t;
+}
+
+array<string> words = {"cup", "plate", "fork", "dish"};
+array<array<int>> grid = {{1, 2, 3}, {4, 5}, {6, 7, 8, 9}};
+
+//-- Things -----------------------------------------------------------------------------------
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Tape tapeA { "tape"; }
+
+//-- Verbs ------------------------------------------------------------------------------------
+verb KitVerb {
+    grammar = {{.kit, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"deep {kit.deep}");
+        kit.deep = n;
+        print($", now {kit.deep}, floor {kit.floor}^");
+        print($"letters {kit.letters(words)}, vowels {kit.vowelsIn(words)}, weigh {kit.weigh(words)}, shape {(int)kit.shapeOf(words)}^");
+        array<string> some[4];
+        some.length = n;
+        if (n > 0) some[0] = "ab";
+        if (n > 2) some[2] = "abcd";
+        print($"present {kit.present(some)}, letters {presentLetters(some)}, shape {(int)kit.shapeOf(some)}^");
+    }
+}
+
+verb TapeVerb {
+    grammar = {{.tape, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        tapeA.load(n == 0 ? "" : "abacus");
+        print($"vowels {kit.tapeVowels(tapeA)}, span {tapeA.spanSum()}, ");
+        tapeA[1] = '*';
+        tapeA[3] = '*';
+        print($"read {tapeA[0]}{tapeA[1]}{tapeA[9]}, writes {Tape.writes}, marks {tapeA.marks}^");
+        tapeA.marks = n;
+        print($"marks {tapeA.marks}, vowels {tapeA.vowels()}^");
+    }
+}
+
+verb LedgerVerb {
+    grammar = {{.ledger, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"tally {Ledger.tally(n)}, top {ledgerA.top}");
+        ledgerA.top = 50;
+        print($", top {ledgerA.top}, rounds {Ledger.rounds}^");
+        print($"keep {Ledger.keep(n)} {Ledger.keep(0)} {Ledger.keep(3)}, row {ledgerA.bestRow(0)} {ledgerA.bestRow(1)}, marks {ledgerA[0]} {ledgerA[1]} {ledgerA[3]}^");
+    }
+}
+
+verb SeenVerb {
+    grammar = {{.seen, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> a = {1, 2, 2, 3};
+        array<int> b = {3, 4, n};
+        print($"seen {Ledger.absorb(a)} {Ledger.absorb(b)}, over {Ledger.over(n)}^");
+        ledgerA.last = n;
+        ledgerA.stamp("abc", n);
+        ledgerA.stamp("de", 2);
+        print($"last {ledgerA.last}, history {ledgerA.history.length} weight {ledgerA.historyWeight()}, code {ledgerA.code.length}^");
+    }
+}
+
+verb BoardVerb {
+    grammar = {{.board, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        board[1] = 4;
+        board[2] = n;
+        print($"cells {board.cells.length}: {board[0]} {board[1]} {board[2]} {board[7]}, live {board.live}, heaviest {board.heaviest()}^");
+        board.live = n;
+        print($"floor {board.floor}, first {board[0]}, live {board.live}, heaviest {board.heaviest()}^");
+    }
+}
+
+verb CapsVerb {
+    grammar = {{.caps, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"caps {board.caps}");
+        board.caps = n;
+        print($", now {board.caps}, label ");
+        bgl.util.buf.print(board.label);
+        print("^");
+    }
+}
+
+verb GridVerb {
+    grammar = {{.grid, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"grid {gridScore(grid, n)}, letters {presentLetters(words)}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

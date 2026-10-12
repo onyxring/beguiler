@@ -1,0 +1,405 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: grammar routines written functionally — a NOUN(filter) whose test is a func<> chosen at
+// run time from a file-scope array of lambdas, a general parsing routine that looks the typed word up
+// with indexOf in an array<dictionaryWord> and returns a bnum through parsed_number, and a SCOPE()
+// routine that places the results of a <linq> chain in scope; a bnum of item traits combined with `|`
+// and `&` inside lambdas, folded from 0, and queried by <linq> over array<eTrait> with a captured bnum
+// parameter; stringOrRoutine `description`s given lambdas in object definitions and reassigned at run
+// time to a lambda, a named function and a ternary between a string and a function; overloads that
+// differ only in the func<> parameter's signature (func<int, int>, func<bool, int>, func<void, int>)
+// given lambdas and named functions; an object used as a namespace of func<> members and an
+// array<func<>> member, called by path, reassigned, and reached bare through #using; a parenthesized
+// ternary between function values called straight away; a local array captured by a lambda and
+// appended to inside a hand-written forEach; a for loop whose condition and step are func<> calls; a
+// class method with a func<> default parameter called with named arguments in both orders; an
+// array<literal func<>> of a class's static methods, subscripted and mapped by <linq>; <linq> over the
+// bytes of an array<char> (filter, distinct, orderBy, map, any); <linq> over an array of a value class
+// (filter, any, orderBy with a comparator, map) with value-class lambda parameters; typeof on func<>
+// values.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Plain functions -------------------------------------------------------------------------
+
+int twice(int n)   { return n * 2; }
+int inc(int n)     { return n + 1; }
+int square(int n)  { return n * n; }
+bool isEven(int n) { return n % 2 == 0; }
+
+void forEach(array<int> a, func<void, int> f) {
+    for (int x in a) f(x);
+}
+
+array<int> nums = {3, 8, 1, 12, 5, 6};
+
+//-- Overloads that differ by the func<> parameter ------------------------------------------
+
+int tally(array<int> a, func<int, int> f) {
+    int t = 0;
+    for (int x in a) t += f(x);
+    return t;
+}
+
+int tally(array<int> a, func<bool, int> p) {
+    int t = 0;
+    for (int x in a) if (p(x)) t++;
+    return t;
+}
+
+int tally(array<int> a, func<void, int> f) {
+    for (int x in a) f(x);
+    return -1;
+}
+
+//-- Traits: a bnum -------------------------------------------------------------------------
+
+bnum eTrait { heavy, shiny, sharp, warm }
+
+array<eTrait> allTraits = {heavy, shiny, sharp, warm};
+array<dictionaryWord> traitWords = {.heavy, .shiny, .sharp, .warm};
+
+class Item : object {
+    eTrait traits;
+    int weight;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+Item anvil  { "anvil";  name = {.anvil};  traits = heavy;          weight = 40; parent = roomA; }
+Item mirror { "mirror"; name = {.mirror}; traits = shiny;          weight = 3;  parent = roomA; }
+Item knife  { "knife";  name = {.knife};  traits = shiny | sharp;  weight = 1;  parent = roomA; }
+Item stove  { "stove";  name = {.stove};  traits = heavy | warm;   weight = 60; parent = roomA; }
+Item lamp   { "lamp";   name = {.lamp};   traits = shiny | warm;   weight = 2;  parent = roomB; }
+Item saw    { "saw";    name = {.saw};    traits = sharp | heavy;  weight = 12; parent = roomB; }
+Item coin   { "coin";   name = {.coin};   traits = shiny;          weight = 1;  parent = roomB; }
+
+array<Item> allItems = {anvil, mirror, knife, stove, lamp, saw, coin};
+
+bool hasAll(Item i, eTrait want) { return (i.traits & want) == want; }
+
+eTrait unionOf(array<Item> items) {
+    eTrait acc = 0;
+    for (Item i in items) acc = acc | i.traits;
+    return acc;
+}
+
+int bitCount(eTrait t) { return allTraits.filter((eTrait b) => (t & b) != 0).count(); }
+
+void printTraits(eTrait t) {
+    print("[");
+    for (int k in 0 to allTraits.length - 1) if ((t & allTraits[k]) != 0) print($" {traitWords[k]}");
+    print(" ]");
+}
+
+//-- Grammar routines ------------------------------------------------------------------------
+
+bool isLight(Item i) { return i.weight < 5; }
+
+array<func<bool, Item>> liftRules = {
+    (Item i) => i.weight <= 12,
+    isLight,
+    (Item i) => (i.traits & heavy) == 0 && (i.traits & sharp) == 0
+};
+int liftMode = 0;
+
+bool passesLiftRule() {
+    if (!noun.is(Item)) return false;
+    return liftRules[liftMode]((Item)noun);
+}
+
+int parseTrait() {
+    dictionaryWord w = NextWord();
+    int at = traitWords.indexOf(w);
+    if (at < 0) return -1;
+    parsed_number = allTraits[at];
+    return 1;
+}
+
+bool farScope() {
+    if (scope_stage == 2) {
+        for (Item x in allItems.filter((Item c) => c.parent == roomB && hasAll(c, shiny))) PlaceInScope(x);
+        return true;
+    }
+    if (scope_stage == 3) print("Nothing like that shines from Room B.^");
+    return false;
+}
+
+//-- Descriptions as lambdas -----------------------------------------------------------------
+
+int crateLooks = 0;
+
+void describePlainly() { print("A crate, described by a named function.^"); }
+
+object crate {
+    "crate";
+    name = {.crate};
+    parent = roomA;
+    description = => print($"The crate has been looked at {crateLooks} times.^");
+    void after() {
+        if (action == Examine) crateLooks++;
+    }
+}
+
+object shelf {
+    "shelf";
+    name = {.shelf};
+    parent = roomA;
+    attributes = {scenery};
+    description = => {
+        print("On the shelf:");
+        for (Item x in allItems.filter((Item c) => c.parent == roomA && c.weight < 5)) print($" {(object)x}");
+        print(".^");
+    };
+}
+
+//-- A namespace of functions ----------------------------------------------------------------
+
+object fx {
+    func<int, int> grow = twice;
+    array<func<int, int>> steps = {inc, twice, square};
+    int runAll(int x) {
+        for (func<int, int> f in steps) x = f(x);
+        return x;
+    }
+}
+
+#using fx
+
+func<int, int> chosenFn = null;
+
+//-- A class with a func<> default parameter -------------------------------------------------
+
+class Meter : object {
+    int level;
+    int adjust(int by, func<int, int> shape = inc) {
+        level = shape(level + by);
+        return level;
+    }
+}
+
+Meter meterA { "meter"; level = 1; }
+
+//-- Static functions in a class table -------------------------------------------------------
+
+class Calc {
+    static int dbl(int n) { return n * 2; }
+    static int neg(int n) { return -n; }
+    static array<literal func<int, int>> table = {dbl, neg, inc};
+}
+
+//-- A value class ---------------------------------------------------------------------------
+
+value class Vec {
+    inline int x;
+    inline int y;
+    Vec operator = (Vec o) { x = o.x; y = o.y; return self; }
+}
+
+array<Vec> points = { Vec{1, 5}, Vec{4, 2}, Vec{3, 3}, Vec{6, 1} };
+
+//-- Bytes -----------------------------------------------------------------------------------
+
+array<char> letters = "banana";
+
+//-- Verbs ------------------------------------------------------------------------------------
+
+verb Seek {
+    grammar = {{.seek, parseTrait}};
+    void handler() {
+        eTrait want = (eTrait)parsed_number;
+        print("seeking ");
+        printTraits(want);
+        print(":");
+        for (Item x in allItems.filter((Item c) => hasAll(c, want))) print($" {(object)x}");
+        print("^");
+        array<Item> matched = allItems.filter((Item c) => (c.traits & want) != 0);
+        eTrait all = unionOf(matched);
+        print($"matched {matched.length}, their traits ");
+        printTraits(all);
+        print($", {bitCount(all)} bits, any also warm: {matched.any((Item c) => hasAll(c, want | warm)) ? "yes" : "no"}^");
+    }
+}
+
+verb Lift {
+    grammar = {{.lift, NOUN(passesLiftRule)}};
+    void handler() {
+        print($"You lift the {noun}.^");
+    }
+}
+
+verb Mode {
+    grammar = {{.mode, NUMBER}};
+    void handler() {
+        liftMode = parsed_number % liftRules.length;
+        print($"lift rule {liftMode}, liftable:");
+        for (Item x in allItems.filter(liftRules[liftMode])) print($" {(object)x}");
+        print("^");
+    }
+}
+
+verb Sense {
+    grammar = {{.sense, SCOPE(farScope)}};
+    void handler() {
+        print($"You sense the {noun} in {noun.parent}.^");
+    }
+}
+
+verb Relabel {
+    grammar = {{.relabel, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n == 0) crate.description = => print("A relabelled crate.^");
+        else crate.description = n > 1 ? "A crate with a string description." : describePlainly;
+        print($"routine: {crate.description.isRoutine() ? "yes" : "no"}^");
+        print(crate.description);
+        if (!crate.description.isRoutine()) print("^");
+    }
+}
+
+verb TallyVerb {
+    grammar = {{.tally, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"mapped {tally(nums, (int x) => x * n)}, counted {tally(nums, (int x) => x > n)}, named {tally(nums, twice)}, even {tally(nums, isEven)}^");
+        print("printed:");
+        int r = tally(nums, (int x) => print($" {x}"));
+        print($" -> {r}^");
+    }
+}
+
+verb Capture {
+    grammar = {{.capture, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> bigOnes[8];
+        int seen = 0;
+        forEach(nums, (int x) => {
+            seen++;
+            if (x > n) bigOnes += x;
+        });
+        print($"seen {seen}, above {n}: {bigOnes.length} ->");
+        for (int b in bigOnes) print($" {b}");
+        print($", sum {tally(bigOnes, (int x) => x)}^");
+    }
+}
+
+verb Spaces {
+    grammar = {{.spaces, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"grow {fx.grow(n)}, step 2 {fx.steps[2](n)}, all {fx.runAll(n)}, bare {runAll(n)}, bare grow {grow(n)}^");
+        fx.grow = square;
+        fx.steps[0] = (int v) => v - 1;
+        print($"after: grow {fx.grow(n)}, all {fx.runAll(n)}, routine: {typeof(fx.grow) == eType.routine ? "yes" : "no"}^");
+        fx.grow = twice;
+        fx.steps[0] = inc;
+    }
+}
+
+verb Pick {
+    grammar = {{.pick, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"before: {(chosenFn == null ? inc : chosenFn)(n)}, ");
+        chosenFn = n > 3 ? square : twice;
+        print($"after: {(chosenFn == null ? inc : chosenFn)(n)}^");
+        chosenFn = null;
+    }
+}
+
+verb Steps {
+    grammar = {{.steps, NUMBER}};
+    void handler() {
+        int limit = parsed_number;
+        func<bool, int> under = (int k) => k < limit;
+        print("doubling:");
+        for (int k = 1; under(k); k = twice(k)) print($" {k}");
+        print("^squaring from 2:");
+        for (int k = 2; under(k) && k > 1; k = fx.steps[2](k)) print($" {k}");
+        print("^");
+    }
+}
+
+verb Dial {
+    grammar = {{.dial, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        meterA.level = 1;
+        print($"default {meterA.adjust(2)}, ");
+        print($"named {meterA.adjust(shape: (int v) => v * 3, by: 1)}, ");
+        print($"ordered {meterA.adjust(by: n, shape: twice)}, ");
+        print($"positional {meterA.adjust(-n, (int v) => v - n)}^");
+    }
+}
+
+verb Table {
+    grammar = {{.table, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"size {Calc.table.length}:");
+        for (func<int, int> f in Calc.table) print($" {f(n)}");
+        int total = 0;
+        for (var v in Calc.table.map((func<int, int> f) => f(n) + 1)) total += (int)v;
+        print($", second {Calc.table[1](n)}, mapped sum {total}^");
+    }
+}
+
+verb Bytes {
+    grammar = {{.letters}};
+    void handler() {
+        array<int> codes[8];
+        for (char ch in letters) codes += ch;
+        print($"not a: {codes.filter((int c) => c != 'a').count()}, distinct:");
+        for (int c in codes.distinct()) print($" {(char)c}");
+        print(", sorted: ");
+        for (int c in codes.orderBy()) print((char)c);
+        int offsets = 0;
+        for (var v in codes.map((int c) => c - 'a')) offsets += (int)v;
+        print($", offsets {offsets}, has n: {codes.any((int c) => c == 'n') ? "yes" : "no"}^");
+    }
+}
+
+verb PointsVerb {
+    grammar = {{.points, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"x over y: {points.filter((Vec v) => v.x > v.y).count()}, any x {n}: {points.any((Vec v) => v.x == n) ? "yes" : "no"}^");
+        print("by x:");
+        for (Vec v in points.orderBy((Vec a, Vec b) => a.x - b.x)) print($" ({v.x},{v.y})");
+        int area = 0;
+        for (var w in points.map((Vec p) => p.x * p.y)) area += (int)w;
+        print($"^areas {area}, first after skip {n}: {points.skip(n).first().x}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

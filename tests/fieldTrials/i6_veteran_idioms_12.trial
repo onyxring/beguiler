@@ -1,0 +1,98 @@
+bin room
+Bin room.
+
+> bins
+[crate 2 tag 1] NUT-WASHER (10), chain 1, weighs 21.
+[crate 3 tag 2] WASHER-BOLT (11), chain 1, weighs 31.
+[crate 5 tag 4] NUT-WASHER (10), chain 1, weighs 51.
+made 0, slots 0, weighs nothing -1, room 1.
+
+> load 1
+<1:2><2:3>cursors 1, doubled 4, total 5, I6 sum 5, cursors after 0.
+
+> link
+A peer true, C peer false; <3:6>[crate 3 tag 2]; no peer; chain 3.
+
+> load 2
+<4:4><5:6>cursors 1, doubled 10, total 21, I6 sum 21, cursors after 0.
+
+> load 3
+<6:6>full cursors 1, doubled 12, total 27, I6 sum 27, cursors after 0.
+
+> bins
+[crate 2 tag 1] NUT-WASHER (10), chain 3, weighs 21.
+[crate 3 tag 2] WASHER-BOLT (11), chain 2, weighs 31.
+[crate 5 tag 4] NUT-WASHER (10), chain 1, weighs 51.
+made 6, slots 6, weighs nothing -1, room 1.
+
+> stamp
+bin2/crate 3, bin4/crate 5.
+
+> add 5
+tally A 5 [5] in tally room.
+
+> add 10
+tally A 15 [5 10] in tally room.
+
+> add 10
+tally A 25 [5 10 10] in overflow room.
+
+> add 1
+tally A 26 [5 10 10 1] in overflow room.
+
+> add 1
+Log full, 1 dropped.
+
+> takeback
+tally A 25 [5 10 10] in overflow room.
+
+> takeback
+tally A 15 [5 10] in tally room.
+
+> table
+cells 5 90, total 235, wooord, crate 5 -> 10.
+
+> table
+cells 5 170, total 315, wooord, crate 5 -> 10.
+
+> level 3
+######| level 6 (mid), marks 6, edge 6.
+
+> level 20
+#######################| level 40 (high), marks 23, edge 23.
+
+> level 0
+| level 0 (low), marks 0, edge 0.
+
+> find
+south 2, up 4, down (searched 5) -1.
+
+> phrasecheck
+phrase tin, then iron, at (searched 5) -1.
+
+> phrasecheck
+phrase iron, then brass, at (searched 5) -1.
+
+> grade 0
+zero, cell 5.
+
+> grade 2
+small, twice 4.
+
+> grade 5
+cell 80.
+
+> grade 9
+large 9.
+
+> join
+joins 2, members 2, sum 22, roll 40/24, seen 24.
+
+> takeback
+tally A 5 [5] in tally room.
+
+> takeback
+tally A 0 [] in tally room.
+
+> takeback
+Nothing to undo (-1).

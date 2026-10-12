@@ -1,0 +1,20 @@
+Room A
+A plain room.
+
+You can see a box A here.
+> panel
+a high/high 3061 4 18 18 1 1 41 6 0
+[ping]high/high 121 3 14 14 2 2 32 15 1
+> bump
+3 67 67 5 3 10
+> crate
+Room A [ping]1442 n:x-mid 6 16 10 0 2
+box B [ping]1442 obj-mid 17 17 0
+> stack
+Room A [ping]1442 n:x-mid 6 16 10 0 4
+box B [ping]1442 obj-mid 17 17 0
+> spread
+[ping]low low none1 1 1 6
+(low) (low) one212 2 1 6
+> pool
+true 3 1 1 false 18 3 0

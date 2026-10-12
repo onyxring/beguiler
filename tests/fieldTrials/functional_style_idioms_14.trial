@@ -1,0 +1,41 @@
+Room A
+Room A.
+> gauge 1
+slots 1 2 3 4, level 2, misses 0
+moves share 0.7500, 4
+slots 2 3 4 5, level 6, misses 0
+spread (reads 4) 0.6000
+> gauge 7
+slots 9 8 7 6, level 5, misses 0
+moves (stop 0) share 1.0000, 0
+slots 9 8 7 6, level 10, misses 1
+spread (reads 4) 0.3333
+> gauge 3
+slots 2 3 4 5, level 6, misses 0
+moves share 0.5000, 4
+slots 5 6 7 8, level 9, misses 0
+spread (reads 4) 0.3750
+> drain 3
+drained left 0.6667, 3
+slots 5 6 7 8, level 6, misses 0
+> drain 20
+drained (dry after 6) left 0.0000, 6
+slots 5 6 7 8, level 0, misses 0
+> meter 3
+kept 4, length 4, faults 0
+peek 4 (bad 107) -1, put 1 (no slot 6) 0
+scaled 18.0000, drop 1 0, faults 3
+bumped (avg 0) 0, first 3, length 3
+> meter 7
+kept 4, length 4, faults 3
+peek 8 (bad 107) -1, put 1 (no slot 6) 0
+scaled 24.0000, drop 1 0, faults 6
+bumped (avg 6) 1, first 8, length 3
+> blend 2
+A seen 3 many 24.0000
+B (negative 6) seen 1 1.0000
+ticks 8, live 0, made 15
+> blend 0
+A seen 3 many 0.0000
+B (negative 6) seen 1 1.0000
+ticks 6, live 0, made 18

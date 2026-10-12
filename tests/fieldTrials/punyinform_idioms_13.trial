@@ -1,0 +1,34 @@
+Room A
+Room A.
+> shelf
+Cells 8 10 12, last 2, row 10, name bottom, code bbc.
+Cells 70 7 90, last 1, row 16, name middle, code cbc.
+Till 6 side 2 label bottom.
+Sides left front 1.
+EbC
+> tray
+First none, known 0.
+First lantern, known 2, scans 3.
+Far empty.
+Pile 3 best 8 last 5.
+Stacks 21.
+> kit
+Pick 130, picks 2, seen 2, word one.
+Best 60 40.
+Index 10 50, sums 110.
+Worth 16, heavier 2.
+Right 2, left 1.
+Marker blue, sets 2, tags 2 red.
+> shelf
+Cells 8 10 12, last 2, row 10, name bottom, code bbC.
+Cells 70 7 90, last 1, row 16, name middle, code cbC.
+Till 6 side 2 label bottom.
+Sides left front 1.
+EbC
+> kit
+Pick 130, picks 4, seen 4, word one.
+Best 60 40.
+Index 10 50, sums 110.
+Worth 16, heavier 2.
+Right 2, left 1.
+Marker blue, sets 4, tags 4 red.

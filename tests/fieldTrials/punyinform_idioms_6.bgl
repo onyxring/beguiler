@@ -1,0 +1,558 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a sixth PunyInform program, on what the first five did not lean on: an author-declared
+// `attribute` (give/has/hasnt) and a free-standing `property` tested with provides(); computed property
+// access through a `property` parameter; a namespace object with `alias … for` an enum and a class, used
+// as global, parameter and switch types; a `bnum` combined with `|`, `^`, `&`, `<<`, `>>` and cast back;
+// a value class with a `ref` member, `ref` locals and parameters bound with `:=`, copies by value; a class
+// with `static` `<=>`, `==` and `!=` driving sort(), indexOf() and a derived `<`, and an operator
+// reference `Crate::operator <=>`; an array of inline objects (`Type{…}`, bare `{…}`, named members)
+// and a bare `{…}` argument with run-time members; `operator []`/`[]=` on a world object with a member
+// array; `hide` of an inherited method, reached again through a base cast; a `func<int,int>` member
+// swapped for a lambda, and an array of func values; an anonymous union array discriminated with
+// typeof, a named union (with a static member) returned from a function and inferred from a ternary;
+// a class with an inline union member switched on typeof; `extend` of an array (inject, move); a `ref`
+// array member bound to a global; `?.`/`??` on a subscript result; a capturing comparator lambda; a
+// named-argument bare `{…}`; arrays of arrays with `break`/`continue`; `array<char>` with the char
+// helpers and a char `switch` range that `continue`s the loop; bnum `|=`; `bgl.util.math`; `uint`; `::`
+// inside an object method; a global emitter; and `#if`/`#elif` on a #define, TARGET_ZCODE and a setting.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#define SHOW_TOTALS
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+#include <array>
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+attribute charged;
+property spare_flag;
+
+bnum partFlag { bolted, oiled, worn, cracked }
+enum eLevel { low = 1, mid, high }
+
+class Room : object {
+    attributes = {light};
+}
+
+class Gauge : object {
+    inline int reading;
+    eLevel level = low;
+}
+
+object kit {
+    alias level for eLevel;
+    alias gauge for Gauge;
+}
+
+kit.level current = kit.level.mid;
+
+union ClueValue = string | object;
+
+extend ClueValue {
+    static bool pointsAt(ClueValue v) { return typeof(v) == eType.object; }
+}
+
+emitter int triple(int n) { ($n * 3) }
+
+int count = 0;
+array<int> history[6];
+
+object counter {
+    int count = 0;
+    ref array<int> log;
+
+    void bump() {
+        self.count++;
+        ::count += 10;
+        log += ::count;
+    }
+}
+
+value class Meter {
+    int amount;
+    ref Meter next;
+    Meter operator = (Meter o) { amount = o.amount; return self; }
+}
+
+Meter meterA;
+Meter meterB;
+
+void topUp(ref Meter m, int by) {
+    m.amount += by;
+}
+
+int drain(Meter m) {
+    m.amount = 0;
+    return m.amount;
+}
+
+class Crate : object {
+    inline int weight;
+    inline string label;
+
+    static int  operator <=> (Crate a, Crate b) { return a.weight - b.weight; }
+    static bool operator ==  (Crate a, Crate b) { return a.weight == b.weight; }
+    static bool operator !=  (Crate a, Crate b) { return a.weight != b.weight; }
+
+    static Crate heaviest() {
+        Crate best = null;
+        for (Crate c in crates) if (best == null || c > best) best = c;
+        return best;
+    }
+}
+
+void listCrates() {
+    for (Crate c in crates) print($"{c.label} ({c.weight}) ");
+    print("^");
+}
+
+array<Crate> crates = {
+    Crate{ 7, "crate seven" },
+    { 2, "crate two" },
+    Crate{ weight = 5; label = "crate five"; },
+    { 4, "crate four" },
+};
+
+extend crates {
+    inject { 3, "crate three" } before [1];
+    move [0] last;
+}
+
+void weighOne(Crate c = null) {
+    printLine($"{c.label} weighs {c.weight}.");
+}
+
+class Rack : object {
+    array<object> slots[4];
+
+    object operator [] (int i) {
+        if (i >= slots.length) return null;
+        return slots[i];
+    }
+
+    object operator []= (int i, object o) {
+        if (i >= slots.length) slots.length = i + 1;
+        slots[i] = o;
+        return o;
+    }
+}
+
+class Panel : object {
+    int level = 0;
+    void reset() { level = 0; }
+    void raise() { level++; }
+}
+
+class LockedPanel : Panel {
+    hide reset();
+}
+
+int twice(int n) { return n * 2; }
+int square(int n) { return n * n; }
+
+object relayBox {
+    func<int, int> step = twice;
+
+    int run(int n) { return step(n); }
+}
+
+array<func<int, int>> pipeline = { twice, square, twice };
+
+void sayTurns() {
+    print($"Turn {turns}.");
+}
+
+array<string | func<void>> noteList = { "A plain note.", sayTurns, "Another note." };
+
+class Note : object {
+    inline string | func<void> text;
+    inline int weight;
+}
+
+array<Note> notePile = {
+    { "Heavy note.", 3 },
+    Note{ sayTurns, 1 },
+    { text = "Light note."; weight = 0; },
+};
+
+array<array<int>> grid = { {3, 0, 4}, {9, 1}, {2, 8, 6, 5}, {0, 0} };
+
+array<char> tag = "brass key";
+
+string levelName(kit.level l) {
+    switch (l) {
+        case kit.level.low:  return "low";
+        case kit.level.mid:  return "mid";
+        case kit.level.high: return "high";
+    }
+    return "none";
+}
+
+void describeGauge(kit.gauge g) {
+    printLine($"{cThe(g)} reads {g.reading} at {levelName(g.level)}.");
+}
+
+int readProp(object o, property p) {
+    if (!o.provides(p)) return -1;
+    return o.p;
+}
+
+ClueValue clueFor(object o) {
+    if (o.has(charged)) return o;
+    return "nothing special";
+}
+
+void showClue(ClueValue c) {
+    if (typeof(c) == eType.object) printLine($"It points to {the((object)c)}.");
+    else printLine($"It says {(string)c}.");
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+}
+
+Rack rackA {
+    "rack";
+    parent = roomA;
+    name = {.rack};
+    description = "A rack with four slots.";
+    attributes = {static};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+}
+
+object tin {
+    "tin";
+    parent = roomA;
+    name = {.tin};
+    description = "A tin.";
+    bool spare_flag = true;
+}
+
+LockedPanel panelA {
+    "panel";
+    parent = roomB;
+    name = {.panel};
+    description = "A panel.";
+
+    bool before() {
+        if (action == Push) {
+            raise();
+            rtrue($"The panel clicks to {level}.^");
+        }
+        rfalse;
+    }
+
+    attributes = {static};
+}
+
+Gauge gaugeA {
+    6, "gauge";
+    parent = roomB;
+    name = {.gauge};
+    description = "A gauge.";
+    level = high;
+    attributes = {static};
+}
+
+verb Slot {
+    grammar = { {.slot, NOUN, .at, NUMBER} };
+    void handler() {
+        if (parsed_number < 0 || parsed_number > 3) {
+            printLine("No such slot.");
+            return;
+        }
+        rackA[parsed_number] = noun;
+        for (int i = 0; i < rackA.slots.length; i++) {
+            object o = rackA[i];
+            if (o == null) print("- ");
+            else print($"{o} ");
+        }
+        print("^");
+    }
+}
+
+verb Peek {
+    grammar = { {.peek, NUMBER} };
+    void handler() {
+        string d = rackA[parsed_number]?.description ?? "Empty.";
+        printLine($"Slot {parsed_number}: {d}");
+    }
+}
+
+verb Charge {
+    grammar = { {.charge, NOUN} };
+    void handler() {
+        if (noun.has(charged)) {
+            printLine($"{cThe(noun)} is already charged.");
+            return;
+        }
+        noun.give(charged);
+        printLine($"{cThe(noun)} is charged.");
+    }
+}
+
+verb Clue {
+    grammar = { {.clue, NOUN} };
+    void handler() {
+        showClue(clueFor(noun));
+        ClueValue c = noun.hasnt(charged) ? "unmarked" : noun;
+        showClue(c);
+        if (ClueValue.pointsAt(c)) printLine("A pointer.");
+    }
+}
+
+verb Probe {
+    grammar = { {.probe, NOUN} };
+    void handler() {
+        printLine($"reading {readProp(noun, reading)}, flag {readProp(noun, spare_flag)}.");
+    }
+}
+
+verb Unset {
+    grammar = { {.unset, NOUN} };
+    void handler() {
+        if (!noun.is(Panel)) {
+            printLine("Only panels unset.");
+            return;
+        }
+        ((Panel)noun).reset();
+        printLine($"{cThe(noun)} is back to {((Panel)noun).level}.");
+    }
+}
+
+verb Levels {
+    meta = true;
+    grammar = {.levels};
+    void handler() {
+        kit.gauge g = (kit.gauge)gaugeA;
+        g.reading++;
+        describeGauge(g);
+        print($"Current is {levelName(current)}; ");
+        current = current == kit.level.high ? kit.level.low : (kit.level)((int)current + 1);
+        printLine($"now {levelName(current)}.");
+    }
+}
+
+verb Sorting {
+    meta = true;
+    grammar = {.sorting};
+    void handler() {
+        listCrates();
+        crates.sort();
+        listCrates();
+        crates.sort((Crate a, Crate b) => b <=> a);
+        listCrates();
+        crates.sort(Crate::operator <=>);
+        listCrates();
+        printLine($"A crate of 5 is at {crates.indexOf(Crate{ 5, "probe" })}.");
+        if (crates[0] < crates[1]) printLine("The first is lighter.");
+        if (crates[1] != crates[2]) printLine("The second and third differ.");
+        int w = 9;
+        weighOne({ w, "loose crate" });
+        weighOne(Crate{ 1, "small crate" });
+        weighOne(c: { w + 1, "named crate" });
+        int dir = -1;
+        crates.sort((Crate a, Crate b) => dir * (a <=> b));
+        printLine($"Descending again: {crates[0].label} first.");
+    }
+}
+
+verb Meters {
+    meta = true;
+    grammar = {.meters};
+    void handler() {
+        meterA.amount = 3;
+        meterB = meterA;
+        meterB.amount = 8;
+        printLine($"A {meterA.amount}, B {meterB.amount}.");
+        ref Meter r := meterA;
+        r.amount += 1;
+        topUp(meterB, 2);
+        printLine($"A {meterA.amount}, B {meterB.amount}.");
+        meterA.next := meterB;
+        meterA.next.amount = 20;
+        printLine($"Drained copy reads {drain(meterB)}; B {meterB.amount}, via A {meterA.next.amount}.");
+        r := meterB;
+        topUp(r, 5);
+        printLine($"A {meterA.amount}, B {meterB.amount}.");
+    }
+}
+
+verb Relay {
+    meta = true;
+    grammar = { {.relay, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        print($"Twice: {relayBox.run(n)}. ");
+        relayBox.step = (int k) => k + 3;
+        print($"Plus three: {relayBox.run(n)}. ");
+        relayBox.step = square;
+        printLine($"Square: {relayBox.step(n)}.");
+        int v = n;
+        for (func<int, int> f in pipeline) v = f(v);
+        printLine($"Pipeline: {v}; tripled {triple(v)}.");
+        relayBox.step = twice;
+    }
+}
+
+verb Notes {
+    meta = true;
+    grammar = {.notes};
+    void handler() {
+        int routines = 0;
+        for (string | func<void> e in noteList) {
+            if (typeof(e) == eType.routine) {
+                ((func<void>)e)();
+                print("^");
+                routines++;
+            } else {
+                printLine((string)e);
+            }
+        }
+        printLine($"{routines} routine(s).");
+        for (Note n in notePile) {
+            switch (typeof(n.text)) {
+                case eType.string:  print((string)n.text);
+                case eType.routine: ((func<void>)n.text)();
+                default:            print("?");
+            }
+            printLine($" Weight {n.weight}.");
+        }
+    }
+}
+
+verb Cells {
+    meta = true;
+    grammar = {.cells};
+    void handler() {
+        int total = 0;
+        int rows = 0;
+        for (array<int> row in grid) {
+            rows++;
+            for (int i = 0; i < row.length; i++) {
+                if (row[i] == 0) continue;
+                if (row[i] == 8) break;
+                total += row[i];
+            }
+        }
+        printLine($"{rows} rows, total {total}.");
+        grid[3][1] = 7;
+        int k = 0;
+        while (true) {
+            k++;
+            if (grid[k].length == 2 && grid[k][1] != 1) break;
+        }
+        printLine($"Row {k} ends in {grid[k][1]}; row 2 has {grid[2].length}.");
+    }
+}
+
+verb Spell {
+    meta = true;
+    grammar = {.spell};
+    void handler() {
+        int vowels = 0;
+        int early = 0;
+        int other = 0;
+        for (int i = 0; i < tag.length; i++) {
+            char c = tag[i];
+            if (c.isVowel()) vowels++;
+            switch (c) {
+                case 'a' to 'm': early++;
+                case ' ':        continue;
+                default:         other++;
+            }
+            print(c.toUpper());
+        }
+        print($" ({early} early, {other} late)");
+        int first = tag[0];
+        printLine($": {vowels} vowels, first code {first}.");
+        if (tag[6] =~ 'K') printLine("Seventh is a k.");
+    }
+}
+
+verb Calc {
+    meta = true;
+    grammar = {.calc};
+    void handler() {
+        print($"{bgl.util.math.pow(2, 5)} {bgl.util.math.clamp(120, 0, 100)} ");
+        print($"{bgl.util.math.abs(-7)} {bgl.util.math.max(3, 9)} {bgl.util.math.sign(-4)}");
+        print("^");
+        #if TARGET_ZCODE
+            uint top = (uint)-1;
+            uint half = top / 2;
+            printLine($"Top {top}, half {half}, ordered {half < top}.");
+        #elif #beguilerSettings.target == "ulx"
+            printLine("Glulx.");
+        #else
+            printLine("Not Z-code.");
+        #endif
+    }
+}
+
+verb Flags {
+    meta = true;
+    grammar = {.flags};
+    void handler() {
+        int f = bolted | worn;
+        print($"{f} {f ^ oiled} {f & partFlag.worn} {f << 2} {f >> 1} ");
+        partFlag p = (partFlag)(f | cracked);
+        int back = p;
+        printLine($"{back}.");
+        if ((p & cracked) != 0) printLine("Cracked.");
+        partFlag q = bolted;
+        q |= partFlag.oiled;
+        q = q | cracked;
+        int qv = q;
+        printLine($"Q is {qv}.");
+    }
+}
+
+verb Bump {
+    meta = true;
+    grammar = {.bump};
+    void handler() {
+        counter.bump();
+        counter.bump();
+        printLine($"Member {counter.count}, global {count}.");
+        Crate top = Crate.heaviest();
+        printLine($"Heaviest is {top.label}; log holds {history.length}, last {history[history.length - 1]}.");
+        #if SHOW_TOTALS
+            printLine($"Total {counter.count + count}.");
+        #endif
+    }
+}
+
+bool Initialise() {
+    counter.log := history;
+    rfalse;
+}

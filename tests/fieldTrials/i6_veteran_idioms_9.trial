@@ -1,0 +1,68 @@
+Room A
+Room A.
+You can see a tin plate, a lead plate, a brass key, an iron bell and an oak box (which is empty) here.
+> spell red ball
+R-E-D / B-A-L-L (2 vowels)
+> spell oak b2x
+O-A-K / B-#-X (2 vowels)
+> hear tin bell tin
+[again tin] Heard 3: tin bell tin. Oldest tin, newest tin.
+> hear key zzz oak plate
+[?] Heard 4: tin key oak plate. Oldest tin, newest plate.
+> hear oak
+[again oak] Heard 4: key oak plate oak. Oldest key, newest oak.
+> echo red ball
+[red ball] 8: LL4B DER.
+A color.
+> echo hello
+[hello] 5: OLLEH.
+Greeting.
+> echo the iron bell
+[the iron bell] 13, starts the, ends bell: LLEB NORI EHT.
+3 letters, then more.
+> echo quiet
+[quiet] 5: TEIUQ.
+Hush.
+> echo zebra
+[zebra] 5: 4RBEZ.
+One word, 1 against m.
+> echo abacus fab
+[abacus fab] 10, ab at 0: B4F SUC4B4.
+6 letters, then more.
+> engrave tin plate with north gate
+Cut into the tin plate.
+> engrave tin plate with  bell
+Cut into the tin plate.
+> examine tin plate
+The tin plate reads "north gate bell" (15 letters, 2 cuts).
+> examine lead plate
+The lead plate is blank.
+> engrave key with x
+That will not take a mark.
+> label brass key
+<BRASS KEY> depth 2/0, 11 chars.
+> label lead plate
+<LEAD PLATE> depth 2/0, 12 chars.
+> trim iron bell
+[--on bell] [on ] cmp -1, eq false.
+> trim tin plate
+[--n plate] [n p] cmp -1, eq true.
+> shout brass key
+THE BRASS KEY! / the brass key / 14 [the brass key] end
+> shelve tin plate
+1: tin plate.
+> shelve brass key
+2: brass key tin plate.
+> shelve iron bell
+3: brass key iron bell tin plate.
+> shelve brass key
+Already shelved.
+> codes
+(ab 2) (xyz 3) (q 1) = 6, za.
+> history
+Lengths 4: 3 4 3 3.
+Long 1: 4; doubled 6 8 6; top 4, low 3; lead 4, rest 2; any 1 false, all short true.
+> survey
+yourself, brass key, iron bell, tin plate, lead plate, 5 things, 1 cut, spelled 2.
+> serial
+Serial digits: 6. Release 1.

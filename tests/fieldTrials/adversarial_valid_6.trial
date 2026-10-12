@@ -1,0 +1,35 @@
+Room A
+
+> probeparcels
+Made w4 w9 w2 left 2.
+Flags 5 2 rush true heavy true.
+Copy 9 2 serial 2 left 1.
+[w9 too heavy] fits false true.
+Issued 4 returned 4.
+
+> probestation
+[full] accept true true false total 82 seen 2 sum 8 full 1.
+[vault full] vault true false total 7 parent vault dock.
+vault lit 1 provides true false false peek 2.
+
+> proberoute
+Lanes 10 11 30 31 routed 4 stamp 300.
+hhns weigh 6 30 4 14 sur 11 4.
+
+> probetickets
+Order 12 13 11 14 at 2.
+Desc 14 11 13 12 best 15 row 5 last 0 lower true passes 2 3.
+
+> probeshelves
+Shelves 2 0 2 stamped true cap 2 lane 30.
+Chars 3 1 A true mask 255 math 32 20 3.
+Caught w3 flags 2.
+
+> tap scale
+Scale reads 1.
+
+> tap scale
+Scale reads 2.
+
+> tap dock
+Tapped dock.

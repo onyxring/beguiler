@@ -1,0 +1,480 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: tiles on a board drawn into a text grid. A primitive class level over int (a clamped
+// 0..9 step) with emitter =, a conversion, postfix ?, ?? and a float view; a value class Tint with a
+// copy operator; an emitter class holdScope with init/deinit; a namespace object kit aliasing an enum,
+// the value class and the primitive, imported with #using ahead of a pooled class Tile[4] with four
+// parents (Shade, Tagged, Edged, Lit) whose members use those aliases: static array<Tile>, array<level> and
+// array<float> members kept by create()/destroy(), <=> over tiles, == over int, emitter members,
+// operator += and operator switch over the band, and a method taking an array<int> that opens a
+// holdScope, binds a ref Tint with :=, throws and catches an enum fault, dispatches to Shade's label
+// with a cast, captures into a <buf>, filters with <linq>, prints from an #i6 island holding a #bgl
+// island, gives an attribute, moves the tile in the object tree and performs a verb; an `extend class Tile` that adds a static
+// array<Tint>, a level member, <=> over float, -= and ++, and a method that coalesces tiles and
+// levels, follows ?. links, filters with <linq>, switches through operator switch, prints from an #i6
+// island, captures into a <buf>, moves tiles and performs a verb; an object board with alias members,
+// attributes, a parent, an inline accessor holding a static array, == over int, an emitter member,
+// and methods that allocate tiles with new through the alias and delete them, take an array<int>,
+// bind, throw and catch, dispatch with a cast, write a <buf> and perform verbs. Meta verbs drive them
+// and draw the grid.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GPI_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object tray { "tray"; }
+object bin { "bin"; }
+
+attribute marked;
+
+textGridWindow grid = null;
+
+enum eBand { low = 0, mid, high }
+enum eFault { none = 0, full, empty }
+
+array<string> bandNames = { "low", "mid", "high" };
+array<char> scratch[32];
+array<int> weights = { 1, 2, 3, 4 };
+
+int holdDepth = 0;
+int holdOpens = 0;
+
+emitter class holdScope {
+    emitter void init()   { holdDepth++; holdOpens++; }
+    emitter void deinit() { holdDepth--; }
+}
+
+// ---- level ---------------------------------------------------------------------------------------
+
+int clampLevel(int v) {
+    if (v < 0) return 0;
+    if (v > 9) return 9;
+    return v;
+}
+
+float levelFrac(int v) {
+    return (float)v / 10;
+}
+
+primitive class level {
+    emitter void operator = (int v)   { $target = clampLevel($v); }
+    emitter void operator = (level p) { $target = $p; }
+    emitter int operator ()           { ($val) }
+    emitter eBool operator ? ()       { ($val > 0) }
+    emitter float frac()              { levelFrac($val) }
+}
+
+value class Tint {
+    float r = 0.0;
+    float g = 0.0;
+    Tint operator = (Tint o) {
+        r = o.r;
+        g = o.g;
+        return self;
+    }
+}
+
+// ---- parents -------------------------------------------------------------------------------------
+
+class Shade : object {
+    float lum = 0.0;
+    default string label() { return "shade"; }
+}
+
+class Tagged : object {
+    eBand band = eBand.low;
+    int marks = 0;
+}
+
+class Edged : object {
+    int edge = 0;
+}
+
+class Lit : object {
+    int glow = 0;
+}
+
+object kit {
+    alias tone for eBand;
+    alias tint for Tint;
+    alias step for level;
+}
+
+eBand bandFor(float l) {
+    if (l < 0.3) return eBand.low;
+    if (l < 0.7) return eBand.mid;
+    return eBand.high;
+}
+
+// ---- tiles ---------------------------------------------------------------------------------------
+
+#using kit
+class Tile[4] : Shade, Tagged, Edged, Lit {
+    int hue = 0;
+    step rank = 0;
+    tint shade;
+    Tile link = null;
+    static array<Tile> live[4];
+    static array<level> ranks[4];
+    static array<float> lums[4];
+    static int made = 0;
+
+    void create(int h, float l) {
+        hue = h;
+        lum = l;
+        band = bandFor(l);
+        rank = h;
+        shade.r = l;
+        Tile.live.append(self);
+        Tile.ranks.append(rank);
+        Tile.lums.append(l);
+        Tile.made++;
+    }
+
+    void destroy() {
+        for (int i = 0; i < Tile.live.length; i++) {
+            if (Tile.live[i] == self) {
+                Tile.live.remove(i);
+                Tile.ranks.remove(i);
+                Tile.lums.remove(i);
+                break;
+            }
+        }
+        link = null;
+        parent = null;
+    }
+
+    string label() { return bandNames[(int)band]; }
+
+    int operator <=> (Tile o) { return hue - o.hue; }
+    eBool operator == (int n) { return hue == n; }
+    eBool operator != (int n) { return hue != n; }
+    Tile operator += (int n) {
+        hue += n;
+        rank = hue;
+        return self;
+    }
+
+    emitter int twice()                      { ($self.hue * 2) }
+    emitter eBool operator switch (eBand b)  { ($self.band == $b) }
+
+    float weigh(array<int> ws, Tile other) {
+        holdScope h;
+        ref tint t := shade;
+        float sum = 0.0;
+        try {
+            if (ws.length == 0) throw eFault.empty;
+            for (int i = 0; i < ws.length && i < Tile.live.length; i++) {
+                Tile c = Tile.live[i];
+                sum += c.lum * ws[i];
+            }
+        } catch (eFault f) {
+            print("[empty] ");
+        }
+        t.g = sum;
+        tone b = band;
+        if (other?.link != null && other > self) b = other.band;
+        string base = ((Shade)self).label();
+        bgl.util.buf.capture(scratch);
+        print($"{base}:{twice()}:{bandNames[(int)b]}");
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(scratch);
+        bgl.util.buf.print(scratch);
+        print(" ");
+        int highs = Tile.live.filter((Tile c) => c.band == eBand.high).count();
+        int ranked = Tile.ranks.filter((level v) => v?).count();
+        #i6 {
+            print "<", $i6Expr(highs), "/", $i6Expr(ranked);
+            if ($i6Expr(highs) > 0) {
+                #bgl {
+                    print($" {link?.hue}");
+                }
+            }
+            print "> ";
+        }
+        if (!self.has(marked)) self.give(marked);
+        marks = marks + 1;
+        self.parent = tray;
+        step r = rank ?? 1;
+        if (holdDepth > 0 && sum > 1.0) Weighed.perform();
+        else {
+            print(r.frac());
+            print(" ");
+        }
+        return sum;
+    }
+}
+
+extend class Tile {
+    static array<Tint> tints[4];
+    level peak = 0;
+
+    int operator <=> (float f) {
+        if (lum < f) return -1;
+        if (lum > f) return 1;
+        return 0;
+    }
+
+    Tile operator -= (int n) {
+        hue -= n;
+        if (hue < 0) hue = 0;
+        rank = hue;
+        return self;
+    }
+
+    Tile operator ++ () {
+        glow++;
+        return self;
+    }
+
+    float settle(Tile other) {
+        Tile o = other ?? link ?? self;
+        level s = o.rank;
+        level top = s ?? peak;
+        peak = top;
+        int near = o.link?.hue;
+        float total = 0.0;
+        Tile.tints.clear();
+        for (Tile c in Tile.live) {
+            if (c < 0.5) total += c.lum;
+            Tile.tints.append(c.shade);
+        }
+        int brights = Tile.lums.filter((float x) => x > 0.5).count();
+        switch (o) {
+            case eBand.high: o -= 1;
+            case eBand.low:  o += 2;
+            default:         o++;
+        }
+        edge = brights + near;
+        #i6 print "(edge ", $i6Expr(edge), ") ";
+        bgl.util.buf.capture(scratch);
+        print(total);
+        bgl.util.buf.release();
+        bgl.util.buf.print(scratch, 4);
+        print($" {(int)peak} {o.hue} ");
+        if (o.parent == tray) o.parent = bin;
+        if (o.glow > 0 || edge > 1) Settled.perform();
+        return total + Tile.tints.length;
+    }
+}
+
+// ---- the board -----------------------------------------------------------------------------------
+
+object board {
+    "board";
+    parent = roomA;
+    attributes = {scenery};
+    alias cell for Tile;
+    alias shadeOf for Tint;
+    int placed = 0;
+    Tint mix;
+    auto load = {
+        static array<int> seen[4];
+        int operator () { return seen.length; }
+        void operator = (int v) {
+            if (seen.length == 4) seen.clear();
+            seen.append(v);
+            outer.placed++;
+        }
+    };
+
+    eBool operator == (int n) { return placed == n; }
+    emitter int scaled(int n) { ($n * 10) }
+
+    float place(array<int> ws, float g) {
+        holdScope h;
+        ref shadeOf m := mix;
+        cell t = new cell(ws.length, g);
+        float w = 0.0;
+        try {
+            if (t == null) throw eFault.full;
+            t.parent = self;
+            for (int x in ws) w += x * g;
+        } catch (eFault f) {
+            print("[full] ");
+            return w;
+        }
+        string nm = ((Shade)t).label();
+        load = scaled(ws.length);
+        m.r = m.r + g;
+        if (t.band == eBand.high) t.give(marked);
+        bgl.util.buf.set(scratch, "placed ");
+        bgl.util.buf.print(scratch);
+        print($"{nm} {t.label()} {holdDepth} ");
+        if (self == 2) Placed.perform();
+        return w;
+    }
+
+    int sweep(array<int> keep) {
+        int gone = 0;
+        while (self.child != null) {
+            object o = self.child;
+            Tile t = (Tile)o;
+            try {
+                if (t.has(marked)) throw eFault.full;
+                t.parent = null;
+                delete t;
+                gone++;
+            } catch (eFault f) {
+                t.parent = bin;
+                if (keep.length > 0) t += keep[0];
+            }
+        }
+        if (self == 1 && gone > 0) Placed.perform();
+        return gone;
+    }
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawGrid() {
+    if (grid == null) return;
+    grid.clear();
+    grid.moveCursor(0, 0);
+    grid.print($"tiles {Tile.live.length} made {Tile.made} opens {holdOpens}");
+    grid.moveCursor(0, 1);
+    grid.print($"board {board.placed} load {board.load} tray {tray.children.length} bin {bin.children.length}");
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Weighed {
+    grammar = {.weighed};
+    meta = true;
+    void handler() {
+        printLine($"Weighed at depth {holdDepth}.");
+    }
+}
+
+verb Settled {
+    grammar = {.settled};
+    meta = true;
+    void handler() {
+        printLine("Settled.");
+    }
+}
+
+verb Placed {
+    grammar = {.placed};
+    meta = true;
+    void handler() {
+        printLine($"Placed {board.placed}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        if (grid == null) grid = bgl.ui.mainWin.splitUpGrid(2);
+        drawGrid();
+        printLine("Panels open.");
+    }
+}
+
+verb Tiles {
+    grammar = {.tiles};
+    meta = true;
+    void handler() {
+        Tile a = new Tile(2, 0.2);
+        Tile b = new Tile(5, 0.6);
+        Tile c = new Tile(7, 0.9);
+        if (a == null || b == null || c == null) return;
+        a.link = b;
+        b.link = c;
+        array<int> none[4];
+        print(a.weigh(weights, b));
+        printLine("");
+        print(b.weigh(weights, a));
+        printLine("");
+        print(c.weigh(none, null));
+        printLine("");
+        printLine($"{a < b} {c > b} {b == 5} {a.twice()} {Tile.ranks.length}");
+        drawGrid();
+    }
+}
+
+verb Settle {
+    grammar = {.settle};
+    meta = true;
+    void handler() {
+        if (Tile.live.length < 3) return;
+        Tile a = Tile.live[0];
+        Tile b = Tile.live[1];
+        Tile c = Tile.live[2];
+        print(a.settle(null));
+        printLine("");
+        print(c.settle(b));
+        printLine("");
+        print(b.settle(null));
+        printLine("");
+        print(a.settle(a));
+        printLine("");
+        printLine($"{a.hue} {b.hue} {c.hue} {a.glow} {b.glow} {c.glow} {a.edge} {c.edge}");
+        drawGrid();
+    }
+}
+
+verb Place {
+    grammar = {.place};
+    meta = true;
+    void handler() {
+        print(board.place(weights, 0.4));
+        printLine("");
+        print(board.place(weights, 0.8));
+        printLine("");
+        print(board.mix.r);
+        printLine($" {board.load} {board == 1}");
+        drawGrid();
+    }
+}
+
+verb Purge {
+    grammar = {.purge};
+    meta = true;
+    void handler() {
+        array<int> keep = { 3 };
+        if (Tile.live.length > 2) Tile.live[2].parent = board;
+        int gone = board.sweep(keep);
+        printLine($"Swept {gone}.");
+        for (int i = 0; i < Tile.live.length; i++) {
+            Tile t = Tile.live[i];
+            print($"{t.hue} ");
+        }
+        printLine("");
+        drawGrid();
+    }
+}
+
+#includeI6 "grammar"

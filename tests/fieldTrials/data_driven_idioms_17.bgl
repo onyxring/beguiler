@@ -1,0 +1,345 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: dense declarations meeting in threes. An `extend class` of a reference class with three
+// parents that, in one body, declares static counters, a static history array, a static
+// string table and a static table of bands (an array of arrays), a ref member bound with :=, a
+// replaced method, operators + - [] and []=, and a survey method that holds an emitter-class local
+// with init/deinit, an array<char> line captured and upper-cased, a string table, an array of class
+// instances gathered from the parent's children, a stringObj trail, a var tag switched on typeof, a
+// ref value-class parameter rebound through a ref local, a postfix ? query on the parent, has/give,
+// an enum grade, #if around a print and perform() of a verb; a replace of a global rating routine
+// calling replaced() with a nested band table under #if, an array of crates, a ref cell and a
+// postfix query; an extend of an object replacing its method with the same mix; and verb handlers
+// that bind refs, switch on enums and unions, fill byte arrays and walk the object tree.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#define SHOW_DEPTH
+
+extend class object {
+    string description;
+}
+
+//-- Shared types ---------------------------------------------------------------------
+
+enum eGrade { none = 0, low, mid, high }
+
+union Tag = string | object;
+
+value class Cell {
+    int x;
+    Cell operator = (Cell o) { x = o.x; return self; }
+}
+
+Cell totals;
+
+int openLeases = 0;
+int leaseOpen() { openLeases++; return openLeases; }
+void leaseClose() { openLeases--; }
+
+// A numbered lease: taken when a local comes into scope, given back when it leaves.
+emitter class Lease {
+    emitter void init() { $self = leaseOpen(); }
+    emitter void deinit() { leaseClose(); }
+    emitter int operator ();
+}
+
+class Marked : object {
+    int code;
+    string codeName() {
+        switch (code) {
+            case 0: return "plain";
+            case 1: return "red";
+        }
+        return "blue";
+    }
+}
+
+class Stacked : object {
+    int depth = 1;
+}
+
+class Crate : object, Marked, Stacked {
+    int mass;
+    default string kind() { return "crate"; }
+    int weigh() { return mass; }
+}
+
+//-- Crates gain a code and a depth, and the tables that rate them ----------------------
+
+extend class Crate {
+    static int scans = 0;
+    static array<int> history[6];
+    static array<string> gradeNames = { "none", "low", "mid", "high" };
+    static array<array<int>> bands = { {0, 4}, {5, 12}, {13, 99} };
+    ref Cell tally;
+
+    // A crate's weight counts every layer of its stack.
+    replace int weigh() { return mass * depth; }
+
+    int operator + (int v) { return weigh() + v; }
+    int operator - (Crate o) { return weigh() - o.weigh(); }
+
+    int operator [] (int i) {
+        switch (i) {
+            case 0: return mass;
+            case 1: return code;
+            case 2: return depth;
+        }
+        return -1;
+    }
+
+    int operator []= (int i, int v) {
+        switch (i) {
+            case 0: mass = v;
+            case 1: code = v;
+            case 2: depth = v;
+        }
+        return v;
+    }
+
+    // The grade of the first band holding the crate's weight.
+    eGrade grade() {
+        int w = self + 0;
+        for (int i = 0; i < Crate.bands.length; i++) {
+            if (w < Crate.bands[i][0] || w > Crate.bands[i][1]) continue;
+            switch (i) {
+                case 0: return eGrade.low;
+                case 1: return eGrade.mid;
+            }
+            return eGrade.high;
+        }
+        return eGrade.none;
+    }
+
+    // Compares the crate with every other crate beside it; returns how many it compared.
+    int survey(var tag, ref Cell acc) {
+        Lease lease;
+        array<char> line[24];
+        array<string> marks = { "-", "=", "+" };
+        array<Crate> peers[4];
+        stringObj trail = "";
+        Crate.scans++;
+        if (!parent?) {
+            print("loose");
+            return 0;
+        }
+        ref Cell keep := acc;
+        for (object o in parent.children) {
+            if (o == self || !o.is(Crate)) continue;
+            peers.append((Crate)o);
+        }
+        for (Crate p in peers) {
+            int d = self - p;
+            switch (d) {
+                case < 0: trail += marks[0];
+                case 0: trail += marks[1];
+                default: trail += marks[2];
+            }
+            keep.x += d;
+        }
+        eGrade g = grade();
+        bgl.util.buf.capture(line);
+        print($"{Crate.gradeNames[(int)g]}/{codeName()}");
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(line);
+        switch (typeof(tag)) {
+            case eType.string:
+                trail = (string)tag + trail;
+            case eType.object:
+                Ping.perform((object)tag);
+        }
+        if (self.has(light)) {
+            self.give(general);
+            trail += "!";
+        }
+        bgl.util.buf.print(line);
+        print(" ");
+        trail.print();
+#if SHOW_DEPTH
+        print($" d{self[2]}");
+#endif
+        print($" L{(int)lease}");
+        Crate.history.append(keep.x);
+        tally := totals;
+        tally.x += peers.length;
+        return peers.length;
+    }
+}
+
+//-- A global rating, replaced to weigh in the bands and the shelf's other crates ----------
+
+int rateCrate(Crate c, ref Cell acc) {
+    acc.x += c.mass;
+    return c.mass;
+}
+
+// Rates a crate by its band row; crates under it in the row are tallied into acc.
+replace int rateCrate(Crate c, ref Cell acc) {
+#if SHOW_DEPTH
+    array<array<int>> rows = { {1, 2}, {3, 5, 7}, {12} };
+#else
+    array<array<int>> rows = { {1}, {2}, {3} };
+#endif
+    array<Crate> under[4];
+    int base = replaced(c, acc);
+    if (!c.parent?) return base;
+    for (object o in c.parent.children) {
+        if (o.is(Crate) && o != c && ((Crate)o).mass < c.mass) under.append((Crate)o);
+    }
+    int bonus = 0;
+    for (array<int> row in rows) {
+        for (int v in row) if (v == c.mass) bonus = row.length;
+    }
+    for (Crate u in under) acc.x += u.mass;
+    return base * 10 + bonus + under.length;
+}
+
+//-- The world ----------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelf {
+    "shelf";
+    name = .shelf;
+    object parent = roomA;
+    attributes = {static, supporter};
+    int count() { return 0; }
+}
+
+Crate crateA { "crate A"; name = {.crate, .a}; mass = 3; code = 1; object parent = shelf; }
+Crate crateB { "crate B"; name = {.crate, .b}; mass = 7; code = 2; depth = 2; object parent = shelf; attributes = {light}; }
+Crate crateC { "crate C"; name = {.crate, .c}; mass = 12; code = 0; object parent = shelf; }
+object brassKey { "brass key"; name = {.brass, .key}; object parent = shelf; }
+Crate crateD { "crate D"; name = {.crate, .d}; mass = 5; code = 1; }
+
+// The shelf counts its crates into a line of marks, heaviest first.
+extend shelf {
+    replace int count() {
+        array<char> marks[12];
+        array<Crate> held[4];
+        array<string> names = { "light", "heavy" };
+        stringObj out = "";
+        for (object o in children) if (o.is(Crate)) held.append((Crate)o);
+        for (Crate c in held) {
+            switch (c.grade()) {
+                case eGrade.high, eGrade.mid: out += names[1];
+                default: out += names[0];
+            }
+            out += " ";
+        }
+        bgl.util.buf.set(marks, "n=");
+        print($"{out}");
+        bgl.util.buf.print(marks);
+        return held.length;
+    }
+}
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() { print($"Ping {noun}.^"); }
+}
+
+verb SurveyTest {
+    grammar = {.survey};
+    void handler() {
+        Cell acc;
+        int n = crateA.survey("row ", acc);
+        print($" ({n}, acc {acc.x})^");
+        n = crateB.survey(brassKey, acc);
+        print($" ({n}, acc {acc.x})^");
+        n = crateD.survey("none", acc);
+        print($" ({n}, acc {acc.x})^");
+        print($"scans {Crate.scans}, totals {totals.x}, leases {openLeases}, history");
+        for (int h in Crate.history) print($" {h}");
+        print($", B general {crateB.has(general)}^");
+    }
+}
+
+verb SlotsTest {
+    grammar = {.slots, NUMBER};
+    void handler() {
+        crateA[2] = (int)noun;
+        print($"A: {crateA[0]} {crateA[1]} {crateA[2]} {crateA[3]}, weighs {crateA.weigh()}, plus {crateA + 1}");
+        eGrade g = crateA.grade();
+        print($", {Crate.gradeNames[(int)g]}, {crateA.kind()}^");
+        crateA[2] = 1;
+    }
+}
+
+verb RateTest {
+    grammar = {.rate};
+    void handler() {
+        Cell acc;
+        ref Cell r := acc;
+        array<Crate> all = { crateA, crateB, crateC, crateD };
+        for (Crate c in all) print($"{c}={rateCrate(c, r)} ");
+        print($"acc {acc.x}^");
+    }
+}
+
+verb ManifestTest {
+    grammar = {.manifest, NOUN};
+    void handler() {
+        Lease lease;
+        array<char> head[20];
+        array<string> kinds = { "thing", "crate", "holder" };
+        array<array<int>> spans = { {0, 2}, {3, 9} };
+        Cell sum;
+        ref Cell r := sum;
+        Tag t = noun;
+        stringObj line = "";
+        if (!noun?) return;
+        switch (typeof(t)) {
+            case eType.object:
+                object o = (object)t;
+                if (o.is(Crate)) line += kinds[1];
+                else if (o.has(supporter)) line += kinds[2];
+                else line += kinds[0];
+        }
+        int kids = 0;
+        for (object c in noun.children) {
+            kids++;
+            if (c.is(Crate)) r.x += ((Crate)c).mass;
+        }
+        for (array<int> s in spans) {
+            if (kids < s[0] || kids > s[1]) continue;
+            stringObj part = $" span{s[0]}";
+            line += part;
+        }
+        bgl.util.buf.set(head, "manifest:");
+        bgl.util.buf.print(head);
+        print(" ");
+        line.print();
+#if SHOW_DEPTH
+        print($" kids {kids} mass {sum.x}");
+#endif
+        if (noun.parent?) print($" in {noun.parent}");
+        print($" L{(int)lease}^");
+        if (noun == shelf) print($"count {shelf.count()}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    print("Ready.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

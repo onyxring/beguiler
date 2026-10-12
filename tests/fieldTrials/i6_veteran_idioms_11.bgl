@@ -1,0 +1,560 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on Glulx, working byte buffers the way an I6 author would. Tracked
+// array<char> buffers sized by a #define and handed to I6 routines that read them as hybrid buffers
+// (buf-->0, buf->(WORDSIZE+i)); global emitter functions over a buffer; a primitive class over a
+// character code with an implicit conversion back to int, stored into byte slots, passed to and
+// returned from an extern I6 routine and read through $i6Expr in an #i6 island; a class whose
+// operator [] and []= wrap its array<char> (a ref member bound to a file-scope buffer) and throw on a
+// bad index, with an explicit conversion computing a checksum over its bytes, extended with extend
+// class, and inherited through
+// two parents by a class that gives attributes and dispatches to an ancestor; a second class whose
+// subscript operators reach an #i6 island and an extern routine; an emitter class with init/deinit
+// viewing a buffer; enum-indexed record bytes holding a bnum; func<bool, char> predicates (a named
+// routine, a stored lambda and an inline one) given to bgl.util.buf; a float mean of bytes; a
+// namespace object aliasing a type and an enum with methods over buffers; ?. ?? and postfix ? on a
+// lookup by buffer contents; captured object names deciding moves in the object tree; try/catch
+// around buffer parsing; #if over a #define and TARGET_GLULX inside buffer code; an #i6 island
+// summing an array of arrays through $i6Expr; and a recursive routine with an #i6 island, also
+// called from an I6 routine's #bgl island.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+
+#define TAG_LEN 12
+#define CHECKSUMS
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global trial_calls = 0;
+Global trial_digits = 0;
+Global trial_views = 0;
+Global trial_closed = 0;
+Global trial_stores = 0;
+Global trial_depth = 0;
+
+! A tracked buffer is a hybrid buffer: the length word, then the bytes.
+[ ByteSum buf n  i t;
+    for (i = 0 : i < n : i++) t = t + buf->(WORDSIZE + i);
+    trial_calls++;
+    return t;
+];
+
+[ RotChar c;
+    if (c >= 'a' && c <= 'z') return 'a' + (c - 'a' + 13) % 26;
+    if (c >= 'A' && c <= 'Z') return 'A' + (c - 'A' + 13) % 26;
+    return c;
+];
+
+[ NoteStore i v;
+    trial_stores = trial_stores + v;
+    print "<", i, "=", v, ">";
+];
+
+[ DepthOf o;
+    #bgl { trial_depth = treeDepth(o); }
+    return trial_depth;
+];
+}
+
+extern int trial_calls;
+extern int trial_digits;
+extern int trial_views;
+extern int trial_closed;
+extern int trial_stores;
+extern int trial_depth;
+extern int ByteSum(array<char> b, int n);
+extern void NoteStore(int i, int v);
+extern int DepthOf(object o);
+
+// ---------------------------------------------------------------- buffers
+
+array<char> work[TAG_LEN];
+array<char> phrase[TAG_LEN];
+array<char> scratch[32];
+array<char> rec[3];
+array<char> kBrass = "brass";
+array<char> kTin   = "tin 42";
+array<char> kNone  = "iron";
+array<char> kBad    = "12x4";
+
+emitter int rawLen(array<char> b)          { ($b-->0) }
+emitter int rawByte(array<char> b, int i)  { ($b->(WORDSIZE + $i)) }
+
+attribute stamped;
+attribute rejected;
+
+enum eField { kind = 0, size, mark }
+bnum eTagFlag { upper, digits, spaced }
+
+// ---------------------------------------------------------------- a character code
+
+primitive class glyph {
+    emitter void operator = (int v)    { $target = $v; }
+    emitter void operator = (glyph g)  { $target = $g; }
+    emitter int operator ();
+    emitter eBool isDigit              { ($val >= '0' && $val <= '9') }
+    emitter eBool isUpper              { ($val >= 'A' && $val <= 'Z') }
+    replace emitter void print()       { print (char) $val; }
+}
+
+extern glyph RotChar(glyph c);
+
+// Rot13 src into dst a glyph at a time; digits are counted on the I6 side.
+void rotInto(array<char> dst, array<char> src) {
+    for (int i = 0; i < src.length; i++) {
+        glyph g = src[i];
+        glyph r = RotChar(g);
+        #i6 if ($i6Expr(r.isDigit)) trial_digits++;
+        dst[i] = r;
+    }
+    dst.length = src.length;
+}
+
+// ---------------------------------------------------------------- labels
+
+array<char> textA[TAG_LEN];
+array<char> textB[TAG_LEN];
+array<char> textC[TAG_LEN];
+
+class Label : object {
+    ref array<char> text;
+    int uses;
+    char operator [] (int i) {
+        if (i < 0 || i >= text.length) throw -1;
+        return text[i];
+    }
+    void operator []= (int i, char c) {
+        if (i < 0 || i >= text.size) throw i;
+        text[i] = c;
+        if (i >= text.length) text.length = i + 1;
+    }
+    explicit int operator () {
+        int sum = 0;
+        for (int i = 0; i < text.length; i++) sum += text[i] * (i + 1);
+        return sum % 1000;
+    }
+    void setFrom(array<char> src) {
+        text = src;
+        uses++;
+    }
+    void show() {
+        for (int i = 0; i < text.length; i++) print(text[i]);
+    }
+}
+
+extend class Label {
+    int countOf(char c) {
+        int n = 0;
+        for (int i = 0; i < text.length; i++) if (text[i] == c) n++;
+        return n;
+    }
+    bool sameAs(array<char> other) {
+        if (other.length != text.length) return false;
+        for (int i = 0; i < text.length; i++) if (text[i] != other[i]) return false;
+        return true;
+    }
+}
+
+class Sealable : object {
+    int seal = 0;
+    void sealWith(int s) { seal = s; }
+}
+
+class SealedLabel : Label, Sealable {
+    void stamp() {
+        if (text.length == 0) {
+            self.give(rejected);
+            return;
+        }
+        glyph first = text[0];
+        if (!first.isUpper) text[0] = text[0] - 32;
+        sealWith((int)self);
+        self.give(stamped);
+        self.ungive(rejected);
+    }
+    void show() {
+        print("[");
+        ((Label)self).show();
+        print($"/{seal}]");
+    }
+}
+
+object rack { "rack"; }
+
+Label tagA { "tag A"; parent = rack; }
+SealedLabel tagB { "tag B"; parent = rack; }
+SealedLabel tagC { "tag C"; parent = rack; }
+
+// ---------------------------------------------------------------- a ledger reached through I6
+
+class Ledger : object {
+    array<int> cells[6];
+    int operator [] (int i) {
+        int v = 0;
+        #i6 v = $i6Expr(cells[i]) * 1;
+        return v;
+    }
+    void operator []= (int i, int v) {
+        cells[i] = v;
+        NoteStore(i, v);
+    }
+}
+
+Ledger books { "books"; }
+
+// ---------------------------------------------------------------- a view of a buffer
+
+emitter class bufView {
+    emitter void init()                     { $self = 0; trial_views++; }
+    emitter void deinit()                   { trial_views--; trial_closed++; }
+    emitter void operator = (array<char> b) { $target = $b; }
+    emitter int at(int i)                   { ($val->(WORDSIZE + $i)) }
+    emitter int count                       { ($val-->0) }
+}
+
+int viewSum(array<char> b) {
+    bufView v = b;
+    int t = 0;
+    for (int i = 0; i < v.count; i++) t = t + v.at(i);
+    print($"(views {trial_views}, raw {rawLen(b)}, first {rawByte(b, 0)}) ");
+    return t;
+}
+
+// ---------------------------------------------------------------- the shelf
+
+class Room : object {
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelf { "shelf"; parent = roomA; }
+object bin { "bin"; parent = roomA; }
+object brassKey { "brass key"; parent = shelf; }
+object tinCup { "tin cup"; parent = shelf; }
+object brassLamp { "brass lamp"; parent = shelf; }
+object stoneBlock { "stone block"; parent = bin; }
+
+void fileByPrefix(array<char> prefix, object dest) {
+    int moved = 0;
+    for (object o in shelf.children) {
+        bgl.util.buf.capture(scratch);
+        print($"{o}");
+        bgl.util.buf.release();
+        if (bgl.util.buf.startsWith(scratch, prefix)) {
+            o.parent = dest;
+            moved++;
+        }
+    }
+    print($"moved {moved}:");
+    for (object o in dest.children) print($" {o}");
+}
+
+int treeDepth(object o) {
+    int best = 0;
+    for (object c in o.children) {
+        int d = treeDepth(c);
+        if (d > best) best = d;
+    }
+    #i6 trial_calls++;
+    return best + 1;
+}
+
+// ---------------------------------------------------------------- numbers from bytes
+
+float meanByte(array<char> b) {
+    if (b.length == 0) return 0;
+    int t = 0;
+    for (int i = 0; i < b.length; i++) t += b[i];
+    return (float)t / b.length;
+}
+
+int parseDigits(array<char> b) {
+    int n = 0;
+    for (int i = 0; i < b.length; i++) {
+        glyph g = b[i];
+        if (!g.isDigit) throw i;
+        n = n * 10 + (b[i] - '0');
+    }
+    return n;
+}
+
+void report(array<char> b) {
+    print($"len {b.length}");
+#if CHECKSUMS
+    print($", sum {ByteSum(b, b.length)}");
+#endif
+#if TARGET_GLULX
+    float m = meanByte(b);
+    print(", mean ");
+    print(m);
+    array<char> half[TAG_LEN];
+    for (int i = 0; i < b.length; i++) {
+        half[i] = (int)((float)b[i] / 2);
+    }
+    half.length = b.length;
+    print($", half sum {ByteSum(half, half.length)}");
+#else
+    print(", no floats");
+#endif
+}
+
+// ---------------------------------------------------------------- predicates
+
+bool isSpaceChar(char c) { return c == ' '; }
+
+func<bool, char> digitTest = (char c) => c >= '0' && c <= '9';
+
+int firstWhere(array<char> b, func<bool, char> p) {
+    return bgl.util.buf.indexOfFirstTrue(b, p);
+}
+
+eTagFlag classify(array<char> b) {
+    eTagFlag f = 0;
+    for (int i = 0; i < b.length; i++) {
+        glyph g = b[i];
+        if (g.isUpper) f = f | eTagFlag.upper;
+        if (g.isDigit) f = f | eTagFlag.digits;
+        if (b[i] == ' ') f = f | eTagFlag.spaced;
+    }
+    return f;
+}
+
+// ---------------------------------------------------------------- a namespace over the kit
+
+object kit {
+    alias label for Label;
+    alias field for eField;
+    int scan(array<char> b, char c) {
+        for (int i = 0; i < b.length; i++) if (b[i] == c) return i;
+        return -1;
+    }
+    void put(array<char> b) { bgl.util.buf.print(b); }
+}
+
+Label findLabel(array<char> k) {
+    for (object o in rack.children) {
+        Label l = (Label)o;
+        if (l.sameAs(k)) return l;
+    }
+    return null;
+}
+
+// ---------------------------------------------------------------- nested data
+
+array<array<int>> grid = { {1, 2, 3}, {4, 5}, {6} };
+
+int gridTotal() {
+    int t = 0;
+    for (int r = 0; r < grid.length; r++) {
+        for (int c = 0; c < grid[r].length; c++) {
+            #i6 t = t + $i6Expr(grid[r][c]);
+        }
+    }
+    return t;
+}
+
+// ---------------------------------------------------------------- verbs
+
+void showLabel(Label l) {
+    print($"{l}: ");
+    l.show();
+    print($" (sum {(int)l}, uses {l.uses}, s {l.countOf('s')}");
+    if (l.has(stamped)) print(", stamped");
+    if (l.has(rejected)) print(", rejected");
+    printLine(")");
+}
+
+verb Labels {
+    grammar = {.labels};
+    meta = true;
+    void handler() {
+        for (object o in rack.children) showLabel((Label)o);
+    }
+}
+
+verb StampAll {
+    grammar = {.stampall};
+    meta = true;
+    void handler() {
+        for (object o in rack.children) {
+            if (o.is(SealedLabel)) ((SealedLabel)o).stamp();
+        }
+        printLine($"Stamped; tag B seal {tagB.seal}.");
+    }
+}
+
+verb Peek {
+    grammar = {.peek, NUMBER};
+    meta = true;
+    void handler() {
+        try {
+            char c = tagA[(int)noun];
+            printLine($"tag A [{(int)noun}] is {c}.");
+        } catch (int e) {
+            printLine($"No byte {(int)noun} ({e}).");
+        }
+    }
+}
+
+verb Poke {
+    grammar = {.poke, NUMBER};
+    meta = true;
+    void handler() {
+        try {
+            tagA[(int)noun] = '!';
+            print("tag A now ");
+            tagA.show();
+            printLine($", length {tagA.text.length}.");
+        } catch (int e) {
+            printLine($"Index {e} refused.");
+        }
+    }
+}
+
+verb Rot {
+    grammar = {.rot};
+    meta = true;
+    void handler() {
+        rotInto(work, phrase);
+        kit.put(work);
+        print($" / back ");
+        rotInto(scratch, work);
+        kit.put(scratch);
+        printLine($"; digits seen {trial_digits}.");
+    }
+}
+
+verb Digits {
+    grammar = {.digits};
+    meta = true;
+    void handler() {
+        array<char> local[TAG_LEN];
+        bgl.util.buf.set(local, "1203");
+        try {
+            print($"{parseDigits(local)} ");
+            print($"{parseDigits(kBad)} ");
+        } catch (int at) {
+            print($"bad at {at} ");
+        }
+        report(local);
+        printLine(".");
+    }
+}
+
+verb Filing {
+    grammar = {.filing};
+    meta = true;
+    void handler() {
+        fileByPrefix(kBrass, bin);
+        printLine($"; shelf has {shelf.children.length}.");
+    }
+}
+
+verb Lookup {
+    grammar = {.lookup};
+    meta = true;
+    void handler() {
+        array<char> probe[TAG_LEN];
+        probe = kTin;
+        Label hit = findLabel(probe);
+        if (hit?) print($"found {hit}");
+        else print("tin missing");
+        Label miss = findLabel(kNone);
+        if (!miss?) print(", iron missing");
+        miss?.show();
+        kit.label pick = miss ?? tagA;
+        print($", fallback {pick}, ");
+        (findLabel(kBrass) ?? tagC).show();
+        printLine($", space at {kit.scan(kTin, ' ')}, x at {kit.scan(kTin, 'x')}.");
+    }
+}
+
+verb Record {
+    grammar = {.record};
+    meta = true;
+    void handler() {
+        rec[(int)kit.field.kind] = 7;
+        rec[(int)eField.size] = phrase.length;
+        rec[(int)eField.mark] = classify(phrase);
+        rec.length = 3;
+        eTagFlag back = (eTagFlag)(int)rec[(int)eField.mark];
+        print($"kind {(int)rec[0]}, size {(int)rec[1]}, mark {(int)rec[2]}");
+        if ((back & eTagFlag.upper) != 0) print(", upper");
+        if ((back & eTagFlag.digits) != 0) print(", digits");
+        if ((back & eTagFlag.spaced) != 0) print(", spaced");
+        printLine($"; brass flags {(int)classify(kBrass)}.");
+    }
+}
+
+verb Preds {
+    grammar = {.preds};
+    meta = true;
+    void handler() {
+        int sp = firstWhere(phrase, isSpaceChar);
+        int dg = firstWhere(phrase, digitTest);
+        int lo = firstWhere(phrase, (char c) => c >= 'a' && c <= 'z');
+        func<bool, char> bang = (char c) => c == '!';
+        printLine($"space {sp}, digit {dg}, lower {lo}, bang {firstWhere(phrase, bang)}.");
+    }
+}
+
+verb View {
+    grammar = {.view};
+    meta = true;
+    void handler() {
+        int t = viewSum(phrase);
+        printLine($"total {t}, open {trial_views}, closed {trial_closed}.");
+    }
+}
+
+verb ShowLedger {
+    grammar = {.ledger};
+    meta = true;
+    void handler() {
+        books[0] = 5;
+        books[1] = books[0] * 3;
+        books[2] = books[1] + books[0];
+        printLine($" cells {books[0]} {books[1]} {books[2]}, stored {trial_stores}.");
+    }
+}
+
+verb Depth {
+    grammar = {.depth};
+    meta = true;
+    void handler() {
+        trial_calls = 0;
+        int d = treeDepth(roomA);
+        int viaI6 = DepthOf(shelf);
+        printLine($"depth {d}, via I6 {viaI6}, calls {trial_calls}, grid {gridTotal()}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    bgl.util.buf.set(phrase, "Abc 123");
+    tagA.text := textA;
+    tagB.text := textB;
+    tagC.text := textC;
+    tagC.text.length = 0;
+    tagA.setFrom(kBrass);
+    tagB.setFrom(kTin);
+    rfalse;
+}

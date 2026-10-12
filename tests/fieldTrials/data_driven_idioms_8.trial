@@ -1,0 +1,126 @@
+Data check: 0 problems, 3 lines.
+Room A
+Room A.
+> prices
+5: 2.50 0.99 12.00 0.99 4.05
+> bands
+2.50 round
+0.99 small
+12.00 large
+0.99 small
+4.05 mid
+> find 99
+0.99: at 1, present, 2 equal.
+> find 300
+3.00: at -1, absent, 0 equal.
+> near 400
+Near 400: [4] 4.05.
+> near 7
+Near 7: none.
+> math
+sum 3.49, diff -1.51, triple 7.50, chain 15.49
+a differs from b
+a<b 0, a>=b 1, cmp after
+run -8.51, a still 2.50
+> zero
+z? 0, p? 1, !z 1, !p 0
+pick 2.50, keep 2.50
+> best 100
+Cheapest over 100: 2.50
+> best 300
+Cheapest over 300: 4.05
+> best 5000
+Cheapest over 5000: 2.50
+> mark 1000
+1000 marked down: 9.00
+> mark 1234
+1234 marked down: 11.10
+> sort
+5: 0.99 0.99 2.50 4.05 12.00
+5: 12.00 4.05 2.50 0.99 0.99
+5: 0.99 0.99 2.50 4.05 12.00
+> unprice 99
+3: 2.50 4.05 12.00
+5: 2.50 4.05 12.00 0.99 0.05
+> lines
+#1: 3 x 2.50 = 7.50
+#2: 1 x 12.00 = 12.00
+#3: 4 x 0.99 = 3.96
+total 23.46
+> bump 0
+line 0: 3 x 2.50; new line: 4 x 6.55
+> lines
+#1: 3 x 2.50 = 7.50
+#2: 1 x 12.00 = 12.00
+#3: 4 x 0.99 = 3.96
+#1: 4 x 6.55 = 26.20
+total 49.66
+> rank
+ #3=3.96 #1=7.50 #2=12.00 #1=26.20
+first is cheaper
+first two: 11.46
+> tick
+after ++: 1; after prefix: 11
+> tick
+after ++: 12; after prefix: 22
+> lot 1
+lot 1: stock 2 (1 writes so far), price 0.50, life 10
+> lot 2
+lot 2: stock 4 (1 writes so far), price 1.00, life 10
+> lot 3
+lot 3: stock 6 (1 writes so far), price 1.50, life 10
+> lot 4
+No slot for lot 4.
+> lots
+lot 1: stock 2 (1 writes so far), price 0.50, life 10
+lot 2: stock 4 (1 writes so far), price 1.00, life 10
+lot 3: stock 6 (1 writes so far), price 1.50, life 10
+made 3, freed 0
+> restock 5
+lot 1: stock 8 (3 writes so far), price 0.50, life 10
+lot 2: stock 10 (3 writes so far), price 1.00, life 10
+lot 3: stock 12 (3 writes so far), price 1.50, life 10
+> restock 200
+lot 1: stock 99 (5 writes so far), price 0.50, life 10
+lot 2: stock 99 (5 writes so far), price 1.00, life 10
+lot 3: stock 99 (5 writes so far), price 1.50, life 10
+> free 2
+[lot 2 freed]
+2 lots left.
+> lot 5
+lot 5: stock 10 (1 writes so far), price 2.50, life 10
+> lots
+lot 1: stock 99 (5 writes so far), price 0.50, life 10
+lot 3: stock 99 (5 writes so far), price 1.50, life 10
+lot 5: stock 10 (1 writes so far), price 2.50, life 10
+made 4, freed 1
+> seal
+sealed lot 9: stock 4, price 1.00
+forced: stock 99 (18 writes so far), price 7.77, life 4
+[lot 9 freed]
+again lot 8: stock 2 (19 writes so far), price 1.00
+[lot 8 freed]
+> free 7
+No lot 7.
+> drain 90
+lot 1: 16, larger 16
+lot 3: 16, larger 16
+lot 5: 0, larger 10
+[lot 5 freed]
+2 lots left, 27 writes so far.
+> lots
+lot 1: stock 16 (8 writes so far), price 0.50, life 10
+lot 3: stock 16 (8 writes so far), price 1.50, life 10
+made 6, freed 4
+> lot 6
+lot 6: stock 12 (1 writes so far), price 3.00, life 10
+> drain 4
+lot 1: 22, larger 22
+lot 3: 22, larger 22
+lot 6: 14, larger 14
+3 lots left, 37 writes so far.
+> lots
+lot 1: stock 22 (11 writes so far), price 0.50, life 10
+lot 3: stock 22 (11 writes so far), price 1.50, life 10
+lot 6: stock 14 (4 writes so far), price 3.00, life 10
+made 7, freed 4

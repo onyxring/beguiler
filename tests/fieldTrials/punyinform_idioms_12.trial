@@ -1,0 +1,49 @@
+Room A
+Room A.
+> purse
+Sum 14 grade 3.
+Rate 24 30.
+After 7 spare 5.
+Above 2 1 0.
+> tally
+Ping.
+Quiet at 3.
+Counts 6 3, scenery true.
+Fresh 2.
+> plaques
+first blank blank
+Eq true true false.
+Order true false -3.
+Outranks true false: first even top
+> warden
+Holds tin box, last tin box, handoffs 1.
+> ledger
+Names 3.
+BETA len 4 vowel 1 lookups 1
+GAMMA len 5 vowel 1 lookups 2
+ALPHA len 5 vowel 0 lookups 3
+> shelves
+shelf A: 2 items, tags upper oak, open true.
+shelf B: 0 items, tags, open false.
+open shut / shut open
+> vault
+Miss 3 on try 1.
+Opened.
+Miss 0 on try 1.
+pad 60 pad 20 Pad 6 2, tries 2 1.
+> dial
+Unhooked -1.
+Hooked 15.
+Live 6 reads 3.
+> chips
+Spin 16 4.
+Fill 306.
+> ping
+Ping.
+> tally
+Ping.
+Quiet at 3.
+Counts 6 3, scenery true.
+Fresh 2.
+> warden
+Holds tin box, last tin box, handoffs 3.

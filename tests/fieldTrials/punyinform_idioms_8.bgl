@@ -1,0 +1,492 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an eighth PunyInform program, on what the first seven did not lean on: a `#declare` read by
+// an `#if` above it and used inline as the size of a constant that sizes a pool; `#message`; a
+// `#storedEmitFirst` block no template asks for; an `emitter class` with `init`, the copy form
+// `init(T)` and `deinit`, whose locals are traced through `continue`, `break`, `return` from a nested
+// block, a `switch` `break`, `do`/`until` and a by-value parameter; a pooled class sized by an
+// identifier, mixing in `bglAllocated` (copy, remaining), with a three-parameter `create()`,
+// `destroy()`, exhaustion, `delete` and slot reuse, and a pooled subclass with a pool of its own; an
+// author-declared `additive property` fed by `rawArray<int>` contributions from a class, a subclass
+// and an object; `<linq>` chains over `bgl.world.instances()` (filter, orderBy with a comparator,
+// map, take/skip, takeWhile/skipWhile, distinct, first/last/count, any/all with a chain nested in the
+// predicate, a captured result); `<buf>` operations on tracked `array<char>` buffers (set, capture
+// of library printing, indexOfFirstTrue with a char lambda, insert, delete, mid, compare, trim,
+// replaceAll, startsWith ignoring case, reverse); `extend class` with `replace` of a data member,
+// `replace default` of a method, and an added emitter overload; a `static func<>` member set from a
+// static method and from a lambda, called through the class name; `asI6` on a global and a member,
+// read by an `#i6` island through `$i6Name`; `bgl.util.random` range and list picks; `delete` through
+// a base-typed variable returning a subclass slot to its own pool; a `parse_name` on pooled
+// instances; and `rfalse(…)`/`rtrue(…)` printing an interpolated string and a literal.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#if TRAY_SLOTS == 3
+    #message "punyinform_idioms_8: tray slots declared."
+#endif
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+#include <linq>
+#include <buf>
+
+#using bgl.printRules;
+
+#declare TRAY_SLOTS 3
+
+const int CHIP_POOL = TRAY_SLOTS;
+
+#storedEmitFirst unusedHelper {
+    Constant UNUSED_HELPER_MARK 77;
+}
+
+// --- tickets: a self-managing handle traced on open and close -------------------------------------
+
+int opens  = 0;
+int closes = 0;
+
+int TrackOpen() {
+    opens++;
+    print($"+{opens}");
+    return opens;
+}
+
+int TrackCopy(int src) {
+    opens++;
+    print($"+{opens}<{src}");
+    return opens;
+}
+
+void TrackClose(int id) {
+    closes++;
+    print($"-{id}");
+}
+
+emitter class Ticket {
+    emitter void init()            { $self = TrackOpen(); }
+    emitter void init(Ticket src)  { $self = TrackCopy($src); }
+    emitter void deinit()          { TrackClose($self); }
+    emitter Ticket operator = (Ticket v) { $self = $v; }
+    emitter int id                 { ($self) }
+}
+
+int ticketValue(Ticket t) {
+    return t.id * 10;
+}
+
+int nestedReturn(int n) {
+    Ticket a;
+    int found = 0;
+    while (true) {
+        Ticket b;
+        if (n > 0) {
+            Ticket c;
+            found = a.id + b.id + c.id;
+            return found;
+        }
+        break;
+    }
+    return found;
+}
+
+void switchBreak(int n) {
+    switch (n) {
+        case 1: {
+            Ticket s;
+            if (s.id > 0) break;
+            print("unreached");
+        }
+        default: print("default");
+    }
+}
+
+// --- chips: a pooled class with the allocation mixin ----------------------------------------------
+
+class Chip[CHIP_POOL] : object, bglAllocated {
+    int face = 0;
+    int edge = 0;
+    int mark = 0;
+    static int retired = 0;
+
+    void create(int f, int e, int m) {
+        face = f;
+        edge = e;
+        mark = m;
+    }
+
+    void destroy() {
+        Chip.retired++;
+        print($"(retire {face})");
+    }
+
+    bool short_name() {
+        print($"chip {face}/{edge}/{mark}");
+        rtrue;
+    }
+
+    int parse_name() {
+        if (NextWord() != .chip) return 0;
+        if (TryNumber(wn) == face) return 2;
+        return 1;
+    }
+}
+
+class BigChip[2] : Chip {
+    int bulk = 5;
+}
+
+// --- crates: additive tallies, linq queries and an extended class --------------------------------
+
+additive property tally;
+
+int crateCount asI6 g_crate_total = 0;
+
+class Room : object {
+    string description;
+    object e_to;
+    object w_to;
+    attributes = {light};
+}
+
+class Crate : object {
+    inline int weight;
+    string description = "A crate.";
+    rawArray<int> tally = {1, 2};
+    int code asI6 crate_code = 0;
+    name = {.crate};
+
+    static func<int, int> scale;
+
+    static int byTen(int n) { return n * 10; }
+
+    default string grade() { return "plain"; }
+
+    emitter bool heavierThan(int w) { ($self.weight > $w) }
+}
+
+class SteelCrate : Crate {
+    tally = {10};
+    name = {.steel};
+    string grade() { return "steel"; }
+}
+
+extend class Crate {
+    replace int code = 4;
+    replace default string grade() { return "crate"; }
+    emitter bool heavierThan(object o) { ($self.weight > $o.weight) }
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+}
+
+Crate beechCrate {
+    4, "beech crate";
+    parent = roomA;
+    name = {.beech};
+}
+
+Crate pineCrate {
+    2, "pine crate";
+    parent = roomA;
+    name = {.pine};
+    code = 9;
+}
+
+SteelCrate grayCrate {
+    7, "gray crate";
+    parent = roomA;
+    name = {.gray};
+    tally = {100};
+}
+
+SteelCrate tinCrate {
+    2, "tin crate";
+    parent = roomB;
+    name = {.tin};
+}
+
+object label {
+    "label";
+    parent = roomA;
+    name = {.label};
+    string description = "A label reading 'Lot 42 B'.";
+}
+
+// --- helpers -------------------------------------------------------------------------------------
+
+int tallySum(Crate c) {
+    int sum = 0;
+    for (int i = 0; i < c.tally.length; i++) sum += c.tally[i];
+    return sum;
+}
+
+int byWeightDesc(object a, object b) {
+    return ((Crate)b).weight - ((Crate)a).weight;
+}
+
+void listObjects(string head, array<object> list) {
+    print(head);
+    for (object o in list) print($" {o}");
+    printLine(".");
+}
+
+array<object> heavyKept[6];
+
+// --- verbs ---------------------------------------------------------------------------------------
+
+verb Cycle {
+    meta = true;
+    grammar = {.cycle};
+    void handler() {
+        opens = 0;
+        closes = 0;
+        for (int i = 1; i <= 4; i++) {
+            Ticket t;
+            if (i == 2) continue;
+            if (i == 4) break;
+            print($"[{i}:{t.id}]");
+        }
+        printLine($" loop: {opens}/{closes}.");
+        int r = nestedReturn(1);
+        printLine($" nested: {r}, {opens}/{closes}.");
+        switchBreak(1);
+        printLine($" switch: {opens}/{closes}.");
+        int k = 0;
+        do {
+            Ticket d;
+            k++;
+            if (k == 1) continue;
+        } until (k >= 2);
+        printLine($" do: {opens}/{closes}.");
+        Ticket held;
+        int v = ticketValue(held);
+        printLine($" param: {v}, held {held.id}, {opens}/{closes}.");
+    }
+}
+
+verb Mint {
+    grammar = { {.mint, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        Chip c = new Chip(n, n + 1, n + 2);
+        if (c == null) {
+            printLine($"The tray is full; {Chip.retired} retired.");
+            return;
+        }
+        c.parent = player;
+        printLine($"Minted {c}; {c.remaining()} slot(s) left.");
+    }
+}
+
+verb Smelt {
+    grammar = { {.smelt, NOUN} };
+    void handler() {
+        if (!noun.is(Chip)) {
+            printLine("Only chips smelt.");
+            return;
+        }
+        Chip c = (Chip)noun;
+        if (c == lastBig) lastBig = null;
+        delete c;
+        printLine($" Gone; {Chip.retired} retired.");
+    }
+}
+
+verb Clone {
+    grammar = { {.clone, NOUN} };
+    void handler() {
+        if (!noun.is(Chip)) {
+            printLine("Only chips clone.");
+            return;
+        }
+        Chip c = new Chip(0, 0, 0);
+        if (c == null) {
+            printLine("No room to clone.");
+            return;
+        }
+        c.copy((Chip)noun);
+        c.face += 10;
+        c.parent = player;
+        printLine($"Cloned as {c}; {c.remaining()} slot(s) left.");
+    }
+}
+
+BigChip lastBig;
+
+verb Forge {
+    grammar = { {.forge, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        BigChip b = new BigChip(n, n, n);
+        if (b == null) {
+            printLine("No big chips left.");
+            return;
+        }
+        if (lastBig != null) {
+            b.copy(lastBig);
+            b.face = n;
+            b.bulk++;
+        }
+        lastBig = b;
+        b.parent = player;
+        printLine($"Forged {b}, bulk {b.bulk}; {b.remaining()} big left.");
+    }
+}
+
+verb Marks {
+    grammar = { {.marks, NOUN} };
+    void handler() {
+        if (!noun.is(Crate)) {
+            printLine("No tally.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        printLine($"{cThe(c)}: {c.tally.length} marks, sum {tallySum(c)}, first {c.tally[0]}, code {c.code}, grade {c.grade()}.");
+    }
+}
+
+verb Survey {
+    meta = true;
+    grammar = {.survey};
+    void handler() {
+        array<object> all = bgl.world.instances(Crate);
+        printLine($"{all.count()} crates; any heavy {all.any((object o) => ((Crate)o).weight > 5)}; all light {all.all((object o) => ((Crate)o).weight < 5)}.");
+        listObjects("Sorted:", all.orderBy(byWeightDesc));
+        listObjects("In Room A:", all.filter((object o) => o.parent == roomA).skip(1).take(2));
+        array<var> weights = all.map((object o) => ((Crate)o).weight);
+        print("Weights:");
+        for (var w in weights) print($" {w}");
+        printLine(".");
+        array<object> sorted = all.orderBy(byWeightDesc);
+        listObjects("While heavy:", sorted.takeWhile((object o) => ((Crate)o).weight > 3));
+        listObjects("After heavy:", sorted.skipWhile((object o) => ((Crate)o).weight > 3));
+        int limit = 3;
+        heavyKept = all.filter((object o) => ((Crate)o).weight > limit);
+        printLine($"Kept {heavyKept.length}: first {heavyKept.first()}, last {heavyKept.last()}.");
+        array<int> codes = {4, 9, 4, 4, 9, 1};
+        print("Distinct codes:");
+        for (int c in codes.distinct()) print($" {c}");
+        printLine(".");
+        bool nested = all.any((object o) => bgl.world.inParent(o.parent).any((object p) => p == label));
+        printLine($"A crate shares a room with the label: {nested}.");
+    }
+}
+
+verb Rescale {
+    meta = true;
+    grammar = { {.rescale, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        Crate.scale = Crate.byTen;
+        int a = Crate.scale(n);
+        Crate.scale = (int x) => x + 1;
+        int b = Crate.scale(n);
+        printLine($"Scaled {a} and {b}; beech heavier than 3 {beechCrate.heavierThan(3)}, than gray {beechCrate.heavierThan(grayCrate)}.");
+    }
+}
+
+array<char> line[40];
+array<char> word[16];
+array<char> pat[4];
+array<char> rep[4];
+
+verb Spell {
+    grammar = { {.spell, NOUN} };
+    void handler() {
+        bgl.util.buf.capture(line);
+        print($"  {the(noun)}  ");
+        bgl.util.buf.release();
+        printLine($"Raw length {line.length} of {line.size}.");
+        bgl.util.buf.trim(line);
+        bgl.util.buf.set(word, "THE");
+        printLine($"Starts with THE (any case) {bgl.util.buf.startsWith(line, word, true)}, exact {bgl.util.buf.startsWith(line, word)}.");
+        bgl.util.buf.mid(word, line, 4, -1);
+        print("Noun word: ");
+        bgl.util.buf.print(word);
+        printLine($" ({word.length}).");
+        bgl.util.buf.insert(line, word, 0);
+        bgl.util.buf.delete(line, word.length, 3);
+        bgl.util.buf.set(pat, "e");
+        bgl.util.buf.set(rep, "E");
+        bgl.util.buf.replaceAll(line, pat, rep);
+        print("Rebuilt: ");
+        bgl.util.buf.print(line);
+        printLine(".");
+        bgl.util.buf.reverse(word);
+        print("Reversed: ");
+        bgl.util.buf.print(word);
+        printLine($"; compare {bgl.util.buf.compare(word, line)}.");
+    }
+}
+
+bool showDigits(object o) {
+    bgl.util.buf.capture(line);
+    PrintOrRun(o, (property)description, true);
+    bgl.util.buf.release();
+    int at = bgl.util.buf.indexOfFirstTrue(line, (char c) => c.isNumeric());
+    if (at < 0) rfalse($"No digits in {the(o)}.^");
+    int end = bgl.util.buf.indexOfFirstFalse(line, (char c) => c.isNumeric(), at);
+    bgl.util.buf.mid(word, line, at, end - at);
+    print("Digits: ");
+    bgl.util.buf.print(word);
+    print($" at {at}; upper-cased: ");
+    bgl.util.buf.toUpper(line);
+    bgl.util.buf.print(line);
+    rtrue("^");
+}
+
+verb Digits {
+    grammar = { {.digits, NOUN} };
+    void handler() {
+        if (!showDigits(noun)) printLine("Nothing to read.");
+    }
+}
+
+verb Roll {
+    meta = true;
+    grammar = {.roll};
+    void handler() {
+        int inRange = 0;
+        int picked = 0;
+        for (int i in 1 to 20) {
+            int d = bgl.util.random.get(6);
+            if (d >= 1 && d <= 6) inRange++;
+            object o = bgl.util.random.get(beechCrate, pineCrate, grayCrate);
+            if (o == beechCrate || o == pineCrate || o == grayCrate) picked++;
+        }
+        printLine($"Rolls in range {inRange}/20; picks valid {picked}/20.");
+    }
+}
+
+verb Totals {
+    meta = true;
+    grammar = {.totals};
+    void handler() {
+        crateCount = bgl.world.instances(Crate).count();
+        print("Island: ");
+        #i6 {
+            print g_crate_total, " crates, beech code ", $i6Name(beechCrate).$i6Name(Crate.code), "^";
+        }
+        printLine($"Count {crateCount}; pine code {pineCrate.code}; mark {TRAY_SLOTS}.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

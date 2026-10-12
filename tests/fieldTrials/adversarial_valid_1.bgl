@@ -1,0 +1,454 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual combinations, eight areas at a time. A named union of float and
+// string with a program print() overload and an `extend` adding emitter and static members that
+// switch on a float, allocate pooled instances and keep an emitter-class local; an emitter class
+// holding a float word, with init/deinit, a float conversion operator, $i6Expr bodies that expand
+// float arithmetic and a union-typed call, and static members that switch with guards on floats
+// and fill the pool; an `extend class` of that emitter class adding $i6Name-reached statics; a
+// pooled class with a float create(), a union member, a meter local, an emitter member expanding
+// float arithmetic through $i6Expr, and a switch over ranges; an `extend class` of the pool adding a
+// guard switch, var locals and typeof; an object whose inline accessors reach the host through
+// outer from setters that switch on floats, allocate and free pool slots, hold meter locals and
+// store union values; and an `extend` of that object adding a union-typed inline accessor whose
+// setter discriminates with typeof, a float accessor that allocates, and a replaced $i6Expr
+// emitter. Verbs drive each piece and print what they observe.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+int releases = 0;
+int destroyed = 0;
+
+void noteRelease() { releases++; }
+float twiceF(float x) { return x * 2; }
+
+// ---- a union of float and string ----------------------------------------------------------------
+
+union reading = float | string;
+
+void print(reading r) {
+    if (typeof(r) == eType.string) print((string)r);
+    else print((float)r);
+}
+
+// ---- an emitter class over one float word -------------------------------------------------------
+
+emitter class meter {
+    emitter void init() { $self = 0; }
+    emitter void deinit() { $i6Expr(noteRelease()); }
+    emitter meter operator = (float v) { $target = $v; }
+    emitter float operator () { $val }
+    emitter float doubled() { $i6Expr(twiceF((float)$self)) }
+    emitter float plus(float by) { $i6Expr((float)$self + $by) }
+    emitter reading asReading() { $i6Expr(meter.wrap((float)$self)) }
+
+    static reading wrap(float f) {
+        switch (f) {
+            case < 0.0:  return "below";
+            case > 9.5:  return "above";
+            default:     return f;
+        }
+    }
+
+    static int fill(float start, float step) {
+        int got = 0;
+        float w = start;
+        for (int i = 0; i < 5; i++) {
+            var v = new Chip(w);
+            if (v == null) break;
+            Chip c = v;
+            Chip.push(c);
+            meter m = w;
+            switch (c.grade()) {
+                case 0:       got += 1;
+                case 1 to 2:  got += 10;
+                default:      got += 100;
+            }
+            w = m.plus(step);
+        }
+        return got;
+    }
+}
+
+// ---- extending the emitter class and the union --------------------------------------------------
+
+extend class meter {
+    emitter float tripled() { ($i6Name(meter.thrice)($self)) }
+
+    static float thrice(float f) { return f * 3; }
+
+    static string sort(reading r) {
+        if (typeof(r) == eType.string) return "text";
+        float f = (float)r;
+        meter m = f;
+        switch ((int)m.tripled()) {
+            case 0 to 2:  return "small";
+            case 3 to 8:  return "medium";
+            default:
+                Chip c = new Chip(f);
+                if (c == null) return "full";
+                string s = c.band();
+                delete c;
+                return s;
+        }
+    }
+}
+
+extend reading {
+    emitter bool isText() { $i6Expr(typeof($self) == eType.string) }
+    emitter float orZero() { $i6Expr(reading.toFloat($self)) }
+
+    static float toFloat(reading r) {
+        if (typeof(r) == eType.string) return 0.0;
+        float f = (float)r;
+        meter m = f;
+        switch (f) {
+            case < 0.0: return 0.0;
+            default:    return m.doubled() / 2;
+        }
+    }
+}
+
+// ---- a pooled class, declared after the code that allocates it --------------------------------
+
+class Chip[3] {
+    float weight;
+    reading tag;
+    Chip next;
+
+    void create(float w) {
+        weight = w;
+        tag = "fresh";
+        Chip.live++;
+    }
+    void destroy() {
+        destroyed++;
+        Chip.live--;
+    }
+
+    static int live = 0;
+    static Chip head;
+
+    int grade() {
+        meter m = weight;
+        switch ((int)m.doubled()) {
+            case 0, 1:   return 0;
+            case 2 to 5: return 1;
+            default:     return 2;
+        }
+    }
+
+    emitter float heavier(float by) { $i6Expr($self.weight + $by) }
+    emitter reading label() { $i6Expr($self.tag) }
+}
+
+extend class Chip {
+    string band() {
+        switch (weight) {
+            case < 1.0:  return "light";
+            case < 3.0:  return "mid";
+            case >= 3.0: return "heavy";
+        }
+        return "none";
+    }
+
+    static void push(Chip c) {
+        c.next = Chip.head;
+        Chip.head = c;
+    }
+
+    static int drain() {
+        int n = 0;
+        while (Chip.head != null) {
+            Chip c = Chip.head;
+            Chip.head = c.next;
+            var t = c.label();
+            if (typeof(t) == eType.string) n++;
+            delete c;
+        }
+        return n;
+    }
+
+    emitter float scaledBy(meter m) { $i6Expr($self.weight * (float)$m) }
+}
+
+// ---- an object whose accessors reach it through outer -------------------------------------------
+
+object dial {
+    float scale = 1.5;
+    int turns = 0;
+    reading last = "none";
+    Chip held;
+
+    auto level = {
+        float _raw = 0.0;
+        float operator () { return _raw * outer.scale; }
+        void operator = (float v) {
+            meter m = v;
+            switch (v) {
+                case < 0.0:  _raw = 0.0;
+                case > 10.0: _raw = 10.0;
+                default:     _raw = m.plus(0.0);
+            }
+            outer.turns++;
+            outer.last = meter.wrap(v);
+            if (outer.held == null) {
+                outer.held = new Chip(_raw);
+            } else {
+                delete outer.held;
+                outer.held = null;
+            }
+        }
+    };
+
+    emitter float scaled(float v) { $i6Expr($v * $self.scale) }
+
+    string state() {
+        var t = last;
+        switch (typeof(t)) {
+            case eType.string: return "text";
+            case eType.int:    return "number";
+            default:           return "other";
+        }
+    }
+}
+
+extend dial {
+    float bias = 0.25;
+
+    auto trim = {
+        reading _note = "unset";
+        reading operator () { return _note; }
+        void operator = (reading r) {
+            _note = r;
+            if (r.isText()) return;
+            float f = (float)r;
+            meter m = f;
+            switch ((int)m.doubled()) {
+                case 0:      outer.bias = 0.0;
+                case 1 to 4: outer.bias = f;
+                default:     outer.bias = m.plus(outer.scale);
+            }
+            Chip c = new Chip(outer.bias);
+            if (c != null) {
+                outer.last = c.band();
+                delete c;
+            }
+        }
+    };
+
+    auto weight = {
+        float _w = 1.0;
+        float operator () { return _w + outer.bias; }
+        void operator = (float v) {
+            var held = outer.held;
+            switch (v) {
+                case >= 5.0:
+                    if (held == null) outer.held = new Chip(v);
+                case >= 2.0:
+                    meter m = v;
+                    _w = m.doubled();
+                default:
+                    _w = v;
+            }
+            outer.last = (reading)_w;
+        }
+    };
+
+    replace emitter float scaled(float v) { $i6Expr($v * $self.scale + $self.bias) }
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs ------------------------------------------------------------------------------------
+
+verb ProbeWrap {
+    grammar = {.probewrap};
+    meta = true;
+    void handler() {
+        meter a = -1.5;
+        meter b = 4.25;
+        meter c = 12.0;
+        printLine(a.asReading());
+        printLine(b.asReading());
+        printLine(c.asReading());
+        print("Doubled ");
+        print(b.doubled());
+        print(", tripled ");
+        print(b.tripled());
+        print(", plus ");
+        printLine(b.plus(0.5));
+        printLine($"Releases {releases}.");
+    }
+}
+
+verb ProbeFill {
+    grammar = {.probefill};
+    meta = true;
+    void handler() {
+        int before = releases;
+        int got = meter.fill(0.25, 1.0);
+        printLine($"Fill code {got}, live {Chip.live}, meter releases {releases - before}.");
+        for (int i = 0; i < 3; i++) {
+            Chip c = new Chip(0.5);
+            if (c == null) { printLine("Pool full."); break; }
+            delete c;
+        }
+        printLine($"Drained {Chip.drain()}, live {Chip.live}, destroyed {destroyed}.");
+    }
+}
+
+verb ProbePool {
+    grammar = {.probepool};
+    meta = true;
+    void handler() {
+        int before = destroyed;
+        float w = 0.5;
+        for (int i = 0; i < 4; i++) {
+            Chip c = new Chip(w);
+            if (c == null) {
+                printLine($"Slot {i}: none.");
+                continue;
+            }
+            print($"Slot {i}: ");
+            print(c.weight);
+            print(" ");
+            print(c.band());
+            print(" grade ");
+            print(c.grade());
+            print(" heavier ");
+            print(c.heavier(0.25));
+            meter m = 2.0;
+            print(" scaled ");
+            printLine(c.scaledBy(m));
+            Chip.push(c);
+            w = w * 3;
+        }
+        int n = Chip.drain();
+        printLine($"Drained {n}, destroyed {destroyed - before}, live {Chip.live}.");
+    }
+}
+
+verb ProbeSorts {
+    grammar = {.probesorts};
+    meta = true;
+    void handler() {
+        reading r = "word";
+        print(meter.sort(r));
+        r = 0.5;
+        print(" ");
+        print(meter.sort(r));
+        r = 2.0;
+        print(" ");
+        print(meter.sort(r));
+        r = 3.5;
+        print(" ");
+        print(meter.sort(r));
+        r = -4.0;
+        print(" ");
+        printLine(meter.sort(r));
+        r = 1.25;
+        print("toFloat ");
+        print(r.orZero());
+        r = "x";
+        print(" ");
+        print(r.orZero());
+        print(" ");
+        printLine(r.isText());
+    }
+}
+
+verb ProbeTurn {
+    grammar = {.probeturn};
+    meta = true;
+    void handler() {
+        dial.level = 2.0;
+        print("Level ");
+        print(dial.level);
+        print(" last ");
+        print(dial.last);
+        printLine($", held {dial.held != null}, state {dial.state()}.");
+        dial.level = 15.0;
+        print("Level ");
+        print(dial.level);
+        print(" last ");
+        print(dial.last);
+        printLine($", held {dial.held != null}, turns {dial.turns}.");
+        dial.level = -3.0;
+        print("Level ");
+        print(dial.level);
+        print(" last ");
+        printLine(dial.last);
+        print("Scaled ");
+        printLine(dial.scaled(2.0));
+    }
+}
+
+verb ProbeTune {
+    grammar = {.probetune};
+    meta = true;
+    void handler() {
+        dial.trim = "note";
+        print("Trim ");
+        print(dial.trim);
+        print(" bias ");
+        printLine(dial.bias);
+        dial.trim = (reading)0.25;
+        print("Trim ");
+        print(dial.trim);
+        print(" bias ");
+        print(dial.bias);
+        print(" last ");
+        printLine(dial.last);
+        dial.trim = (reading)1.5;
+        print("Bias ");
+        print(dial.bias);
+        print(" last ");
+        printLine(dial.last);
+        dial.trim = (reading)4.0;
+        print("Bias ");
+        print(dial.bias);
+        print(" last ");
+        printLine(dial.last);
+    }
+}
+
+verb ProbeLoad {
+    grammar = {.probeload};
+    meta = true;
+    void handler() {
+        dial.weight = 1.0;
+        print("Weight ");
+        printLine(dial.weight);
+        dial.weight = 3.0;
+        print("Weight ");
+        printLine(dial.weight);
+        dial.weight = 6.0;
+        print("Weight ");
+        print(dial.weight);
+        printLine($", held {dial.held != null}, live {Chip.live}.");
+    }
+}

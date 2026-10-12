@@ -1,0 +1,433 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small parcel-sorting program, on the Z-machine.
+// A bnum of parcel flags combined with `|` and tested with `&`; an enum with explicit, gapped
+// values switched on and iterated from an inline list; an `asI6` attribute and object; a free-standing
+// `property` tested with provides(); an `alias class` that only adds typed declarations; a pooled
+// class sized by a constant that mixes in bglAllocated (copy, remaining), has a static counter and
+// its own print() that calls the global print through `::`; a class with `required` data and routine
+// members met by an object and by a subclass, a `literal func<void>` member set to a named function
+// and to a lambda, a member array of objects, and a `default` method; a subclass that `hide`s that
+// method, reached again through an ancestor cast; an object namespace with type aliases, imported with
+// `#using` so its method, member and aliases are used bare (named and defaulted arguments, `new`
+// through the alias), and extended with a value alias to a superposed object; overloads by class,
+// int and an anonymous union fed from a ternary of unrelated types; a chain of two global `replace`s;
+// a value class with static `<=>`, `==` and `!=` sorted, searched, sorted through an operator
+// reference in a lambda, copied out and bound by `ref` to an element; do/until under `#if`;
+// `children +=` and moving children inside the loop; char utilities, uint shift and bgl.util.math;
+// a throw of an object caught as `object`; rfalse(expr); a computed property read through a
+// `property` parameter; bgl.world.instances with a predicate; an object `before` switching on
+// action, and a verb class that probe verbs derive from.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#define SORT_PASSES 2
+
+extend class object {
+    string description;
+}
+
+// ---- flags, lanes, names ----------------------------------------------------------------------
+
+bnum parcelFlag { fragile, heavy, express, returned }   // 1, 2, 4, 8
+
+enum lane { west = 10, east, north = 30, south }        // 10, 11, 30, 31
+
+attribute stamped asI6 bglStamped;
+property sortedMark;
+
+int bonus = 1;
+int fullCount = 0;
+
+void noteFull() {
+    fullCount++;
+    print("[full]");
+}
+
+alias class shelfObj for object {
+    int capacity;
+    lane where;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+shelfObj westShelf {
+    "west shelf";
+    parent = roomA;
+    capacity = 3;
+    where = west;
+    attributes = {supporter};
+}
+
+shelfObj northShelf {
+    "north shelf";
+    parent = roomA;
+    capacity = 2;
+    where = lane.north;
+    attributes = {supporter};
+}
+
+// ---- parcels: pooled, sized by a constant, with bglAllocated and its own print() --------------------
+
+const int PARCELS = 5;
+
+class Parcel[PARCELS] : object, bglAllocated {
+    static int issued = 0;
+    static int returns = 0;
+    int weight;
+    parcelFlag flags;
+    int serial;
+
+    void create(int w, parcelFlag f) {
+        weight = w;
+        flags = f;
+        Parcel.issued++;
+        serial = Parcel.issued;
+    }
+
+    void destroy() { Parcel.returns++; }
+
+    void print() {
+        ::print($"w{weight}");
+    }
+}
+
+bool fits(Parcel p) {
+    if (p.weight > 8) rfalse($"[{p} too heavy]");
+    rtrue;
+}
+
+int peekProp(object o, property p) {
+    return o.p;
+}
+
+// ---- stations: required members, a literal callback, a hidden method --------------------------------
+
+class Station : object {
+    required int laneCount;
+    required int intake(Parcel p);
+    literal func<void> onFull;
+    array<object> held[4];
+    int total = 0;
+    int bonus = 10;
+
+    default bool accept(Parcel p) {
+        if (held.length >= laneCount) {
+            onFull();
+            rfalse;
+        }
+        held.append(p);
+        p.parent = self;
+        total += intake(p);
+        rtrue;
+    }
+
+    int sumWeights() {
+        int s = 0;
+        for (object o in held) s += ((Parcel)o).weight;
+        return s;
+    }
+}
+
+Station dock asI6 dockStation {
+    "dock";
+    parent = roomA;
+    name = .dock;
+    laneCount = 2;
+    onFull = noteFull;
+    int seen = 0;
+    int intake(Parcel p) {
+        seen++;
+        return p.weight * self.bonus + ::bonus;
+    }
+}
+
+class SealedStation : Station {
+    hide accept;
+    int laneCount = 1;
+    int intake(Parcel p) { return p.weight; }
+}
+
+SealedStation vault {
+    "vault";
+    parent = roomA;
+    attributes = {light};
+    onFull = => print("[vault full]");
+}
+
+// ---- a namespace object, imported -------------------------------------------------------------
+
+object routing {
+    alias laneT for lane;
+    alias box for Parcel;
+    int routed = 0;
+
+    lane pick(int w, bool rush = false, int bias = 0) {
+        routed++;
+        if (rush) return lane.north;
+        switch (w + bias) {
+            case < 3:    return west;
+            case 3 to 6: return east;
+            default:     return laneT.south;
+        }
+    }
+}
+
+#using routing
+
+superposed object toolkit {
+    int stamp(int n) { return n * 100; }
+}
+
+extend routing {
+    alias tools = toolkit;
+}
+
+// ---- overloads and a replace chain ---------------------------------------------------------------
+
+int doubleIt(int n) { return n * 2; }
+
+int weigh(Parcel p) { return p.weight; }
+int weigh(int raw)  { return raw * 10; }
+int weigh(string | func<int, int> how) {
+    if (typeof(how) == eType.string) {
+        stringObj s = (string)how;
+        return s.length;
+    }
+    func<int, int> f = (func<int, int>)how;
+    return f(7);
+}
+
+int surcharge(int w) { return w; }
+replace int surcharge(int w) { return replaced(w) + (w > 5 ? 3 : 0); }
+replace int surcharge(int w) { return replaced(w * 2); }
+
+// ---- tickets: a value class with static operators ---------------------------------------------------
+
+value class Ticket {
+    inline int code;
+    inline int prio;
+    Ticket operator = (Ticket o) { code = o.code; prio = o.prio; return self; }
+    static int  operator <=> (Ticket a, Ticket b) { return a.prio - b.prio; }
+    static bool operator ==  (Ticket a, Ticket b) { return a.code == b.code; }
+    static bool operator !=  (Ticket a, Ticket b) { return a.code != b.code; }
+}
+
+array<Ticket> ticketRow[5];
+Ticket best;
+
+// ---- an object that answers an action ---------------------------------------------------------
+
+verb Tap {
+    grammar = {.tap, NOUN};
+    void handler() {
+        printLine($"Tapped {noun}.");
+    }
+}
+
+object scale {
+    "scale";
+    parent = roomA;
+    name = .scale;
+    int readings = 0;
+    bool before() {
+        switch (action) {
+            case Tap:
+                readings++;
+                printLine($"Scale reads {readings}.");
+                rtrue;
+            default:
+                rfalse;
+        }
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs -------------------------------------------------------------------------------
+
+class probeVerb : verb {
+    meta = true;
+}
+
+probeVerb ProbeParcels {
+    grammar = {.probeparcels};
+    void handler() {
+        Parcel a = new Parcel(4, fragile | express);
+        Parcel b = new Parcel(9, heavy);
+        Parcel c = new box(2, parcelFlag.returned);
+        if (a == null || b == null || c == null) return;
+        printLine($"Made {a} {b} {c} left {a.remaining()}.");
+        int fa = a.flags;
+        bool rushA = (a.flags & express) != 0;
+        printLine($"Flags {fa} {(int)b.flags} rush {rushA} heavy {(b.flags & heavy) == heavy}.");
+        Parcel d = new Parcel(1, (parcelFlag)0);
+        if (d == null) return;
+        d.copy(b);
+        printLine($"Copy {d.weight} {(int)d.flags} serial {d.serial} left {d.remaining()}.");
+        bool okB = fits(b);
+        printLine($" fits {okB} {fits(a)}.");
+        delete a;
+        delete b;
+        delete c;
+        delete d;
+        printLine($"Issued {Parcel.issued} returned {Parcel.returns}.");
+    }
+}
+
+probeVerb ProbeStation {
+    grammar = {.probestation};
+    void handler() {
+        Parcel a = new Parcel(3, fragile);
+        Parcel b = new Parcel(5, heavy);
+        Parcel c = new Parcel(7, express);
+        if (a == null || b == null || c == null) return;
+        bool r1 = dock.accept(a);
+        bool r2 = dock.accept(b);
+        bool r3 = dock.accept(c);
+        printLine($" accept {r1} {r2} {r3} total {dock.total} seen {dock.seen} sum {dock.sumWeights()} full {fullCount}.");
+        bool v1 = ((Station)vault).accept(c);
+        bool v2 = ((Station)vault).accept(a);
+        printLine($" vault {v1} {v2} total {vault.total} parent {c.parent} {a.parent}.");
+        int lit = 0;
+        for (object o in bgl.world.instances(Station, (object s) => s.has(light))) {
+            lit++;
+            print(o);
+            print(" ");
+        }
+        printLine($"lit {lit} provides {dock.provides(seen)} {vault.provides(seen)} {dock.provides(sortedMark)} peek {peekProp(dock, seen)}.");
+        delete a;
+        delete b;
+        delete c;
+    }
+}
+
+probeVerb ProbeRoute {
+    grammar = {.proberoute};
+    void handler() {
+        laneT l1 = pick(2);
+        laneT l2 = pick(bias: 2, w: 4);
+        lane l3 = routing.pick(1, rush: true);
+        laneT l4 = pick(9, false, -1);
+        printLine($"Lanes {(int)l1} {(int)l2} {(int)l3} {(int)l4} routed {routed} stamp {routing.tools.stamp(3)}.");
+        stringObj where = "";
+        for (lane l in {l1, l2, l3, l4}) {
+            switch (l) {
+                case west, east: where += "h";
+                case north:      where += "n";
+                default:         where += "s";
+            }
+        }
+        print(where);
+        Parcel p = new box(6, parcelFlag.heavy | parcelFlag.fragile);
+        if (p == null) return;
+        bool rush = p?.weight > 5;
+        string | func<int, int> how = rush ? "rush" : doubleIt;
+        string | func<int, int> how2 = !rush ? "slow" : doubleIt;
+        printLine($" weigh {weigh(p)} {weigh(3)} {weigh(how)} {weigh(how2)} sur {surcharge(4)} {surcharge(2)}.");
+        delete p;
+    }
+}
+
+probeVerb ProbeTickets {
+    grammar = {.probetickets};
+    void handler() {
+        ticketRow.clear();
+        ticketRow += Ticket{ 11, 3 };
+        ticketRow.append(Ticket{ 12, 1 });
+        ticketRow.append(Ticket{ 13, 2 });
+        ticketRow.prepend(Ticket{ 14, 5 });
+        ticketRow.sort();
+        print("Order");
+        for (Ticket t in ticketRow) {
+            print(" ");
+            print(t.code);
+        }
+        int at = ticketRow.indexOf(Ticket{ 11, 99 });
+        printLine($" at {at}.");
+        func<int, Ticket, Ticket> cmp = Ticket::operator <=>;
+        ticketRow.sort((Ticket x, Ticket y) => cmp(y, x));
+        best = ticketRow[0];
+        best.prio += 10;
+        ref Ticket r := ticketRow[3];
+        r.prio = 0;
+        bool lower = ticketRow[3] < ticketRow[2];
+        int passes = 0;
+        int moved = 0;
+        do {
+            passes++;
+            #if SORT_PASSES > 1
+                moved += passes;
+            #else
+                moved -= 100;
+            #endif
+        } until (passes >= SORT_PASSES);
+        print("Desc");
+        for (Ticket t in ticketRow) {
+            print(" ");
+            print(t.code);
+        }
+        printLine($" best {best.prio} row {ticketRow[0].prio} last {ticketRow[3].prio} lower {lower} passes {passes} {moved}.");
+    }
+}
+
+probeVerb ProbeShelves {
+    grammar = {.probeshelves};
+    void handler() {
+        Parcel a = new Parcel(2, fragile);
+        Parcel b = new Parcel(3, heavy);
+        if (a == null || b == null) return;
+        westShelf.children += { a, b };
+        int before = westShelf.children.length;
+        for (object o in westShelf.children) {
+            o.give(stamped);
+            o.parent = northShelf;
+        }
+        printLine($"Shelves {before} {westShelf.children.length} {northShelf.children.length} stamped {a.has(stamped)} cap {northShelf.capacity} lane {(int)northShelf.where}.");
+
+        array<char> code = "ab-7Z";
+        int alpha = 0;
+        int vowels = 0;
+        for (char ch in code) {
+            if (ch.isAlpha()) alpha++;
+            if (ch.isVowel()) vowels++;
+        }
+        char first = code[0].toUpper();
+        bool same = code[4] =~ 'z';
+        uint mask = (uint)-1;
+        uint half = mask >> 8;
+        int p = bgl.util.math.pow(2, 5);
+        int c = bgl.util.math.clamp(p, 0, 20);
+        int m = bgl.util.math.max(bgl.util.math.sign(-4), bgl.util.math.abs(-3));
+        printLine($"Chars {alpha} {vowels} {first} {same} mask {half} math {p} {c} {m}.");
+
+        Parcel heavyOne = null;
+        try {
+            for (object o in northShelf.children) {
+                if (((Parcel)o).weight > 2) throw o;
+            }
+            printLine("None.");
+        } catch (object hit) {
+            heavyOne = (Parcel)hit;
+        }
+        printLine($"Caught w{heavyOne.weight} flags {(int)heavyOne.flags}.");
+        delete a;
+        delete b;
+    }
+}

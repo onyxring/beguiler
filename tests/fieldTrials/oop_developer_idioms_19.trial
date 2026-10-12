@@ -1,0 +1,38 @@
+Room A
+Room A.
+
+> stats
+Jobs 5, total 18, longest 7.
+job A: echo, normal, runs 0.
+job B: count, urgent, runs 0.
+job C: flaky, normal, runs 0.
+job D: strict, normal, runs 0.
+job E: echo, normal, runs 0.
+Unit 10, gap 3, shorter true, same true, zero false.
+Found flaky, lost none, retryable 2, attempts 0/2.
+
+> queue
+Queued 4, rejected 1, load 100.
+
+> run
+[job D strict failed][job C flaky retry]
+Log: sum4=10 hello !strict !not yet ok@2
+Ran 5, done 3, failed 1, listened 3.
+Elapsed 10, runs 5, errors 2, load 0.
+
+> stats
+Jobs 5, total 18, longest 7.
+job A: echo, normal, runs 1.
+job B: count, urgent, runs 1.
+job C: flaky, normal, runs 2.
+job D: strict, normal, runs 1.
+job E: echo, normal, runs 0.
+Unit 10, gap 3, shorter true, same true, zero false.
+Found flaky, lost none, retryable 2, attempts 2/2.
+
+> reorder
+Accepted 4; by cost job C, job A, job B, job D; reversed job D, job B, job A, job C.
+After reset: queued 0, elapsed 4, listeners 0.
+
+> clamp
+Clamped 100 0 40.

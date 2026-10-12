@@ -1,0 +1,124 @@
+Room A
+Room A.
+You can see a shelf, a red box, a blue box and a gauge here.
+> amounts
+a 6, b 8, probe 108.
+a<b true, a==b false, a!=b true, cmp -2.
+c 10, a 6.
+a after += and ++: 9.
+12u 10u
+q 7 tax 1, p tax 9.
+> tickets
+Drawn 3, live 3, tries 4.
+ticket 7 (15)
+ticket 8 (10)
+ticket 9 (5)
+first<last true, last<first false.
+After delete, live 2.
+ticket 1 (2), live 3.
+Cleared, live 0.
+> tickets
+Drawn 3, live 3, tries 4.
+ticket 7 (15)
+ticket 8 (10)
+ticket 9 (5)
+first<last true, last<first false.
+After delete, live 2.
+ticket 1 (2), live 3.
+Cleared, live 0.
+> probe
+0: - in Room A.
+1: - in Room A.
+2: - in Room A.
+3: - in Room A.
+Fault: no slot.
+Count is two: false, not two: true.
+> shelve red box at 1
+Shelved at 1; filled 1.
+> shelve blue box at 2
+Shelved at 2; filled 2.
+> shelve gauge at 7
+Fault: no slot.
+> probe
+0: - in Room A.
+1: red box in Room A.
+2: blue box in Room A.
+3: - in Room A.
+Fault: no slot.
+Count is two: true, not two: false.
+> rules
+[over 0 true][most 3 true][exact 2 true]
+Passed 3.
+Passed 2 with bias.
+[over -1 true][most 2 true][exact 1 false]
+Heard 0.
+> hear
+true true true false
+> hear
+false false false false
+> rules
+[over 0 true][most 3 true][exact 2 true]
+<3>Passed 3.
+<2>Passed 2 with bias.
+[over -1 true][most 2 true][exact 1 false]
+<2>Heard 14.
+> bands
+3 small true: ones
+12 small false: teens
+27 small false: twenties
+45 small false: other
+31 22 7 18 31 22 18 7 31 18
+> texts
+plain words (false)
+from a routine (true)
+from a lambda (true)
+many (false)
+from a routine (true)
+first note weighs 2
+second note weighs 1
+> gauge
+Reading 8, then 40.
+Bumped 1030; slot one red box.
+Others here 4.
+> gauge
+Reading 20, then 100.
+Bumped 2530; slot one red box.
+Others here 4.
+> shelve gauge at 0
+Shelved at 0; filled 3.
+> shelve shelf at 3
+Shelved at 3; filled 4.
+> shelve red box at 2
+Fault: full.
+> probe
+0: gauge in Room A.
+1: red box in Room A.
+2: blue box in Room A.
+3: shelf in Room A.
+Fault: no slot.
+Count is two: false, not two: true.
+> rules
+[over 0 true][most 3 false][exact 2 false]
+<1>Passed 1.
+<2>Passed 2 with bias.
+[over -1 true][most 2 false][exact 1 false]
+<1>Heard 22.
+> links
+Fee 3, unbound true.
+Local 3, unbound false.
+Fee 4, local 3.
+true false false true
+> abort
+Inner empty.
+Outer full.
+> abort
+Inner empty.
+Outer full.
+> stubs
+stub 50 (1) stub 51 (2) true ticket 60 (4); live 3.
+stub is ticket true, ticket is stub false, s1<t1 true.
+live 0.
+> stubs
+stub 50 (1) stub 51 (2) true ticket 60 (4); live 3.
+stub is ticket true, ticket is stub false, s1<t1 true.
+live 0.

@@ -1,0 +1,197 @@
+#grids
+Room A
+Room A.
+You can see a brass key and a tin cup here.
+[grid 1]
+| Room A                                     0/0   |
+> panels
+Gauge yes, side yes, notes yes.
+Alert color: sheet $C80000, copy $FF8000.
+Header reverse kept in the copy: yes.
+[win 1] Notes open.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|┌Side──────────────────┐|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> inspect
+Gauge: grid 50x1 (matches: yes); above, 1 fixed, no border, key.
+Side: grid 24x10 (matches: yes); right, 24 fixed, no border, key.
+Notes: buffer 28x10 (matches: yes); right, 24 fixed, no border, not key.
+Gauge as grid is the same window: yes; kinds grid.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|┌Side──────────────────┐|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> cells
+[text] Key:
+[thing] the brass key
+[action] (tap)
+[text] Cup:
+[thing] the tin cup
+Taps 2.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|┌Cells─────────────────┐|
+|│ Key:                 │|
+|│ the brass key        │|
+|│ (tap)                │|
+|│ Cup:                 │|
+|│ the tin cup          │|
+|│                      │|
+|│                      │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> holder key
+Holder cell is thing.
+the brass key
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|┌Cells─────────────────┐|
+|│ Key:                 │|
+|│ the brass key        │|
+|│ (tap)                │|
+|│ Cup:                 │|
+|│ the tin cup          │|
+|│                      │|
+|│ the brass key        │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> take key
+Taken.
+[grid 1]
+| Room A                                     0/1   |
+[grid 2]
+|┌Cells─────────────────┐|
+|│ Key:                 │|
+|│ the brass key        │|
+|│ (tap)                │|
+|│ Cup:                 │|
+|│ the tin cup          │|
+|│                      │|
+|│ the brass key        │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> holder key
+Holder cell is text.
+carried
+[grid 1]
+| Room A                                     0/1   |
+[grid 2]
+|┌Cells─────────────────┐|
+|│ Key:                 │|
+|│ the brass key        │|
+|│ (tap)                │|
+|│ Cup:                 │|
+|│ the tin cup          │|
+|│                      │|
+|│ carried              │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> plan
+Walls 20, floor 7, marks 3 of 3 kinds.
+[grid 1]
+| Room A                                     0/1   |
+[grid 2]
+|┌Plan──────────────────┐|
+|│ ######               │|
+|│ #..k.#               │|
+|│ #.##.#               │|
+|│ #c..@#               │|
+|│ ######               │|
+|│                      │|
+|│                      │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ░░░░░░░░░░░░░░░░░░░░ 0.0%                    |
+> load 150
+Load 37.5%: 8 of 20 cells.
+[grid 1]
+| Room A                                     0/1   |
+[grid 2]
+|┌Plan──────────────────┐|
+|│ ######               │|
+|│ #..k.#               │|
+|│ #.##.#               │|
+|│ #c..@#               │|
+|│ ######               │|
+|│                      │|
+|│                      │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ████████░░░░░░░░░░░░ 37.5%                   |
+> load 410
+Load 102.5%: 20 of 20 cells.
+[grid 1]
+| Room A                                     0/1   |
+[grid 2]
+|┌Plan──────────────────┐|
+|│ ######               │|
+|│ #..k.#               │|
+|│ #.##.#               │|
+|│ #c..@#               │|
+|│ ######               │|
+|│                      │|
+|│                      │|
+|│                      │|
+|└──────────────────────┘|
+[grid 3]
+|load ████████████████████ 102.5%                  |
+> grow
+Side: grid 30x10 (matches: yes); right, 30 fixed, no border, key.
+[grid 1]
+| Room A                                     0/1   |
+[grid 2]
+|┌Wide────────────────────────┐|
+|│                            │|
+|│                            │|
+|│                            │|
+|│                            │|
+|│                            │|
+|│                            │|
+|│                            │|
+|│                            │|
+|└────────────────────────────┘|
+[grid 3]
+|load ████████████████████ 102.5%                  |
+> shut
+Gauge left: grid.
+Gauge: grid 50x2 (matches: yes); above, 2 fixed, no border, key.
+[grid 1]
+| Room A                                     0/2   |
+[grid 3]
+|load ████████████████████ 102.5%                  |
+|                                                  |

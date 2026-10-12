@@ -1,0 +1,353 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a global array<func<int, int>> pipeline edited at compile time with `extend` (inject
+// before/after/first, move, remove) using function names as elements; a namespace object of pure
+// functions reached by path and through #using, its methods wrapped in lambdas as func<> values; a value class
+// (Pair) with a copy operator and `+`, mapped through a `ref` parameter by a func<>, folded by copy, and
+// built up by a lambda that captures it; a class whose `operator []` and implicit `operator ()` run a
+// literal func<> member (a lazy sequence), with `?=` as a membership test; a pooled class of memoizing
+// thunks made with `new` from literal lambdas (a const capture) and released with `delete`; a static
+// func<> member reassigned and called; throw from inside a lambda to leave a hand-written forEach
+// early, and a throw inside a try that holds a <linq> chain, with chains (some nested) run after it;
+// an inline `auto` accessor whose setter runs the host's func<> member through `outer`, written with
+// `=` and `+=` and read as an argument; do/until and while driven by func<> conditions; a
+// func<var, var> applied to ints and objects.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object brassKey { "brass key"; name = {.brass, .key}; parent = roomA; }
+
+//-- Plain functions -------------------------------------------------------------------
+
+int addTwo(int n) { return n + 2; }
+int halve(int n)  { return n / 2; }
+int cube(int n)   { return n * n * n; }
+int square(int n) { return n * n; }
+int minusOne(int n) { return n - 1; }
+
+int runStages(array<func<int, int>> fs, int x) {
+    for (func<int, int> f in fs) x = f(x);
+    return x;
+}
+
+void forEach(array<int> a, func<void, int> f) {
+    for (int x in a) f(x);
+}
+
+//-- A pipeline edited at compile time ---------------------------------------------------
+
+array<func<int, int>> stages = { addTwo, halve, minusOne };
+
+extend stages {
+    inject square after addTwo;     // addTwo square halve minusOne
+    inject cube first;              // cube addTwo square halve minusOne
+    move   minusOne before addTwo;  // cube minusOne addTwo square halve
+    remove cube;                    // minusOne addTwo square halve
+}
+
+//-- A namespace of functions -------------------------------------------------------------
+
+object fx {
+    int succ(int n)  { return n + 1; }
+    int twice(int n) { return n * 2; }
+    int flip(int n)  { return 0 - n; }
+}
+
+#using fx
+
+int applyTwice(func<int, int> f, int x) { return f(f(x)); }
+
+//-- A value class -------------------------------------------------------------------------
+
+value class Pair {
+    int a;
+    int b;
+    Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
+    Pair operator + (Pair o) {
+        Pair r;
+        r.a = a + o.a;
+        r.b = b + o.b;
+        return r;
+    }
+}
+
+void mapPair(ref Pair p, func<int, int> f) { p.a = f(p.a); p.b = f(p.b); }
+int foldPair(Pair p, func<int, int, int> f) { p.a = 0; return f(p.a, p.b); }
+void showPair(Pair p) { print($"({p.a}, {p.b})"); }
+
+Pair origin;
+
+//-- A lazy sequence -----------------------------------------------------------------------
+
+class Seq : object {
+    int len;
+    literal func<int, int> gen;
+    int operator [] (int i) { return gen(i); }
+    int operator () { return len; }
+    eBool operator ?= (int v) {
+        for (int i = 0; i < len; i++) if (gen(i) == v) return true;
+        return false;
+    }
+    int sumWhere(func<bool, int> keep) {
+        int total = 0;
+        for (int i = 0; i < len; i++) if (keep(gen(i))) total += gen(i);
+        return total;
+    }
+}
+
+Seq squares { "squares"; len = 6; gen = (int i) => i * i; }
+Seq odds    { "odds";    len = 5; gen = (int i) => 2 * i + 1; }
+Seq fives   { "fives";   len = 4; gen = fiveTimes; }
+
+int fiveTimes(int i) { return 5 * i; }
+
+void showSeq(Seq s) {
+    int n = s;
+    for (int i = 0; i < n; i++) { if (i > 0) print(" "); print(s[i]); }
+    print("^");
+}
+
+//-- Memoizing thunks from a pool ---------------------------------------------------------
+
+int slowCalls = 0;
+int slowSquare(int n) { slowCalls++; return n * n; }
+
+class Thunk[3] : object {
+    literal func<int> body;
+    int cached;
+    bool done;
+    static int forced = 0;
+    void create(literal func<int> b) { body = b; }
+    int force() {
+        if (!done) { cached = body(); done = true; Thunk.forced++; }
+        return cached;
+    }
+}
+
+//-- A static func<> member ---------------------------------------------------------------
+
+class Policy {
+    static func<int, int> step = halve;
+    static int stepsToOne(int n) {
+        int count = 0;
+        while (n > 1) { n = Policy.step(n); count++; }
+        return count;
+    }
+}
+
+int collatzStep(int n) { return n % 2 == 0 ? n / 2 : 3 * n + 1; }
+
+//-- Early exit by throw ---------------------------------------------------------------------
+
+array<int> data = {3, 9, 4, 12, 7, 15, 2};
+
+int firstOver(array<int> a, int limit) {
+    try {
+        forEach(a, (int x) => { if (x > limit) throw x; });
+    }
+    catch (int found) { return found; }
+    return -1;
+}
+
+int countPositiveUnless(array<int> a, int bad) {
+    int result = 0;
+    try {
+        result = a.filter((int x) => { if (x == bad) throw -1; return x > 5; }).count();
+    }
+    catch (int e) { result = e; }
+    return result;
+}
+
+//-- An accessor that runs a func<> on its host ---------------------------------------------
+
+object gauge {
+    literal func<int, int> clamp = (int v) => v < 0 ? 0 : v > 10 ? 10 : v;
+    auto level = {
+        int _raw = 0;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = outer.clamp(v); }
+    }
+}
+
+//-- Loops driven by functions ---------------------------------------------------------------
+
+int stepsUntil(func<int, int> f, func<bool, int> stop, int x) {
+    int steps = 0;
+    do { x = f(x); steps++; } until (stop(x));
+    return steps;
+}
+
+int fixedPoint(func<int, int> f, int x) {
+    int guard = 0;
+    while (f(x) != x && guard < 20) { x = f(x); guard++; }
+    return x;
+}
+
+var applyVar(func<var, var> f, var x) { return f(x); }
+
+//-- Verbs ------------------------------------------------------------------------------------
+
+verb Pipe {
+    grammar = {{.pipe, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"{stages.length} stages, result {runStages(stages, n)}^");
+        print($"square is stage {stages.indexOf(square)}, cube present: {stages.contains(cube) ? "yes" : "no"}^");
+        array<var> each = stages.map((func<int, int> f) => f(n));
+        print("each:");
+        for (var v in each) print($" {(int)v}");
+        print("^");
+    }
+}
+
+verb Names {
+    grammar = {{.names, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"fx.succ {fx.succ(n)}, twice {twice(n)}, flip {flip(n)}^");
+        print($"applyTwice succ {applyTwice((int x) => fx.succ(x), n)}, twice {applyTwice((int x) => twice(x), n)}^");
+        array<func<int, int>> local = { (int x) => fx.twice(x), (int x) => flip(x), (int x) => succ(x) };
+        print($"chained {runStages(local, n)}^");
+    }
+}
+
+verb Pairs {
+    grammar = {{.pairs, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        Pair p;
+        p.a = n;
+        p.b = n + 3;
+        Pair q = p;
+        mapPair(p, square);
+        print("p "); showPair(p); print(", q "); showPair(q); print("^");
+        print($"fold sum {foldPair(p, (int x, int y) => x + y)}, p.a still {p.a}^");
+        mapPair(q, (int x) => x * n);
+        print("q "); showPair(q); print("^");
+        Pair both = p + q;
+        print("p + q "); showPair(both); print("^");
+        Pair acc;
+        forEach(data, (int x) => { if (x % 2 == 0) acc.a += x; else acc.b += x; });
+        print("evens and odds "); showPair(acc); print("^");
+        origin = acc;
+        acc.a = 0;
+        print("origin "); showPair(origin); print("^");
+    }
+}
+
+verb Seqs {
+    grammar = {{.seqs, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        showSeq(squares);
+        showSeq(odds);
+        showSeq(fives);
+        int len = squares;
+        print($"squares[{n}] = {squares[n]}, length {len}^");
+        print($"{n} in squares: {squares ?= n ? "yes" : "no"}; in odds: {odds ?= n ? "yes" : "no"}; in fives: {fives ?= n ? "yes" : "no"}^");
+        print($"even squares sum {squares.sumWhere((int v) => v % 2 == 0)}, odds over {n} sum {odds.sumWhere((int v) => v > n)}^");
+    }
+}
+
+verb Lazy {
+    grammar = {{.lazy}};
+    void handler() {
+        const int k = 6;
+        slowCalls = 0;
+        Thunk.forced = 0;
+        Thunk t1 = new Thunk(=> slowSquare(k));
+        Thunk t2 = new Thunk(=> slowSquare(k + 1) + 1);
+        Thunk t3 = new Thunk(fortyTwo);
+        Thunk t4 = new Thunk(fortyTwo);
+        print($"fourth is {t4 == null ? "null" : "given"}^");
+        print($"before: calls {slowCalls}^");
+        int sum = t1.force() + t1.force() + t2.force() + t3.force();
+        print($"sum {sum}, calls {slowCalls}, forced {Thunk.forced}^");
+        print($"again {t2.force()}, calls {slowCalls}^");
+        delete t1;
+        Thunk t5 = new Thunk(=> slowSquare(k * 2));
+        print($"reused: {t5 == null ? "null" : "given"}, value {t5.force()}, done flags {t2.done ? 1 : 0}{t5.done ? 1 : 0}^");
+        delete t2; delete t3; delete t5;
+    }
+}
+
+int fortyTwo() { return 42; }
+
+verb Steps {
+    grammar = {{.steps, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        Policy.step = halve;
+        print($"halve: {Policy.stepsToOne(n)} steps^");
+        Policy.step = collatzStep;
+        print($"collatz: {Policy.stepsToOne(n)} steps, first step {Policy.step(n)}^");
+        Policy.step = (int x) => x - 3;
+        print($"minus three: {Policy.stepsToOne(n)} steps^");
+    }
+}
+
+verb Abort {
+    grammar = {{.abort, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"first over {n}: {firstOver(data, n)}^");
+        print($"over 5 unless {n}: {countPositiveUnless(data, n)}^");
+        print($"over 5 unless 99: {countPositiveUnless(data, 99)}^");
+        int pairs = data.filter((int x) => data.any((int y) => y == x * 3)).count();
+        print($"has its triple: {pairs}, max {data.orderBy((int a, int b) => b - a).first()}^");
+        int k = n % 3 + 2;
+        int multiples = data.filter((int x) => data.any((int y) => y == x * k)).count();
+        print($"has its {k}-fold: {multiples}^");
+    }
+}
+
+verb Meter {
+    grammar = {{.meter, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        gauge.level = n;
+        print($"set {n}: {gauge.level}^");
+        gauge.level += 4;
+        print($"plus 4: {gauge.level}^");
+        gauge.level = n - 20;
+        print($"minus 20: {gauge.level}^");
+        gauge.level = 9;
+        print($"applyTwice halve from level: {applyTwice(halve, gauge.level)}^");
+    }
+}
+
+verb Iterate {
+    grammar = {{.iterate, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"collatz to 1 in {stepsUntil(collatzStep, (int x) => x == 1, n)}^");
+        int limit = n * 4;
+        print($"doubling past {limit} in {stepsUntil((int x) => twice(x), (int x) => x > limit, 1)}^");
+        print($"fixed point of halve: {fixedPoint(halve, n)}, of (x+10)/2: {fixedPoint((int x) => (x + 10) / 2, n)}^");
+        var tripled = applyVar((var v) => v * 3, n);
+        var where = applyVar((var o) => ((object)o).parent, brassKey);
+        print($"tripled {(int)tripled}, key in {(object)where}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

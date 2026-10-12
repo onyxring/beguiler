@@ -1,0 +1,444 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: keyed menus and a pager in text-grid windows, driven by single-key input. <ui>
+// waitForKey() and an explicit hideCursor()/showCursor() pair, inside do/until and do/while(true)
+// loops with continue and break, the key switched on with char values, a char range and a comparison
+// guard (Return arrives as a negative key code); a bnum of text decorations combined with |, tested
+// with &, carried by a const global and a member, cast from int in a shift loop and turned into print
+// rules written into a grid; a pooled menu class with operator [] and operator []= over a member
+// array<string> (self[i] inside the class), an owned named accessor whose setter clamps (read,
+// assigned, ++ and += through it), and ?? choosing between two pooled menus; choice objects with
+// positional slots ahead of the name and a stringOrRoutine member (a string on most, a lambda on one)
+// printed into a grid and into the main window; bgl.world.instances() with a predicate filling a
+// menu; a uint checksum with wrapping multiply, ^= and >>, modulo and unsigned compares; throw/catch
+// from a row lookup two calls deep, once thrown from inside an interpolated string; a bglSize returned
+// from a helper over window sizes; moveUp re-sizing a grid and both axes written through the
+// permissive surface; named and defaulted arguments to a pooled create(); #emitfirst setting the
+// string buffer size; and a seeded bgl.util.random.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#emitfirst { Constant bglStringDefaultSize 160; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <ui>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+#define MAX_ROWS 6
+
+extend class object {
+    string description;
+}
+
+bnum deco { strong, slanted, mono, inverse }
+
+const deco HEADING = strong | inverse;
+const int  PAGE_LINES = 3;
+
+// ---- choices ---------------------------------------------------------------------------------
+
+class choice : object {
+    inline string label;
+    inline int    rank;
+    deco look = 0;
+    stringOrRoutine detail = "No detail.";
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+choice openHatch  { "Open hatch", 3, "hatch"; parent = roomA; look = strong; detail = "The hatch is shut."; }
+choice readPlate  { "Read plate", 1, "plate"; parent = roomA; look = slanted | mono; detail = "Plate: 7-B."; }
+choice pullLever  { "Pull lever", 2, "lever"; parent = roomA; detail = => print("Lever count: 4."); }
+choice ringBell   { "Ring bell",  0, "bell";  parent = roomA; look = inverse; }
+choice waitHere   { "Wait",       5, "clock"; parent = roomA; look = HEADING; detail = "Time passes."; }
+
+// ---- an accessor that keeps a row index in range -------------------------------------------------
+
+value class rowIndex {
+    int _val = 0;
+    int  operator ()        { return _val; }
+    void operator = (int v) { _val = bgl.util.math.clamp(v, 0, MAX_ROWS - 1); }
+}
+
+// ---- menus -------------------------------------------------------------------------------------
+
+class menuPane[2] {
+    string title;
+    deco   titleLook;
+    array<string> rows[MAX_ROWS];
+    array<choice> picks[MAX_ROWS];
+    rowIndex cursor;
+    textGridWindow win;
+
+    void create(string t, int lines, deco look = HEADING) {
+        title = t;
+        titleLook = look;
+        win = bgl.ui.mainWin.splitUpGrid(lines + 1, fixed, noBorder);
+    }
+
+    void destroy() {
+        win?.close();
+        win = null;
+    }
+
+    string operator [] (int i) { return rows[i]; }
+
+    void operator []= (int i, string s) {
+        if (i == rows.length) rows.append(s);
+        else rows[i] = s;
+    }
+
+    int count() { return rows.length; }
+
+    void add(choice c) {
+        self[rows.length] = c.label;
+        picks += c;
+    }
+
+    void render() {
+        if (win == null) return;
+        win.clear();
+        win.moveCursor(0, 0);
+        decorate(win, title, titleLook);
+        for (int i = 0; i < rows.length; i++) {
+            win.moveCursor(0, i + 1);
+            win.print(i == cursor ? "▶ " : "  ");
+            deco d = i < picks.length ? picks[i].look : (deco)0;
+            decorate(win, self[i], d);
+            win.print($" [{decoNames(d)} {flagCount(d)}]");
+        }
+    }
+}
+
+menuPane mainMenu  = null;
+menuPane spareMenu = null;
+
+array<string> pagerText = {
+    "Line one of the notice.",
+    "Line two: keep the hatch shut.",
+    "Line three: the plate reads 7-B.",
+    "Line four: the lever counts to 4.",
+    "Line five: the bell is cracked.",
+    "Line six: end of the notice.",
+    "Line seven: appendix."
+};
+
+// ---- helpers -----------------------------------------------------------------------------------
+
+string decoNames(deco d) {
+    int bits = d;
+    switch (bits) {
+        case 0:  return "plain";
+        case 1:  return "strong";
+        case 2:  return "slanted";
+        case 4:  return "mono";
+        case 6:  return "slanted+mono";
+        case 8:  return "inverse";
+        case 9:  return "strong+inverse";
+        default: return "mixed";
+    }
+}
+
+int flagCount(deco d) {
+    int n = 0;
+    for (int b = 1; b <= 8; b <<= 1) {
+        deco one = (deco)b;
+        if ((d & one) == 0) continue;
+        n++;
+    }
+    return n;
+}
+
+void decorate(textGridWindow w, string text, deco look = 0) {
+    if ((look & strong) != 0)  w.print($"{bold}");
+    if ((look & slanted) != 0) w.print($"{italics}");
+    if ((look & mono) != 0)    w.print($"{fixed}");
+    if ((look & inverse) != 0) w.print($"{reverse}");
+    w.print(text);
+    w.print($"{roman}");
+}
+
+uint checksum(menuPane m) {
+    uint h = 5381;
+    for (choice c in m.picks) {
+        h = h * 33 + (uint)c.rank;
+        h = h * 33 + (uint)(int)c.look;
+        h ^= h >> 7;
+    }
+    return h;
+}
+
+bglSize measure(window w) {
+    bglSize s;
+    s.width = w.width;
+    s.height = w.height;
+    return s;
+}
+
+choice pickAt(menuPane m, int i) {
+    if (i < 0 || i >= m.picks.length) throw i;
+    return m.picks[i];
+}
+
+string labelAt(menuPane m, int i) { return pickAt(m, i).label; }
+
+void showDetail(choice c, textGridWindow w = null) {
+    if (w == null) {
+        print(c.detail);
+        printLine();
+        return;
+    }
+    w.clear();
+    w.moveCursor(0, 0);
+    w.print(c.detail);
+}
+
+menuPane activeMenu() { return mainMenu ?? spareMenu; }
+
+void echoKey(char k) {
+    // Echoed as a prompt line so each key reads as its own step of the transcript.
+    print("^>");
+    if (k < ' ') print("(control)"); else print(k);
+    printLine();
+}
+
+// ---- entry points ------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    bgl.util.random.seed(11);
+    return false;
+}
+
+// ---- verbs -------------------------------------------------------------------------------------
+
+verb MenuOpen {
+    grammar = {.menu};
+    meta = true;
+    void handler() {
+        if (mainMenu != null) { printLine("Menu already open."); return; }
+        mainMenu = new menuPane("Actions", MAX_ROWS);
+        if (mainMenu == null) { printLine("No menu."); return; }
+        for (choice c in bgl.world.instances(choice, (object o) => ((choice)o).rank > 0)) mainMenu.add(c);
+        mainMenu.render();
+        printLine($"Menu has {mainMenu.count()} rows; first {mainMenu[0]}, last {mainMenu[mainMenu.count() - 1]}.");
+        printLine($"Title look {decoNames(mainMenu.titleLook)}; heading is {(int)HEADING}.");
+    }
+}
+
+verb KeyMenu {
+    grammar = {.keys};
+    meta = true;
+    void handler() {
+        menuPane m = activeMenu();
+        if (m == null) { printLine("No menu."); return; }
+        printLine("Keys: j down, k up, 0-9 jump, x choose, q leave.");
+        char k;
+        bool chosen = false;
+        do {
+            k = bgl.ui.waitForKey();
+            echoKey(k);
+            switch (k) {
+                case 'j':        m.cursor++;
+                case 'k':        m.cursor = m.cursor - 1;
+                case '0' to '9': m.cursor = (int)k - (int)'0';
+                case 'x':        chosen = true;
+                                 continue;
+                case 'q':        printLine("Left the menu.");
+                                 continue;
+                case < ' ':      printLine("Control key ignored.");
+                default:         printLine("Unknown key.");
+                                 continue;
+            }
+            m.render();
+            printLine($"Cursor at {m.cursor}: {m.cursor < m.count() ? m[m.cursor] : "(no row)"}.");
+        } until (chosen || k == 'q');
+        if (!chosen) return;
+        try {
+            choice c = pickAt(m, m.cursor);
+            printLine($"Chosen {c.label} (rank {c.rank}).");
+            showDetail(c);
+        } catch (int bad) {
+            printLine($"Row {bad} has no choice.");
+        }
+    }
+}
+
+verb Rename {
+    grammar = {.rename, NUMBER};
+    meta = true;
+    void handler() {
+        menuPane m = activeMenu();
+        if (m == null) { printLine("No menu."); return; }
+        int i = (int)noun;
+        string before = i < m.count() ? m[i] : "(none)";
+        m[i] = "Renamed";
+        m.render();
+        printLine($"Row {i}: {before} -> {m[i]}; rows {m.count()}.");
+        try {
+            printLine($"Label behind row {i}: {labelAt(m, i)}.");
+        } catch (int bad) {
+            printLine($"Row {bad} is past the {m.picks.length} choices.");
+        }
+    }
+}
+
+verb RowTo {
+    grammar = {.row, NUMBER};
+    meta = true;
+    void handler() {
+        menuPane m = activeMenu();
+        if (m == null) { printLine("No menu."); return; }
+        m.cursor = (int)noun;
+        int a = m.cursor;
+        m.cursor += 2;
+        printLine($"Asked for {(int)noun}, got {a}; after += 2 it is {m.cursor}.");
+        m.render();
+    }
+}
+
+verb Sum {
+    grammar = {.sum};
+    meta = true;
+    void handler() {
+        menuPane m = activeMenu();
+        if (m == null) { printLine("No menu."); return; }
+        uint h = checksum(m);
+        uint top = h >> 28;
+        uint big = (uint)-1;
+        printLine($"Checksum {h}; mod 1000 is {h % 1000}; top nibble {top}.");
+        printLine($"Above 2147483647: {h > (uint)2147483647 ? "yes" : "no"}; below the maximum: {h < big ? "yes" : "no"}.");
+    }
+}
+
+verb Detail {
+    grammar = {.detail, NUMBER};
+    meta = true;
+    void handler() {
+        menuPane m = activeMenu();
+        if (m == null) { printLine("No menu."); return; }
+        try {
+            choice c = pickAt(m, (int)noun);
+            textGridWindow side = spareMenu?.win ?? m.win;
+            showDetail(c, side);
+            showDetail(c);
+            printLine($"Detail is a routine: {c.detail.isRoutine() ? "yes" : "no"}.");
+        } catch (int bad) {
+            printLine($"No choice at {bad}.");
+        }
+    }
+}
+
+verb Spare {
+    grammar = {.spare};
+    meta = true;
+    void handler() {
+        if (spareMenu == null) spareMenu = new menuPane("Spare", 2, look: mono);
+        if (spareMenu == null) { printLine("No spare."); return; }
+        spareMenu[0] = "Ring bell";
+        spareMenu.picks += ringBell;
+        spareMenu.render();
+        menuPane third = new menuPane("Third", 1);
+        printLine($"Spare open; a third menu: {third != null ? "yes" : "no"}.");
+        printLine($"Active menu is {activeMenu().title}.");
+    }
+}
+
+verb DropMenu {
+    grammar = {.dropmenu};
+    meta = true;
+    void handler() {
+        if (mainMenu == null) { printLine("No main menu."); return; }
+        delete mainMenu;
+        mainMenu = null;
+        printLine($"Main menu gone; active is {activeMenu()?.title ?? "nothing"}.");
+    }
+}
+
+verb Sizes {
+    grammar = {.sizes};
+    meta = true;
+    void handler() {
+        menuPane m = activeMenu();
+        if (m == null || m.win == null) { printLine("No menu."); return; }
+        bglSize s = measure(m.win);
+        printLine($"Menu window {s.width}x{s.height}.");
+        m.win.moveUp(4);
+        bglSize u = measure(m.win);
+        m.win.height = 5;
+        ((textGridWindow)m.win).width = 24;
+        bglSize t = measure(m.win);
+        printLine($"Moved up at 4: {u.width}x{u.height}; then {t.width}x{t.height}.");
+        m.render();
+    }
+}
+
+verb Pager {
+    grammar = {.pager};
+    meta = true;
+    void handler() {
+        auto pane = bgl.ui.mainWin.splitDownGrid(PAGE_LINES + 1);
+        if (pane == null) { printLine("No pager."); return; }
+        int top = 0;
+        int shown = 0;
+        int stat = bgl.ui.hideCursor();
+        printLine($"Key window is the status bar: {stat == bgl.ui.statusBar.id ? "yes" : "no"}.");
+        bgl.ui.showCursor();
+        do {
+            pane.clear();
+            for (int i = 0; i < PAGE_LINES && top + i < pagerText.length; i++) {
+                pane.moveCursor(0, i);
+                pane.print(pagerText[top + i]);
+            }
+            pane.moveCursor(0, PAGE_LINES);
+            pane.print($"{bold}-- {top + 1}/{pagerText.length} --{roman}");
+            shown++;
+            char k = bgl.ui.waitForKey();
+            echoKey(k);
+            if (k == ' ' || k == 'n') {
+                if (top + PAGE_LINES < pagerText.length) top += PAGE_LINES;
+                else { printLine("End of text."); break; }
+            } else if (k == 'b') {
+                top = top >= PAGE_LINES ? top - PAGE_LINES : 0;
+            } else {
+                printLine("Pager closed.");
+                break;
+            }
+            printLine($"Page from line {top + 1}.");
+        } while (true);
+        pane.close();
+        printLine($"Pages drawn {shown}.");
+    }
+}
+
+verb Roll {
+    grammar = {.roll};
+    meta = true;
+    void handler() {
+        int inRange = 0;
+        for (int i = 0; i < 20; i++) {
+            int d = bgl.util.random.get(6);
+            if (d >= 1 && d <= 6) inRange++;
+        }
+        choice c = (choice)bgl.util.random.get(openHatch, readPlate, waitHere);
+        bool known = c == openHatch || c == readPlate || c == waitHere;
+        printLine($"Rolls in range {inRange} of 20; pick is a known choice: {known ? "yes" : "no"}.");
+    }
+}
+
+#includeI6 "grammar"

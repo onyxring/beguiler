@@ -1,0 +1,19 @@
+Room A
+A plain room.
+> tape
+[ping]161 ra- 15 0 1
+X [ping]41 Room A Room A 2
+> crate
+[ping]8431 [ping]8412 4
+first crate [ping]59 crate open 46 5
+> shelf
+[ping]421 421 12 1 0 6
+5 55 110 5 true false
+> measure
+[ping]101 [ping]121 [ping]21 9 0 9
+> label
+dial set 3 21 7 Room A true true
+[ping]
+> tag
+dial 5 21 7 Room A true true
+[ping]

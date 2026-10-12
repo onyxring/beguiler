@@ -1,0 +1,437 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a shelf of jars shown three ways. A class Jar : object with members, methods that
+// return stringObj and float, and a pour between two jars; a value class Meter (cells, fill and
+// empty chars, copy operator) that renders a fraction as a bar; an enum eTheme switched to pick a
+// styleSheet; a text-grid HUD split above the main window and a text-buffer log split to its right,
+// held in globals that start null and guarded with ?.; print, printLine, clear and moveCursor on
+// them with interpolated strings and print rules; a replaced DrawStatusLine; a table printed in fixed
+// pitch with padded columns; an array<Jar> walked with for-in and with <linq> filter, any, all and
+// orderBy with a comparator; a ring log of stringObj notes; hyperlinks with lambda and named-function
+// targets; closing and reopening the log panel; and float formatting to one decimal.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+enum eTheme { plain, quiet, loud }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet hudLook = styleSheet{
+    normal = style{ fixedWidth = true; reverse = true; };
+};
+styleSheet quietLook = styleSheet{
+    normal     = style{ italics = true; foreColor = color.gray; };
+    emphasized = style{ fontWeight = 0; };
+};
+styleSheet loudLook = styleSheet{
+    normal = style{ fontWeight = 1; };
+    alert  = style{ fontWeight = 1; foreColor = $C80000; };
+};
+
+// ---- the meter -----------------------------------------------------------------------------------
+
+value class Meter {
+    int  cells = 10;
+    char full  = '#';
+    char empty = '.';
+
+    Meter operator = (Meter o) {
+        cells = o.cells;
+        full  = o.full;
+        empty = o.empty;
+        return self;
+    }
+
+    stringObj render(float fraction) {
+        if (fraction < 0.0) fraction = 0.0;
+        if (fraction > 1.0) fraction = 1.0;
+        int filled = (int)(fraction * cells + 0.5);
+        stringObj bar = "[";
+        for (int i = 0; i < cells; i++) bar += i < filled ? full : empty;
+        bar += ']';
+        return bar;
+    }
+}
+
+Meter wideMeter;
+Meter shortMeter;
+
+// ---- jars ----------------------------------------------------------------------------------------
+
+class Jar : object {
+    int    capacity = 100;
+    int    amount = 0;
+    string liquid = "nothing";
+    int    pours = 0;
+
+    float fraction() {
+        if (capacity == 0) return 0.0;
+        return (float)amount / capacity;
+    }
+
+    int room() { return capacity - amount; }
+
+    bool isEmpty() { return amount == 0; }
+    bool isFull()  { return amount >= capacity; }
+
+    stringObj summary() {
+        stringObj s = $"{self}: {amount}/{capacity} ml";
+        if (amount > 0) {
+            s += " of ";
+            s += liquid;
+        }
+        return s;
+    }
+
+    // Moves as much as fits into other; returns the amount moved.
+    int pourInto(Jar other) {
+        if (other == self || amount == 0) return 0;
+        int moved = amount;
+        if (moved > other.room()) moved = other.room();
+        if (moved == 0) return 0;
+        if (other.amount == 0) other.liquid = liquid;
+        else if (other.liquid != liquid) other.liquid = "a mixture";
+        other.amount += moved;
+        amount -= moved;
+        if (amount == 0) liquid = "nothing";
+        pours++;
+        return moved;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A shelf runs along the wall.";
+    attributes = {light};
+}
+
+object shelf {
+    "shelf";
+    parent = roomA;
+    name = {.shelf};
+    description = "A shelf.";
+    attributes = {scenery, supporter};
+}
+
+Jar redJar {
+    "red jar";
+    parent = shelf;
+    name = {.red, .jar};
+    description = "A red jar.";
+    capacity = 250;
+    amount = 200;
+    liquid = "water";
+}
+
+Jar blueJar {
+    "blue jar";
+    parent = shelf;
+    name = {.blue, .jar};
+    description = "A blue jar.";
+    capacity = 100;
+    amount = 30;
+    liquid = "oil";
+}
+
+Jar greenJar {
+    "green jar";
+    parent = shelf;
+    name = {.green, .jar};
+    description = "A green jar.";
+    capacity = 400;
+}
+
+array<Jar> jars = { redJar, blueJar, greenJar };
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindow   hud = null;
+textBufferWindow logPanel = null;
+eTheme currentTheme = eTheme.plain;
+array<stringObj> notes[4];
+int noteCount = 0;
+int hudDraws = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+stringObj oneDecimal(float f) {
+    bool negative = f < 0.0;
+    if (negative) f = -f;
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{negative ? "-" : ""}{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(int n, int width) {
+    stringObj s = $"{n}";
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+int totalAmount() {
+    int t = 0;
+    for (Jar j in jars) t += j.amount;
+    return t;
+}
+
+int totalCapacity() {
+    int t = 0;
+    for (Jar j in jars) t += j.capacity;
+    return t;
+}
+
+string themeName(eTheme t) {
+    switch (t) {
+        case eTheme.plain: return "plain";
+        case eTheme.quiet: return "quiet";
+        case eTheme.loud:  return "loud";
+    }
+    return "?";
+}
+
+void addNote(stringObj text) {
+    notes[noteCount % notes.size] = text;
+    noteCount++;
+    logPanel?.printLine($"{noteCount}. {text}");
+}
+
+// ---- windows -------------------------------------------------------------------------------------
+
+void drawHud() {
+    if (hud == null) return;
+    hudDraws++;
+    hud.clear();
+    int row = 0;
+    for (Jar j in jars) {
+        hud.moveCursor(0, row);
+        stringObj label = $"{j}";
+        hud.print($"{padRight(label, 10)}{wideMeter.render(j.fraction())} {padLeft(j.amount, 3)}");
+        row++;
+    }
+}
+
+void openLog() {
+    switch (currentTheme) {
+        case eTheme.quiet: logPanel = bgl.ui.mainWin.splitRightBuffer(30, proportional, styles: quietLook);
+        case eTheme.loud:  logPanel = bgl.ui.mainWin.splitRightBuffer(30, proportional, styles: loudLook);
+        default:           logPanel = bgl.ui.mainWin.splitRightBuffer(30, proportional);
+    }
+    logPanel?.printLine($"Log ({themeName(currentTheme)})");
+}
+
+void openWindows() {
+    auto top = bgl.ui.mainWin.splitUpGrid(3, fixed, noBorder, styles: hudLook);
+    hud = top;
+    openLog();
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    float full = (float)totalAmount() / totalCapacity();
+    bgl.ui.statusBar.print($"{location} | {oneDecimal(full * 100)}% {shortMeter.render(full)}");
+    drawHud();
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    shortMeter.cells = 5;
+    shortMeter.full = '=';
+    shortMeter.empty = '-';
+    openWindows();
+    rfalse;
+}
+
+// ---- link targets --------------------------------------------------------------------------------
+
+void emptyBlue() {
+    int had = blueJar.amount;
+    blueJar.amount = 0;
+    blueJar.liquid = "nothing";
+    printLine($"The blue jar is emptied ({had} ml).");
+    stringObj t = $"emptied blue ({had})";
+    addNote(t);
+    drawHud();
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb PourJar {
+    grammar = {.pour, NOUN, .into | .in, NOUN};
+    void handler() {
+        if (!noun.is(Jar) || !second.is(Jar)) {
+            printLine("Only jars can be poured.");
+            return;
+        }
+        Jar from = (Jar)noun;
+        Jar to = (Jar)second;
+        if (from == to) { printLine("That is the same jar."); return; }
+        if (from.isEmpty()) { printLine($"{cThe(from)} is empty."); return; }
+        if (to.isFull()) { printLine($"{cThe(to)} is full."); return; }
+        int moved = from.pourInto(to);
+        printLine($"You pour {moved} ml from {the(from)} into {the(to)}.");
+        printLine($"{fixed}{to.summary()}{roman}");
+        stringObj t = $"{from} -> {to}: {moved}";
+        addNote(t);
+    }
+}
+
+verb FillJar {
+    grammar = {.fill, NOUN};
+    void handler() {
+        if (!noun.is(Jar)) { printLine("That can't be filled."); return; }
+        Jar j = (Jar)noun;
+        if (j.isFull()) { printLine($"{cThe(j)} is already full."); return; }
+        int added = j.room();
+        if (j.amount == 0) j.liquid = "water";
+        else if (j.liquid != "water") j.liquid = "a mixture";
+        j.amount = j.capacity;
+        printLine($"{cThe(j)} fills with {added} ml.");
+        stringObj t = $"filled {j} (+{added})";
+        addNote(t);
+    }
+}
+
+verb Table {
+    grammar = {.table};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{padRight("Jar", 10)} {padRight("ml", 7)} {padRight("full", 6)} bar{roman}");
+        for (Jar j in jars) {
+            stringObj name = $"{j}";
+            stringObj ml = $"{j.amount}/{j.capacity}";
+            stringObj pct = oneDecimal(j.fraction() * 100);
+            pct += "%";
+            printLine($"{fixed}{padRight(name, 10)} {padRight(ml, 7)} {padRight(pct, 6)} {shortMeter.render(j.fraction())}{roman}");
+        }
+        float all = (float)totalAmount() / totalCapacity();
+        printLine($"{fixed}{padRight("total", 10)} {totalAmount()}/{totalCapacity()} {oneDecimal(all * 100)}%{roman}");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        int holding = jars.filter((Jar j) => j.amount > 0).count();
+        bool anyFull = jars.any((Jar j) => j.isFull());
+        bool allWet = jars.all((Jar j) => !j.isEmpty());
+        printLine($"{holding} of {jars.length} jars hold something; any full: {yn(anyFull)}; all wet: {yn(allWet)}.");
+        array<Jar> byAmount = jars.orderBy((Jar a, Jar b) => a.amount - b.amount);
+        print("Least to most:");
+        for (Jar j in byAmount) print($" {j} ({j.amount})");
+        printLine(".");
+        Jar most = byAmount.last();
+        printLine($"Fullest by volume: {the(most)}, {oneDecimal(most.fraction() * 100)}% of its {most.capacity} ml.");
+        int poured = 0;
+        for (Jar j in jars) poured += j.pours;
+        printLine($"Pours so far: {poured}.");
+    }
+}
+
+verb Theme {
+    grammar = {.theme};
+    meta = true;
+    void handler() {
+        switch (currentTheme) {
+            case eTheme.plain: currentTheme = eTheme.quiet;
+            case eTheme.quiet: currentTheme = eTheme.loud;
+            default:           currentTheme = eTheme.plain;
+        }
+        printLine($"Theme: {themeName(currentTheme)}. It applies when the log reopens.");
+    }
+}
+
+verb LogOff {
+    grammar = {.logoff};
+    meta = true;
+    void handler() {
+        if (logPanel == null) { printLine("The log is already closed."); return; }
+        logPanel.close();
+        logPanel = null;
+        printLine("Log closed.");
+    }
+}
+
+verb LogOn {
+    grammar = {.logon};
+    meta = true;
+    void handler() {
+        if (logPanel != null) { printLine("The log is already open."); return; }
+        openLog();
+        if (logPanel == null) { printLine("The log could not open."); return; }
+        int kept = noteCount < notes.size ? noteCount : notes.size;
+        for (int i = 0; i < kept; i++) {
+            int n = noteCount - kept + i;
+            logPanel.printLine($"  {n + 1}: {notes[n % notes.size]}");
+        }
+        printLine($"Log open ({themeName(currentTheme)}, {kept} notes replayed).");
+    }
+}
+
+verb ShowNotes {
+    grammar = {.notes};
+    meta = true;
+    void handler() {
+        int kept = noteCount < notes.size ? noteCount : notes.size;
+        printLine($"{noteCount} notes; the last {kept}:");
+        for (int i = 0; i < kept; i++) {
+            int n = noteCount - kept + i;
+            printLine($"  {n + 1}: {notes[n % notes.size]}");
+        }
+    }
+}
+
+verb Choices {
+    grammar = {.choices};
+    meta = true;
+    void handler() {
+        printLine($"Choose {link("empty blue", emptyBlue)} or {link("swap meters", => {
+            Meter keep;
+            keep = wideMeter;
+            wideMeter = shortMeter;
+            shortMeter = keep;
+            printLine("Meters swapped.");
+            drawHud();
+        })}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        printLine($"HUD open: {yn(hud != null)}; log open: {yn(logPanel != null)}.");
+        if (hud != null) printLine($"HUD height {hud.height}; redrawn more than 3 times: {yn(hudDraws > 3)}.");
+        printLine($"Wide meter {wideMeter.cells} cells; short meter {shortMeter.cells} cells.");
+    }
+}
+
+#includeI6 "grammar"

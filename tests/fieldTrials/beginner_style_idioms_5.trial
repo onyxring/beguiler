@@ -1,0 +1,111 @@
+Room A
+Room A. Nothing is here.
+You can see a wooden box (which is empty) here.
+> grow
+fern 10, cactus 2
+fern after += is 22
+cactus after ++ is 6
+total 28
+fern is taller
+sprout 56
+> level
+level 12, sets 1
+level 40, sets 2
+> points
+(3,4) label none
+(1,2) label none
+(5,6) label p
+(7,8) label none
+(3,4) label none
+(9,10) label none
+(11,12) label none
+total 66
+bag 26
+q is 20,21 with none
+> lineup
+plum lime apple fig (4)
+the first is the plum, a lime is second.
+> queue
+start: 0 1 2 7 8 9 (6)
+peek 0 peekEnd 9
+pop 0 popEnd 9 dequeue 1
+now: 2 7 8 (3)
+moved: 8 5 7 2 (4)
+reversed: 2 7 8 (3)
+7 is at 1
+removed: 7 8 (2)
+cleared: (0)
+> query
+numbers: 5 3 8 3 1 9 2 (7)
+big: 5 8 9 (3)
+once: 5 3 8 1 9 2 (6)
+sorted: 1 2 3 3 5 8 9 (7)
+numbers again: 5 3 8 3 1 9 2 (7)
+first 5 last 2 count 7
+take 2 then first 8
+doubled first 10
+has a 9
+all above 0
+not all above 1
+before 1: 5 3 8 3 (4)
+from 1: 1 9 2 (3)
+below 2: 1
+below 4: 4
+below 6: 5
+> words
+[brass lamp] has 10 letters
+upper BRASS LAMP, left brass, right lamp, mid ass
+reversed pmal ssarb
+lamp at 6, no cup at -1
+starts with brass
+ends with lamp
+no cup
+tin lamp
+a+b+c
+aX+b+c
++b+c
+the lamp is lit
+compare 0 -1 0
+empty is empty
+first letter B, vowel false
+Brass lamp
+a loud apple, a quiet apple, something else
+[captured 42] 11
+> fruit
+plum apple cherry banana
+apple is at 1
+apple banana cherry plum
+plum cherry banana apple
+apple first
+pear after peach
+same ignoring case
+> money
+25 cents and 40 cents
+A equals C
+A is not B
+A is less than B
+B is more than C
+A is at most C
+B is not at most A
+A against B is -15
+now C is 30 cents
+> maths
+pow 256 clamp 100
+sign -1 abs 7
+min 4 max 9
+65535
+32767
+big is bigger
+hellos 33
+shout
+shout
+shout
+a whole line
+sum 5
+after a blank
+> marbles
+b weighs 12, 2 left
+3 left after delete
+> marbles
+b weighs 12, 2 left
+3 left after delete

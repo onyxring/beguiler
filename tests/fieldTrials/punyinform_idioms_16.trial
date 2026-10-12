@@ -1,0 +1,42 @@
+Room A
+Room A.
+You can see a box A here.
+> ledgers
+Token worth 1.
+Loaded 3 at Room A big 1.
+rejected 9
+Token worth 2.
+Loaded 1 at box A big 2.
+Ping 1.
+Cap refused 100.
+Cap 20 sets 1 total 10 rejects 1.
+Not three.
+Cap now 24 sets 3.
+Note rejected 9! length 11 upper REJECTED 9!.
+Direct 103.
+Worth 7.
+> gadgets
+Same heft.
+A lighter.
+gadget A: heft 7 span 9 scaled 18.
+Extra text note.
+Owner in Room A.
+Got 7 2 scaled 18 bumps 2.
+gadget B: heft 8 span 11 scaled 33.
+No extra.
+gadget B: heft 18 span 21 scaled 50.
+No extra.
+Ping 2.
+Got 18 3 scaled 50 bumps 3.
+> crates
+Gauge 120.
+Meter 12.
+medium crate 13 band 1.
+Next crate B.
+Gauge 400.
+Meter 40.
+heavy crate 41 band 2.
+Ping 3.
+Lighter.
+Ref 152 tenths 3 raw 30 heft 43.
+Bands 1 2 acc 152 2 heft 13 reads 4.

@@ -1,0 +1,451 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit section configured by #define symbols the consumer sets first; a value class of
+// amounts with copy operators, + over amounts and ints and < against an int; a kit verb whose handler
+// reports a shared note and is run from code through perform(). A pooled slip class (literal size)
+// with an owned amount member, a ref amount member bound with :=, a byte array code, a union member
+// declared under #if, and operator + and % on the slip itself; its post method adds amounts, binds, switches with values,
+// a range and a guard, tests the union with typeof under #if/#else, reads through the ref with < and
+// performs the kit verb. A shelf with two parents holding an array of arrays, an owned amount and a
+// var member, with operator [] and []= counted across the rows, <=> between shelves and == against an
+// int; its sort method switches on typeof of a var argument, writes the amount, prints a nested
+// element and its own [] through $i6Expr in #i6 islands, and performs the kit verb under ==. An enum
+// with an emitter method; a log class with static arrays of the enum, of the amount and of ints, an
+// owned amount and a stringObj member, a var tag and an emitter method over its kind; its add method
+// switches on the enum, builds the text, tests the var with typeof, prints the emitter through
+// $i6Expr in an #i6 island and performs the kit verb; a rank method switching on the stringObj by
+// content. The consumer's grade, a value class derived from the amount with a chained copy operator,
+// an emitter operator switch by band and a covariant operator +; a pooled chip class with two parents,
+// an owned grade, a sized byte array, static arrays of stringObj and of a union, operator < between
+// chips and an #i6 island with a nested #bgl that writes the grade; an extend class of the log with a
+// static stringObj history. Verbs run new/delete on both pools (exhausting one, then reusing the
+// slots), index and write shelves through [] and []=, order them by <=>, and read the logs back
+// through the static arrays.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA15_LEVEL 2
+#define LA15_TAGS
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ==== The kit. ====
+
+/// The last note any kit class left; the note verb prints it.
+int la15LastNote = 0;
+
+/// Prints the last note; the kit's classes run it from code.
+verb La15Note {
+    grammar = {.note};
+    void handler() { print($"[note {la15LastNote}]"); }
+}
+
+/// An amount that copies on assignment.
+value class La15Amt {
+    int n;
+    La15Amt operator = (La15Amt o) { n = o.n; return self; }
+    La15Amt operator = (int v) { n = v; return self; }
+    /// The sum of two amounts.
+    La15Amt operator + (La15Amt o) {
+        La15Amt r;
+        r.n = n + o.n;
+        return r;
+    }
+    /// The amount with some added.
+    La15Amt operator + (int v) {
+        La15Amt r;
+        r.n = n + v;
+        return r;
+    }
+    /// True when the amount is under a limit.
+    eBool operator < (int v) { return n < v; }
+    /// Prints the amount.
+    void print() { ::print($"<{n}>"); }
+}
+
+// ---- Slips: a pool of four. ----
+
+/// A slip from a pool of four; each keeps a code, a running total and a memo.
+class La15Slip[4] : object {
+    int units;
+    array<char> code = "....";
+    La15Amt total;
+    ref La15Amt mark;
+#if LA15_TAGS
+    string | object memo;
+#endif
+
+    void create(int u) {
+        units = u;
+    }
+
+    /// The units with some added.
+    int operator + (int k) { return units + k; }
+    /// The units left over when shared k ways.
+    int operator % (int k) { return units % k; }
+
+    /// Adds an amount to the total, marks the code by the size of the units and notes the memo's kind.
+    void post(La15Amt a, var tagged) {
+        total = total + a;
+        mark := total;
+        int place = self % code.length;
+        switch (units) {
+            case 0:      code[place] = '0';
+            case 1 to 3: code[place] = 'a';
+            case >= 4:   code[place] = 'z';
+        }
+#if LA15_LEVEL >= 2 && LA15_TAGS
+        memo = tagged;
+        if (typeof(memo) == eType.string) code[(place + 1) % code.length] = 's';
+        else if (typeof(memo) == eType.object) code[(place + 1) % code.length] = 'o';
+#else
+        code[0] = '-';
+#endif
+        la15LastNote = self + mark.n;
+        if (mark < 10) La15Note.perform();
+    }
+
+    /// Prints the code.
+    void showCode() { for (char c in code) print(c); }
+}
+
+// ---- Shelves: a bin and a grid at once. ----
+
+/// Something with a number.
+class La15Bin : object {
+    int binId;
+}
+
+/// Something with a width.
+class La15Grid : object {
+    int gridW = 3;
+}
+
+/// A shelf: rows of slots read as one list, compared by their sum.
+class La15Shelf : La15Bin, La15Grid {
+    array<array<int>> rows = { {1, 2, 3}, {4, 5} };
+    La15Amt held;
+    var last;
+
+    /// One slot, counted across the rows; -1 past the end.
+    int operator [] (int i) {
+        for (array<int> row in rows) {
+            if (i < row.length) return row[i];
+            i = i - row.length;
+        }
+        return -1;
+    }
+
+    /// Writes one slot, counted across the rows.
+    int operator []= (int i, int v) {
+        for (array<int> row in rows) {
+            if (i < row.length) {
+                row[i] = v;
+                return v;
+            }
+            i = i - row.length;
+        }
+        return -1;
+    }
+
+    /// Orders shelves by their sums.
+    int operator <=> (La15Shelf o) { return sum() - o.sum(); }
+
+    /// True when the sum is the given number.
+    eBool operator == (int v) { return sum() == v; }
+
+    /// Every slot added up.
+    int sum() {
+        int t = 0;
+        for (array<int> row in rows) for (int v in row) t += v;
+        return t;
+    }
+
+    /// Notes what was put on the shelf, keeps the sum and prints two slots.
+    void sort(var what) {
+        last = what;
+        switch (typeof(what)) {
+            case eType.string: print((string)what);
+            case eType.object: print((object)what);
+            default:           print("?");
+        }
+        held = sum();
+        print(" ");
+        print(held);
+        #i6 print " (", $i6Expr(rows[1][0]), "/", $i6Expr(self[gridW]), ")";
+        if (self == 15) {
+            la15LastNote = binId;
+            La15Note.perform();
+        }
+    }
+}
+
+// ---- Logs: lines kept by kind. ----
+
+/// How a log line is shown.
+enum La15Kind {
+    kPlain, kBold, kQuiet,
+    emitter int weight() { ($self * 3) }
+}
+
+/// A log line; every log shares the kind, cost and count tables.
+class La15Log : object {
+    static array<La15Kind> kinds[6];
+    static array<La15Amt> costs[4];
+    static array<int> counts = { 0, 0, 0 };
+    La15Kind la15_kind = kPlain;
+    La15Amt cost;
+    stringObj text;
+    var tag;
+
+    /// The weight of the line's kind.
+    emitter int heft() { ($self.la15_kind * 3) }
+
+    /// Adds a line of a kind, tagged with something.
+    void add(La15Kind k, var what) {
+        la15_kind = k;
+        La15Log.kinds += k;
+        cost = k.weight();
+        if (La15Log.costs.length < La15Log.costs.size) La15Log.costs += cost;
+        tag = what;
+        switch (k) {
+            case kPlain: text = "plain";
+            case kBold:  text = "BOLD";
+            case kQuiet: text = "quiet";
+        }
+        La15Log.counts[(int)k - 1]++;
+        if (typeof(tag) == eType.string) {
+            text += ":";
+            text += (string)tag;
+        }
+        #i6 print "{", $i6Expr(heft()), "}";
+        la15LastNote = text.length;
+        La15Note.perform();
+    }
+
+    /// A rank read from the text by content.
+    int rank() {
+        switch (text) {
+            case "plain": return 1;
+            case "BOLD":  return 2;
+            case "quiet": return 3;
+            default:      return 0;
+        }
+    }
+}
+
+// ==== The consumer. ====
+
+/// A grade: an amount whose switch compares its band of ten.
+value class La15Grade : La15Amt {
+    int bumps;
+    La15Grade operator = (La15Grade o) {
+        bumps = o.bumps;
+        (La15Amt)self = o;
+        return self;
+    }
+    La15Grade operator = (int v) { n = v; return self; }
+    /// A case matches the band of ten the grade falls in.
+    emitter eBool operator switch (int b) { ($self.n / 10 == $b) }
+    /// The grade raised by k, counting the raise.
+    La15Grade operator + (int k) {
+        La15Grade r;
+        r = self;
+        r.n = n + k;
+        r.bumps++;
+        return r;
+    }
+    /// A letter for the band.
+    char letter() {
+        switch (self) {
+            case 0:  return 'L';
+            case 1:  return 'M';
+            default: return 'H';
+        }
+    }
+}
+
+/// A chip from a pool of three: a bin with a width, a grade and a face; every chip shares what was said.
+class La15Chip[3] : La15Bin, La15Grid {
+    La15Grade grade;
+    array<char> face[3];
+    static array<stringObj> said[3];
+    static array<string | object> tags[4];
+
+    void create(int id, int g) {
+        binId = id;
+        grade = g;
+        for (int i = 0; i < face.length; i++) face[i] = '-';
+    }
+
+    /// Chips order by grade.
+    eBool operator < (La15Chip o) { return grade.n < o.grade.n; }
+
+    /// Marks the face by grade, then by an I6 island that drops back into Beguile.
+    void rate(string | object tag) {
+        face[0] = grade.letter();
+        if (La15Chip.tags.length < La15Chip.tags.size) La15Chip.tags += tag;
+        #i6 {
+            print "[", $i6Expr(binId), "]";
+            #bgl {
+                face[1] = '+';
+                grade = grade + gridW;
+            }
+        }
+        stringObj line = $"chip {binId}";
+        if (La15Chip.said.length == La15Chip.said.size) La15Chip.said.clear();
+        La15Chip.said += line;
+    }
+
+    /// Prints the face.
+    void showFace() { for (char c in face) print(c); }
+}
+
+/// The consumer's history of log texts.
+extend class La15Log {
+    static array<stringObj> history[3];
+
+    /// Keeps the text, upper-cased, in the shared history.
+    void remember() {
+        if (La15Log.history.length == La15Log.history.size) La15Log.history.clear();
+        La15Log.history += text.toUpper();
+    }
+}
+
+La15Shelf shelfA { "shelf A"; binId = 7; }
+La15Shelf shelfB { "shelf B"; binId = 8; rows = { {9}, {1, 1} }; }
+
+object brassKey { "brass key"; }
+
+La15Log logA { "log A"; }
+La15Log logB { "log B"; }
+
+verb Slips {
+    grammar = {.slips};
+    void handler() {
+        La15Slip a = new La15Slip(2);
+        La15Slip b = new La15Slip(5);
+        if (a == null || b == null) { print("No slips.^"); return; }
+        La15Amt three = 3;
+        a.post(three, "memo");
+        print(" ");
+        b.post(three + 4, brassKey);
+        print(" ");
+        b.post(three, brassKey);
+        print($"; codes ");
+        a.showCode();
+        print(" ");
+        b.showCode();
+        print($"; sums {a + 1} {b % 3}; totals ");
+        print(a.total);
+        print(b.mark);
+        La15Slip c = new La15Slip(0);
+        La15Slip d = new La15Slip(1);
+        La15Slip e = new La15Slip(1);
+        print($"; spare {e == null}");
+        delete a;
+        delete b;
+        delete c;
+        delete d;
+        print(".^");
+    }
+}
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        shelfA.sort("cup");
+        print("; ");
+        shelfB.sort(brassKey);
+        print($"; slots {shelfA[0]} {shelfA[4]} {shelfA[5]}; order {shelfA <=> shelfB} ");
+        shelfB[1] = 4;
+        print($"{shelfB <=> shelfA}; sums {shelfA.sum()} {shelfB.sum()}; ");
+        shelfA.sort(0);
+        print(".^");
+    }
+}
+
+verb Logs {
+    grammar = {.logs};
+    void handler() {
+        logA.add(kBold, "x");
+        print(" ");
+        logB.add(kQuiet, brassKey);
+        print(" ");
+        logA.add(kPlain, "yz");
+        print($"; ranks {logA.rank()} {logB.rank()}; kinds {La15Log.kinds.length}, counts ");
+        for (int k in La15Log.counts) print(k);
+        print("; costs");
+        for (La15Amt c in La15Log.costs) print(c);
+        logA.remember();
+        logB.remember();
+        print($"; text {logA.text}; history {La15Log.history.length}: {La15Log.history[0]} {La15Log.history[1]}.^");
+    }
+}
+
+verb Grades {
+    grammar = {.grades};
+    void handler() {
+        La15Grade g = 4;
+        La15Grade h = g + 9;
+        La15Grade k = h + 20;
+        print($"Letters {g.letter()}{h.letter()}{k.letter()}; bumps {g.bumps} {h.bumps} {k.bumps}; ");
+        print(k);
+        print(".^");
+    }
+}
+
+verb Chips {
+    grammar = {.chips};
+    void handler() {
+        La15Chip a = new La15Chip(1, 5);
+        La15Chip b = new La15Chip(2, 12);
+        La15Chip c = new La15Chip(3, 30);
+        if (a == null || b == null || c == null) { print("No chips.^"); return; }
+        a.rate("one");
+        b.rate(brassKey);
+        c.rate("three");
+        print(" ");
+        a.showFace();
+        print(" ");
+        b.showFace();
+        print(" ");
+        c.showFace();
+        print($"; order {a < b} {c < b}; grades ");
+        print(a.grade);
+        print(b.grade);
+        print(c.grade);
+        print($"; said {La15Chip.said.length}: {La15Chip.said[0]}/{La15Chip.said[2]}; tags {La15Chip.tags.length}, ");
+        string | object t = La15Chip.tags[1];
+        if (typeof(t) == eType.object) print((object)t);
+        print(".^");
+        delete a;
+        delete b;
+        delete c;
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

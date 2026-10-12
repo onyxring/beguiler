@@ -1,0 +1,45 @@
+Room A
+
+> probehub
+Ping hub.
+blue meter 5 [0] 5 kept 5 1 held 7 grid 10 1 seen 10 spare 5.
+Ping hub.
+red meter 99 [1] 99 kept 99 2 held 106 pings 2.
+red! score 10220 dig 22.
+Score 11215.
+
+> probehybrid
+Load 11117 charge 2 rows 2 2.
+Load 3127 charge 2 rows 2 -2.
+Plus 10 conv 134 eq true ne false lead 36.
+
+> probemark
+Mark 1108.
+Mark 1061.
+Mark 1014.
+
+> probegauge
+r! rhigh+ Rank 105 1021 marks 2 5 10.
+Bytes 1132 lambda 90.
+
+> probecrate
+Sweep wood 1 11 11 1.
+Crate 6123 cell 11 nest 9 sub 1 5 opened 1.
+Layout 11 44 sub 5 5.
+Digits 7 0 5 true false 507 step 50.
+wood/ opened 0.
+
+> probeedges
+Hidden 9 duo 7 3 load 12.
+Charge 16 boost 732 1732 7648 deep 12011 78.
+Board 2 3 5 9 at 3 lt true ge false.
+Fact 120 islands 3007 1111.
+
+> probenest
+seven nest 4 8 99 8 8 mesh 13 3 7 t 6 4.
+
+> probetray
+Tray 208 4 102 tally 207 seen 5 fixed 0.
+
+> survey
+<betaalphabeta> survey 7210 kept 104 token six.

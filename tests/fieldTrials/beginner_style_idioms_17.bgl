@@ -1,0 +1,491 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a seventeenth first-time-programmer program, again with nearly everything in a few big
+// declarations. A class (a rack), written straight after #using of a namespace object, that keeps all
+// its marks in static arrays (numbers, and words for them), with a value-class member through the
+// imported alias, a primitive-class member, an enum member, a var member, operator [] / []= that
+// throw, operator += that writes through []=, an emitter member using $i6Expr, #if / #else on a
+// #define around a static member and inside its methods, enum values through the imported alias and
+// a dotted alias path, a replaced method that still calls the base class's version through a cast,
+// try/catch, switches with ranges and guards, linq chains over the static arrays (one in a static
+// method), stringObj, give/has and perform. An object (a tray) with an alias in its body, an array of
+// value-class instances, an array of strings, an enum member, a var member, an inline accessor
+// holding a static counter and a static array and reaching the tray through outer (its enum, its
+// strings, its ?. chain, its value-class array, its [], its emitter member, its recursive method),
+// operator [] / []= over the value-class array, an emitter member, recursive methods (one walking up
+// the object tree through ?., one spelling out the strings), linq chains over both arrays, a switch
+// on typeof, give/has and perform. Verbs that drive it all.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <linq>
+
+#define RACK_SLOTS 5
+#define LOUD
+
+// ===== GRAMS (an int that is a weight) =====
+primitive class grams : int {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+
+    // whole hundreds of grams
+    emitter int hundreds() { ($val / 100) }
+}
+
+// ===== BANDS (how heavy something is) =====
+enum eBand { low, mid, high }
+
+// ===== SPOT (a row and a column) =====
+value class Spot {
+    int row;
+    int col;
+
+    Spot operator = (Spot o) {
+        row = o.row;
+        col = o.col;
+        return self;
+    }
+
+    void place(int r, int c) {
+        row = r;
+        col = c;
+    }
+}
+
+// ===== BIN (something that holds things and can say so) =====
+class Bin : object {
+    int count = 0;
+
+    void report() {
+        print($"({self} holds {count})^");
+    }
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+object boxA {
+    "box A";
+    parent = roomA;
+    string description = "A plain box A.";
+    attributes = {container, openable};
+}
+
+object brassKey {
+    "brass key";
+    parent = boxA;
+    string description = "A brass key.";
+}
+
+object coin {
+    "coin";
+    parent = roomA;
+    string description = "A coin.";
+}
+
+object pebble {
+    "pebble";
+    parent = roomA;
+    string description = "A pebble.";
+}
+
+object bell {
+    "bell";
+    parent = roomB;
+    string description = "A bell.";
+}
+
+object stone {
+    "stone";
+    parent = roomB;
+    string description = "A stone.";
+}
+
+// ===== SHOP (just a place to keep type names) =====
+object shop {
+    alias slot for Spot;
+    alias band for eBand;
+}
+
+// ===== RACKS (write down weights; all racks share the same marks) =====
+#using shop
+class Rack : Bin {
+
+    static array<int> marks[RACK_SLOTS];
+    static array<string> bandWords = { "low", "mid", "high" };
+    static int puts = 0;
+#if LOUD
+    static int louds = 0;
+#endif
+
+    grams heft;
+    Spot lastSpot;
+    slot nextSpot;
+    var lastThing;
+    eBand lastBand;
+
+    int operator [] (int i) {
+        if (i < 0 || i >= Rack.marks.length) {
+            throw i;
+        }
+        return Rack.marks[i];
+    }
+
+    void operator []= (int i, int v) {
+        if (i < 0 || i >= Rack.marks.size) {
+            throw i;
+        }
+        Rack.marks[i] = v;
+    }
+
+    // adds a mark at the end (the []= says if there is no room)
+    Rack operator += (int v) {
+        int n = Rack.marks.length;
+        self[n] = v;
+        Rack.marks.length = n + 1;
+        count++;
+        return self;
+    }
+
+    // whole hundreds of the last weight, straight from I6
+    emitter int lastHundreds() { $i6Expr($self.heft.hundreds()) }
+
+    // the class says how many it holds; I also want the marks
+    replace void report() {
+        ((Bin)self).report();
+        func<bool, int> heavy = (int n) => n >= 100;
+        stringObj line = "marks:";
+        for (int i = 0; i < Rack.marks.length; i++) {
+            stringObj part = $" {Rack.marks[i]}";
+            line += part;
+        }
+        print($"({line}; {Rack.marks.filter(heavy).count()} heavy, any heavy {Rack.marks.any(heavy)})^");
+    }
+
+    // which band a weight is in
+    eBand bandOf(int w) {
+        switch (w) {
+            case < 0: return eBand.low;
+            case 0 to 99: return eBand.low;
+            case 100 to 499: return band.mid;
+        }
+        return shop.band.high;
+    }
+
+    // puts a thing on the rack and writes down its weight
+    void put(object o, int w) {
+        heft = w;
+        lastThing = o;
+        lastBand = bandOf(w);
+        Rack.puts++;
+        try {
+            self += w;
+        } catch (int e) {
+            print($"(rack full at {e})^");
+        }
+        #if LOUD
+            Rack.louds++;
+            print($"({o} weighs {lastHundreds()} hundred, band {Rack.bandWords[(int)lastBand - 1]})^");
+        #else
+            print("(quiet)^");
+        #endif
+        lastSpot = nextSpot;
+        nextSpot.place(Rack.marks.length, (int)lastBand);
+        if (o.has(container)) {
+            if (!o.has(open)) {
+                o.give(open);
+                print($"({o} opened for weighing)^");
+            }
+        }
+        o.parent = self;
+    }
+
+    // how many band words are longer than three letters
+    static int longBands() {
+        func<bool, string> longer = (string w) => {
+            stringObj t = w;
+            return t.length > 3;
+        };
+        return Rack.bandWords.filter(longer).count();
+    }
+
+    // reads a mark, or says it is not there
+    int peek(int i) {
+        try {
+            return self[i];
+        } catch (int e) {
+            print($"(no mark {e})^");
+        }
+        return -1;
+    }
+
+    // goes through the marks band by band, and looks at the last thing
+    void review() {
+        func<bool, int> under = (int n) => n < 100;
+        #if RACK_SLOTS > 3
+            array<int> few = Rack.marks.filter(under).orderBy();
+            print($"Light marks: {few.length}");
+            if (few.length > 0) {
+                print($", smallest {few.first()}");
+            }
+            print(".^");
+        #endif
+        for (int i = 0; i < Rack.marks.length; i++) {
+            eBand b = bandOf(self[i]);
+            stringObj s = Rack.bandWords[(int)b - 1];
+            switch (b) {
+                case eBand.low: s += " (skip)";
+                case eBand.mid: s += " (watch)";
+                default: s += " (look)";
+            }
+            print($"Mark {i}: {self[i]} {s}.^");
+        }
+        print($"Spots: last {lastSpot.row}/{lastSpot.col}, next {nextSpot.row}/{nextSpot.col}.^");
+        if (typeof(lastThing) == eType.object) {
+            object t = (object)lastThing;
+            print($"Last on the rack: {t}.^");
+            Examine.perform(t);
+        }
+    }
+
+    // takes everything off the rack, back into the room it is in
+    void clearOff() {
+        for (object o in self.children) {
+            o.parent = parent;
+            count--;
+        }
+        Rack.marks.clear();
+        lastThing = null;
+        #if LOUD
+            print($"({self} cleared; {Rack.puts} puts so far, {Rack.louds} loud, {Rack.longBands()} long band words)^");
+        #else
+            print($"({self} cleared; {Rack.puts} puts so far)^");
+        #endif
+    }
+}
+
+Rack rackA {
+    "rack A";
+    parent = roomA;
+    string description = "Rack A.";
+}
+
+Rack rackB {
+    "rack B";
+    parent = roomB;
+    string description = "Rack B.";
+}
+
+// ===== THE TRAY (four places, each with a label) =====
+Bin tray {
+    "tray";
+    parent = roomA;
+    string description = "A tray.";
+
+    array<Spot> spots[4];
+    array<string> labels = { "first", "second", "third", "fourth" };
+    alias place for Spot;
+
+    eBand mode = eBand.low;
+    var held;
+    object top;
+    int used = 0;
+    place here;
+
+    // how full the tray is; setting it changes the mode and says so
+    auto level = {
+        static int sets = 0;
+        static array<int> seen[4];
+        int _v = 0;
+
+        int operator () {
+            return _v;
+        }
+
+        void operator = (int v) {
+            sets++;
+            switch (v) {
+                case < 1: v = 1;
+                case 5 to 99: v = 4;
+            }
+            _v = v;
+            if (seen.length < seen.size) {
+                seen.append(v);
+            }
+            switch (v) {
+                case 1: outer.mode = eBand.low;
+                case 2 to 3: outer.mode = eBand.mid;
+                default: outer.mode = eBand.high;
+            }
+            stringObj s = outer.labels[v - 1];
+            object up = outer.top?.parent;
+            if (up?) {
+                stringObj where = $", top from {up}";
+                s += where;
+            }
+            print($"(level {v}: {s}, mode {(int)outer.mode}, set {sets} times, seen {seen.length})^");
+            if (outer.used > 0) {
+                Spot last = outer.spots[outer.used - 1];
+                print($"(last place {last.row}, column {outer[last.row]}, doubled {outer.twice(last.col)}, depth {outer.depthOf(outer.top)})^");
+            }
+        }
+    }
+
+    // the column of a place, or -1
+    int operator [] (int i) {
+        if (i < 0 || i >= spots.length) {
+            return -1;
+        }
+        return spots[i].col;
+    }
+
+    void operator []= (int i, int v) {
+        if (i >= 0 && i < spots.length) {
+            spots[i].col = v;
+        }
+    }
+
+    // how many parents up a thing is from the top of the tree
+    int depthOf(object o) {
+        object up = o?.parent;
+        if (up?) {
+            return 1 + depthOf(up);
+        }
+        return 0;
+    }
+
+    // twice a number
+    emitter int twice(int n) { ($n * 2) }
+
+    // says the labels from i down to 0
+    void spellDown(int i) {
+        if (i < 0) {
+            return;
+        }
+        stringObj s = labels[i];
+        print($"{s.toUpper()} ");
+        spellDown(i - 1);
+    }
+
+    // puts a thing on the tray at the next place
+    void load(object o, int w) {
+        if (used >= spots.size) {
+            print($"(no place for {o})^");
+            return;
+        }
+        here.place(used, w);
+        spots.append(here);
+        used++;
+        held = o;
+        top = o;
+        print($"({o} on the {labels[used - 1]} place, depth {depthOf(o)} before moving)^");
+        o.parent = self;
+        count++;
+        level = used;
+        if (!o.has(general)) {
+            o.give(general);
+        }
+    }
+
+    // looks over everything on the tray
+    void survey() {
+        func<bool, string> longWord = (string s) => {
+            stringObj t = s;
+            return t.length > 5;
+        };
+        func<bool, Spot> heavy = (Spot p) => p.col >= 100;
+        print($"Long labels: {labels.filter(longWord).count()}. Heavy places: {spots.filter(heavy).count()}.^");
+        print($"Columns: {self[0]} {self[1]} {self[2]} {self[3]} (twice first {twice(self[0])}).^");
+        self[1] = 7;
+        print($"Second column now {self[1]}; level {level}, mode {(int)mode}.^");
+        print("Labels down: ");
+        spellDown(used - 1);
+        print("^");
+        switch (typeof(held)) {
+            case eType.object: {
+                object h = (object)held;
+                print($"Last held: {h}, depth {depthOf(h)}.^");
+                if (h.has(general)) {
+                    Examine.perform(h);
+                }
+            }
+            default: print("Nothing held.^");
+        }
+        if (mode == eBand.high) {
+            print("The tray is full.^");
+        }
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// RACKING - the racks
+verb RackingVerb {
+    meta = true;
+    grammar = {.racking};
+    void handler() {
+        rackA.put(coin, 900);
+        rackA.put(boxA, 40);
+        rackB.put(stone, 250);
+        rackB.put(brassKey, 15);
+        rackA.put(pebble, 120);
+        rackB.put(bell, 600);
+        rackA.report();
+        rackB.report();
+        print($"Peek: {rackA.peek(0)} {rackB.peek(4)}.^");
+        print($"Peek past: {rackA.peek(5)}.^");
+        rackA[1] = 45;
+        rackB.review();
+        rackA.clearOff();
+        rackA.report();
+        print($"Stone is in {stone.parent}. Box A is open: {boxA.has(open)}.^");
+    }
+}
+
+// TRAYING - the tray
+verb TrayingVerb {
+    meta = true;
+    grammar = {.traying};
+    void handler() {
+        tray.load(coin, 900);
+        tray.load(brassKey, 15);
+        tray.survey();
+        tray.load(stone, 250);
+        tray.load(boxA, 40);
+        tray.load(pebble, 1);
+        tray.survey();
+        tray.level = 0;
+        tray.level = 9;
+        print($"Level {tray.level}; tray holds {tray.count}.^");
+        tray.report();
+    }
+}

@@ -1,0 +1,105 @@
+Room A
+Room A. Room B is east.
+You can see a beech crate, a pine crate, a gray crate and a label here.
+> look
+Room A
+Room A. Room B is east.
+You can see a beech crate, a pine crate, a gray crate and a label here.
+> cycle
++1[1:1]-1+2-2+3[3:3]-3+4-4 loop: 4/4.
++5+6+7-7-6-5 nested: 18, 7/7.
++8-8 switch: 8/8.
++9-9+10-10 do: 10/10.
++11+12<11-12 param: 120, held 11, 12/11.
+-11
+> totals
+Island: 4 crates, beech code 4
+Count 4; pine code 9; mark 3.
+> marks beech crate
+The beech crate: 2 marks, sum 3, first 1, code 4, grade crate.
+> marks pine crate
+The pine crate: 2 marks, sum 3, first 1, code 9, grade crate.
+> marks gray crate
+The gray crate: 4 marks, sum 113, first 100, code 4, grade steel.
+> marks label
+No tally.
+> survey
+4 crates; any heavy true; all light false.
+Sorted: gray crate beech crate pine crate tin crate.
+In Room A: pine crate gray crate.
+Weights: 4 2 7 2.
+While heavy: gray crate beech crate.
+After heavy: pine crate tin crate.
+Kept 2: first beech crate, last gray crate.
+Distinct codes: 4 9 1.
+A crate shares a room with the label: true.
+> rescale 7
+Scaled 70 and 8; beech heavier than 3 true, than gray false.
+> mint 1
+Minted chip 1/2/3; 2 slot(s) left.
+> mint 2
+Minted chip 2/3/4; 1 slot(s) left.
+> clone chip 1
+Cloned as chip 11/2/3; 0 slot(s) left.
+> mint 4
+The tray is full; 0 retired.
+> forge 7
+Forged chip 7/7/7, bulk 5; 1 big left.
+> forge 8
+Forged chip 8/7/7, bulk 6; 0 big left.
+> forge 9
+No big chips left.
+> i
+You're carrying a chip 8/7/7, a chip 7/7/7, a chip 11/2/3, a chip 2/3/4 and a chip 1/2/3.
+> smelt chip 2
+(retire 2) Gone; 1 retired.
+> mint 5
+Minted chip 5/6/7; 0 slot(s) left.
+> smelt chip 8
+(retire 8) Gone; 2 retired.
+> forge 10
+Forged chip 10/10/10, bulk 5; 0 big left.
+> mint 6
+The tray is full; 2 retired.
+> i
+You're carrying a chip 10/10/10, a chip 5/6/7, a chip 7/7/7, a chip 11/2/3 and a chip 1/2/3.
+> smelt label
+Only chips smelt.
+> spell beech crate
+Raw length 19 of 40.
+Starts with THE (any case) true, exact false.
+Noun word: beech crate (11).
+Rebuilt: bEEch cratE bEEch cratE.
+Reversed: etarc hceeb; compare 1.
+> spell label
+Raw length 13 of 40.
+Starts with THE (any case) true, exact false.
+Noun word: label (5).
+Rebuilt: labEl labEl.
+Reversed: lebal; compare 1.
+> digits label
+Digits: 42 at 21; upper-cased: A LABEL READING 'LOT 42 B'.
+> digits beech crate
+No digits in the beech crate.
+Nothing to read.
+> roll
+Rolls in range 20/20; picks valid 20/20.
+> east
+Room B
+Room B. Room A is west.
+You can see a tin crate here.
+> marks tin crate
+The tin crate: 3 marks, sum 13, first 10, code 4, grade steel.
+> survey
+4 crates; any heavy true; all light false.
+Sorted: gray crate beech crate pine crate tin crate.
+In Room A: pine crate gray crate.
+Weights: 4 2 7 2.
+While heavy: gray crate beech crate.
+After heavy: pine crate tin crate.
+Kept 2: first beech crate, last gray crate.
+Distinct codes: 4 9 1.
+A crate shares a room with the label: true.
+> totals
+Island: 4 crates, beech code 4
+Count 4; pine code 9; mark 3.

@@ -1,0 +1,34 @@
+Room A
+> probewrap
+below
+4.2500
+above
+Doubled 8.5000, tripled 12.7500, plus 4.7500
+Releases 0.
+> probefill
+Fill code 21, live 3, meter releases 6.
+Pool full.
+Drained 3, live 0, destroyed 3.
+> probepool
+Slot 0: 0.5000 light grade 0 heavier 0.7500 scaled 1.0000
+Slot 1: 1.5000 mid grade 1 heavier 1.7500 scaled 3.0000
+Slot 2: 4.5000 heavy grade 2 heavier 4.7500 scaled 9.0000
+Slot 3: none.
+Drained 3, destroyed 3, live 0.
+> probesorts
+text small medium heavy light
+toFloat 1.2500 0.0000 true
+> probeturn
+Level 3.0000 last 2.0000, held true, state number.
+Level 15.0000 last above, held false, turns 2.
+Level 0.0000 last below
+Scaled 3.2500
+> probetune
+Trim note bias 0.2500
+Trim 0.2500 bias 0.0000 last light
+Bias 1.5000 last mid
+Bias 5.5000 last heavy
+> probeload
+Weight 6.5000
+Weight 11.5000
+Weight 11.5000, held true, live 1.

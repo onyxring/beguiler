@@ -1,0 +1,413 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual combinations, many areas in one declaration, on the Z-machine.
+// Cluster 1 — an object of a class with a `default` method, whose body holds an owned value-class
+// member, a `ref` member of it, an array<char>, an array<string> and a var; its inline accessor declares
+// a static int, static array<string> and static array<func<int, int>> members, `[]`, `+=`, `-=` and
+// `--`, binds a `ref array<string>` local to its own static array, calls through a function-array
+// element inside a try whose callee throws, binds a `ref` local to the host's owned member through
+// outer, writes the host's bytes, strings and attributes through outer
+// and performs a verb on outer; the object's `replace` override dispatches to its class's version with
+// an ancestor cast and rethrows from a catch. A class with the same mix minus outer (a static method
+// taking a `ref` parameter, a static `func<>` member called directly, a member array<char> read by a
+// lambda, a `Base::operator ==` reference called through a `func<>`).
+// Cluster 2 — an `extern class` with no I6 counterpart holding static array<int>, array<string> and
+// array<shade> members, an emitter reached by `$i6Expr` and recursive static methods over a `ref
+// array<int>` and a `ref stringObj`, a pooled class allocated inside the recursion (until the pool
+// runs dry), a primitive newtype over int, an enum-typed member and an enum switch; then `extend
+// extern class` that `replace`s one recursive static with another recursive body and adds a static
+// array, the recursion binding a `ref` local to a static array through `:=` and counting failed
+// appends once it is full; a range switch on the primitive, `indexOf` on a static array of enums, and
+// an object's stringObj member passed to a `ref stringObj` parameter of the recursive walk.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object brassKey { "brass key"; parent = roomA; }
+
+int pings = 0;
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        pings++;
+        printLine($"Ping {noun}.");
+    }
+}
+
+// ---- cluster 1 ---------------------------------------------------------------------------------
+
+value class Box {
+    int n;
+    Box operator = (Box o) { n = o.n; return self; }
+}
+
+int twice(int n)  { return n * 2; }
+int strict(int n) {
+    if (n > 9) throw n;
+    return n + 1;
+}
+
+class Frame : object {
+    int hits = 0;
+    default int report(int k) {
+        hits += k;
+        return hits;
+    }
+}
+
+Frame panel {
+    "panel";
+    parent = roomA;
+    attributes = {container, open};
+    Box kept;
+    ref Box held;
+    array<char> tag = "abcd";
+    array<string> seen[4];
+    stringObj note;
+    var last;
+    int base = 3;
+
+    auto meter = {
+        static int writes = 0;
+        static array<string> words = {"low", "mid", "high"};
+        static array<func<int, int>> rules = {twice, strict};
+        int _v;
+        int operator () { return _v; }
+        int operator [] (int i) { return rules[i % 2](_v); }
+        void operator = (int v) {
+            writes++;
+            switch (v) {
+                case < 0:    _v = 0;
+                case 0 to 9: _v = v;
+                default:     _v = 9;
+            }
+            outer.note = words[_v / 4];
+            outer.last = words[_v / 4];
+        }
+        int operator += (int k) {
+            func<int, int> f = rules[k % 2];
+            ref Box mine := outer.kept;
+            try {
+                _v = f(_v + k);
+            } catch (int e) {
+                _v = e * 10;
+                outer.tag[1] = 'x';
+                outer.tag[0] += 1;
+                outer.give(general);
+                Ping.perform(outer);
+            }
+            mine.n += _v;
+            if (outer.held) outer.held.n -= k;
+            if (outer.has(open)) outer.seen[writes % 4] = words[2];
+            outer.last = outer.has(general) ? (var)rules[0] : (var)k;
+            writes++;
+            return _v;
+        }
+        int operator -= (int k) {
+            _v = _v - k;
+            outer.note += "-";
+            ref array<string> w := words;
+            outer.note += w[(k % 3)];
+            w[0] = "least";
+            return _v;
+        }
+        int operator -- () {
+            _v = _v - 1;
+            outer.ungive(open);
+            return _v;
+        }
+    };
+
+    replace int report(int k) {
+        int r = ((Frame)self).report(k);
+        try {
+            r = strict(r);
+        } catch (int e) {
+            note += "!";
+            try {
+                throw e + 1;
+            } catch (int again) {
+                r = again;
+            }
+        }
+        switch (typeof(last)) {
+            case eType.routine: r += ((func<int, int>)last)(1);
+            case eType.string:  r += 1000;
+            default:            r += 2000;
+        }
+        return r * 10;
+    }
+}
+
+// The same mix in a class (outer is only for an object's inline accessor).
+
+class Rack : Frame {
+    static int made = 0;
+    static array<int> shelf[3];
+    static func<int, int> step = twice;
+    array<char> code = "pqr";
+    array<string> labels = {"one", "two"};
+    Box slot;
+
+    static bool operator == (Rack a, int b) { return a.hits == b; }
+    static bool operator != (Rack a, int b) { return a.hits != b; }
+    int operator [] (int i) { return code[i]; }
+    int operator += (int k) {
+        hits = hits + k;
+        Rack.shelf[made % 3] += k;
+        return hits;
+    }
+
+    static int fill(ref Box b, func<int, int> g, int k) {
+        Rack.made++;
+        try {
+            b.n = g(k);
+        } catch (int e) {
+            b.n = -e;
+            throw e * 2;
+        }
+        return b.n;
+    }
+
+    replace int report(int k) {
+        func<bool, Rack, int> same = Rack::operator ==;
+        int base = ((Frame)self).report(k);
+        int bytes = 0;
+        func<int, int> pick = (int i) => code[i];
+        for (int i = 0; i < code.length; i++) bytes += pick(i) - 'p';
+        try {
+            Rack.fill(slot, strict, base + k);
+        } catch (int e) {
+            labels[1] = "caught";
+            code[2] = 's';
+        }
+        if (self.has(light)) bytes += 50;
+        if (same(self, hits)) bytes += 100;
+        self += 1;
+        return base * 1000 + bytes * 10 + slot.n;
+    }
+}
+
+Rack rackA { "rack A"; parent = roomA; attributes = {light}; }
+
+// ---- cluster 2 ---------------------------------------------------------------------------------
+
+enum shade { pale, mid, deep }
+
+primitive class grams : int {
+    replace emitter int operator () { $val }
+    replace emitter grams operator = (int v) { $target = $v; }
+    replace emitter grams operator + (int v) { ($val + $v) }
+}
+
+const int CHIPS = 3;
+
+class Chip[CHIPS] : object {
+    int w;
+    shade s;
+    void create(int x, shade t) { w = x; s = t; }
+}
+
+int chipsOut = 0;
+int overflow = 0;
+
+extern class Registry {
+    static array<int> marks[6];
+    static array<string> names = {"pale", "mid", "deep"};
+    static array<shade> order = {shade.deep, shade.pale, shade.mid};
+    emitter int deepTwo { $i6Expr(Registry.depth(2)) }
+
+    static int depth(int n) {
+        if (n <= 0) return 0;
+        return 1 + depth(n - 1);
+    }
+
+    static int sum(ref array<int> a, int i) {
+        if (i >= a.length) return 0;
+        return a[i] + sum(a, i + 1);
+    }
+
+    static int sweep(ref array<int> a, array<string> tags, shade s, ref stringObj out) {
+        grams g = 2;
+        int total = 0;
+        a.clear();
+        a += {3, 1, 2};
+        a.append((int)s);
+        a.sort();
+        a.popEnd();
+        Registry.marks[(int)s] = a.length;
+        for (int i = 0; i < tags.length; i++) {
+            Chip c = new Chip(i + 1, Registry.order[i % 3]);
+            if (c == null) continue;
+            switch (c.s) {
+                case pale: g = g + c.w;
+                case mid:  g = g + c.w * 2;
+                default:   g = g + 10;
+            }
+            out += tags[i];
+            out += Registry.names[(int)c.s - 1];
+            delete c;
+        }
+        #i6 total = $i6Expr(Registry.sum(a, 0)) * 100;
+        total += Registry.deepTwo;
+        switch (out) {
+            case "adeepbpale": total += 7;
+            default:           total += 9;
+        }
+        if (Registry.walk(out, 0) > 0) total += 1000;
+        switch (g) {
+            case 0 to 9:   total += 200;
+            case 10 to 39: total += 300;
+            default:       total += 400;
+        }
+        total += Registry.order.indexOf(s) * 10;
+        return total + g;
+    }
+
+    static int walk(ref stringObj s, int i) {
+        if (i >= s.length) return 0;
+        int hit = 0;
+        if (s[i] == 'p') hit = 1;
+        return hit + walk(s, i + 1);
+    }
+}
+
+extend extern class Registry {
+    static array<int> spare[4];
+
+    replace static int depth(int n) {
+        Chip c = new Chip(n, n % 2 == 0 ? shade.pale : shade.deep);
+        if (c == null) return 100;
+        chipsOut++;
+        ref array<int> t := Registry.spare;
+        grams g = c.w;
+        int below = 0;
+        if (n > 0) below = depth(n - 1);
+        if (!t.append(n)) overflow++;
+        stringObj label;
+        label = Registry.names[(int)c.s - 1];
+        switch (c.s) {
+            case pale: below += label.length;
+            case deep: below += 10 * label.length;
+            default:   below += 1000;
+        }
+        #i6 below = below + $i6Expr(c.w);
+        delete c;
+        chipsOut--;
+        return below + g;
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs -------------------------------------------------------------------------------
+
+verb ProbeMeter {
+    grammar = {.probemeter};
+    meta = true;
+    void handler() {
+        Box b;
+        b.n = 50;
+        panel.held := b;
+        panel.meter = 2;
+        print(panel.note);
+        printLine($" meter {panel.meter} [0] {panel.meter[0]} [1] {panel.meter[1]}.");
+        panel.meter += 3;
+        printLine($"Add 3: meter {panel.meter} kept {panel.kept.n} held {b.n} tag {panel.tag[0]}{panel.tag[1]}.");
+        panel.meter += 5;
+        printLine($"Add 5: meter {panel.meter} kept {panel.kept.n} held {b.n} tag {panel.tag[0]}{panel.tag[1]} pings {pings}.");
+        panel.meter -= 5;
+        print(panel.note);
+        printLine($" meter {panel.meter}.");
+        panel.meter--;
+        printLine($"Down: meter {panel.meter} open {panel.has(open)} seen {panel.seen[1]} {panel.seen[2]}.");
+    }
+}
+
+verb ProbeReport {
+    grammar = {.probereport};
+    meta = true;
+    void handler() {
+        int a = panel.report(2);
+        printLine($"Report {a} hits {panel.hits}.");
+        panel.last = "text";
+        int c = panel.report(9);
+        print(panel.note);
+        printLine($" report {c} hits {panel.hits}.");
+        panel.meter = 1;
+        print(panel.note);
+        printLine($" meter {panel.meter}.");
+    }
+}
+
+verb ProbeRack {
+    grammar = {.proberack};
+    meta = true;
+    void handler() {
+        int a = rackA.report(1);
+        printLine($"Rack {a} slot {rackA.slot.n} made {Rack.made} label {rackA.labels[1]} code {rackA[2]}.");
+        int b = rackA.report(6);
+        printLine($"Rack {b} slot {rackA.slot.n} made {Rack.made} label {rackA.labels[1]} shelf {Rack.shelf[0]} {Rack.shelf[1]} {Rack.shelf[2]}.");
+        printLine($"Step {Rack.step(7)}.");
+        Box x;
+        try {
+            Rack.fill(x, twice, 12);
+            printLine($"Fill {x.n}.");
+            Rack.fill(x, strict, 12);
+        } catch (int e) {
+            printLine($"Thrown {e}, box {x.n}.");
+        }
+    }
+}
+
+array<int> work[6];
+array<string> tagList = {"a", "b", "c", "d"};
+
+verb ProbeRegistry {
+    grammar = {.proberegistry};
+    meta = true;
+    void handler() {
+        stringObj said;
+        int t = Registry.sweep(work, tagList, shade.mid, said);
+        print(said);
+        printLine($" sweep {t} work {work.length} {work[0]} {work[1]} {work[2]} marks {Registry.marks[2]}.");
+        int d = Registry.depth(1);
+        printLine($"Depth {d} spare {Registry.spare.length} out {chipsOut} overflow {overflow}.");
+        d = Registry.depth(5);
+        printLine($"Deep {d} spare {Registry.spare.length} out {chipsOut} overflow {overflow}.");
+        panel.note = "pip";
+        int p = Registry.walk(panel.note, 0);
+        print(panel.note);
+        printLine($" walk {p}.");
+        Chip c = new Chip(9, shade.pale);
+        int total = Registry.sum(Registry.spare, 0);
+        printLine($"After {c?.w} sum {total}.");
+        delete c;
+    }
+}

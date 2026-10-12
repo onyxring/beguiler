@@ -1,0 +1,73 @@
+Room A
+Room A.
+You can see a tin, a cork, a box, a chest and a jar here.
+> flags
+tin: marks 1 (sealed only) sealed, size 0, wrap 0.
+cork: marks 0 (none), size 0, wrap 4.
+box: marks 2, size 2, wrap 8.
+chest: marks 3 sealed heavy+sealed, size 2, wrap 8.
+jar: marks 4 (spare only), size 1, wrap 4.
+bolt: marks 0 (none), size 0, wrap 0.
+> census
+6 2 1 in A: cork (item), jar (jar), tin (item), box (crate), chest (crate).
+Crates in A: box (crate), chest (crate).
+> query
+Here 5; heavy true, all light false.
+Weights first 3, last 2; top two chest, after two 3, sealed 2.
+> least
+Least number 3, least thing cork.
+Picked 3: jar to box, distinct weights 2.
+> chits
+Out 3, noted 21, none left true.
+Twice 10 14 18; total 14; big false true.
+Fallback 9, guarded 0.
+After swap: out 3, amount 4, noted 25.
+Back 0.
+> chits
+Out 3, noted 46, none left true.
+Twice 10 14 18; total 14; big false true.
+Fallback 9, guarded 0.
+After swap: out 3, amount 4, noted 50.
+Back 0.
+> slips
+Free 1; a 1/30, b 2/0.
+Copied: a 1/50, b 1/30.
+Fresh 9/0, free 2.
+> slips
+Free 1; a 1/30, b 2/0.
+Copied: a 1/50, b 1/30.
+Fresh 9/0, free 2.
+> restock tin
+The tin: stock 20.
+> restock tin
+The tin: stock 40.
+> drain tin
+The tin: stock 0.
+> restock jar
+The jar: stock 20.
+> restock me
+Not tracked.
+> sums
+Check 36756; all 65535, half 32767, top 15, big true.
+Wrapped 0; pow 81, clamp 9, sign -1.
+> stow cork in box
+The cork goes in the box.
+> fill chest with jar
+The jar goes in the chest.
+> fill tin with box
+The tin is not a crate.
+> stow box in box
+Not inside itself.
+> census
+6 2 1 in A: tin (item), box (crate), chest (crate).
+Crates in A: box (crate), chest (crate).
+> examine closely tin
+You see nothing special about the tin.
+> check closely tin
+You see nothing special about the tin.
+> watch over tin
+You see nothing special about the tin.
+> check over tin
+You can't see any such thing.
+> x tin
+You see nothing special about the tin.

@@ -1,0 +1,397 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, seventeenth pass: eighteen features meeting
+// inside one declaration, twice. An `extend extern class` (like a C# extension class over a type from
+// another assembly) adds to an I6 class an emitter `operator []=` and `operator *`, a `static
+// array<string>` of tags and a `static array<int>` of visit counts, and a recursive static walk that takes
+// a `func<>` step, holds an emitter-class scope guard and a pooled instance per level (falling back with
+// `??` when the pool is empty and reading it back with `?.`), picks a tag by range `switch` through a
+// `<linq>` chain with a `??` default, builds a `stringObj` trail, keeps a value-class band and a `var`,
+// and performs a verb. And an object (like a C# singleton with a property) whose inline accessor reaches
+// its host through `outer`, throwing and catching a bad value, with an indexer, `==` / `<=>` overloads, a
+// `static array<int>`, an `array<string>` of labels read with `??`, an enum mode set by `switch`, a nested
+// list table, a `<buf>` note, an `#i6` island, a named union narrowed with `typeof`, and a verb performed.
+// An object can't hold a `static` member, so a class carries the rest: a `static array<int>` of totals
+// behind an indexer, an inline accessor that throws, `==` / `<=>`, a nested band table, an `#i6` island,
+// a union narrowed through `var`, and a `<buf>` log.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    framePoolSize = 160;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <buf>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute marked;
+
+enum Kind { None, Low, Mid, High }
+
+union Entry = string | object;
+
+int PingCount;
+
+//-- A closed interval, copied by value ---------------------------------------------------------------------
+
+value class Span {
+    int Lo;
+    int Hi;
+    Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }
+    bool Holds(int v) { return v >= Lo && v <= Hi; }
+}
+
+//-- Scope guard: an emitter class whose init/deinit track nesting depth ------------------------------------
+
+int GuardDepth;
+int GuardPeak;
+
+int GuardOpen() {
+    GuardDepth++;
+    if (GuardDepth > GuardPeak) GuardPeak = GuardDepth;
+    return GuardDepth;
+}
+
+void GuardClose(int level) {
+    if (level == GuardDepth) GuardDepth--;
+}
+
+emitter class Guard {
+    emitter void init()   { $self = GuardOpen(); }
+    emitter void deinit() { GuardClose($self); }
+    emitter int Level     { ($self) }
+}
+
+//-- A verb the declarations below run from code -------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        PingCount++;
+        print($"(ping {noun})");
+    }
+}
+
+//-- A small pooled class --------------------------------------------------------------------------------------
+
+class Cell[3] : object {
+    int Value;
+    void create(int v) { Value = v; }
+}
+
+//-- Cluster 1: a class written in I6, given more members by an extension -----------------------------------
+
+#i6 {
+Class Rack
+  with rack_load 0,
+       rack_cells 0 0 0 0,
+  has container open;
+Rack rackA "rack A" with rack_load 3, rack_cells 1 4 0 7;
+Rack rackB "rack B" with rack_load 2, rack_cells 5 0 2 9;
+}
+
+extern class Rack : object {
+    int rack_load;
+    emitter int operator [] (int i) { ($val.&rack_cells-->$i) }
+}
+
+extern Rack rackA;
+extern Rack rackB;
+
+int WalkMisses;
+int WalkPeak;
+
+extend extern class Rack {
+    static array<string> Tags[4] = { "zero", "low", "high" };
+    static array<int> Visits[4] = { 0, 0, 0, 0 };
+
+    emitter void operator []= (int i, int v) { $val.&rack_cells-->$i = $v; }
+    emitter int operator * (int n)           { ($val.rack_load * $n) }
+
+    // Walks the cells from i on, replacing each with step(cell) and adding a tag per cell to trail. Each
+    // level holds a pooled cell until it returns, so a level past the pool's size gets none and counts a
+    // miss. Returns the sum of the values the held cells carried.
+    static int Walk(Rack r, int i, func<int, int> step, ref stringObj trail) {
+        if (i >= 4) return 0;
+        Guard g;
+        Span band;
+        band.Lo = 1;
+        band.Hi = 5;
+        int v = step(r[i]);
+        Visits[i] = Visits[i] + g.Level;
+        Cell c = new Cell(v);
+        object holder = c ?? r;
+        if (holder == r) WalkMisses++;
+        int k;
+        switch (v) {
+            case 0:      k = 0;
+            case 1 to 5: k = 1;
+            case 6 to 9: k = 2;
+            default:     k = 3;
+        }
+        string tag = Tags.skip(k).first() ?? "none";
+        trail += tag;
+        trail += " ";
+        var load = r * v;
+        int n = load;
+        if (n > WalkPeak) WalkPeak = n;
+        if (band.Holds(v) && !r.has(marked)) {
+            r.give(marked);
+            Ping.perform(r);
+        }
+        r[i] = v;
+        int below = Walk(r, i + 1, step, trail);
+        int carried = c?.Value;
+        below += carried;
+        if (c != null) delete c;
+        return below;
+    }
+
+    // The deepest level any walk reached at cell i, as the largest visit count.
+    static int Busiest() {
+        return Visits.orderBy().last();
+    }
+}
+
+//-- Cluster 2: an object with a property that reaches back to it --------------------------------------------
+
+object panelA {
+    "panel A";
+    parent = roomA;
+    Kind Mode;
+    int Writes;
+    int Rejects;
+    string Last;
+    Span Range;
+    array<string> Labels[5] = { "off", "dim", "lit", "max" };
+    array<char> Note[32];
+    array<int> Marks[4] = { 0, 0, 0, 0 };
+
+    auto Level = {
+        int _v;
+        int operator () { return _v; }
+        void operator = (int v) {
+            array<char> mark[2];
+            try {
+                if (v < 0 || v > 9) throw v;
+                _v = v;
+                outer.Writes++;
+            } catch (int bad) {
+                outer.Rejects++;
+                bgl.util.buf.set(mark, "!");
+                bgl.util.buf.append(outer.Note, mark);
+                return;
+            }
+            switch (v) {
+                case 0:      outer.Mode = Kind.None; bgl.util.buf.set(mark, "n");
+                case 1 to 3: outer.Mode = Kind.Low;  bgl.util.buf.set(mark, "l");
+                case 4 to 6: outer.Mode = Kind.Mid;  bgl.util.buf.set(mark, "m");
+                default:     outer.Mode = Kind.High; bgl.util.buf.set(mark, "h");
+            }
+            bgl.util.buf.append(outer.Note, mark);
+            outer.Marks[(int)outer.Mode - 1] = outer.Marks[(int)outer.Mode - 1] + 1;
+            outer.Last = outer[(int)outer.Mode - 1];
+        }
+    }
+
+    // The label at i, or "none" for a slot past the list or one never filled.
+    string operator [] (int i) {
+        if (i < 0 || i >= Labels.size) return "none";
+        if (i >= Labels.length) return "none";
+        return Labels[i] ?? "none";
+    }
+
+    bool operator == (int v) { return Range.Holds(v); }
+    int operator <=> (int v) { return (int)Level - v; }
+
+    // The mode a raw value falls in, from a table of { lo, hi, kind } rows; a value off the table throws.
+    Kind Classify(int v) {
+        array<array<int>> table = { {0, 0, 0}, {1, 3, 1}, {4, 6, 2}, {7, 9, 3} };
+        Guard g;
+        for (array<int> row in table) {
+            if (v >= row[0] && v <= row[1]) {
+                switch (row[2]) {
+                    case 0:  return Kind.None;
+                    case 1:  return Kind.Low;
+                    case 2:  return Kind.Mid;
+                    default: return Kind.High;
+                }
+            }
+        }
+        throw v;
+    }
+
+    // The packed form of the level: tens of the mode plus the level, computed in I6.
+    int Packed() {
+        int lv = Level;
+        int md = (int)Mode;
+        int out;
+        #i6 { $i6Expr(out) = $i6Expr(md) * 10 + $i6Expr(lv); }
+        return out;
+    }
+
+    // A label for the mode, or, when marked, what holds the panel.
+    Entry Owner() {
+        if (self.has(marked)) return parent;
+        return self[(int)Mode - 1];
+    }
+
+    stringObj Describe() {
+        stringObj s = "";
+        Entry e = Owner();
+        var raw = e;
+        switch (typeof(raw)) {
+            case eType.string: s += (string)e;
+            case eType.object: s += "held";
+            default:           s += "?";
+        }
+        if (self == (int)Level) s += "+";
+        else s += "-";
+        if (self > 5) Ping.perform(self);
+        return s;
+    }
+}
+
+//-- Cluster 2, in a class: shared totals behind an indexer --------------------------------------------------
+
+union Shown = string | int;
+
+class Gauge : object {
+    static array<int> Totals[4] = { 0, 0, 0, 0 };
+    int Value;
+    array<char> Log[24];
+
+    auto Reading = {
+        int _r;
+        int operator () { return _r; }
+        void operator = (int v) {
+            if (v < 0) throw v;
+            _r = v;
+        }
+    }
+
+    // The shared total for band i; past the bands, the sum of all of them.
+    int operator [] (int i) {
+        if (i >= 0 && i < Totals.length) return Totals[i];
+        int sum = 0;
+        for (int t in Totals) sum += t;
+        return sum;
+    }
+
+    bool operator == (Gauge o) { return Value == o.Value; }
+    int operator <=> (Gauge o) { return Value - o.Value; }
+
+    // Records a reading into the band table's slot and the log; a negative reading is refused.
+    bool Record(int v) {
+        array<array<int>> bands = { {0, 4, 0}, {5, 9, 1}, {10, 99, 2} };
+        try {
+            Reading = v;
+        } catch (int bad) {
+            bgl.util.buf.set(Log, "refused");
+            return false;
+        }
+        int slot = 3;
+        for (array<int> row in bands) {
+            if (v >= row[0] && v <= row[1]) slot = row[2];
+        }
+        Totals[slot] = Totals[slot] + 1;
+        Value += v;
+        int doubled;
+        #i6 { $i6Expr(doubled) = $i6Expr(v) * 2; }
+        Shown s = doubled;
+        if (doubled > 20) s = "big";
+        var raw = s;
+        if (typeof(raw) == eType.string) bgl.util.buf.set(Log, "big");
+        else bgl.util.buf.set(Log, "ok");
+        return true;
+    }
+}
+
+Gauge gaugeA { "gauge A"; }
+Gauge gaugeB { "gauge B"; }
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Racks {
+    grammar = {.racks};
+    void handler() {
+        stringObj trail = "";
+        int a = Rack.Walk(rackA, 0, (int x) => x + 1, trail);
+        int b = Rack.Walk(rackB, 0, (int x) => x * 2, trail);
+        printLine($"; trail {trail}");
+        printLine($"Sums {a} {b}, misses {WalkMisses}, peak {WalkPeak}, busiest {Rack.Busiest()}.");
+        printLine($"Cells {rackA[0]} {rackA[1]} {rackA[2]} {rackA[3]} / {rackB[0]} {rackB[1]} {rackB[2]} {rackB[3]}, marked {rackA.has(marked)} {rackB.has(marked)}, depth {GuardDepth}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    void handler() {
+        panelA.Range.Lo = 2;
+        panelA.Range.Hi = 6;
+        bgl.util.buf.set(panelA.Note, ">");
+        panelA.Level = 2;
+        panelA.Level = 12;
+        panelA.Level = 5;
+        panelA.Level = -1;
+        panelA.Level = 8;
+        print("Note ");
+        bgl.util.buf.print(panelA.Note);
+        printLine($", last {panelA.Last}, level {panelA.Level}, writes {panelA.Writes}, rejects {panelA.Rejects}, mode {(int)panelA.Mode}.");
+        printLine($"Marks {panelA.Marks[0]} {panelA.Marks[1]} {panelA.Marks[2]} {panelA.Marks[3]}, labels {panelA[1]} {panelA[3]} {panelA[9]}.");
+        int k = 0;
+        try {
+            k = (int)panelA.Classify(5);
+            k = k * 10 + (int)panelA.Classify(15);
+        } catch (int bad) {
+            print($"[off table {bad}] ");
+        }
+        printLine($"Kind {k}, packed {panelA.Packed()}.");
+        stringObj d = panelA.Describe();
+        printLine($" described {d}.");
+        panelA.Level = 4;
+        panelA.give(marked);
+        stringObj e = panelA.Describe();
+        printLine($"Described {e}, pings {PingCount}.");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges};
+    void handler() {
+        bool a = gaugeA.Record(3);
+        print("A ");
+        bgl.util.buf.print(gaugeA.Log);
+        bool b = gaugeA.Record(12);
+        print(", ");
+        bgl.util.buf.print(gaugeA.Log);
+        bool c = gaugeB.Record(-2);
+        print(", B ");
+        bgl.util.buf.print(gaugeB.Log);
+        bool d = gaugeB.Record(15);
+        printLine($"; records {a} {b} {c} {d}, readings {gaugeA.Reading} {gaugeB.Reading}.");
+        printLine($"Totals {gaugeA[0]} {gaugeA[1]} {gaugeB[2]} all {gaugeB[9]}, equal {gaugeA == gaugeB}, A first {gaugeA < gaugeB}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

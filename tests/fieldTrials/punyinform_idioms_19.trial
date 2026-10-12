@@ -1,0 +1,146 @@
+Room A
+Room A. A door is north. A machine, a slot, a lever and a safe are here.
+> status
+Credit 1, made 0, used 0, score 0 of 4.
+Safe: digits 0, idle.
+Lamps on 0, red uses 0, blue uses 0.
+[belt stopped]
+The clerk holds nothing.
+> hint
+Hint 1 of 4: Push the button.
+> survey
+Room A: static 5, scenery 3, lit 0.
+> push button
+The machine drops a token 1.
+> pockets
+Carrying 0, tokens 0.
+> push button
+The machine buzzes. No credit.
+> ask clerk about machine
+The clerk says: one credit a token.
+> pull lever
+The belt starts to move.
+> status
+Credit 0, made 1, used 0, score 0 of 4.
+Safe: digits 0, idle.
+Lamps on 0, red uses 0, blue uses 0.
+[belt running: 2]
+The clerk holds nothing.
+> drop token
+You aren't holding it.
+The clerk yawns.
+The belt rattles.
+> take token
+Taken.
+> put token in slot
+The slot swallows token 1.
+A parcel arrives on the belt.
+[The score has just gone up by 1 point.]
+> wait
+Nothing happens.
+> take parcel
+You take the parcel. A coupon falls out: two credits.
+[The score has just gone up by 1 point.]
+> hint
+Hint 3 of 4: Ask the clerk about the safe.
+> push button
+The machine drops a token 2.
+The clerk yawns.
+> take token
+Taken.
+> give token to clerk
+The clerk pockets the token and hands back a credit.
+> push button
+The machine drops a token 3.
+> push button
+The machine drops a token 4.
+> take token 3
+Taken.
+The clerk yawns.
+> pockets
+Carrying 2, tokens 1.
+> put token 3 in slot
+The slot swallows token 3.
+[The score has just gone up by 1 point.]
+> take token
+Taken.
+> push button
+The machine buzzes. No credit.
+> give token to clerk
+The clerk pockets the token and hands back a credit.
+> push button
+The machine drops a token 5.
+The clerk yawns.
+> push button
+The machine buzzes. No credit.
+> status
+Credit 0, made 5, used 2, score 3 of 4.
+Safe: digits 0, idle.
+Lamps on 0, red uses 0, blue uses 0.
+[belt stopped]
+The clerk holds the token 4.
+> put lamp in slot
+(first taking the red lamp)
+The red lamp won't fit.
+> turn on lamp
+You switch the red lamp on.
+> north
+The steel door is locked.
+> set dial to 3
+You set the dial to 3.
+The clerk yawns.
+> set dial to 2
+You set the dial to 2.
+> set dial to 7
+You set the dial to 7.
+Nothing happens.
+> status
+Credit 0, made 5, used 2, score 3 of 4.
+Safe: digits 3, idle.
+Lamps on 1, red uses 1, blue uses 0.
+[belt stopped]
+The clerk holds the token 4.
+> ask clerk about safe
+The clerk says: three, one, four.
+> set dial to 3
+You set the dial to 3.
+> turn dial to 1
+You set the dial to 1.
+The clerk yawns.
+> set dial to 4
+You set the dial to 4.
+The safe clicks.
+> set dial to 5
+The dial spins freely.
+> open safe
+You open the dial safe, revealing a brass key.
+> take key
+Taken.
+[The score has just gone up by 1 point.]
+> hint
+Hint 4 of 4: Unlock the door.
+> unlock door with key
+You unlock the steel door.
+The clerk yawns.
+> open door
+You open the steel door.
+> north
+Room B
+Room B. A door is south.
+You can see a steel door and a blue lamp here.
+> turn on blue lamp
+You switch the blue lamp on.
+> survey
+Room B: static 1, scenery 0, lit 1.
+> hint
+No more hints.
+> set dial to 1
+There is no dial here.
+> turn off red lamp
+You switch the red lamp off.
+> status
+Credit 0, made 5, used 2, score 4 of 4.
+Safe: digits 3, solved.
+Lamps on 1, red uses 1, blue uses 1.
+[belt stopped]
+The clerk holds the token 4.

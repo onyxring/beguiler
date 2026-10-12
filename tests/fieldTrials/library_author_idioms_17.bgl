@@ -1,0 +1,378 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit configured by #define symbols the consumer sets first; an enum of sizes; a value
+// class of quantities with copy operators, + over ints and == against another quantity; a primitive
+// newtype of cents with + and a halving emitter; an emitter class scope guard whose init/deinit track
+// nesting depth; a global emitter that reads a #define symbol through $i6Expr; a kit verb that reports a shared note and is
+// run from code through perform(). A shelf base class with a static method used as a func<> value,
+// and a shelf object that is a namespace (alias … for the size enum and the quantity), holds a byte
+// array label worked through bgl.util.buf, an array of strings sorted by a block lambda, a stringObj,
+// an owned quantity, a var and an object member, an inline accessor with a static counter and a
+// static array that writes its host through outer., an emitter method using $i6Expr, == and < and
+// operator [] on the object, a replace of the base's show, a switch returning aliased enum values,
+// a recursive digit sum and a recursive search through the strings; its file method switches on
+// typeof of a var, on the enum by aliased path and by full path, queries the owner with postfix ?,
+// and performs the kit verb. A rack object of a subclass with a primitive member, an array of
+// stringObj, an owned and a ref quantity, a func<> member, an inline accessor with a static
+// counter and static array that writes its host through outer., operator + and operator [], an
+// array parameter summed recursively, a replace of show that dispatches to the base with an
+// ancestor cast; its load method opens a scope guard, binds the ref with :=, stores and calls the
+// func<>, switches on typeof and on the guard depth by range, does cents arithmetic and performs the
+// kit verb. Verbs drive both objects, declare and switch on the size through the shelf's dotted
+// alias path, query a string with postfix ?, and hand the rack a lambda, then the base's static
+// method named through the subclass.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA17_STEP 2
+#define LA17_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <buf>
+#include <string>
+#include <array>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ==== The kit. ====
+
+/// The last note any kit piece left; the ping verb prints it.
+int la17Last = 0;
+
+/// Prints the last note; the kit's pieces run it from code.
+verb La17Ping {
+    grammar = {.ping};
+    void handler() { print($"[ping {la17Last}]"); }
+}
+
+/// How big a filing is.
+enum eLa17Size { small, medium, large }
+
+/// A quantity that copies on assignment.
+value class La17Qty {
+    int n;
+    La17Qty operator = (La17Qty o) { n = o.n; return self; }
+    La17Qty operator = (int v) { n = v; return self; }
+    /// The quantity with some added.
+    La17Qty operator + (int v) {
+        La17Qty r;
+        r.n = n + v;
+        return r;
+    }
+    /// True when both hold the same amount.
+    bool operator == (La17Qty o) { return n == o.n; }
+    /// Prints the quantity.
+    void print() { ::print($"<{n}>"); }
+}
+
+/// A price in cents, held as a bare word.
+primitive class La17Cents {
+    emitter void      operator = (int v)       { $self = $v; }
+    emitter int       operator ()              { ($self) }
+    emitter La17Cents operator + (La17Cents v) { ($self + $v) }
+    /// Half the price, rounded down.
+    emitter La17Cents half()                   { ($self / 2) }
+}
+
+/// How deep the kit's scope guards are nested.
+int la17Depth = 0;
+
+/// Opens one guard level.
+int la17Open() {
+    la17Depth++;
+    return la17Depth;
+}
+
+/// Closes a guard level.
+void la17Close(int level) {
+    la17Depth = level - 1;
+}
+
+/// A scope guard: opening it nests one level deeper, leaving the scope closes it.
+emitter class La17Guard {
+    emitter void init()   { $self = la17Open(); }
+    emitter void deinit() { la17Close($self); }
+    emitter int depth     { ($self) }
+}
+
+/// A figure doubled.
+emitter int la17Twice(int v) { ($v * $i6Expr(LA17_STEP)) }
+
+/// A numbered shelf.
+class La17Shelf : object {
+    int shelfId;
+    /// Prints the shelf's number.
+    void show() { print($"shelf {shelfId}"); }
+    /// One more than a figure.
+    static int bump(int v) { return v + 1; }
+}
+
+/// A rack: a shelf with a scale.
+class La17Rack : La17Shelf {
+    int scale = 1;
+}
+
+// ==== The consumer. ====
+
+object brassKey { "brass key"; }
+
+// ---- A shelf that files things by size and keeps a list of names. ----
+
+La17Shelf shelfA {
+    "shelf A";
+    shelfId = 1;
+    alias size for eLa17Size;
+    alias qty  for La17Qty;
+    array<char> label[16];
+    array<char> dash = "-";
+    array<string> names = { "gamma", "be", "alpha" };
+    stringObj note;
+    La17Qty held;
+    var lastIn;
+    object owner;
+    int tier = 0;
+
+    /// The last count filed; counts how often it was set and which marks it passed.
+    auto level = {
+        static int sets = 0;
+        static array<int> marks = { 2, 5, 9 };
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            _v = v;
+            sets++;
+            int k = 0;
+            for (int m in marks) {
+                if (v >= m) k++;
+            }
+            outer.tier = k * 10 + sets;
+        }
+    }
+
+    /// A figure doubled twice, through the kit's emitter.
+    emitter int quad(int v) { $i6Expr(la17Twice(la17Twice($v))) }
+
+    /// True when the held quantity is n.
+    bool operator == (int n) { return held.n == n; }
+
+    /// True when the held quantity is under n.
+    bool operator < (int n) { return held.n < n; }
+
+    /// One of the names, wrapping round.
+    string operator [] (int i) { return names[i % names.length]; }
+
+    /// Prints the shelf with its tier.
+    replace void show() { print($"shelf A({tier})"); }
+
+    /// The size a count falls in.
+    size grade(int n) {
+        switch (n) {
+            case < 3:    return size.small;
+            case 3 to 6: return eLa17Size.medium;
+            default:     return size.large;
+        }
+    }
+
+    /// The digits of n, summed.
+    int digits(int n) {
+        if (n < 10) return n;
+        return n % 10 + digits(n / 10);
+    }
+
+    /// Where the first name of length len is, searching from i; -1 if none.
+    int findLen(int len, int i) {
+        if (i >= names.length) return -1;
+        string s = names[i];
+        if (s.length == len) return i;
+        return findLen(len, i + 1);
+    }
+
+    /// Files something with a count: notes what it was, labels the shelf by size and reports.
+    void file(var what, int n) {
+        lastIn = what;
+        owner = null;
+        switch (typeof(what)) {
+            case eType.string:
+                note = (string)what;
+            case eType.object:
+                owner = (object)what;
+                note = "thing";
+            default:
+                note = "none";
+        }
+        held = held + n;
+        level = n;
+        qty extra = held + 1;
+        size s = grade(n);
+        switch (s) {
+            case size.small:       bgl.util.buf.set(label, "sm");
+            case eLa17Size.medium: bgl.util.buf.set(label, "md");
+            default:               bgl.util.buf.set(label, "lg");
+        }
+        bgl.util.buf.append(label, dash);
+        bgl.util.buf.toUpper(label);
+        names.sort((string a, string b) => {
+            int d = a.length - b.length;
+            if (d < 0) return -1;
+            if (d > 0) return 1;
+            return 0;
+        });
+        show();
+        print(" ");
+        bgl.util.buf.print(label);
+        print($"{note} {self[0]} {quad(n)} {digits(extra.n * 7)} {findLen(note.length, 0)}");
+        if (owner?) print(" +owner");
+        if (self < 10) print(" low");
+        else print(" high");
+#if LA17_TRACE
+        if (self == 18) print(" full");
+#endif
+        la17Last = level;
+        La17Ping.perform();
+    }
+}
+
+// ---- A rack that loads things and keeps tags. ----
+
+La17Rack rackA {
+    "rack A";
+    shelfId = 2;
+    La17Cents price = 10;
+    array<stringObj> tags[3];
+    stringObj line;
+    La17Qty base;
+    ref La17Qty pin;
+    var lastIn;
+    func<int, int> step;
+
+    /// The last row total; counts its reads and rescales the rack by the limits it passes.
+    auto gauge = {
+        static int reads = 0;
+        static array<int> limits = { 3, 6, 9 };
+        int _v = 0;
+        int operator () {
+            reads++;
+            return _v * outer.scale;
+        }
+        void operator = (int v) {
+            _v = v;
+            int k = 1;
+            for (int l in limits) {
+                if (v > l) k++;
+            }
+            outer.scale = k;
+        }
+    }
+
+    /// The gauge with some added.
+    int operator + (int n) { return gauge + n; }
+
+    /// The length of one tag.
+    int operator [] (int i) { return tags[i].length; }
+
+    /// The figures of a row from i on, summed.
+    int sumFrom(array<int> row, int i) {
+        if (i >= row.length) return 0;
+        return row[i] + sumFrom(row, i + 1);
+    }
+
+    /// Prints the rack, then the shelf it is.
+    replace void show() {
+        print("rack/");
+        ((La17Shelf)self).show();
+    }
+
+    /// Loads something: binds the quantity, runs the step on the price and reports.
+    void load(var what, ref La17Qty q, func<int, int> f, array<int> row) {
+        La17Guard g;
+        pin := q;
+        step = f;
+        lastIn = what;
+        switch (typeof(what)) {
+            case eType.string: line = (string)what;
+            case eType.object: line = $"{(object)what}";
+            default:           line = "none";
+        }
+        int slot = 0;
+        switch (g.depth) {
+            case 0:      slot = 2;
+            case 1 to 2: slot = row.length % 3;
+            default:     slot = 1;
+        }
+        tags[slot] = line;
+        gauge = sumFrom(row, 0);
+        La17Cents half = price.half();
+        price = price + half;
+        int r = step((int)price) * LA17_STEP;
+        pin = pin + r;
+        base = q.n + 1;
+        show();
+        print($" {line} {self + 1} {self[slot]} {r} {g.depth}");
+        if (base == pin) print(" same");
+        else print(" apart");
+        la17Last = pin.n;
+        La17Ping.perform();
+    }
+}
+
+// ==== Verbs. ====
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        shelfA.file("apple", 2);
+        print(" ");
+        shelfA.file(brassKey, 5);
+        print(" ");
+        shelfA.file(null, 11);
+        print($"; names {shelfA[0]} {shelfA[1]} {shelfA[2]}; level {shelfA.level}");
+        shelfA.size g = shelfA.grade(4);
+        switch (g) {
+            case shelfA.size.small:  print("; small");
+            case shelfA.size.medium: print("; medium");
+            default:                 print("; large");
+        }
+        string first = shelfA[0];
+        if (first?) print($" {first}");
+        print(".^");
+    }
+}
+
+verb Racks {
+    grammar = {.racks};
+    void handler() {
+        La17Qty q = 1;
+        array<int> row[6] = { 1, 2, 4 };
+        rackA.load("tag", q, (int v) => v * 2, row);
+        print(" ");
+        q.print();
+        print(" ");
+        row.append(5);
+        rackA.load(brassKey, q, La17Rack.bump, row);
+        print(" ");
+        q.print();
+        print($"; depth {la17Depth}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,88 @@
+/*  Field trial part — included by library_author_idioms_6.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_6_kit"
+
+/// Verbs that report on the kit; out of world.
+class la6Report : verb {
+    meta = true;
+    string heading = "Report";
+    default void body() { }
+    void handler() {
+        print($"{heading}: ");
+        body();
+        print("^");
+    }
+}
+
+int la6Flips = 0;
+
+/// Noun filter: coins only.
+bool la6IsCoin() { return noun.is(la6Coin); }
+
+/// The coin kept out of reach, set by the consumer.
+object la6Vault;
+
+/// Scope: what is in reach, and the vault coin besides.
+bool la6VaultScope() {
+    switch (scope_stage) {
+        case 1: rfalse;
+        case 2:
+            if (la6Vault != null) PlaceInScope(la6Vault);
+            rfalse;
+        case 3:
+            print("No such coin, here or in the vault.^");
+            rtrue;
+    }
+    rfalse;
+}
+
+/// Reads a count written as a word.
+int la6ParseCount() {
+    dictionaryWord w = NextWord();
+    if (w == .one)   { parsed_number = 1; return 1; }
+    if (w == .two)   { parsed_number = 2; return 1; }
+    if (w == .three) { parsed_number = 3; return 1; }
+    return -1;
+}
+
+verb Flip {
+    grammar = {
+        {.flip, NOUN(la6IsCoin)},
+        {.twirl, NOUN(la6IsCoin)},
+    };
+    void handler() {
+        la6Coin c = (la6Coin)noun;
+        la6Flips++;
+        bgl.printRules.cThe(noun);
+        print($" ({c.value}) lands {la6Flips % 2 == 1 ? "heads" : "tails"}.^");
+    }
+}
+
+verb Appraise {
+    grammar = {.appraise, SCOPE(la6VaultScope)};
+    void handler() {
+        if (!noun.is(la6Coin)) { print("Only coins are appraised.^"); return; }
+        print($"{bgl.printRules.cThe(noun)} is worth {((la6Coin)noun).value}.^");
+    }
+}
+
+verb Stack {
+    grammar = {.stack, la6ParseCount, .coins};
+    void handler() {
+        int n = parsed_number;
+        print($"Stacking {n} (noun {(int)noun}).^");
+        for (int i in 1 to n) Flip.perform(la6Vault);
+        print($"Flips now {la6Flips}.^");
+    }
+}
+
+/// Further lines, from several sources.
+grammar la6Lines {
+    grammarRule toss = {Flip, {.toss, NOUN(la6IsCoin)}};
+    array<grammarRule> more = {
+        {Flip, {.spin, NOUN}},
+        {Appraise, {.value, SCOPE(la6VaultScope)}, 5},
+        {Appraise, {.examine, NOUN(la6IsCoin)}, 5},
+    };
+}

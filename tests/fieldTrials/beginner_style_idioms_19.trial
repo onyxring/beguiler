@@ -1,0 +1,84 @@
+Room A
+Room A. There is a counter here. Room B is to the east.
+You can see a counter (on which are an apple, a rope, a map, a bell and a lamp) and a shopkeeper here.
+> prices
+The shopkeeper is happy.
+The apple costs 5 coins (cheap).
+The rope costs 20 coins (fair).
+The map costs 45 coins (dear).
+The bell costs 10 coins (fair).
+The lamp costs 15 coins (fair).
+5 things on the counter.
+> buy apple
+You buy the apple for 5 coins.
+> take rope
+You have to buy it first.
+> haggle rope
+The shopkeeper smiles. The rope costs 16 coins (fair).
+> buy rope
+You buy the rope for 21 coins.
+> smile
+The shopkeeper smiles back.
+> buy lamp
+You buy the lamp for 15 coins.
+> buy bell
+You can't afford that. The bell costs 10 coins (fair).
+> sell apple
+You sell the apple for 2 coins.
+> buy bell
+You buy the bell for 10 coins.
+> buy apple
+You can't afford that. The apple costs 5 coins (cheap).
+> receipt
+1. rope: 21
+2. lamp: 15
+3. bell: 10
+Total: 46 coins
+Dearest: 21.
+The shopkeeper falls asleep.
+> bag
+In your bag: bell, lamp and rope.
+Room for 1 more.
+(THE LAMP IS ON THE RECEIPT)
+> purse
+You have 1 coin. You spent 51 coins and got back 2 coins.
+> tally
+0 fives and 1 left over.
+[]
+> turn on lamp
+The lamp is lit. It will burn for 3 turns.
+> haggle bell
+The shopkeeper won't haggle again.
+> sell map
+You don't have that.
+> inventory
+You're carrying:
+  a bell
+  a lamp (providing light)
+  a rope
+The lamp goes out.
+> east
+Room B
+Room B. It is dark in the corner. Room A is to the west.
+> west
+Room A
+Room A. There is a counter here. Room B is to the east.
+You can see a counter (on which are an apple and a map) and a shopkeeper here.
+> buy map
+The shopkeeper is asleep.
+> prices
+The shopkeeper is sleepy.
+The apple costs 5 coins (cheap).
+The map costs 45 coins (dear).
+2 things on the counter.
+> reset
+3 things go back on the counter.
+> receipt
+The receipt is blank.
+> bag
+Your bag is empty.
+> purse
+You have 50 coins. You spent 0 coins and got back 0 coins.
+> tally
+10 fives and 0 left over.
+[**********]

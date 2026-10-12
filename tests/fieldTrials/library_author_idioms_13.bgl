@@ -1,0 +1,356 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit part with a value class that has static member arrays (flat and an array of
+// arrays), operator ?, a non-emitter operator [] that its own methods and statics use on cells, a
+// static that takes an array of the class and queries each with postfix ?; a label class with a byte
+// array member, operator [] over it and a recursive show through ?; a namespace object with type
+// aliases, a string array, an array of labels and an inline accessor that reaches them through outer,
+// ?? and postfix ?; #using the namespace before a rack class written with the aliases: static arrays
+// (an array of arrays and a flat one), an owned alias-typed value member indexed with its [], a byte
+// array tag, an inline accessor in the class body that writes the static array, and an operator []
+// whose block lambda walks the static bays. The consumer's own value class derived from the kit's,
+// with a chained copy operator; its #using and extend class of the rack adding static arrays of the
+// value class (by name and by alias), an array of arrays of weights, a byte array seal, operator []=
+// over the static bays, a method taking an array of cells read by a block lambda over the kept
+// tallies, and a block lambda over the two byte arrays; a board object whose inline accessors, through
+// outer, sum a row of an array of arrays with a block lambda, add into an owned value member, mark a
+// byte array, fill an array of labels and read a string array, and one whose own operator [] reads the
+// byte array through outer; an extend of the board adding an array of arrays, a string array, an
+// inline accessor using outer with postfix ?, and a method taking an array; an alias-typed local
+// written through the rack's []= and read through its [].
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_13_parts/library_author_idioms_13_kit"
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- The consumer's labels and racks. ----
+
+La13Label labelC { "label C"; text = "gh"; }
+La13Label labelB { "label B"; text = "cdef"; next = labelC; }
+La13Label labelA { "label A"; text = "ab"; next = labelB; }
+
+La13Rack rackA { "rack A"; }
+La13Rack rackB { "rack B"; }
+
+/// A cell that also counts how often it was added to.
+value class La13Tally : La13Cell {
+    int adds;
+    La13Tally operator = (La13Tally o) {
+        adds = o.adds;
+        (La13Cell)self = o;
+        return self;
+    }
+    /// Adds to the count and notes the add.
+    void add(int v) {
+        n = n + v;
+        adds++;
+    }
+    /// Prints the count and the adds.
+    replace void print() { ::print($"[{n} x{adds}]"); }
+}
+
+#using la13
+
+// ---- The consumer's additions to the kit's rack. ----
+
+extend class La13Rack {
+    /// Tallies kept back by any rack.
+    static array<La13Tally> kept[4];
+    /// Every tally offered to a rack, kept or not, as a plain cell.
+    static array<cell> offered[4];
+    /// Weights for the kept tallies, one row per rack size.
+    static array<array<int>> weights = { {1}, {1, 2}, {1, 2, 3} };
+    /// A seal stamped beside the tag.
+    array<char> seal = "____";
+
+    /// Writes one slot of the bay table, counted across the bays.
+    int operator []= (int i, int v) {
+        for (array<int> bay in La13Rack.bays) {
+            if (i < bay.length) {
+                bay[i] = v;
+                return v;
+            }
+            i = i - bay.length;
+        }
+        return -1;
+    }
+
+    /// Keeps a tally back when it is present.
+    void keep(La13Tally t) {
+        if (La13Rack.offered.length < La13Rack.offered.size) La13Rack.offered += t;
+        if (t?) La13Rack.kept += t;
+    }
+
+    /// The kept tallies weighted by the row for how many there are.
+    int weighted() {
+        int k = La13Rack.kept.length;
+        if (k == 0) return 0;
+        array<int> w = La13Rack.weights[k - 1];
+        int t = 0;
+        for (int i = 0; i < k; i++) {
+            La13Tally one = La13Rack.kept[i];
+            t += one.n * w[i];
+        }
+        return t;
+    }
+
+    /// How many cells of a list are over a limit, after the kept ones are added in.
+    int countOver(array<La13Cell> list, int lim) {
+        func<bool, La13Cell> over = (La13Cell c) => {
+            int t = c.n;
+            for (La13Tally k in La13Rack.kept) t += k.n;
+            return t > lim;
+        };
+        int k = 0;
+        for (La13Cell c in list) if (over(c)) k++;
+        return k;
+    }
+
+    /// How many marks the tag and the seal carry.
+    int marked() {
+        func<int, char> isMark = (char ch) => {
+            if (ch == '#' || ch == '*') return 1;
+            return 0;
+        };
+        int k = 0;
+        for (char ch in tag) k += isMark(ch);
+        for (char ch in seal) k += isMark(ch);
+        return k;
+    }
+
+    /// Stamps the seal at one place.
+    void stamp(int i) { seal[i % seal.length] = '*'; }
+
+    /// Prints the seal.
+    void showSeal() { for (char ch in seal) print(ch); }
+}
+
+// ---- The consumer's board. ----
+
+/// A board of rows, a mark strip and a running total.
+object la13Board {
+    array<char> strip = "------";
+    La13Tally total;
+    array<array<int>> grid = { {1, 2}, {3, 4, 5} };
+    array<La13Label> shown[3];
+    array<string> words = { "red", "green", "blue" };
+
+    /// The last row added to; writing adds a value to every cell of that row.
+    auto row = {
+        int _at = 0;
+        int operator () { return _at; }
+        void operator = (int r) {
+            _at = r;
+            func<int, array<int>> sum = (array<int> line) => {
+                int t = 0;
+                for (int v in line) t += v;
+                return t;
+            };
+            int s = sum(outer.grid[r]);
+            outer.total.add(s);
+            outer.strip[s % outer.strip.length] = '#';
+        }
+    }
+
+    /// The label shown in a slot; writing a slot shows the next label in the chain.
+    auto label = {
+        int _n = 0;
+        string operator () {
+            if (_n == 0) return "nothing";
+            return outer.words[(_n - 1) % outer.words.length];
+        }
+        void operator = (La13Label l) {
+            if (outer.shown.length == outer.shown.size) outer.shown.clear();
+            outer.shown += l;
+            _n++;
+        }
+    }
+
+    /// A place on the strip; indexing reads the strip from that place on.
+    auto at = {
+        int _from = 0;
+        int operator () { return _from; }
+        void operator = (int i) { _from = i; }
+        char operator [] (int i) {
+            int k = _from + i;
+            if (k >= outer.strip.length) return '.';
+            return outer.strip[k];
+        }
+    }
+
+    /// Prints the strip.
+    void showStrip() { for (char c in strip) print(c); }
+}
+
+// ---- The consumer's additions to the board. ----
+
+extend la13Board {
+    array<array<int>> more = { {10}, {20, 30} };
+    array<string> notes = { "n1", "n2", "n3" };
+
+    /// The note at the last place asked for; writing sets the place and sums that row of more.
+    auto probe = {
+        int _at = 0;
+        int _sum = 0;
+        string operator () {
+            if (_at < outer.notes.length && outer.notes[_at]?) return outer.notes[_at];
+            return "none";
+        }
+        void operator = (int i) {
+            _at = i;
+            _sum = 0;
+            if (i < outer.more.length) {
+                for (int v in outer.more[i]) _sum += v;
+            }
+            outer.total.add(_sum);
+        }
+    }
+
+    /// The sum of an array.
+    int sumOf(array<int> a) {
+        int t = 0;
+        for (int v in a) t += v;
+        return t;
+    }
+}
+
+array<int> la13Loose = { 5, 6, 7 };
+
+array<La13Cell> la13Cells[4];
+
+// ---- Verbs that report. ----
+
+verb Cells {
+    grammar = {.cells};
+    void handler() {
+        La13Cell a = 47;
+        La13Cell b = 0;
+        La13Cell c = 120;
+        a.mark();
+        b.mark();
+        c.mark();
+        print($"Digits {a[0]} {a[1]} {c[2]}; bands {La13Cell.bandOf(a)} {La13Cell.bandOf(c)} {La13Cell.bandOf(b)}; ");
+        la13Cells.clear();
+        la13Cells += a;
+        la13Cells += b;
+        la13Cells += c;
+        print($"set {La13Cell.countSet(la13Cells)} of {la13Cells.length}; marks {La13Cell.marks.length}; ");
+        print(a);
+        print(".^");
+    }
+}
+
+verb Labels {
+    grammar = {.labels};
+    void handler() {
+        labelA.show();
+        print($"; chars {labelB[0]}{labelB[3]}{labelB[9]}; ");
+        la13.enlist(labelA);
+        la13.enlist(labelC);
+        la13.pick = 1;
+        print($"pick {la13.pick}; ");
+        la13.pick = 2;
+        print($"{la13.pick}; asked {la13.asked}; via {la13.labels[0][1]}{la13.labels[1][0]}; ");
+        la13.listLabels();
+        print(".^");
+    }
+}
+
+verb Racks {
+    grammar = {.racks};
+    void handler() {
+        print($"Slots {La13Rack.slots()}: {rackA[0]} {rackA[3]} {rackA[5]} {rackA[6]}; ");
+        rackA[4] = 50;
+        rack other = rackB;
+        other[0] = other[0] + 10;
+        print($"now {rackB[4]} {rackA[0]}; ");
+        rackA.hold(23);
+        rackB.hold(8);
+        rackA.hold(0);
+        print($"load {rackA.load} {rackB.load}; spare {La13Rack.spare.length}; tags ");
+        rackA.showTag();
+        print(" ");
+        rackB.showTag();
+        rackB.stamp(5);
+        print(" ");
+        rackB.showSeal();
+        print($"; marked {rackA.marked()} {rackB.marked()}.^");
+    }
+}
+
+verb Keep {
+    grammar = {.keep};
+    void handler() {
+        La13Tally a;
+        a.add(3);
+        La13Tally z;
+        rackA.keep(a);
+        rackA.keep(z);
+        a.add(2);
+        rackB.keep(a);
+        print($"Kept {La13Rack.kept.length}, weighted {rackA.weighted()}; ");
+        print($"offered {La13Cell.countSet(La13Rack.offered)} of {La13Rack.offered.length}; ");
+        print($"digits {La13Rack.kept[0][0]}{La13Rack.kept[1][0]}; present {La13Rack.kept[1]? && La13Rack.kept[0]?}; ");
+        la13Cells.clear();
+        La13Cell one = 1;
+        La13Cell ten = 10;
+        la13Cells += one;
+        la13Cells += ten;
+        print($"over {rackA.countOver(la13Cells, 6)} {rackA.countOver(la13Cells, 12)}.^");
+    }
+}
+
+verb Board {
+    grammar = {.board};
+    void handler() {
+        la13Board.row = 0;
+        la13Board.row = 1;
+        print($"Row {la13Board.row}; total ");
+        print(la13Board.total);
+        print("; strip ");
+        la13Board.showStrip();
+        la13Board.at = 2;
+        print($"; from {la13Board.at}: {la13Board.at[0]}{la13Board.at[1]}{la13Board.at[4]}");
+        print($"; label {la13Board.label}");
+        la13Board.label = labelA;
+        la13Board.label = labelB;
+        print($" {la13Board.label}; shown {la13Board.shown.length}, last {la13Board.shown[la13Board.shown.length - 1][0]}; digit {la13Board.total[1]}.^");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        la13Board.probe = 1;
+        print($"Probe {la13Board.probe}; ");
+        la13Board.probe = 5;
+        print($"{la13Board.probe}; total ");
+        print(la13Board.total);
+        print($"; loose {la13Board.sumOf(la13Loose)}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

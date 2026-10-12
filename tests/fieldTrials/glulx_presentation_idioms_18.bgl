@@ -1,0 +1,724 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a light board, swatches, gauges and cells drawn into a text grid. A primitive class
+// level over int (a clamped 0..9 step) with emitter =, a conversion, postfix ? and a float view; a
+// value class Tint with positional members and a copy operator; an emitter class holdScope with
+// init/deinit; a union reading of float or string. An `extend board` (a Lamp object) adding an inline
+// accessor over a level that reaches its host through outer and throws, object operators + < > +=
+// and [], an array<Chip> of pooled chips, a recursive chain walk and a `replace` tally that
+// dispatches to Lamp's tally with a cast and uses a block lambda through a func<>, array<char>,
+// array<string>, nested arrays from nested literals, a stringObj, ?. over chips, new/delete, the
+// object tree, a Tint copy, try/catch and perform(). A class Swatch with two parents (Shade, Tagged)
+// under a #using'd namespace, with an inline accessor, a static array<float>, + += [] operators, an
+// emitter member, a replace override, recursion, <buf>, <linq>, an #i6 island, attributes, switch,
+// typeof and postfix ?; an `extend class Swatch` under a second namespace adding another accessor
+// and the same mix. An I6 class Gauge with two I6 parents bound as an extern class and extended
+// (`extend extern class Gauge`) with a static array, a replaced emitter conversion,
+// a comparison operator and static routines that recurse, throw, take an array<int> and a func<>,
+// use block lambdas, nested literals, enums, switch ranges, ?., typeof, an #i6 island with $i6Expr,
+// the object tree and perform(). A pooled class Cell[4] with two parents under a third namespace,
+// with an inline member, an owned Tint given positionally, static members and arrays, an inline
+// accessor, [] and a recursive walk, and a method taking a ref Tint that uses ??, #if, switch,
+// <buf>, $i6Expr and perform(). Meta verbs drive each and draw the grid.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GPI_TRACE
+#define GPI_DEPTH 3
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+#i6 {
+    Class Dial with dial_val 0;
+    Class Tinted with tint 0;
+    Class Gauge
+      class Dial Tinted
+      with gauge_scale $+1.0, gauge_marks 0 0 0 0, gauge_next 0;
+    Gauge gaugeA "gauge A" with dial_val 2, tint 1, gauge_scale $+1.5, gauge_marks 10 20 30 40;
+    Gauge gaugeB "gauge B" with dial_val 5, tint 2, gauge_scale $+0.5, gauge_marks 5 15 25 35;
+    [ MarkSum g i n; for (i = 0: i < 4: i++) n = n + (g.&gauge_marks)-->i; return n; ];
+}
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object tray { "tray"; }
+
+attribute marked;
+
+textGridWindow grid = null;
+
+enum eBand { low = 0, mid, high }
+enum eFault { none = 0, full, empty, bad }
+
+union reading = float | string;
+
+array<string> bandNames = { "low", "mid", "high" };
+array<char> scratch[32];
+
+int holdDepth = 0;
+int holdOpens = 0;
+
+emitter class holdScope {
+    emitter void init()   { holdDepth++; holdOpens++; }
+    emitter void deinit() { holdDepth--; }
+}
+
+// ---- level and tint ------------------------------------------------------------------------------
+
+int clampLevel(int v) {
+    if (v < 0) return 0;
+    if (v > 9) return 9;
+    return v;
+}
+
+float levelFrac(int v) {
+    return (float)v / 10;
+}
+
+primitive class level {
+    emitter void operator = (int v)   { $target = clampLevel($v); }
+    emitter void operator = (level p) { $target = $p; }
+    emitter int operator ()           { ($val) }
+    emitter eBool operator ? ()       { ($val > 0) }
+    emitter float frac()              { levelFrac($val) }
+}
+
+value class Tint {
+    inline float r = 0.0;
+    inline float g = 0.0;
+    Tint operator = (Tint o) {
+        r = o.r;
+        g = o.g;
+        return self;
+    }
+}
+
+eBand bandFor(float l) {
+    if (l < 0.3) return eBand.low;
+    if (l < 0.7) return eBand.mid;
+    return eBand.high;
+}
+
+// ---- the light board -----------------------------------------------------------------------------
+
+class Chip[4] : object {
+    float glow = 0.0;
+    Chip link = null;
+    void create(float g) { glow = g; }
+    void destroy() { link = null; }
+}
+
+class Lamp : object {
+    int lit = 0;
+    void tally() {
+        lit++;
+        print($"lamp {lit} ");
+    }
+}
+
+Lamp board {
+    "board";
+    parent = roomA;
+    attributes = {scenery};
+    replace void tally() { print("board "); }
+}
+
+extend board {
+    float gain = 1.5;
+    int writes = 0;
+    int faults = 0;
+    Tint shade;
+    array<Chip> held[4];
+    auto glow = {
+        level _l = 0;
+        float operator () { return _l.frac() * outer.gain; }
+        void operator = (float v) {
+            if (v < 0.0) {
+                outer.faults++;
+                throw eFault.bad;
+            }
+            _l = (int)(v * 10);
+            outer.writes++;
+            outer.shade.r = v;
+        }
+    };
+
+    int operator + (int n) { return lit + n; }
+    eBool operator < (int n) { return lit < n; }
+    eBool operator > (int n) { return lit > n; }
+    int operator += (int n) {
+        lit = lit + n;
+        return lit;
+    }
+    float operator [] (int i) {
+        if (i < 0 || i >= held.length) return 0.0;
+        Chip c = held[i];
+        return c.glow;
+    }
+
+    int chainLen(Chip c) {
+        if (c == null) return 0;
+        return 1 + chainLen(c.link);
+    }
+
+    replace void tally() {
+        holdScope h;
+        ((Lamp)self).tally();
+        array<char> line[24];
+        array<string> names = { "none", "one", "many" };
+        array<array<int>> counts = { {0, 0, 0}, {0, 0, 0} };
+        stringObj s = "chips";
+        Tint t;
+        t = shade;
+        func<float, float> curve = (float x) => {
+            if (x > 0.8) return 0.8;
+            return x * gain;
+        };
+        int n = 0;
+        float sum = 0.0;
+        held.clear();
+        for (object o in children) {
+            Chip c = (Chip)o;
+            held.append(c);
+            int b = (int)bandFor(c.glow);
+            counts[0][b] += 1;
+            if (chainLen(c) > counts[1][b]) counts[1][b] = chainLen(c);
+            sum += curve(c.glow);
+            n++;
+        }
+        int k = n;
+        if (k > 2) k = 2;
+        level lv = n;
+        try {
+            glow = sum - 2.5;
+        } catch (eFault f) {
+            print("[dim] ");
+            glow = sum / 4;
+        }
+        bgl.util.buf.capture(line);
+        print($"{names[k]}/{n}/{counts[0][2]}{counts[1][0]}");
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(line);
+        bgl.util.buf.print(line);
+        print(" ");
+        s += " ";
+        s += names[k];
+        s.print();
+        print(" ");
+        t.g = lv.frac();
+        float far = held[2]?.link?.link?.glow;
+        Chip spare = new Chip(far);
+        if (spare != null) {
+            spare.parent = self;
+            print($"{chainLen(spare)} ");
+            spare.parent = null;
+            delete spare;
+        }
+        print(t.g);
+        print(" ");
+        print(far);
+        print(" ");
+        print(glow);
+        printLine("");
+        if (self > 0) Lit.perform();
+    }
+
+    float mark(reading extra) {
+        var n = self + 0;
+        if (typeof(extra) == eType.string) {
+            print($"{(string)extra} {n} ");
+            return 0.0;
+        }
+        glow = (float)extra;
+        print($"{n} ");
+        return glow;
+    }
+}
+
+// ---- swatches ------------------------------------------------------------------------------------
+
+class Shade : object {
+    float lum = 0.0;
+    string label() { return "shade"; }
+}
+
+class Tagged : object {
+    eBand band = eBand.low;
+    int marks = 0;
+}
+
+object kit {
+    alias tone for eBand;
+    alias tint for Tint;
+}
+
+#using kit
+class Swatch : Shade, Tagged {
+    int hue = 0;
+    Swatch link = null;
+    tint face;
+    static array<float> lums[4];
+    auto depth = {
+        int _d = 0;
+        int operator () { return _d; }
+        void operator = (int v) {
+            if (v < 0) _d = 0;
+            else _d = v;
+        }
+    };
+
+    replace string label() { return bandNames[(int)band]; }
+
+    int operator + (int n) { return hue + n; }
+    Swatch operator += (int n) {
+        hue += n;
+        return self;
+    }
+    int operator [] (int i) {
+        if (i == 0) return hue;
+        return (int)band;
+    }
+    emitter int twice() { ($self.hue * 2) }
+
+    int reach(Swatch s) {
+        if (s == null) return 0;
+        return 1 + reach(s.link);
+    }
+
+    float paint(reading r, level boost) {
+        array<array<int>> spread = { {0, 0, 0}, {1, 2, 3} };
+        stringObj s = "sw";
+        level lv = boost;
+        float f = lum;
+        if (typeof(r) == eType.string) {
+            s += " ";
+            s += (string)r;
+        } else f = (float)r;
+        if (lv?) depth = (int)lv;
+        else depth = reach(self);
+        tone t = band;
+        switch (t) {
+            case eBand.low: spread[0][0] += 1;
+            case eBand.mid: spread[0][1] += 1;
+            default:        spread[0][2] += 1;
+        }
+        face.r = f;
+        face.g = f * 2;
+        if (Swatch.lums.length == 4) Swatch.lums.clear();
+        Swatch.lums.append(f);
+        int over = Swatch.lums.filter((float x) => x > 0.5).count();
+        int near = link?.hue;
+        bgl.util.buf.capture(scratch);
+        print($"{label()}:{twice()}:{self[1]}");
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(scratch);
+        bgl.util.buf.print(scratch);
+        #i6 print " <", $i6Expr(over), "/", $i6Expr(near), "> ";
+        if (!self.has(marked)) self.give(marked);
+        int sum = 0;
+        for (int x in spread[1]) sum += x * spread[0][(int)t];
+        s.print();
+        print($" {sum} {depth} ");
+        if (self + sum > 9) Swatched.perform();
+        return face.g;
+    }
+}
+
+object lab {
+    alias grade for level;
+    alias wash for Tint;
+}
+
+#using lab
+extend class Swatch {
+    auto tier = {
+        grade _g = 0;
+        int operator () { return (int)_g; }
+        void operator = (int v) { _g = v; }
+    };
+
+    int walk(Swatch s, int n) {
+        if (s == null || n <= 0) return 0;
+        grade g = s.hue;
+        if (g?) return (int)g + walk(s.link, n - 1);
+        return walk(s.link, n - 1);
+    }
+
+    float sweep(float bias) {
+        array<array<int>> rows = { {1, 2}, {3, 4, 5} };
+        wash w;
+        w = face;
+        int big = rows[1].filter((int x) => x > 3).count();
+        float total = bias;
+        for (int i = 0; i < rows.length; i++) {
+            for (int x in rows[i]) total += x * w.r;
+        }
+        switch (band) {
+            case eBand.high: tier = walk(self, 1);
+            default:         tier = walk(self, 3);
+        }
+        grade g = tier;
+        level top = big + 1;
+        bgl.util.buf.capture(scratch);
+        print($"{hue}-{(int)top}-{(int)g}");
+        bgl.util.buf.release();
+        bgl.util.buf.print(scratch);
+        #i6 print " [", $i6Expr(tier), "] ";
+        if (g? && total > 2.0) Swept.perform();
+        return total;
+    }
+}
+
+Swatch swA { "swatch A"; hue = 2; lum = 0.2; }
+Swatch swB { "swatch B"; hue = 5; lum = 0.6; band = eBand.mid; }
+Swatch swC { "swatch C"; hue = 7; lum = 0.9; band = eBand.high; }
+
+// ---- gauges --------------------------------------------------------------------------------------
+
+extern class Dial : object {
+    int dial_val;
+}
+
+extern class Tinted : object {
+    int tint;
+}
+
+extern int MarkSum(Gauge g);
+
+extern class Gauge : Dial, Tinted {
+    float gauge_scale;
+    Gauge gauge_next;
+    emitter int operator ()                  { ($val.dial_val) }
+    emitter int operator [] (int i)          { (($val.&gauge_marks)-->$i) }
+    emitter void operator []= (int i, int v) { ($val.&gauge_marks)-->$i = $v; }
+    emitter eBool operator == (int n)        { ($val.dial_val == $n) }
+    emitter eBool operator != (int n)        { ($val.dial_val ~= $n) }
+}
+
+extern Gauge gaugeA;
+extern Gauge gaugeB;
+
+extend extern class Gauge {
+    static array<float> trail[4];
+    static int checks = 0;
+
+    replace emitter int operator ()        { ($val.dial_val + $val.tint) }
+    emitter eBool operator < (Gauge o)     { ($val.dial_val < $o.dial_val) }
+
+    static int fold(Gauge g, int n) {
+        if (n <= 0) return 0;
+        if (g[n - 1] > 90) throw n;
+        return g[n - 1] + fold(g, n - 1);
+    }
+
+    static float survey(Gauge g, array<int> picks, reading why, func<int, int> scale) {
+        Tint t;
+        eBand b = eBand.low;
+        array<array<int>> pairs = { {0, 1}, {3, 2} };
+        array<string> names = { "plain", "blue", "red" };
+        stringObj s = "gauge";
+        float total = 0.0;
+        func<float, int> half = (int v) => {
+            float f = v;
+            return f / 2;
+        };
+        Gauge.checks++;
+        try {
+            total = fold(g, 4) * g.gauge_scale;
+        } catch (int e) {
+            print($"(over at {e}) ");
+            total = -1.0;
+        }
+        int v = g;
+        switch (v) {
+            case 0 to 3: b = eBand.low;
+            case 4 to 6: b = eBand.mid;
+            default:     b = eBand.high;
+        }
+        int nextDial = g.gauge_next?.dial_val;
+        object home = g.parent;
+        if (typeof(why) == eType.string) {
+            s += " ";
+            s += (string)why;
+        } else total += (float)why;
+        for (int p in picks) total += half(scale(g[p]));
+        for (int i = 0; i < pairs.length; i++) {
+            if (g[pairs[i][0]] < g[pairs[i][1]]) t.r += 1.0;
+        }
+        if (Gauge.trail.length == 4) Gauge.trail.clear();
+        Gauge.trail.append(total);
+        s.print();
+        print($" {names[g.tint]} {bandNames[(int)b]} {nextDial} ");
+        print(t.r);
+        #i6 print " (", $i6Expr(v), ") ";
+        if (home == tray) print("tray ");
+        if (MarkSum(g) > 120) print("full ");
+        if (g == 5 || g < gaugeA) Gauged.perform();
+        return total;
+    }
+}
+
+// ---- cells ---------------------------------------------------------------------------------------
+
+object deck {
+    alias step for level;
+    alias coat for Tint;
+}
+
+#using deck
+class Cell[4] : Shade, Tagged {
+    inline int slot = 0;
+    coat shade = coat{ 0.5, 0.25 };
+    Cell link = null;
+    static int made = 0;
+    static array<Cell> live[4];
+    auto load = {
+        step _s = 0;
+        int operator () { return (int)_s; }
+        void operator = (int v) { _s = v; }
+    };
+
+    void create(int s, float l) {
+        slot = s;
+        lum = l;
+        band = bandFor(l);
+        load = s * 2;
+        Cell.live.append(self);
+        Cell.made++;
+    }
+
+    void destroy() {
+        int at = Cell.live.indexOf(self);
+        if (at >= 0) Cell.live.remove(at);
+        link = null;
+    }
+
+    replace string label() { return "cell"; }
+
+    float operator [] (int i) {
+        if (i == 0) return shade.r;
+        return shade.g;
+    }
+
+    int depth(Cell c) {
+        if (c == null) return 0;
+        return 1 + depth(c.link);
+    }
+
+    float settle(ref Tint into) {
+        array<char> tag[16];
+        array<string> names = { "a", "b", "c" };
+        array<array<int>> marks2 = { {1, 2}, {3, 4} };
+        stringObj s = names[(int)band];
+        var n = depth(self);
+        Cell other = link ?? self;
+        level lv = load;
+        float w = self[0] + other[1];
+#if GPI_TRACE
+        print("[cell] ");
+#endif
+        switch ((int)lv) {
+            case 0 to 2: marks2[0][0] += n;
+            case 3 to 9: marks2[1][1] += n;
+        }
+        into = shade;
+        into.g = w;
+        bgl.util.buf.set(tag, "slot ");
+        bgl.util.buf.print(tag);
+        #i6 print $i6Expr(slot), ":", $i6Expr(n), " ";
+        s += "!";
+        s.print();
+        print($" {marks2[0][0]}{marks2[1][1]} {other.slot} ");
+        if (n > 2) Celled.perform();
+        return w;
+    }
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawGrid() {
+    if (grid == null) return;
+    grid.clear();
+    grid.moveCursor(0, 0);
+    grid.print($"board lit {board.lit} writes {board.writes} faults {board.faults}");
+    grid.moveCursor(0, 1);
+    grid.print($"swatches {swA.hue} {swB.hue} {swC.hue} lums {Swatch.lums.length}");
+    grid.moveCursor(0, 2);
+    grid.print($"gauges {Gauge.checks} {Gauge.trail.length} cells {Cell.made} {Cell.live.length}");
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Lit {
+    grammar = {.lit};
+    meta = true;
+    void handler() {
+        printLine($"Lit {board.lit} at depth {holdDepth}.");
+    }
+}
+
+verb Swatched {
+    grammar = {.swatched};
+    meta = true;
+    void handler() {
+        printLine("Swatched.");
+    }
+}
+
+verb Swept {
+    grammar = {.swept};
+    meta = true;
+    void handler() {
+        printLine("Swept.");
+    }
+}
+
+verb Gauged {
+    grammar = {.gauged};
+    meta = true;
+    void handler() {
+        printLine($"Gauged {Gauge.checks}.");
+    }
+}
+
+verb Celled {
+    grammar = {.celled};
+    meta = true;
+    void handler() {
+        printLine($"Celled {Cell.made}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        if (grid == null) grid = bgl.ui.mainWin.splitUpGrid(3);
+        drawGrid();
+        printLine("Panels open.");
+    }
+}
+
+verb Lights {
+    grammar = {.lights};
+    meta = true;
+    void handler() {
+        Chip a = new Chip(0.2);
+        Chip b = new Chip(0.6);
+        Chip c = new Chip(0.9);
+        if (a == null || b == null || c == null) return;
+        a.link = b;
+        b.link = c;
+        a.parent = board;
+        b.parent = board;
+        c.parent = board;
+        board.tally();
+        print(board.mark(0.5));
+        printLine("");
+        print(board.mark("half"));
+        printLine("");
+        board += 2;
+        printLine($"{board + 0} {board < 3} {board > 1}");
+        print(board[1]);
+        printLine("");
+        drawGrid();
+    }
+}
+
+verb Swatches {
+    grammar = {.swatches};
+    meta = true;
+    void handler() {
+        swA.link = swB;
+        swB.link = swC;
+        print(swA.paint(0.4, 0));
+        printLine("");
+        print(swB.paint("mid", 3));
+        printLine("");
+        print(swC.paint(0.8, 12));
+        printLine("");
+        swA += 3;
+        printLine($"{swA + 0} {swA[0]} {swA.reach(swA)} {swC.depth} {swA.has(marked)}");
+        print(swA.sweep(0.5));
+        printLine("");
+        print(swC.sweep(0.0));
+        printLine("");
+        drawGrid();
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges};
+    meta = true;
+    void handler() {
+        gaugeA.parent = tray;
+        gaugeA.gauge_next = gaugeB;
+        array<int> picks = { 0, 2 };
+        print(Gauge.survey(gaugeA, picks, 1.0, (int v) => v * 2));
+        printLine("");
+        print(Gauge.survey(gaugeB, picks, "spare", (int v) => v + 1));
+        printLine("");
+        gaugeB[3] = 95;
+        print(Gauge.survey(gaugeB, picks, 0.0, (int v) => v));
+        printLine("");
+        int a = gaugeA;
+        printLine($"{a} {Gauge.checks} {Gauge.trail.length} {gaugeA < gaugeB}");
+        drawGrid();
+    }
+}
+
+verb Cells {
+    grammar = {.cells};
+    meta = true;
+    void handler() {
+        Cell a = new Cell(1, 0.2);
+        Cell b = new Cell(4, 0.6);
+        Cell c = new Cell(2, 0.9);
+        if (a == null || b == null || c == null) return;
+        a.link = b;
+        b.link = c;
+        Tint keep;
+        print(a.settle(keep));
+        printLine("");
+        print(keep.g);
+        printLine("");
+        print(c.settle(keep));
+        printLine("");
+        print(b.settle(keep));
+        printLine("");
+        printLine($"{Cell.made} {Cell.live.length} {a.load} {b.load} {c.load} {a.label()}");
+        delete b;
+        a.link = c;
+        printLine($"{Cell.live.length} {a.depth(a)}");
+        drawGrid();
+    }
+}
+
+#includeI6 "grammar"

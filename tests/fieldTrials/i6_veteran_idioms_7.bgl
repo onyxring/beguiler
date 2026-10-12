@@ -1,0 +1,369 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, templating I6 by hand. Global emitters (overloaded by argument
+// type, an emitter value, an emitter void value used as a statement, ##if TARGET_ZCODE/##else, a
+// $i6Expr chain, a var parameter forwarding to the overloads, $target storing an assignment, a verb
+// parameter compared with action, I6 hex and binary literals in a body); an emitter namespace;
+// enum emitter members added in the body and by extend enum; class emitter methods and values, an
+// emitter value on an object, and _bglGlobalDeclaration with $selfsub generating one routine per
+// instance; #emitfirst carrying a Replace whose routine comes from #emitlast; #startup poking a
+// Beguile global; grammar written as raw Verb and Extend directives in an #i6 island, reached through
+// extern verb (switch on action, perform()) with the Sub routines written in Beguile; #define values
+// used inline, #redef, #undef, #elif, a #declare seen by an earlier #if, and #if on a setting; a
+// namespace object with alias-for, auto and alias members; an emitter class imported with #using; a
+// superposed routine; and $i6Expr of an emitter inside an #i6 line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define SHELF_MAX 2
+#redef SHELF_MAX 3
+#define SCRATCH_FLAG
+#undef SCRATCH_FLAG
+#define GREETING "Ready."
+
+#emitfirst {
+    Replace WaveHandsSub;
+}
+
+#emitlast {
+    [ WaveHandsSub;
+        print "You wave both hands.^";
+    ];
+}
+
+int bootMark;           // set by #startup, before Initialise runs
+
+#startup {
+    bootMark = 42;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+// ---------------------------------------------------------------- emitters
+
+emitter int  twice(int v) { ($v * 2) }
+emitter int  quad(int v)  { $i6Expr(twice(twice($v))) }
+
+emitter void say(int n)    { print "<", $n, ">"; }
+emitter void say(object o) { print "<", (the) $o, ">"; }
+emitter void say(string s) { print "<", (string) $s, ">"; }
+emitter void sayBoth(var a, var b) { $i6Expr(say($a)); $i6Expr(say($b)); }
+
+emitter int  wordBytes { WORDSIZE }
+emitter void bar       { print "|"; }
+
+emitter int  plusOne(int v) { $target = $v + 1; }
+
+emitter int  lowByte(int v) { ($v & $FF) }
+emitter int  lowBits(int v) { ($v & $$111) }
+
+emitter bool doing(verb v) { (action == ##$v) }
+
+emitter void machineTag() {
+##if TARGET_ZCODE
+    print "[z]";
+##else
+    print "[g]";
+##endif
+}
+
+emitter fx {
+    void open()  { print "(("; }
+    void close() { print "))"; }
+    int  neg(int n) { (-$n) }
+}
+
+// ---------------------------------------------------------------- enum with emitter members
+
+enum eLevel {
+    low, mid, high,
+    emitter int  weight()     { ($self * 5 + 1) }
+    emitter int  plus(int n)  { ($self + $n) }
+}
+
+extend enum eLevel {
+    emitter bool atTop { ($self == $i6Name(eLevel.high)) }
+}
+
+// ---------------------------------------------------------------- namespace pieces
+
+emitter class kit {
+    int  ws    { WORDSIZE }
+    void stamp { print "*"; }
+}
+
+#using kit
+
+superposed int neverCalled(int n) { return n * 1000; }
+superposed int calledOnce(int n)  { return n + 7; }
+
+// ---------------------------------------------------------------- the world
+
+class Room : object {
+    attributes = light;
+    string description;
+    object n_to;
+    object s_to;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    s_to = roomA;
+}
+
+class Ringer : object {
+    int rings = 0;
+    emitter void ding()    { $self.rings++; }
+    emitter int  loudness  { ($self.rings * 10) }
+    emitter void _bglGlobalDeclaration() {
+        [ $selfsub;
+            $self.rings = $self.rings + 100;
+            return $self.rings;
+        ];
+    }
+}
+
+Ringer bell {
+    "bell";
+    name = .bell;
+    parent = roomA;
+    attributes = static;
+}
+
+Ringer gong {
+    "gong";
+    name = .gong;
+    parent = roomB;
+    attributes = static;
+}
+
+extern int bellsub();
+extern int gongsub();
+
+object lever {
+    "lever";
+    name = .lever;
+    parent = roomA;
+    attributes = static;
+    int pulls = 0;
+    emitter int doubled { ($self.pulls * 2) }
+    bool before() {
+        switch (action) {
+            case Prod:
+                pulls++;
+                if (second != null) rtrue($"You prod the lever with {the(second)}.^");
+                rtrue("You prod the lever.^");
+            case Push:
+                if (pulls == 0) rtrue("It will not move yet.^");
+        }
+        rfalse;
+    }
+}
+
+object rod {
+    "rod";
+    name = .rod;
+    parent = roomA;
+}
+
+object stone {
+    "stone";
+    name = .stone;
+    parent = roomB;
+}
+
+object tools {
+    alias level for eLevel;
+    auto head = bell;
+    alias spare = gong;
+}
+
+// ---------------------------------------------------------------- raw grammar
+
+bool GamePreRoutine() {
+    if (doing(Prod) && noun == stone) rtrue("The stone is too hard to prod.^");
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+#i6 {
+    Verb 'prod' 'poke'
+        * noun              -> Prod
+        * noun 'with' held  -> Prod;
+    Extend 'push' first
+        * noun 'over'       -> Topple;
+}
+
+extern verb Prod   { .prod | .poke }
+extern verb Topple { }
+
+void ProdSub() {
+    printLine($"You prod {the(noun)}. Nothing happens.");
+}
+
+void ToppleSub() {
+    if (noun == lever) {
+        printLine($"The lever tips over after {lever.pulls} prods.");
+        return;
+    }
+    printLine($"{cThe(noun)} stays upright.");
+}
+
+// ---------------------------------------------------------------- conditional compilation
+
+#if LATE_FLAG
+const string lateNote = "late flag seen";
+#else
+const string lateNote = "late flag missing";
+#endif
+
+#if SHELF_MAX > 3
+const int shelfBand = 4;
+#elif SHELF_MAX == 3
+const int shelfBand = 3;
+#else
+const int shelfBand = 0;
+#endif
+
+#if SCRATCH_FLAG
+const string scratchNote = "scratch defined";
+#else
+const string scratchNote = "scratch gone";
+#endif
+
+#if #beguilerSettings.target == "z5"
+const string targetNote = "z5";
+#else
+const string targetNote = "other";
+#endif
+
+// ---------------------------------------------------------------- verbs
+
+verb Emit {
+    grammar = {.emit};
+    meta = true;
+    void handler() {
+        int n = 3;
+        print($"{twice(n)} {quad(n)} {quad(twice(1))} ");
+        say(n);
+        say(lever);
+        say("txt");
+        sayBoth(7, rod);
+        bar;
+        machineTag();
+        printLine($" {wordBytes} {ws} {lowByte(258)} {lowBits(13)}");
+    }
+}
+
+verb Target {
+    grammar = {.target};
+    meta = true;
+    void handler() {
+        int r = plusOne(4);
+        int s;
+        s = plusOne(r * 10);
+        plusOne(99);
+        fx.open();
+        print($"{r} {s} {fx.neg(s)}");
+        fx.close();
+        stamp;
+        printLine();
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    meta = true;
+    void handler() {
+        eLevel e = eLevel.mid;
+        tools.level t = tools.level.high;
+        print($"{eLevel.low.weight()} {e.weight()} {t.weight()} {e.plus(10)} ");
+        if (e.atTop) print("mid-top ");
+        if (t.atTop) print("high-top ");
+        printLine($"{(int)tools.level.low}");
+    }
+}
+
+verb Ring {
+    grammar = {.ring, NOUN};
+    void handler() {
+        if (!noun.is(Ringer)) { printLine("It makes no sound."); return; }
+        Ringer r = (Ringer)noun;
+        r.ding();
+        r.ding();
+        printLine($"{cThe(noun)} rings: {r.rings}, loudness {r.loudness}.");
+    }
+}
+
+verb Strike {
+    grammar = {.strike, NOUN};
+    void handler() {
+        int v;
+        if (noun == bell) v = bellsub();
+        else if (noun == gong) v = gongsub();
+        else { printLine("Nothing to strike."); return; }
+        printLine($"Struck: {v}.");
+    }
+}
+
+verb Spaces {
+    grammar = {.spaces};
+    meta = true;
+    void handler() {
+        print($"{the(tools.head)} {tools.spare.rings} ");
+        tools.head = gong;
+        print($"{the(tools.head)} ");
+        tools.head = bell;
+        printLine($"{calledOnce(3)}");
+    }
+}
+
+verb Flags {
+    grammar = {.flags};
+    meta = true;
+    void handler() {
+        printLine($"{lateNote}; band {shelfBand} of {SHELF_MAX}; {scratchNote}; {targetNote}; boot {bootMark}; {GREETING}");
+    }
+}
+
+verb Island {
+    grammar = {.island};
+    meta = true;
+    void handler() {
+        int n = 5;
+        int m;
+        #i6 m = $i6Expr(quad(n)) + 1;
+        printLine($"{m} {lever.doubled}");
+    }
+}
+
+verb Tip {
+    grammar = {.tip, NOUN};
+    void handler() {
+        Topple.perform(noun);
+        printLine($"(doing tip: {doing(Tip)}, doing topple: {doing(Topple)})");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#declare LATE_FLAG

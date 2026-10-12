@@ -1,0 +1,142 @@
+Nodes 6, rules 5.
+Room A
+Room A.
+
+> rules
+Rule 0: object stone block, fired 0
+Rule 1: test, fired 0
+Rule 2: object brass key, fired 0
+Rule 3: any, fired 0
+Rule 4: object tin cup, fired 0
+Noted 0.
+> take block
+The stone block is too heavy for the rule.
+> take key
+(key rule)
+Taken.
+> drop key
+Dropped.
+> lockdrop
+Drop lock on.
+> drop key
+Dropping is locked.
+> lockdrop
+Drop lock off.
+> x block
+(block rule)
+A stone block.
+> take cup
+(carry rule)
+Taken.
+> x cup
+A tin cup.
+> drop cup
+(carry rule)
+Dropped.
+> rules
+Rule 0: object stone block, fired 1
+Rule 1: test, fired 1
+Rule 2: object brass key, fired 1
+Rule 3: any, fired 3
+Rule 4: object tin cup, fired 3
+Noted 4.
+> tally
+take 3
+drop 3
+examine 2
+look 1
+> flag 0
+Toggled tagged on 2.
+brass key:
+tin cup: tagged
+stone block: tagged
+iron bar:
+> flag 2
+Toggled light on 2.
+brass key:
+tin cup: tagged light
+stone block: tagged light
+iron bar:
+> flag 7
+No flag 7.
+> tree
+tree root
+  alpha costs 6, running 6
+  beta costs 4, running 10
+    gamma costs 11, running 21
+    delta costs 24, running 45
+  end 1, site depth 2
+  epsilon costs 10, running 55
+  zeta costs 0, running 55
+Total 55.
+> find gamma last zzz first
+gamma(3/2) gamma(3/2) ? alpha(2/3)
+> fold 0
+Set 0 (add/sub, 2 ops): -5
+> fold 1
+Set 1 (mul/max/mod, 3 ops): 50
+> fold 2
+Set 2 (or, 1 ops): 15
+> fold 3
+No set 3.
+> sets
+0: 17 7 first 10
+1: 60 12 2 first 21
+2: 13 first 7
+direct 2
+> labels
+0: (single cost)
+1: (single cost)
+2: gamma
+3: delta
+4: (single cost)
+5: zeta
+> heavy 5
+stone block iron bar (2 at 5 or more)
+> heavy 1
+tin cup brass key stone block iron bar (4 at 1 or more)
+> swap
+Rule 1 is now object.
+> take bar
+(bar rule)
+> take block
+Taken.
+> swap
+Rule 1 is now test.
+> take block
+The stone block is too heavy for the rule.
+> rules
+Rule 0: object stone block, fired 1
+Rule 1: test, fired 3
+Rule 2: object brass key, fired 1
+Rule 3: any, fired 3
+Rule 4: object tin cup, fired 3
+Noted 4.
+> zeta 4
+Nodes 6.
+> tree
+tree root
+  alpha costs 6, running 6
+  beta costs 4, running 10
+    gamma costs 11, running 21
+    delta costs 24, running 45
+  end 1, site depth 2
+  epsilon costs 10, running 55
+  zeta costs 12, running 67
+Total 67.
+> zeta 7
+Nodes 6.
+> tree
+tree root
+  alpha costs 6, running 6
+  beta costs 4, running 10
+    gamma costs 11, running 21
+    delta costs 24, running 45
+  end 1, site depth 2
+  epsilon costs 10, running 55
+  zeta costs 21, running 76
+Total 76.
+> find zeta
+zeta(1/2)
+> fold 0
+Set 0 (add/sub, 2 ops): -12

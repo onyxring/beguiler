@@ -1,0 +1,444 @@
+#grids
+Room A
+Room A.
+You can see a hatch, a plate, a lever, a bell and a clock here.
+> menu
+Menu has 4 rows; first Open hatch, last Wait.
+Title look strong+inverse; heading is 9.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|▶ Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> keys
+Keys: j down, k up, 0-9 jump, x choose, q leave.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|▶ Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> j
+Cursor at 1: Read plate.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|▶ Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> j
+Cursor at 2: Pull lever.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|▶ Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> k
+Cursor at 1: Read plate.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|▶ Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> z
+Unknown key.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|▶ Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+>
+Control key ignored.
+Cursor at 1: Read plate.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|▶ Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> 4
+Cursor at 4: (no row).
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> x
+Row 4 has no choice.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> sum
+Checksum 3517014751; mod 1000 is 751; top nibble 13.
+Above 2147483647: yes; below the maximum: yes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> row 9
+Asked for 9, got 5; after += 2 it is 5.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Read plate [slanted+mono 2]                     |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> rename 1
+Row 1: Read plate -> Renamed; rows 4.
+Label behind row 1: Read plate.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+> rename 4
+Row 4: (none) -> Renamed; rows 5.
+Label behind row 4: Row 4 is past the 4 choices.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|  Renamed [plain 0]                               |
+|                                                  |
+> detail 2
+Lever count: 4.
+Detail is a routine: yes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Lever count: 4.                                   |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+> detail 9
+No choice at 9.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Lever count: 4.                                   |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+> spare
+Spare open; a third menu: no.
+Active menu is Actions.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Lever count: 4.                                   |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+[grid 3]
+|Spare                                             |
+|▶ Ring bell [inverse 1]                           |
+|                                                  |
+> detail 0
+The hatch is shut.
+Detail is a routine: no.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Lever count: 4.                                   |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> sizes
+Menu window 50x7.
+Moved up at 4: 50x4; then 50x5.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> pager
+Key window is the status bar: yes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+[grid 4]
+|Line one of the notice.                           |
+|Line two: keep the hatch shut.                    |
+|Line three: the plate reads 7-B.                  |
+|-- 1/7 --                                         |
+> n
+Page from line 4.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+[grid 4]
+|Line four: the lever counts to 4.                 |
+|Line five: the bell is cracked.                   |
+|Line six: end of the notice.                      |
+|-- 4/7 --                                         |
+> b
+Page from line 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+[grid 4]
+|Line one of the notice.                           |
+|Line two: keep the hatch shut.                    |
+|Line three: the plate reads 7-B.                  |
+|-- 1/7 --                                         |
+> n
+Page from line 4.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+[grid 4]
+|Line four: the lever counts to 4.                 |
+|Line five: the bell is cracked.                   |
+|Line six: end of the notice.                      |
+|-- 4/7 --                                         |
+> n
+Page from line 7.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+[grid 4]
+|Line seven: appendix.                             |
+|                                                  |
+|                                                  |
+|-- 7/7 --                                         |
+> n
+End of text.
+Pages drawn 5.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> keys
+Keys: j down, k up, 0-9 jump, x choose, q leave.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> q
+Left the menu.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Actions                                           |
+|  Open hatch [strong 1]                           |
+|  Renamed [slanted+mono 2]                        |
+|  Pull lever [plain 0]                            |
+|  Wait [strong+inverse 2]                         |
+|                                                  |
+|                                                  |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> dropmenu
+Main menu gone; active is Spare.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> keys
+Keys: j down, k up, 0-9 jump, x choose, q leave.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|The hatch is shut.                                |
+|                                                  |
+|                                                  |
+> 9
+Cursor at 5: (no row).
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|Spare                                             |
+|  Ring bell [inverse 1]                           |
+|                                                  |
+> 0
+Cursor at 0: Ring bell.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|Spare                                             |
+|▶ Ring bell [inverse 1]                           |
+|                                                  |
+> x
+Chosen Ring bell (rank 0).
+No detail.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|Spare                                             |
+|▶ Ring bell [inverse 1]                           |
+|                                                  |
+> roll
+Rolls in range 20 of 20; pick is a known choice: yes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|Spare                                             |
+|▶ Ring bell [inverse 1]                           |
+|                                                  |

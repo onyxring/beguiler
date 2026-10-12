@@ -1,0 +1,202 @@
+#grids
+Room A
+Room A.
+[grid 1]
+| Room A                                     0/0   |
+> levels
+CPU: 0.0000 steady x0, span 20.0000.
+MEM: 0.0000 steady x0, span 10.0000.
+IO: 0.0000 steady, depth 1.
+CPU vs MEM 0.0000; vs none 0.0000.
+Red parts 200, 0.
+[grid 1]
+| Room A                                     0/0   |
+> slots
+Bank 3: 0.6250, 0.0000, 1.0000, 0.0000.
+Averaged 3 at style depth 1.
+Average 0.5417; depth 0, opens 1.
+[grid 1]
+| Room A                                     0/0   |
+> plot
+Curve 0: 4 points, sum 1.7500.
+Curve 1: 2 points, sum 1.5000.
+Curve 2: 1 points, sum 0.7500.
+Rewritten: 0.5000; last 1.0000.
+Total 4.0000.
+[grid 1]
+| Room A                                     0/0   |
+> panels
+Panels open.
+[win 1] Up Down
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ....................                      |
+|MEM     ..........                                |
+|  IO    ........                                  |
+|                                                  |
+|                                                  |
+> plot
+Curve 0: 4 points, sum 1.7500.
+Curve 1: 2 points, sum 1.5000.
+Curve 2: 1 points, sum 0.5000.
+Rewritten: 0.5000; last 1.0000.
+Total 3.7500.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ....................  * *  *    *         |
+|MEM     ..........                 *    *         |
+|  IO    ........                   *              |
+|                                                  |
+|                                                  |
+> @link 1
+[win 1] Stepped 3 up.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     #####...............                      |
+|MEM     ###.......                                |
+|  IO    #.......                                  |
+|                                                  |
+|                                                  |
+> @link 1
+[win 1] Stepped 3 up.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> levels
+CPU: 0.5000 rising x2, span 20.0000.
+MEM: 0.5000 rising x2, span 10.0000.
+IO: 0.2500 rising, depth 1.
+CPU vs MEM 0.2500; vs none 0.5000.
+Red parts 200, 0.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> preset
+Preset 1 applied at depth 1.
+After preset 1: depth 1, errors 0.
+Preset 7 rejected at depth 2.
+After preset 7: depth 1, errors 1.
+Bank now 0.5000, 1.0000; depth 0, opens 4.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> labels
+Same no, differ yes, order -1, less yes.
+Filled 3 chars from a string, first '-'.
+beta-ta (7)
+Filled 9 chars from an object, first 'c'.
+Now same yes, order 0.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> caption
+Caption (none).
+Caption MEM.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> tint
+Mix $642850 of $C80000 and $0050A0.
+Net red 100.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> zoom
+Zoom 2.0000 after 1 changes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> zoom
+Zoom 4.0000 after 2 changes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> zoom
+Zoom 1.0000 after 3 changes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|MEM     #####.....                                |
+|  IO    ##......                                  |
+|                                                  |
+|                                                  |
+> tree
+CPU > IO (depth 1, 8 of 20).
+MEM > NET (depth 1, 6 of 20).
+Draws 4, widest 20; mode falling.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ##########..........                      |
+|  IO    ##......                                  |
+|MEM     #####.....                                |
+|  NET   ............                              |
+|                                                  |
+> @link 2
+[win 1] Stepped 4 down.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ....................                      |
+|  IO    ........                                  |
+|MEM     ..........                                |
+|  NET   ............                              |
+|                                                  |
+> levels
+CPU: 0.0000 falling x3, span 20.0000.
+MEM: 0.0000 falling x3, span 10.0000.
+IO: 0.0000 falling, depth 1.
+CPU vs MEM 0.0000; vs none 0.0000.
+Red parts 200, 0.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ....................                      |
+|  IO    ........                                  |
+|MEM     ..........                                |
+|  NET   ............                              |
+|                                                  |

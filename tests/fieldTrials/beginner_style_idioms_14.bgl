@@ -1,0 +1,382 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fourteenth first-time-programmer program, the one where the author lets I6 make some
+// of the things and then puts operators on them. An enum with explicit numbers and its own emitter
+// members (one reaching a tally's operator [] through $i6Expr, one reaching an extern class's static
+// method through $i6Expr); an extern emitter class over an I6 pool with init/deinit, emitter operator
+// [] / []=, emitter operator + and emitters that chain to those through $i6Expr; an I6 class bound as
+// an extern class with emitter operator + and operator [], an emitter that reaches a static method
+// through $i6Expr, static methods that walk children, fall back with ??, read .parent, take enum
+// parameters and keep a tally local whose deinit runs on every return; a normal class with operator +
+// and - (ordinary methods), operator [] over its children, ??, .parent moves, an enum member flipped by
+// an enum emitter, a tally local, and an #i6 island with $i6Expr; Beguile objects placed on I6 objects
+// with parent =; verbs that mix all of the above.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+// ===== TRAYS AND TALLIES (made in I6) =====
+#i6 {
+Class Tray
+  with tray_load 0;
+Tray trayA "tray A" with tray_load 2;
+Tray trayB "tray B" with tray_load 5;
+
+Array tallyPool --> 12;
+Array tallyUsed --> 4;
+Global tallyLive = 0;
+
+[ TallyNew i j;
+    for (i = 0 : i < 4 : i++) {
+        if (tallyUsed-->i == 0) {
+            tallyUsed-->i = 1;
+            tallyLive++;
+            for (j = 0 : j < 3 : j++) tallyPool-->(i * 3 + j) = 0;
+            return tallyPool + i * 3 * WORDSIZE;
+        }
+    }
+    return 0;
+];
+
+[ TallyFree t;
+    if (t == 0) return;
+    tallyUsed-->((t - tallyPool) / (3 * WORDSIZE)) = 0;
+    tallyLive--;
+];
+}
+
+extern int tallyLive;
+
+// ===== SIDES (I numbered them from 0 so they work as places in a tally) =====
+enum eSide {
+    onLeft = 0,
+    inMiddle,
+    onRight,
+
+    // the side across from this one
+    emitter eSide across() { (2 - $self) }
+
+    // how many a tally counted on this side
+    emitter int countIn(Tally t) { $i6Expr($t[(int)$self]) }
+
+    // what is in this place on a tray, or the fallback if nothing is
+    emitter object on(Tray t, object fallback) { $i6Expr($t[(int)$self] ?? $fallback) }
+}
+
+// ===== TALLY (three counters, one for each side, borrowed from the I6 pool) =====
+extern emitter class Tally {
+    emitter void init() { $self = TallyNew(); }
+    emitter void deinit() { TallyFree($self); }
+
+    // tally[i] is the count in place i
+    emitter int operator [] (int i) { $val-->$i }
+    emitter void operator []= (int i, int v) { $val-->$i = $v; }
+
+    // tally + n is everything counted, plus n
+    emitter int operator + (int n) { ($val-->0 + $val-->1 + $val-->2 + $n) }
+
+    // counts one more on a side
+    emitter void bump(eSide s) { $val-->$s = $val-->$s + 1; }
+
+    // the count on one side (the same as tally[side])
+    emitter int on(eSide s) { $i6Expr($self[(int)$s]) }
+
+    // everything counted plus some extra (the same as tally + extra)
+    emitter int totalAnd(int extra) { $i6Expr($self + $extra) }
+}
+
+// ===== TRAY (the I6 class, told to Beguile) =====
+extern class Tray : object {
+    int tray_load;
+
+    // tray + n is what the tray already carries, plus n
+    emitter int operator + (int n) { ($val.tray_load + $n) }
+
+    // tray[i] is thing number i on it, or null
+    emitter object operator [] (int i) { $i6Expr(Tray.nth($self, $i)) }
+
+    // what is in a place on the tray, or the tray itself (the same as Tray.spot)
+    emitter object at(eSide s) { $i6Expr(Tray.spot($self, $s)) }
+
+    // what is in a place on the tray, or the tray itself if nothing is
+    static object spot(Tray t, eSide s) {
+        return t[(int)s] ?? t;
+    }
+
+    // thing number i inside something (0 is the first), or null
+    static object nth(object box, int i) {
+        int n = 0;
+        for (object o in box.children) {
+            if (n == i) {
+                return o;
+            }
+            n++;
+        }
+        return null;
+    }
+
+    // counts the plates on a tray by the side they face
+    static int countSides(Tray t) {
+        Tally tl;
+        if (t.children.length == 0) {
+            print($"({t} has nothing on it, live tallies {tallyLive})^");
+            return t + 0;
+        }
+        for (object o in t.children) {
+            Plate p = (Plate)o;
+            tl.bump(p.side);
+        }
+        print($"({t}: left {tl[0]}, middle {tl.on(inMiddle)}, right {onRight.countIn(tl)}, live tallies {tallyLive})^");
+        return tl + t.tray_load;
+    }
+
+    // the tray a thing is on, even if it is on a plate on the tray
+    static object trayOf(object o) {
+        object up = o.parent ?? o;
+        if (up == trayA || up == trayB) {
+            return up;
+        }
+        object upper = up.parent ?? up;
+        if (upper == trayA || upper == trayB) {
+            return upper;
+        }
+        return null;
+    }
+}
+
+extern Tray trayA;
+extern Tray trayB;
+
+// ===== PLATES =====
+class Plate : object {
+    eSide side = inMiddle;
+    int weight = 1;
+
+    // plate + n is the plate's weight plus n
+    int operator + (int n) {
+        return weight + n;
+    }
+
+    // plate - plate is how much heavier this one is
+    int operator - (Plate p) {
+        return weight - p.weight;
+    }
+
+    // plate[i] is thing number i on it, or null
+    object operator [] (int i) {
+        int n = 0;
+        for (object o in children) {
+            if (n == i) {
+                return o;
+            }
+            n++;
+        }
+        return null;
+    }
+
+    // says what is on top
+    void sayTop() {
+        object o = self[0] ?? self;
+        if (o == self) {
+            print($"({self} is empty)^");
+        } else {
+            print($"({o} is on top of {self})^");
+        }
+    }
+
+    // turns the plate around to face the other way
+    void turn() {
+        side = side.across();
+        #i6 print "(", (name) self, " now faces ", $i6Expr(side), ")^";
+    }
+
+    // what is on it, counted with a tally, plus its own weight
+    int heft() {
+        Tally tl;
+        for (object o in children) {
+            tl.bump(side);
+        }
+        tl[(int)side] = tl[(int)side] * 2;     // things on a plate count double
+        return tl + weight;
+    }
+
+    // puts the plate on a tray, facing a side
+    void moveTo(Tray t, eSide s) {
+        object was = parent ?? self;
+        parent = t;
+        side = s;
+        print($"({self} moves from {was} to {parent}, facing {sideName(s)})^");
+    }
+}
+
+// ===== HELPERS =====
+
+string sideName(eSide s) {
+    if (s == onLeft) {
+        return "left";
+    }
+    if (s == onRight) {
+        return "right";
+    }
+    return "middle";
+}
+
+// asks I6 how many tallies are out right now
+void sayLive() {
+    #i6 print "(I6 says ", tallyLive, " tallies are out)^";
+}
+
+// the tray something is on, or the room if it is on no tray
+object homeOf(object o) {
+    return Tray.trayOf(o) ?? location;
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+Plate plateA {
+    "plate A";
+    parent = trayA;
+    side = onLeft;
+    weight = 2;
+}
+
+Plate plateB {
+    "plate B";
+    parent = trayB;
+    side = onRight;
+    weight = 3;
+}
+
+Plate plateC {
+    "plate C";
+    parent = trayA;
+    weight = 1;
+}
+
+object spoonA {
+    "spoon A";
+    parent = plateA;
+}
+
+object cupA {
+    "cup A";
+    parent = plateA;
+}
+
+object cupB {
+    "cup B";
+    parent = plateB;
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+}
+
+bool Initialise() {
+    location = roomA;
+    trayA.parent = roomA;
+    trayB.parent = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// TRAYS - the I6 trays and their operators
+verb TraysVerb {
+    meta = true;
+    grammar = {.trays};
+    void handler() {
+        print($"Tray A plus 1 is {trayA + 1}. Tray B plus 10 is {trayB + 10}.^");
+        print($"Tray A first: {trayA[0]}. Second: {trayA[1]}.^");
+        object none = trayA[5] ?? trayB;
+        print($"Tray A place 5, or else tray B: {none}.^");
+        print($"Right place on tray A: {Tray.spot(trayA, onRight)}. Left place: {trayA.at(onLeft)}. Middle: {trayA.at(inMiddle)}.^");
+        int total = Tray.countSides(trayA);
+        print($"Tray A counted plus load: {total}. Live tallies after: {tallyLive}.^");
+        print($"Tray B counted plus load: {Tray.countSides(trayB)}.^");
+        sayLive();
+    }
+}
+
+// PLATES - the plate class and its operators
+verb PlatesVerb {
+    meta = true;
+    grammar = {.plates};
+    void handler() {
+        plateA.sayTop();
+        plateC.sayTop();
+        print($"Plate A plus 5: {plateA + 5}. A minus B: {plateA - plateB}. B minus C: {plateB - plateC}.^");
+        print($"Plate A's second thing: {plateA[1]}. Plate B's first: {plateB[0]}.^");
+        print($"Plate A heft: {plateA.heft()}. Plate C heft: {plateC.heft()}. Live tallies: {tallyLive}.^");
+        plateA.turn();
+        plateC.turn();
+        print($"Plate A faces {sideName(plateA.side)}, plate C faces {sideName(plateC.side)}.^");
+        plateA.turn();
+        print($"Cup A's tray: {homeOf(cupA)}. Plate B's tray: {homeOf(plateB)}. Brass key's: {homeOf(brassKey)}.^");
+    }
+}
+
+// SIDES - the enum's emitters and a tally in a verb
+verb SidesVerb {
+    meta = true;
+    grammar = {.sides};
+    void handler() {
+        Tally t;
+        t.bump(onLeft);
+        t.bump(onLeft);
+        t.bump(onRight);
+        t[1] = 4;
+        print($"Left {onLeft.countIn(t)}, middle {inMiddle.countIn(t)}, right {t.on(onRight)}.^");
+        print($"All plus 1: {t + 1}. All plus 2: {t.totalAnd(2)}.^");
+        eSide s = onLeft;
+        print($"Across from left is {sideName(s.across())}; across from the middle is {sideName(inMiddle.across())}.^");
+        object l = onLeft.on(trayA, roomA);
+        object r = onRight.on(trayA, roomA);
+        print($"Left place on tray A: {l}. Right place: {r}.^");
+        #i6 print "(I6 total ", $i6Expr(t + 0), ", ", tallyLive, " out)^";
+        sayLive();
+    }
+}
+
+// SHIFT - moving plates between the trays
+verb ShiftVerb {
+    meta = true;
+    grammar = {.shift};
+    void handler() {
+        plateC.moveTo(trayB, onLeft);
+        print($"Plate C is on {plateC.parent}. Tray A first: {trayA[0]}. Tray B: {trayB[0]} then {trayB[1]}.^");
+        print($"Tray B counted plus load: {Tray.countSides(trayB)}.^");
+        cupA.parent = plateC;
+        plateC.sayTop();
+        print($"Cup A's tray is now {homeOf(cupA)}.^");
+        plateA.moveTo(trayB, inMiddle);
+        print($"Tray A counted plus load: {Tray.countSides(trayA)}.^");
+        print($"Tray B counted plus load: {Tray.countSides(trayB)}.^");
+        plateB.parent = null;
+        print($"Plate B's tray: {homeOf(plateB)}. Plate B's parent, or else Room B: {plateB.parent ?? roomB}.^");
+        sayLive();
+    }
+}

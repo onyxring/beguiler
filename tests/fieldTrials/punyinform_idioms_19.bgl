@@ -1,0 +1,439 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a nineteenth PunyInform program, written plainly: two rooms joined by a lockable simple
+// door; OPTIONAL_SCORED with scored objects; a dial safe whose combination and entered digits are
+// `array<int>` members compared in a loop, set through a `set dial to NUMBER` verb and an enum state;
+// a token machine whose button makes pooled `Token` instances with `new` (create sets the parent) and
+// whose slot `delete`s them through `Receive`, with a `short_name` and a `parse_name` using TryNumber; a conveyor started by a lever with `StartTimer`, an
+// `each_turn` warning and a `time_out` that brings a parcel; a clerk with `life` (Give, Ask) and a
+// daemon; a value class tallying credit with `operator +=`; a class method shared by two lamps with
+// `after`; a `before` on a room reading `selected_direction`; a helper with a default argument; and
+// meta verbs that report state with interpolated strings, an `array<string>` of hints picked by a
+// staging function using `hasnt()`, a counter taking an `attribute` parameter over `for … in` children,
+// and postfix `?` on an object member.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+#defineI6 OPTIONAL_SIMPLE_DOORS
+#defineI6 OBJECT_SCORE 1
+
+const int    MAX_SCORE              = 4;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    object n_to;
+    object s_to;
+}
+
+// --- shared types -----------------------------------------------------------------------------------
+
+enum eDial { idle, turning, solved }
+enum eBelt { stopped, running }
+
+value class Credit {
+    int _units = 0;
+
+    int  operator ()         { return _units; }
+    void operator = (int v)  { _units = v < 0 ? 0 : v; }
+    void operator += (int v) { _units = _units + v; }
+
+    bool spend(int n) {
+        if (_units < n) return false;
+        _units = _units - n;
+        return true;
+    }
+}
+
+Credit wallet;
+int    tokensMade = 0;
+int    tokensUsed = 0;
+eBelt  belt       = eBelt.stopped;
+
+void note(string label, int n = 0) {
+    if (n == 0) printLine($"[{label}]");
+    else printLine($"[{label}: {n}]");
+}
+
+array<string> hints = {"Push the button.", "Pull the lever.", "Ask the clerk about the safe.", "Unlock the door."};
+
+int stage() {
+    if (steelDoor.hasnt(locked)) return 4;
+    if (brassKey.parent == player) return 3;
+    if (parcel.parent == player) return 2;
+    if (tokensMade > 0) return 1;
+    return 0;
+}
+
+int countIn(object where, attribute a) {
+    int n = 0;
+    for (object o in where.children) {
+        if (o.has(a)) n++;
+    }
+    return n;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A door is north. A machine, a slot, a lever and a safe are here.";
+    n_to = steelDoor;
+
+    bool before() {
+        if (action == Go && selected_direction == (property)n_to && steelDoor.has(locked))
+            rtrue("The steel door is locked.^");
+        rfalse;
+    }
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A door is south.";
+    s_to = steelDoor;
+}
+
+object steelDoor {
+    "steel door";
+    name = {.steel, .door};
+    description = "A steel door.";
+    rawArray<object>   found_in = {roomA, roomB};
+    rawArray<property> door_dir = {(property)n_to, (property)s_to};
+    object with_key = brassKey;
+    attributes = {door, openable, lockable, locked, static};
+}
+
+// --- the dial safe ----------------------------------------------------------------------------------
+
+object safe {
+    "dial safe";
+    parent = roomA;
+    name = {.dial, .safe};
+    array<int> combination = {3, 1, 4};
+    array<int> entered[3];
+    eDial state = eDial.idle;
+    attributes = {container, openable, lockable, locked, static};
+
+    bool describe() {
+        if (has(open)) rtrue("^A dial safe stands open here.^");
+        rtrue("^A dial safe is here, its dial at rest.^");
+    }
+
+    void turnTo(int digit) {
+        if (state == eDial.solved) {
+            printLine("The dial spins freely.");
+            return;
+        }
+        if (entered.length == 3) entered.clear();
+        entered.append(digit);
+        state = eDial.turning;
+        printLine($"You set the dial to {digit}.");
+        if (entered.length < 3) return;
+        for (int i = 0; i < 3; i++) {
+            if (entered[i] != combination[i]) {
+                printLine("Nothing happens.");
+                state = eDial.idle;
+                return;
+            }
+        }
+        state = eDial.solved;
+        ungive(locked);
+        printLine("The safe clicks.");
+    }
+
+    void report() {
+        print($"Safe: digits {entered.length}");
+        switch (state) {
+            case eDial.idle:    printLine(", idle.");
+            case eDial.turning: printLine(", turning.");
+            case eDial.solved:  printLine(", solved.");
+        }
+    }
+}
+
+object brassKey {
+    "brass key";
+    parent = safe;
+    name = {.brass, .key};
+    description = "A brass key.";
+    attributes = {scored};
+}
+
+// --- the token machine ------------------------------------------------------------------------------
+
+class Token[3] : object {
+    int serial;
+    name = {.token};
+
+    void create(int n) {
+        serial = n;
+        parent = location;
+        tokensMade++;
+    }
+
+    void destroy() {
+        tokensUsed++;
+    }
+
+    bool short_name() {
+        print($"token {serial}");
+        rtrue;
+    }
+
+    int parse_name() {
+        if (NextWord() != .token) return 0;
+        if (TryNumber(wn) == serial) return 2;
+        return 1;
+    }
+}
+
+object machine {
+    "machine";
+    parent = roomA;
+    name = {.machine, .button};
+    description = "A machine with a button.";
+    attributes = {static, scenery};
+
+    bool before() {
+        switch (action) {
+            case Push:
+                if (!wallet.spend(1)) rtrue("The machine buzzes. No credit.^");
+                Token t = new Token(tokensMade + 1);
+                if (!(t?)) {
+                    wallet += 1;
+                    rtrue("The machine is empty.^");
+                }
+                rtrue($"The machine drops {a(t)}.^");
+        }
+        rfalse;
+    }
+}
+
+object slot {
+    "slot";
+    parent = roomA;
+    name = {.slot};
+    description = "A narrow slot.";
+    attributes = {container, open, static, scenery};
+
+    bool before() {
+        if (action == Receive) {
+            if (!noun.is(Token)) rtrue($"{cThe(noun)} won't fit.^");
+            Token tk = (Token)noun;
+            int s = tk.serial;
+            delete tk;
+            score += 1;
+            rtrue($"The slot swallows token {s}.^");
+        }
+        rfalse;
+    }
+}
+
+// --- the conveyor -----------------------------------------------------------------------------------
+
+object lever {
+    "lever";
+    parent = roomA;
+    name = {.lever};
+    description = "A lever beside a belt.";
+    int time_left;
+    attributes = {static, scenery};
+
+    bool before() {
+        switch (action) {
+            case Pull, Push:
+                if (belt == eBelt.running) rtrue("The lever is already down.^");
+                belt = eBelt.running;
+                StartTimer(self, 3);
+                rtrue("The belt starts to move.^");
+        }
+        rfalse;
+    }
+
+    void each_turn() {
+        if (belt == eBelt.running && time_left == 1) printLine("The belt rattles.");
+    }
+
+    void time_out() {
+        belt = eBelt.stopped;
+        parcel.parent = roomA;
+        if (location == roomA) printLine("A parcel arrives on the belt.");
+    }
+}
+
+object parcel {
+    "parcel";
+    name = {.parcel};
+    description = "A parcel.";
+    attributes = {scored};
+
+    bool after() {
+        if (action == Take) {
+            wallet += 2;
+            printLine("You take the parcel. A coupon falls out: two credits.");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// --- lamps sharing a class method -------------------------------------------------------------------
+
+class Lamp : object {
+    int uses = 0;
+    name = {.lamp};
+    attributes = {switchable};
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                uses++;
+                give(light);
+            case SwitchOff:
+                ungive(light);
+        }
+        rfalse;
+    }
+}
+
+Lamp redLamp {
+    "red lamp";
+    parent = roomA;
+    name = {.red, .lamp};
+}
+
+Lamp blueLamp {
+    "blue lamp";
+    parent = roomB;
+    name = {.blue, .lamp};
+}
+
+// --- the clerk --------------------------------------------------------------------------------------
+
+object clerk {
+    "clerk";
+    parent = roomA;
+    name = {.clerk};
+    description = "A clerk.";
+    int ticks = 0;
+    object lastGift;
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .safe) rtrue("The clerk says: three, one, four.^");
+                if (w == .machine) rtrue("The clerk says: one credit a token.^");
+                rtrue("The clerk shrugs.^");
+            case Give:
+                if (noun.is(Token)) {
+                    lastGift = noun;
+                    noun.parent = self;
+                    wallet += 1;
+                    rtrue("The clerk pockets the token and hands back a credit.^");
+                }
+                rtrue("The clerk refuses.^");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        ticks++;
+        if (ticks % 5 == 0 && location == roomA) printLine("The clerk yawns.");
+    }
+
+    attributes = {animate};
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb SetDial {
+    grammar = { {.set, .dial, .to, NUMBER}, {.turn, .dial, .to, NUMBER} };
+    void handler() {
+        if (safe.parent != location) {
+            printLine("There is no dial here.");
+            return;
+        }
+        int n = parsed_number;
+        if (n < 0 || n > 9) {
+            printLine("The dial has digits 0 to 9.");
+            return;
+        }
+        safe.turnTo(n);
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        printLine($"Credit {(int)wallet}, made {tokensMade}, used {tokensUsed}, score {score} of {MAX_SCORE}.");
+        safe.report();
+        int lit = 0;
+        if (redLamp.has(on)) lit++;
+        if (blueLamp.has(on)) lit++;
+        printLine($"Lamps on {lit}, red uses {redLamp.uses}, blue uses {blueLamp.uses}.");
+        if (belt == eBelt.running) note("belt running", lever.time_left);
+        else note("belt stopped");
+        object gift = clerk.lastGift;
+        if (gift?) printLine($"The clerk holds {the(gift)}.");
+        else printLine("The clerk holds nothing.");
+    }
+}
+
+verb Hint {
+    meta = true;
+    grammar = {.hint};
+    void handler() {
+        int s = stage();
+        if (s >= hints.length) printLine("No more hints.");
+        else printLine($"Hint {s + 1} of {hints.length}: {hints[s]}");
+    }
+}
+
+verb Survey {
+    meta = true;
+    grammar = {.survey};
+    void handler() {
+        object here = location;
+        printLine($"{here}: static {countIn(here, static)}, scenery {countIn(here, scenery)}, lit {countIn(here, light)}.");
+    }
+}
+
+verb Pockets {
+    meta = true;
+    grammar = {.pockets};
+    void handler() {
+        int count = 0;
+        int tokens = 0;
+        for (object o in player.children) {
+            count++;
+            if (o.is(Token)) tokens++;
+        }
+        printLine($"Carrying {count}, tokens {tokens}.");
+    }
+}
+
+bool Initialise() {
+    StartDaemon(clerk);
+    wallet = 1;
+    rfalse;
+}

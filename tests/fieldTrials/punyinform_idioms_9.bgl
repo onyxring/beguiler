@@ -1,0 +1,421 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a ninth PunyInform program, on the I6 boundary the first eight did not lean on: the entry
+// points BeforeParsing (rewriting the input through an `extern rawArray<char>` view of `buffer` and
+// re-tokenising with bgl.asm.tokenise), ParseNumber (reading a `rawArray<char>` parameter), PrintVerb,
+// AfterPrompt and AfterLife; OPTIONAL_SHIP_DIRECTIONS with the library globals that switch direction
+// sets, OPTIONAL_NO_DARKNESS, and OPTIONAL_GUESS_KEY with a `with_key` routine; `#emitfirst` with
+// `##beguilerSettings.target` and constants read back through an `extern enum` (with `extend enum`
+// emitters), an `extern bnum` (with an `extend bnum` emitter value) and an `extern const string`; an `#i6` island defining an I6 object, an
+// I6 array and routines, one of them holding an in-routine `#bgl { }` island in loose mode; the object
+// bound with a body-form `extern object` (typed member, method with a default argument), its I6-only
+// property with `extern property` and provides(), and a routine with `extern … asBgl`; an
+// `extend extern class array` emitter handing `$opref(==)` of a class with a static `==` to an I6
+// routine; extensions of the literal pseudo-types intLiteral (a method and an emitter value),
+// negativeIntLiteral, charLiteral and dictionaryWordLiteral, and overloads on intLiteral vs
+// negativeIntLiteral; a global emitter overloaded on `interpolatedStringLiteral`; an emitter namespace
+// whose `##if` reads a setting, used inside interpolation, with a `$i6Expr` chain into bgl.asm; a `typesealed` member
+// re-initialized by a subclass and an object; Z-machine opcodes (getChild/getSibling/getParent,
+// push/pull, loadw/storew, scanTable, logShift/artShift, call2s on `&` of a function, printChar);
+// bgl.header.release; and log() in a non-debug build.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SHIP_DIRECTIONS
+#defineI6 OPTIONAL_NO_DARKNESS
+#defineI6 OPTIONAL_GUESS_MISSING_NOUN
+#defineI6 OPTIONAL_GUESS_KEY
+
+#emitfirst {
+    Constant BUILD_TARGET = ##beguilerSettings.target;
+    Constant MODE_IDLE  = 0;
+    Constant MODE_ARMED = 1;
+    Constant MODE_SPENT = 2;
+    Constant LAMP_RED   = 1;
+    Constant LAMP_GREEN = 2;
+    Constant LAMP_BLUE  = 4;
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+
+#using bgl.printRules;
+
+// --- library arrays and globals the binding does not declare -------------------------------------
+
+extern rawArray<char> buffer;
+extern rawArray<char> parse;
+extern int normal_directions_enabled;
+extern int ship_directions_enabled;
+
+int hyphenFixes = 0;
+int prompts     = 0;
+int revivals    = 0;
+
+// PunyInform tests for its entry points with #Ifdef, so they come before "puny".
+void BeforeParsing() {
+    int len = buffer[1];
+    bool changed = false;
+    for (int i = 2; i < len + 2; i++) {
+        if (buffer[i] == '-') {
+            buffer[i] = ' ';
+            changed = true;
+        }
+    }
+    if (changed) {
+        hyphenFixes++;
+        bgl.asm.tokenise(&buffer, &parse);
+    }
+}
+
+int ParseNumber(rawArray<char> text, int len) {
+    if (len == 5 && text[0] == 'd' && text[1] == 'o' && text[4] == 'n') return 12;
+    if (len == 5 && text[0] == 's' && text[1] == 'c' && text[4] == 'e') return 20;
+    return 0;
+}
+
+bool PrintVerb(dictionaryWord v) {
+    if (v == .twiddle) {
+        print("adjust");
+        rtrue;
+    }
+    rfalse;
+}
+
+void AfterPrompt() {
+    prompts++;
+}
+
+void AfterLife() {
+    if (deadflag == 1 && revivals == 0) {
+        revivals++;
+        deadflag = 0;
+        printLine("(You are revived.)");
+    }
+}
+
+#includeI6 "puny"
+
+// --- the I6 side: an object, a table and routines ------------------------------------------------
+
+int relayReports = 0;
+int relayLast    = 0;
+
+void noteRelay(int n) {
+    relayLast = n;
+}
+
+#i6 {
+Array codeTable --> 10 20 30 40 50;
+
+Object relayBox "relay box"
+  with name 'relay' 'box',
+       charge 3,
+       dial 7,
+       pulse [ times; self.charge = self.charge + times; return self.charge; ],
+  has static;
+
+[ RelayReport n k;
+    n = relayBox.charge * 2;
+    #bgl {
+        relayReports++;
+        if (n > 10) noteRelay(n + rightGauge.reading);
+        else noteRelay(n);
+        for (k = 0; k < 2; k++) relayBox.pulse();
+    }
+    return n;
+];
+
+[ CountEq arr item op i n;
+    for (i = 1 : i <= arr-->0 : i++)
+        if (op(arr-->i, item)) n++;
+    return n;
+];
+}
+
+extern object relayBox {
+    int charge;
+    int pulse(int times = 1);
+    emitter int doubled() { ($self.charge * 2) }
+}
+extern property dial;
+extern rawArray<int> codeTable;
+extern int RelayReport() asBgl relayReport;
+
+extern enum ePanelMode { MODE_IDLE, MODE_ARMED, MODE_SPENT }
+extend enum ePanelMode {
+    emitter bool isLive { ($self == MODE_ARMED) }
+    emitter int  rank() { ($self + 1) }
+}
+extern bnum bLamp { LAMP_RED, LAMP_GREEN, LAMP_BLUE }
+extend bnum bLamp {
+    emitter bool hasGreen { ($self & LAMP_GREEN ~= 0) }
+}
+extern const string BUILD_TARGET;
+
+// --- literal pseudo-types, a global emitter overload and an emitter namespace ---------------------
+
+extend extern class intLiteral {
+    emitter void boxed() { print "[", $val, "]"; }
+    emitter int  squared { ($val * $val) }
+}
+extend extern class negativeIntLiteral {
+    emitter int flipped() { (-($val)) }
+}
+extend extern class charLiteral {
+    emitter int upperCode() { ($val - 32) }
+}
+extend extern class dictionaryWordLiteral {
+    emitter bool isVerbWord() { (($val->#dict_par1) & 1 ~= 0) }
+}
+
+emitter void framed(interpolatedStringLiteral v) { print "== "; $v; print " ==^"; }
+emitter void framed(string s)                    { print "== ", (string) $s, " ==^"; }
+
+emitter panel {
+    void mark(int n) {
+##if TARGET_ZCODE && #beguilerSettings.target == "z5"
+        @print_char '<'; print $n; @print_char '>';
+##else
+        print "{", $n, "}";
+##endif
+    }
+    int halve(int v)   { $i6Expr(bgl.asm.artShift($v, -1)) }
+    int quarter(int v) { $i6Expr(panel.halve(panel.halve($v))) }
+}
+
+// --- gauges: a sealed member and a static equality handed to I6 -----------------------------------
+
+class Gauge : object {
+    typesealed int reading = 1;
+    string description = "A gauge.";
+    static bool operator == (Gauge a, Gauge b) { return a.reading == b.reading; }
+}
+
+class FineGauge : Gauge {
+    int reading = 4;
+}
+
+extend extern class array {
+    emitter int countEq(T item) { CountEq($self, $item, $opref(==)) }
+}
+
+// --- rooms and things -------------------------------------------------------------------------------
+
+class Room : object {
+    string description;
+    object n_to;
+    object s_to;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is fore.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is aft.";
+    s_to = roomA;
+}
+
+Gauge leftGauge {
+    "left gauge";
+    parent = roomA;
+    name = {.left, .gauge};
+}
+
+FineGauge midGauge {
+    "middle gauge";
+    parent = roomA;
+    name = {.middle, .gauge};
+}
+
+Gauge rightGauge {
+    "right gauge";
+    parent = roomA;
+    name = {.right, .gauge};
+    reading = 4;
+}
+
+array<Gauge> gauges = {leftGauge, midGauge, rightGauge};
+
+object tray {
+    "tray";
+    parent = roomB;
+    name = {.tray};
+    attributes = {supporter, static};
+}
+
+object cup {
+    "cup";
+    parent = tray;
+    name = {.cup};
+}
+
+object spoon {
+    "spoon";
+    parent = tray;
+    name = {.spoon};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomB;
+    name = {.brass, .key};
+}
+
+object chest {
+    "chest";
+    parent = roomB;
+    name = {.chest};
+    attributes = {container, openable, lockable, locked, static};
+
+    object with_key() {
+        if (second == brassKey) return brassKey;
+        return null;
+    }
+}
+
+ePanelMode mode = MODE_IDLE;
+bLamp lamps = LAMP_RED;
+
+int tripler(int n) {
+    return n * 3;
+}
+
+// --- verbs -----------------------------------------------------------------------------------------
+
+verb Twiddle {
+    grammar = { {.twiddle, NOUN} };
+    void handler() {
+        if (noun.is(Gauge)) {
+            Gauge g = (Gauge)noun;
+            printLine($"{cThe(g)} reads {g.reading}; matches {gauges.countEq(g)}.");
+            return;
+        }
+        printLine("Nothing to adjust.");
+    }
+}
+
+verb SetDial {
+    grammar = { {.dial, NUMBER} };
+    void handler() {
+        int n = parsed_number;
+        printLine($"Dial set to {n}.");
+    }
+}
+
+verb RelayCheck {
+    meta = true;
+    grammar = {.relay};
+    void handler() {
+        int before = relayBox.charge;
+        int after1 = relayBox.pulse();
+        int after2 = relayBox.pulse(4);
+        int rep = relayReport();
+        printLine($"Charge {before} -> {after1} -> {after2}; report {rep}, seen {relayLast} x{relayReports}; now {relayBox.charge}, doubled {relayBox.doubled()}.");
+        printLine($"Dial provided: box {relayBox.provides(dial)}, cup {cup.provides(dial)}; in {relayBox.parent}.");
+    }
+}
+
+verb Cycle {
+    meta = true;
+    grammar = {.mode};
+    void handler() {
+        switch (mode) {
+            case MODE_IDLE:  mode = MODE_ARMED;
+            case MODE_ARMED: mode = MODE_SPENT;
+            default:         mode = MODE_IDLE;
+        }
+        framed($"mode rank {mode.rank()}, live {mode.isLive}");
+        lamps = lamps | LAMP_BLUE;
+        if ((lamps & LAMP_GREEN) == 0) lamps = lamps ^ LAMP_GREEN;
+        framed($"lamps {(int)lamps}, green {lamps.hasGreen}");
+        framed(BUILD_TARGET);
+    }
+}
+
+verb ShowLiterals {
+    meta = true;
+    grammar = {.literals};
+    void handler() {
+        42.boxed();
+        print(" ");
+        print((-7).flipped() + 3);
+        print(" ");
+        print('a'.upperCode());
+        print(" ");
+        printLine($"{.twiddle.isVerbWord()} {.cup.isVerbWord()}");
+        printLine($"{panel.mark(5)} {panel.halve(40)} {panel.quarter(40)} {6.squared}");
+    }
+}
+
+verb Probe {
+    meta = true;
+    grammar = {.probe};
+    void handler() {
+        print("Tray:");
+        int o = bgl.asm.getChild(&tray);
+        while (o != 0) {
+            print(" ");
+            bgl.asm.printObj(o);
+            o = bgl.asm.getSibling(o);
+        }
+        printLine($"; cup is in {(object)bgl.asm.getParent(&cup)}.");
+        bgl.asm.push(11);
+        bgl.asm.push(22);
+        int x = 0;
+        int y = 0;
+        bgl.asm.pull(x);
+        bgl.asm.pull(y);
+        printLine($"Pulled {x} then {y}.");
+        int third = bgl.asm.loadw(&codeTable, 2);
+        bgl.asm.storew(&codeTable, 4, 55);
+        int found = bgl.asm.scanTable(40, &codeTable, 5);
+        printLine($"Third {third}, last {codeTable[4]}, 40 found {found != 0}, at slot {(found - &codeTable) / 2}.");
+        printLine($"Shifts {bgl.asm.logShift(3, 2)} {bgl.asm.artShift(-16, -2)}; call {bgl.asm.call2s(&tripler, 7)}.");
+        bgl.asm.printChar('O');
+        bgl.asm.printChar('K');
+        bgl.asm.newLine();
+    }
+}
+
+verb Helm {
+    meta = true;
+    grammar = {.helm};
+    void handler() {
+        normal_directions_enabled = !normal_directions_enabled;
+        if (normal_directions_enabled != 0) printLine("Compass directions on.");
+        else printLine("Compass directions off.");
+    }
+}
+
+verb Expire {
+    grammar = {.expire};
+    void handler() {
+        deadflag = 1;
+        printLine("You expire.");
+    }
+}
+
+verb ShowStatus {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        log($"status at {turns}");
+        printLine($"Release {bgl.header.release}; hyphen fixes {hyphenFixes}; revivals {revivals}; prompts seen {prompts > 3}.");
+    }
+}
+
+bool Initialise() {
+    relayBox.parent = roomA;
+    rfalse;
+}

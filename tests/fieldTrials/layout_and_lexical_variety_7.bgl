@@ -1,0 +1,395 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits applied to the less common declaration forms and the directive
+// machinery. `#once` in a main file; `#message`; `#include ?` of a missing extension and a missing file;
+// a `#declare`d symbol tested by an `#if` that comes before it; `#define` with a quoted string, a bare
+// word and a number used inline; `#if` on a setting compared in another case; alias classes chained
+// through `for`, with the qualifiers, name and `for` on separate lines and an emitter value and a static
+// method on the alias; a `typesealed` member re-initialized without a type keyword; a primitive newtype
+// over int with `operator auto()` (so `auto` infers int), a conversion, a replaced `print()`,
+// operators written with and without spaces, overloads told apart from int; `extend extern class
+// array` with an emitter whose `T` binds per array, written token per line; `uint` arithmetic, unsigned
+// comparison, logical against arithmetic shift and the `(uint)-1` cast; `bgl.util.math` helpers reached
+// through a namespace path split across lines; `<buf>` set, append, case, search, replace and nested
+// capture with `stackLen`; `func<>` values in an array, a member and a return, with `Func` and spaces
+// inside the angle brackets; a `replace` chain whose replacement changes the parameter list; an `#i6`
+// routine with an in-routine `#bgl` block; verb priority against a library word (above and below
+// `libraryPriority`) and `withI6Synonyms` on a library word's group.
+
+#once
+
+#beguilerSettings
+{
+	target		= z5 ;			// tabs between the tokens
+	includePaths	= "../../../inform6/stdlib" ;
+}
+
+#message   "layout_and_lexical_variety_7: compiling"
+
+#if HAS_TALLY                   // declared near the end of this file
+    #define TALLY_ON 1
+#else
+    #define TALLY_ON 0
+#endif
+
+#define LABEL   "brass dial"
+#define WORD    knob            // a bare word: the string "knob"
+#define STEP    3
+
+#if #beguilerSettings.target == "Z5"
+    #define MACHINE "z5"
+#else
+    #define MACHINE "other"
+#endif
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#INCLUDE    <buf>
+#include ?<noSuchExtension>         // skipped: not found
+#include ?"noSuchFile"              // skipped too
+
+extend class object { string description; }
+
+//-- Rooms ---------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+
+//-- Alias classes, chained ----------------------------------------------------------------------------
+
+ALIAS
+    CLASS
+        Fixture         // a fixed thing
+    FOR
+        object
+{
+    int heft;
+    emitter int doubleHeft { ($self.heft * 2) }
+    static int sum ( Fixture a , Fixture b ) { return a.heft + b.heft; }
+}
+
+alias class Lamp for Fixture { int glow; }
+
+Lamp dial
+{
+    "dial";
+    parent      = roomA;
+    name        = { .dial , .WORD };
+    heft        = 4;
+    glow        = 2;
+    description = "A dial.";
+}
+
+Fixture slab { "slab"; parent = roomA; name = { .slab }; heft = 11; attributes = { static }; }
+
+//-- A typesealed member -------------------------------------------------------------------------------
+
+class Gadget : object
+{
+    TypeSealed int charge = 4;
+    int show() { return charge * 10; }
+}
+
+Gadget g1 { "g1"; charge = 9; }
+Gadget g2 { "g2"; }
+
+//-- A primitive newtype over int ---------------------------------------------------------------------
+
+Primitive Class Notch
+{
+    emitter void operator = ( Notch v ) { $target = $v; }
+    emitter void operator=(int n){$target=$n;}
+    emitter int operator () { ($self) }     // implicit, so auto can convert
+    emitter Notch
+        operator +
+        ( int n )
+    { ($val + $n) }
+    emitter bool operator==(Notch v){($val==$v)}
+    replace emitter void print() { print "#", $val; }
+    int operator auto();
+}
+
+string kindOf(int n)   { return "int"; }
+string kindOf(Notch n) { return "notch"; }
+
+//-- An emitter on every array -------------------------------------------------------------------------
+
+extend extern class array
+{
+    emitter
+        T
+        second
+        (
+        )
+    {
+        $i6Expr($self[1])
+    }
+}
+
+array<int>    nums   = { 7, 9, 2 };
+array<object> things = { slab, dial };
+
+//-- Function values -----------------------------------------------------------------------------------
+
+int bump  ( int n ) { return n + 1; }
+int twice ( int n ) { return n * 2; }
+int negate( int n ) { return -n; }
+
+array< func< int , int > > steps = { bump, twice, negate, };
+
+func <int,int> pick(int k)
+{
+    if (k == 0) return bump;
+    return (int n) => n * 10;
+}
+
+class Stepper : object
+{
+    Func < int , int > rule;
+    int run(int n) { return rule(n); }
+}
+
+Stepper st { "st"; rule = twice; }
+
+int fold(array<func<int,int>> fs, int seed)
+{
+    int v = seed;
+    for (func<int, int> f in fs) v = f(v);
+    return v;
+}
+
+//-- A replace chain that changes the parameters --------------------------------------------------------
+
+#if TALLY_ON == 1
+int tally(int n) { return n; }
+replace int tally(int n, int m) { return replaced(n) + m; }
+replace int tally(int n) { return replaced(n, 100) + 1000; }
+#endif
+
+//-- I6 routine with a Beguile island --------------------------------------------------------------------
+
+#i6 {
+    [ ScaleUp x   y;
+        y = x * 2;              ! doubled in I6
+        #bgl { y = y + bump(x); }
+        return y;
+    ];
+}
+
+extern int ScaleUp(int x);
+
+//-- Buffers -------------------------------------------------------------------------------------------
+
+array<char> line[40];
+array<char> part[12];
+array<char> probe[12];
+array<char> repl[12];
+array<char> outer[20];
+array<char> inner[20];
+
+bool Initialise() { location = roomA; rfalse; }
+
+#includeI6 "grammar"
+
+//-- Verbs ----------------------------------------------------------------------------------------------
+
+verb Directives
+{
+    meta = true;
+    grammar = { { .directives } };
+    void handler()
+    {
+        printLine($"{LABEL} {WORD} {STEP * 2} {MACHINE} {TALLY_ON}");
+        const int k = STEP + 1;
+        printLine(k);
+    }
+}
+
+verb Aliases
+{
+    meta = true;
+    grammar = { { .aliases } };
+    void handler()
+    {
+        printLine($"{dial.heft} {dial.glow} {dial.doubleHeft} {slab.doubleHeft}");
+        printLine($"{Fixture.sum(dial, slab)} {Lamp.sum(dial, slab)}");
+        dial.heft += STEP;
+        printLine($"{dial.heft} {dial.description}");
+        printLine($"{g1.charge} {g2.charge} {g1.show() + g2.show()}");
+    }
+}
+
+verb Notches
+{
+    meta = true;
+    grammar = { { .notches } };
+    void handler()
+    {
+        Notch a = 5;
+        Notch b = a + 2;
+        print(a); print(" "); printLine(b);
+        auto c = b;                     // operator auto(): int, not Notch
+        print(c); print(" ");
+        printLine($"{kindOf(a)} {kindOf(c)} {kindOf((int)b)}");
+        if (b == a + 2) printLine("equal");
+        int raw = (int)b * 3;
+        printLine(raw);
+    }
+}
+
+verb Seconds
+{
+    meta = true;
+    grammar = { { .seconds } };
+    void handler()
+    {
+        int s = nums.second();
+        object o = things
+            .second();
+        printLine($"{s} {o} {nums.second() + 1}");
+    }
+}
+
+verb Funcs
+{
+    meta = true;
+    grammar = { { .funcs } };
+    void handler()
+    {
+        for (func<int,int> f in steps) { print(f(6)); print(" "); }
+        print("^");
+        func<int, int> p0 = pick(0);
+        func<int, int> p1 = pick(1);
+        printLine($"{p0(4)} {p1(4)} {fold(steps, 3)} {st.run(21)}");
+        st.rule = negate;
+        printLine(st.run(21));
+        st.rule = (int n) => n - 1;
+        printLine(st.run(21));
+    }
+}
+
+verb Replaces
+{
+    meta = true;
+    grammar = { { .replaces } };
+    void handler()
+    {
+        #if TALLY_ON
+            printLine($"{tally(5)} {tally(-100)}");
+        #else
+            printLine("no tally");
+        #endif
+        printLine(ScaleUp(10));
+    }
+}
+
+verb Unsigned
+{
+    meta = true;
+    grammar = { { .unsigned } };
+    void handler()
+    {
+        UINT big = 65000;
+        uint half = big / 2;
+        uint top = (uint)-1;
+        print(big); print(" "); print(half); print(" "); print(top); print("^");
+        if (big > (uint)100) printLine("big is large");
+        int asInt = (int)big;
+        if (asInt < 100) printLine("as int it is negative");
+        uint logical = big >> 4;
+        int  arith   = asInt >> 4;
+        print(logical); print(" "); printLine(arith);
+        uint m = big % 7;
+        print(m); print(" ");
+        top -= 5;
+        print(top); print("^");
+        top >>= 8;
+        big <<= 1;
+        printLine($"{top} {big} {(uint)40000 / (uint)3} {(uint)40000 > (uint)30000}");
+    }
+}
+
+verb Maths
+{
+    meta = true;
+    grammar = { { .maths } };
+    void handler()
+    {
+        int p = bgl
+            .util
+            .math
+            .pow( 2 , 10 );
+        int c = bgl.util.math.clamp(
+            120,
+            0,
+            100
+        );
+        printLine($"{p} {c} {bgl.util.math.sign(-7)} {bgl.util.math.abs(-5)}");
+        printLine($"{bgl.util.math.min(3, -3)} {bgl.util.math.max(3, -3)} {bgl.util.math.unsignedCompare(-1, 1)}");
+    }
+}
+
+verb Buffers
+{
+    meta = true;
+    grammar = { { .buffers } };
+    void handler()
+    {
+        bgl.util.buf.set(line, "brass key");
+        bgl.util.buf.set(part, " ring");
+        bgl
+            .util
+            .buf
+            .append( line , part );
+        bgl.util.buf.print(line); printLine($" {line.length} {line.size}");
+        bgl.util.buf.toUpper(line);
+        bgl.util.buf.set(probe, "KEY");
+        bgl.util.buf.set(repl, "BELL");
+        printLine($"{bgl.util.buf.indexOf(line, probe)} {bgl.util.buf.startsWith(line, bgl.util.buf.set(probe, "brass"), true)}");
+        bgl.util.buf.set(probe, "KEY");
+        bgl.util.buf.replace(line, probe, repl);
+        bgl.util.buf.print(line); print("^");
+
+        bgl.util.buf.capture(outer);
+        print("A");
+        bgl.util.buf.capture(inner);
+        print("B"); print(42);
+        int depth = bgl.util.buf.stackLen();
+        bgl.util.buf.release();
+        print("C");
+        bgl.util.buf.release();
+        print("["); bgl.util.buf.print(outer); print("]["); bgl.util.buf.print(inner);
+        printLine($"] {depth} {bgl.util.buf.stackLen()} {outer.length} {inner.length}");
+    }
+}
+
+//-- Grammar priority against library words ----------------------------------------------------------
+
+verb Shove
+{
+    grammar = { { .push, NOUN } };          // default anchor: ahead of the library's Push
+    void handler() { printLine($"shove {noun}"); }
+}
+
+verb Yank
+{
+    priority = 25;                          // above libraryPriority: after the library's Pull
+    grammar  = { { .pull, NOUN }, { .pull, NOUN, .hard } };
+    void handler() { printLine($"yank {noun}"); }
+}
+
+verb Twist
+{
+    grammar =
+    {
+        {
+            .twist,
+            NOUN,
+            withI6Synonyms                  // turn, rotate, screw, unscrew too
+        },
+    };
+    void handler() { printLine($"twist {noun}"); }
+}
+
+#declare HAS_TALLY

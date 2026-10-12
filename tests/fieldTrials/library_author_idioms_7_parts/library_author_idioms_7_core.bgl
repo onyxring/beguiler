@@ -1,0 +1,109 @@
+/*  Field trial part — included by library_author_idioms_7.bgl. Not a trial on its own.  */
+
+#once
+#include ?<linq>
+#include ?<la7NoSuchExtension>
+
+// ---- What the I6 side owns: flag values and a pooled chit class. ----
+
+#i6 {
+    Constant LA7_SEALED = 1;
+    Constant LA7_HEAVY  = 2;
+    Constant LA7_SPARE  = 4;
+    Global la7_chits_out;
+    Class La7_Chit(3)
+        with la7_amount 0,
+             create [ a;
+                 self.la7_amount = a;
+                 la7_chits_out++;
+                 #bgl { la7Note(a); }
+             ],
+             destroy [;
+                 la7_chits_out--;
+             ];
+}
+
+/// Flags whose values the I6 side defines.
+extern bnum la7Mark { LA7_SEALED, LA7_HEAVY, LA7_SPARE }
+
+extend bnum la7Mark {
+    /// True when every flag of another set is present.
+    emitter bool covers(la7Mark m) { (($self & $m) == $m) }
+}
+
+/// How many chits are out.
+extern int la7_chits_out asBgl la7ChitsOut;
+
+/// A chit the I6 side pools, three at most.
+extern class La7_Chit[] : object {
+    int la7_amount;
+    /// Twice the amount.
+    emitter int twice { ($self.la7_amount * 2) }
+    /// The two amounts together.
+    static int total(La7_Chit a, La7_Chit b) { return a.la7_amount + b.la7_amount; }
+}
+
+int la7NoteSum = 0;
+
+/// Called from the I6 side when a chit is made.
+void la7Note(int a) { la7NoteSum = la7NoteSum + a; }
+
+// ---- Packing: two sub-fields of one word. ----
+
+bnum la7Packing { }
+bnum la7Size : la7Packing { small = 0, medium = 1, large = 2 }
+bnum la7Wrap : la7Packing { bare = 0, boxed = 4, crated = 8 }
+
+extend bnum la7Packing {
+    /// The size part of a packing word.
+    emitter int sizeBits { ($self & 3) }
+}
+
+/// A count kept in units and read back in tens; never below zero.
+value class la7Tens {
+    int raw = 0;
+    int operator ()         { return raw * 10; }
+    void operator = (int v) { raw = v < 0 ? 0 : v; }
+}
+
+// ---- Items the ledger tracks. ----
+
+/// Anything the ledger tracks.
+class la7Item : object {
+    typesealed la7Mark marks;
+    la7Packing packing = small | bare;
+    la7Tens stock;
+    int weight = 1;
+    /// A one-word kind.
+    default string kind() { return "item"; }
+    static int operator <=> (la7Item a, la7Item b) { return a.weight - b.weight; }
+}
+
+/// A heavy kind of item.
+class la7Crate : la7Item {
+    marks = LA7_HEAVY;
+    packing = large | crated;
+    string kind() { return "crate"; }
+}
+
+/// A slip from a small pool that can copy another.
+class la7Slip[3] : object, bglAllocated {
+    int serial = 0;
+    la7Tens count;
+    void create(int s) { serial = s; }
+}
+
+// ---- Helpers. ----
+
+/// How many objects of a class the world has.
+int la7Census(bglClass c) { return bgl.world.instances(c).length; }
+
+/// A rolling sum that wraps, with a logical shift at each step.
+uint la7Check(array<int> vals) {
+    uint h = 7;
+    for (int v in vals) {
+        h = h * 31 + (uint)v;
+        h = h ^ (h >> 3);
+    }
+    return h;
+}

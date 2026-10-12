@@ -1,0 +1,91 @@
+Room A
+Room A. Room B is to the east.
+You can see a box A and a labeler here.
+> labels
+(size 1 is SMALL)
+Label: 3x brass key in box B (small, 5 letters, 42 wide).
+(size 4 is LARGE, last label was for brass key)
+Label: 1x box A in Room A (large, 5 letters, 36 wide).
+(size 9 is LARGE, last label was for box A)
+Label: 2x Room B (large, 5 letters, 18 wide).
+(size 3 is MEDIUM, last label was for Room B)
+Made: small large large
+Room B. Room A is to the west.
+Last parcel weighs 200, holder's holder is Room B.
+Twice 21 is 42. Size now 3.
+> spots
+(spot 1/2)
+(spot 1/3)
+Codes: R1C2 R1C3.
+A and B differ.
+A comes first (-1).
+C is a copy of A.
+(chip 5 lands in box B)
+(chip 5 goes back)
+(chip 6 lands in box B)
+(chip 6 goes back)
+(chip 7 lands in Room A)
+(chip 7 goes back)
+(chip 8 lands in box B)
+(chip 8 goes back)
+Drops: a 2, b 1, c 1.
+Now C comes first.
+A brass key.
+(nobody owns this spot)
+> parcels
+P plus 5: 255. P minus Q: 150. P times 4: 12.
+Tag: 3x brass key (12).
+(3 levels up, 1 tickets out)
+(2 levels up, 1 tickets out)
+Levels: 3 and 2. Tickets out now: 0.
+Above P: box B. Above Q: box A.
+3X B (12 letters, 2 hundred grams)
+A plain box B.
+(nothing holds this parcel)
+Empty parcel is above Room A.
+> mix
+(spot 2/1)
+Names are 10 letters. Ticket 2, 1 out.
+(chip 9 is nowhere yet)
+(chip 9 is in box A, general true)
+(I6 sees 7 letters)
+Word: keyR2C1.
+Parcel 420 grams, 4 hundred, 6 counted.
+(chip 9 goes back)
+(the fourth chip is not there)
+Chips: 1 2 3.
+(chip 1 goes back)
+(chip 2 goes back)
+(chip 3 goes back)
+A plain box B.
+> racks
+(spot 2/2)
+(brass key is in box B)
+(I6: rack A 2)
+You see nothing special about the chip.
+(chip 2 goes back)
+(spot 4/4)
+(box A is in Room A)
+(I6: rack B 4)
+You see nothing special about the chip.
+(chip 4 goes back)
+(spot 5/3)
+(Room A is not in anything)
+(I6: rack B 3)
+You see nothing special about the chip.
+(chip 3 goes back)
+Loads: A 2, B 5.
+Rack A is lighter (-3).
+They differ.
+(spot 5/3)
+(box B is in box A)
+(I6: rack A 3)
+You see nothing special about the chip.
+(chip 3 goes back)
+Now they are even.
+rack A says load 5, first spot 5/3.
+rack B says load 5, first spot 5/3.
+> look
+Room A
+Room A. Room B is to the east.
+You can see a box A and a labeler here.

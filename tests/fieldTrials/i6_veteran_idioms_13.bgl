@@ -1,0 +1,442 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, three features at a time. A namespace object aliasing a value
+// class and an enum, with operator [] / []= over its array<string>, an array<array<string>> searched
+// by a block-bodied lambda, an array<char> scratch buffer captured into and scanned by a block-bodied
+// lambda, and a value-class member; #using that namespace ahead of a class whose static members are
+// an int array, an array<array<int>>, an array<string>, an array<char>, an array of the aliased
+// value class, an array<array<>> of it built from inline objects of the alias and copied into from an
+// owned member, and an array of its own instances, with an inline accessor appending to a static
+// array, operator [] / []= over its row of the static nested array, array<T> parameters fed static
+// arrays and their rows, a block-bodied lambda sorting the static instance array through the
+// subscript and accessor, and postfix ? on a peer and on a label; an extend class adding a static
+// array<array<char>>, a static array<string>, a second inline accessor, array<T> parameters (one an
+// array of arrays) and block-bodied lambdas; an object whose inline accessor reaches the object's
+// array of class instances, array of arrays, array<char> bar and value-class member through outer,
+// calls a block-bodied lambda over the nested array and hands an array to a method taking a value class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+#include <string>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global trial_sets = 0;
+Global trial_calls = 0;
+Global trial_last = 0;
+}
+
+extern int trial_sets;
+extern int trial_calls;
+extern int trial_last;
+
+// ---------------------------------------------------------------- the kit namespace
+
+value class Pair {
+    int a;
+    int b;
+    Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
+    int total() { return a + b; }
+}
+
+enum eSide { port, middle, aft }
+
+object kit {
+    alias cell for Pair;
+    alias side for eSide;
+    array<string> words[6] = {"bolt", "nut", "pin", "cap"};
+    array<array<string>> sets = { {"bolt", "nut"}, {"pin"}, {"cap", "rod", "tie"} };
+    array<char> scratch[16];
+    cell span;
+
+    string operator [] (int i) { return words[i % words.length]; }
+    void operator []= (int i, string w) {
+        if (i < words.length) words[i] = w;
+        else words.append(w);
+    }
+    int find(string w) {
+        func<bool, string> same = (string x) => {
+            trial_calls++;
+            return x == w;
+        };
+        for (int r = 0; r < sets.length; r++) {
+            for (int c = 0; c < sets[r].length; c++) {
+                if (same(sets[r][c])) return r * 10 + c;
+            }
+        }
+        return -1;
+    }
+    int widest() {
+        int best = 0;
+        for (int r = 1; r < sets.length; r++) {
+            if (sets[r].length > sets[best].length) best = r;
+        }
+        span.a = best;
+        span.b = sets[best].length;
+        return best;
+    }
+    int vowels(string w) {
+        bgl.util.buf.capture(scratch);
+        print(w);
+        bgl.util.buf.release();
+        int n = 0;
+        bgl.util.buf.indexOfFirstTrue(scratch, (char c) => {
+            if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u') n++;
+            return false;
+        });
+        return n;
+    }
+    string at(int i) { return self[i]; }
+    void put(int i, string w) { self[i] = w; }
+    void list() {
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) print(",");
+            print(self[i]);
+        }
+    }
+}
+
+// ---------------------------------------------------------------- racks
+
+void eachWord(array<string> ws, func<void, string> fn) {
+    for (int i = 0; i < ws.length; i++) fn(ws[i]);
+}
+
+#using kit
+class Rack : object {
+    static array<int> hits[8];
+    static array<array<int>> bays = { {1, 2, 3}, {4, 5}, {6} };
+    static array<string> labels = {"port", "middle", "aft"};
+    static array<char> code[12];
+    static array<cell> marks[4];
+    static array<array<cell>> spans = { {cell{a = 1; b = 2;}, cell{a = 3; b = 4;}}, {cell{a = 5; b = 6;}} };
+    static array<Rack> all[4];
+    int bay;
+    side facing;
+    cell at;
+    Rack peer;
+    auto load = {
+        int _n = 0;
+        int operator () { return _n; }
+        void operator = (int v) {
+            _n = v;
+            if (!Rack.hits.append(v)) print("(hits full) ");
+        }
+    }
+
+    int operator [] (int i) {
+        if (i >= Rack.bays[bay].length) return -1;
+        return Rack.bays[bay][i];
+    }
+    void operator []= (int i, int v) {
+        trial_sets++;
+        if (i < Rack.bays[bay].length) Rack.bays[bay][i] = v;
+        else print("(no cell) ");
+    }
+
+    void enlist() {
+        if (Rack.all.contains(self)) return;
+        Rack.all.append(self);
+    }
+    int sumOf(array<int> xs) {
+        int t = 0;
+        for (int v in xs) t += v;
+        return t;
+    }
+    int bayTotal() { return sumOf(Rack.bays[bay]); }
+    int hitTotal() { return sumOf(Rack.hits); }
+    void mark(int x, int y) {
+        cell c;
+        c.a = x;
+        c.b = y;
+        at = c;
+        Rack.marks.append(c);
+        c.a = 99;
+    }
+    string label() { return Rack.labels[(int)facing - 1]; }
+    bool linked() { return peer?; }
+    void stamp() {
+        bgl.util.buf.capture(Rack.code);
+        print(label());
+        print(self[0]);
+        bgl.util.buf.release();
+        trial_last = bgl.util.buf.indexOfFirstTrue(Rack.code, (char c) => {
+            if (c >= '0' && c <= '9') return true;
+            return false;
+        });
+        bgl.util.buf.print(Rack.code);
+    }
+    static void sortAll() {
+        Rack.all.sort((Rack x, Rack y) => {
+            int kx = x[0] + x.load;
+            int ky = y[0] + y.load;
+            if (kx > ky) return -1;
+            if (kx < ky) return 1;
+            return 0;
+        });
+    }
+    static int markSum() {
+        Pair acc;
+        for (int i = 0; i < Rack.marks.length; i++) {
+            acc.a += Rack.marks[i].a;
+            acc.b += Rack.marks[i].b;
+        }
+        return acc.total();
+    }
+    int spanSum() {
+        int t = 0;
+        for (array<cell> row in Rack.spans) {
+            for (cell c in row) t += c.total();
+        }
+        return t;
+    }
+    void keepSpan() {
+        Rack.spans[bay % Rack.spans.length][0] = at;
+        at.b = 0;
+    }
+    static void showAll() {
+        for (int i = 0; i < Rack.all.length; i++) {
+            Rack r = Rack.all[i];
+            if (i > 0) print("; ");
+            print($"{r} {r.label()} bay {r.bay} [{r[0]} {r[1]} {r[2]}] load {r.load}");
+            if (r.peer?) print($" -> {r.peer}");
+        }
+    }
+}
+
+extend class Rack {
+    static array<array<char>> codes = { {'a', 'b'}, {'c'}, {'d', 'e', 'f'} };
+    static array<string> notes[4];
+    auto tag = {
+        int _t = 0;
+        int operator () { return _t; }
+        void operator = (int v) {
+            _t = v;
+            if (!Rack.notes.append(Rack.labels[v % Rack.labels.length])) print("(notes full) ");
+        }
+    }
+    int countIn(array<string> ws, string w) {
+        int n = 0;
+        eachWord(ws, (string s) => {
+            if (s == w) n++;
+        });
+        return n;
+    }
+    int rowLen(array<array<int>> g, int r) {
+        if (r >= g.length) return -1;
+        return g[r].length;
+    }
+    bool hasNote() { return Rack.notes.length > 0 && Rack.notes[0]?; }
+    void spellCode() {
+        array<char> row = Rack.codes[bay % Rack.codes.length];
+        func<bool, char> isLate = (char c) => {
+            trial_calls++;
+            return c > 'c';
+        };
+        int at2 = bgl.util.buf.indexOfFirstTrue(row, isLate);
+        for (int i = 0; i < row.length; i++) print(row[i]);
+        print($" late at {at2}");
+        if (peer?) print($", peer tag {peer.tag}");
+    }
+}
+
+object rackRoom { "rack room"; string description = "Rack room."; attributes = {light}; }
+
+Rack rackA { "rack A"; bay = 0; facing = kit.side.port; parent = rackRoom; }
+Rack rackB { "rack B"; bay = 1; facing = eSide.aft; parent = rackRoom; }
+Rack rackC { "rack C"; bay = 2; facing = eSide.middle; parent = rackRoom; }
+
+// ---------------------------------------------------------------- the deck
+
+array<int> weights = {2, 4, 6};
+
+object deck {
+    int scale = 2;
+    Pair base;
+    array<Rack> racks = {rackA, rackB, rackC};
+    array<array<int>> grid = { {1, 1}, {2, 3, 5}, {8} };
+    array<char> bar[12];
+    auto level = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v * outer.scale;
+            outer.base.a = v;
+            outer.base.b = outer.grid[v % outer.grid.length].length;
+            int seen = 0;
+            for (int i = 0; i < outer.racks.length; i++) {
+                if (outer.racks[i].peer?) seen++;
+            }
+            outer.grid[0][0] = seen;
+            bgl.util.buf.set(outer.bar, "");
+            for (int k = 0; k < outer.base.b + seen; k++) outer.bar[k] = '0' + outer.grid[1][k % 3];
+            outer.bar.length = outer.base.b + seen;
+            func<int, int> pick = (int r) => {
+                int t = 0;
+                for (int c = 0; c < outer.grid[r].length; c++) t += outer.grid[r][c];
+                return t;
+            };
+            trial_last = pick(v % outer.grid.length) + outer.weigh(weights, outer.base);
+        }
+    }
+    int weigh(array<int> xs, Pair p) {
+        int t = 0;
+        for (int i = 0; i < xs.length; i++) t += xs[i] * p.a;
+        p.a = 0;
+        return t + p.b;
+    }
+    void show() {
+        print($"level {level}, base {base.a}/{base.b}, bar ");
+        bgl.util.buf.print(bar);
+        print(", grid");
+        for (array<int> row in grid) {
+            print(" [");
+            for (int i = 0; i < row.length; i++) {
+                if (i > 0) print(" ");
+                print(row[i]);
+            }
+            print("]");
+        }
+        print($", last {trial_last}");
+    }
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb RackList {
+    grammar = {.racks};
+    meta = true;
+    void handler() {
+        Rack.showAll();
+        printLine(".");
+    }
+}
+
+verb RackLoad {
+    grammar = {.rload, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        rackA.load = n;
+        rackB.load = n * 2;
+        rackC.load = n + 1;
+        printLine($"hits {Rack.hits.length}, total {rackA.hitTotal()}, bays {rackA.bayTotal()}/{rackB.bayTotal()}/{rackC.bayTotal()}.");
+    }
+}
+
+verb RackSet {
+    grammar = {.rset, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        rackB[0] = n;
+        rackB[2] = n;
+        rackC[0] = rackB[0] + rackA[2];
+        printLine($"B [{rackB[0]} {rackB[1]} {rackB[2]}], C {rackC[0]}, sets {trial_sets}, sum {rackB.bayTotal()}.");
+    }
+}
+
+verb RackSort {
+    grammar = {.rsort};
+    meta = true;
+    void handler() {
+        Rack.sortAll();
+        Rack.showAll();
+        printLine(".");
+    }
+}
+
+verb RackLink {
+    grammar = {.rlink};
+    meta = true;
+    void handler() {
+        rackA.peer = rackC;
+        rackC.peer = rackB;
+        printLine($"A {rackA.linked()}, B {rackB.linked()}, C {rackC.linked()}.");
+    }
+}
+
+verb RackMark {
+    grammar = {.rmark, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        rackA.mark(n, n + 1);
+        rackC.mark(n * 3, 1);
+        print($"A at {rackA.at.a},{rackA.at.b}; C at {rackC.at.a},{rackC.at.b}; marks {Rack.marks.length}, sum {Rack.markSum()}; ");
+        print($"spans {rackA.spanSum()}");
+        rackC.keepSpan();
+        printLine($", kept {Rack.spans[0][0].a},{Rack.spans[0][0].b}, C at {rackC.at.a},{rackC.at.b}, spans {rackB.spanSum()}.");
+    }
+}
+
+verb RackStamp {
+    grammar = {.rstamp};
+    meta = true;
+    void handler() {
+        rackA.stamp();
+        print($" digit {trial_last}, ");
+        rackB.stamp();
+        printLine($" digit {trial_last}.");
+    }
+}
+
+verb RackTag {
+    grammar = {.rtag, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        rackC.tag = n;
+        rackB.tag = n + 1;
+        print($"tags {rackB.tag}/{rackC.tag}, notes {Rack.notes.length}, has {rackA.hasNote()}, ");
+        print($"count {rackA.countIn(Rack.notes, "aft")}, rows {rackA.rowLen(Rack.bays, 1)}/{rackA.rowLen(Rack.bays, 5)}; ");
+        rackA.spellCode();
+        print("; ");
+        rackC.spellCode();
+        printLine(".");
+    }
+}
+
+verb DeckLevel {
+    grammar = {.dlevel, NUMBER};
+    meta = true;
+    void handler() {
+        deck.level = (int)noun;
+        deck.show();
+        printLine(".");
+    }
+}
+
+verb KitCheck {
+    grammar = {.kit};
+    meta = true;
+    void handler() {
+        print($"pin {kit.find("pin")}, tie {kit.find("tie")}, axe {kit.find("axe")}, calls {trial_calls}; ");
+        print($"widest {kit.widest()} ({kit.span.a}/{kit.span.b}); ");
+        print($"vowels {kit.vowels("bolt")}/{kit.vowels("cap")}/{kit.vowels("tie")}; ");
+        kit[1] = "rivet";
+        kit.put(4, "gear");
+        kit.list();
+        printLine($"; third {kit[2]}, wrap {kit.at(7)}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = rackRoom;
+    rackA.enlist();
+    rackB.enlist();
+    rackC.enlist();
+    rfalse;
+}

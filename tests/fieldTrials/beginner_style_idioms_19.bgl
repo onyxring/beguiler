@@ -1,0 +1,548 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a nineteenth first-time-programmer program, a small shop with a purse of coins, written
+// the way a beginner writes it after reading the spec once. Money kept in int globals with a const
+// for the bag size, bool flags, an enum for the shopkeeper's mood with a switch on it, a class of
+// things for sale (price, a sold flag, a method that says the price, a before() that handles the
+// library's Buy action), a subclass for a lamp with a timer (time_left / time_out), a shopkeeper with
+// a daemon started from Initialise, helper functions (one with a default argument, one returning a
+// string from a switch with ranges, one counting an object's children), a receipt kept in two
+// <array> arrays filled with append and printed with for and for-in, stringObj lines built with + and
+// += and interpolation, a while loop and a do/while, children loops over a counter (a supporter),
+// moves with parent =, give/ungive, is(), contains/indexOf/remove/clear on the receipt, a list built
+// with "and" in a stringObj, toUpper, and verbs with and without a noun (sell, haggle, purse, prices,
+// receipt, tally, bag, reset) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+// ===== MONEY =====
+
+// how many coins the player has
+int purse = 50;
+// how many coins the player has spent
+int spent = 0;
+// how many coins the player got back from selling
+int earned = 0;
+// how many things the player bought
+int boughtCount = 0;
+// the most things the player can buy
+const int MAX_BAG = 4;
+// did the player haggle yet?
+bool haggled = false;
+// how much off the next thing costs (from haggling)
+int discount = 0;
+
+// ===== THE RECEIPT =====
+
+// the names of the things bought, in order
+array<string> receiptNames[6];
+// the prices paid, in the same order
+array<int> receiptPrices[6];
+
+// ===== THE SHOPKEEPER'S MOOD =====
+
+enum Mood { happy, grumpy, sleepy }
+
+Mood keeperMood = Mood.happy;
+// how many turns until the keeper gets sleepy
+int turnsAwake = 0;
+
+// ===== HELPER FUNCTIONS =====
+
+// prints an amount of coins, like "5 coins" or "1 coin"
+void printCoins(int n, bool withWord = true) {
+    print(n);
+    if (withWord == true) {
+        if (n == 1) {
+            print(" coin");
+        } else {
+            print(" coins");
+        }
+    }
+}
+
+// says if a price is cheap, fair or dear
+string priceWord(int p) {
+    switch (p) {
+        case 0: return "free";
+        case 1 to 9: return "cheap";
+        case 10 to 29: return "fair";
+        default: return "dear";
+    }
+}
+
+// counts the things on (or in) something
+int countOn(object where) {
+    int n = 0;
+    for (object o in where.children) {
+        n = n + 1;
+    }
+    return n;
+}
+
+// works out what something costs right now (with the mood and the discount)
+int priceNow(int basePrice) {
+    int p = basePrice;
+    if (keeperMood == Mood.grumpy) {
+        p = p + 5;
+    }
+    if (discount > 0) {
+        p = p - discount;
+        if (p < 0) {
+            p = 0;
+        }
+    }
+    return p;
+}
+
+// writes a line on the receipt
+void addToReceipt(string what, int paid) {
+    bool ok = receiptNames.append(what);
+    if (ok == true) {
+        receiptPrices.append(paid);
+    } else {
+        print("(The receipt is full.)^");
+    }
+}
+
+// adds up the receipt
+int receiptTotal() {
+    int total = 0;
+    int i = 0;
+    while (i < receiptPrices.length) {
+        total = total + receiptPrices[i];
+        i++;
+    }
+    return total;
+}
+
+// says the keeper's mood as a word
+string moodWord() {
+    switch (keeperMood) {
+        case Mood.happy: return "happy";
+        case Mood.grumpy: return "grumpy";
+        case Mood.sleepy: return "sleepy";
+    }
+    return "unknown";
+}
+
+// ===== THINGS FOR SALE =====
+
+class ForSale : object {
+    int price = 0;
+    bool sold = false;
+    string description;
+
+    // says what it costs
+    void sayPrice() {
+        int p = priceNow(price);
+        stringObj line = $"The {self} costs ";
+        print(line);
+        printCoins(p);
+        print($" ({priceWord(p)}).^");
+    }
+
+    // buying it
+    bool before() {
+        if (action == Buy) {
+            if (sold == true) {
+                print("You already bought that.^");
+                rtrue;
+            }
+            if (keeperMood == Mood.sleepy) {
+                print("The shopkeeper is asleep.^");
+                rtrue;
+            }
+            if (boughtCount >= MAX_BAG) {
+                print("Your bag is full.^");
+                rtrue;
+            }
+            int p = priceNow(price);
+            if (p > purse) {
+                print("You can't afford that. ");
+                sayPrice();
+                rtrue;
+            }
+            purse = purse - p;
+            spent += p;
+            boughtCount++;
+            sold = true;
+            discount = 0;
+            self.parent = player;
+            addToReceipt(description, p);
+            print($"You buy the {self} for ");
+            printCoins(p);
+            print(".^");
+            rtrue;
+        }
+        if (action == Take) {
+            if (sold == false) {
+                print("You have to buy it first.^");
+                rtrue;
+            }
+        }
+        rfalse;
+    }
+}
+
+// a lamp is a thing for sale that also burns down
+class LampForSale : ForSale {
+    int time_left;
+    void time_out() {
+        print("^The lamp goes out.^");
+        self.ungive(light);
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. There is a counter here. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. It is dark in the corner. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE COUNTER =====
+
+object counter {
+    "counter";
+    parent = roomA;
+    name = {.counter};
+    string description = "A wooden counter.";
+    attributes = {static, supporter};
+}
+
+// ===== THE THINGS =====
+
+ForSale apple {
+    "apple";
+    parent = counter;
+    name = {.apple};
+    price = 5;
+    description = "apple";
+}
+
+ForSale rope {
+    "rope";
+    parent = counter;
+    name = {.rope};
+    price = 20;
+    description = "rope";
+}
+
+ForSale map {
+    "map";
+    parent = counter;
+    name = {.map};
+    price = 45;
+    description = "map";
+}
+
+ForSale bell {
+    "bell";
+    parent = counter;
+    name = {.bell};
+    price = 10;
+    description = "bell";
+}
+
+LampForSale lamp {
+    "lamp";
+    parent = counter;
+    name = {.lamp};
+    price = 15;
+    description = "lamp";
+    attributes = {switchable};
+    bool after() {
+        if (action == SwitchOn) {
+            self.give(light);
+            StartTimer(self, 3);
+            print("The lamp is lit. It will burn for 3 turns.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ===== THE SHOPKEEPER =====
+
+object keeper {
+    "shopkeeper";
+    parent = roomA;
+    name = {.shopkeeper, .keeper};
+    string description = "The shopkeeper.";
+    attributes = {animate};
+
+    // the keeper gets sleepy after a while
+    void daemon() {
+        turnsAwake++;
+        if (turnsAwake == 12) {
+            if (keeperMood != Mood.sleepy) {
+                keeperMood = Mood.sleepy;
+                if (location == roomA) {
+                    print("^The shopkeeper falls asleep.^");
+                }
+            }
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(keeper);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// PURSE - how much money you have
+verb ShowPurse {
+    meta = true;
+    grammar = {.purse};
+    void handler() {
+        print("You have ");
+        printCoins(purse);
+        print(". You spent ");
+        printCoins(spent);
+        print(" and got back ");
+        printCoins(earned);
+        print(".^");
+        if (purse + spent - earned != 50) {
+            print("(The money does not add up!)^");
+        }
+    }
+}
+
+// PRICES - what everything on the counter costs
+verb Prices {
+    grammar = {.prices};
+    void handler() {
+        if (countOn(counter) == 0) {
+            print("The counter is empty.^");
+            return;
+        }
+        print($"The shopkeeper is {moodWord()}.^");
+        for (object o in counter.children) {
+            ForSale f = (ForSale)o;
+            f.sayPrice();
+        }
+        int n = countOn(counter);
+        print($"{n} things on the counter.^");
+    }
+}
+
+// SELL - sell something back (for half the price)
+verb Sell {
+    grammar = {.sell, NOUN};
+    void handler() {
+        if (noun.parent != player) {
+            print("You don't have that.^");
+            return;
+        }
+        if (!(noun.is(ForSale))) {
+            print("The shopkeeper doesn't want that.^");
+            return;
+        }
+        ForSale f = (ForSale)noun;
+        int back = f.price / 2;
+        purse = purse + back;
+        earned = earned + back;
+        boughtCount--;
+        f.sold = false;
+        f.parent = counter;
+        // take it off the receipt
+        int where = receiptNames.indexOf(f.description);
+        if (where >= 0) {
+            receiptNames.remove(where);
+            receiptPrices.remove(where);
+        }
+        print($"You sell the {f} for ");
+        printCoins(back);
+        print(".^");
+    }
+}
+
+// HAGGLE - ask for less money (once)
+verb Haggle {
+    grammar = {.haggle, NOUN};
+    void handler() {
+        if (!(noun.is(ForSale))) {
+            print("You can't haggle over that.^");
+            return;
+        }
+        ForSale f = (ForSale)noun;
+        if (haggled == true) {
+            print("The shopkeeper won't haggle again.^");
+            return;
+        }
+        haggled = true;
+        switch (keeperMood) {
+            case Mood.happy:
+                discount = f.price / 5;
+                print("The shopkeeper smiles. ");
+                f.sayPrice();
+            case Mood.grumpy:
+                print("The shopkeeper frowns.^");
+            default:
+                print("The shopkeeper snores.^");
+        }
+        // haggling makes the keeper grumpy
+        if (keeperMood == Mood.happy) {
+            keeperMood = Mood.grumpy;
+        }
+    }
+}
+
+// SMILE - makes the keeper happy again
+verb SmileAt {
+    grammar = {.smile};
+    void handler() {
+        if (keeperMood == Mood.grumpy) {
+            keeperMood = Mood.happy;
+            print("The shopkeeper smiles back.^");
+        } else {
+            print($"The shopkeeper is still {moodWord()}.^");
+        }
+    }
+}
+
+// RECEIPT - everything you bought
+verb Receipt {
+    grammar = {.receipt};
+    void handler() {
+        if (receiptNames.length == 0) {
+            print("The receipt is blank.^");
+            return;
+        }
+        for (int i = 0; i < receiptNames.length; i++) {
+            stringObj line = receiptNames[i];
+            line = line + ": ";
+            stringObj num = $"{receiptPrices[i]}";
+            line += num;
+            print($"{i + 1}. {line}^");
+        }
+        print("Total: ");
+        printCoins(receiptTotal());
+        print("^");
+        // the dearest thing
+        int dearest = 0;
+        for (int p in receiptPrices) {
+            if (p > dearest) {
+                dearest = p;
+            }
+        }
+        print($"Dearest: {dearest}.^");
+    }
+}
+
+// TALLY - counts down the coins in fives
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        int left = purse;
+        int fives = 0;
+        do {
+            if (left >= 5) {
+                left = left - 5;
+                fives++;
+            }
+        } while (left >= 5);
+        print($"{fives} fives and {left} left over.^");
+        stringObj stars = "";
+        int k = 0;
+        while (k < fives) {
+            stars += "*";
+            k++;
+        }
+        print($"[{stars}]^");
+    }
+}
+
+// RESET - put everything back on the counter and give the money back
+verb ResetShop {
+    grammar = {.reset};
+    void handler() {
+        int moved = 0;
+        for (object o in player.children) {
+            if (o.is(ForSale)) {
+                ForSale f = (ForSale)o;
+                f.sold = false;
+                f.parent = counter;
+                moved++;
+            }
+        }
+        purse = 50;
+        spent = 0;
+        earned = 0;
+        boughtCount = 0;
+        discount = 0;
+        haggled = false;
+        receiptNames.clear();
+        receiptPrices.clear();
+        print($"{moved} things go back on the counter.^");
+    }
+}
+
+// BAG - says what you bought, as a list with "and"
+verb Bag {
+    grammar = {.bag};
+    void handler() {
+        int total = 0;
+        for (object o in player.children) {
+            if (o.is(ForSale)) {
+                total++;
+            }
+        }
+        if (total == 0) {
+            print("Your bag is empty.^");
+            return;
+        }
+        stringObj list = "In your bag: ";
+        int done = 0;
+        for (object o in player.children) {
+            if (o.is(ForSale)) {
+                stringObj word = $"{o}";
+                list += word;
+                done++;
+                if (done == total - 1) {
+                    list += " and ";
+                } else if (done < total) {
+                    list += ", ";
+                }
+            }
+        }
+        list += ".";
+        print(list);
+        print("^");
+        int room = MAX_BAG - boughtCount;
+        if (room == 1) {
+            print("Room for 1 more.^");
+        } else {
+            print($"Room for {room} more.^");
+        }
+        if (receiptNames.contains("lamp")) {
+            stringObj shout = "the lamp is on the receipt";
+            print($"({shout.toUpper()})^");
+        }
+    }
+}

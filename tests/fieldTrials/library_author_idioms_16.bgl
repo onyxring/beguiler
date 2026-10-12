@@ -1,0 +1,360 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit configured by #define symbols the consumer sets first; a value class of
+// quantities with copy operators and + over ints; a kit verb that reports a shared note and is run from
+// code through perform(). A pooled crate class over a plain box base, then an extend class of the crate
+// that adds a byte array mark, a nested-literal array of arrays, an owned quantity and a var member,
+// operator += and ++, operator [] and []= counted across the rows and an emitter operator switch; its
+// stow method fills a stringObj note by switching on typeof of a var, switches on the load with values,
+// a range and a guard and on the crate itself through operator switch, writes the mark, dispatches to
+// the box's show with an ancestor cast and performs the kit verb. A ledger class with pages that change shape under #if,
+// an owned and a ref quantity, a stringObj title, a var and an emitter method; its enter method writes
+// through its own []=, throws out-of-range pages to its own catch, switches on the page and on typeof,
+// sorts a row through a lambda under #if, binds the ref with := and performs the kit verb. A rack
+// class with a byte array label worked through bgl.util.buf, a <linq> chain over its slots, a ref
+// quantity parameter and member, an owned quantity, an emitter method, operator [], ?. on a crate
+// owner, casts out of a var and a stringObj line; its tally method switches on the chain's count and on
+// typeof of the tag, then performs the kit verb. Verbs drive each class, run new/delete on the pool and
+// reuse its slots.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA16_DEPTH 2
+#define LA16_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ==== The kit. ====
+
+/// The last note any kit class left; the ping verb prints it.
+int la16Last = 0;
+
+/// Prints the last note; the kit's classes run it from code.
+verb La16Ping {
+    grammar = {.ping};
+    void handler() { print($"[ping {la16Last}]"); }
+}
+
+/// A quantity that copies on assignment.
+value class La16Qty {
+    int n;
+    La16Qty operator = (La16Qty o) { n = o.n; return self; }
+    La16Qty operator = (int v) { n = v; return self; }
+    /// The quantity with some added.
+    La16Qty operator + (int v) {
+        La16Qty r;
+        r.n = n + v;
+        return r;
+    }
+    /// Prints the quantity.
+    void print() { ::print($"<{n}>"); }
+}
+
+/// A numbered box.
+class La16Box : object {
+    int boxId;
+    /// Prints the box's number.
+    void show() { print($"box {boxId}"); }
+}
+
+/// A crate from a pool of three: a box with a load.
+class La16Crate[3] : La16Box {
+    int load;
+    void create(int id, int l) {
+        boxId = id;
+        load = l;
+    }
+    /// Prints the crate's load, then the box it is.
+    void show() {
+        print($"crate {load}/");
+        ((La16Box)self).show();
+    }
+}
+
+// ---- The crate's extension: marks, bins and stowing. ----
+
+/// What a crate holds, kept in rows of bins.
+extend class La16Crate {
+    array<char> mark = "....";
+    array<array<int>> bins = { {1, 2}, {3} };
+    La16Qty held;
+    var last;
+    stringObj note;
+
+    /// Adds to the load and the held quantity.
+    int operator += (int k) {
+        load += k;
+        held = held + k;
+        return load;
+    }
+
+    /// One more in the load.
+    int operator ++ () {
+        load = load + 1;
+        return load;
+    }
+
+    /// One bin, counted across the rows; -1 past the end.
+    int operator [] (int i) {
+        for (array<int> row in bins) {
+            if (i < row.length) return row[i];
+            i = i - row.length;
+        }
+        return -1;
+    }
+
+    /// Writes one bin, counted across the rows.
+    int operator []= (int i, int v) {
+        for (array<int> row in bins) {
+            if (i < row.length) {
+                row[i] = v;
+                return v;
+            }
+            i = i - row.length;
+        }
+        return -1;
+    }
+
+    /// A case matches the crate's load in tens.
+    emitter eBool operator switch (int t) { ($self.load / 10 == $t) }
+
+    /// Stows something: notes what it was, marks the crate by its load and reports.
+    void stow(var what) {
+        last = what;
+        switch (typeof(what)) {
+            case eType.string: note = (string)what;
+            case eType.object: note = "thing";
+            default:           note = "?";
+        }
+        self += 2;
+        self++;
+        switch (load) {
+            case 0:      mark[0] = '0';
+            case 1 to 5: mark[0] = 'l';
+            case >= 6:   mark[0] = 'h';
+        }
+        switch (self) {
+            case 0:  mark[1] = 'a';
+            case 1:  mark[1] = 'b';
+            default: mark[1] = 'c';
+        }
+        mark[2] = note[0];
+        self[2] = self[2] + load;
+        note += "!";
+        ((La16Box)self).show();
+        print(note);
+        print(":");
+        held.print();
+        la16Last = self[2];
+        La16Ping.perform();
+    }
+
+    /// Prints the mark.
+    void showMark() { for (char c in mark) print(c); }
+}
+
+// ---- The ledger: pages of figures. ----
+
+/// A ledger of figures kept by page; out-of-range pages are refused.
+class La16Ledger : object {
+#if LA16_DEPTH >= 2
+    array<array<int>> pages = { {0, 0, 0}, {0, 0, 0} };
+    const int width = 3;
+#else
+    array<array<int>> pages = { {0, 0}, {0, 0} };
+    const int width = 2;
+#endif
+    La16Qty total;
+    ref La16Qty pin;
+    stringObj title;
+    var lastIn;
+
+    /// A figure doubled.
+    emitter int twice(int v) { ($v * 2) }
+
+    /// One figure, counted across the pages.
+    int operator [] (int i) { return pages[i / width][i % width]; }
+
+    /// Writes one figure; a figure past the pages is thrown.
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= width * pages.length) throw i;
+        pages[i / width][i % width] = v;
+        return v;
+    }
+
+    /// Enters something at a place: a number by value, a word by its length, an object as one.
+    void enter(int at, var what) {
+        lastIn = what;
+        int v = 0;
+        switch (typeof(what)) {
+            case eType.string:
+                string w = (string)what;
+                v = w.length;
+            case eType.object: v = 1;
+            default:           v = 5;
+        }
+        try {
+            switch (at) {
+                case < 0:   throw -1;
+                case 0 to 9: self[at] = twice(v);
+                default:     throw at;
+            }
+            title = $"page {at / width}";
+        } catch (int bad) {
+            title = "refused";
+            v = bad;
+        }
+#if LA16_TRACE
+        pages[at / width % pages.length].sort((int a, int b) => b - a);
+#endif
+        int sum = 0;
+        for (array<int> page in pages) for (int f in page) sum += f;
+        total = sum;
+        pin := total;
+        la16Last = pin.n;
+        print(title);
+        La16Ping.perform();
+    }
+}
+
+// ---- The rack: slots with a label. ----
+
+/// A rack of slots with a short label; a crate may own it.
+class La16Rack : object {
+    array<char> label[12];
+    array<char> sep = "/";
+    array<int> slots = { 4, 9, 2, 7 };
+    ref La16Qty pick;
+    La16Qty base;
+    stringObj line;
+    La16Crate owner;
+
+    /// A slot scaled by ten.
+    emitter int scaled(int v) { ($v * 10) }
+
+    /// One slot.
+    int operator [] (int i) { return slots[i]; }
+
+    /// Counts the slots over a quantity, labels the rack by the count and the tag, and reports.
+    void tally(ref La16Qty q, var tag) {
+        pick := q;
+        base = q.n + 1;
+        int over = slots.filter((int s) => s > pick.n).count();
+        switch (over) {
+            case 0:      bgl.util.buf.set(label, "rk-none");
+            case 1, 2:   bgl.util.buf.set(label, "rk-few");
+            default:     bgl.util.buf.set(label, "rk-many");
+        }
+        switch (typeof(tag)) {
+            case eType.string: line = (string)tag;
+            case eType.object: line = $"{(object)tag}";
+            default:           line = "none";
+        }
+        bgl.util.buf.append(label, sep);
+        bgl.util.buf.toUpper(label);
+        owner?.show();
+        print(" ");
+        bgl.util.buf.print(label);
+        print($" {line} {scaled(self[1])} ");
+        base.print();
+        pick = pick + over;
+        la16Last = over;
+        La16Ping.perform();
+    }
+}
+
+// ==== The consumer. ====
+
+La16Ledger ledgerA { "ledger A"; }
+La16Rack rackA { "rack A"; }
+object brassKey { "brass key"; }
+
+verb Crates {
+    grammar = {.crates};
+    void handler() {
+        La16Crate a = new La16Crate(1, 0);
+        La16Crate b = new La16Crate(2, 9);
+        La16Crate c = new La16Crate(3, 30);
+        if (a == null || b == null || c == null) { print("No crates.^"); return; }
+        La16Crate d = new La16Crate(4, 0);
+        a.stow("apple");
+        print(" ");
+        b.stow(brassKey);
+        print(" ");
+        c.stow(null);
+        print(" ");
+        a.showMark();
+        print(" ");
+        b.showMark();
+        print(" ");
+        c.showMark();
+        print($"; bins {a[0]}{a[1]}{a[2]} {b[3]}; spare {d == null}.^");
+        b.show();
+        print(".^");
+        delete a;
+        delete b;
+        delete c;
+    }
+}
+
+verb Ledger {
+    grammar = {.ledger};
+    void handler() {
+        ledgerA.enter(1, "abcd");
+        print(" ");
+        ledgerA.enter(4, brassKey);
+        print(" ");
+        ledgerA.enter(12, "x");
+        print(" ");
+        ledgerA.enter(0, null);
+        print($"; figures {ledgerA[0]} {ledgerA[1]} {ledgerA[2]} {ledgerA[3]} {ledgerA[4]}; ");
+        ledgerA.total.print();
+        print(".^");
+    }
+}
+
+verb Racks {
+    grammar = {.racks};
+    void handler() {
+        La16Qty q = 3;
+        rackA.tally(q, "tag");
+        print(" ");
+        q.print();
+        print(" ");
+        La16Crate c = new La16Crate(7, 1);
+        if (c == null) { print("No crate.^"); return; }
+        rackA.owner = c;
+        rackA.tally(q, brassKey);
+        print(" ");
+        q.print();
+        rackA.owner = null;
+        delete c;
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,374 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, handling text the I6 way. autoInitialize = false with bglInit()
+// called from Initialise; bglStringPoolReserve set in an #i6 block ahead of <string>; the typed words
+// of a TOPIC walked through WordAddress/WordLength into a rawArray<char> parameter, and through
+// consult_from/NextWord into a dictionaryWord deque (enqueue, dequeue, peek, peekEnd, contains);
+// char utilities (isVowel, isAlpha, isNumeric, toUpper, =~) on bytes read from the input buffer;
+// a tracked array<char> filled by slot writes and a set length, then <buf> operations (append,
+// indexOf, replaceAll, reverse, toUpper, trim, startsWith, endsWith, compare, equals, delete, insert,
+// mid); nested capture/release of printed short names with stackLen; a stringObj member on a class
+// written from a buffer and read back in a before routine switching on action; stringObj built from
+// an interpolation, switched on by content, compared with =~ and <=>, format with $0/$1/$2, and a ref
+// stringObj parameter changed in place; an array<stringObj> sorted by content; an array of byte
+// arrays; <linq> chains over an int history and over bgl.world results (filter, map, distinct,
+// orderBy with a comparator, take, skip, takeWhile, any, all, first, last, count) captured into typed
+// arrays; and bgl.header.serialChar.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    autoInitialize = false;
+}
+
+#i6 { Constant bglStringPoolReserve 12; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ---------------------------------------------------------------- state
+
+array<char>           line[64];
+array<char>           scratch[64];
+array<int>            lengths[16];
+array<dictionaryWord> heard[4];
+array<stringObj>      shelf[6];
+array<array<char>>    codeTable = { {'a', 'b'}, {'x', 'y', 'z'}, {'q'} };
+int                   g_spelled;
+
+// Search and replacement texts for the buffer routines, which take buffers, not literals.
+array<char> kAb   = "ab";
+array<char> kThe  = "the ";
+array<char> kBell = "BELL";
+array<char> kA    = "a";
+array<char> k4    = "4";
+array<char> kDash = "--";
+array<char> kNP   = "N P";
+
+// ---------------------------------------------------------------- classes and objects
+
+class Room : object {
+    attributes = {light};
+    string description;
+}
+
+class Plate : object {
+    stringObj inscription;
+    int cuts;
+    bool before() {
+        switch (action) {
+            case Examine:
+                if (cuts == 0) rtrue($"The {self} is blank.^");
+                print($"The {self} reads ~");
+                inscription.print();
+                printLine($"~ ({inscription.length} letters, {cuts} cuts).");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+Plate tinPlate {
+    "tin plate";
+    name = {.tin, .plate};
+    parent = roomA;
+}
+
+Plate leadPlate {
+    "lead plate";
+    name = {.lead, .plate};
+    parent = roomA;
+}
+
+object brassKey {
+    "brass key";
+    name = {.brass, .key};
+    parent = roomA;
+}
+
+object ironBell {
+    "iron bell";
+    name = {.iron, .bell};
+    parent = roomA;
+}
+
+object oakBox {
+    "oak box";
+    name = {.oak, .box};
+    parent = roomA;
+    attributes = {container, open};
+}
+
+// ---------------------------------------------------------------- helpers
+
+// Copy the typed words of the topic into a buffer, one space between words.
+void topicInto(array<char> b) {
+    int n = 0;
+    for (int w = consult_from; w < consult_from + consult_words; w++) {
+        if (n > 0) { b[n] = ' '; n++; }
+        n = copyWord(b, n, WordAddress(w), WordLength(w));
+    }
+    b.length = n;
+}
+
+int copyWord(array<char> b, int at, rawArray<char> src, int len) {
+    for (int k in 0 to len - 1) {
+        if (at >= b.size) return at;
+        b[at] = src[k];
+        at++;
+    }
+    return at;
+}
+
+int spellWord(rawArray<char> src, int len) {
+    int vowels = 0;
+    for (int k in 0 to len - 1) {
+        char c = src[k];
+        if (k > 0) print("-");
+        if (c.isVowel()) vowels++;
+        if (c.isAlpha()) print(c.toUpper());
+        else if (c.isNumeric()) print("#");
+        else print(c);
+    }
+    return vowels;
+}
+
+void amplify(ref stringObj s) {
+    s = s.toUpper();
+    s += "!";
+}
+
+void remember(dictionaryWord w) {
+    if (heard.length == heard.size) heard.dequeue();
+    heard.enqueue(w);
+}
+
+bool isLong(int n) { return n > 3; }
+
+int byLength(object a, object b) {
+    stringObj x = $"{a}";
+    stringObj y = $"{b}";
+    if (x.length != y.length) return bgl.util.math.sign(x.length - y.length);
+    return x.compareTo(y);
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Spell {
+    grammar = {.spell, TOPIC};
+    meta = true;
+    void handler() {
+        int vowels = 0;
+        for (int w = consult_from; w < consult_from + consult_words; w++) {
+            if (w > consult_from) print(" / ");
+            vowels += spellWord(WordAddress(w), WordLength(w));
+            lengths += WordLength(w);
+        }
+        g_spelled++;
+        printLine($" ({vowels} vowels)");
+    }
+}
+
+verb Hear {
+    grammar = {.hear, TOPIC};
+    meta = true;
+    void handler() {
+        wn = consult_from;
+        for (int i in 1 to consult_words) {
+            dictionaryWord w = NextWord();
+            if (w == null) { print("[?] "); continue; }
+            if (heard.contains(w)) print($"[again {w}] ");
+            remember(w);
+        }
+        print($"Heard {heard.length}:");
+        for (dictionaryWord w in heard) print($" {w}");
+        printLine($". Oldest {heard.peek()}, newest {heard.peekEnd()}.");
+    }
+}
+
+verb Echo {
+    grammar = {.echo, TOPIC};
+    meta = true;
+    void handler() {
+        topicInto(line);
+        print("[");
+        bgl.util.buf.print(line);
+        print($"] {line.length}");
+        int at = bgl.util.buf.indexOf(line, kAb);
+        if (at >= 0) print($", ab at {at}");
+        if (bgl.util.buf.startsWith(line, kThe)) print(", starts the");
+        if (bgl.util.buf.endsWith(line, kBell, true)) print(", ends bell");
+        scratch = line;
+        bgl.util.buf.replaceAll(scratch, kA, k4);
+        bgl.util.buf.reverse(scratch);
+        bgl.util.buf.toUpper(scratch);
+        print(": ");
+        bgl.util.buf.print(scratch);
+        printLine(".");
+
+        stringObj s;
+        s = s.append(line);
+        switch (s) {
+            case "hello":    printLine("Greeting.");
+            case "red ball": printLine("A color.");
+            default:
+                if (s =~ "QUIET") printLine("Hush.");
+                else if (s.contains(" ")) printLine($"{s.indexOf(" ")} letters, then more.");
+                else printLine($"One word, {s <=> "m"} against m.");
+        }
+    }
+}
+
+verb Engrave {
+    grammar = {.engrave, NOUN, .with, TOPIC};
+    void handler() {
+        if (!noun.is(Plate)) { printLine("That will not take a mark."); return; }
+        Plate p = (Plate)noun;
+        topicInto(line);
+        bgl.util.buf.trim(line);
+        if (p.cuts > 0) p.inscription += " ";
+        p.inscription = p.inscription.append(line);
+        p.cuts++;
+        printLine($"Cut into the {p}.");
+    }
+}
+
+verb Label {
+    grammar = {.label, NOUN};
+    meta = true;
+    void handler() {
+        bgl.util.buf.capture(line);
+        print("<");
+        bgl.util.buf.capture(scratch);
+        print($"{noun}");
+        int depth = bgl.util.buf.stackLen();
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(scratch);
+        bgl.util.buf.print(scratch);
+        print(">");
+        bgl.util.buf.release();
+        bgl.util.buf.print(line);
+        printLine($" depth {depth}/{bgl.util.buf.stackLen()}, {line.length} chars.");
+    }
+}
+
+verb Trim {
+    grammar = {.trim, NOUN};
+    meta = true;
+    void handler() {
+        bgl.util.buf.capture(line);
+        print($"{noun}");
+        bgl.util.buf.release();
+        bgl.util.buf.delete(line, 0, 2);
+        bgl.util.buf.insert(line, kDash, 0);
+        bgl.util.buf.mid(scratch, line, 2, 3);
+        print("[");
+        bgl.util.buf.print(line);
+        print("] [");
+        bgl.util.buf.print(scratch);
+        printLine($"] cmp {bgl.util.buf.compare(line, scratch)}, eq {bgl.util.buf.equals(scratch, kNP, true)}.");
+    }
+}
+
+verb Shout {
+    grammar = {.shout, NOUN};
+    meta = true;
+    void handler() {
+        stringObj s = $"the {noun}";
+        stringObj before = s;
+        amplify(s);
+        stringObj len = $"{s.length}";
+        stringObj f = before.format("$1 [$0] $2", len, "end");
+        printLine($"{s} / {before} / {f}");
+    }
+}
+
+verb Shelve {
+    grammar = {.shelve, NOUN};
+    meta = true;
+    void handler() {
+        stringObj s = $"{noun}";
+        if (shelf.contains(s)) { printLine("Already shelved."); return; }
+        if (!shelf.append(s)) { printLine("The shelf is full."); return; }
+        shelf.sort();
+        print($"{shelf.length}:");
+        for (stringObj t in shelf) print($" {t}");
+        printLine(".");
+    }
+}
+
+verb Codes {
+    grammar = {.codes};
+    meta = true;
+    void handler() {
+        int total = 0;
+        for (array<char> c in codeTable) {
+            print("(");
+            bgl.util.buf.print(c);
+            print($" {c.length}) ");
+            total += c.length;
+        }
+        printLine($"= {total}, {codeTable[1][2]}{codeTable[0][0]}.");
+    }
+}
+
+verb History {
+    grammar = {.history};
+    meta = true;
+    void handler() {
+        if (lengths.length == 0) { printLine("Nothing spelled yet."); return; }
+        print($"Lengths {lengths.length}:");
+        for (int n in lengths) print($" {n}");
+        printLine(".");
+        array<int> longOnes = lengths.filter(isLong).distinct();
+        array<var> doubled = lengths.map((int n) => n * 2).take(3);
+        array<int> sorted = lengths.orderBy((int a, int b) => bgl.util.math.sign(b - a));
+        print($"Long {longOnes.length}:");
+        for (int n in longOnes) print($" {n}");
+        print("; doubled");
+        for (var d in doubled) print($" {d}");
+        print($"; top {sorted.first()}, low {sorted.last()}");
+        print($"; lead {lengths.takeWhile((int n) => n < 5).count()}, rest {lengths.skip(2).count()}");
+        printLine($"; any 1 {lengths.any((int n) => n == 1)}, all short {lengths.all((int n) => n < 9)}.");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        array<object> here = bgl.world.inParent(roomA).filter((object o) => !o.has(container));
+        array<object> ordered = here.orderBy(byLength);
+        for (object o in ordered) print($"{o}, ");
+        int plates = bgl.world.instances(Plate).filter((object o) => ((Plate)o).cuts > 0).count();
+        printLine($"{ordered.length} things, {plates} cut, spelled {g_spelled}.");
+    }
+}
+
+verb Serial {
+    grammar = {.serial};
+    meta = true;
+    void handler() {
+        int digits = 0;
+        for (int i in 0 to 5) if (bgl.header.serialChar(i).isNumeric()) digits++;
+        printLine($"Serial digits: {digits}. Release {bgl.header.release}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    bgl.util.buf.set(line, "unused");
+    rfalse;
+}

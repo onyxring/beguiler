@@ -1,0 +1,62 @@
+Room A
+> floats
+sorted: -1.5000 -0.2500 0.5000 2.2500 4.0000
+0.5000 2.2500 -1.5000 4.0000 -0.2500
+1.0000 4.5000 -3.0000 8.0000 -0.5000
+positive 3, sum 6.7500, squares 23.6250
+halves first 0.2500, last -0.1250
+any below -1: yes, all below 5: yes
+half of 7 is 3.5000, first negative -1.5000
+> integrate 6
+x*x on 0..3 in 6 steps: 8.9375
+1.5000*x on 0..2: 3.0000
+cos on 0..1: 0.8424
+> roots 2
+square root of 2: 1.4142, library 1.4142
+cube root of 2: 1.2599
+> pipe 5
+y 9 after 3 stages
+x 10 after 1, raw y 9, y first, compare -1
+accumulated x 28 after 4
+> statics 6
+twice 12, compose -12, run all -11
+each: 12 -6 7
+odd 3, odd and over 6 1
+> fib 10
+fib 10 = 55; 10 is even, 11 is odd
+> fib 15
+fib 15 = 610; 15 is odd, 16 is even
+> chooser
+1: 2
+2: 4
+3: big
+4: big
+> chars
+BRASS ROD AND IRON BOX
+br*ss r*d *nd *r*n B*x
+ibm 9000
+upper 2, letters 18
+> words
+ordered: apple bolt brick cup dish
+starting with b: 2
+letters 21, initials cbabd
+> grades 30
+-4:bad 0:none 7:low 20:round 25:high 30:round
+steps 6, sum to 15 is 120, hits 30
+> grades 5
+-4:bad 0:none 7:low 20:round 25:high 5:low
+steps 3, sum to 2 is 3, hits 30
+> curves 4
+line 0.0000..2.0000: 4.0000
+bowl -1.0000..1.0000: 0.6250
+root 0.0000..4.0000: 5.3838
+flat -2.5000..0.5000: 1.5000
+sample total 5.0000, widest span 4.0000
+spans over 2: 2, first root
+0.2500 1.1250 -0.7500 2.0000 -0.1250
+sample over mark: 5
+at 2.25: 1.5000 4.5000 2.0000 -1.7500
+> tags
+all tags 15, total weight 12
+round 2, small and light 1
+by weight: coin ball anvil

@@ -1,0 +1,374 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: `property` parameters read (`i.p`) and sent as messages (`i.m(k)`) inside loops and
+// inside <linq> lambdas that capture the property parameter alongside a func<> parameter; rule objects
+// whose positional `inline literal func<>` members are filled by bare `{ … }` array elements and by
+// inline `Rule{ … }` arguments with a run-time member; a value class whose positional members are a
+// literal func<> and a count, built inline (file-scope array elements, a local, an argument with a
+// run-time count) and walked by for-in; function values compared with == and found in an
+// array<func<>> by indexOf/contains/distinct and removed with -=; a class method named like a global
+// function, with the global reached as a func<> value through `::`; a `default` method called from an
+// inherited method's lambda (dispatch through captured self) and an ancestor's version reached by cast
+// inside a lambda; static operators referenced by `Type::operator op`, one `==` overload chosen by
+// operand type, used as func<> values for orderBy and filter, with a static `+` and content `==` used
+// by indexOf; a hand-written fold over class instances; a `required literal func<>`
+// member met by objects and by a subclass, queried through bgl.world.instances with a predicate;
+// a func<> value thrown out of a lambda and caught as a func<>; actions run from lambdas with
+// `Take.perform(o)` and through a verb-typed parameter (`v.perform(o)`); a lambda counting over
+// `obj.children`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+//-- Items, read through property parameters ------------------------------------------------
+
+class Item : object {
+    int weight;
+    int price;
+    int scaled(int k) { return weight * k; }
+    int marked(int k) { return price + k; }
+}
+
+Item brassKey { "brass key"; name = {.brass, .key};   weight = 1; price = 4; parent = roomA; }
+Item ironBar  { "iron bar";  name = {.iron, .bar};    weight = 6; price = 2; parent = roomA; }
+Item glassJar { "glass jar"; name = {.glass, .jar};   weight = 3; price = 9; parent = roomA; }
+
+array<Item> stock = {brassKey, ironBar, glassJar};
+
+int sumProp(array<Item> a, property p) {
+    int t = 0;
+    for (Item i in a) t += i.p;
+    return t;
+}
+
+int readProp(Item i, property p) { return i.p; }
+
+int sumMapped(array<Item> a, property p, func<int, int> f) {
+    int t = 0;
+    for (var v in a.map((Item i) => f(i.p))) t += (int)v;
+    return t;
+}
+
+int sendAll(array<Item> a, property m, int k) {
+    int t = 0;
+    for (Item i in a) t += i.m(k);
+    return t;
+}
+
+Item topBy(array<Item> a, property p) {
+    return a.orderBy((Item x, Item y) => y.p - x.p).first();
+}
+
+int countOver(array<Item> a, property p, int limit) {
+    return a.filter((Item i) => readProp(i, p) > limit).count();
+}
+
+//-- Plain functions -------------------------------------------------------------------------
+
+int twice(int n) { return n * 2; }
+int inc(int n)   { return n + 1; }
+int halve(int n) { return n / 2; }
+bool isKey(Item i) { return i == brassKey; }
+
+int fold(array<int> a, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in a) acc = f(acc, x);
+    return acc;
+}
+
+void forEachF(array<func<int, int>> fs, func<void, func<int, int>> body) {
+    for (func<int, int> f in fs) body(f);
+}
+
+void forEachObj(array<object> a, func<void, object> f) {
+    for (object o in a) f(o);
+}
+
+//-- Rules: positional literal func<> members ----------------------------------------------
+
+class Rule : object {
+    inline literal func<bool, Item> test;
+    inline string label;
+}
+
+array<Rule> ruleBook = {
+    { (Item i) => i.weight > 2, "heavy" },
+    { (Item i) => i.price < 5,  "cheap" },
+    { isKey,                    "key" },
+};
+
+void applyRule(Rule r, array<Item> a) {
+    print($"{r.label}:");
+    for (Item i in a.filter(r.test)) print($" {(object)i}");
+    print("^");
+}
+
+//-- Steps: a value class of a function and a count ----------------------------------------
+
+value class Step {
+    inline literal func<int, int> f;
+    inline int times;
+    Step operator = (Step o) { f = o.f; times = o.times; return self; }
+    int run(int x) {
+        for (int k = 0; k < times; k++) x = f(x);
+        return x;
+    }
+}
+
+array<Step> plan = { {twice, 2}, {inc, 3}, {halve, 1} };
+
+int runPlan(array<Step> p, int x) {
+    for (Step s in p) x = s.run(x);
+    return x;
+}
+
+int runOne(Step s, int x) { return s.run(x); }
+
+//-- Function identity ------------------------------------------------------------------------
+
+array<func<int, int>> pipeline[6];
+
+string nameOf(func<int, int> f) {
+    return f == twice ? "twice" : f == inc ? "inc" : f == halve ? "halve" : "other";
+}
+
+//-- A method named like a global function -----------------------------------------------------
+
+class Scaler : object {
+    int factor;
+    int twice(int n) { return n * factor; }
+    int both(int n) {
+        func<int, int> g = ::twice;
+        return self.twice(n) + g(n);    // WORKAROUND(round11-8): a bare `twice(n)` here calls the global
+    }
+    int foldWith(array<int> a) { return fold(a, 0, (int acc, int x) => acc + self.twice(x)); }    // WORKAROUND(round11-8)
+}
+
+Scaler tripler { factor = 3; }
+
+//-- Shapes: default methods reached through captured self ------------------------------------
+
+class Shape : object {
+    default int score(int k) { return k; }
+    int total(array<int> ks) { return fold(ks, 0, (int acc, int k) => acc + score(k)); }
+}
+
+class Square : Shape {
+    default int score(int k) { return k * k; }
+}
+
+class Cube : Square {
+    int score(int k) { return k * k * k; }
+}
+
+Shape plainShape { "plain"; }
+Square squareShape { "square"; }
+Cube cubeShape { "cube"; }
+
+array<Shape> shapeList = {plainShape, squareShape, cubeShape};
+
+//-- Coins: static operators as function values -----------------------------------------------
+
+class Coin : object {
+    int cents;
+    static bool operator == (Coin a, int b)  { return a.cents == b; }
+    static bool operator != (Coin a, int b)  { return a.cents != b; }
+    static bool operator == (Coin a, Coin b) { return a.cents == b.cents; }
+    static bool operator != (Coin a, Coin b) { return a.cents != b.cents; }
+    static int operator <=> (Coin a, Coin b) { return a.cents - b.cents; }
+    static int operator + (Coin a, Coin b)   { return a.cents + b.cents; }
+}
+
+Coin dime    { "dime";    cents = 10; }
+Coin penny   { "penny";   cents = 1; }
+Coin quarter { "quarter"; cents = 25; }
+Coin nickel  { "nickel";  cents = 5; }
+Coin cent    { "cent";    cents = 1; }
+
+array<Coin> purse = {dime, penny, quarter, nickel, cent};
+
+int foldCoins(array<Coin> a, int seed, func<int, int, Coin> f) {
+    int acc = seed;
+    for (Coin c in a) acc = f(acc, c);
+    return acc;
+}
+
+//-- Gates: a required literal func<> member --------------------------------------------------
+
+bool isSeven(int n) { return n == 7; }
+
+class Gate : object {
+    required literal func<bool, int> opens;
+}
+
+class EvenGate : Gate {
+    literal func<bool, int> opens = (int n) => n % 2 == 0;
+}
+
+Gate lowGate      { "low gate";  opens = (int n) => n < 5; }
+Gate sevenGate    { "seven gate"; opens = isSeven; }
+EvenGate pairGate { "even gate"; }
+
+//-- Verbs --------------------------------------------------------------------------------------
+
+void doAll(array<object> a, verb v) {
+    forEachObj(a, (object o) => v.perform(o));
+}
+
+verb Props {
+    grammar = {{.props, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"weights {sumProp(stock, weight)}, prices {sumProp(stock, price)}^");
+        print($"weights times {n}: {sumMapped(stock, weight, (int w) => w * n)}, prices plus one: {sumMapped(stock, price, inc)}^");
+        print($"scaled by {n}: {sendAll(stock, scaled, n)}, marked by {n}: {sendAll(stock, marked, n)}^");
+        print($"heaviest {(object)topBy(stock, weight)}, dearest {(object)topBy(stock, price)}^");
+        print($"weight over {n}: {countOver(stock, weight, n)}, price over {n}: {countOver(stock, price, n)}^");
+    }
+}
+
+verb Rules {
+    grammar = {{.rules, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (Rule r in ruleBook) applyRule(r, stock);
+        applyRule(Rule{ (Item i) => i.weight + i.price == 12, "twelve" }, stock);
+        string tag = n > 3 ? "wide" : "narrow";
+        applyRule(Rule{ (Item i) => i.weight * i.price > 10, tag }, stock);
+        int hits = 0;
+        for (Rule r in ruleBook) hits += stock.filter(r.test).count();
+        print($"matches {hits}, first rule on iron bar: {ruleBook[0].test(ironBar) ? "yes" : "no"}^");
+    }
+}
+
+verb Steps {
+    grammar = {{.steps, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"plan on {n}: {runPlan(plan, n)}^");
+        Step s = Step{ twice, 3 };
+        print($"twice three times: {s.run(n)}, inc {n} times: {runOne(Step{ inc, n }, 0)}^");
+        Step t = s;
+        t.times = 1;
+        print($"copy runs {t.run(n)}, original still {s.times}^");
+        int count = 0;
+        for (Step p in plan) count += p.times;
+        print($"plan steps {count}, first is {nameOf(plan[0].f)}^");
+    }
+}
+
+verb Funcs {
+    grammar = {{.funcs}};
+    void handler() {
+        pipeline = {twice, inc, halve, twice, inc};
+        print($"length {pipeline.length}, halve at {pipeline.indexOf(halve)}, distinct {pipeline.distinct().count()}^");
+        print($"has inc: {pipeline.contains(inc) ? "yes" : "no"}^");
+        print("names:");
+        forEachF(pipeline, (func<int, int> f) => print($" {nameOf(f)}"));
+        print("^");
+        pipeline -= twice;
+        print($"after removing twice: {pipeline.length}, first {nameOf(pipeline[0])}^");
+        func<int, int> f = pipeline[1];
+        print($"f is halve: {f == halve ? "yes" : "no"}, f is inc: {f != inc ? "no" : "yes"}^");
+        int x = 9;
+        try {
+            forEachF(pipeline, (func<int, int> g) => { if (g(x) == 4) throw g; });
+            print("none found^");
+        }
+        catch (func<int, int> found) {
+            print($"found {nameOf(found)}, gives {found(x)}^");
+        }
+    }
+}
+
+verb Scale {
+    grammar = {{.scale, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> parts = {1, 2, 3};
+        print($"member {tripler.twice(n)}, global {twice(n)}, both {tripler.both(n)}^");
+        print($"fold with member {tripler.foldWith(parts)}, fold with global {fold(parts, 0, (int acc, int v) => acc + ::twice(v))}^");
+    }
+}
+
+verb Shapes {
+    grammar = {{.shapes, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> ks = {1, 2, n};
+        for (Shape s in shapeList) print($"{(object)s} {s.total(ks)}^");
+        int viaSquare = fold(ks, 0, (int acc, int k) => acc + ((Square)cubeShape).score(k));
+        int viaShape = fold(ks, 0, (int acc, int k) => acc + ((Shape)cubeShape).score(k));
+        print($"cube as square {viaSquare}, as shape {viaShape}^");
+    }
+}
+
+verb Coins {
+    grammar = {{.coins, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<bool, Coin, int> eqInt = Coin::operator ==(int);
+        func<int, Coin, Coin> cmp = Coin::operator <=>;
+        func<int, Coin, Coin> plus = Coin::operator +;
+        func<int, int, Coin> add = (int acc, Coin c) => acc + c.cents;
+        print("ordered:");
+        for (Coin c in purse.orderBy(Coin::operator <=>)) print($" {(object)c}");
+        print("^");
+        print($"worth {n}: {purse.filter((Coin c) => eqInt(c, n)).count()}, total {foldCoins(purse, 0, add)}^");
+        print($"dime vs nickel {cmp(dime, nickel)}, together {plus(dime, nickel)}, again {dime + nickel}, cent at {purse.indexOf(cent)}, penny at {purse.indexOf(penny)}^");
+        print($"distinct coins {purse.distinct().count()}, worth over {n} {foldCoins(purse.filter((Coin c) => c.cents > n), 0, add)}^");
+    }
+}
+
+verb Gates {
+    grammar = {{.gates, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"open for {n}:");
+        for (object o in bgl.world.instances(Gate, (object g) => ((Gate)g).opens(n))) print($" {o}");
+        print("^");
+        array<object> all = bgl.world.instances(Gate);
+        print($"gates {all.count()}, any open for 7: {all.any((object g) => ((Gate)g).opens(7)) ? "yes" : "no"}^");
+    }
+}
+
+verb Gather {
+    grammar = {{.gather}};
+    void handler() {
+        forEachObj(bgl.world.inParent(roomA, (object o) => o.is(Item)), (object o) => Take.perform(o));
+        int held = 0;
+        int weight = 0;
+        for (object o in player.children) forEachObj(bgl.world.inParent(player), (object p) => { if (p == o) { held++; weight += ((Item)o).weight; } });
+        print($"holding {held}, weight {weight}^");
+    }
+}
+
+verb Shed {
+    grammar = {{.shed}};
+    void handler() {
+        doAll(bgl.world.inParent(player, (object o) => ((Item)o).weight > 2), Drop);
+        print($"still holding {player.children.length}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

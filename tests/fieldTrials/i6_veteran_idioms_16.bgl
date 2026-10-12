@@ -1,0 +1,452 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, three declarations each packing one area cluster into a single unit.
+// A value class (ledger) with operator + returning a value copy, operator [] and []= over a member
+// array, a primitive-class parameter, a ref member bound with :=, a ?? fallback on an object argument,
+// an attribute test and give, a <linq> filter/any over its cells, a stringObj built up and printed, a
+// switch with ranges and guards, a var argument discriminated with typeof, and a perform; an extend of
+// an object adding an inline accessor that reads outer. and declares its own operator == and [] (used
+// through self), plus methods taking a ref value-class parameter and a var, casting to an ancestor,
+// switching, filtering an array and guarded by #if; a pooled class with two parents, written after
+// #using a namespace object, with operator += and [] / []=, an emitter-class local with init/deinit,
+// try/catch/throw, moves in the object tree, a switch, a var argument, an owned value-class member and
+// a perform. Verbs drive each declaration.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define PANEL_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <linq>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global ledger_peek = 0;
+Global panel_peek = 0;
+Global crate_caught = 0;
+Global tickets_out = 0;
+Global tickets_max = 0;
+}
+
+extern int ledger_peek;
+extern int panel_peek;
+extern int crate_caught;
+extern int tickets_out;
+extern int tickets_max;
+
+attribute tagged;
+
+object roomA { "Room A"; string description = "Room A."; attributes = {light}; }
+object roomB { "Room B"; string description = "Room B."; attributes = {light, tagged}; }
+object shelf { "shelf"; name = {.shelf}; object parent = roomA; attributes = {supporter, static}; }
+
+// ---------------------------------------------------------------- cluster 1: ledger
+
+primitive class grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+
+value class Line {
+    int qty;
+    int posts;
+    Line operator = (Line o) { qty = o.qty; posts = o.posts; return self; }
+}
+
+value class Ledger {
+    array<int> cells[6];
+    int total;
+    Line last;
+    ref Line mark;
+
+    Ledger operator = (Ledger o) {
+        total = o.total;
+        last = o.last;
+        cells.clear();
+        for (int i = 0; i < o.cells.length; i++) cells.append(o.cells[i]);
+        return self;
+    }
+
+    Ledger operator + (int n) {
+        Ledger r = self;
+        r.total += n;
+        r[r.cells.length] = n;
+        return r;
+    }
+
+    int operator [] (int i) {
+        if (i < 0 || i >= cells.length) return -1;
+        return cells[i];
+    }
+
+    int operator []= (int i, int v) {
+        if (i >= cells.size) return -1;
+        while (cells.length <= i) cells.append(0);
+        cells[i] = v;
+        return v;
+    }
+
+    int post(var v, object at, grams g) {
+        if (!mark) mark := last;
+        object where = at ?? roomA;
+        int n = g;
+        stringObj s = "post";
+        if (typeof(v) == eType.string) {
+            s += " ";
+            s += (string)v;
+        } else if (typeof(v) == eType.object) {
+            object o = (object)v;
+            stringObj w = $" {o}";
+            s += w;
+            n += 1;
+        }
+        switch (n) {
+            case 0:       s += " (nil)";
+            case 1 to 4:  s += " (low)";
+            case >= 20:   s += " (cap)"; n = 20;
+            default:      s += " (mid)";
+        }
+        if (where.has(tagged)) n *= 2;
+        else where.give(tagged);
+        self[cells.length] = n;
+        total += n;
+        mark.qty = n;
+        mark.posts++;
+        int big = cells.filter((int x) => x > 4).count();
+        bool any9 = cells.any((int x) => x >= 9);
+        stringObj tail = $" = {n}; big {big}";
+        s += tail;
+        if (any9) s += ", nine+";
+        s.print();
+        ledger_peek = total;
+        LedgerShow.perform();
+        return n;
+    }
+}
+
+Ledger book;
+
+// ---------------------------------------------------------------- cluster 2: panel
+
+class Probe : object {
+    int depth;
+    default void report() { print($"probe {depth}"); }
+}
+
+class DeepProbe : Probe {
+    replace void report() { print($"deep probe {depth * 10}"); }
+}
+
+DeepProbe probeA { "probe"; depth = 3; }
+
+value class Pair {
+    int a;
+    int b;
+    Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
+}
+
+array<int> samples[8];
+
+object panel {
+    int scale = 2;
+    int hits = 0;
+}
+
+extend panel {
+    auto level = {
+        int _raw;
+        int _sets;
+        int operator () { return _raw; }
+        bool operator == (int v) { return _raw == v; }
+        int operator [] (int i) { return (_raw >> i) & 1; }
+        void operator = (int v) {
+            if (self == v * outer.scale) return;
+            _raw = v * outer.scale;
+            _sets++;
+            outer.hits += self[0];
+        }
+    }
+
+    int sample(ref Pair p, var tag) {
+        int got = 0;
+        level = p.a + p.b;
+        int now = level;
+        samples.append(now);
+        switch (now) {
+            case 0:         p.b = 0;
+            case 1 to 9:    p.b = p.b + 1;
+            case >= 10:     p.a = p.a - 1;
+        }
+        int odd = samples.filter((int x) => x % 2 != 0).count();
+        if (typeof(tag) == eType.object) {
+            print("[");
+            ((Probe)probeA).report();
+            print(" / ");
+            probeA.report();
+            print("] ");
+        } else if (typeof(tag) == eType.string) {
+            print((string)tag);
+            print(" ");
+        }
+#if PANEL_TRACE
+        print($"(trace {samples.length}) ");
+#endif
+        got = now + odd;
+        panel_peek = got;
+        PanelShow.perform();
+        return got;
+    }
+}
+
+Pair pairA;
+
+// ---------------------------------------------------------------- cluster 3: crates
+
+emitter class Ticket {
+    emitter void init() { $self = 0; tickets_out++; if (tickets_out > tickets_max) tickets_max = tickets_out; }
+    emitter void deinit() { tickets_out--; }
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+
+enum eKind { plain, heavy, fragile }
+
+value class Tally {
+    int n;
+    Tally operator = (Tally o) { n = o.n; return self; }
+}
+
+class Box : object {
+    int weight;
+}
+
+class Stackable : object {
+    int height;
+}
+
+object kit {
+    alias kind for eKind;
+}
+
+#using kit
+class Crate[3] : Box, Stackable {
+    string short_name = "crate";
+    kind k;
+    Tally seen;
+    array<int> slots[4];
+
+    void create(int w) { weight = w; height = 1; }
+
+    Crate operator += (int n) {
+        weight += n;
+        height++;
+        return self;
+    }
+
+    int operator [] (int i) {
+        if (i < 0 || i >= slots.length) throw 700 + i;
+        return slots[i];
+    }
+
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= slots.size) throw 800 + i;
+        while (slots.length <= i) slots.append(0);
+        slots[i] = v;
+        return v;
+    }
+
+    int stow(var where) {
+        Ticket t = 5;
+        try {
+            if (typeof(where) != eType.object) throw 900;
+            object o = (object)where;
+            if (o == self.parent) throw 950;
+            self.parent = o;
+            self += t;
+            switch (weight) {
+                case 0 to 4:   k = kind.plain;
+                case 5 to 9:   k = kind.heavy;
+                default:       k = kind.fragile;
+            }
+            self[seen.n] = weight;
+            seen.n++;
+        } catch (int e) {
+            crate_caught = e;
+            return -1;
+        }
+        CrateShow.perform();
+        return (int)k;
+    }
+}
+
+Crate held;
+
+// ---------------------------------------------------------------- verbs: ledger
+
+verb LedgerShow {
+    grammar = {.ledger};
+    meta = true;
+    void handler() {
+        print($" [total {book.total}, cells {book.cells.length}, last {book.last.qty}/{book.last.posts}, peek {ledger_peek}]^");
+    }
+}
+
+verb LedgerPostNum {
+    grammar = {.postn, NUMBER};
+    meta = true;
+    void handler() {
+        int r = book.post("n", null, (int)noun);
+        printLine($"Posted {r}.");
+    }
+}
+
+verb LedgerPostRoom {
+    grammar = {.postr, NUMBER};
+    meta = true;
+    void handler() {
+        int r = book.post(roomB, roomB, (int)noun);
+        printLine($"Posted {r}; B tagged {roomB.has(tagged)}, A tagged {roomA.has(tagged)}.");
+    }
+}
+
+verb LedgerPostHere {
+    grammar = {.posth, NUMBER};
+    meta = true;
+    void handler() {
+        int r = book.post(roomA, null, (int)noun);
+        printLine($"Posted {r}; A tagged {roomA.has(tagged)}.");
+    }
+}
+
+verb LedgerPlus {
+    grammar = {.lplus, NUMBER};
+    meta = true;
+    void handler() {
+        Ledger copy = book + (int)noun;
+        print($"Copy total {copy.total}, cells {copy.cells.length}, last cell {copy[copy.cells.length - 1]}; ");
+        printLine($"book total {book.total}, cells {book.cells.length}, cell 9 {book[9]}.");
+    }
+}
+
+// ---------------------------------------------------------------- verbs: panel
+
+verb PanelShow {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        print($"<level {panel.level}, hits {panel.hits}, pair {pairA.a}/{pairA.b}, peek {panel_peek}>^");
+    }
+}
+
+verb PanelSample {
+    grammar = {.sample, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        pairA.a = (int)noun;
+        pairA.b = (int)second;
+        int r = panel.sample(pairA, "num");
+        printLine($"Sampled {r}.");
+    }
+}
+
+verb PanelProbe {
+    grammar = {.probe};
+    meta = true;
+    void handler() {
+        int r = panel.sample(pairA, probeA);
+        printLine($"Probed {r}.");
+    }
+}
+
+verb PanelScale {
+    grammar = {.scale, NUMBER};
+    meta = true;
+    void handler() {
+        panel.scale = (int)noun;
+        print("Scale set. ");
+        PanelShow.perform();
+    }
+}
+
+// ---------------------------------------------------------------- verbs: crates
+
+verb CrateShow {
+    grammar = {.crates};
+    meta = true;
+    void handler() {
+        if (held == null) { printLine("No crate."); return; }
+        print($"(crate w{held.weight} h{held.height} kind {(int)held.k} seen {held.seen.n} in {held.parent}; tickets {tickets_out}/{tickets_max}, caught {crate_caught})^");
+    }
+}
+
+verb CrateNew {
+    grammar = {.mkcrate, NUMBER};
+    meta = true;
+    void handler() {
+        Crate c = new Crate((int)noun);
+        if (c == null) { printLine("Pool empty."); return; }
+        if (held != null) delete held;
+        held = c;
+        printLine($"Crate made, weight {held.weight}.");
+    }
+}
+
+verb CrateStowShelf {
+    grammar = {.stow};
+    meta = true;
+    void handler() {
+        if (held == null) { printLine("No crate."); return; }
+        int r = held.stow(shelf);
+        printLine($"Stowed {r}.");
+    }
+}
+
+verb CrateStowRoom {
+    grammar = {.stowb};
+    meta = true;
+    void handler() {
+        if (held == null) { printLine("No crate."); return; }
+        int r = held.stow(roomB);
+        printLine($"Stowed {r}.");
+    }
+}
+
+verb CrateStowWord {
+    grammar = {.stowx};
+    meta = true;
+    void handler() {
+        if (held == null) { printLine("No crate."); return; }
+        int r = held.stow("nowhere");
+        printLine($"Stowed {r}; caught {crate_caught}, tickets {tickets_out}.");
+    }
+}
+
+verb CrateSlot {
+    grammar = {.slot, NUMBER};
+    meta = true;
+    void handler() {
+        if (held == null) { printLine("No crate."); return; }
+        try {
+            int v = held[(int)noun];
+            printLine($"Slot {(int)noun}: {v}.");
+        } catch (int e) {
+            printLine($"No slot: {e}.");
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

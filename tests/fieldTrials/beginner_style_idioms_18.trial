@@ -1,0 +1,68 @@
+Room A
+Room A. Room B is to the east.
+You can see a box A (which is closed), a coin, a pebble and a bench here.
+> tokens
+(token 1 made for Room A)
+(token 2 made for Room B)
+(token 3 made for Room A)
+(no token left for Room B)
+Made: 3. D is set: false.
+(coin weighs 9 hundred: high, 1 limits under it, band sum 10499, depth 1)
+(band 2, spot 2/2)
+(box A weighs 0 hundred: low, 1 limits under it, band sum 99, depth 1)
+(band 0, spot 0/3)
+(box A opened for weighing)
+(pebble weighs 1 hundred: mid, 1 limits under it, band sum 599, depth 1)
+(band 1, spot 1/4)
+(bell weighs 6 hundred: high, 1 limits under it, band sum 10499, depth 1)
+(band 2, spot 2/4)
+(stone weighs 2 hundred: mid, 1 limits under it, band sum 599, depth 1)
+(band 1, spot 1/2)
+(token holds 4)
+(from Room A, 6 hundred, 4 marks, first 900, band high)
+(token holds 1)
+(from Room B, 2 hundred, 2 marks, first 40, band mid)
+Many marks: 900 900 40 120
+Spots: first 0/0, latest 2/4.
+Last in: bell, depth 1.
+A bell.
+Marks: 900 900 40 120 -1 (past end -1).
+Again: 900 45 40 120
+Brass key depth 2. Box A is open: true.
+Coin is in Room A. Stone is in token.
+(token of 2 hundred goes back, 1 inside)
+(token 4 made for Room B)
+(stone weighs 0 hundred: low, 1 limits under it, band sum 99, depth 1)
+(band 0, spot 0/2)
+(token holds 1)
+(from Room B, 0 hundred, 2 marks, first 77, band low)
+(token of 6 hundred goes back, 0 inside)
+(token of 2 hundred goes back, 0 inside)
+(token of 0 hundred goes back, 1 inside)
+> bench
+Level 0 before anything.
+Busy rows: 0. Long labels: 2. Row totals: 0 0 0 -1.
+Nothing put yet.
+(token 5 made for Room B)
+(stone weighs 3 hundred: mid, 1 limits under it, band sum 599, depth 1)
+(band 1, spot 1/2)
+(token on the middle row at 1/0; path /Room A/bench/token)
+(level 1: middle, token from Room B, row sum 300, load 3 hundred, set 1 times, seen 1)
+(token depth 2, first mark 300, row total 300)
+(level 0: left, token from Room B, row sum 0, load 3 hundred, set 2 times, seen 2)
+(token depth 2, first mark 300, row total 0)
+(level 2: right, token from Room B, row sum 0, load 3 hundred, set 3 times, seen 3)
+(token depth 2, first mark 300, row total 0)
+(level 0: left, token from Room B, row sum 0, load 3 hundred, set 4 times, seen 4)
+(token depth 2, first mark 300, row total 0)
+(row 2 is full)
+Busy rows: 3. Long labels: 2. Row totals: 4 300 6 -1.
+Last put: token, depth 2.
+On the bench: token.
+(bench holds 1)
+(rows: 4 300 6)
+(token of 3 hundred goes back, 0 inside)
+(bench cleared; 0 left)
+A bench.
+Stone is in Room B. Level 0.
+(nothing to put)

@@ -1,0 +1,84 @@
+Room A
+Room A.
+You can see a penny, a nickel, a token, a bin and a strongbox here.
+> arrays
+Tally: second 9, tail 4, fours 2, member false.
+Purse: pennies 2, crowns 1, token at 1, second penny, tail token.
+penny token nickel crown 2020 1990 1985 1970 true true true.
+Local: fours 0, twos 2, second 2, member false.
+Bins: like bin 2, like strongbox 1, true true.
+Log: empty; held member true.
+Weights 17.
+> marks
+Marks: 3 marks, first 7, sum 10; count 0, value 1, year 2020, none -1
+> holdings
+Holdings: bin 0, strongbox 0, flips 0, turns 1
+> trace
+[+1] d1[+2] d2[-2][+2] d2[-2][+2][-2] early[+2](late)[-2] late[-1] depth 0.
+> lend
+Out 2, drops 2, returned 30.
+Auto 130.
+> holdings
+Holdings: bin 0, strongbox 0, flips 0, turns 3
+> settle
+Cleared 0; drops 6, returned 210, issued 6.
+> lend
+Out 2, drops 8, returned 360.
+Auto 190.
+> flip penny
+The penny (1) lands heads.
+> flip bin
+You can't see any such thing.
+> toss nickel
+The nickel (5) lands tails.
+> spin token
+That's not a verb I recognise.
+> twirl token
+The token (1) lands heads.
+> appraise crown
+The crown is worth 25.
+> appraise penny
+The penny is worth 1.
+> appraise bin
+Only coins are appraised.
+> appraise dime
+No such coin, here or in the vault.
+> value crown
+The crown is worth 25.
+> examine penny
+The penny is worth 1.
+> examine bin
+You see nothing special about the bin.
+> x nickel
+You see nothing special about the nickel.
+> stack two coins
+That's not a verb I recognise.
+> pile two coins
+Stacking 2 (noun 2).
+The crown (25) lands tails.
+The crown (25) lands heads.
+Flips now 5.
+> pile four coins
+I didn't understand that sentence.
+> bank penny in bin
+[Bin] takes penny; 1 of 2.
+> bank token in bin
+[Bin] takes token; 2 of 2, one of equal value already.
+> bank nickel in bin
+[Bin] is full.
+> bank nickel in strongbox
+[Strongbox] takes nickel; 1 of 3.
+> bank crown in penny
+You can't see any such thing.
+> arrays
+Tally: second 9, tail 4, fours 2, member false.
+Purse: pennies 2, crowns 1, token at 1, second penny, tail token.
+penny token nickel crown 2020 1990 1985 1970 true true true.
+Local: fours 0, twos 2, second 2, member false.
+Bins: like bin 2, like strongbox 1, true true.
+Log: 4, first 1, second 1, tail 5; held member true.
+Weights 17.
+> holdings
+Holdings: bin 2, strongbox 1, flips 5, turns 21
+> marks
+Marks: 3 marks, first 7, sum 10; count 1, value 1, year 2020, none -1

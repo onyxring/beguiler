@@ -1,0 +1,440 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where two language areas meet inside one declaration.
+// Directive names in mixed case (`#IF`, `#Else`, `#ENDIF`, `#Define`, `#If`) and conditional blocks
+// inside: a primitive class body (choosing an emitter value) and a primitive newtype over a raw array's
+// address whose `operator []=` exists only under a flag; a regular-method `operator []=` whose clamp
+// comes from a `#declare`d symbol declared at the end of the file, reached by `+=` and `++` on a
+// subscript; an object body and its `extend`; a lambda body; a recursive tree walk that throws past a
+// depth limit, counts things with the library attribute `static` into a class static, prints
+// descriptions with `??` and marks parents through `?.`; a function over a local array of arrays; a
+// verb running `<linq>` chains; and `#exit` inside an `#if`. `Type :: operator <=>` (spaced) taken as
+// a func value inside a recursive routine that also uses the `>` derived from a static `<=>`; a switch
+// whose cases hold an `#i6` island and an `extern const`; `ref array<char>` locals and a parameter over
+// a `<buf>` buffer; an emitter class with init/deinit as a local in a class with positional members and
+// in a routine that gives attributes; an emitter member on a class with two parents; a primitive with
+// `operator ?` as a positional member, read with `??` and postfix `?`; a pooled class read back through
+// `$i6Expr` and an `#i6` island; a verb class with a positional member whose handler performs another
+// verb; an object that is a namespace (`alias … for`), has attributes and replaces a default method,
+// imported with `#using` and used to name a type and to call `new`. Lexically: `$` hex and `$$` binary
+// literals, `'A'` and `'\@'` as numbers, `operator [ ]` with a space and a comment before `[]=`,
+// tab-indented stretches, keywords in odd case, empty statements, and text after `#exit`.
+
+#beguilerSettings {
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define DEPTH_LIMIT   4
+#DEFINE WIDE                            // a flag: true
+#define CUTOFF        $0A               // hex: ten
+#define TRACE_WALK
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <buf>
+
+extend class object { string description; }
+
+object roomA { "Room A"; description = "A plain room."; attributes = light; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- A newtype with a conditional body ------------------------------------------------------------
+
+primitive class tenths
+{
+    emitter void   operator = (int v)    { $target = $v; }
+    emitter int    operator ()           { ($val) }
+    emitter eBool  operator ? ()         { ($val ~= 0) }
+    emitter tenths operator + (tenths t) { ($val + $t) }
+#IF WIDE
+    emitter int whole { ($val / 10) }           // tenths to wholes
+#Else
+    emitter int whole { ($val) }
+#ENDIF
+    emitter int part  { ($val % 10) }
+}
+
+primitive class cells8                  // a newtype over the address of a raw word array
+{
+    emitter void operator = (int v)  { $target = $v; }
+    emitter int  operator [] (int i) { ($val-->$i) }
+#if WIDE
+    emitter void operator []= (int i, int v) { $val-->$i = $v; }
+#endif
+}
+rawArray<int> rawRow = { 1, 2, 3 };
+
+//-- Subscripts with a clamp from a symbol declared at the end ------------------------------------
+
+class Strip : object
+{
+	array<int> cells[6];
+	int operator [ ] ( int i )   { return cells[i]; }
+	int operator /* store */ []= ( int i , int v )
+	{
+#if CLAMP_AT
+		if (v > CLAMP_AT) v = CLAMP_AT;         // CLAMP_AT is #declare'd at the end
+#endif
+		cells[i] = v;
+		return v;
+	}
+}
+Strip strip1
+{
+#If WIDE
+    int span = $$110;                   // 6
+#else
+    int span = 2;
+#endif
+}
+
+extend strip1
+{
+#if WIDE && DEPTH_LIMIT == 4
+    int extra = 'A';                    // a char literal into an int: 65
+#endif
+}
+
+class Dowel : object
+{
+    inline tenths len ;
+    inline instanceName ;
+    tenths twice() { tenths r = len + len; return r; }
+}
+Dowel rodA { 15, "rod A"; }
+Dowel rodB { 0 , "rod B"; }
+
+//-- A tree walked recursively ---------------------------------------------------------------------
+
+class Tally { static int fixedCount = 0; static int seen = 0; }
+
+object store { "store"; }
+object crate { "crate"; description = "A crate."; parent = store; attributes = { static, container, open }; }
+object rod   { "rod";   parent = store; }
+object tin   { "tin";   description = "A tin."; parent = crate; attributes = container; }
+object bead  { "bead";  description = "A bead."; parent = tin; attributes = static; }
+
+int walk(object o, int depth)
+{
+    if (depth > DEPTH_LIMIT) throw depth;
+    Tally.seen++;
+    if (o.has(static)) Tally.fixedCount += 1;
+#if TRACE_WALK
+    for (int i = 0; i < depth; i++) print(".");
+    printLine(o.description ?? "-");
+#endif
+    int n = 1;
+    for (object c in o.children) n += walk(c, depth + 1);
+    o.parent?.give(general);
+    return n;
+}
+
+int safeWalk(object from, int startDepth)
+{
+    try { return walk(from, startDepth); }
+    catch (int lvl) { print($"[too deep at {lvl}]"); printLine(); }
+    return -1;
+}
+
+//-- Ordering through an operator reference, recursively -------------------------------------------
+
+class Weight : object
+{
+    inline int g;
+    static int operator <=> (Weight a, Weight b) { return a.g - b.g; }
+}
+
+Weight w1 { 30, "w1"; }
+Weight w2 { $2D, "w2"; }                // 45
+Weight w3 { $$101101, "w3"; }           // 45 again, in binary
+Weight w4 { 12, "w4"; }
+
+array<Weight> scale = { w1, w2, w3, w4 };
+
+Weight heaviest(array<Weight> ws, int n)
+{
+    if (n <= 1) return ws[0];
+    Weight best = heaviest(ws, n - 1);
+    func<int, Weight, Weight> order = Weight :: operator <=> ;
+    if (order(ws[n - 1], best) == 0) return best;       // a tie keeps the earlier one
+    return ws[n - 1] > best ? ws[n - 1] : best;
+}
+
+//-- An array of arrays under a flag ---------------------------------------------------------------
+
+int gridSum()
+{
+    array<array<int>> grid = { {1, 2, 3}, {$A, $$11}, {'\@'} };   // '\@' is 64
+    int total = 0;
+    for (array<int> row in grid)
+    {
+#if WIDE
+        for (int i = 0; i < row.length; i++) total += row[i];
+#else
+        total += row[0];
+#endif
+    }
+    grid[1][1] = 100;
+#if DEPTH_LIMIT >= 4
+    total += grid[1][1] * grid.length;
+#endif
+    return total;
+}
+
+//-- Byte buffers through references ---------------------------------------------------------------
+
+array<char> label[12];
+object holder { "holder"; ref array<char> tag; }
+
+void stamp(ref array<char> into, int at, char c) { into[at] = c; }
+
+//-- An emitter class around a routine that gives attributes ---------------------------------------
+
+emitter class bracket {
+    emitter void init()   { $self = 0; print "["; }
+    emitter void deinit() { print "]"; }
+}
+
+void kindle(object o)
+{
+    bracket b;
+    if (o.has(light)) { print("lit already"); return; }
+    o.give(light);
+    print(o.has(light) ? "now lit" : "unlit");
+}
+
+//-- Positional members, an emitter class local, two parents with an emitter -----------------------
+
+class Peg : object
+{
+    inline int height ;
+    void show() { bracket b; print(height); }
+}
+
+class Marked : object { int mark = 1; }
+
+class Tagged
+    : Peg ,         // first parent: gives the positional height
+      Marked        // second parent
+{
+    emitter int total() { ($self.height + $self.mark) }
+    replace void show() { print("t"); ((Peg)self).show(); }
+}
+
+Peg    pegA { 3, "peg A"; }
+Peg    pegB { height = 7; }
+Tagged tg   { 4, "tagged peg"; mark = 6; }
+
+//-- A pool read back from I6 ----------------------------------------------------------------------
+
+class Chip[3] : object
+{
+    int v;
+    void create(int x) { v = x; }
+}
+
+int chipRound(int seed)
+{
+    Chip a = new Chip(seed);
+    Chip b = new Chip(seed * 2);
+    if (a == null || b == null) return -1;
+    int raw = 0;
+    #i6 raw = $i6Expr(a.v) + $i6Expr(b.v);
+    #i6 { if (metaclass(a) == Object) raw = raw + 1000; }
+    delete a;
+    delete b;
+    return raw;
+}
+
+//-- A switch over I6 values -----------------------------------------------------------------------
+
+#i6 Constant SHADE_CODE = 77;
+extern const int SHADE_CODE;
+
+string band(int n)
+{
+    int k = 0;
+    switch (n)
+    {
+        case SHADE_CODE : return "extern";
+        case 0 to 9 :
+            #i6 k = n * 3;
+            return k > 20 ? "low-high" : "low";
+        case >= 100 : return "huge";
+    }
+    return "other";
+}
+
+//-- A namespace that is also a world object -------------------------------------------------------
+
+class Kit : object
+{
+    default void report() { print("kit"); }
+}
+
+Kit tools
+{
+    alias peg   for Peg ;
+    alias chip  for Chip;
+    attributes = { open } ;
+    replace void report()
+    {
+        print(self.has(open) ? "tools open" : "tools shut");
+    }
+}
+
+#using tools
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+class codedVerb : verb
+{
+    inline int code;
+    meta = true;
+    void handler()
+    {
+        print($"code {code}");
+        if (code > 5) { print(" > "); V_cells.perform(); }
+        else printLine();
+    }
+}
+
+codedVerb Probe  { 7; grammar = {.probe}; }
+codedVerb Prod   { 2; grammar = {.prod}; }
+
+verb V_cells
+{
+    meta = true; grammar = {.cells};
+    void handler()
+    {
+        strip1[0] = 5;
+        strip1[1] = 80;
+        strip1[2] = strip1[0] + strip1[1];
+        printLine($"{strip1[0]} {strip1[1]} {strip1[2]}");
+        tenths t = 47;
+        tenths u = t + t;
+        printLine($"{t.whole}.{t.part} {u.whole}.{u.part}");
+        strip1[3] = strip1.span; strip1[3] += 40; strip1[3]++;
+        printLine($"{strip1[3]} {strip1.extra}");
+        tenths a = rodA.len ?? 7;
+        tenths b = rodB.len ?? 7;
+        printLine($"{a} {b} {rodA.twice()} {rodA.len?} {rodB.len?}");
+        func<int, int> scaleBy = (int k) =>
+        {
+#if WIDE
+            return k * 10;
+#else
+            return k;
+#endif
+        };
+        printLine(scaleBy(strip1[0]));
+        cells8 row = &rawRow;
+        row[1] = row[0] + row[2] * $10;
+        printLine($"{rawRow[1]} {row[1] - 40}");
+    }
+}
+
+verb V_tree
+{
+    meta = true; grammar = {.tree};
+    void handler()
+    {
+        printLine(safeWalk(store, 0));
+        printLine($"{Tally.seen} {Tally.fixedCount}");
+        printLine(safeWalk(store, DEPTH_LIMIT - 1));
+        printLine($"{store.has(general)} {crate.has(general)} {tin.has(general)} {rod.has(general)} {bead.has(general)}");
+    }
+}
+
+verb V_heavy
+{
+    meta = true; grammar = {.heaviest};
+    void handler()
+    {
+        print(heaviest(scale, 4)); print(" ");
+        print(heaviest(scale, 1)); print(" ");
+        printLine(w4 < w1);
+        printLine(gridSum());
+    }
+}
+
+verb V_bytes
+{
+    meta = true; grammar = {.bytes};
+    void handler()
+    {
+        bgl.util.buf.set(label, "abc");
+        holder.tag := label;
+        ref array<char> view := label;
+        view[1] = 'Z';
+        stamp(holder.tag, 2, '#');
+        bgl.util.buf.print(label); print(" ");
+        printLine($"{label.length} {holder.tag.length} {view.length}");
+        bgl.util.buf.toUpper(holder.tag);
+        bgl.util.buf.print(view); printLine();
+    }
+}
+
+verb V_kit
+{
+    meta = true; grammar = {.kit};
+    void handler()
+    {
+        peg p = pegB;                   // tools.peg, through #using
+        tools.peg q = tg;
+        p.show(); print(" "); q.show(); print(" "); tg.show(); print(" ");
+        ((Peg)tg).show(); printLine();
+        printLine($"{tg.total()} {pegA.height}");
+        kindle(rod); print(" "); kindle(rod); printLine();
+        tools.report(); printLine();
+        tools.give(open); ;; tools.ungive(open);
+        tools.report(); printLine();
+    }
+}
+
+verb V_chips
+{
+    meta = true; grammar = {.chips};
+    void handler()
+    {
+        printLine(chipRound(5));
+        chip c = new chip(9);
+        printLine($"{c.v} {chipRound(1)}");
+        delete c;
+        printLine($"{band(77)} {band(3)} {band(8)} {band(150)} {band(50)}");
+    }
+}
+
+verb V_chains
+{
+    meta = true; grammar = {.chains};
+    void handler()
+    {
+        array<int> nums = { 3, 14, $C, -2, CUTOFF, 25 };
+        int big = nums.filter((int x) => x > CUTOFF).count();
+#if WIDE
+        printLine($"{big} {nums.orderBy().first()} {nums.any((int x) => x < 0)}");
+#else
+        printLine(big);
+#endif
+#if CUTOFF == 10 && !NARROW
+        array<int> kept = nums.skip(1).take(3);
+        for (int n in kept) print($"{n};");
+        printLine();
+#endif
+    }
+}
+
+#includeI6 "grammar"
+
+#declare CLAMP_AT 50
+
+#if !NARROW                             // NARROW is never defined
+    #exit
+#endif
+After #exit nothing is read: class Broken : { "unterminated

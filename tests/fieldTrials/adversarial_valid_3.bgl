@@ -1,0 +1,423 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual combinations, twelve or more areas in one declaration, on the
+// Z-machine. A value class with `+=`, `++`, `[]`, `[]=` and an emitter `operator switch`, a ref
+// member of its own type rebound with `:=` inside a loop and reached through `?.` (bound and
+// unbound, as a statement and in an expression), $i6Expr and $i6Name emitters (an overloaded static
+// picked by type, an instance method called by property), a nested list initializer walked with
+// for-in, an in-routine #i6 island, a named-union member, a `ref stringObj` parameter written by
+// a switch on the class itself and a content switch on a stringObj, and a perform; a class with two
+// parents whose methods sort, pop, append and filter inner arrays of a local array<array<int>>,
+// run <linq> on an array<string>, switch on a <linq> count and on typeof, store through their own
+// `[]=`, and reach elements of an array<array<object>> through `?.`; an object namespace (`alias …
+// for`, then `#using`) whose inline accessors hold static array<string>, array<int> and
+// array<func<int, int>> members, declare `+`, `-`, `*` and `[]`, call through a function-array
+// element, switch on ranges and typeof, write the host's stringObj, value-class and var members
+// through outer, and perform a verb on outer.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+object brassKey  { "brass key";  parent = roomA; }
+object tinBox    { "tin box";    parent = roomA; attributes = {container, open}; }
+object glassBead { "glass bead"; parent = tinBox; }
+object woodPeg   { "wood peg";   parent = roomB; }
+
+int taps = 0;
+int pings = 0;
+
+verb Tap {
+    grammar = {.tap, NOUN};
+    void handler() {
+        taps++;
+        printLine($"Tap {noun}.");
+    }
+}
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        pings++;
+        printLine($"Ping {noun}.");
+    }
+}
+
+union mark = string | object;
+
+void print(mark m) {
+    if (typeof(m) == eType.string) print((string)m);
+    else print((object)m);
+}
+
+// ---- cluster 1: a value class with compound, subscript and switch operators ----------------------
+
+value class Ledger {
+    int total;
+    array<int> slots[4];
+    ref Ledger peer;
+    mark last;
+
+    Ledger operator = (Ledger o) {
+        total = o.total;
+        last = o.last;
+        for (int i = 0; i < 4; i++) slots[i] = o.slots[i];
+        return self;
+    }
+    Ledger operator += (int v)    { total = total + v; return self; }
+    Ledger operator ++ ()         { total = total + 100; return self; }
+    int operator [] (int i)        { return slots[i % 4]; }
+    int operator []= (int i, int v) { slots[i % 4] = v; return v; }
+    emitter eBool operator switch (int v) { ($self.total == $v) }
+    emitter int pair(int i) { $i6Expr($self[$i] + $self[$i + 1]) }
+    emitter int weighed()   { $i6Name(Ledger.weigh(int))($self.total) }
+    emitter void nudge(int k) { $self.($i6Name(Ledger.bump))($k) }
+
+    static int weigh(int a)    { return a * 3; }
+    static int weigh(string s) { return s.length; }
+
+    void link(ref Ledger other) { peer := other; }
+    void bump(int k)             { self += k; }
+
+    int sweep(ref Ledger a, ref Ledger b, array<string> names) {
+        int hits = 0;
+        stringObj key;
+        for (int i = 0; i < 4; i++) {
+            if (i % 2 == 0) peer := a;
+            else            peer := b;
+            peer?.bump(i);
+            self[i] += i * 10;
+            key = names[i % names.length];
+            switch (key) {
+                case "exact": hits += 1;
+                case "tail":  hits += 100;
+                default:      hits += 10;
+            }
+        }
+        #i6 hits = hits + $i6Expr(peer.total);
+        return hits;
+    }
+
+    void settle(object o, array<string> names, ref stringObj out) {
+        array<array<int>> plan = { {1, 2}, {3, 4, 5}, {6} };
+        var where = o?.parent;
+        for (array<int> row in plan) {
+            for (int v in row) self += v;
+        }
+        self[1] = plan[1][2];
+        self++;
+        switch (self) {
+            case 121: out = names[0];
+            case 0:   out = "empty";
+            default:  out = names[1];
+        }
+        switch (total % 7) {
+            case 0 to 2: out += "-a";
+            case 3 to 5: out += "-b";
+            default:     out += "-c";
+        }
+        out += " ";
+        out += names[2];
+        int extra = 0;
+        #i6 extra = $i6Expr(self.pair(0)) * 2;
+        int seen = peer?.total;
+        int wide = names[2]?.length;
+        if (typeof(where) == eType.object) {
+            last = (object)where;
+            Tap.perform((object)where);
+        } else {
+            last = names[0];
+        }
+        self += extra + seen + wide;
+    }
+}
+
+// ---- cluster 2: a class with two parents sorting nested arrays -----------------------------------
+
+class Labeled : object { string label = "plain"; }
+class Counted : object { int hits = 0; }
+
+value class Cell {
+    int v;
+    Cell operator = (Cell o) { v = o.v; return self; }
+}
+
+class Sorter : Labeled, Counted {
+    array<int> marks[6];
+    int operator [] (int i)         { return marks[i]; }
+    int operator []= (int i, int x) { marks[i] = x; return x; }
+
+    int sortOut(array<object> items, array<string> tags) {
+        array<array<int>> grid = { {5, 1, 4}, {9, 2, 8}, {3} };
+        stringObj line;
+        Cell best;
+        var top = items[0]?.parent;
+        grid[1].popEnd();
+        grid[1].append(6);
+        grid[0].sort();
+        for (int r = 0; r < grid.length; r++) {
+            int big = grid[r].filter((int x) => x > 3).count();
+            switch (big) {
+                case 0:  line += tags[0];
+                case 1:  line += tags[1];
+                default: line += tags[2];
+            }
+            self[r] = big;
+            if (grid[r].any((int x) => x > best.v)) best.v = grid[r].orderBy().last();
+        }
+        array<string> picked = tags.filter((string t) => t.length > 3);
+        hits += picked.length;
+        label = picked.first();
+        print(line);
+        printLine(".");
+        if (typeof(top) == eType.object) Ping.perform((object)top);
+        return best.v;
+    }
+}
+
+Sorter sorterA { "sorter A"; parent = roomA; }
+
+class Shelf : Counted, Labeled {
+    array<string> seenTags[4];
+    string operator [] (int i)            { return seenTags[i]; }
+    string operator []= (int i, string t) { seenTags[i] = t; return t; }
+
+    int stock(array<array<string>> rows, array<array<object>> spots) {
+        int score = 0;
+        for (int r = 0; r < rows.length; r++) {
+            array<string> row[4];
+            row = rows[r];
+            row.sort();
+            stringObj head;
+            head = row.first();
+            switch (head) {
+                case "amber": score += 1;
+                case "blue":  score += 20;
+                default:      score += 300;
+            }
+            if (row.any((string t) => t.startsWith("g"))) self[r] = row.last();
+            else self[r] = head.length > 3 ? "long" : "short";
+        }
+        spots[0].removeValue(tinBox);
+        spots[0] += woodPeg;
+        int where = 0;
+        for (array<object> line in spots) {
+            for (object o in line) {
+                var p = o?.parent;
+                switch (typeof(p)) {
+                    case eType.object: where++;
+                    default:           where += 100;
+                }
+            }
+        }
+        Cell c;
+        c.v = spots[0].filter((object o) => o.parent == roomB).count();
+        hits = score + where * 100;
+        label = self[1];
+        if (c.v > 0) Ping.perform(spots[0].last());
+        return c.v;
+    }
+}
+
+Shelf shelfA { "shelf A"; parent = roomB; }
+
+// ---- cluster 3: an object namespace whose inline accessor holds static arrays --------------------
+
+value class Coin {
+    int n;
+    Coin operator = (Coin o) { n = o.n; return self; }
+    int operator + (int k) { return n + k; }
+    int operator * (int k) { return n * k; }
+}
+
+int twice(int n)  { return n * 2; }
+int thrice(int n) { return n * 3; }
+
+object vault {
+    "vault";
+    parent = roomB;
+    alias coin for Coin;
+    int base = 2;
+    int writes = 0;
+    stringObj note;
+    Coin kept;
+    var lastSeen;
+
+    auto level = {
+        static array<string> words = {"zero", "low", "high"};
+        static array<int> seen[4];
+        int _raw;
+        int operator () { return _raw; }
+        int operator + (int k) { return _raw + k * outer.base; }
+        int operator - (int k) { return _raw - k; }
+        int operator [] (int i) { return seen[i]; }
+        void operator = (int v) {
+            func<int, int> f = twice;
+            coin c;
+            c.n = v;
+            switch (v) {
+                case < 0:    _raw = 0;
+                case 0 to 9: _raw = f(v);
+                default:     _raw = c + outer.base;
+            }
+            seen[outer.writes % 4] = _raw;
+            outer.writes++;
+            switch (_raw) {
+                case 0:      outer.note = words[0];
+                case 1 to 9: outer.note = words[1];
+                default:     outer.note = words[2];
+            }
+            outer.kept = c;
+            outer.lastSeen = self - 1;
+            if (_raw > 15) Tap.perform(outer);
+        }
+    };
+
+    auto steps = {
+        static array<func<int, int>> rules = {twice, thrice};
+        static array<string> labels = {"even", "odd"};
+        int _n;
+        int operator () { return _n; }
+        int operator * (int k) { return _n * k; }
+        int operator [] (int i) { return rules[i % 2](_n); }
+        void operator = (int v) {
+            mark m = labels[v % 2];
+            _n = self[v] + outer.base;
+            switch (typeof(m)) {
+                case eType.string: outer.note += (string)m;
+                default:           outer.note += "?";
+            }
+            outer.lastSeen = self * 3;
+        }
+    };
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs ---------------------------------------------------------------------------------
+
+array<string> ledgerNames = {"exact", "other", "tail"};
+
+verb ProbeLedger {
+    grammar = {.probeledger};
+    meta = true;
+    void handler() {
+        Ledger a;
+        Ledger b;
+        stringObj said;
+        b.total = 7;
+        a.link(b);
+        a.settle(glassBead, ledgerNames, said);
+        print(said);
+        printLine($" total {a.total} slot1 {a[1]} last {a.last}.");
+        Ledger c;
+        c.settle(roomA, ledgerNames, said);
+        print(said);
+        printLine($" total {c.total} last {c.last} pair {c.pair(1)}.");
+        int h = c.sweep(a, b, ledgerNames);
+        printLine($"Sweep {h}, a {a.total}, b {b.total}, slots {c[0]} {c[1]} {c[2]} {c[3]}.");
+        Ledger d;
+        d.peer?.bump(5);
+        d.nudge(4);
+        d.peer := c;
+        d.peer?.nudge(1);
+        printLine($"Unbound {d.total}, weighed {d.weighed()} {Ledger.weigh("four")}, through {c.total} {d.peer?.total}.");
+    }
+}
+
+array<object> sortItems = {glassBead, brassKey};
+array<string> sortTags = {"red", "blue", "green"};
+
+verb ProbeSorter {
+    grammar = {.probesorter};
+    meta = true;
+    void handler() {
+        int best = sorterA.sortOut(sortItems, sortTags);
+        printLine($"Best {best}, hits {sorterA.hits}, label {sorterA.label}, marks {sorterA[0]} {sorterA[1]} {sorterA[2]}.");
+    }
+}
+
+array<array<string>> shelfRows = { {"red", "blue"}, {"gray", "green", "amber"} };
+
+verb ProbeShelf {
+    grammar = {.probeshelf};
+    meta = true;
+    void handler() {
+        array<array<object>> spots = { {brassKey, tinBox, glassBead}, {woodPeg, roomA} };
+        int n = shelfA.stock(shelfRows, spots);
+        printLine($"Stock {n}, hits {shelfA.hits}, label {shelfA.label}, tags {shelfA[0]} {shelfA[1]}.");
+        printLine($"Rows {shelfRows[0][0]} {shelfRows[0][1]} {shelfRows[1][0]} {shelfRows[1][2]}, spots {spots[0].length} {spots[1].length}.");
+        for (array<string> row in shelfRows) {
+            stringObj all;
+            for (string t in row) all += t?.length > 3 ? t : "-";
+            print(all);
+            print(" ");
+        }
+        printLine("");
+    }
+}
+
+verb ProbeVault {
+    grammar = {.probevault};
+    meta = true;
+    void handler() {
+        vault.level = 4;
+        print(vault.note);
+        printLine($" level {vault.level} writes {vault.writes} kept {vault.kept.n}.");
+        vault.level = 20;
+        print(vault.note);
+        printLine($" level {vault.level} writes {vault.writes} kept {vault.kept.n} taps {taps}.");
+        vault.coin c;
+        c.n = 3;
+        printLine($"Coin {c + 1} {c * 5}.");
+        vault.steps = 3;
+        print(vault.note);
+        printLine($" steps {vault.steps} seen {vault.lastSeen}.");
+        vault.steps = 4;
+        print(vault.note);
+        printLine($" steps {vault.steps} seen {vault.lastSeen}.");
+    }
+}
+
+#using vault
+
+verb ProbeUsing {
+    grammar = {.probeusing};
+    meta = true;
+    void handler() {
+        coin d;
+        d.n = vault.level;
+        vault.kept = d;
+        printLine($"Using {d + vault.base} {vault.kept * 2}.");
+    }
+}

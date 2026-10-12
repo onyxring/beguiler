@@ -1,0 +1,376 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: two dense declarations on Glulx, written functionally. An I6 class with two parents,
+// declared in an `#i6` island and bound with a two-parent `extern class`: emitter `+`, `-`, `+=` and
+// `++` operators and static routines that fold a countdown recursively (throwing when a reading would
+// go negative), band a reading through a value-class range imported with `#using`, and run a check
+// that binds a `ref` value-class local with `:=`, scales through a block-lambda func<>, falls back
+// with `??`, counts with a <linq> filter, captures a line into an array<char> through <buf>, gives an
+// attribute, switches on `typeof` of a var, takes a pooled subclass from `new` and dispatches to its
+// ancestor by cast, tallies in an `#i6` island through `$i6Expr`, traces under `#if` and performs a
+// verb. A pooled class with two parents carrying a non-emitter `+` and `+=`, a member array<char>,
+// an enum band and a float rate, a recursive chain, a replaced method reaching its ancestor by cast,
+// and a run method that mixes the same features from inside a Beguile class body. An `extend extern
+// class` of the I6 class returning a `string | func<>` union of block lambdas, narrowed by `typeof`
+// and a cast in a recursive sweep over an array of instances, and a <linq> filter / orderBy with `??`.
+// A verb with a `ref` value-class member, a float array filtered by <linq>, a block-lambda func<>
+// member walked recursively, a string `??` and postfix `?`, and a throw out of a <linq> predicate.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <buf>
+
+#define GAUGE_TRACE
+
+#i6 {
+Class Tagged with tag_code 0;
+Class Gauge class Tagged with reading 0, limit 0;
+Global gaugeChecks = 0;
+}
+
+extern int gaugeChecks;
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object shelfA { "shelf A"; parent = roomA; }
+
+//-- Shared types ---------------------------------------------------------------------------------
+enum eBand { none, low, mid, high }
+
+value class Span {
+    float lo;
+    float hi;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    bool holds(float v) { return v >= lo && v <= hi; }
+}
+
+class Chip[4] : object {
+    int weight = 0;
+    void create(int w) { weight = w; }
+    int score() { return weight; }
+}
+
+class HotChip[2] : Chip {
+    replace int score() { return weight * 2; }
+}
+
+class Marked : object {
+    int mark = 0;
+    string tagName() { return "plain"; }
+}
+
+object kit {
+    alias range for Span;
+    alias band for eBand;
+}
+
+Span window;
+array<int> marks = {1, 4, 2, 7, 3};
+
+//-- Cluster 1 and 2: an I6 class with two parents ------------------------------------------------
+extern class Tagged : object {
+    int tag_code;
+}
+
+extern class Gauge : object, Tagged {
+    int reading;
+    int limit;
+
+    emitter int  operator + (int v) { ($self.reading + $v) }
+    emitter int  operator - (int v) { ($self.reading - $v) }
+    emitter void operator += (int v) { $self.reading = $self.reading + $v; }
+    emitter void operator ++ () { $self.reading = $self.reading + 1; }
+
+    static int fold(Gauge g, int n) {
+        if (n <= 0) return g.reading;
+        if (g - n < 0) throw n;
+        return n + fold(g, n - 1);
+    }
+
+    static eBand rank(Gauge g) {
+        #using kit
+        range r;
+        r.lo = 1.0;
+        r.hi = g.limit * 0.5;
+        float f = g.reading;
+        if (f < r.lo) return band.none;
+        if (r.holds(f)) return band.low;
+        if (f <= g.limit) return band.mid;
+        return band.high;
+    }
+
+    static float check(Gauge g, var from, int n) {
+        ref Span w := window;
+        func<int, int> scale = (int v) => {
+            if (v > g.limit) return g.limit;
+            return v * 2;
+        };
+        object home = g.parent;
+        home = home ?? roomA;
+        int above = marks.filter((int m) => m > n).count();
+        float total = 0.0;
+        try {
+            total = fold(g, n) * 0.5;
+        } catch (int e) {
+            print($"(short by {e}) ");
+            total = -1.0;
+        }
+        w.lo = total;
+        w.hi = scale(n);
+        array<char> line[24];
+        bgl.util.buf.capture(line);
+        switch (typeof(from)) {
+            case eType.object: print("obj");
+            case eType.string: print("txt");
+            default:           print("num");
+        }
+        print($"-{g.tag_code}");
+        bgl.util.buf.release();
+        bgl.util.buf.toUpper(line);
+        if (!g.has(light) && g + 0 > 2) g.give(light);
+        HotChip h = new HotChip(n);
+        int hs = 0;
+        if (h?) {
+            hs = h.score() - ((Chip)h).score();
+            delete h;
+        }
+        #i6 {
+            gaugeChecks = gaugeChecks + $i6Expr(n);
+        }
+        g += above;
+        g++;
+        eBand b = rank(g);
+        #if GAUGE_TRACE
+            print("[t] ");
+        #endif
+        bgl.util.buf.print(line);
+        print($" {home} above {above} band {(int)b} hot {hs} lit {g.has(light)} span {w.lo}..{w.hi}^");
+        if (b == eBand.high) PokeVerb.perform(g);
+        return total + w.hi;
+    }
+}
+
+//-- The I6 class extended: a recursive sweep through a union of text and func<> -------------------
+extend extern class Gauge {
+    static string | func<int, int> plan(Gauge g) {
+        if (g.reading > g.limit) return "over";
+        if (g.reading % 2 == 0) return (int v) => { return v / 2; };
+        return (int v) => {
+            int r = v * 3;
+            return r + 1;
+        };
+    }
+
+    static int sweep(array<Gauge> gs, int i, int acc) {
+        if (i >= gs.length) return acc;
+        Gauge g = gs[i];
+        string | func<int, int> p = plan(g);
+        int add = 0;
+        if (typeof(p) == eType.routine) {
+            func<int, int> f = (func<int, int>)p;
+            add = f(g.reading);
+        } else {
+            print((string)p);
+            print(" ");
+        }
+        return sweep(gs, i + 1, acc + add);
+    }
+
+    static Gauge busiest(array<Gauge> gs) {
+        array<Gauge> lit = gs.filter((Gauge g) => g.has(light));
+        Gauge best = lit.orderBy((Gauge a, Gauge b) => b.reading - a.reading).first();
+        return best ?? gs[0];
+    }
+}
+
+Gauge gaugeA { "gauge A"; reading = 2; limit = 6; tag_code = 7; parent = shelfA; }
+Gauge gaugeB { "gauge B"; reading = 0; limit = 4; tag_code = 3; }
+Gauge gaugeC { "gauge C"; reading = 5; limit = 9; tag_code = 1; }
+
+//-- Cluster 1 and 2 again: a pooled class with two parents ---------------------------------------
+class Cell[3] : object, Marked {
+    string short_name = "cell";
+    int load = 0;
+    float rate = 0.5;
+    eBand level = eBand.none;
+    array<char> code[6];
+
+    void create(int n) { load = n; }
+
+    int operator + (int v) { return load + v; }
+    Cell operator += (int v) { load = load + v; return self; }
+
+    replace string tagName() {
+        if (load > 3) return "heavy";
+        return ((Marked)self).tagName();
+    }
+
+    int chain(int n) {
+        if (n <= 0) return load;
+        return chain(n - 1) + n;
+    }
+
+    float run(var from, int n) {
+        #using kit
+        range r;
+        r.lo = 0.0;
+        r.hi = 4.0;
+        ref Span w := window;
+        func<float, int> weigh = (int v) => {
+            float f = v * rate;
+            if (!r.holds(f)) throw v;
+            return f;
+        };
+        int odd = marks.filter((int m) => m % 2 == 1).count();
+        Cell other = new Cell(n);
+        Cell pick = other ?? self;
+        float sum = 0.0;
+        try {
+            for (int m in marks) sum += weigh(m + n);
+        } catch (int e) {
+            print($"(over at {e}) ");
+        }
+        self += odd;
+        array<char> head[4];
+        bgl.util.buf.set(head, "c-");
+        bgl.util.buf.capture(code);
+        print(chain(n));
+        bgl.util.buf.release();
+        bgl.util.buf.prepend(code, head);
+        switch (typeof(from)) {
+            case eType.object: level = eBand.low;
+            default:           level = eBand.mid;
+        }
+        if (self + n > 9) level = eBand.high;
+        if (!self.has(light) && load > 4) self.give(light);
+        #i6 {
+            gaugeChecks = gaugeChecks + $i6Expr(odd);
+        }
+        #if GAUGE_TRACE
+            print("[c] ");
+        #endif
+        w.hi = sum;
+        bgl.util.buf.print(code);
+        print($" {tagName()} load {load} level {(int)level} sum {sum} pick {pick.load}^");
+        if (other?) delete other;
+        if (level == eBand.high) PokeVerb.perform(self);
+        return sum;
+    }
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+verb PokeVerb {
+    grammar = {{.poke, noun}};
+    void handler() {
+        print($"(poked {noun})^");
+    }
+}
+
+verb CheckVerb {
+    grammar = {{.check, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        float a = Gauge.check(gaugeA, gaugeA, n);
+        float b = Gauge.check(gaugeB, "tag", n);
+        print($"check {a}, {b}, tally {gaugeChecks}, window {window.lo}..{window.hi}^");
+    }
+}
+
+verb CellVerb {
+    grammar = {{.cell, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        Cell c = new Cell(n);
+        if (!c?) {
+            print("no cell^");
+            return;
+        }
+        float s = c.run(roomA, n);
+        float t = c.run(n, 1);
+        print($"cell {s}, {t}, tally {gaugeChecks}^");
+        delete c;
+    }
+}
+
+verb TallyVerb {
+    grammar = {{.tally, NUMBER}};
+    ref Span hold;
+    array<float> rates = {0.5, 1.5, 2.5, 3.5};
+    func<int, int> step = (int v) => {
+        if (v % 2 == 0) return v / 2;
+        return v * 3 + 1;
+    };
+
+    int walk(int v, int depth) {
+        if (v <= 1 || depth >= 12) return depth;
+        return walk(step(v), depth + 1);
+    }
+
+    string label(int n) {
+        switch (n) {
+            case 1: return "one";
+            case 2: return "two";
+        }
+        return null;
+    }
+
+    int sift(int limit) {
+        int kept = 0;
+        try {
+            kept = marks.filter((int m) => {
+                if (m > limit) throw m;
+                return marks.any((int k) => {
+                    if (k * m > limit * 4) throw k * m;
+                    return k == m + 1;
+                });
+            }).count();
+        } catch (int e) {
+            print($"(stop {e}) ");
+            kept = -1;
+        }
+        return kept;
+    }
+
+    void handler() {
+        int n = parsed_number;
+        hold := window;
+        hold.lo = 0.0;
+        int s = sift(n);
+        int nested = marks.filter((int m) => marks.any((int k) => k == m + 1)).count();
+        int fast = rates.filter((float f) => f > n * 0.5).count();
+        string name = label(n) ?? "many";
+        bool named = label(n)?;
+        hold.hi = walk(n, 0);
+        var first = marks.skip(n % 5).first();
+        print($"tally {s} nested {nested} fast {fast} {name} {named} walk {window.hi} first {first}^");
+    }
+}
+
+verb SweepVerb {
+    grammar = {.sweep};
+    void handler() {
+        array<Gauge> gs = {gaugeA, gaugeB, gaugeC};
+        int total = Gauge.sweep(gs, 0, 0);
+        Gauge top = Gauge.busiest(gs);
+        print($"sweep {total} top {top} reading {top.reading}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

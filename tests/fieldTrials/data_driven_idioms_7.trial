@@ -1,0 +1,111 @@
+Data check: 0 problems, 4 specs.
+Room A
+Room A.
+> codes
+0: rod heavy (33)
+1: plate - (0)
+2: gear sealed spare (82)
+3: shim sealed (19)
+4: gear sealed heavy (50)
+5: rod spare (65)
+> parts
+bolt A [F]: cost 4, count 12, rank 2, per each, tags 7 200 201 100 = 508, own 1
+plate B [P]: cost 9, count 3, rank 2, per each, tags 100 = 100, own 0
+gear C [M]: cost 20, count 2, rank 30, per set, tags 8 9 300 100 = 417, own 2
+shim D [F]: cost 1, count 40, rank 0, per each, tags 200 201 100 = 501, own 0
+gear E [M]: cost 14, count 5, rank 24, per set, tags 300 100 = 400, own 0
+rod F [F]: cost 6, count 8, rank 3, per each, tags 11 200 201 100 = 512, own 1
+> shelves
+shelf A: bolt A#0 plate B#1 gear C#2 (3)
+shelf B: shim D#3 gear E#4 rod F#5 (3)
+> shift 1
+plate B is now on shelf B.
+shelf A: bolt A#0 gear C#2 (2)
+shelf B: plate B#1 shim D#3 gear E#4 rod F#5 (4)
+> shift 4
+gear E is now on shelf A.
+shelf A: gear E#4 bolt A#0 gear C#2 (3)
+shelf B: plate B#1 shim D#3 rod F#5 (3)
+> shift 9
+No row 9.
+> specs
+row 0: size 2..6, price 0..99
+row 2: size 10..30, price 0..25
+row 4: size 8..20, price 5..99
+row 5: size 1..3, price 4..7
+> widen 1
+row 2: size 9..30, price 0..30 / copy row 2: size 9..0, price 0..30
+> widen 1
+row 2: size 8..30, price 0..35 / copy row 2: size 8..0, price 0..35
+> widen 7
+No spec 7.
+> specs
+row 0: size 2..6, price 0..99
+row 2: size 8..30, price 0..35
+row 4: size 8..20, price 5..99
+row 5: size 1..3, price 4..7
+> fit 9
+Size 9 fits: gear C gear E.
+> fit 2
+Size 2 fits: bolt A rod F.
+> fit 50
+Size 50 fits: nothing.
+> policy 0
+Policy 0: 4 9 20 1 14 6; stock value 273.
+> policy 1
+Policy 1: 2 4 10 0 7 3; stock value 115.
+> policy 3
+Policy 3: 7 12 23 4 17 9; stock value 483.
+> checks
+many tags: 0 2 3 5
+cheap: 0 3
+stocked: 0 3
+> grades
+bolt A: first rows, low
+plate B: first rows, mid
+gear C: high
+shim D: row three
+gear E: mid
+rod F: high
+> range 3
+Cost 3..8: 2 parts; cost 0..9: 4 parts; ten up: 1.
+> range 30
+Cost 30..35: 0 parts; cost 0..9: 4 parts; ten up: 0.
+> tally 9
+Count over 9: 2; 2 moving, 3 fasteners.
+> tally 50
+Count over 50: 0; 2 moving, 3 fasteners.
+> order
+row 5: size 1..3, price 4..7
+row 0: size 2..6, price 0..99
+row 2: size 8..30, price 0..35
+row 4: size 8..20, price 5..99
+> stretch 0
+row 5: size 1..7, price 1..7
+> stretch 9
+No spec 9.
+> drop 1
+row 5: size 1..7, price 1..7
+row 2: size 8..30, price 0..35
+row 4: size 8..20, price 5..99
+row 1: size 3..4, price 0..99
+> specs
+row 5: size 1..7, price 1..7
+row 2: size 8..30, price 0..35
+row 4: size 8..20, price 5..99
+row 1: size 3..4, price 0..99
+> flip 1
+fixed kind, sealed spare (80)
+> flip 2
+moving kind, spare (66)
+> flip 4
+moving kind, heavy spare (98)
+> codes
+0: rod heavy (33)
+1: plate sealed spare (80)
+2: gear spare (66)
+3: shim sealed (19)
+4: gear heavy spare (98)
+5: rod spare (65)
+> tiers
+low 2; mid 2; high 2; triple 21; tags size 4; rod F per each.

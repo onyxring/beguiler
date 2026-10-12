@@ -1,0 +1,82 @@
+(starting up)
+Room A
+Room A. Room B is to the east.
+You can see a red stamp, a green stamp, a blue stamp and an ink pad here.
+> shades
+Codes: 10 20 30.
+Moss plus 5: 7. Sky doubled: 6. s doubled: 4.
+p can't write. q can write. p is 5, q is 3, canRun alone is 4.
+Stamp codes: 10 20 4.
+(made) writable
+(made) read only
+The clerk sells 3 stamps, or 4 with the spare.
+> literals
+Twice 21: 42. Twice 50: 100.
+C:\games\box^1~
+He said "hi" to me.
+Letters: 5, slashes: 1, quotes: 1.
+Words: stamp, stamps.
+The two words are different.
+Done with literals.
+> kinds
+the ink pad is a thing.
+"loose text" is not a thing.
+the ink pad; "spare label"; the clerk; 2 of 3 are things.
+"spare label" is the second label.
+The red stamp belongs to "Room B".
+The green stamp belongs to "nobody".
+The blue stamp belongs to the clerk.
+An object: clerk.
+Some text: a note.
+Nothing I know.
+> cycle
+[0][][2][]
+[in]out[in]out
+[][3][big] total 8
+0[one]2
+<[][]> row 1
+> tokens
+No third token.
+Token one costs 8, token two costs 3.
+(token 123 gone)
+The new token is 001 and costs 3.
+(token 001 gone)
+(token 456 gone)
+> grade
+5: low
+42: middle
+77: other
+99: top
+> funcs
+Step 4: 5.
+Step 4 now: 12.
+Add one to 9: 10.
+Doubled with a tracker: []10.
+Step 4 last: 3.
+> dims
+Plain board: 3 by 4, area 12.
+Tall board: 2 by 9.
+> take stamps
+red stamp: Taken.
+green stamp: Taken.
+blue stamp: Taken.
+> stamp red stamp
+You stamp the red stamp.
+> stamp blue stamp with green stamp
+You stamp the blue stamp with the green stamp.
+> e
+Room B
+Room B. Room A is to the west.
+You can see a clerk here.
+> ask clerk about stamp
+"One stamp," says the clerk.
+> ask clerk about stamps
+"Stamps, plural," says the clerk.
+> ask clerk about ink
+"The pad is in Room A," says the clerk.
+> ask clerk about weather
+"No idea," says the clerk.
+> tell clerk about tea
+"I like tea," says the clerk.
+> tell clerk about rain
+The clerk nods.

@@ -1,0 +1,564 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: tiles laid out across a text grid, with a strip of labels and a desk namespace. A tile
+// class with a positional caption, an owned value-class position tested with postfix ?, an inline
+// weight accessor (auto { }) whose setter records a mark in a static array<char>, operator [] over its
+// array<char> tag, a static array<tile> deck filled from the object tree, sorted by a block-bodied
+// lambda comparator, laid out into a static array<array<int>> of spans that a block-bodied lambda
+// reads back, and drawn into a grid; an extend class on the tile adding operator []= on the tag, an
+// inline glow accessor, an array<string> of notes, a tag built from an array<string> parameter, a
+// nearest-tile search over an array<tile> parameter by value-class distance, and a block-bodied
+// lambda that dims glowing tiles; a label strip class with operator [] and []= over an array<string>,
+// loaded from an array<string> parameter through a block-bodied lambda, an inline focus accessor, an
+// array<char> of initials, a member array<array<int>> of runs, and an array of value-class stops
+// copied from an owned origin; a desk object namespace aliasing the tile class, with an object
+// operator [] over an array<string>, an array of the aliased type gathered by a block-bodied lambda,
+// and an inline accessor reaching its host through outer (an array<char>, the picks, the words);
+// and an extend on that object aliasing the position class beside an array<string> and an inline
+// accessor that writes an owned position through outer.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute pinned;
+
+textGridWindow grid = null;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+void eachText(array<string> list, func<void, string> f) {
+    for (string s in list) f(s);
+}
+
+// ---- positions -----------------------------------------------------------------------------------
+
+value class cellPos {
+    int col;
+    int row;
+    cellPos operator = (cellPos o) {
+        col = o.col;
+        row = o.row;
+        return self;
+    }
+    emitter eBool operator ? () { ($self.col ~= 0 || $self.row ~= 0) }
+}
+
+// ---- tiles ---------------------------------------------------------------------------------------
+
+object tray { "tray"; }
+
+class tile : object {
+    inline string caption;
+    int slot = 0;
+    array<char> tag[6];
+    cellPos at;
+    static array<tile> deck[6];
+    static array<char> marks[12];
+    static array<array<int>> spans = { {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0} };
+
+    auto weight = {
+        int _w = 0;
+        int operator () { return _w; }
+        void operator = (int v) {
+            _w = v < 0 ? 0 : v;
+            int n = tile.marks.length;
+            if (n < 12) {
+                tile.marks[n] = _w > 9 ? '+' : (char)('0' + _w);
+                tile.marks.length = n + 1;
+            }
+        }
+    }
+
+    char operator [] (int i) {
+        if (i < 0 || i >= tag.length) return '.';
+        return tag[i];
+    }
+
+    static int enlist(object host) {
+        tile.deck.clear();
+        tile.marks.length = 0;
+        for (object o in host.children) {
+            tile t = (tile)o;
+            t.slot = tile.deck.length;
+            t.tag.length = 0;
+            tile.deck.append(t);
+        }
+        return tile.deck.length;
+    }
+
+    static void order() {
+        tile.deck.sort((tile a, tile b) => {
+            int wa = a.weight;
+            int wb = b.weight;
+            if (wa != wb) return wa > wb ? -1 : 1;
+            return a.slot < b.slot ? -1 : 1;
+        });
+        for (int i = 0; i < tile.deck.length; i++) tile.deck[i].slot = i;
+    }
+
+    static int layout() {
+        int col = 0;
+        int placed = 0;
+        for (int i = 0; i < tile.deck.length && i < tile.spans[0].length; i++) {
+            if (!tile.deck[i]?) continue;
+            tile t = tile.deck[i];
+            int w = t.caption.length + 2;
+            tile.spans[0][i] = col;
+            tile.spans[1][i] = w;
+            t.at.col = col;
+            t.at.row = 1;
+            col += w;
+            placed++;
+        }
+        return placed;
+    }
+
+    static int widthWhere(func<bool, tile> keep) {
+        int total = 0;
+        for (int i = 0; i < tile.deck.length; i++) {
+            if (keep(tile.deck[i])) total += tile.spans[1][i];
+        }
+        return total;
+    }
+
+    static int pinnedWidth() {
+        return tile.widthWhere((tile t) => {
+            if (!t.has(pinned)) return false;
+            return tile.spans[1][t.slot] > 0;
+        });
+    }
+
+    static void drawAll(textGridWindow g) {
+        if (!g?) return;
+        g.clear();
+        for (int i = 0; i < tile.deck.length; i++) {
+            tile t = tile.deck[i];
+            g.moveCursor(tile.spans[0][i], 0);
+            g.print(t.caption);
+            g.moveCursor(tile.spans[0][i], 1);
+            for (int k = 0; k < tile.deck[i].tag.length; k++) g.print($"{tile.deck[i][k]}");
+        }
+        g.moveCursor(0, 2);
+        for (int m = 0; m < tile.marks.length; m++) g.print($"{tile.marks[m]}");
+    }
+}
+
+extend class tile {
+    array<string> notes[3];
+
+    auto glow = {
+        int _g = 0;
+        int operator () { return _g; }
+        void operator = (int v) { _g = v > 3 ? 3 : v; }
+    }
+
+    void operator []= (int i, char c) {
+        if (i < 0 || i >= 6) return;
+        tag[i] = c;
+    }
+
+    int tagFrom(array<string> words) {
+        int n = 0;
+        for (string w in words) {
+            if (w? && w.length > 0 && n < 6) {
+                self[n] = w[0];
+                n++;
+                if (notes.length < 3) notes += w;
+            }
+        }
+        tag.length = n;
+        return n;
+    }
+
+    int noteInitials(array<char> into) {
+        int n = 0;
+        for (string w in notes) {
+            if (n >= into.size) break;
+            into[n] = w[w.length - 1];
+            n++;
+        }
+        into.length = n;
+        return n;
+    }
+
+    int distanceTo(tile t) {
+        int d = t.at.col - at.col;
+        if (d < 0) d = -d;
+        return d;
+    }
+
+    tile nearest(array<tile> pool) {
+        tile best = null;
+        if (!at?) return best;
+        for (tile t in pool) {
+            if (!t? || t == self) continue;
+            if (!best? || distanceTo(t) < distanceTo(best)) best = t;
+        }
+        return best;
+    }
+
+    void moveTo(cellPos p) {
+        at = p;
+    }
+
+    int dimAll(array<tile> pool) {
+        int dimmed = 0;
+        eachTileIn(pool, (tile t) => {
+            if (t.glow > 0) {
+                t.glow = t.glow - 1;
+                dimmed++;
+            }
+        });
+        return dimmed;
+    }
+}
+
+void eachTileIn(array<tile> list, func<void, tile> f) {
+    for (tile t in list) f(t);
+}
+
+tile tileA { "Alpha", "alpha tile"; parent = tray; }
+tile tileB { "Beta", "beta tile"; parent = tray; attributes = {pinned}; }
+tile tileC { "Gamma", "gamma tile"; parent = tray; }
+tile tileD { "Delta", "delta tile"; parent = tray; attributes = {pinned}; }
+
+// ---- strip ---------------------------------------------------------------------------------------
+
+class strip : object {
+    array<string> labels[6];
+    array<char> initials[6];
+    array<array<int>> runs = { {0, 0, 0, 0}, {0, 0, 0, 0} };
+    cellPos origin;
+    array<cellPos> stops[4];
+
+    auto focus = {
+        int _f = 0;
+        int operator () { return _f; }
+        void operator = (int v) { _f = v < 0 ? 0 : v; }
+    }
+
+    string operator [] (int i) {
+        if (i < 0 || i >= labels.length) return null;
+        return labels[i];
+    }
+
+    void operator []= (int i, string s) {
+        if (i < 0 || i >= 6) return;
+        while (labels.length <= i) labels += "";
+        labels[i] = s;
+    }
+
+    int load(array<string> src) {
+        int n = 0;
+        eachText(src, (string s) => {
+            if (s? && s.length > 0) {
+                self[n] = s;
+                n++;
+            }
+        });
+        return n;
+    }
+
+    int placeStops() {
+        cellPos p;
+        p = origin;
+        stops.clear();
+        int n = 0;
+        for (int i = 0; i < labels.length && n < 4; i++) {
+            string s = self[i];
+            if (!s?) continue;
+            runs[0][n] = p.col;
+            runs[1][n] = s.length;
+            stops += p;
+            initials[n] = s[0];
+            p.col += s.length + 1;
+            n++;
+        }
+        initials.length = n;
+        return n;
+    }
+
+    int wideCount(int min) {
+        int n = 0;
+        array<string> seen = labels;
+        eachText(seen, (string s) => {
+            int i = labels.indexOf(s);
+            if (i >= 0 && i < 4 && runs[1][i] >= min) n++;
+        });
+        return n;
+    }
+
+    string focused() {
+        string s = self[focus];
+        if (s?) return s;
+        return "none";
+    }
+
+    int copyInitials(array<char> into) {
+        into.length = 0;
+        for (int i = 0; i < initials.length; i++) {
+            into[i] = initials[i];
+            into.length = i + 1;
+        }
+        return into.length;
+    }
+}
+
+strip topStrip { "top strip"; }
+
+array<string> stripWords = { "File", "", "Edit", "View", "Help" };
+array<char> initialBuf[8];
+array<char> noteBuf[2];
+
+// ---- desk ----------------------------------------------------------------------------------------
+
+object deskKit {
+    "desk kit";
+    alias pane for tile;
+    array<string> words[6] = { "Left", "Mid" };
+    array<char> keys[8];
+    array<pane> picks[4];
+    pane last = null;
+    string lastWord = "none";
+    int pulls = 0;
+
+    auto chosen = {
+        int _k = -1;
+        int operator () { return _k; }
+        void operator = (int v) {
+            _k = v;
+            outer.pulls++;
+            int at = outer.pulls - 1;
+            if (at < 8) {
+                outer.keys[at] = (char)('a' + v);
+                outer.keys.length = at + 1;
+            }
+            if (v >= 0 && v < outer.picks.length) {
+                pane p = outer.picks[v];
+                if (p?) outer.last = p;
+            }
+            if (v >= 0 && v < outer.words.length && outer.words[v]?) outer.lastWord = outer.words[v];
+        }
+    }
+
+    string operator [] (int i) {
+        if (i < 0 || i >= words.length) return null;
+        return words[i];
+    }
+
+    int gather(array<deskKit.pane> from) {
+        picks.clear();
+        eachTileIn(from, (tile t) => {
+            if (t? && t.has(pinned)) {
+                picks += t;
+            }
+        });
+        return picks.length;
+    }
+
+    int adopt(array<string> extra) {
+        for (string s in extra) {
+            if (s? && s.length > 0 && words.indexOf(s) < 0) words += s;
+        }
+        return words.length;
+    }
+}
+
+extend deskKit {
+    alias spot for cellPos;
+    array<string> hints[4] = { "drag", "drop" };
+    cellPos home = cellPos{ col = 2; row = 1; };
+
+    auto cursor = {
+        int _c = 0;
+        int operator () { return _c; }
+        void operator = (int v) {
+            _c = v;
+            outer.home.col = v;
+            outer.home.row = v / 4;
+            if (v >= 8 && outer.hints.length < 4) outer.hints += "far";
+        }
+    }
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    tile.enlist(tray);
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Tiles {
+    grammar = {.tiles};
+    meta = true;
+    void handler() {
+        if (grid == null) grid = bgl.ui.mainWin.splitUpGrid(3);
+        int n = tile.enlist(tray);
+        int placed = tile.layout();
+        tile.drawAll(grid);
+        printLine($"Tiles {n}, placed {placed}, pinned width {tile.pinnedWidth()}.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh};
+    meta = true;
+    void handler() {
+        tileA.weight = 2;
+        tileB.weight = 7;
+        tileC.weight = 12;
+        tileD.weight = 7;
+        tile.order();
+        int placed = tile.layout();
+        tile.drawAll(grid);
+        print($"Order {placed}:");
+        for (tile t in tile.deck) print($" {t.caption}({t.weight})");
+        printLine(".");
+        bgl.util.buf.print(tile.marks);
+        printLine($" ({tile.marks.length}); pinned width {tile.pinnedWidth()}.");
+    }
+}
+
+verb Tags {
+    grammar = {.tags};
+    meta = true;
+    void handler() {
+        array<string> words = { "red", "", "green", "blue" };
+        int n = tileA.tagFrom(words);
+        tileB.tagFrom(stripWords);
+        tileA[1] = 'X';
+        tileA[9] = 'Z';
+        tile.deck[3][2] = 'B';
+        printLine($"Tag {n}: {tileA[0]}{tileA[1]}{tileA[2]}{tileA[3]}; B {tileB[0]}{tileB[1]}{tileB[2]}{tileB[3]}.");
+        print($"Notes {tileA.notes.length}:");
+        for (string s in tileA.notes) print($" {s}");
+        printLine(".");
+        int k = tileB.noteInitials(noteBuf);
+        bgl.util.buf.print(noteBuf);
+        printLine($" ({k} of {noteBuf.size}).");
+        tile.drawAll(grid);
+    }
+}
+
+verb Near {
+    grammar = {.near};
+    meta = true;
+    void handler() {
+        array<tile> pool = tile.deck;
+        for (tile t in pool) {
+            tile m = t.nearest(pool);
+            if (m?) printLine($"{t.caption} at {t.at.col}: nearest {m.caption}, {t.distanceTo(m)} away.");
+            else printLine($"{t.caption}: unplaced.");
+        }
+        cellPos p;
+        p.col = 30;
+        p.row = 2;
+        tileC.moveTo(p);
+        p.col = 0;
+        tile m = tileC.nearest(pool);
+        printLine($"Gamma moved to {tileC.at.col},{tileC.at.row}; nearest {m.caption}.");
+    }
+}
+
+verb Glow {
+    grammar = {.glow};
+    meta = true;
+    void handler() {
+        tileA.glow = 2;
+        tileB.glow = 9;
+        int d1 = tileA.dimAll(tile.deck);
+        int d2 = tileA.dimAll(tile.deck);
+        int d3 = tileA.dimAll(tile.deck);
+        int d4 = tileA.dimAll(tile.deck);
+        printLine($"Dimmed {d1}, {d2}, {d3}, {d4}; A {tileA.glow}, B {tileB.glow}.");
+    }
+}
+
+verb Strip {
+    grammar = {.strip};
+    meta = true;
+    void handler() {
+        strip s = topStrip;
+        s.origin.col = 1;
+        s.origin.row = 0;
+        int n = s.load(stripWords);
+        s[5] = "Last";
+        int placed = s.placeStops();
+        print($"Strip {n}, labels {s.labels.length}, stops {placed}:");
+        for (int i = 0; i < s.stops.length; i++) print($" {s[i]}@{s.stops[i].col}/{s.runs[1][i]}");
+        printLine(".");
+        int c = s.copyInitials(initialBuf);
+        bgl.util.buf.print(initialBuf);
+        printLine($" ({c}); wide {s.wideCount(4)}; origin {s.origin.col}.");
+        s.focus = 2;
+        printLine($"Focus {s.focus}: {s.focused()}.");
+        s.focus = 9;
+        printLine($"Focus {s.focus}: {s.focused()}.");
+    }
+}
+
+verb Desk {
+    grammar = {.desk};
+    meta = true;
+    void handler() {
+        array<deskKit.pane> pool = tile.deck;
+        int g = deskKit.gather(pool);
+        deskKit.chosen = 0;
+        deskKit.chosen = 1;
+        deskKit.chosen = 3;
+        array<string> extra = { "Right", "Mid", "", "Top" };
+        int w = deskKit.adopt(extra);
+        print($"Picks {g}, last {deskKit.last.caption}, word {deskKit.lastWord}, pulls {deskKit.pulls}, keys ");
+        bgl.util.buf.print(deskKit.keys);
+        printLine(".");
+        print($"Words {w}:");
+        for (int i = 0; i < 6; i++) {
+            string s = deskKit[i];
+            if (s?) print($" {s}");
+        }
+        printLine(".");
+    }
+}
+
+verb Cursor {
+    grammar = {.cursor};
+    meta = true;
+    void handler() {
+        deskKit.spot before = deskKit.home;
+        deskKit.cursor = 5;
+        deskKit.cursor = 9;
+        deskKit.spot now = deskKit.home;
+        print($"Home {before.col},{before.row} -> {now.col},{now.row}; cursor {deskKit.cursor}; hints");
+        for (string h in deskKit.hints) print($" {h}");
+        printLine(".");
+        deskKit.spot zero;
+        printLine($"Zero set {zero? ? "yes" : "no"}, now set {now? ? "yes" : "no"}.");
+    }
+}
+
+#includeI6 "grammar"

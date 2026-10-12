@@ -1,0 +1,478 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a tenth PunyInform program, on what the first nine did not lean on: OPTIONAL_MANUAL_SCOPE
+// with the author setting `scope_modified` after moving an object in a verb; `#include ?<…>` and
+// `#include ?"…"` of files that do not exist; `attributes` negated with `!` by an object of a class, the
+// one-element `attributes = x;` form and `extend` of an object adding attributes; `stringOrRoutine` as
+// a class member (set to a string, a named function and a lambda, tested with isRoutine()), as a
+// parameter and as a local; a `literal func<void>` member set per object to a lambda and a function;
+// `bglClass` as a parameter, in an array iterated by for-in, with `is()` and `typeof` reporting
+// `class`; recursion over `children` (a for-in loop around a recursive call); a capturing lambda
+// handed down through a recursive walker whose writes reach the caller; a function returning a
+// `func<bool, object>` (named functions and a non-capturing lambda), a call through a parenthesized
+// ternary of function values, an array of func values, and named arguments to a func parameter with a
+// default; a local shadowing a global with `::` reaching the global, and sibling blocks reusing a name;
+// nested aggregates (a class with an `inline` array member, declared positionally as a global and as
+// elements of an array of the class); a value class owning value-class members, returned from a
+// function, copied and mutated; an owned member with an inline-object initializer on world objects;
+// a `switch` on `dictionaryWord`; a `func<func<bool, object>, int>` variable whose result is called
+// directly; recursion through a global `func<>` variable; an object method's lambda that captures
+// `self` and a local through the recursive walker; `bglClass` returned from a function; a value-class
+// method returning a value-class local; a library `description` routine on a class printing a member;
+// and the status bar height written and read through the binding.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_MANUAL_SCOPE
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include ?<noSuchExtension>
+#include ?"noSuchLocalFile"
+
+#using bgl.printRules;
+
+extern bool scope_modified;
+
+#includeI6 "puny"
+
+// --- value classes ---------------------------------------------------------------------------------
+
+value class Span {
+    int lo = 0;
+    int hi = 0;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    int width() { return hi - lo; }
+    Span grown(int n) {
+        Span s;
+        s.lo = lo - n;
+        s.hi = hi + n;
+        return s;
+    }
+}
+
+value class Pair {
+    Span inner;
+    Span outer;
+    Pair operator = (Pair o) { inner = o.inner; outer = o.outer; return self; }
+}
+
+Pair makePair(int a, int b) {
+    Pair p;
+    p.inner.lo = a;
+    p.inner.hi = b;
+    p.outer.lo = a - 1;
+    p.outer.hi = b + 1;
+    return p;
+}
+
+// --- classes ---------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+    object n_to;
+    object s_to;
+}
+
+class Fixture : object {
+    attributeList attributes = {static, scenery};
+    Span range = Span{ lo = 1; hi = 4; };
+}
+
+class Panel : Fixture {
+    stringOrRoutine reading;
+    int presses = 0;
+    literal func<void> onPress;
+
+    bool description() {
+        printLine($"Panel: {reading}");
+        return true;
+    }
+}
+
+class Crate : object {
+    attributeList attributes = {container, open};
+}
+
+class Plaque : object {
+    inline object linkTo;
+    inline string title;
+    required inline array<dictionaryWord> words;
+}
+
+// --- functions the objects refer to ----------------------------------------------------------------
+
+void readRed() {
+    print("The red panel shows three bars.");
+}
+
+void buzz() {
+    print("Bzzt. ");
+}
+
+// --- rooms and things ------------------------------------------------------------------------------
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    s_to = roomA;
+}
+
+Panel bluePanel {
+    "blue panel";
+    parent = roomA;
+    name = {.blue, .panel};
+    reading = "The blue panel is blank.";
+    onPress = => print("Click. ");
+}
+
+Panel redPanel {
+    "red panel";
+    parent = roomA;
+    name = {.red, .panel};
+    attributes = {!scenery};
+    reading = readRed;
+    onPress = buzz;
+    range = Span{ lo = 2; hi = 9; };
+}
+
+Crate woodCrate {
+    "wooden crate";
+    parent = roomB;
+    name = {.wooden, .crate};
+}
+
+object marble {
+    "marble";
+    parent = woodCrate;
+    name = {.marble};
+}
+
+object pebble {
+    "pebble";
+    parent = marble;
+    name = {.pebble};
+    attributes = light;
+}
+
+object spareBox {
+    "spare box";
+    name = {.spare, .box};
+    attributes = {container, open};
+}
+
+object widget {
+    "widget";
+    parent = spareBox;
+    name = {.widget};
+}
+
+extend widget {
+    attributes = {light};
+}
+
+Plaque plaqueA = { roomA, "north plaque", {.alpha, .beta} };
+
+Plaque plaqueB { roomB, "west plaque", {.eta, .theta}, "plaque B"; }
+
+array<Plaque> plaques = {
+    { roomB, "south plaque", {.gamma} },
+    { roomA, "east plaque", {.delta, .epsilon, .zeta} }
+};
+
+// --- predicates and walkers ------------------------------------------------------------------------
+
+bool isLit(object o) {
+    return o.has(light);
+}
+
+bool isPanel(object o) {
+    return o.is(Panel);
+}
+
+bool anything(object o) {
+    return true;
+}
+
+func<bool, object> pickTest(int which) {
+    if (which == 1) return isLit;
+    if (which == 2) return isPanel;
+    return (object o) => o.hasnt(scenery);
+}
+
+int countWhere(object root, func<bool, object> test = anything, bool deep = false) {
+    int n = 0;
+    for (object o in root.children) {
+        if (test(o)) n++;
+        if (deep) n += countWhere(o, test, deep);
+    }
+    return n;
+}
+
+int countKind(object root, bglClass kind) {
+    int n = 0;
+    for (object o in root.children) {
+        if (o.is(kind)) n++;
+        n += countKind(o, kind);
+    }
+    return n;
+}
+
+void walk(object root, int depth, func<void, object, int> visit) {
+    for (object o in root.children) {
+        visit(o, depth);
+        walk(o, depth + 1, visit);
+    }
+}
+
+void show(stringOrRoutine s) {
+    print("[");
+    print(s);
+    print("]");
+}
+
+bglClass kindOf(object o) {
+    if (o.is(Panel)) return Panel;
+    if (o.is(Fixture)) return Fixture;
+    if (o.is(Crate)) return Crate;
+    return Room;
+}
+
+int depthOf(object o) {
+    int best = 0;
+    for (object c in o.children) {
+        int d = 1 + depthFn(c);
+        if (d > best) best = d;
+    }
+    return best;
+}
+
+func<int, object> depthFn;
+
+object auditor {
+    bglClass watchKind = Panel;
+    int audits = 0;
+
+    int audit(object root) {
+        int hits = 0;
+        audits++;
+        walk(root, 1, (object o, int d) => {
+            if (o.is(watchKind)) hits++;
+        });
+        return hits;
+    }
+}
+
+array<bglClass> kindList = {Fixture, Panel, Crate, Room};
+array<func<bool, object>> tests = {isLit, isPanel, anything};
+
+int tally = 0;
+
+// --- verbs -----------------------------------------------------------------------------------------
+
+verb Peer {
+    grammar = { {.peer, NOUN} };
+    void handler() {
+        if (!noun.is(Panel)) {
+            printLine("Nothing to read.");
+            return;
+        }
+        Panel p = (Panel)noun;
+        print(p.reading);
+        printLine($" (routine {p.reading.isRoutine()})");
+    }
+}
+
+verb Tap {
+    grammar = { {.tap, NOUN} };
+    void handler() {
+        if (!noun.is(Panel)) {
+            printLine("Nothing happens.");
+            return;
+        }
+        Panel p = (Panel)noun;
+        p.onPress();
+        p.presses++;
+        if (p == bluePanel && p.presses == 1) p.reading = => print("The blue panel shows a grid.");
+        printLine($"{cThe(p)} has been tapped {p.presses} time{p.presses == 1 ? "" : "s"}.");
+    }
+}
+
+verb ShowKinds {
+    meta = true;
+    grammar = {.kinds};
+    void handler() {
+        for (bglClass k in kindList) {
+            print(countKind(roomA, k) + countKind(roomB, k));
+            print(" ");
+        }
+        printLine($"class {typeof(Panel) == eType.class}, panel is fixture {redPanel.is(Fixture)}, crate is fixture {woodCrate.is(Fixture)}.");
+    }
+}
+
+verb Survey {
+    meta = true;
+    grammar = {.survey};
+    void handler() {
+        int seen = 0;
+        int deepest = 0;
+        walk(location, 1, (object o, int d) => {
+            seen++;
+            if (d > deepest) deepest = d;
+            for (int i = 1; i < d; i++) print("-");
+            printLine($"{o}");
+        });
+        printLine($"Seen {seen}, deepest {deepest}.");
+    }
+}
+
+verb ShowFilters {
+    meta = true;
+    grammar = {.filters};
+    void handler() {
+        for (int w = 1; w <= 3; w++) {
+            func<bool, object> t = pickTest(w);
+            print(countWhere(location, t, deep: true));
+            print(" ");
+        }
+        print(countWhere(location));
+        print(" ");
+        print(countWhere(deep: true, root: location));
+        print(" ");
+        bool lit = location == roomB;
+        printLine($"{(lit ? isLit : isPanel)(redPanel)}");
+        int total = 0;
+        for (func<bool, object> f in tests) {
+            if (f(pebble)) total++;
+        }
+        printLine($"Pebble passes {total} of 3.");
+    }
+}
+
+verb TallyUp {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        int tally = 5;
+        tally++;
+        ::tally += tally;
+        {
+            int step = 2;
+            ::tally += step;
+        }
+        {
+            int step = 3;
+            ::tally += step * 10;
+        }
+        printLine($"Local {tally}, global {::tally}.");
+    }
+}
+
+verb ListPlaques {
+    meta = true;
+    grammar = {.plaques};
+    void handler() {
+        printLine($"{plaqueA.title} in {plaqueA.linkTo}: {plaqueA.words[0]} {plaqueA.words[1]} ({plaqueA.words.length})");
+        for (Plaque q in plaques) {
+            print($"{q.title} in {q.linkTo}:");
+            for (dictionaryWord w in q.words) {
+                switch (w) {
+                    case .gamma: print(" g");
+                    case .delta: print(" d");
+                    default:     print(" ?");
+                }
+            }
+            printLine();
+        }
+    }
+}
+
+verb ShowSpans {
+    meta = true;
+    grammar = {.spans};
+    void handler() {
+        Pair q = makePair(2, 5);
+        Pair r = q;
+        r.inner.lo = 9;
+        r.outer = r.inner;
+        printLine($"q {q.inner.lo}-{q.inner.hi} / {q.outer.lo}-{q.outer.hi}; r {r.inner.lo}-{r.inner.hi} / {r.outer.lo}-{r.outer.hi}; width {q.outer.width()}.");
+        redPanel.range.hi += 1;
+        printLine($"Ranges: blue {bluePanel.range.lo}-{bluePanel.range.hi}, red {redPanel.range.lo}-{redPanel.range.hi}.");
+    }
+}
+
+verb ShowStrings {
+    meta = true;
+    grammar = {.strings};
+    void handler() {
+        stringOrRoutine s = "text";
+        show(s);
+        s = readRed;
+        show(s);
+        show("literal");
+        show(buzz);
+        printLine();
+    }
+}
+
+verb Summon {
+    grammar = {.summon};
+    void handler() {
+        spareBox.parent = location;
+        scope_modified = true;
+        printLine("A spare box appears.");
+    }
+}
+
+verb Split {
+    meta = true;
+    grammar = {.split};
+    void handler() {
+        int was = bgl.ui.statusBar.height;
+        bgl.ui.statusBar.height = 2;
+        int now = bgl.ui.statusBar.height;
+        bgl.ui.statusBar.height = was;
+        printLine($"Height {was} -> {now} -> {bgl.ui.statusBar.height}.");
+    }
+}
+
+verb Chain {
+    meta = true;
+    grammar = {.chain};
+    void handler() {
+        func<func<bool, object>, int> picker = pickTest;
+        bool a = (picker(2))(redPanel);
+        bool b = picker(1)(pebble);
+        bool c = pickTest(3)(bluePanel);
+        printLine($"Chained {a} {b} {c}.");
+        Pair q = makePair(3, 4);
+        printLine($"Grown {q.inner.grown(2).width()} {q.outer.grown(1).grown(1).lo}.");
+        show(redPanel.presses > 1 ? "busy" : readRed);
+        printLine();
+        plaqueA.words[1] = .omega;
+        printLine($"{plaqueA.words[1]} {plaqueB.title} {plaqueB.words[1]} {plaqueB}");
+        bglClass k = kindOf(woodCrate);
+        printLine($"Kinds {k == Crate} {kindOf(redPanel) == Fixture} {kindOf(roomA) == Room}.");
+        printLine($"Audit {auditor.audit(roomA)} {auditor.audit(roomB)} after {auditor.audits}; depth {depthFn(roomA)} {depthFn(roomB)}.");
+        auditor.watchKind = Crate;
+        printLine($"Audit {auditor.audit(roomB)}.");
+    }
+}
+
+bool Initialise() {
+    depthFn = depthOf;
+    rfalse;
+}

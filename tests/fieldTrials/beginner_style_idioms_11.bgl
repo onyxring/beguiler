@@ -1,0 +1,615 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an eleventh first-time-programmer program, the one where the author finds operator []
+// and puts it on everything. A primitive class over int with emitter [] and []= (digit i of a
+// number), used for a census of the object tree; a shelf class whose [] / []= move things onto it,
+// give an attribute and test another, with a recursive method that reads self[i], a switch with a
+// range and a guard, a (char) cast and a perform of Examine; a subclass that replaces [] and reaches
+// the parent's through a cast; an emitter class with [] / []= over an extern I6 array; a class whose
+// [] / []= read and write a stringObj member, with an emitter member; a class comparing boxes by
+// what they hold (==, !=, <=>) whose loads move by I6 islands; an object holding alias … for types and
+// moving things; a ref parameter read and written through $i6Expr in an #i6 island; positional
+// (inline) members read with ?. and ??; a positional union member told apart with typeof and narrowed
+// with a cast in an extend class; conversion operator () on a class with two parents and on a pooled
+// class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+// ===== DIGITS (an int where you can get at each digit) =====
+
+// digit number i of n (0 is the ones)
+int digitOf(int n, int i) {
+    while (i > 0) {
+        n = n / 10;
+        i--;
+    }
+    return n % 10;
+}
+
+// n with digit number i changed to d
+int withDigit(int n, int i, int d) {
+    int p = 1;
+    for (int k = 0; k < i; k++) {
+        p = p * 10;
+    }
+    int old = digitOf(n, i);
+    return n + (d - old) * p;
+}
+
+primitive class digits : int {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter int operator [] (int i) { digitOf($val, $i) }
+    emitter void operator []= (int i, int d) { $val = withDigit($val, $i, $d); }
+}
+
+// ones digit: things that are not lit, tens digit: things that are lit
+digits census(object place) {
+    digits d = 0;
+    for (object o in place.children) {
+        if (o.has(light)) {
+            d[1] = d[1] + 1;
+        } else {
+            d[0] = d[0] + 1;
+        }
+    }
+    return d;
+}
+
+// ===== SHELVES (put things in numbered spots) =====
+class Shelf : object {
+    array<object> spots[4];
+
+    object operator [] (int i) {
+        if (i < 0 || i >= spots.size) {
+            return null;
+        }
+        return spots[i];
+    }
+
+    void operator []= (int i, object o) {
+        spots[i] = o;
+        o.parent = self;
+        if (!o.has(moved)) {
+            o.give(moved);
+            print($"({o} is moved for the first time)^");
+        }
+    }
+
+    // how many lit things from spot i to the end (it calls itself)
+    int litFrom(int i) {
+        if (i >= spots.size) {
+            return 0;
+        }
+        int here = 0;
+        object o = self[i];
+        if (o != null && o.has(light)) {
+            here = 1;
+        }
+        return here + litFrom(i + 1);
+    }
+
+    string spotWord(int i) {
+        switch (i) {
+            case 0:
+                return "left";
+            case 1 to 2:
+                return "middle";
+            case >= 3:
+                return "right";
+            default:
+                return "nowhere";
+        }
+    }
+
+    char spotLetter(int i) {
+        return (char)(65 + i);
+    }
+
+    void lookAt(int i) {
+        object o = self[i];
+        if (o == null) {
+            print($"Spot {spotLetter(i)} is empty.^");
+            return;
+        }
+        print($"Spot {spotLetter(i)} ({spotWord(i)}): ");
+        Examine.perform(o);
+    }
+}
+
+// a tall shelf goes round: spot 5 is spot 1 again
+class TallShelf : Shelf {
+    replace object operator [] (int i) {
+        if (i < 0) {
+            return null;
+        }
+        return ((Shelf)self)[i % 4];
+    }
+}
+
+// ===== A ROW OF NUMBERS THAT LIVES IN I6 =====
+#i6 Array rowData --> 3 5 8 13;
+
+emitter class wordRow {
+    emitter int operator [] (int i) { $val-->$i }
+    emitter void operator []= (int i, int v) { $val-->$i = $v }
+    emitter int total() { ($val-->0 + $val-->1 + $val-->2 + $val-->3) }
+}
+
+extern wordRow rowData;
+
+// ===== WORD CARDS (text you can index) =====
+class Word : object {
+    stringObj text;
+
+    char operator [] (int i) {
+        return text[i];
+    }
+
+    void operator []= (int i, char c) {
+        text[i] = c;
+    }
+
+    emitter int size() { $i6Expr($self.text.length) }
+
+    // swap the first and last letters
+    void swapEnds() {
+        int last = self.size() - 1;
+        char first = self[0];
+        self[0] = self[last];
+        self[last] = first;
+    }
+}
+
+// ===== BOXES (one box equals another if they hold as much) =====
+class Box : object {
+    bool operator == (Box b) {
+        return self.children.length == b.children.length;
+    }
+    bool operator != (Box b) {
+        return self.children.length != b.children.length;
+    }
+    int operator <=> (Box b) {
+        return self.children.length - b.children.length;
+    }
+    object top() {
+        return self.child;
+    }
+}
+
+// moves a thing with plain I6, then counts with plain I6
+int moveByI6(object thing, object dest) {
+    int n = 0;
+    #i6 move $i6Expr(thing) to $i6Expr(dest);
+    #i6 n = children($i6Expr(dest));
+    if (thing.parent == dest) {
+        print($"({thing} is now in {dest})^");
+    }
+    return n;
+}
+
+// ===== TALLIES (ref and I6) =====
+value class Tally {
+    int n;
+    Tally operator = (Tally o) {
+        n = o.n;
+        return self;
+    }
+}
+
+Tally tallyA;
+
+void bumpRaw(ref Tally t, int by) {
+    #i6 print "(raw before ", $i6Expr(t.n), ")^";
+    t.n = t.n + by;
+    #i6 print "(raw after ", $i6Expr(t.n), ")^";
+}
+
+// ===== TAGS (inline members) =====
+class Tag : object {
+    inline string label;
+    inline object owner;
+
+    object holder() {
+        return owner ?? player;
+    }
+
+    void report() {
+        object where = owner?.parent ?? roomB;
+        print($"The {label} tag: holder {holder()}, place {where}.^");
+    }
+}
+
+// ===== NOTES (inline union) =====
+class Note : object {
+    inline string | object payload;
+    inline int priority;
+
+    void show() {
+        var what = payload;
+        if (typeof(what) == eType.string) {
+            print($"Note {priority} says: ");
+            print((string)payload);
+            print(".^");
+        } else if (typeof(what) == eType.object) {
+            object o = (object)payload;
+            print($"Note {priority} points at {o}.^");
+        } else {
+            print($"Note {priority} is blank.^");
+        }
+    }
+}
+
+extend class Note {
+    bool aboutThing() {
+        if (typeof(payload) != eType.object) {
+            return false;
+        }
+        object o = (object)payload;
+        return o.parent != null;
+    }
+}
+
+// ===== GEMS (two parents, turn into an int) =====
+class Weighty : object {
+    int weight = 1;
+}
+
+class Shiny : object {
+    int shine = 0;
+}
+
+class Gem : Weighty, Shiny {
+    int operator () {
+        return weight * 10 + shine;
+    }
+}
+
+// ===== CHIPS (pooled, turn into an int) =====
+class Chip[3] : object {
+    string short_name = "chip";
+    int value = 0;
+    void create(int v) {
+        value = v;
+    }
+    int operator () {
+        return value * 2;
+    }
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+Shelf plank {
+    "wooden shelf";
+    parent = roomA;
+    attributes = {supporter, scenery};
+}
+
+TallShelf rack {
+    "tall rack";
+    parent = roomB;
+    attributes = {supporter, scenery};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+}
+
+object lamp {
+    "lamp";
+    string description = "A plain lamp.";
+    parent = roomA;
+    attributes = {light};
+}
+
+object ball {
+    "red ball";
+    parent = roomB;
+}
+
+object cup {
+    "tin cup";
+    parent = roomB;
+}
+
+Box boxA {
+    "box A";
+    parent = roomB;
+    attributes = {container, open};
+}
+
+Box boxB {
+    "box B";
+    parent = roomB;
+    attributes = {container, open};
+}
+
+Word card {
+    "word card";
+}
+
+Tag redTag {
+    "red", lamp, "red tag";
+    parent = roomA;
+}
+
+Note noteOne {
+    "remember the key", 1, "first note";
+}
+
+Note noteTwo {
+    ball, 2, "second note";
+}
+
+Gem ruby {
+    "ruby";
+    weight = 3;
+    shine = 4;
+    parent = roomB;
+}
+
+Gem opal {
+    "opal";
+    shine = 9;
+}
+
+// ===== A KIT (names for my types, and a helper) =====
+object kit {
+    alias shelf for Shelf;
+    alias box for Box;
+
+    // everything in one place goes to another, returns how many
+    int gather(object from, object dest) {
+        int moved = 0;
+        array<object> here = bgl.world.inParent(from);
+        for (object o in here) {
+            o.parent = dest;
+            moved++;
+        }
+        print($"Gathered {moved}; {dest} holds {dest.children.length}.^");
+        return moved;
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// DIGITS - the digit int
+verb DigitsVerb {
+    meta = true;
+    grammar = {.digits};
+    void handler() {
+        digits n = 4071;
+        print($"Digits of 4071: {n[3]} {n[2]} {n[1]} {n[0]}.^");
+        n[1] = 9;
+        int plain = n;
+        print($"After setting the tens: {plain}.^");
+        digits a = census(roomA);
+        int aPlain = a;
+        print($"Room A census: {a[1]} lit, {a[0]} other ({aPlain}).^");
+        digits b = census(roomB);
+        print($"Room B census: {b[1]} lit, {b[0]} other.^");
+    }
+}
+
+// SHELF - put things on the wooden shelf
+verb ShelfVerb {
+    meta = true;
+    grammar = {.shelf};
+    void handler() {
+        plank[0] = brassKey;
+        plank[2] = lamp;
+        plank[3] = brassKey;
+        print($"Things on the shelf: {plank.children.length}.^");
+        print($"Lit from spot 0: {plank.litFrom(0)}. From spot 3: {plank.litFrom(3)}.^");
+        for (int i = 0; i < 5; i++) {
+            plank.lookAt(i);
+        }
+        if (plank[2].has(light)) {
+            print("Spot C has a light.^");
+        }
+        object gone = plank[7];
+        if (gone == null) {
+            print("There is no spot 7.^");
+        }
+    }
+}
+
+// RACK - the tall one goes round
+verb RackVerb {
+    meta = true;
+    grammar = {.rack};
+    void handler() {
+        rack[1] = ball;
+        rack[2] = cup;
+        print($"Rack spot 1: {rack[1]}. Spot 5: {rack[5]}. Spot 6: {rack[6]}.^");
+        Shelf s = rack;
+        print($"As a plain shelf, spot 5: {s[5]}.^");
+        if (rack[-1] == null) {
+            print("Spot -1 is nothing.^");
+        }
+        print($"Lit on the rack: {rack.litFrom(0)}.^");
+    }
+}
+
+// ROW - the I6 array
+verb RowVerb {
+    meta = true;
+    grammar = {.row};
+    void handler() {
+        print($"Row: {rowData[0]} {rowData[1]} {rowData[2]} {rowData[3]}, total {rowData.total()}.^");
+        int k = 1;
+        rowData[k + 1] = 20;
+        print($"Row after: {rowData[0]} {rowData[1]} {rowData[k + 1]} {rowData[3]}, total {rowData.total()}.^");
+    }
+}
+
+// WORD - text I can index
+verb WordVerb {
+    meta = true;
+    grammar = {.word};
+    void handler() {
+        card.text = "brass";
+        print($"Card: {card.text}, first letter {card[0]}, size {card.size()}.^");
+        card[0] = 'g';
+        print($"Changed: {card.text}.^");
+        card.swapEnds();
+        print($"Swapped: {card.text}.^");
+        int count = 0;
+        for (int i = 0; i < card.size(); i++) {
+            if (card[i] == 's') {
+                count++;
+            }
+        }
+        print($"Letter s: {count} times.^");
+    }
+}
+
+// BOXES - boxes that compare by what they hold
+verb BoxesVerb {
+    meta = true;
+    grammar = {.boxes};
+    void handler() {
+        if (boxA == boxB) {
+            print("Both boxes hold the same amount.^");
+        }
+        int n = moveByI6(ball, boxA);
+        print($"Box A holds {n}.^");
+        if (boxA != boxB) {
+            print("Now they differ.^");
+        }
+        if (boxA > boxB) {
+            print("Box A holds more.^");
+        }
+        n = moveByI6(cup, boxB);
+        if (boxA <= boxB && boxA >= boxB) {
+            print("Even again.^");
+        }
+        print($"Top of box A: {boxA.top()}.^");
+        print($"Rack spot 1 still says {rack[1]}, which is in {rack[1].parent}.^");
+    }
+}
+
+// RAW - a ref and some I6
+verb RawVerb {
+    meta = true;
+    grammar = {.raw};
+    void handler() {
+        tallyA.n = 5;
+        bumpRaw(tallyA, 3);
+        ref Tally r := tallyA;
+        bumpRaw(r, 10);
+        print($"Tally: {tallyA.n}.^");
+    }
+}
+
+// TAGS - inline members
+verb TagsVerb {
+    meta = true;
+    grammar = {.tags};
+    void handler() {
+        redTag.report();
+        Tag plain = Tag{ "blue" };
+        plain.report();
+        print($"Red label {redTag.label}, owner {redTag.owner}.^");
+    }
+}
+
+// NOTES - inline unions
+verb NotesVerb {
+    meta = true;
+    grammar = {.notes};
+    void handler() {
+        noteOne.show();
+        noteTwo.show();
+        if (noteTwo.aboutThing()) {
+            print("The second note is about a thing somewhere.^");
+        }
+        if (!noteOne.aboutThing()) {
+            print("The first note is not about a thing.^");
+        }
+    }
+}
+
+// GEMS - two parents and a conversion
+verb GemsVerb {
+    meta = true;
+    grammar = {.gems};
+    void handler() {
+        int r = ruby;
+        int o = opal;
+        print($"Ruby is worth {r}, opal is worth {o}.^");
+        int both = r + o;
+        print($"Together: {both}.^");
+        print($"Ruby weight {ruby.weight}, shine {ruby.shine}.^");
+        print($"The gem by name: {ruby}.^");
+        Weighty w = ruby;
+        print($"As a weighty thing: {w.weight}.^");
+    }
+}
+
+// CHIPS - pooled things that turn into numbers
+verb ChipsVerb {
+    meta = true;
+    grammar = {.chips};
+    void handler() {
+        int total = 0;
+        int made = 0;
+        while (true) {
+            Chip c = new Chip(made + 1);
+            if (c == null) {
+                break;
+            }
+            made++;
+            int v = c;
+            total = total + v;
+            c.parent = roomA;
+        }
+        print($"Made {made} chips, worth {total}.^");
+    }
+}
+
+// KIT - my helper object
+verb KitVerb {
+    meta = true;
+    grammar = {.kit};
+    void handler() {
+        kit.box b = boxA;
+        kit.shelf s = rack;
+        print($"Kit box: {b}, kit shelf: {s} spot 2 {s[2]}.^");
+        int n = kit.gather(boxA, boxB);
+        if (boxA < boxB) {
+            print($"Box A is lighter now ({n} moved).^");
+        }
+    }
+}

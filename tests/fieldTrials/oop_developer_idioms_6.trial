@@ -1,0 +1,69 @@
+Room A
+Room A.
+> make
+Caught error on S-6: negative size.
+Third square: none.
+shape registry: 4 made, 6 listed.
+> list
+circle S-1: area 7.0686, perimeter 9.4248, a circle
+circle S-2: area 0.7854, perimeter 3.1416, a circle
+rect S-3: area 9.0000, perimeter 13.0000, a rectangle
+rect S-4: area 3.0000, perimeter 8.0000, a rectangle
+square S-5: area 9.0000, perimeter 12.0000, a square
+square S-7: area 0.2500, perimeter 2.0000, a square
+> sort
+By area: S-7 S-2 S-4 S-1 S-3 S-5
+By perimeter: S-7 S-2 S-4 S-1 S-5 S-3
+Areas: 0.2500 0.7854 3.0000 7.0686 9.0000 9.0000
+9.0 at 4; 1.5 at -1.
+> ids
+S-4 then S-5; same: true; differ: true.
+number / id / 50
+First is S-7, a square.
+25 cm = 250 mm; m factor 1000.
+Unit factor 10; 3 of it = 30 mm.
+discB fill false, scale true.
+> tree
+root w=0 t=7
+  group B w=0 t=7
+    leaf A w=7 t=7
+    leaf B w=0 t=0
+  leaf C w=0 t=0
+Nodes 5; rollup 7; global 7.
+Over 5: leaf A at depth 2.
+Over 100: none.
+> trace
+Negative:
+  [open 1]
+  [close 1]
+= -1
+Zero:
+  [open 1]
+  [open 2]
+  work at level 2
+  [close 2]
+  [close 1]
+= 0
+Five:
+  [open 1]
+  [open 2]
+  work at level 2
+  [close 2]
+  after inner, level 1
+  [close 1]
+= 10
+Loop:
+  [open 1]
+  pass 0 at level 1
+  [close 1]
+  [open 1]
+  skip 1
+  [close 1]
+  [open 1]
+  pass 2 at level 1
+  [close 1]
+Depth now 0.
+> units
+2500 mm = 250.0000 cm = 2.5000 m = 2500.0000 mm.
+Twice by cm: 25.0000.
+ S-7=0 S-2=0 S-4=3 S-1=7 S-5=18 S-3=9

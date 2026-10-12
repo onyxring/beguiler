@@ -1,0 +1,405 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, reaching for the machine directly. Z-machine opcodes through
+// bgl.asm (getPropAddr and getPropLen standing in for .& and .#, getChild/getSibling/getParent walks,
+// printObj, push (pulled back in an #i6 island), scanTable over an I6 word table, call2s on a routine
+// address, artShift and logShift); an #i6 island declaring a Constant read through extern const (also
+// as a member initializer), word tables and a routine bound under another name with asBgl; a Beguile
+// attribute renamed with asI6 and tested from an I6 objectloop through $i6Name; a bnum of finish flags
+// held in a member and combined with | and &; an enum with explicit values returned and switched on;
+// func<> members holding an extern routine, a Beguile function and a lambda, a static method taken as a
+// func value, an array<func<int, int>> dispatch table and a func parameter; try/catch/throw unwinding a
+// recursive tree search, with a rethrow from a nested catch; MULTIEXCEPT and MULTIINSIDE lines on
+// native verbs; an inline auto accessor reaching its host through outer; a static class counter; ::name
+// from an object method; ?. and ?? over an unset global; print rules through #using bgl.printRules;
+// overloads with a default and named arguments; LanguageNumber; pluralname and concealed; break and
+// continue in nested loops.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 {
+    Constant TRAY_MAX = 3;
+    Array tags --> 'red' 'blue' 'green' 'white';
+    Array costs --> 4 10 20 30 40;
+    [ I6_Sum3 a b c; return a + b + c; ];
+    [ Twice n; return n * 2; ];
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extern const int TRAY_MAX;
+extern rawArray<dictionaryWord> tags;
+extern rawArray<int> costs;                       // word 0 holds the count
+extern int I6_Sum3(int a, int b, int c) asBgl sum3;
+extern int Twice(int n);
+extern void LanguageNumber(int n);
+
+attribute polished asI6 shiny;
+
+#i6 {
+    [ CountShiny o n;
+        objectloop (o has $i6Name(polished)) n++;
+        return n;
+    ];
+}
+extern int CountShiny();
+
+bnum eFinish { painted, waxed, chipped, glued }   // 1, 2, 4, 8
+enum eGrade { poor = 1, fair, good, fine = 10 }
+
+int tally;                // bumped by the stamp through ::tally
+int g_depth;              // depth the last search gave up at
+object lastFound;         // null until a search succeeds
+
+class Room : object {
+    attributes = {light, proper};
+    string description;
+    object n_to;
+    object s_to;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    s_to = roomA;
+}
+
+class Bead : object {
+    name = {.bead, ..beads};
+    string plural = "beads";
+    string description = "A bead.";
+    eFinish finish;
+    func<int, int> price = Twice;
+}
+
+class Token : object {
+    static int made = 0;
+    static int bump(int n) { Token.made++; return n + 1; }
+}
+
+object tray {
+    "tray";
+    name = .tray;
+    parent = roomA;
+    int capacity = TRAY_MAX;
+    attributes = {supporter, static};
+}
+
+object box {
+    "box";
+    name = .box;
+    parent = roomA;
+    attributes = {container, open, static};
+}
+
+Bead redBead   { "red bead";   name = .red;   parent = box; finish = painted; }
+Bead blueBead  { "blue bead";  name = .blue;  parent = box; finish = chipped | glued; price = Token.bump; }
+Bead greenBead {
+    "green bead";
+    name = .green;
+    parent = roomA;
+    finish = waxed;
+    price = (int n) => n + 100;
+    attributes = polished;
+}
+
+object pins {
+    "pins";
+    name = {.pins, .pin};
+    parent = box;
+    attributes = pluralname;
+}
+
+object coin {
+    "coin";
+    name = .coin;
+    parent = roomA;
+    attributes = concealed;
+}
+
+object dial {
+    "dial";
+    name = .dial;
+    parent = roomA;
+    attributes = static;
+    int top = 9;
+    auto setting = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            _v = bgl.util.math.clamp(v, 0, outer.top);
+            if (_v > 0) outer.give(on);
+            else outer.ungive(on);
+        }
+    }
+    void description() {
+        print($"The dial reads {setting}");
+        if (self.has(on)) print(" and hums");
+        printLine(".");
+    }
+}
+
+// Room B nests a polished ring deeper than a search will go.
+object sack  { "sack";  name = .sack;  parent = roomB; attributes = {container, open}; }
+object pouch { "pouch"; name = .pouch; parent = sack;  attributes = {container, open}; }
+object tin   { "tin";   name = .tin;   parent = pouch; attributes = {container, open}; }
+object ring  { "ring";  name = .ring;  parent = tin;   attributes = polished; }
+
+object deepMarker { "deep marker"; }
+
+Token stamp {
+    "stamp";
+    name = .stamp;
+    parent = roomB;
+    int tally;
+    void press() {
+        self.tally++;
+        ::tally += 10;
+    }
+}
+
+int ops0(int n) { return -n; }
+array<func<int, int>> ops = { Twice, Token.bump, (int n) => n + 100, ops0 };
+
+// Overloads, one with a default.
+void show(object o)                      { print($"[{the(o)}]"); }
+void show(int n, string unit = "points") { print($"[{n} {unit}]"); }
+void show(dictionaryWord w)              { print($"[{w}]"); }
+
+int wordsIn(object o, property p) {
+    int addr = bgl.asm.getPropAddr((int)o, (int)p);
+    if (addr == 0) return 0;
+    return bgl.asm.getPropLen(addr) / 2;
+}
+
+eGrade gradeOf(object o) {
+    if (!o.is(Bead)) return eGrade.poor;
+    eFinish f = ((Bead)o).finish;
+    if ((f & (painted | waxed)) == (painted | waxed)) return eGrade.fine;
+    if ((f & chipped) != 0) return eGrade.fair;
+    return eGrade.good;
+}
+
+int applyAll(func<int, int> f, int a, int b) { return f(a) + f(b); }
+
+// Depth-first search: throws the first polished object, or deepMarker past depth 2.
+void hunt(object root, int depth) {
+    if (depth > 2) { g_depth = depth; throw deepMarker; }
+    for (object o in root.children) {
+        if (o.has(polished)) throw o;
+        hunt(o, depth + 1);
+    }
+}
+
+// Handles a too-deep search itself; anything found is passed on to the caller.
+bool seekIn(object root) {
+    try {
+        hunt(root, 0);
+    } catch (object o) {
+        if (o == deepMarker) {
+            printLine($"Too deep at {g_depth}.");
+            rtrue;
+        }
+        throw o;
+    }
+    rfalse;
+}
+
+verb Stack {
+    grammar = {.stack, MULTIEXCEPT, .on, NOUN};
+    void handler() {
+        if (second != tray) { printLine("Only the tray takes a stack."); return; }
+        if (tray.children.length >= TRAY_MAX) { printLine("No room."); return; }
+        noun.parent = tray;
+        printLine($"Stacked: {tray.children.length} of {TRAY_MAX}.");
+    }
+}
+
+verb Sift {
+    grammar = {.sift, MULTIINSIDE, .from, NOUN};
+    void handler() {
+        noun.parent = location;
+        printLine($"Out of {the(second)}: {the(noun)}.");
+    }
+}
+
+verb Measure {
+    grammar = {.measure, NOUN};
+    meta = true;
+    void handler() {
+        printLine($"Words: {wordsIn(noun, name)} by opcode, {noun.name.length} by length; first {noun.name[0]}.");
+    }
+}
+
+verb Walk {
+    grammar = {.walk, NOUN};
+    meta = true;
+    void handler() {
+        int n = 0;
+        int o = bgl.asm.getChild((int)noun);
+        while (o != 0) {
+            if (n > 0) print(", ");
+            bgl.asm.printObj(o);
+            n++;
+            o = bgl.asm.getSibling(o);
+        }
+        if (n == 0) print("empty");
+        printLine($" ({n}/{noun.children.length}, in {(object)bgl.asm.getParent((int)noun)})");
+    }
+}
+
+verb Grade {
+    grammar = {.grade, NOUN};
+    meta = true;
+    void handler() {
+        eGrade g = gradeOf(noun);
+        switch (g) {
+            case eGrade.fine: print("Fine");
+            case eGrade.good: print("Good");
+            case eGrade.fair: print("Fair");
+            default:          print("Poor");
+        }
+        print($" ({(int)g}, ");
+        LanguageNumber((int)g);
+        print(")");
+        if (noun.is(Bead)) print($", finish {((Bead)noun).finish}");
+        printLine(".");
+    }
+}
+
+verb Price {
+    grammar = {.price, NOUN};
+    meta = true;
+    void handler() {
+        if (!noun.is(Bead)) { printLine("Not for sale."); return; }
+        Bead b = (Bead)noun;
+        func<int, int> bump = Token.bump;
+        printLine($"Three cost {b.price(3)}; a pair {applyAll(b.price, 1, 1)}; bumped {applyAll(bump, 5, 6)}. Bumps: {Token.made}.");
+    }
+}
+
+verb Lookup {
+    grammar = {.lookup, TOPIC};
+    meta = true;
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        int addr = bgl.asm.scanTable((int)w, &tags, 4);
+        if (addr == 0) { printLine("Not listed."); return; }
+        int i = (addr - &tags) / 2;
+        int c = costs[i + 1];
+        print($"{tags[i]} is entry {i}, cost {c}:");
+        for (func<int, int> f in ops) print($" {f(c)}");
+        printLine();
+    }
+}
+
+verb Pairs {
+    grammar = {.pairs};
+    meta = true;
+    void handler() {
+        // First pair of costs summing to 50, skipping the count word.
+        int hits = 0;
+        for (int i in 1 to costs[0]) {
+            if (costs[i] == 20) continue;
+            for (int j in i + 1 to costs[0]) {
+                if (costs[i] + costs[j] == 50) {
+                    print($"{costs[i]}+{costs[j]} ");
+                    hits++;
+                    break;
+                }
+            }
+            if (hits == 2) break;
+        }
+        printLine($"({hits})");
+    }
+}
+
+verb Calc {
+    grammar = {.calc};
+    meta = true;
+    void handler() {
+        bgl.asm.push(7);
+        bgl.asm.push(9);
+        int a;
+        int b;
+        bgl.asm.pull(a);
+        bgl.asm.pull(b);
+        printLine($"{a} {b} {bgl.asm.artShift(-64, -2)} {bgl.asm.logShift(-1, -12)} {sum3(1, 2, 3)} {bgl.asm.call2s(&Twice, 21)}");
+    }
+}
+
+verb Seek {
+    grammar = {.seek};
+    void handler() {
+        try {
+            if (!seekIn(location)) printLine("Nothing shines.");
+        } catch (object o) {
+            lastFound = o;
+            printLine($"{cThe(o)} gleams, in {the(o.parent)}.");
+        }
+    }
+}
+
+verb Polish {
+    grammar = {.polish, NOUN};
+    void handler() {
+        if (noun.has(polished)) { printLine($"{cThe(noun)} already shines."); return; }
+        noun.give(polished);
+        if (noun.is(Bead)) ((Bead)noun).finish |= waxed;
+        printLine($"You polish {the(noun)}.");
+    }
+}
+
+verb Tune {
+    grammar = {.tune, NOUN, .to, NUMBER};
+    void handler() {
+        if (noun != dial) { printLine("It has no setting."); return; }
+        dial.setting = (int)second;
+        printLine($"Set to {dial.setting}.");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    void handler() {
+        if (noun != stamp) { printLine("Nothing to mark with."); return; }
+        stamp.press();
+        printLine($"Stamp {stamp.tally}, global {tally}.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    meta = true;
+    void handler() {
+        object where = lastFound?.parent ?? location;
+        print($"Shiny: {CountShiny()}. Last found in {where}. ");
+        show(stamp);
+        show(tally);
+        show(unit: "pence", n: 5);
+        show(.bead);
+        printLine();
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

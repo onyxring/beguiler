@@ -1,0 +1,69 @@
+Room A
+Room A. Room B is to the east.
+You can see a box A (which is closed), a coin, a pebble, a rack A and a tray here.
+> racking
+(coin weighs 9 hundred, band high)
+(box A weighs 0 hundred, band low)
+(box A opened for weighing)
+(stone weighs 2 hundred, band mid)
+(brass key weighs 0 hundred, band low)
+(pebble weighs 1 hundred, band mid)
+(rack full at 5)
+(bell weighs 6 hundred, band high)
+(rack A holds 3)
+(marks: 900 40 250 15 120; 3 heavy, any heavy true)
+(rack B holds 2)
+(marks: 900 40 250 15 120; 3 heavy, any heavy true)
+Peek: 900 120.
+Peek past: (no mark 5)
+-1.
+Light marks: 2, smallest 15.
+Mark 0: 900 high (look).
+Mark 1: 45 low (skip).
+Mark 2: 250 mid (watch).
+Mark 3: 15 low (skip).
+Mark 4: 120 mid (watch).
+Spots: last 4/1, next 5/3.
+Last on the rack: bell.
+A bell.
+(rack A cleared; 6 puts so far, 6 loud, 1 long band words)
+(rack A holds 0)
+(marks:; 0 heavy, any heavy false)
+Stone is in rack B. Box A is open: true.
+> traying
+(coin on the first place, depth 1 before moving)
+(level 1: first, top from tray, mode 1, set 1 times, seen 1)
+(last place 0, column 900, doubled 1800, depth 2)
+(brass key on the second place, depth 2 before moving)
+(level 2: second, top from tray, mode 2, set 2 times, seen 2)
+(last place 1, column 15, doubled 30, depth 2)
+Long labels: 2. Heavy places: 1.
+Columns: 900 15 -1 -1 (twice first 1800).
+Second column now 7; level 2, mode 2.
+Labels down: SECOND FIRST
+Last held: brass key, depth 2.
+A brass key.
+(stone on the third place, depth 2 before moving)
+(level 3: third, top from tray, mode 2, set 3 times, seen 3)
+(last place 2, column 250, doubled 500, depth 2)
+(box A on the fourth place, depth 1 before moving)
+(level 4: fourth, top from tray, mode 3, set 4 times, seen 4)
+(last place 3, column 40, doubled 80, depth 2)
+(no place for pebble)
+Long labels: 2. Heavy places: 2.
+Columns: 900 7 250 40 (twice first 1800).
+Second column now 7; level 4, mode 3.
+Labels down: FOURTH THIRD SECOND FIRST
+Last held: box A, depth 2.
+A plain box A.
+The tray is full.
+(level 1: first, top from tray, mode 1, set 5 times, seen 4)
+(last place 3, column 40, doubled 80, depth 2)
+(level 4: fourth, top from tray, mode 3, set 6 times, seen 4)
+(last place 3, column 40, doubled 80, depth 2)
+Level 4; tray holds 4.
+(tray holds 4)
+> look
+Room A
+Room A. Room B is to the east.
+You can see a pebble, a rack A and a tray here.

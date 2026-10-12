@@ -1,0 +1,58 @@
+Room A
+Room A.
+> text
+measured 18, upper compare 2, kept rope
+repeated 125
+built 113, again 24
+> cases 9
+tally 724
+> notes
+long 30, any short: yes, all lower: yes
+starting with g: gamma
+> notes
+long 30, any short: yes, all lower: yes
+starting with g: gamma
+> pairs 4
+spoiled 101, sum 6, seen 24, still 4
+> jobs 3
+made 4 plain, live 5
+results: twice=6 minus=2 twice=6 minus=2 rush=5
+growing 3, runs 10
+spread 6, widened 3
+fresh span 0/0
+reused: tens runs 0 gives 30, retired 5
+> jobs 7
+made 4 plain, live 5
+results: twice=14 minus=6 twice=14 minus=6 rush=9
+growing 3, runs 10
+spread 14, widened 3
+fresh span 0/0
+reused: tens runs 0 gives 70, retired 11
+> entries
+totals: first=19 second=27 third=22
+by bonus 2: second third first
+two beats locked: yes, locked bonus 20, above locked 1
+> boxes
+The red box is open.
+The blue box is closed.
+The green box is closed.
+open 1, containers 3
+after flip: open 2, first open is the blue box
+Shut: a red box.
+> boxes
+The red box is closed.
+The blue box is open.
+The green box is open.
+open 2, containers 3
+after flip: open 1, first open is the red box
+Shut: a blue box.
+Shut: a green box.
+> words
+words: brass key lamp key rope
+weight 16, keys 2, unique 4, any rope: yes
+> target 6
+bytes 12, scaled 106
+> text
+measured 18, upper compare 2, kept rope
+repeated 125
+built 113, again 24

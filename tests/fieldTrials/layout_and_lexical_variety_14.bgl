@@ -1,0 +1,348 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where up to eight language areas meet inside one declaration:
+// compound operators, `#if`/`#define`, `extern`, namespaces, `?.`, `replace`/`default`, `operator []`
+// and verbs. An extern class over a raw I6 word array with emitter `operator []`/`[]=`/`?`/`+=` and an
+// `operator ++` under `#if`, plus a static method that subscripts its parameter, walks a chain with `?.`
+// and performs a verb; an `extend extern class` written straight after `#using` that `replace`s the
+// subscript, adds `operator -=`, and holds static methods typed through the imported aliases that use
+// `+=`, `++`, `?.`, `#if` and `perform()`. A reference class with non-emitter `operator []`/`[]=`/
+// `+=`/`++`, an emitter `operator ?` that `?.` consults, `#if`/`#else` members, a `default` method and
+// a method that performs a verb; an `extend class` replacing its `operator []=` and its `default`
+// method; an instance object whose body aliases a type, `replace`s the class's `operator []`, adds
+// `operator -=` and replaces the `default` method; a verb class with a `default` handler; a verb
+// guarded by a file-scope `#if` and written after a second `#using`, then `extend`ed with `replace
+// grammar =`; a verb `extend`ed under `#IF` to `Replace` its handler, which tests a subscript result
+// with `?.`; a class whose `operator []` answers a Cell (read with `?.`, `?.m()` statements and postfix
+// `?`), with `operator +=`/`--`, an emitter `operator switch` that `switch (self)` uses and a `default`
+// method chosen by `#if`; an `extern object` over an `#i6` object with emitter members; a replaced
+// routine whose replacement calls `replaced()` under `#if` and through `?.`.
+// Lexically: `#Define`/`#DEFINE`/`#IF`/`#Else`/`#EndIf` in mixed case, `$` hex and `$$` binary
+// literals, keywords in odd case (`STATIC`, `RETURN`, `Replace`), comments between tokens, a
+// tab-indented object and empty statements.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define LOUD                            // a flag
+#DEFINE TALLY_CAP   $28                 // hex: forty
+#define DEPTH       $$11                // binary: three
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object { string description; }
+
+object roomA { "Room A"; description = "A plain room."; attributes = light; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+int pings = 0 ;
+
+//-- Verbs that the code below performs ----------------------------------------------------------------
+
+class loudVerb : verb
+{
+    meta = true ;
+    default void handler() { pings++ ; print("[loud]") ; }
+}
+
+loudVerb V_ping { grammar = { .ping } ; }
+loudVerb V_bell { grammar = { .bell } ; void handler() { pings += 10 ; print("[bell]") ; } }
+
+//-- Cells: a short chain ------------------------------------------------------------------------------
+
+class Cell : object { inline int n ; Cell next ; void show() { print(n) ; } }
+
+Cell c1 { 3 ; }
+Cell c2 { $5 ; next = c1 ; }
+Cell c3 { $$111 ; next = c2 ; }        // seven
+
+//-- A raw I6 word array behind an extern class -------------------------------------------------------
+
+#i6 Array rowA --> 0 0 0 0 ;
+#i6 Array rowB --> 0 0 0 0 ;
+
+extern class wordTab
+{
+    emitter int   operator []  ( int i )         { ($val-->$i) }
+    emitter void  operator []= ( int i , int v ) { $val-->$i = $v; }
+    emitter eBool operator ?   ()                { ($val-->0 ~= 0) }
+    emitter void  operator +=  ( int v )         { $val-->0 = $val-->0 + $v; }
+#IF LOUD
+    emitter void  operator ++  ()                { $val-->0 = $val-->0 + 1; }
+#EndIf
+    STATIC int fill ( wordTab t , Cell from )
+    {
+        int k = 0 ;
+        Cell c = from ;
+        while (c? && k < 4) { t[k] = c.n ; k++ ; c = c.next ; }
+#if DEPTH > 2
+        if (from?.next?.next?) V_ping.perform() ;
+#else
+        if (from?.next?) V_ping.perform() ;
+#endif
+        RETURN k ;
+    }
+    static int sum ( wordTab t ) { return t[0] + t[1] + t[2] + t[3] ; }
+}
+
+extern wordTab rowA ;
+extern wordTab rowB ;
+
+//-- Namespaces ---------------------------------------------------------------------------------------
+
+object kit
+{
+    alias row  for wordTab ;
+    alias cell for Cell ;
+}
+
+#using kit
+extend extern class wordTab
+{
+    replace emitter int operator /* wraps */ [] ( int i ) { ($val-->($i % 4)) }
+    emitter void operator -= ( int v ) { $val-->0 = $val-->0 - $v; }
+    static int bump ( row r , cell c )
+    {
+        r += c?.n ;
+#if LOUD
+        r++ ;
+#endif
+        if (c?.next?) V_bell.perform() ;
+        return r[5] ;                           // index 1, through the replaced subscript
+    }
+    static void drain ( row r , int v )
+    {
+        r -= v ;
+        if (!r?) { V_ping.perform() ; r[1] = r[1] + 1 ; }
+    }
+}
+
+//-- A ledger: a reference class with its own subscript and compound operators -------------------------
+
+class Ledger : object
+{
+    int total ;
+    Ledger link ;
+    array<int> slots[4] ;
+#IF LOUD
+    int noise = 1 ;
+#Else
+    int noise = 0 ;
+#EndIf
+    int operator /* read */ [] ( int i ) { return slots[i % 4] ; }
+    void operator []= ( int i , int v )
+    {
+        total += v - slots[i % 4] ;
+        slots[i % 4] = v ;
+    }
+    Ledger operator += ( int v ) { total = total + v ; slots[0] = slots[0] + v ; RETURN self ; }
+    Ledger operator ++ () { total++ ; return self ; }
+    emitter eBool operator ? () { ($self ~= 0 && $self.total ~= 0) }   // an empty ledger is absent
+    default int appraise() { return total * 10 + noise ; }
+    int chained() { return link?.total + link?.link?.total ; }
+    void settle()
+    {
+        if (link?) link += total ;
+        if (link?.total > TALLY_CAP) V_ping.perform() ;
+    }
+}
+
+Ledger ledC { }
+Ledger ledB { total = 7 ; link = ledC ; }
+
+	Ledger ledA
+	{
+		alias spot for Cell ;
+		total = 2 ;
+		link  = ledB ;
+		replace int operator [] ( int i ) { spot s = c1 ; return slots[i % 4] + s.n ; }
+		void operator -= ( int v ) { total = total - v ; }
+		replace int appraise()
+		{
+#if TALLY_CAP == 40
+			return link?.appraise() + total ;
+#else
+			return 0 ;
+#endif
+		}
+		void poke()
+		{
+			if (link?.link?) print("deep") ; else print("shallow") ;
+			V_bell.perform() ;
+		}
+	}
+
+extend class Ledger
+{
+    Replace void operator []= ( int i , int v )
+    {
+#if LOUD
+        if (v > 9) v = 9 ;                      // clamp
+#endif
+        total += v - slots[i % 4] ;
+        slots[i % 4] = v ;
+    }
+    replace default int appraise() { return total * 100 + noise ; }
+    int linked() { int n = 0 ; Ledger l = link ; while (l?) { n++ ; l = l?.link ; } return n ; }
+}
+
+//-- A chain read through a subscript that answers a Cell ---------------------------------------------------
+
+class Chain : object
+{
+    Cell head ;
+    int  size ;
+    Cell operator [] ( int i )
+    {
+        Cell c = head ;
+        while (i > 0 && c?) { c = c?.next ; i-- ; }
+        return c ;
+    }
+    Chain operator += ( Cell c ) { head = c ; size = depth() ; return self ; }
+    Chain operator -- () { head = head?.next ; size = depth() ; return self ; }
+    emitter eBool operator switch ( int v ) { ($self.size == $v) }
+#if DEPTH > 2
+    default int depth() { int k = 0 ; while (self[k]?) k++ ; return k ; }
+#else
+    default int depth() { return 0 ; }
+#endif
+    void walk()
+    {
+        switch (self)
+        {
+            case 0 : V_ping.perform() ;
+            case 3 : print("three") ;
+            default: print(self[1]?.n) ;
+        }
+    }
+}
+
+Chain chA { }
+
+//-- An I6 object bound with extern object -------------------------------------------------------------
+
+#i6 { Object tallyBox "tally box" with count 4; }
+
+extern object tallyBox
+{
+    int count ;
+    emitter int   operator []  ( int i ) { ($val.count * $i) }
+    emitter void  operator +=  ( int v ) { $val.count = $val.count + $v; }
+#if LOUD
+    emitter void  operator ++  ()        { $val.count = $val.count + 1; }
+#endif
+    emitter eBool operator ?   ()        { ($val.count > 5) }
+}
+
+//-- A routine and its replacement ----------------------------------------------------------------------
+
+int weigh ( Cell c ) { return c.n ; }
+
+replace int weigh ( Cell c )
+{
+#if TALLY_CAP > $20
+    if (c?.next?) return replaced(c) * 10 + c?.next?.n ;
+#endif
+    return replaced(c) ;
+}
+
+//-- A second namespace, and verbs written after it --------------------------------------------------------
+
+object tools
+{
+    alias book for Ledger ;
+    alias tab  for wordTab ;
+}
+
+verb V_tab
+{
+    meta = true ; grammar = { .tab } ;
+    void handler()
+    {
+        print(wordTab.fill(rowA, c3)) ; print(" ") ;
+        print(rowA[0]) ; print(rowA[1]) ; print(rowA[2]) ; print(rowA[6]) ;
+        printLine($" {wordTab.sum(rowA)}") ;
+        rowA += 10 ; rowA++ ; rowA -= 4 ;
+        print(rowA[0]) ; print(" ") ; print(rowA?) ; print(" ") ; print(rowB?) ; print(" ") ;
+        print(wordTab.bump(rowA, c2)) ; printLine($" {rowA[0]} {pings}") ;
+        wordTab.drain(rowB, 0) ; print(" ") ;
+        rowB[0] = 3 ; wordTab.drain(rowB, 3) ;
+        printLine($" {rowB[1]} {rowB[0]} {pings}") ;
+    }
+}
+
+#using tools
+#if LOUD
+verb V_ledger
+{
+    meta = true ; grammar = { .ledger } ;
+    void handler()
+    {
+        book b = ledA ;
+        tab  t = rowB ;
+        b[1] = 4 ; b[2] = 12 ;                  // the second clamps
+        print(b[1]) ; print(" ") ; print(ledA[2]) ; print(" ") ; print(b.total) ; print(" ") ;
+        ledB[0] = 5 ;
+        printLine($"{ledB[0]} {ledB.total} {ledA.appraise()} {ledB.appraise()}") ;
+        b += 3 ; b++ ; ledA -= 2 ;
+        print(ledA.total) ; print(" ") ; print(ledA.slots[0]) ; print(" ") ;
+        print(ledA.chained()) ; print(" ") ; print(ledA.linked()) ; print(" ") ;
+        print(ledC?) ; print(" ") ; print(ledB?) ;;
+        printLine($" {t[0]}") ;
+        ledA.settle() ;
+        print(ledB.total) ; print(" ") ;
+        ledB.total = 50 ; ledA.settle() ;
+        printLine($" {ledB.total} {ledB.linked()} {pings}") ;
+        ledA.poke() ; ledC.total = 1 ; print(" ") ; ledA.poke() ;
+        printLine($" {ledA.chained()} {pings}") ;
+    }
+}
+#endif
+
+extend V_ledger
+{
+#if DEPTH == 3
+    replace grammar = { .ledger | .books } ;
+#endif
+}
+
+extend V_bell
+{
+#IF LOUD
+    Replace void handler()
+    {
+        pings += 10 ; print("[bell]") ;
+        if (chA[0]?.next?) print("+") ;         // a chain is held
+    }
+#EndIf
+}
+
+verb V_misc
+{
+    meta = true ; grammar = { .misc } ;
+    void handler()
+    {
+        printLine($"{weigh(c1)} {weigh(c2)} {weigh(c3)}") ;
+        V_ping.perform() ; print(" ") ; V_bell.perform() ;
+        printLine($" {pings}") ;
+        chA.walk() ; print(" ") ;
+        chA += c3 ; chA.walk() ; print(" ") ;
+        chA-- ; chA.walk() ; print(" ") ;
+        print(chA[0]?.n) ; print(chA[4]?.n) ; print(chA[0]?.next?.n) ; print(" ") ;
+        chA[0]?.show() ; chA[3]?.show() ; chA[1]?.show() ;
+        printLine($" {chA.size} {pings}") ;
+        print(tallyBox[3]) ; print(" ") ; print(tallyBox?) ; print(" ") ;
+        tallyBox += 1 ; tallyBox++ ; print(tallyBox?.count) ;
+        printLine($" {tallyBox[2]} {tallyBox?}") ;
+    }
+}
+
+#includeI6 "grammar"

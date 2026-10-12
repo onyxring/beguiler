@@ -1,0 +1,369 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a window layout described by the program's own types on top of <glulxWindow>. A named
+// union cell (string | object | func<void>) with a static member, the program's own print(cell)
+// overload, and cells printed into the main window and into a grid's own stream, a lambda
+// cell printing into the window that is current; a file-scope array<cell> mixing strings, objects
+// and a lambda, a ternary whose branches infer a union stored in a cell; extend class textGridWindow
+// and extend class window adding Beguile methods (a frame drawn from self.width/self.height, a cell
+// placed at a column, the Glk window kind switched on as an eGlulxWindowType cast from int); the
+// program's own alias classes over the orientation views (an alias of an alias that hides an
+// inherited method, and one over a content type) holding split results, with the extended methods
+// called through them; Glk geometry read by raw calls into a file-scope rawArray<int> by address
+// (&) and compared with width/height: windowGetSize, windowGetParent, windowGetArrangement with the
+// method word decoded with & and switch, a ref bglSize filled from it; windowFlowBreak; a styleSheet
+// copied by value and one nested style member changed in the copy, both used as styles:; a char
+// map in an array<array<char>> drawn into a grid row by row, and a local array<array<int>> tally;
+// and a float percentage gauge drawn with Unicode blocks into an alias-typed grid.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+}
+
+object tinCup {
+    "tin cup";
+    parent = roomA;
+    name = {.tin, .cup};
+    description = "A tin cup.";
+}
+
+// ---- cells ---------------------------------------------------------------------------------------
+
+union cell = string | object | func<void> {
+    static string kind(cell c) {
+        switch (typeof(c)) {
+            case eType.string:  return "text";
+            case eType.object:  return "thing";
+            case eType.routine: return "action";
+            default:            return "empty";
+        }
+    }
+}
+
+void print(cell c) {
+    switch (typeof(c)) {
+        case eType.string:  print((string)c);
+        case eType.object:  print($"{the((object)c)}");
+        case eType.routine: ((func<void>)c)();
+        default:            print("-");
+    }
+}
+
+int taps = 0;
+
+array<cell> shelf = { "Key:", brassKey, => { taps++; print("(tap)"); }, "Cup:", tinCup };
+
+// ---- window helpers added to the library's classes -----------------------------------------------
+
+extend class window {
+    string kindName() {
+        if (self.id == 0) return "closed";
+        eGlulxWindowType t = (eGlulxWindowType)bgl.asm.windowGetType(self.id);
+        switch (t) {
+            case eGlulxWindowType.textBuffer: return "buffer";
+            case eGlulxWindowType.textGrid:   return "grid";
+            case eGlulxWindowType.graphics:   return "graphics";
+            default:                          return "other";
+        }
+    }
+}
+
+extend class textGridWindow {
+    void frame(string title) {
+        int w = self.width;
+        int h = self.height;
+        self.clear();
+        self.moveCursor(0, 0);
+        self.print("┌");
+        self.print(title);
+        for (int i = title.length + 1; i < w - 1; i++) self.print("─");
+        self.print("┐");
+        for (int y = 1; y < h - 1; y++) {
+            self.moveCursor(0, y);
+            self.print("│");
+            self.moveCursor(w - 1, y);
+            self.print("│");
+        }
+        self.moveCursor(0, h - 1);
+        self.print("└");
+        for (int i = 1; i < w - 1; i++) self.print("─");
+        self.print("┘");
+    }
+
+    void put(int col, int line, cell c) {
+        self.moveCursor(col, line);
+        for (int i = col; i < self.width - 1; i++) self.print(" ");
+        self.moveCursor(col, line);
+        self.print(c);
+    }
+}
+
+// ---- the program's own window types ---------------------------------------------------------------
+
+alias class gaugeBar for textGridWindowHorz {
+    hide clear;
+    static int filled(float pct, int cells) {
+        int n = (int)(pct * cells / 100.0 + 0.5);
+        return bgl.util.math.clamp(n, 0, cells);
+    }
+}
+
+alias class sidePanel for textGridWindow { }
+
+gaugeBar         gauge = null;
+sidePanel        side  = null;
+textBufferWindow notes = null;
+
+// ---- raw Glk geometry --------------------------------------------------------------------------
+
+rawArray<int> glkOut = { 0, 0, 0 };
+
+int outAddr(int i) { return &glkOut + i * 4; }
+
+void glkSize(window w, ref bglSize s) {
+    bgl.asm.windowGetSize(w.id, outAddr(0), outAddr(1));
+    s.width = glkOut[0];
+    s.height = glkOut[1];
+}
+
+string placementName(int method) {
+    switch (method & $0F) {
+        case 0:  return "left";
+        case 1:  return "right";
+        case 2:  return "above";
+        case 3:  return "below";
+        default: return "?";
+    }
+}
+
+stringObj arrangement(window w) {
+    int parent = bgl.asm.windowGetParent(w.id);
+    if (parent == 0) return "no parent";
+    bgl.asm.windowGetArrangement(parent, outAddr(0), outAddr(1), outAddr(2));
+    int method = glkOut[0];
+    string scale = (method & $20) != 0 ? "proportional" : "fixed";
+    string edge  = (method & $100) != 0 ? "no border" : "border";
+    string key   = glkOut[2] == w.id ? "key" : "not key";
+    stringObj r = $"{placementName(method)}, {glkOut[1]} {scale}, {edge}, {key}";
+    return r;
+}
+
+void report(string label, window w) {
+    if (w == null) { printLine($"{label}: none."); return; }
+    bglSize s;
+    glkSize(w, s);
+    bool same = s.width == w.width && s.height == w.height;
+    printLine($"{label}: {w.kindName()} {s.width}x{s.height} (matches: {same ? "yes" : "no"}); {arrangement(w)}.");
+}
+
+// ---- looks -------------------------------------------------------------------------------------
+
+styleSheet panelLook = styleSheet{
+    alert  = style{ fontWeight = 1; foreColor = $C80000; };
+    header = style{ reverse = true; };
+};
+
+// ---- a char map ----------------------------------------------------------------------------------
+
+array<array<char>> floorPlan = {
+    {'#', '#', '#', '#', '#', '#'},
+    {'#', '.', '.', 'k', '.', '#'},
+    {'#', '.', '#', '#', '.', '#'},
+    {'#', 'c', '.', '.', '@', '#'},
+    {'#', '#', '#', '#', '#', '#'}
+};
+
+void drawPlan(textGridWindow w, int col) {
+    for (int y = 0; y < floorPlan.length; y++) {
+        w.moveCursor(col, y + 1);
+        for (char ch in floorPlan[y]) w.print(ch);
+    }
+}
+
+// ---- gauge -------------------------------------------------------------------------------------
+
+float loadPct = 0.0;
+
+void drawGauge() {
+    if (gauge == null) return;
+    int cells = 20;
+    int n = gaugeBar.filled(loadPct, cells);
+    gauge.moveCursor(0, 0);
+    gauge.print("load ");
+    for (int i = 0; i < cells; i++) gauge.print(i < n ? "█" : "░");
+    gauge.print($" {pct(loadPct)}   ");
+}
+
+stringObj pct(float f) {
+    int tenths = (int)(f * 10.0 + 0.5);
+    stringObj r = $"{tenths / 10}.{tenths % 10}%";
+    return r;
+}
+
+// ---- entry points ------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    return false;
+}
+
+// ---- verbs -------------------------------------------------------------------------------------
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        if (gauge != null) { printLine("Panels already open."); return; }
+        gauge = bgl.ui.mainWin.splitUpGrid(1);
+        styleSheet warm = panelLook;
+        warm.alert.foreColor = color.rgb(255, 128, 0);
+        notes = bgl.ui.mainWin.splitDownBuffer(10, fixed, border, styles: panelLook);
+        side = notes?.splitRightGrid(24, styles: warm);
+        printLine($"Gauge {yn(gauge != null)}, side {yn(side != null)}, notes {yn(notes != null)}.");
+        printLine($"Alert color: sheet {hex(panelLook.alert.foreColor)}, copy {hex(warm.alert.foreColor)}.");
+        printLine($"Header reverse kept in the copy: {yn((int)warm.header.reverse == 1)}.");
+        drawGauge();
+        side?.frame("Side");
+        notes?.printLine("Notes open.");
+        bgl.asm.windowFlowBreak(bgl.ui.mainWin.id);
+    }
+}
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+stringObj hex(int v) {
+    string digits = "0123456789ABCDEF";
+    stringObj s = "$";
+    for (int shift = 20; shift >= 0; shift -= 4) s += digits[(v >> shift) & 15];
+    return s;
+}
+
+verb Inspect {
+    grammar = {.inspect};
+    meta = true;
+    void handler() {
+        report("Gauge", gauge);
+        report("Side", side);
+        report("Notes", notes);
+        textGridWindow g = gauge;
+        printLine($"Gauge as grid is the same window: {yn(g == gauge)}; kinds {g?.kindName() ?? "none"}.");
+    }
+}
+
+verb Cells {
+    grammar = {.cells};
+    meta = true;
+    void handler() {
+        for (int i = 0; i < shelf.length; i++) {
+            cell c = shelf[i];
+            print($"[{cell.kind(c)}] ");
+            print(c);
+            printLine();
+        }
+        if (side == null) { printLine("No side panel."); return; }
+        side.frame("Cells");
+        for (int i = 0; i < shelf.length; i++) side.put(2, i + 1, shelf[i]);
+        printLine($"Taps {taps}.");
+    }
+}
+
+verb Holder {
+    grammar = {.holder, NOUN};
+    meta = true;
+    void handler() {
+        cell c = noun.parent == player ? "carried" : noun;
+        printLine($"Holder cell is {cell.kind(c)}.");
+        print(c);
+        printLine();
+        side?.put(2, 7, c);
+    }
+}
+
+verb Plan {
+    grammar = {.plan};
+    meta = true;
+    void handler() {
+        if (side == null) { printLine("No side panel."); return; }
+        side.frame("Plan");
+        drawPlan(side, 2);
+        array<array<int>> tally = { {0, 0}, {0, 0, 0} };
+        for (array<char> row in floorPlan) {
+            for (char ch in row) {
+                if (ch == '#') tally[0][0]++;
+                else if (ch == '.') tally[0][1]++;
+                else if (ch == 'k') tally[1][0]++;
+                else if (ch == 'c') tally[1][1]++;
+                else tally[1][2]++;
+            }
+        }
+        printLine($"Walls {tally[0][0]}, floor {tally[0][1]}, marks {tally[1][0] + tally[1][1] + tally[1][2]} of {tally[1].length} kinds.");
+    }
+}
+
+verb Load {
+    grammar = {.load, NUMBER};
+    meta = true;
+    void handler() {
+        loadPct = (int)noun;
+        loadPct = loadPct / 4.0;
+        drawGauge();
+        printLine($"Load {pct(loadPct)}: {gaugeBar.filled(loadPct, 20)} of 20 cells.");
+    }
+}
+
+verb Grow {
+    grammar = {.grow};
+    meta = true;
+    void handler() {
+        if (side == null) { printLine("No side panel."); return; }
+        side.width = 30;
+        side.frame("Wide");
+        report("Side", side);
+    }
+}
+
+verb Shut {
+    grammar = {.shut};
+    meta = true;
+    void handler() {
+        side?.close();
+        side = null;
+        notes?.close();
+        notes = null;
+        printLine($"Gauge left: {gauge?.kindName() ?? "none"}.");
+        if (gauge != null) gauge.height = 2;
+        drawGauge();
+        report("Gauge", gauge);
+    }
+}
+
+#includeI6 "grammar"

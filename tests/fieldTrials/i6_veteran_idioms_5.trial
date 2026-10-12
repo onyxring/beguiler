@@ -1,0 +1,125 @@
+Room A
+Room A. Room B is north.
+You can see a lever, a glass case (which is closed) (in which is a brass key) and a grey slate here.
+> look
+Room A
+Room A. Room B is north.
+You can see a lever, a glass case (which is closed) (in which is a brass key) and a grey slate here.
+> take lever
+[lever] The lever is fixed in place.
+> pull lever
+The lever clicks.
+> push lever
+It does not budge.
+> gauge lever
+Strength 20, from I6 31.
+> x slate
+A grey slate.
+> x grey tablet
+A grey slate.
+> probe key
+Out of reach.
+In Room A: true. Shares Room A with the lever.
+> probe lever
+Within reach.
+In Room A: true. Shares lever with the lever.
+> open case
+You open the glass case.
+> probe key
+Within reach.
+In Room A: true. Shares Room A with the lever.
+> spell key
+9 letters: b r a s s   k e y (length word 9)
+> spell lever
+5 letters: l e v e r (length word 5)
+> tabulate
+Entries: 4. Sum: 30. Marks: ace
+> calc
+210000 -3 -1 1 -16 1048576
+4294967295 4 265 258
+15 -56 99
+Flags: 8. Set: true.
+> rate 0
+zero
+> rate 2
+few
+> rate 7
+some
+> rate 11
+some
+> rate 10
+other
+> rate 500
+lots
+> utter hello
+Greeting.
+> utter bye now
+Farewell.
+> utter xyzzy
+Not a word.
+> kinds
+int string routine object class unknown
+> jump
+You hop once.
+> mint
+Minted a chip worth 4321.
+> mint
+Minted a chip worth 4321.
+> mint
+No chips left.
+> look
+Room A
+Room A. Room B is north.
+You can see a chip, a chip, a lever, a glass case (in which is a brass key) and a grey slate here.
+> melt
+Melted 2. Freed so far: 2.
+> mint
+Minted a chip worth 4321.
+> melt
+Melted 1. Freed so far: 3.
+> makepeg
+A peg weighs 15, or 20 by message.
+> makepeg
+A peg weighs 15, or 20 by message.
+> makepeg
+A peg weighs 15, or 20 by message.
+> makepeg
+No pegs left.
+> look
+Room A
+Room A. Room B is north.
+You can see a peg, a peg, a peg, a lever, a glass case (in which is a brass key) and a grey slate here.
+> point
+Noted.
+> x it
+A lever.
+> warp
+Warped to B. Lever in scope: false. Blue peg weighs 6.
+> look
+Room B
+Room B. Room A is south. Visits: 2.
+You can see a peg and an iron rod here.
+> x rod
+An iron rod.
+> x iron rod
+An iron rod.
+> x blue peg
+You see nothing special about the peg.
+> take peg
+Taken.
+> i
+You're carrying:
+  a peg
+> warp
+Warped to A. Lever in scope: true. Blue peg weighs 2.
+> n
+Room B
+Room B. Room A is south. Visits: 4.
+You can see an iron rod here.
+> s
+Room A
+Room A. Room B is north.
+You can see a peg, a peg, a peg, a lever, a glass case (in which is a brass key) and a grey slate here.
+> report
+Visits: 5. Ticks: 41. Hooks: 1. Glk: 4/404.
+Glulx build.

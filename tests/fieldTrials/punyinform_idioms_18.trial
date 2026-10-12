@@ -1,0 +1,65 @@
+Room A
+Room A.
+> crates
+Shelf A: slots 2.
+CRATE survey done: heft 41 chain 76 seen 3 low 10 top 40 grid 12 next 25 tenths 400 grams 40 tag 101 same false acc 12 3.
+Shelf A: slots 2.
+CRATE survey done: heft 25 chain 36 seen 2 low 10 top 25 grid 18 next 10 tenths 250 grams 25 tag 100 same false acc 30 2.
+Sort 26: picks 3 big 2 top 15 conv 26 chip 26 grams 26 in bin 1 next 10 heavier 0 lit true.
+Sort 10: picks 3 big 2 top 15 conv 10 chip 10 grams 10 in bin 2 next 0 heavier 0 lit true.
+Crates 43 28 2 2 ledger 30 2.
+> gizmos
+Owned by crate A.
+Mid.
+tag
+HIGH load A: sum 15 top 8 big 1 first 1 cells 10 seen 3 plus 22 conv 19 doubled 38 tenths 40 grams 4.
+Shelf A: slots 2.
+Gizmo A: heft 19 uses 0 tint 3.
+Tally 1.
+Bad value -3.
+Mid.
+tag
+Lit.
+HIGH load B: sum 12 top 12 big 0 first 2 cells 10 seen 3 plus 22 conv 21 doubled 42 tenths 90 grams 9.
+Shelf B: slots 3.
+Gizmo B: heft 21 uses 0 tint 3.
+Tally 2.
+A lighter.
+Loads 22 22 acc 27 1 loads 2 last 22.
+> racks
+blue: seed 2 n 5 level 25 plus 26 under true pick 2 held 21 sub 4 shade 2 first 98 twice 4 tenths 20 grams 2 writes 1 peak 25.
+Tally 3.
+blue: seed 5 n 5 level 55 plus 56 under true pick 5 held 21 sub 4 shade 3 first 98 twice 10 tenths 50 grams 5 writes 2 peak 55.
+Racks 25 55 level 55 held tag 55.
+> crates
+Shelf A: slots 2.
+CRATE survey done: heft 42 chain 78 seen 3 low 10 top 41 grid 12 next 26 tenths 410 grams 41 tag 101 same false acc 42 3.
+Shelf A: slots 2.
+CRATE survey done: heft 26 chain 37 seen 2 low 10 top 26 grid 18 next 10 tenths 260 grams 26 tag 100 same false acc 60 2.
+Sort 27: picks 3 big 2 top 15 conv 27 chip 27 grams 27 in bin 2 next 10 heavier 0 lit true.
+Sort 10: picks 3 big 2 top 15 conv 10 chip 10 grams 10 in bin 2 next 0 heavier 0 lit true.
+Crates 44 29 2 2 ledger 60 2.
+> gizmos
+Owned by crate A.
+Mid.
+tag
+HIGH load A: sum 15 top 8 big 0 first 1 cells 10 seen 3 plus 35 conv 34 doubled 68 tenths 190 grams 19.
+Shelf A: slots 2.
+Gizmo A: heft 34 uses 1 tint 3.
+Tally 4.
+Bad value -3.
+Mid.
+tag
+Lit.
+HIGH load B: sum 12 top 12 big 0 first 2 cells 10 seen 3 plus 34 conv 33 doubled 66 tenths 210 grams 21.
+Shelf B: slots 3.
+Gizmo B: heft 33 uses 1 tint 3.
+Tally 5.
+Loads 35 34 acc 27 0 loads 4 last 22.
+> racks
+blue: seed 2 n 5 level 25 plus 26 under true pick 2 held 33 sub 4 shade 1 first 98 twice 4 tenths 20 grams 2 writes 3 peak 55.
+Tally 6.
+blue: seed 5 n 5 level 55 plus 56 under true pick 5 held 33 sub 4 shade 2 first 98 twice 10 tenths 50 grams 5 writes 4 peak 55.
+Racks 25 55 level 55 held tag 55.
+> tally
+Tally 7.

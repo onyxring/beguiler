@@ -1,0 +1,411 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small panel toolkit built from classes that own Glulx windows. A pooled class whose
+// create() takes five arguments (Glulx forwards them all) and opens a text grid split with a styleSheet
+// that was filled member by member from helpers returning style values; destroy() closing the window;
+// pooled subclasses with their own pools inheriting create(), overriding a default render(), and one
+// calling the base version through a cast of self; static counters on the base read through a subclass
+// name; an owned value-class member (a cell with +, ==, !=, <=> and print()) passed by ref and by
+// copy, and returned from a helper; a registry array<pane> walked with virtual dispatch, appended with
+// += and pruned with -=; box drawing with Unicode corners and a centered bold title into each grid,
+// sized from win.width and win.height; a func<void, textGridWindow> member hook set to a lambda;
+// <linq> chains over an array<item> (filter with a captured local, orderBy with a comparator, take,
+// map, count, any, all, first, last, takeWhile, a chain nested inside a predicate) appended into a
+// member array of a pooled pane; array<string> sorted with string::operator <=> and with a compareTo
+// lambda, and used as a queue for a one-line ticker; Glk windows counted with windowIterate; a
+// window passed as the base type window; and a two-line status bar set through statusBar.height.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+class item : object {
+    int grams;
+}
+
+// A grid position: column, then row.
+value class cell {
+    inline int col;
+    inline int row;
+    cell operator = (cell o) { col = o.col; row = o.row; return self; }
+    cell operator + (cell o) {
+        cell r;
+        r.col = col + o.col;
+        r.row = row + o.row;
+        return r;
+    }
+    bool operator == (cell o) { return col == o.col && row == o.row; }
+    bool operator != (cell o) { return col != o.col || row != o.row; }
+    int operator <=> (cell o) {
+        if (row != o.row) return row < o.row ? -1 : 1;
+        if (col != o.col) return col < o.col ? -1 : 1;
+        return 0;
+    }
+    void print() { print($"({col},{row})"); }
+}
+
+styleSheet paneSheet;
+textBufferWindow notes = null;
+array<string> log[3];
+array<string> tagList = { "spool", "Anvil", "key", "bolt", "Coin" };
+
+// ---- panes -----------------------------------------------------------------------------------
+
+class pane[3] {
+    static int opened = 0;
+    static int closed = 0;
+    string title;
+    bool   boxed;
+    cell   at;
+    textGridWindow win;
+    func<void, textGridWindow> decorate = null;
+
+    void create(string t, int rows, int col, int row, bool box) {
+        title = t;
+        boxed = box;
+        at.col = col;
+        at.row = row;
+        win = bgl.ui.mainWin.splitUpGrid(rows, fixed, noBorder, styles: paneSheet);
+        if (win != null) pane.opened++;
+    }
+
+    void destroy() {
+        if (win == null) return;
+        win.close();
+        win = null;
+        pane.closed++;
+    }
+
+    void moveTo(cell c) { win.moveCursor(c.col, c.row); }
+
+    void frame() {
+        if (win == null) return;
+        int w = win.width;
+        int h = win.height;
+        win.clear();
+        if (decorate != null) decorate(win);
+        if (!boxed) return;
+        for (int r = 0; r < h; r++) {
+            win.moveCursor(0, r);
+            char left  = r == 0 ? '┌' : r == h - 1 ? '└' : '│';
+            char mid   = r == 0 || r == h - 1 ? '─' : ' ';
+            char right = r == 0 ? '┐' : r == h - 1 ? '┘' : '│';
+            win.print(left);
+            for (int c = 1; c < w - 1; c++) win.print(mid);
+            win.print(right);
+        }
+        win.moveCursor((w - title.length - 2) / 2, 0);
+        win.print($" {bold}{title}{roman} ");
+    }
+
+    default void render() { frame(); }
+}
+
+class meterPane[2] : pane {
+    int level = 0;
+    int cells = 10;
+    void render() {
+        frame();
+        if (win == null) return;
+        moveTo(at);
+        for (int i = 0; i < cells; i++) win.print(i < level ? '█' : '░');
+        win.print($" {level}/{cells}");
+    }
+}
+
+class listPane[1] : pane {
+    array<item> rows[3];
+    void render() {
+        ((pane)self).render();
+        if (win == null) return;
+        if (rows.length == 0) {
+            moveTo(at);
+            win.print("(empty)");
+            return;
+        }
+        for (int i = 0; i < rows.length; i++) {
+            item it = rows[i];
+            cell c = at + cell{ 0, i };
+            moveTo(c);
+            win.print($"{i + 1}. {it} {fixed}{it.grams}{roman} g");
+        }
+    }
+}
+
+class tickerPane[1] : pane {
+    void render() {
+        frame();
+        if (win == null) return;
+        moveTo(at);
+        win.print("» ");
+        for (int i = log.length - 1; i >= 0; i--) {
+            win.print(log[i]);
+            if (i > 0) win.print(" · ");
+        }
+    }
+}
+
+array<pane> panes[6];
+meterPane  gauge   = null;
+listPane   listing = null;
+tickerPane ticker  = null;
+
+// ---- world -------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+item key   { "brass key";   parent = roomA; name = {.brass, .key};   grams = 35; }
+item rod   { "steel rod";   parent = roomA; name = {.steel, .rod};   grams = 1250; }
+item anvil { "iron anvil";  parent = roomA; name = {.iron, .anvil};  grams = 1900; }
+item spool { "wire spool";  parent = roomA; name = {.wire, .spool};  grams = 410; }
+item coin  { "copper coin"; parent = roomA; name = {.copper, .coin}; grams = 5; }
+
+array<item> stock = { key, rod, anvil, spool, coin };
+
+// ---- helpers -----------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+style tint(int fg, bool strong) {
+    style s = style{};
+    s.foreColor = fg;
+    if (strong) s.fontWeight = 1;
+    return s;
+}
+
+cell corner(int w, int h) {
+    cell c;
+    c.col = w - 1;
+    c.row = h - 1;
+    return c;
+}
+
+void nudge(ref cell c, int by) { c.col += by; }
+void nudgeCopy(cell c, int by) { c.col += by; }
+
+void note(string s) {
+    if (log.length == log.size) log.dequeue();
+    log.enqueue(s);
+    ticker?.render();
+}
+
+string kindOf(window w) {
+    if (w == null) return "none";
+    int t = bgl.asm.windowGetType(w.id);
+    if (t == (int)eWinType.textGrid) return "grid";
+    if (t == (int)eWinType.textBuffer) return "buffer";
+    return "other";
+}
+
+int openWindows() {
+    int n = 0;
+    for (int w = bgl.asm.windowIterate(0, 0); w != 0; w = bgl.asm.windowIterate(w, 0)) n++;
+    return n;
+}
+
+void renderAll() { for (pane p in panes) p.render(); }
+
+void track(pane p) {
+    if (p == null) return;
+    panes += p;
+    p.render();
+}
+
+// ---- entry points ------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    paneSheet.normal = tint(color.gray, false);
+    paneSheet.alert  = tint(color.red, true);
+    bgl.ui.statusBar.height = 2;
+    ticker = new tickerPane("", 1, 0, 0, false);
+    if (ticker != null) ticker.decorate = (textGridWindow w) => { w.moveCursor(w.width - 4, 0); w.print("[T]"); };
+    track(ticker);
+    gauge = new meterPane("meter", 3, 2, 1, true);
+    track(gauge);
+    listing = new listPane("heaviest", 5, 2, 1, true);
+    track(listing);
+    note("start");
+    return false;
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location}");
+    stringObj right = $"turn {turns}";
+    bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - right.length - 1, 0);
+    bgl.ui.statusBar.print(right);
+    bgl.ui.statusBar.moveCursor(0, 1);
+    bgl.ui.statusBar.print($"panes {panes.length} · opened {pane.opened} · closed {meterPane.closed}");
+}
+
+// ---- verbs -------------------------------------------------------------------------------------
+
+verb SetMeter {
+    grammar = {.meter, NUMBER};
+    meta = true;
+    void handler() {
+        if (gauge == null) { printLine("No meter."); return; }
+        int n = (int)noun;
+        if (n > gauge.cells) n = gauge.cells;
+        gauge.level = n;
+        gauge.render();
+        printLine($"Meter at {gauge.level} of {gauge.cells}.");
+        note("meter");
+    }
+}
+
+verb Heavy {
+    grammar = {.heavy, NUMBER};
+    meta = true;
+    void handler() {
+        int limit = (int)noun;
+        array<item> picked = stock.filter((item i) => i.grams >= limit)
+                                  .orderBy((item a, item b) => a.grams < b.grams ? 1 : a.grams > b.grams ? -1 : 0);
+        printLine($"{picked.count()} of {stock.length} weigh at least {limit} g.");
+        if (picked.length > 0) printLine($"Heaviest {picked.first()}, lightest {picked.last()}.");
+        if (listing != null) {
+            listing.rows = picked.take(3);
+            listing.render();
+        }
+        note("heavy");
+    }
+}
+
+verb Totals {
+    grammar = {.totals};
+    meta = true;
+    void handler() {
+        int sum = 0;
+        for (var g in stock.map((item i) => i.grams)) sum += (int)g;
+        printLine($"Total {sum} g over {stock.count()} items.");
+        printLine($"Any over 1500: {yn(stock.any((item i) => i.grams > 1500))}; all over 1: {yn(stock.all((item i) => i.grams > 1))}.");
+        int beaten = stock.filter((item i) => stock.any((item j) => j.grams > i.grams * 10)).count();
+        printLine($"Outweighed tenfold: {beaten}.");
+        printLine($"Light ones: {stock.takeWhile((item i) => i.grams < 1000).count()} before the first heavy one.");
+    }
+}
+
+verb Tags {
+    grammar = {.tags};
+    meta = true;
+    void handler() {
+        tagList.sort(string::operator <=>);
+        stringObj line = "";
+        for (string t in tagList) { if (!line.isEmpty()) line += ", "; line += t; }
+        printLine($"By code: {line}.");
+        tagList.sort((string a, string b) => a.compareTo(b, true));
+        line = "";
+        for (string t in tagList) { if (!line.isEmpty()) line += ", "; line += t; }
+        printLine($"Ignoring case: {line}; key at {tagList.indexOf("key")}.");
+    }
+}
+
+verb Cells {
+    grammar = {.cells};
+    meta = true;
+    void handler() {
+        cell a = cell{ 2, 1 };
+        cell b = cell{ 3, 4 };
+        cell s = a + b;
+        printLine($"{a} + {b} = {s}");
+        printLine($"Equal: {yn(a == b)}; differ: {yn(a != b)}; a first: {yn(a < b)}; order {a <=> b} {b <=> a} {s <=> s}.");
+        cell far = corner(50, 3);
+        printLine($"Corner {far}; same as {cell{ 49, 2 }}: {yn(far == cell{ 49, 2 })}.");
+        if (gauge != null) {
+            nudgeCopy(gauge.at, 5);
+            printLine($"After a copy nudge the meter starts at {gauge.at}.");
+            nudge(gauge.at, 5);
+            printLine($"After a ref nudge it starts at {gauge.at}.");
+            gauge.render();
+        }
+    }
+}
+
+verb PaneList {
+    grammar = {.panelist};
+    meta = true;
+    void handler() {
+        for (pane p in panes) {
+            printLine($"{p.title.isEmpty() ? "(ticker)" : p.title}: {kindOf(p.win)} {p.win.width}x{p.win.height}, text at {p.at}");
+        }
+        printLine($"Opened {pane.opened}, closed {pane.closed}; via subclasses {meterPane.opened} {listPane.closed}.");
+        printLine($"Sheet alert weight {paneSheet.alert.fontWeight}, color {paneSheet.alert.foreColor}; normal color {paneSheet.normal.foreColor}.");
+        printLine($"Notes: {kindOf(notes)}; Glk windows open: {openWindows()}.");
+    }
+}
+
+verb NotesOpen {
+    grammar = {.notes};
+    meta = true;
+    void handler() {
+        if (notes == null) notes = bgl.ui.mainWin.splitRightBuffer(30, proportional);
+        printLine($"Notes window: {kindOf(notes)}.");
+        notes?.printLine($"{panes.length} panes; meter {gauge != null ? gauge.level : -1}");
+        note("notes");
+    }
+}
+
+verb CloseMeter {
+    grammar = {.closemeter};
+    meta = true;
+    void handler() {
+        if (gauge == null) { printLine("No meter."); return; }
+        panes -= gauge;
+        delete gauge;
+        gauge = null;
+        printLine($"Meter dropped; {panes.length} panes left.");
+        note("close");
+    }
+}
+
+verb Reopen {
+    grammar = {.reopen};
+    meta = true;
+    void handler() {
+        if (gauge != null) { printLine("Meter already open."); return; }
+        gauge = new meterPane("meter 2", 3, 1, 1, true);
+        if (gauge == null) { printLine("No slot."); return; }
+        printLine($"New meter: level {gauge.level}, text at {gauge.at}, window {kindOf(gauge.win)}.");
+        track(gauge);
+        meterPane spare = new meterPane("spare", 3, 1, 1, true);
+        printLine($"Second meter: {yn(spare != null)}.");
+        meterPane third = new meterPane("third", 3, 1, 1, true);
+        printLine($"Third meter: {yn(third != null)}.");
+        if (spare != null) delete spare;
+        note("reopen");
+    }
+}
+
+verb Redraw {
+    grammar = {.redraw};
+    meta = true;
+    void handler() {
+        renderAll();
+        printLine($"Redrew {panes.length} panes.");
+    }
+}
+
+#includeI6 "grammar"

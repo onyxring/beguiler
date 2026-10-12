@@ -1,0 +1,451 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: three dense objects on Glulx, written functionally, each with an inline accessor that
+// writes its host through `outer`. A board object of a class: an alias of an enum, a float rate, a
+// primitive tick member, an array of strings, an array<char> label worked through <buf>, a member
+// array of pooled instances, a `ref` array member bound with `:=`; an accessor with a static array and
+// a static counter that counts marks with a <linq> filter under `#if`; non-emitter `+`, `+=`, `==`,
+// `!=`, `<` and `[]` operators on the object; a `replace` of the base's show reaching it by cast; a
+// recursive sum over an array parameter and a recursive search over a nested array parameter; and a
+// load method that walks a local array of arrays from a nested literal through <linq>, takes pooled
+// instances from `new`, reads them with `?.`, `?` and `??`, appends them to the member array and
+// clears it, dispatches to an ancestor by cast, switches by range on the accessor and folds the
+// figures with block lambdas. A desk object of the same class: an alias of the primitive, an enum
+// member, a nested-literal table, an emitter method, an `+` operator, an attribute-giving accessor,
+// an emitter-class scope guard, a block lambda that throws, an `#i6` island inside a recursive fold
+// and a switch over enum bands. An `extend` of the board adding an enum member, an object member, a
+// second accessor over a static array that walks the object tree through `outer` with `??` and `?`,
+// an emitter method, a scan with an array parameter, `#using`, a `:=` rebind, a <linq> filter
+// through the emitter, a pooled instance read by ancestor cast and a recursive walk up the tree. A
+// verb with a primitive, an enum, a `ref` array, an array of strings, an array<char> and an array of
+// pooled instances as members, an accessor over a static array that writes the verb through `outer`
+// and gives an attribute, a recursive sum over a nested array parameter, and a handler that opens a
+// scope guard, imports the kit with `#using`, throws out of a block lambda, reads pooled instances
+// with `?.`, `?` and `??`, works a <buf> line, squares in an `#i6` island and switches on aliased bands.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <buf>
+#include <string>
+
+#define BOARD_TRACE
+#define BOARD_SLOTS 3
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object trayA { "tray A"; parent = roomA; }
+object cupA  { "cup A"; parent = trayA; }
+object pinA  { "pin A"; parent = cupA; }
+
+//-- Shared types ---------------------------------------------------------------------------------
+enum eBand { none, low, mid, high }
+
+primitive class Tick {
+    emitter void operator = (int v) { $self = $v; }
+    emitter int  operator ()        { ($self) }
+    emitter Tick operator + (int v) { ($self + $v) }
+    emitter Tick operator * (int v) { ($self * $v) }
+}
+
+int depthNow = 0;
+
+int depthOpen() {
+    depthNow++;
+    return depthNow;
+}
+
+void depthClose(int d) {
+    depthNow = d - 1;
+}
+
+emitter class Depth {
+    emitter void init()   { $self = depthOpen(); }
+    emitter void deinit() { depthClose($self); }
+    emitter int  at       { ($self) }
+}
+
+class Part : object {
+    int weight = 0;
+    int worth() { return weight; }
+}
+
+class Chip[4] : Part {
+    string short_name = "chip";
+    void create(int w) { weight = w; }
+    replace int worth() { return weight * 2; }
+}
+
+class Panel : object {
+    int id = 0;
+    void show() { print($"panel {id}"); }
+}
+
+object kit {
+    alias band for eBand;
+    alias tick for Tick;
+}
+
+array<int> readings = {4, 1, 7, 2};
+array<int> spikes = {9, 3, 8};
+
+//-- Cluster 1 and 2: the board -------------------------------------------------------------------
+Panel boardA {
+    "board A";
+    id = 1;
+    alias band for eBand;
+    float rate = 0.5;
+    Tick ticks = 2;
+    int tier = 0;
+    int held = 0;
+    array<string> names = {"red", "green", "blue"};
+    array<char> label[16];
+    array<Chip> chips[BOARD_SLOTS];
+    ref array<int> feed;
+
+    auto level = {
+        static array<int> marks = {2, 5, 9};
+        static int sets = 0;
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            _v = v;
+            sets++;
+            int k = marks.filter((int m) => v >= m).count();
+            outer.tier = k * 10 + sets;
+            outer.ticks = outer.ticks + k;
+            #if BOARD_TRACE
+                print($"[lv {k}] ");
+            #endif
+        }
+    }
+
+    int operator + (int n) { return held + n; }
+    Panel operator += (int n) {
+        held = held + n;
+        return self;
+    }
+    bool operator == (int n) { return held == n; }
+    bool operator != (int n) { return held != n; }
+    bool operator < (int n) { return held < n; }
+    string operator [] (int i) { return names[i % names.length]; }
+
+    replace void show() {
+        print("board/");
+        ((Panel)self).show();
+    }
+
+    int sumFrom(array<int> row, int i) {
+        if (i >= row.length) return 0;
+        return row[i] + sumFrom(row, i + 1);
+    }
+
+    int findRow(array<array<int>> grid, int want, int r) {
+        if (r >= grid.length) return -1;
+        if (sumFrom(grid[r], 0) == want) return r;
+        return findRow(grid, want, r + 1);
+    }
+
+    float load(array<int> src, int n) {
+        feed := src;
+        array<array<int>> grid = {{1, 2}, {3, 4, 5}, {n, n + 1}};
+        int wide = grid.filter((array<int> row) => row.length > 2).count();
+        func<int, int, array<int>> fold = (int acc, array<int> row) => {
+            int s = sumFrom(row, 0);
+            if (s > acc) return s;
+            return acc;
+        };
+        int total = 0;
+        int best = 0;
+        for (array<int> row in grid) {
+            total += sumFrom(row, 0);
+            best = fold(best, row);
+        }
+        int at = findRow(grid, best, 0);
+        int over = feed.filter((int x) => x > n).count();
+        level = total;
+        self += over;
+        Chip c = new Chip(n);
+        int w = c?.weight;
+        if (c?) chips.append(c);
+        Chip last = c ?? chips[0];
+        int worth = last.worth();
+        int base = ((Part)last).worth();
+        if (chips.length == BOARD_SLOTS) {
+            for (Chip k in chips) delete k;
+            chips.clear();
+            print("(cleared) ");
+        }
+        bgl.util.buf.set(label, self[n]);
+        bgl.util.buf.toUpper(label);
+        band b = band.none;
+        switch (level) {
+            case 0 to 19: b = band.low;
+            case 20 to 29: b = eBand.mid;
+            default:      b = band.high;
+        }
+        int rank = 0;
+        if (self < 3) rank = 1;
+        else if (self == 3) rank = 2;
+        else if (self != 0) rank = 3;
+        int t = ticks;
+        #if BOARD_TRACE
+            print("[b] ");
+        #endif
+        show();
+        print(" ");
+        bgl.util.buf.print(label);
+        print($" wide {wide} total {total} best {best} at {at} over {over} held {held} plus {self + 1}");
+        print($" tier {tier} ticks {t} rank {rank} band {(int)b} chip {w} worth {worth} base {base}^");
+        return rate * total + chips.length;
+    }
+}
+
+//-- Cluster 3 and 4: the desk --------------------------------------------------------------------
+Panel deskB {
+    "desk B";
+    id = 2;
+    alias tick for Tick;
+    eBand mode = eBand.none;
+    Tick turns = 1;
+    array<string> words = {"one", "two", "three"};
+    array<array<int>> table = {{1, 3}, {5, 7, 9}};
+    int peak = 0;
+
+    auto gauge = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            _v = v;
+            outer.turns = outer.turns + 1;
+            if (v > outer.peak) outer.peak = v;
+            if (v > 10 && !outer.has(light)) outer.give(light);
+        }
+    }
+
+    emitter int twice(int v) { ($v * 2) }
+
+    int operator + (int n) { return gauge + n; }
+
+    int fold(int n) {
+        if (n <= 0) return 0;
+        int r = n;
+        #i6 {
+            $i6Expr(r) = $i6Expr(r) * 2;
+        }
+        return r + fold(n - 1);
+    }
+
+    int run(int n) {
+        Depth d;
+        func<int, int> pick = (int v) => {
+            if (v >= words.length) throw v;
+            string s = words[v];
+            return s.length;
+        };
+        int got = 0;
+        try {
+            got = pick(n);
+        } catch (int e) {
+            print($"(no word {e}) ");
+            got = -1;
+        }
+        array<int> row = table[n % 2];
+        int sum = 0;
+        for (int x in row) sum += x;
+        gauge = sum + n;
+        tick t = turns + n;
+        t = t * 2;
+        switch (gauge) {
+            case < 5:    mode = eBand.low;
+            case 5 to 12: mode = eBand.mid;
+            default:     mode = eBand.high;
+        }
+        int f = fold(n);
+        int tw = twice(got);
+        int plus = self + n;
+        int ti = t;
+        int tu = turns;
+        print($"desk {n}: got {got} depth {d.at} sum {sum} gauge {gauge} peak {peak} turns {tu}");
+        print($" mode {(int)mode} fold {f} twice {tw} plus {plus} t {ti} lit {self.has(light)}^");
+        return f;
+    }
+}
+
+//-- Cluster 1 and 3 again: the board extended ----------------------------------------------------
+extend boardA {
+    eBand grade = eBand.none;
+    object home = pinA;
+
+    auto mark = {
+        static array<int> steps = {1, 3, 6};
+        int _m = 0;
+        int operator () { return _m; }
+        void operator = (int v) {
+            _m = v;
+            int k = 0;
+            for (int s in steps) {
+                if (v >= s) k++;
+            }
+            outer.grade = (eBand)(k + 1);
+            object up = outer.home.parent;
+            if (up?) outer.home = up;
+            outer.home = outer.home ?? roomA;
+        }
+    }
+
+    emitter int halve(int v) { ($v / 2) }
+
+    int climb(object o, int d) {
+        object up = o.parent;
+        if (!up?) return d;
+        return climb(up, d + 1);
+    }
+
+    int scan(array<int> row, int n) {
+        #using kit
+        feed := row;
+        Chip c = new Chip(n);
+        int anc = 0;
+        if (c?) {
+            anc = ((Part)c).worth() + c.worth();
+            delete c;
+        }
+        int hits = feed.filter((int x) => x > halve(n)).count();
+        mark = hits + n;
+        band b = grade;
+        int kids = 0;
+        for (object o in trayA.children) kids++;
+        if (b == band.high) pinA.parent = trayA;
+        object where = home ?? roomA;
+        print($"scan {n}: hits {hits} mark {mark} grade {(int)b} home {where} depth {climb(where, 0)}");
+        print($" anc {anc} kids {kids} pin in {pinA.parent}^");
+        return hits;
+    }
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+verb BoardVerb {
+    grammar = {{.board, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        float f = boardA.load(readings, n);
+        print($"board {f} first {boardA.feed[0]}^");
+    }
+}
+
+verb DeskVerb {
+    grammar = {{.desk, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int f = deskB.run(n);
+        print($"desk {f} depth now {depthNow}^");
+    }
+}
+
+verb ScanVerb {
+    grammar = {{.scan, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int a = boardA.scan(spikes, n);
+        int b = boardA.scan(readings, n + 1);
+        print($"scan {a}, {b}^");
+    }
+}
+
+verb TallyVerb {
+    grammar = {{.tally, NUMBER}};
+    Tick runs = 0;
+    eBand last = eBand.none;
+    ref array<int> source;
+    array<string> tags = {"a", "bb", "ccc"};
+    array<char> line[20];
+    array<Chip> kept[2];
+
+    auto tally = {
+        static array<int> caps = {5, 10, 20};
+        int _t = 0;
+        int operator () { return _t; }
+        void operator = (int v) {
+            _t = v;
+            outer.runs = outer.runs + 1;
+            int k = caps.filter((int c) => v > c).count();
+            outer.last = (eBand)(k + 1);
+            if (k > 1 && !trayA.has(light)) trayA.give(light);
+        }
+    }
+
+    int rowSum(array<array<int>> g, int i) {
+        if (i >= g.length) return 0;
+        int s = 0;
+        for (int x in g[i]) s += x;
+        return s + rowSum(g, i + 1);
+    }
+
+    void handler() {
+        #using kit
+        int n = parsed_number;
+        Depth d;
+        source := readings;
+        array<array<int>> rows = {{2, 4}, {6}, {1, 1, n}};
+        int sum = rowSum(rows, 0);
+        func<int, int> cap = (int v) => {
+            if (v > 30) throw v;
+            return v + n;
+        };
+        try {
+            tally = cap(sum);
+        } catch (int e) {
+            print($"(capped {e}) ");
+            tally = 30;
+        }
+        Chip c = new Chip(n);
+        int w = c?.weight;
+        if (c?) kept.append(c);
+        Chip top = c ?? kept[0];
+        int topW = top?.weight;
+        if (kept.length == kept.size) {
+            for (Chip k in kept) delete k;
+            kept.clear();
+            print("(released) ");
+        }
+        bgl.util.buf.set(line, tags[n % tags.length]);
+        bgl.util.buf.toUpper(line);
+        int big = source.filter((int x) => x > n).count();
+        band b = last;
+        float ratio = tally * 0.25;
+        int r = runs;
+        int sq = 0;
+        #i6 {
+            $i6Expr(sq) = $i6Expr(big) * $i6Expr(big);
+        }
+        switch (b) {
+            case band.low:  print("low ");
+            case band.mid:  print("mid ");
+            case band.high: print("high ");
+            default:        print("none ");
+        }
+        bgl.util.buf.print(line);
+        print($" sum {sum} tally {tally} ratio {ratio} runs {r} chip {w} top {topW} big {big} sq {sq}");
+        print($" depth {d.at} tray lit {trayA.has(light)}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

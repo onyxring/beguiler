@@ -1,0 +1,84 @@
+Room A
+Room A.
+> catalog
+Printer:
+  P-1: product at 150
+  B-1: book of 300 pages
+  G-1: gadget drawing 40W
+  P-2: product at 600
+Pricer:
+  P-1: product at 150
+  B-1: book of 300 pages
+  G-1: doubled
+  P-2: product at 600
+  B-1: book of 300 pages
+Seen 4 and 5; priced total 5550.
+> place
+[log] placed #101 3 x P-1 open
+[log] placed #102 1 x G-1 open
+[log] placed #103 2 x B-1 held
+[log] placed #104 5 x P-2 open
+[log] placed #105 2 x G-1 held
+Placed #105 2 x G-1 held.
+Could not place P-1: E500 no free order slot.
+main repository r2: 5 orders, 4 big.
+> lookup
+Find 102: #102 1 x G-1 open.
+Find 999: <no order>.
+Order 103 totals 2500 for book.
+104 and 105 differ.
+> query
+At least 1000, first two:
+  #102 1 x G-1 open = 2400
+  #103 2 x B-1 held = 2500
+Shown 2.
+Held:
+  #103 2 x B-1 held = 2500
+  #105 2 x G-1 held = 4800
+Shown 2.
+> linq
+By total: 101=450 102=2400 103=2500 104=3000 105=4800
+4 of 5 reach 1000.
+Any pricey: true; all open: true.
+Units 13; distinct products 4.
+Ordered products: P-1 B-1 G-1 P-2
+Largest #105 2 x G-1 held.
+> report
+Csv P-1;G-1;B-1;P-2;G-1 (19 chars); has G-1: true.
+  101: misc, small
+  102: device, large
+  103: reading, large
+  104: misc, large
+  105: device, large
+> paths
+  #103 2 x B-1 held = 2500
+  #105 2 x G-1 held = 4800
+Held via path: 2; taxed 1000 = 1080; repo has 5.
+> cancel
+Cancelled #102 1 x G-1 cancelled.
+Ignored 999: E404 no such order.
+Failed 102: E422 order is closed.
+> validate
+Invalid: E422 quantity too large.
+Still ordered: P-1 B-1 G-1 P-2
+> validate
+Invalid: E422 quantity too large.
+Still ordered: P-1 B-1 G-1 P-2
+> ship
+Shipped #101 3 x P-1 shipped.
+Shipped #103 2 x B-1 shipped.
+Shipped #104 5 x P-2 shipped.
+Shipped #105 2 x G-1 shipped.
+Billed 11610 at 8%.
+> purge
+Released #101.
+Released #102.
+Released #103.
+Released #104.
+Released #105.
+0 left.
+[log] placed #106 1 x G-1 open
+Reused slot for #106 1 x G-1 open.
+> report
+Csv G-1 (3 chars); has G-1: true.
+  106: device, large

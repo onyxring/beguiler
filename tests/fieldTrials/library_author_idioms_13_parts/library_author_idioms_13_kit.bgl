@@ -1,0 +1,167 @@
+/*  Field trial part — included by library_author_idioms_13.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+#include <string>
+
+// ---- Cells: a count held by value; zero is empty. ----
+
+/// A count that copies on assignment.
+value class La13Cell {
+    int n;
+    /// Every count marked by any cell, in order.
+    static array<int> marks[8];
+    /// Last digits, grouped into bands.
+    static array<array<int>> bands = { {1, 2, 3}, {4, 5}, {6, 7, 8, 9} };
+
+    La13Cell operator = (La13Cell o) { n = o.n; return self; }
+    La13Cell operator = (int v) { n = v; return self; }
+    /// A cell is present when it isn't empty.
+    emitter eBool operator ? () { ($self.n ~= 0) }
+
+    /// One decimal digit of the count, counted from the right.
+    int operator [] (int i) {
+        int v = n;
+        for (int k = 0; k < i; k++) v = v / 10;
+        return v % 10;
+    }
+
+    /// Notes the count in the shared marks, when there is one.
+    void mark() {
+        if (self?) La13Cell.marks += n;
+    }
+
+    /// The band a cell's last digit falls in; -1 for none.
+    static int bandOf(La13Cell c) {
+        int d = c[0];
+        for (int b = 0; b < La13Cell.bands.length; b++) {
+            for (int v in La13Cell.bands[b]) if (v == d) return b;
+        }
+        return -1;
+    }
+
+    /// How many cells of a list are present.
+    static int countSet(array<La13Cell> list) {
+        int k = 0;
+        for (La13Cell c in list) if (c?) k++;
+        return k;
+    }
+
+    /// Prints the count.
+    void print() { ::print($"[{n}]"); }
+}
+
+// ---- Labels: short byte strings, linked. ----
+
+/// A label of up to eight characters, with a link to the next.
+class La13Label : object {
+    array<char> text = "--------";
+    La13Label next;
+
+    /// One character of the label; a dot past its end.
+    char operator [] (int i) {
+        if (i < 0 || i >= text.length) return '.';
+        return text[i];
+    }
+
+    /// Prints the label and the ones linked after it.
+    void show() {
+        for (char c in text) if (c != '-') print(c);
+        if (next?) {
+            print("+");
+            next.show();
+        }
+    }
+}
+
+// ---- The kit's namespace. ----
+
+/// Types and helpers, reached as la13.
+object la13 {
+    alias cell  for La13Cell;
+    alias label for La13Label;
+    alias rack  for La13Rack;
+
+    array<string> names[4] = { "low", "mid", "high" };
+    array<La13Label> labels[4];
+    int asked = 0;
+
+    /// A name picked by number; reading it counts the ask.
+    auto pick = {
+        int _at = 0;
+        string operator () {
+            outer.asked++;
+            return outer.names[_at] ?? "none";
+        }
+        void operator = (int i) {
+            _at = i;
+            if (i < outer.labels.length && outer.labels[i]?) outer.names[i] = "tagged";
+        }
+    }
+
+    /// Adds a label to the namespace's list.
+    void enlist(label l) { labels += l; }
+
+    /// The labels, each with the name of the same place.
+    void listLabels() {
+        for (int i = 0; i < labels.length; i++) {
+            label l = labels[i];
+            print($"{names[i] ?? "none"}=");
+            l.show();
+            print(" ");
+        }
+    }
+}
+
+#using la13
+
+// ---- Racks: a shared bay table, read as one flat list. ----
+
+/// A rack; every rack shares one bay table and one spare list.
+class La13Rack : object {
+    static array<array<int>> bays = { {1, 2, 3}, {4, 5}, {6} };
+    static array<int> spare[6];
+    cell held;
+    array<char> tag = "......";
+
+    /// The rack's load; each write is noted in the spare list.
+    auto load = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v;
+            if (La13Rack.spare.length == La13Rack.spare.size) La13Rack.spare.clear();
+            La13Rack.spare += v;
+        }
+    }
+
+    /// One slot of the bay table, counted across the bays; -1 past the end.
+    int operator [] (int i) {
+        func<int, int> at = (int k) => {
+            for (array<int> bay in La13Rack.bays) {
+                if (k < bay.length) return bay[k];
+                k = k - bay.length;
+            }
+            return -1;
+        };
+        return at(i);
+    }
+
+    /// Every slot of the bay table.
+    static int slots() {
+        int t = 0;
+        for (array<int> bay in La13Rack.bays) t += bay.length;
+        return t;
+    }
+
+    /// Holds a count, marks the tag at that place and logs it as the load.
+    void hold(int v) {
+        held = v;
+        held.mark();
+        if (held?) tag[held[0] % tag.length] = '#';
+        load = v;
+    }
+
+    /// Prints the tag.
+    void showTag() { for (char c in tag) print(c); }
+}

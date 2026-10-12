@@ -1,0 +1,544 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: class-level tables meeting the rest of the language. A gauge class whose static member
+// arrays (float weights, a nested band table, band names, a <buf> line buffer) are read beside a ref
+// sample member bound with :=, an int conversion operator and a weighted float sum; a primitive cents
+// newtype written into a <buf> by a static method added to extern class int, beside a clamp done in
+// #i6 lines; a ledger class with two parents, an inline accessor, a ref feed bound with :=, two
+// operator + overloads, ancestor dispatch by cast captured into a <buf>, ?? on a link, a <linq> count,
+// a nested local table, and perform() of a verb; an object holding an array of ledgers read through
+// outer. in an inline accessor, and extended with a second ledger array; a roster class with
+// operator += / -= over a string array and an #i6 checksum; a namespace object with type aliases and
+// block lambdas, imported with #using for an extern routine defined in an #i6 island; an enum switch
+// rebinding a ref table with :=; sort / reverse / `length =` / indexOf on the rows of a nested table;
+// ?. inside a block lambda; $i6Expr in an emitter over a string array and in an #i6 line beside a
+// block lambda; and #if around a <linq> filter on a postfix ? query.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+#include <buf>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int NONE = -1;
+
+enum eKind { raw = 0, scaled, banded }
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Cents: a primitive newtype, formatted by a static method on int ------------
+
+primitive class Cents {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter int dollars { ($val / 100) }
+    emitter int rest { ($val % 100) }
+}
+
+array<char> centsLine[16];
+
+extend extern class int {
+    static int clampTo(int v, int lo, int hi) {
+        int r = v;
+        #i6 if (r < lo) r = lo;
+        #i6 if (r > hi) r = hi;
+        return r;
+    }
+    static int writeCents(array<char> b, Cents c) {
+        int d = c.dollars;
+        int r = c.rest;
+        bgl.util.buf.capture(b);
+        print($"{d}.");
+        if (r < 10) print("0");
+        print(r);
+        bgl.util.buf.release();
+        return bgl.util.buf.length(b);
+    }
+}
+
+//-- Gauges: static tables shared by every gauge -------------------------------
+
+class Gauge : object {
+    inline string label;
+    ref array<int> samples;
+    static array<float> weights = { 0.5, 1.5, 2.0, 0.25 };
+    static array<array<int>> bands = { {0, 9}, {10, 49}, {50, 999} };
+    static array<string> bandNames = { "low", "mid", "high" };
+    static array<char> line[40];
+    static int renders = 0;
+
+    int operator () {
+        if (!samples) return 0;
+        int s = 0;
+        for (int x in samples) s += x;
+        return s;
+    }
+
+    void watch(array<int> src) { samples := src; }
+
+    static float weightSum() {
+        ref array<float> w := Gauge.weights;
+        float s = 0.0;
+        for (float x in w) s += x;
+        return s;
+    }
+
+    float weighted() {
+        float acc = 0.0;
+        if (!samples) return acc;
+        for (int i = 0; i < samples.length && i < Gauge.weights.length; i++) {
+            acc += Gauge.weights[i] * samples[i];
+        }
+        return acc;
+    }
+
+    int band() {
+        int t = self;
+        for (int b = 0; b < Gauge.bands.length; b++) {
+            if (t >= Gauge.bands[b][0] && t <= Gauge.bands[b][1]) return b;
+        }
+        return NONE;
+    }
+
+    void render() {
+        int t = self;
+        int b = band();
+        bgl.util.buf.capture(Gauge.line);
+        print($"{label}={t}");
+        if (b != NONE) print($" {Gauge.bandNames[b]}");
+        bgl.util.buf.release();
+        Gauge.renders++;
+    }
+}
+
+array<int> readA = {4, 8, 15};
+array<int> readB = {30, 12};
+array<int> readC = {200, 300, 150, 7};
+
+Gauge gaugeA { "A", "gauge A"; }
+Gauge gaugeB { "B", "gauge B"; }
+Gauge gaugeC { "C", "gauge C"; }
+
+//-- Ledgers: two parents, an accessor and arithmetic --------------------------
+
+array<char> ledgerLine[64];
+
+class Entry : object {
+    int amount = 0;
+    default void show() { print($"{amount}"); }
+}
+
+class Tagged : object {
+    string tag = "none";
+    default void show() { print($"[{tag}]"); }
+}
+
+class Ledger : Entry, Tagged {
+    Ledger link;
+    ref array<int> feed;
+    auto level = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) { if (v < 0) _raw = 0; else _raw = v; }
+    }
+
+    int operator + (Ledger o) { return amount + o.amount; }
+    int operator + (int n) { return amount + n; }
+
+    void show() {
+        ((Entry)self).show();
+        ((Tagged)self).show();
+    }
+
+    void attach(array<int> src) { feed := src; }
+
+    int fold() {
+        Ledger l = link ?? self;
+        return self + l;
+    }
+
+    int countOver(int floor) {
+        if (!feed) return 0;
+        return feed.filter((int x) => x + amount > floor).count();
+    }
+
+    void split() {
+        array<array<int>> parts = { {0, 0}, {NONE} };
+        if (feed) {
+            for (int x in feed) {
+                parts[0][x % 2] += x;
+                if (x > parts[1][0]) parts[1][0] = x;
+            }
+        }
+        print($"even {parts[0][0]}, odd {parts[0][1]}, max {parts[1][0]}");
+    }
+
+    void stamp() {
+        bgl.util.buf.capture(ledgerLine);
+        show();
+        bgl.util.buf.release();
+        level = ledgerLine.length * 10 - amount;
+    }
+
+    void post() {
+        if (self + 0 > 0) ReportTest.perform();
+        else print("(nothing to post)^");
+    }
+}
+
+array<int> feedA = {5, 12, 7, 20};
+array<int> feedB = {1, 2, 3};
+
+Ledger ledgerA { amount = 40; tag = "rent"; }
+Ledger ledgerB { amount = 15; tag = "food"; }
+Ledger ledgerC { amount = 0; }
+
+//-- A rack holding ledgers ----------------------------------------------------
+
+object rack {
+    "rack";
+    int scale = 2;
+    array<Ledger> slots = { ledgerA, ledgerB };
+    auto weight = {
+        int _extra = 0;
+        int operator () {
+            int s = _extra;
+            for (Ledger l in outer.slots) s += l.amount;
+            if (outer.slots.length > 0) s += outer.slots[0].amount / 10;
+            return s * outer.scale;
+        }
+        void operator = (int v) { _extra = v; }
+    }
+}
+
+extend rack {
+    array<Ledger> spare = { ledgerC, ledgerA };
+    int spareTotal() {
+        int s = 0;
+        for (Ledger l in spare) s += l.amount;
+        return s;
+    }
+}
+
+//-- A roster of names ---------------------------------------------------------
+
+class Roster : object {
+    array<string> names[6];
+    int adds = 0;
+    Roster operator += (string s) { names += s; adds++; return self; }
+    Roster operator -= (string s) { names -= s; return self; }
+    Roster operator ++ () { adds += 10; return self; }
+    int checksum() {
+        int n = 0;
+        int a = adds;
+        #i6 n = $i6Expr(names.length) * 100 + a;
+        return n;
+    }
+}
+
+Roster rosterA { "roster A"; }
+
+//-- A namespace of row types --------------------------------------------------
+
+class Row : object {
+    inline int width;
+}
+
+Row row1 { 3, "row one"; }
+Row row2 { 5, "row two"; }
+Row row3 { 1, "row three"; }
+
+array<Row> allRows = { row1, row2, row3 };
+
+object tbl {
+    alias row for Row;
+    alias kind for eKind;
+    int wideCount(array<Row> rows, int min) {
+        return rows.filter((Row r) => {
+            if (r.width >= min) return true;
+            return false;
+        }).count();
+    }
+    int widthSum(array<Row> rows) {
+        int s = 0;
+        rows.filter((row r) => { s += r.width; return true; });
+        return s;
+    }
+}
+
+#using tbl
+extern void PrintRowName(row r);
+
+#i6 {
+    [ PrintRowName r; print (name) r; ];
+}
+
+//-- Free functions over the tables --------------------------------------------
+
+array<int> rawRow = {3, 9, 27};
+array<int> scaledRow = {30, 90, 270};
+array<int> bandRow = {0, 1, 2};
+
+int pickSum(eKind k) {
+    ref array<int> t := rawRow;
+    switch (k) {
+        case eKind.scaled: t := scaledRow;
+        case eKind.banded: t := bandRow;
+    }
+    int s = 0;
+    for (int x in t) s += x;
+    return s;
+}
+
+array<array<int>> stacks = { {5, 1, 4}, {9, 2, 6}, {7} };
+
+int tidy(array<array<int>> t) {
+    for (int i = 0; i < t.length; i++) t[i].sort();
+    t[0].reverse();
+    t[1].length = 2;
+    return t[2].indexOf(7);
+}
+
+int chained(array<Ledger> ls) {
+    return ls.filter((Ledger l) => {
+        Ledger next = l.link?.link;
+        return next != null;
+    }).count();
+}
+
+int linked(array<Ledger> ls) {
+#if TARGET_GLULX
+    return ls.filter((Ledger l) => l.link?).count();
+#else
+    int n = 0;
+    for (Ledger l in ls) if (l.link?) n++;
+    return n;
+#endif
+}
+
+int scaleAll(array<int> xs, int k) {
+    int factor = 0;
+    #i6 factor = $i6Expr(int.clampTo(k, 1, 5));
+    return xs.filter((int x) => {
+        int y = x * factor;
+        return y > 20;
+    }).count();
+}
+
+array<string> dirNames = { "north", "east", "south", "west" };
+
+emitter string nameAt(array<string> t, int i) { $i6Expr($t[$i]) }
+
+array<Ledger> allLedgers = { ledgerA, ledgerB, ledgerC };
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb GaugesTest {
+    grammar = {.gauges};
+    void handler() {
+        array<Gauge> all = { gaugeA, gaugeB, gaugeC };
+        for (Gauge g in all) {
+            int t = g;
+            g.render();
+            print($"{g.label}: total {t}, weighted {g.weighted()}, band {g.band()}, line ");
+            bgl.util.buf.print(Gauge.line);
+            print($" ({Gauge.line.length})^");
+        }
+        print($"Renders {Gauge.renders}, weights sum {Gauge.weightSum()}.^");
+    }
+}
+
+verb WatchTest {
+    grammar = {.watch, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        switch (n) {
+            case 0: gaugeB.watch(readA);
+            case 1: gaugeB.watch(readB);
+            default: gaugeB.watch(readC);
+        }
+        int t = gaugeB;
+        print($"B now {t}, band {Gauge.bandNames[gaugeB.band()]}, weighted {gaugeB.weighted()}^");
+    }
+}
+
+verb LedgersTest {
+    grammar = {.ledgers};
+    void handler() {
+        for (Ledger l in allLedgers) {
+            l.show();
+            print($": fold {l.fold()}, over 15 {l.countOver(15)}, ");
+            l.split();
+            print("^");
+        }
+        print($"A+B {ledgerA + ledgerB}, A+7 {ledgerA + 7}^");
+    }
+}
+
+verb StampTest {
+    grammar = {.stamp};
+    void handler() {
+        for (Ledger l in allLedgers) {
+            l.stamp();
+            bgl.util.buf.print(ledgerLine);
+            print($" -> level {l.level}^");
+        }
+    }
+}
+
+verb LevelTest {
+    grammar = {.level, NUMBER};
+    void handler() {
+        ledgerB.level = (int)noun - 3;
+        int v = ledgerB.level;
+        ledgerB.level += 4;
+        int w = ledgerB.level;
+        print($"B level {v}, then {w}^");
+    }
+}
+
+verb RackTest {
+    grammar = {.rack};
+    void handler() {
+        int w = rack.weight;
+        print($"Rack weight {w}, spare {rack.spareTotal()}, slots {rack.slots.length}^");
+        rack.weight = 5;
+        rack.scale = 3;
+        w = rack.weight;
+        print($"Rack weight now {w}^");
+    }
+}
+
+verb RosterTest {
+    grammar = {.roster};
+    void handler() {
+        rosterA += "north";
+        rosterA += "east";
+        rosterA += "south";
+        rosterA -= "east";
+        rosterA++;
+        print($"Roster {rosterA.names.length}:");
+        for (string s in rosterA.names) print($" {s}");
+        print($"; checksum {rosterA.checksum()}^");
+    }
+}
+
+verb TablesTest {
+    grammar = {.tables};
+    void handler() {
+        print($"Wide {tbl.wideCount(allRows, 3)}, sum {tbl.widthSum(allRows)}, first ");
+        PrintRowName(allRows[0]);
+        tbl.row r = allRows[1];
+        print(", second ");
+        PrintRowName(r);
+        tbl.kind k = tbl.kind.banded;
+        print($", kind {(int)k}^");
+    }
+}
+
+verb LinksTest {
+    grammar = {.links};
+    void handler() {
+        print($"Linked {linked(allLedgers)}, chained {chained(allLedgers)}^");
+        for (Ledger l in allLedgers) print($"{l.tag} fold {l.fold()}; ");
+        print("^");
+    }
+}
+
+verb PickTest {
+    grammar = {.pick};
+    void handler() {
+        print($"raw {pickSum(eKind.raw)}, scaled {pickSum(eKind.scaled)}, banded {pickSum(eKind.banded)}^");
+    }
+}
+
+verb TidyTest {
+    grammar = {.tidy};
+    void handler() {
+        int at = tidy(stacks);
+        for (int r = 0; r < stacks.length; r++) {
+            print($"{r}:");
+            for (int x in stacks[r]) print($" {x}");
+            print("; ");
+        }
+        print($"7 at {at}^");
+    }
+}
+
+verb ScaleTest {
+    grammar = {.scale, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        print($"Scale {k}: {scaleAll(feedA, k)} of {feedA.length} over 20^");
+    }
+}
+
+verb CentsTest {
+    grammar = {.cents, NUMBER};
+    void handler() {
+        Cents c = (int)noun;
+        int n = int.writeCents(centsLine, c);
+        print("Cents ");
+        bgl.util.buf.print(centsLine);
+        print($" ({n} chars), clamp {int.clampTo((int)noun, 10, 500)}^");
+    }
+}
+
+verb DirsTest {
+    grammar = {.dirs};
+    void handler() {
+        for (int i = 0; i < dirNames.length; i++) print($"{nameAt(dirNames, i)} ");
+        print("^");
+    }
+}
+
+verb PostTest {
+    grammar = {.post};
+    void handler() {
+        ledgerA.post();
+        ledgerC.post();
+    }
+}
+
+verb ReportTest {
+    grammar = {.report};
+    void handler() {
+        int total = 0;
+        for (Ledger l in allLedgers) total += l.amount;
+        print($"Report: {allLedgers.length} ledgers, total {total}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    gaugeA.watch(readA);
+    gaugeC.samples := readC;
+    ledgerA.attach(feedA);
+    ledgerB.attach(feedB);
+    ledgerA.link = ledgerB;
+    ledgerB.link = ledgerC;
+    Gauge.weights[3] *= 2.0;
+    print("Tables bound.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

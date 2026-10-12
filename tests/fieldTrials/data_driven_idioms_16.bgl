@@ -1,0 +1,444 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: dense declarations meeting in threes. A value class with two value parents chains both
+// copy operators by cast and declares operator [] / []= over four slots (each a switch), + * and %,
+// fills its slots from a nested list table chosen by #if through a block lambda that captures a
+// parameter and self, names slots from string arrays into a stringObj, switches on typeof of a var and
+// perform()s a verb, and applies operators to self inside an interpolation; a reference class with
+// replace ==, !=, <=> (deriving < and >), a default method, a subscript that throws, a sift through a
+// func<> with nested try/catch, has/give/ungive, a stringObj trail and a string switch on a method's
+// result; a replace of a global routine calling replaced() with a block lambda, a string switch on a
+// stringObj, a caught subscript throw and perform(); and an object with an inline accessor writing its
+// host through outer, its own operator [], an array-of-arrays member, and recursive methods threading a
+// ref stringObj, a ref value-class cell with a primitive newtype test, and a var by typeof.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#define WIDE_ROWS
+
+extend class object {
+    string description;
+}
+
+//-- Shared types ---------------------------------------------------------------------
+
+primitive class Weight {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter bool heavy { ($val >= 10) }
+}
+
+value class Cell {
+    int x;
+    Cell operator = (Cell o) { x = o.x; return self; }
+}
+
+value class Tagged {
+    int tag;
+    Tagged operator = (Tagged o) { tag = o.tag; return self; }
+}
+
+union Item = string | object;
+
+array<string> bandNames = { "none", "low", "mid", "high" };
+
+//-- Boards: a value class with two value parents and four subscripted slots ---------------
+
+value class Board : Cell, Tagged {
+    int r0;
+    int r1;
+    int r2;
+    int r3;
+
+    Board operator = (Board o) {
+        (Cell)self = o;
+        (Tagged)self = o;
+        r0 = o.r0;
+        r1 = o.r1;
+        r2 = o.r2;
+        r3 = o.r3;
+        return self;
+    }
+
+    int operator [] (int i) {
+        switch (i) {
+            case 0: return r0;
+            case 1: return r1;
+            case 2: return r2;
+            case 3: return r3;
+        }
+        return -1;
+    }
+
+    int operator []= (int i, int v) {
+        switch (i) {
+            case 0: r0 = v;
+            case 1: r1 = v;
+            case 2: r2 = v;
+            case 3: r3 = v;
+        }
+        return v;
+    }
+
+    int operator + (int v) { return r0 + r1 + r2 + r3 + x + v; }
+    int operator * (int k) { return (r0 + r1 + r2 + r3) * k; }
+    int operator % (int m) { return (x * 10 + tag) % m; }
+
+    int band(int v) {
+        switch (v) {
+            case 0: return 0;
+            case 1 to 5: return 1;
+            case < 12: return 2;
+        }
+        return 3;
+    }
+
+    // Fills the slots from a table of rows: each slot is its row's sum after a step rule.
+    void load(int scale) {
+#if WIDE_ROWS
+        array<array<int>> rows = { {1, 2}, {3, 4, 5}, {6}, {7, 1} };
+#else
+        array<array<int>> rows = { {1}, {2}, {3}, {4} };
+#endif
+        func<int, int> step = (int v) => {
+            if (v > 4) return v * scale;
+            if (v == 1) return v + tag;
+            return v;
+        };
+        for (int i = 0; i < rows.length; i++) {
+            int sum = 0;
+            for (int v in rows[i]) sum += step(v);
+            self[i] = sum;
+        }
+        x = rows.length;
+    }
+
+    // Prints each slot with its band, then where the board came from.
+    void show(var from) {
+        array<string> marks = { "a", "b", "c", "d" };
+        stringObj line = "";
+        for (int i = 0; i < 4; i++) {
+            line += marks[i];
+            line += "=";
+            line += bandNames[band(self[i])];
+            if (i < 3) line += " ";
+        }
+        switch (typeof(from)) {
+            case eType.string:
+                line = line + " from " + (string)from;
+            case eType.object:
+                line += " held";
+                Ping.perform((object)from);
+            default:
+                line += " loose";
+        }
+        line.print();
+#if WIDE_ROWS
+        print($" ({self * 1})");
+#endif
+    }
+
+    // Names the slots past a limit; the limit comes from a rule over the board's own sum.
+    int over(func<int, int> rule) {
+        int limit = rule(self + 0);
+        array<string> names = { "first", "second", "third", "fourth" };
+        stringObj out = "";
+        int n = 0;
+        for (int i = 0; i < 4; i++) {
+            if (self[i] <= limit) continue;
+            if (n > 0) out += ",";
+            out += names[i];
+            n++;
+        }
+        out.print();
+        return n;
+    }
+}
+
+//-- Plates: a reference class with comparisons, a guarded subscript and a sift rule -------
+
+class Plate : object {
+    int mass;
+    array<string> labels = { "plain", "marked", "bent" };
+
+    default string kind() { return "plate"; }
+
+    replace bool operator == (Plate o) { return mass == o.mass; }
+    replace bool operator != (Plate o) { return mass != o.mass; }
+    int operator <=> (Plate o) { return mass - o.mass; }
+
+    string operator [] (int i) {
+        if (i < 0 || i >= labels.length) throw i;
+        return labels[i];
+    }
+
+    void operator []= (int i, string s) {
+        if (i < 0 || i >= labels.length) throw i;
+        labels[i] = s;
+    }
+
+    // Rates every plate on a holder; a plate the rule rejects is thrown to the outer catch,
+    // a rating past the labels to the inner one.
+    int sift(object holder, func<int, Plate> rule, var mark) {
+        int kept = 0;
+        Cell total;
+        stringObj trail = "";
+        for (object o in holder.children) {
+            if (!o.is(Plate)) continue;
+            Plate p = (Plate)o;
+            try {
+                int r = rule(p);
+                if (r < 0) throw p;
+                try {
+                    switch (r) {
+                        case 0: trail += "z";
+                        case 1 to 2: trail += self[r];
+                        default: trail += self[r];
+                    }
+                } catch (int bad) {
+                    stringObj note = $"?{bad}";
+                    trail += note;
+                }
+                if (p.has(light)) trail += "*";
+                p.give(general);
+                total.x += r;
+                kept++;
+            } catch (object out) {
+                out.ungive(general);
+                trail += "!";
+            }
+            trail += " ";
+        }
+        switch (typeof(mark)) {
+            case eType.string: trail = (string)mark + trail;
+            case eType.object: Ping.perform((object)mark);
+        }
+        trail.print();
+        print($"= {total.x}");
+        return kept;
+    }
+
+    // Picks the plate a comparison prefers; equal plates go by kind.
+    Plate pick(object holder, func<bool, Plate, Plate> better) {
+        Plate best = null;
+        for (object o in holder.children) {
+            if (!o.is(Plate)) continue;
+            Plate p = (Plate)o;
+            if (best == null) {
+                best = p;
+                continue;
+            }
+            if (p == best) {
+                switch (p.kind()) {
+                    case "bent plate": print($"[tie {p}]");
+                    default: print("[tie]");
+                }
+                continue;
+            }
+            if (better(p, best)) best = p;
+        }
+        return best;
+    }
+}
+
+class BentPlate : Plate {
+    string kind() { return "bent plate"; }
+}
+
+int plateScore(Plate p) { return p.mass; }
+
+// Scores a plate by its kind and label; an unknown label index is caught.
+replace int plateScore(Plate p) {
+    array<string> kinds = { "plate", "bent plate" };
+    func<int, int> bonus = (int v) => {
+        if (v > 5) return 2;
+        return 1;
+    };
+    int s = replaced(p) * bonus(p.mass);
+    stringObj k = p.kind();
+    switch (k) {
+        case "bent plate": s += 100;
+    }
+    try {
+        string l = p[kinds.length + 1];
+        print(l);
+    } catch (int e) {
+        s += e;
+    }
+    if (p.has(general)) s += 1000;
+    var v = p;
+    if (typeof(v) == eType.object && s > 1100) Ping.perform((object)v);
+    return s;
+}
+
+//-- The world ----------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelf { "shelf"; object parent = roomA; attributes = {static, supporter}; }
+
+Plate plateA { "plate A"; mass = 3; object parent = shelf; }
+Plate plateB { "plate B"; mass = 7; object parent = shelf; attributes = {light}; }
+BentPlate plateC { "plate C"; mass = 7; object parent = shelf; }
+object brassKey { "brass key"; object parent = shelf; }
+
+// A panel with an inline accessor reading its host, a subscript over its faces, and recursion.
+object panelA {
+    "panel A";
+    object parent = roomA;
+    int base = 2;
+    array<string> faces = { "blank", "dot", "bar" };
+    array<array<int>> grid = { {1, 2}, {3}, {4, 5, 6} };
+
+    auto reading = {
+        int _raw;
+        int _sets;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _sets++;
+            switch (v) {
+                case < 0: _raw = 0;
+                case 0 to 9: _raw = v * outer.base;
+                default: _raw = 99;
+            }
+            if (_sets > 1) outer.faces[0] = "used";
+        }
+    }
+
+    string operator [] (int i) { return faces[i % faces.length]; }
+
+    // Spells faces n down to 0 into out.
+    void spell(ref stringObj out, int n) {
+        if (n < 0) return;
+        out += self[n];
+        if (n > 0) out += "-";
+        spell(out, n - 1);
+    }
+
+    // Sums the grid from a row down into acc; a heavy running sum pings the panel.
+    int fold(ref Cell acc, int row) {
+        if (row >= grid.length) return acc.x;
+        for (int v in grid[row]) acc.x += v;
+        Weight w = acc.x;
+        if (w.heavy) Ping.perform(self);
+        return fold(acc, row + 1);
+    }
+
+    // Measures an item: a string by its length, an object by its children at each depth.
+    int measure(var v, int depth) {
+        switch (typeof(v)) {
+            case eType.string:
+                stringObj s = (string)v;
+                return s.length;
+            case eType.object:
+                object o = (object)v;
+                int n = 0;
+                for (object c in o.children) n += measure(c, depth + 1);
+                return n + depth;
+        }
+        return 0;
+    }
+}
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() { print($"Ping {noun}.^"); }
+}
+
+verb BoardTest {
+    grammar = {.board};
+    void handler() {
+        Board b;
+        b.tag = 3;
+        b.load(2);
+        b.show("text");
+        print($"^sum {b + 0}, double {b * 2}, mod {b % 7}^");
+        Board c = b;
+        c[3] = 1;
+        c.tag = 0;
+        c.show(brassKey);
+        print($"^{b[3]} {c[3]} {c + 1}^");
+        c.show(0);
+        print("^");
+        int n = b.over((int s) => {
+            if (s > 50) return s / 5;
+            return s;
+        });
+        print($" ({n})^");
+    }
+}
+
+verb PlatesTest {
+    grammar = {.plates};
+    void handler() {
+        int k = plateA.sift(shelf, (Plate p) => {
+            if (p.mass > 6 && p.kind() == "plate") return 2;
+            if (p.mass > 6) return -1;
+            return p.mass;
+        }, "row: ");
+        print($" kept {k}^");
+        k = plateA.sift(shelf, (Plate p) => p.mass - 7, brassKey);
+        print($" kept {k}^");
+        Plate h = plateA.pick(shelf, (Plate a, Plate b) => a > b);
+        print($"^heaviest {h}, ");
+        Plate l = plateA.pick(shelf, (Plate a, Plate b) => {
+            return a < b;
+        });
+        print($"^lightest {l}^");
+    }
+}
+
+verb LabelsTest {
+    grammar = {.labels};
+    void handler() {
+        plateA[1] = "cut";
+        print($"{plateA[1]} {plateB[1]} {plateC.kind()} {plateA.kind()}^");
+        try {
+            plateB[5] = "lost";
+        } catch (int e) {
+            print($"no slot {e}^");
+        }
+        print($"{plateScore(plateA)} {plateScore(plateB)} {plateScore(plateC)}^");
+    }
+}
+
+verb PanelTest {
+    grammar = {.panel, NUMBER};
+    void handler() {
+        panelA.reading = (int)noun;
+        int r = panelA.reading;
+        stringObj s = "";
+        panelA.spell(s, r % 5);
+        print($"{r}: ");
+        s.print();
+        print("^");
+        Cell acc;
+        acc.x = (int)noun;
+        int t = panelA.fold(acc, 0);
+        print($"fold {t}, acc {acc.x}, measure {panelA.measure(shelf, 0)} {panelA.measure("abcde", 0)}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    print("Ready.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

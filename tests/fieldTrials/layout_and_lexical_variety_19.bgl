@@ -1,0 +1,361 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a locked door, a
+// key, a tray with a capacity, a set of tokens and a few commands of its own. A room class and a token
+// class written in different brace styles; an enum and a bnum split across lines with comments between
+// members; a token class with a static counter, an enum member, a switch over it and a method chain; a
+// door whose `door_to` and `door_dir` are routines, `with_key` on a locked door; `before` and `after`
+// rules switched on `action` with mixed-case `case` labels; a tray that refuses a fourth token with a
+// `before` rule on `Receive` and a multi-value `case`; an `each_turn` that counts; a daemon started and stopped by a command; a `NUMBER`
+// grammar line reading the number through a cast; a `TOPIC`-free word-match verb with alternation split
+// over lines; children loops summing members with compound assignment; an `array<int>` log appended to
+// and read with a `for … in`; a `stringObj` built across a loop; interpolated strings holding a ternary,
+// a cast and a nested call; hex and binary literals in constants and bnum tests; `rtrue(…)` with an
+// interpolated string; comments between tokens and inside argument lists; `///` doc comments on members;
+// keywords and identifiers in mixed case; a function with no spaces around operators.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include   <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+//-- Kinds ----------------------------------------------------------------------------------------------
+
+enum eShade
+{
+    red   = 1 ,       // explicit start
+    green ,           // 2
+    /* blue skipped on purpose */
+    gray  = 5 ,
+    white             // 6
+}
+
+bnum eMark { worn , chipped , /* a gap */ marked , }       // 1 2 4
+
+CONST INT TRAY_CAP   = 3 ;
+const int HEAVY      = $0A ;          // ten
+Const int MARK_MASK  = $$0110 ;       // chipped | marked
+
+//-- Classes --------------------------------------------------------------------------------------------
+
+class Room : object
+{
+    attributeList attributes = { light } ;
+    string description ;
+}
+
+class Token : object {
+    /// How heavy the token is.
+    int weight = 1 ;
+    eShade shade = eShade.red ;       /// Its color.
+    eMark  marks = 0 ;
+    static int moved = 0 ;
+    string description = "A small token." ;
+
+    string shadeName () {
+        SWITCH (shade) {
+            Case eShade.red   : return "red" ;
+            case eShade.green : return "green" ;
+            CASE eShade.gray  : return "gray" ;
+            default           : return "pale" ;
+        }
+    }
+    Token mark ( eMark m ) { marks = marks | m ; return self ; }
+    Token heavier ( int by ) { weight += by ; return self ; }
+    bool  isMarked () { return ( marks & MARK_MASK ) != 0 ; }
+
+    bool after()
+    {
+        switch (ACTION)
+        {
+            case Take ,
+                 Drop : Token.moved++ ;
+        }
+        rfalse ;
+    }
+}
+
+//-- Rooms and the door ---------------------------------------------------------------------------------
+
+int turnsInA = 0 ;
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A door leads east." ;
+    object e_to = brassDoor ;
+    void each_turn () { turnsInA++ ; }
+}
+
+Room roomB { "Room B" ; description = "Room B. A door leads west." ; object w_to = brassDoor ; }
+
+object brassDoor
+{
+    "brass door" ;
+    name       = { .brass , .door } ;
+    attributes = { door , openable , lockable , locked , static } ;
+    object with_key = brassKey ;
+    rawArray<object> found_in = { roomA , roomB } ;
+    string description = "A brass door." ;
+
+    object door_to ()
+    {
+        if (location == roomA) return roomB ;
+        return roomA ;
+    }
+    property door_dir ()
+    {
+        if (location == roomA) return e_to ;
+        return w_to ;
+    }
+}
+
+object brassKey
+{
+    "brass key" ; parent = roomA ; name = { .brass , .key } ;
+    string description = "A brass key." ;
+}
+
+//-- The tray and the tokens ----------------------------------------------------------------------------
+
+object tray
+{
+    "tray" ;
+    parent     = roomA ;
+    name       = { .tray } ;
+    attributes = { container , open , static } ;
+    int capacity = TRAY_CAP + 2 ;   // room for the key besides the tokens
+    string description = "A tray." ;
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Receive :                // runs on the tray when something is put in it
+                if (receive_action == Insert && noun.is(Token) &&
+                    tokensIn(self) >= TRAY_CAP)
+                    rtrue($"The tray already holds {TRAY_CAP} tokens.^") ;
+        }
+        rfalse ;
+    }
+}
+
+Token redToken   { "red token"   ; parent = roomA ; name = { .red   , .token } ; }
+Token greenToken
+{
+    "green token" ;
+    parent = roomA ;
+    name   = { .green , .token } ;
+    shade  = eShade.green ;
+    weight = 3 ;
+}
+Token grayToken  { "gray token"  ; parent = roomA ; name = { .gray , .grey , .token } ; shade = eShade.gray ; weight = $$100 ; }
+Token whiteToken { "white token" ; parent = roomB ; name = { .white , .token } ; shade = eShade.white ; weight = 2 ; marks = eMark.worn ; }
+
+//-- Helpers --------------------------------------------------------------------------------------------
+
+int tokensIn ( object box )
+{
+    int n = 0 ;
+    for (object o in box.children)
+        if (o.is(Token)) n++ ;
+    return n ;
+}
+
+int weightIn ( object box ) {
+    int total = 0 ;
+    for ( object o in box.children ) {
+        if (o.is(Token)) total += ( (Token) o ).weight ;
+    }
+    return total ;
+}
+
+int rating(int w,int count){return w*10+count;}
+
+string verdict ( int w )
+{
+    switch (w)
+    {
+        case 0         : return "empty" ;
+        case 1 to 4    : return "light" ;
+        case 5 to 9    : return "fair" ;
+        default        : return "heavy" ;
+    }
+}
+
+array<int> weighLog[8] ;
+
+void logWeight ( int w )
+{
+    if (weighLog.length < 8) weighLog.append(w) ;
+}
+
+//-- The counter object, with a daemon ------------------------------------------------------------------
+
+object counter
+{
+    "counter" ;
+    parent = roomA ;
+    name   = { .counter } ;
+    attributes = { static } ;
+    int ticks = 0 ;
+    bool running = false ;
+    string description = "A counter." ;
+
+    void daemon ()
+    {
+        ticks++ ;
+        print($"[tick {ticks}]^") ;
+    }
+}
+
+//-- Initialise -----------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+//-- Commands -------------------------------------------------------------------------------------------
+
+verb Weigh
+{
+    grammar = {
+        { .weigh , NOUN } ,
+        { .weigh ,
+          .all ,
+          .in ,
+          NOUN } ,
+    } ;
+    void handler ()
+    {
+        if (noun.is(Token))
+        {
+            Token t = (Token) noun ;
+            logWeight(t.weight) ;
+            { print($"The {t.shadeName()} token weighs {t.weight} ({verdict(t.weight)}).^") ; return ; }
+        }
+        if (noun == tray)
+        {
+            int w = weightIn(tray) ;
+            logWeight(w) ;
+            print($"The tray holds {tokensIn(tray)} token{tokensIn(tray) == 1 ? "" : "s"}, weight {w}") ;
+            printLine($" ({verdict(w)}), rating {rating(w , tokensIn(tray))}.") ;
+            return ;
+        }
+        printLine("That isn't something to weigh.") ;
+    }
+}
+
+verb Tally
+{
+    meta = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        stringObj line ;
+        int count = 0 ;
+        int sum   = 0 ;
+        for (int w in weighLog)
+        {
+            if (count > 0) line += "," ;
+            stringObj part = $"{w}" ;
+            line += part ;
+            count++ ;
+            sum   += w ;
+        }
+        if (count == 0) { printLine("Nothing weighed yet.") ; return ; }
+        print("Weighed: ") ;
+        line.print() ;
+        printLine($" (total {sum}, mean {sum / count})") ;
+    }
+}
+
+verb Mark
+{
+    grammar = {
+        { .scratch , NOUN } ,
+        { ( .chip | .nick )
+          /* either word */ , NOUN } ,
+    } ;
+    void handler ()
+    {
+        if (!(noun.is(Token))) { print("Only tokens can be marked.^") ; return ; }
+        Token t = (Token)noun ;
+        if (t.isMarked()) { print($"The {t.shadeName()} token is already marked.^") ; return ; }
+        t.mark(eMark.chipped).heavier(-1) ;
+        print($"You chip the {t.shadeName()} token; it now weighs {t.weight}.^") ;
+    }
+}
+
+verb Dial
+{
+    grammar = {
+        { .set , .counter , .to , NUMBER } ,
+        { .set , .counter , NUMBER } ,
+    } ;
+    void handler ()
+    {
+        int n = (int)noun ;
+        if (n > $FF) { print("The counter only goes to 255.^") ; return ; }
+        counter.ticks = n ;
+        print($"The counter reads {counter.ticks}") ;
+        printLine(n == 0 ? " (reset)." : ".") ;
+    }
+}
+
+verb Run
+{
+    grammar = { { .start , .counter } , { .stop , .counter } } ;
+    void handler ()
+    {
+        if (counter.running)
+        {
+            StopDaemon(counter) ;
+            counter.running = false ;
+            { print("The counter stops.^") ; return ; }
+        }
+        StartDaemon(counter) ;
+        counter.running = true ;
+        print("The counter starts.^") ;
+    }
+}
+
+verb Survey
+{
+    meta = true ;
+    grammar = { .survey } ;
+    void handler ()
+    {
+        int here   = 0 ;
+        int heavy  = 0 ;
+        int marked = 0 ;
+        stringObj names ;
+        for (object o in location.children)
+        {
+            if (!(o.is(Token))) continue ;
+            Token t = (Token)o ;
+            here++ ;
+            if (t.weight >= 3) heavy++ ;
+            if (t.isMarked()) marked++ ;
+            if (here > 1) names += " " ;
+            names += t.shadeName() ;
+        }
+        print($"{here} loose, {heavy} heavy, {marked} marked") ;
+        if (here > 0) { print(": ") ; names.print() ; }
+        printLine(".") ;
+        printLine($"Tray {tokensIn(tray)}/{TRAY_CAP}, moved {Token.moved}, turns in A {turnsInA}, ticks {counter.ticks}.") ;
+        printLine($"Door {brassDoor.has(locked) ? "locked" : (brassDoor.has(open) ? "open" : "shut")}, heavy at {::HEAVY}.") ;
+    }
+}

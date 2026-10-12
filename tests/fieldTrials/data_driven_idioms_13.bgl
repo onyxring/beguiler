@@ -1,0 +1,568 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: tables meeting in threes. A namespace object (`alias … for` a value class and a class)
+// holding a jagged int table, a string table with empty slots tested with postfix ?, an inline
+// accessor reaching the host through outer with an indexer, a block-lambda filter over a table row,
+// a value-class local named through its alias, and a local array<char> spelled from a row; a class
+// declared right after `#using` of that namespace, naming the imported aliases in static member
+// arrays (a sized static array of the value class filled by +=, a static array of objects, of
+// strings and of arrays), an inline accessor whose setter clamps against the static value-class
+// table, array<T> parameters, an indexer read through self[i], a block lambda over the static object
+// array, postfix ? walks along a link, a captured array<char> line judged by a value-class copy, the
+// element indexer of the static object array, the static value-class table walked through a ref
+// local, and the imported tables read bare; a bare write to the imported accessor runs its setter;
+// a class whose operator [] reads a member array<char> copied from a capture of its string array; an
+// extend class adding an indexer that hops along links with postfix ?; an extend of the namespace
+// object adding a type alias, an object array, a string array filtered by a block lambda that counts
+// through a capture, and a captured array<char>; an object whose inline accessor reads a string
+// table through outer, gated by an owned value-class member, set from a block lambda over an
+// array<T> parameter; and an extend of that object adding an object array, a string array, an
+// array<char> member and two inline accessors (one with an indexer) that read them through outer.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+#include <buf>
+
+const int NONE = -1;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Row types -----------------------------------------------------------------
+
+value class Span {
+    int lo;
+    int hi;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    int width() { return hi - lo; }
+    bool holds(int v) { return v >= lo && v <= hi; }
+}
+
+class Bin : object {
+    inline int code;
+    inline string tag;
+    Bin next;
+}
+
+Bin binA { 10, "red", "bin A"; }
+Bin binB { 25, "blue", "bin B"; }
+Bin binC { 40, "red", "bin C"; }
+Bin binD { 55, "green", "bin D"; }
+
+//-- The catalog: a namespace object with tables ---------------------------------
+
+object catalog {
+    "catalog";
+    alias span for Span;
+    alias bin for Bin;
+    array<array<int>> grid = { {3, 8, 1}, {4, 4}, {9, 2, 6, 5} };
+    array<string> labels = { "low", "mid", "high" };
+    array<string> notes[3] = { "first" };
+    int row = 0;
+    auto cells = {
+        int _sets;
+        int operator () { return outer.rowSum(outer.row); }
+        void operator = (int r) {
+            _sets++;
+            if (r >= 0 && r < outer.grid.length) outer.row = r;
+        }
+        int operator [] (int r) { return outer.rowSum(r) * 10 + outer.grid[r].length; }
+    }
+    int rowSum(int r) {
+        int s = 0;
+        for (int x in grid[r]) s += x;
+        return s;
+    }
+    int bigIn(int r, int floor) {
+        return grid[r].filter((int x) => {
+            if (x > floor) return true;
+            return false;
+        }).count();
+    }
+    string labelFor(int r) {
+        int s = rowSum(r);
+        if (s < 10) return labels[0];
+        if (s < 20) return labels[1];
+        return labels[2];
+    }
+    void noteFor(int r) {
+        if (notes[r]?) print(notes[r]);
+        else print(labelFor(r));
+    }
+    int spread(int r) {
+        span s;
+        s.lo = grid[r][0];
+        s.hi = grid[r][0];
+        for (int x in grid[r]) {
+            if (x < s.lo) s.lo = x;
+            if (x > s.hi) s.hi = x;
+        }
+        return s.width();
+    }
+    int letters(int r) {
+        array<char> line[8];
+        int n = 0;
+        for (int x in grid[r]) {
+            if (n < 8) {
+                line[n] = 'a' + x;
+                n++;
+            }
+        }
+        line.length = n;
+        bgl.util.buf.print(line);
+        return n;
+    }
+    bin pick(array<bin> bins, int floor) {
+        for (bin b in bins) if (b.code > floor) return b;
+        return null;
+    }
+}
+
+//-- Plots: static tables named through the imported aliases ----------------------
+
+#using catalog
+class Plot : object {
+    inline int base;
+    static array<span> limits[3];
+    static array<bin> bins = { binA, binB, binC, binD };
+    static array<string> names = { "first", "second", "third", "fourth" };
+    static array<array<int>> marks = { {1, 2}, {3, 4, 5}, {6} };
+    auto level = {
+        int _raw;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v;
+            int n = Plot.limits.length;
+            if (n > 0) {
+                span top = Plot.limits[n - 1];
+                if (v > top.hi) _raw = top.hi;
+            }
+        }
+    }
+
+    static void addLimit(int lo, int hi) {
+        span s;
+        s.lo = lo;
+        s.hi = hi;
+        Plot.limits += s;
+    }
+
+    int operator [] (int i) { return Plot.bins[i].code + base; }
+
+    int bandOf(int v) {
+        for (int i = 0; i < Plot.limits.length; i++) {
+            if (Plot.limits[i].holds(v + base)) return i;
+        }
+        return NONE;
+    }
+
+    int countIn(array<int> xs, int band) {
+        span s = Plot.limits[band];
+        int n = 0;
+        for (int x in xs) if (s.holds(x + base)) n++;
+        return n;
+    }
+
+    int sumAt(array<int> idx) {
+        int s = 0;
+        for (int i in idx) s += self[i];
+        return s;
+    }
+
+    int chainLen(int i) {
+        int n = 0;
+        bin b = Plot.bins[i];
+        while (b?) {
+            n++;
+            b = b.next;
+        }
+        return n;
+    }
+
+    int over(int floor) {
+        return Plot.bins.filter((bin b) => {
+            int c = b.code + base;
+            return c > floor;
+        }).count();
+    }
+
+    void feed(array<bin> picks) {
+        int s = 0;
+        for (bin b in picks) if (b?) s += b.code;
+        level = s;
+    }
+
+    int markRow(int r) {
+        int s = 0;
+        for (int x in Plot.marks[r]) s += x;
+        level = s * base;
+        return Plot.marks[r].length;
+    }
+
+    int tagLine(int i) {
+        array<char> t[24];
+        bin b = Plot.bins[i];
+        span s = Plot.limits[0];
+        s.hi = 5;
+        bgl.util.buf.capture(t);
+        print(b.tag);
+        if (b.next?) print($">{b.next.tag}");
+        bgl.util.buf.release();
+        bgl.util.buf.print(t);
+        if (s.holds(t.length)) print(" short");
+        else print(" long");
+        return t.length;
+    }
+
+    string nameFor(int v) {
+        ref array<span> ls := Plot.limits;
+        for (int i = 0; i < ls.length; i++) {
+            if (ls[i].holds(v + base)) return Plot.names[i];
+        }
+        return "none";
+    }
+
+    int hopFrom(int i, int k) {
+        return Plot.bins[i][k];
+    }
+
+    int peek(int r, int i) {
+        if (r >= grid.length || i >= grid[r].length) return NONE;
+        return grid[r][i];
+    }
+
+    void noteOf(int r) {
+        if (notes[r]?) print(notes[r]);
+        else print("-");
+    }
+
+    void nameAll(array<bin> bs) {
+        for (bin b in bs) {
+            int i = Plot.bins.indexOf(b);
+            if (i >= 0) print($"{Plot.names[i]} ");
+            else print("- ");
+        }
+    }
+}
+
+Plot plotA { 0, "plot A"; }
+Plot plotB { 15, "plot B"; }
+
+//-- A lexicon spelled into a byte buffer -------------------------------------------
+
+class Lexicon : object {
+    array<string> words[4];
+    array<char> spelled[24];
+    int adds = 0;
+    void add(string w) {
+        words += w;
+        adds++;
+    }
+    void spell() {
+        array<char> t[24];
+        bgl.util.buf.capture(t);
+        for (string w in words) print(w);
+        bgl.util.buf.release();
+        spelled = t;
+    }
+    char operator [] (int i) { return spelled[i]; }
+    int matching(array<Bin> bs) {
+        int n = 0;
+        for (Bin b in bs) if (words.contains(b.tag)) n++;
+        return n;
+    }
+}
+
+Lexicon lexA { "lexicon A"; }
+
+//-- Hops along the links ------------------------------------------------------------
+
+extend class Bin {
+    int operator [] (int hop) {
+        Bin b = self;
+        for (int k = 0; k < hop; k++) {
+            if (!b.next?) return NONE;
+            b = b.next;
+        }
+        return b.code;
+    }
+}
+
+//-- More catalog tables ---------------------------------------------------------------
+
+extend catalog {
+    alias plot for Plot;
+    array<Bin> shelf = { binB, binD };
+    array<string> extra = { "red", "gray", "red", "tan" };
+    int shelfSum() {
+        int s = 0;
+        for (bin b in shelf) s += b.code;
+        return s;
+    }
+    int shelfTags() {
+        array<char> t[24];
+        bgl.util.buf.capture(t);
+        for (bin b in shelf) print($"{b.tag};");
+        bgl.util.buf.release();
+        bgl.util.buf.print(t);
+        return t.length;
+    }
+    int countWord(string w) {
+        int seen = 0;
+        int n = extra.filter((string s) => {
+            seen++;
+            return s == w;
+        }).count();
+        return n * 10 + seen;
+    }
+    int plotBand(plot p, int v) { return p.bandOf(v); }
+}
+
+//-- A panel of stages -------------------------------------------------------------------
+
+object panel {
+    "panel";
+    array<string> steps = { "start", "load", "run", "stop" };
+    Span gate = Span{ lo = 1; hi = 2; };
+    int pos = 0;
+    auto stage = {
+        int _moves;
+        string operator () {
+            if (outer.gate.holds(outer.pos)) return outer.steps[outer.pos];
+            return "closed";
+        }
+        void operator = (int p) {
+            _moves++;
+            if (p >= 0 && p < outer.steps.length) outer.pos = p;
+        }
+    }
+    int route(array<int> path) {
+        return path.filter((int p) => {
+            if (p < 0 || p >= steps.length) return false;
+            stage = p;
+            return true;
+        }).count();
+    }
+}
+
+extend panel {
+    array<Bin> trays = { binA, binC, binD };
+    array<string> trayNames = { "left", "middle", "right" };
+    array<char> codes = "xyz";
+    int cur = 0;
+    auto tray = {
+        int _sets;
+        int operator () { return outer.trays[outer.cur].code; }
+        void operator = (int i) {
+            _sets++;
+            if (i >= 0 && i < outer.trays.length) outer.cur = i;
+        }
+        int operator [] (int i) {
+            int c = outer.codes[i];
+            return outer.trays[i].code + c;
+        }
+    }
+    auto label = {
+        int _writes;
+        string operator () { return outer.trayNames[outer.cur]; }
+        void operator = (string s) {
+            _writes++;
+            outer.trayNames[outer.cur] = s;
+        }
+    }
+}
+
+//-- File-scope tables -----------------------------------------------------------------------
+
+array<int> samples = { 5, 25, 60, 18, 47 };
+array<int> picksIdx = { 0, 2, 3 };
+array<Bin> someBins = { binA, null, binC };
+array<Bin> allBins = { binA, binB, binC, binD };
+array<int> routePath = { 2, 9, 3, -1, 1 };
+
+//-- Verbs -----------------------------------------------------------------------------------
+
+verb CatalogTest {
+    grammar = {.catalog};
+    void handler() {
+        for (int r = 0; r < catalog.grid.length; r++) {
+            print($"row {r}: sum {catalog.rowSum(r)}, big {catalog.bigIn(r, 3)}, spread {catalog.spread(r)}, ");
+            catalog.noteFor(r);
+            print(", letters ");
+            int n = catalog.letters(r);
+            print($" ({n})^");
+        }
+    }
+}
+
+verb CellsTest {
+    grammar = {.cells, NUMBER};
+    void handler() {
+        cells = (int)noun;
+        int v = cells;
+        print($"row {catalog.row}: {v}; by index {catalog.cells[0]} {catalog.cells[1]} {catalog.cells[2]}^");
+    }
+}
+
+verb ChooseTest {
+    grammar = {.choose, NUMBER};
+    void handler() {
+        catalog.bin b = catalog.pick(allBins, (int)noun);
+        if (b?) print($"Picked {b.code} ({b.tag}).^");
+        else print("No bin.^");
+    }
+}
+
+verb PlotsTest {
+    grammar = {.plots};
+    void handler() {
+        array<Plot> plots = { plotA, plotB };
+        for (Plot p in plots) {
+            print($"{p.base}: bands");
+            for (int x in samples) print($" {p.bandOf(x)}");
+            print($"; in band 1: {p.countIn(samples, 1)}; over 40: {p.over(40)}; idx {p[0]} {p[3]}; sumAt {p.sumAt(picksIdx)}^");
+        }
+        print($"Limits {Plot.limits.length}, chains {plotA.chainLen(0)} {plotA.chainLen(1)} {plotA.chainLen(3)}^");
+        print($"Names {plotA.nameFor(30)} {plotB.nameFor(30)} {plotB.nameFor(90)}; hops {plotA.hopFrom(0, 2)} {plotA.hopFrom(1, 2)}; peek {plotA.peek(2, 3)} {plotA.peek(1, 2)}; notes ");
+        for (int r = 0; r < 3; r++) plotA.noteOf(r);
+        print("^");
+    }
+}
+
+verb LevelTest {
+    grammar = {.level};
+    void handler() {
+        plotA.feed(someBins);
+        int a = plotA.level;
+        plotB.feed(allBins);
+        int b = plotB.level;
+        int n = plotB.markRow(2);
+        int c = plotB.level;
+        print($"Levels {a} {b}, row of {n} gives {c}^");
+    }
+}
+
+verb TagsTest {
+    grammar = {.tags};
+    void handler() {
+        for (int i = 0; i < Plot.bins.length; i++) {
+            int n = plotA.tagLine(i);
+            print($" ({n})^");
+        }
+        print($"limit 0 still {Plot.limits[0].lo}..{Plot.limits[0].hi}; names ");
+        plotA.nameAll(someBins);
+        print("^");
+    }
+}
+
+verb LexTest {
+    grammar = {.lex};
+    void handler() {
+        lexA.spell();
+        int n = lexA.spelled.length;
+        print($"Spelled {n}: ");
+        for (int i = 0; i < n; i++) print(lexA[i]);
+        print($"; matching {lexA.matching(allBins)}, adds {lexA.adds}^");
+    }
+}
+
+verb HopsTest {
+    grammar = {.hops, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        for (Bin b in allBins) print($"{b[k]} ");
+        print("^");
+    }
+}
+
+verb ShelfTest {
+    grammar = {.shelf};
+    void handler() {
+        print($"Shelf sum {catalog.shelfSum()}, tags ");
+        int n = catalog.shelfTags();
+        int red = catalog.countWord("red");
+        int tan = catalog.countWord("tan");
+        print($" ({n}), red {red}, tan {tan}, band {catalog.plotBand(plotB, 30)}^");
+    }
+}
+
+verb StageTest {
+    grammar = {.stage, NUMBER};
+    void handler() {
+        panel.stage = (int)noun;
+        string s = panel.stage;
+        print($"Stage {panel.pos}: {s}^");
+    }
+}
+
+verb WidenTest {
+    grammar = {.widen};
+    void handler() {
+        Span g = panel.gate;
+        g.hi = 3;
+        panel.gate = g;
+        g.lo = 0;
+        print($"Gate {panel.gate.lo}..{panel.gate.hi}, copy {g.lo}..{g.hi}^");
+    }
+}
+
+verb RouteTest {
+    grammar = {.route};
+    void handler() {
+        int n = panel.route(routePath);
+        string s = panel.stage;
+        print($"Routed {n}, at {panel.pos}: {s}^");
+    }
+}
+
+verb TrayTest {
+    grammar = {.tray, NUMBER};
+    void handler() {
+        panel.tray = (int)noun;
+        int c = panel.tray;
+        string nm = panel.label;
+        print($"Tray {panel.cur}: code {c}, {nm}; mixed {panel.tray[0]} {panel.tray[1]} {panel.tray[2]}^");
+    }
+}
+
+verb RenameTest {
+    grammar = {.rename};
+    void handler() {
+        panel.label = "spare";
+        string nm = panel.label;
+        print($"Renamed {panel.cur} to {nm}; names");
+        for (string s in panel.trayNames) print($" {s}");
+        print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    binA.next = binB;
+    binB.next = binC;
+    Plot.addLimit(0, 19);
+    Plot.addLimit(20, 49);
+    Plot.addLimit(50, 99);
+    lexA.add("red");
+    lexA.add("tan");
+    print("Tables bound.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

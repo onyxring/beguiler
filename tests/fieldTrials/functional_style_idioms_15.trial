@@ -1,0 +1,46 @@
+Room A
+Room A.
+
+> panel 2
+level 3.7500, hits 1, off, 
+level 5.0000, hits 3, on, raised
+level 6.0000, hits 3, off, raised++
+(poked probe A)
+drift 6.0000, hits 2, fell
+
+> panel 0
+level 0.7500, hits 3, off, fell
+level 2.0000, hits 5, on, raised
+level 3.0000, hits 5, on, raised++
+(poked probe A)
+drift -0.5000, hits 4, fell
+(poked panel)
+
+> rig 3
+(poked probe A)
+load 1.7500, reading 6.0000
+(poked probe A)
+load 9.2500, reading 22.7500
+(poked probe A)
+load 1.7500, reading 1.7500
+
+> rig 2
+load 1.2500, reading 3.0000
+load 4.2500, reading 10.2500
+load 1.7500, reading 1.7500
+
+> entry 4
+[number] red box = 9.0000
+(poked entry A)
+[text] blue jar lid = 5.0000
+[object] blue jar lid = 20.0000
+keep jar,lid, short box
+pick text number object
+best entry C, at 0
+sorted entry B, entry A, entry C
+A==B true, A!=C true, A<=>B 1, B<C true
+
+> tally 3
+tally 1.5000, marks t+++
+tally 1.0000, marks t++++
+

@@ -1,0 +1,67 @@
+Room A
+A plain room.
+You can see a dial, a meter and a fixed dial here.
+> ops
+(1,2)(5,2)
+(6,4)
+(12,8)
+false true 179 true false true
+(13,9)
+13 9
+(-1,40)
+true false
+(0,40)(0,40)
+(0,7)(0,40)
+> access
+4 10 0
+12 120
+> emit
+6 12 8 2
+a
+b
+<in>
+4 5 1
+1 5
+> names
+2 1 true
+(3,4)
+12 25 4 7
+5 2 111
+> calls
+321 305 14
+21 27 302
+int string vec
+305
+-9 9 true false
+0 true
+42
+> unions
+alpha beta gamma delta
+true false 4
+false true
+> islands
+10
+eleven 13 true
+13
+string
+> more
+7
+10
+10 20 30
+8 10 8 string int
+1 11 5 3 45
+(5,5)(4,5)
+(0,5)
+-1575 5 0
+200 201
+hook
+25
+true 3
+> scopes
+++0-+1-++---2
+++0--99
+++z---1
++one true true
+7
+[1][10][10][1]
+-

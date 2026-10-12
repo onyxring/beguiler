@@ -1,0 +1,476 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/C++ developer writes it, thirteenth pass: three features meeting
+// inside one declaration. A class whose indexer (`operator []` / `[]=`) reads and writes a `static
+// array<int>`, mirrors each write into a `static array<char>`, keeps a `static array<Item>` filled from a
+// method taking an `array<int>` parameter (guarded by postfix `?`), and averages through a block lambda
+// taking a value-class parameter; a class whose `static array<Phrase>` of a value class holding an
+// `array<string>` is filled from a `static array<array<string>>` and drained through a block lambda that
+// gets a copy; a class holding `array<array<int>>`, `array<array<string>>` and `array<Item>` whose indexer
+// reads the nested strings and whose block lambda takes a nested row as an `array<int>` parameter, summed
+// into a value-class tally; an `extend class` adding an `array<char>` member, an indexer over it, a
+// inline accessor holding an `array<string>` (used above its declaration), and a method taking an `array<int>` beside a value-class
+// local and a block lambda testing a peer with `?`; an object whose inline accessors reach its host through
+// `outer` (an `array<string>`, an `array<char>`, an `array<Item>`, an owned value-class member), whose
+// setter validates through a block lambda that also reads `outer`, which has its own `operator []` and
+// loads an `array<string>` parameter; a namespace object (`alias … for`) with an `array<part>`, an
+// `array<char>` and an indexer returning the aliased type, tested with `?`; and accessors added by `extend`
+// to an object, over an `array<Item>` and an `array<string>`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+value class Tally {
+    int Count;
+    int Sum;
+    Tally operator = (Tally o) { Count = o.Count; Sum = o.Sum; return self; }
+    void Add(int v) { Count++; Sum += v; }
+}
+
+class Item : object {
+    int Weight;
+    string Label = "item";
+}
+
+Item boltA  { "bolt A";  Weight = 2; Label = "bolt"; }
+Item gearB  { "gear B";  Weight = 5; Label = "gear"; }
+Item plateC { "plate C"; Weight = 9; Label = "plate"; }
+
+//-- Class-wide counters behind an indexer --------------------------------------------------------------
+
+class Register : object {
+    static array<int>  Counts[4];
+    static array<char> Flags = "....";
+    static array<Item> Recent[3];
+    static int Writes;
+
+    int operator [] (int i) {
+        if (i < 0 || i >= Register.Counts.size) return -1;
+        return Register.Counts[i];
+    }
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= Register.Counts.size) return -1;
+        Register.Counts[i] = v;
+        Register.Flags[i] = v > 0 ? '+' : '-';
+        Register.Writes++;
+        return v;
+    }
+    int Record(array<int> slots, Item it) {
+        if (!it?) return 0;
+        for (int s in slots) self[s] = self[s] + it.Weight;
+        if (!Register.Recent.contains(it)) Register.Recent.append(it);
+        return slots.length;
+    }
+    void Report() {
+        print("counts");
+        for (int i = 0; i < Register.Counts.size; i++) print($" {self[i]}");
+        print(" flags ");
+        for (char c in Register.Flags) print(c);
+        print($", writes {Register.Writes}, recent");
+        for (Item it in Register.Recent) print($" {it.Label}");
+    }
+    int Score() {
+        Tally t;
+        for (int i = 0; i < Register.Counts.size; i++) {
+            int c = Register.Counts[i];
+            if (c > 0) t.Add(c > 9 ? 9 : c);
+        }
+        func<int, Tally> mean = (Tally x) => {
+            if (x.Count == 0) return 0;
+            int m = x.Sum / x.Count;
+            x.Sum = 0;
+            return m;
+        };
+        int m = mean(t);
+        print($"n {t.Count} sum {t.Sum} mean {m}");
+        return m;
+    }
+}
+
+Register regA { "register A"; }
+Register regB { "register B"; }
+
+array<int> FrontSlots = { 0, 1 };
+array<int> BackSlots  = { 2, 2 };
+
+//-- A class-wide bank of value-class phrases -------------------------------------------------------------
+
+value class Phrase {
+    array<string> Words[3];
+    int Uses;
+    Phrase operator = (Phrase o) {
+        Words = o.Words;
+        Uses = o.Uses;
+        return self;
+    }
+}
+
+class Phrasebook : object {
+    static array<Phrase> Bank[3];
+    static array<array<string>> Seeds = { {"red", "blue"}, {"one"}, {"x", "y", "z"} };
+
+    static void Fill() {
+        Phrase p;
+        for (int i = 0; i < Phrasebook.Seeds.length; i++) {
+            p.Words.clear();
+            for (string w in Phrasebook.Seeds[i]) p.Words.append(w);
+            p.Uses = i + 1;
+            Phrasebook.Bank.append(p);
+        }
+    }
+    void Show() {
+        func<int, Phrase> drain = (Phrase x) => {
+            int n = x.Words.length;
+            x.Words.clear();
+            x.Uses = 0;
+            return n;
+        };
+        for (int i = 0; i < Phrasebook.Bank.length; i++) {
+            int n = drain(Phrasebook.Bank[i]);
+            print($"{Phrasebook.Bank[i].Words[0]}/{Phrasebook.Bank[i].Words.length}/{Phrasebook.Bank[i].Uses}/{n} ");
+        }
+    }
+}
+
+Phrasebook bookA { "phrasebook"; }
+
+//-- Nested tables behind an indexer -------------------------------------------------------------------
+
+class Catalog : object {
+    array<array<int>> Groups = { {1, 2}, {3, 4, 5}, {6} };
+    array<array<string>> Names = { {"bolt", "nut"}, {"gear"}, {"plate", "rod", "pin"} };
+    array<Item> Stock[3];
+
+    string operator [] (int g) {
+        if (g < 0 || g >= Names.length) return "none";
+        return Names[g][0];
+    }
+    int GroupOf(Item it) {
+        for (int g = 0; g < Names.length; g++) {
+            if (Names[g].contains(it.Label)) return g;
+        }
+        return -1;
+    }
+    void Summarize() {
+        Tally t;
+        func<int, array<int>> total = (array<int> row) => {
+            int s = 0;
+            for (int v in row) s += v;
+            return s;
+        };
+        for (int g = 0; g < Groups.length; g++) {
+            int s = total(Groups[g]);
+            t.Add(s);
+            print($"{self[g]} {s} {Names[g].length}; ");
+        }
+        print($"groups {t.Count} total {t.Sum}");
+    }
+    void Restock(Item it) {
+        if (Stock.length < Stock.size) Stock.append(it);
+    }
+    void ShowStock() {
+        print("stock");
+        for (Item s in Stock) print($" {s.Label}:{GroupOf(s)}");
+    }
+}
+
+Catalog catalogA { "catalog"; }
+
+//-- An indexer added by extension ----------------------------------------------------------------------
+
+class Token : object {
+    int Id;
+}
+
+extend class Token {
+    array<char> Code = "t---";
+
+    char operator [] (int i) {
+        if (i < 0 || i >= Code.length) return '?';
+        return Code[i];
+    }
+    void operator []= (int i, char c) {
+        if (i >= 0 && i < Code.length) Code[i] = c;
+    }
+    int Stamp(array<int> digits, Token peer) {
+        Tally t;
+        func<bool, Token> other = (Token p) => {
+            if (!p?) return false;
+            return p.Id != Id;
+        };
+        if (!other(peer)) {
+            Last = "refused";
+            return -1;
+        }
+        for (int d in digits) {
+            if (d < 0 || d > 9 || t.Count + 1 >= Code.length) continue;
+            t.Add(d);
+            self[t.Count] = (char)('0' + d);
+        }
+        self[0] = (char)('0' + peer.Id);
+        Last = "stamped";
+        return t.Sum;
+    }
+    auto Last = {
+        array<string> _log[2];
+        int _drops;
+        string operator () {
+            if (_log.length == 0) return "none";
+            return _log[_log.length - 1];
+        }
+        void operator = (string s) {
+            if (_log.length == _log.size) {
+                _log.remove(0);
+                _drops++;
+            }
+            _log.append(s);
+        }
+        int Drops() { return _drops; }
+    }
+}
+
+Token tokA { "token A"; Id = 1; }
+Token tokB { "token B"; Id = 2; }
+
+array<int> Digits = { 4, 12, 7, 2, 3 };
+
+//-- Accessors reaching their host ---------------------------------------------------------------------
+
+object board {
+    "board";
+    array<string> Lines[4] = { "alpha", "beta" };
+    array<char> Glyphs = "-+*";
+    array<Item> Slots[3] = { boltA };
+    Tally Seen;
+    int Sets;
+    int Misses;
+
+    string operator [] (int i) {
+        if (i < 0 || i >= Lines.length) return "none";
+        return Lines[i];
+    }
+    void Load(array<string> extra) {
+        for (string s in extra) {
+            if ((s?) && Lines.length < Lines.size) Lines.append(s);
+        }
+    }
+    auto Current = {
+        int _i;
+        string operator () { return outer.Lines[_i]; }
+        void operator = (int v) {
+            func<bool, int> valid = (int n) => {
+                if (n < 0) return false;
+                return n < outer.Lines.length;
+            };
+            if (!valid(v)) {
+                outer.Misses++;
+                return;
+            }
+            _i = v;
+            outer.Sets++;
+            outer.Seen.Add(v);
+        }
+    }
+    auto Marker = {
+        int _g;
+        char operator () { return outer.Glyphs[_g]; }
+        void operator = (int v) {
+            Item it = null;
+            if (v >= 0 && v < outer.Slots.length) it = outer.Slots[v];
+            if (it?) _g = it.Weight % outer.Glyphs.length;
+            else _g = 0;
+        }
+    }
+}
+
+array<string> MoreLines = { "gamma", "delta", "epsilon" };
+
+//-- A namespace object with an indexer -----------------------------------------------------------------
+
+object Kit {
+    alias part  for Item;
+    alias tally for Tally;
+    array<part> Parts[4] = { boltA, gearB };
+    array<char> Prefix = "kit";
+
+    part operator [] (int i) {
+        if (i < 0 || i >= Parts.length) return null;
+        return Parts[i];
+    }
+    void Add(part p) {
+        if ((p?) && !Parts.contains(p)) Parts.append(p);
+    }
+    void Show(int i) {
+        part p = self[i];
+        for (char c in Prefix) print(c);
+        if (p?) print($":{p.Label}");
+        else print(":none");
+    }
+    int Weigh() {
+        tally t;
+        for (part p in Parts) t.Add(p.Weight);
+        return t.Sum;
+    }
+}
+
+//-- Accessors added by extension -----------------------------------------------------------------------
+
+object shelf {
+    "shelf";
+    int Picks;
+}
+
+extend shelf {
+    array<Item> Held = { boltA, plateC };
+    array<string> Notes = { "left", "middle", "right" };
+    auto Pick = {
+        int _i;
+        Item operator () { return outer.Held[_i]; }
+        void operator = (int v) {
+            _i = v % outer.Held.length;
+            outer.Picks++;
+        }
+    }
+    auto Note = {
+        int _n;
+        string operator () { return outer.Notes[_n]; }
+        void operator = (string s) {
+            int at = outer.Notes.indexOf(s);
+            if (at >= 0) _n = at;
+        }
+    }
+}
+
+//-- Verbs --------------------------------------------------------------------------------------------
+
+verb Tallies {
+    grammar = {.tallies};
+    void handler() {
+        regA[0] = 1;
+        int a = regA.Record(FrontSlots, boltA);
+        int b = regB.Record(BackSlots, gearB);
+        int c = regA.Record(FrontSlots, null);
+        int d = regB.Record(FrontSlots, boltA);
+        regB[3] = 0;
+        regB[9] = 4;
+        printLine($"Recorded {a} {b} {c} {d}; read {regA[2]} {regB[9]}.");
+        regA.Report();
+        printLine(".");
+        regB.Score();
+        printLine(".");
+    }
+}
+
+verb Catalogs {
+    grammar = {.catalogs};
+    void handler() {
+        catalogA.Summarize();
+        printLine(".");
+        catalogA.Restock(plateC);
+        catalogA.Restock(boltA);
+        catalogA.Restock(gearB);
+        catalogA.Restock(plateC);
+        catalogA.ShowStock();
+        printLine($"; edge {catalogA[5]} {catalogA[1]}.");
+    }
+}
+
+verb Phrases {
+    grammar = {.phrases};
+    void handler() {
+        Phrasebook.Fill();
+        bookA.Show();
+        printLine($"bank {Phrasebook.Bank.length}.");
+    }
+}
+
+verb Tokens {
+    grammar = {.tokens};
+    void handler() {
+        int same = tokA.Stamp(Digits, tokA);
+        int none = tokA.Stamp(Digits, null);
+        int sum = tokA.Stamp(Digits, tokB);
+        print($"Stamp {same} {none} {sum}; code ");
+        for (char c in tokA.Code) print(c);
+        print($"; second {tokA[1]}, out {tokA[7]}, last {tokA.Last} ({tokA.Last.Drops()}) {tokB.Last}, other ");
+        for (char c in tokB.Code) print(c);
+        printLine(".");
+    }
+}
+
+verb Boards {
+    grammar = {.boards};
+    void handler() {
+        board.Load(MoreLines);
+        board.Current = 2;
+        print($"{board.Current} ");
+        board.Current = 7;
+        board.Current = -1;
+        board.Current = 3;
+        printLine($"{board.Current}; lines {board.Lines.length}, {board[0]} {board[4]}.");
+        printLine($"Sets {board.Sets}, misses {board.Misses}, seen {board.Seen.Count}/{board.Seen.Sum}.");
+        board.Marker = 0;
+        print(board.Marker);
+        board.Marker = 2;
+        print(board.Marker);
+        printLine(".");
+    }
+}
+
+verb Kits {
+    grammar = {.kits};
+    void handler() {
+        Kit.Show(1);
+        print(" ");
+        Kit.Show(3);
+        Kit.Add(plateC);
+        Kit.Add(gearB);
+        Kit.Add(null);
+        print(" ");
+        Kit.Show(2);
+        Kit.part first = Kit[0];
+        printLine($"; parts {Kit.Parts.length}, weight {Kit.Weigh()}, first {first.Label}.");
+    }
+}
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        shelf.Pick = 3;
+        Item got = shelf.Pick;
+        print($"{got.Label} ");
+        shelf.Pick = 4;
+        got = shelf.Pick;
+        print($"{got.Label}; picks {shelf.Picks}; ");
+        shelf.Note = "right";
+        print($"{shelf.Note} ");
+        shelf.Note = "nowhere";
+        printLine($"{shelf.Note}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

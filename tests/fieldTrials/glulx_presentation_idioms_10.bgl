@@ -1,0 +1,473 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: presentation helpers that lean on lifecycle and reference rules rather than on new
+// window calls. An author's emitter class with init/deinit used as a scoped indent (an outline drawn
+// recursively with continue, break and an early return inside nested scopes; scopes in a lambda link
+// target, a switch case left by break, a do/until with continue, a nested block, before rtrue/rfalse
+// and around a return value), the depth checked after each; a value-class theme with a static counter
+// and static method, held in an object's ref member, rebound with := (from a ternary), written
+// through, passed by ref and by copy, and stored in an array<theme> whose slot is bound by a ref
+// local; a primitive class packing a grid cell (col, line) with emitter accessors, an emitter
+// operator +, += and ++ fallbacks and its own print(), interpolated, and used as a positional inline
+// member of objects placed in a text grid; an extend extern class array emitter (secondItem) on
+// array<string>, array<cellPos>, array<int> and an object's member array; a file-scope menu
+// array<string> reshaped at compile time by extend (inject / remove / move by index); a link menu
+// printed into a child text-buffer window with targets chosen by a string switch, a link printed by a
+// click handler, clicked in the panel and at the prompt with partial input; text composed into a Glk
+// memory stream over an array<char>, measured with streamGetPosition, reopened for reading and read
+// back line by line with getLineStream into a grid through putBufferStream; superposed helpers (one
+// used, one not); and a #declare flag tested by an #if that comes before it.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#if PANEL_KIT
+    #define KIT_STATE 1
+#else
+    #define KIT_STATE 0
+#endif
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+#declare PANEL_KIT
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- scoped indent -------------------------------------------------------------------------------
+
+int outlineDepth = 0;
+int scopesOpened = 0;
+
+emitter class indentScope {
+    emitter void init()   { outlineDepth++; scopesOpened++; }
+    emitter void deinit() { outlineDepth--; }
+}
+
+void indent() {
+    for (int i = 1; i < outlineDepth / 2; i++) print("  ");
+}
+
+class entry : object {
+    inline string caption;
+    bool hidden = false;
+    bool stopHere = false;
+}
+
+object outlineRoot { "outline root"; }
+
+entry entryA { "Section A", "section a"; parent = outlineRoot; }
+entry entryA1 { "Part A1", "part a1"; parent = entryA; }
+entry entryA2 { "Part A2", "part a2"; parent = entryA; hidden = true; }
+entry entryA3 { "Part A3", "part a3"; parent = entryA; }
+entry entryA3x { "Note A3x", "note a3x"; parent = entryA3; }
+entry entryB { "Section B", "section b"; parent = outlineRoot; }
+entry entryB1 { "Part B1", "part b1"; parent = entryB; stopHere = true; }
+entry entryB2 { "Part B2", "part b2"; parent = entryB; }
+entry entryC { "Section C", "section c"; parent = outlineRoot; }
+
+int drawOutline(object host, int limit) {
+    indentScope level;
+    int drawn = 0;
+    for (object o in host.children) {
+        entry e = (entry)o;
+        indentScope row;
+        if (e.hidden) continue;
+        if (outlineDepth / 2 > limit) {
+            indent();
+            printLine("...");
+            return drawn;
+        }
+        indent();
+        printLine($"{e.caption} (depth {outlineDepth / 2})");
+        drawn++;
+        if (e.stopHere) {
+            indent();
+            printLine("[stop]");
+            break;
+        }
+        drawn += drawOutline(e, limit);
+    }
+    return drawn;
+}
+
+int depthInside() {
+    indentScope s;
+    return outlineDepth;
+}
+
+bool deepEnough(int want) {
+    indentScope s;
+    if (outlineDepth >= want) rtrue;
+    rfalse;
+}
+
+int lateScope(bool early) {
+    if (early) return outlineDepth;
+    indentScope s;
+    return outlineDepth;
+}
+
+string scopedKind(int k) {
+    string result = "none";
+    switch (k) {
+        case 0:
+            indentScope s;
+            result = "zero";
+            if (outlineDepth == 1) break;
+            result = "zero, unbalanced";
+        case 1 to 3:
+            indentScope s2;
+            result = outlineDepth == 1 ? "low" : "low, unbalanced";
+        default:
+            result = "high";
+    }
+    return result;
+}
+
+int countDown(int from) {
+    int seen = 0;
+    do {
+        indentScope s;
+        from--;
+        if (from % 2 == 0) continue;
+        seen += outlineDepth;
+    } until (from <= 0);
+    return seen;
+}
+
+// ---- themes --------------------------------------------------------------------------------------
+
+value class theme {
+    string bullet;
+    string ruleMark;
+    int    width;
+    static int swaps = 0;
+    static void swapActive() {
+        skin.active := skin.active.width == plainTheme.width ? boldTheme : plainTheme;
+        theme.swaps++;
+        noteClick("Swap");
+        printLine($"Swapped {theme.swaps} at depth {outlineDepth}.");
+    }
+    theme operator = (theme o) {
+        bullet = o.bullet;
+        ruleMark = o.ruleMark;
+        width = o.width;
+        return self;
+    }
+}
+
+theme plainTheme = theme{ bullet = "-"; ruleMark = "="; width = 12; };
+theme boldTheme  = theme{ bullet = "*"; ruleMark = "#"; width = 20; };
+
+array<theme> themes[3];
+
+object skin {
+    "skin";
+    ref theme active;
+    array<string> history[6];
+}
+
+void drawRule(ref theme t) {
+    for (int i = 0; i < t.width; i++) print(t.ruleMark);
+    printLine();
+}
+
+int narrowed(theme t) {
+    t.width = t.width / 2;
+    drawRule(t);
+    return t.width;
+}
+
+void widen(ref theme t, int by) {
+    t.width += by;
+}
+
+// ---- grid cells ----------------------------------------------------------------------------------
+
+primitive class cellPos {
+    emitter void operator = (int v)     { $target = $v; }
+    emitter void operator = (cellPos p) { $target = $p; }
+    emitter int operator ()             { ($val) }
+    emitter int col                     { ($val / 256) }
+    emitter int line                    { ($val % 256) }
+    emitter cellPos operator + (int n)  { ($val + $n) }
+    replace emitter void print()        { print "(", $val / 256, ",", $val % 256, ")"; }
+}
+
+cellPos cellAt(int c, int l) {
+    cellPos p = c * 256 + l;
+    return p;
+}
+
+void placeAt(textGridWindow g, cellPos p, string text) {
+    g.moveCursor(p.col, p.line);
+    g.print(text);
+}
+
+extend extern class array {
+    emitter T secondItem() { $i6Expr($self[1]) }
+}
+
+// ---- menu ----------------------------------------------------------------------------------------
+
+array<string> menuLabels = { "Open", "Close", "Help" };
+
+extend menuLabels {
+    inject "Swap" after [0];
+    remove [2];
+    move [2] first;
+    inject "Rule";
+}
+
+array<cellPos> menuCells[6];
+
+class badge : object {
+    inline cellPos spot;
+    inline string  text;
+}
+
+object badgeShelf { "badge shelf"; }
+badge badgeA { $0E04, "[A]", "badge a"; parent = badgeShelf; }
+badge badgeB { $1503, "[B]", "badge b"; parent = badgeShelf; }
+
+void placeBadges() {
+    for (object o in badgeShelf.children) {
+        badge b = (badge)o;
+        placeAt(board, b.spot, b.text);
+        b.spot++;
+    }
+}
+
+textBufferWindow side = null;
+textGridWindow   board = null;
+int clicks = 0;
+
+void noteClick(string what) {
+    clicks++;
+    if (skin.history.length == skin.history.size) skin.history.clear();
+    skin.history += what;
+    side?.printLine($"Clicked {what} ({clicks}).");
+    printLine($"[{what} chosen]");
+}
+
+void chooseBack() {
+    indentScope inner;
+    noteClick("Back");
+    side?.printLine($"Back at depth {outlineDepth}.");
+}
+
+void chooseHelp() {
+    noteClick("Help");
+    side?.printLine($"Help: click a label. {link("Back", chooseBack)}");
+}
+void chooseRule() {
+    noteClick("Rule");
+    drawRule(skin.active);
+}
+
+void menuLine(textBufferWindow w, string label) {
+    switch (label) {
+        case "Help": w.printLine($"{skin.active.bullet} {link(label, chooseHelp)}");
+        case "Open": w.printLine($"{skin.active.bullet} {link(label, => {
+                indentScope inner;
+                noteClick("Open");
+                printLine($"Opened at depth {outlineDepth}.");
+            })}");
+        case "Swap": w.printLine($"{skin.active.bullet} {link(label, theme.swapActive)}");
+        case "Rule": w.printLine($"{skin.active.bullet} {link(label, chooseRule)}");
+        default:     w.printLine($"{skin.active.bullet} {label} (no action)");
+    }
+}
+
+void fillBoard() {
+    if (board == null) return;
+    board.clear();
+    menuCells.clear();
+    cellPos p = cellAt(1, 0);
+    for (string label in menuLabels) {
+        menuCells += p;
+        placeAt(board, p, label);
+        p += 1;
+    }
+}
+
+// ---- composing off screen ------------------------------------------------------------------------
+
+array<char> scratch[120];
+array<char> lineBuf[40];
+
+superposed int composeBlock(theme t) {
+    int str = bgl.asm.streamOpenMemory(&scratch + bgl.wordsize, scratch.size, 1, 0);
+    int old = bgl.asm.streamGetCurrent();
+    bgl.asm.streamSetCurrent(str);
+    printLine($"{t.bullet} width {t.width}");
+    printLine($"{t.bullet} mark {t.ruleMark}");
+    print($"{t.bullet} end");
+    bgl.asm.streamSetCurrent(old);
+    int written = bgl.asm.streamGetPosition(str);
+    bgl.asm.streamClose(str, 0);
+
+    str = bgl.asm.streamOpenMemory(&scratch + bgl.wordsize, written, 2, 0);
+    int lines = 0;
+    int n = bgl.asm.getLineStream(str, &lineBuf + bgl.wordsize, lineBuf.size);
+    while (n > 0) {
+        indentScope row;
+        int shown = n;
+        if (lineBuf[n - 1] == 10) shown--;
+        if (board != null) {
+            board.moveCursor(14, lines);
+            bgl.asm.putBufferStream(bgl.asm.windowGetStream(board.id), &lineBuf + bgl.wordsize, shown);
+        }
+        lines++;
+        n = bgl.asm.getLineStream(str, &lineBuf + bgl.wordsize, lineBuf.size);
+        if (shown == 0) continue;
+        indent();
+        printLine($"Line {lines}: {shown} chars, depth {outlineDepth}.");
+    }
+    bgl.asm.streamClose(str, 0);
+    printLine($"Wrote {written} bytes in {lines} lines; depth {outlineDepth}.");
+    return lines;
+}
+
+superposed void neverCalled() {
+    printLine("This is never part of the program.");
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    skin.active := plainTheme;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Outline {
+    grammar = {.outline};
+    meta = true;
+    void handler() {
+        int drawn = drawOutline(outlineRoot, 3);
+        printLine($"Drawn {drawn}; depth back to {outlineDepth}; scopes {scopesOpened}.");
+        scopesOpened = 0;
+        drawn = drawOutline(outlineRoot, 1);
+        printLine($"Shallow {drawn}; depth back to {outlineDepth}; scopes {scopesOpened}.");
+    }
+}
+
+verb Rules {
+    grammar = {.rules};
+    meta = true;
+    void handler() {
+        drawRule(skin.active);
+        int half = narrowed(skin.active);
+        printLine($"Half {half}; active still {skin.active.width}.");
+        skin.active := boldTheme;
+        drawRule(skin.active);
+        widen(skin.active, 4);
+        printLine($"Bold now {boldTheme.width}; plain {plainTheme.width}.");
+        skin.active.ruleMark = "+";
+        drawRule(boldTheme);
+        skin.active = plainTheme;
+        printLine($"Bold copied from plain: {boldTheme.ruleMark} {boldTheme.width}; plain {plainTheme.ruleMark}.");
+        boldTheme = theme{ bullet = "*"; ruleMark = "#"; width = 20; };
+        skin.active := plainTheme;
+        printLine($"Active {skin.active.bullet} {skin.active.width}.");
+    }
+}
+
+verb Menu {
+    grammar = {.menu};
+    meta = true;
+    void handler() {
+        print($"Labels ({menuLabels.length}):");
+        for (string s in menuLabels) print($" {s}");
+        printLine($". Second: {menuLabels.secondItem()}.");
+        if (side == null) side = bgl.ui.mainWin.splitRightBuffer(24);
+        if (board == null) board = bgl.ui.mainWin.splitUpGrid(5);
+        if (side == null || board == null) {
+            printLine("No panels.");
+            return;
+        }
+        side.clear();
+        for (string s in menuLabels) menuLine(side, s);
+        fillBoard();
+        placeBadges();
+        cellPos two = menuCells.secondItem();
+        print("Cells:");
+        for (cellPos c in menuCells) {
+            print(" ");
+            print(c);
+        }
+        printLine($". Second at col {two.col}, line {two.line}.");
+    }
+}
+
+verb Compose {
+    grammar = {.compose};
+    meta = true;
+    void handler() {
+        int n = composeBlock(skin.active);
+        cellPos last = cellAt(14, n - 1);
+        printLine($"Last line at {last}; next at {last + 1}.");
+        ref theme t := skin.active;
+        t.width = 8;
+        array<int> widths[3];
+        widths += t.width;
+        widths += plainTheme.width;
+        printLine($"Widths {widths[0]} and {widths.secondItem()}; bold {boldTheme.width}.");
+        t.width = 20;
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    meta = true;
+    void handler() {
+        printLine($"Inside {depthInside()}, after {outlineDepth}.");
+        printLine($"Deep 1: {deepEnough(1) ? "yes" : "no"}; deep 2: {deepEnough(2) ? "yes" : "no"}; after {outlineDepth}.");
+        printLine($"Late early {lateScope(true)}, late {lateScope(false)}, after {outlineDepth}.");
+        printLine($"Kinds {scopedKind(0)}, {scopedKind(2)}, {scopedKind(9)}; after {outlineDepth}.");
+        printLine($"Count down {countDown(5)}; after {outlineDepth}.");
+        themes.clear();
+        themes += plainTheme;
+        themes += boldTheme;
+        themes += theme{ bullet = "o"; ruleMark = "-"; width = 6; };
+        ref theme pick := themes[2];
+        pick.width = 9;
+        for (theme th in themes) print($"[{th.bullet}{th.ruleMark}{th.width}]");
+        printLine();
+        drawRule(themes[2]);
+        printLine($"Plain still {plainTheme.width}; copy in slot {themes[0].width}.");
+    }
+}
+
+verb Kit {
+    grammar = {.kit};
+    meta = true;
+    void handler() {
+        printLine($"Kit state {KIT_STATE}; clicks {clicks}; depth {outlineDepth}.");
+        if (skin.history.length >= 2) printLine($"History {skin.history.length}, second {skin.history.secondItem()}.");
+    }
+}
+
+#includeI6 "grammar"

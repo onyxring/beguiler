@@ -1,0 +1,29 @@
+Room A
+Room A.
+You can see a cog and a plate here.
+> codes
+#5 #10 #15; odd true false; over true true; same true true; set true false; digits 6904; sum #17 #12.
+> grid
+Total 21; cell 5; or 6 [fault 1]-1 [fault 1]0.
+> deep
+Sum #6; sum fault 3.
+> board
+Rows 6 9 6; all 21; safe 9 [off 3]-1; filled 10 10, all 32, from 1 26; corners 7, reads 13.
+> board
+Rows 6 9 6; all 21; safe 9 [off 3]-1; filled 10 10, all 32, from 1 26; corners 7, reads 26.
+> focus
+Focus 0; home 6; bumped <#10 #2 #4> 16.
+> focus
+Focus 6; home 6; bumped <#10 #2 #4> 16.
+> keeper
+kept by ; weight 0; kept by part 5; weight 5.
+> parts
+piece tag #7; part 3 / tag #7; part 5 at #9; none at #0; weights 5 0.
+> names
+label, part 5, text note, thing cog.
+> rows
+<#4 #5 #6> <#4 #9 #6> same false true; sums 15 19; copied true; fault 1.
+> tickets
+Took 3 of 5; held 1 2 3; fault 2; issued 6.
+> tickets
+Took 3 of 5; held 1 2 3; fault 2; issued 12.

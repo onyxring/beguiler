@@ -1,0 +1,40 @@
+Room A
+Room A.
+> weigh
+Sum 100 double 600 band 3 -1.
+negative
+Split 266 200 net 725.
+No tare 7.
+band 3
+> crates
+Crates 1150 420 310.
+Loads 410 610.
+light
+heavy 610
+Capacity 3 6 100.
+Capacity 100.
+no tare
+heavy 9
+> readings
+Readings 165 495 mod 95.
+Logged 3 sum 780.
+Logged 4.
+history full
+Settle 125 900.
+settled
+> scales
+scale A: 240 g (240, reads 1).
+MID (250).
+MID (325).
+Over 650, reads 2.
+Diff 110, times 145 600.
+over
+Seen 3 total 815.
+> scales
+scale A: 240 g (240, reads 2).
+MID (250).
+MID (325).
+Over 650, reads 4.
+Diff 110, times 145 600.
+over
+Seen 6 total 1630.

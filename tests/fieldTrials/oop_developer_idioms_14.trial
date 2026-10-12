@@ -1,0 +1,22 @@
+Room A
+Room A.
+
+> weighs
+[1] [1] [1] [1]; masses 10 17 3, heavy true, depth 0, peak 1.
+
+> seals
+[2][2][2]; sealed 2.
+[2][2]crate: crate C, 3.
+text: nothing left; depth 0.
+
+> unseals
+Counter 7 16 0, I6 count 16.
+
+> bins
+[2] [2] ; stows true false true false true false.
+Packed at level 1.
+bin A: load 39, stowed 2, audits 4, nested, heavy, tag text: loose text.
+bin B: load 6, stowed 1, audits 2, nested, tag [2]crate: crate C, 4 sealed.
+
+> ledgers
+(post 1 at 3)(post 2 at 3)(post 3 at 3)(post 4 at 1); first false, pages 3, thing true, entries 4, total 14, last [2]crate: crate B, 17; depth 0, peak 3.

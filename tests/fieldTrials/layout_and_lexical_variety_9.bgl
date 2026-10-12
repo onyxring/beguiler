@@ -1,0 +1,324 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits applied to the interop and low-level machinery the first eight
+// trials left alone. `#undef` followed by an `#if` on the removed symbol, a dead `#if` branch holding
+// `#error`, and `#elif !X`; `##beguilerSettings.<key>` inside `#emitfirst`, read back through an
+// `extern const`; `extern` functions, variables and attributes renamed with `asBgl` (the clause on a
+// line of its own, a comment between `asBgl` and the name); `extern default` stubs supplied by plain
+// definitions written in odd layouts; `replace` of a library routine split over lines with
+// `replaced()`; `asI6` on an object, a member and a method; `_bglGlobalDeclaration` with `$selfsub`
+// on plain and `asI6`-renamed instances, called back through `extern`; implicit and `explicit`
+// conversion operators, `?=`, prefix `!` and an emitter `operator ?` driving `?`, `?.` and `??`; a
+// pooled class mixing in `bglAllocated` (`copy`, `remaining`, slot reuse); `bgl.asm` Z-machine
+// opcodes (arithmetic, shifts, `loadw`/`storew` on an array, `push`/`pull`, object-tree walks,
+// `printNum`/`printChar`, `inc`/`dec`); `bgl.header`; `\@`, `\'` and `\"` in strings, raw strings and
+// character literals; `continue` and `break` in `do`/`until` and nested `for` loops.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#define     PROBE       2
+#define     GONE                    // defined …
+#undef      GONE                    // … and removed again
+
+#if GONE
+    #error "GONE is still defined"
+#elif !PROBE
+    #error "PROBE is missing"
+#elif PROBE>1
+    #define WIDE    1
+#else
+    #define WIDE    0
+#endif
+
+#emitfirst
+{
+    Constant TRIAL_TARGET = ##beguilerSettings.target;      ! the target name, as an I6 string
+    Constant TRIAL_PROBE  = 7;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend class object { string description; }
+
+extern const string TRIAL_TARGET;
+extern const int    TRIAL_PROBE;
+
+//-- Extern renames ---------------------------------------------------------------------------------
+
+extern bool IndirectlyContains(object outerObj, object innerObj)
+    asBgl   /* the Beguile name: */   encloses;
+extern object CommonAncestor ( object a , object b ) asBgl ancestorOf ;
+extern int turns asBgl
+    turnCount;
+extern attribute open asBgl ajar;          // the library attribute, under a second name
+
+//-- World ------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+
+object box asI6 trialBox
+{
+    "box";
+    parent = roomA;
+    name = { .box };
+    attributes = { container, openable, static };
+    description = "A box.";
+    int depth asI6 boxDepth = 3;
+    int deeper() asI6 boxDeeper { return depth + 1; }
+}
+
+object coin { "coin"; parent = box; name = { .coin }; description = "A coin."; }
+object pebble { "pebble"; parent = roomA; name = { .pebble }; description = "A pebble."; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Library stubs and a replaced routine -----------------------------------------------------------
+
+void
+LookRoutine
+(
+)
+{
+    print("[look hook]^");
+}
+
+int
+    lastTurnSeen = -1;
+
+void TimePasses() { lastTurnSeen = turnCount; }
+
+replace
+    void
+        ScoreSub
+            ( )
+{
+    print("<");
+    replaced();
+    print("|end^");
+}
+
+verb TurnCheck
+{
+    meta = true; grammar = { .turncheck };
+    void handler() { printLine($"{turnCount} {lastTurnSeen} {turnCount == turns}"); }
+}
+
+//-- Global declarations per instance ---------------------------------------------------------------
+
+class Counter : object
+{
+    int count = 0;
+    emitter void _bglGlobalDeclaration()
+    {
+        [ $selfsub;                 ! one routine per instance
+            $self.count = $self.count + 1;
+            return $self.count;
+        ];
+    }
+}
+
+Counter steps { }
+Counter clicks asI6 clk { }
+
+extern int stepssub();
+extern int clksub();
+
+verb Counts
+{
+    meta = true; grammar = { .counts };
+    void handler()
+    {
+        stepssub(); stepssub(); clksub();
+        printLine($"{steps.count} {clicks.count} {stepssub()} {clksub()}");
+    }
+}
+
+//-- Interop checks ---------------------------------------------------------------------------------
+
+verb Interop
+{
+    meta = true; grammar = { .interop };
+    void handler()
+    {
+        printLine($"{encloses(box, coin)} {encloses(roomA, coin)} {encloses(coin, box)}");
+        printLine($"{ancestorOf(coin, pebble)} {ancestorOf(coin, box)}");
+        printLine($"{box.has(ajar)} {box.hasnt(open)}");
+        box.give(ajar);
+        printLine($"{box.has(open)} {box.has(ajar)}");
+        box.ungive(open);
+        printLine($"{box.has(ajar)}");
+        printLine($"{box.depth} {box.deeper()} {TRIAL_PROBE} {WIDE} {PROBE}");
+        print(TRIAL_TARGET); printLine();
+        printLine($"{turnCount == turns} {lastTurnSeen >= 0}");
+    }
+}
+
+//-- Conversions and the special operators ----------------------------------------------------------
+
+class Meter : object
+{
+    int units = 0;
+    Meter next;
+    int operator () { return units * 10; }                       // implicit
+    explicit string operator () { return "a meter"; }            // only under a cast
+    eBool operator ?= ( int v ) { return units - v <= 1 && v - units <= 1; }
+    bool operator ! () { return units == 0; }
+    emitter eBool operator ? () { ($self.units ~= 0) }
+}
+
+Meter m0 { units = 0; }
+Meter m1 { units = 4; next = m2; }
+Meter m2 { units = 9; }
+
+int twice(int n) { return n * 2; }
+
+verb Convert
+{
+    meta = true; grammar = { .convert };
+    void handler()
+    {
+        int n = m1;
+        printLine($"{n} {twice(m2)} {m1 + 1}");
+        string s = (string)m1;
+        print(s); printLine();
+        printLine($"{m1 ?= 5} {m1 ?= 3} {m1 ?= 6} {m2?=9}");
+        printLine($"{!m0} {!m1} {!!m1}");
+        printLine($"{(m0)?} {m1?} {m2 ?} {(m1)?.units} {m0?.units} {m1.next?} {m1.next.units}");
+        Meter pick = m0 ?? m2;
+        Meter keep = m1 ?? m2;
+        printLine($"{pick.units} {keep.units}");
+    }
+}
+
+//-- Pooled class with bglAllocated -----------------------------------------------------------------
+
+class Token[3] : object, bglAllocated
+{
+    int weight = 1;
+    int mark = 0;
+    void create(int w) { weight = w; }
+    void print() { print($"T{weight}/{mark}"); }
+}
+
+verb Pool
+{
+    meta = true; grammar = { .pool };
+    void handler()
+    {
+        Token a = new Token(5);
+        Token b = new Token(8);
+        printLine($"{a} {b} {a.remaining()}");
+        a.mark = 2;
+        b.copy(a);
+        printLine($"{a} {b} {b.remaining()}");
+        Token c = new Token(1);
+        Token d = new Token(2);
+        printLine($"{c} {d == null} {a.remaining()}");
+        delete b;
+        d = new Token(6);
+        printLine($"{d} {d != null} {a.remaining()}");
+        delete a; delete c; delete d;
+    }
+}
+
+//-- Z-machine opcodes ------------------------------------------------------------------------------
+
+array<int> table = { 10, 20, 30, 40 };
+
+verb Asm
+{
+    meta = true; grammar = { .asm };
+    void handler()
+    {
+        printLine($"{bgl.asm.add(3, 4)} {bgl.asm.sub(3, 4)} {bgl.asm.mul(-6, 7)} {bgl.asm.div(-7, 2)} {bgl.asm.mod(-7, 2)}");
+        printLine($"{bgl.asm.bitor($$1010, $$0101)} {bgl.asm.bitand($FF, $0F)} {bgl.asm.bitnot(0)}");
+        printLine($"{bgl.asm.logShift(-16, -2)} {bgl.asm.artShift(-16, -2)} {bgl.asm.logShift(1, 4)}");
+        printLine($"{bgl.asm.loadw((int)table, 1)} {bgl.asm.loadw((int)table, 4)}");
+        bgl.asm.storew((int)table, 2, 99);
+        printLine($"{table[1]} {table.length}");
+        bgl.asm.push(41);
+        bgl.asm.push(42);
+        int top = 0;
+        int under = 0;
+        bgl.asm.pull(top);
+        bgl.asm.pull(under);
+        printLine($"{top} {under}");
+        int k = 5;
+        bgl.asm.inc(k); bgl.asm.inc(k); bgl.asm.dec(k);
+        printLine(k);
+        printLine($"{bgl.asm.getParent((int)coin) == (int)box} {bgl.asm.getChild((int)box) == (int)coin} {bgl.asm.getSibling((int)coin)}");
+        bgl.asm.printNum(-12); bgl.asm.printChar(' '); bgl.asm.printChar('@'); bgl.asm.newLine();
+    }
+}
+
+//-- Header -----------------------------------------------------------------------------------------
+
+verb Header
+{
+    meta = true; grammar = { .header };
+    void handler()
+    {
+        int digits = 0;
+        for (int i = 0; i < 6; i++)
+        {
+            char c = bgl.header.serialChar(i);
+            if (c >= '0' && c <= '9') digits++;
+        }
+        printLine($"{bgl.header.release > 0} {digits}");
+    }
+}
+
+//-- Escapes ----------------------------------------------------------------------------------------
+
+verb Escapes
+{
+    meta = true; grammar = { .escapes };
+    void handler()
+    {
+        printLine("at \@ sign, caret \^, tilde \~, quote \"q\", back \\ slash");
+        printLine(@"raw: \@ ^ ~ \" \n /* not a comment */");
+        printLine($"{'\''} {'\"'} {'\\'} {'@'} {(int)'\'' } {'\'e'}");
+        printLine($"{"plain"} {"it's"} {@"a\b"} \{x}");
+    }
+}
+
+//-- Loops ------------------------------------------------------------------------------------------
+
+verb Loops
+{
+    meta = true; grammar = { .loops };
+    void handler()
+    {
+        int i = 0;
+        int sum = 0;
+        do
+        {
+            i++;
+            if (i % 3 == 0) continue;
+            if (i > 10) break;
+            sum += i;
+        }
+        until (i >= 20);
+        printLine($"{i} {sum}");
+        int hits = 0;
+        for (int a = 0; a < 4; a++)
+        {
+            for (int b = 0; b < 4; b++)
+            {
+                if (b == a) continue;
+                if (b > 2) break;
+                hits++;
+            }
+        }
+        printLine(hits);
+    }
+}
+
+#includeI6 "grammar"

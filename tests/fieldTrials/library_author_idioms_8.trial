@@ -1,0 +1,85 @@
+Room A
+Room A.
+
+You can see a disc, a carton, a pallet, a topper and a widget here.
+
+> shapes
+shape of 2, tier 2.
+case of 3 (boxed), tier 2.
+crate of 4 (boxed) [crate], tier 2.
+case of 1 (boxed), tier 2.
+Carton depth 3.
+
+> resize
+Topper 5; topper 6, disc 9.
+
+> census
+Shapes 1, boxes 3, all 4.
+
+> funcs
+Twice 14; apply 11; now 106, step 101.
+
+> scores
+Both 14, score 6, bonus 13, scale 10.
+
+> notes
+[disc 9, band small]
+<plain>
+<kept>
+
+> bands
+-5:negative 0:zero 7:small 20:round 50:other 150:huge 
+
+> tails
+Nums 15, rows 3 5, last row first 4, tens 30.
+
+> meter
+Added 5 then 11; total 11, over true; cleared 0, over false.
+
+> gauges
+Bumped: 3, 13; then 7.
+
+> plan
+Plan: fill seal ship open = 10; tail open.
+
+> tickets
+Got 1 and 2; third none true; reissued 9.
+
+> tickets
+Got 1 and 2; third none true; reissued 9.
+
+> areas
+Area 12, square 25, run 20.
+
+> logs
+Tally 3, tail 7, through log 3.
+
+> logs
+Tally 3, tail 7, through log 3.
+
+> pairs
+Empty true; p 3,7; q 10,0, p 3,7; same sum true, empty false, a pair.
+
+> take widget
+[the widget: carried]
+Taken.
+
+> drop widget
+[the widget: carried]
+Dropped.
+
+> push widget
+The widget won't budge.
+
+> x widget
+[looked at]
+You see nothing special about the widget.
+
+> shapes
+shape of 9, tier 2.
+case of 3 (boxed), tier 2.
+crate of 4 (boxed) [crate], tier 2.
+case of 6 (boxed), tier 2.
+Carton depth 3.
+
+

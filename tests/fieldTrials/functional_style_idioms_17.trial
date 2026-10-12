@@ -1,0 +1,69 @@
+Room A
+Room A.
+You can see a shelf A here.
+
+> sweep
+sweep 17 top gauge A reading 2
+
+> check 1
+[t] OBJ-7 shelf A above 4 band 4 hot 1 lit false span 1.5000..2.0000
+(poked gauge A)
+(short by 1) [t] TXT-3 Room A above 4 band 4 hot 1 lit false span -1.0000..2.0000
+(poked gauge B)
+check 3.5000, 1.0000, tally 2, window -1.0000..2.0000
+
+> check 3
+[t] OBJ-7 shelf A above 2 band 4 hot 3 lit true span 6.5000..6.0000
+(poked gauge A)
+[t] TXT-3 Room A above 2 band 4 hot 3 lit true span 5.5000..6.0000
+(poked gauge B)
+check 12.5000, 11.5000, tally 8, window 5.5000..6.0000
+
+> check 9
+[t] OBJ-7 shelf A above 0 band 4 hot 9 lit true span 27.5000..6.0000
+(poked gauge A)
+(short by 9) [t] TXT-3 Room A above 0 band 4 hot 9 lit true span -1.0000..4.0000
+(poked gauge B)
+check 33.5000, 3.0000, tally 26, window -1.0000..4.0000
+
+> sweep
+over over sweep 16 top gauge A reading 11
+
+> cell 1
+[c] c-5 heavy load 4 level 2 sum 11.0000 pick 1
+[c] c-8 heavy load 7 level 3 sum 11.0000 pick 1
+cell 11.0000, 11.0000, tally 32
+
+> cell 4
+(over at 11) [c] c-17 heavy load 7 level 4 sum 9.5000 pick 4
+(poked cell)
+[c] c-11 heavy load 10 level 4 sum 11.0000 pick 1
+(poked cell)
+cell 9.5000, 11.0000, tally 38
+
+> tally 9
+(stop 49) tally -1 nested 3 fast 0 many false walk 12.0000 first 3
+
+> tally 3
+(stop 4) tally -1 nested 3 fast 2 many false walk 7.0000 first 7
+
+> tally 1
+(stop 4) tally -1 nested 3 fast 3 one true walk 0.0000 first 4
+
+> tally 2
+(stop 4) tally -1 nested 3 fast 3 two true walk 1.0000 first 2
+
+> tally 7
+(stop 49) tally -1 nested 3 fast 0 many false walk 12.0000 first 2
+
+> tally 3
+(stop 4) tally -1 nested 3 fast 2 many false walk 7.0000 first 7
+
+> tally 3
+(stop 4) tally -1 nested 3 fast 2 many false walk 7.0000 first 7
+
+> tally 5
+(stop 28) tally -1 nested 3 fast 1 many false walk 5.0000 first 1
+
+> tally 6
+(stop 28) tally -1 nested 3 fast 1 many false walk 8.0000 first 4

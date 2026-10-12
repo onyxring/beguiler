@@ -1,0 +1,390 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirteenth PunyInform program, built on area triples: an `extend class` that adds
+// static arrays (an array of arrays, an `array<char>`, an array of a value class, an array of
+// strings), an inline `auto { }` accessor whose body reads and writes those statics and owns a
+// value-class member, and `operator []`/`[]=` over a member array; a class with a static array read
+// by a block-bodied lambda with postfix `?`, an `operator []` returning an object queried with `?`,
+// an accessor beside a member array of a value class filled from an array parameter, and a block
+// lambda summing the rows of a local array of arrays into a value-class local; a namespace object
+// with `alias … for` a value class and a class, an `auto { }` accessor using `outer.` to read the
+// host's array of arrays, array of strings and array of aliased class instances, an `operator []`,
+// array parameters typed through the aliases, and a block lambda over them; and an `extend` of that
+// object adding an alias for an enum, a second `outer.` accessor and an array parameter method.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#include <buf>
+
+#includeI6 "puny"
+
+// --- enums and a value class ------------------------------------------------------------------------
+
+enum eSide { left = 1, right }
+
+value class Coin {
+    int worth;
+    eSide side = eSide.left;
+
+    Coin operator = (Coin o) {
+        worth = o.worth;
+        side = o.side;
+        return self;
+    }
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+// --- a shelf whose statics, accessor and indexing come from an extension ----------------------------
+
+class Shelf : object {
+    int width = 2;
+}
+
+extend class Shelf {
+    static array<array<int>> layout = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9} };
+    static array<char> code = "abc";
+    static array<Coin> till[3];
+    static array<string> rowNames = {"top", "middle", "bottom"};
+    static array<array<string>> sides = { {"left", "right"}, {"front"} };
+    array<int> cells[6];
+    int lastSet = -1;
+
+    auto row = {
+        int _r = 0;
+        Coin _stamp;
+        int operator () { return Shelf.layout[_r][0] + _stamp.worth; }
+        void operator = (int v) {
+            _r = v;
+            _stamp.worth = Shelf.layout[v][2];
+            Shelf.code[0] = 'a' + v;
+        }
+    }
+
+    int operator [] (int i) {
+        return cells[i];
+    }
+
+    int operator []= (int i, int v) {
+        cells[i] = v;
+        lastSet = i;
+        return v;
+    }
+
+    void stock(int r) {
+        for (int i = 0; i < Shelf.layout[r].length; i++) self[i] = Shelf.layout[r][i] * width;
+        row = r;
+    }
+
+    static void pay(int slot, Coin c) {
+        Shelf.till[slot] = c;
+        Shelf.code[slot] = 'A' + c.worth;
+    }
+
+    static int tillTotal() {
+        int t = 0;
+        for (int i = 0; i < Shelf.till.size; i++) t += Shelf.till[i].worth;
+        return t;
+    }
+
+    string label(Coin c) {
+        return Shelf.rowNames[c.worth % 3];
+    }
+
+    string sideName(Coin c) {
+        int r = 0;
+        if (self[0] > 50) r = 1;
+        return Shelf.sides[r][(int)c.side - 1 - r];
+    }
+
+    void report() {
+        print($"Cells {self[0]} {self[1]} {self[2]}, last {lastSet}, row {row}, ");
+        print($"name {Shelf.rowNames[lastSet % 3]}, code ");
+        bgl.util.buf.print(Shelf.code);
+        printLine(".");
+    }
+}
+
+Shelf shelfA {
+    "shelf A";
+}
+
+Shelf shelfB {
+    "shelf B";
+    width = 10;
+}
+
+// --- a tray: a static array, block lambdas, indexing to objects -------------------------------------
+
+class Tray : object {
+    static array<object> seen[4];
+    static int scans = 0;
+    array<Coin> pile[4];
+
+    auto best = {
+        Coin _c;
+        int operator () { return _c.worth; }
+        void operator = (int v) {
+            if (v > _c.worth) _c.worth = v;
+        }
+    }
+
+    object operator [] (int i) {
+        if (i < 0 || i >= Tray.seen.length) return null;
+        return Tray.seen[i];
+    }
+
+    void note(object o) {
+        Tray.seen.append(o);
+    }
+
+    int countKnown() {
+        func<bool, object> known = (object o) => {
+            Tray.scans++;
+            if (!o?) return false;
+            return o.has(light);
+        };
+        int n = 0;
+        for (object o in Tray.seen) {
+            if (known(o)) n++;
+        }
+        return n;
+    }
+
+    void showFirst() {
+        object o = self[0];
+        if (o?) print($"{o}");
+        else print("none");
+    }
+
+    void load(array<Coin> coins) {
+        pile.clear();
+        for (Coin c in coins) {
+            pile.append(c);
+            best = c.worth;
+        }
+    }
+
+    int stackScore() {
+        array<array<int>> stacks = { {1, 2}, {3, 4, 5}, {6} };
+        Coin total;
+        func<int, int> rowSum = (int r) => {
+            int t = 0;
+            for (int v in stacks[r]) t += v;
+            return t;
+        };
+        for (int r = 0; r < stacks.length; r++) total.worth += rowSum(r);
+        return total.worth;
+    }
+}
+
+Tray trayA {
+    "tray A";
+}
+
+Tray trayB {
+    "tray B";
+}
+
+object lantern {
+    "lantern";
+    attributes = {light};
+}
+
+object rope {
+    "rope";
+}
+
+// --- a namespace object: aliases, an accessor reaching its host, indexing ---------------------------
+
+object kit {
+    alias coin for Coin;
+    alias tray for Tray;
+
+    array<array<int>> grid = { {10, 20}, {30, 40}, {50, 60} };
+    array<string> words = {"zero", "one", "two"};
+    array<tray> trays = {trayA, trayB};
+    int picks = 0;
+    int firstSeen = 0;
+    string lastWord = "none";
+
+    auto pick = {
+        int _i = -1;
+        coin _held;
+        int operator () { return _i * 100 + _held.worth; }
+        void operator = (int v) {
+            _i = v;
+            _held.worth = outer.grid[v][0];
+            outer.picks++;
+            if (outer.trays[v % 2][0]?) outer.firstSeen++;
+            outer.lastWord = outer.words[v];
+            if (outer.trays[v % 2]?) outer.trays[v % 2].best = outer.grid[v][1];
+        }
+    }
+
+    int operator [] (int i) {
+        return grid[i][0];
+    }
+
+    int worthOf(array<coin> cs) {
+        int t = 0;
+        for (coin c in cs) t += c.worth;
+        return t;
+    }
+
+    int heavier(array<coin> cs, int floor) {
+        func<bool, int> over = (int w) => {
+            if (w > floor) return true;
+            return false;
+        };
+        int n = 0;
+        for (coin c in cs) {
+            if (over(c.worth)) n++;
+        }
+        return n;
+    }
+
+    int sumRow(array<int> r) {
+        int t = 0;
+        for (int v in r) t += v;
+        return t;
+    }
+
+    int rowSums() {
+        return sumRow(grid[0]) + self[1] + self[2];
+    }
+}
+
+extend kit {
+    alias side for eSide;
+
+    array<string> tags[4];
+    int sets = 0;
+
+    auto marker = {
+        string _s = "unset";
+        string operator () { return _s; }
+        void operator = (string v) {
+            _s = v;
+            outer.sets++;
+            outer.tags.append(v);
+        }
+    }
+
+    int countSide(array<coin> cs, side s) {
+        int n = 0;
+        for (coin c in cs) {
+            if (c.side == s) n++;
+        }
+        return n;
+    }
+
+    void markAll(array<string> names) {
+        for (string s in names) marker = s;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb ShowShelf {
+    meta = true;
+    grammar = {.shelf};
+    void handler() {
+        shelfA.stock(1);
+        shelfA.report();
+        shelfB.stock(2);
+        shelfB[1] = 7;
+        shelfB.report();
+        Coin c;
+        c.worth = 4;
+        c.side = eSide.right;
+        Shelf.pay(0, c);
+        c.worth = 2;
+        Shelf.pay(2, c);
+        printLine($"Till {Shelf.tillTotal()} side {(int)Shelf.till[0].side} label {shelfA.label(c)}.");
+        c.side = eSide.left;
+        printLine($"Sides {shelfA.sideName(c)} {shelfB.sideName(Shelf.till[0])} {Shelf.sides[1].length}.");
+        bgl.util.buf.print(Shelf.code);
+        printLine();
+    }
+}
+
+verb ShowTray {
+    meta = true;
+    grammar = {.tray};
+    void handler() {
+        print("First ");
+        trayA.showFirst();
+        printLine($", known {trayA.countKnown()}.");
+        trayA.note(lantern);
+        trayA.note(rope);
+        trayA.note(lantern);
+        print("First ");
+        trayA.showFirst();
+        printLine($", known {trayA.countKnown()}, scans {Tray.scans}.");
+        object far = trayB[3];
+        if (far?) printLine("Far set.");
+        else printLine("Far empty.");
+        array<Coin> coins[3];
+        Coin c;
+        c.worth = 3;
+        coins.append(c);
+        c.worth = 8;
+        coins.append(c);
+        c.worth = 5;
+        coins.append(c);
+        trayA.load(coins);
+        printLine($"Pile {trayA.pile.length} best {trayA.best} last {trayA.pile[2].worth}.");
+        printLine($"Stacks {trayA.stackScore()}.");
+    }
+}
+
+verb ShowKit {
+    meta = true;
+    grammar = {.kit};
+    void handler() {
+        kit.pick = 2;
+        kit.pick = 1;
+        printLine($"Pick {kit.pick}, picks {kit.picks}, seen {kit.firstSeen}, word {kit.lastWord}.");
+        printLine($"Best {trayA.best} {trayB.best}.");
+        printLine($"Index {kit[0]} {kit[2]}, sums {kit.rowSums()}.");
+        array<kit.coin> cs[3];
+        kit.coin c;
+        c.worth = 6;
+        cs.append(c);
+        c.worth = 1;
+        c.side = eSide.right;
+        cs.append(c);
+        c.worth = 9;
+        cs.append(c);
+        printLine($"Worth {kit.worthOf(cs)}, heavier {kit.heavier(cs, 5)}.");
+        printLine($"Right {kit.countSide(cs, kit.side.right)}, left {kit.countSide(cs, kit.side.left)}.");
+        array<string> names = {"red", "blue"};
+        kit.markAll(names);
+        printLine($"Marker {kit.marker}, sets {kit.sets}, tags {kit.tags.length} {kit.tags[0]}.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

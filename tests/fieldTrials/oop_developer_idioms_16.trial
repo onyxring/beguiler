@@ -1,0 +1,19 @@
+Room A
+Room A.
+
+> ledgers
+Read beta -, second beta, largest 7.
+[fault 7 at depth 1]; posts true false, names 4, depth 0, peak 1.
+Kinds 2 4 3.
+beta in Room A.
+(ping ledger A)alpha rank 4 faults 1.
+As book: alpha 4.
+
+> racks
+(ping rack A); >sLzLssss sums 5 6, misses 2, peak 11.
+Cells 2 8 0 14, spare -7, marked true false.
+Pool true true true true.
+
+> widgets
+(ping widget B); kinds 2 4, tops 14 30, labels red/red. blue/held!.
+Read 9 -1, levels 0 3, uses 1 1, pings 3.

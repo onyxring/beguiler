@@ -1,0 +1,18 @@
+Room A
+Room A.
+> cells
+Digits 7 4 1; bands 2 -1 -1; set 2 of 3; marks 2; [47].
+> labels
+ab+cdef+gh; chars cf.; pick tagged; high; asked 2; via bg; low=ab+cdef+gh tagged=gh .
+> racks
+Slots 6: 1 4 6 -1; now 50 11; load 0 8; spare 3; tags ...#.. ..#... _*__; marked 1 2.
+> racks
+Slots 6: 11 4 6 -1; now 50 21; load 0 8; spare 6; tags ...#.. ..#... _*__; marked 1 2.
+> keep
+Kept 2, weighted 13; offered 2 of 3; digits 35; present true; over 2 1.
+> board
+Row 1; total [15 x2]; strip #--#--; from 2: -#.; label nothing green; shown 2, last c; digit 1.
+> board
+Row 1; total [30 x4]; strip #--#--; from 2: -#.; label green red; shown 1, last c; digit 3.
+> probe
+Probe n2; none; total [80 x6]; loose 18.

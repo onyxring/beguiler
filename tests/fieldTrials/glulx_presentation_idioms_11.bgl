@@ -1,0 +1,510 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a rack of float gauges drawn into a text grid, with a link panel beside it. A gauge
+// class with two parents (a float scale with a default span() and a tint), positional caption and
+// cell count, an attribute tested on self, an ancestor-cast call to the overridden span(), a float
+// read through ?. and an object fallback through ??, and an #i6 island reading a member through
+// $i6Expr; an extend class adding tree methods (depth through .parent, adopting a child); an owned
+// value-class state (float level, enum mode, tick count) bound by ref locals while walking the
+// children recursively and stepped through a ref parameter; a level bank with float operator [] and
+// []= (clamping, += on a subscript); a nested array<array<float>> of curves plotted into the grid; an
+// emitter class with init/deinit counting style scopes, held around float averaging and around a
+// try/catch whose callee throws; a label class naming an array<char> buffer, with ==, != and <=> on
+// buffer contents (and the derived <) and += appending another buffer; a named union string | object captured into a buf and
+// discriminated with typeof, its first character read into a var; a value class whose implicit
+// conversion reads a caption through ?. and ??; a primitive color word whose operator + expands a
+// routine call through $i6Expr; a verb with an inline float accessor (auto { }) reaching its host
+// through outer; an object namespace aliasing the gauge class and the mode enum beside emitter
+// values; and a statistics class with static members reached through #using.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute dimmed;
+
+enum eMode { steady, rising, falling }
+
+string modeWord(eMode m) {
+    switch (m) {
+        case eMode.rising:  return "rising";
+        case eMode.falling: return "falling";
+        default:            return "steady";
+    }
+}
+
+// ---- style scopes --------------------------------------------------------------------------------
+
+int styleDepth = 0;
+int styleOpens = 0;
+
+emitter class emphasis {
+    emitter void init()   { styleDepth++; styleOpens++; }
+    emitter void deinit() { styleDepth--; }
+}
+
+// ---- gauge state ---------------------------------------------------------------------------------
+
+value class meterState {
+    float level;
+    eMode mode;
+    int   ticks;
+    meterState operator = (meterState o) {
+        level = o.level;
+        mode = o.mode;
+        ticks = o.ticks;
+        return self;
+    }
+}
+
+void stepState(ref meterState m, float by) {
+    m.level += by;
+    if (m.level > 1.0) m.level = 1.0;
+    if (m.level < 0.0) m.level = 0.0;
+    if (by > 0.0) m.mode = eMode.rising;
+    else if (by < 0.0) m.mode = eMode.falling;
+    else m.mode = eMode.steady;
+    m.ticks++;
+}
+
+// ---- gauges --------------------------------------------------------------------------------------
+
+class scaled : object {
+    float scale = 1.0;
+    default float span(int n) { return scale * n; }
+}
+
+class tinted : object {
+    int tint = $FFFFFF;
+}
+
+class gaugePanel : scaled, tinted {
+    inline string caption;
+    inline int    cells;
+    meterState    state;
+
+    replace float span(int n) {
+        float full = ((scaled)self).span(n);
+        if (self.has(dimmed)) return full / 2;
+        return full;
+    }
+
+    int redPart() {
+        int r = 0;
+        #i6 r = ($i6Expr(tint) / $10000) & $FF;
+        return r;
+    }
+
+    float relativeTo(gaugePanel other) {
+        gaugePanel o = other ?? self;
+        float theirs = other?.scale;
+        return state.level * scale - o.state.level * theirs;
+    }
+}
+
+extend class gaugePanel {
+    int depth() {
+        int d = 0;
+        object p = self.parent;
+        while (p != null && p != rack) {
+            d++;
+            p = p.parent;
+        }
+        return d;
+    }
+    void adopt(gaugePanel kid) {
+        kid.parent = self;
+    }
+}
+
+object rack { "rack"; }
+
+gaugePanel cpuGauge { "CPU", 20, "cpu gauge"; parent = rack; tint = $C80000; }
+gaugePanel memGauge { "MEM", 20, "mem gauge"; parent = rack; scale = 0.5; tint = $0050A0; }
+gaugePanel ioGauge  { "IO", 16, "io gauge"; parent = memGauge; attributes = {dimmed}; tint = $00A000; }
+gaugePanel netGauge { "NET", 12, "net gauge"; tint = $808080; }
+
+int stepRack(object host, float by) {
+    int n = 0;
+    for (object o in host.children) {
+        gaugePanel g = (gaugePanel)o;
+        ref meterState st := g.state;
+        stepState(st, g.has(dimmed) ? by / 2 : by);
+        n++;
+        n += stepRack(o, by);
+    }
+    return n;
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+textGridWindow   board = null;
+textBufferWindow side  = null;
+int line = 0;
+
+void drawGauge(gaugePanel g) {
+    int cells = (int)g.span(g.cells);
+    int filled = (int)(g.state.level * cells + 0.5);
+    board.moveCursor(g.depth() * 2, line);
+    board.print(g.caption);
+    board.moveCursor(8, line);
+    for (int i = 0; i < cells; i++) board.print(i < filled ? "#" : ".");
+    line++;
+}
+
+void drawTree(object host) {
+    for (object o in host.children) {
+        drawGauge((gaugePanel)o);
+        drawTree(o);
+    }
+}
+
+void redraw() {
+    if (board == null) return;
+    board.clear();
+    line = 0;
+    drawTree(rack);
+}
+
+// ---- level bank ----------------------------------------------------------------------------------
+
+class levelBank : object {
+    array<float> slots[6];
+    float operator [] (int i) {
+        if (i < 0 || i >= slots.length) return 0.0;
+        return slots[i];
+    }
+    float operator []= (int i, float v) {
+        while (slots.length <= i) slots += 0.0;
+        if (v < 0.0) v = 0.0;
+        if (v > 1.0) v = 1.0;
+        slots[i] = v;
+        return v;
+    }
+}
+
+levelBank bank { "level bank"; }
+
+float averageLevel(levelBank b) {
+    emphasis e;
+    float sum = 0.0;
+    int n = b.slots.length;
+    if (n == 0) return 0.0;
+    for (int i = 0; i < n; i++) sum += b[i];
+    printLine($"Averaged {n} at style depth {styleDepth}.");
+    return sum / n;
+}
+
+// ---- curves --------------------------------------------------------------------------------------
+
+array<array<float>> curves = { {0.0, 0.25, 0.5, 1.0}, {1.0, 0.5}, {0.75} };
+
+float plotCurves(textGridWindow g) {
+    float total = 0.0;
+    int row = 0;
+    for (array<float> c in curves) {
+        float sum = 0.0;
+        for (int i = 0; i < c.length; i++) {
+            sum += c[i];
+            g?.moveCursor(30 + (int)(c[i] * 10.0), row);
+            g?.print("*");
+        }
+        printLine($"Curve {row}: {c.length} points, sum {sum}.");
+        total += sum;
+        row++;
+    }
+    curves[2][0] = curves[0][1] * 2;
+    printLine($"Rewritten: {curves[2][0]}; last {curves[0][curves[0].length - 1]}.");
+    return total;
+}
+
+// ---- presets -------------------------------------------------------------------------------------
+
+int presetErrors = 0;
+
+void applyPreset(int which) {
+    switch (which) {
+        case 0: bank[0] = 0.0; bank[1] = 0.0;
+        case 1: bank[0] = 0.5; bank[1] = 1.5;
+        default: throw which;
+    }
+}
+
+void tryPreset(int which) {
+    emphasis e;
+    try {
+        applyPreset(which);
+        printLine($"Preset {which} applied at depth {styleDepth}.");
+    } catch (int bad) {
+        emphasis inner;
+        presetErrors++;
+        printLine($"Preset {bad} rejected at depth {styleDepth}.");
+    }
+    printLine($"After preset {which}: depth {styleDepth}, errors {presetErrors}.");
+}
+
+// ---- labels --------------------------------------------------------------------------------------
+
+class labelText : object {
+    array<char> text[16];
+    eBool operator == (labelText o) { return bgl.util.buf.equals(text, o.text); }
+    eBool operator != (labelText o) { return !bgl.util.buf.equals(text, o.text); }
+    int operator <=> (labelText o) { return bgl.util.buf.compare(text, o.text, true); }
+    labelText operator += (array<char> more) {
+        bgl.util.buf.append(text, more);
+        return self;
+    }
+}
+
+labelText tagA { "tag a"; }
+labelText tagB { "tag b"; }
+
+union cellText = string | object;
+
+array<char> pad[16];
+
+void fillFrom(array<char> dst, cellText t) {
+    bgl.util.buf.capture(dst);
+    if (typeof(t) == eType.string) print((string)t);
+    else print((object)t);
+    bgl.util.buf.release();
+    var first = dst[0];
+    char c = first;
+    printLine($"Filled {dst.length} chars from {typeof(t) == eType.string ? "a string" : "an object"}, first '{c}'.");
+}
+
+// ---- captions ------------------------------------------------------------------------------------
+
+value class captionOf {
+    gaugePanel owner;
+    string operator () { return owner?.caption ?? "(none)"; }
+    captionOf operator = (captionOf o) {
+        owner = o.owner;
+        return self;
+    }
+}
+
+object heading {
+    "heading";
+    captionOf title;
+}
+
+// ---- colors --------------------------------------------------------------------------------------
+
+int blendWords(int a, int b) {
+    return ((a >> 1) & $7F7F7F) + ((b >> 1) & $7F7F7F);
+}
+
+primitive class colorWord {
+    emitter void operator = (int v)        { $target = $v; }
+    emitter int operator ()                { ($val) }
+    emitter colorWord operator + (colorWord o) { $i6Expr(blendWords($val, $o)) }
+}
+
+stringObj hex(int v) {
+    string digits = "0123456789ABCDEF";
+    stringObj s = "$";
+    for (int shift = 20; shift >= 0; shift -= 4) s += digits[(v >> shift) & 15];
+    return s;
+}
+
+// ---- namespace -----------------------------------------------------------------------------------
+
+object kit {
+    alias meter for gaugePanel;
+    alias mode for eMode;
+    emitter int barCells { 20 }
+    emitter int halfOf(int n) { ($n / 2) }
+}
+
+#using kit
+class rackStats {
+    static int draws = 0;
+    static int widest = 0;
+    static void note(meter g) {
+        rackStats.draws++;
+        if (g.cells > rackStats.widest) rackStats.widest = g.cells;
+    }
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    bgl.util.buf.set(tagA.text, "Alpha");
+    bgl.util.buf.set(tagB.text, "beta");
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+void stepUp()   { int n = stepRack(rack, 0.25); redraw(); side?.printLine($"Stepped {n} up."); }
+void stepDown() { int n = stepRack(rack, -0.5); redraw(); side?.printLine($"Stepped {n} down."); }
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        if (board == null) board = bgl.ui.mainWin.splitUpGrid(5);
+        if (side == null) side = bgl.ui.mainWin.splitRightBuffer(20);
+        if (board == null || side == null) {
+            printLine("No panels.");
+            return;
+        }
+        redraw();
+        side.clear();
+        side.printLine($"{link("Up", stepUp)} {link("Down", stepDown)}");
+        printLine("Panels open.");
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    meta = true;
+    void handler() {
+        for (object o in rack.children) {
+            gaugePanel g = (gaugePanel)o;
+            printLine($"{g.caption}: {g.state.level} {modeWord(g.state.mode)} x{g.state.ticks}, span {g.span(g.cells)}.");
+        }
+        printLine($"IO: {ioGauge.state.level} {modeWord(ioGauge.state.mode)}, depth {ioGauge.depth()}.");
+        printLine($"CPU vs MEM {cpuGauge.relativeTo(memGauge)}; vs none {cpuGauge.relativeTo(null)}.");
+        printLine($"Red parts {cpuGauge.redPart()}, {memGauge.redPart()}.");
+    }
+}
+
+verb Slots {
+    grammar = {.slots};
+    meta = true;
+    void handler() {
+        bank[0] = 0.5;
+        bank[2] = 1.75;
+        bank[1] = -0.25;
+        bank[0] += 0.125;
+        printLine($"Bank {bank.slots.length}: {bank[0]}, {bank[1]}, {bank[2]}, {bank[9]}.");
+        float avg = averageLevel(bank);
+        printLine($"Average {avg}; depth {styleDepth}, opens {styleOpens}.");
+    }
+}
+
+verb Plot {
+    grammar = {.plot};
+    meta = true;
+    void handler() {
+        float t = plotCurves(board);
+        printLine($"Total {t}.");
+    }
+}
+
+verb Preset {
+    grammar = {.preset};
+    meta = true;
+    void handler() {
+        tryPreset(1);
+        tryPreset(7);
+        printLine($"Bank now {bank[0]}, {bank[1]}; depth {styleDepth}, opens {styleOpens}.");
+    }
+}
+
+verb Labels {
+    grammar = {.labels};
+    meta = true;
+    void handler() {
+        printLine($"Same {tagA == tagB ? "yes" : "no"}, differ {tagA != tagB ? "yes" : "no"}, order {tagA <=> tagB}, less {tagA < tagB ? "yes" : "no"}.");
+        fillFrom(pad, "-ta");
+        tagB += pad;
+        bgl.util.buf.print(tagB.text);
+        printLine($" ({tagB.text.length})");
+        fillFrom(pad, cpuGauge);
+        bgl.util.buf.set(tagA.text, "beta-ta");
+        printLine($"Now same {tagA == tagB ? "yes" : "no"}, order {tagA <=> tagB}.");
+    }
+}
+
+verb Caption {
+    grammar = {.caption};
+    meta = true;
+    void handler() {
+        string s = heading.title;
+        printLine($"Caption {s}.");
+        heading.title.owner = memGauge;
+        s = heading.title;
+        printLine($"Caption {s}.");
+    }
+}
+
+verb Tint {
+    grammar = {.tint};
+    meta = true;
+    void handler() {
+        colorWord a = cpuGauge.tint;
+        colorWord b = memGauge.tint;
+        colorWord mix = a + b;
+        int m = mix;
+        printLine($"Mix {hex(m)} of {hex(a)} and {hex(b)}.");
+        netGauge.tint = m;
+        printLine($"Net red {netGauge.redPart()}.");
+    }
+}
+
+verb Zoom {
+    grammar = {.zoom};
+    meta = true;
+    int changes = 0;
+    auto factor = {
+        float _raw = 1.0;
+        float operator () { return _raw; }
+        void operator = (float v) {
+            _raw = v > 4.0 ? 1.0 : v;
+            outer.changes++;
+        }
+    }
+    void handler() {
+        factor = factor * 2;
+        float f = factor;
+        printLine($"Zoom {f} after {changes} changes.");
+    }
+}
+
+verb Tree {
+    grammar = {.tree};
+    meta = true;
+    void handler() {
+        memGauge.adopt(netGauge);
+        cpuGauge.adopt(ioGauge);
+        for (object o in rack.children) {
+            kit.meter g = (kit.meter)o;
+            rackStats.note(g);
+            for (object c in g.children) {
+                kit.meter k = (kit.meter)c;
+                rackStats.note(k);
+                printLine($"{g.caption} > {k.caption} (depth {k.depth()}, {kit.halfOf(k.cells)} of {kit.barCells}).");
+            }
+        }
+        printLine($"Draws {rackStats.draws}, widest {rackStats.widest}; mode {modeWord(kit.mode.falling)}.");
+        redraw();
+    }
+}
+
+#includeI6 "grammar"

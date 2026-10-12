@@ -1,0 +1,423 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fourteenth PunyInform program, built on area triples among primitive classes, static
+// member arrays, arithmetic operator overloads, <buf>, try/catch/throw, extern declarations and
+// replace/default: a `primitive class` over int whose `extend extern class` adds static arrays (of int,
+// of the primitive itself, a tracked `array<char>`), a `replace`d emitter `operator +` (which every later
+// `+` and `+=` on the type uses), new emitter operators, and static methods that throw, catch and
+// capture into a static buf; an I6 class bound with `extern class` (members, static arrays of strings
+// and chars, emitter operators taking another instance, static methods), its extern instances, and an
+// `extend extern class` adding a static array, a `replace`d emitter operator and a `replace`d static
+// method; a value class with arithmetic operators returning the class, a static history array filled
+// under try/catch and a static method summing it; a class with `default` methods, an `operator +` that
+// records into a static array and shows into a static buf, a subclass `replace`-ing a default method
+// with one that throws, and an `extend class` replacing the other default and adding `operator *` that
+// catches; the PunyInform routine ObjectCapacity `replace`d with `replaced()` and a try/catch over an
+// extern static method that throws; and a program routine replaced with a guarded body.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <buf>
+
+#includeI6 "puny"
+
+// --- a primitive newtype over int, its operators replaced and extended --------------------------------
+
+primitive class grams {
+    emitter void  operator = (int v)    { $self = $v; }
+    emitter int   operator ()           { ($self) }
+    emitter grams operator + (grams v)  { ($self + $v) }
+    emitter grams operator - (grams v)  { ($self - $v) }
+    emitter grams operator * (int n)    { ($self * $n) }
+}
+
+extend extern class grams {
+    static array<int> marks = {100, 250, 500};
+    static array<grams> tare = {0, 40, 75, 120};
+    static array<char> note[16];
+
+    replace emitter grams operator + (grams v) { (($self + $v) % 1000) }
+    emitter grams operator / (int n) { ($self / $n) }
+    emitter grams operator % (int n) { ($self % $n) }
+
+    static int band(grams g) {
+        int b = 0;
+        try {
+            if ((int)g < 0) throw -1;
+            for (int i = 0; i < grams.marks.length; i++) {
+                if ((int)g >= grams.marks[i]) b = i + 1;
+            }
+        } catch (int e) {
+            bgl.util.buf.set(grams.note, "negative");
+            return e;
+        }
+        bgl.util.buf.capture(grams.note);
+        print($"band {b}");
+        bgl.util.buf.release();
+        return b;
+    }
+
+    static grams net(grams gross, int slot) {
+        if (slot < 0 || slot >= grams.tare.length) throw slot;
+        return gross - grams.tare[slot];
+    }
+}
+
+// --- an I6 class bound with extern, then extended ------------------------------------------------------
+
+#i6 {
+    Class Crate
+        with heft 0,
+             slot 0;
+    Crate crateA "crate A"
+        with heft 420,
+             slot 1;
+    Crate crateB "crate B"
+        with heft 730,
+             slot 3;
+    Crate crateC "crate C"
+        with heft 90,
+             slot 9;
+}
+
+extern class Crate : object {
+    int heft;
+    int slot;
+    static array<string> slotNames = {"none", "left", "right"};
+    static array<char> label[24];
+
+    emitter grams weight() { ($self.heft) }
+    emitter grams operator + (Crate o) { ($self.heft + $o.heft) }
+    emitter grams operator * (int n) { ($self.heft * $n) }
+
+    static grams load(Crate c, grams extra) {
+        grams w = c.weight() + extra;
+        return grams.net(w, c.slot);
+    }
+
+    static void tag(Crate c) {
+        try {
+            if (c.slot >= Crate.slotNames.length) throw c.slot;
+            bgl.util.buf.capture(Crate.label);
+            print($"{Crate.slotNames[c.slot]} {(int)c.weight()}");
+            bgl.util.buf.release();
+        } catch (int e) {
+            bgl.util.buf.set(Crate.label, "bad slot");
+        }
+    }
+}
+
+extern Crate crateA;
+extern Crate crateB;
+extern Crate crateC;
+
+extend extern class Crate {
+    static array<grams> limits = {500, 800, 1000};
+    replace emitter grams operator * (int n) { ($self.heft * $n / 2) }
+    emitter grams operator - (Crate o) { ($self.heft - $o.heft) }
+
+    replace static void tag(Crate c) {
+        try {
+            grams w = Crate.load(c, 0);
+            if ((int)w > (int)Crate.limits[0]) throw (int)w;
+            bgl.util.buf.set(Crate.label, "light");
+        } catch (int e) {
+            bgl.util.buf.capture(Crate.label);
+            print($"heavy {e}");
+            bgl.util.buf.release();
+        }
+    }
+}
+
+// --- a value class with operators and a static history ---------------------------------------------
+
+value class Reading {
+    grams g;
+    static array<grams> history[4];
+    static int logged = 0;
+
+    Reading operator = (Reading o) {
+        g = o.g;
+        return self;
+    }
+
+    Reading operator + (Reading o) {
+        Reading r;
+        r.g = g + o.g;
+        return r;
+    }
+
+    Reading operator * (int n) {
+        Reading r;
+        r.g = g * n;
+        return r;
+    }
+
+    int operator % (int n) {
+        return (int)(g % n);
+    }
+
+    void log() {
+        try {
+            if (Reading.logged >= Reading.history.size) throw Reading.logged;
+            Reading.history[Reading.logged] = g;
+            Reading.logged++;
+        } catch (int e) {
+            bgl.util.buf.set(grams.note, "history full");
+        }
+    }
+
+    static grams sum() {
+        grams t = 0;
+        for (int i = 0; i < Reading.logged; i++) t = t + Reading.history[i];
+        return t;
+    }
+}
+
+// --- scales: default methods, a replacing subclass and an extension ----------------------------------
+
+class Scale : object {
+    static array<grams> seen[6];
+    static array<char> display[24];
+    static int count = 0;
+    grams zero = 0;
+    int reads = 0;
+
+    default grams read(grams g) {
+        return g - zero;
+    }
+
+    default void show(grams g) {
+        bgl.util.buf.set(Scale.display, "");
+        bgl.util.buf.capture(Scale.display);
+        print($"{self}: {(int)g} g");
+        bgl.util.buf.release();
+    }
+
+    grams operator + (grams g) {
+        reads++;
+        grams r = read(g);
+        try {
+            if (Scale.count >= Scale.seen.size) throw Scale.count;
+            Scale.seen[Scale.count] = r;
+            Scale.count++;
+        } catch (int full) {
+            Scale.count = 0;
+            Scale.seen[0] = r;
+            Scale.count = 1;
+        }
+        show(r);
+        return r;
+    }
+}
+
+class Balance : Scale {
+    static array<grams> limits = {200, 600};
+    grams pan = 0;
+
+    replace grams read(grams g) {
+        grams r = g + pan - zero;
+        if ((int)r > (int)Balance.limits[1]) throw (int)r;
+        return r;
+    }
+
+    grams operator - (Balance o) {
+        return pan - o.pan;
+    }
+}
+
+extend class Balance {
+    static array<string> grades = {"low", "mid", "high"};
+
+    replace void show(grams g) {
+        int k = 0;
+        if ((int)g >= (int)Balance.limits[0]) k = 1;
+        if ((int)g >= (int)Balance.limits[1]) k = 2;
+        bgl.util.buf.set(Scale.display, Balance.grades[k]);
+        bgl.util.buf.toUpper(Scale.display);
+    }
+
+    grams operator * (int n) {
+        grams r = pan * n;
+        try {
+            r = read(r);
+        } catch (int over) {
+            bgl.util.buf.set(Scale.display, "over");
+            r = Balance.limits[1];
+        }
+        return r;
+    }
+}
+
+Scale scaleA {
+    "scale A";
+    zero = 10;
+}
+
+Balance balanceA {
+    "balance A";
+    pan = 150;
+}
+
+Balance balanceB {
+    "balance B";
+    pan = 40;
+    zero = 15;
+}
+
+// --- a library routine and a program routine, replaced ----------------------------------------------
+
+replace int ObjectCapacity(object obj) {
+    if (!obj.is(Crate)) return replaced(obj);
+    Crate c = (Crate)obj;
+    int cap = 0;
+    try {
+        grams w = Crate.load(c, 0);
+        cap = (int)(w / 100);
+    } catch (int slot) {
+        bgl.util.buf.set(Crate.label, "no tare");
+        cap = replaced(obj);
+    }
+    return cap;
+}
+
+grams settle(grams g) {
+    return g;
+}
+
+replace grams settle(grams g) {
+    try {
+        if ((int)g > 900) throw (int)g;
+    } catch (int over) {
+        bgl.util.buf.set(grams.note, "settled");
+        return 900;
+    }
+    return replaced(g) + 5;
+}
+
+// --- rooms --------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+// --- verbs --------------------------------------------------------------------------------------------
+
+verb Weigh {
+    meta = true;
+    grammar = {.weigh};
+    void handler() {
+        grams a = 300;
+        grams b = 800;
+        grams c = a + b;
+        grams d = a * 2;
+        printLine($"Sum {(int)c} double {(int)d} band {grams.band(d)} {grams.band(a - b)}.");
+        bgl.util.buf.print(grams.note);
+        printLine();
+        printLine($"Split {(int)(b / 3)} {(int)(b % 300)} net {(int)grams.net(b, 2)}.");
+        try {
+            grams n = grams.net(b, 7);
+            printLine($"Net {(int)n}.");
+        } catch (int slot) {
+            printLine($"No tare {slot}.");
+        }
+        grams.band(d);
+        bgl.util.buf.print(grams.note);
+        printLine();
+    }
+}
+
+verb Crates {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        grams e = crateA + crateB;
+        printLine($"Crates {(int)e} {(int)(crateA * 2)} {(int)(crateB - crateA)}.");
+        printLine($"Loads {(int)Crate.load(crateA, 30)} {(int)Crate.load(crateB, 0)}.");
+        Crate.tag(crateA);
+        bgl.util.buf.print(Crate.label);
+        printLine();
+        Crate.tag(crateB);
+        bgl.util.buf.print(Crate.label);
+        printLine();
+        printLine($"Capacity {ObjectCapacity(crateA)} {ObjectCapacity(crateB)} {ObjectCapacity(roomA)}.");
+        printLine($"Capacity {ObjectCapacity(crateC)}.");
+        bgl.util.buf.print(Crate.label);
+        printLine();
+        Crate.tag(crateC);
+        bgl.util.buf.print(Crate.label);
+        printLine();
+    }
+}
+
+verb Readings {
+    meta = true;
+    grammar = {.readings};
+    void handler() {
+        Reading r;
+        Reading s;
+        r.g = 120;
+        s.g = 45;
+        Reading t = r + s;
+        Reading u = t * 3;
+        printLine($"Readings {(int)t.g} {(int)u.g} mod {u % 100}.");
+        r.log();
+        t.log();
+        u.log();
+        printLine($"Logged {Reading.logged} sum {(int)Reading.sum()}.");
+        u.log();
+        u.log();
+        printLine($"Logged {Reading.logged}.");
+        bgl.util.buf.print(grams.note);
+        printLine();
+        printLine($"Settle {(int)settle(r.g)} {(int)settle(u.g * 2)}.");
+        bgl.util.buf.print(grams.note);
+        printLine();
+    }
+}
+
+verb Scales {
+    meta = true;
+    grammar = {.scales};
+    void handler() {
+        grams g = scaleA + 250;
+        bgl.util.buf.print(Scale.display);
+        printLine($" ({(int)g}, reads {scaleA.reads}).");
+        g = balanceA + 100;
+        bgl.util.buf.print(Scale.display);
+        printLine($" ({(int)g}).");
+        g = balanceB + 300;
+        bgl.util.buf.print(Scale.display);
+        printLine($" ({(int)g}).");
+        try {
+            g = balanceA + 500;
+            printLine("No throw.");
+        } catch (int over) {
+            printLine($"Over {over}, reads {balanceA.reads}.");
+        }
+        printLine($"Diff {(int)(balanceA - balanceB)}, times {(int)(balanceB * 3)} {(int)(balanceA * 5)}.");
+        bgl.util.buf.print(Scale.display);
+        printLine();
+        int t = 0;
+        for (int i = 0; i < Scale.count; i++) t += (int)Scale.seen[i];
+        printLine($"Seen {Scale.count} total {t}.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

@@ -1,0 +1,104 @@
+/*  Field trial part — included by library_author_idioms_8.bgl. Not a trial on its own.  */
+
+#once
+#include "library_author_idioms_8_core"
+
+#using bgl.printRules
+
+// ---- A meter the I6 side owns, bound as an extern object. ----
+
+#i6 {
+    Object La8_Meter
+        with la8_total 0,
+             la8_add [ n times;
+                 self.la8_total = self.la8_total + n * times;
+                 return self.la8_total;
+             ],
+             la8_clear [;
+                 self.la8_total = 0;
+             ];
+}
+
+extern object La8_Meter {
+    int la8_add(int n, int times = 1);
+    void la8_clear();
+    int la8_total;
+    /// True past a limit.
+    emitter bool over(int lim) { ($self.la8_total > $lim) }
+}
+
+// ---- Gauges: a method given an I6 name, called from an I6 routine. ----
+
+/// A reading bumped from the I6 side.
+class la8Gauge : object {
+    int reading = 0;
+    void bump(int by) asI6 la8_bump_impl { reading = reading + by; }
+}
+
+#i6 {
+    [ La8_BumpAll n  o;
+        objectloop (o ofclass $i6Name(la8Gauge)) o.($i6Name(la8Gauge.bump))(n);
+    ];
+}
+
+extern void La8_BumpAll(int n);
+
+// ---- Plan steps, reordered by the consumer. ----
+
+/// One step of a plan, named positionally.
+class la8Step : object {
+    int cost = 1;
+}
+
+la8Step stepOpen { "open"; }
+la8Step stepFill { "fill"; cost = 2; }
+la8Step stepSeal { "seal"; cost = 3; }
+
+array<la8Step> la8Plan = {stepOpen, stepFill, stepSeal};
+
+/// Prints a plan and its total cost.
+void la8ShowPlan() {
+    int total = 0;
+    for (la8Step s in la8Plan) {
+        print($"{s} ");
+        total += s.cost;
+    }
+    print($"= {total}");
+}
+
+// ---- Tickets from a pool sized by a constant. ----
+
+const int LA8_SLOTS = 2;
+
+class la8Ticket[LA8_SLOTS] : object {
+    int no = 0;
+    void create(int n) { no = n; }
+}
+
+// ---- Dimensions, handed in as bare inline objects. ----
+
+class la8Dims : object {
+    inline int w;
+    inline int h;
+}
+
+int la8Area(la8Dims d) { return d.w * d.h; }
+
+// ---- A log that refers to an array kept elsewhere. ----
+
+object la8Log {
+    ref array<int> entries;
+}
+
+// ---- Watched things: a before rule keyed on the action. ----
+
+class la8Watched : object {
+    bool before() {
+        switch (action) {
+            case Take, Drop: print($"[{the(self)}: carried]^");
+            case Push, Pull: rtrue($"{cThe(self)} won't budge.^");
+            case Examine:    print("[looked at]^");
+        }
+        rfalse;
+    }
+}

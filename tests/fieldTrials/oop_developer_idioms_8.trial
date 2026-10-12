@@ -1,0 +1,70 @@
+Room A
+Room A.
+
+> recurse
+  depth 3: [10..12] split [10..11] [11..12]
+  depth 2: [8..12] split [8..10] [10..12]
+  depth 1: [8..16] split [8..12] [12..16]
+  depth 0: [0..16] split [0..8] [8..16]
+Found [11..12] at depth 4; all still [0..16].
+  node 2: [5..7] -> [2..7]
+  node 7: [5..5] -> [2..7]
+  node 11: [2..7] -> [2..11]
+  node 5: [5..5] -> [2..11]
+4 nodes span [2..11].
+
+> gauge
+g: level 0, seen [0..9], history 3 9 0
+h: level 6, seen [0..9], history 3 9 0 6
+g: level 0, seen [0..9], history 3 9 0
+  inside: level 9, seen [0..9], history 3 9 0 6 9
+h: level 6, seen [0..9], history 3 9 0 6
+panel: level 1, seen [0..9], history 3 9 0 6 1; read 1.
+
+> lambdas
+A heavy 2 / 2; B heavy 2 / 2.
+A: a3 c5 b8
+B: c5 a3 d1
+B heavy now 0; A still 2.
+B's tasks over A's bar 1; A's over B's 1.
+Thrown from a lambda: b.
+
+> overloads
+circle disc, radius 2
+shape tile, area 9
+shape box, area 16
+shape disc, area 12
+int 42
+int 12
+string text
+...7
+0007
+42
+--1234
+<ab      >
+<ab >
+
+> faults
+5 at 1.
+3: missing 3: no such key
+-1: fault -1: negative key
+300: fault 3: wrapped
+7 at 2.
+Live faults 0.
+Pools: true true true true; live 4.
+missing 2: two / fault 4: four
+Live faults 0.
+
+> singleton
+  (settings created)
+Level 3, verbose true, same true.
+
+> pipe
+Run 4: -11; run -2: 1; steps 3.
+
+> interfaces
+crate unlabeled 
+crate, area 16, base label unlabeled.
+box is Labeled true, Shape true, Circle false.
+t1 now; t2 later; t3 later; 
+

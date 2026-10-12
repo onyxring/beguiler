@@ -1,0 +1,408 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an array<array<func<int, int>>> of function lanes, called by double subscript
+// (lanes[i][j](x)), walked row by row with for-in and queried per row by <linq> lambdas taking a
+// func<> element; a file-scope rawArray<int> folded through a func<> with an explicit count and a
+// range loop; a `replace` chain whose `replaced()` results are folded, with the replaced name taken
+// as a func<> value and passed to a func<>-taking function; an enum with emitter members (a value and a method) read inside
+// <linq> lambdas over an array of the enum, and mapped to named functions by a switch whose result is called; inline
+// `auto` accessors on an object whose getter folds the host's `ref` member array (bound with `:=`)
+// through a lambda and whose setter appends or reassigns through `outer`, and a named accessor class whose getter folds with a lambda reading the
+// accessor's own members; object-level methods taking func<> parameters and running <linq> over the
+// object's member array, a per-instance `replace` of a class method that hands a capturing lambda to
+// an inherited method, and `extend` on an object adding a method that uses lambdas; a class with an
+// emitter `operator switch` switched on inside a block lambda; try/catch inside a block lambda; a
+// uint array ordered by a lambda comparator (unsigned) against the signed default; a ternary that
+// chooses between two static operator references; an each_turn routine that steps a state machine
+// held as an index into a literal func<> table.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Plain functions -------------------------------------------------------------------------
+
+int twice(int n)  { return n * 2; }
+int inc(int n)    { return n + 1; }
+int square(int n) { return n * n; }
+int halve(int n)  { return n / 2; }
+int negate(int n) { return -n; }
+int addUp(int a, int b) { return a + b; }
+int multiply(int a, int b) { return a * b; }
+int subtract(int a, int b) { return a - b; }
+
+int fold(array<int> a, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in a) acc = f(acc, x);
+    return acc;
+}
+
+int foldRaw(rawArray<int> r, int n, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int i in 0 to n - 1) acc = f(acc, r[i]);
+    return acc;
+}
+
+int runLane(array<func<int, int>> lane, int x) {
+    for (func<int, int> f in lane) x = f(x);
+    return x;
+}
+
+int applyTwice(int n, func<int, int> f) { return f(f(n)); }
+
+//-- Lanes: an array of arrays of functions ---------------------------------------------------
+
+array<array<func<int, int>>> laneGrid = { {twice, inc}, {square, halve, inc}, {negate} };
+
+string nameOf(func<int, int> f) {
+    return f == twice ? "twice" : f == inc ? "inc" : f == square ? "square"
+         : f == halve ? "halve" : f == negate ? "negate" : "other";
+}
+
+//-- A raw array -------------------------------------------------------------------------------
+
+rawArray<int> rawPrimes = {2, 3, 5, 7, 11};
+const int RAW_COUNT = 5;
+
+//-- A replace chain calling replaced() from lambdas -------------------------------------------
+
+int adjust(int n) { return n + 1; }
+replace int adjust(int n) {
+    return applyTwice(n, (int k) => replaced(k));
+}
+replace int adjust(int n) {
+    array<int> seeds = {n, 10};
+    return fold(seeds, 0, (int a, int k) => a + replaced(k));
+}
+
+//-- Ops: an enum with emitter members ---------------------------------------------------------
+
+enum eOp {
+    opAdd, opMul, opSub,
+    emitter int rank { ($self * 10 + 1) }
+    emitter int twist(int n) { ($self * 100 + $n) }
+}
+
+array<eOp> opList = {opSub, opAdd, opMul, opAdd};
+
+func<int, int, int> opFn(eOp o) {
+    switch (o) {
+        case opAdd: return addUp;
+        case opMul: return multiply;
+        default:    return subtract;
+    }
+}
+
+int combine(array<eOp> ops, int seed, int k) {
+    int acc = seed;
+    for (eOp o in ops) acc = opFn(o)(acc, k);
+    return acc;
+}
+
+//-- Accessors that fold ----------------------------------------------------------------------
+
+array<int> ledgerStore[8];
+
+object ledger {
+    ref array<int> entries;
+    int bonus = 0;
+    auto total = {
+        int _writes = 0;
+        int  operator ()        { return fold(outer.entries, outer.bonus, (int a, int x) => a + x); }
+        void operator = (int v) { outer.entries += v; _writes++; }
+    }
+    auto widest = {
+        int _unused = 0;
+        int  operator ()        { return fold(outer.entries, 0, (int a, int x) => x > a ? x : a); }
+        void operator = (int v) { outer.entries = {v}; }
+    }
+}
+
+value class Weighted {
+    int scale = 1;
+    int base = 0;
+    int operator () {
+        array<int> parts = {1, 2, 3};
+        return fold(parts, base, (int a, int x) => a + x * scale);
+    }
+    void operator = (int v) { scale = v; }
+}
+
+class Gauge : object {
+    Weighted reading;
+}
+
+Gauge gaugeA { "gauge A"; }
+Gauge gaugeB { "gauge B"; }
+
+//-- Bins: object methods taking functions ----------------------------------------------------
+
+class Bin : object {
+    array<int> items[8];
+    int countWhere(func<bool, int> p) { return items.filter(p).count(); }
+    int sumMapped(func<int, int> f) {
+        int t = 0;
+        for (var v in items.map((int x) => f(x))) t += (int)v;
+        return t;
+    }
+    int above(int limit) { return countWhere((int x) => x > limit); }
+}
+
+Bin binA {
+    "bin A";
+    items = {4, 9, 1, 6};
+}
+
+Bin binB {
+    "bin B";
+    items = {3, 8, 5};
+    int floor = 4;
+    replace int above(int limit) { return countWhere((int x) => x > limit && x > floor); }
+}
+
+object sieve {
+    array<int> kept[8];
+    int keepIf(array<int> src, func<bool, int> p) {
+        kept = src.filter(p);
+        return kept.length;
+    }
+}
+
+extend sieve {
+    int largestKept() { return kept.orderBy((int a, int b) => b - a).first(); }
+    bool allSmallerThan(int n) { return kept.all((int x) => x < n); }
+}
+
+//-- Tags: a class with an emitter operator switch ---------------------------------------------
+
+class Tag : object {
+    int code;
+    emitter eBool operator switch (int c) { ($self.code == $c) }
+}
+
+Tag redTag   { "red tag";   code = 1; }
+Tag blueTag  { "blue tag";  code = 2; }
+Tag greenTag { "green tag"; code = 3; }
+
+array<Tag> tagList = {redTag, blueTag, greenTag};
+
+int scoreTags(array<Tag> ts, func<int, Tag> f) {
+    int t = 0;
+    for (Tag g in ts) t += f(g);
+    return t;
+}
+
+//-- Coins: static operators chosen by a ternary -----------------------------------------------
+
+class Coin : object {
+    int cents;
+    static int operator <=> (Coin a, Coin b) { return a.cents - b.cents; }
+    static int operator - (Coin a, Coin b)   { return b.cents - a.cents; }
+}
+
+Coin dime   { "dime";   cents = 10; }
+Coin penny  { "penny";  cents = 1; }
+Coin nickel { "nickel"; cents = 5; }
+
+array<Coin> purse = {dime, penny, nickel};
+
+//-- A state machine stepped by each_turn ------------------------------------------------------
+
+int phaseCount = 0;
+int phaseValue = 1;
+int phaseAt = 0;
+
+int phaseGrow(int v)   { return v * 3; }
+int phaseShrink(int v) { return v - 2; }
+int phaseHold(int v)   { return v; }
+
+array<literal func<int, int>> phaseTable = {phaseGrow, phaseShrink, phaseHold};
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+    void each_turn() {
+        if (phaseCount == 0) return;
+        phaseValue = phaseTable[phaseAt](phaseValue);
+        phaseAt = (phaseAt + 1) % phaseTable.length;
+        phaseCount--;
+    }
+}
+
+//-- Verbs ------------------------------------------------------------------------------------
+
+verb Lanes {
+    grammar = {{.lanes, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (array<func<int, int>> lane in laneGrid) print($"lane of {lane.length}: {runLane(lane, n)}^");
+        print($"row 1 step 0 on {n}: {laneGrid[1][0](n)}, row 0 step 1 then row 2 step 0: {laneGrid[2][0](laneGrid[0][1](n))}^");
+        int big = 0;
+        for (array<func<int, int>> lane in laneGrid) big += lane.filter((func<int, int> f) => f(n) > n).count();
+        print($"growing steps {big}^");
+        print("names:");
+        for (array<func<int, int>> lane in laneGrid) {
+            print(" [");
+            for (func<int, int> f in lane) print($" {nameOf(f)}");
+            print(" ]");
+        }
+        print("^");
+        int summed = 0;
+        for (var v in laneGrid[1].map((func<int, int> f) => f(n))) summed += (int)v;
+        print($"row 1 results summed {summed}, any negative in row 2: {laneGrid[2].any((func<int, int> f) => f(n) < 0) ? "yes" : "no"}^");
+    }
+}
+
+verb Raw {
+    grammar = {{.raw, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"sum {foldRaw(rawPrimes, RAW_COUNT, 0, addUp)}, product of first three {foldRaw(rawPrimes, 3, 1, multiply)}^");
+        print($"over {n}: {foldRaw(rawPrimes, RAW_COUNT, 0, (int a, int p) => p > n ? a + 1 : a)}, largest under {n}: {foldRaw(rawPrimes, RAW_COUNT, 0, (int a, int p) => p < n && p > a ? p : a)}^");
+    }
+}
+
+verb Chain {
+    grammar = {{.chain, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<int, int> f = adjust;
+        print($"adjust {n}: {adjust(n)}, through a value: {f(n)}, applied twice: {applyTwice(n, adjust)}^");
+    }
+}
+
+verb Ops {
+    grammar = {{.ops, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> once = {0, 0};
+        print("ranks:");
+        for (eOp o in opList) print($" {o.rank}");
+        print("^");
+        print($"ranked over 15: {opList.filter((eOp o) => o.rank > 15).count()}, twist sum: {fold(once, 0, (int a, int x) => a + opMul.twist(n))}^");
+        print($"any twist over 300: {opList.any((eOp o) => o.twist(n) > 300) ? "yes" : "no"}, all ranked: {opList.all((eOp o) => o.rank > 0) ? "yes" : "no"}^");
+        print($"combine from 2 by {n}: {combine(opList, 2, n)}, first op applied: {opFn(opList[0])(n, 1)}^");
+    }
+}
+
+verb Books {
+    grammar = {{.books, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        ledger.total = n;
+        ledger.total = n * 2;
+        ledger.total = 1;
+        print($"entries {ledger.entries.length}, total {ledger.total}, widest {ledger.widest}^");
+        ledger.bonus = 100;
+        print($"with bonus {ledger.total}^");
+        ledger.widest = 7;
+        print($"reset: entries {ledger.entries.length}, total {ledger.total}^");
+        ledger.bonus = 0;
+    }
+}
+
+verb Gauges {
+    grammar = {{.gauges, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        gaugeA.reading = n;
+        gaugeB.reading = 1;
+        print($"gauge A {gaugeA.reading}, gauge B {gaugeB.reading}^");
+    }
+}
+
+verb Bins {
+    grammar = {{.bins, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"bin A over {n}: {binA.above(n)}, bin B over {n}: {binB.above(n)}^");
+        print($"bin A even: {binA.countWhere((int x) => x % 2 == 0)}, bin B doubled sum: {binB.sumMapped(twice)}, bin A plus {n}: {binA.sumMapped((int x) => x + n)}^");
+        array<int> fromA[8];
+        fromA = binA.items;
+        print($"kept from bin A: {sieve.keepIf(fromA, (int x) => x >= n)}, largest {sieve.largestKept()}, all under 10: {sieve.allSmallerThan(10) ? "yes" : "no"}^");
+    }
+}
+
+verb Tags {
+    grammar = {{.tags, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int total = scoreTags(tagList, (Tag g) => {
+            switch (g) {
+                case 1:  return n;
+                case 2:  return n * 10;
+                default: return 100;
+            }
+        });
+        print($"tag score {total}^");
+        int checked = scoreTags(tagList, (Tag g) => {
+            try {
+                if (g.code == n) throw g.code * 1000;
+                return 0;
+            }
+            catch (int code) {
+                return code;
+            }
+        });
+        print($"caught {checked}^");
+    }
+}
+
+verb Unsigned {
+    grammar = {{.unsigned}};
+    void handler() {
+        array<uint> marks = {(uint)5, (uint)40000, (uint)300, (uint)65000};
+        print("signed:");
+        for (uint u in marks.orderBy()) print($" {u}");
+        print("^unsigned:");
+        for (uint u in marks.orderBy((uint a, uint b) => a < b ? -1 : a > b ? 1 : 0)) print($" {u}");
+        print("^");
+    }
+}
+
+verb Coins {
+    grammar = {{.coins, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<int, Coin, Coin> cmp = n > 1 ? Coin::operator - : Coin::operator <=>;
+        print("ordered:");
+        for (Coin c in purse.orderBy(cmp)) print($" {(object)c}");
+        print("^");
+    }
+}
+
+verb Phases {
+    grammar = {{.phases, NUMBER}};
+    void handler() {
+        phaseCount = parsed_number;
+        print($"running {phaseCount} phases from {phaseValue}^");
+    }
+}
+
+verb Phase {
+    grammar = {{.phase}};
+    void handler() {
+        print($"phase value {phaseValue}, next step {phaseAt}, left {phaseCount}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    ledger.entries := ledgerStore;
+    location = roomA;
+    rfalse;
+}

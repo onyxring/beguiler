@@ -1,0 +1,211 @@
+/*  Field trial part — included by library_author_idioms_11.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+
+#using bgl.printRules
+
+// ---- Codes: a number under its own name. ----
+
+/// A slot code.
+primitive class la11Code : int {
+    emitter void operator = (la11Code v) { $target = $v; }
+    replace emitter void operator = (int v) { $target = $v; }
+    replace explicit emitter int operator () { ($self) }
+    emitter la11Code operator + (la11Code v) { ($self + $v) }
+    replace emitter eBool operator == (la11Code v) { ($self == $v) }
+    replace emitter eBool operator != (la11Code v) { ($self ~= $v) }
+}
+
+/// Prints a code with its mark.
+void print(la11Code c) {
+    print("#");
+    print((int)c);
+}
+
+/// One decimal digit of a number, counted from the right.
+int la11Digit(int n, int i) {
+    if (i == 0) return n % 10;
+    return la11Digit(n / 10, i - 1);
+}
+
+// ---- More on every code. ----
+
+extend class la11Code {
+    /// True for an odd code.
+    emitter bool odd { (($self % 2) == 1) }
+    /// The code doubled.
+    emitter la11Code twice() { ($self * 2) }
+    /// True when the code is above a limit.
+    emitter bool over(la11Code lim) { ($self > $lim) }
+    /// One decimal digit of the code, counted from the right.
+    emitter int operator [] (int i) { la11Digit($self, $i) }
+    /// A code is set when it isn't zero.
+    explicit emitter bool operator () { ($self ~= 0) }
+}
+
+/// Faults the kit raises with throw.
+enum eLa11Fault { la11Bounds = 1, la11Empty, la11Deep }
+
+// ---- Parts: two roots and a piece that has both. ----
+
+/// Anything the kit places on a board.
+class La11Part : object {
+    int weight = 1;
+    /// Prints the part's weight.
+    default void portray() { print($"part {weight}"); }
+}
+
+/// Something that carries a code.
+class La11Tagged : object {
+    la11Code tag = 0;
+    /// Prints the tag.
+    default void portray() { print($"tag {tag}"); }
+}
+
+/// A part with a tag.
+class La11Piece : La11Part, La11Tagged {
+    void portray() {
+        print("piece ");
+        ((La11Tagged)self).portray();
+    }
+}
+
+/// The part handed back when none is given.
+La11Part la11Spare { "spare"; weight = 0; }
+
+// ---- A board over a grid kept elsewhere. ----
+
+/// A board of rows of differing length.
+class la11Board : object {
+    int reads = 0;
+    ref array<array<int>> grid;
+}
+
+// ---- Tickets from a pool. ----
+
+/// A numbered ticket.
+class la11Ticket[3] : La11Part {
+    la11Code no = 0;
+    void create(int n) { no = n; }
+}
+
+// ---- The kit's namespace. ----
+
+/// Types and helpers, reached as la11.
+object la11 {
+    alias code   for la11Code;
+    alias part   for La11Part;
+    alias piece  for La11Piece;
+    alias fault  for eLa11Fault;
+    alias row    for la11Row;
+
+    /// The sum of every cell, row by row.
+    int total(array<array<int>> cells) {
+        int t = 0;
+        for (array<int> line in cells) {
+            for (int v in line) t += v;
+        }
+        return t;
+    }
+
+    /// A cell of a grid; a fault when it is off the grid.
+    int cellAt(array<array<int>> cells, int r, int c) {
+        if (r < 0 || r >= cells.length) throw eLa11Fault.la11Bounds;
+        if (c < 0 || c >= cells[r].length) throw eLa11Fault.la11Bounds;
+        return cells[r][c];
+    }
+
+    /// A cell of a grid, or a fallback when it is off the grid.
+    int cellOr(array<array<int>> cells, int r, int c, int fallback) {
+        int v = fallback;
+        try {
+            v = cellAt(cells, r, c);
+        } catch (eLa11Fault f) {
+            print($"[fault {(int)f}]");
+        }
+        return v;
+    }
+
+    /// The codes of a list summed from one place on, recursively; too deep a start is a fault.
+    la11Code sumFrom(array<la11Code> list, int from) {
+        if (from > 8) throw eLa11Fault.la11Deep;
+        if (from >= list.length) return 0;
+        la11Code rest = sumFrom(list, from + 1);
+        return list[from] + rest;
+    }
+
+    /// A part's weight; no part reads as the spare.
+    int weightOf(La11Part p) {
+        return (p ?? la11Spare).weight;
+    }
+
+    /// Describes a part, or says there is none.
+    void tell(La11Part p) {
+        p?.portray();
+        if (!p?) print("none");
+    }
+
+    /// Describes a piece as a part and as a tagged thing.
+    void both(La11Piece p) {
+        ((La11Part)p).portray();
+        print(" / ");
+        ((La11Tagged)p).portray();
+    }
+
+    /// Prints a label or a part.
+    void label(string | La11Part v) {
+        if (typeof(v) == eType.object) ((La11Part)v).portray();
+        else print((string)v);
+    }
+
+    /// Adds one to a code of a row held elsewhere.
+    void bump(ref row r, int i) {
+        r[i] = r[i] + 1;
+    }
+
+    /// Prints any value by its kind.
+    void any(var v) {
+        switch (typeof(v)) {
+            case eType.string: print($"text {(string)v}");
+            case eType.object: print($"thing {(object)v}");
+            default:           print("other");
+        }
+    }
+}
+
+#using la11
+
+/// Three codes held by value, indexed and compared.
+value class la11Row {
+    inline code a;
+    inline code b;
+    inline code c;
+    la11Row operator = (la11Row o) { a = o.a; b = o.b; c = o.c; return self; }
+    code operator [] (int i) {
+        switch (i) {
+            case 0: return a;
+            case 1: return b;
+            case 2: return c;
+        }
+        throw fault.la11Bounds;
+    }
+    code operator []= (int i, code v) {
+        switch (i) {
+            case 0: a = v;
+            case 1: b = v;
+            case 2: c = v;
+            default: throw fault.la11Bounds;
+        }
+        return v;
+    }
+    bool operator == (la11Row o) { return a == o.a && b == o.b && c == o.c; }
+    bool operator != (la11Row o) { return !(self == o); }
+    explicit int operator () { return (int)(a + b + c); }
+    /// Prints the row.
+    void print() { ::print($"<{a} {b} {c}>"); }
+}
+
+extend la11 {
+    alias board for la11Board;
+}

@@ -1,0 +1,59 @@
+Room A
+Room A.
+You can see a crate here.
+
+> heat
+Level 30, low, warm.
+Rejected 120 (1 so far); level stays 30.
+Level 75, high, high.
+Rejected -4 (2 so far); level stays 75.
+Level 0, off, cold.
+Level 75, high, high.
+Bump rejected at 115; level 95, high.
+Mode as int 3, high is 3.
+
+> tally
+Rows 30 3 7.
+Row 1 now 13, first cell 11, adds 2.
+All rows 50.
+
+> spin
+desk fan at 2, powered; 20 W.
+Tilt 45, speed 1, 15 W.
+Speed 4, 30 W.
+
+> stack
+Slots 4 0 7 -1; 2 filled, base count 0, powered; 27 W.
+
+> scale
+Factor 3, base 300, percent 40.
+Share 15, band 2; share 75, band 3.
+
+> masking
+low 2, low 4, bits 6.
+scaled 46.
+
+> spending
+spend 50, spend 90, clamped 1.
+reserve 30, cap 60, spend 60, clamped 2.
+
+> twist
+<12> <over> position 40 after 2 sets.
+
+> aim
+target nothing, inside Room A, set false.
+target nameplate, inside crate, set true.
+direct nameplate, inside crate, set true.
+target Room A, inside Room A, set true.
+
+> build
+Current part 9, made 3.
+
+> label
+[LEFT DOOR] length 9.
+[EXIT!] [EXIT] after 2.
+Caption is the exit.
+Compared by content.
+
+> bounds
+10 15 20; needle 5 of 5.

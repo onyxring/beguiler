@@ -1,0 +1,477 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: dense declarations over tables. An object whose body holds namespace aliases for a
+// primitive newtype and a value class, a jagged member grid (nested list initializer), a string
+// table, a stringObj, a var, a value-class member and a ref to it bound with :=, a chain of pooled
+// tokens, an inline accessor with a static counter and a static table of bands (an array of arrays)
+// that writes back through outer., reads the token chain with ?. and postfix ?, filters a row of the
+// host's grid with a block lambda capturing the setter's value, and reads the host through an #i6
+// line with $i6Expr; an operator [] returning the newtype, a recursive row sum reading cells
+// through an #i6 line with $i6Expr, a recursive chain walk, and a replaced score method that filters a row with block lambdas, deals
+// pooled tokens into the object tree, switches on a union's typeof and perform()s a verb; a ledger
+// class declared after #using of the namespace, with positional members, static step tables, an
+// indexer returning the aliased newtype, a recursive link walk and an audit that filters the static
+// nested table with <linq>, deals and deletes pooled tokens, and switches on typeof; a replaced global
+// depth routine that recurses up the tree with ?., a local nested table (held in a raised frame pool),
+// an #i6 line and replaced(); and verb handlers that combine the same areas without the accessor.
+
+#beguilerSettings {
+    target = z5;
+    // Each depthOf call keeps its weights table in the frame pool while it recurses.
+    framePoolSize = 160;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <linq>
+#include <string>
+
+extend class object {
+    string description;
+}
+
+//-- Shared types ---------------------------------------------------------------------
+
+// Points: a newtype over int, with a sum and a test for high values.
+primitive class Pts {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter Pts operator + (Pts p) { ($val + $p) }
+    emitter bool high { ($val >= 50) }
+}
+
+value class Span {
+    int lo;
+    int hi;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+}
+
+union Key = string | object;
+
+// Tokens: four pooled slots, chained through next.
+class Token[4] : object {
+    int code;
+    int depth;
+    Token next;
+    void create(int c, int d) { code = c; depth = d; }
+}
+
+// The namespace for the table types.
+object tables {
+    alias points for Pts;
+    alias band for Span;
+}
+
+//-- The world ------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object tray {
+    "tray";
+    name = .tray;
+    parent = roomA;
+    attributes = {static, supporter};
+}
+
+object brassKey { "brass key"; name = {.brass, .key}; parent = tray; }
+object tinCup { "tin cup"; name = {.tin, .cup}; parent = brassKey; }
+
+//-- The board ------------------------------------------------------------------------
+
+class Board : object {
+    inline int width;
+    int reads = 0;
+    int score(int r) { return r; }
+}
+
+// A jagged grid of points, a chain of pooled tokens dealt from it, and a level accessor that
+// bands a value against a static table and reports into the board's own members.
+Board boardA {
+    4, "board A";
+    name = {.board, .a};
+    parent = roomA;
+    alias points for Pts;
+    alias band for Span;
+    array<array<int>> grid = { {3, 8, 1}, {12, 40}, {7, 55, 60, 2} };
+    array<string> labels = { "low", "mid", "high" };
+    stringObj trail;
+    var last;
+    band kept;
+    ref Span held;
+    Token head;
+    int tokens = 0;
+
+    auto level = {
+        static int sets = 0;
+        static array<array<int>> limits = { {0, 9}, {10, 49}, {50, 999} };
+        int _v = 0;
+
+        int operator () { return _v; }
+
+        void operator = (int v) {
+            sets++;
+            _v = limits.length - 1;
+            for (int i = 0; i < limits.length; i++) {
+                if (v >= limits[i][0] && v <= limits[i][1]) {
+                    _v = i;
+                    break;
+                }
+            }
+            outer.trail = outer.labels[_v];
+            outer.kept.lo = limits[_v][0];
+            outer.kept.hi = limits[_v][1];
+            outer.held := outer.kept;
+            Token nx = outer.head?.next;
+            int code = -1;
+            if (outer.head?) code = outer.head.code;
+            if (nx?) {
+                stringObj after = $" then {nx.code}";
+                outer.trail += after;
+            }
+            int over = outer.grid[2].filter((int x) => {
+                if (x <= v) return false;
+                return x > outer.held.lo;
+            }).count();
+            int dealt = 0;
+            #i6 dealt = $i6Expr(outer.tokens);
+            print($"(level {v}: band {_v} {outer.held.lo}-{outer.held.hi}, {outer.trail}, set {sets}, head {code}, over {over}, dealt {dealt})^");
+        }
+    };
+
+    // A cell of the grid by flat index, as points; -1 past the end.
+    Pts operator [] (int i) {
+        reads++;
+        for (array<int> row in grid) {
+            if (i < row.length) {
+                Pts p = row[i];
+                return p;
+            }
+            i -= row.length;
+        }
+        Pts none = -1;
+        return none;
+    }
+
+    // Sums row r from column c to the end, one cell a call.
+    int rowSum(int r, int c) {
+        if (c >= grid[r].length) return 0;
+        int v = 0;
+        #i6 v = $i6Expr(grid[r][c]);
+        return v + rowSum(r, c + 1);
+    }
+
+    // How many tokens follow t along the chain, t included.
+    int chainLength(Token t) {
+        if (!(t?)) return 0;
+        return 1 + chainLength(t.next);
+    }
+
+    // Scores row r: deals a token per high cell, sets the level to the row's total, and
+    // reports the first label or pings the newest token's holder.
+    replace int score(int r) {
+        Pts total = 0;
+        for (int x in grid[r]) {
+            Pts p = x;
+            total = total + p;
+        }
+        int highs = grid[r].filter((int x) => {
+            Pts p = x;
+            return p.high;
+        }).count();
+        int smalls = grid[r].filter((int x) => x < 10).count();
+        for (int i = 0; i < highs; i++) {
+            Token t = new Token(r * 10 + i, tokens);
+            if (t == null) {
+                print("(pool empty)^");
+                break;
+            }
+            t.next = head;
+            head = t;
+            t.parent = self;
+            tokens++;
+        }
+        int sum = total;
+        level = sum;
+        Key k = labels[0];
+        if (highs > 0) k = head?.parent;
+        switch (typeof(k)) {
+            case eType.string:
+                last = (string)k;
+                print($"(label {(string)k})^");
+            case eType.object:
+                last = 1;
+                Ping.perform((object)k);
+        }
+        print($"(row {r}: total {sum}, highs {highs}, smalls {smalls}, rowSum {rowSum(r, 0)}, chain {chainLength(head)})^");
+        return sum * 10 + chainLength(head);
+    }
+
+    // Deletes every token on the chain; returns how many.
+    int clearTokens() {
+        int n = 0;
+        while (head?) {
+            Token t = head;
+            head = t.next;
+            delete t;
+            n++;
+        }
+        tokens = 0;
+        return n;
+    }
+}
+
+//-- Ledgers --------------------------------------------------------------------------
+
+#using tables
+
+// Ledgers: a positional width, a link to the next ledger, and static step tables.
+class Ledger : object {
+    inline int width;
+    Ledger link;
+    ref band window;
+    static int audits = 0;
+    static array<array<int>> steps = { {1, 2}, {3, 5, 8}, {4} };
+    static array<string> stepNames = { "short", "long" };
+
+    default string kind() { return "ledger"; }
+
+    // The width of the n-th ledger along the links, or -1.
+    int widthAt(int n) {
+        if (n == 0) return width;
+        Ledger nx = link;
+        if (!(nx?)) return -1;
+        return nx.widthAt(n - 1);
+    }
+
+    // The sum of step row r, as points.
+    points operator [] (int r) {
+        points p = 0;
+        for (int s in Ledger.steps[r]) {
+            points q = s;
+            p = p + q;
+        }
+        return p;
+    }
+
+    // Tallies the step rows longer than the width into acc, deals one token per row, and reports.
+    int audit(Key k, ref band acc) {
+        Ledger.audits++;
+        int rows = 0;
+        #i6 rows = $i6Expr(Ledger.steps.length);
+        int longRows = Ledger.steps.filter((array<int> row) => {
+            int s = 0;
+            for (int x in row) s += x;
+            return s > width;
+        }).count();
+        array<Token> dealt[3];
+        for (int r = 0; r < rows; r++) {
+            Token t = new Token(r, width);
+            if (t == null) continue;
+            t.parent = self;
+            dealt.append(t);
+        }
+        int odd = dealt.filter((Token t) => t.code % 2 == 1).count();
+        points p = self[rows - 1];
+        int pv = p;
+        acc.lo += longRows;
+        acc.hi += pv;
+        window := acc;
+        stringObj line = Ledger.stepNames[longRows > 1 ? 1 : 0];
+        string next = "none";
+        Ledger nx = link;
+        if (nx?) next = nx.kind();
+        object holder = link?.parent;
+        switch (typeof(k)) {
+            case eType.string:
+                stringObj extra = (string)k;
+                line += extra;
+            case eType.object:
+                Ping.perform((object)k);
+        }
+        int kids = 0;
+        for (object o in self.children) kids++;
+        stringObj msg = $"{line}: rows {rows} long {longRows} dealt {dealt.length} odd {odd} last {pv} next {next} kids {kids}";
+        msg.print();
+        if (holder?) print($" link in {holder}");
+        print($" window {window.lo}/{window.hi}^");
+        for (Token t in dealt) delete t;
+        return widthAt(1);
+    }
+}
+
+class Daybook : Ledger {
+    string kind() { return "daybook"; }
+}
+
+Ledger ledgerA { 4, "ledger A"; parent = tray; }
+Daybook ledgerB { 9, "ledger B"; parent = roomA; }
+Ledger ledgerC { 2, "ledger C"; }
+
+//-- Depth: a global routine, replaced ------------------------------------------------
+
+// How deep o sits below the room: the plain version knows only the room itself.
+int depthOf(object o) {
+    if (o == roomA) return 0;
+    return -1;
+}
+
+// Climbs the tree one holder a call. The result is level * 100 + weight: a thing n levels below the
+// room adds row n - 1 of the table (the last row past its end) to its holder's weight.
+replace int depthOf(object o) {
+    array<array<int>> weights = { {1}, {2, 2}, {3, 3, 3} };
+    object up = o?.parent;
+    if (!(up?)) return replaced(o);
+    int below = depthOf(up);
+    if (below < 0) return below;
+    int rows = 0;
+    #i6 rows = $i6Expr(weights.length);
+    int level = below / 100 + 1;
+    int r = level - 1;
+    if (r >= rows) r = rows - 1;
+    int w = below % 100;
+    for (int x in weights[r]) w += x;
+    return level * 100 + w;
+}
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() { print($"(ping {noun})^"); }
+}
+
+verb LevelTest {
+    grammar = {.level, NUMBER};
+    void handler() {
+        boardA.level = (int)noun;
+        print($"Level {boardA.level}, last {typeof(boardA.last) == eType.string}.^");
+    }
+}
+
+verb ScoreTest {
+    grammar = {.score, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (r >= boardA.grid.length) {
+            print($"No row {r}.^");
+            return;
+        }
+        int sc = boardA.score(r);
+        print($"Score {sc}, tokens {boardA.tokens}, on board {boardA.children.length}.^");
+    }
+}
+
+verb CellsTest {
+    grammar = {.cells};
+    void handler() {
+        stringObj line = "Cells:";
+        for (int i = 0; i < 9; i++) {
+            Pts p = boardA[i];
+            int v = p;
+            stringObj part = $" {v}";
+            line += part;
+        }
+        line.print();
+        print($", reads {boardA.reads}.^");
+    }
+}
+
+verb ClearTest {
+    grammar = {.clear};
+    void handler() {
+        int n = boardA.clearTokens();
+        print($"Cleared {n}, on board {boardA.children.length}, chain {boardA.chainLength(boardA.head)}.^");
+    }
+}
+
+verb AuditTest {
+    grammar = {.audit};
+    void handler() {
+        Span acc;
+        ref Span r := acc;
+        array<Ledger> all = { ledgerA, ledgerB, ledgerC };
+        ledgerA.link = ledgerB;
+        ledgerB.link = ledgerC;
+        int w = ledgerA.audit("+a", r);
+        print($"A: {w}^");
+        w = ledgerB.audit(brassKey, r);
+        print($"B: {w}^");
+        w = ledgerC.audit("", r);
+        print($"C: {w}^");
+        print($"acc {acc.lo}/{acc.hi}, audits {Ledger.audits}, kinds");
+        for (Ledger l in all) print($" {l.kind()}");
+        print($", steps {(int)ledgerA[0]} {(int)ledgerA[1]} {(int)ledgerA[2]}.^");
+    }
+}
+
+verb DepthTest {
+    grammar = {.depth};
+    void handler() {
+        array<object> things = { roomA, tray, brassKey, tinCup, ledgerC };
+        for (object o in things) {
+            int d = depthOf(o);
+            print($"{o}: {d}^");
+        }
+    }
+}
+
+// The same tables, without the accessor: a key picked from a string table or the tree, a
+// nested table of bands filtered by a block lambda, tokens dealt and taken back.
+verb TallyTest {
+    grammar = {.tally, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        array<array<int>> bands = { {0, 9}, {10, 49}, {50, 999} };
+        array<string> names = { "none", "one", "many" };
+        Span s;
+        ref Span hold := s;
+        Key k = names[0];
+        var tag = names[1];
+        switch (n) {
+            case 0: k = names[0];
+            case 1: k = brassKey;
+            default: k = tinCup?.parent;
+        }
+        int hits = bands.filter((array<int> b) => {
+            if (n < b[0]) return false;
+            hold.lo = b[0];
+            hold.hi = b[1];
+            return n <= b[1];
+        }).count();
+        Token t = new Token(n, hits);
+        Token u = new Token(n + 1, hits);
+        if (t?) t.next = u;
+        int code = -1;
+        Token after = t?.next;
+        if (after?) code = after.code;
+        Pts cell = boardA[n];
+        int cv = cell;
+        stringObj line = $"Tally {n}: band {s.lo}-{s.hi}, hits {hits}, next {code}, cell {cv}";
+        line.print();
+        switch (typeof(k)) {
+            case eType.string: print($", key {(string)k}");
+            case eType.object: print($", key {(object)k}");
+        }
+        if (n > 1) tag = names[2];
+        if (typeof(tag) == eType.string) print($", tag {(string)tag}");
+        print(".^");
+        if (t?) delete t;
+        if (u?) delete u;
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    print("Ready.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

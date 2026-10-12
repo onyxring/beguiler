@@ -1,0 +1,480 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: gauges, meters and a knob drawn into a text grid. A primitive class pct over int (a
+// clamped 0..100 percent) with emitter = from int, pct and float, a conversion, postfix ? and ??, and
+// a float view; a namespace object lab aliasing pct, Gauge and Meter, imported with #using ahead of
+// the declarations that name them bare; an I6 class Gauge with two I6 parents (Dial, Tinted) bound as
+// an extern class with two parents, emitter operator [] and []= over an I6 property array typed by
+// the aliased pct, float properties, static routines taking array<string> and array<Gauge>, calling an
+// extern I6 routine and performing verbs; an I6 class Meter bound as an extern class with emitter
+// == < > comparisons, a static array<float> trail, ?? over Meter, switch with ranges and guards,
+// #if over #define'd symbols (one a float value) inside its routines, and verbs performed from them;
+// an object knob whose inline accessor holds a static counter, reaches its host through outer,
+// coalesces a pct, prints from an #i6 island and builds a stringObj, with methods that do the same
+// and perform verbs; meta verbs that drive all three and draw the grid.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GPI_STEP 0.25
+#define GPI_TRACE
+#define GPI_LIMIT 80
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+#i6 {
+    Class Dial with dial_val 0;
+    Class Tinted with tint 0;
+    Class Gauge
+      class Dial Tinted
+      with gauge_scale $+1.0, gauge_marks 0 0 0 0;
+    Gauge gaugeA "gauge A" with dial_val 2, tint 1, gauge_scale $+1.5, gauge_marks 10 20 30 40;
+    Gauge gaugeB "gauge B" with dial_val 5, tint 2, gauge_scale $+0.5, gauge_marks 5 15 25 35;
+    Class Meter with meter_val $+0.0, meter_band 0;
+    Meter meterA "meter A" with meter_val $+2.5, meter_band 1;
+    Meter meterB "meter B" with meter_val $+7.25, meter_band 4;
+    Meter meterC "meter C" with meter_val $+2.5, meter_band 0;
+    [ MarkSum g i n; for (i = 0: i < 4: i++) n = n + (g.&gauge_marks)-->i; return n; ];
+}
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+textGridWindow grid = null;
+
+array<string> tintNames = { "plain", "blue", "red" };
+array<string> laneNames = { "left", "mid", "right" };
+
+// ---- pct -----------------------------------------------------------------------------------------
+
+int clampPct(int v) {
+    if (v < 0) return 0;
+    if (v > 100) return 100;
+    return v;
+}
+
+int pctFromFloat(float f) {
+    return clampPct((int)(f * 100));
+}
+
+float fracOf(int v) {
+    return (float)v / 100;
+}
+
+primitive class pct {
+    emitter void operator = (int v)   { $target = clampPct($v); }
+    emitter void operator = (pct p)   { $target = $p; }
+    emitter void operator = (float f) { $target = pctFromFloat($f); }
+    emitter int operator ()           { ($val) }
+    emitter eBool operator ? ()       { ($val > 0) }
+    emitter float frac()              { fracOf($val) }
+}
+
+// ---- the lab namespace ---------------------------------------------------------------------------
+
+object lab {
+    alias mark   for pct;
+    alias face   for Gauge;
+    alias needle for Meter;
+}
+
+extern class Dial : object {
+    int dial_val;
+}
+
+extern class Tinted : object {
+    int tint;
+}
+
+extern int MarkSum(Gauge g);
+
+// ---- gauges --------------------------------------------------------------------------------------
+
+#using lab
+extern class Gauge : Dial, Tinted {
+    float gauge_scale;
+
+    emitter mark operator [] (int i)         { (($val.&gauge_marks)-->$i) }
+    emitter void operator []= (int i, pct v) { ($val.&gauge_marks)-->$i = $v; }
+
+    static float weight(face g) {
+        Dial d = g;
+        return g.gauge_scale * d.dial_val;
+    }
+
+    static float meanMark(face g) {
+        float sum = 0;
+        for (int i = 0; i < 4; i++) sum += (int)g[i];
+        return sum / 4;
+    }
+
+    static string tintOf(face g, array<string> names) {
+        Tinted t = g;
+        if (t.tint < names.length) return names[t.tint];
+        return "none";
+    }
+
+    static int lift(face g, int at, float by) {
+        mark m = g[at];
+        mark lifted = m.frac() + by;
+        g[at] = lifted;
+        if (MarkSum(g) > 100) Readout.perform();
+        return (int)g[at];
+    }
+
+    static int fillFrom(face g, array<float> fracs) {
+        int n = 0;
+        for (int i = 0; i < 4 && i < fracs.length; i++) {
+            pct p = fracs[i];
+            g[i] = p ?? g[i];
+            if (g[i]?) n++;
+        }
+        return n;
+    }
+
+    static string zone(face g, int at) {
+        switch ((int)g[at]) {
+            case 0:        return "empty";
+            case 1 to 49:  return "part";
+            case >= 50:    return "full";
+        }
+        return "none";
+    }
+
+    static void bump(face g, int at, int by) {
+        g[at] += by;
+    }
+
+    static void caption(array<Gauge> set, array<string> names, array<string> lanes) {
+        for (int i = 0; i < set.length; i++) {
+            face g = set[i];
+            print($"{lanes[i]}:{Gauge.tintOf(g, names)} ");
+            print(Gauge.weight(g));
+            print(" ");
+        }
+        printLine("");
+    }
+}
+
+extern Gauge gaugeA;
+extern Gauge gaugeB;
+
+array<Gauge> gauges = { gaugeA, gaugeB };
+
+// ---- meters --------------------------------------------------------------------------------------
+
+extern Meter meterA;
+
+extern Meter meterB;
+extern Meter meterC;
+
+int meterCmp(Meter a, Meter b) {
+    if (a.meter_val < b.meter_val) return -1;
+    if (a.meter_val > b.meter_val) return 1;
+    return 0;
+}
+
+extern class Meter : object {
+    float meter_val;
+    int meter_band;
+    static array<float> trail[4];
+    static float peak = 0.0;
+
+    emitter eBool operator == (Meter m) { (meterCmp($val, $m) == 0) }
+    emitter eBool operator <  (Meter m) { (meterCmp($val, $m) < 0) }
+    emitter eBool operator >  (Meter m) { (meterCmp($val, $m) > 0) }
+
+    static Meter orFirst(Meter m) {
+        return m ?? meterA;
+    }
+
+    static string bandName(Meter m) {
+        switch (m.meter_band) {
+            case 0:      return "idle";
+            case 1 to 3: return "low";
+            case >= 4:   return "high";
+        }
+        return "none";
+    }
+
+    static void record(Meter m) {
+#if GPI_TRACE
+        print("[rec] ");
+#endif
+        if (Meter.trail.length == 4) Meter.trail.clear();
+        Meter.trail.append(m.meter_val);
+        float step = GPI_STEP;
+        m.meter_val += step;
+        if (m.meter_val > Meter.peak) Meter.peak = m.meter_val;
+#if GPI_LIMIT > 50
+        if (m.meter_val * 10 > GPI_LIMIT) m.meter_band = 4;
+#else
+        m.meter_band = 0;
+#endif
+        switch (m.meter_band) {
+            case 0, 1: m.meter_band++;
+            case 2 to 3: if (m > meterA) m.meter_band = 4;
+        }
+        if (m == meterA) Trace.perform();
+    }
+
+    static Meter steadier(Meter a, Meter b) {
+        Meter x = a ?? meterC;
+        Meter y = b ?? meterC;
+        if (x < y) return x;
+        if (y < x) return y;
+#if GPI_TRACE
+        print("[tie] ");
+#endif
+        return x;
+    }
+
+    static float trailSum() {
+        float s = 0;
+        for (float v in Meter.trail) s += v;
+        return s;
+    }
+
+    static string compareAll(Meter pivot, array<Meter> set) {
+        int above = 0;
+        int same = 0;
+        for (Meter m in set) {
+            if (m > pivot) above++;
+            else if (m == pivot) same++;
+        }
+        switch (above) {
+            case 0:    return same > 1 ? "flat" : "top";
+            case 1:    return "middle";
+            case >= 2: return "bottom";
+        }
+        return "none";
+    }
+}
+
+array<Meter> meters = { meterA, meterB, meterC };
+
+// ---- the knob ------------------------------------------------------------------------------------
+
+object knob {
+    "knob";
+    float scale = 2.0;
+    pct last = 40;
+    int sets = 0;
+#if GPI_TRACE
+    int traced = 0;
+#endif
+    auto level = {
+        static int writes = 0;
+        pct _p = 0;
+        float operator () { return outer.scale * _p.frac(); }
+        void operator = (pct v) {
+            _p = v ?? outer.last;
+            writes++;
+            outer.sets = writes;
+            outer.last = _p;
+            #i6 print "(set ", $i6Expr(_p), ")";
+        }
+    };
+
+    stringObj summary() {
+        stringObj s = "knob ";
+        pct p = last;
+        s += p? ? "on" : "off";
+        s += " ";
+        s += sets > 2 ? "busy" : "calm";
+        return s;
+    }
+
+    void show() {
+        stringObj s = summary();
+        print(s);
+        print(" ");
+        print(level);
+        #i6 {
+            print " last ", $i6Expr(last), " sets ", $i6Expr(sets);
+            if ($i6Expr(sets) > 3) {
+                #bgl {
+                    print(" scaled ");
+                    print(level * 10);
+#if GPI_TRACE
+                    traced = traced + 1;
+#endif
+                }
+            }
+        }
+        printLine("");
+        if (sets >= 3) Readout.perform();
+    }
+
+    void turn(float by) {
+        pct p = by;
+        level = p ?? last;
+    }
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawGrid() {
+    if (grid == null) return;
+    grid.clear();
+    for (int i = 0; i < gauges.length; i++) {
+        Gauge g = gauges[i];
+        grid.moveCursor(0, i);
+        grid.print($"{laneNames[i]} {(int)g[0]} {(int)g[1]} {(int)g[2]} {(int)g[3]}");
+    }
+    grid.moveCursor(0, 2);
+    grid.print($"knob {(int)knob.last} sets {knob.sets} trail {Meter.trail.length}");
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Readout {
+    grammar = {.readout};
+    meta = true;
+    void handler() {
+        print("Readout: ");
+        for (Gauge g in gauges) print($"{MarkSum(g)} ");
+        printLine($"knob {(int)knob.last}, traced {knob.traced}.");
+    }
+}
+
+verb Trace {
+    grammar = {.trace};
+    meta = true;
+    void handler() {
+        print("Trace:");
+        for (float v in Meter.trail) {
+            print(" ");
+            print(v);
+        }
+        printLine(".");
+    }
+}
+
+verb Dials {
+    grammar = {.dials};
+    meta = true;
+    void handler() {
+        if (grid == null) grid = bgl.ui.mainWin.splitUpGrid(3);
+        Gauge.caption(gauges, tintNames, laneNames);
+        print("Means: ");
+        for (Gauge g in gauges) {
+            print(Gauge.meanMark(g));
+            print(" ");
+        }
+        printLine("");
+        drawGrid();
+    }
+}
+
+verb Lift {
+    grammar = {.lift};
+    meta = true;
+    void handler() {
+        int a = Gauge.lift(gaugeA, 1, 0.15);
+        int b = Gauge.lift(gaugeB, 3, 0.9);
+        printLine($"Lifted {a} and {b}.");
+        Gauge.bump(gaugeA, 0, 25);
+        printLine($"Bumped {(int)gaugeA[0]}; zones {Gauge.zone(gaugeA, 0)} {Gauge.zone(gaugeA, 1)} {Gauge.zone(gaugeB, 3)}; knob {knob.level}.");
+        drawGrid();
+    }
+}
+
+verb Refill {
+    grammar = {.refill};
+    meta = true;
+    void handler() {
+        array<float> fracs = { 0.5, 0.0, 0.75, 1.5 };
+        int n = Gauge.fillFrom(gaugeB, fracs);
+        printLine($"Filled {n}: {(int)gaugeB[0]} {(int)gaugeB[1]} {(int)gaugeB[2]} {(int)gaugeB[3]}.");
+        drawGrid();
+    }
+}
+
+verb Needles {
+    grammar = {.needles};
+    meta = true;
+    void handler() {
+        for (Meter m in meters) {
+            print($"{Meter.bandName(m)} ");
+            print(m.meter_val);
+            print("; ");
+        }
+        printLine("");
+        Meter s = Meter.steadier(meterA, meterB);
+        Meter t = Meter.steadier(meterA, meterC);
+        lab.needle gone = null;
+        Meter n = Meter.steadier(gone ?? null, gone ?? meterB);
+        Meter c = gone ?? gone ?? meterC;
+        printLine($"Chain {c}.");
+        lab.needle none = null;
+        Meter f = Meter.orFirst(none);
+        printLine($"Steadier {s}, tie {t}, null {n}, first {f}.");
+        lab.mark top = 120;
+        lab.mark zero = 0;
+        printLine($"Marks {(int)top} {(int)(zero ?? top)}, peak so far {(int)(Meter.peak * 100)}.");
+        printLine($"Pivot A {Meter.compareAll(meterA, meters)}, pivot B {Meter.compareAll(meterB, meters)}.");
+    }
+}
+
+verb Record {
+    grammar = {.record};
+    meta = true;
+    void handler() {
+        Meter.record(meterA);
+        Meter.record(meterC);
+        Meter.record(meterC);
+        print("Sum ");
+        print(Meter.trailSum());
+        print(", peak ");
+        print(Meter.peak);
+        printLine($", bands {Meter.bandName(meterA)} {Meter.bandName(meterC)}.");
+        drawGrid();
+    }
+}
+
+verb Rotor {
+    grammar = {.rotor};
+    meta = true;
+    void handler() {
+        knob.level = 30;
+        printLine("");
+        knob.show();
+        knob.level = 0;
+        printLine("");
+        knob.show();
+        knob.turn(0.55);
+        printLine("");
+        knob.show();
+        knob.turn(0.0);
+        printLine("");
+        knob.show();
+        drawGrid();
+    }
+}
+
+#includeI6 "grammar"

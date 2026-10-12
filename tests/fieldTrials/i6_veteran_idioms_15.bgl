@@ -1,0 +1,425 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, three classes each packing one area cluster into a single
+// declaration. A value class over a value-class tally whose inline accessor throws from its setter, whose
+// operator + returns a value copy and operator - compares two hosts, whose operator [] and []= guard a
+// member array and throw, whose replaced default method builds a stringObj, whose method subscripts
+// self inside try/catch, restores a value copy and records state through #i6 lines, and which performs
+// a verb; a value class with two value parents and a copy operator chaining to both, an implicit
+// conversion operator (), operator += and ++, static array<int> and array<char> members, a replaced
+// default method, a local array<char> bar, a named union parameter discriminated with typeof, a var
+// local, and a perform; a value class written straight after #using a namespace object, typed through the
+// imported aliases, with an inline accessor guarded by #if that throws, static members and a static
+// method reached through $i6Expr, an owned value-class member, a var parameter tested with typeof
+// inside try/catch, and a perform. Verbs drive each class from handlers that copy, subscript, convert,
+// cast to an ancestor and catch.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define PURSE_SLOTS 4
+#define TRACE_METER
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global purse_peek = 0;
+Global caught_last = 0;
+Global gauge_peek = 0;
+Global meter_peek = 0;
+Global meter_sets = 0;
+}
+
+extern int purse_peek;
+extern int caught_last;
+extern int gauge_peek;
+extern int meter_peek;
+extern int meter_sets;
+
+object roomA { "Room A"; string description = "Room A."; attributes = {light}; }
+
+// ---------------------------------------------------------------- cluster 1: purse
+
+value class Tally {
+    int coins;
+    Tally operator = (Tally o) { coins = o.coins; return self; }
+}
+
+value class PurseBase {
+    default void show() { print("purse"); }
+}
+
+value class Purse : PurseBase {
+    Tally t;
+    array<int> slots[PURSE_SLOTS];
+    auto cap = {
+        int _cap;
+        int operator () { return _cap; }
+        void operator = (int v) {
+            if (v > 99) throw 1000 + v;
+            _cap = v;
+        }
+    }
+
+    Tally operator + (int n) {
+        Tally r = t;
+        r.coins += n;
+        return r;
+    }
+
+    int operator - (ref Purse o) { return t.coins - o.t.coins; }
+
+    int operator [] (int i) {
+        if (i < 0 || i >= slots.length) throw 800 + i;
+        return slots[i];
+    }
+
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= slots.size) throw 900 + i;
+        while (slots.length <= i) slots.append(0);
+        slots[i] = v;
+        return v;
+    }
+
+    replace void show() {
+        stringObj s = $"purse {t.coins}/{cap} [";
+        for (int i = 0; i < slots.length; i++) {
+            stringObj n = $"{slots[i]}";
+            if (i > 0) s += ",";
+            s += n;
+        }
+        s += "]";
+        s.print();
+    }
+
+    int deposit(int slot, int n) {
+        Tally was = t;
+        try {
+            self[slot] = n;
+            t.coins += n;
+            if (t.coins > cap) throw t.coins;
+        } catch (int e) {
+            t = was;
+            #i6 caught_last = $i6Expr(e);
+            return -1;
+        }
+        #i6 purse_peek = $i6Expr(t.coins);
+        return t.coins;
+    }
+
+    void audit() {
+        PurseAudit.perform();
+    }
+}
+
+Purse wallet;
+Purse spare;
+
+// ---------------------------------------------------------------- cluster 2: gauge
+
+union Mark = string | object;
+
+value class Dial {
+    int level;
+    default int weight() { return level; }
+    Dial operator = (Dial o) { level = o.level; return self; }
+}
+
+value class Notch {
+    int notches;
+    Notch operator = (Notch o) { notches = o.notches; return self; }
+}
+
+value class Gauge : Dial, Notch {
+    static array<int> history[4];
+    static array<char> marks = "-+*#";
+
+    Gauge operator = (Gauge o) {
+        (Dial)self = o;
+        (Notch)self = o;
+        return self;
+    }
+
+    int operator () { return level * 10 + notches; }
+
+    Gauge operator += (int n) {
+        level += n;
+        notches++;
+        if (Gauge.history.length >= Gauge.history.size) Gauge.history.dequeue();
+        Gauge.history.append(level);
+        return self;
+    }
+
+    Gauge operator ++ () {
+        notches++;
+        return self;
+    }
+
+    replace int weight() { return level * 2 + notches; }
+
+    void bar() {
+        array<char> row[10];
+        int n = level;
+        if (n > 10) n = 10;
+        for (int i = 0; i < 10; i++) {
+            if (i < n) row[i] = Gauge.marks[notches % 4];
+            else row[i] = '.';
+        }
+        for (int i = 0; i < 10; i++) print(row[i]);
+    }
+
+    void take(Mark m) {
+        var was = level;
+        if (typeof(m) == eType.string) {
+            print("label ");
+            print((string)m);
+        } else if (typeof(m) == eType.object) {
+            object o = (object)m;
+            self += 1;
+            print($"at {o}");
+        }
+        gauge_peek = level - was;
+        GaugeShow.perform();
+    }
+}
+
+Gauge gaugeA;
+
+// ---------------------------------------------------------------- cluster 3: meter
+
+enum eMode { idle, live, fault }
+
+value class Snap {
+    int raw;
+    eMode m;
+    Snap operator = (Snap o) { raw = o.raw; m = o.m; return self; }
+}
+
+object kit {
+    alias mode for eMode;
+    alias snapType for Snap;
+}
+
+#using kit
+value class Meter {
+    static int made = 0;
+    static int faults = 0;
+    int raw;
+    mode m;
+    Snap last;
+    auto reading = {
+        int _r;
+        int operator () { return _r; }
+        void operator = (int v) {
+#if TRACE_METER
+            meter_sets++;
+#endif
+            if (v < 0) throw 0 - v;
+            _r = v;
+        }
+    }
+
+    static int scaleBy(int v, int k) { return v * k; }
+
+    emitter int scaled() { $i6Expr(Meter.scaleBy($self.raw, 3)) }
+
+    int set(var v) {
+        last.raw = raw;
+        last.m = m;
+        try {
+            if (typeof(v) == eType.string) throw 500;
+            reading = (int)v;
+            raw = reading;
+            m = mode.live;
+            Meter.made++;
+        } catch (int e) {
+            Meter.faults++;
+            m = mode.fault;
+            meter_peek = e;
+        }
+#if TRACE_METER
+        print($"[mode {(int)m}, sets {meter_sets}] ");
+#endif
+        MeterShow.perform();
+        return raw;
+    }
+}
+
+Meter meterA;
+
+// ---------------------------------------------------------------- verbs: purse
+
+verb PurseAudit {
+    grammar = {.audit};
+    meta = true;
+    void handler() {
+        print($"[audit peek {purse_peek}, caught {caught_last}]");
+    }
+}
+
+verb PurseCap {
+    grammar = {.limit, NUMBER};
+    meta = true;
+    void handler() {
+        try {
+            wallet.cap = (int)noun;
+            printLine($"Limit {wallet.cap}.");
+        } catch (int e) {
+            printLine($"Limit refused: {e}; limit {wallet.cap}.");
+        }
+    }
+}
+
+verb PurseDeposit {
+    grammar = {.deposit, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        int r = wallet.deposit((int)noun, (int)second);
+        printLine($"Deposit {r}; coins {wallet.t.coins}, caught {caught_last}, peek {purse_peek}.");
+    }
+}
+
+verb PurseShow {
+    grammar = {.purse};
+    meta = true;
+    void handler() {
+        wallet.show();
+        print(" ");
+        wallet.audit();
+        print("^");
+    }
+}
+
+verb PursePlus {
+    grammar = {.plus, NUMBER};
+    meta = true;
+    void handler() {
+        Tally p = wallet + (int)noun;
+        spare.t = p;
+        spare[0] = 77;
+        p.coins = 1;
+        int d = spare - wallet;
+        print("spare ");
+        spare.show();
+        print(", wallet ");
+        wallet.show();
+        printLine($"; diff {d}, copy {p.coins}, slot0 {wallet[0]}/{spare[0]}.");
+    }
+}
+
+verb PursePeek {
+    grammar = {.peek, NUMBER};
+    meta = true;
+    void handler() {
+        try {
+            int v = wallet[(int)noun];
+            printLine($"Slot {(int)noun}: {v}.");
+        } catch (int e) {
+            printLine($"No slot: {e}.");
+        }
+    }
+}
+
+// ---------------------------------------------------------------- verbs: gauge
+
+verb GaugeShow {
+    grammar = {.gauge};
+    meta = true;
+    void handler() {
+        int n = gaugeA;
+        print(" |");
+        gaugeA.bar();
+        print($"| {gaugeA.level}/{gaugeA.notches} as {n}, weight {gaugeA.weight()}, base {((Dial)gaugeA).weight()}.^");
+    }
+}
+
+verb GaugeTurn {
+    grammar = {.turn, NUMBER};
+    meta = true;
+    void handler() {
+        gaugeA += (int)noun;
+        gaugeA++;
+        print("Turned:");
+        GaugeShow.perform();
+    }
+}
+
+verb GaugeMark {
+    grammar = {.mark};
+    meta = true;
+    void handler() {
+        gaugeA.take("north");
+        gaugeA.take(roomA);
+        printLine($"Moved {gauge_peek}.");
+    }
+}
+
+verb GaugeHistory {
+    grammar = {.history};
+    meta = true;
+    void handler() {
+        Gauge copy = gaugeA;
+        copy += 50;
+        print("History:");
+        for (int i = 0; i < Gauge.history.length; i++) print($" {Gauge.history[i]}");
+        int c = copy;
+        int g = gaugeA;
+        printLine($"; copy {c}, gauge {g}.");
+    }
+}
+
+// ---------------------------------------------------------------- verbs: meter
+
+verb MeterShow {
+    grammar = {.meter};
+    meta = true;
+    void handler() {
+        printLine($"Meter raw {meterA.raw}, reading {meterA.reading}, scaled {meterA.scaled()}, made {Meter.made}, faults {Meter.faults}, peek {meter_peek}.");
+    }
+}
+
+verb MeterSet {
+    grammar = {.set, NUMBER};
+    meta = true;
+    void handler() {
+        int r = meterA.set((int)noun);
+        printLine($"Set {r}.");
+    }
+}
+
+verb MeterLabel {
+    grammar = {.label};
+    meta = true;
+    void handler() {
+        int r = meterA.set("high");
+        printLine($"Set {r}.");
+    }
+}
+
+verb MeterDrain {
+    grammar = {.drain, NUMBER};
+    meta = true;
+    void handler() {
+        kit.snapType prior = meterA.last;
+        int r = meterA.set(0 - (int)noun);
+        Snap after = meterA.last;
+        printLine($"Set {r}; prior {prior.raw}/{(int)prior.m}, last {after.raw}/{(int)after.m}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    wallet.cap = 40;
+    rfalse;
+}

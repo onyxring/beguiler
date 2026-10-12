@@ -1,0 +1,470 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where up to twenty-seven language areas meet inside one
+// declaration. A namespace object with positional members of its own class, type aliases (`alias … for`)
+// for a value class and a primitive newtype, an `array<string>`, an `array<array<int>>` from a nested
+// list initializer, an `operator []`, an inline accessor whose setter reads and writes the host through
+// `outer` and runs a <linq> chain, a `replace` of a `default` method, and a recursive method that switches
+// on `typeof` of a `var` holding a named union, tests `?.` and postfix `?`, takes a `ref` parameter typed
+// through the alias, builds a `stringObj`, calls a block lambda, borrows a pooled instance with
+// `new`/`delete` and reads it through its `operator []`, mixes an in-routine `#i6` line with `$i6Expr`,
+// holds an `#If`/`#Else` block, prints an interpolated string and performs a verb. A pooled class
+// declared straight after `#using` of that namespace, typed through the imported aliases, with a positional member, static
+// members, a static `array<string>`, a static `array<array<int>>`, `[]`/`[]=` over it, a `replace` of an
+// inherited method, a member of a primitive newtype switched on through its emitter `operator switch`, and
+// one recursive method holding all of the above (recursing through new pool slots and, once the pool is
+// exhausted, through itself). A value subclass with statics, a static `array<string>` and
+// `array<array<int>>`, `[]`/`[]=`, a `replace`, an emitter calling a static method through `$i6Name`, and
+// a recursive method over a `ref array<Tile>` holding an inline value object, a local nested array, a
+// block lambda in `any()`, ranged/guarded switches and `$i6Expr` of that emitter. An object (also a
+// namespace) whose inline accessor setter holds a `var` from a ternary, a primitive newtype switch, an
+// inline value object, a linq chain with a block lambda, `?.` on a cast, `#i6`/`$i6Expr`, a pooled
+// borrow, `outer` writes and a performed verb, driven by a recursive method. A free recursive routine
+// up the object tree with a lambda nesting a linq lambda over a captured nested array, a `ref` value
+// class parameter and its `[]=`. A verb class with static members and a static `array<string>`.
+// Lexically: `#Define`/`#DEFINE`/`#If`/`#Else`/`#EndIf` in mixed case, `$` hex and `$$` binary literals in
+// directives, code and a positional object section, keywords in odd case (`Static`, `STATIC`, `Switch`,
+// `CASE`, `Default`, `Delete`, `NEW`, `Replace`, `TO`), a member declaration split across lines, a
+// comment between a cast and its operand, comments inside argument and parameter lists, a routine
+// written without spaces around operators, lambda bodies in Allman braces, an expression continued on a
+// leading operator, a tab-indented class body, and an empty statement.
+
+#beguilerSettings
+{
+    target        = eTarget.Z8 ;
+    includePaths  = "../../../inform6/stdlib" ;
+    framePoolSize = 256 ;               // the recursive methods below hold local nested arrays
+}
+
+#Define DEEP                            // a flag
+#DEFINE FOUR    $$100                   // binary: four
+#define SIXTY   $3C                     // hex: sixty
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend class object { string description ; }
+
+object roomA { "Room A" ; description = "A plain room." ; attributes = light ; }
+object boxA  { "box A" ; parent = roomA ; }
+object loose { "loose" ; }
+
+bool Initialise() { location = roomA ; rfalse ; }
+
+int pings = 0 ;
+
+//-- A verb the code below performs --------------------------------------------------------------------
+
+class loudVerb : verb
+{
+    meta = true ;
+    default void handler() { pings++ ; print("[ping]") ; }
+}
+
+loudVerb V_ping { grammar = { .ping } ; }
+
+//-- Shared types ----------------------------------------------------------------------------------------
+
+union Key = string | object ;
+
+value class Span
+{
+    inline int lo ;
+    inline int hi ;
+    Span operator = ( Span o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    int width () { return hi - lo ; }
+}
+
+primitive class Pct : int
+{
+    replace emitter void  operator = ( int v ) { $target = $v ; }
+    replace emitter int   operator () { ($val) }
+    emitter eBool operator switch ( int v ) { ($val == $v) }
+    emitter int   half () { ($val / 2) }
+}
+
+class Shelf : object
+{
+    inline int slots ;
+    default int count () { return slots ; }
+}
+
+class Book : object
+{
+    int pages = 2 ;
+    int weigh () { return pages ; }
+}
+
+//-- Cluster 2: a namespace object with an outer accessor and a dense recursive method --------------------
+
+Shelf kit
+{
+    FOUR , "kit" ;
+    alias range   for Span ;
+    alias percent for Pct ;
+    int scale = 2 ;
+    array<string>     names = { "red" , "green" , "blue" } ;
+    array<array<int>> marks = { { 5 , 1 } , { 7 , 2 , 9 } } ;
+
+    auto level = {
+        int _raw = 0 ;
+        int  operator () { return _raw ; }
+        void operator = ( int v )
+        {
+            int over = outer.marks[1].filter(( int x ) => x > v).count() ;
+            _raw = v * outer.scale + over ;
+            outer.marks[0][1] = _raw ;
+        }
+    }
+
+    Replace int count () { return slots + level ; }
+    int operator [] ( int i ) { return marks[i % 2][0] ; }
+
+    int tour ( Key k , ref range into , /* how far */ int depth )
+    {
+        stringObj line ;
+        var       who = k ;
+        Pct       p   = depth * 25 ;
+        level = depth + 1 ;
+        line  = names[depth % 3] ;
+        func<bool, int> deep = ( int r ) =>
+        {
+            if (r >= marks.length) return false ;
+            return marks[r].length > 2 ;
+        } ;
+        Switch (typeof(who))
+        {
+            CASE eType.object :
+            {
+                object o  = (object)who ;
+                object up = o?.parent ;
+                if (up?) line += "@" ; else line += "." ;
+            }
+            CASE eType.string : line += (string) /* narrowed */ who ;
+            Default           : line += "?" ;
+        }
+        Span was = into ;
+        into.lo = was.lo + depth ;
+        into.hi = was.hi + p.half() ;
+        int sum = 0 ;
+        Ledger temp = NEW Ledger(depth + 1) ;
+        if (temp?) { sum = temp[depth] ; Delete temp ; }
+        #i6 sum = sum + $i6Expr(self.scale) ;
+        for (array<int> row in marks) sum += row[0] ;
+#If DEEP
+        if (deep(1)) sum += 1000 ;
+#Else
+        sum += 1 ;
+#EndIf
+        line.print() ;
+        print($"|{level}|{sum} ") ;
+        if (depth > 0) sum += tour(names[depth] , into , depth - 1) ;
+        else           V_ping.perform() ;
+        return sum ;
+    }
+}
+
+//-- Cluster 1: a pooled class typed through the namespace, with one dense recursive method --------------
+
+#using kit
+
+class Ledger[3] : Book
+{
+	inline int code ;
+	Static int opened = 0 ;
+	Static int peak   = 0 ;
+	static array<string>     words = { "zero" , "one" , "two" , "three" } ;
+	STATIC array<array<int>> rows  = { { 1 , 2 } , { 3 , 4 , 5 } } ;
+	range   reach ;
+	percent
+	        share ;
+
+	void create ( int c )
+	{
+		code = c ; share = c * 10 ;
+		reach.lo = c ; reach.hi = c + 3 ;
+		Ledger.opened++ ;
+		if (Ledger.opened > Ledger.peak) Ledger.peak = Ledger.opened ;
+	}
+	void destroy () { Ledger.opened-- ; }
+	Replace int weigh () { return pages + code ; }
+	int  operator [] ( int i ) { return Ledger.rows[1][i % 3] ; }
+	void operator []= ( int i , int v ) { Ledger.rows[1][i % 3] = v ; }
+
+	int audit ( Key k , ref stringObj note , int depth )
+	{
+		var   v = k ;
+		Span  s = Span{ 1 , 4 } ;
+		Pct   cut = share ;
+		int   n = 0 ;
+		func<int, int> twice = ( int x ) => { int y = x * 2 ; return y + depth ; } ;
+		Switch (typeof(v))
+		{
+			CASE eType.string : note += (string)v ;
+			CASE eType.object :
+			{
+				object o  = (object)v ;
+				object up = o?.parent ;
+				if (up?) note += "*" ; else note += "-" ;
+			}
+			Default : note += "?" ;
+		}
+		note += Ledger.words[depth % 4] ;
+		int big = Ledger.rows[1].filter(( int x ) => x > depth).count() ;
+		n = twice(big) ;
+		#i6 n = n + $i6Expr(self.code) ;
+		switch (cut) { case 10 : n += 100 ; case 20 : n += 200 ; default : n += 900 ; }
+		s = reach ;
+		s.hi += depth ;
+		n += s.width()
+		   + weigh() ;
+		self[depth] = n % 10 ;
+		if (depth > 0)
+		{
+			Ledger extra = new Ledger(code + depth) ;
+			if (extra?) { n += extra.audit("+" , note , depth - 1) ; delete extra ; }
+			else          n += self.audit(k , note , depth - 1) ;
+		}
+		else V_ping.perform() ;
+		print($"[{code}:{depth}:{n}]") ;
+		return n ;
+	}
+}
+
+//-- Cluster 3: a value subclass with statics, an $i6Name emitter and a dense recursive method -------------
+
+value class Tile : Span
+{
+    int mark ;
+    Static int made = 0 ;
+    static array<string>     kinds = { "flat" , "rough" , "steep" } ;
+    STATIC array<array<int>> masks = { { 1 , 0 , 1 } , { 0 , 1 } } ;
+
+    Tile operator = ( Tile o ) { lo = o.lo ; hi = o.hi ; mark = o.mark ; return self ; }
+    Replace int width () { return (hi - lo) * 2 + mark ; }
+    int  operator [] ( int i ) { return Tile.masks[i % 2][0] + mark ; }
+    void operator []= ( int i , int v ) { Tile.masks[i % 2][0] = v ; }
+    static int score ( int a , int b ) { Tile.made++ ; return a * 10 + b ; }
+    emitter int scored () { $i6Name(Tile.score)($self.lo , $self.hi) }
+
+    int sweep ( ref array<Tile> row , Key why , int depth )
+    {
+        stringObj         say ;
+        var               w = why ;
+        Pct               q = depth * 30 ;
+        Tile              probe = Tile{ depth , depth + 2 ; mark = 1 ; } ;
+        array<array<int>> pairs = { { depth , 1 } , { 2 , depth , 3 } } ;
+        int sum = probe.width() ;
+        bool wide = row.any(( Tile t ) =>
+        {
+            int x = t.width() ;
+            return x > depth + 4 ;
+        }) ;
+        say = Tile.kinds[depth % 3] ;
+        Switch (typeof(w))
+        {
+            CASE eType.object :
+            {
+                object o  = (object)w ;
+                object up = o?.parent ;
+                if (up?) say += "+" ; else say += "-" ;
+            }
+            CASE eType.string : say += (string)w ;
+        }
+        switch (q.half()) { case 0 : sum += 1 ; case 1 TO 20 : sum += 2 ; case > 20 : sum += 3 ; }
+        for (array<int> pr in pairs) sum += pr.length * pr[0] ;
+        self[depth] = sum ;
+        #i6 sum = sum + $i6Expr(self.scored()) ;
+        Ledger l = new Ledger(depth) ;
+        if (l?) { sum += l.weigh() ; Delete l ; }
+        if (wide) sum += 1000 ;
+        say.print() ;
+        print($"/{sum} ") ;
+        if (depth > 0) sum += sweep(row , Tile.kinds[depth] , depth - 1) ;
+        else           V_ping.perform() ;
+        return sum ;
+    }
+}
+
+array<Tile> tiles[3] ;
+
+//-- Cluster 4: an object whose accessor setter holds most of the cluster ---------------------------------
+
+Shelf gate
+{
+    $$10 , "gate" ;
+    alias tile for Tile ;
+    int scale = 3 ;
+    int seen  = 0 ;
+    array<string>     notes = { "shut" , "ajar" , "open" } ;
+    array<array<int>> steps = { { 1 } , { 2 , 3 } } ;
+
+    auto state = {
+        int _raw = 0 ;
+        int  operator () { return _raw ; }
+        void operator = ( int v )
+        {
+            stringObj msg ;
+            var  who = v > 1 ? boxA : loose ;
+            Pct  p   = v * 20 ;
+            Span sp  = Span{ v , outer.scale + v } ;
+            int  n   = outer.steps[v % 2].filter(( int x ) => { return x >= v ; }).count() ;
+            msg = outer.notes[v % 3] ;
+            switch (p) { case 0 : msg += "0" ; case 20 : msg += "1" ; default : msg += "n" ; }
+            object up = ((object)who)?.parent ;
+            if (up?) n += 10 ;
+            #i6 n = n + $i6Expr(sp.width()) ;
+            Ledger l = new Ledger(v) ;
+            if (l?) { n += l[v] ; delete l ; }
+            _raw = n ;
+            outer.seen = outer.seen + 1 ;
+            msg.print() ;
+            print($"={n} ") ;
+            if (v == 0) V_ping.perform() ;
+        }
+    }
+
+    Replace int count () { return slots * 10 + seen ; }
+
+    int cascade ( int v )
+    {
+        state = v ;
+        int here = state ;
+        if (v > 0) return here + cascade(v - 1) ;
+        return here ;
+    }
+}
+
+//-- A free recursive routine up the object tree, written without spaces around operators ------------------
+
+Tile spare ;
+
+int climb(object o,Key k,ref Tile t,int depth)
+{
+    stringObj         path ;
+    var               tag = k ;
+    Pct               lim = depth*25 ;
+    array<string>     seen = { "leaf" , "branch" , "root" } ;
+    array<array<int>> wts  = { { 3 , 1 } , { 4 , 1 , 5 } } ;
+    func<int, int> heavy = (int r) =>
+    {
+        return wts[r].filter((int x) => x>depth).count() ;
+    } ;
+    int n = heavy(depth%2) ;
+    path = seen[depth%3] ;
+    Switch (typeof(tag))
+    {
+        CASE eType.string : path += (string)tag ;
+        CASE eType.object : path += "#" ;
+    }
+    switch (lim) { case 0 : n+=1 ; case 25 : n+=2 ; default : n+=4 ; }
+    t.mark = t.mark+depth ;
+    t[0] = n ;
+    #i6 n = n+$i6Expr(t.width()) ;
+    Ledger g = new Ledger(depth+1) ;
+    if (g?) { n += g.weigh() ; delete g ; }
+    object up = o?.parent ;
+    path.print() ;
+    print($":{n} ") ;
+    if (up?) return n+climb(up , /* the child */ o , t , depth+1) ;
+    V_ping.perform() ;
+    return n ;
+}
+
+//-- A verb class with static members --------------------------------------------------------------------
+
+class tallyVerb : verb
+{
+    meta = true ;
+    static int runs = 0 ;
+    static array<string> heard[4] ;
+
+    void handler()
+    {
+        array<array<int>> grid = { { 1 , 2 , 3 } , { $A } , { $$11 , 4 } } ;
+        int total = 0 ;
+        for (array<int> row in grid) total += row.length * 100 + row[0] ;
+        tallyVerb.heard.append(tallyVerb.runs % 2 == 0 ? "even" : "odd") ;
+        tallyVerb.runs++ ;
+        stringObj all ;
+        for (int i = 0 ; i < tallyVerb.heard.length ; i++) { all += tallyVerb.heard[i] ; all += "," ; }
+        all.print() ;
+        printLine($" {tallyVerb.runs} {total - SIXTY} {grid[2][1]}") ;;
+    }
+}
+
+tallyVerb V_tally { grammar = { .tally } ; }
+
+//-- Verbs -----------------------------------------------------------------------------------------------
+
+verb V_ledger
+{
+    meta = true ; grammar = { .ledger } ;
+    void handler()
+    {
+        stringObj note ;
+        Ledger a = new Ledger(1) ;
+        if (!(a?)) { printLine("no slot") ; return ; }
+        print(a.audit("a" , note , 3)) ; print(" ") ;
+        note.print() ; print(" ") ;
+        printLine($"{Ledger.opened} {Ledger.peak} {pings} {a[0]} {a[1]} {a[2]} {a.weigh()}") ;
+        note = "" ;
+        print(a.audit(boxA , note , 1)) ; print(" ") ;
+        note.print() ; print(" ") ;
+        Delete a ;
+        printLine($"{Ledger.opened} {pings}") ;
+    }
+}
+
+verb V_tour
+{
+    meta = true ; grammar = { .tour } ;
+    void handler()
+    {
+        Span r = Span{ 0 , 0 } ;
+        print(kit.tour(boxA , r , 2)) ; print(" ") ;
+        printLine($"{r.lo} {r.hi} {kit.level} {kit.marks[0][1]} {kit.count()} {Ledger.opened} {pings}") ;
+        print(kit.tour(loose , r , 0)) ; print(" ") ;
+        printLine($"{r.lo} {r.hi} {kit.level} {kit.count()} {kit[0]} {kit[1]}") ;
+    }
+}
+
+verb V_sweep
+{
+    meta = true ; grammar = { .tiles } ;
+    void handler()
+    {
+        tiles.length = 3 ;
+        for (int i = 0 ; i < 3 ; i++) { tiles[i].lo = i ; tiles[i].hi = i * 3 ; tiles[i].mark = i ; }
+        print(tiles[1].sweep(tiles , boxA , 2)) ; print(" ") ;
+        printLine($"{Tile.made} {tiles[1][0]} {tiles[1][1]} {tiles[2][1]} {tiles[2].width()} {Ledger.opened} {pings}") ;
+    }
+}
+
+verb V_gate
+{
+    meta = true ; grammar = { .gate } ;
+    void handler()
+    {
+        print(gate.cascade(2)) ; print(" ") ;
+        printLine($"{gate.state} {gate.seen} {gate.count()} {Ledger.opened} {pings}") ;
+    }
+}
+
+verb V_climb
+{
+    meta = true ; grammar = { .upward } ;
+    void handler()
+    {
+        spare.lo = 1 ; spare.hi = 2 ;
+        print(climb(boxA , "x" /* a string key */ , spare , 0)) ; print(" ") ;
+        printLine($"{spare.mark} {spare.width()} {spare[0]} {Ledger.opened} {pings}") ;
+    }
+}
+
+#includeI6 "grammar"

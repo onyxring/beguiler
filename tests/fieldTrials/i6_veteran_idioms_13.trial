@@ -1,0 +1,56 @@
+rack room
+Rack room.
+
+> racks
+rack A port bay 0 [1 2 3] load 0; rack B aft bay 1 [4 5 -1] load 0; rack C middle bay 2 [6 -1 -1] load 0.
+
+> rload 3
+hits 3, total 13, bays 6/9/6.
+
+> rset 7
+(no cell) B [7 5 -1], C 10, sets 3, sum 12.
+
+> racks
+rack A port bay 0 [1 2 3] load 3; rack B aft bay 1 [7 5 -1] load 6; rack C middle bay 2 [10 -1 -1] load 4.
+
+> rsort
+rack C middle bay 2 [10 -1 -1] load 4; rack B aft bay 1 [7 5 -1] load 6; rack A port bay 0 [1 2 3] load 3.
+
+> rlink
+A true, B false, C true.
+
+> racks
+rack C middle bay 2 [10 -1 -1] load 4 -> rack B; rack B aft bay 1 [7 5 -1] load 6; rack A port bay 0 [1 2 3] load 3 -> rack C.
+
+> rmark 2
+A at 2,3; C at 6,1; marks 2, sum 12; spans 21, kept 6,1, C at 6,0, spans 25.
+
+> rmark 5
+A at 5,6; C at 15,1; marks 4, sum 39; spans 25, kept 15,1, C at 15,0, spans 34.
+
+> rstamp
+port1 digit 4, aft7 digit 3.
+
+> rtag 2
+tags 3/2, notes 2, has true, count 1, rows 2/-1; ab late at -1, peer tag 2; def late at 0, peer tag 3.
+
+> rtag 4
+tags 5/4, notes 4, has true, count 2, rows 2/-1; ab late at -1, peer tag 4; def late at 0, peer tag 5.
+
+> dlevel 1
+level 2, base 1/3, bar 23523, grid [2 1] [2 3 5] [8], last 25.
+
+> dlevel 2
+level 4, base 2/1, bar 235, grid [2 1] [2 3 5] [8], last 33.
+
+> kit
+pin 10, tie 22, axe -1, calls 21; widest 2 (2/3); vowels 1/1/2; bolt,rivet,pin,cap,gear; third pin, wrap pin.
+
+> rload 1
+hits 6, total 18, bays 6/12/10.
+
+> rload 1
+(hits full) hits 8, total 21, bays 6/12/10.
+
+> racks
+rack C middle bay 2 [10 -1 -1] load 2 -> rack B; rack B aft bay 1 [7 5 -1] load 2; rack A port bay 0 [1 2 3] load 1 -> rack C.

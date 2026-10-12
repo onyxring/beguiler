@@ -1,0 +1,500 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: panes drawn into a text grid with a link panel beside it. A pane base class with a
+// positional caption, a default drawInto(), a static member array of panes filled by a recursive
+// static walk of the object tree, sorted by a block-bodied lambda comparator, and a trace routine
+// chosen by #if / #else that reads the statics in an #i6 island through $i6Expr; a gauge pane with
+// two parents (the pane base and a tint) overriding drawInto() inside an emitter-class style scope,
+// testing the grid and a partner with postfix ?, walking its children and capturing a badge into
+// an array<char>; an object with an inline float accessor reaching its host through outer (a count
+// and a subscripted write to an array<char> note) and float == / != operators; a readout class
+// building text in array<char> buffers with operator + (recursive digit writer, style scope), operator * (a
+// float captured through bgl.util.buf) and a local array<array<int>> of tick rows; a styled log
+// whose += and ++ operators append to a stringObj, give and take attributes and call an overridden
+// base note() through an ancestor cast, fed by a block-bodied lambda that calls += on self; an
+// I6-declared class bound as an extern class whose static survey routine walks a shelf's children,
+// fills a local nested array, throws and catches when it overflows, binds rows with := and counts
+// them with <linq>; and an object namespace aliasing the gauge class beside an array<string>
+// member it sorts and an emitter expanding a routine call through $i6Expr.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+#i6 {
+    Class Swatch with swatch_rgb 0;
+    Swatch redSwatch "red swatch" with swatch_rgb $C80000;
+    Swatch tealSwatch "teal swatch" with swatch_rgb $0080A0;
+    Swatch greySwatch "grey swatch" with swatch_rgb $909090;
+    Swatch whiteSwatch "white swatch" with swatch_rgb $F0F0F0;
+    Swatch blackSwatch "black swatch" with swatch_rgb $101010;
+}
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+attribute dimmed;
+attribute flagged;
+
+// ---- style scopes --------------------------------------------------------------------------------
+
+int styleDepth = 0;
+int styleOpens = 0;
+
+emitter class emphasis {
+    emitter void init()   { styleDepth++; styleOpens++; }
+    emitter void deinit() { styleDepth--; }
+}
+
+// ---- windows -------------------------------------------------------------------------------------
+
+textGridWindow   board = null;
+textBufferWindow side  = null;
+
+object boardRoot { "board root"; }
+
+// ---- panes ---------------------------------------------------------------------------------------
+
+#define TRACE_PANES
+
+class paneBase : object {
+    inline string caption;
+    int row = 0;
+    static int enrolled = 0;
+    static array<object> order[6];
+
+    default void drawInto(textGridWindow g) {
+        g.moveCursor(depthOf() * 2, row);
+        g.print(caption);
+    }
+
+    int depthOf() {
+        int d = 0;
+        object p = self.parent;
+        while (p != null && p != boardRoot) {
+            d++;
+            p = p.parent;
+        }
+        return d;
+    }
+
+    static int enroll(object host, int nextRow) {
+        for (object o in host.children) {
+            paneBase p = (paneBase)o;
+            p.row = nextRow;
+            nextRow++;
+            paneBase.order.append(o);
+            paneBase.enrolled++;
+            nextRow = paneBase.enroll(o, nextRow);
+        }
+        return nextRow;
+    }
+
+    static int rebuild() {
+        paneBase.order.clear();
+        paneBase.enrolled = 0;
+        return paneBase.enroll(boardRoot, 0);
+    }
+
+    static void sortByCaption() {
+        paneBase.order.sort((object a, object b) => {
+            string x = ((paneBase)a).caption;
+            string y = ((paneBase)b).caption;
+            return x <=> y;
+        });
+    }
+
+#if TRACE_PANES
+    static void trace() {
+        int code = 0;
+        #i6 code = $i6Expr(paneBase.enrolled) * 100 + $i6Expr(paneBase.order.length);
+        print($"Order {code}:");
+        for (object o in paneBase.order) print($" {((paneBase)o).caption}");
+        printLine(".");
+    }
+#else
+    static void trace() {
+        printLine("No trace.");
+    }
+#endif
+}
+
+class tinted : object {
+    int tint = $FFFFFF;
+}
+
+class gaugePane : paneBase, tinted {
+    inline int cells;
+    float level = 0.0;
+    paneBase partner = null;
+    array<char> badge[12];
+
+    void drawInto(textGridWindow g) {
+        emphasis e;
+        if (!g?) return;
+        g.moveCursor(depthOf() * 2, row);
+        g.print(caption);
+        int filled = (int)(level * cells + 0.5);
+        g.moveCursor(8, row);
+        for (int i = 0; i < cells; i++) g.print(i < filled ? "#" : ".");
+        if (partner? && partner != self) {
+            g.print(" > ");
+            g.print(partner.caption);
+        }
+    }
+
+    int stamp() {
+        int kids = 0;
+        for (object c in self.children) kids++;
+        bgl.util.buf.capture(badge);
+        print($"{caption}/{kids}");
+        bgl.util.buf.release();
+        return kids;
+    }
+}
+
+gaugePane cpuPane { 12, "CPU", "cpu pane"; parent = boardRoot; tint = $C80000; }
+gaugePane memPane { 10, "MEM", "mem pane"; parent = boardRoot; tint = $0050A0; }
+gaugePane ioPane  { 8, "IO", "io pane"; parent = memPane; }
+gaugePane netPane { 6, "NET", "net pane"; parent = memPane; partner = cpuPane; }
+
+void redraw() {
+    if (board == null) return;
+    board.clear();
+    for (object o in paneBase.order) ((paneBase)o).drawInto(board);
+}
+
+void stepUp() {
+    for (object o in paneBase.order) {
+        gaugePane g = (gaugePane)o;
+        g.level += 0.25;
+        if (g.level > 1.0) g.level = 1.0;
+    }
+    redraw();
+    side?.printLine("Stepped up.");
+}
+
+void resetLevels() {
+    for (object o in paneBase.order) ((gaugePane)o).level = 0.0;
+    redraw();
+    side?.printLine("Reset.");
+}
+
+// ---- zoom ----------------------------------------------------------------------------------------
+
+object zoomControl {
+    "zoom control";
+    int changes = 0;
+    array<char> note[8];
+    auto factor = {
+        float _raw = 1.0;
+        float operator () { return _raw; }
+        void operator = (float v) {
+            if (outer.note.length < 8) {
+                outer.note[outer.note.length] = v > 4.0 ? 'W' : 'S';
+                outer.note.length = outer.note.length + 1;
+            }
+            _raw = v > 4.0 ? 1.0 : v;
+            outer.changes++;
+        }
+    }
+    bool operator == (float v) { return self.factor == v; }
+    bool operator != (float v) { return self.factor != v; }
+}
+
+// ---- readout -------------------------------------------------------------------------------------
+
+class readout : object {
+    array<char> text[32];
+    array<char> scratch[16];
+
+    readout operator + (int n) {
+        emphasis e;
+        if (text.length > 0) appendChar(' ');
+        if (n < 0) {
+            appendChar('-');
+            n = -n;
+        }
+        putDigits(n);
+        return self;
+    }
+
+    readout operator * (float f) {
+        bgl.util.buf.capture(scratch);
+        print(f);
+        bgl.util.buf.release();
+        if (text.length > 0) appendChar(' ');
+        bgl.util.buf.append(text, scratch);
+        return self;
+    }
+
+    void appendChar(char c) {
+        int at = text.length;
+        text[at] = c;
+        text.length = at + 1;
+    }
+
+    void putDigits(int n) {
+        if (n >= 10) putDigits(n / 10);
+        appendChar((char)('0' + n % 10));
+    }
+
+    readout addRow(int which) {
+        array<array<int>> rows = { {1, 2, 3}, {10, 20}, {7} };
+        if (text.length > 0) appendChar(' ');
+        for (int i = 0; i < rows[which].length; i++) {
+            if (i > 0) appendChar('-');
+            putDigits(rows[which][i]);
+        }
+        return self;
+    }
+
+    void reset() { text.length = 0; }
+}
+
+readout meterText { "meter text"; }
+
+// ---- log -----------------------------------------------------------------------------------------
+
+void eachWord(array<string> words, func<void, string> f) {
+    for (string w in words) f(w);
+}
+
+class logBase : object {
+    int notes = 0;
+    default void note() { notes++; }
+}
+
+class styledLog : logBase {
+    stringObj text;
+    int flips = 0;
+
+    void note() {
+        ((logBase)self).note();
+        if (notes >= 3 && !self.has(flagged)) self.give(flagged);
+    }
+
+    styledLog operator += (string s) {
+        if (text.length > 0) text += ", ";
+        text += s;
+        note();
+        return self;
+    }
+
+    styledLog operator ++ () {
+        flips++;
+        if (self.has(dimmed)) self.ungive(dimmed);
+        else self.give(dimmed);
+        return self;
+    }
+
+    int addAll(array<string> words) {
+        int added = 0;
+        eachWord(words, (string w) => {
+            if (w != "") {
+                self += w;
+                added++;
+            }
+        });
+        return added;
+    }
+}
+
+styledLog paneLog { "pane log"; }
+
+array<string> logWords = { "open", "", "draw", "close" };
+
+// ---- swatches ------------------------------------------------------------------------------------
+
+object swatchShelf { "swatch shelf"; }
+
+extern class Swatch : object {
+    int swatch_rgb;
+
+    static int survey(object shelf, int limit) {
+        array<array<int>> chans = { {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0} };
+        int n = 0;
+        try {
+            for (object o in shelf.children) {
+                if (n >= 4) throw n;
+                Swatch s = (Swatch)o;
+                chans[0][n] = (s.swatch_rgb >> 16) & $FF;
+                chans[1][n] = (s.swatch_rgb >> 8) & $FF;
+                chans[2][n] = s.swatch_rgb & $FF;
+                n++;
+            }
+        } catch (int full) {
+            printLine($"Shelf full at {full}.");
+        }
+        for (int c = 0; c < 3; c++) {
+            ref array<int> row := chans[c];
+            row.length = n;
+            int hot = row.filter((int v) => v > limit).count();
+            printLine($"Channel {c}: {hot} of {row.length} over {limit}, first {row.first()}.");
+        }
+        return n;
+    }
+}
+
+extern Swatch redSwatch;
+extern Swatch tealSwatch;
+extern Swatch greySwatch;
+extern Swatch whiteSwatch;
+extern Swatch blackSwatch;
+
+// ---- namespace -----------------------------------------------------------------------------------
+
+int halfCells(int n) { return (n + 1) / 2; }
+
+object kit {
+    "kit";
+    alias pane for gaugePane;
+    array<string> labels[6] = { "MEM", "CPU" };
+    emitter int halfOf(int n) { $i6Expr(halfCells($n)) }
+    int remember(string w) {
+        if (labels.indexOf(w) < 0) labels.append(w);
+        labels.sort();
+        return labels.length;
+    }
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    redSwatch.parent = swatchShelf;
+    tealSwatch.parent = swatchShelf;
+    greySwatch.parent = swatchShelf;
+    paneBase.rebuild();
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Panes {
+    grammar = {.panes};
+    meta = true;
+    void handler() {
+        if (board == null) board = bgl.ui.mainWin.splitUpGrid(5);
+        if (side == null) side = bgl.ui.mainWin.splitRightBuffer(20);
+        if (board == null || side == null) {
+            printLine("No panes.");
+            return;
+        }
+        redraw();
+        side.clear();
+        side.printLine($"{link("Up", stepUp)} {link("Reset", resetLevels)}");
+        printLine($"Panes open; opens {styleOpens}, depth {styleDepth}.");
+    }
+}
+
+verb Sequence {
+    grammar = {.sequence};
+    meta = true;
+    void handler() {
+        int rows = paneBase.rebuild();
+        paneBase.trace();
+        paneBase.sortByCaption();
+        paneBase.trace();
+        printLine($"Rows {rows}.");
+        redraw();
+    }
+}
+
+verb Badges {
+    grammar = {.badges};
+    meta = true;
+    void handler() {
+        for (object o in paneBase.order) {
+            kit.pane g = (kit.pane)o;
+            int kids = g.stamp();
+            bgl.util.buf.print(g.badge);
+            printLine($" ({g.badge.length}, kids {kids}, depth {g.depthOf()}, half {kit.halfOf(g.cells)}).");
+        }
+    }
+}
+
+verb Zoom {
+    grammar = {.zoom};
+    meta = true;
+    void handler() {
+        zoomControl.factor = zoomControl.factor * 2;
+        float f = zoomControl.factor;
+        printLine($"Zoom {f} after {zoomControl.changes} changes; at two {zoomControl == 2.0 ? "yes" : "no"}, not one {zoomControl != 1.0 ? "yes" : "no"}.");
+        bgl.util.buf.print(zoomControl.note);
+        printLine("");
+    }
+}
+
+verb Readout {
+    grammar = {.readout};
+    meta = true;
+    void handler() {
+        readout r = meterText;
+        r.reset();
+        r = r + 42;
+        r = r + -7;
+        r = r * 0.5;
+        r = r.addRow(0).addRow(1);
+        bgl.util.buf.print(r.text);
+        printLine($" ({r.text.length}); opens {styleOpens}, depth {styleDepth}.");
+    }
+}
+
+verb Log {
+    grammar = {.log};
+    meta = true;
+    void handler() {
+        int n = paneLog.addAll(logWords);
+        paneLog++;
+        printLine($"Added {n}: {paneLog.text}.");
+        printLine($"Notes {paneLog.notes}, flips {paneLog.flips}, flagged {paneLog.has(flagged) ? "yes" : "no"}, dimmed {paneLog.has(dimmed) ? "yes" : "no"}.");
+    }
+}
+
+verb Swatches {
+    grammar = {.swatches};
+    meta = true;
+    void handler() {
+        int n = Swatch.survey(swatchShelf, 128);
+        printLine($"Surveyed {n}.");
+        whiteSwatch.parent = swatchShelf;
+        blackSwatch.parent = swatchShelf;
+        n = Swatch.survey(swatchShelf, 128);
+        printLine($"Surveyed {n}.");
+    }
+}
+
+verb Labels {
+    grammar = {.labels};
+    meta = true;
+    void handler() {
+        int n = kit.remember("IO");
+        n = kit.remember("CPU");
+        n = kit.remember("NET");
+        print($"Labels {n}:");
+        for (string s in kit.labels) print($" {s}");
+        printLine(".");
+    }
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,429 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits applied to data and run-time structures. A pooled class sized by
+// a constant and one sized by a literal, with `create`/`destroy` split over lines, `NEW` and `Delete` in
+// mixed case, comments between `new`, its type and its arguments, pool exhaustion and slot reuse; an
+// owned value-class member with an inline-object starting value spread over lines, reset by `new`;
+// inline objects positional, named and combined, bare and typed, with comments between the values and
+// the separators on lines of their own, as call arguments with run-time members; `inline instanceName`
+// re-listed first; arrays of arrays with ragged rows and `> >` / `>>` closing the type; a file-scope
+// `rawArray<T>` handed to a `rawArray<T>` parameter; `extend` of an array with `inject`, `remove` and
+// `move` written with `[N]` references and odd spacing; `<string>` operations chained across lines and
+// switched on; `<linq>` chains with one link per line and multi-line lambdas; native verbs reached by
+// `perform()`, grammar with `REVERSE` and alternation split across lines, a grammar object, `grammar +=`,
+// `grammar -=` and `synonyms` in an `extend`; `property` declarations and computed property access
+// through a `property` parameter; `required` members met by a subclass and by an object; `#startup`,
+// `#emitfirst` and `#emitlast` bodies reached from Beguile through `extern` declarations.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#INCLUDE <linq>         // brings <array>
+#Include <string>
+
+extend class object { string description; }
+
+//-- Raw I6 placement --------------------------------------------------------------------------------
+
+#emitfirst {
+    Global firstMark = 5;   ! doubled at startup
+}
+#startup
+{
+    firstMark = firstMark * 2;
+}
+#emitlast {   [ lastRoutine n;   return n + 40;   ];   }
+
+extern int firstMark;
+extern int lastRoutine(int n);
+
+//-- Rooms and things ---------------------------------------------------------------------------------
+
+Object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+
+object rope { "rope"; parent = roomA; name = { .rope }; description = "A rope."; }
+object post
+{
+    "post";
+    parent      = roomA;
+    name        = { .post };
+    attributes  = { static };
+    description = "A post.";
+}
+
+//-- A value class owned by a pooled class ------------------------------------------------------------
+
+value class Coins
+{
+    int cents;
+    Coins operator = ( Coins o ) { cents = o.cents; return self; }
+    void show() { print($"{cents}c"); }
+}
+
+CONST INT TOKENS = 3;
+
+class Token[ TOKENS ] : object
+{
+    int    id;
+    string tag = "none";
+    void
+    create
+    (
+        int    n ,        // the id
+        string t          // the tag
+    )
+    {
+        id  = n;
+        tag = t;
+    }
+    void destroy() { printLine($"destroy {id}"); }
+}
+
+class Purse[2] : object
+{
+    Coins price
+        =
+        Coins
+        {
+            cents = 3;      // every slot starts at 3
+        };
+}
+
+//-- Inline objects ------------------------------------------------------------------------------------
+
+class cell : object
+{
+    inline int row;
+    inline int col;
+    string     tag = "-";
+    void show() { print($"[{row},{col},{tag}]"); }
+}
+
+array<cell> cells =
+{
+    cell{ 1, 2 },                               // positional
+    cell
+    {
+        row = 3 ;
+        col = 4 ;
+    },                                          // named, one per line
+    cell{ 5 , 6 ; tag = "p" ; },                // combined
+    {   7
+      , 8
+    },                                          // bare, separators leading
+    { /* row */ 9, /* col */ 10 /* end */ ; /* named */ tag = "q"; },
+};
+
+void showCell(cell c) { c.show(); }
+
+class Pet : object { inline instanceName; inline int legs; }
+Pet rex { "rex", 3; }
+Pet tib
+{
+    "tib"
+    ,
+    4
+    ;
+}
+
+//-- Arrays of arrays, raw arrays and extend ----------------------------------------------------------
+
+array < array < int > > grid =
+{
+    { 1, 2, 3 },
+    { 4 },
+    {
+        5,
+        6
+    },
+};
+
+array<array<string>>words={{"a","b"},{"c"}};
+
+rawArray<int> raw = { 10, 20, 30, 40 };
+
+int rawSum ( rawArray < int > buf , int n )
+{
+    int t = 0;
+    for (int i in 0 to n - 1) t += buf[i];
+    return t;
+}
+
+object m1 { "m1"; }  object m2 { "m2"; }  object m3 { "m3"; }  object m4 { "m4"; }
+
+array<object> lineup = { m1, m2 };
+
+extend lineup
+{
+    inject   m3    before   m1  ;
+    inject m4 first;
+    move [1]   last ;          // m3 to the end
+    remove
+        m2
+        ;
+}
+
+//-- Properties and required members ------------------------------------------------------------------
+
+property spare_flag;
+
+
+class Gauge : object
+{
+    int heat = 7;
+    required int unit;
+    required int scaled( int n );
+}
+
+class TenGauge : Gauge
+{
+    int unit = 10;
+    int scaled(int n) { return n * unit; }
+}
+
+TenGauge g10 { "g10"; }
+
+Gauge gOdd
+{
+    "gOdd";
+    int unit = 3;
+    int scaled ( int n )
+    {
+        return n * unit + 1;
+    }
+    int spare_flag = 1;
+}
+
+int readProp(object o, property p)
+{
+    if (o.provides(p)) return o.p;
+    return -1;
+}
+
+int scaleBy(Gauge g, int n) { return g.scaled(n); }
+
+bool Initialise() { location = roomA; rfalse; }
+
+#includeI6 "grammar"
+
+//-- Verbs ----------------------------------------------------------------------------------------------
+
+verb Lash
+{
+    grammar =
+    {
+        { .lash , NOUN , .to , NOUN },
+        {
+            .moor | .fix | .tether,
+            NOUN,
+            ( .with | .using ),
+            NOUN,
+            REVERSE
+        },
+        { .lash, .loose },
+    };
+    void handler() { printLine($"lash {noun} to {second}"); }
+}
+
+grammar lashLines
+{
+    array<grammarRule> rules =
+    {
+        { Lash, { .bind, NOUN, .to, NOUN } },
+    };
+}
+
+extend Lash
+{
+    grammar += { { .knot, NOUN, .round, NOUN } };
+    grammar -= { { .lash, .loose } };
+    synonyms  = { .rig };
+}
+
+verb Probe
+{
+    meta = true;
+    grammar = { { .probe } };
+    void handler()
+    {
+        Lash.perform( rope , post );
+        Lash
+            .perform
+            (
+                post,
+                rope
+            );
+    }
+}
+
+verb Pool
+{
+    meta = true;
+    grammar = { { .pool } };
+    void handler()
+    {
+        Token a = NEW Token( 1, "a" );
+        Token b = new /* type */ Token /* args */ ( 2 , "b" );
+        Token c = New
+            Token(
+                3,
+                "c"
+            );
+        Token d = new Token(4, "d");
+        if (d == null) printLine("pool empty");
+        printLine($"{a.id}{a.tag} {b.id}{b.tag} {c.id}{c.tag}");
+        Delete b;
+        delete
+            a;
+        Token e = new Token(5, "e");
+        if (e != null) printLine($"reused {e.id}{e.tag}");
+        DELETE c; delete e;
+    }
+}
+
+verb Owned
+{
+    meta = true;
+    grammar = { { .owned } };
+    void handler()
+    {
+        Purse p = new Purse();
+        if (p == null) return;
+        p.price.show();
+        p.price.cents = 9;
+        print(" "); p.price.show(); print("^");
+        delete p;
+        Purse q = new Purse();
+        if (q == null) return;
+        q.price.show(); print("^");
+        delete q;
+    }
+}
+
+verb ShowCells
+{
+    meta = true;
+    grammar = { { .cells } };
+    void handler()
+    {
+        for (cell c in cells) c.show();
+        print("^");
+        showCell(cell{ 11, 12 });
+        int w = 13;
+        int h = 14;
+        showCell( { w,
+                    h ;
+                    tag = "r" ; } );
+        showCell(c: cell{ row = w + h; col = 0; });
+        print("^");
+        printLine($"{rex} {rex.legs} {tib} {tib.legs}");
+    }
+}
+
+verb ShowGrid
+{
+    meta = true;
+    grammar = { { .grid } };
+    void handler()
+    {
+        grid[1][0] = 40;
+        int total = 0;
+        for (array<int> row in grid)
+        {
+            for (int i = 0; i < row.length; i++) total += row[i];
+            print(row.length);
+        }
+        printLine($" total {total} corner {grid[2][1]}");
+        printLine($"{words[0][1]}{words[1][0]} {words.length}{words[0].length}");
+    }
+}
+
+verb Raws
+{
+    meta = true;
+    grammar = { { .raws } };
+    void handler()
+    {
+        printLine($"raw {rawSum(raw, 4)} {raw[2]}");
+        for (object o in lineup) { print(o); print(" "); }
+        printLine($"({lineup.length})");
+    }
+}
+
+verb Strs
+{
+    meta = true;
+    grammar = { { .strs } };
+    void handler()
+    {
+        stringObj s = "  Brass Key  ";
+        stringObj t = s
+            .trim()
+            .toUpper()
+            .replace( "KEY" , "BELL" );
+        printLine($"<{t}> {t.length}");
+        t += "!";
+        stringObj u = t.left(5) + "-" + t.right(5);
+        printLine(u);
+        switch (s.trim().toLower())
+        {
+            case "brass key": printLine("matched");
+            default:          printLine("no match");
+        }
+        if (t =~ "brass bell!") printLine("same ignoring case");
+        printLine($"{"abc" <=> "abd"} {t.indexOf("BELL")}");
+    }
+}
+
+verb Linq
+{
+    meta = true;
+    grammar = { { .linq } };
+    void handler()
+    {
+        array<int> nums = { 4, -2, 9, 4, 0, 7, -5 };
+        array<int> kept = nums
+            .filter( (int x) => x >= 0 )     // drop negatives
+            .distinct()
+            /* then order */
+            .orderBy();
+        for (int k in kept) { print(k); print(" "); }
+        print("^");
+        int big = nums
+            .filter
+            (
+                (int x)
+                    =>
+                    x > 3
+            )
+            .count();
+        bool anyNeg = nums.any((int x) => x < 0);
+        bool allSmall = nums.all((int x) => x < 10);
+        printLine($"{big} {anyNeg} {allSmall} {nums.skip(5).first()}");
+    }
+}
+
+verb Props
+{
+    meta = true;
+    grammar = { { .props } };
+    void handler()
+    {
+        printLine($"{readProp(g10, heat)} {readProp(g10, spare_flag)} {readProp(gOdd, spare_flag)}");
+        printLine($"{scaleBy(g10, 4)} {scaleBy(gOdd, 4)} {g10.unit + gOdd.unit}");
+    }
+}
+
+verb Marks
+{
+    meta = true;
+    grammar = { { .marks } };
+    void handler() { printLine($"{firstMark} {lastRoutine(2)}"); }
+}

@@ -1,0 +1,88 @@
+#grids
+Room A
+Room A.
+[grid 1]
+| Room A                                     0/0   |
+> dials
+left:blue 3.0000 mid:red 2.5000
+Means: 25.0000 20.0000
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 10 20 30 40                                  |
+|mid 5 15 25 35                                    |
+|knob 40 sets 0 trail 0                            |
+> lift
+Readout: 115 80 knob 40, traced 0.
+Readout: 115 145 knob 40, traced 0.
+Lifted 35 and 100.
+Bumped 35; zones part part full; knob 0.0000.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 5 15 25 100                                   |
+|knob 40 sets 0 trail 0                            |
+> refill
+Filled 4: 50 15 75 100.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 50 15 75 100                                  |
+|knob 40 sets 0 trail 0                            |
+> needles
+low 2.5000; high 7.2500; idle 2.5000;
+[tie] Chain meter C.
+Steadier meter A, tie meter A, null meter C, first meter A.
+Marks 100 100, peak so far 0.
+Pivot A middle, pivot B top.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 50 15 75 100                                  |
+|knob 40 sets 0 trail 0                            |
+> record
+[rec] Trace: 2.5000.
+[rec] Trace: 2.5000 2.5000.
+[rec] Sum 7.7500, peak 3.0000, bands low low.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 50 15 75 100                                  |
+|knob 40 sets 0 trail 3                            |
+> trace
+Trace: 2.5000 2.5000 2.7500.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 50 15 75 100                                  |
+|knob 40 sets 0 trail 3                            |
+> rotor
+(set 30)
+knob on calm 0.6000 last 30 sets 1
+(set 30)
+knob on calm 0.6000 last 30 sets 2
+(set 55)
+knob on busy 1.1000 last 55 sets 3
+Readout: 140 240 knob 55, traced 0.
+(set 55)
+knob on busy 1.1000 last 55 sets 4 scaled 11.0000
+Readout: 140 240 knob 55, traced 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 50 15 75 100                                  |
+|knob 55 sets 4 trail 3                            |
+> readout
+Readout: 140 240 knob 55, traced 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|left 35 35 30 40                                  |
+|mid 50 15 75 100                                  |
+|knob 55 sets 4 trail 3                            |

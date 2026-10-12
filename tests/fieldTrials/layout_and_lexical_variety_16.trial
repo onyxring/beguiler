@@ -1,0 +1,18 @@
+Room A
+A plain room.
+> dial
+[ping]Dc 2111 321 0 1
+> purse
+first purse of coins [ping]7354 74 5 2
+> knob
+a low<! 6 high*! [ping]-4 8 4 3
+> drain
+[ping]one (two) three some1021 (one) (two) three many2001 1 8 4
+> mix
+14 -1 twenties+ Nm northeast 17 1 7 8 23 0
+> blend
+14 -1 twenties+ Nm northeast 17 1 7 8 23 0
+> words
+[ping]knob A:43 232 high,low,mid,mid, 3 h i true true 5
+> rows
+[9:9][208:6]s2 41 8 9 6 true 0

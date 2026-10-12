@@ -1,0 +1,52 @@
+Room A
+Room A. Room B is to the east.
+You can see a desk, a brass key and a shelf A here.
+> shelf
+(box A goes on the top row, code T)
+(box C goes on the bottom row, code B)
+(nothing to put)
+(box B goes on the bottom row, code B)
+shelf A holds 3, fullness 9, slots 6.
+Recent: box C (5) box B (1)
+Heavier than 2: 2. Heavier than 0: 3.
+Row 1 is middle, row 7 is no.
+Used rows: top bottom
+Codes: TMB.
+Row 1 is now center.
+(box D goes on the center row, code M)
+(the shelf is full, box E stays put)
+Fullness after 20: 9.
+> fits
+Small fits: true. Big fits: true.
+Copy fits: true, big still 5 wide.
+Desk top area 6. Small covers: false. Big covers: true.
+> lookers
+(brass key looked at shelf A; 1 so far)
+(desk looked at shelf A; 2 so far)
+(brass key looked at shelf A; 2 so far)
+(nobody looked)
+> desk
+(the desk is bare, stamp starts with d)
+(the desk is bare, stamp starts with d, box D on top)
+(the desk is busy, stamp starts with d, box D on top)
+(nothing to add)
+Load 4. Thing 1 on top: box E.
+Nothing at 5.
+Heavy ones: 1.
+(stamp now office)
+(the desk is busy, stamp starts with o, box D on top)
+> piles
+(pile 0 has 2, 0 big)
+(pile 1 has 3, 2 big)
+(no such pile)
+Stacks weigh 3 and 6; second stack's top is box C.
+Now on pile 1. Totals: 3 and 9.
+Spare over 3: 1. Over 5: 0.
+(the shelf is full, box E stays put)
+(no spare)
+shelf A holds 4, fullness 9, slots 7.
+Recent: box B (1) box D (2)
+> look
+Room A
+Room A. Room B is to the east.
+You can see a desk, a brass key and a shelf A here.

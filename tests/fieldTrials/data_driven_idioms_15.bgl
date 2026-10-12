@@ -1,0 +1,580 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: tables of readings meeting in threes. An I6 island declares a two-parent class and its
+// globals; an extern class over it with two parents (object and an extern marker class) carries
+// static methods that narrow a var to the class, copy a value-class span, call a func<> scale,
+// throw out-of-span readings to a caller's catch, switch with values and ranges, capture text into a
+// <buf> line, perform() a verb, rate windows through a func taking a value class by value (with a
+// block lambda), hide a method behind #if, and pick from a named union through a func<bool, object>;
+// a value class with two value parents chains both copy operators by cast and declares an emitter
+// operator switch; a value class holding a func<> value applied inside a capture that a throw leaves
+// open, released by the catch; a value class tally with a primitive newtype member, a conversion
+// operator, a switch on typeof of a var, #if inside a case and around a method, an #i6 line, array
+// append / sort / clear and a perform() of a verb; an array of the primitive sorted, appended and cut
+// with `length =`; and a dial subclass with inline accessors declaring operator += and ++ (one backed
+// by a string array), an owned value-class range, a string table, ancestor dispatch by cast, a switch
+// with ranges and a guard, an emitter class with init/deinit as a local, and perform() of a verb.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <buf>
+
+#define SHOW_MISSES
+#defineI6 TALLY_CAP 3
+
+#i6 {
+Class Marker with markCode 0;
+Class Probe class Marker with reading 0, limit 0;
+Global probeScans = 0;
+Global tallyFlips = 0;
+[ ProbeSum o  c t;
+    objectloop (c in o) if (c ofclass Probe) t = t + c.reading;
+    return t;
+];
+}
+
+extern int probeScans;
+extern int tallyFlips;
+extern int ProbeSum(object o);
+
+extend class object {
+    string description;
+}
+
+//-- Shared value rows -------------------------------------------------------------
+
+value class Span {
+    int lo;
+    int hi;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    bool holds(int v) { return v >= lo && v <= hi; }
+    int width() { return hi - lo; }
+}
+
+value class Coded {
+    int code;
+    Coded operator = (Coded o) { code = o.code; return self; }
+    emitter eBool operator switch (int v) { ($self.code == $v) }
+    string codeName() {
+        switch (code) {
+            case 1: return "red";
+            case 2, 3: return "blue";
+        }
+        return "plain";
+    }
+}
+
+// A span with a code: copies both parents' members through their copy operators.
+value class Window : Span, Coded {
+    int seen;
+    Window operator = (Window o) {
+        (Span)self = o;
+        (Coded)self = o;
+        seen = o.seen;
+        return self;
+    }
+    void show() { print($"{codeName()} {lo}..{hi}"); }
+}
+
+union Reading = string | object;
+
+array<char> probeLine[40];
+array<string> bandNames = { "idle", "low", "high" };
+
+//-- Probes: an I6 class with two parents, seen from Beguile --------------------------
+
+extern class Marker : object {
+    int markCode;
+}
+
+extern class Probe : object, Marker {
+    int reading;
+    int limit;
+
+    // Scans one probe into probeLine; throws the scaled reading when it leaves the probe's span.
+    static int scan(var v, func<int, int> scale) {
+        if (typeof(v) != eType.object) throw -1;
+        Probe p = (Probe)v;
+        Span s;
+        s.lo = 0;
+        s.hi = p.limit;
+        int r = scale(p.reading);
+        if (!s.holds(r)) throw r;
+        bgl.util.buf.capture(probeLine);
+        switch (p.markCode) {
+            case 1: print("red");
+            case 2, 3: print("blue");
+            default: print("plain");
+        }
+        switch (r) {
+            case 0: print($" {bandNames[0]}");
+            case 1 to 4: print($" {bandNames[1]}");
+            default: print($" {bandNames[2]}");
+        }
+        print($" {r}/{s.width()}");
+        bgl.util.buf.release();
+        return r;
+    }
+
+    // Scans every probe on a holder; a zero reading pings the probe.
+    static int sweep(object holder, func<int, int> scale) {
+        int good = 0;
+        for (object o in holder.children) {
+            if (!o.is(Probe)) continue;
+            try {
+                int r = Probe.scan(o, scale);
+                bgl.util.buf.print(probeLine);
+                print("; ");
+                good++;
+                if (r == 0) Ping.perform(o);
+            } catch (int e) {
+                print($"{o} over at {e}; ");
+            }
+        }
+        #i6 probeScans = probeScans + 1;
+        return good;
+    }
+
+    // Rates each probe's window through a func that takes the window by value.
+    static int rate(object holder, func<int, Window> rule) {
+        int total = 0;
+        array<char> word[16];
+        for (object o in holder.children) {
+            if (!o.is(Probe)) continue;
+            Probe p = (Probe)o;
+            Window w;
+            w.lo = p.reading;
+            w.hi = p.limit;
+            w.code = p.markCode;
+            int r = rule(w);
+            bgl.util.buf.capture(word);
+            w.show();
+            bgl.util.buf.release();
+            try {
+                if (r < 0) throw p;
+                total += r;
+                bgl.util.buf.print(word);
+                print($"={r} ");
+            } catch (object bad) {
+                bgl.util.buf.toUpper(word);
+                bgl.util.buf.print(word);
+                print($"!{bad} ");
+            }
+        }
+        return total;
+    }
+
+#if SHOW_MISSES
+    static int missing(object holder) {
+        int n = 0;
+        for (object o in holder.children) if (!o.is(Probe)) n++;
+        return n;
+    }
+#endif
+
+    static Reading pick(Reading r, func<bool, object> test) {
+        switch (typeof(r)) {
+            case eType.object:
+                object o = (object)r;
+                if (test(o)) return r;
+                return "rejected";
+        }
+        return r;
+    }
+}
+
+//-- Rules: a value class holding a func, applied inside a capture ------------------------
+
+value class Rule {
+    func<int, int> step;
+    int bias;
+    Rule operator = (Rule o) { step = o.step; bias = o.bias; return self; }
+    int apply(int x) { return step(x) + bias; }
+}
+
+array<char> ruleLine[32];
+
+// Writes each result into ruleLine; a result over the cap throws out of the capture.
+int writeRule(Rule r, int cap) {
+    bgl.util.buf.capture(ruleLine);
+    for (int x = 1; x <= 3; x++) {
+        int v = r.apply(x);
+        if (v > cap) throw v;
+        print($"{v} ");
+    }
+    bgl.util.buf.release();
+    return bgl.util.buf.length(ruleLine);
+}
+
+int runRule(Rule r, int cap) {
+    try {
+        int n = writeRule(r, cap);
+        bgl.util.buf.print(ruleLine);
+        return n;
+    } catch (int v) {
+        bgl.util.buf.release();
+        print($"capped at {v} after ");
+        bgl.util.buf.print(ruleLine);
+    }
+    return -1;
+}
+
+//-- Tallies: a value class with a primitive member ----------------------------------
+
+primitive class Count {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter bool full { ($val >= TALLY_CAP) }
+}
+
+array<int> tallyLog[12];
+array<Count> counts[6];
+
+int countSpread() {
+    counts.sort();
+    int lo = counts[0];
+    int hi = counts[counts.length - 1];
+    #i6 if ($i6Expr(hi) > 99) print "(wide)";
+    return hi - lo;
+}
+array<object> tallySeen[8];
+
+value class Tally {
+    Count hits;
+    int misses;
+    Tally operator = (Tally o) { hits = o.hits; misses = o.misses; return self; }
+    int operator () { return hits * 10 + misses; }
+
+    void record(var v) {
+        int n = hits;
+        switch (typeof(v)) {
+            case eType.object:
+                hits = n + 1;
+                tallySeen.append((object)v);
+            case eType.string:
+                hits = n + 1;
+            default:
+                misses++;
+#if SHOW_MISSES
+                print("(miss)");
+#endif
+        }
+        int now = self;
+        tallyLog.append(now);
+        #i6 tallyFlips = tallyFlips + 1;
+    }
+
+    string grade() {
+        switch ((int)self) {
+            case 0: return "empty";
+            case 1 to 19: return "light";
+            case < 40: return "busy";
+        }
+        return "full";
+    }
+
+#if SHOW_MISSES
+    int missRatio() {
+        int h = hits;
+        if (h == 0) return misses;
+        return misses * 100 / h;
+    }
+#endif
+
+    int settle() {
+        tallyLog.sort();
+        int top = 0;
+        if (tallyLog.length > 0) top = tallyLog[tallyLog.length - 1];
+        if (hits.full && tallySeen.length > 0) Ping.perform(tallySeen[0]);
+        tallyLog.clear();
+        tallySeen.clear();
+        return top;
+    }
+}
+
+//-- Dials: a subclass with an inline accessor and owned rows -------------------------
+
+int openMarks = 0;
+int markOpen() { openMarks++; return openMarks; }
+void markClose() { openMarks--; }
+
+emitter class Mark {
+    emitter void init() { $self = markOpen(); }
+    emitter void deinit() { markClose(); }
+    emitter Mark operator = (int v) { $self = $v; }
+    emitter int operator ();
+}
+
+class Gauge : object {
+    int scale = 1;
+    default string describe() { return "gauge"; }
+    int weigh(int v) { return v * scale; }
+}
+
+class Dial : Gauge {
+    inline string tag;
+    array<string> steps = { "off", "low", "mid", "high" };
+    array<string> heard[4];
+    Span range;
+    auto level = {
+        int _raw;
+        int _bumps;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            if (v < 0) v = 0;
+            _raw = v;
+        }
+        int operator += (int v) {
+            _bumps++;
+            _raw = _raw + v * 2;
+            return _raw;
+        }
+        int operator ++ () {
+            _raw = _raw + 1;
+            return _raw;
+        }
+    }
+
+    auto notes = {
+        array<string> _lines[3];
+        string operator () {
+            if (_lines.length == 0) return "none";
+            return _lines[_lines.length - 1];
+        }
+        void operator = (string s) {
+            _lines.clear();
+            _lines.append(s);
+        }
+        int operator += (string s) {
+            if (_lines.length < 3) _lines.append(s);
+            return _lines.length;
+        }
+    }
+
+    string describe() {
+        string base = ((Gauge)self).describe();
+        print($"{tag} {base} ");
+        return steps[stepIndex()];
+    }
+
+    int stepIndex() {
+        int v = level;
+        switch (v) {
+            case 0: return 0;
+            case 1 to 4: return 1;
+            case < 10:
+                if (range.holds(v)) return 2;
+                return 1;
+            default: return 3;
+        }
+    }
+
+    void hear(var v) {
+        Mark m;
+        m = openMarks;
+        switch (typeof(v)) {
+            case eType.string:
+                heard.append((string)v);
+                level += heard.length;
+                notes += (string)v;
+            case eType.object:
+                level++;
+                Ping.perform((object)v);
+            default:
+                level = ((Gauge)self).weigh(level);
+        }
+        print($"[{(int)m}:{level}]");
+    }
+}
+
+//-- The world ----------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object rack { "rack"; object parent = roomA; attributes = {static, supporter}; }
+
+Probe probeA { "probe A"; reading = 0; limit = 9; markCode = 1; object parent = rack; }
+Probe probeB { "probe B"; reading = 3; limit = 9; markCode = 2; object parent = rack; }
+Probe probeC { "probe C"; reading = 4; limit = 5; markCode = 0; object parent = rack; }
+object brassKey { "brass key"; object parent = rack; }
+
+Dial dialA { "A", "dial A"; scale = 2; }
+
+//-- Verbs ----------------------------------------------------------------------------
+
+int twice(int x) { return x * 2; }
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() { print($"Ping {noun}.^"); }
+}
+
+verb ProbesTest {
+    grammar = {.probes};
+    void handler() {
+        func<int, int> f = twice;
+        int n = Probe.sweep(rack, f);
+        print($"^{n} good; ");
+        n = Probe.sweep(rack, (int x) => x + 1);
+        print($"^{n} good; scans {probeScans}, I6 sum {ProbeSum(rack)}^");
+    }
+}
+
+verb PickTest {
+    grammar = {.pick};
+    void handler() {
+        array<Reading> rs = { "loose", probeA, brassKey };
+        for (Reading r in rs) {
+            Reading got = Probe.pick(r, (object o) => o.is(Probe));
+            switch (typeof(got)) {
+                case eType.string: print($"{(string)got} ");
+                case eType.object: print($"<{(object)got}> ");
+            }
+        }
+        print("^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        Tally t;
+        t.record(probeA);
+        t.record("text");
+        t.record(null);
+        Tally copy = t;
+        t.record(probeB);
+        int a = t;
+        int b = copy;
+        print($" now {a} {t.grade()}, copy {b} {copy.grade()}, ratio {copy.missRatio()}, flips {tallyFlips}, logged {tallyLog.length}^");
+        int top = t.settle();
+        print($"top {top}, logged {tallyLog.length}^");
+    }
+}
+
+verb DialTest {
+    grammar = {.dial, NUMBER};
+    void handler() {
+        dialA.range.lo = 5;
+        dialA.range.hi = 7;
+        dialA.level = (int)noun;
+        print($"{dialA.describe()}^");
+        dialA.hear("one");
+        dialA.hear(probeC);
+        dialA.hear(null);
+        print($"^{dialA.describe()}, marks {openMarks}, note {dialA.notes}^");
+    }
+}
+
+verb RateTest {
+    grammar = {.rate};
+    void handler() {
+        int t = Probe.rate(rack, (Window w) => {
+            w.lo = w.lo + 1;
+            if (w.code == 0) return -1;
+            return w.hi - w.lo;
+        });
+        print($"^total {t}^");
+    }
+}
+
+verb WindowTest {
+    grammar = {.window};
+    void handler() {
+        Window a;
+        a.lo = 2;
+        a.hi = 8;
+        a.code = 3;
+        a.seen = 1;
+        Window b = a;
+        b.code = 1;
+        b.hi = 4;
+        Span plain = b;
+        a.show();
+        print($" seen {a.seen}; ");
+        b.show();
+        print($" seen {b.seen}; span {plain.lo}..{plain.hi} width {plain.width()}^");
+    }
+}
+
+verb CodesTest {
+    grammar = {.codes};
+    void handler() {
+        array<int> codes = { 1, 3, 0 };
+        for (int c in codes) {
+            Window w;
+            w.code = c;
+            switch (w) {
+                case 1: print("one ");
+                case 2, 3: print("two-three ");
+                default: print("other ");
+            }
+        }
+        print($"missing {Probe.missing(rack)}^");
+    }
+}
+
+verb RulesTest {
+    grammar = {.rules, NUMBER};
+    void handler() {
+        Rule r;
+        r.step = twice;
+        r.bias = 1;
+        Rule s = r;
+        s.step = (int x) => x * x;
+        int a = runRule(r, (int)noun);
+        print($" ({a}, depth {bgl.util.buf.stackLen()})^");
+        int b = runRule(s, (int)noun);
+        print($" ({b}, depth {bgl.util.buf.stackLen()})^");
+    }
+}
+
+verb CountsTest {
+    grammar = {.counts};
+    void handler() {
+        array<int> raw = { 7, 2, 9, 4 };
+        counts.clear();
+        for (int x in raw) {
+            Count c = x;
+            counts.append(c);
+        }
+        int spread = countSpread();
+        print($"spread {spread}, first {(int)counts[0]}, full {counts[3].full}");
+        counts.length = 2;
+        print($", kept {counts.length}^");
+    }
+}
+
+verb NotesTest {
+    grammar = {.notes};
+    void handler() {
+        print($"{dialA.notes}; ");
+        dialA.notes = "reset";
+        int n = dialA.notes += "two";
+        if (n != 2) print("bad count ");
+        dialA.notes += "three";
+        dialA.notes += "four";
+        print($"{dialA.notes}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    print("Probes ready.^");
+    rfalse;
+}
+
+#includeI6 "grammar"

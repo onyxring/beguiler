@@ -1,0 +1,108 @@
+/*  Field trial part — included by library_author_idioms_9.bgl. Not a trial on its own.  */
+
+#once
+#i6 { Constant bglStringPoolReserve 24; }
+#include <string>
+#include <array>
+
+#if !LA9_WIDTH
+    #define LA9_WIDTH 4
+#endif
+
+#using bgl.printRules
+
+// ---- Characters. ----
+
+/// The class of a character, by range.
+string la9Kind(char c) {
+    switch (c) {
+        case 'a' to 'z': return "lower";
+        case 'A' to 'Z': return "upper";
+        case '0' to '9': return "digit";
+        case ' ', '-':   return "gap";
+        default:         return "other";
+    }
+}
+
+/// The vowels in a text, skipping anything that is not a letter.
+int la9Vowels(string s) {
+    int n = 0;
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        if (!c.isAlpha()) continue;
+        if (c.isVowel()) n++;
+    }
+    return n;
+}
+
+/// The position of the first character equal to another, ignoring case, or -1.
+int la9Find(string s, char want) {
+    int i = 0;
+    do {
+        if (s[i] =~ want) return i;
+        i++;
+    } while (i < s.length);
+    return -1;
+}
+
+// ---- Built text. ----
+
+/// The initials of two words, capitalized.
+stringObj la9Initials(string a, string b) {
+    stringObj r = "";
+    r += a[0].toUpper();
+    r += '.';
+    r += b[0].toUpper();
+    r += '.';
+    return r;
+}
+
+/// A text padded with dots to the kit's width.
+stringObj la9Pad(string s) {
+    stringObj r = s;
+    while (r.length < LA9_WIDTH) r += '.';
+    return r;
+}
+
+/// Two texts with a slash between.
+stringObj la9Join(stringObj a, stringObj b) {
+    return a + "/" + b;
+}
+
+/// Adds a mark to the caller's text.
+void la9Shout(ref stringObj s) { s += "!"; }
+
+/// Adds a mark to a copy, and says how long the copy became.
+int la9Quiet(stringObj s) {
+    s += "...";
+    return s.length;
+}
+
+/// What an object prints as, with its article, caught as text.
+stringObj la9Caught(object o) {
+    stringObj r;
+    r.capture();
+    print($"<{the(o)}>");
+    r.release();
+    return r;
+}
+
+// ---- Bytes the I6 side rewrites in place. ----
+
+#i6 {
+    [ La9_Upper addr n  i c;
+        for (i = 0 : i < n : i++) {
+            c = addr->(WORDSIZE + i);
+            if (c >= 'a' && c <= 'z') addr->(WORDSIZE + i) = c - 32;
+        }
+    ];
+}
+
+/// Upper-cases the first n bytes of a byte array, given its address.
+extern void La9_Upper(int addr, int n);
+
+// ---- Overloads with an untyped fallback. ----
+
+string la9What(int n)    { return "int"; }
+string la9What(string s) { return "string"; }
+string la9What(var v)    { return "other"; }

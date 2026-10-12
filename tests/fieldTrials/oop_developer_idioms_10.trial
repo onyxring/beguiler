@@ -1,0 +1,103 @@
+Room A
+Room A.
+
+> vars
+scalar object routine string nothing.
+int 3; string hi; var 4; var 1.
+Back: -4, brass key, 7.
+[brass key]<loose text>[green cube]<more text> 2 objects.
+Now object, then string.
+
+> raw
+brass key:4 green cube:2 glass vial:3 total 9.
+glass vial weights 1 3; key 5.
+
+> loops
+odd sum 25, i 9.
+n 33 after 2 steps.
+marked 0 of 3.
+
+> switches
+brass lamp is now on.
+radio is now on.
+lamp charge 40, on true.
+spare cell charge 50.
+
+> charging
+Set: lamp 100, cell 0.
+Adjusted: lamp 100, cell 29.
+brass lamp is now off.
+The brass lamp has no charge.
+brass lamp is now on.
+brass lamp is now off.
+brass lamp is now on.
+Lamp charge 0, on true.
+Meter 230 after 3 writes.
+
+> switches
+brass lamp is now off.
+radio is now off.
+lamp charge 0, on false.
+spare cell charge 29.
+
+> stash key
+Moved the brass key to the red box.
+
+> mark cube
+[2] Not allowed.
+
+> stash cube
+Moved the green cube to the red box.
+
+> grab vial
+The glass vial is too fragile to grab.
+The grab did nothing.
+
+> careful
+Careful: true.
+
+> grab vial
+Taken.
+
+> mark key
+The brass key is marked.
+
+> loops
+odd sum 25, i 9.
+n 33 after 2 steps.
+marked 1 of 3.
+
+> history
+History (4): flag grab move move.
+Done 4, verb calls 8.
+
+> revert
+Reverting flag: The brass key is not marked again.
+
+> revert
+Reverting grab: Dropped the glass vial back.
+
+> history
+History (2): move move.
+Done 4, verb calls 11.
+
+> loops
+odd sum 25, i 9.
+n 33 after 2 steps.
+marked 0 of 3.
+
+> revert
+Reverting move: Put the green cube back in the Room A.
+
+> revert
+Reverting move: Put the brass key back in the Room A.
+
+> revert
+Nothing to revert.
+
+> revert
+Nothing to revert.
+
+> history
+History (0):.
+Done 4, verb calls 16.

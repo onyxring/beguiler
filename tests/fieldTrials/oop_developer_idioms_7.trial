@@ -1,0 +1,67 @@
+Room A
+Room A.
+> ledger
+posted (4): 2.50 0.75 9.99 12.00
+edited (4): 2.50 0.80 9.99 9.99
+sorted (4): 0.80 2.50 9.99 9.99
+999 at 2; has 80: true.
+minus 9.99 (2): 0.80 2.50
+removed first (1): 2.50
+Total 2.50.
+refilled (6): 0.11 0.22 0.33 0.44 0.55 0.66
+Full: false.
+> refs
+through ref (6): 0.11 0.22 40.00 0.44 0.55 0.66
+Swapped: a 3.00, b 1.00.
+  inside: 30.00
+  after: 3.00
+Local 0.01 1.00; a still 3.00; true.
+> tickets
+Ticket 4: pool empty.
+made: live 3, queued 3: T1 T2 T3
+removed first: live 2, queued 2: T2 T3
+reused: live 3, queued 3: T2 T3 T5
+minus T5: live 2, queued 2: T2 T3
+Dequeued T2.
+dequeued: live 2, queued 1: T3
+  in burst: live 3, batch 1
+Burst made 1.
+after burst: live 2, queued 1: T3
+two more: live 3, queued 3: T3 T6 T7
+cleared: live 0, queued 0:
+> diamond
+log [svc#3]
+[store cached]
+ cached]
+svc
+service over logged and cached
+service / component / cached
+log [svc2#7]
+Built 3; 3; priority 7.
+svc is Cached true, Logged true; store is Logged false.
+> gates
+A&&B no, A||B yes, !B yes.
+A&&C yes, B||!A no.
+B||A&&C yes.
+Open: 2.
+All open.
+> customers
+Ann: present yes, referred by nobody, grand -
+  Hello, Ann (#1).
+Bob: present yes, referred by Ann, grand -
+  Hello, Bob (#2).
+  Hello, Ann (#1).
+Cyd: present yes, referred by nobody, grand -
+  Hello, Cyd (#3).
+none: present no, referred by nobody, grand -
+  (no one to greet) [failed]
+Fallback: Bob.
+> registry
+registered: Ann#10 Bob#20 Cyd#30
+reg[20] is Bob; reg[99] is none.
+Lookup 30: Cyd2; 40: missing.
+Found Ann.
+inserted: Cyd2#30 Ann#10 none#0 Bob#20 Cyd2#30
+reshuffled: none#0 Bob#20 Ann#10
+> percent
+40% 45 20 / 20% / 21

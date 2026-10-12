@@ -1,0 +1,49 @@
+Room A
+Room A. Room B is to the east.
+You can see a tray B, a tray A and a brass key here.
+> trays
+Tray A plus 1 is 3. Tray B plus 10 is 15.
+Tray A first: plate A. Second: plate C.
+Tray A place 5, or else tray B: tray B.
+Right place on tray A: tray A. Left place: plate A. Middle: plate C.
+(tray A: left 1, middle 1, right 0, live tallies 1)
+Tray A counted plus load: 4. Live tallies after: 0.
+Tray B counted plus load: (tray B: left 0, middle 0, right 1, live tallies 1)
+6.
+(I6 says 0 tallies are out)
+> plates
+(spoon A is on top of plate A)
+(plate C is empty)
+Plate A plus 5: 7. A minus B: -1. B minus C: 2.
+Plate A's second thing: cup A. Plate B's first: cup B.
+Plate A heft: 6. Plate C heft: 1. Live tallies: 0.
+(plate A now faces 2)
+(plate C now faces 1)
+Plate A faces right, plate C faces middle.
+(plate A now faces 0)
+Cup A's tray: tray A. Plate B's tray: tray B. Brass key's: Room A.
+> sides
+Left 2, middle 4, right 1.
+All plus 1: 8. All plus 2: 9.
+Across from left is right; across from the middle is middle.
+Left place on tray A: plate A. Right place: Room A.
+(I6 total 7, 1 out)
+(I6 says 1 tallies are out)
+> shift
+(plate C moves from tray A to tray B, facing left)
+Plate C is on tray B. Tray A first: plate A. Tray B: plate C then plate B.
+Tray B counted plus load: (tray B: left 1, middle 0, right 1, live tallies 1)
+7.
+(cup A is on top of plate C)
+Cup A's tray is now tray B.
+(plate A moves from tray A to tray B, facing middle)
+Tray A counted plus load: (tray A has nothing on it, live tallies 1)
+2.
+Tray B counted plus load: (tray B: left 1, middle 1, right 1, live tallies 1)
+8.
+Plate B's tray: Room A. Plate B's parent, or else Room B: Room B.
+(I6 says 0 tallies are out)
+> look
+Room A
+Room A. Room B is to the east.
+You can see a tray B, a tray A and a brass key here.

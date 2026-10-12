@@ -1,0 +1,62 @@
+Room A
+Room A.
+You can see a bin (which is empty), a coin, a key and a stone here.
+> shelf 2
+marks: 1 2 5 8, score 29, label 0 low, label 3 high
+cut to 2, score 3, passes 1
+hues 4, hue score 121, long labels 1
+> shelf 0
+marks: 1 2 5 8, score 29, label 0 low, label 3 high
+cut to 2, score 3, passes 2
+hues 2, hue score 101, long labels 1
+> pods 2
+pods 2, first plus 5: 6, times 3: 3, total 5
+ 2 4
+after: total 5, freed 2, left 0
+> pods 6
+pods 4, first plus 5: 6, times 3: 3, total 14
+ 2 4 6 8
+after: total 214, freed 4, left 0
+> bin 2
+in: coin
+in: key
+held 2
+out
+out
+empty 3
+> bin 4
+in: coin
+in: key
+refused 2
+refused 1
+held 2
+out
+out
+empty 3
+> table 7
+a: 4 0 7 7 4, length 3
+compare 5, a bigger: yes, weighted 11 25
+> table 1
+a: 4 0 1 1 4, length 3
+compare -1, a bigger: no, weighted 5 7
+> meter 3
+before 2, after 3, limit 3, reads 2
+> meter 10
+before 3, after 1, limit 10, reads 4
+> badge
+OX (1, 1), nretnal (2, 2)
+> word
+vowels 3 3, uses 0 1 2, length 6
+> desc 0
+[1] at Room A, live 0
+> desc 1
+[1] at coin, live 0
+> words 3
+long 3, letters 16, calls 1, mean 4.0000
+mean of some 3.0000
+> words 4
+long 1, letters 16, calls 2, mean 4.0000
+mean of some 3.0000
+> pegs
+a==c yes, a==b no, a<b yes
+ratio 4 23

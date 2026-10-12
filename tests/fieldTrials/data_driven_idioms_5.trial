@@ -1,0 +1,91 @@
+Row 4: unknown zone 'moon'.
+Row 5: heavy flag on 8.
+Data check: 2 problems.
+Room A
+Room A.
+> manifest
+0. near 3 plain zone near
+1. middle 12 fragile zone mid
+2. far 55 urgent+heavy zone far
+3. mid 6 urgent zone mid
+4. moon 2 plain (no zone)
+5. remote 8 heavy zone remote
+6. remote 20 fragile+urgent zone remote
+> zones
+near: near zone; surcharge 0, hops 1.
+mid: mid zone, surcharge 3; surcharge 3, hops 2.
+far: far zone; surcharge 6, hops 3.
+remote: remote zone, two hops; surcharge 9, hops 4.
+Far by path: 2, remote hops 13.
+> rate 0
+Weight 0: rate 0.
+> rate 3
+Weight 3: rate 2.
+> rate 6
+Weight 6: rate 3.
+> rate 12
+Weight 12: rate 5.
+> rate 49
+Weight 49: rate 8.
+> rate 50
+Weight 50: rate 20.
+> price 0
+Row 0: base 2 = 2.
+> price 1
+Row 1: base 8 -> 12 = 12.
+> price 2
+Row 2: base 26 -> 52 -> 62 = 62.
+> price 6
+Row 6: base 15 -> 19 -> 38 = 38.
+> price 4
+Row 4 has no zone.
+> issue 0
+Ticket for row 0: cost 2; 1 live.
+> issue 2
+Ticket for row 2: cost 62; 2 live.
+> issue 0
+Row 0 already has a ticket.
+> issue 4
+Row 4 cannot be issued.
+> issue 6
+Ticket for row 6: cost 38; 3 live.
+> issue 3
+Pool empty: row 3 refused (1 so far).
+> tickets
+By cost: row 0=2 row 6=38 row 2=62.
+Live 3, made 3, refused 1.
+Cheapest first: true.
+> ledger
+near 2; mid 0; far 62; remote 38; total 102, stray 0, misses 2.
+> void 2
+Row 2: ticket cost 62, voided; 2 live.
+> void 2
+Row 2: ticket cost -1, nothing to void.
+> issue 3
+Ticket for row 3: cost 12; 3 live.
+> tickets
+By cost: row 0=2 row 3=12 row 6=38.
+Live 3, made 4, refused 1.
+Cheapest first: true.
+> ledger
+near 2; mid 12; far 0; remote 38; total 52, stray 0, misses 4.
+> load 30
+Load 30 of 50, spilled 0.
+> load 30
+Load 50 of 50, spilled 10.
+> unload 45
+Load 5 of 50.
+> load 100
+Load 50 of 50, spilled 65.
+> chain 0
+Chain: 0 2 5 6 (loops to 2), 4 rows.
+> chain 3
+Chain: 3 1, 2 rows.
+> chain 4
+Chain: 4, 1 rows.
+> head 2
+Row 0 leads to row 2 (1 tries).
+> head 0
+Nothing leads to row 0.
+> head 9
+No row 9.

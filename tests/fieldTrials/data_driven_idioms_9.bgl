@@ -1,0 +1,416 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a register file as a hand-written handle pool behind an author's emitter class with
+// init, a copy-form init, deinit, a copy operator, a setter-style operator = (int), an implicit int
+// conversion, operator +=, an emitter value and operator auto(); its static operator =, static deinit,
+// static == and static <=> handed to array<Reg> (append, [i] =, remove, -=, clear, indexOf, contains,
+// sort, a local array's scope exit) and counted against the pool; lifetimes checked by live counts
+// across break and continue in a loop, nested blocks, early returns, by-value and ref parameters, a
+// returned register copied at once, and auto declarations; a step table of objects whose members are
+// declared by an alias class over a base class with a typesealed enum member, held in a
+// file-scope array and edited at build time; an op enum whose emitter members are used before the
+// extend enum that adds one; a primitive newtype over int as a member and local type; an emitter
+// namespace and a global emitter value reaching a global renamed with asI6 through $i6Name; #i6
+// islands in a routine using $i6Expr on locals, with #bgl islands nested inside them; superposed
+// functions and a static superposed method; and interpolated strings over all of it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+
+//-- Constants -----------------------------------------------------------------
+
+const int NONE = -1;
+const int REG_SLOTS = 9;            // handles 1..8; 0 is no register
+
+//-- Register store ------------------------------------------------------------
+
+array<int>  regVal[REG_SLOTS];
+array<bool> regBusy[REG_SLOTS];
+int regLive = 0;
+int regTaken = 0;
+int regGiven = 0;
+int regFailed asI6 regMisses = 0;
+
+int regAlloc(int start) {
+    for (int h = 1; h < REG_SLOTS; h++) {
+        if (!regBusy[h]) {
+            regBusy[h] = true;
+            regVal[h] = start;
+            regLive++;
+            regTaken++;
+            return h;
+        }
+    }
+    regFailed++;
+    return 0;
+}
+
+void regFree(int h) {
+    if (h > 0 && regBusy[h]) {
+        regBusy[h] = false;
+        regLive--;
+        regGiven++;
+    }
+}
+
+int regGet(int h) {
+    if (h > 0) return regVal[h];
+    return 0;
+}
+
+void regSet(int h, int v) {
+    if (h > 0) regVal[h] = v;
+}
+
+// The value form of assignment for containers: the slot's handle and the incoming handle in, the
+// handle to keep out.
+int regStore(int cur, int v) {
+    if (cur == 0) {
+        if (v == 0) return 0;
+        return regAlloc(regGet(v));
+    }
+    if (v == 0) { regFree(cur); return 0; }
+    regSet(cur, regGet(v));
+    return cur;
+}
+
+emitter class Reg {
+    emitter void init() { $self = regAlloc(0); }
+    emitter void init(Reg v) { $self = regAlloc(regGet($v)); }
+    emitter void deinit() { regFree($self); }
+    emitter Reg operator = (Reg v) { regSet($self, regGet($v)); }
+    emitter Reg operator = (int v) { regSet($self, $v); }
+    emitter int operator () { regGet($val) }
+    emitter Reg operator += (int v) { regSet($self, regGet($self) + $v); }
+    emitter int handle { ($self) }
+    int operator auto();
+    static var operator = (var cur, var v) { return regStore(cur, v); }
+    static void deinit(var h) { regFree(h); }
+    static bool operator == (var a, var b) { return regGet(a) == regGet(b); }
+    static int operator <=> (var a, var b) { return regGet(a) - regGet(b); }
+}
+
+emitter pool {
+    int live() { regLive }
+    int misses() { $i6Name(regFailed) }
+    void reset() { regTaken = 0; regGiven = 0; }
+}
+
+emitter int poolTurnover { (regTaken - regGiven) }
+
+void showPool(string tag) {
+    print($"{tag}: live {pool.live()}, taken {regTaken}, given {regGiven}, turnover {poolTurnover}^");
+}
+
+//-- Ops -----------------------------------------------------------------------
+
+enum eOp {
+    load = 1, add, mul, neg, keep,
+    emitter bool takesArg() { ($self <= 3) }
+    emitter int cost { ($self * 10) }
+}
+
+primitive class Weight {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter bool heavy { ($val >= 10) }
+    emitter Weight operator + (Weight w) { ($val + $w) }
+}
+
+string opName(eOp o) {
+    switch (o) {
+        case load: return "load";
+        case add: return "add";
+        case mul: return "mul";
+        case neg: return "neg";
+        default: return "keep";
+    }
+}
+
+//-- Step table ----------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Step : object {
+    typesealed eOp kind = load;
+    int arg = 0;
+    Weight wt = 1;
+}
+
+alias class stepRow for Step {
+    int line;
+    string note;
+}
+
+stepRow s1 { line = 10; kind = load; arg = 4; note = "start"; }
+stepRow s2 { line = 20; kind = add; arg = 3; wt = 4; note = "plus"; }
+stepRow s3 { line = 30; kind = mul; arg = 5; wt = 12; note = "times"; }
+stepRow s4 { line = 40; kind = neg; note = "flip"; }
+stepRow s5 { line = 50; kind = keep; note = "save"; }
+stepRow s6 { line = 60; kind = add; arg = 100; wt = 2; note = "late"; }
+stepRow s7 { line = 45; kind = keep; note = "again"; }
+
+array<stepRow> program = { s1, s2, s3, s5, s4 };
+
+extend program {
+    inject s6 after s5;
+    move s4 before s6;
+    inject s7 after s4;
+}
+
+array<Reg> bank[6];
+
+int keepCount = 0;
+
+// Runs the table into acc; a keep step copies acc into the bank.
+int runSteps(ref Reg acc, ref array<stepRow> steps, int limit) {
+    Weight total = 0;
+    for (int i = 0; i < steps.length && i < limit; i++) {
+        stepRow r = steps[i];
+        switch (r.kind) {
+            case load: acc = r.arg;
+            case add: acc += r.arg;
+            case mul: acc = acc * r.arg;
+            case neg: acc = 0 - acc;
+            case keep: { bank += acc; keepCount++; }
+        }
+        total = total + r.wt;
+    }
+    return total;
+}
+
+extend enum eOp {
+    emitter int weightOf(int n) { ($self * 100 + $n) }
+}
+
+//-- Lifetimes -----------------------------------------------------------------
+
+int loopProbe() {
+    int seen = 0;
+    for (int i = 0; i < 6; i++) {
+        Reg t = i * 2;
+        if (i == 1) continue;
+        if (i == 4) break;
+        {
+            Reg inner = t;
+            inner += 1;
+            seen = seen + inner;
+        }
+    }
+    return seen;
+}
+
+int earlyOut(int n) {
+    Reg a = n;
+    if (n > 5) {
+        Reg b = a;
+        b += 1;
+        return b;
+    }
+    Reg c = 7;
+    return a + c;
+}
+
+void bumpCopy(Reg r) { r += 10; }
+void bumpShared(ref Reg r) { r += 10; }
+
+Reg fresh(int v) {
+    Reg made = v;
+    return made;
+}
+
+superposed bool regIsBusy(int h) {
+    return regBusy[h];
+}
+
+superposed int neverCalled() {
+    return 42;
+}
+
+class Stats {
+    static int peak = 0;
+    static superposed void note(int n) { if (n > Stats.peak) Stats.peak = n; }
+    static superposed int unusedPeak() { return Stats.peak * 2; }
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb LifeTest {
+    grammar = {.life};
+    void handler() {
+        pool.reset();
+        showPool("before");
+        int seen = loopProbe();
+        print($"loop seen {seen}^");
+        showPool("after loop");
+        print($"early 3 = {earlyOut(3)}, early 9 = {earlyOut(9)}^");
+        showPool("after early");
+        Reg x = 5;
+        bumpCopy(x);
+        print($"after copy bump {(int)x}^");
+        bumpShared(x);
+        print($"after shared bump {(int)x}^");
+        Reg y = fresh(31);
+        print($"fresh {(int)y}, x handle busy {regIsBusy(x.handle)}^");
+        auto n = y;
+        n = n + 1;
+        print($"auto copy {n}, y still {(int)y}^");
+        Stats.note(regLive);
+        showPool("inside");
+    }
+}
+
+verb PoolTest {
+    grammar = {.pool};
+    void handler() {
+        showPool("now");
+        print($"peak live {Stats.peak}, misses {pool.misses()}^");
+    }
+}
+
+verb StepsTest {
+    grammar = {.steps};
+    void handler() {
+        for (stepRow r in program) {
+            print($"{r.line} {opName(r.kind)}");
+            if (r.kind.takesArg()) print($" {r.arg}");
+            print($" [{r.note}, cost {r.kind.cost}, w {(int)r.wt}");
+            if (r.wt.heavy) print(" heavy");
+            print("]^");
+        }
+        print($"weights {mul.weightOf(2)} {keep.weightOf(0)}^");
+    }
+}
+
+verb RunTest {
+    grammar = {.run, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        Reg acc;
+        int w = runSteps(acc, program, limit);
+        print($"run {limit}: acc {(int)acc}, weight {w}, bank {bank.length}^");
+    }
+}
+
+verb BankTest {
+    grammar = {.bank};
+    void handler() {
+        print($"bank {bank.length}:");
+        for (int i = 0; i < bank.length; i++) print($" {(int)bank[i]}");
+        print("^");
+        Reg probe = 35;
+        print($"35 at {bank.indexOf(probe)}, has 35 {bank.contains(probe)}^");
+        bank.sort();
+        print("sorted:");
+        for (int i = 0; i < bank.length; i++) print($" {(int)bank[i]}");
+        print("^");
+        showPool("bank");
+    }
+}
+
+verb DropTest {
+    grammar = {.drop, NUMBER};
+    void handler() {
+        int at = (int)noun;
+        if (at >= bank.length) { print($"No slot {at}.^"); return; }
+        bank.remove(at);
+        print($"dropped {at}, bank {bank.length}^");
+        showPool("drop");
+    }
+}
+
+verb SetTest {
+    grammar = {.set, NUMBER};
+    void handler() {
+        int v = (int)noun;
+        if (bank.length == 0) { print("Bank empty.^"); return; }
+        Reg r = v;
+        bank[0] = r;
+        print($"slot 0 = {(int)bank[0]}^");
+        bank[0] += 3;
+        print($"slot 0 + 3 = {(int)bank[0]}^");
+        bank[0] = r;
+        bank -= r;
+        print($"removed {v}, bank {bank.length}^");
+        showPool("set");
+    }
+}
+
+verb ScratchTest {
+    grammar = {.scratch};
+    void handler() {
+        int before = regLive;
+        {
+            array<Reg> tmp[4];
+            Reg a = 3;
+            Reg b = 1;
+            Reg c = 2;
+            tmp += a;
+            tmp += b;
+            tmp += c;
+            tmp.sort();
+            print($"scratch {(int)tmp[0]} {(int)tmp[1]} {(int)tmp[2]}, live +{regLive - before}^");
+            tmp.clear();
+            print($"cleared, live +{regLive - before}^");
+            tmp += a;
+            print($"refilled, live +{regLive - before}^");
+        }
+        print($"block done, live +{regLive - before}^");
+    }
+}
+
+verb IslandTest {
+    grammar = {.island};
+    void handler() {
+        int total = 0;
+        int big = 0;
+        for (auto v in bank) total = total + v;
+        #i6 {
+            if ($i6Expr(total) > 50) {
+                #bgl { big = 1; print($"island: total {total} is big^"); }
+            } else {
+                #bgl { print($"island: total {total} is small^"); }
+            }
+            $i6Expr(big) = $i6Expr(big) + $i6Name(regFailed);
+        }
+        print($"big {big}, misses {pool.misses()}^");
+    }
+}
+
+verb FloodTest {
+    grammar = {.flood};
+    void handler() {
+        int got = 0;
+        array<Reg> many[8];
+        for (int i = 0; i < 8; i++) {
+            Reg r = i;
+            many += r;
+            if (many.length > got) got = many.length;
+        }
+        Stats.note(regLive);
+        print($"flood held {many.length}, misses {pool.misses()}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

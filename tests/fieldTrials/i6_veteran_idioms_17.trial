@@ -1,0 +1,54 @@
+Room A
+Room A.
+> board
+ <mark 0, hits 0, writes 0, faults 0, pair 0/0, peek 0>
+> scan 1 1
+scan low num [probe 1] (raw 4) <mark 4, hits 0, writes 1, faults 0, pair 1/2, peek 4>
+Scanned 4.
+> scan 2 2
+scan low num [deep probe 20 / probe 2] (raw 8) <mark 8, hits 0, writes 2, faults 0, pair 2/3, peek 8>
+Scanned 8.
+> scale 3
+Scale set. <mark 8, hits 0, writes 2, faults 0, pair 2/3, peek 8>
+> scan 3 4
+scan high num [none] (raw 21) <mark 21, hits 1, writes 3, faults 0, pair 3/5, peek 21>
+Scanned 21.
+> scan 4 3
+scan high num [none] (raw 21) <mark 21, hits 1, writes 4, faults 0, pair 4/4, peek 21>
+Scanned 21.
+> scan 9 2
+scan fault 33 <mark 33, hits 2, writes 5, faults 1, pair 9/3, peek -1>
+Scanned -1.
+> scan 0 0
+scan zero num [none] (raw 0) <mark 0, hits 2, writes 6, faults 1, pair 0/1, peek 0>
+Scanned 0.
+> scale 1
+Scale set. <mark 0, hits 2, writes 6, faults 1, pair 0/1, peek 0>
+> scan 1 0
+scan low num [none] (raw 1) <mark 1, hits 3, writes 7, faults 1, pair 1/1, peek 1>
+Scanned 1.
+> gadgets
+ <A pos 0 hits 0; B pos 2 hits 0; peek 0>
+> tunea 1
+gadget mid pos 3 size 3 limit 5 cells 1/2/0/0 tally 2/18 code md <A pos 3 hits 1; B pos 2 hits 0; peek 18>
+Tuned 3.
+> tuneb 0
+gadget top pos 9 size 5 limit 9 cells 4/4/4/0 tally 3/27 code hi <A pos 3 hits 1; B pos 9 hits 1; peek 27>
+Tuned 9.
+> tunea 0
+gadget mid pos 6 size 3 limit 5 cells 2/4/0/0 tally 2/18 code md <A pos 6 hits 2; B pos 9 hits 1; peek 18>
+Tuned 6.
+> gadgets
+ <A pos 6 hits 2; B pos 9 hits 1; peek 18>
+> cell 1
+Cell 1: 4 -> 8.
+> cell 1
+Cell 1: 8 -> 16.
+> cell 7
+No cell: 507.
+> limits
+2 5 9 = 16; first now 9.
+> limits
+9 5 9 = 23; first now 9.
+> probes
+probe A: probe 1; probe B: deep probe 20; none present false.

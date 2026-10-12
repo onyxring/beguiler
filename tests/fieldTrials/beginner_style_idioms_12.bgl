@@ -1,0 +1,634 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twelfth first-time-programmer program, the one where the author mixes the newer
+// chapters together in single classes. A class with two parents holding static member arrays (of
+// objects and of strings) that it fills with append and tests with contains, throwing and catching
+// codes, testing things with postfix ? and has/give, reading with ?? and var/typeof, and performing
+// Examine; a value class with + - == != operators, ref parameters, a ref local rebound with :=, a
+// func<> parameter and an #i6 island, extended with += and ++ operators that use ?.; a class with a
+// tracked array<char> member worked through bgl.util.buf, a conversion operator () and a block lambda
+// passed as a predicate, extended with a member array of strings; an object with an auto accessor
+// whose setter and operator + reach the host through outer (a number, an array of strings), and a
+// nested-list member array walked with for-in; a class of static members over a static nested array;
+// an object with alias … for a value class and ref locals bound with :=; an I6 class bound as an extern
+// class with two extern parents, with static methods over an array of its instances and ??; an emitter class with init/deinit
+// counting depth in a recursive walk printed from an #i6 island; postfix ? with an #i6 island; a
+// local array of strings with a union parameter told apart by typeof.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+#include <string>
+
+// ===== SORTER (two parents, remembers what it has looked at) =====
+class Counted : object {
+    int checked = 0;
+}
+
+class Tagged : object {
+    string tagWord = "plain";
+}
+
+class Sorter : Counted, Tagged {
+    static array<object> seen[6];
+    static array<string> results = {"ok", "nothing there", "seen before", "full"};
+
+    // looks at one thing and remembers it (throws a code if it can't)
+    void check(object o) {
+        if (!o?) {
+            throw 1;
+        }
+        if (Sorter.seen.contains(o)) {
+            throw 2;
+        }
+        if (Sorter.seen.length >= 3) {
+            throw 3;
+        }
+        Sorter.seen.append(o);
+        checked++;
+        if (!o.has(general)) {
+            o.give(general);
+        }
+        if (o.has(light)) {
+            print("(lit) ");
+        }
+        Examine.perform(o);
+    }
+
+    void tryOne(object o) {
+        int code = 0;
+        try {
+            check(o);
+        } catch (int e) {
+            code = e;
+        }
+        print($"[{tagWord}] {Sorter.results[code]}.^");
+    }
+
+    object lastSeen() {
+        if (Sorter.seen.length == 0) {
+            return null;
+        }
+        return Sorter.seen[Sorter.seen.length - 1];
+    }
+
+    void report() {
+        var last = lastSeen() ?? self;
+        if (typeof(last) == eType.object) {
+            object o = (object)last;
+            print($"[{tagWord}] checked {checked}, last {o}, {Sorter.seen.length} remembered.^");
+        } else {
+            print("Something strange was remembered.^");
+        }
+    }
+}
+
+// ===== COINS (an amount you can add up) =====
+value class Coins {
+    int cents;
+    string label;
+
+    Coins operator = (Coins o) {
+        cents = o.cents;
+        label = o.label;
+        return self;
+    }
+
+    int operator + (int n) {
+        return cents + n;
+    }
+
+    int operator - (Coins o) {
+        return cents - o.cents;
+    }
+
+    bool operator == (Coins o) {
+        return cents == o.cents;
+    }
+
+    bool operator != (Coins o) {
+        return cents != o.cents;
+    }
+
+    // take everything the other one has
+    void takeAll(ref Coins other) {
+        cents = self + other.cents;
+        other.cents = 0;
+    }
+
+    // change the amount by some rule
+    void change(func<int, int> rule) {
+        cents = rule(cents);
+    }
+
+    // the bigger of two, plus some extra
+    int biggerPlus(ref Coins a, ref Coins b, int extra) {
+        ref Coins big := a;
+        if (b != a && b - a > 0) {
+            big := b;
+        }
+        return big + extra;
+    }
+
+    void show() {
+        if (label?) {
+            print(label);
+        } else {
+            print("unnamed");
+        }
+        #i6 print " holds ", $i6Expr(self.cents), " cents.^";
+    }
+
+    void compareTo(ref Coins o) {
+        if (self == o) {
+            #i6 print "(the same amount)^";
+        } else {
+            #i6 print "(different amounts)^";
+        }
+    }
+}
+
+extend class Coins {
+    object holder;
+
+    Coins operator += (int n) {
+        cents = cents + n;
+        holder?.give(general);
+        return self;
+    }
+
+    Coins operator ++ () {
+        cents = cents + 1;
+        holder?.give(general);
+        return self;
+    }
+}
+
+Coins walletA;
+Coins walletB;
+
+int doubleIt(int n) {
+    return n * 2;
+}
+
+// ===== LABELS (text I can change letter by letter) =====
+class Label : object {
+    array<char> text[24];
+    object stuckOn;
+
+    // a label turns into its length
+    int operator () {
+        return text.length;
+    }
+
+    void write(string s) {
+        bgl.util.buf.set(text, s);
+    }
+
+    void stickTo(object o) {
+        stuckOn = o;
+        object where = stuckOn?.parent;
+        if (where != null) {
+            print($"(stuck on {stuckOn}, which is in {where})^");
+        }
+    }
+
+    void show() {
+        print("The label reads: ");
+        bgl.util.buf.print(text);
+        print(".^");
+    }
+
+    int firstVowel() {
+        return bgl.util.buf.indexOfFirstTrue(text, (char c) => {
+            if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u') {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    void shout() {
+        bgl.util.buf.toUpper(text);
+    }
+}
+
+extend class Label {
+    array<string> stamps = {"new", "used", "old"};
+
+    string stampFor(int uses) {
+        if (uses >= stamps.length) {
+            return stamps[stamps.length - 1];
+        }
+        return stamps[uses];
+    }
+}
+
+// ===== THE METER (an accessor that looks at its host) =====
+object meter {
+    int scale = 2;
+    array<string> levelWords = {"low", "middle", "high"};
+    array<array<int>> marks = {{1, 2}, {3, 5, 6}};
+
+    auto level = {
+        int _raw = 0;
+        int operator () {
+            return _raw;
+        }
+        void operator = (int v) {
+            _raw = v * outer.scale;
+            int i = _raw / 4;
+            int top = outer.levelWords.length - 1;
+            if (i > top) {
+                i = top;
+            }
+            print($"(the meter reads {_raw}, {outer.levelWords[i]})^");
+        }
+        // adding to the meter adds that many steps
+        int operator + (int steps) {
+            return _raw + steps * outer.scale;
+        }
+        int ahead(int steps) {
+            return self + steps;
+        }
+    }
+
+    void walkMarks() {
+        for (array<int> row in marks) {
+            for (int m in row) {
+                level = m;
+            }
+        }
+    }
+}
+
+// ===== GRID (all static) =====
+class Grid {
+    static int reads = 0;
+    static array<array<int>> cells = {{1, 2, 3}, {4, 5}, {6}};
+
+    static int at(int r, int c) {
+        Grid.reads++;
+        if (r >= Grid.cells.length || c >= Grid.cells[r].length) {
+            return -1;
+        }
+        return Grid.cells[r][c];
+    }
+
+    static void put(int r, int c, int v) {
+        int i = 0;
+        for (array<int> row in Grid.cells) {
+            if (i == r) {
+                row[c] = v;
+            }
+            i++;
+        }
+    }
+
+    static int rowTotal(int r) {
+        int t = 0;
+        for (int v in Grid.cells[r]) {
+            t += v;
+        }
+        return t;
+    }
+}
+
+// ===== KIT (a short name for coins) =====
+object kit {
+    alias money for Coins;
+
+    // move up to n cents from wallet A to wallet B
+    int moveCents(int n) {
+        ref money from := walletA;
+        ref money to := walletB;
+        if (from.cents < n) {
+            n = from.cents;
+        }
+        from.cents = from.cents - n;
+        to.cents = to.cents + n;
+        return n;
+    }
+}
+
+// ===== CRATES (made in I6) =====
+#i6 {
+Class Bin
+  with bin_size 3;
+Class Lidded
+  has container open;
+Class Crate
+  class Bin Lidded
+  with crate_weight 0;
+Crate crateA "crate A" with crate_weight 4;
+Crate crateB "crate B" with crate_weight 7, bin_size 5;
+}
+
+extern class Bin : object {
+    int bin_size;
+}
+
+extern class Lidded : object {
+    static bool isOpen(object o) {
+        return o.has(open);
+    }
+}
+
+extern class Crate : Bin, Lidded {
+    int crate_weight;
+
+    // weight plus size, if it is open
+    static int score(Crate c) {
+        if (!Lidded.isOpen(c)) {
+            return 0;
+        }
+        return c.crate_weight + c.bin_size;
+    }
+
+    static int totalWeight() {
+        array<Crate> all = {crateA, crateB};
+        int t = 0;
+        for (Crate c in all) {
+            t += c.crate_weight;
+        }
+        return t;
+    }
+
+    // the first crate with something in it, or the fallback
+    static object firstFull(object fallback) {
+        array<Crate> all = {crateA, crateB};
+        object found = null;
+        for (Crate c in all) {
+            if (found == null && c.child != null) {
+                found = c;
+            }
+        }
+        return found ?? fallback;
+    }
+}
+
+extern Crate crateA;
+extern Crate crateB;
+
+// ===== WALKING THE TREE (counts how deep it is) =====
+#i6 Global walkDepth = 0;
+
+emitter class DepthMark {
+    emitter void init() { walkDepth++; }
+    emitter void deinit() { walkDepth--; }
+}
+
+void walk(object o) {
+    DepthMark mark;
+    #i6 print "(depth ", walkDepth, ": ", (name) $i6Expr(o), ")^";
+    for (object c in o.children) {
+        walk(c);
+    }
+}
+
+void whoHolds(object o) {
+    if (o?) {
+        #i6 print "(I6 says ", (name) $i6Expr(o), " is in ", (name) parent($i6Expr(o)), ")^";
+    } else {
+        print("(no thing)^");
+    }
+}
+
+void sayList(string | object last) {
+    array<string> words = {"one", "two", "three"};
+    for (string w in words) {
+        print(w);
+        print(", ");
+    }
+    if (typeof(last) == eType.object) {
+        object o = (object)last;
+        print($"and {o}.^");
+    } else {
+        print((string)last);
+        print(".^");
+    }
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+}
+
+object lamp {
+    "lamp";
+    string description = "A plain lamp.";
+    parent = roomA;
+    attributes = {light};
+}
+
+object ball {
+    "red ball";
+    parent = roomB;
+}
+
+Sorter sorterA {
+    "sorter";
+    tagWord = "first";
+    parent = roomA;
+}
+
+Label tagLabel {
+    "paper label";
+}
+
+bool Initialise() {
+    location = roomA;
+    crateA.parent = roomB;
+    crateB.parent = roomB;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// SORT - the sorter with two parents
+verb SortVerb {
+    meta = true;
+    grammar = {.sort};
+    void handler() {
+        sorterA.tryOne(lamp);
+        sorterA.tryOne(brassKey);
+        sorterA.tryOne(lamp);
+        sorterA.tryOne(null);
+        sorterA.tryOne(ball);
+        sorterA.tryOne(roomB);
+        sorterA.report();
+        if (ball.has(general)) {
+            print("The ball was looked at.^");
+        }
+    }
+}
+
+// COINS - the coins value class
+verb CoinsVerb {
+    meta = true;
+    grammar = {.coins};
+    void handler() {
+        walletA.cents = 10;
+        walletA.label = "wallet A";
+        walletB.cents = 4;
+        walletA.show();
+        walletB.show();
+        walletA.compareTo(walletB);
+        print($"A plus 5 is {walletA + 5}, A minus B is {walletA - walletB}.^");
+        print($"Bigger plus 1: {walletA.biggerPlus(walletA, walletB, 1)}.^");
+        walletA.takeAll(walletB);
+        print($"After taking: A {walletA.cents}, B {walletB.cents}.^");
+        walletB.cents = 14;
+        walletA.compareTo(walletB);
+        if (walletA == walletB) {
+            print("A and B match.^");
+        }
+        walletA.change(doubleIt);
+        walletB.change((int n) => n + 3);
+        print($"Changed: A {walletA.cents}, B {walletB.cents}.^");
+        print($"Bigger plus 0: {walletB.biggerPlus(walletA, walletB, 0)}.^");
+    }
+}
+
+// SPEND - += and ++ on coins
+verb SpendVerb {
+    meta = true;
+    grammar = {.spend};
+    void handler() {
+        walletA.cents = 1;
+        walletA += 4;
+        print($"After += 4: {walletA.cents}.^");
+        walletA.holder = tagLabel;
+        walletA += 2;
+        walletA++;
+        print($"After += 2 and ++: {walletA.cents}.^");
+        if (tagLabel.has(general)) {
+            print("The label holds the wallet.^");
+        }
+        Coins copy = walletA;
+        copy++;
+        print($"Copy {copy.cents}, wallet {walletA.cents}.^");
+    }
+}
+
+// LABEL - the text buffer
+verb LabelVerb {
+    meta = true;
+    grammar = {.label};
+    void handler() {
+        tagLabel.write("brass key");
+        tagLabel.show();
+        int n = tagLabel;
+        print($"Length {n}, first vowel at {tagLabel.firstVowel()}.^");
+        tagLabel.shout();
+        tagLabel.show();
+        tagLabel.stickTo(brassKey);
+        tagLabel.write("xyz");
+        print($"Short label: {tagLabel.firstVowel()}.^");
+        print($"Stamps: {tagLabel.stampFor(0)}, {tagLabel.stampFor(1)}, {tagLabel.stampFor(9)}.^");
+    }
+}
+
+// METER - the accessor
+verb MeterVerb {
+    meta = true;
+    grammar = {.meter};
+    void handler() {
+        meter.level = 1;
+        int now = meter.level;
+        print($"Meter: {now}, plus two {meter.level + 2}, two steps ahead {meter.level.ahead(2)}.^");
+        meter.scale = 3;
+        meter.level = 4;
+        meter.walkMarks();
+        print($"Last mark leaves {meter.level}.^");
+        print($"Mark row 1, item 2: {meter.marks[1][2]}.^");
+    }
+}
+
+// GRID - static nested array
+verb GridVerb {
+    meta = true;
+    grammar = {.grid};
+    void handler() {
+        print($"At 0,2: {Grid.at(0, 2)}. At 1,2: {Grid.at(1, 2)}. At 2,0: {Grid.at(2, 0)}.^");
+        print($"Row totals: {Grid.rowTotal(0)} {Grid.rowTotal(1)} {Grid.rowTotal(2)}.^");
+        Grid.put(1, 0, 40);
+        print($"Row 1 now: {Grid.rowTotal(1)}. Reads: {Grid.reads}.^");
+    }
+}
+
+// KIT - alias and ref
+verb KitVerb {
+    meta = true;
+    grammar = {.kit};
+    void handler() {
+        walletA.cents = 6;
+        walletB.cents = 0;
+        int moved = kit.moveCents(4);
+        print($"Moved {moved}: A {walletA.cents}, B {walletB.cents}.^");
+        moved = kit.moveCents(9);
+        print($"Moved {moved}: A {walletA.cents}, B {walletB.cents}.^");
+    }
+}
+
+// CRATES - the I6 class
+verb CratesVerb {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        print($"Crates weigh {Crate.totalWeight()}.^");
+        print($"First full: {Crate.firstFull(roomB)}.^");
+        ball.parent = crateB;
+        print($"First full now: {Crate.firstFull(roomB)}.^");
+        print($"Crate A weighs {crateA.crate_weight}, scores {Crate.score(crateA)}.^");
+        crateB.ungive(open);
+        Bin b = crateB;
+        print($"Crate B is size {b.bin_size}, scores {Crate.score(crateB)}.^");
+    }
+}
+
+// WALK - the tree, with depth
+verb WalkVerb {
+    meta = true;
+    grammar = {.walk};
+    void handler() {
+        walk(roomB);
+        whoHolds(ball);
+        whoHolds(null);
+    }
+}
+
+// LIST - strings and a union
+verb ListVerb {
+    meta = true;
+    grammar = {.list};
+    void handler() {
+        sayList("four");
+        sayList(lamp);
+    }
+}

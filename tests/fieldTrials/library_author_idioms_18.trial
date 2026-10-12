@@ -1,0 +1,21 @@
+Room A
+Room A.
+You can see a crate A and a bin A here.
+> tallies
+added 6 5: 7 lit apart; 9 apart [ping 7].
+> tallies
+added 6 5: 13 lit apart; 14 apart [ping 13].
+> bins
+bins: red ball>#11 blue ball>#11 !11 w6; bin A=0/0/1 bin B=2/2/0 rows 19; trail 1 2 1 1 2 0; bin A in Room A low fee 5 pad 3 #1; bin B in crate A under Room A mid fee 5 pad 5 #2; marks 23.
+> bins
+bins: red ball>#11 blue ball>#11 !11 w6; bin A=0/0/2 bin B=2/4/0 rows 21; trail 1 2 3 1 4 0; bin A in Room A low fee 7 pad 3 #3; bin B in crate A under Room A high fee 7 pad 7 #4; marks 46.
+> shelves
+shelf 1 TOP:6 at red ball at Room A fee 5; trail 2 1 0.
+> labels
+mark 5 15[sweep d1 17] 17 d0.
+> labels
+mark 8 18[sweep d1 17] 17 d0.
+> chits
+even; 15 -115 15 16 even; 15c used s3/2 / 15c used s3/2.
+> chits
+even; 15 -115 15 16 even; 15c used s3/2 / 15c used s3/2.

@@ -1,0 +1,354 @@
+﻿/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits applied to class hierarchies, member resolution and the end of a
+// file. Stretches of the file saved with CRLF line endings amid LF lines: class declarations, comments
+// and `///`/`/** */` doc comments, an object body with a member split token per line, `#if`/`#define`,
+// a one-line `#i6` island, and plain, raw and interpolated strings broken across CR LF line ends; a `//`
+// comment ending in a backslash ahead of a code line; multiple inheritance from three parents listed one
+// per line with comments between the `:`, the commas and the names, where the first-listed parent's
+// member variable and method win; ancestor-qualified dispatch `((Base)x).m()` written with spaces and
+// comments inside both pairs of parentheses, from outside and on `self` inside overrides three levels
+// deep and inside an object's own override; a `default` method overridden by a `default` override and
+// again with no `replace`; `REPLACE` in mixed case ending the chain; `extend class` with `replace
+// default` after the subclasses that override it; `hide` of an inherited method reached again by an
+// upcast; casts to an instance and to a class from an `object` value; `const` members given by object
+// declarations; positional values filling the slots of a class with two parents; a static reached
+// through a subclass name, and a subclass static shadowing it; a `static` method used as a function
+// value and a `static func<>` member called directly; lambdas passed directly whose writes to captured
+// locals come back, one inside a method capturing `self` and a parameter; `do`/`while` written tight and
+// token per line; `switch` cases with values on lines of their own; `#warning` in a live branch; `#exit`
+// followed by text that is not Beguile.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend class object { string description; }
+
+#define SHAPES 3
+#if SHAPES >= 3
+    #warning "layout_and_lexical_variety_10: three shapes"
+#endif
+
+object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Three parents --------------------------------------------------------------------------------
+//CRLF-BEGIN
+
+/// The first parent: its members win.
+class Named : object
+{
+    int weight = 1;                                  /// Shared name: Named's wins.
+    const int serialNo = 0;
+    static int Made = 0;
+    default void show() { print("named"); }
+    void trace() { print("N"); }
+    static int twice(int n) { return n * 2; }
+}
+
+class Coloured : object
+{
+    int weight = 2;
+    int hue = 7;
+    default void show() { print("coloured"); }
+    void trace() { print("C"); }
+}
+
+class Sized : object { int size = 3; void trace() { print("S"); } }
+
+// the colon, each comma and each name on lines of their own \
+int notAContinuation = 5;
+
+class Widget
+    :                   // parents follow
+    Named               /* first: wins */
+    ,
+    Coloured            // second
+    ,   Sized           // third
+{
+    default void show()
+    {
+        print("widget(");
+        ( /* to the first parent */ ( Named ) self ) . show ( );
+        print(",");
+        (( Coloured /* the second */ )self).show();
+        print(")");
+    }
+}
+
+class Gadget : Widget
+{
+    void show()                                  // Widget's is default: no replace
+    {
+        print("gadget>");
+        ((Widget)self).show();
+    }
+    static int Made = 100;                           // shadows Named.Made
+}
+
+class Gizmo : Gadget
+{
+    REPLACE void show()                          // Gadget's is not default: ends the chain
+    {
+        print("gizmo>");
+        ((Gadget) self).show();
+    }
+    hide trace();
+}
+
+//CRLF-END
+
+extend class Widget
+{
+    replace default void show()
+    {
+        print("widget[");
+        ((Named)self).show();
+        print("|");
+        ((Coloured)self).show();
+        print("]");
+    }
+}
+
+Widget  wA { serialNo = 41; }
+Gadget  gA { serialNo = 42; hue = 9; }
+Gizmo   zA { serialNo = 43; size = 5; }
+
+verb Hier
+{
+    meta = true; grammar = { .hier };
+    void handler()
+    {
+        wA.show(); printLine();
+        gA.show(); printLine();
+        zA.show(); printLine();
+        printLine($"{wA.weight} {gA.weight} {zA.weight} {wA.hue} {gA.hue} {zA.size}");
+        wA.trace(); gA.trace(); (( Gadget )zA).trace(); printLine();
+        ( ( Coloured ) zA ) . show ( ) ; print(" ");
+        ((Named)zA).show(); print(" ");
+        ((Widget)zA).show(); printLine();
+        Widget w = zA;
+        w.show(); printLine();
+        printLine($"{wA.serialNo} {gA.serialNo} {zA.serialNo}");
+    }
+}
+
+//-- Object-body overrides and instance casts -----------------------------------------------------
+//CRLF-BEGIN
+
+/** An object that overrides a class's method
+ *  and reaches the class's version through a cast. */
+Gadget gB
+{
+    serialNo = 44 ;
+    int extra = 3 ;                                  /// Declared on this object alone.
+    replace void show()
+    {
+        print( @"gB\>" );                            // a raw string holding a backslash, then CR LF
+        ( ( Gadget ) self ) . show( ) ;
+    }
+}
+
+Named nA
+{
+    serialNo
+        =
+        45
+        ;
+    replace void trace() { print("n"); ((Named)self).trace(); }
+}
+
+verb Objs
+{
+    meta = true; grammar = { .objs };
+    void handler()
+    {
+        gB.show(); printLine();
+        nA.trace(); printLine();
+        object o = gB;
+        printLine($"{((gB)o).extra} {((Gadget)o).serialNo} {((gB)o).hue}");
+        Widget w = gB;
+        w.show(); printLine();
+        printLine($"{nA.serialNo} {nA.weight} {Named.twice(nA.serialNo)}");
+    }
+}
+
+//CRLF-END
+
+//-- Text and directives across CR LF line ends ---------------------------------------------------
+//CRLF-BEGIN
+
+#if SHAPES == 3
+    #define CR_SEEN 1
+#else
+    #define CR_SEEN 0
+#endif
+
+#i6 Constant CR_ISLAND = 12;                          ! a one-line island ending in CR LF
+extern const int CR_ISLAND;
+
+class Tally : object
+{
+    int base = 5;
+    int sumWith(int extra)
+    {
+        int seen = 0;
+        each(3, (int k) => { seen += k * base + extra; });   // captures a local, self and a parameter
+        return seen;
+    }
+}
+Tally tl { base = 2; }
+
+verb Text
+{
+    meta = true; grammar = { .text };
+    void handler()
+    {
+        int n = 7;
+        printLine("one
+two");
+        printLine($"{n}
+{n + 1}");
+        printLine(@"raw\one
+raw\two");
+        printLine($"{CR_SEEN} {CR_ISLAND} {tl.sumWith(1)}");
+    }
+}
+
+//CRLF-END
+
+//-- Positional members from two parents ----------------------------------------------------------
+
+class First  : object { inline int a; }
+class Second : object { inline int b; }
+class Both
+    : First
+    , Second
+{
+    inline int c;
+}
+
+Both pos1
+{
+    30 ,                // c, the class's own
+    10 ,                // a, from the first parent
+    20 ;                // b, from the second
+}
+Both pos2 { 3 , 1 , 2 ; }
+Both pos3 { c = 300; a = 100; b = 200; }
+
+verb Slots
+{
+    meta = true; grammar = { .slots };
+    void handler()
+    {
+        printLine($"{pos1.a} {pos1.b} {pos1.c}");
+        printLine($"{pos2.a} {pos2.b} {pos2.c}");
+        printLine($"{pos3.a} {pos3.b} {pos3.c}");
+    }
+}
+
+//-- Statics and function values ------------------------------------------------------------------
+
+class Policy
+{
+    static func<int, int> step = Named.twice;
+    static int count = 0;
+}
+
+int bump(int n) { return n + 1; }
+
+void each(int upTo, func<void, int> fn)
+{
+    for (int i = 1; i <= upTo; i++) fn(i);
+}
+
+verb Statics
+{
+    meta = true; grammar = { .statics };
+    void handler()
+    {
+        Named.Made++;
+        Widget.Made += 2;
+        Gizmo.Made = Gizmo.Made + 5;
+        printLine($"{Named.Made} {Widget.Made} {Gadget.Made} {Gizmo.Made}");
+        func<int, int> f = Named.twice;
+        func<int,int>g=Widget.twice;
+        printLine($"{f(4)} {g(5)} {Policy.step(10)}");
+        Policy.step = bump;
+        printLine($"{Policy.step(10)}");
+        int total = 0;
+        int calls = 0;
+        each(4,
+            (int k)
+                =>      // the body follows on its own lines
+            {
+                total += k;
+                calls++;
+            });
+        printLine($"{total} {calls}");
+    }
+}
+
+//-- Loops and switch -----------------------------------------------------------------------------
+
+string band(int n)
+{
+    switch (n)
+    {
+        case
+            0
+            :
+            return "zero";
+        case 1 ,
+             2 ,
+             3 :
+            return "few";
+        case 4
+             to
+             9 :
+            return "some";
+        case >= 10 : return "many";
+    }
+    return "negative";
+}
+
+verb Loops
+{
+    meta = true; grammar = { .loops };
+    void handler()
+    {
+        int n=0;do{n++;}while(n<3);
+        print(n); print(" ");
+        int m = 10;
+        DO
+        {
+            m -= 4;
+        }
+        WHILE
+        (
+            m
+            >
+            0
+        )
+        ;
+        printLine(m);
+        printLine($"{band(0)} {band(2)} {band(7)} {band(12)} {band(-1)}");
+        printLine(notAContinuation);
+    }
+}
+
+#includeI6 "grammar"
+
+#exit
+Everything below the directive is never read: "unterminated, (( ]] class Broken : int {
+    { { unbalanced

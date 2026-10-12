@@ -1,0 +1,82 @@
+#grids
+Room A
+Room A.
+[grid 1]
+| Room A                                     0/0   |
+> panels
+Panels open.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|swatches 0 head 0                                 |
+|mixer sets 0 faults 0                             |
+|board lit 0 note plain                            |
+> swatches
+dim mid 0.6000 3 2
+[shade] Glare.
+2.0000
+Ramps 11 9.
+0.7000 -0.3000 0.5000
+Grid 17.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|swatches 2 head 2                                 |
+|mixer sets 0 faults 0                             |
+|board lit 0 note plain                            |
+> blend
+[blend] Blended 7 bright 5.
+6.3000
+[blend] Again 4.
+Pool full after 4.
+No slot.
+Glare.
+2.4000
+1.4000
+[dropped] Left 0.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|swatches 4 head 2                                 |
+|mixer sets 0 faults 0                             |
+|board lit 0 note plain                            |
+> mix
+first 1.0000
+[fault] 0.5000 Mixed: sets 2, faults 1.
+0.0000
+[fault] third Mixed: sets 3, faults 2.
+0.0000
+side panel 13
+0.0000
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|swatches 4 head 2                                 |
+|mixer sets 3 faults 2                             |
+|board lit 0 note plain                            |
+> settle
+Mixed: sets 4, faults 2.
+1.0000
+[overflow] Mixed: sets 4, faults 3.
+1.0000
+1.5000 1.5000 3.0000 3
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|swatches 4 head 2                                 |
+|mixer sets 4 faults 3                             |
+|board lit 0 note plain                            |
+> lights
+[glow] [tally] many 1 1.0000
+Lit 1.
+[glow] [tally] many 2 3.0000
+Lit 2.
+1.5000 more false
+[tally] none 0 3.0000
+Lit 2.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|swatches 4 head 2                                 |
+|mixer sets 4 faults 3                             |
+|board lit 2 note more                             |

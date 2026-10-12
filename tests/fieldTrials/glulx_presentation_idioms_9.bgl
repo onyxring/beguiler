@@ -1,0 +1,369 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a window layout declared as a tree of objects and opened by walking it. A layout-node
+// class with positional inline members (an enum edge, a size, an enum kind) ahead of the name, a
+// bnum of options, required members (a string title and a fill(window) routine each object gives
+// its own body), a window-typed member that starts null, an owned value-class tint member and a static
+// operator <=>; the type and its enums reached through a namespace object (alias … for …) in
+// declarations, parameters and positional values; a recursive walk over children that splits each
+// node from its parent's window (from the main window at the top), choosing the split with a switch
+// on the edge and a ternary on the kind, and scale and border from the bnum; a styleSheet built at
+// run time whose style colors come from the tint through an implicit operator () conversion; an
+// explicit stringObj conversion used by a cast inside interpolation; positional value-class literals
+// built from run-time expressions and returned from a helper; an emitter class of color values
+// imported with #using; nodes collected into an array, sorted with an operator reference and with a
+// lambda over <=>, and compared with the derived <; post-order closing of the tree and reopening one
+// node into a freed pool slot; #define / #redef and a #if on #beguilerSettings.target.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+#define GUTTER 1
+#redef GUTTER 2
+
+#if #beguilerSettings.target == "glulx"
+    #define SIDE_COLS 22
+#else
+    #define SIDE_COLS 10
+#endif
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- colors --------------------------------------------------------------------------------------
+
+value class rgb {
+    inline int r;
+    inline int g;
+    inline int b;
+    rgb operator = (rgb o) { r = o.r; g = o.g; b = o.b; return self; }
+    int operator () { return (r << 16) | (g << 8) | b; }
+    explicit stringObj operator () {
+        stringObj s = $"rgb({r}, {g}, {b})";
+        return s;
+    }
+}
+
+emitter class palette {
+    int accent { $C80000 }
+    int calm   { $0050A0 }
+    int paper  { $F0F0E0 }
+}
+
+#using palette
+
+rgb rgbOf(int v) {
+    rgb c = rgb{ (v >> 16) & 255, (v >> 8) & 255, v & 255 };
+    return c;
+}
+
+stringObj hex(int v) {
+    string digits = "0123456789ABCDEF";
+    stringObj s = "$";
+    for (int shift = 20; shift >= 0; shift -= 4) s += digits[(v >> shift) & 15];
+    return s;
+}
+
+// ---- layout nodes --------------------------------------------------------------------------------
+
+enum eEdge { top, bottom, left, right }
+enum eKind { grid, buffer }
+bnum bOpt { bordered, proportional }
+
+class layoutNode : object {
+    inline eEdge edge;
+    inline int   size;
+    inline eKind kind;
+    bOpt   opts;
+    rgb    tint;
+    window win = null;
+    int    paints = 0;
+    required string title;
+    required void fill(window w);
+
+    static int operator <=> (layoutNode a, layoutNode b) {
+        if (a.size < b.size) return -1;
+        return a.size > b.size ? 1 : 0;
+    }
+}
+
+object panes {
+    alias node for layoutNode;
+    alias edge for eEdge;
+    alias kind for eKind;
+}
+
+object screenRoot { "screen root"; }
+
+panes.node hudNode {
+    panes.edge.top, 1, panes.kind.grid, "hud node";
+    parent = screenRoot;
+    title = "HUD";
+    tint = rgb{ 0, 0, 0 };
+    void fill(window w) {
+        textGridWindow g = (textGridWindow)w;
+        g.clear();
+        g.moveCursor(GUTTER, 0);
+        g.print($"{title} paint {paints}");
+    }
+}
+
+panes.node logNode {
+    eEdge.bottom, 30, panes.kind.buffer, "log node";
+    parent = screenRoot;
+    opts = bOpt.proportional | bOpt.bordered;
+    title = "Log";
+    tint = rgb{ 0, 128, 0 };
+    void fill(window w) {
+        ((textBufferWindow)w).printLine($"{title} paint {paints}.");
+    }
+}
+
+panes.node sideNode {
+    eEdge.right, SIDE_COLS, panes.kind.grid, "side node";
+    parent = logNode;
+    opts = bOpt.bordered;
+    title = "Side";
+    tint = rgb{ 0, 80, 160 };
+    void fill(window w) {
+        textGridWindow g = (textGridWindow)w;
+        g.clear();
+        g.moveCursor(0, 0);
+        g.print($"[{title}]");
+        int line = 1;
+        for (object o in self.children) {
+            layoutNode n = (layoutNode)o;
+            g.moveCursor(GUTTER, line++);
+            g.print($"- {n.title} {n.win == null ? "closed" : "open"}");
+        }
+    }
+}
+
+panes.node keyNode {
+    eEdge.bottom, 3, panes.kind.grid, "key node";
+    parent = sideNode;
+    title = "Keys";
+    tint = rgb{ 200, 0, 0 };
+    void fill(window w) {
+        textGridWindow g = (textGridWindow)w;
+        g.clear();
+        g.moveCursor(0, 0);
+        g.print($"{title}: {g.width}x{g.height}");
+        g.moveCursor(0, 1);
+        g.print($"paint {paints}");
+    }
+}
+
+// ---- opening and closing -------------------------------------------------------------------------
+
+int opened = 0;
+
+styleSheet lookFor(panes.node n) {
+    styleSheet sh;
+    sh.normal = style{ foreColor = n.tint; };
+    sh.header = style{ foreColor = n.tint; reverse = true; };
+    return sh;
+}
+
+window splitNode(panes.node n, window from) {
+    bWinScale  sc = (n.opts & bOpt.proportional) != 0 ? proportional : fixed;
+    bWinBorder bd = (n.opts & bOpt.bordered) != 0 ? border : noBorder;
+    styleSheet sh = lookFor(n);
+    bool isGrid = n.kind == panes.kind.grid;
+    if (from == null) {
+        switch (n.edge) {
+            case eEdge.top:    return isGrid ? bgl.ui.mainWin.splitUpGrid(n.size, sc, bd, styles: sh)    : bgl.ui.mainWin.splitUpBuffer(n.size, sc, bd, styles: sh);
+            case eEdge.bottom: return isGrid ? bgl.ui.mainWin.splitDownGrid(n.size, sc, bd, styles: sh)  : bgl.ui.mainWin.splitDownBuffer(n.size, sc, bd, styles: sh);
+            case eEdge.left:   return isGrid ? bgl.ui.mainWin.splitLeftGrid(n.size, sc, bd, styles: sh)  : bgl.ui.mainWin.splitLeftBuffer(n.size, sc, bd, styles: sh);
+            case eEdge.right:  return isGrid ? bgl.ui.mainWin.splitRightGrid(n.size, sc, bd, styles: sh) : bgl.ui.mainWin.splitRightBuffer(n.size, sc, bd, styles: sh);
+        }
+        return null;
+    }
+    switch (n.edge) {
+        case eEdge.top:    return isGrid ? from.splitUpGrid(n.size, sc, bd, styles: sh)    : from.splitUpBuffer(n.size, sc, bd, styles: sh);
+        case eEdge.bottom: return isGrid ? from.splitDownGrid(n.size, sc, bd, styles: sh)  : from.splitDownBuffer(n.size, sc, bd, styles: sh);
+        case eEdge.left:   return isGrid ? from.splitLeftGrid(n.size, sc, bd, styles: sh)  : from.splitLeftBuffer(n.size, sc, bd, styles: sh);
+        case eEdge.right:  return isGrid ? from.splitRightGrid(n.size, sc, bd, styles: sh) : from.splitRightBuffer(n.size, sc, bd, styles: sh);
+    }
+    return null;
+}
+
+void openTree(object host, window from) {
+    for (object o in host.children) {
+        panes.node n = (panes.node)o;
+        if (n.win == null) {
+            n.win = splitNode(n, from);
+            if (n.win != null) opened++;
+        }
+        if (n.win != null) openTree(n, n.win);
+    }
+}
+
+void paintTree(object host) {
+    for (object o in host.children) {
+        layoutNode n = (layoutNode)o;
+        if (n.win != null) {
+            n.paints++;
+            n.fill(n.win);
+        }
+        paintTree(n);
+    }
+}
+
+int closeTree(object host) {
+    int closed = 0;
+    for (object o in host.children) {
+        layoutNode n = (layoutNode)o;
+        closed += closeTree(n);
+        if (n.win != null) {
+            n.win.close();
+            n.win = null;
+            closed++;
+        }
+    }
+    return closed;
+}
+
+string kindOf(window w) {
+    if (w == null) return "closed";
+    switch ((eGlulxWindowType)bgl.asm.windowGetType(w.id)) {
+        case eGlulxWindowType.textGrid:   return "grid";
+        case eGlulxWindowType.textBuffer: return "buffer";
+        default:                          return "other";
+    }
+}
+
+void drawOutline(object host, int depth) {
+    for (object o in host.children) {
+        layoutNode n = (layoutNode)o;
+        for (int i = 0; i < depth * GUTTER; i++) print(" ");
+        print($"{n.title}: {kindOf(n.win)}");
+        if (n.win != null) print($" {n.win.width}x{n.win.height}");
+        printLine($", paints {n.paints}.");
+        drawOutline(n, depth + 1);
+    }
+}
+
+// ---- collecting and ordering -----------------------------------------------------------------------
+
+array<layoutNode> nodes[8];
+
+void collect(object host) {
+    for (object o in host.children) {
+        nodes += (layoutNode)o;
+        collect(o);
+    }
+}
+
+void listNodes(string label) {
+    print($"{label}:");
+    for (layoutNode n in nodes) print($" {n.title}({n.size})");
+    printLine(".");
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Build {
+    grammar = {.build};
+    meta = true;
+    void handler() {
+        int before = opened;
+        openTree(screenRoot, null);
+        paintTree(screenRoot);
+        printLine($"Opened {opened - before}, total {opened}.");
+    }
+}
+
+verb Outline {
+    grammar = {.outline};
+    meta = true;
+    void handler() {
+        drawOutline(screenRoot, 0);
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    meta = true;
+    void handler() {
+        nodes.clear();
+        collect(screenRoot);
+        listNodes("Tree");
+        nodes.sort(layoutNode::operator <=>);
+        listNodes("Up");
+        nodes.sort((layoutNode a, layoutNode b) => b <=> a);
+        listNodes("Down");
+        printLine($"HUD < Side: {hudNode < sideNode ? "yes" : "no"}; Log >= Keys: {logNode >= keyNode ? "yes" : "no"}.");
+    }
+}
+
+verb Colors {
+    grammar = {.colors};
+    meta = true;
+    void handler() {
+        nodes.clear();
+        collect(screenRoot);
+        for (layoutNode n in nodes) {
+            int v = n.tint;
+            printLine($"{n.title}: {(stringObj)n.tint} = {hex(n.tint)} ({v == (int)n.tint ? "same" : "differs"}).");
+        }
+        nodes.clear();
+        printLine($"Palette: accent {hex(accent)}, calm {hex(calm)}, paper {hex(paper)}.");
+    }
+}
+
+verb Retint {
+    grammar = {.retint};
+    meta = true;
+    void handler() {
+        keyNode.tint = rgbOf(paper);
+        rgb copy = rgbOf(keyNode.tint);
+        copy.r = 1;
+        printLine($"Keys now {(stringObj)keyNode.tint}; copy {(stringObj)copy}.");
+        if (keyNode.win != null) {
+            keyNode.win.close();
+            keyNode.win = null;
+        }
+        openTree(screenRoot, null);
+        paintTree(screenRoot);
+        printLine($"Keys reopened: {kindOf(keyNode.win)}.");
+    }
+}
+
+verb Collapse {
+    grammar = {.collapse};
+    meta = true;
+    void handler() {
+        printLine($"Closed {closeTree(screenRoot)}.");
+        drawOutline(screenRoot, 0);
+    }
+}
+
+#includeI6 "grammar"

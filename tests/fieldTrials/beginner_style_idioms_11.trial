@@ -1,0 +1,81 @@
+Room A
+Room A. Room B is to the east.
+You can see a brass key, a lamp and a red tag here.
+> digits
+Digits of 4071: 4 0 7 1.
+After setting the tens: 4091.
+Room A census: 1 lit, 4 other (14).
+Room B census: 0 lit, 6 other.
+> shelf
+(brass key is moved for the first time)
+(lamp is moved for the first time)
+Things on the shelf: 2.
+Lit from spot 0: 1. From spot 3: 0.
+Spot A (left): You see nothing special about the brass key.
+Spot B is empty.
+Spot C (middle): A plain lamp.
+Spot D (right): You see nothing special about the brass key.
+Spot E is empty.
+Spot C has a light.
+There is no spot 7.
+> rack
+(red ball is moved for the first time)
+(tin cup is moved for the first time)
+Rack spot 1: red ball. Spot 5: red ball. Spot 6: tin cup.
+As a plain shelf, spot 5: red ball.
+Spot -1 is nothing.
+Lit on the rack: 0.
+> row
+Row: 3 5 8 13, total 29.
+Row after: 3 5 20 13, total 41.
+> word
+Card: brass, first letter b, size 5.
+Changed: grass.
+Swapped: srasg.
+Letter s: 2 times.
+> boxes
+Both boxes hold the same amount.
+(red ball is now in box A)
+Box A holds 1.
+Now they differ.
+Box A holds more.
+(tin cup is now in box B)
+Even again.
+Top of box A: red ball.
+Rack spot 1 still says red ball, which is in box A.
+> raw
+(raw before 5)
+(raw after 8)
+(raw before 8)
+(raw after 18)
+Tally: 18.
+> tags
+The red tag: holder lamp, place wooden shelf.
+The blue tag: holder yourself, place Room B.
+Red label red, owner lamp.
+> notes
+Note 1 says: remember the key.
+Note 2 points at red ball.
+The second note is about a thing somewhere.
+The first note is not about a thing.
+> gems
+Ruby is worth 34, opal is worth 19.
+Together: 53.
+Ruby weight 3, shine 4.
+The gem by name: ruby.
+As a weighty thing: 3.
+> chips
+Made 3 chips, worth 12.
+> kit
+Kit box: box A, kit shelf: tall rack spot 2 tin cup.
+Gathered 1; box B holds 2.
+Box A is lighter now (1 moved).
+> look
+Room A
+Room A. Room B is to the east.
+On the wooden shelf are a brass key and a lamp.
+You can see a chip, a chip, a chip and a red tag here.
+> e
+Room B
+Room B. Room A is to the west.
+You can see a box A (which is empty), a box B (in which are a red ball and a tin cup) and a ruby here.

@@ -1,0 +1,130 @@
+Room A
+Room A. Room B is east.
+You can see a red block (weight 3), a blue block (weight 5) and a bin (which is empty) here.
+> take block
+Taken.
+> i
+You're carrying a blue block (weight 5).
+> weigh red block
+The red block weighs 3: light.
+> weigh blue block in ounces
+The blue block weighs 20: middling.
+> weigh red block in grams
+The red block weighs 300: very heavy.
+> weigh red block in ounces
+The red block weighs 12: heavy.
+> weigh bin
+The bin will not fit on the scale.
+> gaze bin
+A bin.
+> drop blue block
+Dropped.
+> stow blocks
+The bin holds 2.
+> where red block
+In the bin, under the Room A.
+> tip bin
+2 thing(s) tipped out.
+> rank
+Red block, weight 3.
+Blue block, weight 5.
+It is the heavy one.
+2 here.
+> fetch red block
+Taken.
+You put the red block into the bin.
+> where red block
+In the bin, under the Room A.
+> where bin
+In the Room A, under the Room A.
+> check red block
+Fine.
+> check bin
+Fault 1.
+> lift red block
+Taken.
+> sing
+Your singing is abominable.
+> pray
+I think you wanted to say "pray at something". Please try again.
+> pray at bin
+You pray at the bin.
+> sleep
+I think you wanted to say "sleep on something". Please try again.
+> sleep on bin
+You aren't feeling especially drowsy.
+> nap
+You aren't feeling especially drowsy.
+> e
+Room B
+Room B. Room A is west; a hatch is above.
+You can see a kitten, a guard and a dial here.
+A hum fills Room B.
+> sing
+Not in Room B.
+> x bell
+A bell, heard from outside.
+> n
+A wall stops you.
+> take kitten
+Taken.
+> take guard
+I don't suppose the guard would care for that.
+> kiss kitten
+The kitten purrs (1).
+> pat kitten
+The kitten purrs (2).
+> peer at dial
+The dial reads 0; moved 0 time(s).
+> tune dial to 13
+Tuned in 3 step(s).
+> tune dial to 3
+Already there.
+> x dial
+The dial reads 3; moved 3 time(s).
+> tune kitten to 2
+Only the dial tunes.
+> check kitten
+Fault 2.
+> mint 4
+Minted the token 4; 1 made.
+> take token
+Taken.
+> drop token
+Dropped.
+> melt token
+Token 4 is gone.
+> mint 12
+Minted the token 9; 2 made.
+> mint -2
+I didn't understand that number.
+> mint 1
+Minted the token 1; 3 made.
+> mint 2
+Minted the token 2; 4 made.
+> mint 3
+The pool is empty.
+> melt dial
+You can't see any such thing.
+> u
+Loft
+Loft. A hatch is below.
+> look
+Loft
+Loft. A hatch is below.
+> d
+Room B
+You can see a token 2, a token 1, a token 9, a guard and a dial here.
+A hum fills Room B.
+> w
+Room A
+You can see a blue block (weight 5) and a bin (which is empty) here.
+> x bell
+You can't see any such thing.
+> tally
+Ticks stands at 45.
+Turns: 45.
+Looks: 6.
+Bonus stands at 13.
+Drops: 1.
+Purrs stands at 2.

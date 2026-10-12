@@ -1,0 +1,81 @@
+#grids
+Room A
+Room A.
+[grid 1]
+| Room A                                     0/0   |
+> tiles
+Tiles 4, placed 4, pinned width 13.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Alpha  Beta  Gamma  Delta                         |
+|                                                  |
+|                                                  |
+> weigh
+Order 4: Gamma(12) Beta(7) Delta(7) Alpha(2).
+27+7 (4); pinned width 13.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|                                                  |
+|27+7                                              |
+> tags
+Tag 3: rXB.; B FEVH.
+Notes 3: red green blue.
+et (2 of 2).
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|       FEVH         rXB                           |
+|27+7                                              |
+> near
+Gamma at 0: nearest Beta, 7 away.
+Beta at 7: nearest Delta, 6 away.
+Delta at 13: nearest Beta, 6 away.
+Alpha at 20: nearest Delta, 7 away.
+Gamma moved to 30,2; nearest Alpha.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|       FEVH         rXB                           |
+|27+7                                              |
+> glow
+Dimmed 2, 2, 1, 0; A 0, B 0.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|       FEVH         rXB                           |
+|27+7                                              |
+> strip
+Strip 4, labels 6, stops 4: File@1/4 Edit@6/4 View@11/4 Help@16/4.
+FEVH (4); wide 4; origin 1.
+Focus 2: View.
+Focus 9: none.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|       FEVH         rXB                           |
+|27+7                                              |
+> desk
+Picks 2, last Delta, word Mid, pulls 3, keys abd.
+Words 4: Left Mid Right Top.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|       FEVH         rXB                           |
+|27+7                                              |
+> cursor
+Home 2,1 -> 9,2; cursor 9; hints drag drop far.
+Zero set no, now set yes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Gamma  Beta  Delta  Alpha                         |
+|       FEVH         rXB                           |
+|27+7                                              |

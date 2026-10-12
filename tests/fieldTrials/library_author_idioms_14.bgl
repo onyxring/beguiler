@@ -1,0 +1,196 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit part that writes a pooled I6 class, a wear attribute and two counts in an #i6
+// island and binds them (extern class with the [] pool marker, extern globals and an extern attribute
+// through asBgl), plus a Beguile attribute; an emitter class whose init leases a chip from the I6 pool
+// and whose deinit returns it, with operator ?, a value emitter, a give emitter and one typed as the
+// extern class; a pooled Beguile class with create/destroy, an array-of-arrays member of rows, a
+// ref parameter of the emitter class, give/has/ungive on self, a stringObj result built from += char
+// and an #i6 island through $i6Expr; a namespace object with type aliases for all three, arrays of
+// arrays of int and string, new and a lease declared inside nested loops (init/deinit each
+// pass), and a stringObj built after an #i6 print; #using the namespace before the extern class,
+// whose static members are an array of arrays, new/give/has against the pool, an array of the alias
+// type, delete in a for-in, an #i6 island and a ref lease parameter. The consumer's #using before an
+// extend extern class adding a static method that takes an array of arrays, holds a lease for its
+// whole body, makes chips through a dotted alias path until the pool runs out and prints from I6; a
+// report object with a type alias, an array of arrays of string, new through a dotted alias, a lease
+// per loop pass, has with an #i6 island and stringObj lines; verbs nesting leases in an inner block.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_14_parts/library_author_idioms_14_kit"
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+array<int> la14Weights = { 1, 4, 2, 6, 3 };
+array<La14Chip> la14Held[6];
+
+verb Chips {
+    grammar = {.chips};
+    void handler() {
+        int k = La14Chip.stock(la14Weights, la14Held);
+        print($" made {k}; ");
+        for (La14Chip c in la14Held) {
+            stringObj d = la14.describe(c);
+            print(d);
+            print("; ");
+        }
+        print($"stocked {La14Chip.stocked[0][0]}{La14Chip.stocked[0][1]}{La14Chip.stocked[1][1]}; ");
+        stringObj g = La14Chip.release(la14Held);
+        print($"released {g}; out {la14Out}, made {la14Made}.^");
+    }
+}
+
+verb Trays {
+    grammar = {.trays};
+    void handler() {
+        La14Tray a = la14.build(1);
+        La14Tray b = la14.build(2);
+        La14Tray c = la14.build(3);
+        La14Tray d = la14.build(4);
+        print($"Fourth {d == null}; out {la14Out}; ");
+        stringObj t = a.text();
+        print(t);
+        print("; ");
+        b.set(0, 0, 9);
+        t = b.text();
+        print(t);
+        print("; ");
+        a.dump();
+        b.dump();
+        delete b;
+        d = la14.build(5);
+        t = d.text();
+        print("; ");
+        print(t);
+        delete a;
+        delete c;
+        delete d;
+        print($"; made {la14Made}.^");
+    }
+}
+
+array<array<int>> la14Table = { {1, 5, 2}, {7, 3, 6, 4} };
+
+// ---- The consumer's additions to the chip. ----
+
+#using la14
+extend extern class La14Chip {
+    /// Stocks each row of a table with one chip held back by a lease, wearing those over a limit; a
+    /// mark per chip (* worn, - not, ! when the pool ran out), with the count out printed from I6.
+    static stringObj sortRows(array<array<int>> table, int limit) {
+        La14Lease spare;
+        stringObj s = "";
+        for (array<int> row in table) {
+            if (s.length > 0) s += '/';
+            array<chip> held[4];
+            for (int w in row) {
+                chip c = new la14.chip(w);
+                if (c == null) {
+                    s += '!';
+                    continue;
+                }
+                if (w > limit) c.give(la14Worn);
+                if (c.has(la14Worn)) s += '*';
+                else s += '-';
+                held += c;
+                #i6 print la14_out, " ";
+            }
+            for (chip c in held) delete c;
+        }
+        if (spare?) s += " spare";
+        return s;
+    }
+}
+
+// ---- The consumer's report. ----
+
+/// Trays built one per row of heads, noted as lines.
+object la14Report {
+    alias tray for La14Tray;
+    array<array<string>> heads = { {"A", "B"}, {"C"} };
+    /// The lines noted by the last run.
+    array<stringObj> lines[3];
+
+    /// Builds a tray per row of heads, fills its first row from a lease and notes it; the lines noted.
+    int run() {
+        lines.clear();
+        for (int r = 0; r < heads.length; r++) {
+            tray t = new la14.tray(r + 7);
+            if (t == null) continue;
+            La14Lease l;
+            l.setWeight(heads[r].length + 1);
+            t.put(0, l);
+            t.put(0, l);
+            if (t.has(la14Sealed)) {
+                #i6 print "S";
+            }
+            stringObj s = t.text();
+            s += " ";
+            s += heads[r][0];
+            lines += s;
+            delete t;
+        }
+        return lines.length;
+    }
+}
+
+verb Sort {
+    grammar = {.sort};
+    void handler() {
+        stringObj r = La14Chip.sortRows(la14Table, 4);
+        print($"sorted {r}; out {la14Out}.^");
+    }
+}
+
+verb Lease {
+    grammar = {.lease};
+    void handler() {
+        La14Lease a;
+        a.setWeight(8);
+        {
+            La14Lease b;
+            La14Lease c;
+            La14Lease d;
+            La14Lease e;
+            print($"Inner out {la14Out}; e {e?}; weights {La14Chip.weightOf(a, a.chip)} {La14Chip.weightOf(e, a.chip)}; ");
+        }
+        print($"outer out {la14Out}.^");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int n = la14Report.run();
+        print($" noted {n}: ");
+        for (stringObj s in la14Report.lines) {
+            print(s);
+            print("; ");
+        }
+        print($"out {la14Out}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

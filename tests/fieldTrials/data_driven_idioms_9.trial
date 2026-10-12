@@ -1,0 +1,78 @@
+Room A
+Room A.
+
+> life
+before: live 0, taken 0, given 0, turnover 0
+loop seen 13
+after loop: live 0, taken 8, given 8, turnover 0
+early 3 = 10, early 9 = 10
+after early: live 0, taken 12, given 12, turnover 0
+after copy bump 5
+after shared bump 15
+fresh 31, x handle busy true
+auto copy 32, y still 31
+inside: live 2, taken 16, given 14, turnover 2
+
+> pool
+now: live 0, taken 16, given 16, turnover 0
+peak live 2, misses 0
+
+> steps
+10 load 4 [start, cost 10, w 1]
+20 add 3 [plus, cost 20, w 4]
+30 mul 5 [times, cost 30, w 12 heavy]
+50 keep [save, cost 50, w 1]
+40 neg [flip, cost 40, w 1]
+45 keep [again, cost 50, w 1]
+60 add 100 [late, cost 20, w 2]
+weights 302 500
+
+> run 3
+run 3: acc 35, weight 17, bank 0
+
+> run 9
+run 9: acc 65, weight 22, bank 2
+
+> run 9
+run 9: acc 65, weight 22, bank 4
+
+> bank
+bank 4: 35 -35 35 -35
+35 at 0, has 35 true
+sorted: -35 -35 35 35
+bank: live 5, taken 24, given 19, turnover 5
+
+> drop 1
+dropped 1, bank 3
+drop: live 3, taken 24, given 21, turnover 3
+
+> drop 7
+No slot 7.
+
+> set 77
+slot 0 = 77
+slot 0 + 3 = 80
+removed 77, bank 2
+set: live 3, taken 25, given 22, turnover 3
+
+> island
+island: total 70 is big
+big 1, misses 0
+
+> scratch
+scratch 1 2 3, live +6
+cleared, live +3
+refilled, live +4
+block done, live +1
+
+> pool
+now: live 2, taken 32, given 30, turnover 2
+peak live 2, misses 0
+
+> flood
+flood held 8, misses 3
+
+> pool
+now: live 2, taken 45, given 43, turnover 2
+peak live 7, misses 3
+

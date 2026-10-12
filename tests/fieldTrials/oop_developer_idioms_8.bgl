@@ -1,0 +1,508 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, eighth pass. Recursion over value
+// classes: a recursive function whose value-class locals and by-value parameter survive the inner
+// call, reporting through a `ref` out-parameter, and a recursive method on a tree of objects that
+// widens a `ref` accumulator while keeping a value-class snapshot local; a value class composed of
+// an owned accessor member (a named clamping accessor), an owned value member and an `array<int>`
+// member, with a copy operator that copies all three (getter-to-setter, chained copy operator and
+// array copy), passed by value, held by a class and written through a two-level member path;
+// lambdas inside methods that read members (capturing `self`) and call the instance's own methods,
+// on two instances in turn and handed to another instance's method, with writes to a captured local
+// seen after the call, a member flag steering a `sort()` comparator, and a `throw` out of a lambda
+// caught by the caller; overload resolution on an object's methods by class (exact,
+// ancestor, base-typed variable), by implicit conversion and by primitive, and static methods with
+// default parameters overloaded by type and called with named arguments; an exception hierarchy of
+// pooled classes (a subclass with its own pool and the base's `create`), thrown from a method,
+// returned from inside a `try`, caught by base type, told apart with `is` and a virtual call,
+// wrapped and rethrown, deleted through a base-typed variable, with `continue` out of a `catch`;
+// a lazily created singleton held in a static member of its own type, with member writes on the
+// result of a static call; a fluent pipeline of `func<int,int>` steps (a static method, a lambda,
+// a global function) kept in a member array; interfaces through a second base class, dispatched
+// from an `array` typed as that base; an enum member switched with multi-value cases.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Interval: a value class through recursion -----------------------------------------------------
+
+value class Interval {
+    int Lo;
+    int Hi;
+
+    Interval operator = (Interval o) { Lo = o.Lo; Hi = o.Hi; return self; }
+
+    int  Width()             { return Hi - Lo; }
+    bool Holds(int n)        { return n >= Lo && n <= Hi; }
+    void Set(int low, int high) { Lo = low; Hi = high; }
+    void Widen(int n)        { if (n < Lo) Lo = n; if (n > Hi) Hi = n; }
+    void print()             { print($"[{Lo}..{Hi}]"); }
+}
+
+int Bisect(Interval range, int target, int depth, ref Interval found) {
+    if (range.Width() <= 1) {
+        found = range;
+        return depth;
+    }
+    Interval left;
+    Interval right;
+    int mid = (range.Lo + range.Hi) / 2;
+    left.Set(range.Lo, mid);
+    right.Set(mid, range.Hi);
+    int reached;
+    if (target < mid) reached = Bisect(left, target, depth + 1, found);
+    else              reached = Bisect(right, target, depth + 1, found);
+    printLine($"  depth {depth}: {range} split {left} {right}");
+    return reached;
+}
+
+class Node : object {
+    int Value;
+    Node Left;
+    Node Right;
+
+    int Collect(ref Interval acc) {
+        Interval before = acc;
+        acc.Widen(Value);
+        int count = 1;
+        if (Left != null)  count += Left.Collect(acc);
+        if (Right != null) count += Right.Collect(acc);
+        printLine($"  node {Value}: {before} -> {acc}");
+        return count;
+    }
+}
+
+Node leafA  { Value = 2; }
+Node leafB  { Value = 11; }
+Node branch { Value = 7; Left = leafA; }
+Node root   { Value = 5; Left = branch; Right = leafB; }
+
+//-- Gauge: a value class composed of an accessor, a value member and an array ----------------------
+
+value class Clamp {
+    int Raw;
+    int  operator ()        { return Raw; }
+    void operator = (int v) { Raw = v < 0 ? 0 : (v > 9 ? 9 : v); }
+}
+
+value class Gauge {
+    Clamp Level;
+    Interval Seen;
+    array<int> History[6];
+
+    Gauge operator = (Gauge o) {
+        Level = o.Level;
+        Seen = o.Seen;
+        History = o.History;
+        return self;
+    }
+
+    void Push(int v) {
+        Level = v;
+        if (History.length == 0) Seen.Set(Level, Level);
+        else Seen.Widen(Level);
+        History += Level;
+    }
+
+    void print() {
+        print($"level {Level}, seen {Seen}, history");
+        for (int h in History) print($" {h}");
+    }
+}
+
+void Bump(Gauge g) {
+    g.Push(g.Level + 5);
+    printLine($"  inside: {g}");
+}
+
+class Panel : object {
+    Gauge Main;
+    string Title;
+}
+
+Panel panelA { Title = "panel"; }
+
+//-- Lambdas in methods ----------------------------------------------------------------------------
+
+class Task : object {
+    string Title;
+    int Weight;
+}
+
+Task taskA { Title = "a"; Weight = 3; }
+Task taskB { Title = "b"; Weight = 8; }
+Task taskC { Title = "c"; Weight = 5; }
+Task taskD { Title = "d"; Weight = 1; }
+
+class Board : object {
+    string Title;
+    int Threshold;
+    bool Descending;
+    array<Task> Tasks[6];
+
+    void Each(func<void, Task> fn) { for (Task t in Tasks) fn(t); }
+
+    bool IsHeavy(Task t) { return t.Weight > Threshold; }
+
+    int Heavy() {
+        int n = 0;
+        Each((Task t) => { if (t.Weight > Threshold) n++; });
+        return n;
+    }
+
+    int HeavyByMethod() {
+        int n = 0;
+        Each((Task t) => { if (IsHeavy(t)) n++; });
+        return n;
+    }
+
+    int OverMyThreshold(Board other) {
+        int n = 0;
+        other.Each((Task t) => { if (t.Weight > Threshold) n++; });
+        return n;
+    }
+
+    void Order() {
+        Tasks.sort((Task a, Task b) => Descending ? b.Weight - a.Weight : a.Weight - b.Weight);
+    }
+
+    void Show() {
+        print($"{Title}:");
+        Each((Task t) => print($" {t.Title}{t.Weight}"));
+        printLine();
+    }
+}
+
+Board boardA { Title = "A"; Threshold = 4; }
+Board boardB { Title = "B"; Threshold = 2; Descending = true; }
+
+//-- Overload resolution ---------------------------------------------------------------------------
+
+class Shape : object {
+    string Caption;
+    default int Area() { return 0; }
+}
+
+class Circle : Shape {
+    int R;
+    int Area() { return 3 * R * R; }
+}
+
+class Square : Shape {
+    int Side;
+    int Area() { return Side * Side; }
+}
+
+class Labeled : object {
+    default string Label() { return "unlabeled"; }
+}
+
+class Crate : Square, Labeled {
+    string Label() { return "crate"; }
+}
+
+class Score : object {
+    int Points;
+    int operator () { return Points; }
+}
+
+Circle disc  { Caption = "disc"; R = 2; }
+Square tile  { Caption = "tile"; Side = 3; }
+Crate  box   { Caption = "box"; Side = 4; }
+Labeled tag  { }
+Score  tally { Points = 42; }
+
+object describer {
+    void Describe(Shape s)  { printLine($"shape {s.Caption}, area {s.Area()}"); }
+    void Describe(Circle c) { printLine($"circle {c.Caption}, radius {c.R}"); }
+    void Describe(int n)    { printLine($"int {n}"); }
+    void Describe(string s) { printLine($"string {s}"); }
+}
+
+class Fmt {
+    static void Pad(int n, int width = 4, string fill = ".") {
+        int digits = 1;
+        for (int v = n; v >= 10; v = v / 10) digits++;
+        for (int i = digits; i < width; i++) print(fill);
+        printLine(n);
+    }
+    static void Pad(string s, int width = 6) {
+        print($"<{s}");
+        for (int i = 0; i < width; i++) print(" ");
+        printLine(">");
+    }
+}
+
+//-- An exception hierarchy of pooled classes -------------------------------------------------------
+
+class Fault[2] : object {
+    static int Live = 0;
+    int Code;
+    string Text;
+
+    void create(int c, string t) { Code = c; Text = t; Fault.Live++; }
+    void destroy()                     { Fault.Live--; }
+
+    default string Kind() { return "fault"; }
+    void print()          { print($"{Kind()} {Code}: {Text}"); }
+}
+
+class Missing[2] : Fault {
+    string Kind() { return "missing"; }
+}
+
+class Store : object {
+    array<int> Keys[4];
+
+    int Find(int key) {
+        int i = Keys.indexOf(key);
+        if (i < 0) throw new Missing(key, "no such key");
+        return i;
+    }
+
+    int Checked(int key) {
+        if (key < 0) throw new Fault(key, "negative key");
+        try {
+            return Find(key);
+        }
+        catch (Fault f) {
+            if (f.is(Missing) && key > 100) {
+                Fault wrap = new Fault(f.Code / 100, "wrapped");
+                delete f;
+                throw wrap;
+            }
+            throw f;
+        }
+    }
+}
+
+Store storeA { }
+
+//-- A lazily created singleton --------------------------------------------------------------------
+
+class Settings[1] : object {
+    static Settings Current;
+    bool Verbose;
+    int Level = 1;
+
+    static Settings Get() {
+        if (Settings.Current == null) {
+            Settings.Current = new Settings();
+            printLine("  (settings created)");
+        }
+        return Settings.Current;
+    }
+}
+
+//-- A fluent pipeline -----------------------------------------------------------------------------
+
+int Negate(int n) { return -n; }
+
+class Pipeline : object {
+    array<func<int, int>> Steps[4];
+
+    Pipeline Then(func<int, int> f) { Steps += f; return self; }
+
+    int Run(int x) {
+        for (func<int, int> f in Steps) x = f(x);
+        return x;
+    }
+
+    static int Twice(int n) { return n * 2; }
+}
+
+Pipeline pipe { }
+
+//-- Priorities ------------------------------------------------------------------------------------
+
+enum ePriority { low, normal, high, urgent }
+
+class Ticket : object {
+    string Title;
+    ePriority Priority = normal;
+
+    string Lane() {
+        switch (Priority) {
+            case low, normal: return "later";
+            case high, urgent: return "now";
+        }
+        return "?";
+    }
+}
+
+Ticket tk1 { Title = "t1"; Priority = urgent; }
+Ticket tk2 { Title = "t2"; }
+Ticket tk3 { Title = "t3"; Priority = low; }
+
+//-- Commands --------------------------------------------------------------------------------------
+
+verb Recurse {
+    grammar = {.recurse};
+    void handler() {
+        Interval all;
+        all.Set(0, 16);
+        Interval hit;
+        int depth = Bisect(all, 11, 0, hit);
+        printLine($"Found {hit} at depth {depth}; all still {all}.");
+        Interval span;
+        span.Set(root.Value, root.Value);
+        int nodes = root.Collect(span);
+        printLine($"{nodes} nodes span {span}.");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauge};
+    void handler() {
+        Gauge g;
+        g.Push(3);
+        g.Push(12);
+        g.Push(-4);
+        printLine($"g: {g}");
+        Gauge h = g;
+        h.Push(6);
+        printLine($"h: {h}");
+        printLine($"g: {g}");
+        Bump(h);
+        printLine($"h: {h}");
+        panelA.Main = h;
+        panelA.Main.Level = 20;
+        panelA.Main.Push(1);
+        int lv = panelA.Main.Level;
+        printLine($"{panelA.Title}: {panelA.Main}; read {lv}.");
+    }
+}
+
+verb Lambdas {
+    grammar = {.lambdas};
+    void handler() {
+        boardA.Tasks += taskA;
+        boardA.Tasks += taskB;
+        boardA.Tasks += taskC;
+        boardB.Tasks += taskC;
+        boardB.Tasks += taskD;
+        boardB.Tasks += taskA;
+        printLine($"A heavy {boardA.Heavy()} / {boardA.HeavyByMethod()}; B heavy {boardB.Heavy()} / {boardB.HeavyByMethod()}.");
+        boardA.Order();
+        boardB.Order();
+        boardA.Show();
+        boardB.Show();
+        boardB.Threshold = 6;
+        printLine($"B heavy now {boardB.Heavy()}; A still {boardA.Heavy()}.");
+        printLine($"B's tasks over A's bar {boardA.OverMyThreshold(boardB)}; A's over B's {boardB.OverMyThreshold(boardA)}.");
+        try {
+            boardA.Each((Task t) => { if (t.Weight > 6) throw t; });
+            printLine("No heavy task.");
+        }
+        catch (Task found) {
+            printLine($"Thrown from a lambda: {found.Title}.");
+        }
+    }
+}
+
+verb Overloads {
+    grammar = {.overloads};
+    void handler() {
+        describer.Describe(disc);
+        describer.Describe(tile);
+        describer.Describe(box);
+        Shape s = disc;
+        describer.Describe(s);
+        describer.Describe(tally);
+        describer.Describe(disc.Area());
+        describer.Describe("text");
+        Fmt.Pad(7);
+        Fmt.Pad(7, fill: "0");
+        Fmt.Pad(width: 2, n: 42);
+        Fmt.Pad(1234, 6, "-");
+        Fmt.Pad("ab");
+        Fmt.Pad("ab", width: 1);
+    }
+}
+
+verb Faults {
+    grammar = {.faults};
+    void handler() {
+        storeA.Keys += 2;
+        storeA.Keys += 5;
+        storeA.Keys += 7;
+        for (int k in {5, 3, -1, 300, 7}) {
+            try {
+                int at = storeA.Checked(k);
+                print($"{k} at {at}");
+            }
+            catch (Fault f) {
+                printLine($"{k}: {f}");
+                delete f;
+                continue;
+            }
+            printLine(".");
+        }
+        printLine($"Live faults {Fault.Live}.");
+        Missing m1 = new Missing(1, "one");
+        Missing m2 = new Missing(2, "two");
+        Fault f1 = new Fault(3, "three");
+        Fault f2 = new Fault(4, "four");
+        printLine($"Pools: {m1 != null} {m2 != null} {f1 != null} {f2 != null}; live {Fault.Live}.");
+        printLine($"{m2} / {f2}");
+        delete m1;
+        delete m2;
+        delete f1;
+        delete f2;
+        printLine($"Live faults {Fault.Live}.");
+    }
+}
+
+verb Singleton {
+    grammar = {.singleton};
+    void handler() {
+        Settings.Get().Level = 3;
+        Settings.Get().Verbose = true;
+        Settings again = Settings.Get();
+        printLine($"Level {again.Level}, verbose {again.Verbose}, same {again == Settings.Current}.");
+    }
+}
+
+verb Pipes {
+    grammar = {.pipe};
+    void handler() {
+        pipe.Then(Pipeline.Twice).Then((int n) => n + 3).Then(Negate);
+        printLine($"Run 4: {pipe.Run(4)}; run -2: {pipe.Run(-2)}; steps {pipe.Steps.length}.");
+    }
+}
+
+verb Interfaces {
+    grammar = {.interfaces};
+    void handler() {
+        array<Labeled> shelf = {box, tag};
+        for (Labeled l in shelf) print($"{l.Label()} ");
+        printLine();
+        Labeled asLabel = box;
+        Square asSquare = box;
+        printLine($"{asLabel.Label()}, area {asSquare.Area()}, base label {((Labeled)box).Label()}.");
+        printLine($"box is Labeled {box.is(Labeled)}, Shape {box.is(Shape)}, Circle {box.is(Circle)}.");
+        for (Ticket t in {tk1, tk2, tk3}) print($"{t.Title} {t.Lane()}; ");
+        printLine();
+    }
+}
+
+#includeI6 "grammar"
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

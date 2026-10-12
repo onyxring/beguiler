@@ -1,0 +1,412 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fifteenth PunyInform program, built from dense declarations over area triples: a
+// primitive newtype over int with comparison operators and an emitter reaching another through
+// `$i6Expr`; a pooled class of that newtype with static counters; an object whose inline `auto { }`
+// accessor holds a static array of the newtype and writes its host through `outer.`, beside
+// `operator []`/`[]=`, `operator <` and `operator ==` on the object, an emitter method using
+// `$i6Expr`, `new`/`delete` of the pooled class and `perform()` of a verb; a class pair and an object
+// of the subclass with `alias … for`, an `outer.` accessor counting in a static, `operator +`/`-`, a
+// cast dispatch to the base class, a switch with ranges and guards, an `#i6` island and `perform()`;
+// an I6 class bound with `extern class` carrying a conversion `operator ()`, an `operator []`, recursive
+// static methods, a block lambda, `var`, `typeof` over a named union, an `#i6` island and `perform()`;
+// a class with a static array read by a recursive static method, a member array of the newtype
+// filled under a range switch, `operator []` and `operator >`; and verb handlers that combine a block
+// lambda, `var`, an `#i6` island over a lambda local, a switch on `typeof` and `perform()`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+
+#includeI6 "puny"
+
+// --- a primitive newtype over int -------------------------------------------------------------------
+
+primitive class cents {
+    emitter void  operator = (int v)   { $self = $v; }
+    emitter int   operator ()          { ($self) }
+    emitter cents operator + (cents v) { ($self + $v) }
+    emitter cents operator - (cents v) { ($self - $v) }
+    emitter bool  operator < (cents v) { ($self < $v) }
+    emitter bool  operator > (cents v) { ($self > $v) }
+    emitter bool  operator == (cents v) { ($self == $v) }
+    emitter cents half()               { ($self / 2) }
+    emitter cents quarter()            { $i6Expr($self.half().half()) }
+}
+
+// --- a pooled class of the newtype ------------------------------------------------------------------
+
+class Chip[3] : object {
+    cents worth = 0;
+    static int made = 0;
+    static int freed = 0;
+
+    void create(int w) {
+        worth = w;
+        Chip.made++;
+    }
+
+    void destroy() {
+        Chip.freed++;
+    }
+}
+
+int pings = 0;
+union labelOrHook = string | func<void>;
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+// --- cluster 1: a rack of slots, an accessor over a static array ------------------------------------
+
+object rack {
+    array<cents> slots = {0, 0, 0, 0};
+    int fills = 0;
+    int peak = 0;
+    int lastSet = -1;
+
+    auto level = {
+        static array<cents> marks = {25, 50, 100};
+        cents _c = 0;
+        int operator () { return (int)_c; }
+        void operator = (int v) {
+            _c = v;
+            int k = 0;
+            for (int i = 0; i < 3; i++) {
+                if (!(_c < marks[i])) k++;
+            }
+            outer.peak = k;
+            outer.fills++;
+            outer.slots[outer.fills % 4] = _c;
+            if (k >= 3) Ping.perform();
+        }
+    }
+
+    cents operator [] (int i) {
+        return slots[i];
+    }
+
+    cents operator []= (int i, cents v) {
+        slots[i] = v;
+        lastSet = i;
+        return v;
+    }
+
+    bool operator < (cents c) {
+        return total() < c;
+    }
+
+    bool operator == (int n) {
+        return fills == n;
+    }
+
+    emitter cents eighth(cents c) { $i6Expr($c.quarter().half()) }
+
+    cents total() {
+        cents t = 0;
+        for (cents c in slots) t = t + c;
+        return t;
+    }
+
+    void stock(int w) {
+        Chip c = new Chip(w);
+        if (c == null) {
+            printLine("Pool empty.");
+            return;
+        }
+        self[0] = c.worth;
+        if (self[0] > self[1]) self[1] = c.worth.half();
+        printLine($"Stock {(int)self[0]} {(int)self[1]} eighth {(int)eighth(c.worth)}, set {lastSet}.");
+        if (self < 100) Ping.perform();
+        delete c;
+    }
+}
+
+// --- cluster 2: a gauge and meter, an object with aliases and a switch -------------------------------
+
+class Gauge : object {
+    int reads = 0;
+
+    void show(int v) {
+        reads++;
+        printLine($"Gauge {v}.");
+    }
+
+    int scale(int v) {
+        return v * 2;
+    }
+}
+
+class Meter : Gauge {
+    replace void show(int v) {
+        reads++;
+        printLine($"Meter {v}.");
+    }
+}
+
+Meter meterA {
+    "meter A";
+    alias unit for cents;
+    alias pool for Chip;
+    int offset = 3;
+    int sets = 0;
+
+    auto dial = {
+        static int turns = 0;
+        unit _u = 0;
+        static int clamp(int v) {
+            if (v > 90) return 90;
+            return v;
+        }
+        int operator () { return (int)_u; }
+        void operator = (int v) {
+            _u = clamp(v) + outer.offset;
+            turns++;
+            outer.sets = turns;
+            if (turns % 3 == 0) Ping.perform();
+        }
+    }
+
+    int operator + (int n) {
+        return (int)dial + n;
+    }
+
+    unit operator - (unit u) {
+        unit d = dial;
+        return d - u;
+    }
+
+    void report(int v) {
+        ((Gauge)self).show(v);
+        show(v + 1);
+        switch (v) {
+            case 0:       printLine("Zero.");
+            case 1 to 9:  printLine("Low.");
+            case >= 50:   printLine("High.");
+            default:      printLine("Mid.");
+        }
+        int s = 0;
+        #i6 {
+            s = $i6Expr(self.scale(v)) + 1;
+        }
+        printLine($"Scaled {s}, reads {reads}.");
+        pool p = new pool(v);
+        if (p != null) {
+            unit u = p.worth;
+            printLine($"Pool {(int)u} left {(int)(self - u)}.");
+            delete p;
+        }
+        if (v > 20) Ping.perform();
+    }
+}
+
+// --- cluster 3: an I6 class bound with extern ---------------------------------------------------------
+
+#i6 {
+    Class Crate
+        with heft 0,
+             next 0;
+    Crate crateA "crate A"
+        with heft 40,
+             next crateB;
+    Crate crateB "crate B"
+        with heft 25,
+             next crateC;
+    Crate crateC "crate C"
+        with heft 10,
+             next 0;
+}
+
+extern class Crate : object {
+    int heft;
+    object next;
+
+    emitter int operator () { ($self.heft) }
+    emitter int operator [] (int i) { $i6Name(Crate.nth)($self, $i) }
+
+    static int nth(Crate c, int i) {
+        if (c == null) return 0;
+        if (i == 0) return c.heft;
+        return Crate.nth((Crate)c.next, i - 1);
+    }
+
+    static int chainWeight(Crate c) {
+        if (c == null) return 0;
+        return (int)c + Crate.chainWeight((Crate)c.next);
+    }
+
+    static void survey(Crate c, labelOrHook tag) {
+        var w = Crate.chainWeight(c);
+        func<int, int> twice = (int n) => {
+            int r = n * 2;
+            if (r > 100) r = 100;
+            return r;
+        };
+        int d = twice(w);
+        #i6 {
+            print "(i6 ", $i6Expr(c.heft), ")^";
+        }
+        if (typeof(tag) == eType.routine) {
+            func<void> f = (func<void>)tag;
+            f();
+        } else {
+            printLine((string)tag);
+        }
+        printLine($"Chain {(int)w} twice {d} second {c[1]}.");
+        if (d >= 100) Ping.perform();
+    }
+}
+
+extern Crate crateA;
+extern Crate crateB;
+extern Crate crateC;
+
+// --- bins: class statics, member arrays of the newtype, a recursive fit ----------------------------
+
+class Bin : object {
+    static array<int> caps = {5, 10, 20};
+    static int fills = 0;
+    array<cents> held[4];
+
+    cents operator [] (int i) {
+        if (i >= held.length) return 0;
+        return held[i];
+    }
+
+    bool operator > (Bin o) {
+        return count() > o.count();
+    }
+
+    int count() {
+        return held.length;
+    }
+
+    void add(cents c) {
+        switch (held.length) {
+            case 0 to 2:
+                held.append(c);
+                Bin.fills++;
+            default:
+                printLine($"{self} full.");
+        }
+    }
+
+    static int fit(int w, int i) {
+        if (i >= Bin.caps.length) return -1;
+        if (Bin.caps[i] >= w) return i;
+        return Bin.fit(w, i + 1);
+    }
+}
+
+Bin binA {
+    "bin A";
+}
+
+Bin binB {
+    "bin B";
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Ping {
+    meta = true;
+    grammar = {.ping};
+    void handler() {
+        pings++;
+        printLine($"Ping {pings}.");
+    }
+}
+
+verb Racks {
+    meta = true;
+    grammar = {.racks};
+    void handler() {
+        rack.level = 30;
+        rack.level = 120;
+        printLine($"Level {rack.level} peak {rack.peak} fills {rack.fills}.");
+        rack.stock(80);
+        rack.stock(10);
+        printLine($"Total {(int)rack.total()} made {Chip.made} freed {Chip.freed}.");
+        if (rack == 2) printLine("Two fills.");
+        cents q = 200;
+        printLine($"Quarter {(int)q.quarter()}.");
+    }
+}
+
+verb Meters {
+    meta = true;
+    grammar = {.meters};
+    void handler() {
+        meterA.dial = 4;
+        printLine($"Dial {meterA.dial} plus {meterA + 10} sets {meterA.sets}.");
+        meterA.report(0);
+        meterA.report(7);
+        meterA.report(60);
+        meterA.report(30);
+        meterA.dial = 1;
+        meterA.dial = 2;
+        printLine($"Sets {meterA.sets}.");
+    }
+}
+
+verb Crates {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        printLine($"Hefts {(int)crateA} {crateA[0]} {crateA[2]} {crateB[5]}.");
+        Crate.survey(crateA, "tag A");
+        Crate.survey(crateC, () => { printLine("hook C"); });
+    }
+}
+
+verb Bins {
+    meta = true;
+    grammar = {.bins};
+    void handler() {
+        binA.add(5);
+        binA.add(15);
+        binB.add(30);
+        for (int i = 0; i < 4; i++) binB.add(1);
+        var first = binB[0];
+        printLine($"Counts {binA.count()} {binB.count()} first {(int)binA[0]} {(int)first} fills {Bin.fills}.");
+        if (binB > binA) printLine("B holds more.");
+        func<int, int> fitOf = (int w) => {
+            int k = Bin.fit(w, 0);
+            if (k < 0) return 0;
+            return Bin.caps[k];
+        };
+        int t = 0;
+        #i6 {
+            t = $i6Expr(fitOf(12));
+        }
+        printLine($"Fit {fitOf(3)} {fitOf(12)} {t} {fitOf(40)}.");
+        labelOrHook h = "plain";
+        switch (typeof(h)) {
+            case eType.string:  printLine($"String {(string)h}.");
+            case eType.routine: printLine("Routine.");
+            default:            printLine("Unknown.");
+        }
+        if (t >= 20) Ping.perform();
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

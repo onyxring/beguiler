@@ -1,0 +1,313 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit split over types and store parts; a value class with copy, conversion-setter,
+// comparison, + and explicit conversion operators, a method returning a copy of self, += and ++ on
+// it, and a value subclass chaining its copy through a cast; ref and by-copy value parameters; a ref
+// member bound with := to a local and assigned through; a value class written as an inline object;
+// a pooled class with an owned value member, create/destroy, a static count and an instance <=>
+// used by sort() and derived <, and a pooled subclass with its own pool; a primitive class with
+// operator switch, an emitter value and a static <=> used by sort() and by Type::operator; a named
+// union with a static member, a global print overload, a union-typed inline member and a ternary
+// union argument; subscript operators that throw an enum caught by the consumer, and nested
+// try/catch with a rethrow from a listener; a static operator stored as a literal func member of an
+// inline rule object; inline objects with positional and named members in arrays, one extended by
+// the consumer with inject; an array of literal funcs filled with a named function and a lambda;
+// default and named arguments; ?. and ?? on subscript results; an object accessor with outer, also
+// incremented; do/until, ranges, inline lists and children loops.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_5_parts/library_author_idioms_5_store"
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+la5Shelf shelf {
+    "shelf";
+    parent = roomA;
+    name = {.shelf};
+    attributes = {static};
+}
+
+object redBox {
+    "red box";
+    parent = roomA;
+    name = {.red, .box};
+}
+
+object blueBox {
+    "blue box";
+    parent = roomA;
+    name = {.blue, .box};
+}
+
+object gauge {
+    "gauge";
+    parent = roomA;
+    name = {.gauge};
+    int step = 2;
+    auto reading = {
+        int _raw = 0;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v * outer.step; }
+    }
+}
+
+bool consumerNone(la5Shelf s, int n) { return s.filled > n; }
+
+extend la5Rules {
+    inject { "over", 0, consumerNone } first;
+}
+
+int heard = 0;
+void hearCount(int n) { heard = heard + n; }
+
+void showText(la5Text t) {
+    print(t);
+    print($" ({la5Text.isCall(t)})^");
+}
+void sayRoutine() { print("from a routine"); }
+
+verb Amounts {
+    grammar = {.amounts};
+    void handler() {
+        la5Amount a = 5;
+        la5Amount b = a;
+        b.add(3);
+        la5Bump(a, 1);
+        int seen = la5Probe(b);
+        print($"a {(int)a}, b {(int)b}, probe {seen}.^");
+        print($"a<b {a < b}, a==b {a == b}, a!=b {a != b}, cmp {a <=> b}.^");
+        la5Amount c = a.plus(4);
+        print($"c {(int)c}, a {(int)a}.^");
+        a += 2;
+        a++;
+        print($"a after += and ++: {(int)a}.^");
+        la5Amount d = la5Amount{ 12 };
+        print(d); print(" "); print(c); print("^");
+        la5Price p;
+        p.units = 7;
+        p.tax = 1;
+        la5Price q = p;
+        p.tax = 9;
+        print($"q {(int)q} tax {q.tax}, p tax {p.tax}.^");
+    }
+}
+
+verb Tickets {
+    grammar = {.tickets};
+    void handler() {
+        array<la5Ticket> got[4];
+        int n = 0;
+        la5Ticket t;
+        do {
+            n++;
+            t = new la5Ticket(10 - n, n * 5);
+            if (t != null) got += t;
+        } until (t == null);
+        print($"Drawn {got.length}, live {la5Ticket.live}, tries {n}.^");
+        got.sort();
+        for (la5Ticket k in got) { print(k); print("^"); }
+        print($"first<last {got[0] < got[2]}, last<first {got[2] < got[0]}.^");
+        la5Ticket gone = got.pop();
+        delete gone;
+        print($"After delete, live {la5Ticket.live}.^");
+        la5Ticket again = new la5Ticket(1, 2);
+        if (again != null) {
+            print(again);
+            print($", live {la5Ticket.live}.^");
+            delete again;
+        }
+        for (la5Ticket k in got) { la5Ticket victim = k; delete victim; }
+        print($"Cleared, live {la5Ticket.live}.^");
+    }
+}
+
+verb Stubs {
+    grammar = {.stubs};
+    void handler() {
+        la5Stub s1 = new la5Stub(50, 1);
+        la5Stub s2 = new la5Stub(51, 2);
+        la5Stub s3 = new la5Stub(52, 3);
+        la5Ticket t1 = new la5Ticket(60, 4);
+        print($"{s1} {s2} {s3 == null} {t1}; live {la5Stub.live}.^");
+        print($"stub is ticket {s1.is(la5Ticket)}, ticket is stub {t1.is(la5Stub)}, s1<t1 {s1 < t1}.^");
+        delete s1;
+        delete s2;
+        delete t1;
+        print($"live {la5Ticket.live}.^");
+    }
+}
+
+verb Shelve {
+    grammar = {.shelve, NOUN, .at, NUMBER};
+    void handler() {
+        int at = (int)second;
+        try {
+            shelf[at] = noun;
+            print($"Shelved at {at}; filled {shelf.filled}.^");
+        } catch (eLa5Fault f) {
+            print($"Fault: {la5FaultName(f)}.^");
+        }
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        for (int i in 0 to 3) {
+            object o = shelf[i];
+            object where = o?.parent ?? roomA;
+            print($"{i}: ");
+            if (o?) print(o); else print("-");
+            print(" in "); print(where); print(".^");
+        }
+        try {
+            object far = shelf[9];
+            print(far);
+        } catch (eLa5Fault f) {
+            print($"Fault: {la5FaultName(f)}.^");
+        }
+        print($"Count is two: {shelf == 2}, not two: {shelf != 2}.^");
+    }
+}
+
+verb Rules {
+    grammar = {.rules};
+    void handler() {
+        int p = la5Run(shelf, verbose: true);
+        print($"Passed {p}.^");
+        p = la5Run(shelf, 1);
+        print($"Passed {p} with bias.^");
+        p = la5Run(verbose: true, s: shelf, bias: -1);
+        print($"Heard {heard}.^");
+    }
+}
+
+verb Hear {
+    grammar = {.hear};
+    void handler() {
+        print($"{la5Listen(hearCount)} ");
+        print($"{la5Listen((int n) => { print($"<{n}>"); })} ");
+        print($"{la5Listen(hearCount)} ");
+        print($"{la5Listen(hearCount)}^");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    void handler() {
+        la5Amount local = 40;
+        print($"Fee {(int)shelf.fee}, unbound {!shelf.linked}.^");
+        shelf.linked := local;
+        shelf.linked.add(2);
+        shelf.linked = shelf.fee;
+        print($"Local {(int)local}, unbound {!shelf.linked}.^");
+        shelf.fee.add(1);
+        print($"Fee {(int)shelf.fee}, local {(int)local}.^");
+        shelf[0]?.give(general);
+        shelf[3]?.give(general);
+        for (int i in 0 to 3) print($"{shelf[i]?.has(general)} ");
+        print("^");
+    }
+}
+
+verb Abort {
+    grammar = {.abort};
+    void handler() {
+        la5Listeners.clear();
+        try {
+            try {
+                la5Listen((int n) => { if (n > 0) throw eLa5Fault.la5Empty; });
+                la5Run(shelf);
+                print("Not reached.^");
+            } catch (eLa5Fault f) {
+                print($"Inner {la5FaultName(f)}.^");
+                throw eLa5Fault.la5Full;
+            }
+        } catch (eLa5Fault g) {
+            print($"Outer {la5FaultName(g)}.^");
+        }
+    }
+}
+
+verb Bands {
+    grammar = {.bands};
+    void handler() {
+        for (int v in {3, 12, 27, 45}) {
+            la5Band b = v;
+            print($"{(int)b} small {b.small}: ");
+            switch (b) {
+                case 5:  print("ones");
+                case 15: print("teens");
+                case 20: print("twenties");
+                default: print("other");
+            }
+            print("^");
+        }
+        array<la5Band> list = {31, 18, 22, 7};
+        list.sort();
+        for (la5Band b in list) print($"{(int)b} ");
+        list.sort((la5Band x, la5Band y) => (int)y - (int)x);
+        for (la5Band b in list) print($"{(int)b} ");
+        func<int, la5Band, la5Band> order = la5Band::operator <=>;
+        list.sort(order);
+        print($"{(int)list[0]} {(int)list[3]}^");
+    }
+}
+
+verb Texts {
+    grammar = {.texts};
+    void handler() {
+        showText("plain words");
+        showText(sayRoutine);
+        la5Text t = => print("from a lambda");
+        showText(t);
+        la5Text u = shelf.filled > 1 ? "many" : sayRoutine;
+        showText(u);
+        showText(shelf.filled == 0 ? "none" : sayRoutine);
+        for (auto n in la5Notes) {
+            print(n.body);
+            print($" weighs {n.weight}^");
+        }
+    }
+}
+
+verb ReadGauge {
+    grammar = {.gauge};
+    void handler() {
+        gauge.reading = 4;
+        int r = gauge.reading;
+        gauge.step = 5;
+        gauge.reading = r;
+        print($"Reading {r}, then {gauge.reading}.^");
+        gauge.reading++;
+        gauge.reading += 1;
+        print($"Bumped {gauge.reading}; slot one {shelf[1]}.^");
+        int held = 0;
+        for (object o in roomA.children) if (o != gauge) held++;
+        print($"Others here {held}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

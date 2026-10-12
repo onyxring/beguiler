@@ -1,0 +1,325 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: eight areas meeting in one declaration, written functionally. An emitter class with an
+// init/deinit lifecycle and emitter `+=`, `++` and `[]`; an extern I6 class (defined in an I6 island)
+// with emitter `+=`, `++`, `[]` and `[]=`, whose static methods hold emitter-class locals, <linq>
+// chains (filter/count, orderBy/first/last, any, map), float ratios, try/catch around a throw over
+// its own subscripts, and in-routine `#i6` islands reading Beguile locals through `$i6Expr`; an
+// `extend extern class` adding `-=` and a static drain of the same shape; a reference class with
+// non-emitter `+=`, `-=`, `++`, `[]` and `[]=` that throw, called from methods that catch inside
+// <linq> loops and print from `#i6` islands, with a float member; free functions folding arrays
+// into floats under try/catch, with a `#bgl` island inside an `#i6` island.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Digits ----------------------------------------------------------------------------------
+int digitOf(int v, int place) {
+    int p = 1;
+    while (place > 0) { p = p * 10; place--; }
+    return (v / p) % 10;
+}
+
+//-- An emitter class with a lifecycle --------------------------------------------------------
+int ticksLive = 0;
+int ticksMade = 0;
+
+emitter class Tick {
+    emitter void init() { $self = 0; ticksLive++; ticksMade++; }
+    emitter void deinit() { ticksLive--; }
+    emitter Tick operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter Tick operator += (int v) { $self = $self + $v; }
+    emitter Tick operator ++ () { $self = $self + 1; }
+    emitter int operator [] (int place) { (digitOf($val, $place)) }
+}
+
+//-- An I6 class -----------------------------------------------------------------------------
+#i6 {
+    Class GaugeClass with level 0, misses 0, slots 0 0 0 0;
+    GaugeClass gaugeA with level 2, slots 1 2 3 4;
+    GaugeClass gaugeB with level 5, slots 9 8 7 6;
+}
+
+extern class GaugeClass : object {
+    int level;
+    int misses;
+    emitter GaugeClass operator += (int v) { $self.level = $self.level + $v; }
+    emitter GaugeClass operator ++ () { $self.level = $self.level + 1; }
+    emitter int operator [] (int i) { ($val.&slots-->$i) }
+    emitter void operator []= (int i, int v) { $val.&slots-->$i = $v; }
+
+    static int settle(GaugeClass g, int step) {
+        Tick moves;
+        array<int> raw[4];
+        for (int i in 0 to 3) raw.append(g[i]);
+        int hits = raw.filter((int x) => x > step).count();
+        float share = (float)hits / raw.length;
+        try {
+            for (int i in 0 to 3) {
+                if (g[i] + step > 9) throw i;
+                g[i] = g[i] + step;
+                moves++;
+            }
+        } catch (int at) {
+            g.misses++;
+            #i6 print "(stop ", $i6Expr(at), ") ";
+        }
+        g += hits;
+        g++;
+        print($"share {share}, ");
+        int m = moves;
+        return m;
+    }
+
+    static float spread(GaugeClass g) {
+        array<int> vals[4];
+        for (int i in 0 to 3) vals.append(g[i]);
+        array<int> sorted = vals.orderBy();
+        float lo = sorted.first();
+        float hi = sorted.last();
+        if (hi == 0.0) throw -1;
+        Tick reads;
+        reads += vals.length;
+        #i6 print "(reads ", $i6Expr(reads[0]), ") ";
+        return (hi - lo) / hi;
+    }
+}
+
+extern GaugeClass gaugeA;
+extern GaugeClass gaugeB;
+
+extend extern class GaugeClass {
+    emitter GaugeClass operator -= (int v) { $self.level = $self.level - $v; }
+
+    static int drain(GaugeClass g, int n) {
+        Tick taken;
+        float before = g.level;
+        try {
+            while (taken < n) {
+                if (g.level <= 0) throw taken;
+                g -= 1;
+                taken++;
+            }
+        } catch (int got) {
+            #i6 print "(dry after ", $i6Expr(got), ") ";
+        }
+        array<int> slotsNow[4];
+        for (int i in 0 to 3) slotsNow.append(g[i]);
+        if (slotsNow.any((int s) => s >= 9)) g[0] = 0;
+        float left = 1.0;
+        if (before > 0.0) left = g.level / before;
+        print($"left {left}, ");
+        int t = taken;
+        return t;
+    }
+}
+
+//-- A reference class with throwing operators ------------------------------------------------
+class Meter : object {
+    array<int> marks[5];
+    float gain = 1.5;
+    int faults = 0;
+
+    Meter operator += (int v) {
+        if (marks.length >= marks.size) throw marks.length;
+        marks.append(v);
+        return self;
+    }
+    Meter operator -= (int v) {
+        int at = marks.indexOf(v);
+        if (at < 0) throw -1;
+        marks.remove(at);
+        return self;
+    }
+    Meter operator ++ () {
+        if (marks.length == 0) return self;
+        for (int i in 0 to marks.length - 1) marks[i] = marks[i] + 1;
+        return self;
+    }
+    int operator [] (int i) {
+        if (i < 0 || i >= marks.length) throw 100 + i;
+        return marks[i];
+    }
+    void operator []= (int i, int v) {
+        if (i < 0 || i >= marks.size) throw 200 + i;
+        if (marks.length <= i) marks.length = i + 1;
+        marks[i] = v;
+    }
+
+    int load(array<int> vs) {
+        Tick kept;
+        try {
+            for (int v in vs.filter((int p) => p > 0)) {
+                self += v;
+                kept++;
+            }
+        } catch (int full) {
+            faults++;
+            #i6 print "(full at ", $i6Expr(full), ") ";
+        }
+        int k = kept;
+        return k;
+    }
+
+    int peek(int i) {
+        try {
+            return self[i];
+        } catch (int e) {
+            faults++;
+            #i6 print "(bad ", $i6Expr(e), ") ";
+        }
+        return -1;
+    }
+
+    int put(int i, int v) {
+        try {
+            self[i] = v;
+        } catch (int e) {
+            faults++;
+            #i6 { print "(no slot ", $i6Expr(e - 200), ") "; }
+            return 0;
+        }
+        return 1;
+    }
+
+    float scaled() {
+        float t = 0.0;
+        for (int x in marks.filter((int p) => p % 2 == 1)) t += x * gain;
+        return t;
+    }
+
+    int drop(int v) {
+        try {
+            self -= v;
+        } catch (int e) {
+            faults++;
+            return 0;
+        }
+        return 1;
+    }
+
+    int bumpAll(int times) {
+        Tick done;
+        while (done < times) {
+            self++;
+            done += 1;
+        }
+        float avg = 0.0;
+        if (marks.length > 0) avg = (float)marks.filter((int p) => p > 5).count() / marks.length;
+        #i6 print "(avg ", $i6Expr((int)(avg * 10)), ") ";
+        int d = done;
+        return d;
+    }
+}
+
+Meter meterA { "meter"; }
+
+//-- Free functions ---------------------------------------------------------------------------
+float blend(array<int> xs, float w) {
+    Tick seen;
+    float acc = 0.0;
+    try {
+        for (int x in xs.filter((int v) => v != 0)) {
+            if (x < 0) throw x;
+            acc += x * w;
+            seen++;
+        }
+    } catch (int bad) {
+        #i6 print "(negative ", $i6Expr(-bad), ") ";
+    }
+    int s = seen;
+    #i6 {
+        print "seen ", $i6Expr(s), " ";
+        #bgl { if (s > 2) print("many "); }
+    }
+    return acc;
+}
+
+int ticksIn(int n) {
+    Tick a;
+    a = n;
+    a += 5;
+    a++;
+    return a[1] * 10 + a[0];
+}
+
+array<int> mixA = {3, 0, 4, 5};
+array<int> mixB = {2, 0, -6, 7};
+
+//-- Things -----------------------------------------------------------------------------------
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+//-- Verbs ------------------------------------------------------------------------------------
+void showGauge(GaugeClass g) {
+    print($"slots {g[0]} {g[1]} {g[2]} {g[3]}, level {g.level}, misses {g.misses}^");
+}
+
+verb GaugeVerb {
+    grammar = {{.gauge, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        GaugeClass g = gaugeA;
+        if (n > 4) g = gaugeB;
+        showGauge(g);
+        print($"moves {GaugeClass.settle(g, n % 5)}^");
+        showGauge(g);
+        try {
+            print($"spread {GaugeClass.spread(g)}^");
+        } catch (int e) {
+            print($"no spread {e}^");
+        }
+    }
+}
+
+verb DrainVerb {
+    grammar = {{.drain, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"drained {GaugeClass.drain(gaugeA, n)}^");
+        showGauge(gaugeA);
+    }
+}
+
+verb MeterVerb {
+    grammar = {{.meter, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> feed = {n, 0, n + 1, -2, n + 2, 4};
+        print($"kept {meterA.load(feed)}, length {meterA.marks.length}, faults {meterA.faults}^");
+        print($"peek {meterA.peek(1)} {meterA.peek(7)}, put {meterA.put(2, 9)} {meterA.put(6, 1)}^");
+        print($"scaled {meterA.scaled()}, drop {meterA.drop(9)} {meterA.drop(50)}, faults {meterA.faults}^");
+        print($"bumped {meterA.bumpAll(n % 3)}, first {meterA[0]}, length {meterA.marks.length}^");
+        meterA.marks.clear();
+    }
+}
+
+verb BlendVerb {
+    grammar = {{.blend, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"A {blend(mixA, n)}^");
+        print($"B {blend(mixB, 0.5)}^");
+        print($"ticks {ticksIn(n)}, live {ticksLive}, made {ticksMade}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

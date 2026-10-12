@@ -1,0 +1,64 @@
+Room A
+Room A. Room B is north.
+You can see a bell, a lever and a rod here.
+> emit
+6 12 8 <3><the lever><txt><7><the rod>|[z] 2 2 2 5
+> target
+((5 51 -51))*
+> levels
+6 11 16 12 high-top 1
+> flags
+late flag seen; band 3 of 3; scratch gone; z5; boot 42; Ready.
+> island
+21 0
+> spaces
+the bell 0 the gong 10
+> ring bell
+The bell rings: 2, loudness 20.
+> ring rod
+It makes no sound.
+> strike bell
+Struck: 102.
+> ring bell
+The bell rings: 104, loudness 1040.
+> strike gong
+You can't see any such thing.
+> spaces
+the bell 0 the gong 10
+> wave
+You wave both hands.
+> prod rod
+You prod the rod. Nothing happens.
+> push lever
+It will not move yet.
+> poke lever
+You prod the lever.
+> take rod
+Taken.
+> prod lever with rod
+You prod the lever with the rod.
+> island
+21 4
+> push lever
+The lever is fixed in place.
+> push lever over
+The lever tips over after 2 prods.
+> push rod over
+The rod stays upright.
+> tip lever
+The lever tips over after 2 prods.
+(doing tip: true, doing topple: false)
+> n
+Room B
+Room B. Room A is south.
+You can see a gong and a stone here.
+> prod stone
+The stone is too hard to prod.
+> poke gong
+You prod the gong. Nothing happens.
+> strike gong
+Struck: 100.
+> s
+Room A
+Room A. Room B is north.
+You can see a bell and a lever here.

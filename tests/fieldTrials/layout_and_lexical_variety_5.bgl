@@ -1,0 +1,446 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits applied to the declaration forms the first four trials left
+// alone. Operator declarations with no spaces, with spaces inside the symbol's parentheses, split over
+// lines and in mixed case (`OPERATOR`, `prefix++`, `[]=`, `<=>`, `!`, `()`); a value class with a copy
+// operator, `ref` locals bound with `:=` written tight and loose, `ref` and copied parameters; a named
+// accessor class driven by `+=` and `++`, and an inline `auto` accessor broken across lines that reaches
+// its host through `OUTER`; `hide` written with spaces around `.` and inside its parentheses; global
+// emitters, emitter values (global, on an object, `##if`-gated with indented directives) and an emitter
+// namespace, with defaulted and named parameters and nested `$i6Expr`; an enum emitter value added by
+// `extend enum`; an emitter class with `init`/`deinit` traced through early returns from loops and
+// `switch`, and with `?` and `switch` operators; namespaces built from objects (`alias … for`,
+// `alias =`, `auto =`) and an emitter class with an alias member, imported with `#USING`; `::` against
+// a member of the same name; named and defaulted arguments in scrambled order and split across lines,
+// including inside interpolation; global overloads chosen by a named argument; a `replace` chain; a
+// `static` `<=>` used as an operator, as a derived `<`, through `Type::operator` and as a sort key;
+// a union array and a named union discriminated with `typeof` and an emitter member; `#i6` islands,
+// single-line and block, holding I6 comments with braces and apostrophes, `$i6Expr`, `$i6Name` of `asI6`
+// names, and a nested `#bgl` whose comments hold braces.
+
+#beguilerSettings { target = z5 ; includePaths = "../../../inform6/stdlib" ; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+extend class object { string description; }
+
+Object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
+
+//-- A value class whose operators are declared in every layout ------------------------------------
+
+VALUE CLASS Vec
+{
+    int x; int y;
+
+    Vec operator=(Vec o){x=o.x;y=o.y;return self;}
+    Vec   OPERATOR   +=   (   Vec   o   )   {   x += o.x;   y += o.y;   return self;   }
+    Vec operator*=(int k){x*=k;y*=k;return self;}
+    bool operator==(Vec o){return x==o.x&&y==o.y;}
+    bool operator
+        !=
+        (Vec o)
+    {
+        return x != o.x || y != o.y;
+    }
+    int operator <=> ( Vec o )      // ordered by squared length
+    {
+        return (x * x + y * y) - (o.x * o.x + o.y * o.y);
+    }
+    Vec operator ++ () { x++; return self; }
+    Vec operator prefix++ () { y++; return self; }
+    bool operator!(){return x==0&&y==0;}
+    int operator[](int i){if(i==0)return x;return y;}
+    int operator []= ( int i , int v ) { if (i == 0) x = v; else y = v; return v; }
+    void show() { print($"({x},{y})"); }
+}
+
+Vec va;
+Vec vb;
+
+//-- Accessors: a named one and an inline one -------------------------------------------------------
+
+value class Clamp {
+    int _v;
+    int operator () { return _v; }
+    void operator = (int n) { if (n > 10) _v = 10; else if (n < 0) _v = 0; else _v = n; }
+}
+
+class Dial : object { Clamp level; }
+
+Dial dialA { "dial"; parent = roomA; name = {.dial}; description = "A dial."; }
+
+object meterA
+{
+    "meter"; parent = roomA; name = {.meter}; description = "A meter.";
+    int scale = 3;
+    emitter int bias { ($self.scale + 35) }
+    auto
+        reading
+            =
+    {
+        int _raw;
+        int  operator ( )           { return _raw; }
+        void operator = ( int v )   { _raw = v * OUTER.Scale; }
+    };
+}
+
+//-- Emitters ------------------------------------------------------------------------------------------
+
+emitter int twice(int v){($v*2)}
+emitter int quad(int v)
+{
+    $i6Expr( twice( twice( $v ) ) )
+}
+emitter int pad(int v, int w = 3) { ($v + $w) }
+Emitter VOID newline()
+{
+##if TARGET_GLULX
+    glk_put_char(10);
+##else
+    new_line;
+##endif
+}
+emitter int wordBytes { WORDSIZE }
+emitter fmt
+{
+    void open()  { print "<"; }
+    void close() { print ">"; }
+    int  width   { 4 }
+}
+
+enum eSide { port, starboard = 5 }
+extend enum eSide
+{
+    emitter int flip { (6 - $self) }
+}
+
+//-- Namespaces ----------------------------------------------------------------------------------------
+
+enum eShade { pale, dark }
+
+object _kit
+{
+    alias Shade  for eShade;
+    alias Vector for Vec;
+}
+
+superposed object _tools { int triple(int n) { return n * 3; } }
+
+object lib { }
+extend lib { auto kit = _kit; }
+extend lib { alias tools = _tools; }
+
+emitter class mathNs { int sq(int n) { ($n * $n) } int seven { 7 } }
+emitter class rootNs { }
+extend class rootNs { mathNs math; }
+
+#USING rootNs
+#using lib.kit
+
+int count = 100;
+
+object tally
+{
+    "tally";
+    int count = 1;
+    void bump() { self.count++; ::count++; ::count += 10; }
+}
+
+//-- Functions: defaults, named arguments, overloads, a replace chain ---------------------------------
+
+int mix(int a, int b = 10, int c = 100) { return a + b * 2 + c * 3; }
+
+string kind(int n)    { return "int"; }
+string kind(string s) { return "string"; }
+string kind(Vec v)    { return "vec"; }
+
+int step(int n) { return n; }
+replace int step(int n) { return replaced(n) + 100; }
+REPLACE INT step ( int n ) { return replaced( n ) + 200; }
+
+class Money : object
+{
+    int cents;
+    static int operator <=> (Money a, Money b) { return a.cents - b.cents; }
+    static int inc(int n) asI6 _moneyInc { return n + 1; }
+}
+
+Money penny  { cents = 1; }
+Money dime   { cents = 10; }
+
+union textOrCall = string | func<void>;
+extend textOrCall { emitter bool isCall { (metaclass($self) == Routine) } }
+
+void sayBeta() { print("beta"); }
+void sayDelta() { print("delta"); }
+
+array< string | func<void> > items = { "alpha", sayBeta, "gamma", sayDelta };
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Verbs ---------------------------------------------------------------------------------------------
+
+verb Ops
+{
+    meta = true; grammar = {.ops};
+    void handler()
+    {
+        va.x = 1; va.y = 2;
+        vb = va;
+        vb.x = 5;
+        va.show(); vb.show(); newline();
+        va += vb;
+        va.show(); newline();
+        va *= 2;
+        va.show(); newline();
+        printLine($"{va == vb} {va != vb} {va <=> vb} {vb < va} {va < vb} {va >= vb}");
+        va++; ++va;
+        va.show(); newline();
+        printLine($"{va[0]} {va[1]}");
+        va[1] = 40; va [ 0 ] = -1;
+        va.show(); newline();
+        Vec z;
+        printLine($"{!z} {!va}");
+        ref Vec r:=va;
+        REF Vec r2
+            :=
+            vb;
+        r.x = 0; r2 = r;
+        va.show(); vb.show(); newline();
+        r2 := va;
+        r2.y = 7;
+        va.show(); vb.show(); newline();
+    }
+}
+
+verb Access
+{
+    meta = true; grammar = {.access};
+    void handler()
+    {
+        dialA.level = 4;
+        int a = dialA.level;
+        dialA.level = 99;
+        int b = dialA.level;
+        dialA.level = -5;
+        printLine($"{a} {b} {dialA.level}");
+        meterA.reading = 4;
+        int m = meterA.reading;
+        meterA.scale = 10;
+        meterA.reading = m;
+        printLine($"{m} {meterA.reading}");
+    }
+}
+
+verb Emit
+{
+    meta = true; grammar = {.emit};
+    void handler()
+    {
+        printLine($"{twice(3)} {quad(3)} {quad(twice(1))} {wordBytes}");
+        print("a"); newline(); print("b"); newline();
+        fmt.open(); print("in"); fmt.close(); newline();
+        printLine($"{fmt.width} {port.flip} {starboard.flip}");
+        eSide s = eSide.starboard;
+        printLine($"{s.flip} {(int)s}");
+    }
+}
+
+verb Names
+{
+    meta = true; grammar = {.names};
+    void handler()
+    {
+        lib.kit.Shade d = lib.kit.Shade.dark;
+        Shade p = pale;
+        printLine($"{(int)d} {(int)p} {d == eShade.dark}");
+        lib.kit.Vector w;
+        w.x = 3; w.y = 4;
+        Vector w2 = w;
+        w2.show(); newline();
+        printLine($"{lib.tools.triple(4)} {math.sq(5)} {rootNs.math.sq(2)} {math.seven}");
+        int count = 5;
+        tally.bump();
+        printLine($"{count} {tally.count} {::count}");
+    }
+}
+
+verb Calls
+{
+    meta = true; grammar = {.calls};
+    void handler()
+    {
+        printLine($"{mix(1)} {mix(1, 2)} {mix(1, 2, 3)}");
+        printLine($"{mix(c: 0, a: 1)} {mix(1, c:
+            2)} {mix(
+                b : 1 ,
+                a : 0
+            )}");
+        Vec v; v.x = 1;
+        printLine($"{kind(3)} {kind("s")} {kind(v)}");
+        printLine($"{step(5)}");
+        printLine($"{penny <=> dime} {dime <=> penny} {penny < dime} {dime < penny}");
+        func<int, Money, Money> cmp = Money::operator <=>;
+        printLine($"{cmp(dime, dime)} {cmp(penny, dime) < 0}");
+        printLine($"{Money.inc(41)}");
+    }
+}
+
+verb Unions
+{
+    meta = true; grammar = {.unions};
+    void handler()
+    {
+        for (string | func<void> it in items)
+        {
+            switch (typeof(it))
+            {
+                case eType.string:  print((string)it);
+                case eType.routine: ((func<void>)it)();
+                default:            print("?");
+            }
+            print(" ");
+        }
+        newline();
+        string|func<void> one = items[1];
+        printLine($"{one == sayBeta} {items[0] == items[2]} {items.length}");
+        textOrCall t0 = items[0];
+        textOrCall t1 = one;
+        printLine($"{t0.isCall} {t1.isCall}");
+    }
+}
+
+verb Islands
+{
+    meta = true; grammar = {.islands};
+    void handler()
+    {
+        int n = 5;
+        #i6 n = $i6Expr(twice(n));
+        printLine($"{n}");
+        #i6 {
+            ! an I6 comment: it's got a } and a { in it
+            n = $i6Name(Money.inc)(n);
+            if (n > $ff) n = 0;
+            #bgl {
+                if (n == 11) print("eleven ");   // don't stop at this } brace
+                n += 2;                          /* nor this { one */
+                printLine($"{n} {'}' == '}'}");
+            }
+        }
+        printLine($"{n}");
+        #i6 print (string) $i6Expr(kind(")")), "^";
+    }
+}
+
+//-- Second pass: the same declarations met from unusual positions ------------------------------------
+
+emitter int machineCode
+{
+    ##if TARGET_ZCODE
+        1
+    ##else
+        2
+    ##endif
+}
+
+object hookA asI6 hookObj { "hook"; }
+
+void zeroRef(ref Vec v) { v.x = 0; }
+void bumpCopy(Vec v)    { v.x++; v.show(); }
+int  sumVec(Vec v, int extra = 0) { return v.x + v.y + extra; }
+
+class Sized : object
+{
+    int n;
+    int operator () { return n * 100; }
+}
+
+Sized sizedA { n = 2; }
+
+emitter class Tag
+{
+    emitter void init()   { $self = 1; print "+"; }
+    emitter void deinit() { print "-"; }
+    emitter bool operator ? () { ($self ~= 0) }
+    emitter bool operator switch (int v) { ($self == $v) }
+}
+
+int scan(int n)
+{
+    Tag a;
+    for (int i = 0; i < n; i++)
+    {
+        Tag b;
+        if (i == 2) { Tag c; return i; }
+        print(i);
+    }
+    switch (n) { case 0: Tag d; print("z"); return -1; }
+    return 99;
+}
+
+class FixedDial : Dial
+{
+    hide   level . operator   = ;
+    HIDE setLevel ( int ) ;
+}
+extend class Dial { void setLevel(int n) { level = n; } }
+
+FixedDial fixedA { "fixed dial"; parent = roomA; name = {.fixed}; description = "A fixed dial."; }
+
+array<Money> purse = { dime, penny };
+
+verb More
+{
+    meta = true; grammar = {.more};
+    void handler()
+    {
+        dialA.level = 3;
+        dialA.level += 4;
+        printLine($"{dialA.level}");
+        dialA.level += 9;
+        printLine($"{dialA.level}");
+        dialA.level++;
+        printLine($"{dialA.level} {twice(dialA.level)} {mix(c: dialA.level, a: 0, b: 0)}");
+        printLine($"{quad(v: 2)} {Money.inc(n: 9)} {sumVec(extra: 1, v: va)} {kind(s: "x")} {kind(n: 1)}");
+        printLine($"{machineCode} {machineCode + 10} {pad(2)} {pad(w: 1, v: 2)} {meterA.bias}");
+        va.x = 4; va.y = 5;
+        bumpCopy(va); va.show(); newline();
+        zeroRef(va); va.show(); newline();
+        printLine($"{va<=>vb} {va[ 1 ]+va[0]} {(va==vb)?1:0}");
+        int sz = sizedA;
+        printLine($"{sz} {(int)sizedA + 1}");
+        #i6 print (name) $i6Name(hookA), "^";
+        #i6 print $i6Expr(mix(c: 1, a: 2)), "^";
+        string | func<void> u = sz > 0 ? "text" : sayBeta;
+        printLine($"{typeof(u) == eType.string} {items.indexOf(sayDelta)}");
+    }
+}
+
+verb Scopes
+{
+    meta = true; grammar = {.scopes};
+    void handler()
+    {
+        print(scan(5)); newline();
+        print(scan(1)); newline();
+        print(scan(0)); newline();
+        Tag t;
+        switch (t) { case 1: print("one"); default: print("other"); }
+        printLine($" {t?} {sizedA?}");
+        ((Dial)fixedA).level = 5;
+        ((Dial)fixedA).setLevel(7);
+        printLine($"{fixedA.level}");
+        purse.sort(Money::operator <=>);
+        for (Money m in purse) print($"[{m.cents}]");
+        purse.sort((Money a, Money b) => b <=> a);
+        for (Money m in purse) print($"[{m.cents}]");
+        newline();
+    }
+}
+
+#includeI6 "grammar"

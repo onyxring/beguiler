@@ -1,0 +1,471 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: lamps and sparks drawn into a text grid. A primitive class shade over int (a clamped
+// 0..9 level) with emitter ++, --, +=, -=, postfix ?, operator switch by band, and an emitter that
+// runs a func<> value over the level, used on locals, members, array<shade> elements and in <linq>
+// lambdas; an emitter class boostScope with init/deinit holding its own word, emitter += and ++, opened
+// in methods, in a lambda body and in a loop left by continue and break; a pooled class spark[4] with a
+// shade member, a literal func<> tone curve, a static array<spark> of live sparks kept by
+// create()/destroy(), operator += and ++ as methods, and static routines taking func<> values into
+// <linq> chains (filter, map, orderBy with a comparator, any, all, first, count) and drawing into the
+// grid; an I6-declared Lamp class bound as an extern class with emitter ++, += and operator switch
+// (a variable case value, a switch inside a <linq> predicate), whose static routines filter an
+// array<Lamp> by a func<> value, open a boostScope, lift a shade and allocate sparks with new; extern
+// I6 objects and an extern I6 routine.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+#i6 {
+    Class Lamp with lamp_level 0, lamp_lane 0;
+    Lamp lampRed "red lamp" with lamp_level 3, lamp_lane 0;
+    Lamp lampTeal "teal lamp" with lamp_level 0, lamp_lane 1;
+    Lamp lampGrey "grey lamp" with lamp_level 7, lamp_lane 2;
+    [ LampTotal o n; objectloop (o ofclass Lamp) n = n + o.lamp_level; return n; ];
+}
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+extern int LampTotal();
+
+textGridWindow grid = null;
+
+array<string> laneNames = { "red", "teal", "grey", "spare" };
+
+// ---- shade ---------------------------------------------------------------------------------------
+
+int capShade(int v) {
+    if (v < 0) return 0;
+    if (v > 9) return 9;
+    return v;
+}
+
+primitive class shade {
+    emitter void operator = (int v)          { $target = $v; }
+    emitter void operator = (shade s)        { $target = $s; }
+    emitter int operator ()                  { ($val) }
+    emitter void operator ++ ()              { $val = capShade($val + 1); }
+    emitter void operator -- ()              { $val = capShade($val - 1); }
+    emitter void operator += (int n)         { $val = capShade($val + $n); }
+    emitter void operator -= (int n)         { $val = capShade($val - $n); }
+    emitter eBool operator ? ()              { ($val > 0) }
+    emitter eBool operator switch (int band) { ($val / 4 == $band) }
+    emitter int through(func<int, int> f)    { capShade($f($val)) }
+}
+
+// ---- boost scopes --------------------------------------------------------------------------------
+
+int glowBoost = 0;
+int boostOpens = 0;
+int boostPeak = 0;
+
+emitter class boostScope {
+    emitter void init()              { $self = 1; glowBoost++; boostOpens++; if (glowBoost > boostPeak) boostPeak = glowBoost; }
+    emitter void deinit()            { glowBoost = glowBoost - $self; }
+    emitter void operator += (int n) { $self = $self + $n; glowBoost = glowBoost + $n; if (glowBoost > boostPeak) boostPeak = glowBoost; }
+    emitter void operator ++ ()      { $self++; glowBoost++; if (glowBoost > boostPeak) boostPeak = glowBoost; }
+    emitter int operator ()          { ($self) }
+}
+
+// ---- sparks --------------------------------------------------------------------------------------
+
+class spark[4] : object {
+    string label = "spark";
+    shade tone = 0;
+    int lane = 0;
+    int bumps = 0;
+    literal func<int, int> curve = null;
+    static array<spark> live[4];
+    static array<shade> snapshot[4];
+    static int made = 0;
+
+    void create(string l, int ln, shade t) {
+        label = l;
+        lane = ln;
+        tone = t;
+        made++;
+        spark.live.append(self);
+    }
+
+    void destroy() {
+        if (spark.live.contains(self)) spark.live.removeValue(self);
+    }
+
+    spark operator += (int n) {
+        boostScope b;
+        b += n;
+        tone += n;
+        bumps++;
+        return self;
+    }
+
+    spark operator ++ () {
+        boostScope b;
+        tone++;
+        if (curve != null) tone = tone.through(curve);
+        bumps++;
+        return self;
+    }
+
+    int pulse(int times) {
+        boostScope b;
+        for (int i = 1; i < times; i++) b++;
+        int held = b;
+        self += lane;
+        return held;
+    }
+
+    static int countWhere(func<bool, spark> keep) {
+        return spark.live.filter(keep).count();
+    }
+
+    static spark brightest() {
+        array<spark> sorted = spark.live.orderBy((spark a, spark b) => {
+            if ((int)a.tone != (int)b.tone) return (int)b.tone - (int)a.tone;
+            return a.lane - b.lane;
+        });
+        return sorted.first();
+    }
+
+    static int toneSum(func<bool, spark> keep) {
+        int n = 0;
+        for (var v in spark.live.filter(keep).map((spark s) => (int)s.tone)) n += (int)v;
+        return n;
+    }
+
+    static void each(func<void, spark> f) {
+        for (spark s in spark.live) f(s);
+    }
+
+    static void widen(ref boostScope b, int n) {
+        b += n;
+    }
+
+    static int sweep(int limit) {
+        int dimmed = 0;
+        for (spark s in spark.live) {
+            boostScope b;
+            if (s.lane == 0) continue;
+            spark.widen(b, s.lane);
+            if (glowBoost > limit) break;
+            s.tone -= glowBoost;
+            dimmed++;
+        }
+        return dimmed;
+    }
+
+    static int snap() {
+        spark.snapshot.clear();
+        for (spark s in spark.live) spark.snapshot.append(s.tone);
+        spark.snapshot[0] += 1;
+        spark.snapshot[1]--;
+        return spark.snapshot.filter((shade t) => t?).count();
+    }
+
+    static string bandOf(shade t) {
+        switch (t) {
+            case 0: return "dim";
+            case 1: return "mid";
+            case 2: return "high";
+        }
+        return "none";
+    }
+
+    static void drawLanes(textGridWindow g) {
+        if (!g?) return;
+        g.clear();
+        for (spark s in spark.live) {
+            g.moveCursor(s.lane * 8, 0);
+            g.print(s.label);
+            g.moveCursor(s.lane * 8, 1);
+            g.print($"{(int)s.tone} {spark.bandOf(s.tone)}");
+        }
+        g.moveCursor(0, 2);
+        g.print($"live {spark.live.length} made {spark.made} boost {glowBoost}/{boostPeak}");
+    }
+}
+
+// ---- lamps ---------------------------------------------------------------------------------------
+
+extern class Lamp : object {
+    int lamp_level;
+    int lamp_lane;
+
+    emitter void operator ++ ()              { if ($self.lamp_level < 9) $self.lamp_level++; }
+    emitter void operator += (int n)         { $self.lamp_level = capShade($self.lamp_level + $n); }
+    emitter eBool operator switch (int band) { ($self.lamp_level / 4 == $band) }
+
+    static int kindle(array<Lamp> set, func<bool, Lamp> pick) {
+        boostScope b;
+        int made = 0;
+        for (Lamp l in set.filter(pick)) {
+            l++;
+            b += 1;
+            shade t = l.lamp_level;
+            t += glowBoost;
+            spark s = new spark(laneNames[l.lamp_lane], l.lamp_lane, t);
+            if (s == null) break;
+            made++;
+        }
+        return made;
+    }
+
+    static int firstInBand(array<Lamp> set, int band) {
+        boostScope b;
+        for (int i = 0; i < set.length; i++) {
+            b++;
+            Lamp l = set[i];
+            switch (l) {
+                case band: return i * 10 + glowBoost;
+            }
+        }
+        return -1;
+    }
+
+    static int countBand(array<Lamp> set, int band) {
+        return set.filter((Lamp l) => {
+            switch (l) {
+                case band: return true;
+            }
+            return false;
+        }).count();
+    }
+
+    static string bandOf(Lamp l) {
+        switch (l) {
+            case 0: return "dim";
+            case 1: return "mid";
+            case 2: return "high";
+        }
+        return "none";
+    }
+
+    static int warmAll(array<Lamp> set, func<int, Lamp> amount) {
+        int warmed = 0;
+        for (Lamp l in set) {
+            int by = amount(l);
+            if (by <= 0) continue;
+            l += by;
+            warmed++;
+        }
+        bool anyHigh = set.any((Lamp l) => l.lamp_level >= 8);
+        if (anyHigh) {
+            spark top = spark.brightest();
+            if (top != null) top += 1;
+        }
+        return warmed;
+    }
+}
+
+extern Lamp lampRed;
+extern Lamp lampTeal;
+extern Lamp lampGrey;
+
+array<Lamp> lamps = { lampRed, lampTeal, lampGrey };
+
+int doubleUp(int v) { return v * 2; }
+int halve(int v) { return v / 2; }
+
+// ---- entry points --------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    return false;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Lanes {
+    grammar = {.lanes};
+    meta = true;
+    void handler() {
+        if (grid == null) grid = bgl.ui.mainWin.splitUpGrid(3);
+        int before = LampTotal();
+        int n = Lamp.kindle(lamps, (Lamp l) => l.lamp_level < 5);
+        print($"Kindled {n}, lamps {before} -> {LampTotal()}:");
+        for (spark s in spark.live) print($" {s.label}={(int)s.tone}");
+        printLine($"; boost {glowBoost}, peak {boostPeak}, opens {boostOpens}.");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Pulse {
+    grammar = {.pulse};
+    meta = true;
+    void handler() {
+        print("Pulse:");
+        for (spark s in spark.live) {
+            int held = s.pulse(3);
+            print($" {s.label} held {held} tone {(int)s.tone}");
+        }
+        printLine($"; boost {glowBoost}, peak {boostPeak}, opens {boostOpens}.");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Curve {
+    grammar = {.curve};
+    meta = true;
+    void handler() {
+        int i = 0;
+        spark.each((spark s) => {
+            s.curve = i == 0 ? doubleUp : halve;
+            i++;
+        });
+        print("Curve:");
+        for (spark s in spark.live) {
+            s++;
+            print($" {s.label}={(int)s.tone}/{s.bumps}");
+        }
+        printLine(".");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Bands {
+    grammar = {.bands};
+    meta = true;
+    void handler() {
+        print("Lamps:");
+        for (Lamp l in lamps) print($" {l.lamp_level} {Lamp.bandOf(l)}");
+        printLine(".");
+        print("Sparks:");
+        for (spark s in spark.live) print($" {(int)s.tone} {spark.bandOf(s.tone)}");
+        printLine(".");
+    }
+}
+
+verb Query {
+    grammar = {.query};
+    meta = true;
+    void handler() {
+        int limit = 4;
+        int bright = spark.countWhere((spark s) => (int)s.tone >= limit);
+        int sum = spark.toneSum((spark s) => s.lane > 0);
+        spark top = spark.brightest();
+        bool allLit = spark.live.all((spark s) => s.tone?);
+        bool anyGrey = spark.live.any((spark s) => s.label == "grey");
+        printLine($"Bright {bright}, sum {sum}, top {top.label}, all lit {allLit ? "yes" : "no"}, grey {anyGrey ? "yes" : "no"}.");
+    }
+}
+
+verb Warm {
+    grammar = {.warm};
+    meta = true;
+    void handler() {
+        int w = Lamp.warmAll(lamps, (Lamp l) => l.lamp_lane + 1);
+        print($"Warmed {w}:");
+        for (Lamp l in lamps) print($" {l.lamp_level}");
+        print(";");
+        for (spark s in spark.live) print($" {s.label}={(int)s.tone}/{s.bumps}");
+        printLine($"; total {LampTotal()}.");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Fade {
+    grammar = {.fade};
+    meta = true;
+    void handler() {
+        spark dim = null;
+        for (spark s in spark.live) {
+            if (dim == null || (int)s.tone < (int)dim.tone) dim = s;
+        }
+        if (dim != null) {
+            printLine($"Fading {dim.label}.");
+            delete dim;
+        }
+        spark a = new spark("spare", 3, 1);
+        spark b = new spark("extra", 3, 2);
+        spark c = new spark("over", 3, 3);
+        printLine($"New {a != null ? a.label : "none"}, {b != null ? b.label : "none"}, {c != null ? c.label : "none"}; live {spark.live.length}, made {spark.made}.");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Scan {
+    grammar = {.scan};
+    meta = true;
+    void handler() {
+        int d = spark.sweep(3);
+        print($"Swept {d}, boost {glowBoost}:");
+        for (spark s in spark.live) print($" {s.label}={(int)s.tone}");
+        printLine(".");
+        spark.each((spark s) => {
+            boostScope b;
+            b += s.lane;
+            s.tone += glowBoost - 3;
+        });
+        int lit = spark.snap();
+        print($"Lit {lit}, boost {glowBoost}, opens {boostOpens}:");
+        for (shade t in spark.snapshot) print($" {(int)t}");
+        printLine(".");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Mix {
+    grammar = {.mix};
+    meta = true;
+    void handler() {
+        spark.live[0]++;
+        spark.live[1] += 2;
+        spark.live[2].tone += 3;
+        spark.live[3].tone--;
+        print("Mix:");
+        for (spark s in spark.live) print($" {s.label}={(int)s.tone}/{s.bumps}");
+        printLine(".");
+        lamps[1] += 4;
+        lamps[0]++;
+        int f = Lamp.firstInBand(lamps, 2);
+        printLine($"Lamps {lamps[0].lamp_level} {lamps[1].lamp_level} {lamps[2].lamp_level}; first high {f}, high {Lamp.countBand(lamps, 2)}, mid {Lamp.countBand(lamps, 1)}, boost {glowBoost}.");
+        array<shade> sorted = spark.snapshot.orderBy((shade a, shade b) => (int)b - (int)a);
+        print("Sorted:");
+        for (shade t in sorted) print($" {(int)t}");
+        printLine(".");
+        spark.drawLanes(grid);
+    }
+}
+
+verb Tone {
+    grammar = {.tone};
+    meta = true;
+    void handler() {
+        shade t = 7;
+        t++;
+        t++;
+        t++;
+        int high = t;
+        t -= 4;
+        t--;
+        int mid = t;
+        t += -20;
+        printLine($"Tone {high}, {mid}, {(int)t}; lit {t? ? "yes" : "no"}; band {spark.bandOf(t)}.");
+        t = 5;
+        int k = 3;
+        int lifted = t.through((int v) => v + k);
+        printLine($"Lifted {lifted}, doubled {t.through(doubleUp)}, lit {t? ? "yes" : "no"}, band {spark.bandOf(t)}.");
+    }
+}
+
+#includeI6 "grammar"

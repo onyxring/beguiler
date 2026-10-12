@@ -1,0 +1,482 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fifth first-time-programmer program, once more pieced together from the spec's examples.
+// A named getter/setter accessor class used as a member of a class (read, written, bumped with += and
+// ++, read inside interpolation), an inline auto { } accessor on an object that reaches its host with
+// outer, inline objects (positional, named, combined, bare { } as an argument, run-time members filled
+// in a loop), extend for an array of objects (inject / remove / move), the <array> deque methods,
+// <linq> chains with lambdas that capture a loop variable, the <string> methods on string and
+// stringObj (plus capture/release and a switch on a built string), a string array sorted by an
+// operator reference, a reference class with its own print(), == / != and a <=> that the ordering
+// operators come from, bgl.util.math helpers, uint printing, char helpers, a pooled bglAllocated class
+// with copy() and remaining(), the article helpers through #using, and printLine.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules;
+
+// ===== GLOBALS =====
+int helloCount = 0;
+int sumSeen = 0;
+array<int> numbers = {5, 3, 8, 3, 1, 9, 2};
+array<int> queue[8];
+array<string> fruitNames = {"plum", "apple", "cherry", "banana"};
+
+// ===== ACCESSOR CLASS (copied from the spec) =====
+value class heightProxy {
+    int _val = 0;
+    int  operator ()        { return _val; }
+    void operator = (int v) { _val = v * 2; }
+}
+
+class plant : object {
+    heightProxy height;
+}
+
+// a pooled class with the same accessor
+class seedling[2] : object {
+    heightProxy height;
+}
+
+plant fern {
+    "fern";
+}
+plant cactus {
+    "cactus";
+}
+
+// ===== OBJECT WITH AN INLINE ACCESSOR (copied from the spec) =====
+object gadget {
+    "gadget";
+    int scale = 3;
+    int sets = 0;
+    auto level = {
+        int _raw = 0;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v * outer.scale; outer.sets++; }
+    }
+}
+
+// ===== POINTS (inline objects) =====
+class point : object {
+    inline int x;
+    inline int y;
+    string label = "none";
+}
+
+array<point> pts = {
+    point{ 3, 4 },
+    point{ x = 1; y = 2; },
+    point{ 5, 6; label = "p"; },
+    { 7, 8 }
+};
+
+// shows one point
+void place(point p) {
+    print($"({p.x},{p.y}) label {p.label}^");
+}
+
+// keeps a running total of points
+object pointBag {
+    "point bag";
+    int total = 0;
+    void add(point p) {
+        total = total + p.x * p.y;
+    }
+}
+
+// adds a point's numbers up
+int sumOf(point p) {
+    return p.x + p.y;
+}
+
+// ===== LINEUP (extend for arrays) =====
+object apple { "apple"; }
+object pear  { "pear"; }
+object plum  { "plum"; }
+object fig   { "fig"; }
+object lime  { "lime"; }
+
+array<object> lineup = { apple, pear, plum };
+
+extend lineup {
+    inject fig after apple;
+    inject lime first;
+    remove pear;
+    move plum first;
+}
+
+// ===== COINS (a class with operators) =====
+class Coins : object {
+    int cents = 0;
+    bool operator == (Coins other) { return cents == other.cents; }
+    bool operator != (Coins other) { return cents != other.cents; }
+    int operator <=> (Coins other) { return cents - other.cents; }
+    void print() {
+        print(cents);
+        print(" cents");
+    }
+}
+
+Coins purseA { cents = 25; }
+Coins purseB { cents = 40; }
+Coins purseC { cents = 25; }
+
+// ===== POOLED (copied from the spec) =====
+class marble[4] : object, bglAllocated {
+    int weight = 0;
+}
+
+// ===== FUNCTIONS =====
+
+// runs a func three times
+void threeTimes(func<void> f) {
+    f();
+    f();
+    f();
+}
+
+// counts the hellos
+void sayHello() {
+    helloCount++;
+}
+
+// prints an array of ints on one line
+void showInts(string title, array<int> arr) {
+    print(title);
+    print(":");
+    for (int n in arr) {
+        print(" ");
+        print(n);
+    }
+    print(" (");
+    print(arr.length);
+    print(")^");
+}
+
+// prints the fruit names on one line
+void showNames() {
+    for (string s in fruitNames) {
+        print(s);
+        print(" ");
+    }
+    print("^");
+}
+
+// what kind of word it is
+string kindOf(stringObj word) {
+    switch (word) {
+        case "APPLE": return "a loud apple";
+        case "apple": return "a quiet apple";
+    }
+    return "something else";
+}
+
+// the room
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Nothing is here.";
+    attributes = {light};
+}
+
+object box {
+    "wooden box";
+    parent = roomA;
+    name = {.wooden, .box};
+    attributes = {container, open, static};
+}
+
+bool initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// GROW - the accessor on a class member
+verb Grow {
+    meta = true;
+    grammar = {.grow};
+    void handler() {
+        fern.height = 5;
+        cactus.height = 1;
+        int a = fern.height;
+        print($"fern {a}, cactus {cactus.height}^");
+        fern.height += 1;
+        print($"fern after += is {fern.height}^");
+        cactus.height++;
+        print($"cactus after ++ is {cactus.height}^");
+        int total = fern.height + cactus.height;
+        print($"total {total}^");
+        if (fern.height > cactus.height) {
+            print("fern is taller^");
+        }
+        seedling sprout = new seedling();
+        if (sprout != null) {
+            sprout.height = 3;
+            sprout.height += fern.height;
+            print($"sprout {sprout.height}^");
+            delete sprout;
+        }
+    }
+}
+
+// LEVEL - the inline accessor with outer
+verb Level {
+    meta = true;
+    grammar = {.level};
+    void handler() {
+        gadget.level = 4;
+        print($"level {gadget.level}, sets {gadget.sets}^");
+        gadget.scale = 10;
+        gadget.level = 4;
+        int n = gadget.level;
+        print($"level {n}, sets {gadget.sets}^");
+    }
+}
+
+// POINTS - inline objects
+verb Points {
+    meta = true;
+    grammar = {.points};
+    void handler() {
+        for (point p in pts) {
+            place(p);
+        }
+        place(point{3, 4});
+        place({9, 10});
+        place(p: {11, 12});
+        int total = 0;
+        for (int i = 1; i <= 3; i++) {
+            int w = i * 10;
+            total += sumOf({ w, i });
+        }
+        print($"total {total}^");
+        pointBag.add({ x = 4; y = 5; });
+        pointBag.add(point{ 2, 3; label = "b"; });
+        print($"bag {pointBag.total}^");
+        point q = { 20, 21 };
+        print($"q is {q.x},{q.y} with {q.label}^");
+    }
+}
+
+// LINEUP - the extended array
+verb ShowLineup {
+    meta = true;
+    grammar = {.lineup};
+    void handler() {
+        for (object o in lineup) {
+            print(o);
+            print(" ");
+        }
+        print($"({lineup.length})^");
+        print($"the first is {the(lineup[0])}, {a(lineup[1])} is second.^");
+    }
+}
+
+// QUEUE - the array methods
+verb TryQueue {
+    meta = true;
+    grammar = {.queue};
+    void handler() {
+        queue.enqueue(1);
+        queue.enqueue(2);
+        queue.push(0);
+        queue += 7;
+        queue += {8, 9};
+        showInts("start", queue);
+        print($"peek {queue.peek()} peekEnd {queue.peekEnd()}^");
+        int front = queue.pop();
+        int back = queue.popEnd();
+        int next = queue.dequeue();
+        print($"pop {front} popEnd {back} dequeue {next}^");
+        showInts("now", queue);
+        queue.insert(1, 5);
+        queue.swap(0, 3);
+        showInts("moved", queue);
+        queue -= 5;
+        queue.reverse();
+        showInts("reversed", queue);
+        if (queue.contains(7)) {
+            print($"7 is at {queue.indexOf(7)}^");
+        }
+        queue.remove(0);
+        showInts("removed", queue);
+        queue.clear();
+        showInts("cleared", queue);
+    }
+}
+
+// QUERY - linq
+verb Query {
+    meta = true;
+    grammar = {.query};
+    void handler() {
+        showInts("numbers", numbers);
+        array<int> big = numbers.filter((int n) => n > 3);
+        showInts("big", big);
+        array<int> once = numbers.distinct();
+        showInts("once", once);
+        array<int> sorted = numbers.orderBy((int a, int b) => a - b);
+        showInts("sorted", sorted);
+        showInts("numbers again", numbers);
+        print($"first {numbers.first()} last {numbers.last()} count {numbers.count()}^");
+        print($"take 2 then first {numbers.skip(2).take(2).first()}^");
+        print($"doubled first {numbers.map((var y) => y * 2).first()}^");
+        if (numbers.any((int n) => n == 9)) print("has a 9^");
+        if (numbers.all((int n) => n > 0)) print("all above 0^");
+        if (!numbers.all((int n) => n > 1)) print("not all above 1^");
+        array<int> lead = numbers.takeWhile((int n) => n != 1);
+        showInts("before 1", lead);
+        array<int> rest = numbers.skipWhile((int n) => n != 1);
+        showInts("from 1", rest);
+        for (int limit = 2; limit <= 6; limit += 2) {
+            int c = numbers.filter((int n) => n < limit).count();
+            print($"below {limit}: {c}^");
+        }
+    }
+}
+
+// WORDS - the string methods
+verb Words {
+    meta = true;
+    grammar = {.words};
+    void handler() {
+        string title = "  brass lamp  ";
+        stringObj s;
+        s = title.trim();
+        print($"[{s}] has {s.length} letters^");
+        print($"upper {s.toUpper()}, left {s.left(5)}, right {s.right(4)}, mid {s.mid(2, 3)}^");
+        print($"reversed {s.reverse()}^");
+        print($"lamp at {s.indexOf("lamp")}, no cup at {s.indexOf("cup")}^");
+        if (s.startsWith("brass")) print("starts with brass^");
+        if (s.endsWith("lamp")) print("ends with lamp^");
+        if (!s.contains("cup")) print("no cup^");
+        stringObj t;
+        t = s.replace("brass", "tin");
+        print($"{t}^");
+        stringObj u = "a-b-c";
+        u = u.replaceAll("-", "+");
+        print($"{u}^");
+        u = u.insert(1, "X");
+        print($"{u}^");
+        u = u.delete(0, 2);
+        print($"{u}^");
+        stringObj f = "lamp";
+        print($"{f.format("the $0 is $1", "lit")}^");
+        print($"compare {f.compareTo("lamp")} {f.compareTo("zoo")} {f.compareTo("LAMP", true)}^");
+        stringObj empty = "";
+        if (empty.isEmpty()) print("empty is empty^");
+        char c = s[0];
+        print($"first letter {c.toUpper()}, vowel {c.isVowel()}^");
+        s[0] = 'B';
+        print($"{s}^");
+        print($"{kindOf("APPLE")}, {kindOf("apple")}, {kindOf("pear")}^");
+        stringObj built;
+        built.capture();
+        print("captured ");
+        print(42);
+        built.release();
+        print($"[{built}] {built.length}^");
+    }
+}
+
+// FRUIT - sorting strings
+verb Fruit {
+    meta = true;
+    grammar = {.fruit};
+    void handler() {
+        showNames();
+        print($"apple is at {fruitNames.indexOf("apple")}^");
+        fruitNames.sort(string::operator <=>);
+        showNames();
+        fruitNames.sort((string a, string b) => b <=> a);
+        showNames();
+        func<int, string, string> cmp = string::operator <=>;
+        if (cmp("apple", "banana") < 0) print("apple first^");
+        if ("pear" > "peach") print("pear after peach^");
+        if ("Lamp" =~ "LAMP") print("same ignoring case^");
+    }
+}
+
+// COINS - operators on a class
+verb Money {
+    meta = true;
+    grammar = {.money};
+    void handler() {
+        print(purseA);
+        print(" and ");
+        print(purseB);
+        print("^");
+        if (purseA == purseC) print("A equals C^");
+        if (purseA != purseB) print("A is not B^");
+        if (purseA < purseB) print("A is less than B^");
+        if (purseB > purseC) print("B is more than C^");
+        if (purseA <= purseC) print("A is at most C^");
+        if (!(purseB <= purseA)) print("B is not at most A^");
+        print($"A against B is {purseA <=> purseB}^");
+        purseC.cents += 5;
+        if (purseA != purseC) print($"now C is {purseC}^");
+    }
+}
+
+// MATHS - numbers
+verb Maths {
+    meta = true;
+    grammar = {.maths};
+    void handler() {
+        print($"pow {bgl.util.math.pow(2, 8)} clamp {bgl.util.math.clamp(120, 0, 100)}^");
+        print($"sign {bgl.util.math.sign(-7)} abs {bgl.util.math.abs(-7)}^");
+        print($"min {bgl.util.math.min(4, 9)} max {bgl.util.math.max(4, 9)}^");
+        uint big = (uint)-1;
+        print(big);
+        print("^");
+        uint half = big / 2;
+        print(half);
+        print("^");
+        if (big > half) print("big is bigger^");
+        threeTimes(sayHello);
+        threeTimes(=> helloCount += 10);
+        print($"hellos {helloCount}^");
+        func<void> shout = => print("shout^");
+        threeTimes(shout);
+        printLine("a whole line");
+        printLine($"sum {2 + 3}");
+        printLine();
+        printLine("after a blank");
+    }
+}
+
+// MARBLES - the pool
+verb Marbles {
+    meta = true;
+    grammar = {.marbles};
+    void handler() {
+        marble a = new marble();
+        marble b = new marble();
+        a.weight = 12;
+        b.copy(a);
+        print($"b weighs {b.weight}, {a.remaining()} left^");
+        delete a;
+        print($"{b.remaining()} left after delete^");
+        delete b;
+    }
+}

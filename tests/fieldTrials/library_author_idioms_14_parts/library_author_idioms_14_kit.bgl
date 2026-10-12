@@ -1,0 +1,191 @@
+/*  Field trial part — included by library_author_idioms_14.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+#include <string>
+
+// ---- What the I6 side owns: a pooled chip class, a wear flag and two counts. ----
+
+#i6 {
+    Global la14_out = 0;
+    Global la14_made = 0;
+    Attribute la14_worn;
+    Class La14Chip(4)
+        with la14_w 0,
+             create [ w;
+                 self.la14_w = w;
+                 la14_out++;
+                 la14_made++;
+             ],
+             destroy [;
+                 la14_out--;
+                 give self ~la14_worn;
+             ];
+    [ La14_Lease; return La14Chip.create(1); ];
+    [ La14_Release c; if (c) La14Chip.destroy(c); ];
+}
+
+/// How many chips are out of the pool.
+extern int la14_out asBgl la14Out;
+/// How many chips were ever made.
+extern int la14_made asBgl la14Made;
+/// Set on a chip that has been worn.
+extern attribute la14_worn asBgl la14Worn;
+
+/// Set on a tray once a row of it is full.
+attribute la14Sealed;
+
+// ---- Leases: a chip held for the length of one block. ----
+
+/// A chip leased from the pool when declared and returned when its block ends.
+emitter class La14Lease {
+    emitter void init()   { $self = La14_Lease(); }
+    emitter void deinit() { La14_Release($self); }
+    /// True when the pool had a chip to lease.
+    emitter eBool operator ? () { ($self ~= 0) }
+    /// The leased chip's weight.
+    emitter int weight { $self.la14_w }
+    /// Sets the leased chip's weight.
+    emitter void setWeight(int w) { $self.la14_w = $w; }
+    /// Marks the leased chip worn.
+    emitter void wear() { give $self la14_worn; }
+    /// The leased chip itself.
+    emitter La14Chip chip { $self }
+}
+
+// ---- Trays: rows of weights, three kept in a pool. ----
+
+/// A tray of weights in rows; three can be out at once.
+class La14Tray[3] : object {
+    int id = 0;
+    /// The weights in place, row by row.
+    array<array<int>> cells = { {0, 0}, {0, 0, 0} };
+
+    void create(int n) { id = n; }
+    void destroy() { self.ungive(la14Sealed); }
+
+    /// Puts a leased chip's weight in the first free place of a row; a full row seals the tray.
+    void put(int r, ref La14Lease l) {
+        if (!l?) return;
+        for (int i = 0; i < cells[r].length; i++) {
+            if (cells[r][i] == 0) {
+                cells[r][i] = l.weight;
+                if (i == cells[r].length - 1) self.give(la14Sealed);
+                return;
+            }
+        }
+    }
+
+    /// Sets one place of a row.
+    void set(int r, int i, int v) { cells[r][i] = v; }
+
+    /// The tray in words: its id, each row's digits, and whether it is sealed.
+    stringObj text() {
+        stringObj s = $"tray {id}:";
+        for (array<int> row in cells) {
+            s += ' ';
+            for (int c in row) s += (char)('0' + c);
+        }
+        if (self.has(la14Sealed)) s += " sealed";
+        return s;
+    }
+
+    /// Prints the tray's id and total straight from I6.
+    void dump() {
+        int t = 0;
+        for (array<int> row in cells) {
+            for (int v in row) t += v;
+        }
+        #i6 print "[", $i6Expr(id), "=", t, "]";
+    }
+}
+
+// ---- The kit's namespace. ----
+
+/// Types and helpers, reached as la14.
+object la14 {
+    alias chip  for La14Chip;
+    alias lease for La14Lease;
+    alias tray  for La14Tray;
+
+    /// The weights a tray is built from, row by row.
+    array<array<int>> plan = { {2, 3}, {4, 1, 5} };
+    /// Grade names: the light ones by parity, then the heavy one.
+    array<array<string>> grades = { {"even", "odd"}, {"heavy"} };
+
+    /// A tray filled from the plan with leased chips; null when the tray pool is out.
+    tray build(int n) {
+        tray t = new tray(n);
+        if (t == null) return null;
+        for (int r = 0; r < plan.length; r++) {
+            for (int w in plan[r]) {
+                lease l;
+                if (l?) {
+                    l.setWeight(w);
+                    if (w > 3) l.wear();
+                    t.put(r, l);
+                }
+            }
+        }
+        return t;
+    }
+
+    /// The grade of a weight.
+    string grade(int w) {
+        if (w > 3) return grades[1][0];
+        return grades[0][w % 2];
+    }
+
+    /// A chip in words: weight, grade and wear; the count out is printed from I6 first.
+    stringObj describe(chip c) {
+        #i6 print "(", la14_out, " out) ";
+        stringObj s = $"{c.la14_w} ";
+        s += grade(c.la14_w);
+        if (c.has(la14Worn)) s += " worn";
+        return s;
+    }
+}
+
+#using la14
+
+/// A chip; its class and its pool of four live on the I6 side.
+extern class La14Chip[] : object {
+    int la14_w;
+    /// Every weight stocked, in rows of light and heavy.
+    static array<array<int>> stocked = { {0, 0, 0, 0}, {0, 0, 0, 0} };
+
+    /// Makes a chip for each weight while the pool lasts, wearing the heavy ones; the count made.
+    static int stock(array<int> weights, array<chip> into) {
+        int k = 0;
+        for (int w in weights) {
+            chip c = new chip(w);
+            if (c == null) break;
+            if (w > 3) c.give(la14Worn);
+            int r = 0;
+            if (c.has(la14Worn)) r = 1;
+            La14Chip.stocked[r][k] = w;
+            into += c;
+            k++;
+        }
+        #i6 print "<", la14_out, ">";
+        return k;
+    }
+
+    /// Returns every chip of a list to the pool; their grades as words.
+    static stringObj release(array<chip> list) {
+        stringObj s = "";
+        for (chip c in list) {
+            if (s.length > 0) s += ",";
+            s += la14.grade(c.la14_w);
+            delete c;
+        }
+        list.clear();
+        return s;
+    }
+
+    /// The weight under a lease, or under a held chip when the lease is empty.
+    static int weightOf(ref La14Lease l, chip held) {
+        if (l?) return l.weight;
+        return held.la14_w;
+    }
+}

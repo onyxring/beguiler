@@ -1,0 +1,177 @@
+#grids
+Room A
+Room A.
+[grid 1]
+| Room A                                     0/0   |
+> build
+Opened 4, total 4.
+[win 1] Log paint 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Keys: 22x3            |
+|paint 1               |
+|                      |
+[grid 3]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 4]
+|  HUD paint 1                                     |
+> outline
+HUD: grid 50x1, paints 1.
+Log: buffer 30x11, paints 1.
+  Side: grid 22x7, paints 1.
+    Keys: grid 22x3, paints 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Keys: 22x3            |
+|paint 1               |
+|                      |
+[grid 3]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 4]
+|  HUD paint 1                                     |
+> rank
+Tree: HUD(1) Log(30) Side(22) Keys(3).
+Up: HUD(1) Keys(3) Side(22) Log(30).
+Down: Log(30) Side(22) Keys(3) HUD(1).
+HUD < Side: yes; Log >= Keys: yes.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Keys: 22x3            |
+|paint 1               |
+|                      |
+[grid 3]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 4]
+|  HUD paint 1                                     |
+> colors
+HUD: rgb(0, 0, 0) = $000000 (same).
+Log: rgb(0, 128, 0) = $008000 (same).
+Side: rgb(0, 80, 160) = $0050A0 (same).
+Keys: rgb(200, 0, 0) = $C80000 (same).
+Palette: accent $C80000, calm $0050A0, paper $F0F0E0.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|Keys: 22x3            |
+|paint 1               |
+|                      |
+[grid 3]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 4]
+|  HUD paint 1                                     |
+> retint
+Keys now rgb(240, 240, 224); copy rgb(1, 240, 224).
+Keys reopened: grid.
+[win 1] Log paint 2.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 4]
+|  HUD paint 2                                     |
+[grid 5]
+|Keys: 22x3            |
+|paint 2               |
+|                      |
+> outline
+HUD: grid 50x1, paints 2.
+Log: buffer 30x11, paints 2.
+  Side: grid 22x7, paints 2.
+    Keys: grid 22x3, paints 2.
+[grid 1]
+| Room A                                     0/0   |
+[grid 3]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 4]
+|  HUD paint 2                                     |
+[grid 5]
+|Keys: 22x3            |
+|paint 2               |
+|                      |
+> collapse
+Closed 4.
+HUD: closed, paints 2.
+Log: closed, paints 2.
+  Side: closed, paints 2.
+    Keys: closed, paints 2.
+[grid 1]
+| Room A                                     0/0   |
+> build
+Opened 4, total 9.
+[win 2] Log paint 3.
+[grid 1]
+| Room A                                     0/0   |
+[grid 6]
+|Keys: 22x3            |
+|paint 3               |
+|                      |
+[grid 7]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 8]
+|  HUD paint 3                                     |
+> outline
+HUD: grid 50x1, paints 3.
+Log: buffer 30x11, paints 3.
+  Side: grid 22x7, paints 3.
+    Keys: grid 22x3, paints 3.
+[grid 1]
+| Room A                                     0/0   |
+[grid 6]
+|Keys: 22x3            |
+|paint 3               |
+|                      |
+[grid 7]
+|[Side]                |
+|  - Keys open         |
+|                      |
+|                      |
+|                      |
+|                      |
+|                      |
+[grid 8]
+|  HUD paint 3                                     |

@@ -1,0 +1,450 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits where two language areas meet inside one declaration.
+// Static member arrays in five settings: a class whose inline accessor (`auto x = { … }`) writes a
+// static `array<int>` and a static counter, whose `operator <=>`/`==`/`!=` drive `sort()`/`indexOf()`
+// on a static `array<Gauge>`, whose `operator +` reads the accessor and whose method answers a static
+// string through `??`; an `extend class` adding a static `array<string>`; a primitive newtype whose
+// static `array<string>` is read by a static method with a local `array<string>`; a value class whose
+// copy operator appends to its own static array; and a class written straight after `#using` whose
+// static arrays are typed through the imported aliases. Also: an emitter class with init/deinit and a
+// static method filling a `<buf>` buffer from a local `array<string>`; a pooled class over a
+// `ref array<char>` with `operator +=` and `operator ++` working the buffer; `:=` and postfix `?` in
+// one routine; a class with an `array<Gauge>` member read by a `$i6Expr` emitter and tested with `?`;
+// an object whose inline accessor binds the object's `ref` member through `outer` with `:=`; a class
+// whose `operator +` and `operator *` run an `#i6` line, read a member `array<string>` and write an
+// `array<char>`; a two-parent class with an emitter, a block lambda and an `#i6` line using
+// `$i6Expr`; an extern class with an emitter `operator +=`/`++` and static methods looping `for … in`
+// over `array<int>` and `array<string>`; a `replace` routine that rebinds a `ref array` under `#IF`;
+// a verb class with a static counter that performs another verb. Lexically: `#IF`/`#Else`/`#ENDIF` and
+// `#Define` in mixed case, `$` hex and `$$` binary literals, keywords in odd case (`STATIC`, `Return`,
+// `REF`), comments between tokens, tab-indented stretches and empty statements.
+
+#beguilerSettings
+{
+    target       = eTarget.Z8 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#Define LOUD                            // a flag
+#DEFINE SLOTS   $3                      // hex: three
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+
+extend class object { string description; }
+
+object roomA { "Room A"; description = "A plain room."; attributes = light; }
+
+bool Initialise() { location = roomA; rfalse; }
+
+//-- Gauges: static arrays behind an accessor and the comparison operators --------------------------
+
+class Gauge : object
+{
+    inline int level ;
+    static int made = 0 ;
+    static string lastNote ;                            // never given: null until set
+    static array<int> marks[6] = { 2 , $A , $$11 } ;    // 2, 10, 3
+    STATIC array<Gauge> board[4] ;
+    auto reading = {
+        int _raw = 0 ;
+        int  operator ()        { return _raw + Gauge.marks.length ; }
+        void operator = (int v) { _raw = v ; Gauge.made++ ; Gauge.marks += v ; }
+    } ;
+    static int operator <=> ( Gauge a , Gauge b ) { return a.level - b.level ; }
+    eBool operator == ( Gauge g ) { return level == g.level ; }
+    eBool operator != ( Gauge g ) { return level != g.level ; }
+    int operator + /* reads the accessor */ ( int n ) { return reading + n ; }
+    bool atMark()
+    {
+        return Gauge.marks.contains(level) ;
+    }
+    static int slotOf(Gauge g)
+    {
+        return Gauge.board.indexOf(g) ;
+    }
+    string note() { return Gauge.lastNote ?? "none" ; }
+    void post() { Gauge.board += self ; }
+}
+
+Gauge g1 { 10 , "g1" ; }
+Gauge g2 { $4 , "g2" ; }
+Gauge g3 { $$1010 , "g3" ; }                            // ten, like g1
+
+extend class Gauge
+{
+    static array<string> bands = { "low" , "mid" , "high" } ;
+    string band()
+    {
+        if (level < 5) Return Gauge.bands[0] ;
+        if (level < 10) return Gauge.bands[1] ;
+        return Gauge.bands[ Gauge.bands.length - 1 ] ;
+    }
+}
+
+//-- A newtype with a static table of names ----------------------------------------------------------
+
+primitive class Grade
+{
+    emitter void  operator = (int v) { $target = $v; }
+    emitter int   operator ()        { ($val) }
+    emitter Grade operator + (int n) { ($val + $n) }
+    static array<string> letters = { "F" , "D" , "C" , "B" , "A" } ;
+    static string letter(Grade g)
+    {
+        array<string> past = { "?" , "!" } ;
+        if (g > 4) return past[1] ;
+        if (g < 0) return past[0] ;
+        return Grade.letters[g] ;
+    }
+}
+
+//-- A value class that records its copies -----------------------------------------------------------
+
+value class Span
+{
+    int lo ; int hi ;
+    static array<int> widths[8] ;
+    Span operator = (Span o)
+    {
+        lo = o.lo ; hi = o.hi ;
+        Span.widths += o.hi - o.lo ;
+        return self ;
+    }
+    int width() { return hi - lo ; }
+}
+
+Span spanA ;
+Span spanB ;
+
+//-- An emitter class around a buffer fill -------------------------------------------------------------
+
+int stampDepth = 0 ;
+
+emitter class Stamp
+{
+    emitter void init()   { $self = 0; stampDepth++; }
+    emitter void deinit() { stampDepth--; }
+    static void spell(array<char> into, int n)
+    {
+        array<string> names = { "zero" , "one" , "two" , "three" } ;
+        bgl.util.buf.set(into, names[n]) ;
+        bgl.util.buf.toUpper(into) ;
+    }
+}
+
+array<char> word[16] ;
+
+int spellOut(int n)
+{
+    Stamp s ;
+    Stamp.spell(word, n) ;
+    bgl.util.buf.print(word) ;
+    return stampDepth ;
+}
+
+//-- Pooled notes over shared buffers ------------------------------------------------------------------
+
+array<char> padA[12] ;
+array<char> padB[12] ;
+
+class Note[2] : object
+{
+	ref array<char> text ;
+	int hits = 0 ;
+	void create(ref array<char> into, string s) { text := into ; bgl.util.buf.set(text, s) ; }
+	Note operator += (int n)
+	{
+		hits += n ;
+		bgl.util.buf.setChar(text, 0, 'a' + hits) ;
+		return self ;
+	}
+	Note operator ++ () { hits = hits + 1 ; bgl.util.buf.toUpper(text) ; return self ; }
+	void destroy() { bgl.util.buf.set(text, "gone") ; }
+}
+
+//-- Binding and the postfix query in one routine -------------------------------------------------------
+
+int probe(object o)
+{
+    REF Span r := spanA ;
+    bool present = o? ;
+    if (present) r.hi = r.hi + 1 ;
+    else r := spanB ;
+    ;;
+    return r.hi ;
+}
+
+//-- A shelf of gauges read from I6 ------------------------------------------------------------------
+
+class Shelf : object
+{
+    array<Gauge> held[SLOTS] ;
+    emitter int topLevel() { $i6Expr($self.held[0].level) }
+    bool ready()
+    {
+        return held.length > 0 && held[0]? ;
+    }
+}
+
+Shelf shelfA { held = { g1 , g2 } ; }
+Shelf shelfB { }
+
+//-- An object whose accessor binds through outer ------------------------------------------------------
+
+object dial
+{
+    int scale = 3 ;
+    ref Span win ;
+    auto setting = {
+        int _raw = 0 ;
+        int  operator ()        { return _raw ; }
+        void operator = (int v)
+        {
+            _raw = v * outer.scale ;
+            if (!outer.win?) outer.win := spanB ;      // first write binds
+            outer.win.hi = _raw ;
+        }
+    } ;
+    void attach() { win := spanA ; }
+}
+
+//-- Operators over strings, bytes and an I6 line ------------------------------------------------------
+
+array<char> tapeBuf[24] ;
+
+class Tape : object
+{
+    ref array<char> data ;
+    array<string> words = { "red" , "green" , "blue" } ;
+    int pos = 0 ;
+    string operator + (int n)
+    {
+        int p = pos + n ;
+        #i6 p = p % 3;
+        return words[p] ;
+    }
+    Tape operator * (int n)
+    {
+        for (int i = 0 ; i < n ; i++) data[i] = '*' ;
+        data.length = n ;
+        return self ;
+    }
+}
+
+Tape tapeA { pos = 1 ; }
+
+//-- Two parents, an emitter, a block lambda and an I6 line ---------------------------------------------
+
+class Left : object { int a = 2 ; }
+class Right : object { int b = 5 ; }
+
+class Twin
+    : Left ,            // gives a
+      Right             // gives b
+{
+    emitter int sum() { ($self.a + $self.b) }
+    int fold(int n)
+    {
+        int acc = 0 ;
+        func<int, int> step = (int k) =>
+        {
+            int t = k * a ;
+            if (t > 4) t = t - 1 ;
+            return t + b ;
+        } ;
+        for (int i = 1 ; i <= n ; i++) acc += step(i) ;
+        #i6 acc = acc + $i6Expr(self.sum());
+        return acc ;
+    }
+}
+
+Twin twinA { a = 3 ; }
+
+//-- An extern class with operators and static loops ---------------------------------------------------
+
+#i6 {
+    Class Meter with mtr_level 0;
+    Meter meterA "meter A" with mtr_level 4;
+}
+
+extern class Meter : object
+{
+    int mtr_level ;
+    emitter Meter operator += (int n) { $self.mtr_level = $self.mtr_level + $n }
+    emitter Meter operator ++ ()      { $self.mtr_level++ }
+    static int total(array<int> vals)
+    {
+        int t = 0 ;
+        for (int v in vals) t += v ;
+        return t ;
+    }
+    static void list(array<string> names)
+    {
+        for (string s in names) { print(s) ; print(";") ; }
+    }
+}
+extern Meter meterA ;
+
+//-- A replaced routine that rebinds under a flag ------------------------------------------------------
+
+array<int> logA[6] ;
+array<int> logB[6] ;
+
+int record(int v) { logA += v ; return logA.length ; }
+
+replace int record(int v)
+{
+    ref array<int> into := logA ;
+#IF LOUD
+    into := logB ;
+#Else
+    into := logA ;
+#ENDIF
+    into += v * 10 ;
+    return replaced(v) + into.length * 100 ;
+}
+
+//-- A namespace imported ahead of a class of static arrays --------------------------------------------
+
+object kit
+{
+    alias reader for Gauge ;
+    alias range  for Span ;
+}
+
+#using kit
+class Bench : object
+{
+    static array<reader> rack[3] ;
+    static array<kit.range> spans[2] ;
+    static int fill()
+    {
+        Bench.rack += g1 ; Bench.rack += g2 ;
+        int t = 0 ;
+        for (reader g in Bench.rack) t += g.level ;
+        Bench.spans[1].hi = t ;
+        return t + Bench.spans[1].hi ;
+    }
+}
+
+//-- Verbs -------------------------------------------------------------------------------------------
+
+class countingVerb : verb
+{
+    inline int weight ;
+    static int uses = 0 ;
+    meta = true ;
+    void handler()
+    {
+        countingVerb.uses += weight ;
+        printLine($"uses {countingVerb.uses}") ;
+        if (countingVerb.uses >= 5) { countingVerb.uses = 0 ; V_noted.perform() ; }
+    }
+}
+
+countingVerb Tap   { 2 ; grammar = { .tap } ; }
+countingVerb Knock { 3 ; grammar = { .knock } ; }
+
+verb V_noted { meta = true ; grammar = { .noted } ; void handler() { printLine("noted") ; } }
+
+verb V_gauge
+{
+    meta = true ; grammar = { .gauge } ;
+    void handler()
+    {
+        g2.reading = 5 ;
+        printLine($"{g2.reading} {g2 + 1} {Gauge.made} {Gauge.marks.length}") ;
+        g1.post() ; g2.post() ; g3.post() ;
+        printLine($"{Gauge.slotOf(g3)} {Gauge.slotOf(g2)} {g1.atMark()} {g2.atMark()}") ;
+        Gauge.board.sort() ;
+        printLine($"{Gauge.board[0].level} {Gauge.board[1].level} {Gauge.board[2].level} {Gauge.board[0]}") ;
+        printLine($"{g1 < g2} {g2 < g1} {g1 == g3} {g1 != g3} {g1 >= g3}") ;
+        print(g1.note()) ; print(" ") ;
+        Gauge.lastNote = "set" ;
+        printLine(g2.note()) ;
+        printLine($"{g1.band()} {g2.band()} {Gauge.bands.length}") ;
+    }
+}
+
+verb V_values
+{
+    meta = true ; grammar = { .values } ;
+    void handler()
+    {
+        Grade gr = 2 ;
+        print(Grade.letter(gr)) ;
+        gr = gr + 2 ;
+        print(Grade.letter(gr)) ; print(Grade.letter(gr + 1)) ; printLine(Grade.letters.length) ;
+        Span s1 ;
+        s1.lo = 2 ; s1.hi = 9 ;
+        Span s2 = s1 ;
+        spanA = s2 ;
+        printLine($"{Span.widths.length} {s2.width()} {spanA.width()} {Span.widths[0]}") ;
+    }
+}
+
+verb V_buffers
+{
+    meta = true ; grammar = { .buffers } ;
+    void handler()
+    {
+        print(spellOut(2)) ; print(" ") ; printLine(stampDepth) ;
+        Note a = new Note(padA, "pen") ;
+        Note b = new Note(padB, "ink") ;
+        Note c = new Note(padA, "x") ;                  // the pool holds two
+        printLine($"{a?} {b?} {c?}") ;
+        a += 2 ;
+        b++ ;
+        bgl.util.buf.print(padA) ; print(" ") ; bgl.util.buf.print(padB) ; printLine() ;
+        delete a ;
+        bgl.util.buf.print(padA) ; printLine($" {b.hits}") ;
+        delete b ;
+    }
+}
+
+verb V_refs
+{
+    meta = true ; grammar = { .refs } ;
+    void handler()
+    {
+        spanA.hi = 1 ; spanB.hi = 50 ;
+        print(probe(roomA)) ; print(" ") ; print(probe(null)) ; print(" ") ; printLine(probe(roomA)) ;
+        dial.setting = 4 ;
+        printLine($"{dial.setting} {spanB.hi} {spanA.hi}") ;
+        dial.attach() ;
+        dial.scale = 1 ;
+        dial.setting = 6 ;
+        printLine($"{dial.setting} {spanB.hi} {spanA.hi}") ;
+        printLine($"{shelfA.topLevel()} {shelfA.ready()} {shelfB.ready()}") ;
+    }
+}
+
+verb V_ops
+{
+    meta = true ; grammar = { .ops } ;
+    void handler()
+    {
+        tapeA.data := tapeBuf ;
+        print(tapeA + 4) ; print(" ") ; print(tapeA + 0) ; print(" ") ;
+        Tape t = tapeA * 3 ;
+        bgl.util.buf.print(t.data) ; printLine($" {tapeBuf.length}") ;
+        printLine($"{twinA.fold(3)} {twinA.sum()}") ;
+        meterA += 3 ;
+        meterA++ ;
+        array<int> nums = { 1 , $10 , $$11 } ;          // 1, 16, 3
+        array<string> names = { "p" , "q" } ;
+        printLine($"{meterA.mtr_level} {Meter.total(nums)}") ;
+        Meter.list(names) ; printLine() ;
+        print(record(4)) ; print(" ") ; printLine(record(7)) ;
+        printLine($"{logA.length} {logB.length} {logB[1]}") ;
+        printLine(Bench.fill()) ;
+    }
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,67 @@
+Room A
+Room A.
+
+> lease
+Holding lease 1, lease 2 (b>a true, b==a false, b!=a true, latest true, open 2), lease 3 (b>a true, b==a false, b!=a true, latest true, open 2); a latest false, last closed 3, open 1, peak 2.
+
+> mint 5
+Chip 5 tag 4; made 1, open 0, last 4.
+
+> mint 50
+Chip 50 tag 5; made 2, open 0, last 5.
+
+> mint 70
+Chip 70 tag 6; made 3, open 0, last 6.
+
+> chips
+5: ==K false, !=K true, <K true, >=K false, <=> -45; 50: ==K true, !=K false, <K false, >=K true, <=> 0; 70: ==K false, !=K true, <K false, >=K true, <=> 20; first==second false.
+
+> mint 9
+No chip. made 3, open 0, last 7.
+
+> issue 3 2
+Issued token 3/2, weight 23, lease 8, spot -1, open 0.
+
+> issue 1 2
+Issued token 1/2, weight 21, lease 9, spot -1, open 0.
+
+> wrap
+Wrapped token 5/4, weight 45, as Ranked 40.
+
+> issue 4 1
+Issued token 4/1, weight 14, lease 11, spot -1, open 0.
+
+> issue 2 2
+(no token) tokens 4.
+
+> tcmp
+[0] == false, != true, < false, > true, <=> 2; [1] == false, != true, < true, > false, <=> -2; [2] == false, != true, < false, > true, <=> 3; done.
+
+> park
+chain 2, chain 2; 9 2 9 2 slots 9/8/2, copy 99, copy chain 3.
+
+> score
+[pool] You have so far scored 0 out of a possible 0, in 0 turns.
+chips 3/0, tokens 4/0, chain 3, lease 12 open 1 peak 2.
+
+> free
+Freed 4; tokens 4/4.
+
+> issue 6 6
+Issued token 6/6, weight 66, lease 13, spot -1, open 0.
+
+> tcmp
+done.
+
+> scrap
+Scrapped 3; freed 3.
+
+> mint 8
+Chip 8 tag 14; made 4, open 0, last 14.
+
+> chips
+8: ==K false, !=K true, <K true, >=K false, <=> -42; one chip.
+
+> score
+[pool] You have so far scored 0 out of a possible 0, in 0 turns.
+chips 4/3, tokens 5/4, chain 3, lease 15 open 1 peak 2.

@@ -1,0 +1,694 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an eleventh PunyInform program, built on area pairs no earlier program combined: an
+// object's `auto { }` accessor over a `stringOrRoutine` whose setter tests `typeof` and counts through
+// `outer`; a class whose emitter members feed a `try`/`throw`/`catch` method and a `?.`/`??` chain; a
+// value class whose methods index arrays of arrays (a local one and one passed in), and an array of
+// arrays of that value class built from inline objects; recursive routines over an enum (counting and
+// a maximum), over `?.`/`??` along positionally declared links, over a run-time inline object
+// `Dims{ n, n + 1 }` (one per-site instance, re-populated by the inner call), and over `stringObj` (a
+// `ref stringObj` accumulator and a returned, copied `stringObj`); a pooled class and a value class
+// that spell their text into `array<char>` arrays (a local one, and one passed in and then copied with
+// `=`); a class with two parents holding a `ref` value-class member bound with `:=`, with a `default`
+// method overridden to build a `stringObj` and reaching the base version through a cast; a global
+// function `replace`d with a `ref` parameter passed on to `replaced()`; an `#i6` island in a method
+// reading positional members through `$i6Expr`, and one in a function printing a `stringObj`'s length;
+// an object-backed class with `operator <=>` (and the derived `<`, `>`) beside `has()`; an object
+// namespace with `alias … for` a class and an enum, used as types in for-in loops over children, an
+// inline list and an array, and imported with `#using`; `extend class` adding for-in methods; and
+// `extend` of an object replacing a method that gives and takes attributes the extend adds.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+#includeI6 "puny"
+
+// --- enums ------------------------------------------------------------------------------------------
+
+enum eTier { low = 1, mid, high }
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributeList attributes = {light};
+    string description;
+    object n_to;
+    object s_to;
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    s_to = roomA;
+}
+
+object shed {
+    "shed";
+}
+
+object guard {
+    "guard";
+    parent = shed;
+}
+
+// --- value classes ----------------------------------------------------------------------------------
+
+value class Gauge {
+    int level;
+    int peak;
+    Gauge operator = (Gauge o) { level = o.level; peak = o.peak; return self; }
+    void raise(int by) {
+        level += by;
+        if (level > peak) peak = level;
+    }
+}
+
+value class Label {
+    array<char> text[8];
+    int uses;
+    Label operator = (Label o) { text = o.text; uses = o.uses; return self; }
+    void set3(char a, char b, char c) {
+        text[0] = a;
+        text[1] = b;
+        text[2] = c;
+        text.length = 3;
+    }
+    void render(array<char> out) {
+        for (int i = 0; i < text.length; i++) out[i] = text[i];
+        out.length = text.length;
+    }
+    void show() {
+        for (int i = 0; i < text.length; i++) print(text[i]);
+        print($"/{uses}");
+    }
+}
+
+value class Cell {
+    int row;
+    int col;
+    Cell operator = (Cell o) { row = o.row; col = o.col; return self; }
+    int pick() {
+        array<array<int>> grid = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9} };
+        return grid[row][col];
+    }
+    int rowTotal(array<array<int>> g) {
+        int t = 0;
+        for (int v in g[row]) t += v;
+        return t;
+    }
+    void step() {
+        col++;
+        if (col > 2) { col = 0; row++; }
+    }
+}
+
+array<array<int>> wideGrid = { {10, 20}, {30, 40, 50}, {60} };
+
+// --- a function replaced, with a ref parameter -------------------------------------------------------
+
+int bump(ref Gauge g, int by) {
+    g.raise(by);
+    return g.level;
+}
+
+replace int bump(ref Gauge g, int by) {
+    int was = g.level;
+    int now = replaced(g, by + 1);
+    printLine($"bump {was} -> {now}");
+    return now;
+}
+
+Gauge mainGauge;
+Gauge spareGauge;
+
+// --- several parents, a ref member, strings ---------------------------------------------------------
+
+class Fixture : object {
+    attributeList attributes = {static, scenery};
+}
+
+class Readable : object {
+    string title = "untitled";
+    default stringObj caption() {
+        stringObj s = title;
+        return s;
+    }
+}
+
+class Meter : Fixture, Readable {
+    ref Gauge source;
+    int reads = 0;
+    void attach(ref Gauge g) {
+        source := g;
+    }
+    int read() {
+        reads++;
+        if (!source) return -1;
+        return source.level;
+    }
+    stringObj caption() {
+        stringObj s = ((Readable)self).caption();
+        s += " at ";
+        stringObj n = $"{read()}";
+        s += n;
+        if (s.startsWith("Meter")) s = s.toUpper();
+        return s;
+    }
+}
+
+Meter meterA {
+    "meter A";
+    title = "Meter A";
+}
+
+Meter meterB {
+    "meter B";
+    title = "Dial B";
+}
+
+Meter meterC {
+    "meter C";
+}
+
+// --- pooled class with a byte array -----------------------------------------------------------------
+
+class Ticket[3] : object {
+    static int dropped = 0;
+    int number;
+    array<char> code[4];
+    void create(int n) {
+        number = n;
+        code[0] = 'T';
+        code[1] = '0' + n;
+        code.length = 2;
+    }
+    void destroy() {
+        Ticket.dropped++;
+    }
+    void show() {
+        for (int i = 0; i < code.length; i++) print(code[i]);
+    }
+}
+
+// --- emitters, exceptions and null handling ---------------------------------------------------------
+
+class Vault : object {
+    int code = 0;
+    int tries = 0;
+    object keeper;
+    emitter bool isLocked() { ($self.code ~= 0) }
+    emitter object keeperOf() { ($self.keeper) }
+
+    bool attempt(int guess) {
+        tries++;
+        try {
+            if (!isLocked()) throw -1;
+            if (guess != code) throw guess;
+            code = 0;
+        } catch (int e) {
+            if (e < 0) printLine("Already open.");
+            else printLine($"Wrong code {e}.");
+            return false;
+        }
+        printLine("The vault opens.");
+        return true;
+    }
+
+    object keeperHome() {
+        return keeperOf()?.parent ?? roomA;
+    }
+
+    void demand() {
+        try {
+            throw keeperOf() ?? shed;
+        } catch (object o) {
+            printLine($"Caught {o}.");
+        }
+    }
+}
+
+Vault vaultA {
+    "vault A";
+    code = 42;
+    keeper = guard;
+}
+
+Vault vaultB {
+    "vault B";
+    code = 7;
+}
+
+// --- an accessor over a union -----------------------------------------------------------------------
+
+void dialHum() {
+    print("hum");
+}
+
+object dial {
+    "dial";
+    int routineSets = 0;
+    int textSets = 0;
+    auto face = {
+        stringOrRoutine _src = "blank";
+        stringOrRoutine operator () { return _src; }
+        void operator = (stringOrRoutine v) {
+            _src = v;
+            if (typeof(v) == eType.routine) outer.routineSets++;
+            else outer.textSets++;
+        }
+    }
+}
+
+// --- positional members and I6 interop --------------------------------------------------------------
+
+class Plate : object {
+    inline int serial;
+    inline string mark;
+    void stamp() {
+        #i6 print "[", $i6Expr(serial), "] ";
+        print(mark);
+        #i6 print " (", $i6Expr(serial * 2), ")^";
+    }
+}
+
+Plate plateA { 7, "alpha", "plate A"; }
+Plate plateB = Plate{ 12, "beta" };
+
+// --- crates: attributes, operators, extend, namespace -----------------------------------------------
+
+class Crate : object {
+    attributeList attributes = {container, open};
+    int weight = 1;
+    eTier tier = eTier.low;
+    int operator <=> (Crate o) { return weight - o.weight; }
+    bool heavierOpen(Crate o) {
+        return self > o && self.has(open) && o.has(open);
+    }
+}
+
+extend class Crate {
+    int load() {
+        int n = 0;
+        for (object o in self.children) n++;
+        return n;
+    }
+    int innerWeight() {
+        int w = 0;
+        for (object o in self.children) {
+            if (o.is(Crate)) w += ((Crate)o).weight + ((Crate)o).innerWeight();
+        }
+        return w;
+    }
+}
+
+object store {
+    "store";
+}
+
+Crate oakCrate {
+    "oak crate";
+    parent = store;
+    weight = 5;
+    tier = eTier.high;
+}
+
+Crate pineCrate {
+    "pine crate";
+    parent = store;
+    weight = 2;
+    tier = eTier.mid;
+    attributes = {!open};
+}
+
+Crate tinCrate {
+    "tin crate";
+    parent = oakCrate;
+    weight = 1;
+    tier = eTier.high;
+}
+
+Crate boxCrate {
+    "box crate";
+    parent = tinCrate;
+    weight = 3;
+}
+
+object nail {
+    "nail";
+    parent = oakCrate;
+}
+
+object stock {
+    alias box for Crate;
+    alias grade for eTier;
+
+    int countGrade(object room, stock.grade g) {
+        int n = 0;
+        for (object o in room.children) {
+            if (!o.is(Crate)) continue;
+            stock.box c = (Crate)o;
+            if (c.tier == g) n++;
+        }
+        return n;
+    }
+
+    void report(object room) {
+        for (stock.grade g in {stock.grade.low, stock.grade.mid, stock.grade.high}) {
+            print(countGrade(room, g));
+            print(" ");
+        }
+        printLine();
+    }
+
+    int gradeTotal() {
+        array<stock.grade> gs = { stock.grade.low, stock.grade.high, stock.grade.high };
+        int t = 0;
+        for (stock.grade g in gs) t += (int)g;
+        return t;
+    }
+}
+
+#using stock;
+
+int gradeSpan(object room) {
+    array<grade> grades = {grade.low, grade.mid, grade.high};
+    int span = 0;
+    for (grade g in grades) {
+        if (stock.countGrade(room, g) > 0) span++;
+    }
+    return span;
+}
+
+// --- a lamp extended with a replaced method and attributes ------------------------------------------
+
+object lamp {
+    "lamp";
+    int flicks = 0;
+    void flick() {
+        flicks++;
+    }
+}
+
+extend lamp {
+    attributes = {light};
+    replace void flick() {
+        flicks++;
+        if (self.has(light)) self.ungive(light);
+        else self.give(light);
+        printLine($"Flick {flicks}: lit {self.has(light)}.");
+    }
+}
+
+// --- links: positional declarations walked recursively ----------------------------------------------
+
+class Link : object {
+    inline int value;
+    inline Link next;
+}
+
+Link linkC { 3, null, "link C"; }
+Link linkB { 2, linkC, "link B"; }
+Link linkA { 1, linkB, "link A"; }
+
+class Dims : object {
+    inline int w;
+    inline int h;
+}
+
+// --- recursive routines -----------------------------------------------------------------------------
+
+int tierCount(object root, eTier want) {
+    int n = 0;
+    for (object o in root.children) {
+        if (o.is(Crate)) {
+            Crate c = (Crate)o;
+            if (c.tier == want) n++;
+        }
+        n += tierCount(o, want);
+    }
+    return n;
+}
+
+eTier maxTier(object root, eTier best) {
+    for (object o in root.children) {
+        if (o.is(Crate)) {
+            Crate c = (Crate)o;
+            if ((int)c.tier > (int)best) best = c.tier;
+        }
+        best = maxTier(o, best);
+    }
+    return best;
+}
+
+int sumLinks(Link l) {
+    if (!l?) return 0;
+    return l.value + sumLinks(l.next);
+}
+
+Link lastOf(Link l) {
+    Link n = l?.next;
+    if (!n?) return l;
+    return lastOf(n ?? l);
+}
+
+int valueAt(Link l, int k) {
+    if (k == 0) return l?.value;
+    return valueAt(l?.next, k - 1);
+}
+
+int areaOf(Dims d) {
+    return d.w * d.h;
+}
+
+int nestAfter(int n) {
+    if (n == 0) return 0;
+    Dims d = Dims{ n, n + 1 };
+    int inner = nestAfter(n - 1);
+    return inner + areaOf(d);
+}
+
+int nestBefore(int n) {
+    if (n == 0) return 0;
+    Dims d = Dims{ n, n + 1 };
+    int here = areaOf(d);
+    return here + nestBefore(n - 1);
+}
+
+void spell(ref stringObj acc, int n) {
+    if (n <= 0) return;
+    acc += "ab";
+    spell(acc, n - 1);
+    acc += ".";
+}
+
+stringObj mirror(string s, int n) {
+    if (n == 0) {
+        stringObj base = s;
+        return base;
+    }
+    stringObj inner = mirror(s, n - 1);
+    return "(" + inner + ")";
+}
+
+// --- a string printed through I6 --------------------------------------------------------------------
+
+void shoutText(string s) {
+    stringObj t = s;
+    t = t.toUpper();
+    #i6 print "<";
+    print(t);
+    #i6 print "> ", $i6Expr(t.length);
+    #i6 new_line;
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb ShowGauges {
+    meta = true;
+    grammar = {.gauges};
+    void handler() {
+        int a = bump(mainGauge, 2);
+        int b = bump(mainGauge, 4);
+        bump(spareGauge, 0);
+        printLine($"Main {mainGauge.level}/{mainGauge.peak}, spare {spareGauge.level}, a {a} b {b}.");
+        printLine($"Reads {meterA.read()} {meterB.read()} {meterC.read()}.");
+        printLine(meterA.caption());
+        printLine(meterB.caption());
+        printLine(meterC.caption());
+        meterB.attach(mainGauge);
+        mainGauge.level = 1;
+        int now = meterB.read();
+        printLine($"B now {now}, reads {meterB.reads}, scenery {meterA.has(scenery)}.");
+    }
+}
+
+verb ShowLabels {
+    meta = true;
+    grammar = {.labels};
+    void handler() {
+        Label a;
+        a.set3('a', 'b', 'c');
+        a.uses = 2;
+        Label b = a;
+        b.text[0] = 'z';
+        b.uses++;
+        a.show();
+        print(" ");
+        b.show();
+        array<char> held[8];
+        array<char> copy[8];
+        b.render(held);
+        copy = held;
+        copy[2] = 'q';
+        printLine($" lengths {held.length} {copy.length}, {held[2]}{copy[2]}");
+    }
+}
+
+verb ShowTickets {
+    meta = true;
+    grammar = {.tickets};
+    void handler() {
+        Ticket t1 = new Ticket(1);
+        Ticket t2 = new Ticket(2);
+        Ticket t3 = new Ticket(3);
+        Ticket t4 = new Ticket(4);
+        t1.show(); print(" "); t2.show(); print(" "); t3.show();
+        printLine($" full {t4 == null}");
+        delete t2;
+        Ticket t5 = new Ticket(5);
+        t5.show();
+        printLine($" number {t5.number} dropped {Ticket.dropped}");
+        delete t1;
+        delete t3;
+        delete t5;
+        printLine($"Dropped {Ticket.dropped}.");
+    }
+}
+
+verb ShowCells {
+    meta = true;
+    grammar = {.cells};
+    void handler() {
+        Cell c;
+        c.row = 1;
+        c.col = 1;
+        Cell d = c;
+        d.step();
+        d.step();
+        printLine($"Pick {c.pick()} {d.pick()} at {d.row},{d.col}.");
+        printLine($"Rows {c.rowTotal(wideGrid)} {d.rowTotal(wideGrid)}.");
+        array<array<Cell>> paths = { { Cell{ row = 0; col = 0; } }, { Cell{ row = 2; col = 2; }, Cell{ row = 0; col = 1; } } };
+        Cell e = paths[1][0];
+        e.step();
+        printLine($"Paths {paths[1][0].pick()} {paths[1][1].pick()} {e.row},{e.col} {paths[1].length}.");
+    }
+}
+
+verb ShowCrates {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        printLine($"Order {oakCrate > pineCrate} {pineCrate < tinCrate} {oakCrate <=> pineCrate}.");
+        printLine($"Open heavier {oakCrate.heavierOpen(pineCrate)} {pineCrate.heavierOpen(tinCrate)} {oakCrate.heavierOpen(tinCrate)}.");
+        printLine($"Load {oakCrate.load()} {tinCrate.load()} {pineCrate.load()}, inner {oakCrate.innerWeight()}.");
+        printLine($"High {tierCount(store, eTier.high)}, low {tierCount(store, eTier.low)}, top {(int)maxTier(tinCrate, eTier.low)} {(int)maxTier(store, eTier.low)}.");
+        stock.report(store);
+        stock.report(oakCrate);
+        printLine($"Grades {stock.gradeTotal()} span {gradeSpan(store)} {gradeSpan(tinCrate)}.");
+    }
+}
+
+verb ShowLinks {
+    meta = true;
+    grammar = {.links};
+    void handler() {
+        printLine($"Sum {sumLinks(linkA)} {sumLinks(linkB)} {sumLinks(null)}.");
+        printLine($"Last {lastOf(linkA)} {lastOf(linkC)}.");
+        printLine($"At {valueAt(linkA, 0)} {valueAt(linkA, 2)} {valueAt(linkA, 5)}.");
+        printLine($"Nest {nestBefore(3)} {nestAfter(3)}.");
+    }
+}
+
+verb ShowVault {
+    meta = true;
+    grammar = {.vault};
+    void handler() {
+        vaultA.attempt(5);
+        vaultA.attempt(42);
+        vaultA.attempt(42);
+        vaultA.demand();
+        vaultB.demand();
+        printLine($"Tries {vaultA.tries}, homes {vaultA.keeperHome()} {vaultB.keeperHome()}.");
+    }
+}
+
+verb ShowDial {
+    meta = true;
+    grammar = {.dial};
+    void handler() {
+        print(dial.face);
+        printLine();
+        dial.face = dialHum;
+        print(dial.face);
+        printLine($" routine {typeof(dial.face) == eType.routine}");
+        dial.face = "steady";
+        print(dial.face);
+        printLine($" sets {dial.textSets} {dial.routineSets}");
+    }
+}
+
+verb ShowPlates {
+    meta = true;
+    grammar = {.plates};
+    void handler() {
+        plateA.stamp();
+        plateB.stamp();
+        printLine($"{plateA} {plateA.serial + plateB.serial}");
+    }
+}
+
+verb ShowSpell {
+    meta = true;
+    grammar = {.spell};
+    void handler() {
+        stringObj acc = "<";
+        spell(acc, 3);
+        printLine(acc);
+        stringObj m = mirror("x", 3);
+        printLine($"{m} {m.length}");
+        shoutText("quiet words");
+    }
+}
+
+verb ShowLamp {
+    meta = true;
+    grammar = {.lamp};
+    void handler() {
+        lamp.flick();
+        lamp.flick();
+    }
+}
+
+bool Initialise() {
+    meterA.attach(mainGauge);
+    meterC.attach(spareGauge);
+    rfalse;
+}

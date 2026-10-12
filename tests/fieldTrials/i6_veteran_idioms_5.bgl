@@ -1,0 +1,410 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on Glulx. The binding included ahead of parser and verblib; an #i6
+// island declaring a table array, a byte array, a global, an I6 Class with a pool and a routine
+// method, and a routine with #Ifdef TARGET_GLULX and an @shiftl opcode; that I6 class bound as a
+// pooled extern class (new on it, an I6-declared instance typed by it, a method called with an
+// argument, a computed message sent through a property parameter); a Beguile pooled class whose create() takes four arguments (Glulx
+// only); delete inside a children loop; an object parented to the library's LibraryExtensions
+// object supplying ext_messages, ext_parsenoun and ext_timepasses; the ParseNoun and InitGlkWindow
+// entry points; additive before on a class and an object both running; a routine description held
+// in a stringOrRoutine; extern routines the binding leaves out (IndirectlyContains,
+// CommonAncestor, ObjectIsUntouchable, PrintToBuffer into an array<char>); PlayerTo, TestScope and
+// PronounNotice; 32-bit arithmetic, uint, hex and binary literals inside interpolations and
+// bgl.asm opcodes; switch with value lists, ranges and guards together, and switch on dictionary
+// words (with a null case); a ternary over string literals inside an interpolation; do/until over an
+// I6 table; typeof() as metaclass; #if TARGET_GLULX with an #else.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+
+#i6 {
+    Array tally table 4;
+    Array marks -> 6;
+    Global hook_runs = 0;
+    [ Mix a b  r;
+        #Ifdef TARGET_GLULX;
+        @shiftl a 8 r;
+        #Ifnot;
+        r = a * 256;
+        #Endif;
+        return r | b;
+    ];
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#i6 {
+    Class Peg(3)
+        with short_name "peg",
+             name 'peg',
+             peg_size 1,
+             weigh [ n; return self.peg_size * n; ];
+    Peg bluePeg "blue peg"
+        with name 'blue',
+             peg_size 2;
+}
+
+extern rawArray<int>  tally;     // word 0 holds the entry count
+extern rawArray<char> marks;
+extern int hook_runs;
+extern int Mix(int a, int b);
+extern bool   IndirectlyContains(object o1, object o2);
+extern object CommonAncestor(object o1, object o2);
+extern bool   ObjectIsUntouchable(object item, bool flag1 = false, bool flag2 = false);
+extern int    PrintToBuffer(int buf, int len, var a);
+
+extern property weigh;
+extern class Peg[] : object {
+    int peg_size;
+    emitter int weigh(int n) { $self.weigh($n) }
+}
+extern Peg bluePeg;
+
+int g_visits;      // NewRoom calls
+int g_ticks;       // ext_timepasses calls
+int g_freed;       // chips destroyed
+int g_glk;         // InitGlkWindow calls
+int g_rocks;       // sum of the rocks InitGlkWindow saw
+int g_flags = $$0001;
+array<char> nameBuf[24];
+
+class Room : object {
+    attributes = light;
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+}
+
+void roomBText() { print($"Room B. Room A is south. Visits: {g_visits}."); }
+
+Room roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = roomBText;
+    s_to = roomA;
+}
+
+// A fixture refuses to move; an object's own before runs ahead of its class's.
+class Fixture : object {
+    attributes = static;
+    bool before() {
+        switch (action) {
+            case Take: rtrue($"The {self} is fixed in place.^");
+            case Push: rtrue("It does not budge.^");
+        }
+        rfalse;
+    }
+    int strength(int k) { return k * 10; }
+}
+
+Fixture lever {
+    "lever";
+    name = .lever;
+    parent = roomA;
+    string description = "A lever.";
+    bool before() {
+        switch (action) {
+            case Pull: rtrue("The lever clicks.^");
+            case Take: print("[lever] ");
+        }
+        rfalse;
+    }
+}
+
+#i6 {
+    [ FixtureStrength o;
+        return o.strength(3) + 1;
+    ];
+}
+extern int FixtureStrength(object o);
+
+object glassCase {
+    "glass case";
+    name = {.glass, .case};
+    parent = roomA;
+    string description = "A glass case.";
+    attributes = {container, transparent, openable, static};
+}
+
+object brassKey {
+    "brass key";
+    name = {.brass, .key};
+    parent = glassCase;
+    string description = "A brass key.";
+}
+
+// Matched by the ParseNoun entry point: no name words of its own.
+object slate {
+    "grey slate";
+    parent = roomA;
+    string description = "A grey slate.";
+}
+
+// Matched by an ext_parsenoun hook: no name words of its own either.
+object rod {
+    "iron rod";
+    parent = roomB;
+    string description = "An iron rod.";
+}
+
+class Chip[2] : object {
+    string short_name = "chip";
+    name = {.chip, ..chips};
+    int w;
+    int x;
+    int y;
+    int z;
+    void create(int a, int b, int c, int d) { w = a; x = b; y = c; z = d; }
+    void destroy() { g_freed++; }
+}
+
+// Library extension hooks.
+object hooks {
+    parent = LibraryExtensions;
+    bool ext_messages() {
+        if (action == Jump && lm_n == 1) {
+            hook_runs++;
+            rtrue("You hop once.^");
+        }
+        rfalse;
+    }
+    int ext_parsenoun(object obj) {
+        if (obj != rod) return -1;
+        int n = 0;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .iron || w == .rod) n++;
+            else return n;
+        }
+    }
+    void ext_timepasses() { g_ticks++; }
+}
+
+// Entry points.
+int ParseNoun(object obj) {
+    if (obj != slate) return -1;
+    int n = 0;
+    dictionaryWord w = NextWord();
+    while (w == .grey || w == .slate || w == .tablet) {
+        n++;
+        w = NextWord();
+    }
+    return n;
+}
+
+int InitGlkWindow(int rock) {
+    g_glk++;
+    g_rocks += rock;
+    return 0;
+}
+
+void NewRoom() { g_visits++; }
+
+string kindOf(var v) {
+    switch (typeof(v)) {
+        case eType.int:     return "int";
+        case eType.string:  return "string";
+        case eType.routine: return "routine";
+        case eType.object:  return "object";
+        case eType.class:   return "class";
+        default:            return "unknown";
+    }
+}
+
+int askProp(object o, property p, int arg) { return o.p(arg); }
+
+// Verbs.
+verb Probe {
+    grammar = {.probe, NOUN};
+    void handler() {
+        if (ObjectIsUntouchable(noun, true)) printLine("Out of reach.");
+        else printLine("Within reach.");
+        print($"In Room A: {IndirectlyContains(roomA, noun)}. ");
+        object anc = CommonAncestor(noun, lever);
+        if (anc == null) printLine("No common ancestor.");
+        else printLine($"Shares {anc} with the lever.");
+    }
+}
+
+verb Spell {
+    grammar = {.spell, NOUN};
+    void handler() {
+        int n = PrintToBuffer(&nameBuf, 20, noun);
+        print($"{n} letters:");
+        for (int i in 0 to n - 1) {
+            print(' ');
+            print(nameBuf[i]);
+        }
+        printLine($" (length word {nameBuf.length})");
+    }
+}
+
+verb Calc {
+    grammar = {.calc};
+    meta = true;
+    void handler() {
+        int big = 70000;
+        big *= 3;
+        printLine($"{big} {-7 / 2} {-7 % 2} {7 % -2} {-256 >> 4} {1 << 20}");
+        uint u = (uint)-1;
+        printLine($"{u} {bgl.wordsize} {$FF + $$1010} {Mix(1, 2)}");
+        printLine($"{bgl.asm.ushiftr(-1, 28)} {bgl.asm.sexb(200)} {bgl.asm.aloadb(&marks, 2)}");
+        g_flags |= $$0100;
+        g_flags ^= $$0001;
+        g_flags <<= 1;
+        printLine($"Flags: {g_flags}. Set: {(g_flags & 8) != 0}.");
+    }
+}
+
+verb Tabulate {
+    grammar = {.tabulate};
+    meta = true;
+    void handler() {
+        int i = 1;
+        do {
+            tally[i] = i * i;
+            i++;
+        } until (i > tally[0]);
+        int sum = 0;
+        for (int j in 1 to tally[0]) sum += tally[j];
+        for (int k = 0; k < 6; k++) marks[k] = 'a' + k;
+        print($"Entries: {tally[0]}. Sum: {sum}. Marks: ");
+        for (int k = 0; k < 6; k++) {
+            if (k % 2 == 1) continue;
+            print(marks[k]);
+        }
+        printLine();
+    }
+}
+
+verb Rate {
+    grammar = {.rate, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        switch (n) {
+            case 0:        printLine("zero");
+            case 1, 2, 3:  printLine("few");
+            case 4 to 9, 11: printLine("some");
+            case >= 100:   printLine("lots");
+            default:       printLine("other");
+        }
+    }
+}
+
+verb Utter {
+    grammar = {.utter, TOPIC};
+    void handler() {
+        wn = consult_from;
+        dictionaryWord w = NextWord();
+        switch (w) {
+            case .hello, .hi: printLine("Greeting.");
+            case .bye:        printLine("Farewell.");
+            case null:        printLine("Not a word.");
+            default:          printLine($"Word: {w}.");
+        }
+    }
+}
+
+verb Kinds {
+    grammar = {.kinds};
+    meta = true;
+    void handler() {
+        string s = "abc";
+        printLine($"{kindOf(42)} {kindOf(s)} {kindOf(roomBText)} {kindOf(lever)} {kindOf(Fixture)} {kindOf(null)}");
+    }
+}
+
+verb Mint {
+    grammar = {.mint};
+    void handler() {
+        Chip c = new Chip(1, 20, 300, 4000);
+        if (c == null) { printLine("No chips left."); return; }
+        c.parent = location;
+        printLine($"Minted a chip worth {c.w + c.x + c.y + c.z}.");
+    }
+}
+
+verb Melt {
+    grammar = {.melt};
+    void handler() {
+        int n = 0;
+        for (object o in location.children) {
+            if (o.is(Chip)) {
+                Chip c = (Chip)o;
+                delete c;
+                n++;
+            }
+        }
+        printLine($"Melted {n}. Freed so far: {g_freed}.");
+    }
+}
+
+verb MakePeg {
+    grammar = {.makepeg};
+    void handler() {
+        Peg p = new Peg();
+        if (p == null) { printLine("No pegs left."); return; }
+        p.peg_size = 5;
+        p.parent = location;
+        printLine($"A {p} weighs {p.weigh(3)}, or {askProp(p, weigh, 4)} by message.");
+    }
+}
+
+verb Gauge {
+    grammar = {.gauge, NOUN};
+    void handler() {
+        if (noun.is(Fixture)) printLine($"Strength {((Fixture)noun).strength(2)}, from I6 {FixtureStrength(noun)}.");
+        else printLine("Not a fixture.");
+    }
+}
+
+verb Warp {
+    grammar = {.warp};
+    void handler() {
+        object dest = (location == roomA) ? roomB : roomA;
+        PlayerTo(dest, 1);
+        printLine($"Warped to {(location == roomA) ? "A" : "B"}. Lever in scope: {TestScope(lever)}. Blue peg weighs {bluePeg.weigh(dest == roomB ? 3 : 1)}.");
+    }
+}
+
+verb Point {
+    grammar = {.point};
+    void handler() {
+        PronounNotice(lever);
+        printLine("Noted.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    meta = true;
+    void handler() {
+        printLine($"Visits: {g_visits}. Ticks: {g_ticks}. Hooks: {hook_runs}. Glk: {g_glk}/{g_rocks}.");
+        #if TARGET_GLULX
+            printLine("Glulx build.");
+        #else
+            printLine("Z-machine build.");
+        #endif
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    bluePeg.parent = roomB;
+    rfalse;
+}

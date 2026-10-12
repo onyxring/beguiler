@@ -1,0 +1,411 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a seventh PunyInform program, on what the first six did not lean on: an `alias class` for
+// object whose typed members let rooms set them untyped; multiple inheritance with bare inherited
+// fields from both bases, an inherited `const` member re-set by an object, and a `static superposed`
+// method reached through a subclass name; `inline instanceName;` re-listed first, with `extend class`
+// appending an enum-typed positional member; an enum with emitter methods and an `extend enum` emitter
+// value; a value-class accessor made read-only on a subclass with `hide member.operator =`, written again
+// through a base cast; a `primitive class` newtype over int with conversion, an emitter value and
+// `operator auto()`; `extend extern class int` and `extend extern class array` (a `T second()` emitter on a
+// global and a member array); object-method overloads by type and arity, and global overloads chosen by
+// the most derived class with a `var` fallback; `var` locals; address-of `&`; a raw string; `stringObj`
+// from <string> (capture/release, content switch, toUpper, replace, endsWith, +=); `#redef`/`#undef`
+// read by `#if`/`#elif`; `#startup` and `#emitlast` raw I6 with an extern routine; and grammar with a
+// multi-trigger alternation line that shares a library word, a parenthesized alternation, HELD,
+// MULTIEXCEPT, a native verb on a library word with `withI6Synonyms`, `synonyms` on a native verb that a
+// later `grammar +=` reaches, and a grammar-object rule with a priority for a native verb; plus arrays of
+// the newtype and of the enum, iterated with `auto` (through `operator auto()`) and chained with `second()`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#define LEVEL 1
+#redef LEVEL 2
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+int bootMark;
+
+#startup {
+    bootMark = 7;
+}
+
+#emitlast {
+    [ HelperSum a b;
+        return a + b + 100;
+    ];
+}
+
+extern int HelperSum(int a, int b = 1);
+
+extend extern class int {
+    emitter int tenth() { ($self / 10) }
+}
+
+extend extern class array {
+    emitter T second() { $i6Expr($self[1]) }
+}
+
+enum eShelf {
+    low = 1, mid, top,
+    emitter int height() { ($self * 30) }
+}
+
+extend enum eShelf {
+    emitter int slotCount { (4 - $self) }
+}
+
+primitive class grams {
+    emitter void operator = (int v) { $self = $v; }
+    emitter int  operator ()        { ($self) }
+    emitter int  ounces             { ($self / 28) }
+    int operator auto();
+}
+
+alias class place for object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+value class Dial {
+    int _v = 0;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v % 10; }
+}
+
+class Weighted : object {
+    inline int mass;
+    string description = "Something with weight.";
+
+    int heft() { return mass * 2; }
+
+    static superposed int total(int a, int b) { return a * 10 + b; }
+}
+
+class Lit : object {
+    int lumens = 0;
+    const int maxLumens = 9;
+
+    bool isBright() { return lumens > 4; }
+}
+
+class Lantern : Weighted, Lit {
+    void brighten(int by) {
+        lumens = lumens + by > maxLumens ? maxLumens : lumens + by;
+    }
+
+    void status() {
+        printLine($"Mass {mass}, heft {heft()}, lumens {lumens} of {maxLumens}, bright {isBright()}.");
+    }
+}
+
+class Tag : object {
+    inline instanceName;
+    inline int code;
+    name = {.tag};
+    string description = "A tag.";
+}
+
+extend class Tag {
+    inline eShelf shelf = eShelf.low;
+}
+
+class Gauge : object {
+    Dial setting;
+    string description = "A gauge.";
+}
+
+class SealedGauge : Gauge {
+    hide setting.operator =;
+}
+
+place roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+place roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+Lantern lamp {
+    3, "lantern";
+    parent = roomA;
+    name = {.lantern};
+    description = "A lantern.";
+    maxLumens = 6;
+}
+
+object cloth {
+    "cloth";
+    parent = roomA;
+    name = {.cloth};
+    string description = "A cloth.";
+}
+
+Tag redTag {
+    "red tag", 4, eShelf.top;
+    parent = roomA;
+    name = {.red};
+}
+
+Tag blueTag {
+    "blue tag", 2, mid;
+    parent = roomA;
+    name = {.blue};
+}
+
+SealedGauge meter {
+    "gauge";
+    parent = roomB;
+    name = {.gauge};
+    attributes = {static};
+}
+
+object crate {
+    "crate";
+    parent = roomB;
+    name = {.crate};
+    string description = "A crate.";
+    attributes = {container, open, static};
+}
+
+object ledger {
+    array<int> marks = {5, 8, 13};
+    int notes = 0;
+
+    void note(int n)        { notes++; printLine($"Number {n}."); }
+    stringObj lastText;
+
+    void note(string s)     { notes++; lastText = s; printLine($"Text {s}."); }
+    void note(object o)     { notes++; printLine($"Thing {the(o)}."); }
+    void note(int a, int b) { notes++; printLine($"Pair {a} and {b}."); }
+}
+
+array<object> shelfList = {redTag, blueTag, lamp};
+
+grams load = 0;
+
+string kind(object o)   { return "object"; }
+string kind(Weighted w) { return "weighted"; }
+string kind(Lantern l)  { return "lantern"; }
+string kind(var v)      { return "var"; }
+
+string scale(grams g) { return "metric"; }
+string scale(int n)   { return "plain"; }
+
+grams weightOf(object o) {
+    grams g = 0;
+    if (o.is(Weighted)) g = ((Weighted)o).mass * 280;
+    return g;
+}
+
+verb Buff {
+    grammar = { {.buff | .polish, NOUN, (.with | .using), HELD} };
+    void handler() {
+        if (second != cloth) {
+            printLine($"{cThe(second)} will not buff anything.");
+            return;
+        }
+        if (!noun.is(Lantern)) {
+            printLine($"{cThe(noun)} does not shine.");
+            return;
+        }
+        Lantern l = (Lantern)noun;
+        l.brighten(4);
+        l.status();
+    }
+}
+
+verb Scrutinize {
+    grammar = { {.examine, .closely, NOUN, withI6Synonyms} };
+    void handler() {
+        printLine($"Up close, {the(noun)}: kind {kind(noun)}.");
+    }
+}
+
+verb Pack {
+    grammar = { {.pack, MULTIEXCEPT, .in, NOUN} };
+    void handler() {
+        if (second != crate) {
+            printLine("Only the crate takes things.");
+            return;
+        }
+        noun.parent = crate;
+        printLine("Packed.");
+    }
+}
+
+grammar packLines {
+    grammarRule stowLine = {Pack, {.stow, MULTIEXCEPT, .into, NOUN}, 15};
+}
+
+verb Weigh {
+    grammar = { {.weigh, NOUN} };
+    void handler() {
+        grams g = weightOf(noun);
+        load = g;
+        auto raw = load;
+        raw = raw + 5;
+        printLine($"{cThe(noun)}: {(int)g} g, {g.ounces} oz, raw {raw}, tenth {raw.tenth()}.");
+        auto direct = weightOf(noun);
+        printLine($"Scales: {scale(g)}, {scale(raw)}, {scale(direct)}, {scale(load)}.");
+    }
+}
+
+extend Weigh {
+    synonyms = {.heft};
+}
+
+extend Weigh {
+    grammar += { {.weigh, NOUN, .carefully} };
+}
+
+verb Shelve {
+    grammar = { {.shelve, NOUN} };
+    void handler() {
+        if (!noun.is(Tag)) {
+            printLine("Only tags shelve.");
+            return;
+        }
+        Tag t = (Tag)noun;
+        eShelf s = t.shelf;
+        printLine($"Code {t.code}: shelf height {s.height()}, {s.slotCount} slot(s); top is {top.height()}.");
+        if (s != eShelf.top) {
+            t.shelf = (eShelf)((int)s + 1);
+            printLine($"Moved up to {t.shelf.height()}.");
+        }
+    }
+}
+
+verb Calibrate {
+    grammar = { {.calibrate, NOUN, .to, NUMBER} };
+    void handler() {
+        if (noun != meter) {
+            printLine("Only the gauge calibrates.");
+            return;
+        }
+        ((Gauge)meter).setting = parsed_number;
+        int now = meter.setting;
+        printLine($"The gauge reads {now}.");
+    }
+}
+
+verb Label {
+    grammar = { {.label, NOUN} };
+    void handler() {
+        stringObj s;
+        s.capture();
+        print($"{the(noun)}");
+        s.release();
+        stringObj up = s.toUpper();
+        print("Label: ");
+        print(up);
+        printLine($" ({s.length} letters).");
+        switch (s) {
+            case "the lantern": printLine("A light.");
+            case "the cloth":   printLine("A rag.");
+            default:            printLine("Something else.");
+        }
+        s += " here";
+        if (s.endsWith("here")) {
+            stringObj t = s.replace("the", "that");
+            print(t);
+            print("^");
+        }
+    }
+}
+
+verb Notes {
+    meta = true;
+    grammar = {.notes};
+    void handler() {
+        ledger.note(4);
+        ledger.note("four");
+        ledger.note(lamp);
+        ledger.note(4, 5);
+        printLine($"{ledger.notes} notes; second mark {ledger.marks.second()}; second shelf {the(shelfList.second())}.");
+        printLine($"{kind(lamp)} {kind((Weighted)lamp)} {kind(cloth)} {kind(7)} {kind(redTag)}");
+        var v = lamp;
+        object o = v;
+        v = 12;
+        int n = v;
+        printLine($"Var held {the(o)}, then {n}.");
+        int base = &shelfList;
+        int same = &bootMark;
+        printLine($"Address set {base != 0}; scalar {same}; helper {HelperSum(2, 3)}, {HelperSum(2)}.");
+        printLine($"Object address matches {&lamp == (int)lamp}; base cast cap {((Lit)lamp).maxLumens}; both {lamp.is(Lit) && lamp.is(Weighted)}.");
+        print("Last text: ");
+        print(ledger.lastText);
+        print("^");
+        printLine(@"Raw: C:\bin^x~y");
+        printLine($"Total {Lantern.total(4, 5)}.");
+        #if LEVEL == 2
+            printLine("Level two.");
+        #elif LEVEL == 1
+            printLine("Level one.");
+        #else
+            printLine("No level.");
+        #endif
+    }
+}
+
+array<grams>  loads = {280, 560, 1400};
+array<eShelf> shelfOrder = {low, top, mid};
+
+verb Chains {
+    meta = true;
+    grammar = {.chains};
+    void handler() {
+        int sum = 0;
+        for (grams g in loads) sum += g.ounces;
+        for (auto h in loads) sum += h.tenth();
+        grams mid2 = loads.second();
+        printLine($"Ounces {sum}; second load {(int)mid2} is {loads.second().ounces} oz, {scale(loads[2])}.");
+        print("Heights:");
+        for (eShelf e in shelfOrder) print($" {e.height()}/{e.slotCount}");
+        printLine($"; second {shelfOrder.second().height()}, last {shelfOrder[shelfOrder.length - 1].slotCount}.");
+        int k = shelfList.length;
+        printLine($"{k} shelved; {((Tag)shelfList[0]).shelf.height()} first, mark sum {ledger.marks[0] + ledger.marks.second()}.");
+    }
+}
+
+#undef LEVEL
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        lamp.status();
+        place here = location;
+        printLine($"Here: {here.description}");
+        printLine($"Gauge {meter.setting}; load {(int)load}; red on {redTag.shelf.height()}, blue on {blueTag.shelf.height()}.");
+        #if LEVEL
+            printLine("Level still set.");
+        #else
+            printLine("Level cleared.");
+        #endif
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

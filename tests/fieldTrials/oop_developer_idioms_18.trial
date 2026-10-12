@@ -1,0 +1,20 @@
+Room A
+Room A.
+
+> stock
+(shelf A: 3 tiers, in Room A)
+(ping shelf A)(shelf B: 4 tiers, crowded, large)
+Trail small medium large empty medium ; totals 19 7, built 2.
+Hits 1 1 2 1, held 3 2, pin marked true.
+Packed 119 207, depth 2 0, pings 1.
+Described fixture 2/1.
+
+> levels
+(ping shelf A) report self 2/24 24.
+Level 5, writes 2, rejects 2, described high-medium, sum 10, tally 6.
+
+> sweep
+Swept: moved kept moved (code 11, room 4, left 1, token 1, A holds 4, B holds 1).
+
+> rank
+A: low low mid top shelf [4 held, 1] (2); B: mid shelf [1 held, 0] (1); cutoff 0-8, ranked 2.

@@ -1,0 +1,115 @@
+/*  Field trial part — included by library_author_idioms_10.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+
+#if !TARGET_GLULX
+    #error "This kit works in float, so it needs Glulx."
+#endif
+
+#if !LA10_STEP
+    #define LA10_STEP 0.5
+#endif
+
+#if !LA10_PLACES
+    #defineI6 LA10_PLACES 2
+#endif
+
+// ---- Constants and plain helpers. ----
+
+/// Half of one.
+const float LA10_HALF = 0.5;
+
+/// One, as the I6 side writes it.
+emitter float la10One { $+1.0 }
+
+/// The nearest whole number to a float; halves round away from zero.
+int la10Round(float v) {
+    if (v < 0) return -(int)(LA10_HALF - v);
+    return (int)(v + LA10_HALF);
+}
+
+/// The sum of two floats.
+float la10Sum(float a, float b) { return a + b; }
+
+/// The larger of two floats.
+float la10Max(float a, float b) { return a > b ? a : b; }
+
+/// A float moved up by the kit's step.
+float la10StepUp(float v) { return v + LA10_STEP; }
+
+/// Prints a float to a number of places, rounding the last.
+void la10Show(float v, int places = 2) {
+    if (v < 0) {
+        print("-");
+        v = 0 - v;
+    }
+    int scale = bgl.util.math.pow(10, places);
+    int whole = la10Round(v * scale);
+    print(whole / scale);
+    if (places == 0) return;
+    print(".");
+    int frac = whole % scale;
+    for (int d = scale / 10; d > 1 && frac < d; d /= 10) print("0");
+    print(frac);
+}
+
+/// The weight a kit adds for packing; consumers may replace it.
+float la10Tare(float v) { return v / 10; }
+
+// ---- More on every float. ----
+
+extend extern class float {
+    /// The nearest whole number.
+    emitter int nearest() { la10Round($val) }
+    /// The value one kit step up.
+    emitter float stepUp() { la10StepUp($val) }
+    /// Prints the value to the kit's number of places.
+    emitter void show() { la10Show($val, LA10_PLACES); }
+}
+
+// ---- A mass: a float under its own name. ----
+
+/// A mass in grams.
+primitive class la10Grams : float {
+    emitter int operator = (la10Grams v) { $target = $v; }
+    replace emitter int operator = (float v) { $target = $v; }
+    emitter la10Grams operator + (la10Grams v) { la10Sum($val, $v) }
+    replace explicit emitter float operator () { $val }
+    /// Compares two masses for sorting.
+    replace static int operator <=> (var a, var b) {
+        float x = a;
+        float y = b;
+        if (x < y) return -1;
+        if (x > y) return 1;
+        return 0;
+    }
+}
+
+/// Prints a mass with its unit.
+void print(la10Grams g) {
+    la10Show((float)g, 1);
+    print("g");
+}
+
+/// The packing every weighed thing carries.
+la10Grams la10Packing = 1.5;
+
+// ---- Callbacks over a list of floats. ----
+
+/// Applies a function to each value in place.
+void la10Map(array<float> vals, func<float, float> f) {
+    for (int i = 0; i < vals.length; i++) vals[i] = f(vals[i]);
+}
+
+/// Folds the values into one, left to right.
+float la10Fold(array<float> vals, float start, func<float, float, float> f) {
+    float acc = start;
+    for (float v in vals) acc = f(acc, v);
+    return acc;
+}
+
+/// The point a fraction of the way from one value to another.
+float la10Lerp(float from, float to, float t = LA10_HALF) {
+    return from + (to - from) * t;
+}

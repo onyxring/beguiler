@@ -1,0 +1,441 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a manifest of value-class records edited at build time inside #if/#elif on a #define
+// value, a zone enum with emitter members (a value and a method) read on table elements and enum
+// variables, enum and bnum types reached through namespace aliases on an object, a named union
+// (string | func<void>) reply table holding strings, a named routine and a lambda, printed through a
+// print() overload that discriminates with typeof, string switch with several values per case, a
+// rate switch mixing values, a range and comparison guards, try/catch/throw carrying error codes out of
+// a row checker, a pooled class with create/destroy, static counters and a static <=> passed as
+// Type::operator <=> to sort, null from an exhausted pool caught with ?. and ??, a ledger class with
+// operator [] and operator []= written through += on a subscript, an object accessor (auto { } with
+// outer) driven by += and -=, a pricing pipeline of func<int, int> chosen per flag by a function that
+// returns functions, and a next-index chain walked with do/while and do/until with an array<bool> guard.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+#define TABLE_LEVEL 2
+const int NONE = -1;
+const int ZONE_COUNT = 4;
+const int POOL_SIZE = 3;
+
+enum eZone {
+    near = 0, mid, far, remote,
+    emitter int surcharge { ($self * 3) }
+    emitter int hops(int base) { ($self + $base) }
+}
+
+bnum eFlag { fragile, urgent, heavy }
+
+object tables {
+    alias zone for eZone;
+    alias flag for eFlag;
+}
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> zoneNames = { "near", "mid", "far", "remote" };
+array<string> flagNames = { "fragile", "urgent", "heavy" };
+
+union reply = string | func<void>;
+
+void print(reply r) {
+    if (typeof(r) == eType.routine) {
+        func<void> f = (func<void>)r;
+        f();
+    }
+    else print((string)r);
+}
+
+void replyMid() {
+    print($"mid zone, surcharge {mid.surcharge}");
+}
+
+// Indexed by (int)eZone.
+array<reply> zoneReplies = {
+    "near zone",
+    replyMid,
+    "far zone",
+    () => print("remote zone, two hops")
+};
+
+value class Row {
+    inline string dest;
+    inline int weight;
+    inline tables.flag flags;
+    Row operator = (Row o) { dest = o.dest; weight = o.weight; flags = o.flags; return self; }
+}
+
+// The moon row and the light heavy row are deliberately bad: the validation pass reports them.
+array<Row> manifest = {
+    Row{ "near",   3,  0 },
+    { "middle", 12, fragile },
+    { "far",    55, heavy | urgent },
+    { "moon",   2,  0 },
+    { "remote", 8,  heavy }
+};
+
+extend manifest {
+    #if TABLE_LEVEL >= 2
+        inject Row{ "mid", 6, urgent } after [2];
+        inject Row{ "remote", 20, fragile | urgent } last;
+    #elif TABLE_LEVEL == 1
+        inject Row{ "mid", 1, 0 } last;
+    #else
+        remove [0];
+    #endif
+}
+
+// chainNext[i] is the row delivered after row i; NONE ends a chain. Row 6 loops back to 2.
+array<int> chainNext = { 2, NONE, 5, 1, NONE, 6, 2 };
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Ticket[POOL_SIZE] : object {
+    int row = NONE;
+    int cost = 0;
+    static int live = 0;
+    static int refused = 0;
+    static int made = 0;
+    void create(int r, int c) {
+        row = r;
+        cost = c;
+        Ticket.live++;
+        Ticket.made++;
+    }
+    void destroy() { Ticket.live--; }
+    static int operator <=> (Ticket a, Ticket b) { return a.cost - b.cost; }
+}
+
+Ticket spare { row = NONE; cost = -1; }
+
+array<Ticket> tickets[POOL_SIZE];
+
+class Ledger : object {
+    array<int> cells[ZONE_COUNT];
+    int misses = 0;
+    int operator [] (int i) {
+        if (i < 0 || i >= cells.size) { misses++; return 0; }
+        return cells[i];
+    }
+    int operator []= (int i, int v) {
+        if (i < 0 || i >= cells.size) { misses++; return 0; }
+        while (cells.length <= i) cells += 0;
+        cells[i] = v;
+        return v;
+    }
+}
+
+Ledger byZone { "zone ledger"; }
+
+object meter {
+    int cap = 50;
+    int spilled = 0;
+    auto load = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            if (v > outer.cap) {
+                outer.spilled = outer.spilled + v - outer.cap;
+                _v = outer.cap;
+            }
+            else if (v < 0) _v = 0;
+            else _v = v;
+        }
+    }
+}
+
+//-- Lookups -------------------------------------------------------------------
+
+int zoneOf(string dest) {
+    switch (dest) {
+        case "near":           return (int)tables.zone.near;
+        case "mid", "middle":  return (int)tables.zone.mid;
+        case "far":            return (int)far;
+        case "remote":         return (int)remote;
+        default:               return NONE;
+    }
+}
+
+int rateFor(int weight) {
+    switch (weight) {
+        case 0:         return 0;
+        case 1 to 4:    return 2;
+        case 5, 6, 7:   return 3;
+        case < 0:       return NONE;
+        case >= 50:     return 20;
+        default:        return 4 + weight / 10;
+    }
+}
+
+int doubled(int c) { return c * 2; }
+
+func<int, int> stepFor(tables.flag f) {
+    switch (f) {
+        case fragile:  return (int c) => c + 4;
+        case urgent:   return doubled;
+        default:       return (int c) => c + 10;
+    }
+}
+
+int priceRow(int i, bool show) {
+    Row r = manifest[i];
+    eZone z = (eZone)zoneOf(r.dest);
+    int c = rateFor(r.weight) + z.surcharge;
+    if (show) print($"base {c}");
+    array<func<int, int>> steps[3];
+    for (int b = 0; b < flagNames.length; b++) {
+        tables.flag f = (tables.flag)(1 << b);
+        if ((r.flags & f) != 0) steps += stepFor(f);
+    }
+    for (func<int, int> s in steps) {
+        c = s(c);
+        if (show) print($" -> {c}");
+    }
+    return c;
+}
+
+Ticket ticketFor(int row) {
+    for (Ticket t in tickets) {
+        if (t.row == row) return t;
+    }
+    return null;
+}
+
+void printFlags(eFlag f) {
+    if (f == 0) { print("plain"); return; }
+    bool first = true;
+    for (int b = 0; b < flagNames.length; b++) {
+        if ((f & (eFlag)(1 << b)) == 0) continue;
+        if (!first) print("+");
+        print(flagNames[b]);
+        first = false;
+    }
+}
+
+//-- Validation ----------------------------------------------------------------
+
+void checkRow(int i) {
+    Row r = manifest[i];
+    if (zoneOf(r.dest) == NONE) throw 100 + i;
+    if (rateFor(r.weight) == NONE) throw 200 + i;
+    if ((r.flags & heavy) != 0 && r.weight < 50) throw 300 + i;
+}
+
+int validate() {
+    int bad = 0;
+    for (int i = 0; i < manifest.length; i++) {
+        try {
+            checkRow(i);
+        }
+        catch (int code) {
+            bad++;
+            int row = code % 100;
+            switch (code / 100) {
+                case 1:  print($"Row {row}: unknown zone '{manifest[row].dest}'.^");
+                case 2:  print($"Row {row}: bad weight.^");
+                case 3:  print($"Row {row}: heavy flag on {manifest[row].weight}.^");
+            }
+        }
+    }
+    if (zoneReplies.length != ZONE_COUNT) { print("Replies: length wrong.^"); bad++; }
+    for (int i = 0; i < chainNext.length; i++) {
+        if (chainNext[i] >= manifest.length) { print($"Chain {i}: target out of range.^"); bad++; }
+    }
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}.^");
+    return bad;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb ManifestTest {
+    grammar = {.manifest};
+    void handler() {
+        for (int i = 0; i < manifest.length; i++) {
+            Row r = manifest[i];
+            int z = zoneOf(r.dest);
+            print($"{i}. {r.dest} {r.weight} ");
+            printFlags(r.flags);
+            if (z == NONE) print(" (no zone)");
+            else print($" zone {zoneNames[z]}");
+            print("^");
+        }
+    }
+}
+
+verb ZonesTest {
+    grammar = {.zones};
+    void handler() {
+        for (int i = 0; i < zoneReplies.length; i++) {
+            eZone z = (eZone)i;
+            print($"{zoneNames[i]}: ");
+            print(zoneReplies[i]);
+            print($"; surcharge {z.surcharge}, hops {z.hops(1)}.^");
+        }
+        print($"Far by path: {(int)tables.zone.far}, remote hops {remote.hops(10)}.^");
+    }
+}
+
+verb RateTest {
+    grammar = {.rate, NUMBER};
+    void handler() {
+        int w = (int)noun;
+        print($"Weight {w}: rate {rateFor(w)}.^");
+    }
+}
+
+verb PriceTest {
+    grammar = {.price, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= manifest.length) { print($"No row {i}.^"); return; }
+        if (zoneOf(manifest[i].dest) == NONE) { print($"Row {i} has no zone.^"); return; }
+        print($"Row {i}: ");
+        int c = priceRow(i, true);
+        print($" = {c}.^");
+    }
+}
+
+verb IssueTest {
+    grammar = {.issue, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= manifest.length || zoneOf(manifest[i].dest) == NONE) { print($"Row {i} cannot be issued.^"); return; }
+        if (ticketFor(i) != null) { print($"Row {i} already has a ticket.^"); return; }
+        Ticket t = new Ticket(i, priceRow(i, false));
+        if (t == null) {
+            Ticket.refused++;
+            print($"Pool empty: row {i} refused ({Ticket.refused} so far).^");
+            return;
+        }
+        tickets += t;
+        byZone[zoneOf(manifest[i].dest)] += t.cost;
+        print($"Ticket for row {i}: cost {t.cost}; {Ticket.live} live.^");
+    }
+}
+
+verb VoidTest {
+    grammar = {.void, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        Ticket t = ticketFor(i);
+        int was = t?.cost;
+        Ticket shown = t ?? spare;
+        print($"Row {i}: ticket cost {shown.cost}");
+        if (t == null) { print(", nothing to void.^"); return; }
+        byZone[zoneOf(manifest[i].dest)] -= was;
+        tickets -= t;
+        delete t;
+        print($", voided; {Ticket.live} live.^");
+    }
+}
+
+verb TicketsTest {
+    grammar = {.tickets};
+    void handler() {
+        array<Ticket> view[POOL_SIZE];
+        view = tickets;
+        view.sort(Ticket::operator <=>);
+        print("By cost:");
+        for (Ticket t in view) print($" row {t.row}={t.cost}");
+        if (view.length == 0) print(" none");
+        print($".^Live {Ticket.live}, made {Ticket.made}, refused {Ticket.refused}.^");
+        if (view.length >= 2) print($"Cheapest first: {view[0] < view[1] || view[0].cost == view[1].cost}.^");
+    }
+}
+
+verb LedgerTest {
+    grammar = {.ledger};
+    void handler() {
+        int total = 0;
+        for (int i = 0; i < ZONE_COUNT; i++) {
+            print($"{zoneNames[i]} {byZone[i]}; ");
+            total += byZone[i];
+        }
+        int stray = byZone[ZONE_COUNT + 2];
+        byZone[NONE] = 5;
+        print($"total {total}, stray {stray}, misses {byZone.misses}.^");
+    }
+}
+
+verb LoadTest {
+    grammar = {.load, NUMBER};
+    void handler() {
+        meter.load += (int)noun;
+        print($"Load {meter.load} of {meter.cap}, spilled {meter.spilled}.^");
+    }
+}
+
+verb UnloadTest {
+    grammar = {.unload, NUMBER};
+    void handler() {
+        meter.load -= (int)noun;
+        print($"Load {meter.load} of {meter.cap}.^");
+    }
+}
+
+verb ChainTest {
+    grammar = {.chain, NUMBER};
+    void handler() {
+        int at = (int)noun;
+        if (at >= chainNext.length) { print($"No row {at}.^"); return; }
+        array<bool> seen[8];
+        seen.length = chainNext.length;
+        int steps = 0;
+        print("Chain:");
+        do {
+            print($" {at}");
+            seen[at] = true;
+            at = chainNext[at];
+            steps++;
+        } while (at != NONE && !seen[at]);
+        if (at != NONE) print($" (loops to {at})");
+        print($", {steps} rows.^");
+    }
+}
+
+verb HeadTest {
+    grammar = {.head, NUMBER};
+    void handler() {
+        int target = (int)noun;
+        if (target >= chainNext.length) { print($"No row {target}.^"); return; }
+        int at = -1;
+        int tries = 0;
+        do {
+            at++;
+            tries++;
+        } until (at >= chainNext.length || chainNext[at] == target);
+        if (at >= chainNext.length) print($"Nothing leads to row {target}.^");
+        else print($"Row {at} leads to row {target} ({tries} tries).^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,263 @@
+#grids
+Room A
+Room A.
+You can see a brass key, a steel rod, an iron anvil, a wire spool and a copper coin here.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ (empty)                                        │|
+|│                                                │|
+|│                                                │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│ ░░░░░░░░░░ 0/10                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» start                                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> panelist
+(ticker): grid 50x1, text at (0,0)
+meter: grid 50x3, text at (2,1)
+heaviest: grid 50x5, text at (2,1)
+Opened 3, closed 0; via subclasses 3 0.
+Sheet alert weight 1, color 16711680; normal color 8421504.
+Notes: none; Glk windows open: 9.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ (empty)                                        │|
+|│                                                │|
+|│                                                │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│ ░░░░░░░░░░ 0/10                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» start                                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> meter 7
+Meter at 7 of 10.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ (empty)                                        │|
+|│                                                │|
+|│                                                │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│ ███████░░░ 7/10                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» meter · start                               [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> heavy 400
+3 of 5 weigh at least 400 g.
+Heaviest iron anvil, lightest wire spool.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│ ███████░░░ 7/10                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» heavy · meter · start                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> totals
+Total 3600 g over 5 items.
+Any over 1500: yes; all over 1: yes.
+Outweighed tenfold: 2.
+Light ones: 1 before the first heavy one.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│ ███████░░░ 7/10                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» heavy · meter · start                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> tags
+By code: Anvil, Coin, bolt, key, spool.
+Ignoring case: Anvil, bolt, Coin, key, spool; key at 3.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│ ███████░░░ 7/10                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» heavy · meter · start                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> cells
+(2,1) + (3,4) = (5,5)
+Equal: no; differ: yes; a first: yes; order -1 1 0.
+Corner (49,2); same as (49,2): yes.
+After a copy nudge the meter starts at (2,1).
+After a ref nudge it starts at (7,1).
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│      ███████░░░ 7/10                           │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» heavy · meter · start                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> notes
+Notes window: buffer.
+[win 1] 3 panes; meter 7
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 2]
+|┌──────────────────── meter ─────────────────────┐|
+|│      ███████░░░ 7/10                           │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» notes · heavy · meter                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 3 · closed 0                     |
+> closemeter
+Meter dropped; 2 panes left.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» close · notes · heavy                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 2 · opened 3 · closed 1                     |
+
+> panelist
+(ticker): grid 50x1, text at (0,0)
+heaviest: grid 50x5, text at (2,1)
+Opened 3, closed 1; via subclasses 3 1.
+Sheet alert weight 1, color 16711680; normal color 8421504.
+Notes: buffer; Glk windows open: 9.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» close · notes · heavy                       [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 2 · opened 3 · closed 1                     |
+
+> reopen
+New meter: level 0, text at (1,1), window grid.
+Second meter: yes.
+Third meter: no.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» reopen · close · notes                      [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 5 · closed 2                     |
+[grid 5]
+|┌─────────── meter 2 ────────────┐|
+|│░░░░░░░░░░ 0/10                 │|
+|└────────────────────────────────┘|
+
+> panelist
+(ticker): grid 50x1, text at (0,0)
+heaviest: grid 50x5, text at (2,1)
+meter 2: grid 34x3, text at (1,1)
+Opened 5, closed 2; via subclasses 5 2.
+Sheet alert weight 1, color 16711680; normal color 8421504.
+Notes: buffer; Glk windows open: 11.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ 1. iron anvil 1900 g                           │|
+|│ 2. steel rod 1250 g                            │|
+|│ 3. wire spool 410 g                            │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» reopen · close · notes                      [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 5 · closed 2                     |
+[grid 5]
+|┌─────────── meter 2 ────────────┐|
+|│░░░░░░░░░░ 0/10                 │|
+|└────────────────────────────────┘|
+
+> heavy 2000
+0 of 5 weigh at least 2000 g.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ (empty)                                        │|
+|│                                                │|
+|│                                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» heavy · reopen · close                      [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 5 · closed 2                     |
+[grid 5]
+|┌─────────── meter 2 ────────────┐|
+|│░░░░░░░░░░ 0/10                 │|
+|└────────────────────────────────┘|
+
+> redraw
+Redrew 3 panes.
+[grid 1]
+|┌─────────────────── heaviest ───────────────────┐|
+|│ (empty)                                        │|
+|│                                                │|
+|│                                                │|
+|└────────────────────────────────────────────────┘|
+[grid 3]
+|» heavy · reopen · close                      [T] |
+[grid 4]
+|Room A                                     turn 0 |
+|panes 3 · opened 5 · closed 2                     |
+[grid 5]
+|┌─────────── meter 2 ────────────┐|
+|│░░░░░░░░░░ 0/10                 │|
+|└────────────────────────────────┘|

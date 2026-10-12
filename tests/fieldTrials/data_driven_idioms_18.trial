@@ -1,0 +1,65 @@
+Ready.
+> level 5
+(level 5: band 0 0-9, low, set 1, head -1, over 3, dealt 0)
+Level 0, last false.
+> level 30
+(level 30: band 1 10-49, mid, set 2, head -1, over 2, dealt 0)
+Level 1, last false.
+> cells
+Cells: 3 8 1 12 40 7 55 60 2, reads 9.
+> score 0
+(level 12: band 1 10-49, mid, set 3, head -1, over 2, dealt 0)
+(label low)
+(row 0: total 12, highs 0, smalls 3, rowSum 12, chain 0)
+Score 120, tokens 0, on board 0.
+> score 2
+(level 124: band 2 50-999, high then 20, set 4, head 21, over 0, dealt 2)
+(ping board A)
+(row 2: total 124, highs 2, smalls 2, rowSum 124, chain 2)
+Score 1242, tokens 2, on board 2.
+> level 70
+(level 70: band 2 50-999, high then 20, set 5, head 21, over 0, dealt 2)
+Level 2, last false.
+> score 1
+(level 52: band 2 50-999, high then 20, set 6, head 21, over 2, dealt 2)
+(label low)
+(row 1: total 52, highs 0, smalls 0, rowSum 52, chain 2)
+Score 522, tokens 2, on board 2.
+> score 2
+(level 124: band 2 50-999, high then 20, set 7, head 21, over 0, dealt 4)
+(ping board A)
+(row 2: total 124, highs 2, smalls 2, rowSum 124, chain 4)
+Score 1244, tokens 4, on board 4.
+> score 2
+(pool empty)
+(level 124: band 2 50-999, high then 20, set 8, head 21, over 0, dealt 4)
+(ping board A)
+(row 2: total 124, highs 2, smalls 2, rowSum 124, chain 4)
+Score 1244, tokens 4, on board 4.
+> score 5
+No row 5.
+> clear
+Cleared 4, on board 0, chain 0.
+> audit
+short+a: rows 3 long 1 dealt 3 odd 1 last 4 next daybook kids 3 link in Room A window 1/4
+A: 9
+(ping brass key)
+short: rows 3 long 1 dealt 3 odd 1 last 4 next ledger kids 3 window 2/8
+B: 2
+long: rows 3 long 3 dealt 3 odd 1 last 4 next none kids 3 window 5/12
+C: -1
+acc 5/12, audits 3, kinds ledger daybook ledger, steps 3 16 4.
+> depth
+Room A: 0
+tray: 101
+brass key: 205
+tin cup: 314
+ledger C: -1
+> tally 0
+Tally 0: band 0-9, hits 1, next 1, cell 3, key none, tag one.
+> tally 1
+Tally 1: band 0-9, hits 1, next 2, cell 8, key brass key, tag one.
+> tally 60
+Tally 60: band 50-999, hits 1, next 61, cell -1, key brass key, tag many.
+> clear
+Cleared 0, on board 0, chain 0.

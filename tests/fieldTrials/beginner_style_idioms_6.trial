@@ -1,0 +1,93 @@
+Room A
+Room A. Room B is to the east.
+You can see a dog, a puppy and a grey bird here.
+> animals
+- dog: 4 legs, 0 meals, heavy
+- puppy: 4 legs, 0 meals
+- grey bird: 2 legs, 0 meals
+- green snake: 0 legs, 0 meals
+Animals: 4. Legs: 10. Average legs: 2.5000.
+Total weight: 9.0000. Rounded down: 9.
+Food given: 0.0000 in 0 feeds.
+> shop
+The corner shop has 5 coins for you.
+1 bags cost 2.
+2 bags cost 3.
+3 bags cost 4.
+4 bags cost 4.
+5 bags cost 5.
+Price of 4 through a variable: 4.
+Bags: 3, biggest 2.5000, all together 4.5000.
+Average of 3 and 4 is 3.5000.
+Twice ten is 20. [level 2 of 2]
+> switches
+Extra: on.
+Level: two.
+Shop: named.
+Glulx, new prices.
+Zoo visits: 1. First animal: dog.
+The pup type holds the puppy.
+As an animal it has 4 legs.
+> hear dog
+Bark! The dog says woof.
+> hear puppy
+The puppy only yaps.
+> hear bird
+The grey bird says tweet.
+> formal
+The puppy says yip.
+The puppy eats.
+Speeches: 3.
+> feed dog
+The dog gulps the food.
+> feed puppy
+The puppy gulps the food.
+> feed bird
+The grey bird eats.
+> feed dog
+The dog gulps the food.
+> brush puppy
+You brush the puppy.
+> brush puppy
+Already brushed.
+> brush me
+You can't brush that.
+> fly
+The bird is at 6.
+The grey bird says tweet.
+> animals
+- dog: 4 legs, 4 meals, fed, heavy
+- puppy: 4 legs, 3 meals, fed, brushed
+- grey bird: 2 legs, 1 meals, fed
+- green snake: 0 legs, 0 meals
+Animals: 4. Legs: 10. Average legs: 2.5000.
+Total weight: 9.0000. Rounded down: 9.
+Food given: 3.5000 in 4 feeds.
+> peek
+Room A
+Room A. Room B is to the east.
+You can see a dog, a puppy and a grey bird here.
+> e
+Room B
+Room B. Room A is to the west.
+You can see a green snake here.
+> hear snake
+The green snake says hiss.
+> feed snake
+The green snake eats.
+> animals
+- dog: 4 legs, 4 meals, fed, heavy
+- puppy: 4 legs, 3 meals, fed, brushed
+- grey bird: 2 legs, 1 meals, fed
+- green snake: 0 legs, 1 meals, fed
+Animals: 4. Legs: 10. Average legs: 2.5000.
+Total weight: 9.0000. Rounded down: 9.
+Food given: 4.5000 in 5 feeds.
+> switches
+Extra: on.
+Level: two.
+Shop: named.
+Glulx, new prices.
+Zoo visits: 2. First animal: dog.
+The pup type holds the puppy.
+As an animal it has 4 legs.

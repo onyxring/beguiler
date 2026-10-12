@@ -1,0 +1,389 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: functional code on Glulx with floats. func<float, float> parameters for a midpoint
+// integrator and a Newton solver whose slope is a lambda capturing a func<> parameter and a float
+// local; bgl.util.math float functions wrapped in lambdas; <linq> over array<float> (orderBy with a
+// float comparator, filter, map to array<var> read back by cast, any/all against negative literals);
+// a lambda as a parameter's default value; a float thrown from inside a lambda and caught as float;
+// int-to-float conversion inside expression lambdas; objects with float members and a literal
+// func<float, float> member (lambdas and a named function), integrated by a method; a lambda nested in
+// another lambda's body capturing the outer parameter; `=> print($"…")` over captured floats. A value
+// class whose `operator |` takes a func<> (a pipe), chained over a named function, a static method
+// reference and a capturing lambda, with `|=` by compound fallback, an instance `<=>` giving `<`, and
+// an implicit int conversion; a lambda writing through a `ref` value-class parameter it captures. Static class methods as func<> values,
+// in an array and in a for-in over an inline list of functions. Recursive and mutually recursive
+// lambdas stored in global func<> variables. A lambda whose ternary returns a union of a string and a
+// function, held in a func<> returning a named union. stringObj built from func<char, char> maps
+// (char arithmetic, toUpper, isVowel with a captured char), a captured stringObj appended to inside a
+// lambda, and array<string> ordered by content through <linq>. A block lambda holding a switch with
+// guards, ranges and lists; lambdas in a for condition and a range bound; `=> n += k` as func<void>;
+// a bnum folded with `|` over class instances.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+#include <linq>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- World -------------------------------------------------------------------------------
+
+bnum eTag { small, round, red, heavy }
+
+class Item : object {
+    eTag tags;
+    int weight;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Item ball  { "ball";  name = {.ball};  tags = small | round | red; weight = 2; parent = roomA; }
+Item anvil { "anvil"; name = {.anvil}; tags = heavy;               weight = 9; parent = roomA; }
+Item coin  { "coin";  name = {.coin};  tags = small | round;       weight = 1; parent = roomA; }
+
+array<Item> goods = {ball, anvil, coin};
+
+//-- Float helpers -----------------------------------------------------------------------
+
+array<float> samples = {0.5, 2.25, -1.5, 4.0, -0.25};
+
+float integrate(func<float, float> f, float a, float b, int steps) {
+    float h = (b - a) / steps;
+    float total = 0.0;
+    for (int i = 0; i < steps; i++) total += f(a + h * i + h / 2);
+    return total * h;
+}
+
+float newton(func<float, float> f, float x0, int iters) {
+    float h = 0.01;
+    func<float, float> slope = (float x) => (f(x + h) - f(x - h)) / (2 * h);
+    float x = x0;
+    for (int i = 0; i < iters; i++) x = x - f(x) / slope(x);
+    return x;
+}
+
+float sumBy(array<float> a, func<float, float> f) {
+    float t = 0.0;
+    for (float v in a) t += f(v);
+    return t;
+}
+
+void showF(array<float> a, func<float, float> f = (float x) => x) {
+    for (int i = 0; i < a.length; i++) { if (i > 0) print(" "); print(f(a[i])); }
+    print("^");
+}
+
+void forEachF(array<float> a, func<void, float> f) {
+    for (float v in a) f(v);
+}
+
+float firstNegative(array<float> a) {
+    try {
+        forEachF(a, (float v) => { if (v < 0) throw v; });
+    }
+    catch (float e) { return e; }
+    return 0.0;
+}
+
+class Curve : object {
+    literal func<float, float> f;
+    float lo;
+    float hi;
+    float area(int steps) { return integrate(f, lo, hi, steps); }
+}
+
+Curve line   { "line";   f = (float x) => 2 * x;     lo = 0.0;  hi = 2.0; }
+Curve bowl   { "bowl";   f = (float x) => x * x;     lo = -1.0; hi = 1.0; }
+Curve root   { "root";   f = sqrtOf;                 lo = 0.0;  hi = 4.0; }
+Curve flat   { "flat";   f = (float x) => 0.5;       lo = -2.5; hi = 0.5; }
+
+float sqrtOf(float x) { return bgl.util.math.sqrt(x); }
+
+array<Curve> curveList = {line, bowl, root, flat};
+
+//-- Plain and static functions ----------------------------------------------------------------
+
+int inc(int n) { return n + 1; }
+
+class Ops {
+    static int twice(int n) { return n * 2; }
+    static int neg(int n)   { return 0 - n; }
+    static bool odd(int n)  { return n % 2 != 0; }
+    static int compose2(func<int, int> f, func<int, int> g, int x) { return g(f(x)); }
+}
+
+int runStages(array<func<int, int>> fs, int x) {
+    for (func<int, int> f in fs) x = f(x);
+    return x;
+}
+
+void forEach(array<int> a, func<void, int> f) {
+    for (int x in a) f(x);
+}
+
+void repeat(int times, func<void> body) {
+    for (int i in 1 to times) body();
+}
+
+int foldItems(array<Item> a, int seed, func<int, int, Item> f) {
+    int acc = seed;
+    for (Item i in a) acc = f(acc, i);
+    return acc;
+}
+
+//-- A pipe value ------------------------------------------------------------------------------
+
+value class Val {
+    int v;
+    int stages;
+    Val operator = (Val o) { v = o.v; stages = o.stages; return self; }
+    Val operator | (func<int, int> f) {
+        Val r;
+        r.v = f(v);
+        r.stages = stages + 1;
+        return r;
+    }
+    int operator <=> (Val o) { return v - o.v; }
+    int operator () { return v; }
+}
+
+void accumulate(ref Val target, array<int> a, func<int, int> f) {
+    forEach(a, (int x) => { target.v += f(x); target.stages++; });
+}
+
+//-- Recursive lambdas held in globals --------------------------------------------------------
+
+func<int, int> fib;
+func<bool, int> isEvenF;
+func<bool, int> isOddF;
+
+//-- Text --------------------------------------------------------------------------------------
+
+stringObj mapChars(string s, func<char, char> f) {
+    stringObj r = "";
+    for (int i = 0; i < s.length; i++) r += f(s[i]);
+    return r;
+}
+
+int countChars(string s, func<bool, char> p) {
+    int c = 0;
+    for (int i = 0; i < s.length; i++) if (p(s[i])) c++;
+    return c;
+}
+
+array<string> wordList = {"cup", "brick", "apple", "bolt", "dish"};
+
+void forEachWord(array<string> a, func<void, string> f) {
+    for (string w in a) f(w);
+}
+
+//-- Verbs -------------------------------------------------------------------------------------
+
+verb Floats {
+    grammar = {{.floats}};
+    void handler() {
+        print("sorted:");
+        for (float v in samples.orderBy((float a, float b) => a < b ? -1 : a > b ? 1 : 0)) print($" {v}");
+        print("^");
+        showF(samples);
+        showF(samples, (float v) => v * 2);
+        array<float> pos = samples.filter((float v) => v > 0);
+        print($"positive {pos.count()}, sum {sumBy(pos, (float v) => v)}, squares {sumBy(samples, (float v) => v * v)}^");
+        array<var> halves = samples.map((float v) => v / 2);
+        print($"halves first {(float)halves.first()}, last {(float)halves.last()}^");
+        print($"any below -1: {samples.any((float v) => v < -1) ? "yes" : "no"}, all below 5: {samples.all((float v) => v < 5) ? "yes" : "no"}^");
+        func<float, int> halfOf = (int n) => (float)n / 2;
+        print($"half of 7 is {halfOf(7)}, first negative {firstNegative(samples)}^");
+    }
+}
+
+verb Area {
+    grammar = {{.integrate, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"x*x on 0..3 in {n} steps: {integrate((float x) => x * x, 0, 3, n)}^");
+        float k = (float)n / 4;
+        print($"{k}*x on 0..2: {integrate((float x) => k * x, 0, 2, n)}^");
+        print($"cos on 0..1: {integrate((float x) => bgl.util.math.cos(x), 0, 1, n)}^");
+    }
+}
+
+verb Curves {
+    grammar = {{.curves, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (Curve c in curveList) print($"{(object)c} {c.lo}..{c.hi}: {c.area(n)}^");
+        float total = 0.0;
+        forEachF(samples, (float v) => { total += v; });
+        float widest = 0.0;
+        for (Curve c in curveList) widest = c.hi - c.lo > widest ? c.hi - c.lo : widest;
+        print($"sample total {total}, widest span {widest}^");
+        array<Curve> wide = curveList.filter((Curve c) => c.hi - c.lo > n / 2);
+        print($"spans over {n / 2}: {wide.count()}, first {(object)wide.first()}^");
+        array<func<float, float>> fs = {sqrtOf, line.f, (float x) => bgl.util.math.floor(x), (float x) => x - n};
+        float scale = (float)n / 8;
+        forEachF(samples, (float v) => print($"{v * scale} "));
+        print("^");
+        int pairs = 0;
+        array<int> marks = {1, 2, 3};
+        forEachF(samples, (float v) => { forEach(marks, (int m) => { if (v > m) pairs++; }); });
+        print($"sample over mark: {pairs}^");
+        print("at 2.25:");
+        for (func<float, float> g in fs) print($" {g(2.25)}");
+        print("^");
+    }
+}
+
+verb Roots {
+    grammar = {{.roots, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"square root of {n}: {newton((float x) => x * x - n, n, 8)}, library {bgl.util.math.sqrt((float)n)}^");
+        print($"cube root of {n}: {newton((float x) => x * x * x - n, 1, 20)}^");
+    }
+}
+
+verb Pipe {
+    grammar = {{.pipe, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int bump = 3;
+        Val x;
+        x.v = n;
+        Val y = x | inc | Ops.twice | (int k) => k - bump;
+        print($"y {y.v} after {y.stages} stages^");
+        x |= Ops.twice;
+        int raw = y;
+        print($"x {x.v} after {x.stages}, raw y {raw}, {y < x ? "y first" : "x first"}, compare {y <=> x}^");
+        array<int> parts = {1, 2, 3};
+        accumulate(x, parts, (int p) => p * bump);
+        print($"accumulated x {x.v} after {x.stages}^");
+    }
+}
+
+verb Statics {
+    grammar = {{.statics, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<int, int> f = Ops.twice;
+        array<func<int, int>> fs = {Ops.twice, Ops.neg, inc};
+        print($"twice {f(n)}, compose {Ops.compose2(Ops.neg, Ops.twice, n)}, run all {runStages(fs, n)}^");
+        print("each:");
+        for (func<int, int> g in {Ops.twice, Ops.neg, inc}) print($" {g(n)}");
+        print("^");
+        array<int> nums = {3, 8, 5, 12, 7};
+        print($"odd {nums.filter(Ops.odd).count()}, odd and over {n} {nums.filter((int v) => Ops.odd(v) && v > n).count()}^");
+    }
+}
+
+verb Recur {
+    grammar = {{.fib, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"fib {n} = {fib(n)}; {n} is {isEvenF(n) ? "even" : "odd"}, {n + 1} is {isOddF(n + 1) ? "odd" : "even"}^");
+    }
+}
+
+verb Chooser {
+    grammar = {{.chooser}};
+    void handler() {
+        func<string | func<int, int>, int> chooser = (int k) => k > 2 ? "big" : Ops.twice;
+        for (int k in 1 to 4) {
+            string | func<int, int> c = chooser(k);
+            if (typeof(c) == eType.routine) print($"{k}: {((func<int, int>)c)(k)}^");
+            else print($"{k}: {(string)c}^");
+        }
+    }
+}
+
+verb Chars {
+    grammar = {{.chars}};
+    void handler() {
+        string text = "brass rod and Iron Box";
+        char mask = '*';
+        print(mapChars(text, (char c) => c.toUpper()));
+        print("^");
+        print(mapChars(text, (char c) => c.isVowel() ? mask : c));
+        print("^");
+        func<char, char> shift = (char c) => c.isAlpha() ? c + 1 : c;
+        print(mapChars("hal 9000", shift));
+        print("^");
+        print($"upper {countChars(text, (char c) => c.isUpper())}, letters {countChars(text, (char c) => c.isAlpha())}^");
+    }
+}
+
+verb Words {
+    grammar = {{.words}};
+    void handler() {
+        print("ordered:");
+        for (string w in wordList.orderBy((string a, string b) => a <=> b)) print($" {w}");
+        print("^");
+        print($"starting with b: {wordList.filter((string w) => w.startsWith("b")).count()}^");
+        int total = 0;
+        forEachWord(wordList, (string w) => { total += w.length; });
+        stringObj initials = "";
+        forEachWord(wordList, (string w) => { initials += w.left(1); });
+        print($"letters {total}, initials {initials}^");
+    }
+}
+
+verb Grades {
+    grammar = {{.grades, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<string, int> grade = (int s) => {
+            switch (s) {
+                case < 0:        return "bad";
+                case 0:          return "none";
+                case 1 to 9:     return "low";
+                case 10, 20, 30: return "round";
+                default:         return "high";
+            }
+        };
+        for (int s in {-4, 0, 7, 20, 25, n}) print($"{s}:{grade(s)} ");
+        print("^");
+        func<bool, int> keepGoing = (int i) => i * i < n;
+        int steps = 0;
+        for (int i = 0; keepGoing(i); i++) steps++;
+        func<int, int> halfway = (int k) => k / 2;
+        int sum = 0;
+        for (int i in 1 to halfway(n)) sum += i;
+        int hits = 0;
+        repeat(3, => hits += 10);
+        print($"steps {steps}, sum to {halfway(n)} is {sum}, hits {hits}^");
+    }
+}
+
+verb Tags {
+    grammar = {{.tags}};
+    void handler() {
+        int all = foldItems(goods, 0, (int acc, Item i) => acc | i.tags);
+        int weight = foldItems(goods, 0, (int acc, Item i) => acc + i.weight);
+        print($"all tags {all}, total weight {weight}^");
+        array<Item> round_ = goods.filter((Item i) => (i.tags & round) != 0);
+        print($"round {round_.count()}, small and light {goods.filter((Item i) => (i.tags & small) != 0 && i.weight < 2).count()}^");
+        print("by weight:");
+        for (Item i in goods.orderBy((Item a, Item b) => a.weight - b.weight)) print($" {(object)i}");
+        print("^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    fib = (int k) => k < 2 ? k : fib(k - 1) + fib(k - 2);
+    isEvenF = (int k) => k == 0 ? true : isOddF(k - 1);
+    isOddF = (int k) => k == 0 ? false : isEvenF(k - 1);
+    rfalse;
+}

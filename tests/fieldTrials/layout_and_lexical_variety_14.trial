@@ -1,0 +1,25 @@
+Room A
+A plain room.
+> tab
+[loud]3 7533 15
+14 true false [bell]5 20 11
+[loud] [loud] 2 0 13
+> ledger
+7 12 15 5 12 1216 1201
+17 3 12 1 false true 0
+29 [loud] 67 0 14
+shallow[bell] deep[bell] 68 34
+> books
+7 12 17 5 33 3318 3301
+19 6 34 2 true true 0
+[loud]52 [loud] 69 1 36
+deep[bell] deep[bell] 70 56
+> misc
+3 53 75
+[loud] [bell] 67
+[loud] three 3 503 53 2 68
+12 false 6 12 true
+> ping
+[loud]
+> bell
+[bell]+

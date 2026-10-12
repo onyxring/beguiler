@@ -1,0 +1,621 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fifteenth first-time-programmer program, the one where the author piles everything
+// onto a few big declarations. A primitive class over int with emitter members; an emitter class
+// with init/deinit that counts how many are out through an I6 global; a pooled class with create and
+// destroy; an object with an emitter member, an inline accessor that reads its host through outer (a
+// stringObj made from a string array, a value-class member read with ?.), a method with block lambdas,
+// var/typeof and perform; a value class with == != <=> operators, a member array<char> worked with
+// bgl.util.buf, an #i6 island with $i6Expr, new/delete of the pooled class, ?. and var; a class with
+// an inline accessor in its body, == != <=>, a value-class member, a buffer filled by capture, an #i6
+// island, new/delete, ?., var and perform; a value class with + - * operators, a primitive member, an
+// array<char> parameter filled by capture, an emitter-class local, .parent walks, ?. and perform;
+// verbs whose handlers mix all of the above.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+#include <string>
+
+#i6 {
+Global ticketsOut = 0;
+}
+
+extern int ticketsOut;
+
+// ===== GRAMS (an int that is a weight) =====
+primitive class grams : int {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+
+    // whole hundreds of grams
+    emitter int hundreds() { ($val / 100) }
+}
+
+// ===== TICKET (a number; it counts how many tickets are out) =====
+emitter class Ticket {
+    emitter void init() { $self = 0; ticketsOut++; }
+    emitter void deinit() { ticketsOut--; }
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+
+    // one more
+    emitter void punch() { $self = $self + 1; }
+}
+
+// ===== CHIPS (only three of them) =====
+class Chip[3] : object {
+    string short_name = "chip";
+    int value = 0;
+
+    void create(int v) {
+        value = v;
+    }
+
+    void destroy() {
+        print($"(chip {value} goes back)^");
+    }
+}
+
+// ===== CRATES =====
+class Crate : object {
+    int weight = 1;
+}
+
+// ===== SPOT (a row and column; two spots are the same if the row and column are) =====
+value class Spot {
+    int row;
+    int col;
+    object owner;
+    array<char> code[8];
+
+    // how many times something was dropped here
+    auto drops = {
+        int _count = 0;
+        int operator () { return _count; }
+        void operator = (int v) { _count = v; }
+    }
+
+    Spot operator = (Spot o) {
+        row = o.row;
+        col = o.col;
+        owner = o.owner;
+        drops = o.drops;
+        bgl.util.buf.set(code, o.code);
+        return self;
+    }
+
+    bool operator == (Spot o) {
+        return row == o.row && col == o.col;
+    }
+
+    bool operator != (Spot o) {
+        return row != o.row || col != o.col;
+    }
+
+    // earlier rows first, then earlier columns
+    int operator <=> (Spot o) {
+        if (row != o.row) {
+            return row - o.row;
+        }
+        return col - o.col;
+    }
+
+    // sets the place and writes its code, like R1C2
+    void place(int r, int c, object o) {
+        row = r;
+        col = c;
+        owner = o;
+        bgl.util.buf.set(code, "R");
+        bgl.util.buf.capture(code);
+        print($"R{r}C{c}");
+        bgl.util.buf.release();
+        #i6 print "(spot ", $i6Expr(row), "/", $i6Expr(col), ")^";
+    }
+
+    void sayCode() {
+        bgl.util.buf.print(code);
+    }
+
+    // drops a new chip where the owner is, then gives it back
+    void dropChip(int v) {
+        Chip c = new Chip(v);
+        if (!c?) {
+            print("(no chips left)^");
+            return;
+        }
+        c.parent = owner?.parent ?? roomB;
+        var where = c.parent;
+        if (typeof(where) == eType.object) {
+            print($"(chip {c.value} lands in {(object)where})^");
+        }
+        drops = drops + 1;
+        delete c;
+    }
+
+    // a chip that is kept (the caller gives it back)
+    Chip keepChip(int v) {
+        Chip c = new Chip(v);
+        c?.give(general);
+        return c;
+    }
+
+    // looks at the owner, if there is one
+    void look() {
+        if (owner?) {
+            Examine.perform(owner);
+        } else {
+            print("(nobody owns this spot)^");
+        }
+    }
+}
+
+// ===== PARCEL (a weight and a count, held by something) =====
+value class Parcel {
+    grams heft;
+    int count;
+    object holder;
+
+    Parcel operator = (Parcel o) {
+        heft = o.heft;
+        count = o.count;
+        holder = o.holder;
+        return self;
+    }
+
+    // parcel + n is its weight plus n
+    int operator + (int n) {
+        int h = heft;
+        return h + n;
+    }
+
+    // parcel - parcel is how much heavier this one is
+    int operator - (Parcel o) {
+        int a = heft;
+        int b = o.heft;
+        return a - b;
+    }
+
+    // parcel * n is n of these, counted
+    int operator * (int n) {
+        return count * n;
+    }
+
+    // writes a label like "3x brass key" into a buffer
+    void label(array<char> into) {
+        bgl.util.buf.capture(into);
+        print($"{count}x {holder}");
+        bgl.util.buf.release();
+    }
+
+    // how many things up the tree the holder is
+    int levels() {
+        Ticket t;
+        object o = holder?.parent;
+        while (o?) {
+            t.punch();
+            o = o.parent;
+        }
+        int n = t;
+        print($"({n} levels up, {ticketsOut} tickets out)^");
+        return n;
+    }
+
+    // what holds the holder, or null
+    object above() {
+        return holder?.parent;
+    }
+
+    // the label's first letters, shouted
+    void shout() {
+        array<char> tmp[24];
+        label(tmp);
+        bgl.util.buf.toUpper(tmp);
+        bgl.util.buf.print(tmp, 4);
+        print($" ({tmp.length} letters, {heft.hundreds()} hundred grams)^");
+    }
+
+    void show() {
+        var h = holder;
+        if (typeof(h) == eType.object) {
+            Examine.perform((object)h);
+        } else {
+            print("(nothing holds this parcel)^");
+        }
+    }
+}
+
+// ===== RACK (holds chips; racks compare by how full they are) =====
+class Rack : object {
+    array<char> label[12];
+    Spot first;
+
+    // how full the rack is, 0 to 5
+    auto load = {
+        int _n = 0;
+        int operator () {
+            return _n;
+        }
+        void operator = (int v) {
+            if (v > 5) {
+                v = 5;
+            }
+            if (v < 0) {
+                v = 0;
+            }
+            _n = v;
+        }
+    }
+
+    bool operator == (Rack r) {
+        return load == r.load;
+    }
+
+    bool operator != (Rack r) {
+        return load != r.load;
+    }
+
+    // the lighter rack comes first
+    int operator <=> (Rack r) {
+        return load - r.load;
+    }
+
+    // puts a chip on the rack for a while and notes who it was for
+    void fill(int v, object who) {
+        Chip c = new Chip(v);
+        if (!c?) {
+            print("(no chips left)^");
+            return;
+        }
+        c.parent = self;
+        load = load + v;
+        first.place(load, v, who);
+        var home = first.owner?.parent;
+        if (typeof(home) == eType.object) {
+            print($"({who} is in {(object)home})^");
+        } else {
+            print($"({who} is not in anything)^");
+        }
+        array<char> num[4];
+        bgl.util.buf.capture(num);
+        print(load);
+        bgl.util.buf.release();
+        bgl.util.buf.set(label, "load ");
+        bgl.util.buf.append(label, num);
+        #i6 print "(I6: ", (name) self, " ", $i6Expr(c.value), ")^";
+        Examine.perform(c);
+        delete c;
+    }
+
+    void sayLabel() {
+        print($"{self} says ");
+        bgl.util.buf.print(label);
+        print($", first spot {first.row}/{first.col}.^");
+    }
+}
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+Crate boxA {
+    "box A";
+    parent = roomA;
+    string description = "A plain box A.";
+    weight = 4;
+}
+
+Crate boxB {
+    "box B";
+    parent = boxA;
+    string description = "A plain box B.";
+    weight = 2;
+}
+
+Rack rackA {
+    "rack A";
+    parent = roomB;
+}
+
+Rack rackB {
+    "rack B";
+    parent = roomB;
+}
+
+object brassKey {
+    "brass key";
+    parent = boxB;
+    string description = "A brass key.";
+}
+
+// ===== LABELER (prints labels and remembers them) =====
+object labeler {
+    "labeler";
+    parent = roomA;
+    string description = "A labeler.";
+    int scale = 2;
+    array<string> sizes = {"small", "medium", "large"};
+    array<string> made[3];
+    Parcel lastParcel;
+
+    // twice a number, worked out where it is used
+    emitter int twice(int n) { ($n * 2) }
+
+    // the size of the next label; setting it says which size word that is
+    auto size = {
+        int _n = 0;
+        int operator () {
+            return _n;
+        }
+        void operator = (int v) {
+            _n = v;
+            int i = v / outer.scale;
+            if (i >= outer.sizes.length) {
+                i = outer.sizes.length - 1;
+            }
+            stringObj w = outer.sizes[i];
+            w = w.toUpper();
+            print($"(size {v} is {w}");
+            object last = outer.lastParcel.holder;
+            if (last?) {
+                print($", last label was for {last}");
+            }
+            print(")^");
+            if (outer.made.length < outer.made.size) {
+                outer.made.append(outer.sizes[i]);
+            }
+        }
+    }
+
+    // the size word for the current size
+    string sizeWord() {
+        int i = size / scale;
+        if (i >= sizes.length) {
+            i = sizes.length - 1;
+        }
+        return sizes[i];
+    }
+
+    // prints a label for a thing and remembers it as the last parcel
+    void stamp(object o, int n) {
+        func<bool, string> isLong = (string s) => {
+            if (s.length > 5) {
+                return true;
+            }
+            return false;
+        };
+        func<int, string> letters = (string s) => {
+            stringObj t = s;
+            return t.length;
+        };
+        Parcel p;
+        p.holder = o;
+        p.count = n;
+        p.heft = twice(n) * 50;
+        lastParcel = p;
+        stringObj line = $"{n}x {o}";
+        var up = o?.parent;
+        if (typeof(up) == eType.object) {
+            stringObj where = $" in {(object)up}";
+            line += where;
+        }
+        string word = sizeWord();
+        if (isLong(word)) {
+            line += ", big";
+        }
+        print($"Label: {line} ({word}, {letters(word)} letters, {twice(line.length)} wide).^");
+    }
+
+    // the labels made so far
+    void listMade() {
+        print("Made: ");
+        for (string s in made) {
+            print($"{s} ");
+        }
+        print("^");
+    }
+
+    // looks at the thing the last label was for
+    void recheck() {
+        object o = lastParcel.holder;
+        if (o?) {
+            Examine.perform(o);
+        }
+        print($"Last parcel weighs {lastParcel + 0}, holder's holder is {lastParcel.above() ?? roomB}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// LABELS - the labeler object
+verb LabelsVerb {
+    meta = true;
+    grammar = {.labels};
+    void handler() {
+        labeler.size = 1;
+        labeler.stamp(brassKey, 3);
+        labeler.size = 4;
+        labeler.stamp(boxA, 1);
+        labeler.size = 9;
+        labeler.stamp(roomB, 2);
+        labeler.size = 3;
+        labeler.listMade();
+        labeler.recheck();
+        print($"Twice 21 is {labeler.twice(21)}. Size now {labeler.size}.^");
+    }
+}
+
+// SPOTS - the spot value class
+verb SpotsVerb {
+    meta = true;
+    grammar = {.spots};
+    void handler() {
+        Spot a;
+        Spot b;
+        a.place(1, 2, brassKey);
+        b.place(1, 3, labeler);
+        print("Codes: ");
+        a.sayCode();
+        print(" ");
+        b.sayCode();
+        print(".^");
+        if (a != b) {
+            print("A and B differ.^");
+        }
+        if (a < b) {
+            print($"A comes first ({a <=> b}).^");
+        }
+        Spot c = a;
+        if (c == a) {
+            print("C is a copy of A.^");
+        }
+        a.dropChip(5);
+        a.dropChip(6);
+        b.dropChip(7);
+        c.dropChip(8);
+        print($"Drops: a {a.drops}, b {b.drops}, c {c.drops}.^");
+        c.row = 0;
+        if (c < a) {
+            print("Now C comes first.^");
+        }
+        a.look();
+        Spot d;
+        d.look();
+    }
+}
+
+// PARCELS - the parcel value class
+verb ParcelsVerb {
+    meta = true;
+    grammar = {.parcels};
+    void handler() {
+        Parcel p;
+        p.heft = 250;
+        p.count = 3;
+        p.holder = brassKey;
+        Parcel q = p;
+        q.heft = 100;
+        q.holder = boxB;
+        print($"P plus 5: {p + 5}. P minus Q: {p - q}. P times 4: {p * 4}.^");
+        array<char> tag[20];
+        p.label(tag);
+        print("Tag: ");
+        bgl.util.buf.print(tag);
+        print($" ({tag.length}).^");
+        int n = p.levels();
+        int m = q.levels();
+        print($"Levels: {n} and {m}. Tickets out now: {ticketsOut}.^");
+        print($"Above P: {p.above()}. Above Q: {q.above()}.^");
+        p.shout();
+        q.show();
+        Parcel e;
+        e.show();
+        print($"Empty parcel is above {e.above() ?? roomA}.^");
+    }
+}
+
+// MIX - a bit of everything in one verb
+verb MixVerb {
+    meta = true;
+    grammar = {.mix};
+    void handler() {
+        array<string> names = {"box", "key", "chip"};
+        array<char> word[16];
+        grams g = 420;
+        Ticket t;
+        t.punch();
+        t.punch();
+        Spot s;
+        s.place(2, 1, boxB);
+        Parcel p;
+        p.holder = s.owner;
+        p.count = 2;
+        p.heft = g;
+        func<int, array<string>> totalLength = (array<string> list) => {
+            int n = 0;
+            for (string x in list) {
+                stringObj y = x;
+                n += y.length;
+            }
+            return n;
+        };
+        print($"Names are {totalLength(names)} letters. Ticket {(int)t}, {ticketsOut} out.^");
+        Chip k = s.keepChip(9);
+        var held = k?.parent;
+        if (typeof(held) == eType.unknown) {
+            print($"(chip {k.value} is nowhere yet)^");
+        }
+        k.parent = p.above();
+        print($"(chip {k.value} is in {k.parent}, general {k.has(general)})^");
+        bgl.util.buf.set(word, names[1]);
+        bgl.util.buf.append(word, s.code);
+        #i6 print "(I6 sees ", $i6Expr(word.length), " letters)^";
+        stringObj line = "Word: ";
+        stringObj full = line.append(word);
+        print($"{full}.^");
+        print($"Parcel {p + 0} grams, {g.hundreds()} hundred, {p * 3} counted.^");
+        delete k;
+        Chip x1 = new Chip(1);
+        Chip x2 = new Chip(2);
+        Chip x3 = new Chip(3);
+        Chip x4 = new Chip(4);
+        if (!x4?) {
+            print("(the fourth chip is not there)^");
+        }
+        print($"Chips: {x1?.value} {x2?.value} {x3?.value}.^");
+        delete x1;
+        delete x2;
+        delete x3;
+        Examine.perform(boxB);
+    }
+}
+
+// RACKS - the rack class and its comparisons
+verb RacksVerb {
+    meta = true;
+    grammar = {.racks};
+    void handler() {
+        rackA.fill(2, brassKey);
+        rackB.fill(4, boxA);
+        rackB.fill(3, roomA);
+        print($"Loads: A {rackA.load}, B {rackB.load}.^");
+        if (rackA < rackB) {
+            print($"Rack A is lighter ({rackA <=> rackB}).^");
+        }
+        if (rackA != rackB) {
+            print("They differ.^");
+        }
+        rackA.fill(3, boxB);
+        if (rackA == rackB) {
+            print("Now they are even.^");
+        }
+        rackA.sayLabel();
+        rackB.sayLabel();
+    }
+}

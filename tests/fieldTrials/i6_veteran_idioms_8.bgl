@@ -1,0 +1,391 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, building class hierarchies the I6 way. Multiple inheritance
+// where both bases declare the same member, method and static (first-listed wins, and the other
+// order in a second class); Class::method written as an ancestor cast, chained through three levels;
+// default methods kept overridable down a chain; extend class after its instances and subclasses
+// (an inline member appended to the positional order, replace default of a method an ancestor cast
+// reaches, a new method); a required inline member and a required routine met by a subclass and by
+// an object; inline positional members with a re-listed instanceName; a const member set by an
+// object; subclass names reaching base statics; an author's additive property fed rawArray words
+// from class, subclass and object; a routine member overridden per object; a property parameter
+// read and sent as a message across bgl.world.instances; a value class with a copy operator, an int
+// setter, +=, ==, != and <=> (with <, >, <= and >= derived), held as an owned member
+// with an inline-object initializer, copied into a local and bound through ref :=; a value subclass
+// chaining its copy operator through a cast; a getter/setter accessor class on a base, made
+// read-only on a subclass with hide x.operator = and written through a base cast; hide of a method;
+// a named union with an extend emitter member, a print overload for it, an array of it and a
+// ternary producing it; typeof switched on; an array<object> sorted by a comparator lambda.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+#using bgl.printRules;
+
+additive property marks;
+additive property onPoke;
+
+// ---------------------------------------------------------------- value classes
+
+value class Coins {
+    int cents;
+    Coins operator = (Coins o) { cents = o.cents; return self; }
+    void  operator = (int c)   { cents = c; }
+    Coins operator += (int c)  { cents = cents + c; return self; }
+    eBool operator == (Coins o) { return cents == o.cents; }
+    eBool operator != (Coins o) { return cents != o.cents; }
+    int   operator <=> (Coins o) { return cents - o.cents; }
+    void show() { print($"{cents / 100}.{cents % 100 / 10}{cents % 10}"); }
+}
+
+value class Purse : Coins {
+    int held;
+    Purse operator = (Purse o) { held = o.held; (Coins)self = o; return self; }
+}
+
+value class Gauge {
+    int _v;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = bgl.util.math.clamp(v, 0, 100); }
+}
+
+Purse kitty;
+
+// ---------------------------------------------------------------- the hierarchy
+
+class Room : object {
+    attributes = {light, proper};
+    string description;
+}
+
+class Device : object {
+    required inline int serial;
+    const int voltage = 5;
+    int bulk = 5;
+    static int made = 0;
+    rawArray<int> marks = {1};
+    Gauge charge;
+    Coins price = Coins{ cents = 25; };
+    required string label();
+    default void report() { print($"device {serial}/{voltage}V"); }
+    bool onPoke() { print("[device]"); rfalse; }
+}
+
+class Portable : object {
+    int bulk = 2;
+    static int made = 0;
+    default void report() { print($"portable, bulk {bulk}"); }
+    void heft() { printLine($"{cThe(self)} weighs {bulk}."); }
+}
+
+class Lamp : Device, Portable {
+    inline int watts;
+    rawArray<int> marks = {2, 3};
+    string label() { return "lamp"; }
+    default void report() {
+        print($"lamp {watts}W; ");
+        ((Device)self).report();
+        print("; ");
+        ((Portable)self).report();
+    }
+}
+
+class SealedLamp : Lamp {
+    hide charge.operator =;
+    hide heft();
+    void report() {
+        print("sealed ");
+        ((Lamp)self).report();
+    }
+}
+
+// Bases the other way round: Portable's bulk, report and static win here.
+class Satchel : Portable, Device {
+    inline instanceName;
+    inline int pockets;
+    string label() { return "satchel"; }
+}
+
+// ---------------------------------------------------------------- objects
+
+Room roomA {
+    "Room A";
+    description = "Room A.";
+}
+
+// Positional: watts, then Device's serial and batch (batch is added by the extend below), then the name.
+Lamp lampA {
+    40, 101, 1, "brass lamp";
+    name = {.brass, .lamp};
+    parent = roomA;
+}
+
+SealedLamp lampB {
+    60, 102, 2, "sealed lamp";
+    name = {.sealed, .lamp};
+    parent = roomA;
+    voltage = 12;
+    marks = {7};
+    bool onPoke() { print("[sealed]"); rfalse; }
+}
+
+// Satchel re-lists the name first: name, pockets, then serial and batch.
+Satchel bag {
+    "canvas satchel", 3, 7, 4;
+    name = {.canvas, .satchel, .bag};
+    parent = roomA;
+}
+
+Device fuse {
+    55, 9, "glass fuse";
+    name = {.glass, .fuse};
+    parent = roomA;
+    marks = {8, 9};
+    string label() { return "fuse"; }
+    bool onPoke() { print("[fuse]"); rtrue; }
+}
+
+extend class Device {
+    inline int batch;
+    replace default void report() { print($"device {serial}-{batch}/{voltage}V"); }
+    int age() { return 10 - batch; }
+}
+
+// ---------------------------------------------------------------- a union with a name
+
+union cue = string | object;
+
+extend cue {
+    emitter bool isText() { (metaclass($self) == String) }
+}
+
+void print(cue c) {
+    if (c.isText()) print((string)c);
+    else the((object)c);
+}
+
+array<cue> cues = {"a chalk mark", lampA, "a scratch", fuse};
+
+// ---------------------------------------------------------------- helpers
+
+int sumOf(property p) {
+    int t = 0;
+    for (object o in bgl.world.instances(Device)) {
+        if (o.provides(p)) t += (int)o.p;
+    }
+    return t;
+}
+
+void sendAll(property p) {
+    for (object o in bgl.world.instances(Device)) {
+        print($"{o}: ");
+        o.p();
+        printLine();
+    }
+}
+
+array<object> ranked[8];
+
+// ---------------------------------------------------------------- verbs
+
+verb Report {
+    grammar = {.report, NOUN};
+    meta = true;
+    void handler() {
+        if (!noun.is(Device)) { printLine("Nothing to report."); return; }
+        Device d = (Device)noun;
+        d.report();
+        printLine($". Label {d.label()}, age {d.age()}, bulk {d.bulk}.");
+    }
+}
+
+verb Poke {
+    grammar = {.poke, NOUN};
+    void handler() {
+        if (!noun.provides(onPoke)) { printLine("It does not respond."); return; }
+        if (((Device)noun).onPoke()) printLine(" Handled.");
+        else printLine(" Nothing happens.");
+    }
+}
+
+verb ShowMarks {
+    grammar = {.marks, NOUN};
+    meta = true;
+    void handler() {
+        if (!noun.is(Device)) { printLine("No marks."); return; }
+        Device d = (Device)noun;
+        print($"{d.marks.length}:");
+        for (int i in 0 to d.marks.length - 1) print($" {d.marks[i]}");
+        printLine();
+    }
+}
+
+verb Heft {
+    grammar = {.heft, NOUN};
+    meta = true;
+    void handler() {
+        if (noun == lampB) { ((Lamp)lampB).heft(); return; }
+        if (noun.is(Portable)) { ((Portable)noun).heft(); return; }
+        printLine("You cannot heft that.");
+    }
+}
+
+verb Build {
+    grammar = {.build};
+    meta = true;
+    void handler() {
+        Lamp.made += 1;
+        Device.made += 10;
+        Satchel.made += 3;
+        printLine($"Device {Device.made}, Portable {Portable.made}, Lamp {Lamp.made}, sealed {SealedLamp.made}, satchel {Satchel.made}.");
+    }
+}
+
+verb Charge {
+    grammar = {.charge, NOUN, .to, NUMBER};
+    void handler() {
+        if (noun.is(SealedLamp)) {
+            SealedLamp s = (SealedLamp)noun;
+            ((Lamp)s).charge = (int)second;
+            printLine($"Forced: {s.charge}.");
+            return;
+        }
+        if (!noun.is(Device)) { printLine("It takes no charge."); return; }
+        Device d = (Device)noun;
+        d.charge = (int)second;
+        printLine($"Charge {d.charge}.");
+    }
+}
+
+verb Appraise {
+    grammar = {.appraise, NOUN};
+    meta = true;
+    void handler() {
+        if (!noun.is(Device)) { printLine("No price."); return; }
+        Device d = (Device)noun;
+        Coins c = d.price;
+        c += 5;
+        ref Coins r := d.price;
+        r += 1;
+        print("Listed ");
+        d.price.show();
+        print(", copy ");
+        c.show();
+        if (c > d.price) print(", copy dearer");
+        if (c < d.price) print(", copy cheaper");
+        if (c == d.price) print(", same");
+        if (c != d.price) print(", differs");
+        printLine($" ({c <=> d.price}).");
+    }
+}
+
+verb Reprice {
+    grammar = {.reprice, NOUN, .to, NUMBER};
+    meta = true;
+    void handler() {
+        if (!noun.is(Device)) { printLine("No price."); return; }
+        Device d = (Device)noun;
+        d.price = (int)second;
+        print("Now ");
+        d.price.show();
+        printLine(".");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN, .against, NOUN};
+    meta = true;
+    void handler() {
+        if (!noun.is(Device) || !second.is(Device)) { printLine("Only devices have prices."); return; }
+        Coins a = ((Device)noun).price;
+        Coins b = ((Device)second).price;
+        if (a < b)  print("lt ");
+        if (a > b)  print("gt ");
+        if (a <= b) print("le ");
+        if (a >= b) print("ge ");
+        if (a == b) print("eq ");
+        if (a != b) print("ne ");
+        printLine($"{a <=> b}");
+    }
+}
+
+verb Pool {
+    grammar = {.pool};
+    meta = true;
+    void handler() {
+        Purse p;
+        p.cents = lampA.price.cents + fuse.price.cents;
+        p.held = 2;
+        kitty = p;
+        p.held = 99;
+        Coins plain = kitty;
+        print($"Kitty holds {kitty.held}: ");
+        kitty.show();
+        print("; plain ");
+        plain.show();
+        printLine($"; local {p.held}.");
+    }
+}
+
+verb Cue {
+    grammar = {.cue, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        if (n >= cues.length) { printLine("No such cue."); return; }
+        cue c = cues[n];
+        string | object alt = n > 1 ? "late" : roomA;
+        switch (typeof(c)) {
+            case eType.string: print("text: ");
+            case eType.object: print("thing: ");
+            default:           print("?: ");
+        }
+        print(c);
+        cue a = alt;
+        print(" / ");
+        print(a);
+        printLine($" / {c.isText()}.");
+    }
+}
+
+verb Total {
+    grammar = {.total};
+    meta = true;
+    void handler() {
+        printLine($"Watts {sumOf(watts)}, serials {sumOf(serial)}, pockets {sumOf(pockets)}.");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        sendAll(report);
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    meta = true;
+    void handler() {
+        ranked = bgl.world.instances(Device);
+        ranked.sort((object a, object b) => ((Device)a).serial - ((Device)b).serial);
+        for (object o in ranked) print($"{((Device)o).serial} ");
+        printLine($"({ranked.length})");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

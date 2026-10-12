@@ -1,0 +1,252 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit part with a primitive code class that declares operator ?, operator += and a
+// static helper that queries its arguments with postfix ?; an I6 class written in an #i6 island and
+// adopted by an extern class with a static member array, a static method that reads ?. inside an
+// interpolated string and sums the array through a block lambda; a shelf class with static member
+// arrays (a flat one and an array of arrays), operator += onto the shared slots, an emitter member,
+// a ref member bound with := to the static array, a recursive static sum, a bay cell read by double
+// index and a method that runs the library's Take through perform(); a tag class with an emitter
+// member, a <buf> capture with postfix ? on the next link, and a local block lambda named has that
+// queries with ?; a nested list of codes through the kit's alias; two value classes and a value
+// class with both as parents, written after #using the kit through its type aliases (as bases and
+// as casts), with + - * += == !=, an emitter through $i6Expr, a for-in over an array of the class,
+// a ref parameter it adds into, a block lambda that captures self and uses its own * and a
+// stringObj result; the consumer's extend class of the shelf with an #i6 island reading a local and
+// a member through $i6Expr; a nested list of codes declared after #using through the alias,
+// iterated by alias-typed rows; an object with two inline accessors that, through outer,
+// index-write a byte array member, index-read a string array member and clear() and append() an int
+// array member, a ref string array bound with :=, ?? over string slots and an #i6 island printing a
+// string slot.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_12_parts/library_author_idioms_12_kit"
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object coin {
+    "coin";
+    parent = roomA;
+    name = .coin;
+}
+
+// ---- The consumer's additions to the kit's shelf. ----
+
+extend class La12Shelf {
+    /// Prints the shared count and this shelf's own, straight from I6.
+    void dump() {
+        int n = La12Shelf.slots.length;
+        #i6 print "slots ", n, ", got ", $i6Expr(got);
+    }
+}
+
+// ---- The consumer's things. ----
+
+La12Shelf shelfA { "shelf A"; }
+La12Shelf shelfB { "shelf B"; }
+
+La12GearI6 gearA { "gear A"; parent = roomA; la12Teeth = 12; }
+La12GearI6 gearB { "gear B"; la12Teeth = 5; }
+
+La12Tag tagC { "tag C"; word = "gamma"; }
+La12Tag tagB { "tag B"; word = "beta"; next = tagC; }
+La12Tag tagA { "tag A"; word = "alpha"; next = tagB; }
+
+array<La12Tag> la12Tags = { tagA, tagB, tagC };
+
+array<string> la12Words = { "one", "two" };
+
+#using la12
+
+/// Codes on each bay, written through the kit's alias.
+array<array<code>> la12Codes = { {1, 0, 3}, {0, 5} };
+
+/// The consumer's ledger.
+object la12Ledger {
+    int scale = 2;
+    array<char> mark = "------";
+    array<string> names[4] = { "alpha", "beta", "gamma" };
+    array<int> log[4];
+    ref array<string> spare;
+
+    auto level = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v * outer.scale;
+            if (outer.log.length == outer.log.size) outer.log.clear();
+            outer.log.append(_raw);
+            outer.mark[v % outer.mark.length] = 'x';
+            print(outer.names[v % 3]);
+        }
+    }
+
+    auto pick = {
+        int _at = 0;
+        string operator () { return outer.names[_at] ?? "none"; }
+        void operator = (int i) { _at = i; }
+    }
+
+    /// Binds the spare names to the consumer's words.
+    void useSpare() { spare := la12Words; }
+
+    /// A spare name, or a word for why there is none.
+    string spareAt(int i) {
+        if (!spare) return "unbound";
+        return spare[i] ?? "none";
+    }
+
+    /// Prints the first name straight from I6.
+    void dumpFirst() {
+        #i6 print (string) $i6Expr(names[0]);
+    }
+
+    /// Prints the marks.
+    void showMarks() {
+        for (char c in mark) print(c);
+    }
+}
+
+// ---- Verbs that report. ----
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        print($"Busy {shelfA.busy()}; ");
+        shelfA += 3;
+        shelfA += 4;
+        shelfB += 5;
+        print($"busy {shelfA.busy()} {shelfB.busy()}; sum {La12Shelf.sumFrom(0)} {La12Shelf.sumFrom(3)}; ");
+        shelfB.watch();
+        print($"view {shelfB.view.length} {shelfB.view[4]}; ");
+        shelfA.dump();
+        print("; ");
+        shelfB.dump();
+        print(".^");
+    }
+}
+
+verb Bays {
+    grammar = {.bays};
+    void handler() {
+        print($"Bays {La12Shelf.bays.length}, total {La12Shelf.bayTotal()}, ");
+        print($"cells {La12Shelf.cell(0, 2)} {La12Shelf.cell(1, 1)} {La12Shelf.cell(2, 0)}.^");
+    }
+}
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        int before = La12Shelf.slots.length;
+        shelfA.stock(coin);
+        print($"Logged {La12Shelf.slots.length - before}; last {La12Shelf.slots[La12Shelf.slots.length - 1]}.^");
+    }
+}
+
+verb Gears {
+    grammar = {.gears};
+    void handler() {
+        print($"{La12GearI6.turn(gearA, 0)}; ");
+        print($"{La12GearI6.turn(gearB, 0)}; ");
+        print($"{La12GearI6.turn(gearA, 1)}; logged {La12GearI6.turns.length}.^");
+    }
+}
+
+verb Tags {
+    grammar = {.tags};
+    void handler() {
+        tagA.shout();
+        print("; ");
+        tagC.shout();
+        print($"; linked {tagA.linked()} {tagC.linked()}; count {tagA.countLinked(la12Tags)}.^");
+    }
+}
+
+verb Codes {
+    grammar = {.codes};
+    void handler() {
+        code a = 0;
+        code b = 7;
+        print($"Either {(int)code.either(a, b)} {(int)code.either(b, a)} {(int)code.either(a, a)}; ");
+        a += 2;
+        print($"moved {(int)a}; ");
+        int present = 0;
+        for (array<code> row in la12Codes) {
+            for (code c in row) if (c?) present++;
+        }
+        print($"present {present} of {la12Codes[0].length + la12Codes[1].length}.^");
+    }
+}
+
+verb Amounts {
+    grammar = {.amounts};
+    void handler() {
+        amount a;
+        a.n = 3;
+        a.unit = 1;
+        amount b = a * 2;
+        amount c = a + b;
+        amount d = c - a;
+        print($"{a} {b} {c} {d}; same {d == b} {d != b} {a == b}; twice {c.twice()}; ");
+        array<amount> list[3];
+        list += a;
+        list += b;
+        list += c;
+        amount t;
+        t.unit = 2;
+        t.addAll(list);
+        print($"total {t}; over {a.countOver(list, 2)} {a.countOver(list, 1)}; ");
+        amount held;
+        held.n = 10;
+        a.into(held);
+        a.into(held);
+        print($"held {held}; ");
+        print(t.text());
+        print(", ");
+        print(a.text());
+        print(".^");
+    }
+}
+
+verb Ledger {
+    grammar = {.ledger};
+    void handler() {
+        la12Ledger.level = 4;
+        print(", ");
+        la12Ledger.level = 3;
+        print($"; level {la12Ledger.level}; log {la12Ledger.log.length}; marks ");
+        la12Ledger.showMarks();
+        la12Ledger.pick = 1;
+        print($"; pick {la12Ledger.pick}");
+        la12Ledger.pick = 3;
+        print($" {la12Ledger.pick}; spare {la12Ledger.spareAt(0)}");
+        la12Ledger.useSpare();
+        print($" {la12Ledger.spareAt(1)}; first ");
+        la12Ledger.dumpFirst();
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

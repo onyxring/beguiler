@@ -1,0 +1,367 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: lambdas whose parameters own storage — a stringObj parameter and a value-class parameter
+// are copies inside the lambda (init at entry, deinit at exit), called many times so a leak would
+// exhaust the string pool; a block lambda holding a stringObj local declared inside a loop that
+// leaves by `continue` and `break`, and a switch in that loop whose `break` ends the case while
+// `continue` still skips the iteration; an array<stringObj> queried by <linq> with stringObj-typed
+// lambda parameters; a pooled class whose `create()` takes a literal func<> (new given named functions
+// and non-capturing lambdas), a pooled subclass with its own pool inheriting create(), allocation until
+// `new` returns null, <linq> over the live instances, `delete` from a for-in and reuse of the reset
+// slots (an owned value-class member written by the run method, read by <linq> lambdas, fresh again
+// after new); multiple inheritance where a method's lambdas reach members from both parents (capturing self),
+// and a subclass that hides an inherited method reached again by an upcast inside a lambda;
+// bgl.printRules articles (`cThe`, `the`, `a`) inside interpolated strings in expression lambdas;
+// `attribute` as a lambda parameter type and a captured attribute parameter in a <linq> predicate,
+// with give/ungive done from a block lambda; dictionaryWord values in an array queried by lambdas and
+// switched on inside a block lambda; `#if TARGET_ZCODE` choosing between two lambda initializers and
+// between two lambdas inside a function body.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+#include <linq>
+
+#using bgl.printRules;
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Helpers -----------------------------------------------------------------------------------
+
+int fold(array<int> a, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in a) acc = f(acc, x);
+    return acc;
+}
+
+int twice(int n) { return n * 2; }
+int inc(int n)   { return n + 1; }
+
+void eachObj(array<object> os, func<void, object> f) {
+    for (object o in os) f(o);
+}
+
+//-- Text: lambdas over stringObj ---------------------------------------------------------------
+
+int measure(string s, func<int, stringObj> f) {
+    stringObj t;
+    t = s;
+    return f(t);
+}
+
+int repeatMeasure(int times, func<int, stringObj> f) {
+    stringObj t;
+    t = "abc";
+    int total = 0;
+    for (int i in 1 to times) total += f(t);
+    return total;
+}
+
+array<stringObj> noteList[6];
+
+//-- Pairs: a value class handed to lambdas -------------------------------------------------
+
+value class Pair {
+    int a;
+    int b;
+    Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
+}
+
+int withPair(Pair p, func<int, Pair> f) { return f(p); }
+
+//-- Jobs: a pooled class built from functions -------------------------------------------------
+
+int jobsRetired = 0;
+
+class Job[4] : object {
+    literal func<int, int> step;
+    string tag = "job";
+    int runs = 0;
+    Pair span;
+    void create(literal func<int, int> f, string t) { step = f; tag = t; }
+    void destroy() { jobsRetired++; }
+    default int run(int x) { runs++; span.a = x; span.b = step(x); return span.b; }
+}
+
+class RushJob[2] : Job {
+    int run(int x) { runs++; span.a = x; span.b = step(step(x)); return span.b; }
+}
+
+//-- Entries: two parents and a hidden method ------------------------------------------------
+
+class Named : object {
+    string label = "none";
+    default int labelWeight() { return label.length; }
+}
+
+class Scored : object {
+    int points = 0;
+    default int bonus(int k) { return points * k; }
+}
+
+class Entry : Named, Scored {
+    int total(array<int> ks) {
+        return fold(ks, 0, (int acc, int k) => acc + bonus(k) + labelWeight());
+    }
+    bool beats(Entry other, func<int, Entry> by) { return by(self) > by(other); }
+}
+
+class LockedEntry : Entry {
+    hide bonus(int);
+}
+
+Entry entryOne   { "entry one";   label = "first";  points = 3; }
+Entry entryTwo   { "entry two";   label = "second"; points = 5; }
+LockedEntry entryLocked { "locked entry"; label = "third"; points = 4; }
+
+array<Entry> entryList = {entryOne, entryTwo, entryLocked};
+
+int lockedBonus(LockedEntry e, int k, func<int, Entry, int> via) { return via(e, k); }
+
+//-- Boxes: attributes and articles --------------------------------------------------------
+
+class Box : object {
+    attributeList attributes = {container, openable};
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Box boxA { "red box";   parent = roomA; attributes = {open}; }
+Box boxB { "blue box";  parent = roomA; }
+Box boxC { "green box"; parent = roomA; }
+
+array<object> boxList = {boxA, boxB, boxC};
+
+int countHaving(array<object> os, attribute at) {
+    func<bool, object> test = (object o) => o.has(at);
+    int n = 0;
+    for (object o in os) if (test(o)) n++;
+    return n;
+}
+
+func<void, object, attribute> flip = (object o, attribute at) => {
+    if (o.has(at)) o.ungive(at);
+    else o.give(at);
+};
+
+//-- Words: dictionary words --------------------------------------------------------------
+
+array<dictionaryWord> wordList = {.brass, .key, .lamp, .key, .rope};
+
+func<int, dictionaryWord> wordWeight = (dictionaryWord w) => {
+    switch (w) {
+        case .brass: return 5;
+        case .key:   return 3;
+        case .lamp:  return 4;
+        default:     return 1;
+    }
+};
+
+//-- Target-dependent lambdas -------------------------------------------------------------
+
+#if TARGET_ZCODE
+    func<int, int> wordBytes = (int n) => n * 2;
+#else
+    func<int, int> wordBytes = (int n) => n * 4;
+#endif
+
+int scaled(int n) {
+    #if TARGET_ZCODE
+        func<int, int> f = (int k) => k + 100;
+    #else
+        func<int, int> f = (int k) => k + 200;
+    #endif
+    return f(n);
+}
+
+//-- Verbs ---------------------------------------------------------------------------------
+
+verb Text {
+    grammar = {{.text}};
+    void handler() {
+        int n = measure("brass key", (stringObj s) => { s += " and lamp"; return s.length; });
+        stringObj kept;
+        kept = "rope";
+        int m = measure("rope", (stringObj s) => { s = s.toUpper(); return s == kept ? 1 : 2; });
+        print($"measured {n}, upper compare {m}, kept {kept}^");
+        int r = repeatMeasure(25, (stringObj s) => { s += "de"; return s.length; });
+        print($"repeated {r}^");
+        func<int, int> countBuilt = (int k) => {
+            int total = 0;
+            for (int i in 1 to k) {
+                stringObj piece;
+                piece = $"item {i}";
+                if (i % 3 == 0) continue;
+                if (i > 25) break;
+                total += piece.length;
+            }
+            return total;
+        };
+        print($"built {countBuilt(30)}, again {countBuilt(5)}^");
+    }
+}
+
+verb Cases {
+    grammar = {{.cases, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<int, int> tally = (int k) => {
+            int hits = 0;
+            for (int i = 0; i < k; i++) {
+                switch (i % 4) {
+                    case 0:
+                        if (i > 4) break;
+                        hits += 10;
+                    case 1:
+                        continue;
+                    default:
+                        hits++;
+                }
+                hits += 100;
+            }
+            return hits;
+        };
+        print($"tally {tally(n)}^");
+    }
+}
+
+verb Notes {
+    grammar = {{.notes}};
+    void handler() {
+        noteList.clear();
+        noteList += "alpha";
+        noteList += "be";
+        noteList += "gamma";
+        noteList += "pi";
+        int longOnes = 0;
+        for (int i in 1 to 15) longOnes += noteList.filter((stringObj s) => s.length > 3).count();
+        bool anyShort = noteList.any((stringObj s) => s.length < 3);
+        bool allLower = noteList.all((stringObj s) => s == s.toLower());
+        print($"long {longOnes}, any short: {anyShort ? "yes" : "no"}, all lower: {allLower ? "yes" : "no"}^");
+        print("starting with g:");
+        for (stringObj s in noteList) if (s.startsWith("g")) print($" {s}");
+        print("^");
+    }
+}
+
+verb Pairs {
+    grammar = {{.pairs, NUMBER}};
+    void handler() {
+        Pair pr;
+        pr.a = parsed_number;
+        pr.b = 2;
+        int spoiled = withPair(pr, (Pair p) => { p.a = 99; return p.a + p.b; });
+        func<int, Pair> sum = (Pair p) => p.a + p.b;
+        int s = sum(pr);
+        int seen = 0;
+        for (int i in 1 to 3) seen += withPair(pr, (Pair p) => p.a * i);
+        print($"spoiled {spoiled}, sum {s}, seen {seen}, still {pr.a}^");
+    }
+}
+
+verb Jobs {
+    grammar = {{.jobs, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<Job> live[6];
+        int made = 0;
+        while (true) {
+            Job j = made % 2 == 0 ? new Job(twice, "twice") : new Job((int x) => x - 1, "minus");
+            if (j == null) break;
+            live += j;
+            made++;
+        }
+        RushJob rj = new RushJob(inc, "rush");
+        if (rj != null) live += rj;
+        print($"made {made} plain, live {live.length}^");
+        print("results:");
+        for (Job j in live) print($" {j.tag}={j.run(n)}");
+        print("^");
+        int big = live.filter((Job j) => j.run(n) > n).count();
+        int runsTotal = 0;
+        for (Job j in live) runsTotal += j.runs;
+        print($"growing {big}, runs {runsTotal}^");
+        int spread = 0;
+        for (var v in live.map((Job j) => j.span.b - j.span.a)) spread += (int)v;
+        print($"spread {spread}, widened {live.filter((Job j) => j.span.b > j.span.a).count()}^");
+        for (Job j in live) delete j;
+        live.clear();
+        Job again = new Job((int x) => x * 10, "tens");
+        if (again != null) {
+            print($"fresh span {again.span.a}/{again.span.b}^");
+            print($"reused: {again.tag} runs {again.runs} gives {again.run(n)}, retired {jobsRetired}^");
+            delete again;
+        }
+    }
+}
+
+verb Entries {
+    grammar = {{.entries}};
+    void handler() {
+        array<int> ks = {1, 2};
+        print("totals:");
+        for (Entry e in entryList) print($" {e.label}={e.total(ks)}");
+        print("^");
+        print("by bonus 2:");
+        for (Entry e in entryList.orderBy((Entry x, Entry y) => y.bonus(2) - x.bonus(2))) print($" {e.label}");
+        print("^");
+        bool b = entryTwo.beats(entryLocked, (Entry e) => e.points + e.labelWeight());
+        int lb = lockedBonus(entryLocked, 5, (Entry e, int k) => e.bonus(k));
+        int cast = entryList.filter((Entry e) => ((Entry)entryLocked).bonus(1) < e.bonus(1)).count();
+        print($"two beats locked: {b ? "yes" : "no"}, locked bonus {lb}, above locked {cast}^");
+    }
+}
+
+verb Boxes {
+    grammar = {{.boxes}};
+    void handler() {
+        eachObj(boxList, (object o) => print($"{cThe(o)} is {o.has(open) ? "open" : "closed"}.^"));
+        print($"open {countHaving(boxList, open)}, containers {countHaving(boxList, container)}^");
+        eachObj(boxList, (object o) => flip(o, open));
+        print($"after flip: open {countHaving(boxList, open)}, first open is {the(boxList.filter((object o) => o.has(open)).first())}^");
+        eachObj(boxList.filter((object o) => o.hasnt(open)), (object o) => print($"Shut: {a(o)}.^"));
+    }
+}
+
+verb Words {
+    grammar = {{.words}};
+    void handler() {
+        print("words:");
+        for (dictionaryWord w in wordList) { print(" "); print(w); }
+        print("^");
+        int weight = 0;
+        for (dictionaryWord w in wordList) weight += wordWeight(w);
+        int keys = wordList.filter((dictionaryWord w) => w == .key).count();
+        int unique = wordList.distinct().count();
+        print($"weight {weight}, keys {keys}, unique {unique}, any rope: {wordList.any((dictionaryWord w) => w == .rope) ? "yes" : "no"}^");
+    }
+}
+
+verb Target {
+    grammar = {{.target, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"bytes {wordBytes(n)}, scaled {scaled(n)}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

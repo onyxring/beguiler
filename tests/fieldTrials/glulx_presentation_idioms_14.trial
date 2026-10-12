@@ -1,0 +1,106 @@
+#grids
+Room A
+Room A.
+> lanes
+Kindled 2, lamps 10 -> 12: red=6 teal=4; boost 0, peak 3, opens 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red     teal                                      |
+|6 mid   4 mid                                     |
+|live 2 made 2 boost 0/3                           |
+> pulse
+Pulse: red held 3 tone 6 teal held 3 tone 5; boost 0, peak 5, opens 5.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red     teal                                      |
+|6 mid   5 mid                                     |
+|live 2 made 2 boost 0/5                           |
+> curve
+Curve: red=9/2 teal=3/2.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red     teal                                      |
+|9 high  3 dim                                     |
+|live 2 made 2 boost 0/5                           |
+> bands
+Lamps: 4 mid 1 dim 7 mid.
+Sparks: 9 high 3 dim.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red     teal                                      |
+|9 high  3 dim                                     |
+|live 2 made 2 boost 0/5                           |
+> query
+Bright 1, sum 3, top red, all lit yes, grey no.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red     teal                                      |
+|9 high  3 dim                                     |
+|live 2 made 2 boost 0/5                           |
+> warm
+Warmed 3: 5 3 9; red=9/3 teal=3/2; total 17.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red     teal                                      |
+|9 high  3 dim                                     |
+|live 2 made 2 boost 0/5                           |
+> fade
+Fading teal.
+New spare, extra, over; live 4, made 5.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red                     overa                     |
+|9 high                  3 dim                     |
+|live 4 made 5 boost 0/5                           |
+> bands
+Lamps: 5 mid 3 dim 9 high.
+Sparks: 9 high 1 dim 2 dim 3 dim.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red                     overa                     |
+|9 high                  3 dim                     |
+|live 4 made 5 boost 0/5                           |
+> query
+Bright 1, sum 6, top red, all lit yes, grey no.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red                     overa                     |
+|9 high                  3 dim                     |
+|live 4 made 5 boost 0/5                           |
+> scan
+Swept 0, boost 0: red=9 spare=1 extra=2 over=3.
+Lit 4, boost 0, opens 14: 8 1 3 4.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red                     overa                     |
+|7 mid                   4 mid                     |
+|live 4 made 5 boost 0/5                           |
+> mix
+Mix: red=9/4 spare=4/1 extra=6/0 over=3/0.
+Lamps 6 7 9; first high 24, high 1, mid 2, boost 0.
+Sorted: 8 4 3 1.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red                     overa                     |
+|9 high                  3 dim                     |
+|live 4 made 5 boost 0/5                           |
+> tone
+Tone 9, 4, 0; lit no; band dim.
+Lifted 8, doubled 9, lit yes, band mid.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|red                     overa                     |
+|9 high                  3 dim                     |
+|live 4 made 5 boost 0/5                           |

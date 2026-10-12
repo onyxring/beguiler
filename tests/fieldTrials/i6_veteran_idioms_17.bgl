@@ -1,0 +1,349 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on z5, two dense declarations each packing one area cluster into a single unit.
+// An extend of an object adding an inline accessor that reads and writes outer., keeps a static write
+// count, and declares operator == and []; beside it a method taking a ref value-class parameter and a
+// var, holding a local array<string> and array<Probe>, switching with ranges, casting to an ancestor,
+// using ?. and postfix ?, building a stringObj, throwing and catching, an #i6 statement with $i6Expr,
+// and a perform. An extern class with two extern parents (classes made in an #i6 island) declaring a
+// static member array, emitter operators [] / []= / +=, a replace of a parent's emitter, and a static
+// method taking an array<int>, a var and a primitive-class value: it fills an array<char>, walks a
+// nested-literal array of arrays, reads a base member through a cast, falls back with ??, switches,
+// and performs. Verbs drive each declaration; others index a gadget under try/catch, walk and write the
+// static member array, and list probes through an array<Probe> with ?. and postfix ? on a null.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global board_peek = 0;
+Global gadget_peek = 0;
+
+Class Shell
+  with sh_size 1;
+Class Knob
+  with kn_pos 0;
+Class Gadget
+  class Shell Knob
+  with gd_cells 0 0 0 0,
+       gd_hits 0;
+}
+
+extern int board_peek;
+extern int gadget_peek;
+
+object roomA { "Room A"; string description = "Room A."; attributes = {light}; }
+
+// ---------------------------------------------------------------- cluster 1: board
+
+class Probe : object {
+    int depth;
+    default void report() { print($"probe {depth}"); }
+}
+
+class DeepProbe : Probe {
+    replace void report() { print($"deep probe {depth * 10}"); }
+}
+
+Probe probeA { "probe A"; depth = 1; }
+DeepProbe probeB { "probe B"; depth = 2; }
+
+value class Pair {
+    int a;
+    int b;
+    Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
+}
+
+Pair pairA;
+
+object board {
+    "board";
+    int scale = 2;
+    int hits = 0;
+    int writes = 0;
+    int faults = 0;
+}
+
+extend board {
+    auto mark = {
+        int _raw;
+        static int _sets = 0;
+        int operator () { return _raw; }
+        bool operator == (int v) { return _raw == v; }
+        int operator [] (int i) { return (_raw >> i) & 1; }
+        void operator = (int v) {
+            _sets++;
+            outer.writes = _sets;
+            if (self == v * outer.scale) return;
+            _raw = v * outer.scale;
+            outer.hits += self[0];
+        }
+    }
+
+    int scan(ref Pair p, var tag) {
+        array<string> bands = {"zero", "low", "high"};
+        array<Probe> probes = {probeA, probeB};
+        stringObj s = "scan";
+        int got = -1;
+        mark = p.a + p.b;
+        int now = mark;
+        try {
+            switch (now) {
+                case 0:        s += " "; s += bands[0];
+                case 1 to 9:   s += " "; s += bands[1];
+                case 10 to 30: s += " "; s += bands[2];
+                default:       throw now;
+            }
+            Probe pick = null;
+            for (Probe pr in probes) {
+                if (pr.depth == p.b) pick = pr;
+            }
+            if (typeof(tag) == eType.string) {
+                s += " ";
+                s += (string)tag;
+            }
+            s.print();
+            if (pick?) {
+                print(" [");
+                pick?.report();
+                if (pick.is(DeepProbe)) {
+                    DeepProbe d = (DeepProbe)pick;
+                    print(" / ");
+                    ((Probe)d).report();
+                }
+                print("]");
+            } else {
+                print(" [none]");
+            }
+            #i6 print " (raw ", $i6Expr(now), ")";
+            got = now;
+        } catch (int e) {
+            faults++;
+            s += " fault";
+            s.print();
+            print($" {e}");
+        }
+        p.b = p.b + 1;
+        board_peek = got;
+        BoardShow.perform();
+        return got;
+    }
+}
+
+// ---------------------------------------------------------------- cluster 2: gadgets
+
+primitive class grams {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+
+value class Tally {
+    int n;
+    int sum;
+    Tally operator = (Tally o) { n = o.n; sum = o.sum; return self; }
+}
+
+extern class Shell : object {
+    int sh_size;
+    emitter void tag() { print "shell"; }
+}
+
+extern class Knob : object {
+    int kn_pos;
+    static int clamp(int v) {
+        if (v < 0) return 0;
+        if (v > 9) return 9;
+        return v;
+    }
+}
+
+extern class Gadget : Shell, Knob {
+    int gd_hits;
+    static array<int> limits[3] = {2, 5, 9};
+
+    replace emitter void tag() { print "gadget"; }
+    emitter int operator [] (int i) { $self.&gd_cells-->$i }
+    emitter void operator []= (int i, int v) { $self.&gd_cells-->$i = $v; }
+    emitter void operator += (int n) { $self.kn_pos = $self.kn_pos + $n; }
+
+    static int tune(object who, var how, array<int> steps, grams w) {
+        array<char> code[6];
+        array<string> names = {"low", "mid", "top"};
+        array<array<int>> plan = { {1, 2}, {3, 4, 5} };
+        Tally t;
+        object target = who ?? gadgetA;
+        Gadget g = (Gadget)target;
+        int weight = w;
+
+        for (int i = 0; i < steps.length; i++) {
+            g += steps[i];
+            g[i % 4] = g[i % 4] + steps[i];
+            t.n++;
+            t.sum += steps[i];
+        }
+        g.kn_pos = Knob.clamp(g.kn_pos);
+
+        for (array<int> row in plan) {
+            for (int j = 0; j < row.length; j++) t.sum += row[j];
+        }
+
+        int size = ((Shell)g).sh_size;
+        int k = 0;
+        if (typeof(how) == eType.string) {
+            k = 1;
+        } else if (typeof(how) == eType.object) {
+            k = 2;
+        }
+        switch (g.kn_pos + weight) {
+            case 0 to 2:  code[0] = 'l'; code[1] = 'o';
+            case 3 to 8:  code[0] = 'm'; code[1] = 'd';
+            default:      code[0] = 'h'; code[1] = 'i';
+        }
+        g.gd_hits++;
+        g.tag();
+        stringObj note = " ";
+        note += names[k];
+        note.print();
+        print($" pos {g.kn_pos} size {size} limit {Gadget.limits[k]} cells {g[0]}/{g[1]}/{g[2]}/{g[3]} tally {t.n}/{t.sum} code ");
+        print(code[0]);
+        print(code[1]);
+        gadget_peek = t.sum;
+        GadgetShow.perform();
+        return g.kn_pos;
+    }
+}
+
+#i6 {
+Gadget gadgetA "gadget A" with sh_size 3;
+Gadget gadgetB "gadget B" with sh_size 5, kn_pos 2;
+}
+
+extern Gadget gadgetA;
+extern Gadget gadgetB;
+
+array<int> stepsA = {1, 2};
+array<int> stepsB = {4, 4, 4};
+
+// ---------------------------------------------------------------- verbs: board
+
+verb BoardShow {
+    grammar = {.board};
+    meta = true;
+    void handler() {
+        print($" <mark {board.mark}, hits {board.hits}, writes {board.writes}, faults {board.faults}, pair {pairA.a}/{pairA.b}, peek {board_peek}>^");
+    }
+}
+
+verb BoardScan {
+    grammar = {.scan, NUMBER, NUMBER};
+    meta = true;
+    void handler() {
+        pairA.a = (int)noun;
+        pairA.b = (int)second;
+        int r = board.scan(pairA, "num");
+        printLine($"Scanned {r}.");
+    }
+}
+
+verb BoardScale {
+    grammar = {.scale, NUMBER};
+    meta = true;
+    void handler() {
+        board.scale = (int)noun;
+        print("Scale set.");
+        BoardShow.perform();
+    }
+}
+
+// ---------------------------------------------------------------- verbs: gadgets
+
+verb GadgetShow {
+    grammar = {.gadgets};
+    meta = true;
+    void handler() {
+        print($" <A pos {gadgetA.kn_pos} hits {gadgetA.gd_hits}; B pos {gadgetB.kn_pos} hits {gadgetB.gd_hits}; peek {gadget_peek}>^");
+    }
+}
+
+verb GadgetTuneA {
+    grammar = {.tunea, NUMBER};
+    meta = true;
+    void handler() {
+        int r = Gadget.tune(null, "word", stepsA, (int)noun);
+        printLine($"Tuned {r}.");
+    }
+}
+
+verb GadgetTuneB {
+    grammar = {.tuneb, NUMBER};
+    meta = true;
+    void handler() {
+        int r = Gadget.tune(gadgetB, roomA, stepsB, (int)noun);
+        printLine($"Tuned {r}.");
+    }
+}
+
+verb GadgetCell {
+    grammar = {.cell, NUMBER};
+    meta = true;
+    void handler() {
+        int i = (int)noun;
+        try {
+            if (i > 3) throw 500 + i;
+            Gadget g = gadgetA;
+            int v = g[i];
+            g[i] = v * 2;
+            printLine($"Cell {i}: {v} -> {g[i]}.");
+        } catch (int e) {
+            printLine($"No cell: {e}.");
+        }
+    }
+}
+
+verb GadgetLimits {
+    grammar = {.limits};
+    meta = true;
+    void handler() {
+        int total = 0;
+        for (int i = 0; i < Gadget.limits.length; i++) {
+            print($"{Gadget.limits[i]} ");
+            total += Gadget.limits[i];
+        }
+        Gadget.limits[0] = Knob.clamp(total);
+        printLine($"= {total}; first now {Gadget.limits[0]}.");
+    }
+}
+
+verb ProbeList {
+    grammar = {.probes};
+    meta = true;
+    void handler() {
+        array<Probe> all = {probeA, probeB};
+        for (Probe p in all) {
+            print($"{p}: ");
+            p.report();
+            print("; ");
+        }
+        Probe none = null;
+        none?.report();
+        printLine($"none present {none?}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

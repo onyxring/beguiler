@@ -1,0 +1,111 @@
+#grids
+Room A
+Room A.
+[grid 1]
+| Room A                                     0/0   |
+> sequence
+Order 404: CPU MEM IO NET.
+Order 404: CPU IO MEM NET.
+Rows 4.
+[grid 1]
+| Room A                                     0/0   |
+> badges
+CPU/0 (5, kids 0, depth 0, half 6).
+IO/0 (4, kids 0, depth 1, half 4).
+MEM/2 (5, kids 2, depth 0, half 5).
+NET/0 (5, kids 0, depth 1, half 3).
+[grid 1]
+| Room A                                     0/0   |
+> zoom
+Zoom 2.0000 after 1 changes; at two yes, not one yes.
+S
+[grid 1]
+| Room A                                     0/0   |
+> zoom
+Zoom 4.0000 after 2 changes; at two no, not one yes.
+SS
+[grid 1]
+| Room A                                     0/0   |
+> zoom
+Zoom 1.0000 after 3 changes; at two no, not one no.
+SSW
+[grid 1]
+| Room A                                     0/0   |
+> readout
+42 -7 0.5000 1-2-3 10-20 (24); opens 2, depth 0.
+[grid 1]
+| Room A                                     0/0   |
+> log
+Added 3: open, draw, close.
+Notes 3, flips 1, flagged yes, dimmed yes.
+[grid 1]
+| Room A                                     0/0   |
+> swatches
+Channel 0: 2 of 3 over 128, first 144.
+Channel 1: 1 of 3 over 128, first 144.
+Channel 2: 2 of 3 over 128, first 144.
+Surveyed 3.
+Shelf full at 4.
+Channel 0: 2 of 4 over 128, first 16.
+Channel 1: 2 of 4 over 128, first 16.
+Channel 2: 3 of 4 over 128, first 16.
+Surveyed 4.
+[grid 1]
+| Room A                                     0/0   |
+> labels
+Labels 4: CPU IO MEM NET.
+[grid 1]
+| Room A                                     0/0   |
+> panes
+Panes open; opens 6, depth 0.
+[win 1] Up Reset
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ............                              |
+|MEM     ..........                                |
+|  IO    ........                                  |
+|  NET   ...... > CPU                              |
+|                                                  |
+> @link 1
+[win 1] Stepped up.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ###.........                              |
+|MEM     ###.......                                |
+|  IO    ##......                                  |
+|  NET   ##.... > CPU                              |
+|                                                  |
+> @link 1
+[win 1] Stepped up.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ######......                              |
+|MEM     #####.....                                |
+|  IO    ####....                                  |
+|  NET   ###... > CPU                              |
+|                                                  |
+> sequence
+Order 404: CPU MEM IO NET.
+Order 404: CPU IO MEM NET.
+Rows 4.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ######......                              |
+|MEM     #####.....                                |
+|  IO    ####....                                  |
+|  NET   ###... > CPU                              |
+|                                                  |
+> @link 2
+[win 1] Reset.
+[grid 1]
+| Room A                                     0/0   |
+[grid 2]
+|CPU     ............                              |
+|MEM     ..........                                |
+|  IO    ........                                  |
+|  NET   ...... > CPU                              |
+|                                                  |

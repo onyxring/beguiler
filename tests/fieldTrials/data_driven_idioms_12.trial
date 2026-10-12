@@ -1,0 +1,60 @@
+Tables bound.
+> gauges
+A: total 27, weighted 44.0000, band 1, line A=27 mid (8)
+B: total 0, weighted 0.0000, band 0, line B=0 low (7)
+C: total 657, weighted 853.5000, band 2, line C=657 high (10)
+Renders 3, weights sum 4.5000.
+> watch 1
+B now 42, band mid, weighted 33.0000
+> watch 5
+B now 657, band high, weighted 853.5000
+> gauges
+A: total 27, weighted 44.0000, band 1, line A=27 mid (8)
+B: total 657, weighted 853.5000, band 2, line B=657 high (10)
+C: total 657, weighted 853.5000, band 2, line C=657 high (10)
+Renders 6, weights sum 4.5000.
+> ledgers
+40[rent]: fold 55, over 15 4, even 32, odd 12, max 20
+15[food]: fold 15, over 15 3, even 2, odd 4, max 3
+0[none]: fold 0, over 15 0, even 0, odd 0, max -1
+A+B 55, A+7 47
+> stamp
+40[rent] -> level 40
+15[food] -> level 65
+0[none] -> level 70
+> level 9
+B level 6, then 10
+> level 1
+B level 0, then 4
+> rack
+Rack weight 118, spare 40, slots 2
+Rack weight now 192
+> rack
+Rack weight 192, spare 40, slots 2
+Rack weight now 192
+> roster
+Roster 2: north south; checksum 213
+> tables
+Wide 2, sum 9, first row one, second row two, kind 2
+> links
+Linked 2, chained 1
+rent fold 55; food fold 15; none fold 0;
+> pick
+raw 39, scaled 390, banded 3
+> tidy
+0: 5 4 1; 1: 2 6; 2: 7; 7 at 0
+> scale 2
+Scale 2: 2 of 4 over 20
+> scale 9
+Scale 9: 4 of 4 over 20
+> cents 1234
+Cents 12.34 (5 chars), clamp 500
+> cents 7
+Cents 0.07 (4 chars), clamp 10
+> dirs
+north east south west
+> post
+Report: 3 ledgers, total 55
+(nothing to post)
+> report
+Report: 3 ledgers, total 55

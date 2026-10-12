@@ -1,0 +1,39 @@
+Probes ready.
+> probes
+red idle 0/9; Ping probe A.
+blue high 6/9; probe C over at 8;
+2 good; red low 1/9; blue low 4/9; plain high 5/5;
+3 good; scans 2, I6 sum 7
+> pick
+loose <probe A> rejected
+> tally
+(miss) now 31 busy, copy 21 busy, ratio 50, flips 4, logged 4
+Ping probe A.
+top 31, logged 0
+> dial 2
+A gauge low
+[1:4]Ping probe C.
+[1:5][1:10]
+A gauge high, marks 0, note one
+> dial 6
+A gauge mid
+[1:10]Ping probe C.
+[1:11][1:22]
+A gauge high, marks 0, note one
+> rate
+red 0..9=8 blue 3..9=5 PLAIN 4..5!probe C
+total 13
+> window
+blue 2..8 seen 1; red 2..4 seen 1; span 2..4 width 2
+> counts
+spread 7, first 2, full true, kept 2
+> notes
+one; three
+> codes
+one two-three other missing 1
+> rules 20
+3 5 7  (6, depth 0)
+2 5 10  (7, depth 0)
+> rules 6
+capped at 7 after 3 5  (-1, depth 0)
+capped at 10 after 2 5  (-1, depth 0)

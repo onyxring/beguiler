@@ -1,0 +1,67 @@
+Room A
+Room A.
+
+> labels
+tag A: brass (sum 652, uses 1, s 2)
+tag B: [tin 42/0] (sum 344, uses 1, s 0)
+tag C: [/0] (sum 0, uses 0, s 0)
+
+> lookup
+found tag B, iron missing, fallback tag A, brass, space at 3, x at -1.
+
+> stampall
+Stamped; tag B seal 312.
+
+> labels
+tag A: brass (sum 652, uses 1, s 2)
+tag B: [Tin 42/312] (sum 312, uses 1, s 0, stamped)
+tag C: [/0] (sum 0, uses 0, s 0, rejected)
+
+> peek 1
+tag A [1] is r.
+
+> peek 9
+No byte 9 (-1).
+
+> poke 5
+tag A now brass!, length 6.
+
+> poke 20
+Index 20 refused.
+
+> peek 5
+tag A [5] is !.
+
+> lookup
+tin missing, iron missing, fallback tag A, [/0], space at 3, x at -1.
+
+> rot
+Nop 123 / back Abc 123; digits seen 6.
+
+> digits
+1203 bad at 2 len 4, sum 198, mean 49.5000, half sum 98.
+
+> record
+kind 7, size 7, mark 7, upper, digits, spaced; brass flags 0.
+
+> preds
+space 3, digit 4, lower 1, bang -1.
+
+> view
+(views 1, raw 7, first 65) total 444, open 0, closed 1.
+
+> view
+(views 1, raw 7, first 65) total 444, open 0, closed 2.
+
+> ledger
+<0=5><1=15><2=20> cells 5 15 20, stored 40.
+
+> depth
+depth 3, via I6 2, calls 12, grid 21.
+
+> filing
+moved 2: brass lamp brass key stone block; shelf has 1.
+
+> depth
+depth 3, via I6 2, calls 10, grid 21.
+

@@ -1,0 +1,18 @@
+Room A
+Room A.
+
+> racks
+(ping rack A)(ping rack B); trail low low low high none zero low none
+Sums 8 14, misses 2, peak 36, busiest 8.
+Cells 2 5 1 8 / 10 0 4 18, marked true true, depth 0.
+
+> panels
+Note >l!m!h, last max, level 8, writes 3, rejects 2, mode 4.
+Marks 0 1 1 1, labels dim max none.
+[off table 15] Kind 3, packed 48.
+(ping panel A) described max-.
+Described held+, pings 3.
+
+> gauges
+A ok, big, B refused; records true true false true, readings 12 15.
+Totals 1 0 2 all 3, equal true, A first false.

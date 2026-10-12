@@ -1,0 +1,265 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit split over text and kit parts, the kit part including the text part (#once), on
+// <string> and <array>, its width set by a #define the consumer gives before it; char ranges and value
+// lists in a switch, char utilities (isAlpha, isVowel, toUpper, =~) inside do/while and for loops with
+// continue; the string pool resized by an #i6 constant before <string>; stringObj built by += of chars,
+// padded, returned as an ephemeral, passed by copy and by ref, joined from two substring results at
+// once, captured from print output, switched on and compared with =~ and <=>, set from an interpolated
+// string, formatted; a local array<stringObj> with element stores, remove and contains, released at
+// scope exit; a stringObj member on a class; a string array sorted by string::operator <=>; a byte array
+// initialized from text, handed by & to an I6 routine that rewrites it in place; an overload set with a
+// var fallback; an emitter class with init, a copy-form init and deinit, used as a local released by
+// continue and break, and as a copied and a ref parameter; a named union of text and routine
+// discriminated with typeof, held in an array, extended by the consumer with an emitter and a static
+// method; lambdas that write captured locals back to the caller and one that captures self in a method;
+// a literal func global set through a literal parameter from a lambda capturing a const local; an
+// I6-defined verb bound as an extern verb with claimed words, extended by the consumer with a
+// later-priority line and synonyms, overtaken on one of its words by a native verb that performs it, and
+// compared in a kit before rule; a class derived from verb sharing a handler; printLine and log.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#define LA9_WIDTH 6
+#include "library_author_idioms_9_parts/library_author_idioms_9_kit"
+
+#using bgl.printRules
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- The consumer's things. ----
+
+la9Charged widget { "widget"; parent = roomA; name = .widget; charge = 5; }
+la9Charged gadget { "gadget"; parent = roomA; name = .gadget; charge = 1; }
+
+/// A thing that keeps a note as text of its own.
+class la9Noted : object {
+    stringObj note;
+}
+
+la9Noted cardA { "card A"; parent = roomA; name = .card .a; }
+la9Noted cardB { "card B"; parent = roomA; name = .card .b; }
+
+la9Bin binLow  { "low bin";  limit = 3; }
+la9Bin binHigh { "high bin"; limit = 10; }
+
+array<int>    la9Nums  = {2, 4, 6, 8, 11};
+array<string> la9Words = {"pear", "Fig", "apple", "fig"};
+array<char>   la9Bytes = "abc-12z";
+
+// ---- More for the kit's label union. ----
+
+extend la9Label {
+    /// True when the label is a routine.
+    emitter bool isCall() { (metaclass($self) == Routine) }
+    /// The label at a position in the kit's list, or a fallback.
+    static la9Label at(int i) {
+        if (i < la9Labels.length) return la9Labels[i];
+        return "none";
+    }
+}
+
+// ---- The kit's action, extended. ----
+
+extend La9Zap {
+    priority = 12;
+    grammar += { {.zap, NOUN, .with, NOUN} };
+}
+
+extend La9Zap { synonyms = {.jolt}; }
+
+// ---- Verbs that report. ----
+
+verb Chars {
+    grammar = {.chars};
+    void handler() {
+        string s = "aB3 -?";
+        for (int i = 0; i < s.length; i++) print($"{la9Kind(s[i])} ");
+        print($"; vowels {la9Vowels("Queue 42 eye")}, find {la9Find("Sample", 'P')}, ");
+        print($"miss {la9Find("abc", 'z')}, same {'q' =~ 'Q'}.^");
+    }
+}
+
+verb Texts {
+    grammar = {.texts};
+    void handler() {
+        stringObj a = la9Initials("brass", "key");
+        stringObj b = la9Pad("ab");
+        print($"{a} {b} {la9Pad("abcdefgh")}; ");
+        stringObj w = "lantern";
+        print($"{la9Join(w.left(3), w.right(4))}; ");
+        int n = la9Quiet(w);
+        la9Shout(w);
+        print($"copy {n}, own {w}.^");
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        stringObj s = "Fig";
+        print($"{s =~ "FIG"} {s == "fig"} {s <=> "apple"} {s <=> "pear"}; ");
+        switch (s.toLower()) {
+            case "pear": print("pear");
+            case "fig":  print("fig");
+            default:     print("neither");
+        }
+        la9Words.sort(string::operator <=>);
+        print("; sorted:");
+        for (string t in la9Words) print($" {t}");
+        printLine(".");
+    }
+}
+
+verb Caught {
+    grammar = {.caught};
+    void handler() {
+        stringObj c = la9Caught(widget);
+        print($"Got {c.length} chars: {c.toUpper()}.^");
+    }
+}
+
+verb Notes {
+    grammar = {.notes};
+    void handler() {
+        cardA.note = "first";
+        cardB.note = cardA.note + " and second";
+        cardA.note += "!";
+        print($"{cardA.note} / {cardB.note} / {cardB.note.length}.^");
+    }
+}
+
+verb Bytes {
+    grammar = {.bytes};
+    void handler() {
+        La9_Upper(&la9Bytes, 5);
+        for (char c in la9Bytes) print(c);
+        int code = la9Bytes[0];
+        print($" {code} {la9Bytes.length}.^");
+    }
+}
+
+verb Whats {
+    grammar = {.whats};
+    void handler() {
+        print($"{la9What(3)} {la9What("t")} {la9What(roomA)}.^");
+    }
+}
+
+verb Tickets {
+    grammar = {.tickets};
+    void handler() {
+        la9Ticket t;
+        print($"Own {t.no}, live {la9Live}; copy {la9HeldCopy(t)}; shared {la9HeldShared(t)}; ");
+        print($"live {la9Live}, copies {la9Copies}.^");
+    }
+}
+
+verb Passes {
+    grammar = {.passes};
+    void handler() {
+        la9Passes(2, 5);
+        print($"; at end {la9Live}.^");
+    }
+}
+
+verb Labels {
+    grammar = {.labels};
+    void handler() {
+        for (la9Label l in la9Labels) {
+            la9Show(l);
+            print($"({l.isCall()}) ");
+        }
+        la9Label x = la9Label.at(5);
+        la9Show(x);
+        print(" ");
+        la9Show(la9Label.at(1));
+        int k = 2;
+        la9Label pick = k > 1 ? la9Beep : "text";
+        print(" ");
+        la9Show(pick);
+        print(".^");
+    }
+}
+
+verb Sums {
+    grammar = {.sums};
+    void handler() {
+        int total = 0;
+        int big = 0;
+        la9Each(la9Nums, (int x) => {
+            total += x;
+            if (x > 5) big++;
+        });
+        print($"Total {total}, big {big}; low {binLow.over(la9Nums)}, high {binHigh.over(la9Nums)}.^");
+        log("sums done");
+    }
+}
+
+verb Shelf {
+    grammar = {.shelf};
+    void handler() {
+        array<stringObj> slots[4];
+        stringObj tmp = $"n{la9Nums.length}";
+        slots += "alpha";
+        slots += tmp;
+        slots += la9Pad("b");
+        slots[0] = "gamma";
+        slots[0][1] = 'A';
+        slots.remove(1);
+        print($"{slots.length}: {slots[0]} {slots[1]}, has {slots.contains("b.....")}, ");
+        print($"{tmp.format("<$0|$1>", "x")} {slots[1].replaceAll(".", "-")}.^");
+    }
+}
+
+verb Later {
+    grammar = {.later};
+    void handler() {
+        la9Later();
+        const int stamp = 7;
+        la9Keep(=> print($" stamp {stamp}"));
+        la9Later();
+        printLine();
+    }
+}
+
+/// A verb that reports a fixed line.
+class la9Report : verb {
+    string line = "Nothing to report.";
+    void handler() { print($"{line}^"); }
+}
+
+la9Report Status { grammar = {.status}; line = "All clear."; }
+la9Report Idle   { grammar = {.idle}; }
+
+/// Takes one of the kit action's words, then runs the action itself.
+verb Tap {
+    grammar = {.zap, .softly, NOUN};
+    void handler() {
+        print("Softly: ");
+        La9Zap.perform(noun);
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

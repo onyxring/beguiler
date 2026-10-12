@@ -1,0 +1,367 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: three dense declarations on Glulx, written functionally. A switchable panel object with a
+// float emitter member, an inline float accessor whose `=`, `+=` and `++` reach the host through `outer`
+// (attributes given and taken, a <buf> tag set and appended under `#if`, a `#define`d float step), and a
+// method that runs a verb with `perform`; an `extend` of the panel replacing its emitter and an
+// accessor with `-=` / `--` and an `#if`/`#else` branch. A rig object of a class with a `default`
+// method: a type alias for probes, a ref array<float> member bound from a ref parameter, a func<>
+// member swapped between named functions and a lambda, an accessor reading `outer.head?.weight`, a
+// `replace` of the class's method and an ancestor-cast call to the original. An `extend class` adding
+// `==`, `!=` and `<=>`, an array<string> member, recursive stringObj and float folds, a `var` parameter
+// switched on `typeof` and a `perform`; recursive free functions over array<string> with func<>
+// predicates, a `var` return and a recursive best-of over an array of the class, then sorted by `<=>`.
+// A verb with members of its own: a ref stringObj, a func<> member and an inline accessor using `outer`.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <buf>
+#include <string>
+
+#define PANEL_TRACE
+#define PANEL_STEP 0.5
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+//-- Probes, chained ---------------------------------------------------------------------------
+class Probe : object {
+    float weight = 1.0;
+    Probe next;
+}
+
+Probe probeA { "probe A"; weight = 2.0; }
+Probe probeB { "probe B"; weight = 0.5; }
+
+//-- Cluster 1: a panel object ------------------------------------------------------------------
+object panel {
+    "panel";
+    attributes = {switchable};
+    float gain = 1.5;
+    int hits = 0;
+    array<char> tag[24];
+    array<char> mark = "+";
+
+    emitter float scaled(float v) { $i6Expr($v * $self.gain) }
+
+    auto level = {
+        float _raw = 0.0;
+        float operator () { return _raw; }
+        void operator = (float v) {
+            _raw = outer.scaled(v);
+            outer.hits++;
+        }
+        void operator += (float v) {
+            _raw = _raw + v;
+            outer.hits += 2;
+            if (!outer.has(on)) outer.give(on);
+            bgl.util.buf.set(outer.tag, "raised");
+        }
+        void operator ++ () {
+            _raw = _raw + PANEL_STEP;
+            #if PANEL_TRACE
+                bgl.util.buf.append(outer.tag, outer.mark);
+            #endif
+            if (_raw > 4.0) outer.ungive(on);
+        }
+    }
+
+    void report() {
+        print($"level {level}, hits {hits}, ");
+        if (has(on)) print("on, ");
+        else print("off, ");
+        bgl.util.buf.print(tag);
+        print("^");
+    }
+
+    void poke(object o) {
+        PokeVerb.perform(o);
+    }
+}
+
+
+
+extend panel {
+    float floor = 0.75;
+
+    replace emitter float scaled(float v) { $i6Expr($v * $self.gain + $self.floor) }
+
+    auto drift = {
+        float _d = 0.0;
+        float operator () { return _d; }
+        void operator = (float v) { _d = v; }
+        void operator -= (float v) {
+            _d = _d - v;
+            #if PANEL_TRACE
+                if (_d < 0.0) outer.give(general);
+            #else
+                if (_d < 0.0) _d = 0.0;
+            #endif
+            outer.hits--;
+        }
+        void operator -- () {
+            _d = _d - outer.floor;
+            bgl.util.buf.set(outer.tag, "fell");
+        }
+    }
+
+    void settle() {
+        drift = scaled(level);
+        drift -= hits;
+        drift--;
+        print($"drift {drift}, hits {hits}, ");
+        if (has(general)) print("general, ");
+        bgl.util.buf.print(tag);
+        print("^");
+        if (drift < 0.0) PokeVerb.perform(self);
+    }
+}
+
+//-- Cluster 2: a rig on a gauge class, a namespace for probes ---------------------------------
+class Gauge : object {
+    float level = 0.0;
+    default float reading() { return level; }
+}
+
+array<float> oddRuns[4];
+array<float> evenRuns[4];
+
+float halve(float v) { return v / 2.0; }
+float square(float v) { return v * v; }
+
+Gauge rig {
+    "rig";
+    alias probe for Probe;
+    probe head;
+    ref array<float> samples;
+    func<float, float> shape = halve;
+    float bias = 0.25;
+
+    auto load = {
+        float _w = 0.0;
+        float operator () { return _w; }
+        void operator = (float v) {
+            _w = outer.shape(v) + outer.bias;
+            outer.level = _w;
+            float tip = outer.head?.weight;
+            if (tip > 1.0) PokeVerb.perform(outer.head);
+            if (outer.samples.length < outer.samples.size) outer.samples.append(_w);
+        }
+    }
+
+    replace float reading() {
+        float total = level;
+        probe p = head;
+        while (p?) {
+            total += p.weight;
+            p = p.next;
+        }
+        for (float x in samples) total += x;
+        return total;
+    }
+
+    void attach(probe p, ref array<float> into) {
+        head = p;
+        samples := into;
+    }
+
+    void reshape(func<float, float> f) {
+        shape = f;
+    }
+}
+
+
+//-- Cluster 3: entries, extended with comparisons over text -----------------------------------
+class Entry : object {
+    float score = 0.0;
+    int rank = 0;
+}
+
+extend class Entry {
+    array<string> words[4];
+
+    bool operator == (Entry o) { return rank == o.rank; }
+    bool operator != (Entry o) { return rank != o.rank; }
+    int operator <=> (Entry o) {
+        if (score < o.score) return -1;
+        if (score > o.score) return 1;
+        return 0;
+    }
+
+    stringObj joinedFrom(int i) {
+        stringObj s;
+        if (i >= words.length) return s;
+        s = words[i];
+        if (i + 1 < words.length) s += " " + joinedFrom(i + 1);
+        return s;
+    }
+
+    float weightFrom(int i) {
+        if (i >= words.length) return 0.0;
+        return words[i].length * score + weightFrom(i + 1);
+    }
+
+    string kindOf(var v) {
+        switch (typeof(v)) {
+            case eType.string: return "text";
+            case eType.object: return "object";
+            case eType.routine: return "routine";
+        }
+        return "number";
+    }
+
+    void fill(array<string> from) {
+        words.clear();
+        for (string w in from) if (words.length < words.size) words.append(w);
+    }
+
+    void announce(var tag) {
+        stringObj line = joinedFrom(0);
+        print($"[{kindOf(tag)}] {line} = {weightFrom(0)}^");
+        if (line.contains("box")) PokeVerb.perform(self);
+    }
+}
+
+Entry entryA { "entry A"; score = 1.5; rank = 2; }
+Entry entryB { "entry B"; score = 0.5; rank = 2; }
+Entry entryC { "entry C"; score = 2.0; rank = 1; }
+
+array<string> wordsA = {"red", "box"};
+array<string> wordsB = {"blue", "jar", "lid"};
+
+
+//-- Free functions: folds over text ------------------------------------------------------------
+stringObj keepFrom(array<string> ws, int i, func<bool, string> keep) {
+    stringObj out;
+    if (i >= ws.length) return out;
+    if (keep(ws[i])) out = ws[i];
+    stringObj rest = keepFrom(ws, i + 1, keep);
+    if (!out.isEmpty() && !rest.isEmpty()) out += ",";
+    out += rest;
+    return out;
+}
+
+var pickOf(array<string> ws, int i) {
+    if (i < 0) return entryC;
+    if (i < ws.length) return ws[i];
+    return i;
+}
+
+Entry best(array<Entry> es, int i) {
+    if (i >= es.length - 1) return es[i];
+    Entry rest = best(es, i + 1);
+    if (es[i] > rest) return es[i];
+    return rest;
+}
+
+array<Entry> board = {entryA, entryB, entryC};
+
+//-- Verbs ------------------------------------------------------------------------------------
+verb PokeVerb {
+    grammar = {{.poke, noun}};
+    void handler() {
+        print($"(poked {noun})^");
+    }
+}
+
+verb PanelVerb {
+    grammar = {{.panel, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        panel.level = n;
+        panel.report();
+        panel.level += 1.25;
+        panel.report();
+        panel.level++;
+        panel.level++;
+        panel.report();
+        panel.poke(probeA);
+        panel.settle();
+    }
+}
+
+verb RigVerb {
+    grammar = {{.rig, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        rig.probe first = probeA;
+        first.next = probeB;
+        if (n % 2 == 1) rig.attach(probeA, oddRuns);
+        else rig.attach(probeB, evenRuns);
+        rig.load = n;
+        print($"load {rig.load}, reading {rig.reading()}^");
+        rig.reshape(square);
+        rig.load = n;
+        print($"load {rig.load}, reading {rig.reading()}^");
+        rig.reshape((float v) => v + 1.0);
+        rig.load = 0.5;
+        print($"load {rig.load}, reading {((Gauge)rig).reading()}^");
+        rig.reshape(halve);
+    }
+}
+
+verb EntryVerb {
+    grammar = {{.entry, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        entryA.fill(wordsA);
+        entryB.fill(wordsB);
+        entryC.fill(wordsB);
+        entryA.announce(n);
+        entryB.announce("tag");
+        entryC.announce(entryA);
+        print($"keep {keepFrom(wordsB, 0, (string w) => w.length == 3)}, short {keepFrom(wordsA, 0, (string w) => w < "c")}^");
+        print($"pick {entryA.kindOf(pickOf(wordsB, 1))} {entryA.kindOf(pickOf(wordsB, 9))} {entryA.kindOf(pickOf(wordsB, -1))}^");
+        print($"best {best(board, 0)}, at {board.indexOf(entryB)}^");
+        board.sort();
+        print($"sorted {board[0]}, {board[1]}, {board[2]}^");
+        print($"A==B {entryA == entryB}, A!=C {entryA != entryC}, A<=>B {entryA <=> entryB}, B<C {entryB < entryC}^");
+    }
+}
+
+verb TallyVerb {
+    grammar = {{.tally, NUMBER}};
+    float step = 0.25;
+    ref stringObj trail;
+    func<float, float, float> fold = (float a, float b) => a + b;
+    auto total = {
+        float _t = 0.0;
+        float operator () { return _t; }
+        void operator = (float v) { _t = v; }
+        void operator += (float v) {
+            _t = outer.fold(_t, v * outer.step);
+            if (outer.trail?) outer.trail += "+";
+        }
+    }
+    void handler() {
+        int n = parsed_number;
+        stringObj marks = "t";
+        trail := marks;
+        total = 0.0;
+        for (int i in 1 to n) total += (float)i;
+        print($"tally {total}, marks {marks}^");
+        fold = (float a, float b) => a - b;
+        total += 2.0;
+        print($"tally {total}, marks {marks}^");
+        fold = (float a, float b) => a + b;
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

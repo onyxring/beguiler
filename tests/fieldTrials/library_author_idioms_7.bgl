@@ -1,0 +1,243 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit split over core and query parts, pulling <linq> in with an optional system include
+// and skipping a missing one; an extern bnum bound to I6 constants, given an emitter by extend bnum and
+// switched on; an I6 pooled class bound with the extern class [] marker, with a static method, extended
+// by the consumer, used with new, delete, ?. and ??, its create property calling back into Beguile
+// through a nested #bgl; a bnum split into sub-fields by a shared base, with emitter values added by
+// the kit and by the consumer after their use; a typesealed bnum member re-initialized by a kit
+// subclass, a consumer subclass and objects; a named accessor class as an owned member of a class and
+// of a pooled bglAllocated class; bglClass values in an array and as parameters to bgl.world queries;
+// an array emitter handing $oprefReq(<=>) to an I6 routine; linq chains over world queries and typed
+// arrays, ordered by Type::operator <=>; uint wrapping, logical shift and unsigned division;
+// bgl.util.math; REVERSE on a kit verb's line, and withI6Synonyms on an extended library verb beside a
+// line without it.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_7_parts/library_author_idioms_7_query"
+
+#using bgl.printRules
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    attributes = {light};
+}
+
+/// The consumer's own kind of item.
+class la7Jar : la7Item {
+    marks = LA7_SPARE;
+    packing = medium | boxed;
+    string kind() { return "jar"; }
+}
+
+la7Item tin {
+    "tin";
+    parent = roomA;
+    name = {.tin};
+    weight = 3;
+    marks = LA7_SEALED;
+}
+
+la7Item cork {
+    "cork";
+    parent = roomA;
+    name = {.cork};
+    packing = small | boxed;
+}
+
+la7Crate box {
+    "box";
+    parent = roomA;
+    name = {.box};
+    weight = 10;
+}
+
+la7Crate chest {
+    "chest";
+    parent = roomA;
+    name = {.chest};
+    weight = 20;
+    marks = LA7_HEAVY | LA7_SEALED;
+}
+
+la7Jar jar {
+    "jar";
+    parent = roomA;
+    name = {.jar};
+    weight = 2;
+}
+
+la7Item bolt {
+    "bolt";
+    parent = roomB;
+    name = {.bolt};
+    weight = 5;
+}
+
+array<bglClass> kinds = {la7Item, la7Crate, la7Jar};
+
+extend Examine {
+    grammar += {
+        {.examine, .closely, NOUN, withI6Synonyms},
+        {.watch, .over, NOUN},
+    };
+}
+
+void flagLine(la7Item it) {
+    la7Mark m = it.marks;
+    print($"{it}: marks {(int)m}");
+    switch (m) {
+        case LA7_SEALED: print(" (sealed only)");
+        case LA7_SPARE:  print(" (spare only)");
+        case 0: print(" (none)");
+    }
+    if (m.covers(LA7_SEALED)) print(" sealed");
+    if (m.covers(LA7_HEAVY | LA7_SEALED)) print(" heavy+sealed");
+    print($", size {it.packing.sizeBits}, wrap {it.packing.wrapBits}.^");
+}
+
+extend bnum la7Packing {
+    emitter int wrapBits { ($self & 12) }
+}
+
+extend extern class La7_Chit {
+    emitter bool big { ($self.la7_amount > 6) }
+}
+
+verb Flags {
+    grammar = {.flags};
+    void handler() {
+        for (object o in bgl.world.instances(la7Item)) flagLine((la7Item)o);
+    }
+}
+
+verb Census {
+    grammar = {.census};
+    void handler() {
+        for (bglClass c in kinds) print($"{la7Census(c)} ");
+        print($"in A: ");
+        la7Show(la7Sorted(la7Item, roomA));
+        print(".^");
+        print("Crates in A: ");
+        la7Show(la7Sorted(la7Crate, roomA));
+        print(".^");
+    }
+}
+
+verb Query {
+    grammar = {.query};
+    void handler() {
+        array<object> here = bgl.world.inParent(roomA, (object o) => o.is(la7Item));
+        print($"Here {here.count()}; heavy {here.any((object o) => ((la7Item)o).weight > 15)}");
+        print($", all light {here.all((object o) => ((la7Item)o).weight < 15)}.^");
+        array<var> ws = here.map((var o) => ((la7Item)o).weight);
+        print($"Weights first {ws.first()}, last {ws.last()}; ");
+        print($"top two {here.orderBy((object a, object b) => ((la7Item)b).weight - ((la7Item)a).weight).take(2).first()}");
+        print($", after two {here.skip(2).count()}, sealed {here.filter((object o) => ((la7Item)o).marks.covers(LA7_SEALED)).count()}.^");
+    }
+}
+
+verb Least {
+    grammar = {.least};
+    void handler() {
+        array<int> nums = {7, 3, 9, 4};
+        array<la7Item> things = {tin, box, cork, jar};
+        print($"Least number {nums.least()}, least thing {things.least()}.^");
+        array<la7Item> picked = things.filter((la7Item i) => i.weight > 1).orderBy(la7Item::operator <=>);
+        print($"Picked {picked.length}: {picked.first()} to {picked.last()}");
+        print($", distinct weights {things.map((la7Item i) => i.weight > 2).distinct().count()}.^");
+    }
+}
+
+verb Chits {
+    grammar = {.chits};
+    void handler() {
+        La7_Chit a = new La7_Chit(5);
+        La7_Chit b = new La7_Chit(7);
+        La7_Chit c = new La7_Chit(9);
+        La7_Chit d = new La7_Chit(11);
+        print($"Out {la7ChitsOut}, noted {la7NoteSum}, none left {d == null}.^");
+        print($"Twice {a.twice} {b.twice} {c.twice}; total {La7_Chit.total(a, c)}; big {a.big} {c.big}.^");
+        print($"Fallback {(d ?? c).la7_amount}, guarded {d?.la7_amount}.^");
+        delete b;
+        d = new La7_Chit(4);
+        print($"After swap: out {la7ChitsOut}, amount {d.la7_amount}, noted {la7NoteSum}.^");
+        delete a;
+        delete c;
+        delete d;
+        print($"Back {la7ChitsOut}.^");
+    }
+}
+
+verb Slips {
+    grammar = {.slips};
+    void handler() {
+        la7Slip a = new la7Slip(1);
+        la7Slip b = new la7Slip(2);
+        a.count = 3;
+        print($"Free {a.remaining()}; a {a.serial}/{a.count}, b {b.serial}/{b.count}.^");
+        b.copy(a);
+        a.count = 5;
+        print($"Copied: a {a.serial}/{a.count}, b {b.serial}/{b.count}.^");
+        delete a;
+        delete b;
+        la7Slip c = new la7Slip(9);
+        print($"Fresh {c.serial}/{c.count}, free {c.remaining()}.^");
+        delete c;
+    }
+}
+
+verb Restock {
+    grammar = {
+        {.restock, NOUN},
+        {.drain, NOUN},
+    };
+    void handler() {
+        if (!noun.is(la7Item)) { print("Not tracked.^"); return; }
+        la7Item it = (la7Item)noun;
+        if ((dictionaryWord)verb_word == .drain) it.stock = -4;
+        else it.stock = it.stock / 10 + 2;
+        print($"{cThe(noun)}: stock {it.stock}.^");
+    }
+}
+
+verb Sums {
+    grammar = {.sums};
+    void handler() {
+        array<int> vals = {1, 2, 3};
+        uint all = (uint)-1;
+        uint half = all / 2;
+        uint top = all >> 12;
+        print($"Check {la7Check(vals)}; all {all}, half {half}, top {top}, big {half < all}.^");
+        uint w = 65535;
+        w++;
+        print($"Wrapped {w}; pow {bgl.util.math.pow(3, 4)}, clamp {bgl.util.math.clamp(42, 0, 9)}, sign {bgl.util.math.sign(-3)}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

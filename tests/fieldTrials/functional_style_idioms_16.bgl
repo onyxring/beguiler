@@ -1,0 +1,353 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: three dense declarations on Glulx, written functionally. An I6 class declared in an `#i6`
+// island and bound with `extern class`: emitter `+`, `-`, `<`, `>` operators and a static fold that
+// imports a type alias with `#using`, walks a nested literal table of bands, reads a meter through
+// `?.`, holds a value-class local, switches with ranges and guards on `meter + n`, adjusts a local in
+// an `#i6` island and runs a verb with `perform`. An `extend extern class` of it adding `==` and `!=`,
+// a `replace` of a static label routine, and a static profile that folds an array of float arrays
+// through a block lambda into a value-class local, stamps an array<char> code from an enum, builds a
+// stringObj and runs a verb. A dial object whose inline float accessor keeps a static array of marks
+// and writes its host through `outer`, with a `#if`-guarded trace, an `operator []` / `[]=` over a
+// member float array, a `ref` value-class member bound with `:=`, an enum mode, an emitter-class
+// local and a `var` tag switched on `typeof`, then a `perform`; an `extend` of the dial with a member
+// array<char>, a member array of float arrays and a block lambda reading `self[i]`. A verb with its own
+// members: a nested array, a block-lambda func<> member, a `ref` value-class member bound with `:=`, an
+// inline accessor over a static array writing its host through `outer` under `#if`, a `var` switched on
+// `typeof` and `?.` over an extern-class member that may be null.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <string>
+
+#define DIAL_TRACE
+#define DIAL_SLOTS 4
+
+extend class object {
+    stringOrRoutine description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+//-- Shared types ---------------------------------------------------------------------------------
+enum eMode { idle, low, high }
+
+value class Spot {
+    float x;
+    float y;
+    Spot operator = (Spot o) { x = o.x; y = o.y; return self; }
+}
+
+emitter class tenths {
+    tenths operator = (int v) { $target = $v; }
+    int whole() { ($self / 10) }
+    int part() { ($self % 10) }
+}
+
+object kit {
+    alias spot for Spot;
+    alias mode for eMode;
+}
+
+#i6 {
+    Class Meter
+        with reading 0,
+             limit 5;
+}
+
+//-- Cluster 2: an I6 class bound with extern class -----------------------------------------------
+extern class Meter : object {
+    int reading;
+    int limit;
+
+    emitter int  operator + (int v) { ($self.reading + $v) }
+    emitter int  operator - (int v) { ($self.reading - $v) }
+    emitter bool operator < (int v) { ($self.reading < $v) }
+    emitter bool operator > (int v) { ($self.reading > $v) }
+
+    static string bandName(int r) {
+        return "band";
+    }
+
+    static float spread(Meter m, int n) {
+        #using kit
+        array<array<int>> bands = {{0, 2}, {3, 6}, {7, 99}};
+        spot s;
+        s.x = 0.5;
+        s.y = 0.25;
+        int r = m?.reading;
+        float out = 0.0;
+        for (int i = 0; i < bands.length; i++) {
+            if (r >= bands[i][0] && r <= bands[i][1]) out = s.x * (i + 1);
+        }
+        switch (m + n) {
+            case 0 to 4:  out = out + 1.0;
+            case 5, 6:    out = out * 2.0;
+            case >= 10:   out = out - s.y;
+            default:      out = out + s.y;
+        }
+        int bump = m - n;
+        #i6 {
+            if ($i6Expr(bump) < 0) $i6Expr(bump) = 0;
+        }
+        out = out + bump;
+        if (m > m.limit) PokeVerb.perform(m);
+        else if (m < 1) print("(meter low) ");
+        return out;
+    }
+}
+
+Meter meterA { "meter A"; reading = 3; limit = 5; }
+Meter meterB { "meter B"; reading = 8; limit = 5; }
+Meter meterC { "meter C"; reading = 0; limit = 5; }
+
+//-- Cluster 1: the extern class extended ---------------------------------------------------------
+extend extern class Meter {
+    emitter bool operator == (int v) { ($self.reading == $v) }
+    emitter bool operator != (int v) { ($self.reading ~= $v) }
+
+    replace static string bandName(int r) {
+        if (r < 3) return "low";
+        if (r < 7) return "mid";
+        return "high";
+    }
+
+    static float profile(Meter m, int n) {
+        array<array<float>> rows = {{0.5, 1.0}, {1.5, 2.0, 2.5}};
+        array<char> code = "m-0";
+        Spot at;
+        at.x = n * 0.5;
+        eMode mode = eMode.idle;
+        func<float, float> trim = (float v) => {
+            if (v > 2.0) return v - 2.0;
+            return v;
+        };
+        float total = 0.0;
+        for (array<float> row in rows) {
+            for (float v in row) total += trim(v);
+        }
+        at.y = total;
+        if (m == n) mode = eMode.high;
+        else if (m != 0) mode = eMode.low;
+        code[2] = '0' + (int)mode;
+        stringObj line = $"{bandName(m.reading)}/{m.reading}";
+        if (line.length < 6) line += ".";
+        print(line);
+        print(" ");
+        for (int i = 0; i < code.length; i++) print(code[i]);
+        print(" ");
+        if (mode == eMode.high) PokeVerb.perform(m);
+        return at.x + at.y + m.reading * 0.25;
+    }
+}
+
+//-- Cluster 3: a dial with an accessor through outer ---------------------------------------------
+object dial {
+    "dial";
+    float base = 1.0;
+    int turns = 0;
+    eMode mode = eMode.idle;
+    ref Spot anchor;
+    array<float> stops[DIAL_SLOTS];
+
+    auto level = {
+        static array<float> marks = {0.5, 1.5, 3.0};
+        float _v = 0.0;
+        float operator () { return _v; }
+        void operator = (float v) {
+            _v = v * outer.base;
+            outer.turns++;
+            int k = 0;
+            for (float mk in marks) if (_v > mk) k++;
+            if (k == 0) outer.mode = eMode.idle;
+            else if (k < 3) outer.mode = eMode.low;
+            else outer.mode = eMode.high;
+            outer[outer.turns % DIAL_SLOTS] = _v;
+            #if DIAL_TRACE
+                print($"[k{k}] ");
+            #endif
+            if (outer.anchor?) outer.anchor.x = _v;
+        }
+    }
+
+    void pin(ref Spot s) {
+        anchor := s;
+    }
+
+    float sumFrom(int i) {
+        if (i >= DIAL_SLOTS) return 0.0;
+        return self[i] + sumFrom(i + 1);
+    }
+
+    float operator [] (int i) {
+        return stops[i];
+    }
+
+    float operator []= (int i, float v) {
+        stops[i] = v;
+        return v;
+    }
+
+    void show(var tag) {
+        tenths t = turns * 10 + 5;
+        string kind = "number";
+        switch (typeof(tag)) {
+            case eType.string: kind = "text";
+            case eType.object: kind = "object";
+        }
+        print($"{kind}: level {level}, turns {t.whole()}.{t.part()}, mode {(int)mode}, sum {sumFrom(0)}^");
+        if (mode == eMode.high) PokeVerb.perform(self);
+    }
+}
+
+extend dial {
+    array<char> code = "d-";
+    array<array<float>> weights = {{1.0, 0.5}, {0.25, 0.25}};
+
+    stringObj summary() {
+        func<float, float, int> weigh = (float acc, int i) => {
+            array<float> row = weights[i % 2];
+            return acc + self[i] * row[i / 2];
+        };
+        float total = 0.0;
+        for (int i = 0; i < DIAL_SLOTS; i++) total = weigh(total, i);
+        switch (mode) {
+            case eMode.idle: code[1] = 'i';
+            case eMode.low:  code[1] = 'l';
+            default:         code[1] = 'h';
+        }
+        stringObj s = $"{(char)code[0]}{(char)code[1]} {total}";
+        if (total > 2.0) s += " over";
+        return s;
+    }
+}
+
+Spot spotA;
+
+//-- Verbs ----------------------------------------------------------------------------------------
+verb PokeVerb {
+    grammar = {{.poke, noun}};
+    void handler() {
+        print($"(poked {noun})^");
+    }
+}
+
+verb SpreadVerb {
+    grammar = {{.spread, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        float a = Meter.spread(meterA, n);
+        float b = Meter.spread(meterB, n);
+        float c = Meter.spread(meterC, n);
+        print($"spread {a}, {b}, {c}^");
+    }
+}
+
+verb ProfileVerb {
+    grammar = {{.profile, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        float a = Meter.profile(meterA, n);
+        float b = Meter.profile(meterB, n);
+        float c = Meter.profile(meterC, n);
+        print($"profile {a}, {b}, {c}^");
+    }
+}
+
+verb DialVerb {
+    grammar = {{.dial, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        dial.base = 1.0;
+        dial.pin(spotA);
+        dial.level = n;
+        dial.show(n);
+        dial.base = 0.5;
+        dial.level = n + 0.5;
+        dial.show("tag");
+        dial[0] = 0.25;
+        dial.show(roomA);
+        print($"anchor {spotA.x}, slot0 {dial[0]}^");
+    }
+}
+
+verb SummaryVerb {
+    grammar = {.summary};
+    void handler() {
+        stringObj s = dial.summary();
+        print($"{s}^");
+    }
+}
+
+verb GaugeVerb {
+    grammar = {{.gauge, NUMBER}};
+    Meter last;
+    ref Spot hold;
+    array<array<int>> steps = {{1, 2}, {3}};
+    array<char> tags = {0, 0, 0, 0};
+    func<int, int> pick = (int v) => {
+        if (v > 2) return v - 2;
+        return v;
+    };
+
+    auto count = {
+        static array<int> seen[4];
+        int _c = 0;
+        int operator () { return _c; }
+        void operator = (int v) {
+            _c = v;
+            if (seen.length < seen.size) seen.append(v);
+            outer.tags[seen.length - 1] = outer.pick(v);
+            #if DIAL_TRACE
+                if (outer.hold?) outer.hold.y = outer.hold.y + v;
+            #endif
+        }
+    }
+
+    stringObj tally(var from) {
+        stringObj s = "t";
+        int sum = 0;
+        for (array<int> row in steps) for (int x in row) sum += x;
+        switch (typeof(from)) {
+            case eType.object: s += "o";
+            default:           s += "n";
+        }
+        if (last?.reading > sum) s += "+";
+        return s;
+    }
+
+    void handler() {
+        int n = parsed_number;
+        hold := spotA;
+        spotA.y = 0.0;
+        switch (n) {
+            case 0 to 2: last = meterA;
+            case 3:      last = meterB;
+            default:     last = null;
+        }
+        count = n;
+        count = n + 1;
+        eMode m = eMode.idle;
+        if (last == null) m = eMode.high;
+        stringObj s = tally(last);
+        print($"{s} {(int)m} y {spotA.y} seen {count} reading {last?.reading} ");
+        for (int x in tags) print(x);
+        print("^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

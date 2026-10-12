@@ -1,0 +1,417 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, ninth pass. A middleware pipeline
+// (chain of responsibility) kept in a file-scope `array<T>` sized by a `#define`, whose initializer
+// mixes a named object, a `Type{ … }` inline object and a bare `{ … }` with a lambda in a positional
+// `literal func` member, then edited at compile time by `extend` on the array (`inject` first / after /
+// before an index, `move`, `remove`, one line under `#if`), run in order, re-sorted by a member and
+// toggled through a subscript; `#if` inside a method body; reflection through `property` parameters
+// and locals (`provides`, computed reads and message sends, a free-standing `property`, an
+// `array<property>`); extension methods: `extend extern class array` emitters through `$i6Expr` on
+// global, member, nested and value-returning arrays, and `extend extern class int` emitters called on
+// literals, sums, subscripts and call results; a composite pattern over the object tree (positional
+// `inline instanceName`, `children` in declarations, recursion over `children` in a method, `parent`
+// walks, `children +=`, moving with `parent =`, a `bgl.world.inParent` snapshot,
+// `bgl.world.instances` with a predicate); inline parameter objects (`Type{ … }` constant and with
+// named members, bare `{ … }` with run-time members, as a named argument, repopulated per evaluation
+// in a loop, and the shared per-site instance); a jagged `array<array<int>>` passed to static methods,
+// rows passed on as `array<int>`; a `uint` hash over an `array<char>` with wrapping, logical shift and
+// unsigned ordering; a pooled class with the `bglAllocated` mixin cloned with `copy()`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+#define TRACE_PIPELINE
+#define MAX_STEPS 6
+
+extend class object {
+    stringOrRoutine description;
+}
+
+//-- Extension methods -----------------------------------------------------------------------------
+
+extend extern class array {
+    emitter T Last()           { $i6Expr($self[$self.length - 1]) }
+    emitter bool IsEmpty()     { ($i6Expr($self.length) == 0) }
+    emitter int Capacity()     { $i6Expr($self.size) }
+}
+
+extend extern class int {
+    emitter bool IsEven()      { ($self % 2 == 0) }
+    emitter int Squared()      { ($self * $self) }
+}
+
+//-- Middleware pipeline ---------------------------------------------------------------------------
+
+int Identity(int n) { return n; }
+int Ceiling(int n)     { return n > 100 ? 100 : n; }
+int Double(int n)   { return n * 2; }
+int Negate(int n)   { return -n; }
+
+class Middleware : object {
+    inline string Tag;
+    inline int Order;
+    inline literal func<int, int> Apply;
+    bool Enabled = true;
+
+    void print() { print($"{Tag}#{Order}"); }
+}
+
+Middleware auditStep { "audit", 9, Identity; }
+Middleware capStep   { "cap", 5, Ceiling; }
+
+array<Middleware> Steps[MAX_STEPS] = {
+    capStep,
+    Middleware{ "double", 2, Double },
+    { "inc", 3, (int n) => n + 1 },
+};
+
+extend Steps {
+    inject Middleware{ "neg", 7, Negate } first;
+    inject auditStep after capStep;
+#if TRACE_PIPELINE
+    inject { "half", 4, (int n) => n / 2 } before [1];
+#endif
+    move capStep last;
+    remove auditStep;
+}
+
+class PipelineRunner : object {
+    int Runs;
+    bool Trace;
+
+    int Run(int input) {
+        int v = input;
+        for (Middleware m in Steps) {
+            if (!m.Enabled) continue;
+            v = m.Apply(v);
+#if TRACE_PIPELINE
+            if (Trace) print($"{m.Tag}:{v} ");
+#endif
+        }
+        Runs++;
+        return v;
+    }
+
+    void Show() {
+        for (Middleware m in Steps) print($"{m} ");
+        printLine($"({Steps.length} of {Steps.Capacity()})");
+    }
+
+    void SortByOrder() {
+        Steps.sort((Middleware a, Middleware b) => a.Order - b.Order);
+    }
+}
+
+PipelineRunner runner { }
+
+//-- Reflection through property values ------------------------------------------------------------
+
+property Hidden;
+
+class Config : object {
+    int Volume = 3;
+    int Speed = 5;
+
+    int Scale(int factor) { return Volume * factor; }
+    int Offset(int by)    { return Speed + by; }
+}
+
+Config cfgA { Volume = 7; }
+Config cfgB { Speed = 9; int Hidden = 1; }
+
+class Inspector : object {
+    int Reads;
+
+    int Read(object target, property p) {
+        Reads++;
+        if (!target.provides(p)) return -1;
+        return target.p;
+    }
+
+    int Send(object target, property m, int arg) {
+        return target.m(arg);
+    }
+
+    int SumOf(object target, array<property> props) {
+        int total = 0;
+        for (property f in props) total += Read(target, f);
+        return total;
+    }
+}
+
+Inspector probe { }
+
+array<property> Fields = { Volume, Speed, Hidden };
+
+//-- Composite over the object tree ----------------------------------------------------------------
+
+class Folder : object {
+    inline instanceName;
+    inline int Size;
+
+    int Total() {
+        int t = Size;
+        for (object o in children) {
+            if (o.is(Folder)) t += ((Folder)o).Total();
+        }
+        return t;
+    }
+
+    int Depth() {
+        int d = 0;
+        object p = parent;
+        while (p != null) {
+            d++;
+            p = p.parent;
+        }
+        return d;
+    }
+
+    void Dump(int indent) {
+        for (int i in 1 to indent) print("  ");
+        printLine($"{self} {Size} (total {Total()})");
+        for (object o in children) {
+            if (o.is(Folder)) ((Folder)o).Dump(indent + 1);
+        }
+    }
+}
+
+Folder rootDir    { "root", 1; children = { docsDir, srcDir }; }
+Folder docsDir    { "docs", 2; }
+Folder srcDir     { "src", 4; children = { libDir }; }
+Folder libDir     { "lib", 8; }
+Folder tmpDir     { "tmp", 16; }
+Folder archiveDir { "archive", 32; }
+
+//-- Parameter objects -----------------------------------------------------------------------------
+
+class Range : object {
+    inline int Min;
+    inline int Max;
+    string Label = "range";
+
+    bool Holds(int n) { return n >= Min && n <= Max; }
+}
+
+class Census : object {
+    array<int> Values[8];
+
+    int CountIn(Range r) {
+        int c = 0;
+        for (int v in Values) if (r.Holds(v)) c++;
+        return c;
+    }
+
+    void Describe(Range r) {
+        printLine($"{r.Label} {r.Min}..{r.Max}: {CountIn(r)}");
+    }
+}
+
+Census tally { Values = { 3, 8, 12, 5, 20, 15 }; }
+
+Range Fixed()      { return Range{ 0, 1 }; }
+Range Make(int a)  { return Range{ a, a + 1 }; }
+
+//-- Jagged arrays ---------------------------------------------------------------------------------
+
+array<array<int>> Grid = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9, 10} };
+
+class MatrixOps {
+    static int Trace(array<array<int>> m) {
+        int t = 0;
+        for (int i = 0; i < m.length; i++) t += m[i][i];
+        return t;
+    }
+
+    static int RowSum(array<int> row) {
+        int s = 0;
+        for (int v in row) s += v;
+        return s;
+    }
+
+    static int Widest(array<array<int>> m) {
+        int best = 0;
+        for (array<int> row in m) if (row.length > best) best = row.length;
+        return best;
+    }
+
+    static void Scale(array<array<int>> m, int k) {
+        for (int i = 0; i < m.length; i++)
+            for (int j = 0; j < m[i].length; j++)
+                m[i][j] = m[i][j] * k;
+    }
+}
+
+//-- Unsigned hashing ------------------------------------------------------------------------------
+
+array<char> wordA = "beguile";
+array<char> wordB = "inform";
+
+class Hasher {
+    static uint Djb2(array<char> text) {
+        uint h = 5381;
+        for (int i = 0; i < text.length; i++) {
+            int c = text[i];
+            h = h * 33 + (uint)c;
+        }
+        return h;
+    }
+
+    static uint Bucket(uint h, int buckets) {
+        return (h >> 4) % (uint)buckets;
+    }
+}
+
+//-- Cloning pooled instances ----------------------------------------------------------------------
+
+class Token[4] : object, bglAllocated {
+    int Kind;
+    int Weight;
+
+    void create(int k, int w) { Kind = k; Weight = w; }
+    void print() { print($"T{Kind}/{Weight}"); }
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+verb RunPipeline {
+    grammar = {.pipeline};
+    void handler() {
+        runner.Show();
+        runner.Trace = true;
+        int r = runner.Run(10);
+        printLine($"= {r}");
+        runner.Trace = false;
+        printLine($"Run 150: {runner.Run(150)}.");
+        runner.SortByOrder();
+        runner.Show();
+        printLine($"Run 60: {runner.Run(60)}; run 150: {runner.Run(150)}.");
+        Steps[2].Enabled = false;
+        printLine($"Without {Steps[2].Tag}: {runner.Run(60)}.");
+        printLine($"cap at {Steps.indexOf(capStep)}; audit kept {Steps.contains(auditStep)}; last {Steps.Last()}; runs {runner.Runs}.");
+    }
+}
+
+verb Reflect {
+    grammar = {.reflect};
+    void handler() {
+        printLine($"A volume {probe.Read(cfgA, Volume)}, B speed {probe.Read(cfgB, Speed)}.");
+        printLine($"Hidden: A {probe.Read(cfgA, Hidden)}, B {probe.Read(cfgB, Hidden)}.");
+        printLine($"Scale A by 3: {probe.Send(cfgA, Scale, 3)}; offset B by 1: {probe.Send(cfgB, Offset, 1)}.");
+        property which = (property) Speed;
+        printLine($"Through a local: A {cfgA.which}, B {cfgB.which}.");
+        printLine($"Sums: A {probe.SumOf(cfgA, Fields)}, B {probe.SumOf(cfgB, Fields)}; reads {probe.Reads}.");
+    }
+}
+
+verb Extensions {
+    grammar = {.extensions};
+    void handler() {
+        array<int> local = {4, 7, 9};
+        array<int> spare[3];
+        printLine($"last {local.Last()}, empty {local.IsEmpty()} {spare.IsEmpty()}, capacity {spare.Capacity()}.");
+        int a = 3;
+        printLine($"{a.Squared()} {(a + 2).Squared()} {local[1].IsEven()} {local[0].IsEven()} {Make(5).Max.Squared()}.");
+        array<int> values = tally.Values;
+        printLine($"tally last {tally.Values.Last()}/{values.Last()}, row last {Grid[2].Last()}, step last {Steps.Last().Tag}.");
+    }
+}
+
+verb Folders {
+    grammar = {.folders};
+    void handler() {
+        rootDir.Dump(0);
+        printLine($"lib depth {libDir.Depth()}, root depth {rootDir.Depth()}.");
+        rootDir.children += { tmpDir };
+        libDir.parent = docsDir;
+        printLine($"After moves: root {rootDir.Total()}, docs {docsDir.Total()}, src {srcDir.Total()}, lib depth {libDir.Depth()}.");
+        for (object o in bgl.world.inParent(rootDir)) o.parent = archiveDir;
+        printLine($"Archived: root {rootDir.Total()} with {rootDir.children.length}, archive {archiveDir.Total()} with {archiveDir.children.length}.");
+        archiveDir.Dump(0);
+        int big = 0;
+        for (object o in bgl.world.instances(Folder, (object f) => ((Folder)f).Size > 4)) big++;
+        printLine($"Folders over 4: {big}.");
+    }
+}
+
+verb Ranges {
+    grammar = {.ranges};
+    void handler() {
+        tally.Describe(Range{ 1, 9; Label = "low"; });
+        int lo = 5;
+        int hi = 15;
+        tally.Describe({ lo, hi });
+        tally.Describe(r: { hi, 30; Label = "high"; });
+        int total = 0;
+        for (int w in 1 to 3) {
+            int n = tally.CountIn({ w * 5, w * 5 + 4 });
+            print($"{w}:{n} ");
+            total += n;
+        }
+        printLine($"total {total}.");
+        printLine($"Constant site shared: {Fixed() == Fixed()}.");
+        Range r1 = Make(1);
+        Range r2 = Make(7);
+        printLine($"Run-time site shared: {r1 == r2}, first now {r1.Min}..{r1.Max}.");
+    }
+}
+
+verb Matrix {
+    grammar = {.matrix};
+    void handler() {
+        printLine($"trace {MatrixOps.Trace(Grid)}, row 2 sum {MatrixOps.RowSum(Grid[2])}, widest {MatrixOps.Widest(Grid)}.");
+        MatrixOps.Scale(Grid, 2);
+        printLine($"scaled: trace {MatrixOps.Trace(Grid)}, [0][2] {Grid[0][2]}, row 1 sum {MatrixOps.RowSum(Grid[1])}, rows {Grid.length}.");
+        int total = 0;
+        for (array<int> row in Grid) total += MatrixOps.RowSum(row);
+        printLine($"all {total}.");
+    }
+}
+
+verb Hashing {
+    grammar = {.hashing};
+    void handler() {
+        uint ha = Hasher.Djb2(wordA);
+        uint hb = Hasher.Djb2(wordB);
+        printLine($"{wordA.length} chars: {ha}; {wordB.length} chars: {hb}.");
+        printLine($"buckets {Hasher.Bucket(ha, 16)} {Hasher.Bucket(hb, 16)}; a above b {ha > hb}; high bit {ha > (uint)32767}.");
+        uint top = (uint)-1;
+        printLine($"top {top}, top >> 8 = {top >> 8}, compare {bgl.util.math.unsignedCompare(-1, 1)}.");
+    }
+}
+
+verb Cloning {
+    grammar = {.cloning};
+    void handler() {
+        Token a = new Token(1, 10);
+        Token b = new Token(2, 20);
+        if (a == null || b == null) return;
+        printLine($"{a} {b}; free {a.remaining()}.");
+        b.copy(a);
+        a.Weight = 99;
+        printLine($"after copy: {a} {b}; same {a == b}.");
+        delete a;
+        delete b;
+        Token c = new Token(3, 30);
+        printLine($"{c}; free {c.remaining()}.");
+        delete c;
+    }
+}
+
+#includeI6 "grammar"
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

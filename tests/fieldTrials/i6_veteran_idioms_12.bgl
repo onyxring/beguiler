@@ -1,0 +1,499 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: Inform 6 habits on Glulx, meeting class-level tables. A class with two parents whose
+// static members include an int counter, a static array<int>, a static array<char> stamp and a
+// static array<string> of kind names, read through $i6Expr in #i6 islands, walked by an emitter
+// class with init/deinit, built into a stringObj, guarded by #if, chained with ?. to a peer, and
+// dispatching to its ancestor's default method by a cast; an extend class asking postfix ? of the
+// peer chain; a replace chain whose replacement tests its argument with postfix ?; a class with
+// arithmetic operators that log to a member array, throw when full and move the instance in the
+// object tree; a class with operator += over an array of class instances, counted in an #i6 island;
+// a ref array bound with := and read from an #i6 island; an extern class over an I6 word array with
+// subscript emitters and static methods building a stringObj and casting to an ancestor; an object
+// with an inline accessor writing a <buf> buffer through outer, with a block-bodied lambda reading
+// outer, and a member array<string>; arrays of strings searched by a recursive routine that throws,
+// caught by its caller, and read by an implicit conversion; and a switch whose cases reach $i6Expr.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#define SLOT_COUNT 6
+#define TRACE_SLOTS
+
+// ---------------------------------------------------------------- I6 side
+
+#i6 {
+Global trial_sum = 0;
+Global trial_cursors = 0;
+Global trial_joins = 0;
+Global trial_seen = 0;
+Global trial_last = 0;
+Array trial_table --> 5 10 20 40 80;
+
+[ TableTotal n  i t;
+    for (i = 0 : i < n : i++) t = t + trial_table-->i;
+    return t;
+];
+}
+
+extern int trial_sum;
+extern int trial_cursors;
+extern int trial_joins;
+extern int trial_seen;
+extern int trial_last;
+extern int TableTotal(int n);
+
+// ---------------------------------------------------------------- a cursor over a count
+
+emitter class slotCursor {
+    emitter void init()              { $self = 0; trial_cursors++; }
+    emitter void deinit()            { trial_cursors--; }
+    emitter void operator = (int v)  { $target = $v; }
+    emitter int doubled              { ($val * 2) }
+}
+
+// ---------------------------------------------------------------- bins
+
+class Crate : object {
+    int weight;
+    default void showSelf() { print($"crate {weight}"); }
+}
+
+class Tagged : object {
+    int tagNo;
+}
+
+class Bin : Crate, Tagged {
+    static int made = 0;
+    static array<int> slots[SLOT_COUNT];
+    static array<char> stamp[16];
+    static array<string> kinds = {"bolt", "nut", "washer"};
+    Bin peer;
+
+    void showSelf() {
+        print("[");
+        ((Crate)self).showSelf();
+        print($" tag {tagNo}]");
+    }
+    void fill(int k) {
+        if (Bin.slots.length >= Bin.slots.size) {
+            print("full ");
+            return;
+        }
+        Bin.made++;
+        Bin.slots.append(k * weight);
+        #i6 trial_sum = trial_sum + $i6Expr(Bin.slots[Bin.slots.length - 1]);
+#if TRACE_SLOTS
+        print($"<{Bin.slots.length}:{k * weight}>");
+#endif
+    }
+    void kindName() {
+        stringObj s;
+        s = Bin.kinds[tagNo % Bin.kinds.length];
+        s += "-";
+        s += Bin.kinds[(tagNo + 1) % Bin.kinds.length];
+        s = s.toUpper();
+        s.print();
+        print($" ({s.length})");
+    }
+    void stampIt() {
+        Bin.stamp.length = 0;
+        bgl.util.buf.set(Bin.stamp, "bin");
+        Bin.stamp[3] = '0' + tagNo;
+        Bin.stamp.length = 4;
+        for (int i = 0; i < Bin.stamp.length; i++) print((char)Bin.stamp[i]);
+        print("/");
+        ((Crate)self).showSelf();
+    }
+    int cursorSum() {
+        slotCursor c = Bin.slots.length;
+        int t = 0;
+        for (int v in Bin.slots) t += v;
+        print($"cursors {trial_cursors}, doubled {c.doubled}, ");
+        return t;
+    }
+    void passOn() {
+        int n = Bin.slots.length;
+        peer?.fill(n);
+        peer?.showSelf();
+        if (peer == null) print("no peer");
+    }
+}
+
+extend class Bin {
+    bool hasPeer() { return peer?; }
+    int chainLength() {
+        int n = 0;
+        Bin b = self;
+        while (b?) {
+            n++;
+            b = b.peer;
+        }
+        return n;
+    }
+}
+
+object binRoom { "bin room"; string description = "Bin room."; attributes = {light}; }
+
+Bin binA { "bin A"; weight = 2; tagNo = 1; parent = binRoom; }
+Bin binB { "bin B"; weight = 3; tagNo = 2; parent = binRoom; }
+Bin binC { "bin C"; weight = 5; tagNo = 4; parent = binRoom; }
+
+// ---------------------------------------------------------------- weighing, replaced
+
+int weighOf(object o) {
+    return 1;
+}
+
+replace int weighOf(object o) {
+    if (!o?) return -1;
+    if (o.is(Crate)) return ((Crate)o).weight * 10 + replaced(o);
+    return replaced(o);
+}
+
+// ---------------------------------------------------------------- tallies
+
+object overflowRoom { "overflow room"; }
+object tallyRoom { "tally room"; }
+
+class Tally : object {
+    int total;
+    array<int> log[4];
+    Tally operator + (int n) {
+        if (log.length >= log.size) throw n;
+        log.append(n);
+        total += n;
+        if (total > 20 && self.parent != overflowRoom) self.parent = overflowRoom;
+        return self;
+    }
+    Tally operator - (int n) {
+        if (log.length == 0) throw -n;
+        int back = log.popEnd();
+        total -= back;
+        if (total <= 20 && self.parent == overflowRoom) self.parent = tallyRoom;
+        return self;
+    }
+    void show() {
+        print($"{self} {total} [");
+        for (int i = 0; i < log.length; i++) {
+            if (i > 0) print(" ");
+            print(log[i]);
+        }
+        print($"] in {self.parent}");
+    }
+}
+
+Tally tallyA { "tally A"; parent = tallyRoom; }
+Tally tallyB { "tally B"; parent = tallyRoom; }
+
+class Crowd : object {
+    array<Tally> members[4];
+    Crowd operator += (Tally t) {
+        if (members.contains(t)) return self;
+        members.append(t);
+        #i6 trial_joins++;
+        return self;
+    }
+    int sum() {
+        int s = 0;
+        for (Tally t in members) s += t.total;
+        #i6 trial_last = $i6Expr(members.length);
+        return s;
+    }
+}
+
+Crowd club { "club"; }
+
+array<Tally> roster = {tallyA, tallyB};
+array<int> primary = {3, 6, 9};
+array<int> secondary = {1, 1};
+
+int rollCall(bool usePrimary) {
+    ref array<int> cur := secondary;
+    if (usePrimary) cur := primary;
+    ref array<Tally> group := roster;
+    int t = 0;
+    for (int i = 0; i < cur.length; i++) {
+        #i6 trial_seen = trial_seen + $i6Expr(cur[i]);
+        t += cur[i];
+    }
+    for (Tally g in group) {
+        #i6 trial_seen++;
+        t += g.total;
+    }
+    return t;
+}
+
+// ---------------------------------------------------------------- an I6 word table
+
+extern class wordTable {
+    emitter int operator [] (int i)         { ($val-->$i) }
+    emitter void operator []= (int i, int v) { $val-->$i = $v; }
+    static stringObj spell(int n) {
+        stringObj s;
+        s = "w";
+        for (int i = 0; i < n; i++) s += "o";
+        s += "rd";
+        return s;
+    }
+    static int weighBin(Bin b) {
+        ((Crate)b).showSelf();
+        return b.weight + trial_table[0];
+    }
+}
+
+extern wordTable trial_table;
+
+// ---------------------------------------------------------------- a gauge with a bar
+
+array<char> barBuf[24];
+
+object gauge {
+    int scale = 2;
+    char mark = '#';
+    ref array<char> bar;
+    array<string> levels = {"low", "mid", "high"};
+    auto level = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v * outer.scale;
+            bgl.util.buf.set(outer.bar, "");
+            int n = _raw;
+            if (n > outer.bar.size - 1) n = outer.bar.size - 1;
+            for (int i = 0; i < n; i++) outer.bar[i] = outer.mark;
+            outer.bar[n] = '|';
+            outer.bar.length = n + 1;
+            trial_last = bgl.util.buf.indexOfFirstTrue(outer.bar, (char c) => {
+                if (c == outer.mark) return false;
+                return true;
+            });
+        }
+    }
+    string levelName() {
+        int i = level / 4;
+        if (i > 2) i = 2;
+        return levels[i];
+    }
+    int countMarks(char m) {
+        int n = 0;
+        bgl.util.buf.indexOfFirstTrue(bar, (char c) => {
+            if (c == m) n++;
+            return false;
+        });
+        return n;
+    }
+    void show() {
+        bgl.util.buf.print(bar);
+        print($" level {level} ({levelName()}), marks {countMarks(mark)}, edge {trial_last}");
+    }
+}
+
+// ---------------------------------------------------------------- word lists
+
+array<string> pathWords = {"north", "east", "south", "west", "up"};
+
+int findWord(array<string> words, string w, int from) {
+    if (from >= words.length) throw from;
+    if (words[from] == w) return from;
+    return findWord(words, w, from + 1);
+}
+
+int locate(array<string> words, string w) {
+    try {
+        return findWord(words, w, 0);
+    } catch (int past) {
+        print($"(searched {past}) ");
+        return -1;
+    }
+}
+
+class Phrase : object {
+    array<string> parts = {"brass", "tin", "iron"};
+    int pick;
+    string operator () { return parts[pick]; }
+    void advance() {
+        pick++;
+        if (pick >= parts.length) pick = 0;
+    }
+}
+
+Phrase phraseA { "phrase"; pick = 1; }
+
+// ---------------------------------------------------------------- verbs
+
+verb Bins {
+    grammar = {.bins};
+    meta = true;
+    void handler() {
+        for (object o in binRoom.children) {
+            if (!o.is(Bin)) continue;
+            Bin b = (Bin)o;
+            b.showSelf();
+            print(" ");
+            b.kindName();
+            printLine($", chain {b.chainLength()}, weighs {weighOf(b)}.");
+        }
+        printLine($"made {Bin.made}, slots {Bin.slots.length}, weighs nothing {weighOf(null)}, room {weighOf(binRoom)}.");
+    }
+}
+
+verb Load {
+    grammar = {.load, NUMBER};
+    meta = true;
+    void handler() {
+        binA.fill((int)noun);
+        binB.fill((int)noun);
+        int t = binA.cursorSum();
+        printLine($"total {t}, I6 sum {trial_sum}, cursors after {trial_cursors}.");
+    }
+}
+
+verb Link {
+    grammar = {.link};
+    meta = true;
+    void handler() {
+        binA.peer = binB;
+        binB.peer = binC;
+        print($"A peer {binA.hasPeer()}, C peer {binC.hasPeer()}; ");
+        binA.passOn();
+        print("; ");
+        binC.passOn();
+        printLine($"; chain {binA.chainLength()}.");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp};
+    meta = true;
+    void handler() {
+        binB.stampIt();
+        print(", ");
+        binC.stampIt();
+        printLine(".");
+    }
+}
+
+verb Add {
+    grammar = {.add, NUMBER};
+    meta = true;
+    void handler() {
+        try {
+            Tally r = tallyA + (int)noun;
+            r.show();
+            printLine(".");
+        } catch (int n) {
+            printLine($"Log full, {n} dropped.");
+        }
+    }
+}
+
+verb TakeBack {
+    grammar = {.takeback};
+    meta = true;
+    void handler() {
+        try {
+            Tally r = tallyA - 1;
+            r.show();
+            printLine(".");
+        } catch (int n) {
+            printLine($"Nothing to undo ({n}).");
+        }
+    }
+}
+
+verb Join {
+    grammar = {.join};
+    meta = true;
+    void handler() {
+        club += tallyA;
+        club += tallyB;
+        club += tallyA;
+        Tally r = tallyB + 7;
+        int s = club.sum();
+        printLine($"joins {trial_joins}, members {trial_last}, sum {s}, roll {rollCall(true)}/{rollCall(false)}, seen {trial_seen}.");
+    }
+}
+
+verb Table {
+    grammar = {.table};
+    meta = true;
+    void handler() {
+        trial_table[1] = trial_table[1] + trial_table[4];
+        print($"cells {trial_table[0]} {trial_table[1]}, total {TableTotal(5)}, ");
+        stringObj w = wordTable.spell(3);
+        w.print();
+        print(", ");
+        int k = wordTable.weighBin(binC);
+        printLine($" -> {k}.");
+    }
+}
+
+verb Level {
+    grammar = {.level, NUMBER};
+    meta = true;
+    void handler() {
+        gauge.level = (int)noun;
+        gauge.show();
+        printLine(".");
+    }
+}
+
+verb Find {
+    grammar = {.find};
+    meta = true;
+    void handler() {
+        print($"south {locate(pathWords, "south")}, ");
+        print($"up {locate(pathWords, "up")}, ");
+        printLine($"down {locate(pathWords, "down")}.");
+    }
+}
+
+verb PhraseCheck {
+    grammar = {.phrasecheck};
+    meta = true;
+    void handler() {
+        string s = phraseA;
+        print($"phrase {s}");
+        phraseA.advance();
+        string t = phraseA;
+        print($", then {t}, at {locate(pathWords, t)}");
+        printLine(".");
+    }
+}
+
+verb Grade {
+    grammar = {.grade, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        switch (n) {
+            case 0:
+                #i6 print "zero, cell ", $i6Expr(trial_table[0]);
+            case 1 to 3:
+                #i6 print "small, twice ", $i6Expr(n * 2);
+            case 4, 5:
+                #i6 print "cell ", $i6Expr(trial_table[n - 1]);
+            default:
+                print($"large {n}");
+        }
+        printLine(".");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = binRoom;
+    gauge.bar := barBuf;
+    rfalse;
+}

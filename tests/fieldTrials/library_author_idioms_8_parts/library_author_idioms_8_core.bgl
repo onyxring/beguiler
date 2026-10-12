@@ -1,0 +1,107 @@
+/*  Field trial part — included by library_author_idioms_8.bgl. Not a trial on its own.  */
+
+#once
+
+#if !LA8_LEVEL
+    #define LA8_LEVEL 1
+#endif
+
+#include <array>
+#include ?@"library_author_idioms_8_missing"
+
+// ---- Shapes: a default chain three classes deep. ----
+
+/// Anything the kit measures.
+class la8Shape : object {
+    static int made = 0;
+    static int count = 0;
+    int size = 1;
+    /// A one-word kind.
+    default string kind() { return "shape"; }
+    /// Prints the kind and size.
+    default void portray() { print($"{kind()} of {size}"); }
+    void resize(int n) { size = n; }
+    void resize(int n, int m) { size = n * m; }
+    /// Twice a number; a static method used as a function value.
+    static int twice(int n) { return n * 2; }
+#if LA8_LEVEL >= 2
+    int tier = 2;
+#elif LA8_LEVEL == 1
+    int tier = 1;
+#else
+    int tier = 0;
+#endif
+}
+
+/// A shape with a lid.
+class la8Box : la8Shape {
+    static int made = 0;
+    string kind() { return "box"; }
+    default void portray() {
+        ((la8Shape)self).portray();
+        print(" (boxed)");
+    }
+}
+
+/// A box whose two-number resize is closed off.
+class la8Lid : la8Box {
+    hide resize(int, int);
+}
+
+/// Counts a new shape on the class that declares the static and on the shared count.
+void la8Made(la8Shape s) {
+    if (s.is(la8Box)) la8Box.made++;
+    else la8Shape.made++;
+    la8Shape.count++;
+}
+
+// ---- A policy held in a static function member. ----
+
+/// Doubles; the policy's starting step.
+int la8Double(int n) { return n * 2; }
+
+class la8Policy {
+    static func<int, int> step = la8Double;
+    static int apply(int n) { return la8Policy.step(n) + 1; }
+}
+
+// ---- Scoring: replaced by the consumer, and an emitter the consumer swaps. ----
+
+/// The score for a size.
+int la8Score(int n) { return n * 2; }
+
+/// A scale factor, as an emitter the consumer may swap.
+emitter int la8Scale(int v) { ($v * 3) }
+
+/// The score plus the scale, written before the consumer replaces either.
+int la8Both(int n) { return la8Score(n) + la8Scale(n); }
+
+// ---- Notes: an emitter taking an interpolated string, and its string overload. ----
+
+emitter void la8Note(interpolatedStringLiteral s) { print "["; $s; print "]^"; }
+emitter void la8Note(string s)                    { print "<", (string) $s, ">^"; }
+
+// ---- Bands: a switch with values, ranges and guards. ----
+
+string la8Band(int n) {
+    switch (n) {
+        case < 0:        return "negative";
+        case 0:          return "zero";
+        case 1 to 9:     return "small";
+        case 10, 20, 30: return "round";
+        case >= 100:     return "huge";
+        default:         return "other";
+    }
+}
+
+// ---- Additions every array and every int literal get. ----
+
+extend extern class array {
+    /// The last element in use.
+    emitter T la8Tail() { $i6Expr($self[$self.length - 1]) }
+}
+
+extend extern class intLiteral {
+    /// The literal times ten.
+    emitter int la8Tens() { ($self * 10) }
+}

@@ -1,0 +1,764 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual combinations, many areas in one declaration, on the Z-machine.
+// An object of a class with a `default` method that holds type aliases (`alias … for`) and uses them
+// bare: an owned value-class member through the alias, a nested member array, a union member; its inline
+// accessor has static members, a static array appended through a `ref` alias, `[]`, a primitive local,
+// a range switch, a positional inline value object, `new` through the alias, `?.`, postfix `?`, a lambda
+// reading outer's nested array, a children walk and `perform` on outer; its `replace` method dispatches to
+// the class, narrows a union, runs an #i6 island over a recursive method, and chains <linq> on an inner
+// array. A second inline accessor added by `extend` on that object (`??`, parent set to null, a primitive).
+// A class with two parents: a throwing inline accessor, `+`, an explicit conversion, `==`/`!=`, a nested
+// member array, `new`/`delete`, extended with an array<char> and an emitter reaching a static by $i6Expr.
+// An extern class over an I6 class: emitter `()`, `+`, `==`, `!=`, static arrays and a static method over
+// an array parameter with `:=`, `?.`, an enum, try/catch on an attribute and a block lambda in <linq>.
+// A primitive with `[]`, `?` and `switch` emitters; a global `replace` whose block lambda calls
+// replaced(); a pooled class with a static nested array, `[]`/`[]=`, an array of a union, a stringObj
+// switch and <linq> over arrays of arrays. Hidden accessor writes, members re-listed positionally across
+// two parents, prefix `++` on an object accessor, bare inline arguments in recursion, `<=>` sorting, an
+// #i6 island with a nested #bgl, value classes two deep in a pool, a ref to a nested array, an emitter
+// class with #if in a block lambda, a pooled class whose inline accessor holds an array, and a verb
+// with a recursive method over an inner array of a local nested array.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#define PROBE_LEVEL 2
+
+extend class object {
+    string description;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object roomB { "Room B"; description = "Room B."; attributes = {light}; }
+object brassKey { "brass key"; parent = roomA; }
+
+int pings = 0;
+
+verb Ping {
+    grammar = {.ping, NOUN};
+    void handler() {
+        pings++;
+        printLine($"Ping {noun}.");
+    }
+}
+
+// ---- shared types ------------------------------------------------------------------------------
+
+value class Cell {
+    inline int n;
+    inline int m;
+    Cell operator = (Cell o) { n = o.n; m = o.m; return self; }
+}
+
+primitive class tally : int {
+    replace emitter int operator () { $val }
+    replace emitter tally operator = (int v) { $target = $v; }
+    replace emitter tally operator + (int v) { ($val + $v) }
+}
+
+class Token[4] : object {
+    int w;
+    string label;
+    void create(int x, string s) { w = x; label = s; }
+}
+
+union textOrRule = string | func<int, int>;
+
+int twice(int n) { return n * 2; }
+
+class HubBase : object {
+    int base = 1;
+    default int score(int k) { return base + k; }
+}
+
+// ---- dense object: an inline accessor reaching its host, type aliases in the host ----------------
+
+HubBase hub {
+    "hub";
+    parent = roomA;
+    attributes = {container, open};
+    alias cellT for Cell;
+    alias tokT for Token;
+    cellT kept;
+    ref Cell held;
+    array<string> names = {"red", "green", "blue"};
+    array<array<int>> grid = {{1, 2}, {3, 4, 5}};
+    stringObj note;
+    textOrRule last;
+    var spare;
+    int depthSeen = 0;
+
+    auto meter = {
+        static int sets = 0;
+        static array<int> history[4];
+        int _v;
+        int operator () { return _v; }
+        int operator [] (int i) { return history[i]; }
+        void operator = (int v) {
+            sets++;
+            tally t = v;
+            t = t + 1;
+            switch (v) {
+                case < 0:    _v = 0;
+                case 0 to 9: _v = t;
+                default:     _v = 99;
+            }
+            if (!history.append(_v)) history[0] = -1;
+            outer.kept = cellT{ _v, sets };
+            tokT k = new tokT(_v, outer.names[_v % 3]);
+            if (k?) {
+                outer.note = k?.label;
+                outer.spare = k.w;
+                delete k;
+            }
+            func<int, int> f = (int x) => { return x + outer.grid[1][2]; };
+            outer.grid[0][1] = f(_v);
+            if (outer.held?) outer.held.m += _v;
+            for (object o in outer.children) outer.depthSeen += 10;
+            ref array<int> h := history;
+            outer.grid[1][0] = h.length;
+            if (outer.has(open)) Ping.perform(outer);
+        }
+    };
+
+    int dig(int n) {
+        if (n <= 0) return grid[0][0];
+        depthSeen++;
+        return grid[1][n % 3] + dig(n - 1);
+    }
+
+    replace int score(int k) {
+        int r = ((HubBase)self).score(k);
+        if (k % 2 == 0) last = names[k % 3];
+        else last = twice;
+        switch (typeof(last)) {
+            case eType.routine: r += ((func<int, int>)last)(k);
+            case eType.string:  r += 1000;
+            default:            r += 7;
+        }
+        stringObj s = names[0];
+        s += "!";
+        note = s;
+        #i6 r = r + $i6Expr(dig(2));
+        r += grid[1].filter((int x) => x > 3).count() * 100;
+        r += names.any((string n) => {
+            if (n == "blue") return true;
+            return false;
+        }) ? 10000 : 0;
+        return r;
+    }
+}
+
+object pebble { "pebble"; parent = hub; }
+
+// ---- a class with two parents: an inline accessor that throws, operators, a nested member array -----
+
+class Shelf : object {
+    int weight = 2;
+    default int load(int k) { return weight * k; }
+}
+
+class Lamp : object {
+    int glow = 5;
+}
+
+class Hybrid : Shelf, Lamp {
+    array<char> code = "hyb";
+    array<array<int>> rows = {{1, 2}, {30, 40, 50}};
+    auto charge = {
+        int _c;
+        int operator () { return _c; }
+        void operator = (int v) {
+            if (v < 0) throw v;
+            _c = v;
+        }
+    };
+
+    int operator + (int k) { return weight + glow + k; }
+    explicit int operator () { return code[0] + rows[1][0]; }
+    bool operator == (int v) { return weight == v; }
+    bool operator != (int v) { return weight != v; }
+
+    replace int load(int k) {
+        int total = ((Shelf)self).load(k);
+        try {
+            charge = k - 3;
+            total += charge;
+            rows[0][0] = charge;
+        } catch (int e) {
+            total -= e * 10;
+            rows[0][1] = e;
+        }
+        Token t = new Token(k, "t");
+        if (t?) {
+            total += t.w * 2000;
+            delete t;
+        }
+        if (self.parent == roomA) total += 1000;
+        for (object c in self.children) total += 100;
+        for (array<int> row in rows) total += row.length;
+        return total;
+    }
+}
+
+extend class Hybrid {
+    array<char> tag = "qz";
+    emitter int lead() { ($i6Expr(Hybrid.peek($self)) * 2) }
+    static int peek(Hybrid h) { return h.tag[1] - h.code[0]; }
+}
+
+Hybrid lampShelf { "lamp shelf"; parent = roomA; }
+object wick { "wick"; parent = lampShelf; }
+
+// ---- extending the dense object with a second inline accessor --------------------------------------
+
+extend hub {
+    auto mark = {
+        int _m;
+        int operator () { return _m; }
+        void operator = (int v) {
+            object p = outer.parent;
+            if (v > 50) p = null;
+            object q = p ?? roomB;
+            tally bonus = 1;
+            _m = v + bonus;
+            if (q == roomA) _m += 100;
+            for (object c in outer.children) _m += 1000;
+            if (outer.parent == null) _m += 5;
+        }
+    };
+}
+
+// ---- an extern class over an I6 class: emitter operators, a static over an array parameter ---------
+
+enum gaugeBand { low, high }
+
+#i6 {
+    Class Gauge with level 0;
+    Gauge gaugeOne "gauge one" with level 4, has light;
+    Gauge gaugeTwo "gauge two" with level 9;
+}
+
+extern class Gauge : object {
+    int level;
+    static array<int> seen[4];
+    static array<string> bands = {"low", "high"};
+    explicit emitter int operator () { ($val.level) }
+    emitter int operator + (int v) { ($val.level + $v) }
+    emitter eBool operator == (int v) { ($val.level == $v) }
+    emitter eBool operator != (int v) { ($val.level ~= $v) }
+
+    static int rank(Gauge g, array<int> marks) {
+        ref array<int> m := marks;
+        stringObj why = "r";
+        int r = (int)g;
+        gaugeBand b = gaugeBand.low;
+        if (g?.level > 5) b = gaugeBand.high;
+        try {
+            if (g.has(light)) throw 100;
+            why += Gauge.bands[(int)b - 1];
+        } catch (int e) {
+            r += e;
+            why += "!";
+        }
+        if (g == 9) r += 1000;
+        if (g != 4) r += 10;
+        m.append(g + 1);
+        if (!Gauge.seen.append(r)) why += "#";
+        if (Gauge.bands.any((string s) => {
+            if (b == gaugeBand.high) return s == "high";
+            return false;
+        })) why += "+";
+        print(why);
+        print(" ");
+        return r + m.length;
+    }
+}
+
+extern Gauge gaugeOne;
+extern Gauge gaugeTwo;
+
+// ---- routines: byte array, array of a value class and an I6 island; an emitter class and #if -------
+
+int byteTable(int k) {
+    array<char> bytes = "mno";
+    array<Cell> cells[3];
+    cells.append(Cell{ k, 1 });
+    cells.append(Cell{ k + 1, 2 });
+    int sum = 0;
+    #i6 sum = $i6Expr(bytes[0]) + $i6Expr(cells[1].n);
+    #i6 {
+        sum = sum * 10;
+    }
+    return sum + cells.length;
+}
+
+emitter class Doubler {
+    int operator () { ($val * 2) }
+    Doubler operator = (int v) { $target = $v; }
+}
+
+int lambdaDirective(int k) {
+    Doubler d = k;
+    int base = d;
+    func<int, int> f = (int x) => {
+        int y = x + 1;
+        #if PROBE_LEVEL > 1
+            y = y * 10;
+        #else
+            y = y * 100;
+        #endif
+        return y;
+    };
+    return f(base);
+}
+
+// ---- a dense pooled class: static nested array, subscript pair, union-element member array ------------
+
+primitive class digits : int {
+    replace emitter int operator () { $val }
+    replace emitter digits operator = (int v) { $target = $v; }
+    emitter int operator [] (int i) { (($val / $i) % 10) }
+    emitter eBool operator switch (int v) { (($val % 10) == $v) }
+    replace emitter eBool operator ? () { ($val ~= 0) }
+}
+
+int step(int n) { return n + 1; }
+
+replace int step(int n) {
+    func<int, int> g = (int x) => {
+        int y = replaced(x);
+        return y * 10;
+    };
+    return g(n);
+}
+
+class Crate[3] : object {
+    static stringObj crateLog;
+    inline int size;
+    inline string label;
+    static int opened = 0;
+    static array<array<int>> layout = {{1, 2, 3}, {4, 5}};
+    static array<string> kinds = {"wood", "tin", "glass"};
+    Cell inner;
+    digits code;
+    array<string | func<int, int>> mix[3];
+
+    void create(int s, string l) { size = s; label = l; Crate.opened++; }
+    void destroy() { Crate.opened--; }
+
+    int operator [] (int i) { return Crate.layout[i % 2][i % 2]; }
+    int operator []= (int i, int v) {
+        Crate.layout[i % 2][0] = v;
+        return v;
+    }
+
+    int nest(int n) {
+        if (n <= 0) return size;
+        return n + nest(n - 1);
+    }
+
+    int classify(stringObj s) {
+        switch (s) {
+            case "wood": return 1;
+            case "tin":  return 2;
+            default:     return 3;
+        }
+    }
+
+    default int sweep(ref Cell c) {
+        stringObj s = label;
+        int k = classify(s);
+        Crate.crateLog += s;
+        Crate.crateLog += "/";
+        c.n += k;
+        inner = c;
+        mix.clear();
+        mix.append(Crate.kinds[k - 1]);
+        mix.append(step);
+        int r = 0;
+        for (string | func<int, int> x in mix) {
+            if (typeof(x) == eType.routine) r += ((func<int, int>)x)(k);
+            else r += 100;
+        }
+        r += Crate.layout.filter((array<int> row) => row.length > 2).count() * 1000;
+        #i6 r = r + $i6Expr(code[10]);
+        object p = self.parent;
+        if (p?) r += 5;
+        Crate other = new Crate(2, "tin");
+        if (other?) {
+            r += other.nest(2) * 1000;
+            delete other;
+        }
+        printLine($"Sweep {label} {k} {c.n} {inner.n} {Crate.opened}.");
+        return r;
+    }
+}
+
+// ---- edge positions: hidden accessor write, re-listed positional members across two parents ---------
+
+class Hybrid2 : Hybrid {
+    hide charge.operator =;
+}
+
+Hybrid2 hybridB { "hybrid B"; parent = roomB; }
+
+class Duo : Shelf, Lamp {
+    inline glow;
+    inline weight;
+    auto charge = {
+        int _c;
+        int operator () { return _c; }
+        void operator = (int v) { _c = v * 2; }
+    };
+}
+
+Duo duoA {
+    7, 3, "duo A";
+    parent = roomB;
+    auto boost = {
+        int _b;
+        int operator () { return _b; }
+        void operator = (int v) { _b = v + outer.glow * 100 + outer.load(v); }
+        int operator prefix++ () { _b = _b + 1000; return _b; }
+    };
+    replace int load(int k) { return weight * k + charge; }
+}
+
+int useDuo(Duo d) { return d.glow * 10 + d.weight; }
+
+int deepDuo(int n) {
+    if (n <= 0) return useDuo({ n + 1, n + 2 });
+    return useDuo({ n, n }) + deepDuo(n - 1) * 1000;
+}
+
+value class Rank {
+    inline int v;
+    Rank operator = (Rank o) { v = o.v; return self; }
+    int operator <=> (Rank o) { return v - o.v; }
+    bool operator == (Rank o) { return v == o.v; }
+    bool operator != (Rank o) { return v != o.v; }
+}
+
+array<Rank> board[4];
+
+class Calc {
+    static func<int, int> rule = Calc.fact;
+    static int fact(int n) {
+        if (n <= 1) return 1;
+        return n * Calc.rule(n - 1);
+    }
+}
+
+int applyOne(func<int, int> f) { return f(1); }
+
+int viaIslands(int n) {
+    int r = 0;
+    #i6 {
+        r = n * 2;
+        #bgl {
+            r = r + hub.dig(1);
+        }
+    }
+    textOrRule u = n > 2 ? "pos" : twice;
+    if (typeof(u) == eType.string) r += 100;
+    else r += ((func<int, int>)u)(n) * 1000;
+    ref Cell rc := hub.kept;
+    r += applyOne((int x) => x + rc.n) * 10;
+    return r;
+}
+
+// ---- owned value classes two deep inside a pooled class; a ref to a nested array ---------------------
+
+value class Pt {
+    inline int x;
+    Pt operator = (Pt o) { x = o.x; return self; }
+}
+
+value class Seg {
+    Pt a;
+    Pt b;
+    Seg operator = (Seg o) { a = o.a; b = o.b; return self; }
+}
+
+class Bin[2] : object {
+    Seg s;
+    static array<Pt> top[2];
+    void create(int v) { s.a.x = v; s.b.x = v * 2; }
+}
+
+array<array<int>> mesh = {{1, 2, 0}, {3}};
+
+void bump(ref array<array<int>> g) {
+    g[1][0] += 10;
+    g[0].length = 2;
+    g[0].append(7);
+}
+
+// ---- an inline accessor with an array backing in a pooled class; a file-scope instance of the pool ----
+
+class Tray[2] : object {
+    int base = 1;
+    auto level = {
+        array<int> items[3];
+        int operator () { return items.length * 100 + items[items.length - 1]; }
+        void operator = (int v) {
+            if (v < 0) {
+                items.clear();
+                return;
+            }
+            if (!items.append(v)) items[0] = v;
+        }
+        int operator []= (int i, int v) {
+            items[i] = v;
+            return v;
+        }
+        int operator [] (int i) { return items[i]; }
+    };
+}
+
+Tray fixedTray {
+    "fixed tray";
+    int seen = 0;
+    auto tally = {
+        int _t;
+        int operator () { return _t; }
+        void operator = (int v) {
+            Tray extra = new Tray();
+            if (extra?) {
+                extra.level = v;
+                extra.level = v + 1;
+                _t = extra.level + outer.base;
+                outer.seen = extra.level[0];
+                delete extra;
+            }
+        }
+    };
+}
+
+// ---- a dense verb: its own recursive method over an array parameter ---------------------------------
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+
+    int fold(array<int> a, int i) {
+        if (i >= a.length) return 0;
+        return a[i] + fold(a, i + 1);
+    }
+
+    void handler() {
+        array<array<int>> m = {{2, 7}, {1, 8, 3}};
+        array<string> words = {"alpha", "beta", "gamma"};
+        stringObj acc = "<";
+        Cell c = Cell{ 4, 5 };
+        ref Cell rc := hub.kept;
+        tally t = 3;
+        var any = words[1];
+        Token tk = new Token(6, "six");
+        int total = 0;
+        for (object o in roomA.children) total++;
+        if (tk?) total += tk?.w;
+        switch (typeof(any)) {
+            case eType.string: acc += (string)any;
+            default:           acc += "?";
+        }
+        rc.n += c.m;
+        total += m[1].filter((int x) => x > 2).count() * 1000;
+        total += fold(m[1], 0) * 100;
+        if (words.any((string w) => {
+            acc += w;
+            return w == "beta";
+        })) acc += ">";
+        #i6 total = total + $i6Expr(t + 1) * 1000;
+        print(acc);
+        printLine($" survey {total} kept {hub.kept.n} token {tk.label}.");
+        delete tk;
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs -------------------------------------------------------------------------------
+
+verb ProbeHub {
+    grammar = {.probehub};
+    meta = true;
+    void handler() {
+        Cell b = Cell{ 1, 2 };
+        hub.held := b;
+        hub.meter = 4;
+        print(hub.note);
+        printLine($" meter {hub.meter} [0] {hub.meter[0]} kept {hub.kept.n} {hub.kept.m} held {b.m} grid {hub.grid[0][1]} {hub.grid[1][0]} seen {hub.depthSeen} spare {(int)hub.spare}.");
+        hub.meter = 20;
+        print(hub.note);
+        printLine($" meter {hub.meter} [1] {hub.meter[1]} kept {hub.kept.n} {hub.kept.m} held {b.m} pings {pings}.");
+        int a = hub.score(3);
+        print(hub.note);
+        printLine($" score {a} dig {hub.depthSeen}.");
+        int c = hub.score(4);
+        printLine($"Score {c}.");
+    }
+}
+
+verb ProbeHybrid {
+    grammar = {.probehybrid};
+    meta = true;
+    void handler() {
+        int a = lampShelf.load(5);
+        printLine($"Load {a} charge {lampShelf.charge} rows {lampShelf.rows[0][0]} {lampShelf.rows[0][1]}.");
+        int b = lampShelf.load(1);
+        printLine($"Load {b} charge {lampShelf.charge} rows {lampShelf.rows[0][0]} {lampShelf.rows[0][1]}.");
+        printLine($"Plus {lampShelf + 3} conv {(int)lampShelf} eq {lampShelf == 2} ne {lampShelf != 2} lead {lampShelf.lead()}.");
+    }
+}
+
+verb ProbeMark {
+    grammar = {.probemark};
+    meta = true;
+    void handler() {
+        hub.mark = 7;
+        printLine($"Mark {hub.mark}.");
+        hub.mark = 60;
+        printLine($"Mark {hub.mark}.");
+        hub.parent = null;
+        hub.mark = 8;
+        printLine($"Mark {hub.mark}.");
+        hub.parent = roomA;
+    }
+}
+
+array<int> gaugeMarks[4];
+
+verb ProbeGauge {
+    grammar = {.probegauge};
+    meta = true;
+    void handler() {
+        int a = Gauge.rank(gaugeOne, gaugeMarks);
+        int b = Gauge.rank(gaugeTwo, gaugeMarks);
+        printLine($"Rank {a} {b} marks {gaugeMarks.length} {gaugeMarks[0]} {gaugeMarks[1]}.");
+        printLine($"Bytes {byteTable(3)} lambda {lambdaDirective(4)}.");
+    }
+}
+
+verb ProbeCrate {
+    grammar = {.probecrate};
+    meta = true;
+    void handler() {
+        Crate a = new Crate(3, "wood");
+        if (a == null) return;
+        a.code = 1234;
+        Cell c = Cell{ 10, 20 };
+        int r = a.sweep(c);
+        printLine($"Crate {r} cell {c.n} nest {a.nest(3)} sub {a[0]} {a[1]} opened {Crate.opened}.");
+        a[1] = 44;
+        a[2] = 11;
+        printLine($"Layout {Crate.layout[0][0]} {Crate.layout[1][0]} sub {a[1]} {a[3]}.");
+        digits d = 507;
+        digits z = 0;
+        int w = z ?? d;
+        printLine($"Digits {d[1]} {d[10]} {d[100]} {d?} {z?} {w} step {step(4)}.");
+        delete a;
+        print(Crate.crateLog);
+        printLine($" opened {Crate.opened}.");
+    }
+}
+
+verb ProbeEdges {
+    grammar = {.probeedges};
+    meta = true;
+    void handler() {
+        ((Hybrid)hybridB).charge = 9;
+        int hc = hybridB.charge;
+        printLine($"Hidden {hc} duo {duoA.glow} {duoA.weight} load {duoA.load(4)}.");
+        duoA.charge = 3;
+        duoA.charge += 2;
+        duoA.boost = 4;
+        int b1 = duoA.boost;
+        ++duoA.boost;
+        int b2 = duoA.boost;
+        duoA.boost++;
+        printLine($"Charge {duoA.charge} boost {b1} {b2} {duoA.boost} deep {deepDuo(1)} {useDuo(Duo{ 7, 8 })}.");
+        board.append(Rank{ 5 });
+        board.append(Rank{ 2 });
+        board.append(Rank{ 9 });
+        board.append(Rank{ 3 });
+        board.sort();
+        Rank probe = Rank{ 9 };
+        Rank low = Rank{ 2 };
+        printLine($"Board {board[0].v} {board[1].v} {board[2].v} {board[3].v} at {board.indexOf(probe)} lt {low < probe} ge {low >= probe}.");
+        printLine($"Fact {Calc.fact(5)} islands {viaIslands(1)} {viaIslands(3)}.");
+    }
+}
+
+verb ProbeNest {
+    grammar = {.probenest};
+    meta = true;
+    void handler() {
+        Bin b = new Bin(4);
+        if (b == null) return;
+        int n = b?.s.a.x;
+        Seg copy = b.s;
+        copy.b.x = 99;
+        Bin.top.append(b.s.b);
+        var v = b;
+        int cast = 0;
+        if (typeof(v) == eType.object) cast = ((Bin)v).s.b.x;
+        bump(mesh);
+        digits d = 127;
+        stringObj tail;
+        switch (d) {
+            case 5:  tail = "five";
+            case 7:  tail = "seven";
+            default: tail = "other";
+        }
+        int t = 0;
+        for (int i in 0 to 4) {
+            switch (i) {
+                case 1, 3: continue;
+                default:   t += i;
+            }
+        }
+        print(tail);
+        printLine($" nest {n} {b.s.b.x} {copy.b.x} {Bin.top[0].x} {cast} mesh {mesh[1][0]} {mesh[0].length} {mesh[0][2]} t {t} {n > 2 ? n : 0}.");
+        delete b;
+    }
+}
+
+verb ProbeTray {
+    grammar = {.probetray};
+    meta = true;
+    void handler() {
+        Tray first = new Tray();
+        if (first == null) return;
+        first.level = 4;
+        first.level = 6;
+        first.level[1] = 8;
+        int a = first.level;
+        int a0 = first.level[0];
+        delete first;
+        Tray again = new Tray();
+        if (again == null) return;
+        again.level = 2;
+        int b = again.level;
+        delete again;
+        fixedTray.tally = 5;
+        printLine($"Tray {a} {a0} {b} tally {fixedTray.tally} seen {fixedTray.seen} fixed {fixedTray.level[0]}.");
+    }
+}

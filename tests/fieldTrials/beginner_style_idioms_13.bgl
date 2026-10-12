@@ -1,0 +1,554 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirteenth first-time-programmer program, the one where the author has learned short
+// type names and keeps putting three newer things in the same place. A namespace object of alias … for
+// types imported with #using and used bare in a class holding static member arrays (of strings, of
+// char, of ints, of aliased class instances), a member array of class instances, a member array of
+// arrays, an inline auto accessor, operator [] / []= over a static array of strings (with self[i]),
+// array<T> parameters (of ints, of strings, of class instances), a value-class parameter copied in,
+// a block lambda capturing a parameter, and postfix ?; an extend class adding a static array of objects
+// tested with ?; an object with its own alias … for types whose inline accessor reaches the host through
+// outer (an array<char>, an array of strings, an array of aliased class instances) and has its own
+// operator [], with an array<char> parameter copied into a member, a block lambda stored in a func<>
+// local, and a value-class member; an extend of that object adding a type alias, a nested array of
+// aliased class instances, an array of class instances and an accessor whose setter uses a block lambda
+// that reads outer.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <buf>
+#include <string>
+
+// ===== SIZES (width and height, copied when you assign) =====
+value class Size {
+    int w;
+    int h;
+
+    Size operator = (Size o) {
+        w = o.w;
+        h = o.h;
+        return self;
+    }
+
+    int area() {
+        return w * h;
+    }
+}
+
+// ===== BOXES =====
+class Box : object {
+    int weight;
+}
+
+// ===== SHORT NAMES =====
+object kinds {
+    alias crate for Box;
+    alias dims for Size;
+}
+
+#using kinds
+
+// ===== SHELF (rows with names and codes, remembers what is on it) =====
+class Shelf : object {
+    static array<string> rowNames = {"top", "middle", "bottom"};
+    static array<char> rowCodes = "TMB";
+    static array<int> rowUse[3];
+    static array<crate> recent[2];
+    array<crate> held[4];
+    array<array<int>> slots = {{1, 2}, {3}};
+
+    // how full it is, never more than 9
+    auto fullness = {
+        int _f = 0;
+        int operator () {
+            return _f;
+        }
+        void operator = (int v) {
+            if (v > 9) {
+                v = 9;
+            }
+            _f = v;
+        }
+    }
+
+    // shelf[1] is the name of row 1
+    string operator [] (int row) {
+        if (row < 0 || row >= Shelf.rowNames.length) {
+            return "no";
+        }
+        return Shelf.rowNames[row];
+    }
+
+    // shelf[1] = "x" renames row 1 on every shelf
+    void operator []= (int row, string name) {
+        if (row >= 0 && row < Shelf.rowNames.length && name?) {
+            Shelf.rowNames[row] = name;
+        }
+    }
+
+    // put a box on a row (row 0 is the top)
+    void put(crate b, int row) {
+        if (!b?) {
+            print("(nothing to put)^");
+            return;
+        }
+        if (held.length >= held.size) {
+            print($"(the shelf is full, {b} stays put)^");
+            return;
+        }
+        held.append(b);
+        b.parent = self;
+        Shelf.rowUse[row]++;
+        if (Shelf.recent.length >= Shelf.recent.size) {
+            Shelf.recent.remove(0);
+        }
+        Shelf.recent.append(b);
+        fullness = fullness + b.weight;
+        char c = Shelf.rowCodes[row];
+        print($"({b} goes on the {self[row]} row, code ");
+        print(c);
+        print(")^");
+    }
+
+    // put several boxes on one row
+    void putAll(array<crate> list, int row) {
+        for (crate b in list) {
+            put(b, row);
+        }
+    }
+
+    // counts the numbers that pass the test
+    int countIf(array<int> nums, func<bool, int> test) {
+        int n = 0;
+        for (int v in nums) {
+            if (test(v)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    // how many boxes on it weigh more than the limit
+    int heavyCount(int limit) {
+        array<int> weights[4];
+        for (crate b in held) {
+            weights.append(b.weight);
+        }
+        return countIf(weights, (int w) => {
+            if (w > limit) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    // says the names of the rows that have something on them
+    void sayUsedRows(array<string> names) {
+        int i = 0;
+        bool any = false;
+        for (string s in names) {
+            if (Shelf.rowUse[i] > 0 && s?) {
+                print($"{s} ");
+                any = true;
+            }
+            i++;
+        }
+        if (!any) {
+            print("none");
+        }
+        print("^");
+    }
+
+    // does something this big fit on one row?
+    bool fits(dims d) {
+        dims space;
+        space.w = 4;
+        space.h = 2;
+        d.w = d.w - 1;          // a little slack
+        return d.w <= space.w && d.h <= space.h && d.area() <= space.area();
+    }
+
+    void sayCodes() {
+        print("Codes: ");
+        for (char c in Shelf.rowCodes) {
+            print(c);
+        }
+        print(".^");
+    }
+
+    // the slot numbers, row by row
+    int slotTotal() {
+        slots[1][0] = held.length;
+        int t = 0;
+        for (array<int> r in slots) {
+            for (int v in r) {
+                t += v;
+            }
+        }
+        return t;
+    }
+
+    void report() {
+        print($"{self} holds {held.length}, fullness {fullness}, slots {slotTotal()}.^");
+        print("Recent: ");
+        for (crate r in Shelf.recent) {
+            print($"{r} ({r.weight}) ");
+        }
+        print("^");
+    }
+}
+
+extend class Shelf {
+    static array<object> lookers[4];
+
+    // remembers who looked at the shelf
+    void lookedAtBy(object o) {
+        if (!o?) {
+            print("(nobody looked)^");
+            return;
+        }
+        if (!Shelf.lookers.contains(o)) {
+            Shelf.lookers.append(o);
+        }
+        print($"({o} looked at {self}; {Shelf.lookers.length} so far)^");
+    }
+}
+
+// ===== DESK (knows what is on top of it) =====
+object desk {
+    "desk";
+    parent = roomA;
+    alias pack for Box;
+    alias span for Size;
+    int scale = 2;
+    array<char> stamp[8];
+    array<string> sayings = {"bare", "busy", "piled high"};
+    array<pack> onTop[3];
+    span top;
+
+    // how loaded the desk is
+    auto load = {
+        int _n = 0;
+        int operator () {
+            return _n;
+        }
+        void operator = (int v) {
+            _n = v * outer.scale;
+            int i = _n / 4;
+            if (i >= outer.sayings.length) {
+                i = outer.sayings.length - 1;
+            }
+            print($"(the desk is {outer.sayings[i]}, stamp starts with ");
+            print(outer.stamp[0]);
+            if (outer.onTop[0]?) {
+                print($", {outer.onTop[0]} on top");
+            }
+            print(")^");
+        }
+        // load[i] is thing number i on top
+        pack operator [] (int i) {
+            if (i < 0 || i >= outer.onTop.length) {
+                return null;
+            }
+            return outer.onTop[i];
+        }
+    }
+
+    void addPack(pack p) {
+        if (!p?) {
+            print("(nothing to add)^");
+            return;
+        }
+        if (onTop.length >= onTop.size) {
+            print($"(no room for {p})^");
+            return;
+        }
+        onTop.append(p);
+        load = onTop.length;
+    }
+
+    // a new stamp, letter by letter
+    void restamp(array<char> letters) {
+        stamp = letters;
+        print("(stamp now ");
+        bgl.util.buf.print(stamp);
+        print(")^");
+    }
+
+    // how many things on top are heavier than the desk's scale
+    int heavyOnes() {
+        func<bool, pack> heavy = (pack p) => {
+            if (p.weight > scale) {
+                return true;
+            }
+            return false;
+        };
+        int n = 0;
+        for (pack p in onTop) {
+            if (heavy(p)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    // would it cover the desk top?
+    bool covers(span s) {
+        return s.area() >= top.area();
+    }
+}
+
+extend desk {
+    alias holder for Shelf;
+    array<array<int>> piles = {{2, 1}, {4, 4, 1}};
+    array<Box> spare[2];
+    array<array<pack>> stacks = {{boxA}, {boxB, boxC}};
+
+    // which pile to look at; says how many in it are big
+    auto pileNo = {
+        int _p = 0;
+        int operator () {
+            return _p;
+        }
+        void operator = (int v) {
+            if (v < 0 || v >= outer.piles.length) {
+                print("(no such pile)^");
+                return;
+            }
+            _p = v;
+            func<bool, int> big = (int n) => {
+                if (n > outer.scale) {
+                    return true;
+                }
+                return false;
+            };
+            int bigOnes = 0;
+            for (int n in outer.piles[v]) {
+                if (big(n)) {
+                    bigOnes++;
+                }
+            }
+            print($"(pile {v} has {outer.piles[v].length}, {bigOnes} big)^");
+        }
+    }
+
+    // how much a stack weighs
+    int stackWeight(int i) {
+        int t = 0;
+        for (pack p in stacks[i]) {
+            if (p?) {
+                t += p.weight;
+            }
+        }
+        return t;
+    }
+
+    int pileTotal(int row) {
+        int t = 0;
+        for (int n in piles[row]) {
+            t += n;
+        }
+        return t;
+    }
+
+    // puts a spare box on the shelf if there is one
+    void useSpare(holder s) {
+        object first = null;
+        if (spare.length > 0) {
+            first = spare[0];
+        }
+        if (first?) {
+            s.put((Box)first, 2);
+            spare.remove(0);
+        } else {
+            print("(no spare)^");
+        }
+    }
+
+    // the spare boxes heavier than n
+    int spareOver(int n) {
+        func<bool, Box> over = (Box b) => {
+            return b.weight > n;
+        };
+        int c = 0;
+        for (Box b in spare) {
+            if (over(b)) {
+                c++;
+            }
+        }
+        return c;
+    }
+}
+
+// ===== GLOBALS =====
+Size smallThing;
+Size bigThing;
+array<char> newStamp = "office";
+
+// ===== ROOMS AND THINGS =====
+object roomA {
+    "Room A";
+    string description = "Room A. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Room A is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+}
+
+Box boxA {
+    "box A";
+    weight = 3;
+}
+
+Box boxB {
+    "box B";
+    weight = 1;
+}
+
+Box boxC {
+    "box C";
+    weight = 5;
+}
+
+Box boxD {
+    "box D";
+    weight = 2;
+}
+
+Box boxE {
+    "box E";
+    weight = 4;
+}
+
+Shelf shelfA {
+    "shelf A";
+    parent = roomA;
+}
+
+bool Initialise() {
+    location = roomA;
+    bgl.util.buf.set(desk.stamp, "desk");
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// SHELF - put boxes on the shelf
+verb ShelfVerb {
+    meta = true;
+    grammar = {.shelf};
+    void handler() {
+        shelfA.put(boxA, 0);
+        shelfA.put(boxC, 2);
+        shelfA.put(null, 1);
+        shelfA.put(boxB, 2);
+        shelfA.report();
+        print($"Heavier than 2: {shelfA.heavyCount(2)}. Heavier than 0: {shelfA.heavyCount(0)}.^");
+        print($"Row 1 is {shelfA[1]}, row 7 is {shelfA[7]}.^");
+        array<string> names = {"top", "middle", "bottom"};
+        print("Used rows: ");
+        shelfA.sayUsedRows(names);
+        shelfA.sayCodes();
+        shelfA[1] = "center";
+        string row1 = shelfA[1];
+        if (row1?) {
+            print($"Row 1 is now {row1}.^");
+        }
+        array<Box> more = {boxD, boxE};
+        shelfA.putAll(more, 1);
+        shelfA.fullness = 20;
+        print($"Fullness after 20: {shelfA.fullness}.^");
+    }
+}
+
+// FITS - the size value class
+verb FitsVerb {
+    meta = true;
+    grammar = {.fits};
+    void handler() {
+        smallThing.w = 2;
+        smallThing.h = 1;
+        bigThing.w = 5;
+        bigThing.h = 2;
+        print($"Small fits: {shelfA.fits(smallThing)}. Big fits: {shelfA.fits(bigThing)}.^");
+        Size copy = bigThing;
+        copy.w = 3;
+        print($"Copy fits: {shelfA.fits(copy)}, big still {bigThing.w} wide.^");
+        desk.top.w = 3;
+        desk.top.h = 2;
+        print($"Desk top area {desk.top.area()}. Small covers: {desk.covers(smallThing)}. Big covers: {desk.covers(bigThing)}.^");
+    }
+}
+
+// LOOK AT - the extend class
+verb LookersVerb {
+    meta = true;
+    grammar = {.lookers};
+    void handler() {
+        shelfA.lookedAtBy(brassKey);
+        shelfA.lookedAtBy(desk);
+        shelfA.lookedAtBy(brassKey);
+        shelfA.lookedAtBy(null);
+    }
+}
+
+// DESK - the desk and its accessor
+verb DeskVerb {
+    meta = true;
+    grammar = {.desk};
+    void handler() {
+        desk.load = 1;
+        desk.addPack(boxD);
+        desk.addPack(boxE);
+        desk.addPack(null);
+        int n = desk.load;
+        print($"Load {n}. Thing 1 on top: {desk.load[1]}.^");
+        object none = desk.load[5];
+        if (!none?) {
+            print("Nothing at 5.^");
+        }
+        print($"Heavy ones: {desk.heavyOnes()}.^");
+        desk.scale = 3;
+        desk.restamp(newStamp);
+        desk.load = 2;
+    }
+}
+
+// PILES - the extended desk
+verb PilesVerb {
+    meta = true;
+    grammar = {.piles};
+    void handler() {
+        desk.scale = 2;
+        desk.pileNo = 0;
+        desk.pileNo = 1;
+        desk.pileNo = 4;
+        print($"Stacks weigh {desk.stackWeight(0)} and {desk.stackWeight(1)}; second stack's top is {desk.stacks[1][1]}.^");
+        print($"Now on pile {desk.pileNo}. Totals: {desk.pileTotal(0)} and {desk.pileTotal(1)}.^");
+        desk.spare.append(boxE);
+        print($"Spare over 3: {desk.spareOver(3)}. Over 5: {desk.spareOver(5)}.^");
+        desk.useSpare(shelfA);
+        desk.useSpare(shelfA);
+        shelfA.report();
+    }
+}

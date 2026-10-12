@@ -1,0 +1,514 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a code table of shared-base bnum sub-fields (a kind field and flag bits packed into one
+// word, combined with |, split with & and a mask, cast back with (codeKind), toggled in place with ^=
+// and |= on array elements, a multi-value case on the decoded kind), an additive property contributed
+// as rawArray<int> by a class, its subclasses and objects and read through a base-typed variable and
+// from a method on self (length, size and subscript over the merged run), a required member met by
+// subclasses and by one object, a required routine, an inline member appended by a later extend class
+// (objects declared before it use the extended order) and an inherited member re-listed first by a
+// subclass, hide on a subclass method reached again through a cast, the object tree as the table (rows
+// found through children, moved with children += and parent =, counted with bgl.world.instances and a
+// capturing predicate), a value class whose owned value-class members are copied inside array<Spec>
+// slots, a ref local bound to an array slot and a ref parameter given a slot, both written through to
+// nested owned members, sort and remove on that array, a builder taking named and defaulted arguments,
+// a static func<> member set from static methods and a lambda, an array<literal func<bool, Part>> rule
+// table of named routines and a lambda, emitter operator switch overloads (enum and int case values in
+// one switch), type and enum aliases on a namespace object imported with #using, inline-object
+// arguments with run-time members (positional and named), and a table size chosen by #if on
+// #beguilerSettings.target.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+
+//-- Constants -----------------------------------------------------------------
+
+const int NONE = -1;
+const int KIND_MASK = 15;
+
+#if #beguilerSettings.target == "z5"
+    #define SPEC_MAX 6
+#else
+    #define SPEC_MAX 12
+#endif
+
+//-- Packed codes: the kind in bits 0-3, flags above ---------------------------
+
+bnum codeSpace { }
+bnum codeKind : codeSpace { plate = 0, rod = 1, gear = 2, shim = 3 }
+bnum codeFlag : codeSpace { sealed = 16, heavy = 32, spare = 64 }
+
+array<string> kindNames = { "plate", "rod", "gear", "shim" };
+
+// Indexed by part row.
+array<codeSpace> codes = {
+    rod | heavy,
+    plate,
+    gear | sealed | spare,
+    shim | sealed,
+    gear | heavy | sealed,
+    rod | spare
+};
+
+codeKind kindOf(codeSpace c) {
+    return (codeKind)(c & KIND_MASK);
+}
+
+void printFlags(codeSpace c) {
+    int shown = 0;
+    if (c & sealed) { print(" sealed"); shown++; }
+    if (c & heavy) { print(" heavy"); shown++; }
+    if (c & spare) { print(" spare"); shown++; }
+    if (shown == 0) print(" -");
+}
+
+//-- World ---------------------------------------------------------------------
+
+extend class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eGrade { low = 1, mid, high }
+
+additive property tags;
+
+class Part : object {
+    rawArray<int> tags = { 100 };
+    inline int row;
+    required inline int cost;
+    required string bin;
+    required int rank();
+    eGrade grade = eGrade.low;
+    default string unit() { return "each"; }
+    int ownTags() { int n = 0; for (int i = 0; i < tags.length; i++) if (tags[i] < 100) n++; return n; }
+    emitter eBool operator switch (eGrade g) { ($self.grade == $g) }
+    emitter eBool operator switch (int r) { ($self.row == $r) }
+}
+
+class Fastener : Part {
+    rawArray<int> tags = { 200, 201 };
+    string bin = "F";
+    int rank() { return cost / 2; }
+}
+
+class SpareFastener : Fastener {
+    hide unit();
+}
+
+class Moving : Part {
+    inline grade;
+    rawArray<int> tags = { 300 };
+    string bin = "M";
+    int rank() { return cost + 10; }
+    string unit() { return "set"; }
+}
+
+object shelfA { "shelf A"; }
+object shelfB { "shelf B"; children = { shimD }; }
+
+// Part's positional order is row, cost, count (added below), then the name; Moving puts grade first.
+Fastener boltA { 0, 4, 12, "bolt A"; tags = { 7 }; parent = shelfA; }
+Part     plateB { 1, 9, 3, "plate B"; parent = shelfA; grade = eGrade.mid; bin = "P"; int rank() { return 2; } }
+Moving   gearC { eGrade.high, 2, 20, 2, "gear C"; tags = { 8, 9 }; parent = shelfA; }
+Fastener shimD { 3, 1, 40, "shim D"; }
+Moving   gearE { eGrade.mid, 4, 14, 5, "gear E"; parent = shelfB; }
+SpareFastener rodF  { 5, 6, 8, "rod F"; tags = { 11 }; parent = shelfB; grade = eGrade.high; }
+
+extend class Part {
+    inline int count;
+}
+
+//-- Namespace -----------------------------------------------------------------
+
+object reg {
+    alias part for Part;
+    alias tier for eGrade;
+}
+
+#using reg
+
+//-- Specs ---------------------------------------------------------------------
+
+value class Span {
+    int lo;
+    int hi;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    bool holds(int v) { return v >= lo && v <= hi; }
+}
+
+value class Spec {
+    int partRow = NONE;
+    Span size;
+    Span price;
+    Spec operator = (Spec o) { partRow = o.partRow; size = o.size; price = o.price; return self; }
+}
+
+array<Spec> specs[SPEC_MAX];
+
+void addSpec(int row, int sizeLo, int sizeHi, int priceLo = 0, int priceHi = 99) {
+    Spec s;
+    s.partRow = row;
+    s.size.lo = sizeLo;
+    s.size.hi = sizeHi;
+    s.price.lo = priceLo;
+    s.price.hi = priceHi;
+    specs += s;
+}
+
+void printSpec(Spec s) {
+    print($"row {s.partRow}: size {s.size.lo}..{s.size.hi}, price {s.price.lo}..{s.price.hi}");
+}
+
+//-- Policies ------------------------------------------------------------------
+
+class Policy {
+    static func<int, int> adjust;
+    static int markup = 0;
+    static int same(int n) { return n; }
+    static int half(int n) { return n / 2; }
+    static int plus(int n) { return n + Policy.markup; }
+}
+
+//-- Rules ---------------------------------------------------------------------
+
+bool manyTags(Part p) { return p.tags.length > 2; }
+bool cheap(Part p) { return p.cost < 5; }
+
+array<literal func<bool, Part>> checks = { manyTags, cheap, (Part p) => p.count >= 10 };
+array<string> checkNames = { "many tags", "cheap", "stocked" };
+
+//-- Queries -------------------------------------------------------------------
+
+class Query : object {
+    inline int minCost;
+    inline int maxCost;
+}
+
+int countIn(Query q) {
+    int n = 0;
+    for (object o in bgl.world.instances(Part)) {
+        Part p = (Part)o;
+        if (p.cost >= q.minCost && p.cost <= q.maxCost) n++;
+    }
+    return n;
+}
+
+//-- Table helpers -------------------------------------------------------------
+
+part findRow(int r) {
+    for (object o in bgl.world.instances(Part)) {
+        part p = (part)o;
+        if (p.row == r) return p;
+    }
+    return null;
+}
+
+int tagSum(part p) {
+    int sum = 0;
+    for (int i = 0; i < p.tags.length; i++) sum += p.tags[i];
+    return sum;
+}
+
+void listShelf(object shelf) {
+    print($"{shelf}:");
+    int n = 0;
+    for (object o in shelf.children) {
+        part p = (part)o;
+        print($" {p}#{p.row}");
+        n++;
+    }
+    if (n == 0) print(" empty");
+    print($" ({shelf.children.length})^");
+}
+
+//-- Validation ----------------------------------------------------------------
+
+int validate() {
+    int bad = 0;
+    int parts = bgl.world.instances(Part).length;
+    if (parts != codes.length) { print($"Codes: {codes.length} rows for {parts} parts.^"); bad++; }
+    if (kindNames.length != (int)shim + 1) { print("Kind names: length wrong.^"); bad++; }
+    if (checks.length != checkNames.length) { print("Checks: length wrong.^"); bad++; }
+    for (int r = 0; r < codes.length; r++) {
+        part p = findRow(r);
+        if (p == null) { print($"Row {r}: no part.^"); bad++; }
+    }
+    addSpec(0, 2, 6);
+    addSpec(row: 2, sizeLo: 10, sizeHi: 30, priceHi: 25);
+    addSpec(4, priceLo: 5, sizeHi: 20, sizeLo: 8);
+    addSpec(5, 1, 3, 4, 7);
+    print($"Data check: {bad} problem{bad == 1 ? "" : "s"}, {specs.length} specs.^");
+    return bad;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb CodesTest {
+    grammar = {.codes};
+    void handler() {
+        for (int r = 0; r < codes.length; r++) {
+            codeSpace c = codes[r];
+            codeKind k = kindOf(c);
+            print($"{r}: {kindNames[(int)k]}");
+            printFlags(c);
+            print($" ({(int)c})^");
+        }
+    }
+}
+
+verb PartsTest {
+    grammar = {.parts};
+    void handler() {
+        for (int r = 0; r < codes.length; r++) {
+            part p = findRow(r);
+            print($"{p} [{p.bin}]: cost {p.cost}, count {p.count}, rank {p.rank()}, per {p.unit()}, tags");
+            for (int i = 0; i < p.tags.length; i++) print($" {p.tags[i]}");
+            print($" = {tagSum(p)}, own {p.ownTags()}^");
+        }
+    }
+}
+
+verb ShelvesTest {
+    grammar = {.shelves};
+    void handler() {
+        listShelf(shelfA);
+        listShelf(shelfB);
+    }
+}
+
+verb ShiftTest {
+    grammar = {.shift, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        part p = findRow(r);
+        if (p == null) { print($"No row {r}.^"); return; }
+        if (p.parent == shelfA) shelfB.children += { p };
+        else p.parent = shelfA;
+        print($"{p} is now on {p.parent}.^");
+        listShelf(shelfA);
+        listShelf(shelfB);
+    }
+}
+
+verb SpecsTest {
+    grammar = {.specs};
+    void handler() {
+        for (Spec s in specs) { printSpec(s); print("^"); }
+    }
+}
+
+verb WidenTest {
+    grammar = {.widen, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= specs.length) { print($"No spec {i}.^"); return; }
+        ref Spec r := specs[i];
+        r.price.hi += 5;
+        r.size.lo--;
+        Spec copy = specs[i];
+        copy.size.hi = 0;
+        printSpec(specs[i]);
+        print(" / copy ");
+        printSpec(copy);
+        print("^");
+    }
+}
+
+verb FitTest {
+    grammar = {.fit, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        print($"Size {n} fits:");
+        int hits = 0;
+        for (Spec s in specs) {
+            if (!s.size.holds(n)) continue;
+            part p = findRow(s.partRow);
+            print($" {p}");
+            hits++;
+        }
+        if (hits == 0) print(" nothing");
+        print(".^");
+    }
+}
+
+verb PolicyTest {
+    grammar = {.policy, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        switch (n) {
+            case 0: Policy.adjust = Policy.same;
+            case 1: Policy.adjust = Policy.half;
+            default:
+                Policy.markup = n;
+                Policy.adjust = Policy.plus;
+        }
+        int total = 0;
+        print($"Policy {n}:");
+        for (int r = 0; r < codes.length; r++) {
+            part p = findRow(r);
+            int c = Policy.adjust(p.cost);
+            total += c * p.count;
+            print($" {c}");
+        }
+        print($"; stock value {total}.^");
+    }
+}
+
+verb ChecksTest {
+    grammar = {.checks};
+    void handler() {
+        for (int k = 0; k < checks.length; k++) {
+            func<bool, Part> test = checks[k];
+            print($"{checkNames[k]}:");
+            int hits = 0;
+            for (int r = 0; r < codes.length; r++) {
+                part p = findRow(r);
+                if (test(p)) { print($" {p.row}"); hits++; }
+            }
+            if (hits == 0) print(" none");
+            print("^");
+        }
+    }
+}
+
+verb GradesTest {
+    grammar = {.grades};
+    void handler() {
+        for (int r = 0; r < codes.length; r++) {
+            part p = findRow(r);
+            print($"{p}: ");
+            switch (p) {
+                case 3: print("row three");
+                case 0, 1: print("first rows, ");
+                    if (p.grade == tier.mid) print("mid"); else print("low");
+                case tier.high: print("high");
+                case tier.mid: print("mid");
+                default: print("low");
+            }
+            print("^");
+        }
+    }
+}
+
+verb RangeTest {
+    grammar = {.range, NUMBER};
+    void handler() {
+        int lo = (int)noun;
+        int hi = lo + 5;
+        int inside = countIn({ lo, hi });
+        int fixed = countIn(Query{ 0, 9 });
+        int named = countIn({ maxCost = hi + 10; minCost = lo + 10; });
+        print($"Cost {lo}..{hi}: {inside} parts; cost 0..9: {fixed} parts; ten up: {named}.^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        array<object> found = bgl.world.instances(Part, (object o) => ((Part)o).count > limit);
+        print($"Count over {limit}: {found.length}");
+        int movers = bgl.world.instances(Moving).length;
+        int fasteners = bgl.world.instances(Fastener).length;
+        print($"; {movers} moving, {fasteners} fasteners.^");
+    }
+}
+
+void stretch(ref Spec s, int by) {
+    s.size.hi += by;
+    s.price = s.size;
+}
+
+string tierName(tier t) {
+    switch (t) {
+        case tier.high: return "high";
+        case tier.mid: return "mid";
+        default: return "low";
+    }
+}
+
+verb SortSpecsTest {
+    grammar = {.order};
+    void handler() {
+        specs.sort((Spec a, Spec b) => a.size.lo - b.size.lo);
+        for (Spec s in specs) { printSpec(s); print("^"); }
+    }
+}
+
+verb StretchTest {
+    grammar = {.stretch, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= specs.length) { print($"No spec {i}.^"); return; }
+        stretch(specs[i], 4);
+        printSpec(specs[i]);
+        print("^");
+    }
+}
+
+verb DropTest {
+    grammar = {.drop, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= specs.length) { print($"No spec {i}.^"); return; }
+        specs.remove(i);
+        addSpec(row: 1, sizeLo: 3, sizeHi: 4);
+        for (Spec s in specs) { printSpec(s); print("^"); }
+    }
+}
+
+verb FlipTest {
+    grammar = {.flip, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (r >= codes.length) { print($"No row {r}.^"); return; }
+        codes[r] ^= sealed;
+        codes[r] |= spare;
+        codeKind k = kindOf(codes[r]);
+        switch (k) {
+            case gear, rod: print("moving kind,");
+            default: print("fixed kind,");
+        }
+        printFlags(codes[r]);
+        print($" ({(int)codes[r]})^");
+    }
+}
+
+verb TiersTest {
+    grammar = {.tiers};
+    void handler() {
+        for (tier t in { tier.low, tier.mid, tier.high }) {
+            int n = 0;
+            for (object o in bgl.world.instances(Part)) {
+                part p = (part)o;
+                if (p.grade == t) n++;
+            }
+            print($"{tierName(t)} {n}; ");
+        }
+        Policy.adjust = (int n) => n * 3;
+        print($"triple {Policy.adjust(7)}; tags size {gearC.tags.size}; ");
+        print($"rod F per {((Fastener)rodF).unit()}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    validate();
+    rfalse;
+}
+
+#includeI6 "grammar"

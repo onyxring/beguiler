@@ -1,0 +1,493 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: functional code on Glulx where two areas meet in one declaration. A class of static
+// member arrays (int, a pooled class, an enum, string) filled with `+=` lists, append, sort, popEnd,
+// clear and `length =`, folded by a block lambda, switched over and refilled from the pool; a pooled
+// class whose arithmetic operators walk its children with for-in and test and give attributes; an
+// array of the pooled class summed under #if / #else; a bin whose `+=` and `--` move objects in the
+// tree and throw when full or empty; a table class whose `[]`, `[]=` and `<=>` are built from block
+// lambdas, with a `ref` array rebound by `:=`; an inline accessor on an object, with a static
+// counter, reading and writing its host through `outer` with a <linq> chain; a class with two parents
+// whose member array<char> is bound by a `ref` and worked by <buf> inside a switch, then extended; a
+// value class owning a buf with a copy operator; an emitter class with init/deinit beside `??` and <buf> capture; a replaced function over array<char>;
+// an emitter function and static methods over array<string>; a float mean over strings tested with
+// postfix `?`; an extern I6 class with comparison emitters and a static method that casts.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <buf>
+#include <string>
+
+#define SHOW_BONUS
+
+extend class object {
+    stringOrRoutine description;
+}
+
+enum eHue { hueRed, hueGreen, hueBlue }
+
+//-- A pooled class with arithmetic ----------------------------------------------------------
+class Pod[4] : object {
+    string short_name = "pod";
+    int n;
+    void create(int v) { n = v; }
+    int operator + (int k) {
+        int t = n + k;
+        for (object c in self.children) t += 10;
+        if (self.has(light)) t += 100;
+        return t;
+    }
+    int operator * (int k) {
+        if (n > 2) self.give(light);
+        return n * k;
+    }
+}
+
+int podTotal(array<Pod> ps) {
+    int t = 0;
+    for (Pod p in ps) {
+        #if SHOW_BONUS
+            t += p + 1;
+        #else
+            t += p.n;
+        #endif
+    }
+    return t;
+}
+
+//-- Static member arrays --------------------------------------------------------------------
+class Shelf {
+    static int passes = 0;
+    static array<int> marks[10];
+    static array<Pod> pods[4];
+    static array<eHue> hues[6];
+    static array<string> labels[4] = {"low", "mid", "high"};
+
+    static void reset() {
+        Shelf.marks.clear();
+        Shelf.marks += {5, 2, 8};
+        Shelf.marks.append(1);
+        Shelf.marks.sort();
+        Shelf.passes++;
+    }
+    static int fill(int k) {
+        for (int i in 1 to k) {
+            Pod p = new Pod(i);
+            if (p == null) break;
+            Shelf.pods.append(p);
+        }
+        return Shelf.pods.length;
+    }
+    static int empty() {
+        int freed = 0;
+        while (Shelf.pods.length > 0) {
+            Pod p = Shelf.pods.popEnd();
+            delete p;
+            freed++;
+        }
+        return freed;
+    }
+    static int fold(func<int, int, int> f) {
+        int acc = 0;
+        for (int m in Shelf.marks) acc = f(acc, m);
+        return acc;
+    }
+    static int score() {
+        return Shelf.fold((int acc, int m) => {
+            if (m > 4) return acc + m * 2;
+            return acc + m;
+        });
+    }
+    static int hueScore() {
+        int t = 0;
+        for (eHue h in Shelf.hues) {
+            switch (h) {
+                case hueRed:   t += 1;
+                case hueGreen: t += 10;
+                case hueBlue:  t += 100;
+            }
+        }
+        return t;
+    }
+    static string label(int i) {
+        switch (Shelf.marks[i]) {
+            case 0 to 3: return Shelf.labels[0];
+            case 4 to 6: return Shelf.labels[1];
+            default:     return Shelf.labels[2];
+        }
+    }
+    static int longLabels(int n) {
+        int c = 0;
+        for (string s in Shelf.labels) if (s.length > n) c++;
+        return c;
+    }
+}
+
+//-- A bin that moves things -----------------------------------------------------------------
+class Bin : object {
+    int cap;
+    int held() {
+        int n = 0;
+        for (object c in self.children) n++;
+        return n;
+    }
+    Bin operator += (object o) {
+        if (o.parent == self) throw 1;
+        if (held() >= cap) throw 2;
+        o.parent = self;
+        return self;
+    }
+    Bin operator -- () {
+        if (held() == 0) throw 3;
+        object first = null;
+        for (object c in self.children) { first = c; break; }
+        first.parent = self.parent;
+        return self;
+    }
+}
+
+array<int> weightsLow  = {1, 1, 1, 1, 1, 1};
+array<int> weightsHigh = {1, 2, 3, 4};
+
+//-- A table with lambda-built operators -----------------------------------------------------
+class Table : object {
+    array<int> cells[6];
+    int operator [] (int i) {
+        func<int, int> clamp = (int k) => {
+            if (k < 0) return 0;
+            if (k >= cells.length) return cells.length - 1;
+            return k;
+        };
+        return cells[clamp(i)];
+    }
+    void operator []= (int i, int v) {
+        // The member is grown directly: a member array has no address a `ref` could be bound to.
+        func<void, int> grow = (int k) => {
+            while (cells.length <= k) cells.append(0);
+        };
+        grow(i);
+        cells[i] = v;
+    }
+    int weighted(bool high) {
+        ref array<int> w := weightsLow;
+        if (high) w := weightsHigh;
+        func<int, int> at = (int i) => {
+            if (i >= cells.length) return 0;
+            return w[i] * cells[i];
+        };
+        int t = 0;
+        for (int i in 0 to w.length - 1) t += at(i);
+        return t;
+    }
+    int operator <=> (Table t) {
+        func<int, Table> total = (Table x) => {
+            int s = 0;
+            for (int c in x.cells) s += c;
+            return s;
+        };
+        return total(self) - total(t);
+    }
+}
+
+Table tableA { "table a"; }
+Table tableB { "table b"; }
+
+//-- An inline accessor reading its host -----------------------------------------------------
+object meter {
+    "meter";
+    array<int> readings[8] = {3, 9, 4, 12};
+    int limit = 5;
+    int lastReads = 0;
+    auto over = {
+        static int reads = 0;
+        int _set;
+        int operator () {
+            reads++;
+            outer.lastReads = reads;
+            return outer.readings.filter((int x) => x > outer.limit).count();
+        }
+        void operator = (int v) { _set = v; outer.limit = v; }
+    };
+}
+
+//-- Two parents and a buffer ----------------------------------------------------------------
+class Named : object { array<char> tag[16]; }
+class Counted : object { int hits; }
+
+class Badge : Named, Counted {
+    int kind;
+    void stamp(string s) {
+        ref array<char> t := tag;
+        bgl.util.buf.set(t, s);
+        switch (t.length) {
+            case 0:      kind = 0;
+            case 1 to 3: bgl.util.buf.toUpper(t); kind = 1;
+            default:     bgl.util.buf.reverse(t); kind = 2;
+        }
+        hits++;
+    }
+}
+
+extend class Badge {
+    void show() {
+        array<char> t[16];
+        t = tag;
+        bgl.util.buf.print(t);
+        print($" ({kind}, {hits})");
+    }
+}
+
+Badge badgeA { "badge a"; }
+
+//-- A value class owning a buffer -----------------------------------------------------------
+value class Word {
+    array<char> text[12];
+    int uses;
+    Word operator = (Word o) { text = o.text; uses = o.uses + 1; return self; }
+    void set(string s) {
+        array<char> t[12];
+        bgl.util.buf.set(t, s);
+        text = t;
+    }
+    int vowelsIn() { return vowelCount(text); }
+}
+
+//-- An emitter class beside ?? and a buffer -------------------------------------------------
+int marksLive = 0;
+
+emitter class Mark {
+    emitter void init() { $self = 0; marksLive++; }
+    emitter void deinit() { marksLive--; }
+    emitter Mark operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+}
+
+array<char> caption[40];
+array<char> whoText[24];
+
+void captionOf(object o) {
+    Mark m;
+    m = marksLive;
+    object who = o ?? roomA;
+    bgl.util.buf.set(caption, "at ");
+    bgl.util.buf.capture(whoText);
+    print($"{who}");
+    bgl.util.buf.release();
+    bgl.util.buf.append(caption, whoText);
+    print($"[{(int)m}] ");
+    bgl.util.buf.print(caption);
+}
+
+//-- Bytes, replaced ------------------------------------------------------------------------
+int vowelCount(array<char> a) { return 0; }
+
+replace int vowelCount(array<char> a) {
+    int n = replaced(a);
+    for (char c in a) switch (c) { case 'a', 'e', 'i', 'o', 'u': n++; }
+    return n;
+}
+
+//-- Strings --------------------------------------------------------------------------------
+emitter int longCount(array<string> a, int n) { $i6Expr($a.filter((string s) => s.length > n).count()) }
+
+class Lexicon {
+    static int calls = 0;
+    static int letters(array<string> a) {
+        Lexicon.calls++;
+        int t = 0;
+        for (string s in a) t += s.length;
+        return t;
+    }
+}
+
+array<string> words = {"cup", "plate", "fork", "dish"};
+
+float meanLength(array<string> a) {
+    int n = 0;
+    int total = 0;
+    for (string s in a) {
+        if (s?) { n++; total += s.length; }
+    }
+    if (n == 0) return 0.0;
+    return (float)total / n;
+}
+
+//-- An I6 class -----------------------------------------------------------------------------
+#i6 {
+    Class PegClass with weight 0;
+    PegClass pegA with weight 3;
+    PegClass pegB with weight 7;
+    PegClass pegC with weight 3;
+}
+
+extern class PegClass : object {
+    int weight;
+    emitter bool operator == (PegClass p) { ($val.weight == $p.weight) }
+    emitter bool operator < (PegClass p) { ($val.weight < $p.weight) }
+    static int ratio(PegClass a, PegClass b) { return (int)((float)a.weight / b.weight * 10); }
+}
+
+extern PegClass pegA;
+extern PegClass pegB;
+extern PegClass pegC;
+
+//-- Things -----------------------------------------------------------------------------------
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Bin binA { "bin"; name = {.bin}; cap = 2; parent = roomA; attributes = {container, open}; }
+object coin  { "coin";  name = {.coin};  parent = roomA; }
+object key   { "key";   name = {.key};   parent = roomA; }
+object stone { "stone"; name = {.stone}; parent = roomA; }
+
+//-- Verbs ------------------------------------------------------------------------------------
+verb ShelfVerb {
+    grammar = {{.shelf, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        Shelf.reset();
+        print("marks:");
+        for (int m in Shelf.marks) print($" {m}");
+        print($", score {Shelf.score()}, label 0 {Shelf.label(0)}, label 3 {Shelf.label(3)}^");
+        Shelf.marks.length = 2;
+        print($"cut to {Shelf.marks.length}, score {Shelf.score()}, passes {Shelf.passes}^");
+        Shelf.hues.clear();
+        Shelf.hues += {hueRed, hueBlue};
+        for (int i in 1 to n) Shelf.hues.append(hueGreen);
+        print($"hues {Shelf.hues.length}, hue score {Shelf.hueScore()}, long labels {Shelf.longLabels(3)}^");
+    }
+}
+
+verb PodsVerb {
+    grammar = {{.pods, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int got = Shelf.fill(n);
+        print($"pods {got}");
+        if (got > 0) {
+            Pod p = Shelf.pods[0];
+            print($", first plus 5: {p + 5}, times 3: {p * 3}");
+        }
+        print($", total {podTotal(Shelf.pods)}^");
+        for (Pod p in Shelf.pods) print($" {p * 2}");
+        print($"^after: total {podTotal(Shelf.pods)}, freed {Shelf.empty()}, left {Shelf.pods.length}^");
+    }
+}
+
+verb BinVerb {
+    grammar = {{.bin, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<object> things = {coin, key, stone};
+        for (int i in 0 to n - 1) {
+            try {
+                binA += things[i % 3];
+                print($"in: {things[i % 3]}^");
+            } catch (int e) {
+                print($"refused {e}^");
+            }
+        }
+        print($"held {binA.held()}^");
+        for (int i in 1 to 3) {
+            try {
+                binA--;
+                print("out^");
+            } catch (int e) {
+                print($"empty {e}^");
+            }
+        }
+    }
+}
+
+verb TableVerb {
+    grammar = {{.table, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        tableA[2] = n;
+        tableA[0] = 4;
+        tableB[1] = 6;
+        print($"a: {tableA[0]} {tableA[1]} {tableA[2]} {tableA[9]} {tableA[-1]}, length {tableA.cells.length}^");
+        int c = tableA <=> tableB;
+        print($"compare {c}, a bigger: {tableA > tableB ? "yes" : "no"}, weighted {tableA.weighted(false)} {tableA.weighted(true)}^");
+    }
+}
+
+verb MeterVerb {
+    grammar = {{.meter, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int before = meter.over;
+        meter.over = n;
+        int after = meter.over;
+        print($"before {before}, after {after}, limit {meter.limit}, reads {meter.lastReads}^");
+    }
+}
+
+verb BadgeVerb {
+    grammar = {{.badge}};
+    void handler() {
+        badgeA.stamp("ox");
+        badgeA.show();
+        print(", ");
+        badgeA.stamp("lantern");
+        badgeA.show();
+        print("^");
+    }
+}
+
+verb WordVerb {
+    grammar = {{.word}};
+    void handler() {
+        Word a;
+        a.set("banana");
+        Word b = a;
+        Word c = b;
+        print($"vowels {a.vowelsIn()} {c.vowelsIn()}, uses {a.uses} {b.uses} {c.uses}, length {c.text.length}^");
+    }
+}
+
+verb DescVerb {
+    grammar = {{.desc, NUMBER}};
+    void handler() {
+        object o = parsed_number == 0 ? null : coin;
+        captionOf(o);
+        print($", live {marksLive}^");
+    }
+}
+
+verb WordsVerb {
+    grammar = {{.words, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        print($"long {longCount(words, n)}, letters {Lexicon.letters(words)}, calls {Lexicon.calls}, mean {meanLength(words)}^");
+        array<string> some[4];
+        some.length = 3;
+        some[0] = "ab";
+        some[2] = "abcd";
+        print($"mean of some {meanLength(some)}^");
+    }
+}
+
+verb PegsVerb {
+    grammar = {{.pegs}};
+    void handler() {
+        print($"a==c {pegA == pegC ? "yes" : "no"}, a==b {pegA == pegB ? "yes" : "no"}, a<b {pegA < pegB ? "yes" : "no"}^");
+        print($"ratio {PegClass.ratio(pegA, pegB)} {PegClass.ratio(pegB, pegA)}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}
