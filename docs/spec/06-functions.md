@@ -22,8 +22,8 @@
 **Description**
 
 A function has a return type, a name, a parenthesized parameter list and a block body (§5.2). A
-function declared at global scope is a **global function**; its name must be unique among non-emitter
-functions, and among all globals (§3.8.3). Functions may also be declared as members of a class (§8.4)
+function declared at global scope is a **global function**; functions of one name overload by
+parameter types (§6.4), and the name must not be shared with any other kind of global (§3.8.3). Functions may also be declared as members of a class (§8.4)
 or object (§11.9). A function declared `extern` has no body and is defined in Inform 6 (§15.4.1); a
 function declared `emitter` has an I6 template body (§7.2).
 
@@ -170,6 +170,8 @@ A call is resolved in two steps:
    parameter counts.
 2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
+   A declared object is an exact match for its class, as a variable of that class is: for an object
+   of class `G` derived from `P`, `Show(G g)` wins over `Show(P p)`.
 
 Type compatibility itself is specified in §2.10.1.
 

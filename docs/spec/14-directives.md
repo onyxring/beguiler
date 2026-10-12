@@ -262,8 +262,9 @@ all do.
 
 Defines a compilation symbol. Without a value the symbol has the boolean value `true`. A symbol with
 a value is also usable in a Beguile expression, where the name is replaced by its value at compile
-time: a numeric value is an integer literal, any other value a string literal. Symbols are tested with
-`#if` (§14.2.5).
+time: an integer value is an integer literal, a decimal number (`0.5`) a float literal, and a quoted
+string that string. Any other word is a string literal of that word, so after `#define SHOP corner`,
+`SHOP` is `"corner"`. Symbols are tested with `#if` (§14.2.5).
 
 `#define` is linear: it affects only the source that follows it, in the order files are processed. An
 `#if` sees a symbol as defined only if a `#define` for it appears earlier and no intervening `#undef`
@@ -272,8 +273,9 @@ removed it. Defining a symbol that is already defined is a compile-time error; u
 
 `#defineI6` is `#define` that also passes the symbol to Inform 6 as a `Constant` of the same name and
 value, placed ahead of any I6 include. The Beguile symbol is an ordinary `#define`d symbol, so `#if`
-tests it and it follows the same linear rule. A later `#undef` or `#redef` affects only the Beguile
-symbol; the I6 constant stays.
+tests it and it follows the same linear rule. In a Beguile expression a `#defineI6` symbol with a value
+is emitted by name, as the I6 constant, rather than replaced by its value. A later `#undef` or `#redef`
+affects only the Beguile symbol; the I6 constant stays.
 
 `#defineI6` is how a program sets an I6 library's option constants (`NO_PLACES`,
 `OPTIONAL_EXTENDED_METAVERBS`, …) so that the library and Beguile agree on them: the library bindings
@@ -400,6 +402,10 @@ currently defined symbols. Source in an excluded branch is skipped without being
 blocks nest. They may enclose declarations as well as statements; an excluded declaration does not
 exist.
 
+`#if`, `#elif`, `#else` and `#endif` may appear anywhere a declaration, member, statement or `extend`
+edit may: at file scope, in a function body, in an object or class body, in an `extend` body, and among
+the `inject`, `remove` and `move` lines of an array's `extend` body (§12.11).
+
 The expression may contain: symbol names; integer literals; string literals;
 `#beguilerSettings.⟨property⟩` references (§17.7); `true` and `false` (the values `1` and `0`); the
 comparisons `==`, `!=`, `<`, `>`, `<=`, `>=`; `&&`, `||`, `!`; and parentheses.
@@ -415,7 +421,8 @@ compile-time error.
 
 A bare symbol name is true when the symbol is *defined*, whatever its value, so `#if V` is true even
 when `V` was defined as `0` or `false`. In a comparison the name resolves to the symbol's *value*; an
-undefined symbol compares as `0`. Thus after `#define V false`, `#if V` and `#if V == false` are both
+undefined symbol compares as `0`. A symbol whose value is a quoted string compares as its text, so
+after `#define SHOP_NAME "corner shop"`, `#if SHOP_NAME == "corner shop"` is true. Thus after `#define V false`, `#if V` and `#if V == false` are both
 true and `#if V == true` is false.
 
 There is no `#ifdef` or `#ifndef`, in either the single- or double-hash form: `#if SYMBOL` and

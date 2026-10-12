@@ -27,6 +27,10 @@ turn using the resolved type of the expression to its left. `&&` and `||` evalua
 only when the left operand does not decide the result; `??` evaluates its right operand only when the
 left is null (§4.10); a ternary evaluates only the selected branch (§4.9).
 
+Apart from those, the order in which an expression's operands are evaluated is unspecified, as in
+C++: in `f() + g()`, either call may run first, and so may the arguments of one call. When the order
+matters, evaluate the operands in separate statements.
+
 ## 4.2 Operands
 
 An expression is one or more operands joined by operators. An operand is one of:
@@ -200,7 +204,8 @@ is a compile-time error.
 
 **`?.`** accesses a member or calls a method only if the left operand is non-null. In an expression,
 each `?.` step tests the value so far; if it is null the whole chain yields `null`, otherwise the
-step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null. A
+step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null; the
+target may be any expression, such as a call or an element (`find()?.remove();`, `a[i]?.remove();`). A
 plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the member access runs on
 `null`; the result is undefined.
 
@@ -360,7 +365,9 @@ The expression-bodied form `(⟨params⟩) => ⟨expr⟩` is equivalent to
 every parameter is typed; `x => …` is not a lambda. A lambda with no parameters may omit the empty
 parameter list: `=> ⟨body⟩` is equivalent to `() => ⟨body⟩`. An expression body with no value, such as
 a call to a `void` function, is the lambda's body rather than its return value; this includes a call
-passing an interpolated string (§1.6.5), such as `=> print($"Hello, {name}.")`.
+passing an interpolated string (§1.6.5), such as `=> print($"Hello, {name}.")`. An assignment has no
+value either, so a lambda whose expression body is an assignment (`=> hits += 10`) is `void`
+(`func<void>`), as in C#.
 
 **Capture.** A lambda body may use locals and parameters of the enclosing function, wherever in that
 function the lambda appears, including inside loop and `if` bodies. Each captured variable's value is

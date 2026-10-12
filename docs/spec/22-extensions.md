@@ -81,7 +81,7 @@ Every operation takes the buffer as its first argument. Operations that return `
 |---|---|---|
 | `set(buf, value)` | `array<char>` | Replace the contents with a string literal or another buffer; sets the length. |
 | `copy(to, from, n[, toPos[, fromPos]])` | `array<char>` | Copy `n` characters (`-1`: to the end of `from`) from `from[fromPos]` to `to[toPos]`; bounded by both buffers. |
-| `append(to, from)` / `prepend(to, from)` | `array<char>` | Add `from`'s contents at the end / start of `to`. |
+| `append(to, from)` / `prepend(to, from)` | `array<char>` | Add `from`'s contents at the end / start of `to`; `from` is a buffer or a string (a literal included). |
 | `insert(to, from, pos[, count])` | `array<char>` | Insert `from` (or its first `count` characters) at `pos`. |
 | `delete(buf, pos, count)` | `array<char>` | Remove `count` characters at `pos`, closing the gap. |
 | `mid(to, from, fromPos, n)` / `left(to, from, n)` / `right(to, from, n)` | `array<char>` | Copy a substring of `from` into `to`; `n == -1` in `mid` means to the end, and a position or count outside `from` is clamped to it. |
@@ -111,10 +111,11 @@ void Main() {
     bglInit();
     bgl.util.buf.set(line, "hello");
     bgl.util.buf.set(word, " world");
-    bgl.util.buf.append(line, word);   // append takes a buffer; set takes a literal too
+    bgl.util.buf.append(line, word);   // a buffer
+    bgl.util.buf.append(line, "!");    // or a string
     bgl.util.buf.toUpper(line);
-    bgl.util.buf.print(line);          // → HELLO WORLD
-    print(line.length);                // → 11
+    bgl.util.buf.print(line);          // → HELLO WORLD!
+    print(line.length);                // → 12
 }
 ```
 
@@ -153,7 +154,7 @@ Two types, for two different things:
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
 | `stringObj` | a buffer of its own, taken from the string pool | yes | allocated on declaration, released at scope exit |
 
-A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. Results may be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`): each is held until the call returns (§8.5). A `stringObj` global is allocated at startup.
+A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own, and so is passing a `stringObj` where a `string` parameter is expected: the parameter takes `stringObj`, or `string | stringObj` for either. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. Results may be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`): each is held until the call returns (§8.5). A `stringObj` global is allocated at startup.
 
 `s == null` and `s != null` remain identity tests on both types (there is no content to compare against `null`).
 
@@ -163,7 +164,7 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 |---|---|
 | `s = "text"` / `s = other` | Assign. On a `string` the slot now refers to the text; on a `stringObj` the text is copied into its buffer. `stringObj` also accepts an interpolated string, capturing its output. |
 | `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char`). Returns a new `stringObj`; neither operand is changed. |
-| `s += v` | **`stringObj` only.** Append in place. |
+| `s += v` | **`stringObj` only.** Append in place. `v` may also be an interpolated string, whose output is appended (`s += $" {n} left";`). |
 | `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
 | `s =~ v` | Content comparison ignoring case. |
 | `s <=> v` | Three-way comparison: negative, `0` or positive as `s` sorts before, with or after `v` (§4.5). |
@@ -190,7 +191,7 @@ result (`s.append(t.trim())`).
 | `s.insert(pos, src)` | `stringObj` | With `src` inserted at `pos`. |
 | `s.delete(pos, count)` | `stringObj` | With `count` characters removed at `pos`. |
 | `s.replace(search, repl)` / `s.replaceAll(search, repl)` | `stringObj` | With the first / every occurrence replaced. |
-| `s.format(pattern[, p1[, p2]])` | `stringObj` | `pattern` with `$0` replaced by `s` and `$1`, `$2` by the arguments. |
+| `s.format(pattern[, p1[, p2]])` | `stringObj` | `pattern` with `$0` replaced by `s` and `$1`, `$2` by the arguments, each a `string` or `stringObj`. |
 | `s.length` | `int` | Number of characters. |
 | `s.compareTo(other[, caseInsensitive])` | `int` | `-1`, `0` or `1`; the form a sort comparator needs. |
 | `s.indexOf(search)` | `int` | Position of the first occurrence, or `-1`. |
@@ -226,9 +227,13 @@ void Main() {
 The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Exhausting the pool is a runtime error. Each buffer holds `bglStringDefaultSize` characters (default `500`, §22.2). Both are I6 constants, set before the include:
 
 ```bgl
-#i6 { Constant bglStringPoolReserve 64; }
+#i6 { Constant bglStringPoolReserve 32; }
 #include <string>
 ```
+
+> **[Z-machine]** The buffers are one array of `bglStringDefaultSize × (bglStringPoolReserve + 2)`
+> bytes, which must fit Inform 6's array limits; with the default buffer size, a reserve of 64 is too
+> large.
 
 `bglStringPoolReserve` is unrelated to `framePoolSize` (§17.4), which sizes the Z-machine local-variable overflow pool.
 
@@ -311,7 +316,8 @@ Requires `bglInit()`, which writes the length headers of sized tracked arrays (�
 
 ## 22.5 `<linq>`
 
-**Purpose.** Chainable, LINQ-style transformations on `array<T>`.
+**Purpose.** Chainable, LINQ-style transformations on `array<T>`. They walk word arrays, so an
+`array<char>` doesn't take them (a compile-time error).
 
 **Include**
 
@@ -503,7 +509,7 @@ void Main() {
 - **At compile time**, when the window is held as its orientation view: a `…Horz` view hides `width.operator =`, a `…Vert` view hides `height.operator =`, and writing the hidden axis is a compile-time error.
 - **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `log()` (§21.4).
 
-`moveUp`, `moveDown`, `moveLeft` and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size and, with it, which axis is subsequently writable. They are not available on the roots.
+`moveUp`, `moveDown`, `moveLeft` and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size. Glk keeps a split's axis, so a window split `Up` or `Down` moves only up or down, and one split `Left` or `Right` only left or right: a `…Horz` view hides `moveLeft` and `moveRight`, a `…Vert` view hides `moveUp` and `moveDown`, and on the permissive surface a move across the axis does nothing and reports a programming error. They are not available on the roots.
 
 **Example**
 

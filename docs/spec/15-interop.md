@@ -335,11 +335,13 @@ See §3.5 (variables and constants), §11.6 (attributes), §11.7.1 (properties),
 **Syntax**
 
 ```syntax
-extern class ⟨name⟩ [ : ⟨base⟩ ] { ⟨members⟩ }
+extern class ⟨name⟩ [ : ⟨base⟩ [ , ⟨base⟩ … ] ] { ⟨members⟩ }
 extern class ⟨name⟩[] ;
 extern class ⟨name⟩[] { ⟨members⟩ }
-extern emitter class ⟨name⟩ [ : ⟨base⟩ ] { ⟨members⟩ }
+extern emitter class ⟨name⟩ [ : ⟨base⟩ [ , ⟨base⟩ … ] ] { ⟨members⟩ }
 ```
+
+An extern class, like any class, may name more than one parent.
 
 The `[]` after the name is literal: the pooled-class marker.
 
@@ -350,8 +352,8 @@ class is generated. The declaration form and member syntax are those of §8.1 an
 rules are specific to `extern`:
 
 - Emitter methods are permitted and require the `emitter` keyword.
-- A non-emitter method is a bodyless signature; parameter names are optional and only the types are
-  required (`bool contains(string);`). A non-emitter method with a body is a compile-time error.
+- A non-emitter method must be `static`; it has a body and emits as a free routine, since it needs
+  no instance. A non-emitter, non-`static` method is a compile-time error.
 - A member variable declaration (type and name, no initializer) is permitted and contributes to
   type inference on instances.
 - A member variable with an initializer is accepted, but the value has no effect: no code is
@@ -374,7 +376,7 @@ extern class object {
 }
 
 extern class string {
-    bool contains(string);
+    emitter void show(){ print (string) $val }
 }
 ```
 

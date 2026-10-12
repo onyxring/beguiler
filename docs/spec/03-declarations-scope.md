@@ -311,6 +311,29 @@ Inside a method body, members of the enclosing class or object, including member
 the base chain. A bare member name resolves as `self.name`; `self` is the receiver (§6.6).
 Members declared later in the same body resolve normally.
 
+Class scope comes before file scope: inside a class's or object's code, a bare name that is both a
+member (method or variable) and a global (function, variable or type) means the member, as in C++
+and C#. `::name` (§3.9) reaches the file-scope declaration.
+
+**Example**
+
+<!-- doctest: compile -->
+```bgl
+int twice(int n) { return n * 2; }
+class Spot { }
+
+object counter {
+    int spot = 0;
+    int twice(int n) { return n + n; }
+    int run(object x) {
+        int a = twice(3);           // the member
+        int b = ::twice(3);         // the global function
+        if(x.is(::Spot)) a++;       // the type, which the member `spot` hides
+        return a + b;
+    }
+}
+```
+
 ### 3.8.3 Global Scope
 
 1. Enum values, which share one flat global namespace.
@@ -320,10 +343,14 @@ Members declared later in the same body resolve normally.
 **Verb names.** A verb is an object and follows the same rules as any other identifier; a local or
 parameter with the same name as a verb takes priority.
 
-**Ambiguity.** Inside an object method body, a bare identifier that resolves at this tier and is also
-a property of the enclosing object (own or inherited) is resolved to the global candidate and the
-compiler issues a warning; `self.X` selects the property and `::X` (§3.9) the global. Inherited *methods* are
-not included in this check.
+**Names shared with the library.** A program's global array, variable or object may not share its name,
+ignoring case, with a library verb: an array `order` clashes with the library's `Order`. A function may,
+since it is always called. Nor may any of the program's globals (function, variable, array or object)
+share its name with a global, attribute or object the library binding declares: a function `Score`
+clashes with the library global `score`. A program's variable, array or object can't take a library
+routine's name either (an object `cap` clashes with `Cap`); a function may, since it defines the
+routine. Each clash is a compile-time error that names the other declaration. A program may still
+define the library's entry points by name (§23.3.4).
 
 **Members named after types.** A member or method may share a name with a type, including a built-in
 type keyword such as `object`; a name following `.` is unambiguously a member. Type names remain
@@ -342,8 +369,8 @@ reserved for top-level identifiers (§1.5).
 
 A leading `::` resolves `⟨name⟩` at global scope, skipping §3.8.1 and §3.8.2. It is the counterpart of
 `self.name`: where `self.name` selects the member, `::name` selects the global. It is valid as an
-lvalue and as an rvalue and applies to the head of a dotted path. `::name` suppresses the ambiguity
-warning of §3.8.3. If no such global exists it is an undeclared-identifier error; it never falls back
+lvalue and as an rvalue and applies to the head of a dotted path. Inside a class's or object's
+code it reaches a global that a member of the same name hides (§3.8.2). If no such global exists it is an undeclared-identifier error; it never falls back
 to a member.
 
 **Example**

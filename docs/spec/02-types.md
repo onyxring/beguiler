@@ -23,6 +23,7 @@
   - [2.10.1 Type Compatibility](#2101-type-compatibility)
   - [2.10.2 Conversion](#2102-conversion)
   - [2.10.3 Primitive, Reference and Value Types](#2103-primitive-reference-and-value-types)
+- [2.11 `selfType`](#211-selftype)
 <!-- /toc -->
 
 
@@ -46,7 +47,7 @@ The primitive types are declared by the runtime core (§21) and need no `#includ
 | `uint` | Unsigned integer, the same width as `int`. A non-negative integer literal converts to it implicitly; any other conversion between `int` and `uint` is an explicit cast (§2.4.1). Its operators are specified in §21.6.1. |
 | `float` | IEEE 754 single-precision floating point. `[Glulx]` See §2.3. |
 | `bool` | Boolean value, `true` or `false`. The comparison and logical operators and `operator ?()` yield `eBool`, the enumeration `{ true, false }` (§2.7.4); `eBool` and `bool` interoperate, so a comparison may be stored in a `bool` and a `bool` tested where an `eBool` is expected. Tables elsewhere in this specification write `bool` for either. |
-| `char` | A single character: its ZSCII code on the Z-machine, its Unicode code point on Glulx (Appendix D). The runtime core (§21.7) adds case-conversion and inspection methods. |
+| `char` | A single character: its ZSCII code on the Z-machine, its Unicode code point on Glulx (Appendix D). A `char` converts implicitly to `int`, and so does a character literal (`int n = 'a';`, `3 + 'a'`, `f('a')` for an `f(int)`). The runtime core (§21.7) adds case-conversion and inspection methods. |
 | `string` | A reference to static text. The core provides printing, equality and literal assignment; the `<string>` extension (§22.3) compares content and adds `stringObj` for text that is built or changed. |
 | `object` | The base class of every world object in the IF model (§11.1). |
 | `verb` | The class from which verbs are declared (§13.2). |
@@ -177,6 +178,11 @@ resolved type (§4.1) is the literal pseudo-type `nullLiteral`, which is compati
 In an operator it takes the base type `_bglObject` (§21.5.8), as `intLiteral` takes `int`, so
 `x == null` uses an operator taking `_bglObject`: the root's identity comparison on any object, and
 the ones `string` and `obj.parent` declare.
+
+A variable of a value class owns its instance (§8.2.7), so it can't hold `null`: assigning `null` to
+one, or returning `null` from a routine that returns one, is a compile-time error. A `ref` of the class
+can be bound to `null` (`r := null;`). Inform 6's `nothing` is not a Beguile word; Beguile writes
+`null`.
 
 **Example**
 
@@ -513,6 +519,10 @@ signature: `int twice(int n)` gives a `func<int, int>`. It may be stored in, pas
 checked the same way: its parameter types are as written, and its return type is inferred from its
 body. An overloaded name denotes several signatures and is not checked against the target.
 
+A global function or a `static` method is a function value; a non-static method of an object or class
+is not, because it needs its object. Naming one without a call is a compile-time error, and the
+compiler suggests a lambda that supplies the object: `(int n) => fx.succ(n)`.
+
 Function values are written as named functions (§6.1) or as lambda literals; lambda syntax and
 variable capture are in §4.14.
 
@@ -713,5 +723,52 @@ void compare() {
 
     Marker m = home;     // m and home are the same instance
     m.x = 5;             // home.x → 5
+}
+```
+
+## 2.11 `selfType`
+
+**Syntax**
+
+```syntax
+selfType
+```
+
+**Description**
+
+`selfType` is written in a class's member declarations, including those of a class other classes list
+as a parent (§8.2.1), to mean "the class this member is used on". At each use it is the static class of the receiver: the class of the variable
+the member is called or read through, or an object's class. Inside the declaring class's own body it is
+that class. It can be a parameter type, a return type, a member's type or an array's element type, and
+it only affects type checking: nothing changes in the generated code.
+
+- A **parameter** of type `selfType` accepts the receiver's class or a subclass of it:
+  `bglAllocated.copy(selfType src)` (§21.8) copies a subclass into a base class but not the reverse.
+- A **return type** keeps the subclass's type through a method a base class declares, so a chain can
+  go on to the subclass's own methods.
+- An **operator's parameter** (`int operator <=> (selfType o)`) compares a class with its own kind.
+- A **member or element type** (`selfType next; array<selfType> kids[4];`) is the subclass's class on
+  a subclass instance.
+
+The name pairs with `self`, the instance; `Self` would be the same word, since Beguile is
+case-insensitive. TypeScript's polymorphic `this` type is the nearest equivalent.
+
+**Example**
+
+```bgl
+#include <array>
+class Widget : object { int width; selfType wide(int n) { width = n; return self; } }
+class Button : Widget { int col; selfType color(int c) { col = c; return self; } }
+Button ok { }
+
+class Node : object { int key; selfType next; array<selfType> kids[4]; }
+class Room2 : Node { int area = 5; }
+Room2 r1 { }
+Room2 r2 { area = 3; }
+
+void Main() {
+    ok.wide(5).color(3);    // wide() returns Button here, so color() is found
+    r1.next = r2;
+    print(r1.next.area);    // → 3: next is a Room2 on a Room2
 }
 ```

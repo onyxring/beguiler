@@ -54,7 +54,10 @@ object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { [ �
 An object is declared at global scope. The name becomes a globally visible identifier usable wherever
 an `object`-typed value is expected. The body holds member declarations in the same form as a class
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
-with no initializer defaults to `0`, `false` or `null` according to its type.
+with no initializer defaults to `0`, `false` or `null` according to its type. The one exception is
+`static`: an object has no class-wide members of its own, so `static` in an object body is a
+compile-time error. An inline accessor declared in an object (`auto x = { … }`, §9.9.2) is a class,
+so its own members may be `static`.
 
 The body may open with a **positional section**: `,`-separated values filling the class's positional
 members in order (§8.3.5), ended by the first `;`, exactly as in an inline object (§11.3.1). Members
@@ -620,9 +623,19 @@ Every other additive property is declared by the IF library binding that defines
 routine. The element type is fixed by the highest ancestor that declares the member, walking the
 class hierarchy root-first; every other contribution in that hierarchy must use the same element type.
 Unrelated hierarchies may each fix their own. An inference-typed override (`name = {.wooden};`) takes
-the ancestor's type and is always consistent. A member declared `array<T>` or as a scalar
-(`int name`, `stringObj name`) on an additive property is a compile-time error, and so is an element
-type that disagrees with the hierarchy's.
+the ancestor's type and is always consistent. A single value is a one-element list:
+`rawArray<int> hook = 3;` contributes `{3}`, and where an ancestor declares the member, `hook = 3;` does
+the same. A member declared `array<T>` or as a scalar (`int name`, `stringObj name`) on an additive
+property is a compile-time error, since the property is a list and the member reads it as one; so is
+an element type that disagrees with the hierarchy's.
+
+**Routine contributions add up too.** A method bound to an additive property (`before`, `after`, …)
+contributes its routine alongside every ancestor's; how the routines are called, and when the calling
+stops, is up to the code that reads the property (the IF library, for its hooks).
+
+**Nothing is replaced.** Every class's and object's contribution is kept, so `replace` on a
+contribution is a compile-time error. A class or object may still replace its own earlier contribution
+in an `extend` body (`extend lamp { replace bool after() { … } }`).
 
 **Extent and operations.** A contributing member's extent is the total accumulated across every
 layer, so `size` and `length` on `r1.name` in the example both answer 3. `size`, `length`
@@ -636,6 +649,7 @@ such a member.
 ```bgl
 class Room       { rawArray<dictionaryWord> name = {.box, .crate}; }   // fixes the element type
 object r1 : Room { name = {.wooden}; }                                 // matches all three words
+object r2 : Room { name = .shed; }                                     // one word: {.shed}
 ```
 
 **See also** §12.8.3 — member `rawArray<T>`.

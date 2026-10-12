@@ -194,8 +194,11 @@ scratch buffer is emitted only in programs that use the construct.
 The Z-machine gives a routine 15 local slots for parameters and locals together; one slot is
 reserved for the frame pointer, so a routine needing more than 14 has its excess locals spilled into
 a global **frame pool**. The mechanism is recursion-safe and invisible to the author. The pool is also the backing store for local arrays
-(§12.6) on both targets. It is emitted only when some routine needs it, and its size in words is
-`framePoolSize` (§17.4). A program that exhausts it halts with a runtime error (§19.4).
+(§12.6) on both targets. It is emitted only when some routine needs it. Its size in words is
+`framePoolSize` (§17.4) when the program sets it; otherwise the compiler sizes it from the program,
+as the largest routine frame times a nominal depth of 4, and never below 64. When `framePoolSize` is
+set, a routine that calls itself and holds a local array draws a warning if four of its calls
+wouldn't fit. A program that exhausts the pool halts with a runtime error (§19.4).
 
 > **[Glulx]** Glulx has no practical local-variable limit; spilling never occurs, and the pool is
 > emitted only for local arrays.

@@ -127,10 +127,11 @@ n <<= 1;     // → 14
 
 **Description**
 
-The variable's type must declare `operator ++` / `operator --`. A prefix form uses
+An increment or decrement uses the type's `operator ++` / `operator --`. A prefix form uses
 `operator prefix++` / `operator prefix--` if the type declares it and otherwise falls back to the
-postfix operator, so a type that declares only `operator ++` supports both `n++` and `++n`. If no
-operator is found and the type is known, it is a compile-time error.
+postfix operator, so a type that declares only `operator ++` supports both `n++` and `++n`. A type
+that declares neither takes `n = n + 1` (or `n = n - 1`) instead (§9.7); if that is not available
+either, it is a compile-time error.
 
 **Example**
 
@@ -286,7 +287,9 @@ switch (⟨expression⟩) {
 
 **Description**
 
-A case lists one or more values separated by commas. Cases do not fall through. A `break` in a case
+A case lists one or more values separated by commas. Cases do not fall through, so an empty case
+written straight before another (`case Take: case Drop: …`) does nothing and draws a warning; list the
+values in one case instead (`case Take, Drop:`). A `break` in a case
 body leaves the `switch` — at the top of the body or nested in a block within it, and whichever
 lowering the switch takes. Because cases do not fall through, a `break` as the last statement of a
 case body does nothing; a `break` before the end of the body ends the case there, leaving the rest of
@@ -303,8 +306,10 @@ switch is a guard, the switch expression is evaluated once and the cases are tes
 and ranges in the same switch become equality and range tests.
 
 **Type-driven comparison.** When the switch expression's type declares `operator switch()`, that
-operator performs each case comparison; `string` declares one so that `case "north":` compares
-content. Overloads for different case-value types may coexist. The declaration form is in §9.5.
+operator performs each case comparison; with `#include <string>`, `string` declares one so that
+`case "north":` compares content. Overloads for different case-value types may coexist. The operator
+tests one case value, so a range or a guard case in such a switch is a compile-time error, and a
+string literal case on a type that declares no `operator switch()` is one as well. The declaration form is in §9.5.
 
 **Example**
 
@@ -373,9 +378,10 @@ strings (§21.4), and then return.
 
 **Return-path analysis.** A non-`void` function must return on every path; a path that can reach the
 end of the body without returning is a compile-time error. A path is satisfied by an unconditional
-`return` at the top level of the body; by an `if`/`else` whose two branches are both satisfied; by a
-`switch` with a `default` whose every case body is satisfied (a `switch` without `default` is not); or
-by an `#i6` island that returns (§15.2). A loop body alone does not satisfy it.
+`return` or `throw` (§5.16) at the top level of the body; by an `if`/`else` whose two branches are both
+satisfied; by a `switch` with a `default` whose every case body is satisfied (a `switch` without
+`default` is not); by a `try`/`catch` whose `try` body and `catch` body are both satisfied; or by an
+`#i6` island that returns (§15.2). A loop body alone does not satisfy it.
 
 If a local's type declares a `deinit` emitter, it fires before the function returns (§8.5).
 
@@ -429,6 +435,11 @@ execution unwinds to the nearest enclosing `catch` and the thrown value is assig
 variable. The thrown value is one word: an integer, an object reference or any other word-sized value.
 `try` blocks nest; a `throw` inside a `catch` re-throws to the next enclosing `catch`. If `throw`
 executes with no active `try` on the call stack, the program prints an error and halts.
+
+Before it unwinds, a `throw` releases the owning locals (§8.5) of the blocks it leaves in its own
+routine. A routine that the throw passes through on its way to a `catch` in a caller does not release
+its locals. Where that matters, the routine can wrap the call in its own `try` and re-throw from the
+`catch`: the re-throw releases its locals.
 
 **Example**
 

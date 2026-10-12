@@ -35,7 +35,8 @@ A type may be reached through a dotted path on an object. The type is declared a
 aliased onto a namespace object with `alias name for Type;` in the object's body; the `for` keyword
 distinguishes a type alias from an instance member (`auto x = y;`). Classes and enums may be aliased.
 A dotted type path is accepted wherever a type name is: variable declarations, parameters, return
-types, and globals.
+types, globals, array element types, base class lists and casts. Inside the object's own body its
+type aliases are also named bare, as a nested type is inside the C# type that holds it.
 
 When the aliased type is an enum or bnum, one further segment names a value of it; the path is
 resolved as the enum value itself. A path ending at a class alias cannot continue into static or

@@ -68,11 +68,15 @@ member named like the class. The prefix keeps every Beguile class name free. An 
 Inform 6 name it binds, and a name that already begins with `_bgl` is reserved and is emitted
 unchanged. I6 code that names a Beguile class reaches it through `$i6Name` (§7.3.3).
 
-Members share that namespace too. A data member, or a method, whose name is also a global the program
-or the library binding declares (`score`, `action`, a library routine or object) is emitted under
-another name, and every Beguile use follows it; a member named like a library *property* (`before`,
-`describe`) keeps its name, which is how the library calls it. I6 code reaches a renamed member
-through `$i6Name`.
+Members share that namespace too. A data member or method whose name is also a global (one the
+program declares, a routine, variable or object, or one the library binding declares, such as
+`score`, `action`, a library routine or object) is emitted under another name, and every Beguile use
+follows it. A member named like a library *property* (`before`, `describe`) keeps its name, which is
+how the library calls it. The members of the library's own classes keep their names too: a program
+routine named like one of their methods (`<linq>`'s `first`) is the one emitted under another name.
+A routine the library itself defines, such as `print`, is one the compiler calls by name, so a
+program overload of it does not rename methods of that name. I6 code reaches a renamed member or
+routine through `$i6Name`.
 
 **Example**
 
@@ -95,7 +99,9 @@ An `extend extern class array` block adds emitters to every array, and `T` in th
 the same way. The extension does not repeat the `<T>`. A body is raw I6, so it works with the
 array's own layout. For a global or local array, `$self` is the array and element `i` is
 `$self-->(i+1)`. For a member array, `$self` is the owning object, `$prop` the property, and
-element `i` is `$self.&$prop-->i`; `$prop` is `0` for a non-member array (§7.3). A read can
+element `i` is `$self.&$prop-->i`; `$prop` is `0` for a non-member array (§7.3). A member array
+too large to live inline in its property is stored separately (§12.7), and its emitters see it in the
+global form: `$self` is the stored array and `$prop` is `0`. A read can
 instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right form for either.
 
 **Example**
@@ -141,6 +147,9 @@ A normal class is a **reference class** (§2.10.3): a global, local, member or p
 refers to an instance owned elsewhere, is empty until assigned, and assignment makes it refer to the
 assigned instance. A reference class may not declare a copy operator (§9.1). To make the instances
 values instead — owned by each variable and copied — declare the class `value` (§8.2.7).
+
+A class that other classes list as a parent can write `selfType` (§2.11) in its members to mean the
+class each one is used on: a parameter, return type or field that is the subclass on a subclass.
 
 **Example**
 
@@ -201,13 +210,14 @@ extern class object {
 **Syntax**
 
 ```syntax
-emitter class ⟨name⟩ [ : ⟨parent⟩ ] { ⟨member⟩ … }
+emitter class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 ```
 
 **Description**
 
 An `emitter class` is a type with no instance storage: it exists to give a name to a set of emitters
-and operators. Every method is an emitter; the `emitter` keyword on a member is optional. A member
+and operators. Like any class it may name more than one parent. Every method is an emitter; the
+`emitter` keyword on a member is optional. A member
 variable is a compile-time error, except an **alias member** (§10.3), which has no storage of its own
 and may be `const` or `inline` (the root `_bglObject` declares the object name this way, §11.5.4). An emitter class is used as
 a type — variables may be declared of it — which distinguishes it from an emitter namespace (§7.7),
@@ -274,7 +284,7 @@ emitter. The primitive types are `int`, `uint`, `bool`, `char`, `float`, `string
 enums are primitive by nature.
 
 A value of the base type is a complete instance: given a matching `operator =`, a primitive over `int`
-accepts an `int` (or any int-compatible value such as an enum member) directly.
+accepts an `int` (or a value that widens to one, such as a `char`) directly; an enum member takes a cast (§2.7.3).
 
 A primitive over another type is a *newtype*, not an alias: `glulxImage` and `int` are different types
 that share a representation, and conversion between them is explicit (`operator()` to the base,
@@ -388,6 +398,7 @@ A value class with no copy operator can't be assigned or passed; that is a compi
   ancestor's with a cast: `(Base)self = o;` calls `Base`'s `operator =`.
 - A `ref` variable, parameter or member of a value class refers to an instance owned elsewhere instead:
   it is bound with `:=`, and `=` through it copies into the referent (§3.7).
+- Each slot of an `array<⟨name⟩>` owns an instance too, and a store into a slot copies (§12.10).
 - `value` cannot be combined with `extern`, `emitter`, `alias` or `primitive`, and belongs on the
   original declaration, not on `extend`.
 
@@ -507,8 +518,10 @@ static ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ;
 **Description**
 
 A `static` member is class-level state shared by all instances, read and written as
-`ClassName.member`. Inside a method the class name is required; a bare name resolves to an instance
-member. Beguile's `static` is unrelated to Inform 6's `static` (an immovable object).
+`ClassName.member`. Inside the class's own code (its methods and inline accessors) the bare name
+reaches it too, as in C# and C++; outside the class the class name is required. An inline accessor's
+hidden class can't be named, so its own statics are reached only by the bare name. Beguile's `static`
+is unrelated to Inform 6's `static` (an immovable object).
 
 A class name reaches **only** what belongs to the class: its `static` members, its `static` methods,
 its emitter values and its alias members. Naming a per-instance member through the type
@@ -517,12 +530,16 @@ member exists only on an instance. A subclass name reaches its base classes' sta
 `Sword.Made` names `Item.Made`, one variable, the declaring class's; a subclass's own static of the
 same name shadows it.
 
+A `static` method named without a call is a function value (`func<int, int> f = Calc.twice;`, §2.9),
+and a `static` `func<>` member is called directly (`Policy.step(10)`). A non-static method is not a
+function value; wrap it in a lambda (`(int n) => fx.succ(n)`).
+
 **Example**
 
 ```bgl
 class Counter {
     static int instanceCount = 0;
-    void increment(){ Counter.instanceCount = Counter.instanceCount + 1; }
+    void increment(){ instanceCount = instanceCount + 1; }   // or Counter.instanceCount
 }
 ```
 
@@ -533,20 +550,25 @@ class Counter {
 **Syntax**
 
 ```syntax
-⟨value-class⟩ ⟨name⟩ ;
+⟨value-class⟩ ⟨name⟩ [ = ⟨value-class⟩{ … } ] ;
 ```
 
 **Description**
 
 A class-typed member is an **owned member** when its type is a value class (§8.2.7) with stored
-members and the member is declared without an initializer and without `ref`. An owned member is a
+members and the member is declared without `ref`, and either without an initializer or with an
+inline-object initializer (§11.3). An owned member is a
 live instance of its own — every instance of the enclosing class has an independent backing — rather
 than a bare reference slot, so methods and operators may be called on it. A member of a reference class
 refers to an instance owned elsewhere and is empty until assigned; so is a `ref` member of a value
 class.
 
+An inline-object initializer gives the owned member its starting value
+(`Coins price = Coins{ cents = 3; };`); every instance starts with that value, including a pooled
+instance made with `new`.
+
 Owned members are what make property accessors work (§9.9). In a pooled class each slot has its own
-backing, reset on `new` (§8.2.6). Owned members are not permitted on an identifier-sized pool.
+backing, reset to the starting value on `new` (§8.2.6). Owned members are not permitted on an identifier-sized pool.
 
 **Example**
 
@@ -704,9 +726,13 @@ type: a class that manages its own storage (such as `stringObj`, which holds a p
 to acquire and release it.
 
 - **Local.** `init` fires immediately after the variable is declared, before any initializer
-  assignment. `deinit` fires at the end of the block the variable was declared in, and before any
-  `return` that leaves that block. For a variable declared at the routine's top level these are the
-  same thing: the routine's end and every `return` in it. Releases run in reverse declaration order.
+  assignment. `deinit` fires at the end of the block the variable was declared in, before any
+  `return` that leaves that block, and before a `break` or `continue` that leaves it (for that block
+  and every block between it and the loop). For a variable declared at the routine's top level these are the
+  same thing: the routine's end and every `return` in it. A `throw` releases the variables of the blocks
+  it leaves within its own routine, as far as the `try` there that catches it, or all of the routine's
+  when nothing in the routine catches it; the routines it passes through on its way out to a `catch`
+  further up don't release theirs (§5.16). Releases run in reverse declaration order.
   A local of a reference class refers to an instance it doesn't own, so neither fires, as for a
   parameter; a pooled instance is created and released with `new` and `delete` (§8.2.6).
 - **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
@@ -813,6 +839,9 @@ Beguile accepts any member. `extend class` may not change a type parameter (§8.
 (§8.2.6) or the class's form (`value`, `primitive`, `superposed`). An `inline` member or
 `inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
 member; a `replace` that names no existing member is a warning, and the member is added.
+
+An extension adds members; it never adds parents. The parent list belongs on the class's own
+declaration, so `extend class C : A { … }` is a compile-time error.
 
 **Order.** Source order matters only while a class's definition is being assembled: its declaration
 comes first, then its `extend`s, applied in the order they appear. An `extend` that precedes the

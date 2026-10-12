@@ -559,9 +559,9 @@ int e = west.tenfold;       // → 40
 | Body | Beguile statements, compiled to a routine | I6 template, substituted at each use site |
 | Parameters in the body | Bare name (`myParam`) | `$myParam` |
 | Receiver in the body | `self` | `$self` / `$val` / `$host` |
-| Overloading | Global functions: not supported (one routine per name); class and object methods: by parameter signature (§8.4) | Supported, by parameter types |
+| Overloading | Supported, by parameter types (§6.4) | Supported, by parameter types |
 | Recursion | Supported | Not meaningful — a `$i6Expr` chain that revisits a body is an error (§7.3.4) |
-| In an `extern class` body | Declaration only, no body | Must have a body (or `;` for a pass-through conversion) |
+| In an `extern class` body | `static` only, with a body (§15.4.3) | Must have a body (or `;` for a pass-through conversion) |
 | At global scope | Yes | Yes |
 
 An emitter body is the primary route to I6 capabilities that have no Beguile syntax; for a raw-I6

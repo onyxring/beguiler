@@ -204,7 +204,9 @@ dst[0] = 99;                    // src[0] is still 1
 
 A local array (declared inside a function body, sized or initialized) is allocated per call at
 function entry and freed at function exit, so each call, including a recursive one, has its own
-storage (§18.10). File-scope arrays live in permanent storage and may be returned freely.
+storage (§18.10). A local array declared in a loop body starts each pass empty, as a block-scoped
+local does in C# and C++: its declaration empties it every time it runs. File-scope arrays live in
+permanent storage and may be returned freely.
 
 Because a local array's storage is reclaimed on return, a returned local array is an *ephemeral*
 reference, not an owned value, exactly like an ephemeral string (§22.3): the storage it names has been
@@ -251,6 +253,9 @@ instance of a class has its own copy of a member array, with the declared capaci
 | fits in one property | inline in the object's property, with the length in a trailing slot |
 | too large for one property | separate storage owned by that instance; the property refers to it |
 
+An emitter on a member array stored separately sees it as it sees a global array: `$self` is the
+stored array and `$prop` is `0` (§8.1.1).
+
 Two member kinds always keep the bare I6 layout and are never moved to separate storage: a
 `rawArray<T>` member (§12.8.3), where exceeding the property limit is an error, and a member bound to
 an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
@@ -263,6 +268,9 @@ than storage.
 
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
+
+A whole member array can be the target or the source of an array copy (§12.5): `holder.rows = src;`
+and `d = holder.rows;` copy the elements as for any other array.
 
 A member array is property data, with no address of its own to hand over, so it can't be passed as an
 array argument (a compile-time error). A routine that needs it takes the owning object instead, or the
@@ -315,7 +323,7 @@ receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it
 
 | | `array<T>` | `rawArray<T>` |
 |---|---|---|
-| Layout | count word, then elements | elements only |
+| Layout | a count word, then the elements; with `<array>` included, a length word and a marker word follow the elements, and the count word counts them too | elements only |
 | `size` / `length` | available | unavailable; the length is passed explicitly |
 | Length tracking | yes | none |
 
@@ -328,7 +336,7 @@ type-checked at every subscript and may be cast like any other value.
 <!-- doctest: skip -->
 ```bgl
 bool ext_parsererror(eParserError etype, rawArray<var> results) {   // PutOn, Insert: library actions
-    if (etype == eParserError.nothing && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
+    if (etype == eParserError.nothingToDo && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
         rtrue("You are not holding one.");
     rfalse;
 }
@@ -460,6 +468,26 @@ container has no receiver for. A type that owns storage generally wants both (§
 which copies the incoming value into the buffer the slot owns. That store is `<array>`'s, so an
 element write into an array of an owning type without `#include <array>` is a compile-time error. Passing an already-allocated value
 allocates a second time; the original is not released.
+
+**Arrays of a value class.** Each slot of an array of a value class (§8.2.7) owns an instance, as a
+variable of the class does. The compiler supplies the store and the release: a slot takes its
+instance from the class's pool the first time it is stored into or one of its members is reached
+(`a[0].n = 7` on a slot never stored into), starting from the class's defaults; a store copies the
+value in through the class's copy operator, `operator = (T o)`.
+`remove`, `removeValue`, `-=`, `clear` and a local array's scope exit return instances to the pool.
+The pool holds one instance per slot of every array of the class, so every slot can be filled at
+once; a local array's slots count once, so a recursive routine whose calls all hold filled slots
+can run out, which is a run-time error. An element store into such an array is a compile-time error
+when the class has no copy operator.
+
+- A local array of a value class needs a capacity (`[n]`) or a list initializer; one sized from
+  another array at run time is a compile-time error.
+- The initial elements of a file-scope or object member array are the slots' instances, as static
+  data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
+  instance is shared with the array.
+- A member array of a value class declared in a class can't have initial elements, since every
+  instance of the class would share them; that is a compile-time error.
+- `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance without returning it to the pool.
 
 **Example**
 

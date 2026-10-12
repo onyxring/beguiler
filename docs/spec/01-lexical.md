@@ -21,7 +21,7 @@
 
 ## 1.1 Source Text and Encoding
 
-A source file is plain text encoded as UTF-8 or Latin-1. Outside comments, string literals, character
+A source file is plain text encoded as UTF-8 or Latin-1; a UTF-8 byte-order mark at its start is ignored. Outside comments, string literals, character
 literals and dictionary words, source text is ASCII. Inside those, characters beyond ASCII may be typed
 directly, provided each is one Beguile can represent on the target (Appendix D); any other character is
 a compile-time error.
@@ -258,7 +258,8 @@ in everyday text are:
 
 Beguile preserves Inform 6's conventions for extended characters in strings: an unescaped `^` is a
 newline and an unescaped `~` is a double quote, exactly as in I6, and both must be escaped to print
-literally. Numeric escapes, diacritical shorthands, directly typed Unicode characters and the folding
+literally. Every other character prints as itself, `@` included (accented letters are written with the
+`\` escapes of Appendix D, not I6's `@` codes). Numeric escapes, diacritical shorthands, directly typed Unicode characters and the folding
 of typographic quotes are specified in Appendix D.
 
 A string literal has the pseudo-type `stringLiteral` (§2.4).
@@ -304,15 +305,22 @@ $"⟨characters⟩ { ⟨expression⟩ } ⟨characters⟩ …"
 **Description**
 
 An interpolated string literal is prefixed with `$` and may contain Beguile expressions inside `{ }`
-spans. Escapes are those of a string literal, plus `\{` for a literal `{`. A `{ }` pair nested inside
-an expression span is a compile-time error.
+spans. Escapes are those of a string literal, plus `\{` for a literal `{`.
+
+A span holds any expression, including one with braces of its own, such as a lambda with a block body.
+A string literal inside a span is written with plain quotes; escapes belong to the characters of a
+string, so `\"` inside a span is a compile-time error.
 
 An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
 only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
 compile-time error. `print()` and `log()` accept it in the core runtime (§21.4). The emitter expands
 it to a sequence of statements, so the call must be a statement of its own; a call inside an
 expression is a compile-time error. An expression-bodied lambda whose body is such a call,
-`=> print($"…")`, is that statement (§4.14).
+`=> print($"…")`, is that statement (§4.14). A `stringObj` also takes one by assignment and by `+=`,
+capturing its output (§22.3).
+
+The parts print left to right as they are reached, so a call in a span that prints output of its own
+prints it at that point: in `print($"ran {f()}.")`, "ran " appears before anything `f` prints.
 
 **Example**
 
@@ -321,6 +329,7 @@ object lamp { string title = "brass lamp"; int weight = 2; }
 
 print($"The {lamp.title} weighs {lamp.weight} stone.");   // → The brass lamp weighs 2 stone.
 print($"Press \{enter} to continue.");                    // → Press {enter} to continue.
+print($"Lit: {lamp.weight > 1 ? "yes" : "no"}.");         // → Lit: yes.
 ```
 
 ### 1.6.6 Character Literals
@@ -396,7 +405,8 @@ The single-character operators are:
 ```
 
 `::` immediately followed by an identifier forms one token with it, the global-scope qualifier
-`::name` (§3.9). No other construct uses `::`.
+`::name` (§3.9). The only other construct that uses `::` is the operator reference
+`⟨type⟩::operator ⟨op⟩` (§4.15).
 
 Where a subscript operator is declared on a class or object, or referred to by name, `[]` and `[]=`
 are single tokens naming it (§9.3, §4.15). Everywhere else — an array declaration, a subscript

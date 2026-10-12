@@ -302,7 +302,7 @@ grammar extraLines {
 
 **Description**
 
-`bglClass` is the parameter type of `is()` on `_bglObject` (§21.5.8), the runtime class test (true when `obj` is an instance of the class or of any subclass). It is a primitive class: a class name's value is the number I6 assigns the class, held directly like an enum value, with nothing behind it to allocate or refer to. Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
+`bglClass` is the parameter type of `is()` on `_bglObject` (§21.5.8), the runtime class test (true when `obj` is an instance of the class or of any subclass). It is a primitive class: a class name's value is the number I6 assigns the class, held directly like an enum value, with nothing behind it to allocate or refer to. Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. Two class values compare with `==` and `!=`, and a class name may stand on the right (`k == Box`). In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
 
 **Example**
 
@@ -590,10 +590,12 @@ The `[ ⟨n⟩ ]` brackets are literal: the pool size of §8.2.6.
 
 | Method | Returns | Description |
 |---|---|---|
-| `instance.copy(other)` | `void` | Copies every property of `other` into `instance`. Both must be live pool instances of the same or a compatible pooled class. |
+| `instance.copy(other)` | `void` | Copies every property of `other` into `instance`. `other` is `selfType` (§2.11): `instance`'s own class or a subclass of it. |
 | `instance.remaining()` | `int` | The number of free slots remaining in the class's pool. |
 
-Copying is explicit; assigning one pooled instance to another does not copy.
+Copying is explicit; assigning one pooled instance to another does not copy. Because `copy` takes
+`selfType`, copying a subclass instance into a base-class instance is allowed, and copying a
+base-class instance into a subclass instance, or between unrelated classes, is a compile-time error.
 
 **Example**
 
@@ -968,7 +970,7 @@ name in camel case without the `glk_` prefix (`windowOpen` is `glk_window_open`)
 | `loadw` / `loadb` | `int ⟨op⟩(int arr, int idx)` | S | `@loadw`, `@loadb` |
 | `storew` / `storeb` | `void ⟨op⟩(int arr, int idx, int v)` | E | `@storew`, `@storeb` |
 | `push` | `void push(int v)` | E | `@push` |
-| `pull` | `int pull()` | S | `@pull` |
+| `pull` | `void pull(var into)` | E | `@pull` into a variable; a routine has its own stack, so `pull` is a statement, not a value |
 | `getParent` / `getChild` / `getSibling` | `int ⟨op⟩(int obj)` | S | `@get_parent`, `@get_child`, `@get_sibling` |
 | `insertObj` | `void insertObj(int obj, int dst)` | E | `@insert_obj` |
 | `removeObj` | `void removeObj(int obj)` | E | `@remove_obj` |

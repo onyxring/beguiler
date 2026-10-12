@@ -336,6 +336,10 @@ setter) declared on a value class (§8.2.7), and that class is then used as an o
 (§8.3.4) of the host class or object. A read of the member dispatches the getter; a write dispatches
 the setter, never the getter.
 
+An operator the accessor class declares applies to the member itself, ahead of the getter (§4.4): with
+`int operator + (int n)` on the class, `gauge.level + 2` calls that `operator +`. An operator the class
+doesn't declare works on the value the getter reads.
+
 Accessors work on single objects, on every instance of a class, and on pooled instances obtained with
 `new`. An accessor is declared either as a named class that then types the member (§9.9.1) or in place
 with `auto { … }` (§9.9.2); only the in-place form, declared directly on an object, may reach its host
