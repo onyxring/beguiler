@@ -127,7 +127,7 @@ extend extern class array {
     // distinct / orderBy. distinct keeps first occurrence (O(N²) scan, fine at IF scale).
     // orderBy reuses sort() on the scratch copy — two overloads matching sort's surface.
     /// The elements with later duplicates dropped, first occurrence kept.
-    emitter array<T> distinct()                          { _bglArray.distinct($self, $prop) }
+    emitter array<T> distinct()                          { _bglArray.distinct($self, $prop, $opref(==)) }
     /// Sorted ascending by the element type's `<=>`, into a new buffer. Unlike `sort()`, the source is left alone.
     emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, $oprefReq(<=>)) }
     /// Sorted by your own comparison, which returns <0, 0 or >0.
@@ -315,7 +315,7 @@ extend _bglArray {
     // scratch first, then reuses the existing in-place sort() on that copy so
     // the source array is left untouched.
 
-    array<var> distinct(var obj, var prop){
+    array<var> distinct(var obj, var prop, var op = 0){
         array<var> dst = _bglLinqEnter(obj);
         int cap = #beguilerSettings.linqScratchSize;
         int srcLen = length(obj, prop);
@@ -324,7 +324,11 @@ extend _bglArray {
             var elem = get(obj, prop, i);
             bool seen = false;
             for(int j = 0; j < outLen; j++){
-                if(dst[j] == elem){ seen = true; break; }
+                var kept = dst[j];
+                if(kept == elem){ seen = true; break; }
+                #i6 {
+                    if(op ~= 0 && kept ~= 0 && elem ~= 0 && op(kept, elem)){ seen = true; break; }
+                }
             }
             if(!seen){
                 if(outLen >= cap){

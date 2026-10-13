@@ -1,0 +1,8 @@
+/* test a field and a method whose names differ only in case in one class */
+// EXPECT_ERROR: has the name of method 'peer'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Panel : object {
+    int peer;
+    int Peer() { return 1; }
+}
+void main() { }

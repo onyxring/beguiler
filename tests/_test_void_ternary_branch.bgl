@@ -1,0 +1,6 @@
+/* test a void call as a ?: branch */
+// EXPECT_ERROR: A ?: branch must have a value
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+emitter void shout(int o) { print $o; }
+void main() { bool b = true; print($"{b ? shout(1) : "x"}"); }

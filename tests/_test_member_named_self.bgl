@@ -1,0 +1,7 @@
+/* test a member named self */
+// EXPECT_ERROR: 'self' is a value word and cannot be declared as a name
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Panel : object {
+    Panel Self() { return self; }
+}
+void main() { }

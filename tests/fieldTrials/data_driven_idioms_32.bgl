@@ -1,0 +1,603 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a label catalog kept as string tables. Parallel arrays of string (one entry null) read
+// through ?? , ?. and postfix ? ; an array<stringObj> of built labels written by interpolated
+// assignment and += on subscripts; functions taking string, stringObj, ref stringObj and char
+// parameters (with defaults and named arguments), string | stringObj parameters told apart by typeof
+// and narrowed by casts, functions returning string or stringObj from ?: , ?? ,
+// array elements, concatenations, method chains and recursion; append / prepend / + / += with chars,
+// literals, strings and stringObjs on both sides; insert / delete / mid / left / right / replace /
+// replaceAll / format / trim / reverse / toUpper / toLower; comparisons and ordering mixing string and
+// stringObj, =~ , <=> , compareTo and switch on a method result; interpolation in print, printLine,
+// stringObj declarations, = and += on locals, members, elements and ref parameters, with spans holding
+// calls returning stringObj, ?: , ?? , ?. , chars, subscripts and lambdas; an object with stringObj and
+// string members, a stringObj member array and methods returning stringObj; a class with a stringObj
+// member per instance; nested capture / release and captureOutput; a table of lambdas taking and returning text; <linq> filter / count / any /
+// orderBy / first / map over string arrays; pool pressure from stringObj locals and temporaries in long
+// loops and recursion, checked by running them many times over.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+// reverseWords() holds two strings per word while it recurses, on top of the labels, the catalog's
+// strings and the tag notes.
+#i6 { Constant bglStringPoolReserve 48; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants -------------------------------------------------------------------
+
+const int ITEM_COUNT = 6;
+const int LOG_MAX = 3;
+const int NONE = -1;
+const int COL = 12;
+
+//-- Tables ----------------------------------------------------------------------
+
+//                    code      title          shelf     count
+array<string> codes  = { "amber", "birch",      "cedar",  "delta",  "ember",     "flint" };
+array<string> titles = { "brass key", "iron box", "tin cup", null,   "oak rod",   "glass jar" };
+array<string> shelves = { "north", "south",     "north",  "east",   "south",     "west" };
+array<int>    counts = { 3,         0,           12,       1,        7,           25 };
+
+array<dictionaryWord> codeWords = { .amber, .birch, .cedar, .delta, .ember, .flint };
+
+array<string> digitWords = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
+
+// Built at startup from the tables above.
+array<stringObj> labels[ITEM_COUNT];
+
+// Text transforms, picked by number.
+array<func<stringObj, string>> transforms = {
+    (string s) => s.toUpper(),
+    (string s) => s.reverse(),
+    (string s) => "<" + s + ">",
+    (string s) => s.replaceAll("a", "4"),
+    (string s) => s.left(3).append('.')
+};
+array<string> transformNames = { "upper", "reverse", "angle", "swap a", "short" };
+
+//-- Objects ---------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object catalog {
+    "catalog";
+    string owner = "clerk";
+    string motto = null;
+    stringObj heading;
+    stringObj lastLine;
+    array<stringObj> history[LOG_MAX];
+    int lookups = 0;
+
+    stringObj titleOf(int i) {
+        return titles[i] ?? "untitled";
+    }
+
+    stringObj line(int i) {
+        stringObj r = padRight(codes[i], 7);
+        r += titleOf(i);
+        r = padRight(r, 18);
+        r += $"{counts[i]} on {shelves[i]}";
+        return r;
+    }
+
+    void remember(stringObj s) {
+        if (history.length == LOG_MAX) history.remove(0);
+        history += s;
+        lastLine = s;
+        lookups++;
+    }
+
+    stringObj tagged(string s = "item", int n = 1, char sep = '#') {
+        stringObj r = $"{s}{sep}{n}";
+        return r;
+    }
+
+    string mottoOr(string fallback) {
+        return motto ?? fallback;
+    }
+}
+
+class Tag : object {
+    string code;
+    stringObj note;
+
+    stringObj summary() {
+        stringObj r = $"[{code}] ";
+        r += note.isEmpty() ? "(blank)" : note;
+        return r;
+    }
+}
+
+object tagBox { "tag box"; }
+
+Tag tagRed { "red tag"; code = "red"; parent = tagBox; }
+Tag tagBlue { "blue tag"; code = "blue"; parent = tagBox; }
+Tag tagGray { "gray tag"; code = "gray"; parent = tagBox; }
+
+//-- Parsing ---------------------------------------------------------------------
+
+int parseCode() {
+    int at = codeWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers ---------------------------------------------------------------------
+
+stringObj padRight(stringObj s, int w, char fill = ' ') {
+    while (s.length < w) s += fill;
+    return s;
+}
+
+stringObj repeatChar(char c, int n) {
+    stringObj r = "";
+    for (int i in 1 to n) r += c;
+    return r;
+}
+
+string titleOrNone(int i) {
+    return i < 0 || i >= ITEM_COUNT ? "none" : titles[i] ?? "untitled";
+}
+
+string shelfOf(int i) {
+    if (i == NONE) return null;
+    return shelves[i];
+}
+
+// Number words, built from the right: 305 → three-zero-five.
+stringObj spell(int n) {
+    if (n < 10) return digitWords[n];
+    return spell(n / 10) + "-" + digitWords[n % 10];
+}
+
+// Reverses the order of the words.
+stringObj reverseWords(stringObj s) {
+    int sp = s.indexOf(" ");
+    if (sp < 0) return s;
+    return reverseWords(s.mid(sp + 1, s.length)) + " " + s.left(sp);
+}
+
+// Wraps s in depth pairs of brackets, alternating ( and [.
+void nest(ref stringObj s, int depth) {
+    if (depth == 0) return;
+    if (depth % 2 == 0) {
+        s = s.prepend('(');
+        s += ')';
+    } else {
+        s = s.prepend("[");
+        s = s.append("]");
+    }
+    nest(s, depth - 1);
+}
+
+// Keeps every other character, recursing on the remainder.
+stringObj everyOther(stringObj s) {
+    if (s.length <= 1) return s;
+    stringObj rest = s.mid(2, s.length);
+    return everyOther(rest).prepend(s[0]);
+}
+
+// Takes either kind of text, told apart at run time.
+stringObj framed(string | stringObj s, char l = '[', char r = ']') {
+    stringObj out = "";
+    if (typeof(s) == eType.object) out = (stringObj)s;
+    else out = (string)s;
+    return out.prepend(l).append(r);
+}
+
+int textLength(string | stringObj s) {
+    if (typeof(s) == eType.object) return ((stringObj)s).length;
+    return ((string)s).length;
+}
+
+void addField(ref stringObj row, string name, int v, string sep = ", ") {
+    if (!row.isEmpty()) row += sep;
+    row += $"{name}={v}";
+}
+
+int findTitle(stringObj want) {
+    for (int i in 0 to ITEM_COUNT - 1)
+        if (titles[i]? && titles[i] =~ want) return i;
+    return NONE;
+}
+
+stringObj initials(stringObj s) {
+    stringObj r = "";
+    bool take = true;
+    for (int i in 0 to s.length - 1) {
+        if (take) r += s[i];
+        take = s[i] == ' ';
+    }
+    return r.toUpper();
+}
+
+string sizeWord(int n) {
+    switch (n) {
+        case 0: return "none";
+        case 1 to 4: return "few";
+        case 5 to 12: return "some";
+    }
+    return "many";
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb ListTest {
+    grammar = {.list};
+    void handler() {
+        for (int i in 0 to ITEM_COUNT - 1) {
+            stringObj row = catalog.line(i);
+            row.print();
+            print("^");
+        }
+        printLine($"Heading: {catalog.heading}");
+    }
+}
+
+verb LabelsTest {
+    grammar = {.labels};
+    void handler() {
+        for (stringObj l in labels) printLine(l);
+        int longest = 0;
+        for (int i in 1 to labels.length - 1)
+            if (labels[i].length > labels[longest].length) longest = i;
+        ref stringObj top := labels[longest];
+        print($"Longest: {top} ({top.length}); out of stock: {labels.filter((stringObj l) => l.endsWith("(out)")).count()}.^");
+        stringObj firstK = labels.filter((stringObj l) => l.contains("k")).first();
+        printLine(firstK.isEmpty() ? "No k." : firstK.right(firstK.length - firstK.indexOf(":") - 1));
+    }
+}
+
+verb ShowTest {
+    grammar = {.show, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj t = catalog.titleOf(i);
+        string raw = titles[i];
+        print($"{codes[i]}: {t}; raw {raw ?? "(null)"}; ");
+        print($"length {(raw ?? "").length}, upper {t.toUpper()}, initials {initials(t)}.^");
+        stringObj tag = $"{codes[i].left(2).toUpper()}-{spell(counts[i])}";
+        printLine($"Tag {tag}; {sizeWord(counts[i])}; shelf {shelfOf(i) ?? "?"}.");
+        catalog.remember(tag);
+    }
+}
+
+verb SpellTest {
+    grammar = {.spell, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        stringObj s = spell(n);
+        print($"{n}: {s} ({s.length}).^");
+        stringObj both = spell(n) + " / " + spell(n + 1);
+        both.print();
+        print("^");
+    }
+}
+
+verb NestTest {
+    grammar = {.nest, NUMBER};
+    void handler() {
+        stringObj s = "x";
+        nest(s, (int)noun);
+        print($"{s} {s.length}^");
+        stringObj e = everyOther(s);
+        print($"Every other: {e}^");
+    }
+}
+
+verb FlipTest {
+    grammar = {.flip, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj words = $"{titleOrNone(i)} on the {shelves[i]} shelf";
+        printLine(reverseWords(words));
+        stringObj r = words.reverse();
+        print($"{r}^");
+        if (r.reverse() == words) print("Round trip.^");
+    }
+}
+
+verb TransformTest {
+    grammar = {.transform, NUMBER, parseCode};
+    void handler() {
+        int t = (int)noun;
+        int i = (int)second;
+        if (t < 1 || t > transforms.length) {
+            print("No such transform.^");
+            return;
+        }
+        func<stringObj, string> f = transforms[t - 1];
+        string src = titles[i] ?? codes[i];
+        stringObj out = f(src);
+        print($"{transformNames[t - 1]}: {out}^");
+        print($"Again: {f(codes[i])}^");
+    }
+}
+
+verb PadTest {
+    grammar = {.pad};
+    void handler() {
+        stringObj a = padRight("ab", 5, '.');
+        stringObj b = padRight(fill: '-', w: 6, s: codes[2]);
+        stringObj c = padRight(a + "|", COL);
+        print($"[{a}][{b}][{c}]^");
+        stringObj bar = repeatChar('=', 4) + "|" + repeatChar('*', counts[0]);
+        printLine(bar);
+        stringObj rule = "";
+        for (int i in 0 to ITEM_COUNT - 1) rule += i % 2 == 0 ? '+' : '-';
+        rule = rule.prepend('<').append('>');
+        print($"{rule}^");
+    }
+}
+
+verb FieldsTest {
+    grammar = {.fields, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj row = "";
+        addField(row, "count", counts[i]);
+        addField(row, "index", i);
+        addField(row, "len", codes[i].length, sep: "; ");
+        addField(row, titles[i] ?? "nameless", catalog.lookups);
+        row = row.prepend("{ ").append(" }");
+        row.print();
+        print("^");
+    }
+}
+
+verb EditTest {
+    grammar = {.edit, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj s = titleOrNone(i);
+        stringObj a = s.insert(0, "old ");
+        stringObj b = a.delete(0, 4);
+        stringObj c = s.replace(" ", "_");
+        stringObj d = "  " + s + "  ";
+        print($"[{a}] [{b}] [{c}] [{d.trim()}] [{d.trimLeft()}] [{d.trimRight()}]^");
+        stringObj f = codes[i].format("$0 is $1 ($2)", s, shelves[i]);
+        printLine(f);
+        print($"{s.left(2)}..{s.right(2)}, mid {s.mid(1, 3)}, past end [{s.mid(20, 3)}][{s.left(-1)}]^");
+        s[0] = '*';
+        s += s.length > 6 ? "!" : "?";
+        print($"{s}^");
+    }
+}
+
+verb CompareTest {
+    grammar = {.compare, parseCode, parseCode};
+    void handler() {
+        int i = (int)noun;
+        int j = (int)second;
+        string a = codes[i];
+        stringObj b = codes[j];
+        stringObj up = b.toUpper();
+        stringObj rel = a < b ? "before" : a > b ? "after" : "same as";
+        print($"{a} {rel} {b}; <=> {(a <=> b) < 0 ? -1 : (a <=> b) > 0 ? 1 : 0}, compareTo {a.compareTo(b)}.^");
+        if (up =~ a) print("Same ignoring case.^");
+        if (up != b) print("Upper differs.^");
+        if (b >= a && b <= "zzz") print("In range.^");
+        switch (up.toLower()) {
+            case "amber": print("First code.^");
+            case "flint": print("Last code.^");
+            default: print($"Code {b.indexOf("e")}.^");
+        }
+    }
+}
+
+verb SortTest {
+    grammar = {.sort};
+    void handler() {
+        array<string> byTitle[ITEM_COUNT] = codes.orderBy((string x, string y) => (titles[codes.indexOf(y)] ?? "") < (titles[codes.indexOf(x)] ?? "") ? 1 : -1);
+        stringObj line = "By title:";
+        for (string c in byTitle) line += $" {c}";
+        printLine(line);
+        array<string> sorted[ITEM_COUNT] = titles.filter((string t) => t?).orderBy((string x, string y) => x.compareTo(y));
+        line = "Titles:";
+        for (string t in sorted) line += " " + initials(t);
+        printLine(line);
+        print($"With o: {titles.filter((string t) => t? && t.contains("o")).count()}; ");
+        print($"any on west: {shelves.any((string s) => s == "west") ? "yes" : "no"}; ");
+        string first = titles.filter((string t) => t? && t.endsWith("x")).first();
+        print($"first ending x: {first ?? "none"}.^");
+        int total = 0;
+        for (var n in codes.map((string c) => c.length)) total += n;
+        print($"Code letters: {total}.^");
+    }
+}
+
+verb FindTest {
+    grammar = {.find, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj want = (titles[i] ?? "nothing").toUpper();
+        int at = findTitle(want);
+        if (at == NONE) print($"No title like {want}.^");
+        else print($"{want} is item {at}, code {codes[at]}.^");
+    }
+}
+
+verb TagTest {
+    grammar = {.tag, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        int k = 0;
+        for (object o in tagBox.children) {
+            Tag t = (Tag)o;
+            if (k == n) {
+                t.note += t.note.isEmpty() ? "" : "+";
+                t.note += $"{spell(n)}";
+            }
+            k++;
+            printLine(t.summary());
+        }
+    }
+}
+
+verb MottoTest {
+    grammar = {.motto};
+    void handler() {
+        print($"Motto: {catalog.mottoOr("none set")}; owner {catalog.owner.toUpper()}.^");
+        catalog.motto = catalog.motto ?? "keep count";
+        string m = catalog.mottoOr("unused");
+        print($"Now: {m}; {(catalog.motto ?? "").length} letters.^");
+        catalog.heading = $"{catalog.owner}'s list ({m})";
+        catalog.heading += $", {catalog.lookups} lookups";
+        printLine(catalog.heading);
+    }
+}
+
+verb HistoryTest {
+    grammar = {.history};
+    void handler() {
+        if (catalog.history.length == 0) {
+            print("No history.^");
+            return;
+        }
+        stringObj all = "";
+        for (stringObj h in catalog.history) all += all.isEmpty() ? h : " | " + h;
+        printLine(all);
+        print($"Last: {catalog.lastLine}; first starts AM: {catalog.history[0].startsWith("AM") ? "yes" : "no"}.^");
+    }
+}
+
+verb StressTest {
+    grammar = {.stress, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        int total = 0;
+        for (int pass in 1 to n) {
+            for (int i in 0 to ITEM_COUNT - 1) {
+                stringObj row = catalog.line(i);
+                stringObj sp = spell(counts[i]);
+                stringObj rw = reverseWords(row);
+                total += row.length + sp.length + rw.length;
+                total += (transforms[pass % transforms.length](codes[i])).length;
+                total += (titleOrNone(i) + sp).length;
+            }
+        }
+        print($"Passes {n}, total {total}.^");
+        int hits = 0;
+        int k = 0;
+        while (k < n * ITEM_COUNT) {
+            int i = k % ITEM_COUNT;
+            stringObj t = titles[i]?.toUpper() ?? codes[i].toUpper();
+            if (t.toLower() == catalog.titleOf(i)) hits++;
+            if (padRight(catalog.titleOf(i), 10).endsWith(" ")) hits++;
+            switch (shelfOf(i).toUpper()) {
+                case "NORTH": hits += 2;
+                case "WEST": hits += 3;
+            }
+            stringObj tail = (counts[i] > 5 ? spell(counts[i]) : t.left(2)) + everyOther(codes[i]);
+            stringObj note = $"{k}:{tail}{titles[i] ?? "-"}";
+            if (note.length > 12) hits++;
+            k++;
+        }
+        stringObj letters = "a b c d e f g h i j k l m";
+        print($"Hits {hits}; letters reversed: {reverseWords(letters)}.^");
+    }
+}
+
+verb RelabelTest {
+    grammar = {.relabel, parseCode};
+    void handler() {
+        int i = (int)noun;
+        labels[i] = $"{codes[i]}#{counts[i]}";
+        labels[i] += $"/{shelfOf(i)}";
+        labels[i] += '!';
+        printLine(labels[i]);
+    }
+}
+
+verb ChainTest {
+    grammar = {.chain, parseCode};
+    void handler() {
+        int i = (int)noun;
+        string t = titles[i];
+        stringObj up = t?.toUpper() ?? "(none)";
+        print($"{up}; {titles[i]?.left(3) ?? codes[i]}; {shelfOf(i)?.append('!') ?? "?"}; {shelfOf(NONE)?.toUpper() ?? "no shelf"}.^");
+        stringObj last = catalog?.titleOf(i) + "/" + catalog?.line(i).left(5);
+        printLine(last);
+        func<int, string> vowels = (string x) => x.length - x.replaceAll("a", "").replaceAll("e", "").replaceAll("i", "").replaceAll("o", "").length;
+        print($"Vowels in {codes[i]}: {vowels(codes[i])}; in title: {t? ? vowels(t) : 0}.^");
+        func<void, string> say = (string x) => print($"<{x}>");
+        say(codes[i]);
+        say(t ?? "-");
+        print("^");
+        print($"Tagged {catalog.tagged()} {catalog.tagged(codes[i])} {catalog.tagged(n: counts[i])} {catalog.tagged(sep: ':', s: shelves[i])}.^");
+    }
+}
+
+verb CaptureTest {
+    grammar = {.capture, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj got = "";
+        got.capture();
+        print(titleOrNone(i));
+        print(" x");
+        print(counts[i]);
+        got.release();
+        stringObj room = "";
+        room.captureOutput(roomA, description);
+        print($"Captured [{got}] ({got.length}), room [{room}].^");
+        stringObj outer = "";
+        outer.capture();
+        print("a");
+        stringObj inner = "";
+        inner.capture();
+        print(spell(counts[i]));
+        inner.release();
+        print($"b{inner.length}");
+        outer.release();
+        print($"Outer [{outer}], inner [{inner}].^");
+    }
+}
+
+verb FrameTest {
+    grammar = {.frame, parseCode};
+    void handler() {
+        int i = (int)noun;
+        stringObj row = framed(labels[i]);
+        row += framed(titles[i] ?? codes[i], '<', '>');
+        row += framed(catalog.heading, r: ')');
+        row += framed(spell(counts[i]).toUpper(), l: '{', r: '}');
+        print($"{row} {textLength(labels[i])}/{textLength(codes[i])}/{textLength(row)}/{textLength(framed("x"))}^");
+    }
+}
+
+void buildLabels() {
+    labels.length = ITEM_COUNT;
+    for (int i in 0 to ITEM_COUNT - 1) {
+        labels[i] = $"{codes[i].toUpper()}:{titleOrNone(i)}";
+        if (counts[i] == 0) labels[i] += " (out)";
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    catalog.heading = "Catalog";
+    buildLabels();
+    rfalse;
+}
+
+#includeI6 "grammar"

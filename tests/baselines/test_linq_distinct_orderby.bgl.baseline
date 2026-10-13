@@ -80,17 +80,17 @@ array g_alldup table 7 7 7 7 4 $9084;
 array g_empty table 10;
 [main;
     bglinit();
-    print _bglArray.length(_bglArray.distinct(g_dupes, 0), 0);
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 0, 0)-->0 ;
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 1, 0)-->0 ;
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 2, 0)-->0 ;
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 3, 0)-->0 ;
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 4, 0)-->0 ;
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 5, 0)-->0 ;
-    print  _bglAt((_bglArray.distinct(g_dupes, 0)), 6, 0)-->0 ;
-    print _bglArray.length(_bglArray.distinct(g_alldup, 0), 0);
-    print  _bglAt((_bglArray.distinct(g_alldup, 0)), 0, 0)-->0 ;
-    print _bglArray.length(_bglArray.distinct(g_empty, 0), 0);
+    print _bglArray.length(_bglArray.distinct(g_dupes, 0, 0), 0);
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 1, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 2, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 3, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 4, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 5, 0)-->0 ;
+    print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 6, 0)-->0 ;
+    print _bglArray.length(_bglArray.distinct(g_alldup, 0, 0), 0);
+    print  _bglAt((_bglArray.distinct(g_alldup, 0, 0)), 0, 0)-->0 ;
+    print _bglArray.length(_bglArray.distinct(g_empty, 0, 0), 0);
     print _bglArray.length(_bglArray.orderBy(g_unsorted, 0, 0), 0);
     print  _bglAt((_bglArray.orderBy(g_unsorted, 0, 0)), 0, 0)-->0 ;
     print  _bglAt((_bglArray.orderBy(g_unsorted, 0, 0)), 4, 0)-->0 ;
@@ -100,9 +100,9 @@ array g_empty table 10;
     print  _bglAt((_bglArray.orderBy(g_unsorted, 0, _bglLambda_0)), 0, 0)-->0 ;
     print  _bglAt(g_unsorted, 0, 0)-->0 ;
     print _bglArray.length(_bglArray.orderBy(g_empty, 0, 0), 0);
-    print _bglArray.length(_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_1), 0), 0, 0), 0);
-    print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_2), 0), 0, 0)), 0, 0)-->0 ;
-    print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_3), 0), 0, 0)), 4, 0)-->0 ;
+    print _bglArray.length(_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_1), 0, 0), 0, 0), 0);
+    print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_2), 0, 0), 0, 0)), 0, 0)-->0 ;
+    print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_3), 0, 0), 0, 0)), 4, 0)-->0 ;
 ];
 [_bglLambda_0 a b;
     if (a > b) {
@@ -223,7 +223,7 @@ object _bglArray
     }
     return self.get(obj,prop,0);
   ],
-       distinct [obj prop dst cap srcLen outLen i elem seen j;
+       distinct [obj prop op dst cap srcLen outLen i elem seen j kept;
     dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
@@ -232,10 +232,14 @@ object _bglArray
         elem = self.get(obj,prop,i);
         seen=false;
         for (j = 0 : j < outlen : j++) {
-            if ( _bglAt(dst, j, 0)-->0 ==elem) {
+            kept =  _bglAt(dst, j, 0)-->0 ;
+            if (kept==elem) {
                 seen=true;
                 break;
             }
+            
+                    if(op ~= 0 && kept ~= 0 && elem ~= 0 && op(kept, elem)){ seen = true; break; }
+                
         }
         if (~~seen) {
             if (outlen >= cap) {

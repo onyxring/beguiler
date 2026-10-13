@@ -369,7 +369,7 @@ void Main() {
 
 **Notes**
 
-Requires `bglInit()`, which prepares the scratch buffers. `orderBy()` with no comparator orders by signed word value even when `T` publishes an ordering operator; pass `compare` for content-ordered element types such as `string`.
+Requires `bglInit()`, which prepares the scratch buffers. `orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order. `distinct()` matches elements through `T`'s `operator ==` when it has one.
 
 **See also** §4.14, §12.6, §17.4, §22.4.
 

@@ -1,0 +1,302 @@
+#grids
+Room A
+Room A. A rack of three gauges is on the wall.
+You can see a rack (in which are a gauge A, a gauge B and a gauge C) here.
+[win 1] 1. rack ready, 3 gauges
+[grid 1]
+|A .........                                       |
+|B .........                                       |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 0 moves                 |
+[grid 2]
+|Room A | sel - | total 0..0                       |
+> gauges
+A: 0 [.........] 0% peak 0 (0 kept)
+B: 0 [.........] 0% peak 0 (0 kept)
+C: 0 [.........] 0% peak 0 (0 kept)
+Highest first: ABC; A ties.
+0 full, 0 above half; rising: no.
+A and C match.
+[grid 1]
+|A .........                                       |
+|B .........                                       |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 0 moves                 |
+[grid 2]
+|Room A | sel - | total 0..0                       |
+> tune gauge a to 5
+The gauge A reads 5.
+[win 1] 2. A 0 -> 5
+[grid 1]
+|A #####....                                       |
+|B .........                                       |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 1 move                  |
+[grid 2]
+|Room A | sel A | total 5..5                       |
+> tune gauge b to 12
+The gauge B reads 9.
+[win 1] 3. B 0 -> 9
+[grid 1]
+|A #####....                                       |
+|B ========= FULL                                  |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 2 moves                 |
+[grid 2]
+|Room A | sel B | total 5..9                       |
+> nudge gauge a
+The gauge A reads 6.
+[win 1] 4. A 5 -> 6
+[grid 1]
+|A ######...                                       |
+|B ========= FULL                                  |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 3 moves                 |
+[grid 2]
+|Room A | sel A | total 5..9                       |
+> nudge rack
+That is not a gauge.
+[grid 1]
+|A ######...                                       |
+|B ========= FULL                                  |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 3 moves                 |
+[grid 2]
+|Room A | sel A | total 5..9                       |
+> ease gauge b
+The gauge B reads 7.
+[win 1] 5. B 9 -> 7
+[grid 1]
+|A ######...                                       |
+|B =======..                                       |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 4 moves                 |
+[grid 2]
+|Room A | sel A | total 5..9                       |
+> boost
+The gauge A reads 7.
+The gauge B reads 9.
+The gauge C reads 3.
+[win 1] 6. A 6 -> 7
+[win 1] 7. B 7 -> 9
+[win 1] 8. C 0 -> 3
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> mode
+Showing numbers.
+[grid 1]
+|A 7/9 peak 7                                      |
+|B 9/9 peak 9                                      |
+|C 3/9 peak 3                                      |
+|numbers | rows 4 | 3 gauges, 7 moves              |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> mode
+Showing history.
+[grid 1]
+|A 5,6,7                                           |
+|B 9,7,9                                           |
+|C 3                                               |
+|history | rows 4 | 3 gauges, 7 moves              |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> mode
+Showing bars.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> rows 9
+Rows 5 (asked 9, grid 5), the most.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 5 | 3 gauges, 7 moves                 |
+|                                                  |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> rows 1
+Rows 2 (asked 1, grid 2).
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> grow
+Rows now 3.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> rows 4
+Rows 4 (asked 4, grid 4).
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> cols 90
+Log width 48.
+[win 1] 9. log 48 wide
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> cols 25
+Log width 23 (narrower).
+[win 1] 10. log 23 wide
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> gauges
+A: 7 [#######..] 77% peak 7 (3 kept)
+B: 9 [=========] 100% peak 9 (3 kept)
+C: 3 [+++......] 33% peak 3 (1 kept)
+Highest first: BAC; B leads.
+1 full, 2 above half; rising: yes.
+A is below B.
+A and C differ.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> spans
+A 5..7 over 3, width 2
+B 7..9 over 3, width 2
+C 3..3 over 1, width 0
+span 3..9 over 7, width 6
+widest 7..9 over 2, width 2
+B widened 7..9 to 7..10; same as before: no; changed: yes.
+A is not narrower than C.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> readings gauge a
+A: 5,6,7 (3 kept)
+first 5, last 7, latest 7
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> readings gauge c
+C: 3 (1 kept)
+first 3, last 3, latest 3
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> marks
+Redraws 21; marks 20 21 18 19; last mode bars.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> rack
+Rack: 3 gauges, 7 moves (3 held).
+- A at 7, slot 0
+- B at 9, slot 1
+- C at 3, slot 2
+mode bars (shown)
+mode numbers
+mode history
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 7 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> looks
+Alert look known: no; tall panel: yes; ink red.
+Picked 3: ABC; snap 3..9 vs total 3..9; widest 2 not wider.
+Moves cleared: 3 gauges, 0 moves.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 0 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> links
+Show: bars numbers history zero
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 0 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> examine gauge b
+The gauge B reads 9 of 9; readings 9,7,9.
+[grid 1]
+|A #######..                                       |
+|B ========= FULL                                  |
+|C +++......                                       |
+|bars | rows 4 | 3 gauges, 0 moves                 |
+[grid 2]
+|Room A | sel A | total 3..9                       |
+> zero
+The gauge A reads 0.
+The gauge B reads 0.
+The gauge C reads 0.
+All gauges at zero.
+[win 1] 11. A 7 -> 0
+[win 1] 12. B 9 -> 0
+[win 1] 13. C 3 -> 0
+[grid 1]
+|A .........                                       |
+|B .........                                       |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 3 moves                 |
+[grid 2]
+|Room A | sel A | total 0..9                       |
+> gauges
+A: 0 [.........] 0% peak 7 (3 kept)
+B: 0 [.........] 0% peak 9 (3 kept)
+C: 0 [.........] 0% peak 3 (1 kept)
+Highest first: ABC; A ties.
+0 full, 0 above half; rising: yes.
+A and C match.
+[grid 1]
+|A .........                                       |
+|B .........                                       |
+|C .........                                       |
+|bars | rows 4 | 3 gauges, 3 moves                 |
+[grid 2]
+|Room A | sel A | total 0..9                       |

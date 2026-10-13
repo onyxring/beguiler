@@ -3,20 +3,89 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
-global _bgl_temp1;
-global _bgl_temp2;
-global _bgl_temp3;
-global _bgl_temp4;
-global _bgl_temp5;
-global _bgl_temp6;
-global _bgl_temp7;
-global _bgl_temp8;
-global _bgl_temp9;
-global _bgl_temp10;
-global _bgl_temp11;
-global _bgl_temp12;
-global _bgl_temp13;
+   Array _bglFramePool --> 76;
+   Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
+   [ _bglFrameAlloc size r;
+      if (_bglFrameTop + size > 76) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      r = _bglFrameTop;
+      _bglFrameTop = _bglFrameTop + size;
+      return _bglFramePool + (r * WORDSIZE);
+   ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglFrameFree size;
+      _bglFrameTop = _bglFrameTop - size;
+   ];
+   [ _bglArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size + 3);
+      r-->0 = size + 2;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      r-->(size + 1) = 0;
+      r-->(size + 2) = $9084;
+      return r;
+   ];
+   Global _bglFrameTaken = 0;
+   Global _bglFrameSrc = 0;
+   ! A local array with room for src's n elements: `cur` when it has room, else a new block. When src
+   ! is a returned local lying in freed frame space at or above the top, its elements are moved down
+   ! into the new block (forward, so none is overwritten before it is read) and _bglFrameSrc names
+   ! the block to copy from instead.
+   [ _bglArrayLocalCopyAlloc n src cur top i;
+      _bglFrameTaken = 0;
+      _bglFrameSrc = src;
+      if (cur ~= 0 && cur-->(cur-->0) == $9084 && cur-->0 - 2 >= n) return cur;
+      top = _bglFramePool + _bglFrameTop * WORDSIZE;
+      if (src < top || src >= _bglFramePool + 76 * WORDSIZE) {
+         _bglFrameTaken = n + 3;
+         return _bglArrayLocalAlloc(n);
+      }
+      if (_bglFrameTop + n + 3 > 76) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      _bglFrameTop = _bglFrameTop + n + 3;
+      for (i = 1: i <= n: i++) top-->i = src-->i;
+      top-->0 = n + 2;
+      top-->(n + 1) = n;
+      top-->(n + 2) = $9084;
+      _bglFrameTaken = n + 3;
+      _bglFrameSrc = top;
+      return top;
+   ];
+   [ _bglArrayLocalAllocPlain size r i;
+      r = _bglFrameAlloc(size + 1);
+      r-->0 = size;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglRawArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglByteArrayLocalAlloc nbytes words r i;
+      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      r = _bglFrameAlloc(words);
+      for (i = 0: i < words: i++) r-->i = 0;
+      r-->0 = nbytes;
+      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + WORDSIZE;
+   ];
+   [ _bglByteArrayLocalFree nbytes;
+      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+   ];
+   [ _bglByteArrayLocalCopy dst src i;
+      for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+      dst-->0 = src-->0;
+   ];
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
@@ -43,10 +112,11 @@ _bglClass_Room foyer
 ;
 _bglClass_Room cloakroom
 ;
-[main x lit _l_target r first dest pick desc gp d2 d3 result nested;
+[main x lit _l_target r first dest pick desc gp d2 d3 result nested _bgl_tempL0 _bglFrm;
+    _bglFrm = _bglFrameAllocZ(1);
     x = nothing;
-    _bgl_temp0 = x; if (_bgl_temp0 ~= nothing) { _bgl_temp0 = (_bgl_temp0 has light); } else _bgl_temp0 = 0;
-    lit=_bgl_temp0;
+    _bgl_tempL0 = x; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = (_bgl_tempL0 has light); } else _bgl_tempL0 = 0;
+    lit=_bgl_tempL0;
     if (x ~= nothing) {
         print (string)"present";
     }
@@ -56,28 +126,29 @@ _bglClass_Room cloakroom
     if (x ~= nothing) {
     remove x;
     }
-    _bgl_temp1 = x; if (~~(_bgl_temp1 ~= nothing)) _bgl_temp1 = foyer;
-    _l_target = _bgl_temp1;
-    _bgl_temp2 = cloakroom; if (~~(_bgl_temp2 ~= nothing)) _bgl_temp2 = foyer;
-    r = _bgl_temp2;
-    _bgl_temp4 = foyer; if (~~(_bgl_temp4 ~= nothing)) _bgl_temp4 = cloakroom;
-    _bgl_temp3 = x; if (~~(_bgl_temp3 ~= nothing)) _bgl_temp3 = _bgl_temp4;
-    first = _bgl_temp3;
-    _bgl_temp5 = x; if (~~(_bgl_temp5 ~= nothing)) _bgl_temp5 = foyer;
-    dest = _bgl_temp5;
-    _bgl_temp6 = x; if (~~(_bgl_temp6 ~= nothing)) _bgl_temp6 = foyer;
-    pick = _bgl_temp6;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    _l_target = _bgl_tempL0;
+    _bgl_tempL0 = cloakroom; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    r = _bgl_tempL0;
+    _bglFrm-->0 = foyer; if (~~(_bglFrm-->0 ~= nothing)) _bglFrm-->0 = cloakroom;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = _bglFrm-->0;
+    first = _bgl_tempL0;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    dest = _bgl_tempL0;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    pick = _bgl_tempL0;
     desc = pick.description;
-    _bgl_temp7 = foyer; if (_bgl_temp7 ~= nothing) { _bgl_temp7 = _bgl_temp7.up; if (_bgl_temp7 ~= nothing) { _bgl_temp7 = _bgl_temp7.up; } else _bgl_temp7 = 0; } else _bgl_temp7 = 0;
-    gp = _bgl_temp7;
-    _bgl_temp8 = foyer; if (_bgl_temp8 ~= nothing) { _bgl_temp8 = _bgl_temp8.up; if (_bgl_temp8 ~= nothing) { _bgl_temp8 = _bgl_temp8.description; } else _bgl_temp8 = 0; } else _bgl_temp8 = 0;
-    d2 = _bgl_temp8;
-    _bgl_temp9 = foyer; if (_bgl_temp9 ~= nothing) { _bgl_temp9 = _bgl_temp9.up; _bgl_temp9 = _bgl_temp9.description; } else _bgl_temp9 = 0;
-    d3 = _bgl_temp9;
-    _bgl_temp10 = foyer; if (_bgl_temp10 ~= nothing) { _bgl_temp10 = _bgl_temp10.next; } else _bgl_temp10 = 0;
-    _bgl_temp11 = _bgl_temp10; if (~~(_bgl_temp11 ~= nothing)) _bgl_temp11 = cloakroom;
-    result = _bgl_temp11;
-    _bgl_temp12 = foyer; if (_bgl_temp12 ~= nothing) { _bgl_temp12 = _bgl_temp12.up; if (_bgl_temp12 ~= nothing) { _bgl_temp12 = _bgl_temp12.next; } else _bgl_temp12 = 0; } else _bgl_temp12 = 0;
-    _bgl_temp13 = _bgl_temp12; if (~~(_bgl_temp13 ~= nothing)) _bgl_temp13 = cloakroom;
-    nested = _bgl_temp13;
+    _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; } else _bgl_tempL0 = 0; } else _bgl_tempL0 = 0;
+    gp = _bgl_tempL0;
+    _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.description; } else _bgl_tempL0 = 0; } else _bgl_tempL0 = 0;
+    d2 = _bgl_tempL0;
+    _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; _bgl_tempL0 = _bgl_tempL0.description; } else _bgl_tempL0 = 0;
+    d3 = _bgl_tempL0;
+    _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.next; } else _bgl_tempL0 = 0;
+    _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) _bglFrm-->0 = cloakroom;
+    result = _bglFrm-->0;
+    _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.next; } else _bgl_tempL0 = 0; } else _bgl_tempL0 = 0;
+    _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) _bglFrm-->0 = cloakroom;
+    nested = _bglFrm-->0;
+    _bglFrameFree(1);
 ];

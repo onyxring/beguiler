@@ -1,0 +1,180 @@
+Room A
+> list
+amber  brass key  3 on north
+birch  iron box   0 on south
+cedar  tin cup    12 on north
+delta  untitled   1 on east
+ember  oak rod    7 on south
+flint  glass jar  25 on west
+Heading: Catalog
+> labels
+AMBER:brass key
+BIRCH:iron box (out)
+CEDAR:tin cup
+DELTA:untitled
+EMBER:oak rod
+FLINT:glass jar
+Longest: BIRCH:iron box (out) (20); out of stock: 1.
+brass key
+> show amber
+amber: brass key; raw brass key; length 9, upper BRASS KEY, initials BK.
+Tag AM-three; few; shelf north.
+> show delta
+delta: untitled; raw (null); length 0, upper UNTITLED, initials U.
+Tag DE-one; few; shelf east.
+> spell 7
+7: seven (5).
+seven / eight
+> spell 305
+305: three-zero-five (15).
+three-zero-five / three-zero-six
+> nest 0
+x 1
+Every other: x
+> nest 3
+[([x])] 7
+Every other: [[]]
+> nest 4
+[([(x)])] 9
+Every other: [[x]]
+> flip birch
+shelf south the on box iron
+flehs htuos eht no xob nori
+Round trip.
+> flip delta
+shelf east the on untitled
+flehs tsae eht no deltitnu
+Round trip.
+> transform 1 amber
+upper: BRASS KEY
+Again: AMBER
+> transform 2 delta
+reverse: atled
+Again: atled
+> transform 3 cedar
+angle: <tin cup>
+Again: <cedar>
+> transform 4 flint
+swap a: gl4ss j4r
+Again: flint
+> transform 5 ember
+short: oak.
+Again: emb.
+> transform 9 ember
+No such transform.
+> pad
+[ab...][cedar-][ab...|      ]
+====|***
+<+-+-+->
+> fields cedar
+{ count=12, index=2; len=5, tin cup=2 }
+> fields delta
+{ count=1, index=3; len=5, nameless=2 }
+> edit amber
+[old brass key] [brass key] [brass_key] [brass key] [brass key  ] [  brass key]
+amber is brass key (north)
+br..ey, mid ras, past end [][]
+*rass key!
+> edit delta
+[old untitled] [untitled] [untitled] [untitled] [untitled  ] [  untitled]
+delta is untitled (east)
+un..ed, mid nti, past end [][]
+*ntitled!
+> compare amber birch
+amber before birch; <=> -1, compareTo -1.
+Upper differs.
+In range.
+Code -1.
+> compare flint amber
+flint after amber; <=> 1, compareTo 1.
+Upper differs.
+First code.
+> compare cedar cedar
+cedar same as cedar; <=> 0, compareTo 0.
+Same ignoring case.
+Upper differs.
+In range.
+Code 1.
+> sort
+By title: delta amber flint birch ember cedar
+Titles: BK GJ IB OR TC
+With o: 2; any on west: yes; first ending x: iron box.
+Code letters: 30.
+> find ember
+OAK ROD is item 4, code ember.
+> find delta
+No title like NOTHING.
+> tag 1
+[red] (blank)
+[blue] one
+[gray] (blank)
+> tag 1
+[red] (blank)
+[blue] one+one
+[gray] (blank)
+> tag 2
+[red] (blank)
+[blue] one+one
+[gray] two
+> motto
+Motto: none set; owner CLERK.
+Now: keep count; 10 letters.
+clerk's list (keep count), 2 lookups
+> motto
+Motto: keep count; owner CLERK.
+Now: keep count; 10 letters.
+clerk's list (keep count), 2 lookups
+> history
+AM-three | DE-one
+Last: DE-one; first starts AM: yes.
+> relabel birch
+birch#0/south!
+> labels
+AMBER:brass key
+birch#0/south!
+CEDAR:tin cup
+DELTA:untitled
+EMBER:oak rod
+FLINT:glass jar
+Longest: AMBER:brass key (15); out of stock: 0.
+brass key
+> stress 3
+Passes 3, total 1446.
+Hits 69; letters reversed: m l k j i h g f e d c b a.
+> stress 20
+Passes 20, total 9584.
+Hits 460; letters reversed: m l k j i h g f e d c b a.
+> history
+AM-three | DE-one
+Last: DE-one; first starts AM: yes.
+> chain amber
+BRASS KEY; bra; north!; no shelf.
+brass key/amber
+Vowels in amber: 2; in title: 2.
+<amber><brass key>
+Tagged item#1 amber#1 item#3 north:1.
+> chain delta
+(none); delta; east!; no shelf.
+untitled/delta
+Vowels in delta: 2; in title: 0.
+<delta><->
+Tagged item#1 delta#1 item#1 east:1.
+> capture cedar
+Captured [tin cup x12] (11), room [Room A.].
+Outer [ab7], inner [one-two].
+> capture delta
+Captured [untitled x1] (11), room [Room A.].
+Outer [ab3], inner [one].
+> frame cedar
+[CEDAR:tin cup]<tin cup>[clerk's list (keep count), 2 lookups){ONE-TWO} 13/5/71/3
+> frame delta
+[DELTA:untitled]<delta>[clerk's list (keep count), 2 lookups){ONE} 14/5/66/3
+> show cedar
+cedar: tin cup; raw tin cup; length 7, upper TIN CUP, initials TC.
+Tag CE-one-two; some; shelf north.
+> show flint
+flint: glass jar; raw glass jar; length 9, upper GLASS JAR, initials GJ.
+Tag FL-two-five; many; shelf west.
+> history
+DE-one | CE-one-two | FL-two-five
+Last: FL-two-five; first starts AM: no.

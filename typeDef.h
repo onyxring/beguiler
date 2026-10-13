@@ -295,6 +295,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool literalElements = false; // `array<literal T>`: every element stored is known at compile time
         bool isAdditive = false;   // `additive` file-scope `property` decl: emits I6 `Property additive foo;`
                                    // so the slot accumulates values across the class hierarchy instead of overriding
+        bool scopeEnded = false;   // a for-in loop variable after its loop: hidden from lookups, though I6 keeps the slot
         bool isSynthetic = false;  // compiler-generated local (e.g. for-in temps), not user-written; the debug
                                    // bundle marks it `synthetic` so the debugger hides it from the locals view
         // Class-typed function local with synthesized static backing: at parse time we
@@ -353,6 +354,9 @@ class functionDef:public typeMember, public typeDef{
         set<string> globalEscapes;
         // Names read at file scope; a local declared afterwards under one of them is an error.
         set<string> fileScopeReads;
+        // Chain/ternary temporaries as routine locals (`_bgl_tempL<k>`): k restarts at each top-level statement.
+        int nextChainTemp = 0;
+        int chainTempsUsed = 0;
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
         bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'

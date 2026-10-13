@@ -1,0 +1,479 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program written top-down, two rooms, four lamps, a
+// meter and a panel, so that nearly every name is used above its declaration. Globals typed by a class,
+// a value class (one with an inline-object initializer), an alias type path, an enum and `func<bool,
+// Lamp>` declared or typed at the foot of the file, one initialized with an object declared below and
+// one with an enum value through an alias path; `array<kit.lamp>` (an alias path as the element type);
+// a global array of objects that an `extend` at the foot injects a lamp into, itself declared after the
+// `extend`; a global array of the value class sized by a `const` declared below and sorted by `<=>`; a
+// member array sized by a const declared below, written and read by subscript from above; routines
+// returning the value class, taking it by `ref` (an owned member as the argument) with a default value
+// that is a const declared below, a default object declared below and a default enum value through an
+// alias path (also given by name), and a `ref` local bound to a member reached through a cast; the
+// value class's copy, `+`, two `+=` overloads, `==`, `!=` and an ordering derived from `<=>`; a named
+// accessor class clamped by a global emitter value declared below, as a member of every lamp, read,
+// assigned, `+=`d through a cast, `++`d, `--`d, passed, switched on, compared and read through `?.`;
+// inline `auto` accessors on the panel (its setter reaching through `outer` a member declared after it)
+// and in a class body; emitter values on the panel, on the lamp class (`Lamp.Cap`) and at file scope,
+// an emitter method and a global emitter function, all used above their declarations and in
+// interpolation; positional object bodies above their class whose order gains a slot from an `extend
+// class` at the foot and one from a base declared after the class; methods, a `before` rule, a static
+// member, a member array and an inline accessor added by that `extend class`, used from above; a
+// `stringObj` member appended to through a cast; `extend` of the panel (with a `replace`) and of a
+// namespace object (a value alias to an object and one to a class) written before the object;
+// `is()`, casts, `new` and lambda parameters through alias paths; a pooled class sized by a const
+// declared below; static members and methods of a class declared below; `?.` and `??` on lookups;
+// <linq> `filter`, `orderBy`, `first`, `count` and `any`; mixed-case keywords, Allman, K&R and
+// one-line braces, tab indentation in one routine, comments between tokens and split declarations.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+// ---- globals: each is typed or filled by something further down ---------------------------------
+
+array<Lamp> lamps = { lampA , lampB , lampC } ;    // lampD joins through an extend at the foot
+Lamp        gLast = lampC ;
+Charge      gTotal ;
+Charge      gSeed = Charge{ amps = 3 ; } ;
+array<Charge>
+    readings[ SLOTS ] ;
+kit.lamp    gPicked ;
+kit.shade   gShade = kit.shade.warm ;
+INT         gSteps = STEPS ;
+array<kit.lamp>
+            litNow[ SLOTS ] ;
+
+Gauge meter { "meter" ; parent = roomB ; name = { .meter } ; }   // a class with an inline accessor, below
+
+// ---- routines ------------------------------------------------------------------------------------
+
+/// Every lamp's stored charge, added up.
+Charge sumCharges ()
+{
+    Charge t ;
+    for ( Lamp l in lamps ) t = t + l.stored ;
+    return t ;
+}
+
+/// Raises a charge in place.
+void bump ( ref Charge c , int by = STEP_SIZE ) { c += by ; }
+
+bool brighter ( kit.lamp a , Lamp b ) { return a.stored > b.stored ; }
+
+int glowOf ( object o )
+{
+    IF ( !o.is( kit.lamp ) ) RETURN -1 ;
+    return ((Lamp) o).level + panel.Bias ;
+}
+
+stringObj shadeName ( kit.shade s ) {
+    stringObj n ;
+    switch ( s ) {
+        case kit.shade.warm : n = "warm" ;
+        case eShade.cool    : n = "cool" ;
+        default             : n = "white" ;
+    }
+    return n ;
+}
+
+Lamp findLit () { return lamps.filter( ( kit.lamp l ) => l.isLit() ).first() ; }
+
+kit.lamp brightest ()
+{
+    return lamps.orderBy( ( Lamp a , Lamp b ) => b.level - a.level ).first() ;
+}
+
+/// Prints one lamp's line for the ledger.
+void showLamp ( Lamp l )
+{
+	print( $"{l.rating}/{l.watts}/{l.bay} {l} level {l.level} stored {l.stored.amps} flicks {l.flicks} [" ) ;
+	for ( int i = 0 ; i < LOGLEN ; i++ )
+	{
+		if ( i > 0 ) print( " " ) ;
+		print( l.history[ i ] ) ;
+	}
+	printLine( $"] {shadeName( l.tint )} peak {l.peaks[ 0 ]}/{l.peaks[ 1 ]} lens {l.lens}" ) ;
+}
+
+int clampSum ( int a , int b ) { return a + b ; }
+
+/// A word for a level, by range.
+stringObj band ( Lamp l , kit.shade fallback = kit.shade.cool )
+{
+    stringObj w ;
+    switch ( l.level )
+    {
+        case 0 :            w = shadeName( fallback ) ;
+        case 1 , 2 , 3 :    w = "low" ;
+        default :           w = "high" ;
+    }
+    w += $" ({l.tag})" ;
+    return w ;
+}
+
+/// Warms a lamp by one through a cast, then seeds its charge through a ref local.
+void warmBy ( object o )
+{
+    ((Lamp) o).level += 1 ;
+    ref Charge r := ((Lamp) o).stored ;
+    r += gSeed ;
+    ((Lamp) o).tag += "+" ;
+}
+
+func<bool , Lamp> isHot = ( Lamp l ) => l.level > 5 ;
+
+void mark ( Lamp l = lampD ) { print( $"<{l.bay}:{l.level}>" ) ; }
+
+bool Initialise ()
+{
+    location = roomA ;
+    gPicked  = lampB ;
+    panel.master = 4 ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands ------------------------------------------------------------------------------------
+
+verb Brighten
+{
+    grammar = { .brighten , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( kit.lamp ) ) { printLine( "That is not a lamp." ) ; return ; }
+        kit.lamp l = ( kit.lamp ) noun ;
+        l.level += gSteps ;
+        l.flick() ;
+        l.notePeak() ;
+        bump( l.stored ) ;
+        gTotal += l.stored ;
+        gLast = l ;
+        printLine( $"{cThe(l)} glows at {l.level} of {MaxGlow}; stored {l.stored.amps}." ) ;
+    }
+}
+
+verb Dim {
+    grammar = { .dim , NOUN } ;
+    void handler () {
+        if ( !noun.is( Lamp ) ) { printLine( "That is not a lamp." ) ; return ; }
+        Lamp l = ( Lamp ) noun ;
+        l.level-- ;
+        l.flick() ;
+        l.lens += 3 ;
+        gLast = l ;
+        if ( l.isLit() ) printLine( $"{cThe(l)} dims to {l.level}." ) ;
+        else             printLine( $"{cThe(l)} goes dark." ) ;
+    }
+}
+
+verb Spark
+{
+    grammar = { .spark , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( kit.lamp ) ) { printLine( "That is not a lamp." ) ; return ; }
+        Lamp  l = ( Lamp ) noun ;
+        Spark s = new kit.spark( l.level + panel.Bias ) ;
+        if ( s == null ) { printLine( "No spark is left." ) ; return ; }
+        l.stored += s.volts ;
+        printLine( $"A spark of {s.volts} reaches {the(l)}; stored {l.stored.amps}, sparks {Lamp.sparks}." ) ;
+        delete s ;
+    }
+}
+
+verb Tune
+{
+    grammar = { .tune , NUMBER } ;
+    void handler ()
+    {
+        kit.board.trim = parsed_number ;
+        kit.board.master = parsed_number * 2 ;
+        printLine( $"Trim {kit.board.trim}, master {panel.master}, changes {panel.changes}." ) ;
+    }
+}
+
+verb Warm
+{
+    grammar = { .warm , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( kit.L ) ) { printLine( "That is not a lamp." ) ; return ; }
+        warmBy( noun ) ;
+        Lamp l = ( Lamp ) noun ;
+        l.level++ ;
+        printLine( $"{cThe(l)} warms to {l.level}, {band( l )}, stored {l.stored.amps}, hot {isHot( l )}." ) ;
+    }
+}
+
+verb Zero
+{
+    grammar = { .zero } ;
+    void handler ()
+    {
+        findLit()?.flick() ;
+        kit.board.zero() ;
+        printLine( $"All lamps at zero; resets {panel.resets}, census {Lamp.census()}." ) ;
+    }
+}
+
+verb Ledger
+{
+    meta    = true ;
+    grammar = { .ledger } ;
+    void handler ()
+    {
+        for ( Lamp l in lamps ) showLamp( l ) ;
+        Charge all = sumCharges() ;
+        printLine( $"Total {gTotal.amps}, sum {all.amps}, census {Lamp.census()}, flicks {Lamp.flicksAll}." ) ;
+        if ( all == gTotal )      printLine( "Sum and total agree." ) ;
+        else if ( all != gTotal ) printLine( "Sum and total differ." ) ;
+        readings.clear() ;
+        for ( Lamp l in lamps ) readings += l.stored ;
+        readings.sort( Charge::operator <=> ) ;
+        for ( Charge c in readings ) print( $"{c.amps} " ) ;
+        printLine( "" ) ;
+        printLine( $"Brightest {the(brightest())}; first lit {the(findLit() ?? gLast)}; last {the(gLast)}." ) ;
+        printLine( $"A over B {brighter( lampA , lampB )}, B over A {brighter( lampB , lampA )}." ) ;
+        if ( lamps.any( ( kit.lamp l ) => l.level >= MaxGlow ) ) printLine( "One lamp is at full." ) ;
+        litNow.clear() ;
+        for ( Lamp l in lamps ) if ( l.isLit() ) litNow += l ;
+        printLine( $"Lit {litNow.length}, first {the(litNow.first() ?? gLast)}; meter {meter.sample()}, needle {meter.needle}." ) ;
+    }
+}
+
+verb Probe
+{
+    meta = TRUE ;
+    grammar = { .probe } ;
+    void handler ()
+    {
+        printLine( $"glow {glowOf(panel)} {glowOf(lampA)} {glowOf(lampD)}" ) ;
+        printLine( $"shade {shadeName(gShade)} {shadeName(lampB.tint)} {shadeName(lampD.tint)}" ) ;
+        printLine( $"emit {twice(gSteps)} {kit.board.Bias} {Lamp.Cap} {MaxGlow} {panel.Bias}" ) ;
+        printLine( $"lamps {lamps.length} {lamps.count()}, slots {readings.size}, log {LOGLEN}, pool {POOL}" ) ;
+        printLine( $"picked {gPicked?.rating} {the(gPicked)} {gPicked.watts}" ) ;
+        printLine( $"sum {clampSum( lampA.level , lampB.level )} {lampA.level > lampB.level} {lampC.level == 0}" ) ;
+        int n = lamps.filter( ( Lamp l ) => l.watts > 30 ).count() ;
+        printLine( $"over 30 watts {n}, steps {gSteps}, step {STEP_SIZE}" ) ;
+        print( "marks " ) ; mark() ; mark( lampA ) ; mark( (kit.lamp) gPicked ) ; printLine( "" ) ;
+        printLine( $"touches {Lamp.touches}" ) ;
+        printLine( $"panel {kit.board.label()} {kit.board.spare} {kit.L.census()} {kit.L.sparks} {lampA.doubled()} {Lamp.Floor}" ) ;
+        printLine( $"bands {band( lampC )} / {band( lampD , kit.shade.white )} / {band( fallback: eShade.warm , l: lampA )}" ) ;
+        printLine( $"chain {gPicked?.level} {(sumCharges() + gTotal).amps} {readings[0].amps} {lampB.stored == lampD.stored}" ) ;
+    }
+}
+
+// ---- rooms ---------------------------------------------------------------------------------------
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. Lamps hang on brackets. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB { "Room B" ; description = "Room B. A panel is set in the wall. Room A is south." ;
+    object s_to = roomA ; }
+
+// ---- lamps: positional rating, watts (from the extend below), bay (from the base), name ---------
+
+Lamp lampA { 3 , 40 , 1 , "red lamp" ; name = { .red , .lamp } ; parent = roomA ; }
+Lamp lampB
+{
+    2 ,
+    60 ,            // watts
+    2 ,
+    "blue lamp" ;
+    name   = { .blue , .lamp } ;
+    parent = roomA ;
+    tint   = eShade.cool ;
+    stored = Charge{ amps = 5 ; } ;
+}
+Lamp lampC { 1 , /* watts */ 25 , 3 , "green lamp" ;
+    name = { .green , .lamp } ; parent = roomA ; }
+
+// ---- the panel -----------------------------------------------------------------------------------
+
+extend panel
+{
+    int resets = 0 ;
+    void zero ()
+    {
+        resets++ ;
+        for ( Lamp l in lamps ) l.level = 0 ;
+        master = 0 ;
+    }
+    replace string label () { return "the master panel" ; }
+}
+
+object panel
+{
+    "panel" ;
+    parent     = roomB ;
+    name       = { .panel } ;
+    attributes = { static } ;
+    string description = "A panel with a trim knob and a master dial." ;
+
+    emitter int Bias { 1 }
+
+    auto trim = {
+        int _raw = 0 ;
+        int  operator () { return _raw ; }
+        void operator = ( int v ) { _raw = v ; outer.changes++ ; }
+    }
+    Dial master ;
+    int  changes = 0 ;
+    object spare = lampD ;
+    string label () { return "panel" ; }
+}
+
+// ---- the namespace -------------------------------------------------------------------------------
+
+extend kit { alias board = panel ; }
+
+object kit
+{
+    alias lamp  for Lamp ;
+    alias shade for eShade ;
+    alias spark for Spark ;
+    alias L = Lamp ;
+}
+
+// ---- classes -------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Class Lamp : Fixture
+{
+    inline int rating ;
+    Dial       level ;
+    Charge     stored = Charge{ amps = 2 ; } ;
+    array<int> history[ LOGLEN ] ;
+    kit.shade  tint = kit.shade.warm ;
+    static int sparks    = 0 ;
+    static int flicksAll = 0 ;
+    string description = "A lamp on a bracket." ;
+    stringObj tag ;
+
+    emitter int Cap { 9 }
+    emitter int doubled () { ($self.rating * 2) }
+
+    static int census () { return lamps.filter( ( Lamp l ) => l.isLit() ).count() ; }
+}
+
+class Fixture : object
+{
+    inline int bay ;
+    attributeList attributes = { static } ;
+}
+
+/// A level held between 0 and MaxGlow.
+value class Dial
+{
+    int _v = 0 ;
+    int  operator () { return _v ; }
+    void operator = ( int v )
+    {
+        if      ( v > MaxGlow ) _v = MaxGlow ;
+        else if ( v < 0 )       _v = 0 ;
+        else                    _v = v ;
+    }
+}
+
+value class Charge
+{
+    int amps ;
+    Charge operator =   ( Charge o ) { amps = o.amps ; return self ; }
+    Charge operator +   ( Charge o ) { Charge r ; r.amps = amps + o.amps ; return r ; }
+    Charge operator +=  ( Charge o ) { amps += o.amps ; return self ; }
+    Charge operator +=  ( int n )    { amps += n ; return self ; }
+    bool   operator ==  ( Charge o ) { return amps == o.amps ; }
+    bool   operator !=  ( Charge o ) { return amps != o.amps ; }
+    int    operator <=> ( Charge o ) { return amps - o.amps ; }
+    static int operator <=> ( Charge a , Charge b ) { return a.amps - b.amps ; }
+}
+
+class Spark[ POOL ] : object
+{
+    int volts = 0 ;
+    void create ( int v ) { volts = v ; Lamp.sparks++ ; }
+}
+
+enum eShade { warm , cool , white }
+
+const int SLOTS     = 4 ;
+const int LOGLEN    = $04 ;
+CONST INT POOL      = 2 ;
+const int STEPS     = 3 ;
+const int
+    STEP_SIZE = $$10 ;
+
+emitter int MaxGlow { 9 }
+emitter int twice ( int n ) { ($n * 2) }
+
+// ---- additions at the foot -----------------------------------------------------------------------
+
+extend class Lamp
+{
+    inline int watts ;
+    int flicks = 0 ;
+    emitter int Floor { 0 }
+    static int touches = 0 ;
+    array<int> peaks[ 2 ] ;
+    auto lens = {
+        int _l = 0 ;
+        int  operator () { return _l ; }
+        void operator = ( int v ) { _l = v % 4 ; }
+    }
+
+    void notePeak () { if ( level > peaks[ 0 ] ) peaks[ 0 ] = level ; peaks[ 1 ] = peaks[ 1 ] + 1 ; }
+    bool isLit () { return level > 0 ; }
+
+    void flick ()
+    {
+        history[ flicks % LOGLEN ] = level ;
+        flicks++ ;
+        flicksAll++ ;
+    }
+
+    bool before ()
+    {
+        if ( action == Touch )
+        {
+            touches++ ;
+            IF ( isLit() ) printLine( $"{cThe(self)} is warm at {level}." ) ;
+            ELSE           printLine( $"{cThe(self)} is cold." ) ;
+            rtrue ;
+        }
+        rfalse ;
+    }
+}
+
+extend lamps { inject lampD last ; }
+
+class Gauge : object
+{
+    auto needle = {
+        int _n = 0 ;
+        int  operator () { return _n ; }
+        void operator = ( int v ) { _n = v % 10 ; }
+    }
+    attributeList attributes = { static } ;
+    int sample () { needle = Lamp.flicksAll + lampA.history[ 0 ] ; return needle ; }
+}
+
+Lamp lampD { 1 , 15 , 4 , "white lamp" ; name = { .white , .lamp } ; parent = roomB ; tint = kit.shade.white ; }

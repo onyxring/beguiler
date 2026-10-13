@@ -1,0 +1,218 @@
+Room A
+Room A.
+
+> lines
+HB [HB] toll 0: next Alder, branch -, after two Birch, last Dock, depth 5
+Alder [AL] toll 2: next Birch, branch -, after two unnamed, last Dock, depth 4
+Birch [BI] toll 3: next none, branch Elm, after two Dock, last Dock, depth 3
+unnamed [CE] toll 0: next Dock, branch -, after two end, last Dock, depth 2
+Dock [DK] toll 4: next none, branch -, after two end, last Dock, depth 1
+Elm [EL] toll 1: next Fern, branch -, after two end, last Fern, depth 2
+Fern [FE] toll 5: next none, branch Dock, after two end, last Fern, depth 1
+unnamed: 2, forks: 2, paid: 5
+
+> route alder
+route: Alder > Birch > ? > Dock
+upper: ALDER-BIRCH-?-DOCK
+short: Alder/Birch, length 24
+codes: AL,BI,CE,DK;
+via branch: no branch
+tolls ahead 9, by branch 0
+
+> route birch
+route: Birch > ? > Dock
+upper: BIRCH-?-DOCK
+short: Birch/?, length 16
+codes: BI,CE,DK; EL+FE
+via branch: Elm = Fern
+tolls ahead 7, by branch 6
+
+> route cedar
+route: ? > Dock
+upper: ?-DOCK
+short: ?/Dock, length 8
+codes: CE,DK;
+via branch: no branch
+tolls ahead 4, by branch 0
+
+> route fern
+route: Fern
+upper: FERN
+short: Fern, length 4
+codes: FE; DK
+via branch: Dock
+tolls ahead 5, by branch 4
+
+> hop alder 2
+Alder hop 2: off the end; by branch: Elm; one then branch: EL
+landing at unnamed, next Dock
+
+> hop birch 1
+Birch hop 1: off the end; by branch: Elm; one then branch: CE
+landing at unnamed, next Dock
+
+> hop birch 3
+Birch hop 3: off the end; by branch: Dock; one then branch: --
+landing at Dock, next nothing
+
+> hop dock 1
+Dock hop 1: off the end; by branch: off the end; one then branch: --
+landing at Dock, next nothing
+
+> fare alder to dock
+Alder to Dock: 9 over 4 legs, 2 a leg
+doubled 18, tripled 27
+first leg 2
+
+> fare birch to elm
+no fare from Birch to Elm
+first leg 3
+
+> fare cedar to cedar
+no fare from none to unnamed
+first leg 0
+
+> fare dock to alder
+no fare from Dock to Alder
+first leg 4
+
+> seek 3
+first toll of 3 or more from HB: Birch
+its next: none
+by seek: BI
+on the elm line: Fern
+cheapest such: Birch, two on: Dock
+
+> seek 5
+first toll of 5 or more from HB: none
+its next: none
+by seek: --
+on the elm line: Fern
+cheapest such: Fern, two on: none
+
+> seek 9
+first toll of 9 or more from HB: none
+its next: none
+by seek: --
+on the elm line: none
+cheapest such: none, two on: none
+
+> visit birch
+Birch visits 14, next 2, branch 3
+notes here v, next BI>
+
+> visit dock
+Dock visits 13, next 0, branch 0
+notes here v, next none
+
+> visit fern
+Fern visits 13, next 0, branch 16
+notes here v, next none
+
+> tally
+ HB=0 AL=0 BI=16 CE=2 DK=16 EL=3 FE=13
+most visited: Birch
+any visited with notes: true
+next-of-visited: 3
+
+> slots
+slot 0: empty -> --
+slot 1: Birch -> CE
+slot 2: empty -> --
+slot 3: empty -> DK
+slot 4: Fern -> --
+slot 5: empty -> --
+3 filled; first fork Birch
+
+> spokes
+spoke 0: Birch, CE
+spoke 1: empty, --
+spoke 2: Elm, FE
+spoke 3: empty, --
+hub says HB; as a stop HB
+first spoke with a branch: Elm
+elm visits 8
+
+> walk hub
+4 steps to Dock
+ HB AL BI EL FE DK
+ .
+
+> walk birch
+2 steps to Dock
+ BI EL FE DK
+ [Elm] [Fern] .
+
+> walk fern
+0 steps to Fern
+ FE DK
+ [Dock] .
+
+> sort alder
+first of the main line
+kind through; label length 5; allows its next: true
+both pass
+dear
+
+> sort dock
+end of the main line
+kind terminus; label length 4; allows its next: true
+not both
+dear
+
+> sort cedar
+an unnamed stop
+kind through; label length 0; allows its next: true
+both pass
+dear
+
+> sort fern
+a stop called Fern
+kind fork; label length 4; allows its next: true
+not both
+dear
+
+> sort birch
+a stop called Birch
+kind fork; label length 5; allows its next: false
+both pass
+dear
+
+> pick 3
+picked Birch (BI)
+its next unnamed; first or longest BI
+longest line starts at HB, depth 5, ends at Dock
+step: CE, twice: DK
+
+> pick 5
+picked Dock (DK)
+its next none; first or longest DK
+longest line starts at HB, depth 5, ends at Dock
+step: --, twice: --
+
+> pick 0
+picked Fern (FE)
+its next none; first or longest HB
+longest line starts at HB, depth 5, ends at Dock
+step: DK, twice: --
+
+> pick 20
+picked Fern (FE)
+its next none; first or longest HB
+longest line starts at HB, depth 5, ends at Dock
+step: DK, twice: --
+
+> reset 3
+Birch visits 0, next 1; dock visits 17
+
+> reset 5
+Dock visits 1, next 0; dock visits 1
+
+> reset 9
+no stop visits 0, next 0; dock visits 2
+
+> tally
+ HB=0 AL=0 BI=0 CE=1 DK=2 EL=8 FE=13
+most visited: Fern
+any visited with notes: true
+next-of-visited: 2

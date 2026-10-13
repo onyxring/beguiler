@@ -1,0 +1,90 @@
+// run_target2_accessors — value-class parameters fresh on each call, a bare accessor as a `?:` and `if`
+// condition inside its host, `= null` through accessor setters, and writes to members of a getter's result.
+// EXPECT_OUTPUT: 1 1 1 off off off safe safe armed armed 1 none none 5 6 7 3 4 5 7
+#beguilerSettings { target = z5; informName = "none"; }
+value class Box {
+    int v = 0;
+    int sets = 0;
+    Box operator = (Box o) { v = o.v; return self; }
+    void put(int n) { v = n; sets++; }
+}
+Box g;
+int touch(Box b) { b.put(5); return b.sets; }
+value class Flag {
+    bool _f = false;
+    bool operator () { return _f; }
+    void operator = (bool b) { _f = b; }
+}
+class Holder : object {
+    Flag on;
+    void show() {
+        print($"{on ? "on" : "off"} {self.on ? "on" : "off"} ");
+        if (on) print("on "); else print("off ");
+    }
+}
+Holder h { }
+object panel {
+    int flow = 4;
+    auto armed = {
+        bool _a = false;
+        bool operator () { return _a && outer.flow > 0; }
+        void operator = (bool b) { _a = b; }
+    }
+    void show() {
+        print($"{armed ? "armed" : "safe"} ");
+        if (armed) print("armed "); else print("safe ");
+    }
+    void flip() { armed = !armed; }
+}
+value class Tag {
+    string _s = "start";
+    int writes = 0;
+    string operator () { return _s; }
+    void operator = (string s) { _s = s; writes++; }
+}
+value class Gg {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+}
+class Tk : object { Gg g; int n; }
+Tk crate { }
+object desk {
+    Tag tag;
+    auto mode = {
+        string _m = "idle";
+        string operator () { return _m; }
+        void operator = (string s) { _m = s; }
+    }
+    auto focus = {
+        Tk _t = null;
+        Tk operator () { return _t; }
+        void operator = (Tk t) { _t = t; }
+    }
+}
+void main() {
+    bglInit();
+    print($"{touch(g)} {touch(g)} {touch(g)} ");
+    h.show();
+    panel.show();
+    panel.flip();
+    panel.show();
+    desk.tag = null;
+    desk.mode = null;
+    print($"{desk.tag.writes} {desk.tag ?? "none"} {desk.mode ?? "none"} ");
+    desk.focus = crate;
+    desk.focus.n = 5;
+    print(crate.n); print(" ");
+    desk.focus?.n += 1;
+    print(crate.n); print(" ");
+    desk.focus.n += 1;
+    print(crate.n); print(" ");
+    desk.focus?.g = 3;
+    print(crate.g); print(" ");
+    desk.focus?.g += 1;
+    print(crate.g); print(" ");
+    desk.focus.g += 1;
+    print(crate.g); print(" ");
+    int x = desk.focus?.n;
+    print(x);
+}

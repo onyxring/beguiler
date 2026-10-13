@@ -1,0 +1,8 @@
+/* test a for-in loop variable whose name was read above as the global */
+// EXPECT_ERROR: is read above as the global, then declared here as a loop variable
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int total = 4;
+void main() {
+    print(total);
+    for (int Total in {7, 8}) print(Total);
+}

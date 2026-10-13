@@ -1,0 +1,12 @@
+/* test $i6Name of an overload signature that no overload has */
+// EXPECT_ERROR: no overload of 'scale' has those parameter types
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int scale(int v, int by) { return v * by; }
+int scale(string s, int by) { return by; }
+#i6 {
+    [ quad n;
+        return $i6Name(scale(bool))(n);
+    ];
+}
+extern int quad(int n);
+void main() { print(quad(5)); }

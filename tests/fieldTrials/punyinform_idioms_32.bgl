@@ -1,0 +1,562 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-second PunyInform program that leans on property accessors: a named accessor
+// class `Level` (clamping setter, copy operator, `==`/`!=` against int, `<=>` against int and against
+// itself with the derived `<`/`>`/`<=`/`>=`, an emitter `operator ?`, and a method), a second named
+// accessor class `Tally` with its own `+=` and `++`, an inline `auto` accessor in a class body with a
+// static member and a method, and inline `auto` accessors on an object reaching the host through
+// `outer` (one reading another accessor through `outer`, a counting getter, a string accessor, a
+// bool accessor and a class-typed accessor whose getter result is reached with `?.` and `??`); routines above the objects that read and write those accessors; accessors passed
+// to `ref Level`, `Level` and `int` parameters, bound to a `ref Level` local, copied into a `Level`
+// local and a global, returned, compared, swapped, used with `?.` on tanks and array elements, with
+// `??` on a string accessor, postfix `?`, compound assignment (`+=`, `-=`, `*=`, `++`, `--`) on
+// objects, casts, array elements and `?.` chains, in `if`, `while`, `for`, `do`/`while`, `switch`,
+// ternaries, named arguments, interpolation and <linq> lambdas; a subclass whose `fill` is read-only
+// through `hide fill.operator =`, written through an upcast and through an array of the base class;
+// and a pooled class whose `create()` writes its accessor. Verbs: load, pour, heat, drain, swap,
+// flow, sample, spill, nudge, watch, the panel's Push, and the meta verbs check, levels and status.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// --- accessor classes -------------------------------------------------------------------------------
+
+const int LEVEL_MAX = 9;
+
+value class Level {
+    int _v = 0;
+    int sets = 0;
+
+    int  operator ()        { return _v; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > LEVEL_MAX) v = LEVEL_MAX;
+        _v = v;
+        sets++;
+    }
+    Level operator = (Level o) {
+        _v = o._v;
+        return self;
+    }
+    eBool operator == (int n)   { return _v == n; }
+    eBool operator != (int n)   { return _v != n; }
+    int   operator <=> (int n)   { return _v - n; }
+    int   operator <=> (Level o) { return _v - o._v; }
+    emitter eBool operator ? () { ($self ~= 0 && $self._v > 0) }
+
+    int room() {
+        return LEVEL_MAX - _v;
+    }
+}
+
+value class Tally {
+    int _n = 0;
+    int adds = 0;
+
+    int  operator ()          { return _n; }
+    void operator = (int v)   { _n = v; }
+    Tally operator += (int n) { _n += n; adds++; return self; }
+    Tally operator ++ ()      { _n++; adds++; return self; }
+}
+
+// --- routines above the objects they reach ------------------------------------------------------------
+
+int flowNow() {
+    return panel.flow;
+}
+
+void putFlow(int v) {
+    panel.flow = v;
+}
+
+bool panelLive() {
+    return panel.armed && panel.flow > 1;
+}
+
+string modeText() {
+    return panel.mode ?? "unset";
+}
+
+void topUp(ref Level l, int by) {
+    l = l + by;
+}
+
+int drainAll(ref Level l) {
+    int was = l;
+    l = 0;
+    return was;
+}
+
+int headroom(Level l) {
+    int was = l;
+    l = LEVEL_MAX;
+    return (l - was) * l.sets;
+}
+
+int twice(int n) {
+    return n * 2;
+}
+
+int fillOf(Tank t) {
+    return t?.fill;
+}
+
+int heatOf(Tank t) {
+    return t?.temp;
+}
+
+void report(Tank who, int amount, string verbText = "holds") {
+    printLine($"{cThe(who)} {verbText} {amount}.");
+}
+
+Level spare;
+stringObj jotted;
+array<Tank> bank[5];
+
+int byFill(object a, object b) {
+    return ((Tank)b).fill <=> ((Tank)a).fill;
+}
+
+Tank tankAt(int i) {
+    if (i < 0 || i >= bank.size) return null;
+    return bank[i];
+}
+
+Tank fullest() {
+    Tank best = null;
+    for (int i = 0; i < bank.size; i++) {
+        Tank t = bank[i];
+        if (!t?) continue;
+        if (!best? || t.fill > best.fill) best = t;
+    }
+    return best;
+}
+
+int total() {
+    int sum = 0;
+    for (int i = 0; i < bank.size; i++) sum += fillOf(bank[i]);
+    return sum;
+}
+
+// --- tanks ------------------------------------------------------------------------------------------
+
+class Tank : object {
+    Level fill;
+    Tally pours;
+    char letter;
+    auto temp = {
+        static int writes = 0;
+        int _t = 20;
+        int peak = 20;
+        int  operator ()        { return _t; }
+        void operator = (int v) {
+            _t = v;
+            if (v > peak) peak = v;
+            writes++;
+        }
+        int getWrites() { return writes; }
+    }
+    name = {.tank};
+    attributes = {static};
+
+    void description() {
+        print($"{cThe(self)} holds {fill} of {LEVEL_MAX}");
+        if (fill?) print($", {fill.room()} to spare");
+        else print(", empty");
+        printLine($"; it is at {temp} degrees.");
+    }
+
+    int pourInto(Tank to, int n) {
+        if (n > fill) n = fill;
+        if (n > to.fill.room()) n = to.fill.room();
+        fill -= n;
+        to.fill += n;
+        pours++;
+        to.pours += n;
+        return n;
+    }
+}
+
+class SealedTank : Tank {
+    hide fill.operator = (int);
+}
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Three tanks and a panel. A doorway leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A sealed gray tank. A doorway leads west.";
+    w_to = roomA;
+}
+
+Tank redTank {
+    "red tank";
+    parent = roomA;
+    name = {.red};
+    letter = 'r';
+}
+
+Tank blueTank {
+    "blue tank";
+    parent = roomA;
+    name = {.blue};
+    letter = 'b';
+}
+
+Tank greenTank {
+    "green tank";
+    parent = roomA;
+    name = {.green};
+    letter = 'g';
+}
+
+SealedTank grayTank {
+    "gray tank";
+    parent = roomB;
+    name = {.gray};
+    letter = 'y';
+}
+
+object panel {
+    "panel";
+    parent = roomA;
+    name = {.panel, .button};
+    attributes = {static};
+    int scale = 2;
+    int reads = 0;
+    int changes = 0;
+
+    auto flow = {
+        int _raw = 0;
+        int  operator ()        { outer.reads++; return _raw / outer.scale; }
+        void operator = (int v) { _raw = v * outer.scale; }
+    }
+    auto load = {
+        int _l = 0;
+        int  operator ()        { return outer.flow + _l; }
+        void operator = (int v) { _l = v - outer.flow; }
+    }
+    auto mode = {
+        string _m = "idle";
+        string operator ()         { return _m; }
+        void   operator = (string s) {
+            _m = s;
+            outer.changes++;
+        }
+    }
+    auto focus = {
+        Tank _t = null;
+        Tank operator ()         { return _t; }
+        void operator = (Tank t) {
+            _t = t;
+            outer.changes++;
+        }
+    }
+    auto armed = {
+        bool _a = false;
+        bool operator ()        { return _a && outer.flow > 0; }
+        void operator = (bool b) { _a = b; }
+    }
+
+    void description() {
+        printLine($"The panel shows flow {flow}, load {load}, mode {mode}; it is {armed ? "armed" : "safe"}.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Push:
+                armed = !armed;
+                mode = armed ? "run" : "hold";
+                if (panelLive()) {
+                    for (int i = 0; i < bank.size; i++) bank[i]?.fill += flow;
+                    rtrue($"The button clicks. Every tank takes {flow}; mode {mode}.^");
+                }
+                rtrue($"The button clicks. Mode {modeText()}.^");
+        }
+        rfalse;
+    }
+}
+
+class Sample[3] : object {
+    Level fill;
+    void create(int n) {
+        fill = n;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb LoadWith {
+    grammar = {.load, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks load.");
+            return;
+        }
+        if (noun.is(SealedTank)) {
+            ((Tank)noun).fill = parsed_number;
+            printLine($"You force {the(noun)} open; it holds {((Tank)noun).fill}.");
+            return;
+        }
+        ((Tank)noun).fill = parsed_number;
+        Tank t = (Tank)noun;
+        jotted += $"{t.letter}={t.fill} ";
+        if (t.fill == LEVEL_MAX && parsed_number > LEVEL_MAX) printLine($"{cThe(t)} overflows and stops at {t.fill}.");
+        else printLine($"{cThe(t)} now holds {t.fill}.");
+    }
+}
+
+verb PourInto {
+    grammar = {.pour, NOUN, .into, NOUN};
+    void handler() {
+        if (!noun.is(Tank) || !second.is(Tank)) {
+            printLine("Only tanks pour.");
+            return;
+        }
+        Tank a = (Tank)noun;
+        Tank b = (Tank)second;
+        if (a == b || b.is(SealedTank)) {
+            printLine("That can't take it.");
+            return;
+        }
+        if (!a.fill?) {
+            printLine($"{cThe(a)} is empty.");
+            return;
+        }
+        int moved = a.pourInto(b, a.fill);
+        string how = a.fill < b.fill ? "less" : (a.fill == b.fill ? "the same" : "more");
+        printLine($"You pour {moved} from {the(a)} into {the(b)}; {the(a)} now holds {how}.");
+    }
+}
+
+verb HeatUp {
+    grammar = {.heat, NOUN};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks heat.");
+            return;
+        }
+        Tank t = (Tank)noun;
+        t.temp += 15;
+        ((Tank)noun).temp++;
+        if (t.temp > 50) t.temp -= 10;
+        printLine($"{cThe(t)} reaches {t.temp} degrees (peak {t.temp.peak}).");
+    }
+}
+
+verb DrainOut {
+    grammar = {.drain, NOUN};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks drain.");
+            return;
+        }
+        int was = drainAll(((Tank)noun).fill);
+        if (was == 0) {
+            printLine($"{cThe(noun)} was already empty.");
+            return;
+        }
+        printLine($"{cThe(noun)} drains {was}; it now holds {fillOf((Tank)noun)}.");
+    }
+}
+
+verb SwapLevels {
+    grammar = {.swap, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(Tank) || !second.is(Tank)) {
+            printLine("Only tanks swap.");
+            return;
+        }
+        Tank a = (Tank)noun;
+        Tank b = (Tank)second;
+        Level held = a.fill;
+        a.fill = b.fill;
+        b.fill = held;
+        printLine($"{cThe(a)} now holds {a.fill}, {the(b)} {b.fill}; held copy {held}, set {held.sets} time(s).");
+    }
+}
+
+verb SetFlow {
+    grammar = {.flow, NUMBER};
+    void handler() {
+        putFlow(parsed_number);
+        if (parsed_number == 0) {
+            panel.mode = null;
+        }
+        panel.load = panel.flow * 3;
+        panel.flow *= 2;
+        printLine($"Flow {flowNow()}, load {panel.load}, twice the flow {twice(panel.flow)}.");
+    }
+}
+
+verb Spill {
+    grammar = {.spill};
+    void handler() {
+        int steps = 0;
+        Tank t = fullest();
+        while (t?.fill > 0) {
+            t.fill--;
+            steps++;
+        }
+        do {
+            redTank.fill++;
+            steps++;
+        } while (redTank.fill < 3);
+        for (int i = 0; blueTank.fill <= 4; i++) {
+            topUp(blueTank.fill, 1);
+            steps++;
+        }
+        tankAt(4)?.fill = 0;
+        tankAt(2)?.temp = 30;
+        printLine($"Spilled and refilled in {steps} step(s); red {redTank.fill}, blue {blueTank.fill}.");
+    }
+}
+
+verb TakeSample {
+    grammar = {.sample, NOUN};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks give samples.");
+            return;
+        }
+        Sample s = new Sample(((Tank)noun).fill);
+        if (s == null) {
+            printLine("No sample jars left.");
+            return;
+        }
+        s.fill += 1;
+        printLine($"The jar holds {s.fill}; it is {s.fill > ((Tank)noun).fill ? "fuller" : "not fuller"} than {the(noun)}.");
+        if (s.fill >= LEVEL_MAX) delete s;
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        Tank t = noun.is(Tank) ? (Tank)noun : null;
+        t?.fill += 1;
+        t?.temp *= 2;
+        t?.pours++;
+        tankAt(9)?.fill += 1;
+        printLine($"{cThe(noun)} holds {t?.fill}, at {t?.temp}, pours {t?.pours}; {(t?.fill?) ? "wet" : "dry"}.");
+    }
+}
+
+verb Watch {
+    grammar = {.watch, NOUN};
+    void handler() {
+        Tank was = panel.focus;
+        panel.focus = noun.is(Tank) ? (Tank)noun : null;
+        panel.focus?.fill += 1;
+        panel.focus?.temp++;
+        printLine($"The panel watches {(panel.focus ?? was ?? redTank).letter}: level {panel.focus?.fill}, temp {panel.focus?.temp}, {panel.focus?.fill? ? "wet" : "dry"}; before it, {was? ? "a tank" : "nothing"}.");
+    }
+}
+
+verb Check {
+    meta = true;
+    grammar = {.check, NOUN};
+    void handler() {
+        Tank t = noun.is(Tank) ? (Tank)noun : null;
+        if (!t?) {
+            printLine($"{cThe(noun)} has no level.");
+            return;
+        }
+        report(amount: t.fill, who: t);
+        report(t, verbText: "has room for", amount: t.fill.room());
+        switch (t.fill) {
+            case 0: printLine("Level: empty.");
+            case 1, 2, 3: printLine("Level: low.");
+            case LEVEL_MAX: printLine("Level: full.");
+            default: printLine("Level: middle.");
+        }
+        printLine($"Sets {t.fill.sets}, pours {t.pours} over {t.pours.adds} add(s), headroom {headroom(t.fill)}.");
+        printLine($"Temp {heatOf(t)}, peak {t.temp.peak}, writes {t.temp.getWrites()}; {t?.fill != 0 ? "wet" : "dry"}.");
+    }
+}
+
+verb Levels {
+    meta = true;
+    grammar = {.levels};
+    void handler() {
+        print("Levels:");
+        int i = 0;
+        do {
+            print($" {bank[i]?.letter}={bank[i]?.fill}");
+            i++;
+        } while (bank[i]?);
+        printLine(".");
+        print("Wet:");
+        for (int j = 0; j < bank.size; j++) {
+            if (bank[j]?.fill?) print($" {bank[j].letter}");
+        }
+        printLine(".");
+        int wet = bgl.world.instances(Tank).filter((object o) => ((Tank)o).fill?).count();
+        int high = bgl.world.instances(Tank, (object o) => ((Tank)o).fill >= 5).count();
+        printLine($"{wet} wet, {high} at 5 or more, total {total()}.");
+        array<object> order[5];
+        order = bgl.world.instances(Tank).orderBy(byFill);
+        print("By level:");
+        for (object o in order) print($" {((Tank)o).letter}");
+        printLine(".");
+        Tank top = fullest();
+        printLine($"Fullest: {top?.letter}, at {top?.fill}; spare {spare}, spare below it: {(spare < top.fill) ? "yes" : "no"}.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        int before = panel.reads;
+        int f = panel.flow;
+        printLine($"Panel: flow {f}, load {panel.load}, mode {modeText()}, changes {panel.changes}, live {panelLive() ? "yes" : "no"}.");
+        printLine($"Panel getter ran {panel.reads - before} time(s).");
+        ref Level hot := redTank.fill;
+        if (hot > blueTank.fill) printLine("Red is above blue.");
+        else if (hot < blueTank.fill) printLine("Red is below blue.");
+        else printLine("Red matches blue.");
+        spare = hot;
+        spare = spare + 1;
+        printLine($"Spare {spare} ({spare.sets} set(s)); red {hot}, red sets {hot.sets}.");
+        printLine($"Notes: {jotted ?? "none"}");
+    }
+}
+
+bool Initialise() {
+    bank[0] = redTank;
+    bank[1] = blueTank;
+    bank[2] = greenTank;
+    bank[3] = grayTank;
+    rfalse;
+}

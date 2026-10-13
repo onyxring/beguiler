@@ -1,0 +1,64 @@
+// run_target2_namespaces — a union return type opening with a bare alias, an alias for a dotted alias
+// path, a ref array member reached through an auto member, extend-class members typed by dotted paths,
+// and #using-imported member arrays and methods (one named like a library verb) used bare.
+// EXPECT_OUTPUT: none 7 2 2: 5 6 true true 1 0 1 shut1 closed1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Thing : object { int n = 7; }
+Thing t1 { }
+object ns {
+    alias T for Thing;
+    T | string Get(bool b) { if (b) return "none"; return null; }
+}
+object inner { alias T for Thing; }
+object outer {
+    alias U for inner.T;
+    int Get(U x) { return x.n; }
+}
+array<int> store[4];
+object _branch { ref array<int> Items; }
+object root { auto branch = _branch; }
+int Count(array<int> a) { return a.length; }
+enum eLvl { Lo, Hi }
+class Gauge : object { eLvl L = eLvl.Hi; }
+object _lv { alias Level for eLvl; }
+extend root { auto lv = _lv; }
+extend class Gauge {
+    _lv.Level M = eLvl.Lo;
+    _lv.Level Lev() { return L; }
+    bool Hot() { return L == eLvl.Hi; }
+}
+Gauge g1 { }
+class Base : object { int id; }
+Base b1 { id = 1; }
+array<Base> pool[4];
+object bin { array<Base> Kept[4]; ref array<Base> Held; }
+object desk {
+    void Close(Base o) { print("closed"); print(o.id); }
+    void Shut(Base o) { print("shut"); print(o.id); }
+}
+#using bin
+#using desk
+void probe() {
+    print(Kept.length); print(" ");
+    Held.append(b1);
+    print(pool.length); print(" ");
+    Shut(b1); print(" ");
+    Close(b1);
+}
+void main() {
+    bglInit();
+    print((string)ns.Get(true)); print(" ");
+    print(outer.Get(t1)); print(" ");
+    _branch.Items := store;
+    store.append(5);
+    store.append(6);
+    print(Count(root.branch.Items)); print(" ");
+    print(root.branch.Items.length); print(":");
+    for (int v in root.branch.Items) { print(" "); print(v); }
+    print(" ");
+    print(g1.Lev() == eLvl.Hi); print(" "); print(g1.Hot()); print(" ");
+    print((int)g1.M); print(" ");
+    bin.Held := pool;
+    probe();
+}

@@ -33,11 +33,17 @@ _bglClass_Room r1
 _bglClass_Room r2
 ;
 array g_rooms table r1 r2;
-[main v v2;
-    ( _bglAt(g_rooms, 0, 0)-->0 ).visit();
+[main _bglrcv0 v v2 _bglrcv1;
+    if (true) {
+        _bglrcv0 =  _bglAt(g_rooms, 0, 0)-->0;
+        _bglrcv0.visit();
+    }
     v=( _bglAt(g_rooms, 0, 0)-->0 ).visits;
     v2=( _bglAt(g_rooms, 0, 0)-->0 ).getvisits();
-    ( _bglAt(g_rooms, 1, 0)-->0 ).visit();
+    if (true) {
+        _bglrcv1 =  _bglAt(g_rooms, 1, 0)-->0;
+        _bglrcv1.visit();
+    }
 ];
 [_bglAt arr i w n;
     n = 0;

@@ -1,0 +1,6 @@
+/* test calling a type name like a function */
+// EXPECT_ERROR: 'stringObj' is a type, and a type can't be called
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+void show(stringObj s) { print(s); }
+void main() { show(stringObj("abc")); }

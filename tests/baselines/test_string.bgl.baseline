@@ -3,11 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
-global _bgl_temp1;
-global _bgl_temp2;
-global _bgl_temp3;
-global _bgl_temp4;
 global _bgl_sw;
 
     Default bglStringDefaultSize 500;
@@ -212,11 +207,11 @@ object _bglBuf
     }
     return true;
   ],
-       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
+       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2 _bgl_tempL0;
     len1=self.length(buf1);
     len2=self.length(buf2);
-    if (len1 < len2) { _bgl_temp0 = len1; } else { _bgl_temp0 = len2; }
-    lim=_bgl_temp0;
+    if (len1 < len2) { _bgl_tempL0 = len1; } else { _bgl_tempL0 = len2; }
+    lim=_bgl_tempL0;
     for (t = 0 : t < lim : t++) {
         c1=buf1->(t + WORDSIZE);
         c2=buf2->(t + WORDSIZE);
@@ -225,15 +220,15 @@ object _bglBuf
             c2 = _bglchartolower(c2);
         }
         if (c1 ~= c2) {
-            if (c1 < c2) { _bgl_temp1 = -1; } else { _bgl_temp1 = 1; }
-            return _bgl_temp1;
+            if (c1 < c2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+            return _bgl_tempL0;
         }
     }
     if (len1 == len2) {
         return 0;
     }
-    if (len1 < len2) { _bgl_temp2 = -1; } else { _bgl_temp2 = 1; }
-    return _bgl_temp2;
+    if (len1 < len2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+    return _bgl_tempL0;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
     len2=self.length(buf2);
@@ -1307,12 +1302,12 @@ class _bglString(bglstringpoolreserve)
     c.setFromStr(_bglStr.appendChar("literal", 'X'));
     if (c) c.free();
 ];
-[exerciseNullable s1 s2 c present;
+[exerciseNullable s1 s2 c present _bgl_tempL0 _bgl_tempL1;
     s1 = "hi";
     c = _bglStr.new();
-    _bgl_temp4 = s2; if (~~(_bgl_temp4 ~= 0)) _bgl_temp4 = "fallback";
-    _bgl_temp3 = s1; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = _bgl_temp4;
-    c.setFromLit(_bgl_temp3);
+    _bgl_tempL1 = s2; if (~~(_bgl_tempL1 ~= 0)) _bgl_tempL1 = "fallback";
+    _bgl_tempL0 = s1; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = _bgl_tempL1;
+    c.setFromLit(_bgl_tempL0);
     present=s1 ~= 0;
     if (c) c.free();
 ];
@@ -1376,14 +1371,14 @@ class _bglString(bglstringpoolreserve)
 [_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
 ];
-[_bgl_stringObj_deinit s;
-     if(s ~= 0 && s ofclass _bglString) s.free(); 
-];
 [_bgl_stringObj__opeqeq a b;
     return _bglstr.areequal(a, b, false);
 ];
 [_bgl_stringObj__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_stringObj_deinit s;
+     if(s ~= 0 && s ofclass _bglString) s.free(); 
 ];
 [_bgl_stringObj__opeq cur v;
     

@@ -1,0 +1,52 @@
+Room A
+Room A.
+
+> queue
+Queued 4, again false.
+bug crash [high] front 15.00
+ticket printer [normal] back 2.50
+bug typo [low] back 1.00
+ticket login [high] front 5.00
+High 2, normal 1, low 1.
+Next crash, next high crash, next named crash.
+
+> bill
+Spent 19.50, budget 15.00, afford crash true, afford spent false.
+Ledger: 15.00 2.50 5.00
+Sorted first 2.50, last 15.00.
+Invoice login=5.00, copy login=10.00, same false.
+Total 23.50, from normal 22.50, all 23.50.
+Dearest crash.
+
+> tasks
+Made backup, patch, audit; fourth none; opened 3, pending 3.
+task backup [low] nobody 3.00
+task patch [high] nobody 5.00
+Severity crash 3, backup 3, login 0.
+Closed 2, pending 1, queued 5.
+Again rerun at normal, quote 10.00.
+
+> lookup
+typo: bug at back
+fax: no such ticket
+patch: task at nobody
+Find crash bug, find fax none.
+Pick urgent crash, low typo, normal-urgent none.
+Crash is bug true, printer is bug false, typo severity 1.
+By quote: typo printer login patch crash
+Urgent 3, any front true, all owned false.
+
+> report
+After closing, next printer, next low printer.
+Support is the branch; reports is true.
+Names: support, billing, reports.
+|width 6|
+------
+Audit 8: in:crash in:printer in:typo in:login in:backup in:patch out:crash out:login
+low normal high then high.
+
+> extras
+Costs 3, cheapest 1.00, crash through the func 15.00.
+Budget now 20.00, affords the dearest false.
+printer is normal
+Typo raised to normal, is it high false.

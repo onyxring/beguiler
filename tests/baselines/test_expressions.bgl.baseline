@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
@@ -103,10 +102,10 @@ object bgl
     i++;
     i--;
 ];
-[testTernary x tval;
+[testTernary x tval _bgl_tempL0;
     x = 7;
-    if (x >= 0) { _bgl_temp0 = x; } else { _bgl_temp0 = 0; }
-    tval=_bgl_temp0;
+    if (x >= 0) { _bgl_tempL0 = x; } else { _bgl_tempL0 = 0; }
+    tval=_bgl_tempL0;
 ];
 [testCast v n b;
     v = 42;

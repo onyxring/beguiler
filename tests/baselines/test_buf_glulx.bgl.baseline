@@ -3,9 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
-global _bgl_temp1;
-global _bgl_temp2;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
@@ -257,11 +254,11 @@ object _bglBuf
     }
     return true;
   ],
-       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
+       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2 _bgl_tempL0;
     len1=self.length(buf1);
     len2=self.length(buf2);
-    if (len1 < len2) { _bgl_temp0 = len1; } else { _bgl_temp0 = len2; }
-    lim=_bgl_temp0;
+    if (len1 < len2) { _bgl_tempL0 = len1; } else { _bgl_tempL0 = len2; }
+    lim=_bgl_tempL0;
     for (t = 0 : t < lim : t++) {
         c1=buf1->(t + WORDSIZE);
         c2=buf2->(t + WORDSIZE);
@@ -270,15 +267,15 @@ object _bglBuf
             c2 = _bglchartolower(c2);
         }
         if (c1 ~= c2) {
-            if (c1 < c2) { _bgl_temp1 = -1; } else { _bgl_temp1 = 1; }
-            return _bgl_temp1;
+            if (c1 < c2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+            return _bgl_tempL0;
         }
     }
     if (len1 == len2) {
         return 0;
     }
-    if (len1 < len2) { _bgl_temp2 = -1; } else { _bgl_temp2 = 1; }
-    return _bgl_temp2;
+    if (len1 < len2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+    return _bgl_tempL0;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
     len2=self.length(buf2);

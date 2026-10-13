@@ -1,0 +1,769 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a packing kit whose public surface is built from overloads. A value class of quantities
+// with copy operators from itself, an int and an enum unit; + and - by quantity, int and unit; += by
+// quantity and int; distinct postfix ++ and prefix++; == and != by quantity and by int; a logical !;
+// static == overloads selected by operator reference; a static <=> giving < and > and passed to sort;
+// an implicit conversion to int beside an explicit one to string; overloaded static makers that call
+// each other bare, also reached through an alias path; its own print(). An item class hierarchy
+// (item, box, crate) with overloaded weigh() and tell() where the subclass overrides one overload and
+// reaches the others by inheritance, per-object overrides of one overload (in the body and by
+// extend), an overload added by extend class, a subclass that adds a new overload of an inherited
+// method, hides another overload and overrides one operator overload, a second parent contributing a
+// method, instance + by item, int and quantity used with subclass operands, static == /
+// != / <=> on the base used by contains/removeValue/orderBy and referenced through the subclass, []
+// overloaded by int, string and bnum, []= and += / -= by item, array and bnum, overloaded methods
+// reached through ?. on indexer results and picked by named arguments. Global overload sets chosen by
+// class, ancestor, object, int, char, string, stringObj, array, enum, bnum (and a combined bnum) and var;
+// one overload replaced with replaced(); an emitter and a function sharing a name; func<> overloads
+// told apart by their parameter type; a union-parameter overload beside an int one; default and named
+// arguments picking between three pack() overloads. A namespace object with overloaded methods, more
+// overloads added by extend, imported with #using; an emitter class of overloaded emitters imported
+// with #using; a pooled class with overloaded methods reached through ?.; per-object overrides of one
+// overload; $i6Name selecting overloads (global, static, instance) from emitters and an #i6 island, and
+// $i6Expr over an overloaded call. Calls sit in conditions, loops, ternaries, lambdas, <linq> chains,
+// interpolation and returns.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit. ====
+
+/// What a quantity is counted in.
+enum eLa32Unit { each, pair, dozen }
+
+/// Marks an item may carry.
+bnum eLa32Flag { fragile, heavy, sealed }
+
+/// A count of things, copied on assignment.
+value class La32Qty {
+    int n;
+
+    La32Qty operator = (La32Qty o) { n = o.n; return self; }
+    La32Qty operator = (int v) { n = v; return self; }
+    La32Qty operator = (eLa32Unit u) { n = per(u); return self; }
+
+    La32Qty operator + (La32Qty o) { return of(n + o.n); }
+    La32Qty operator + (int v) { return of(n + v); }
+    La32Qty operator + (eLa32Unit u) { return of(n + per(u)); }
+    La32Qty operator - (La32Qty o) { return of(n - o.n); }
+    La32Qty operator - (int v) { return of(n - v); }
+
+    La32Qty operator += (La32Qty o) { n += o.n; return self; }
+    La32Qty operator += (int v) { n += v; return self; }
+
+    /// One more.
+    La32Qty operator ++ () { n++; return self; }
+    /// Up to the next whole dozen.
+    La32Qty operator prefix++ () { n = (n / 12 + 1) * 12; return self; }
+
+    bool operator == (La32Qty o) { return n == o.n; }
+    bool operator == (int v) { return n == v; }
+    bool operator != (La32Qty o) { return n != o.n; }
+    bool operator != (int v) { return n != v; }
+    /// True when there are none.
+    bool operator ! () { return n == 0; }
+
+    static bool operator == (La32Qty a, La32Qty b) { return a.n == b.n; }
+    static bool operator == (La32Qty a, int b) { return a.n == b; }
+    static int operator <=> (La32Qty a, La32Qty b) { return a.n - b.n; }
+
+    int operator () { return n; }
+    explicit string operator () {
+        if (n == 0) return "none";
+        if (n < 12) return "some";
+        return "many";
+    }
+
+    /// A quantity of so many.
+    static La32Qty of(int v) {
+        La32Qty q;
+        q.n = v;
+        return q;
+    }
+    /// A quantity of so many units.
+    static La32Qty of(int count, eLa32Unit u) { return of(count * per(u)); }
+
+    /// How many one unit is.
+    static int per(eLa32Unit u) {
+        switch (u) {
+            case eLa32Unit.pair:  return 2;
+            case eLa32Unit.dozen: return 12;
+            default:              return 1;
+        }
+    }
+    /// How many a unit word is; 0 for a word it does not know.
+    static int per(string word) {
+        if (word == "pair") return per(eLa32Unit.pair);
+        if (word == "dozen") return per(eLa32Unit.dozen);
+        if (word == "each") return 1;
+        return 0;
+    }
+
+    /// Prints the count.
+    void print() { print($"{n}"); }
+    /// Prints the count in whole units and what is left over.
+    void print(eLa32Unit u) {
+        int p = per(u);
+        print($"{n / p}x{p}");
+        if (n % p != 0) print($"+{n % p}");
+    }
+}
+
+/// Anything the kit can pack.
+class La32Item : object {
+    int weight = 1;
+    eLa32Flag flags;
+
+    /// Its weight; a holder adds what it holds.
+    default int weigh() { return weight; }
+    /// Its weight counted in a unit.
+    int weigh(eLa32Unit u) { return weigh() * La32Qty.per(u); }
+    /// Its weight times a quantity.
+    int weigh(La32Qty q) { return weigh() * q.n; }
+
+    default string label() { return "item"; }
+
+    /// Prints its label.
+    default void tell() { print(label()); }
+    /// Prints its label, and its weight when asked.
+    void tell(bool full) {
+        tell();
+        if (full) print($" ({weigh()})");
+    }
+    /// Prints its label and its weight in a unit.
+    void tell(eLa32Unit u) {
+        tell();
+        print($" ({weigh(u)}/{La32Qty.per(u)})");
+    }
+
+    /// Prints a stamp number.
+    void stamp(int n) { print($"#{n}"); }
+
+    /// True when it carries any mark.
+    bool marked() { return flags != 0; }
+    /// True when it carries this mark.
+    bool marked(eLa32Flag f) { return (flags & f) != 0; }
+
+    int operator + (La32Item o) { return weigh() + o.weigh(); }
+    int operator + (int v) { return weigh() + v; }
+    int operator + (La32Qty q) { return weigh() + q.n; }
+
+    static bool operator == (La32Item a, La32Item b) { return a.weight == b.weight; }
+    static bool operator != (La32Item a, La32Item b) { return a.weight != b.weight; }
+    static int operator <=> (La32Item a, La32Item b) { return a.weigh() - b.weigh(); }
+}
+
+/// A box: an item that holds items.
+class La32Box : La32Item {
+    array<La32Item> held[4];
+    /// Items boxed by every box so far.
+    static int boxed = 0;
+
+    int weigh() {
+        int t = weight;
+        for (La32Item i in held) t += i.weigh();
+        return t;
+    }
+    string label() { return "box"; }
+
+    /// Puts an item in; false when it is in already or the box is full.
+    bool put(La32Item i) {
+        if (held.contains(i)) return false;
+        if (!held.append(i)) return false;
+        boxed++;
+        return true;
+    }
+    /// Puts two items in; how many went.
+    int put(La32Item a, La32Item b) {
+        int n = 0;
+        if (put(a)) n++;
+        if (put(b)) n++;
+        return n;
+    }
+
+    int count() { return held.length; }
+    int count(eLa32Flag f) { return held.filter((La32Item i) => i.marked(f)).count(); }
+    int count(func<bool, La32Item> test) { return held.filter(test).count(); }
+
+    La32Item operator [] (int at) {
+        if (at < 0 || at >= held.length) return null;
+        return held[at];
+    }
+    La32Item operator [] (string tag) {
+        for (La32Item i in held) if (i.label() == tag) return i;
+        return null;
+    }
+    La32Item operator [] (eLa32Flag f) {
+        for (La32Item i in held) if (i.marked(f)) return i;
+        return null;
+    }
+    void operator []= (int at, La32Item v) { held[at] = v; }
+
+    void operator += (La32Item i) { put(i); }
+    void operator += (array<La32Item> list) { for (La32Item i in list) put(i); }
+    void operator -= (La32Item i) { held.removeValue(i); }
+    /// Takes out everything carrying a mark.
+    void operator -= (eLa32Flag f) {
+        for (int at = held.length - 1; at >= 0; at--) if (held[at].marked(f)) held.remove(at);
+    }
+}
+
+/// Something that can be stamped with a word.
+class La32Stamped : object {
+    /// Prints a stamp word.
+    void stampWord(string word) { print($"'{word}'"); }
+}
+
+/// A crate: a box with slats, that can take an item on top, and be stamped with a word.
+class La32Crate : La32Box, La32Stamped {
+    int slats = 2;
+    hide put(La32Item, La32Item);
+
+    replace int weigh() { return ((La32Box)self).weigh() + slats; }
+    replace string label() { return "crate"; }
+
+    /// A crate adds its slats to a sum with a number.
+    replace int operator + (int v) { return weigh() + v + slats; }
+
+    /// Puts an item in, at the front when it goes on top.
+    bool put(La32Item i, bool onTop) {
+        if (!onTop) return put(i);
+        if (held.contains(i)) return false;
+        if (!held.prepend(i)) return false;
+        boxed++;
+        return true;
+    }
+}
+
+/// Every item can be told with a prefix, added later.
+extend class La32Item {
+    /// Prints a word, then its label, and its weight when asked.
+    void tell(string prefix, bool full = false) {
+        print(prefix);
+        tell(full);
+    }
+}
+
+/// A slip for a count of one item; made with new.
+class La32Slip[3] : object {
+    La32Item what;
+    int count;
+    /// Slips issued so far.
+    static int issued = 0;
+
+    void create(La32Item i, int c = 1) {
+        what = i;
+        count = c;
+        issued++;
+    }
+
+    void bump() { count++; }
+    void bump(int by) { count += by; }
+    void bump(La32Qty q) { count += q.n; }
+    void bump(eLa32Unit u) { count += La32Qty.per(u); }
+
+    int total() { return what.weigh() * count; }
+    int total(eLa32Unit u) { return total() / La32Qty.per(u); }
+}
+
+/// The kit's namespace: type names, a log, and number formatting.
+object la32 {
+    alias qty  for La32Qty;
+    alias item for La32Item;
+    alias box  for La32Box;
+    stringObj log;
+
+    /// Adds a word to the log.
+    void note(string s) {
+        log += s;
+        log += " ";
+    }
+    /// Adds an item's label to the log.
+    void note(item i) { note(i.label()); }
+    /// Adds a number to the log.
+    void note(int v) { log += $"{v} "; }
+
+    /// Prints a number in two places.
+    void fmt(int v) {
+        if (v >= 0 && v < 10) print("0");
+        print(v);
+    }
+    /// Prints a quantity's count in two places, marked q.
+    void fmt(qty q) {
+        fmt(q.n);
+        print("q");
+    }
+    /// Prints an item's weight in two places, marked w.
+    void fmt(item i) {
+        fmt(i.weigh());
+        print("w");
+    }
+}
+
+/// More formatting, added later.
+extend la32 {
+    /// Prints a quantity in whole units, marked u.
+    void fmt(qty q, eLa32Unit u) {
+        fmt(q.n / qty.per(u));
+        print("u");
+    }
+    /// Prints a word in brackets.
+    void fmt(string s) {
+        print("[");
+        print(s);
+        print("]");
+    }
+    /// Adds a unit's size to the log.
+    void note(eLa32Unit u) { note(qty.per(u)); }
+}
+
+/// Bracketed numbers.
+emitter class La32Pad {
+    void pad(int v) { print "<", $v, ">"; }
+    void pad(int v, int w) { print "<", $v, ":", $w, ">"; }
+}
+
+// ==== Global overload sets. ====
+
+/// Prints what a thing is, by its type.
+void la32Show(La32Item i) { print($"item {i.label()}"); }
+void la32Show(La32Box b) { print($"box {b.label()} of {b.count()}"); }
+void la32Show(La32Qty q) { print($"qty {q}"); }
+void la32Show(int v) { print($"int {v}"); }
+void la32Show(char c) {
+    print("char ");
+    print(c);
+}
+void la32Show(string s) { print($"text {s}"); }
+void la32Show(stringObj s) { print($"built {s}"); }
+void la32Show(array<La32Item> list) { print($"list of {list.length}"); }
+void la32Show(eLa32Unit u) { print($"unit {La32Qty.per(u)}"); }
+void la32Show(eLa32Flag f) { print($"flag {(int)f}"); }
+void la32Show(object o) { print($"object {o}"); }
+void la32Show(var v) { print("something"); }
+
+/// Negative numbers say so.
+replace void la32Show(int v) {
+    if (v < 0) {
+        print("minus ");
+        v = -v;
+    }
+    replaced(v);
+}
+
+/// Twice a number, inline.
+emitter int la32Double(int v) { ($v * 2) }
+/// Twice a quantity.
+int la32Double(La32Qty q) { return q.n * 2; }
+
+/// A number or a quantity scaled.
+int la32Scale(int v, int by) { return v * by; }
+int la32Scale(La32Qty q, int by) { return q.n * by; }
+
+/// Runs a step on every item, or on every box; how many it ran on.
+int la32Each(func<void, La32Item> step) {
+    int n = 0;
+    for (object o in bgl.world.instances(La32Item)) {
+        step((La32Item)o);
+        n++;
+    }
+    return n;
+}
+int la32Each(func<void, La32Box> step) {
+    int n = 0;
+    for (object o in bgl.world.instances(La32Box)) {
+        step((La32Box)o);
+        n++;
+    }
+    return n;
+}
+
+/// Notes an item or a word, or a number.
+void la32Note(La32Item | string what) {
+    if (typeof(what) == eType.object) la32.note((La32Item)what);
+    else la32.note((string)what);
+}
+void la32Note(int v) { la32.note(v); }
+
+array<La32Item> loose[3];
+
+/// Packs an item some times, a list, or a quantity's worth; how many went in.
+int la32Pack(La32Box b, La32Item i, int times = 1) {
+    int n = 0;
+    for (int k = 0; k < times; k++) if (b.put(i)) n++;
+    return n;
+}
+int la32Pack(La32Box b, array<La32Item> list, bool stopWhenFull = true) {
+    int n = 0;
+    for (La32Item i in list) {
+        if (b.put(i)) n++;
+        else if (stopWhenFull) return n;
+    }
+    return n;
+}
+int la32Pack(La32Box b, La32Qty q, eLa32Unit unit = eLa32Unit.each) {
+    return q.n / La32Qty.per(unit);
+}
+
+/// Raw I6 reaching the overloads by their emitted names.
+emitter int la32Triple(int v) { $i6Name(la32Scale(int, int))($v, 3) }
+emitter int la32WeighRaw(La32Item i, eLa32Unit u) { $i.($i6Name(La32Item.weigh(eLa32Unit)))($u) }
+emitter int la32PerRaw(eLa32Unit u) { $i6Name(La32Qty.per(eLa32Unit))($u) }
+emitter int la32PerWord(string w) { $i6Name(la32.qty.per(string))($w) }
+
+#i6 {
+    [ la32I6Quad n;
+        return $i6Name(la32Scale(int, int))(n, 4);
+    ];
+}
+extern int la32I6Quad(int n);
+
+// ==== The world. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La32Item brick {
+    "brick";
+    parent = roomA;
+    name = {.brick};
+    weight = 3;
+    flags = eLa32Flag.heavy;
+    string label() { return "brick"; }
+}
+
+La32Item bolt {
+    "bolt";
+    parent = roomA;
+    name = {.bolt};
+    weight = 1;
+    flags = eLa32Flag.fragile;
+    string label() { return "bolt"; }
+    void tell() { print("BOLT"); }
+}
+
+La32Item lamp {
+    "lamp";
+    parent = roomA;
+    name = {.lamp};
+    weight = 4;
+    flags = eLa32Flag.fragile | eLa32Flag.sealed;
+    string label() { return "lamp"; }
+}
+
+object rope {
+    "rope";
+    parent = roomA;
+    name = {.rope};
+}
+
+La32Box boxA {
+    "box A";
+    parent = roomA;
+    name = {.box, .a};
+    weight = 2;
+    replace string label() { return "box A"; }
+}
+
+La32Crate crateA {
+    "crate";
+    parent = roomA;
+    name = {.crate};
+    weight = 5;
+}
+
+/// The lamp tells itself in brackets.
+extend lamp {
+    replace void tell() { print($"<{label()}>"); }
+}
+
+#using la32
+#using La32Pad
+
+// ==== Verbs. ====
+
+/// True when the noun is an item.
+bool la32IsItem() { return noun.is(La32Item); }
+
+verb La32PackIn {
+    grammar = {.pack, NOUN(la32IsItem)};
+    void handler() {
+        La32Item i = (La32Item)noun;
+        if (i.is(La32Box)) {
+            print("A box does not go in a box.^");
+            return;
+        }
+        int before = boxA.count();
+        boxA += i;
+        if (boxA.count() == before) {
+            print($"The {i} does not go in.^");
+            return;
+        }
+        note(i);
+        print($"The {i} goes in {boxA}: {boxA.count()} held, weight {boxA.weigh()}.^");
+    }
+}
+
+verb La32Weigh {
+    grammar = {.heft, NOUN};
+    void handler() {
+        if (noun.is(La32Crate)) la32Show((La32Crate)noun);
+        else if (noun.is(La32Box)) la32Show((La32Box)noun);
+        else if (noun.is(La32Item)) la32Show((La32Item)noun);
+        else {
+            la32Show(noun);
+            print(".^");
+            return;
+        }
+        La32Item it = (La32Item)noun;
+        print($": {it.weigh()}, pair {it.weigh(eLa32Unit.pair)}, x3 {it.weigh(La32Qty.of(3))}; ");
+        it.tell(true);
+        print(", ");
+        it.tell(eLa32Unit.dozen);
+        print(", ");
+        it.tell("as ", full: true);
+        print(".^");
+    }
+}
+
+/// Report verbs: they take no time.
+class La32Info : verb {
+    meta = true;
+}
+
+La32Info La32Qtys {
+    grammar = {.qtys};
+    void handler() {
+        qty a = qty.of(5);
+        La32Qty b = La32Qty.of(2, eLa32Unit.pair);
+        La32Qty c = eLa32Unit.dozen;
+        La32Qty d = 7;
+        print($"a {a} b {b} c {c} d {d}; ");
+        La32Qty e = a + b;
+        La32Qty f = a + 3;
+        La32Qty g = a + eLa32Unit.pair;
+        La32Qty h = c - b;
+        La32Qty k = c - 1;
+        print($"e {e} f {f} g {g} h {h} k {k}^");
+        e += a;
+        e += 2;
+        f++;
+        ++g;
+        print($"e {e} f {f} g {g}; ");
+        print($"a==5 {a == 5}, a==b {a == b}, a!=d {a != d}, a!=5 {a != 5}, !a {!a}^");
+        La32Qty none = 0;
+        print($"!none {!none}, a<b {a < b}, a>b {a > b}, c>=k {c >= k}, a<=>b {a <=> b}; ");
+        int plain = a;
+        string word = (string)c;
+        print($"plain {plain + 1}, word {word}, none is {(string)none}, d is {(string)d}^");
+        print("c in pairs ");
+        c.print(eLa32Unit.pair);
+        print(", g in dozens ");
+        g.print(eLa32Unit.dozen);
+        print($", per pair {qty.per("pair")}, per foo {La32Qty.per("foo")}^");
+        func<bool, La32Qty, int> isN = La32Qty::operator ==(int);
+        func<bool, La32Qty, La32Qty> same = La32Qty::operator ==(La32Qty);
+        print($"isN {isN(a, 5)} {isN(b, 5)}, same {same(a, qty.of(5))} {same(a, b)}; ");
+        array<La32Qty> row[5];
+        row.append(c);
+        row.append(a);
+        row.append(La32Qty.of(1));
+        row.append(b);
+        row.sort(La32Qty::operator <=>);
+        stringObj line = "sorted";
+        for (La32Qty q in row) line += $" {q.n}";
+        print(line);
+        print($", at 5: {row.indexOf(a)}, has 9: {row.contains(qty.of(9))}, over 4: {row.filter((La32Qty r) => r > 4).count()}^");
+    }
+}
+
+La32Info La32Shows {
+    grammar = {.shows};
+    void handler() {
+        la32Show(brick);
+        print("; ");
+        la32Show(boxA);
+        print("; ");
+        la32Show(crateA);
+        print("; ");
+        la32Show(roomA);
+        print("; ");
+        la32Show(qty.of(4));
+        print("^");
+        la32Show(12);
+        print("; ");
+        la32Show(-3);
+        print("; ");
+        la32Show('x');
+        print("; ");
+        la32Show("word");
+        print("; ");
+        la32Show(eLa32Unit.dozen);
+        print("; ");
+        la32Show(eLa32Flag.sealed);
+        print("; ");
+        la32Show(eLa32Flag.fragile | eLa32Flag.sealed);
+        print("; ");
+        la32Show(loose);
+        print("; ");
+        la32Show(la32IsItem);
+        print("; ");
+        stringObj built = "made";
+        built += '!';
+        la32Show(built);
+        print("^");
+        La32Qty q = 6;
+        print($"double {la32Double(21)} {la32Double(La32Qty.of(3))}, scale {la32Scale(5, 2)} {la32Scale(q, 3)}, nested {la32Double(la32Scale(q, 2))}^");
+        int items = la32Each((La32Item i) => print($"{i.label()} "));
+        print($"= {items}; ");
+        int boxes = la32Each((La32Box b) => print($"{b.label()}/{b.count()} "));
+        print($"= {boxes}^");
+        la32Note(brick);
+        la32Note("word");
+        la32Note(7);
+        la32Note(crateA);
+        print($"log {la32.log}^");
+    }
+}
+
+La32Info La32Boxes {
+    grammar = {.boxes};
+    void handler() {
+        loose.clear();
+        loose.append(bolt);
+        loose.append(lamp);
+        loose.append(brick);
+        print($"pack {la32Pack(crateA, brick)}");
+        print($" {la32Pack(crateA, times: 2, i: brick)}");
+        print($" {la32Pack(b: crateA, list: loose)}");
+        print($" {la32Pack(crateA, loose, stopWhenFull: false)}");
+        print($" {la32Pack(crateA, qty.of(24), unit: eLa32Unit.dozen)}");
+        print($" {la32Pack(crateA, La32Qty.of(5))}");
+        print($"; crate holds {crateA.count()}: ");
+        for (int at = 0; at < crateA.count(); at++) print($"{crateA[at].label()} ");
+        print($"^weights crate {crateA.weigh()} box {boxA.weigh()} brick {brick.weigh()}");
+        print($", pair {crateA.weigh(eLa32Unit.pair)}, x2 {crateA.weigh(La32Qty.of(2))}^");
+        crateA -= bolt;
+        print($"took bolt: {crateA.count()}, on top {crateA.put(bolt, true)}, again {crateA.put(bolt, false)}, first {crateA[0].label()}");
+        print($", two {((La32Box)crateA).put(bolt, lamp)}, boxA two {boxA.put(bolt, lamp)}; stamps ");
+        crateA.stamp(7);
+        crateA.stampWord("ok");
+        brick.stamp(3);
+        print("^");
+        La32Item byTag = crateA["lamp"];
+        La32Item byFlag = crateA[eLa32Flag.heavy];
+        print($"by tag {byTag?.label() ?? "none"}, by flag {byFlag?.label() ?? "none"}, by missing tag {crateA["rope"]?.label() ?? "none"}");
+        print($", by index 9 {crateA[9]?.label() ?? "none"}");
+        print($", lamp pair {crateA["lamp"]?.weigh(eLa32Unit.pair)}, rope pair {crateA["rope"]?.weigh(eLa32Unit.pair)}: ");
+        crateA[9]?.tell(true);
+        crateA["lamp"]?.tell(eLa32Unit.pair);
+        crateA[eLa32Flag.fragile]?.tell("first fragile ");
+        print("^");
+        crateA[0] = brick;
+        print($"first now {crateA[0].label()}, fragile {crateA.count(eLa32Flag.fragile)}, heavy {crateA.count((La32Item i) => i.weigh() > 2)}");
+        print($", named {crateA.count(f: eLa32Flag.heavy)} {crateA.count(test: (La32Item i) => i.marked())}^");
+        print($"brick+bolt {brick + bolt}, crate+1 {crateA + 1}, box+1 {boxA + 1}, crate+bolt {crateA + bolt}, box+crate {boxA + crateA}, lamp+qty {lamp + qty.of(10)}^");
+        print($"brick==lamp {brick == lamp}, brick!=bolt {brick != bolt}, bolt<brick {bolt < brick}, crate>box {crateA > boxA}, box<=>crate {boxA <=> crateA}^");
+        array<La32Item> all[6];
+        for (object o in bgl.world.instances(La32Item)) all.append((La32Item)o);
+        La32Item heaviest = all.orderBy(La32Crate::operator <=>).last();
+        all.sort(La32Item::operator <=>);
+        stringObj line = "light to heavy:";
+        for (La32Item i in all) line += $" {i.label()}";
+        printLine(line);
+        print($"heaviest {heaviest.label()} ");
+        heaviest.tell(true);
+        print("; marked ");
+        for (La32Item i in all) if (i.marked()) print($"{i.label()}{i.marked(eLa32Flag.sealed) ? "!" : ""} ");
+        print($"; boxed {La32Box.boxed}");
+        boxA -= eLa32Flag.fragile;
+        print($"; box A after fragile out {boxA.count()}^");
+    }
+}
+
+La32Info La32Slips {
+    grammar = {.slips};
+    void handler() {
+        La32Slip s1 = new La32Slip(brick);
+        La32Slip s2 = new La32Slip(lamp, c: 3);
+        La32Slip s3 = new La32Slip(i: bolt, c: 2);
+        La32Slip s4 = new La32Slip(bolt);
+        s1?.bump();
+        s1?.bump(4);
+        s2?.bump(qty.of(2));
+        s3?.bump(eLa32Unit.dozen);
+        s4?.bump();
+        print($"s1 {s1.count} = {s1.total()}, s2 {s2.count} = {s2.total()} or {s2.total(eLa32Unit.pair)} pairs, s3 {s3.total(u: eLa32Unit.dozen)}");
+        print($", s4 {s4 == null ? "none" : "made"}, issued {La32Slip.issued}^");
+        array<La32Slip> slips = { s1, s2, s3 };
+        int sum = 0;
+        for (La32Slip s in slips) sum += s.total();
+        print($"sum {sum}, big {slips.filter((La32Slip x) => x.total() > 10).count()}, by weight {slips.orderBy((La32Slip a, La32Slip b) => b.total() - a.total()).first().what.label()}^");
+        delete s1;
+        delete s2;
+        delete s3;
+    }
+}
+
+La32Info La32Raw {
+    grammar = {.raw};
+    void handler() {
+        La32Qty q = 5;
+        int viaExpr = 0;
+        #i6 viaExpr = $i6Expr(la32Scale(q, 7));
+        print($"triple {la32Triple(4)}, quad {la32I6Quad(5)}, weigh {la32WeighRaw(brick, eLa32Unit.dozen)} {la32WeighRaw(crateA, eLa32Unit.pair)}");
+        print($", per {la32PerRaw(eLa32Unit.pair)} {la32PerWord("dozen")}, expr {viaExpr}");
+        La32Qty z = la32.qty.of(1, eLa32Unit.dozen) + qty.of(2, eLa32Unit.pair);
+        print($", made {z} {la32Scale(z, 2)} {la32Scale(z.n, 2)}^");
+    }
+}
+
+La32Info La32Log {
+    grammar = {.log};
+    void handler() {
+        fmt(7);
+        print(" ");
+        fmt(qty.of(3));
+        print(" ");
+        fmt(brick);
+        print(" ");
+        fmt(boxA);
+        print(" ");
+        fmt(qty.of(36), eLa32Unit.dozen);
+        print(" ");
+        fmt("end");
+        print(" ");
+        pad(3);
+        pad(4, 5);
+        print("^");
+        note(eLa32Unit.pair);
+        note(lamp);
+        note("done");
+        print($"log {log}^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

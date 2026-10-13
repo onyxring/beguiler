@@ -602,6 +602,8 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                                 ? "operator " + funcDef.name : funcDef.dName(),
                         shadowedFrom));
             }
+            rejectValueWordName(funcDef.name);
+            if(!funcDef.isEmitter && !funcDef.isStatic) rejectMethodBesideField(newClass, funcDef.name, funcDef.dName(), true);
             // A later `extend … replace emitter` already holds this slot; its body is the one used.
             // Only the overload it replaces: same parameter types.
             auto sameSignature = [&](functionDef* fd){
@@ -973,6 +975,8 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
                 if(*it==existing){ newClass.members.erase(it); break; }
     } else {
         warnMemberHidesDefine(varDef.name, varDef.dName());
+        if(!varDef.isStatic && !varDef.isAlias && !varDef.isValueAlias && !varDef.isExternal)
+            rejectMethodBesideField(newClass, varDef.name, varDef.dName(), false);
         // Check for an existing stub from pre-scan (static member variables) and replace it.
         bool replacedStub = false;
         for(size_t i = 0; i < newClass.members.size(); i++){
@@ -1575,6 +1579,7 @@ void bglParser::rejectValueClassInitializer(expression* e, const string& typeNam
 
 // A member named like a #define takes the name over in its class's or object's methods.
 void bglParser::warnMemberHidesDefine(const string& name, const string& shown){
+    rejectValueWordName(name);   // `int self;` can't be a member either
     if(definedSymbols.count(name))
         parsingWarning(format("Member '{0}' has the name of a #define symbol; in its methods the name means the member.", shown));
 }
@@ -2004,13 +2009,12 @@ void bglParser::consumeMethodI6Alias(functionDef& funcDef){
         return;
     }
     if(!file.peekToken().is("asi6")){
-        if(!funcDef.isEmitter && !funcDef.isStatic) rejectMemberNamedLikeClass(funcDef.name, funcDef.dName());
         // Renamed like a data member when the name is an I6 operator word, a global routine, or a library
         // global or object the binding declares (`Action` and parser.h's `action`). A library property keeps it.
         // The library's own methods keep their names: a program routine named like one yields instead.
         bool libraryMethod = funcDef.src.file.find("beguiLib") != string::npos;
         if(!funcDef.isEmitter && !funcDef.isStatic
-           && (isI6OperatorWord(funcDef.name) || (!libraryMethod && namesLibraryGlobal(funcDef.name))))
+           && (isI6OperatorWord(funcDef.name) || namesI6Class(funcDef.name) || (!libraryMethod && namesLibraryGlobal(funcDef.name))))
             funcDef.i6name = "_m_" + funcDef.dName();
         return;
     }
@@ -2094,11 +2098,14 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
             parsingWarning(format("object '{0}': method '{1}' shadows definition in class '{2}'; use 'replace' to suppress this warning",
                 obj.dName(), funcDef.dName(), shadowedFrom));
     }
+    // An `extend … replace` above the object: the object's own declaration, still to come, is what it replaces.
+    if(isReplace && obj.isPrePassStub && !funcDef.isEmitter) funcDef.isForwardReplace = true;
     if(!replaceStubMember(obj.members, funcDef)){
         // Signature-aware duplicate check: same name + same arity + same param types.
         // Same-arity-different-types is an overload, not a duplicate (mirrors the class-
         // body rule). The emitter mangles overload sets so each emits as a distinct I6
         // property.
+        rejectValueWordName(funcDef.name);
         auto sigEq = [&](functionDef* fd) -> bool {
             if(fd->name != funcDef.name) return false;
             if(fd->params.size() != funcDef.params.size()) return false;
@@ -2112,6 +2119,9 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
                 if(auto* fd = dynamic_cast<functionDef*>(obj.members[i]))
                     if(sigEq(fd)){
                         keepReplaced(funcDef, fd);
+                        // An `extend … replace` above the object: the object's own declaration, still to
+                        // come, is what it replaces.
+                        if(fd->isPrePassStub && obj.isPrePassStub) funcDef.isForwardReplace = true;
                         obj.members[i] = &funcDef;
                         replaced = true;
                         break;
@@ -2121,6 +2131,11 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
         }
         if(!replaced){
             for(typeMember* m : obj.members){
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && sigEq(fd) && fd->isForwardReplace && !fd->isEmitter){
+                    keepReplaced(*fd, &funcDef);   // the object's own method is the one replaced
+                    fd->isForwardReplace = false;
+                    return;
+                }
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(sigEq(fd))
                         parsingError(format("object '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
@@ -2190,7 +2205,10 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     if(isReplace){
         for(size_t i = 0; i < obj.members.size(); i++)
             if(auto* vd = dynamic_cast<variableDeclaration*>(obj.members[i]))
-                if(vd->name == prop.name){ obj.members[i] = member; replaced = true; break; }
+                if(vd->name == prop.name){
+                    if(vd->isPrePassStub && obj.isPrePassStub) member->isForwardReplace = true;   // the object's own is still to come
+                    obj.members[i] = member; replaced = true; break;
+                }
         if(!replaced)
             parsingWarning(format("object '{0}': 'replace' specified but no existing member '{1}' to replace", obj.dName(), prop.dName()));
     }
@@ -2213,6 +2231,8 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
                     replaced = true;
                     break;
                 }
+                // An `extend … replace` above the object already gave this member.
+                if(obj.members[i]->isForwardReplace){ obj.members[i]->isForwardReplace = false; replaced = true; break; }
                 parsingError(format("object '{0}': member '{1}' is already defined", obj.dName(), prop.dName()));
             }
         }
@@ -2937,6 +2957,15 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
     aliasDef.isExternal = true;  // no I6 emission — compile-time indirection only
     if(sep.is("for")){
         token typeTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        // `alias U for inner.T;`: a path to another alias names that alias's type.
+        if(file.peekToken().is(token::period)){
+            string path = typeTok.value;
+            while(file.peekToken().is(token::period) && file.peekToken(2).is(eTokenType::name)){ file.getToken(); path += "." + file.getToken().value; }
+            string t = resolveNamespacedType(path);
+            if(t.empty())
+                parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)", aliasName.value, path));
+            typeTok.value = t;
+        }
         if(!languageService.isClassType(typeTok.value))
             parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)",
                 aliasName.value, typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue));
@@ -3639,7 +3668,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
 // path to one (`ns.parts.ohms make()`): `tok` becomes that type.
 void bglParser::typeFromMemberAliasOrPath(objectDef& obj, token& tok){
     if(!tok.is(eTokenType::identifier) || tok.isDataType()) return;
-    if(file.peekToken().is(eTokenType::name) && !file.peekToken().is("operator")){
+    if((file.peekToken().is(eTokenType::name) && !file.peekToken().is("operator")) || file.peekToken().value == "|"){   // `T | string Get()`
         for(typeMember* m : obj.members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd != nullptr && vd->name == tok.value
                && (vd->isAlias || (vd->isValueAlias && vd->declaredExpressionValue == nullptr))
@@ -4295,4 +4324,24 @@ void bglParser::unknownBaseError(token& base){
 void bglParser::rejectAccessModifier(token& tok){
     if(tok.is("public") || tok.is("private") || tok.is("protected") || tok.is("internal"))
         parsingError(format("Beguile has no access modifiers ('{0}'): every member is visible; drop it.", tok.value));
+}
+
+// A data member and a method of one name (Beguile names ignore case) are one Inform 6 property, so a
+// class, with its bases, can't have both.
+void bglParser::rejectMethodBesideField(classDef& cls, const string& name, const string& shown, bool addingMethod){
+    for(classDef* c = &cls; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses.front())
+        for(typeMember* m : c->members){
+            if(m->name != name) continue;
+            // A method over an inherited field gives that property its routine (`short_name`), as I6 allows.
+            if(addingMethod && c != &cls) continue;
+            bool clash = addingMethod
+                ? [&]{ auto* vd = dynamic_cast<variableDeclaration*>(m);
+                       return vd && !vd->isStatic && !vd->isAlias && !vd->isValueAlias && !vd->isExternal; }()
+                : [&]{ auto* fd = dynamic_cast<functionDef*>(m); return fd && !fd->isEmitter && !fd->isStatic; }();
+            if(clash)
+                parsingError(format("class '{0}': {1} '{2}' has the name of {3} '{4}'{5}; Inform 6 keeps both in one "
+                                    "property, so rename one.", cls.dName(), addingMethod ? "method" : "member", shown,
+                                    addingMethod ? "member" : "method", m->dName(),
+                                    c == &cls ? string() : " of class '" + c->dName() + "'"));
+        }
 }

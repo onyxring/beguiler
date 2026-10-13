@@ -1,0 +1,54 @@
+Room A
+Room A.
+You can see a brick, a bolt, a lamp, a rope, a box A and a crate here.
+> qtys
+a 5 b 4 c 12 d 7; e 9 f 8 g 7 h 8 k 11
+e 16 f 9 g 12; a==5 true, a==b false, a!=d true, a!=5 false, !a false
+!none true, a<b false, a>b true, c>=k true, a<=>b 1; plain 6, word many, none is none, d is some
+c in pairs 6x2, g in dozens 1x12, per pair 2, per foo 0
+isN true false, same true false; sorted 1 4 5 12, at 5: 2, has 9: false, over 4: 2
+> shows
+item brick; box box A of 0; box crate of 0; object Room A; qty 4
+int 12; minus int 3; char x; text word; unit 12; flag 4; flag 5; list of 0; something; built made!
+double 42 6, scale 10 18, nested 24
+brick bolt lamp box A crate = 5; box A/0 crate/0 = 2
+log brick word 7 crate
+> pack bolt
+The bolt goes in box A: 1 held, weight 3.
+> pack brick
+The brick goes in box A: 2 held, weight 6.
+> pack bolt
+The bolt does not go in.
+> pack crate
+A box does not go in a box.
+> heft bolt
+item bolt: 1, pair 2, x3 3; BOLT (1), BOLT (12/12), as BOLT (1).
+> heft box
+box box A of 2: 6, pair 12, x3 18; box A (6), box A (72/12), as box A (6).
+> heft crate
+box crate of 0: 7, pair 14, x3 21; crate (7), crate (84/12), as crate (7).
+> heft rope
+object rope.
+> heft lamp
+item lamp: 4, pair 8, x3 12; <lamp> (4), <lamp> (48/12), as <lamp> (4).
+> boxes
+pack 1 0 2 0 2 5; crate holds 3: brick bolt lamp
+weights crate 15 box 6 brick 3, pair 30, x2 30
+took bolt: 2, on top true, again false, first bolt, two 0, boxA two 1; stamps #7'ok'#3
+by tag lamp, by flag brick, by missing tag none, by index 9 none, lamp pair 8, rope pair 0: <lamp> (8/2)first fragile BOLT
+first now brick, fragile 1, heavy 3, named 2 3
+brick+bolt 4, crate+1 20, box+1 11, crate+bolt 18, box+crate 27, lamp+qty 14
+brick==lamp false, brick!=bolt true, bolt<brick true, crate>box true, box<=>crate -7
+light to heavy: bolt brick lamp box A crate
+heaviest crate crate (17); marked bolt brick lamp! ; boxed 7; box A after fragile out 1
+> slips
+s1 6 = 18, s2 5 = 20 or 10 pairs, s3 1, s4 none, issued 3
+sum 52, big 3, by weight lamp
+> slips
+s1 6 = 18, s2 5 = 20 or 10 pairs, s3 1, s4 none, issued 6
+sum 52, big 3, by weight lamp
+> raw
+triple 12, quad 20, weigh 36 34, per 2 12, expr 35, made 16 32 32
+> log
+07 03q 03w 05w 03u [end] <3><4:5>
+log brick word 7 crate bolt brick 2 lamp done

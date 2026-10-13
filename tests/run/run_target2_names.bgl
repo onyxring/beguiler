@@ -1,0 +1,75 @@
+// run_target2_names — members named `object` and `string`, an enum value beside a member of one name,
+// `::` calls and static writes beside locals and members of the same name, default arguments in
+// the callee's scope, globals beside imported methods and linq method names, and bare inherited statics.
+// EXPECT_OUTPUT: 4 true true 9 40 49 3 5 5 3 4 2 15 5 2 5 5 22 2 2 13 13
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+class Box : object { int object = 4; bool string = true; }
+Box b1 { }
+enum Mode { idle, flow }
+class Tap : object { Mode mode = idle; int flow = 7; }
+Tap t1 { mode = flow; }
+const int LIMIT = 9;
+int base = 40;
+int pick(int n = LIMIT) { return n; }
+int pick2(int n = base) { return n; }
+object holder {
+    int limit = 3;
+    int base = 5;
+    int viaMember() { return pick() + pick2(); }
+    int own(int k = limit) { return k; }
+}
+int caller() { int limit = 1; return pick(); }
+int caller2() { int Base = 2; return pick2(); }
+int caller3() { int limit = 7; return holder.own(); }
+int count = 5;
+object board { int count() { return 99; } }
+#using board
+int last = 3;
+int first = 4;
+array<int> xs = {1, 2};
+class Pump : object { static int made = 0; }
+class BigPump : Pump {
+    int grab() { made += 5; return made + BigPump.made + Pump.made; }
+}
+BigPump bp { }
+int scale(int n) { return n * 2; }
+int run() { func<int, int> scale = (int n) => n + 100; return ::scale(1); }
+class Gauge : object {
+    Reading reading;
+    int a() { return reading.total(); }
+    int b() { Gauge g = self; return g.reading.total(); }
+}
+value class Reading {
+    int level = 0;
+    int total() { return level + 5; }
+}
+Gauge dial { }
+class Valve : object {
+    static int total = 0;
+    static int made = 0;
+    Valve valve;
+    int bump() { Valve.total += 2; Valve.made++; Valve.made = Valve.made + 1; return Valve.total * 10 + Valve.made; }
+}
+Valve v1 { }
+class Cock : object {
+    static int total = 0;
+    int bump() { ::Cock.total += 2; ::Cock.total = ::Cock.total + 1; return ::Cock.total; }
+}
+Cock c1 { }
+void outside() { ::Cock.total += 10; }
+void main() {
+    bglInit();
+    print($"{b1.object} {b1.string} {t1.mode == Mode.flow} ");
+    print($"{caller()} {caller2()} {holder.viaMember()} {caller3()} ");
+    int t = count;
+    print($"{t} {count} ");
+    print($"{last} {first} {xs.last()} ");
+    print($"{bp.grab()} {Pump.made} ");
+    print($"{run()} ");
+    print($"{dial.a()} {dial.b()} ");
+    print($"{v1.bump()} {Valve.total} {Valve.made} ");
+    outside();
+    print($"{c1.bump()} {Cock.total}");
+}

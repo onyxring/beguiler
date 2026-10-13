@@ -40,7 +40,7 @@ bus held, flips 1, backlog 0.
 > tick 3
 ticks 2 of 3; ; turn 3.
 > hold
-bus held, flips 2, backlog 5.
+bus open, flips 2, backlog 5.
 > flush
 flushed 6 (key 2): [gate A refused bell] !2:0 A1:2 L3:2 T4:1 T5:1.
 > unjoin

@@ -1,0 +1,52 @@
+// run_target2_strings — interpolated `=` and `+=` into never-written array<stringObj> slots, a stringObj
+// member of an object named `box`, and `?.` calls returning stringObj combined in one expression,
+// repeated in conditions and returns.
+// EXPECT_OUTPUT: [n=7] [plain n=7] [n=7] [lit] lid first/sec first/sec first/second sec 40 40 40
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Constant bglStringPoolReserve 16; }
+#include <array>
+#include <string>
+array<stringObj> labels[3];
+array<stringObj> tags[3];
+object box { stringObj heading; }
+object crate {
+    stringObj first() { stringObj r = "first"; return r; }
+    stringObj second() { stringObj r = "second"; return r; }
+}
+stringObj pair() { return crate?.first() + "/" + crate?.second().left(3); }
+void passes() {
+    int hits = 0;
+    int loops = 0;
+    int rets = 0;
+    for (int i = 0; i < 40; i++) {
+        if (crate?.first() + "/" + crate?.second().left(3) == "first/sec") hits++;
+        int once = 0;
+        while (once == 0 && crate.first() + "/" + crate?.second().left(3) == "first/sec") { once = 1; loops++; }
+        if (pair() == "first/sec") rets++;
+    }
+    print($"{hits} {loops} {rets}");
+}
+void main() {
+    bglInit();
+    int n = 7;
+    labels[0] = $"n={n}";
+    print($"[{labels[0]}] ");
+    labels[1] = "plain";
+    labels[1] += $" n={n}";
+    print($"[{labels[1]}] ");
+    tags[2] += $"n={n}";
+    print($"[{tags[2]}] ");
+    tags[1] += "lit";
+    print($"[{tags[1]}] ");
+    box.heading = "lid";
+    print(box.heading); print(" ");
+    stringObj a = crate?.first() + "/" + crate?.second().left(3);
+    print(a); print(" ");
+    stringObj d = crate.first() + "/" + crate?.second().left(3);
+    print(d); print(" ");
+    stringObj c = crate?.first() + "/" + crate?.second();
+    print(c); print(" ");
+    stringObj e = crate?.second().left(3);
+    print(e); print(" ");
+    passes();
+}

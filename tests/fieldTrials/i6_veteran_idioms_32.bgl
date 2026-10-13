@@ -1,0 +1,537 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5, routines and verbs first and objects and classes
+// after, whose members are reached almost everywhere through computed receivers. Casts to a class
+// (`((Panel)noun).lamps[k]`, `((Panel)noun).level -= 3` in a `while` condition and body,
+// `((Panel)noun).level++`, `((Panel)noun).feed = …`, `switch (((Panel)noun).Lit())`) and to an object
+// (`((switchboard)p.parent).load++`, `((switchboard)noun.parent).SlotOf(noun)`); elements of a global
+// array of a class (`bank[k].Peer().lamps[0]`, `bank[NextIndex()].level += 2` with the index evaluated
+// once); call results of a static method, an object method and a class method
+// (`Panel.ByCode(c).Sample().v`, `switchboard.At(i).Sample().lit`, `switchboard.Current().uses += 1`
+// with the call counted once, `switchboard.Current()?.Toggle(1)`); chains of call results
+// (`p.Peer().Peer().Me().code`); a member array of a value class stored from a call result and
+// compared by element with `==`, `!=`, `>` and `<` through a cast receiver; `<array>` methods (`+=`,
+// `length`, `contains`, `indexOf`) on member arrays reached through casts, elements and call results;
+// a named accessor and an inline `auto` accessor (with `outer`) read, written, `++`d and `+=`d through
+// those receivers; ancestor dispatch through an element (`((Device)bank[k]).Label()`); receivers in
+// conditions, loop bounds, `switch`, arguments, returns and interpolation; native Tog, Charge, Drain,
+// Link, Seat, Unseat, Pulse, Cycle and Note verbs and meta Board and Probe verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 2;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- globals
+
+array<Panel> bank = {alphaPanel, betaPanel, gammaPanel};
+Reading lastProbe;
+int cursor;
+
+// ---------------------------------------------------------------- routines
+
+bool Initialise() {
+    location = relayRoom;
+    bank[0].level = 4;
+    bank[1].Peer().level = 9;
+    ((Panel)bank[2]).lamps[3] = 1;
+    switchboard.slots[0] = bank[1];
+    bank[1].parent = switchboard;
+    ((switchboard)bank[1].parent).load = 1;
+    bank[1].trail += 100;
+    rfalse;
+}
+
+int NextIndex() {
+    cursor++;
+    return (cursor - 1) % NPANELS;
+}
+
+Panel PanelFor(object o) {
+    if (o == null || !o.is(Panel)) return null;
+    return (Panel)o;
+}
+
+void ShowLamps(Panel p) {
+    for (int i = 0; i < p.lamps.size; i++) {
+        if (p.lamps[i]) print("*");
+        else print(".");
+    }
+}
+
+int LitOn(object o) {
+    int n = 0;
+    for (int i = 0; i < ((Panel)o).lamps.size; i++) n = n + ((Panel)o).lamps[i];
+    return n;
+}
+
+int PeerLevel(int k) {
+    return bank[k].Peer().level;
+}
+
+Reading ProbeCode(int c) {
+    return Panel.ByCode(c).Sample();
+}
+
+void Award(Panel p) {
+    if (p.awarded) return;
+    if (p.Lit() == NLAMPS) {
+        p.awarded = true;
+        print($"All lamps on {the(p)} are lit.^");
+        score++;
+        if (score >= MAX_SCORE) deadflag = 2;
+    }
+}
+
+int LampOf(object o, int i) {
+    return ((Panel)o).lamps[i];
+}
+
+void LampWord(int v) {
+    if (v) print("on");
+    else print("off");
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Tog {
+    grammar = {.tog, NUMBER, .on, NOUN};
+    void handler() {
+        if (PanelFor(second) == null) {
+            print("Only panels have lamps.^");
+            return;
+        }
+        int k = (int)noun;
+        if (k < 1 || k > ((Panel)second).lamps.size) {
+            print($"{cThe(second)} has lamps 1 to {((Panel)second).lamps.size}.^");
+            return;
+        }
+        ((Panel)second).Toggle(k - 1);
+        print($"Lamp {k} on {the(second)} is now ");
+        LampWord(((Panel)second).lamps[k - 1]);
+        print($". {((Panel)second).Lit()} lit, {LitOn(second)} by count.^");
+        Award((Panel)second);
+    }
+}
+
+verb Charge {
+    grammar = {.charge, NOUN, .to, NUMBER};
+    void handler() {
+        Panel p = PanelFor(noun);
+        if (p == null) {
+            print("That takes no charge.^");
+            return;
+        }
+        ((Panel)noun).level = (int)second;
+        print($"{cThe(noun)} reads {((Panel)noun).level}V");
+        if (((Panel)noun).level >= VMAX) print(" (at the limit)");
+        print(".^");
+        if (p.Peer() != null) {
+            ((Panel)noun).Peer().level += 1;
+            print($"{cThe(p.Peer())} picks up 1V and reads {p.Peer().level}V.^");
+        }
+    }
+}
+
+verb Drain {
+    grammar = {.drain, NOUN};
+    void handler() {
+        if (PanelFor(noun) == null) {
+            print("Only panels hold a charge.^");
+            return;
+        }
+        int steps = 0;
+        while (((Panel)noun).level > 0) {
+            ((Panel)noun).level -= 3;
+            steps++;
+        }
+        ((Panel)noun).level++;
+        print($"{cThe(noun)} drains in {steps} steps and settles at {((Panel)noun).level}V");
+        switch (((Panel)noun).Lit()) {
+            case 0:      print(", dark");
+            case NLAMPS: print(", fully lit");
+            default:     print($", {LampOf(noun, 0)} on lamp 1");
+        }
+        if (((Panel)noun).nmarks > 1 && ((Panel)noun).marks[0] != ((Panel)noun).marks[1]) print(", first notes differ");
+        print(".^");
+    }
+}
+
+verb Link {
+    grammar = {.link, NOUN, .to, NOUN};
+    void handler() {
+        if (PanelFor(noun) == null || PanelFor(second) == null) {
+            print("Only panels can be linked.^");
+            return;
+        }
+        if (noun == second) {
+            print($"{cThe(noun)} can't feed itself.^");
+            return;
+        }
+        ((Panel)noun).feed = (Panel)second;
+        ((Panel)noun).trail += ((Panel)second).code;
+        print($"{cThe(noun)} now feeds {the(((Panel)noun).Peer())}");
+        if (((Panel)noun).Peer().Peer() == (Panel)noun) print(", and is fed back");
+        print(".^");
+    }
+}
+
+verb Seat {
+    grammar = {.seat, NOUN};
+    void handler() {
+        Panel p = PanelFor(noun);
+        if (p == null) {
+            print("Only panels fit the switchboard.^");
+            return;
+        }
+        if (p.parent == switchboard) {
+            print($"{cThe(p)} is already seated.^");
+            return;
+        }
+        int i = switchboard.FreeSlot();
+        if (i < 0) {
+            print("The switchboard is full.^");
+            return;
+        }
+        switchboard.slots[i] = p;
+        switchboard.cur = i;
+        p.parent = switchboard;
+        ((switchboard)p.parent).load++;
+        p.trail += 100 + i;
+        print($"{cThe(p)} goes into slot {i + 1}. Load {switchboard.load}.^");
+    }
+}
+
+verb Unseat {
+    grammar = {.unseat, NOUN};
+    void handler() {
+        if (PanelFor(noun) == null || noun.parent != switchboard) {
+            print("That is not seated.^");
+            return;
+        }
+        int i = ((switchboard)noun.parent).SlotOf(noun);
+        switchboard.slots[i] = null;
+        ((switchboard)((Device)noun).Home()).load--;
+        noun.parent = relayRoom;
+        print($"{cThe(noun)} comes out of slot {i + 1}. Load {switchboard.load}.^");
+    }
+}
+
+verb Pulse {
+    grammar = {.pulse, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        if (k < 1 || k > bank.length) {
+            print($"Panels are 1 to {bank.length}.^");
+            return;
+        }
+        if (bank[k - 1].Peer() == null) {
+            print($"{cThe(bank[k - 1])} feeds nothing.^");
+            return;
+        }
+        bank[k - 1].Peer().Toggle(0);
+        bank[k - 1].Peer().trail += bank[k - 1].code;
+        print($"{cThe(bank[k - 1])} pulses {the(bank[k - 1].Peer())}: lamp 1 ");
+        LampWord(bank[k - 1].Peer().lamps[0]);
+        print($", {bank[k - 1].Peer().Lit()} lit, at {PeerLevel(k - 1)}V.^");
+        Award(bank[k - 1].Peer());
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        int before = cursor;
+        bank[NextIndex()].level += 2;
+        print($"{cThe(bank[before % NPANELS])} gains 2V to {bank[before % NPANELS].level}V; cursor {cursor}.^");
+        if (switchboard.Current() == null) {
+            print("Nothing is seated.^");
+            return;
+        }
+        switchboard.Current().uses += 1;
+        switchboard.Current()?.Toggle(1);
+        print($"{cThe(switchboard.Current())} lamp 2 is {switchboard.Current().lamps[1]}; lookups {switchboard.lookups}.^");
+        Award(switchboard.Current());
+    }
+}
+
+verb Note {
+    grammar = {.note, NOUN};
+    void handler() {
+        if (PanelFor(noun) == null) {
+            print("Only panels give readings.^");
+            return;
+        }
+        int n = ((Panel)noun).nmarks;
+        if (n >= ((Panel)noun).marks.size) {
+            print($"{cThe(noun)} has no room for another note.^");
+            return;
+        }
+        ((Panel)noun).marks[n] = ((Panel)noun).Sample();
+        ((Panel)noun).nmarks++;
+        print($"Noted {((Panel)noun).marks[n].v}V with {((Panel)noun).marks[n].lit} lit");
+        if (n > 0) {
+            if (((Panel)noun).marks[n] == ((Panel)noun).marks[n - 1]) print(", unchanged");
+            else if (((Panel)noun).marks[n] > ((Panel)noun).marks[n - 1]) print(", higher");
+            else if (((Panel)noun).marks[n] < ((Panel)noun).marks[n - 1]) print(", lower");
+            else print(", same voltage");
+        }
+        print(".^");
+    }
+}
+
+verb Board {
+    grammar = {.board};
+    meta = true;
+    void handler() {
+        print("Slots:");
+        for (int i = 0; i < switchboard.slots.size; i++) {
+            print(" [");
+            if (switchboard.slots[i] == null) {
+                print("empty");
+            } else {
+                print($"{((Panel)switchboard.slots[i]).code} ");
+                ShowLamps(switchboard.At(i));
+                print($" {switchboard.At(i).level}V/{switchboard.At(i).Sample().lit}");
+                if (switchboard.At(i).Peer() != null) print($" >{switchboard.At(i).Peer().code}");
+            }
+            print("]");
+        }
+        print($". Load {switchboard.load}, changes {switchboard.changes}, lookups {switchboard.lookups}.^");
+        for (int k = 0; k < bank.length; k++) {
+            ((Device)bank[k]).Label();
+            print(" / ");
+            bank[k].Label();
+            print($": {bank[k].uses} uses, trail");
+            for (int t = 0; t < bank[k].trail.length; t++) print($" {bank[k].trail[t]}");
+            if (bank[k].trail.contains(100)) print(" (seated first)");
+            switch (bank[k].Peer() != null ? bank[k].Peer().code : 0) {
+                case 0:   print(", no peer");
+                case 101: print(", feeds alpha");
+                case 102: print(", feeds beta");
+                default:  print(", feeds gamma");
+            }
+            print(".^");
+        }
+        print($"Score {score}.^");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NUMBER};
+    meta = true;
+    void handler() {
+        int c = (int)noun;
+        Panel p = Panel.ByCode(c);
+        if (p == null) {
+            print($"No panel has code {c}.^");
+            return;
+        }
+        lastProbe = ProbeCode(c);
+        print($"Code {c}: {Panel.ByCode(c).Sample().v}V, {ProbeCode(c).lit} lit");
+        if (p.Peer() != null) {
+            print($", feeds {p.Peer().code}");
+            if (p.Peer().Peer() != null) print($" which feeds {p.Peer().Peer().Me().code}");
+        }
+        int at = Panel.ByCode(c).trail.indexOf(c + 1);
+        if (at >= 0) print($", linked to {c + 1} at trail {at}");
+        print($", {Panel.ByCode(c).trail.length} in trail.^");
+    }
+}
+
+#includeI6 "grammar"
+
+// ---------------------------------------------------------------- rooms
+
+object relayRoom {
+    short_name = "Relay Room";
+    description = "Relay Room. A switchboard with three slots stands here. A door leads north.";
+    object n_to = storeRoom;
+    attributes = {light};
+}
+
+object storeRoom {
+    short_name = "Store Room";
+    description = "Store Room. Bare shelves. The relay room is south.";
+    object s_to = relayRoom;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- fittings
+
+object switchboard {
+    short_name = "switchboard";
+    name = {.switchboard, .board, .slots};
+    parent = relayRoom;
+    array<object> slots[NSLOTS];
+    int cur;
+    int changes;
+    int lookups;
+    auto load = {
+        int _n;
+        int operator () { return _n; }
+        void operator = (int v) {
+            if (v < 0) v = 0;
+            if (v > outer.slots.size) v = outer.slots.size;
+            _n = v;
+            outer.changes++;
+        }
+    }
+    Panel At(int i) {
+        return (Panel)slots[i];
+    }
+    Panel Current() {
+        lookups++;
+        return (Panel)slots[cur];
+    }
+    int SlotOf(object o) {
+        for (int i = 0; i < slots.size; i++) {
+            if (slots[i] == o) return i;
+        }
+        return -1;
+    }
+    int FreeSlot() {
+        for (int i = 0; i < slots.size; i++) {
+            if (slots[i] == null) return i;
+        }
+        return -1;
+    }
+    void description() {
+        print("Three slots:");
+        for (int i = 0; i < slots.size; i++) {
+            if (slots[i] == null) print(" empty");
+            else print($" {At(i).code}");
+        }
+        print($". The load dial reads {load}.^");
+    }
+    attributes = {static, container, open};
+}
+
+// ---------------------------------------------------------------- panels, ahead of their class
+
+Panel alphaPanel {
+    short_name = "alpha panel";
+    name = {.alpha, .panel};
+    parent = relayRoom;
+    code = 101;
+}
+
+Panel betaPanel {
+    short_name = "beta panel";
+    name = {.beta, .panel};
+    code = 102;
+    feed = gammaPanel;
+}
+
+Panel gammaPanel {
+    short_name = "gamma panel";
+    name = {.gamma, .panel};
+    parent = storeRoom;
+    code = 103;
+}
+
+// ---------------------------------------------------------------- classes
+
+class Device : object {
+    int uses;
+    default void Label() {
+        print("device");
+    }
+    object Home() {
+        return parent;
+    }
+}
+
+class Panel : Device {
+    static Panel ByCode(int c) {
+        for (Panel q in bank) {
+            if (q.code == c) return q;
+        }
+        return null;
+    }
+    int code;
+    Volts level;
+    array<int> lamps[NLAMPS];
+    array<Reading> marks[NMARKS];
+    int nmarks;
+    array<int> trail[NTRAIL];
+    Panel feed;
+    bool awarded;
+    void Label() {
+        print($"panel {code}");
+    }
+    Panel Peer() {
+        return feed;
+    }
+    Panel Me() {
+        return self;
+    }
+    int Lit() {
+        int n = 0;
+        for (int i = 0; i < lamps.size; i++) {
+            if (lamps[i]) n++;
+        }
+        return n;
+    }
+    Reading Sample() {
+        Reading r;
+        r.v = level;
+        r.lit = Lit();
+        return r;
+    }
+    void Toggle(int i) {
+        lamps[i] = 1 - lamps[i];
+        uses++;
+    }
+    void description() {
+        print($"A relay panel, code {code}, at {level}V. Lamps ");
+        ShowLamps(self);
+        print(".");
+        if (feed != null) print($" It feeds {the(Peer())}.");
+        if (nmarks > 0) print($" Last note {marks[nmarks - 1].v}V.");
+        print("^");
+    }
+    attributes = {static};
+}
+
+// ---------------------------------------------------------------- value classes
+
+value class Volts {
+    int _v;
+    int operator () { return _v; }
+    void operator = (int n) {
+        if (n < 0) n = 0;
+        if (n > VMAX) n = VMAX;
+        _v = n;
+    }
+}
+
+value class Reading {
+    int v;
+    int lit;
+    Reading operator = (Reading o) { v = o.v; lit = o.lit; return self; }
+    bool operator == (Reading o) { return v == o.v && lit == o.lit; }
+    bool operator != (Reading o) { return v != o.v || lit != o.lit; }
+    int operator <=> (Reading o) { return v - o.v; }
+}
+
+const int NPANELS = 3;
+const int NSLOTS = 3;
+const int NLAMPS = 4;
+const int NMARKS = 4;
+const int NTRAIL = 6;
+const int VMAX = 12;

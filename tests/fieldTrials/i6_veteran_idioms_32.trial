@@ -1,0 +1,156 @@
+Relay Room
+Relay Room. A switchboard with three slots stands here. A door leads north.
+You can see a switchboard (in which is a beta panel) and an alpha panel here.
+> board
+Slots: [102 .... 0V/0 >103] [empty] [empty]. Load 1, changes 1, lookups 0.
+device / panel 101: 0 uses, trail, no peer.
+device / panel 102: 0 uses, trail 100 (seated first), feeds gamma.
+device / panel 103: 0 uses, trail, no peer.
+Score 0.
+> x switchboard
+Three slots: 102 empty empty. The load dial reads 1.
+> x beta panel
+A relay panel, code 102, at 0V. Lamps ..... It feeds the gamma panel.
+> probe 102
+Code 102: 0V, 0 lit, feeds 103, 1 in trail.
+> probe 103
+Code 103: 9V, 1 lit, 0 in trail.
+> probe 104
+No panel has code 104.
+> tog 1 on alpha
+Lamp 1 on the alpha panel is now on. 1 lit, 1 by count.
+> tog 5 on alpha
+The alpha panel has lamps 1 to 4.
+> tog 2 on switchboard
+Only panels have lamps.
+> charge alpha to 7
+The alpha panel reads 7V.
+> charge beta to 20
+The beta panel reads 12V (at the limit).
+The gamma panel picks up 1V and reads 10V.
+> charge switchboard to 3
+That takes no charge.
+> link alpha to beta
+The alpha panel now feeds the beta panel.
+> link beta to alpha
+The beta panel now feeds the alpha panel, and is fed back.
+> link alpha to alpha
+The alpha panel can't feed itself.
+> link alpha to switchboard
+Only panels can be linked.
+> note alpha
+Noted 7V with 1 lit.
+> note alpha
+Noted 7V with 1 lit, unchanged.
+> tog 2 on alpha
+Lamp 2 on the alpha panel is now on. 2 lit, 2 by count.
+> note alpha
+Noted 7V with 2 lit, same voltage.
+> charge alpha to 3
+The alpha panel reads 3V.
+The beta panel picks up 1V and reads 12V.
+> note alpha
+Noted 3V with 2 lit, lower.
+> note alpha
+The alpha panel has no room for another note.
+> x alpha
+A relay panel, code 101, at 3V. Lamps **... It feeds the beta panel. Last note 3V.
+> seat alpha
+The alpha panel goes into slot 2. Load 2.
+> seat alpha
+The alpha panel is already seated.
+> seat switchboard
+Only panels fit the switchboard.
+> board
+Slots: [102 .... 12V/0 >101] [101 **.. 3V/2 >102] [empty]. Load 2, changes 2, lookups 0.
+device / panel 101: 2 uses, trail 102 101, feeds beta.
+device / panel 102: 0 uses, trail 100 101 (seated first), feeds alpha.
+device / panel 103: 0 uses, trail, no peer.
+Score 0.
+> cycle
+The alpha panel gains 2V to 5V; cursor 1.
+The alpha panel lamp 2 is 0; lookups 5.
+> cycle
+The beta panel gains 2V to 12V; cursor 2.
+The alpha panel lamp 2 is 1; lookups 11.
+> cycle
+The gamma panel gains 2V to 12V; cursor 3.
+The alpha panel lamp 2 is 0; lookups 17.
+> pulse 1
+The alpha panel pulses the beta panel: lamp 1 on, 1 lit, at 12V.
+> pulse 2
+The beta panel pulses the alpha panel: lamp 1 off, 0 lit, at 5V.
+> pulse 3
+The gamma panel feeds nothing.
+> pulse 4
+Panels are 1 to 3.
+> x alpha
+A relay panel, code 101, at 5V. Lamps ..... It feeds the beta panel. Last note 3V.
+> board
+Slots: [102 *... 12V/1 >101] [101 .... 5V/0 >102] [empty]. Load 2, changes 2, lookups 18.
+device / panel 101: 9 uses, trail 102 101 102, feeds beta.
+device / panel 102: 1 uses, trail 100 101 101 (seated first), feeds alpha.
+device / panel 103: 0 uses, trail, no peer.
+Score 0.
+> unseat beta
+The beta panel comes out of slot 1. Load 1.
+> unseat beta
+That is not seated.
+> cycle
+The alpha panel gains 2V to 7V; cursor 4.
+The alpha panel lamp 2 is 1; lookups 23.
+> board
+Slots: [empty] [101 .*.. 7V/1 >102] [empty]. Load 1, changes 3, lookups 24.
+device / panel 101: 11 uses, trail 102 101 102, feeds beta.
+device / panel 102: 1 uses, trail 100 101 101 (seated first), feeds alpha.
+device / panel 103: 0 uses, trail, no peer.
+Score 0.
+> drain beta
+The beta panel drains in 4 steps and settles at 1V, 1 on lamp 1.
+> drain alpha
+The alpha panel drains in 3 steps and settles at 1V, 0 on lamp 1.
+> drain switchboard
+Only panels hold a charge.
+> n
+Store Room
+Store Room. Bare shelves. The relay room is south.
+You can see a gamma panel here.
+> x gamma
+A relay panel, code 103, at 12V. Lamps ...*.
+> seat gamma
+The gamma panel goes into slot 1. Load 2.
+> s
+Relay Room
+Relay Room. A switchboard with three slots stands here. A door leads north.
+You can see a beta panel and a switchboard (in which are a gamma panel and an alpha panel) here.
+> probe 101
+Code 101: 1V, 1 lit, feeds 102 which feeds 101, linked to 102 at trail 0, 3 in trail.
+> tog 3 on alpha
+Lamp 3 on the alpha panel is now on. 2 lit, 2 by count.
+> tog 4 on alpha
+Lamp 4 on the alpha panel is now on. 3 lit, 3 by count.
+> tog 1 on alpha
+Lamp 1 on the alpha panel is now on. 4 lit, 4 by count.
+All lamps on the alpha panel are lit.
+[The score has just gone up by one point.]
+> board
+Slots: [103 ...* 12V/1] [101 **** 1V/4 >102] [empty]. Load 2, changes 4, lookups 24.
+device / panel 101: 14 uses, trail 102 101 102, feeds beta.
+device / panel 102: 1 uses, trail 100 101 101 (seated first), feeds alpha.
+device / panel 103: 0 uses, trail 100 (seated first), no peer.
+Score 1.
+> seat beta
+The beta panel goes into slot 3. Load 3.
+> x switchboard
+Three slots: 103 101 102. The load dial reads 3.
+> tog 1 on gamma
+Lamp 1 on the gamma panel is now on. 2 lit, 2 by count.
+> tog 2 on gamma
+Lamp 2 on the gamma panel is now on. 3 lit, 3 by count.
+> tog 3 on gamma
+Lamp 3 on the gamma panel is now on. 4 lit, 4 by count.
+All lamps on the gamma panel are lit.
+[The score has just gone up by one point.]
+*** You have won ***
+In that game you scored 2 out of a possible 2, in 49 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

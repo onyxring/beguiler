@@ -409,6 +409,7 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
             }
             // An earlier deferred initializer that reads this global marked the stub.
             if(existing->needsEarlyGlobalDecl) varDef.needsEarlyGlobalDecl = true;
+            if(existing->foldedAtCompile) varDef.foldedAtCompile = true;   // a capacity above read its value
             return varDef;
         }
         // The same extern declared again (a program binding what its library binding also binds) is that one.

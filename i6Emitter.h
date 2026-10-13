@@ -207,6 +207,7 @@ class i6Emitter{
         string staticText(expression* e);
         string propertyValueText(expression* e);   // staticText, bracketed when it is an arithmetic expression
         map<string, string> ownedGlobalInstances;   // class-typed global (I6 name, lowercase) → its instance
+        void emitBackingReset(classDef* cls, const string& backing, const string& indent);
         void emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, const string& indent);
         void emitParamCopyIns(functionDef* fd, const string& indent);
         void prepareRecursionSave(class functionDef* fd);

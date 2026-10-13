@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
@@ -87,15 +86,15 @@ object _bglMaybe
     return x * y;
   ]
 ;
-[main n1 n2 n3 n4 n5 n6 n7;
+[main n1 n2 n3 n4 n5 n6 n7 _bgl_tempL0;
     n1=_bglwidget.countsame_1_int(5);
     n2=_bglwidget.countsame_2_int_int(3, 4);
     n3=_bglwidget.countsame_3_int_int_int(1, 2, 3);
     n4=_bglwidget.greet_1_int(10);
     n5=_bglwidget.greet_1_string("hi");
     n6=_bglwidget.doubleit(11);
-    _bgl_temp0 = _bglmaybe; if (_bgl_temp0 ~= nothing) { _bgl_temp0 = _bgl_temp0.safecall_2_int_int(2, 3); } else _bgl_temp0 = 0;
-    n7=_bgl_temp0;
+    _bgl_tempL0 = _bglmaybe; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.safecall_2_int_int(2, 3); } else _bgl_tempL0 = 0;
+    n7=_bgl_tempL0;
     print n1;
     print n2;
     print n3;

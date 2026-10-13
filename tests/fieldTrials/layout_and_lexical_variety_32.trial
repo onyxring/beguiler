@@ -1,0 +1,138 @@
+Room A
+Room A. Lamps hang on brackets. Room B is north.
+You can see a red lamp, a blue lamp and a green lamp here.
+> probe
+glow -1 1 1
+shade warm cool white
+emit 6 1 9 9 1
+lamps 4 4, slots 4, log 4, pool 2
+picked 2 the blue lamp 60
+sum 0 false true
+over 30 watts 2, steps 3, step 2
+marks <4:0><1:0><2:0>
+touches 0
+panel the master panel white lamp 0 0 6 0
+bands cool () / white () / warm ()
+chain 0 11 0 false
+> ledger
+3/40/1 red lamp level 0 stored 2 flicks 0 [0 0 0 0] warm peak 0/0 lens 0
+2/60/2 blue lamp level 0 stored 5 flicks 0 [0 0 0 0] cool peak 0/0 lens 0
+1/25/3 green lamp level 0 stored 2 flicks 0 [0 0 0 0] warm peak 0/0 lens 0
+1/15/4 white lamp level 0 stored 2 flicks 0 [0 0 0 0] white peak 0/0 lens 0
+Total 0, sum 11, census 0, flicks 0.
+Sum and total differ.
+2 2 2 5
+Brightest the red lamp; first lit the green lamp; last the green lamp.
+A over B false, B over A true.
+Lit 0, first the green lamp; meter 0, needle 0.
+> brighten red lamp
+The red lamp glows at 3 of 9; stored 4.
+> brighten red lamp
+The red lamp glows at 6 of 9; stored 6.
+> brighten red lamp
+The red lamp glows at 9 of 9; stored 8.
+> brighten red lamp
+The red lamp glows at 9 of 9; stored 10.
+> dim blue lamp
+The blue lamp goes dark.
+> brighten blue lamp
+The blue lamp glows at 3 of 9; stored 7.
+> dim blue lamp
+The blue lamp dims to 2.
+> touch blue lamp
+The blue lamp is warm at 2.
+> touch green lamp
+The green lamp is cold.
+> warm green lamp
+The green lamp warms to 2, low (+), stored 5, hot false.
+> warm green lamp
+The green lamp warms to 4, high (++), stored 8, hot false.
+> warm red lamp
+The red lamp warms to 9, high (+), stored 13, hot true.
+> warm me
+That is not a lamp.
+> spark red lamp
+A spark of 10 reaches the red lamp; stored 23, sparks 1.
+> spark blue lamp
+A spark of 3 reaches the blue lamp; stored 10, sparks 2.
+> brighten me
+That is not a lamp.
+> ledger
+3/40/1 red lamp level 9 stored 23 flicks 4 [3 6 9 9] warm peak 9/4 lens 0
+2/60/2 blue lamp level 2 stored 10 flicks 3 [0 3 2 0] cool peak 3/1 lens 2
+1/25/3 green lamp level 4 stored 8 flicks 0 [0 0 0 0] warm peak 0/0 lens 0
+1/15/4 white lamp level 0 stored 2 flicks 0 [0 0 0 0] white peak 0/0 lens 0
+Total 35, sum 43, census 3, flicks 7.
+Sum and total differ.
+2 8 10 23
+Brightest the red lamp; first lit the red lamp; last the blue lamp.
+A over B true, B over A false.
+One lamp is at full.
+Lit 3, first the red lamp; meter 0, needle 0.
+> north
+Room B
+Room B. A panel is set in the wall. Room A is south.
+You can see a meter, a panel and a white lamp here.
+> examine meter
+You see nothing special about the meter.
+> tune 3
+Trim 3, master 6, changes 1.
+> tune 7
+Trim 7, master 9, changes 2.
+> brighten white lamp
+The white lamp glows at 3 of 9; stored 4.
+> dim white lamp
+The white lamp dims to 2.
+> spark panel
+That is not a lamp.
+> ledger
+3/40/1 red lamp level 9 stored 23 flicks 4 [3 6 9 9] warm peak 9/4 lens 0
+2/60/2 blue lamp level 2 stored 10 flicks 3 [0 3 2 0] cool peak 3/1 lens 2
+1/25/3 green lamp level 4 stored 8 flicks 0 [0 0 0 0] warm peak 0/0 lens 0
+1/15/4 white lamp level 2 stored 4 flicks 2 [3 2 0 0] white peak 3/1 lens 3
+Total 39, sum 45, census 4, flicks 9.
+Sum and total differ.
+4 8 10 23
+Brightest the red lamp; first lit the red lamp; last the white lamp.
+A over B true, B over A false.
+One lamp is at full.
+Lit 4, first the red lamp; meter 2, needle 2.
+> probe
+glow -1 10 3
+shade warm cool white
+emit 6 1 9 9 1
+lamps 4 4, slots 4, log 4, pool 2
+picked 2 the blue lamp 60
+sum 11 true false
+over 30 watts 2, steps 3, step 2
+marks <4:2><1:9><2:2>
+touches 2
+panel the master panel white lamp 4 2 6 0
+bands high (++) / low () / high (+)
+chain 2 84 4 false
+> zero
+All lamps at zero; resets 1, census 0.
+> ledger
+3/40/1 red lamp level 0 stored 23 flicks 5 [9 6 9 9] warm peak 9/4 lens 0
+2/60/2 blue lamp level 0 stored 10 flicks 3 [0 3 2 0] cool peak 3/1 lens 2
+1/25/3 green lamp level 0 stored 8 flicks 0 [0 0 0 0] warm peak 0/0 lens 0
+1/15/4 white lamp level 0 stored 4 flicks 2 [3 2 0 0] white peak 3/1 lens 3
+Total 39, sum 45, census 0, flicks 10.
+Sum and total differ.
+4 8 10 23
+Brightest the red lamp; first lit the white lamp; last the white lamp.
+A over B true, B over A false.
+Lit 0, first the white lamp; meter 9, needle 9.
+> probe
+glow -1 1 1
+shade warm cool white
+emit 6 1 9 9 1
+lamps 4 4, slots 4, log 4, pool 2
+picked 2 the blue lamp 60
+sum 0 false true
+over 30 watts 2, steps 3, step 2
+marks <4:0><1:0><2:0>
+touches 2
+panel the master panel white lamp 0 2 6 0
+bands cool (++) / white () / warm (+)
+chain 0 84 4 false

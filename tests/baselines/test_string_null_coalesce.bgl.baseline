@@ -3,10 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
-global _bgl_temp1;
-global _bgl_temp2;
-global _bgl_temp3;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
@@ -21,17 +17,17 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-[main a b c maybeName label first;
+[main a b c maybeName label first _bgl_tempL0 _bgl_tempL1;
     a="hello";
     b="world";
-    _bgl_temp0 = a; if (~~(_bgl_temp0 ~= 0)) _bgl_temp0 = b;
-    c = _bgl_temp0;
+    _bgl_tempL0 = a; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = b;
+    c = _bgl_tempL0;
     maybeName="";
-    _bgl_temp1 = maybename; if (~~(_bgl_temp1 ~= 0)) _bgl_temp1 = "unnamed";
-    label = _bgl_temp1;
-    _bgl_temp3 = label; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = "default";
-    _bgl_temp2 = maybename; if (~~(_bgl_temp2 ~= 0)) _bgl_temp2 = _bgl_temp3;
-    first = _bgl_temp2;
+    _bgl_tempL0 = maybename; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = "unnamed";
+    label = _bgl_tempL0;
+    _bgl_tempL1 = label; if (~~(_bgl_tempL1 ~= 0)) _bgl_tempL1 = "default";
+    _bgl_tempL0 = maybename; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = _bgl_tempL1;
+    first = _bgl_tempL0;
     print (string)c;
     print (string)label;
     print (string)first;

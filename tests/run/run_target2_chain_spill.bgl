@@ -1,0 +1,17 @@
+// run_target2_chain_spill — chain temporaries that take a routine past the Z-machine's 15 locals spill to the frame pool.
+// EXPECT_OUTPUT: 10 n=1 n=2 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+class Node : object { int v; Node next; }
+Node a { v = 1; }
+array<stringObj> labels[4];
+void main() {
+    bglInit();
+    int a1 = 1; int a2 = 2; int a3 = 3; int a4 = 4; int a5 = 5; int a6 = 6; int a7 = 7; int a8 = 8; int a9 = 9;
+    labels[0] = $"n={a1}";
+    labels[1] += $"n={a2}";
+    Node n = a;
+    Node m = n?.next ?? a;
+    print($"{a1 + a9} {labels[0]} {labels[1]} {m.v}");
+}

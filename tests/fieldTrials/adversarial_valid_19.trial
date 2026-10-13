@@ -1,0 +1,70 @@
+Room A
+Room A.
+
+You can see a valve A, a valve B, a valve C, a valve D, a dial and a lamp here.
+
+> status
+A:2/9 idle r3; B:5/9 flowx3 r3; C:0/4 idle r6;
+count 0 total 0 level 50 Total 0 sum 7.
+
+> charge valve a with 4
+The A valve holds 6; the board level is 46.
+
+> charge valve c with 3
+The C valve holds 3; the board level is 43.
+
+> bleed valve b
+Bled 5 from B; now shut.
+
+> bleed valve b
+The B valve is dry.
+
+> tally
+Board 7/18/4; global 2/7; mix 2212 2132 2006.
+pack 2347; both 1019; scale 4 20 10.
+
+> prime 3
+Primed 2 at 3; 2 primed, 2 over 2.
+
+> chain
+Chain from A: depth 3, tail C, levels 6 3, tags valve valve vc.
+
+> sample valve a
+Reading 6x1 total 61; same false; prior 7x2.
+
+> sample valve a
+Reading 6x1 total 61; same false; prior 7x2.
+
+> sample valve c
+Reading 3x1 total 31; same false; prior 4x2.
+
+> meter valve a
+Dial 62: object 1, string true, valve A, reading 6x1; gauge 1.
+
+> meter valve d
+Dial 84: object 2, string true, valve D, reading 8x2; gauge 2.
+
+> meter dial
+Only valves.
+
+> grab 2
+Grab 28; made 4 4; Total 9; D flow 59 15 5 59.
+
+> grab 5
+Grab 41; made 5 5; Total 14; D flow 59 15 5 59.
+
+> glow
+Lamp 1020 1030 2; scope true true.
+
+> glow
+Lamp 1040 1050 4; scope true true.
+
+> census
+Census 11; scales 6 4 6.
+
+> limits
+Limits 2512 2515 11.
+
+> status
+A:6/9 idle r3 primed; B:0/9 shut r3; C:3/4 idle r6 primed;
+count 2 total 7 level 43 Total 14 sum 9.

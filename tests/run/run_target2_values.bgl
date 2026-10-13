@@ -1,0 +1,39 @@
+// run_target2_values — sibling for-in loops reusing a loop-variable name with another type, distinct()
+// using the element type's operator ==, and a lambda parameter named like a closed loop variable.
+// EXPECT_OUTPUT: 12 7 3 5 10 20 3 2 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+value class Money {
+    inline int p;
+    Money operator = (Money o) { p = o.p; return self; }
+    bool operator == (Money o) { return p == o.p; }
+    bool operator != (Money o) { return p != o.p; }
+    int operator <=> (Money o) { return p - o.p; }
+}
+class Tag : object { int n; }
+Tag tagA { n = 7; }
+array<int> nums = { 1, 2 };
+array<int> more = { 1, 2, 3 };
+array<Money> till[6];
+void main() {
+    bglInit();
+    for (int c in nums) { print(c); }
+    print(" ");
+    for (Tag c in {tagA}) { print(c.n); }
+    print(" ");
+    till += Money{ 20 };
+    till += Money{ 5 };
+    till += Money{ 20 };
+    till += Money{ 10 };
+    array<Money> kinds[6];
+    kinds = till.distinct();
+    print(kinds.length); print(" ");
+    array<Money> sorted[6];
+    sorted = till.orderBy();
+    print($"{sorted[0].p} {sorted[1].p} {sorted[3].p} ");
+    for (int n in more) { }
+    int big = more.filter((int n) => n > 1).count();
+    int small = more.filter((int k) => k < 2).count();
+    print($"{more.length} {big} {small}");
+}

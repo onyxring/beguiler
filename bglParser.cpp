@@ -461,7 +461,10 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
             }
             fd->i6name = mangleOperatorName(fd->name) + disc;
         }
-        else if(fd->i6name.empty())
+        // `print()` keeps its name: the runtime prints a value through `x.print()` (`provides print`).
+        else if(fd->name == "print" && fd->params.empty()) continue;
+        // A method renamed for a global of its name (`_m_show`) is told apart from the global by its arity too.
+        else if(fd->i6name.empty() || fd->i6name.rfind("_m_", 0) == 0)
             fd->i6name = mangleObjectMethodName(fd);
     }
 }
@@ -1058,7 +1061,7 @@ void bglParser::recordObjectMemberInits(){
 
         set<classDef*> onPath;
         curObj = obj;
-        sweepMembers(candidates, obj->dName(), onPath);
+        sweepMembers(candidates, objectI6Name(obj->name), onPath);   // an object renamed for I6 (`box`) by that name
         curObj = nullptr;
     }
     // A value-class variable's instance (a global's, a local's or a parameter's backing): its members
@@ -1128,7 +1131,13 @@ void bglParser::assignObjectMethodOverloadMangling(){
     };
     for(typeDef* g : languageService.globals){
         if(auto* od = dynamic_cast<objectDef*>(g))       manglePerType(od->members);
-        else if(auto* cd = dynamic_cast<classDef*>(g))   manglePerType(cd->members);
+        else if(auto* cd = dynamic_cast<classDef*>(g)){
+            manglePerType(cd->members);
+            set<string> names;
+            for(typeMember* m : cd->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && !fd->isEmitter && !fd->isPrePassStub && names.insert(fd->name).second)
+                    mangleClassFamilyOverloadSet(cd, fd->name);
+        }
     }
     syncOverrideNames();
 }
@@ -1372,8 +1381,9 @@ void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, con
     string base = receiverTypeName;
     auto lt = base.find('<');
     if(lt != string::npos) base = base.substr(0, lt);
-    // Settle the set wherever the method is declared: an object's own members, then its class and
-    // the class's ancestors (an object declared as its own type inherits its methods from there).
+    // Settle the set wherever the method is declared: an object's own members, its class and the class's
+    // ancestors, then its class's line
+    // (an object declared as its own type inherits its methods from there).
     typeDef& td = languageService.getType(base);
     if(auto* od = dynamic_cast<objectDef*>(&td)) mangleOverloadSet(od->members, methodName);
     set<classDef*> seen;
@@ -1383,7 +1393,64 @@ void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, con
         for(classDef* b : c->baseClasses) walk(b);
     };
     walk(languageService.classOf(base));
+    mangleClassFamilyOverloadSet(languageService.classOf(base), methodName);
     syncOverrideNames();
+}
+
+// A method shares its I6 property with the same name along its class's line (not its siblings, unless a
+// class derives from both), so an overload added anywhere along that line is told apart from the rest. The
+// library's classes are shared by every program class, so the line does not spread down through them.
+// `create`, `destroy` and `recreate` are Inform 6's own class messages and keep their names.
+void bglParser::mangleClassFamilyOverloadSet(classDef* cls, const string& methodName){
+    if(cls == nullptr || methodName.empty() || !isalpha((unsigned char)methodName[0])) return;
+    if(methodName == "create" || methodName == "destroy" || methodName == "recreate") return;
+    auto isLibrary = [](classDef* c){ return c->baseClasses.empty() || c->src.file.find("beguiLib") != string::npos; };
+    auto ancestors = [&](classDef* c){
+        set<classDef*> out; vector<classDef*> work(c->baseClasses.begin(), c->baseClasses.end());
+        while(!work.empty()){ classDef* x = work.back(); work.pop_back();
+            if(x && out.insert(x).second) for(classDef* b : x->baseClasses) work.push_back(b); }
+        return out;
+    };
+    auto descendants = [&](classDef* c){
+        set<classDef*> out;
+        if(isLibrary(c)) return out;
+        vector<classDef*> work{c};
+        while(!work.empty()){ classDef* x = work.back(); work.pop_back();
+            for(typeDef* t : languageService.objectTypes)
+                if(auto* d = dynamic_cast<classDef*>(t))
+                    if(find(d->baseClasses.begin(), d->baseClasses.end(), x) != d->baseClasses.end() && out.insert(d).second)
+                        work.push_back(d); }
+        return out;
+    };
+    auto methodsIn = [&](classDef* c){
+        vector<functionDef*> out;
+        for(typeMember* m : c->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == methodName && !fd->isEmitter && !fd->isStatic) out.push_back(fd);
+        return out;
+    };
+    // A class's line: its ancestors, its descendants, and their other parents (one property per name
+    // in a class with two parents).
+    auto lineOf = [&](classDef* c){
+        set<classDef*> line = ancestors(c), below = descendants(c);
+        for(classDef* d : below){ set<classDef*> up = ancestors(d); line.insert(up.begin(), up.end()); }
+        line.insert(below.begin(), below.end());
+        line.erase(c);
+        return line;
+    };
+    set<classDef*> family = lineOf(cls);
+    family.insert(cls);
+    for(classDef* x : family){
+        vector<functionDef*> mine = methodsIn(x);
+        if(mine.empty()) continue;
+        set<classDef*> line = lineOf(x);
+        for(functionDef* fd : mine){
+            if(fd->params.empty() && methodName == "print") continue;
+            bool differs = false;
+            for(classDef* y : line) for(functionDef* other : methodsIn(y))
+                if(mangleObjectMethodName(other) != mangleObjectMethodName(fd)) differs = true;
+            if(differs && (fd->i6name.empty() || fd->i6name.rfind("_m_", 0) == 0)) fd->i6name = mangleObjectMethodName(fd);
+        }
+    }
 }
 
 void bglParser::detectInfModeI6Collisions(){
@@ -2242,6 +2309,14 @@ bool bglParser::processNextStatement(abstractObject& contextObject) {
 bool bglParser::processStatementDispatch(token tok, abstractObject& contextObject) {
     if(!grammarInitialized) initGrammarTable();
     sourceLocation stmtLoc = file.currentLocation();
+    struct stmtExprScope {
+        int& base; bool& open; int savedBase; bool savedOpen;
+        stmtExprScope(int& b, bool& o, int depth) : base(b), open(o), savedBase(b), savedOpen(o) { base = depth; open = false; }
+        ~stmtExprScope(){ base = savedBase; open = savedOpen; }
+    } exprScope(stmtExprBase, optStringMarkOpen, exprParseDepth);
+    // A routine's top-level statement starts its chain temporaries afresh; nested ones keep counting.
+    if(currentFunc != nullptr && !activeBlockStack.empty() && activeBlockStack.back() == currentFunc->body)
+        currentFunc->nextChainTemp = 0;
     // Every statement, keyword-led ones included, places its errors from its own first token.
     if(tok.src.line > 0){
         currentStatementSrc = tok.src;

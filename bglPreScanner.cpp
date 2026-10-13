@@ -620,7 +620,7 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
         }
 
         if(t.isDataType() || t.is(eTokenType::identifier)){
-            preScanConsumeGenericSuffix(t);
+            string objMemberGeneric = preScanConsumeGenericSuffix(t);
             token memberName = file.getToken();
             if(memberName.is("operator")){
                 token opTok = file.getToken();
@@ -657,9 +657,38 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
                 }
                 if(!exists) obj->members.push_back(&fd);
             } else {
-                // Property — skip to ;
+                // Property: a stub, so a use above the extend (or above the object) sees it.
+                variableDeclaration* stubVd = nullptr;
+                bool exists = false;
+                for(typeMember* m : obj->members) if(m->name == memberName.value){ exists = true; break; }
+                // Only a new member: a `replace`, or one the object's class declares, is already known.
+                if(memberIsReplace || (obj->objectClass != nullptr
+                   && findMemberInHierarchy(obj->objectClass, [&](typeMember* m){ return m->name == memberName.value; }) != nullptr))
+                    exists = true;
+                if(!exists && memberName.is(eTokenType::name)){
+                    bool isArr = (t.value == "array" || t.value == "rawarray") && objMemberGeneric.size() > 2;
+                    variableDeclaration& vd = isArr ? *(new arrayDeclaration()) : *(new variableDeclaration());
+                    if(isArr){
+                        auto& ad = static_cast<arrayDeclaration&>(vd);
+                        ad.elementType = objMemberGeneric.substr(1, objMemberGeneric.size() - 2);
+                        ad.isRaw = t.value == "rawarray";
+                        ad.isByteArray = ad.elementType == "char" && !ad.isRaw;
+                    }
+                    vd.name = memberName.value;
+                    vd.displayName = memberName.originalValue;
+                    vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : t.value;
+                    vd.isPrePassStub = true;
+                    obj->members.push_back(&vd);
+                    stubVd = &vd;
+                }
+                bool afterAssign = false;
                 while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
-                    if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                    if(afterName.is(token::braceOpen)){
+                        string body = file.getRawTextThroughClosingBrace();
+                        if(afterAssign && stubVd != nullptr && stubVd->type.name == "auto") preScanAccessorGetter(obj->name, *stubVd, body);
+                        break;
+                    }
+                    afterAssign = afterName.is(token::assignment);
                     afterName = file.getToken();
                 }
                 if(afterName.is(token::braceClose)) break;
@@ -919,7 +948,9 @@ void bglParser::preScanExtend(token& tok){
             // fallback below, which skipped to the emitter body's `}` and then `break`ed
             // out of the entire extend body — leaving subsequent methods unscanned.
             if(t.isDataType() || t.is(eTokenType::identifier)){
-                preScanConsumeGenericSuffix(t);
+                string extMemberGeneric = preScanConsumeGenericSuffix(t);
+                string typePath = t.is(eTokenType::identifier) && file.peekToken().is(token::period) ? preScanTypePath(t, nullptr) : "";
+                if(!typePath.empty()) t.value = typePath;   // `_ns.Level Lev()`: resolved once the tree is scanned
                 token memberName = file.getToken();
                 bool paramsOpen = false;   // the parameter list's '(' is already consumed
                 bool noParams = false;     // `operator ()`: the conversion has no parameter list
@@ -943,6 +974,7 @@ void bglParser::preScanExtend(token& tok){
                     functionDef& fd = *(new functionDef());
                     fd.name = memberName.value;
                     fd.returnType = languageService.getType(t.value);
+                    if(!typePath.empty()){ fd.returnType.name = typePath; preScanTypePathFixup(typePath, &fd.returnType.name); }
                     fd.isEmitter = memberIsEmitter;
                     fd.isStatic = memberIsStatic;
                     fd.isPrePassStub = true;
@@ -1001,22 +1033,43 @@ void bglParser::preScanExtend(token& tok){
                 } else {
                     // Property: a stub now, so code above this extend sees it (§8.7.1), and a
                     // positional one completes the class's order for instances parsed before it.
+                    variableDeclaration* extStubVd = nullptr;
                     {
                         bool exists = false;
                         for(typeMember* m : cls->members) if(m->name == memberName.value){ exists = true; break; }
                         if(!exists){
-                            variableDeclaration& vd = *(new variableDeclaration());
+                            // A member array keeps its element type, a static is marked so a use above the extend
+                            // reaches the class's variable.
+                            bool isArr = (t.value == "array" || t.value == "rawarray") && extMemberGeneric.size() > 2;
+                            variableDeclaration& vd = isArr ? *(new arrayDeclaration()) : *(new variableDeclaration());
+                            if(isArr){
+                                auto& ad = static_cast<arrayDeclaration&>(vd);
+                                ad.elementType = extMemberGeneric.substr(1, extMemberGeneric.size() - 2);
+                                ad.isRaw = t.value == "rawarray";
+                                ad.isByteArray = ad.elementType == "char" && !ad.isRaw;
+                            }
                             vd.name = memberName.value;
-                            vd.type.name = t.value;
+                            vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : t.value;
+                            if(!typePath.empty()) preScanTypePathFixup(typePath, &vd.type.name);
                             vd.isInline = memberIsInline;
+                            vd.isStatic = memberIsStatic;
                             vd.isPrePassStub = true;
                             cls->members.push_back(&vd);
+                            extStubVd = &vd;
                         }
                         if(memberIsInline) addInlineOrder(*cls, memberName.value);
                     }
                     // skip to ;
+                    bool afterAssign = false;
                     while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
-                        if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                        if(afterName.is(token::braceOpen)){
+                            string body = file.getRawTextThroughClosingBrace();
+                            // An inline accessor (`auto knob = { … }`): its stub class, so a use above the extend dispatches.
+                            if(afterAssign && extStubVd != nullptr && extStubVd->type.name == "auto")
+                                preScanAccessorGetter(cls->name, *extStubVd, body);
+                            break;
+                        }
+                        afterAssign = afterName.is(token::assignment);
                         afterName = file.getToken();
                     }
                     if(afterName.is(token::braceClose)) break;
@@ -1150,6 +1203,25 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                           cls->members.push_back(&vd);
                           if(pathType) preScanTypePathFixup(typePath, &vd.type.name);
                       }
+                  }
+                  // A static operator (`static int operator <=> (A a, A b)`): a stub, so a reference or use
+                  // above the class finds it, and the class's overload set is named as the main pass names it.
+                  else if((typeTok.isDataType() || pathType) && memberName.is("operator")){
+                      token opTok = file.getToken();
+                      string opName = opTok.value;
+                      if(opTok.is(eTokenType::identifier) && !file.peekToken().is(token::parenOpen)) opName += file.getToken().value;   // `prefix ++`
+                      functionDef& fd = *(new functionDef());
+                      fd.name = opName;
+                      fd.returnType.name = typeTok.value;
+                      fd.isStatic = true;
+                      fd.isPrePassStub = true;
+                      fd.i6name = mangleOperatorName(opName);   // as its declaration names it
+                      if(file.peekToken().is(token::parenOpen)){ file.getToken(); preScanCaptureParams(fd.params); }
+                      bool exists = false;
+                      for(typeMember* m : cls->members)
+                          if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == opName && f->isStatic
+                             && (!f->isPrePassStub || sameParamTypes(f, &fd))){ exists = true; break; }
+                      if(!exists) cls->members.push_back(&fd);
                   }
                   // A static method: a stub with its signature, so a call above it in the class resolves.
                   else if((typeTok.isDataType() || pathType) && memberName.is(eTokenType::identifier)

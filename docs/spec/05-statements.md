@@ -210,7 +210,9 @@ Iterates over every element of `⟨source⟩`, which is one of:
 | A range `first to last` | Integer; inclusive at both ends; the bounds are any expressions |
 | An object's `children` | The class that declares `children`; the body may move the current child (§11.5.2) |
 
-The loop variable may be declared in the loop head or beforehand. Its type must be compatible with
+The loop variable may be declared in the loop head or beforehand. One declared in the head belongs to
+the loop: after it, the name means what it meant before, and a later loop may declare it again with
+another type. Its type must be compatible with
 the element type or it is a compile-time error; `var` matches any element type, and `auto` infers the
 element type from the source, including through `operator auto()` (§7.8). Any other source expression
 is a compile-time error. Loops nest; each keeps its own iteration state.

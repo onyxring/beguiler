@@ -1,0 +1,9 @@
+// run_target2_using_global_call — a call to a global function beside a #using-imported method of its name.
+// EXPECT_OUTPUT: global
+#beguilerSettings { target = z5; informName = "none"; }
+class Base : object { int id; }
+Base b1 { id = 1; }
+object desk { void Close(Base o) { print("closed"); } }
+void Close(Base o) { print("global"); }
+#using desk
+void main() { Close(b1); }

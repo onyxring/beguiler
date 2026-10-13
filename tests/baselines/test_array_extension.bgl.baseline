@@ -4,11 +4,6 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 Constant _BGL_TRACKED_ARRAYS;
-global _bgl_temp0;
-global _bgl_temp1;
-global _bgl_temp2;
-global _bgl_temp3;
-global _bgl_temp4;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
@@ -70,7 +65,7 @@ array g_queue table 7;
 array g_back table 10 20 30 3 $9084;
 array g_unsorted table 30 10 50 20 40 5 $9084;
 array g_descending table 1 2 3 4 5 5 $9084;
-[main;
+[main _bgl_tempL0;
     bglinit();
     if (_bglArray.isTracked(g_nums, 0)) {
         print 1;
@@ -107,8 +102,8 @@ array g_descending table 1 2 3 4 5 5 $9084;
         print 1;
     }
     print _bglArray.indexOf(g_rooms, 0, r2, 0);
-    if ((_bglArray.indexOf(g_rooms, 0, r3, 0) >= 0)) { _bgl_temp0 = 1; } else { _bgl_temp0 = 0; }
-    print _bgl_temp0;
+    if ((_bglArray.indexOf(g_rooms, 0, r3, 0) >= 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
+    print _bgl_tempL0;
     _bglArray.swap(g_sw, 0, 0, 4);
     print  _bglAt(g_sw, 0, 0)-->0 ;
     print  _bglAt(g_sw, 4, 0)-->0 ;
@@ -131,12 +126,12 @@ array g_descending table 1 2 3 4 5 5 $9084;
     print _bglArray.length(g_w, 0);
     print _bglArray.size(g_w, 0);
     print _bglArray.indexOf(g_w, 0, 43, 0);
-    if (_bglArray.append(g_ap, 0, 10, 0)) { _bgl_temp1 = 1; } else { _bgl_temp1 = 0; }
-    print _bgl_temp1;
-    if (_bglArray.append(g_ap, 0, 20, 0)) { _bgl_temp2 = 1; } else { _bgl_temp2 = 0; }
-    print _bgl_temp2;
-    if (_bglArray.append(g_ap, 0, 30, 0)) { _bgl_temp3 = 1; } else { _bgl_temp3 = 0; }
-    print _bgl_temp3;
+    if (_bglArray.append(g_ap, 0, 10, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
+    print _bgl_tempL0;
+    if (_bglArray.append(g_ap, 0, 20, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
+    print _bgl_tempL0;
+    if (_bglArray.append(g_ap, 0, 30, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
+    print _bgl_tempL0;
     print _bglArray.length(g_ap, 0);
     print  _bglAt(g_ap, 0, 0)-->0 ;
     print  _bglAt(g_ap, 2, 0)-->0 ;
@@ -156,8 +151,8 @@ array g_descending table 1 2 3 4 5 5 $9084;
     print  _bglAt(g_ins, 3, 0)-->0 ;
     _bglArray.append(g_full, 0, 1, 0);
     _bglArray.append(g_full, 0, 2, 0);
-    if (_bglArray.append(g_full, 0, 3, 0)) { _bgl_temp4 = 1; } else { _bgl_temp4 = 0; }
-    print _bgl_temp4;
+    if (_bglArray.append(g_full, 0, 3, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
+    print _bgl_tempL0;
     print _bglArray.length(g_full, 0);
     _bglArray.remove(g_rm, 0, 2, 0);
     print _bglArray.length(g_rm, 0);

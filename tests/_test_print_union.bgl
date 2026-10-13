@@ -1,0 +1,4 @@
+/* test print() of a union value */
+// EXPECT_ERROR: can't be printed while it is a union
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main() { string | int v = 3; print(v); }

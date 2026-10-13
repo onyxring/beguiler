@@ -1,0 +1,63 @@
+// run_target2_receivers — statements that open with element-call receivers, parenthesized receivers and
+// casts (assigned, incremented, nested), casts over member-array elements and call results, a member
+// array's element type kept through an element, and `++`/`+=` on an accessor through a cast.
+// EXPECT_OUTPUT: 10 3 4 1 1 1 2 2 7 yes 3 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Panel : object {
+    int lvl;
+    int n;
+    Panel feed;
+    array<int> lamps[4];
+    array<int> trail[6];
+    Panel Peer() { return feed; }
+    void Poke() { n++; }
+    object Home() { return parent; }
+}
+object board {
+    int count;
+    array<object> slots[3];
+    auto load = {
+        int _n;
+        int operator () { return _n; }
+        void operator = (int v) { _n = v; }
+    }
+}
+Panel a { parent = board; }
+Panel b { feed = a; }
+array<Panel> bank = {a, b};
+class Tile : object { int code; }
+Tile t7 { code = 7; }
+void main() {
+    bglInit();
+    int i = 1;
+    bank[i].Peer().lvl = 9;
+    bank[i].Peer().lvl++;
+    print(a.lvl); print(" ");
+    bank[i].Peer().Poke();
+    (b.Peer()).n += 2;
+    print(a.n); print(" ");
+    ((b.Peer())).n++;
+    print(a.n); print(" ");
+    ((Panel)bank[0]).lamps[3] = 1;
+    print(a.lamps[3]); print(" ");
+    object o = board;
+    ((board)o).count = 1;
+    print(board.count); print(" ");
+    object pa = a;
+    ((Panel)b.feed).lamps[2]++;
+    print(a.lamps[2]); print(" ");
+    ((board)((Panel)pa).Home()).count++;
+    print(board.count); print(" ");
+    ++((Panel)pa).n;
+    print(a.n - 3); print(" ");
+    board.slots[0] = t7;
+    int k = 0;
+    print(((Tile)board.slots[k]).code); print(" ");
+    a.trail += 100;
+    if (bank[k].trail.contains(100)) print("yes ");
+    ((board)o).load++;
+    ((board)o).load += 2;
+    print(board.load); print(" ");
+    print(((board)((Panel)pa).Home()).count);
+}

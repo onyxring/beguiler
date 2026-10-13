@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
@@ -21,9 +20,9 @@ object bgl
 class _bglClass_clamped
   with
     _raw 0,
-    _opeq[v;
-        if (v > 100) { _bgl_temp0 = 100; } else { _bgl_temp0 = v; }
-        self._raw = (_bgl_temp0);
+    _opeq[v _bgl_tempL0;
+        if (v > 100) { _bgl_tempL0 = 100; } else { _bgl_tempL0 = v; }
+        self._raw = (_bgl_tempL0);
     ]
 ;
 class _bglClass_widget

@@ -1,0 +1,159 @@
+Room A
+> check red
+The red tank holds 0.
+The red tank has room for 9.
+Level: empty.
+Sets 0, pours 0 over 0 add(s), headroom 9.
+Temp 20, peak 20, writes 0; dry.
+> levels
+Levels: r=0 b=0 g=0 y=0.
+Wet:.
+0 wet, 0 at 5 or more, total 0.
+By level: r b g y.
+Fullest: r, at 0; spare 0, spare below it: no.
+> load red with 4
+The red tank now holds 4.
+> load blue with 12
+The blue tank overflows and stops at 9.
+> load green with 2
+The green tank now holds 2.
+> check blue
+The blue tank holds 9.
+The blue tank has room for 0.
+Level: full.
+Sets 1, pours 0 over 0 add(s), headroom 0.
+Temp 20, peak 20, writes 0; wet.
+> levels
+Levels: r=4 b=9 g=2 y=0.
+Wet: r b g.
+3 wet, 1 at 5 or more, total 15.
+By level: b r g y.
+Fullest: b, at 9; spare 0, spare below it: yes.
+> pour red into blue
+You pour 0 from the red tank into the blue tank; the red tank now holds less.
+> pour blue into red
+You pour 5 from the blue tank into the red tank; the blue tank now holds less.
+> check blue
+The blue tank holds 4.
+The blue tank has room for 5.
+Level: middle.
+Sets 3, pours 1 over 2 add(s), headroom 5.
+Temp 20, peak 20, writes 0; wet.
+> check red
+The red tank holds 9.
+The red tank has room for 0.
+Level: full.
+Sets 3, pours 6 over 2 add(s), headroom 0.
+Temp 20, peak 20, writes 0; wet.
+> heat green
+The green tank reaches 36 degrees (peak 36).
+> heat green
+The green tank reaches 42 degrees (peak 52).
+> heat green
+The green tank reaches 48 degrees (peak 58).
+> check green
+The green tank holds 2.
+The green tank has room for 7.
+Level: low.
+Sets 1, pours 0 over 0 add(s), headroom 7.
+Temp 48, peak 58, writes 8; wet.
+> swap red with green
+The red tank now holds 2, the green tank 9; held copy 9, set 1 time(s).
+> drain blue
+The blue tank drains 4; it now holds 0.
+> drain blue
+The blue tank was already empty.
+> flow 2
+Flow 4, load 8, twice the flow 8.
+> status
+Panel: flow 4, load 8, mode idle, changes 0, live no.
+Panel getter ran 2 time(s).
+Red is above blue.
+Spare 3 (1 set(s)); red 2, red sets 4.
+Notes: r=4 b=9 g=2
+> push panel
+The button clicks. Every tank takes 4; mode run.
+> status
+Panel: flow 4, load 8, mode run, changes 1, live yes.
+Panel getter ran 4 time(s).
+Red is above blue.
+Spare 7 (2 set(s)); red 6, red sets 5.
+Notes: r=4 b=9 g=2
+> x panel
+The panel shows flow 4, load 8, mode run; it is armed.
+> push panel
+The button clicks. Mode hold.
+> x panel
+The panel shows flow 4, load 8, mode hold; it is safe.
+> status
+Panel: flow 4, load 8, mode hold, changes 2, live no.
+Panel getter ran 2 time(s).
+Red is above blue.
+Spare 7 (3 set(s)); red 6, red sets 5.
+Notes: r=4 b=9 g=2
+> levels
+Levels: r=6 b=4 g=9 y=4.
+Wet: r b g y.
+4 wet, 2 at 5 or more, total 23.
+By level: g r b y.
+Fullest: g, at 9; spare 7, spare below it: yes.
+> sample red
+The jar holds 7; it is fuller than the red tank.
+> sample red
+The jar holds 7; it is fuller than the red tank.
+> sample green
+The jar holds 9; it is not fuller than the green tank.
+> sample red
+The jar holds 7; it is fuller than the red tank.
+> sample red
+No sample jars left.
+> x red
+The red tank holds 6 of 9, 3 to spare; it is at 20 degrees.
+> spill
+Spilled and refilled in 11 step(s); red 7, blue 5.
+> levels
+Levels: r=7 b=5 g=0 y=4.
+Wet: r b y.
+3 wet, 2 at 5 or more, total 16.
+By level: r b y g.
+Fullest: r, at 7; spare 7, spare below it: no.
+> nudge blue
+The blue tank holds 6, at 40, pours 2; wet.
+> nudge panel
+The panel holds 0, at 0, pours 0; dry.
+> watch blue
+The panel watches b: level 7, temp 41, wet; before it, nothing.
+> watch red
+The panel watches r: level 8, temp 21, wet; before it, a tank.
+> watch panel
+The panel watches r: level 0, temp 0, dry; before it, a tank.
+> watch green
+The panel watches g: level 1, temp 31, wet; before it, nothing.
+> flow 0
+Flow 0, load 0, twice the flow 0.
+> status
+Panel: flow 0, load 0, mode unset, changes 7, live no.
+Panel getter ran 2 time(s).
+Red is above blue.
+Spare 9 (4 set(s)); red 8, red sets 7.
+Notes: r=4 b=9 g=2
+> east
+Room B
+Room B. A sealed gray tank. A doorway leads west.
+You can see a gray tank here.
+> load gray with 12
+You force the gray tank open; it holds 9.
+> x gray
+The gray tank holds 9 of 9, 0 to spare; it is at 20 degrees.
+> check gray
+The gray tank holds 9.
+The gray tank has room for 0.
+Level: full.
+Sets 2, pours 0 over 0 add(s), headroom 0.
+Temp 20, peak 20, writes 13; wet.
+> levels
+Levels: r=8 b=7 g=1 y=9.
+Wet: r b g y.
+4 wet, 3 at 5 or more, total 25.
+By level: y r b g.
+Fullest: y, at 9; spare 9, spare below it: no.

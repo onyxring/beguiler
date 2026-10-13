@@ -1,0 +1,90 @@
+// run_target2_forward — uses above declarations: members, statics, arrays and accessors added by later
+// extends, `replace` in an extend written before its object, a later class's `<=>` operators, a later
+// value-class array, an object emitter value, and children loops through an auto alias and over `box`.
+// EXPECT_OUTPUT: 7 3 2 5 7 true false 7 26 2 104 replaced 5 5 true true true 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<Charge> readings[3];
+bool bigger(Charge a, Charge b) { return a > b; }
+void showChest() { print($"{chest.resets} {chest.count} "); }
+void showCharges() {
+    Charge c;
+    c.amps = 5; readings += c; c.amps = 2; readings += c; c.amps = 7; readings += c;
+    readings.sort(Charge::operator <=>);
+    for (Charge x in readings) print($"{x.amps} ");
+    Charge p; Charge q;
+    p.amps = 5; q.amps = 2;
+    print($"{bigger(p, q)} {bigger(q, p)} ");
+}
+void showLamp() {
+    lampA.slots[1] = 7;
+    print($"{lampA.slots[1]} ");
+    lampA.boost = 6;
+    lampA.boost += 1;
+    print($"{lampA.boost} ");
+    Lamp.made += 2;
+    print($"{Lamp.made} ");
+    lampA.knob = 4;
+    print($"{lampA.knob} ");
+}
+void showBox() { print($"{box.label()} {box.n} "); }
+void showSpans() {
+    spans[1] += 4;
+    spans[1].count++;
+    print($"{spans[1].count} {spans[1] > spans[0]} ");
+}
+void above() { print(panel.isTall); print(" "); }
+void showChildren() {
+    int n = 0;
+    for (object o in ns.shelf.children) n++;
+    for (object o in box.children) n++;
+    print(n);
+}
+extend chest { int resets = 7; }
+object chest { int count = 3; }
+value class Charge {
+    int amps;
+    Charge operator = (Charge o) { amps = o.amps; return self; }
+    int operator <=> (Charge o) { return amps - o.amps; }
+    static int operator <=> (Charge a, Charge b) { return a.amps - b.amps; }
+}
+class Lamp : object { int base = 1; }
+Lamp lampA { }
+value class Dial { int _v; int operator () { return _v; } void operator = (int v) { _v = v * 2; } }
+extend class Lamp {
+    array<int> slots[3];
+    Dial boost;
+    static int made = 0;
+    auto knob = { int _k; int operator () { return _k; } void operator = (int v) { _k = v + 100; } }
+}
+extend box { replace string label() { return "replaced"; } replace int n = 5; }
+object box { string label() { return "plain"; } int n = 1; }
+object pin { parent = box; }
+array<Span> spans[3];
+value class Span {
+    int count;
+    Span operator = (Span o) { count = o.count; return self; }
+    Span operator += (int v) { count += v; return self; }
+    int operator <=> (Span o) { return count - o.count; }
+}
+object panel {
+    int rows = 4;
+    emitter bool isTall { $i6Expr($self.rows > 3) }
+}
+void below() { print(panel.isTall); print(" "); }
+object crate { }
+object peg { parent = crate; }
+object peg2 { parent = crate; }
+object ns { }
+extend ns { auto shelf = crate; }
+void main() {
+    bglInit();
+    showChest();
+    showCharges();
+    showLamp();
+    showBox();
+    showSpans();
+    above();
+    below();
+    showChildren();
+}

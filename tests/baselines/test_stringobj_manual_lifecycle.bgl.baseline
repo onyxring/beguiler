@@ -4,10 +4,6 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 Constant _BGL_TRACKED_ARRAYS;
-global _bgl_temp0;
-global _bgl_temp1;
-global _bgl_temp2;
-global _bgl_temp3;
 
     Default bglStringDefaultSize 500;
 
@@ -221,11 +217,11 @@ object _bglBuf
     }
     return true;
   ],
-       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
+       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2 _bgl_tempL0;
     len1=self.length(buf1);
     len2=self.length(buf2);
-    if (len1 < len2) { _bgl_temp0 = len1; } else { _bgl_temp0 = len2; }
-    lim=_bgl_temp0;
+    if (len1 < len2) { _bgl_tempL0 = len1; } else { _bgl_tempL0 = len2; }
+    lim=_bgl_tempL0;
     for (t = 0 : t < lim : t++) {
         c1=buf1->(t + WORDSIZE);
         c2=buf2->(t + WORDSIZE);
@@ -234,15 +230,15 @@ object _bglBuf
             c2 = _bglchartolower(c2);
         }
         if (c1 ~= c2) {
-            if (c1 < c2) { _bgl_temp1 = -1; } else { _bgl_temp1 = 1; }
-            return _bgl_temp1;
+            if (c1 < c2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+            return _bgl_tempL0;
         }
     }
     if (len1 == len2) {
         return 0;
     }
-    if (len1 < len2) { _bgl_temp2 = -1; } else { _bgl_temp2 = 1; }
-    return _bgl_temp2;
+    if (len1 < len2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+    return _bgl_tempL0;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
     len2=self.length(buf2);
@@ -1284,14 +1280,14 @@ class _bglString(bglstringpoolreserve)
 ;
 array slots table 12;
 array counts table 3 1 2 3 $9084;
-[main;
+[main _bgl_tempL0;
     bglinit();
     _bglArray.setOwned(slots, 0, 9, "jim", _bgl_stringObj__opeq);
     _bglStr.print( _bglAt(slots, 9, 0)-->0 );
     _bglArray.setOwned(slots, 0, 9, "replaced", _bgl_stringObj__opeq);
     _bglStr.print( _bglAt(slots, 9, 0)-->0 );
-    if ( _bglAt(slots, 0, 0)-->0 ) { _bgl_temp3 = "allocated"; } else { _bgl_temp3 = "empty"; }
-    print (string)_bgl_temp3;
+    if ( _bglAt(slots, 0, 0)-->0 ) { _bgl_tempL0 = "allocated"; } else { _bgl_tempL0 = "empty"; }
+    print (string)_bgl_tempL0;
     _bglArray.append(slots, 0, "appended", _bgl_stringObj__opeq);
     _bglArray.prepend(slots, 0, "first", _bgl_stringObj__opeq);
     _bglArray.insert(slots, 0, 1, "second", _bgl_stringObj__opeq);
@@ -1306,14 +1302,14 @@ array counts table 3 1 2 3 $9084;
 [_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
 ];
-[_bgl_stringObj_deinit s;
-     if(s ~= 0 && s ofclass _bglString) s.free(); 
-];
 [_bgl_stringObj__opeqeq a b;
     return _bglstr.areequal(a, b, false);
 ];
 [_bgl_stringObj__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_stringObj_deinit s;
+     if(s ~= 0 && s ofclass _bglString) s.free(); 
 ];
 [_bgl_stringObj__opeq cur v;
     

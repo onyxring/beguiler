@@ -1000,8 +1000,10 @@ How `replace` and shadowing decide that two declarations name the same member:
   (§11.10): the same rules, applied to the object's members.
 - In a derived class or object body: `replace` suppresses the shadowing warning for a method found
   anywhere in the base hierarchy.
-- **Emitters** match by name and full parameter-type signature, because emitters may be overloaded.
-- **Methods** and **member variables** match by name alone.
+- **Methods** and **emitters** match by name and full parameter-type signature, because both may be
+  overloaded. A method in a derived class with new parameter types adds an overload beside the base's,
+  with no warning; the base's overloads stay callable on the derived class.
+- **Member variables** match by name alone.
 
 **Example**
 
@@ -1014,12 +1016,13 @@ class Animal : object {
 
 extend class Animal {
     replace int  legs = 2;                          // member variable: matched by name
-    replace void speak(){ print("Hello."); }        // method: matched by name
+    replace void speak(){ print("Hello."); }        // method, same signature: replaced
     emitter bool fits(string label){ $self.legs }   // emitter, new signature: added, no replace
     replace emitter bool fits(int size){ $self.legs == $size }   // emitter, same signature: replaced
 }
 
 class Dog : Animal {
     replace void speak(){ print("Woof!"); }         // found in the base hierarchy: no warning
+    void speak(int times){ print("Woof x"); print(times); }   // new signature: an added overload
 }
 ```

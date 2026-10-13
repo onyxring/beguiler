@@ -45,12 +45,12 @@ cube as square 14, as shape 6
 ordered: penny cent nickel dime quarter
 worth 1: 2, total 42
 dime vs nickel 5, together 15, again 15, cent at 1, penny at 1
-distinct coins 5, worth over 1 40
+distinct coins 4, worth over 1 40
 > coins 5
 ordered: penny cent nickel dime quarter
 worth 5: 1, total 42
 dime vs nickel 5, together 15, again 15, cent at 1, penny at 1
-distinct coins 5, worth over 5 35
+distinct coins 4, worth over 5 35
 > gates 4
 open for 4: low gate even gate
 gates 3, any open for 7: yes

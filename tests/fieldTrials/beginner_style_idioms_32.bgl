@@ -1,0 +1,990 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-second first-time-programmer program, a weighing stall where crates are
+// weighed on a scale, priced by weight, paid for from a purse with change given from a till of
+// coins, and written on a receipt, written by a beginner who has just found value classes and uses
+// them for everything. A value class for money (inline pounds and pence, a copy operator, ==, !=,
+// <=>, +, -, * by an int, += and methods) and one for a weight (inline grams, a copy operator, static
+// == and <=>), a value subclass for a price that chains to its base's copy operator with a cast, and
+// a value class for a receipt line that owns a weight and a money member of its own and holds a ref
+// to another line. Value classes as globals, locals, parameters (copies and ref), return values of
+// functions and methods (members read straight off the call result), owned members of a class and
+// of objects given starting values with inline objects (positional, named and both), a static member
+// of a class, an object's member array of money with initial inline elements, file-scope arrays of
+// the value classes (one with initial elements, sized ones filled with append / += / insert /
+// prepend), ref locals bound to globals, members and array elements and rebound with :=, ref members
+// bound with :=, copies checked to be independent, comparisons with inline objects, ?: picking
+// between two values, value classes as for-in loop variables, sort / indexOf / contains / removeValue
+// / -= / remove / clear on arrays of them, and <linq> filter / count / any / all / first / last /
+// orderBy / map / take / skip with lambdas taking value classes and capturing value-class locals,
+// helper functions overloaded on money, weight and line, try / catch / throw when the purse is
+// short, and verbs (weigh, buy, receipt, till, change, swap, copies, stall) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how many coins fit in the till
+const int TILL_SIZE = 8;
+// how many lines fit on the receipt
+const int RECEIPT_SIZE = 5;
+// how many sales there have been
+int saleCount = 0;
+// was the purse ever too short to pay?
+bool everShort = false;
+
+// ===== MONEY =====
+
+// an amount of money in pounds and pence
+value class Money {
+    inline int pounds;
+    inline int pence;
+
+    Money operator = (Money o) {
+        pounds = o.pounds;
+        pence = o.pence;
+        return self;
+    }
+    bool operator == (Money o) {
+        return inPence() == o.inPence();
+    }
+    bool operator != (Money o) {
+        return inPence() != o.inPence();
+    }
+    // less money sorts first
+    int operator <=> (Money o) {
+        return inPence() - o.inPence();
+    }
+    Money operator + (Money o) {
+        Money r;
+        r.setPence(inPence() + o.inPence());
+        return r;
+    }
+    Money operator - (Money o) {
+        Money r;
+        r.setPence(inPence() - o.inPence());
+        return r;
+    }
+    Money operator * (int n) {
+        Money r;
+        r.setPence(inPence() * n);
+        return r;
+    }
+    Money operator += (Money o) {
+        setPence(inPence() + o.inPence());
+        return self;
+    }
+
+    // all of it in pence
+    int inPence() {
+        return pounds * 100 + pence;
+    }
+
+    // sets it from pence
+    void setPence(int p) {
+        pounds = p / 100;
+        pence = p % 100;
+    }
+
+    // prints it like 1.05
+    void show() {
+        print(pounds);
+        print(".");
+        if (pence < 10) {
+            print("0");
+        }
+        print(pence);
+    }
+}
+
+// a price: an amount of money for so many grams
+value class Price : Money {
+    int per = 100;
+    Price operator = (Price o) {
+        per = o.per;
+        (Money)self = o;
+        return self;
+    }
+}
+
+// ===== WEIGHT =====
+
+// a weight in grams
+value class Weight {
+    inline int grams;
+    Weight operator = (Weight o) {
+        grams = o.grams;
+        return self;
+    }
+    static bool operator == (Weight a, Weight b) {
+        return a.grams == b.grams;
+    }
+    static bool operator != (Weight a, Weight b) {
+        return a.grams != b.grams;
+    }
+    static int operator <=> (Weight a, Weight b) {
+        return a.grams - b.grams;
+    }
+}
+
+// ===== RECEIPT LINES =====
+
+// one line on the receipt
+value class Line {
+    inline string what;
+    Weight w;
+    Money cost;
+    // the line before this one
+    ref Line prev;
+    Line operator = (Line o) {
+        what = o.what;
+        w = o.w;
+        cost = o.cost;
+        prev := o.prev;
+        return self;
+    }
+    bool operator == (Line o) {
+        return what == o.what && cost == o.cost;
+    }
+    bool operator != (Line o) {
+        return !(what == o.what && cost == o.cost);
+    }
+}
+
+// ===== LISTS =====
+
+// the coins in the till
+array<Money> till[TILL_SIZE];
+
+// the receipt
+array<Line> receipt[RECEIPT_SIZE];
+
+// weights the scale was tested with
+array<Weight> testWeights = { Weight{ 100 }, Weight{ grams = 250; }, Weight{ 500 } };
+
+// a few small weights, given without their type
+array<Weight> smallWeights = { { 50 }, { 20 }, { grams = 10; } };
+
+// money kept back for a float
+Money floatCash = Money{ 1, 0 };
+
+// money taken, all sales together
+Money takings;
+
+// the most paid for one crate
+Money bestSale;
+
+// ===== HELPER FUNCTIONS =====
+
+// prints money
+void say(Money m) {
+    m.show();
+}
+
+// prints a weight
+void say(Weight w) {
+    print($"{w.grams}g");
+}
+
+// prints a receipt line
+void say(Line l) {
+    print($"{l.what}, ");
+    say(l.w);
+    print(", ");
+    say(l.cost);
+}
+
+// how much a weight costs at a price
+Money priceFor(Price p, Weight w) {
+    Money m;
+    m.setPence(p.inPence() * w.grams / p.per);
+    return m;
+}
+
+// makes money from pence
+Money fromPence(int p) {
+    Money m;
+    m.setPence(p);
+    return m;
+}
+
+// the heavier of two weights
+Weight heavier(Weight a, Weight b) {
+    return a > b ? a : b;
+}
+
+// takes money out of a purse; throws how many pence are missing
+void pay(ref Money purse, Money cost) {
+    if (purse < cost) {
+        everShort = true;
+        Money missing = cost - purse;
+        throw missing.inPence();
+    }
+    purse = purse - cost;
+}
+
+// adds money to a running total
+void addTo(ref Money total, Money amount) {
+    total += amount;
+}
+
+// adds money to a running total two times
+void addTwice(ref Money total, Money amount) {
+    addTo(total, amount);
+    addTo(total, amount);
+}
+
+// all the money in a list
+Money sumOf(array<Money> list) {
+    Money sum;
+    for (Money m in list) {
+        sum = sum + m;
+    }
+    return sum;
+}
+
+// the dearest money in a list
+Money dearest(array<Money> list) {
+    int best = 0;
+    for (int i = 1; i < list.length; i++) {
+        if (list[i] > list[best]) {
+            best = i;
+        }
+    }
+    return list[best];
+}
+
+// swaps two amounts of money
+void swapMoney(ref Money a, ref Money b) {
+    Money t = a;
+    a = b;
+    b = t;
+}
+
+// tries to change a copy; the caller's money stays the same
+void spoil(Money m) {
+    m.pounds = 99;
+    m.pence = 99;
+}
+
+// the biggest coin in the till
+Money biggestCoin() {
+    Money best;
+    for (Money c in till) {
+        if (c > best) {
+            best = c;
+        }
+    }
+    return best;
+}
+
+// how heavy a crate is
+Weight weightOf(Crate c) {
+    return c.w;
+}
+
+// adds a tip; ten pence if nobody says how much
+Money withTip(Money m, Money tip = Money{ 0, 10 }) {
+    return m + tip;
+}
+
+// how many coins of one kind it takes to make an amount
+int coinsFor(Money amount, Money coin) {
+    int n = 0;
+    Money left = amount;
+    while (left >= coin && coin > Money{ 0, 0 }) {
+        left = left - coin;
+        n++;
+    }
+    return n;
+}
+
+// how many receipt lines cost more than an amount
+int linesOver(Money amount) {
+    return receipt.filter((Line l) => l.cost > amount).count();
+}
+
+// the name of a coin
+string coinName(Money c) {
+    switch (c.inPence()) {
+        case 100: return "pound";
+        case 50: return "fifty";
+        case 20: return "twenty";
+        case 10: return "ten";
+        case 5: return "five";
+        case 1 to 4: return "copper";
+    }
+    return "note";
+}
+
+// ===== CRATES =====
+
+class Crate : object {
+    // what is in it
+    string what;
+    // how heavy it is
+    Weight w;
+    // what it costs
+    Price price;
+    // what was paid for it, the last time
+    Money paid = Money{ 0, 0 };
+    string description;
+
+    // money from every crate
+    static Money allCrates;
+    // what the scale costs to use
+    static Money fee = Money{ 0, 5 };
+
+    // charges the fee to some money
+    void chargeFee(ref Money m) {
+        m = m - fee;
+    }
+
+    // what this crate costs now
+    Money cost() {
+        return priceFor(price, w);
+    }
+
+    // what two crates cost together
+    static Money sumOf(Crate a, Crate b) {
+        return a.cost() + b.cost();
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"Crate of {what}: ");
+            say(w);
+            print(" at ");
+            say(price);
+            print($" per {price.per}g, costs ");
+            say(cost());
+            print(". Last paid ");
+            say(paid);
+            print(".^");
+            rtrue;
+        }
+        if (action == Take) {
+            rtrue("It is too heavy. Buy it instead.^");
+        }
+        rfalse;
+    }
+}
+
+// a ticket for a sale, made when a crate is bought
+class Ticket[3] : object {
+    Money amount = Money{ 0, 10 };
+    Money fee;
+    int number = 0;
+    static int made = 0;
+    void create(Money m) {
+        made++;
+        number = made;
+        fee = Crate.fee;
+        amount = amount + m;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The stall. The store is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The store. The stall is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE CRATES =====
+
+Crate crateA {
+    "apple crate";
+    parent = roomA;
+    name = {.apple, .crate};
+    what = "apples";
+    w = Weight{ 400 };
+    price = Price{ 0, 30; per = 100; };
+    description = "A crate.";
+    attributes = {static};
+}
+
+Crate crateB {
+    "bean crate";
+    parent = roomA;
+    name = {.bean, .crate};
+    what = "beans";
+    w = Weight{ grams = 250; };
+    price = Price{ pounds = 1; pence = 20; per = 500; };
+    description = "A crate.";
+    attributes = {static};
+}
+
+Crate crateC {
+    "corn crate";
+    parent = roomA;
+    name = {.corn, .crate};
+    what = "corn";
+    w = Weight{ 1000 };
+    price = Price{ 0, 15 };
+    description = "A crate.";
+    attributes = {static};
+}
+
+// ===== THE STALL AND THE PURSE =====
+
+object stall {
+    "stall";
+    parent = roomA;
+    name = {.stall};
+    string description = "The stall.";
+    attributes = {static};
+    // the coins it gives change in, biggest first
+    array<Money> coins = { Money{ 1, 0 }, Money{ 0, 50 }, Money{ 0, 20 }, Money{ 0, 10 }, Money{ 0, 5 }, Money{ 0, 1 } };
+    // the money it starts with
+    Money cash = Money{ 2, 0 };
+    // the last money paid in
+    ref Money lastIn;
+
+    // the change for paying `given` for `cost`, put in the till coin by coin
+    Money change(Money given, Money cost) {
+        Money back = given - cost;
+        int left = back.inPence();
+        for (int i = 0; i < coins.length; i++) {
+            Money c = coins[i];
+            while (left >= c.inPence() && till.length < TILL_SIZE) {
+                till += c;
+                left -= c.inPence();
+            }
+        }
+        return back;
+    }
+}
+
+object purse {
+    "purse";
+    parent = roomA;
+    name = {.purse};
+    string description = "A purse.";
+    Money held = Money{ pounds = 3; pence = 0; };
+    // the smallest it has been
+    Money lowest = Money{ 3, 0 };
+}
+
+bool Initialise() {
+    location = roomA;
+    stall.lastIn := stall.cash;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// WEIGH <crate> - weighs a crate and writes it on the receipt
+verb WeighCrate {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!(noun.is(Crate))) {
+            print("Only a crate goes on the scale.^");
+            return;
+        }
+        Crate c = (Crate)noun;
+        if (receipt.length >= RECEIPT_SIZE) {
+            print("The receipt is full.^");
+            return;
+        }
+        Line l = Line{ c.what };
+        l.w = c.w;
+        l.cost = c.cost();
+        if (receipt.length > 0) {
+            l.prev := receipt[receipt.length - 1];
+        }
+        receipt.append(l);
+        print("Weighed: ");
+        say(l);
+        print(".^");
+        Weight top = heavier(c.w, testWeights[2]);
+        print("Heavier of it and the test weight: ");
+        say(top);
+        print($". Cost in pence: {c.cost().inPence()}.^");
+    }
+}
+
+// BUY <crate> - pays for a crate from the purse
+verb BuyCrate {
+    grammar = {.buy, NOUN};
+    void handler() {
+        if (!(noun.is(Crate))) {
+            print("You can only buy a crate.^");
+            return;
+        }
+        Crate c = (Crate)noun;
+        Money cost = c.cost();
+        // pay with a whole number of pounds
+        Money given = Money{ cost.pounds + 1, 0 };
+        try {
+            pay(purse.held, given);
+        } catch (int short) {
+            print($"The purse is {short}p short.^");
+            return;
+        }
+        Money back = stall.change(given, cost);
+        purse.held += back;
+        addTo(takings, cost);
+        addTo(Crate.allCrates, cost);
+        c.paid = cost;
+        stall.cash += cost;
+        if (cost > bestSale) {
+            bestSale = cost;
+        }
+        if (purse.held < purse.lowest) {
+            purse.lowest = purse.held;
+        }
+        saleCount++;
+        Ticket t = new Ticket(cost);
+        if (t != null) {
+            print($"Ticket {t.number}: ");
+            say(t.amount);
+            print(" with the ticket's 0.10, fee ");
+            say(t.fee);
+            print(".^");
+            delete t;
+        }
+        print("You give ");
+        say(given);
+        print(" for ");
+        say(cost);
+        print(" and get ");
+        say(back);
+        print(" back. The purse has ");
+        say(purse.held);
+        print(".^");
+    }
+}
+
+// RECEIPT - every line, and sums
+verb ShowReceipt {
+    meta = true;
+    grammar = {.receipt};
+    void handler() {
+        if (receipt.length == 0) {
+            print("The receipt is empty.^");
+            return;
+        }
+        Money sum;
+        int n = 0;
+        for (Line l in receipt) {
+            n++;
+            print($"{n}. ");
+            say(l);
+            print("^");
+            sum += l.cost;
+        }
+        print("Sum: ");
+        say(sum);
+        print(".^");
+        // the line before the last one
+        ref Line last := receipt[receipt.length - 1];
+        if (last.prev) {
+            print($"Before {last.what} came {last.prev.what}.^");
+        }
+        Money limit = Money{ 1, 0 };
+        int dear = receipt.filter((Line l) => l.cost >= limit).count();
+        print($"Lines of a pound or more: {dear}.^");
+        if (receipt.any((Line l) => l.w.grams > 500)) {
+            print("One weighs over 500g.^");
+        }
+        if (receipt.all((Line l) => l.cost > Money{ 0, 0 })) {
+            print("Every line costs something.^");
+        }
+        Line cheap = receipt.orderBy((Line a, Line b) => a.cost <=> b.cost).first();
+        Line dearest = receipt.orderBy((Line a, Line b) => a.cost <=> b.cost).last();
+        print($"Cheapest: {cheap.what}. Dearest: {dearest.what}.^");
+        Line firstLine = receipt.first();
+        print($"First line weighs {firstLine.w.grams}g.^");
+        int pence = receipt.map((Line l) => l.cost.inPence()).first();
+        print($"First line in pence: {pence}.^");
+        int rest = receipt.skip(1).count();
+        int some = receipt.take(2).count();
+        print($"After the first: {rest}. First two: {some}.^");
+    }
+}
+
+// TILL - the coins in the till
+verb ShowTill {
+    meta = true;
+    grammar = {.till};
+    void handler() {
+        if (till.length == 0) {
+            print("The till is empty.^");
+            return;
+        }
+        array<Money> sorted[TILL_SIZE];
+        sorted = till;
+        sorted.sort();
+        print("Till:");
+        for (Money c in sorted) {
+            print(" ");
+            say(c);
+            print($" ({coinName(c)})");
+        }
+        print("^");
+        print("Biggest: ");
+        say(biggestCoin());
+        print($" ({biggestCoin().pence}p of it is pence).^");
+        int at = sorted.indexOf(Money{ 0, 20 });
+        print($"A twenty is at {at}.^");
+        if (till.contains(Money{ 0, 50 })) {
+            print("There is a fifty.^");
+        }
+        Money five = Money{ 0, 5 };
+        int fives = till.filter((Money c) => c == five).count();
+        print($"Fives: {fives}.^");
+    }
+}
+
+// CHANGE - takes the small coins out of the till
+verb TidyTill {
+    grammar = {.change};
+    void handler() {
+        int before = till.length;
+        till -= Money{ 0, 1 };
+        till.removeValue(Money{ 0, 5 });
+        if (till.length > 0) {
+            till.remove(0);
+        }
+        till.prepend(Money{ 2, 0 });
+        till.insert(1, fromPence(150));
+        print($"The till had {before} coins and now has {till.length}.^");
+        Money first = till[0];
+        Money second = till[1];
+        print("Front two: ");
+        say(first);
+        print(" and ");
+        say(second);
+        print(".^");
+    }
+}
+
+// EMPTY - empties the till
+verb EmptyTill {
+    grammar = {.empty};
+    void handler() {
+        till.clear();
+        print($"The till has {till.length} coins.^");
+    }
+}
+
+// SWAP - swaps the stall's cash and the purse's money
+verb SwapCash {
+    grammar = {.swap};
+    void handler() {
+        swapMoney(stall.cash, purse.held);
+        print("The stall has ");
+        say(stall.cash);
+        print(" and the purse has ");
+        say(purse.held);
+        print(".^");
+        print("Last money in at the stall: ");
+        say(stall.lastIn);
+        print(".^");
+    }
+}
+
+// COPIES - checks that copies are copies and refs are refs
+verb CheckCopies {
+    meta = true;
+    grammar = {.copies};
+    void handler() {
+        Money a = Money{ 1, 50 };
+        Money b = a;
+        b.pence = 75;
+        print("a is ");
+        say(a);
+        print(", b is ");
+        say(b);
+        print(".^");
+        spoil(a);
+        print("After spoil, a is ");
+        say(a);
+        print(".^");
+        ref Money r := a;
+        r.pounds = 4;
+        print("Through r, a is ");
+        say(a);
+        print(".^");
+        r := b;
+        r = Money{ 0, 10 };
+        print("r moved to b: a is ");
+        say(a);
+        print(", b is ");
+        say(b);
+        print(".^");
+        if (a != b && !(a == b)) {
+            print("a and b differ.^");
+        }
+        if (b == Money{ 0, 10 }) {
+            print("b is ten pence.^");
+        }
+        Money big = a > b ? a : b;
+        print("The bigger is ");
+        say(big);
+        print(".^");
+        Money sum = a + b + Money{ 0, 5 };
+        print("a + b + 5p is ");
+        say(sum);
+        print($" ({sum.inPence()}p).^");
+        Money twice = (a - b) * 2;
+        print("(a - b) * 2 is ");
+        say(twice);
+        print(".^");
+        ref Money t := till[0];
+        if (till.length > 0) {
+            t.pence = t.pence + 1;
+            print("Till front, bumped: ");
+            say(till[0]);
+            print(".^");
+        }
+        Weight w1 = Weight{ 300 };
+        Weight w2 = testWeights[1];
+        w2.grams = 999;
+        print($"Test weight 1 is still {testWeights[1].grams}g, the copy is {w2.grams}g.^");
+        if (w1 > testWeights[1] && w1 != testWeights[0]) {
+            print("300g is more than 250g.^");
+        }
+        int at = testWeights.indexOf(Weight{ 500 });
+        print($"500g is test weight {at}.^");
+        print($"Made from 205p: {fromPence(205).pounds} pounds {fromPence(205).pence} pence.^");
+    }
+}
+
+// SUMS - money and weights worked out a few ways
+verb ShowSums {
+    meta = true;
+    grammar = {.sums};
+    void handler() {
+        print("Apples and beans: ");
+        say(Crate.sumOf(crateA, crateB));
+        print(". With a tip: ");
+        say(withTip(crateA.cost()));
+        print(". With a big tip: ");
+        say(withTip(tip: Money{ 1, 0 }, m: crateB.cost()));
+        print(".^");
+        print("Heavier crate of apples and beans: ");
+        say(heavier(weightOf(crateA), weightOf(crateB)));
+        print(". Priced by name: ");
+        say(priceFor(w: crateC.w, p: crateA.price));
+        print(".^");
+        if (crateC.cost() > Money{ 1, 0 } && crateA.w > crateB.w) {
+            print("Corn costs over a pound and apples outweigh beans.^");
+        }
+        Money base = (Money)crateB.price;
+        print("Bean price without its weight: ");
+        say(base);
+        print($". Fifties in it: {coinsFor(base, Money{ 0, 50 })}. Twenties in 1.00: {coinsFor(Money{ 1, 0 }, stall.coins[2])}.^");
+        print("The cheaper of corn and apples: ");
+        say(crateC.cost() < crateA.cost() ? crateC.cost() : crateA.cost());
+        print(".^");
+        array<Weight> ws[4];
+        ws += testWeights[2];
+        ws += crateB.w;
+        ws.append(Weight{ 75 });
+        ws.prepend(weightOf(crateC));
+        ws.sort();
+        print("Weights, light first:");
+        for (Weight w in ws) {
+            print(" ");
+            say(w);
+        }
+        print("^");
+        array<Money> prices[3];
+        prices += crateA.cost();
+        prices += crateB.cost();
+        prices += crateC.cost();
+        prices.sort((Money a, Money b) => b <=> a);
+        print("Prices, dear first:");
+        for (Money m in prices) {
+            print(" ");
+            say(m);
+        }
+        print("^");
+        print("Sum of prices: ");
+        say(sumOf(prices));
+        print(". Dearest: ");
+        say(dearest(prices));
+        print(". Till: ");
+        say(sumOf(till));
+        print(".^");
+        func<Money, Money> half = (Money m) => fromPence(m.inPence() / 2);
+        Money halfCorn = half(crateC.cost());
+        print("Half the corn: ");
+        say(halfCorn);
+        print(". Half of that: ");
+        say(half(halfCorn));
+        Money twiceFee;
+        addTwice(twiceFee, Crate.fee);
+        print(". The fee twice: ");
+        say(twiceFee);
+        print(".^");
+        Money count = Money{ 0, 0 };
+        int steps = 0;
+        do {
+            count += Money{ 0, 25 };
+            steps++;
+        } while (count < crateB.cost());
+        print($"Quarters to reach the beans: {steps}.^");
+        Money atLeast = Money{ 0, 70 };
+        int over = prices.filter((Money m) => m > atLeast).count();
+        bool cheapOne = prices.any((Money m) => m < atLeast);
+        print($"Over 0.70: {over}. Lines over 1.00: {linesOver(Money{ 1, 0 })}.");
+        if (cheapOne) {
+            print(" One is under 0.70.");
+        }
+        print("^");
+        if (receipt.length > 0) {
+            receipt[0].w.grams = 410;
+            receipt[0].cost += Money{ 0, 3 };
+            print("First line now: ");
+            say(receipt[0]);
+            print(". Its cost: ");
+            receipt[0].cost.show();
+            print(".^");
+        }
+        if (till.length > 0) {
+            addTo(till[0], Money{ 0, 1 });
+            till[0] += Money{ 0, 1 };
+            print("Till front, plus two pence: ");
+            say(till[0]);
+            print(".^");
+        }
+        addTo(stall.cash, Money{ 0, 0 });
+        stall.lastIn := purse.held;
+        print("Last in now points at the purse: ");
+        say(stall.lastIn);
+        print(".^");
+    }
+}
+
+// EXTRAS - more ways of handing money and weights about
+verb ShowExtras {
+    meta = true;
+    grammar = {.extras};
+    void handler() {
+        Money m = { 0, 40 };
+        auto doubled = m * 2;
+        print("Forty doubled: ");
+        say(doubled);
+        print($". Coins of 20 in 2.00: {coinsFor({ 2, 0 }, { 0, 20 })}. Tip on 1.00: ");
+        say(withTip({ 1, 0 }));
+        print(".^");
+        print("Small weights:");
+        for (Weight w in smallWeights) {
+            print(" ");
+            say(w);
+        }
+        print($". Float: ");
+        say(floatCash);
+        print(".^");
+        int small = stall.coins.filter((Money c) => c < Money{ 0, 20 }).count();
+        print($"Coins under 20p: {small}.^");
+        Line match;
+        bool coinPrice = receipt.any((Line l) => stall.coins.any((Money c) => c == l.cost));
+        if (coinPrice) {
+            print("A line costs the same as a coin.^");
+        } else {
+            print("No line costs the same as a coin.^");
+        }
+        if (receipt.length > 0) {
+            match = receipt.filter((Line l) => l.w.grams >= 400).last();
+            print("Last line of 400g or more: ");
+            say(match);
+            print(".^");
+            int early = receipt.takeWhile((Line l) => l.cost > Money{ 0, 99 }).count();
+            int late = receipt.skipWhile((Line l) => l.w < Weight{ 1000 }).count();
+            print($"Dear lines at the start: {early}. Lines from the first heavy one: {late}.^");
+        }
+        if (till.length > 0) {
+            print($"Kinds of coin in the till: {till.distinct().count()} of {till.length}.^");
+        }
+        ref Money held := purse.held;
+        held = held + Money{ 0, 1 };
+        crateA.chargeFee(held);
+        print("Purse, plus a penny, less the fee: ");
+        say(purse.held);
+        print(".^");
+        if (crateA.price == Money{ 0, 30 } && crateB.price != crateA.price) {
+            print("Apples are 30p a time and beans are not.^");
+        }
+        array<Money> mixed[3];
+        mixed += crateB.price;
+        mixed += Crate.fee;
+        mixed.append(floatCash);
+        print("Bean price, fee and float:");
+        for (Money x in mixed) {
+            print(" ");
+            say(x);
+        }
+        print("^");
+        Price dearer = crateA.price;
+        addTo(dearer, Money{ 0, 5 });
+        print("Apple price plus 5p: ");
+        say(dearer);
+        print($" per {dearer.per}g; the crate still asks ");
+        say(crateA.price);
+        print(".^");
+        Money nothingYet;
+        if (nothingYet == Money{ 0, 0 }) {
+            print("A new local starts at 0.00.^");
+        }
+    }
+}
+
+// STALL - how the stall is doing
+verb ShowStall {
+    meta = true;
+    grammar = {.stall};
+    void handler() {
+        print($"Sales: {saleCount}. Takings: ");
+        say(takings);
+        print(". All crates: ");
+        say(Crate.allCrates);
+        print(".^");
+        print("Stall cash: ");
+        say(stall.cash);
+        print(". Best sale: ");
+        say(bestSale);
+        print(". Lowest purse: ");
+        say(purse.lowest);
+        print(".^");
+        print("Coins it gives:");
+        for (Money c in stall.coins) {
+            print($" {coinName(c)}");
+        }
+        print("^");
+        Money total;
+        for (Crate c in {crateA, crateB, crateC}) {
+            addTo(total, c.cost());
+        }
+        print("All three crates cost ");
+        say(total);
+        print(".^");
+        if (everShort) {
+            print("The purse has been short.^");
+        }
+    }
+}

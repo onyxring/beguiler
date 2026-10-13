@@ -814,8 +814,14 @@ void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, 
         classDef* cls = languageService.findClass(vd->type.name);
         if(!cls) continue;
         out << format("{0}{1} = {2};\n", indent, spillName(vd->name), vd->backingName);
-        // Each field back to its declared value (0 when it has none). A field that owns an instance
-        // keeps pointing at it, and that instance's fields are reset in turn.
+        emitBackingReset(cls, vd->backingName, indent);
+    }
+}
+
+// Each field of a backing instance back to its declared value (0 when it has none). A field that owns
+// an instance keeps pointing at it, and that instance's fields are reset in turn.
+void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const string& indent){
+    {
         set<classDef*> visited;
         function<void(classDef*, const string&)> resetFields = [&](classDef* c, const string& inst){
             if(!c) return;
@@ -838,7 +844,7 @@ void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, 
                 out << format("{0}{1}.{2} = {3};\n", indent, inst, fm->i6name.empty() ? fm->dName() : fm->i6name, value);
             }
         };
-        resetFields(cls, vd->backingName);   // visited starts empty, as in synthesizeFieldBackings
+        resetFields(cls, backing);   // visited starts empty, as in synthesizeFieldBackings
     }
 }
 
@@ -878,6 +884,15 @@ void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
         // A parameter past the fifth lives in a spill global on the Z-machine; one named like a
         // property has its local's new name.
         text = spillWord(text);
+        // The parameter's instance starts each call from the class's defaults, as a local's does: its copy
+        // operator may not set every field.
+        // (Not when the argument is that instance itself, passed on by a call of this routine.)
+        if(!p->backingName.empty())
+            if(classDef* pc = languageService.findClass(p->type.name)){
+                out << format("{0}if ({1} ~= {2}) {{\n", indent, spillWord(p->name), p->backingName);
+                emitBackingReset(pc, p->backingName, indent + "    ");
+                out << indent << "}\n";
+            }
         out << indent << text << "\n";
         if(!p->backingName.empty())
             out << format("{0}{1} = {2};\n", indent, spillWord(p->name), p->backingName);
@@ -901,7 +916,9 @@ bool i6Emitter::funcNeedsSpill(functionDef* fd){
     vector<variableDeclaration*> locals;
     set<string> seen;
     collectBodyLocals(body, locals, seen);
-    return (effectiveParams + (int)locals.size()) > 14;
+    int chainTemps = 0;   // declared by buildSpillMap, after this check
+    for(int k = 0; k < fd->chainTempsUsed; k++) if(!seen.count(format("_bgl_tempL{0}", k))) chainTemps++;
+    return (effectiveParams + (int)locals.size() + chainTemps) > 14;
 }
 
 // About how many frame-pool words one call of the routine takes: its local arrays, and on Z its spilled
@@ -953,6 +970,21 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
 //   - overflow body locals          → _bglFrm-->N frame slots
 void i6Emitter::buildSpillMap(functionDef* fd){
     clearSpillMap();
+    // The routine's chain temporaries are locals of its own, declared after the program's (which keep the
+    // Z-machine's local slots if the routine needs more than it has).
+    if(auto* tb = dynamic_cast<statementBlock*>(fd->body); tb != nullptr)
+        for(int k = 0; k < fd->chainTempsUsed; k++){
+            string name = format("_bgl_tempL{0}", k);
+            bool present = false;
+            for(statement* st : tb->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(st); vd && vd->name == name){ present = true; break; }
+            if(present) continue;
+            auto* vd = new variableDeclaration();
+            vd->name = name;
+            vd->type = languageService.getType("var");
+            vd->isSynthetic = true;
+            tb->statements.push_back(vd);
+        }
     // A routine that returns a value and frees things on the way out (local arrays, deinit) holds
     // the value in a local of its own first: the return expression may read what the cleanups free.
     currentReturnSlot.clear();
@@ -1176,7 +1208,7 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     transform(rawI6.begin(), rawI6.end(), rawI6.begin(), ::tolower);
     // Mangle params and locals whose canonical name matches a used property name.
     // Preserve original-case (display name) inside the mangled form for readability.
-    auto maybeRename = [&](const string& canonical, const string& display){
+    auto maybeRename = [&](const string& canonical, const string& display, const string& type){
         if(currentLocalRenames.count(canonical)) return;
         // Any property of the name counts, not only those this routine reads: I6 takes `obj.x` with a
         // local x in scope as the property numbered by the local, wherever the access sits.
@@ -1185,15 +1217,17 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
         if(rawTextHasWord(rawI6, canonical)) return;   // named in raw I6 nothing renames → keep the raw name
         const string& shown = display.empty() ? canonical : display;
         currentLocalRenames[canonical] = "_l_" + shown;
-        // A routine of the name this function calls: a call in the body still reaches the routine.
-        if(fd->globalEscapes.count(canonical) && languageService.findGlobalAs<functionDef>(canonical) != nullptr)
+        // A routine of the name this function calls: a call in the body still reaches the routine, unless
+        // the local is a func<> value, whose calls are its own (`::name(…)` is then marked as the routine's).
+        if(fd->globalEscapes.count(canonical) && languageService.findGlobalAs<functionDef>(canonical) != nullptr
+           && type.rfind("func", 0) != 0)
             currentCallEscapes[canonical] = canonical;
     };
-    for(paramDef* p : fd->params) maybeRename(p->name, p->displayName);
+    for(paramDef* p : fd->params) maybeRename(p->name, p->displayName, p->type.name);
     vector<variableDeclaration*> locals;
     set<string> seen;
     collectBodyLocals(body, locals, seen);
-    for(variableDeclaration* vd : locals) maybeRename(vd->name, vd->displayName);
+    for(variableDeclaration* vd : locals) maybeRename(vd->name, vd->displayName, vd->type.name);
 }
 
 // Like expr->text() but substitutes spilled variable names token-by-token, applies
@@ -5093,6 +5127,14 @@ void i6Emitter::synthesizeValueElementPools(){
         };
         return walk(c);
     };
+    // Slots read through an array the program never declares as owning its values (an inner array of an
+    // `array<array<V>>` holds its instances directly): the word is the instance.
+    for(classDef* cls : languageService.valueSlotClasses)
+        if(!languageService.valueElementArrays.count(cls)){
+            i6RawNode* raw = new i6RawNode();
+            raw->text = "[ _bglValSlot_" + cls->dName() + " _bgla _bgli; return _bgla-->_bgli; ];\n";
+            languageService.globals.push_back(raw);
+        }
     for(auto& [cls, arrays] : languageService.valueElementArrays){
         int N = 0;
         for(auto& rec : arrays){

@@ -285,6 +285,7 @@ class bglParser {
         // on the property name. Called from resolution paths (bindMethodCall + optional
         // chain) so the mangled i6name is set by the time the call site bakes its text.
         void mangleOverloadSetForReceiver(const string& receiverTypeName, const string& methodName);
+        void mangleClassFamilyOverloadSet(class classDef* cls, const string& methodName);
         // For each class-typed, non-`ref` param of `funcDef` whose class copies (not extern, not
         // emitter, not on operator= itself — recursion guard), synthesize a per-(function, param)
         // instance and its copy-in, which the emitter runs at routine entry. `classContext` is the enclosing class name when
@@ -301,6 +302,7 @@ class bglParser {
         // Append the deinits of every nested block currently open, innermost first, to `body`.
         void emitOpenBlockCleanups(statementBlock* body);
         string paramDefaultText(paramDef* p);
+        string defaultArgText(class functionDef* fd, class paramDef* p);   // the default as a call site emits it
         void convertToParam(expression* e, const string& valueType, const string& paramType);   // int → float etc.
         string valueSlotText(const string& elemText, const string& elemType);   // a value-class element's own instance   // a parameter's default as I6 text (parses a pre-scan stub's)
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
@@ -312,6 +314,10 @@ class bglParser {
         string methodCallName(functionDef* fd, const string& written);
         void rejectCallOfPlainLocal(const string& name, const string& shown, functionDef* func, statementBlock* body);
         int exprParseDepth = 0;
+        // The expression depth a statement's own expressions parse at, and whether one of them opened a
+        // mark on the string lock stack for a `?.` chain's string result (its outermost parse closes it).
+        int stmtExprBase = 0;
+        bool optStringMarkOpen = false;
         bool allowEmptyExpr = false;
         set<statement*> captureLoads;   // a lambda's capture load: runs before its statement, never inside a ?: branch   // a `for(;;)` header part is parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
@@ -716,6 +722,7 @@ class bglParser {
             string emitterProp;             // $prop for it, when the owner is an array (see arrayReceiver)
             classDef* classType = nullptr;  // class used for operator= dispatch
             classDef* ancestorCast = nullptr;   // `(Base)x = v;`: Base, a strict ancestor of x's class
+            string hideOwnerType, hideMember, hideOwnerPath;   // a member write, for `hide m.operator = (T)`
         };
         // `++x;` / `--x;` — prefix increment or decrement as a whole statement.
         bool processPrefixIncDec(token op, StatementContext& sc);
@@ -746,6 +753,19 @@ class bglParser {
         void preScanTypePathFixup(const string& path, string* slot);
         bool hasDerivedClass(classDef* cls);   // some class has cls among its bases
         bool queryIsPostfix(token after);
+        class variableDeclaration* forInLoopDecl = nullptr;   // the loop variable a typed for-in head just declared
+        bool hasEndedLoopLocal(const string& name);
+        string newChainTemp();   // a temporary for a `?.`/`??`/`?:` step: a routine local, or a global outside routines
+        void rejectUnionArgument(class expression* arg, const string& paramType, const string& callee, bool globalCall);
+        string memberTypeName(class variableDeclaration* vd);
+        std::set<std::string> warnedAt;   // warnings already given at a source position
+        void warnOnceHere(const string& msg){
+            if(warnedAt.insert(msg + "@" + currentStatementSrc.file + ":" + std::to_string(currentStatementSrc.line)).second) parsingWarning(msg);
+        }
+        bool callPastLocal = false;   // parsing `::name(…)` with a local of the name in scope
+        bool libraryPropertyNamed(const string& name);
+        void rejectMethodBesideField(class classDef& cls, const string& name, const string& shown, bool addingMethod);
+        bool rewriteComputedReceiverStatement(const string& head, int depth, StatementContext& sc, const string& prefixOp = "");
         string chainedSubscriptRead(functionDef* gm, const string& readText, const string& idxText, const string& curType);
         bool processSubscriptWrite(string arrPath, expression* indexExpr, StatementContext& sc);
         // `lhs = rhs;` / `lhs := rhs;` — plain assignment and reference binding.
@@ -780,7 +800,7 @@ class bglParser {
         bool dispatchPathStatement(token tok, token symbol, StatementContext& sc);
         // A member emitted as an I6 property under a class's I6 name: Inform 6 keeps classes and
         // properties in one namespace, ignoring case, so it is an error (rename it, or `asI6`).
-        void rejectMemberNamedLikeClass(const string& name, const string& shown);
+        bool namesI6Class(const string& name);
         // `++`/`--` whose target begins with a call or subscript, finished when that path reaches `;`.
         optional<token> pendingPrefixOp;
         string withReceiverCast(const string& path, const StatementContext& sc);
@@ -823,6 +843,7 @@ class bglParser {
         bool tryConsumeNamespacedEnumValue(token first, string& outFlatEmission, string& outEnumType);
 
         expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body, int startParenDepth = 0);
+        expression* parseExpressionInner(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body, int startParenDepth);
         // parseExpression sub-functions
         void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body, int parenDepth = 0);
         void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);

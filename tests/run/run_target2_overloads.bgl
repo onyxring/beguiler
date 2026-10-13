@@ -1,0 +1,103 @@
+// run_target2_overloads — member overload sets beside globals of one name, a subclass overload beside
+// inherited ones, an emitter and a function overloaded together, `$i6Name` of one overload in an `#i6`
+// routine, printing values of classes that overload print(), and a derived ordering against an int, and
+// overloads of one method split across two parents.
+// EXPECT_OUTPUT: 4 5 5/2 14 14 12 12 10 12 20 2 5 tag tag 3 plain plain true true false true none 5 global x int 3 str x
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+value class Q {
+    int n;
+    Q operator = (Q o) { n = o.n; return self; }
+    void print() { print($"{n}"); }
+}
+value class R {
+    int n;
+    R operator = (R o) { n = o.n; return self; }
+    void print() { print($"{n}"); }
+    void print(int w) { print($"{n}/{w}"); }
+}
+class Box : object {
+    int n;
+    bool put(int a) { n += a; return true; }
+    bool put(int a, int b) { n += a + b; return true; }
+}
+class Crate : Box {
+    bool put(int a, bool twice) { if (!twice) return put(a); return put(a, a); }
+    bool load(int a, bool twice) { if (!twice) return self.put(a); return self.put(a, a); }
+}
+Crate c1 { }
+Crate c2 { }
+value class Qv {
+    int n;
+    Qv operator = (Qv o) { n = o.n; return self; }
+    Qv operator = (int v) { n = v; return self; }
+    Qv operator + (Qv o) { Qv t; t.n = n + o.n; return t; }
+    void print() { ::print(n); }
+}
+emitter int twice(int v) { ($v * 2) }
+Qv twice(Qv x) { return x + x; }
+int scale(int v, int by) { return v * by; }
+int scale(string s, int by) { return by; }
+#i6 {
+    [ quad n;
+        return $i6Name(scale(int, int))(n, 4);
+    ];
+}
+extern int quad(int n);
+enum eU { one, two }
+value class Pv {
+    int n;
+    Pv operator = (Pv o) { n = o.n; return self; }
+    void print() { ::print(n); }
+    void print(eU u) { ::print(n * 2); }
+}
+class Tag : object {
+    int n = 3;
+    void print() { ::print("tag"); }
+    void print(int w) { ::print(w); }
+}
+class Plain : object { void print() { ::print("plain"); } }
+Tag t1 { }
+Plain p1 { }
+value class Ov {
+    int n;
+    Ov operator = (Ov o) { n = o.n; return self; }
+    Ov operator = (int v) { n = v; return self; }
+    static int operator <=> (Ov a, Ov b) { return a.n - b.n; }
+}
+void show(string s) { print("global "); print(s); }
+class Shower : object {
+    void show() { print("none"); }
+    void show(int w) { print(w); }
+}
+Shower s1 { }
+class Item : object { void mark(int n) { print($"int {n} "); } }
+class Stamped : object { void mark(string s) { print($"str {s}"); } }
+class Pallet : Item, Stamped { }
+Pallet pal { }
+void main() {
+    bglInit();
+    Q q; q.n = 4; print($"{q} ");
+    R r; r.n = 5; print($"{r} "); r.print(2); print(" ");
+    c1.put(1); c1.put(2, 3); c1.put(4, true);
+    print(c1.n); print(" ");
+    c2.put(5); c2.put(1, false); c2.load(1, true); c2.load(6, false);
+    print(c2.n); print(" ");
+    Qv a = 6;
+    Qv rr = twice(a);
+    print(rr); print(" ");
+    Qv ss;
+    ss = twice(a);
+    print(ss); print(" ");
+    print($"{twice(5)} {twice(a)} ");
+    print($"{quad(5)} {scale("x", 2)} ");
+    Pv pv; pv.n = 5;
+    print($"{pv} ");
+    print(t1); print(" "); print($"{t1} "); t1.print(3); print(" ");
+    print(p1); print(" "); print($"{p1} ");
+    Ov oa = 7;
+    Ov ob = 3;
+    print($"{oa > ob} {oa > 4} {oa < 4} {ob <= 3} ");
+    s1.show(); print(" "); s1.show(5); print(" "); show("x"); print(" ");
+    pal.mark(3); pal.mark("x");
+}

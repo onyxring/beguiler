@@ -693,7 +693,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
         if(body != nullptr)
             for(statement* s : body->statements)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == varDecl.name)
+                    if(vd->name == varDecl.name && !vd->scopeEnded)
                         parsingError(format("Variable '{0}' is already declared in this scope", varDecl.name));
         // A parameter is the routine's outermost scope, and it occupies a header slot of its own —
         // re-declaring its name emits `[f z z;`, which I6 rejects as "Local variable defined twice".
@@ -711,7 +711,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
             if(blk != nullptr && blk != body)
                 for(statement* s : blk->statements)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == varDecl.name)
+                        if(vd->name == varDecl.name && !vd->scopeEnded)
                             parsingError(format("Variable '{0}' is already declared in an enclosing block. "
                                 "A nested declaration would share the outer variable's storage, not shadow it, "
                                 "so it must have a different name.", varDecl.name));
@@ -752,7 +752,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
         if(currentObject != nullptr)
             for(typeMember* m : currentObject->members)
                 if(m->name == varDecl.name)
-                    parsingWarning("Local variable '" + varDecl.name + "' shadows a member of object '" + currentObject->name + "'.");
+                    warnOnceHere("Local variable '" + varDecl.name + "' shadows a member of object '" + currentObject->name + "'.");
         // Inside a lambda: warn if local shadows a capturable outer variable (param or local
         // from the enclosing function). Without this warning, the outer variable becomes
         // silently unreachable — the lambda-local wins at Tier 1, preventing Tier 7 capture.
@@ -1309,6 +1309,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     if(!dataType.docComment.empty())          varDecl.docComment = dataType.docComment;
     else if(!variableName.docComment.empty()) varDecl.docComment = variableName.docComment;
     varDecl.type=languageService.getType((string) dataType);
+    if(varDecl.type.name.empty() && isUnionType(dataType.value)) varDecl.type.name = dataType.value;   // `string | Thing u`
     if(!i6alias.empty()) varDecl.i6name = i6alias;
     // A global named like an Inform 6 word (`held`) is renamed here, before any use is emitted.
     else if(!isExternal && getCurrentCompileContext() == eCompileContext::global
@@ -1316,6 +1317,13 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
         varDecl.i6name = "_" + varDecl.dName();
         varDecl.i6nameAvoidsKeyword = true;
     }
+    // A program global named like a property an included library's members use (<linq>'s `last`):
+    // Inform 6 keeps both in one namespace, so the global takes another I6 name.
+    else if(!isExternal && getCurrentCompileContext() == eCompileContext::global
+            && libraryPropertyNamed(varDecl.name)
+            && [&]{ auto* g = languageService.findGlobalAs<variableDeclaration>(varDecl.name);
+                    return g == nullptr || g->isPrePassStub || g == &varDecl; }())
+        varDecl.i6name = "_" + varDecl.dName();
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
     varDecl.isRefLocal=isRef;

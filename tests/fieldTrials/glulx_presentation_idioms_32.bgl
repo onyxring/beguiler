@@ -1,0 +1,615 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a rack of three gauges drawn in a text grid split above the main window, with a
+// text-buffer log split to the right, laid out top-down so that nearly every name is used above its
+// declaration. `extend` bodies above three objects declared further down: a namespace object given
+// an `auto` value alias to the rack, the rack given a stringObj member and methods that walk its
+// children, and a panel given a counter, methods writing the panel's own member array and an inline
+// `auto` accessor whose setter clamps through `outer` and resizes the log through `width`. Globals
+// typed through alias paths (`dash.meter`, `dash.mode`, `dash.span`) to a class, an enum and a value
+// class declared below, one initialized with an enum value through the path; window globals and
+// styleSheets declared below, the sheets built from a const color declared below them and passed as
+// `styles:` and assigned to `childStyles` from Initialise; a global emitter value and an emitter
+// function declared below used in loops and interpolation; a class emitter value (through
+// `$i6Expr`) read above the class and an object emitter value read above the object; a `style`
+// declared below passed to checkStyle and a const color in an inline style given to
+// bgl.ui.screen.setStyle; an array<dash.meter> filled by a <linq> filter. A class Meter (base class
+// Device declared after it, instances declared before both) with a named accessor class Clamp (`==`, `!=`, `+` declared below) as its
+// level, a member array of past readings, a static move count and an instance `<=>` used directly,
+// derived (`>`, `<`) and in a <linq> orderBy lambda, a static method, a member declared after the
+// methods that use it; `extend class` methods called from above.
+// Accessor reads, `+=`, `++`, `-=` and comparisons through casts `((Meter)noun).level`, alias-path
+// casts, call results `pick(i).level` and array elements `meters[i].level`; member arrays read and
+// written through the same receivers. A value class Span (copy, `+=` of an int, `==`, `!=`, `<=>`)
+// in globals, a global array, an alias-typed local, a `ref` local and an alias-typed `ref`
+// parameter; overloads chosen between a class and a value class both declared below, with a defaulted and a named argument. An inline `auto`
+// accessor on the panel whose setter reaches `outer` members declared after it and resizes the grid
+// through `height`. Hyperlinks to a function and to enum values declared below, handled in a
+// HandleGlkEvent above the enum; a replaced DrawStatusLine; a for over an enum list; verbs taking
+// NOUN, NOUN with NUMBER, and NUMBER.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+// ---- additions to objects declared further down ----------------------------------------------------
+
+extend dash {
+    auto shelf = rack;
+}
+
+extend rack {
+    stringObj caption;
+
+    int held() {
+        int n = 0;
+        for (object o in children) n++;
+        return n;
+    }
+
+    void recaption() {
+        caption = $"{held()} gauges, {Meter.moves} move{Meter.moves == 1 ? "" : "s"}";
+    }
+}
+
+extend panel {
+    int redraws = 0;
+
+    void noteRedraw() {
+        redraws++;
+        marks[redraws % MARK_SLOTS] = redraws;
+    }
+
+    int markAt(int i) { return marks[i % MARK_SLOTS]; }
+
+    auto cols = {
+        int _c = LOG_COLS;
+        int operator () { return _c; }
+        void operator = (int v) {
+            if (v < outer.minRows * 10) v = outer.minRows * 10;
+            if (v > outer.maxRows * 10) v = outer.maxRows * 10;
+            _c = v;
+            if (logPane != null) logPane.width = v;
+        }
+    }
+}
+
+// ---- state typed by names declared further down -----------------------------------------------------
+
+dash.meter selected = null;
+dash.mode viewMode = dash.mode.bars;
+dash.span total;
+Span widest;
+array<dash.meter> picked[3];
+int logged = 0;
+
+// ---- helpers ----------------------------------------------------------------------------------------
+
+string modeName(dash.mode m) {
+    switch (m) {
+        case dash.mode.bars:    return "bars";
+        case dash.mode.numbers: return "numbers";
+        case eMode.history:     return "history";
+    }
+    return "?";
+}
+
+dash.meter asMeter(object o) {
+    if (o == null || !o.is(dash.meter)) {
+        printLine("That is not a gauge.");
+        return null;
+    }
+    return (dash.meter)o;
+}
+
+Meter pick(int i) { return meters[i]; }
+
+stringObj barFor(Meter m) {
+    stringObj s = "";
+    for (int i = 0; i < barWidth; i++) s += i < m.level ? m.mark : '.';
+    return s;
+}
+
+stringObj histFor(Meter m) {
+    stringObj s = "";
+    for (int i = 0; i < m.hist.length; i++) {
+        if (i > 0) s += ',';
+        s += $"{m.hist[i]}";
+    }
+    if (s.isEmpty()) s = "-";
+    return s;
+}
+
+void logLine(stringObj text) {
+    logged++;
+    logPane?.printLine($"{logged}. {text}");
+}
+
+void widen(ref dash.span s, int by) {
+    s.high += by;
+    s.count++;
+}
+
+void report(Meter m) {
+    printLine($"{m.label}: {m.level} [{barFor(m)}] {pct(m.level, LEVEL_MAX)}% peak {m.peak} {m.summary()}");
+}
+
+void report(dash.span s, string label = "span") {
+    printLine($"{label} {s.text()} over {s.count}, width {s.width()}");
+}
+
+// ---- drawing ----------------------------------------------------------------------------------------
+
+void drawBoard() {
+    if (board == null) return;
+    panel.noteRedraw();
+    board.clear();
+    int row = 0;
+    for (Meter m in meters) {
+        if (row >= panel.rows) break;
+        board.moveCursor(0, row);
+        switch (viewMode) {
+            case dash.mode.bars:    board.print($"{m.label} {barFor(m)}{m.isFull ? " FULL" : ""}");
+            case dash.mode.numbers: board.print($"{m.label} {m.level}/{LEVEL_MAX} peak {m.peak}");
+            case eMode.history:     board.print($"{m.label} {histFor(m)}");
+        }
+        row++;
+    }
+    if (row < panel.rows) {
+        board.moveCursor(0, row);
+        board.print($"{modeName(viewMode)} | rows {panel.rows} | {dash.shelf.caption}");
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | sel {selected == null ? "-" : selected.label} | total {total.text()}");
+    drawBoard();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.linkBars:    viewMode = eMode.bars;
+            case (int)eLinks.linkNumbers: viewMode = dash.mode.numbers;
+            case (int)eLinks.linkHistory: viewMode = eMode.history;
+            default: return 0;
+        }
+        drawBoard();
+    }
+    return 0;
+}
+
+// ---- changing the gauges ----------------------------------------------------------------------------
+
+void shifted(Meter m, int was) {
+    Meter.moves++;
+    spans[m.slot] += m.level;
+    total += m.level;
+    if (spans[m.slot] > widest) widest = spans[m.slot];
+    dash.shelf.recaption();
+    stringObj note = $"{m.label} {was} -> {m.level}";
+    logLine(note);
+    printLine($"{cThe(m)} reads {m.level}{m.level == was ? " (no change)" : ""}.");
+}
+
+verb Tune {
+    grammar = {.tune, NOUN, .to, NUMBER};
+    void handler() {
+        dash.meter m = asMeter(noun);
+        if (m == null) return;
+        int was = m.level;
+        m.tune((int)second);
+        selected = m;
+        shifted(m, was);
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        if (asMeter(noun) == null) return;
+        int was = ((Meter)noun).level;
+        ((Meter)noun).level++;
+        ((Meter)noun).hist += ((Meter)noun).level;
+        ((dash.meter)noun).trim();
+        if (((Meter)noun).level > ((Meter)noun).peak) ((Meter)noun).peak = ((Meter)noun).level;
+        selected = (Meter)noun;
+        shifted((Meter)noun, was);
+    }
+}
+
+verb Ease {
+    grammar = {.ease, NOUN};
+    void handler() {
+        Meter m = asMeter(noun);
+        if (m == null) return;
+        if (m.level == 0) {
+            printLine($"{cThe(m)} is already at zero.");
+            return;
+        }
+        int was = m.level;
+        m.level -= 2;
+        m.hist += m.level;
+        m.trim();
+        shifted(m, was);
+    }
+}
+
+verb Boost {
+    grammar = {.boost};
+    void handler() {
+        for (int i = 0; i < meters.length; i++) {
+            int was = pick(i).level;
+            meters[i].level += i + 1;
+            pick(i).hist += meters[i].level;
+            pick(i).trim();
+            if (meters[i].level > pick(i).peak) meters[i].peak = pick(i).level;
+            shifted(meters[i], was);
+        }
+    }
+}
+
+verb Mode {
+    grammar = {.mode};
+    void handler() {
+        switch (viewMode) {
+            case eMode.bars:        viewMode = dash.mode.numbers;
+            case dash.mode.numbers: viewMode = eMode.history;
+            case eMode.history:     viewMode = dash.mode.bars;
+        }
+        panel.lastMode = viewMode;
+        printLine($"Showing {modeName(viewMode)}.");
+    }
+}
+
+verb Rows {
+    grammar = {.rows, NUMBER};
+    void handler() {
+        int asked = (int)noun;
+        panel.rows = asked;
+        printLine($"Rows {panel.rows} (asked {asked}, grid {board == null ? 0 : board.height}){panel.rows == panel.maxRows ? ", the most" : ""}.");
+    }
+}
+
+verb Cols {
+    grammar = {.cols, NUMBER};
+    void handler() {
+        panel.cols = (int)noun;
+        panel.cols -= 2;
+        stringObj note = $"log {panel.cols} wide";
+        logLine(note);
+        printLine($"Log width {panel.cols}{panel.cols < LOG_COLS ? " (narrower)" : ""}.");
+    }
+}
+
+verb Grow {
+    grammar = {.grow};
+    void handler() {
+        panel.rows += 1;
+        printLine($"Rows now {panel.rows}.");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges};
+    meta = true;
+    void handler() {
+        for (Meter m in meters) report(m);
+        array<Meter> order[3];
+        order = meters.orderBy((Meter a, Meter b) => b <=> a);
+        stringObj line = "";
+        for (Meter m in order) line += m.label;
+        printLine($"Highest first: {line}; {order.first().label} {order.first() > order.last() ? "leads" : "ties"}.");
+        int full = meters.filter((Meter m) => m.isFull).count();
+        int above = meters.filter((Meter m) => m.level > LEVEL_MAX / 2).count();
+        printLine($"{full} full, {above} above half; rising: {meters.any((Meter m) => m.rising()) ? "yes" : "no"}.");
+        if (dialA < dialB) printLine("A is below B.");
+        if (dialA.level != dialC.level) printLine("A and C differ.");
+        else printLine("A and C match.");
+    }
+}
+
+verb ShowSpans {
+    grammar = {.spans};
+    meta = true;
+    void handler() {
+        for (int i = 0; i < spans.size; i++) report(spans[i], label: pick(i).label);
+        report(total);
+        report(widest, "widest");
+        ref Span w := spans[1];
+        Span before = w;
+        widen(w, 1);
+        widen(total, 0);
+        printLine($"B widened {before.text()} to {spans[1].text()}; same as before: {spans[1] == before ? "yes" : "no"}; changed: {w != before ? "yes" : "no"}.");
+        if ((spans[0] <=> spans[2]) < 0) printLine("A is narrower than C.");
+        else printLine("A is not narrower than C.");
+    }
+}
+
+verb Readings {
+    grammar = {.readings, NOUN};
+    meta = true;
+    void handler() {
+        if (asMeter(noun) == null) return;
+        printLine($"{((Meter)noun).label}: {histFor((Meter)noun)} ({((Meter)noun).hist.length} kept)");
+        if (((dash.meter)noun).hist.length > 0)
+            printLine($"first {((dash.meter)noun).hist[0]}, last {((Meter)noun).hist[((Meter)noun).hist.length - 1]}, latest {((Meter)noun).latest()}");
+    }
+}
+
+verb Marks {
+    grammar = {.marks};
+    meta = true;
+    void handler() {
+        stringObj s = "";
+        for (int i = 0; i < MARK_SLOTS; i++) s += $" {panel.markAt(i)}";
+        printLine($"Redraws {panel.redraws}; marks{s}; last mode {modeName(panel.lastMode)}.");
+    }
+}
+
+verb ShowRack {
+    grammar = {.rack};
+    meta = true;
+    void handler() {
+        dash.shelf.recaption();
+        printLine($"Rack: {dash.shelf.caption} ({dash.shelf.held()} held).");
+        for (object o in dash.shelf.children) {
+            if (o.is(dash.meter)) printLine($"- {((Meter)o).label} at {((dash.meter)o).level}, slot {((Meter)o).slot}");
+        }
+        for (eMode md in {eMode.bars, dash.mode.numbers, eMode.history}) {
+            printLine($"mode {modeName(md)}{md == viewMode ? " (shown)" : ""}");
+        }
+    }
+}
+
+verb Looks {
+    grammar = {.looks};
+    meta = true;
+    void handler() {
+        if (board == null) return;
+        eStyleCheck r = board.checkStyle(eGlulxStyleType.alert, warnLook);
+        printLine($"Alert look known: {r.known ? "yes" : "no"}; tall panel: {panel.isTall ? "yes" : "no"}; ink {INK == color.rgb(200, 0, 0) ? "red" : "other"}.");
+        picked = meters.filter((dash.meter m) => m.level >= LEVEL_MAX / 3);
+        stringObj names = "";
+        for (dash.meter m in picked) names += m.label;
+        dash.span snap = total;
+        snap += LEVEL_MAX;
+        printLine($"Picked {picked.length}: {names}; snap {snap.text()} vs total {total.text()}; widest {widest.width()} {snap > total ? "wider" : "not wider"}.");
+        Meter.clearMoves();
+        dash.shelf.recaption();
+        printLine($"Moves cleared: {dash.shelf.caption}.");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    meta = true;
+    void handler() {
+        printLine($"Show: {link("bars", eLinks.linkBars)} {link("numbers", eLinks.linkNumbers)} {link("history", eLinks.linkHistory)} {link("zero", zeroAll)}");
+    }
+}
+
+verb Zero {
+    grammar = {.zero};
+    void handler() { zeroAll(); }
+}
+
+void zeroAll() {
+    for (Meter m in meters) {
+        int was = m.level;
+        m.level = 0;
+        if (was != 0) shifted(m, was);
+    }
+    printLine("All gauges at zero.");
+}
+
+bool Initialise() {
+    location = roomA;
+    bgl.ui.screen.setStyle(eGlulxStyleType.user1, style{ foreColor = INK; italics = true; });
+    bgl.ui.mainWin.childStyles = logLook;
+    board = bgl.ui.mainWin.splitUpGrid(panel.rows, fixed, border, styles: boardLook);
+    logPane = bgl.ui.mainWin.splitRightBuffer(panel.cols, fixed);
+    dash.shelf.recaption();
+    stringObj note = $"rack ready, {dash.shelf.held()} gauges";
+    logLine(note);
+    rfalse;
+}
+
+// ---- looks ------------------------------------------------------------------------------------------
+
+styleSheet boardLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ fontWeight = 1; foreColor = INK; };
+};
+
+style warnLook = style{ fontWeight = 1; foreColor = INK; };
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 2; foreColor = color.darkGray; };
+};
+
+const int INK = $C80000;
+const int LEVEL_MAX = 9;
+const int HIST_SLOTS = 4;
+const int MARK_SLOTS = 4;
+const int LOG_COLS = 30;
+
+emitter int barWidth { 9 }
+emitter int pct(int a, int b) { ($a * 100 / $b) }
+
+textGridWindowHorz board = null;
+textBufferWindowVert logPane = null;
+
+enum eMode { bars, numbers, history }
+enum eLinks { linkBars = 21, linkNumbers, linkHistory }
+
+// ---- the rack ---------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. A rack of three gauges is on the wall.";
+    attributes = {light};
+}
+
+object rack {
+    "rack";
+    parent = roomA;
+    name = {.rack};
+    description = "A rack holding three gauges.";
+    attributes = {static, container, open};
+    children = { dialA, dialB, dialC };
+}
+
+Meter dialA { "gauge A"; name = {.gauge, .a}; label = "A"; mark = '#'; slot = 0; }
+Meter dialB { "gauge B"; name = {.gauge, .b}; label = "B"; mark = '='; slot = 1; }
+Meter dialC { "gauge C"; name = {.gauge, .c}; label = "C"; mark = '+'; slot = 2; }
+
+array<Meter> meters = { dialA, dialB, dialC };
+array<Span> spans[3];
+
+class Meter : Device {
+    Clamp level;
+    array<int> hist[HIST_SLOTS];
+    int peak = 0;
+    static int moves = 0;
+
+    emitter bool isFull { $i6Expr($self.level == LEVEL_MAX) }
+
+    static void clearMoves() { moves = 0; }
+
+    void tune(int v) {
+        level = v;
+        hist += level;
+        trim();
+        if (level > peak) peak = level;
+    }
+
+    int operator <=> (Meter o) { return level - o.level; }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)} reads {level} of {LEVEL_MAX}; readings {histFor(self)}.");
+                rtrue;
+        }
+        rfalse;
+    }
+
+    int slot = 0;
+}
+
+extend class Meter {
+    void trim() {
+        while (hist.length > HIST_SLOTS - 1) hist.remove(0);
+    }
+
+    int latest() { return hist.length == 0 ? 0 : hist[hist.length - 1]; }
+
+    bool rising() { return hist.length >= 2 && hist[hist.length - 1] > hist[hist.length - 2]; }
+
+    stringObj summary() {
+        stringObj s = $"({hist.length} kept)";
+        return s;
+    }
+}
+
+class Device : object {
+    attributeList attributes = {static};
+    string label = "?";
+    char mark = '*';
+}
+
+value class Clamp {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > LEVEL_MAX) v = LEVEL_MAX;
+        _v = v;
+    }
+    bool operator == (int n) { return _v == n; }
+    bool operator != (int n) { return _v != n; }
+    int operator + (int n) { return _v + n; }
+    int operator - (int n) { return _v - n; }
+}
+
+value class Span {
+    int low;
+    int high;
+    int count;
+
+    Span operator = (Span o) {
+        low = o.low;
+        high = o.high;
+        count = o.count;
+        return self;
+    }
+
+    Span operator += (int v) {
+        if (count == 0 || v < low) low = v;
+        if (count == 0 || v > high) high = v;
+        count++;
+        return self;
+    }
+
+    bool operator == (Span o) { return low == o.low && high == o.high; }
+    bool operator != (Span o) { return low != o.low || high != o.high; }
+    int operator <=> (Span o) { return width() - o.width(); }
+
+    int width() { return count == 0 ? 0 : high - low; }
+
+    stringObj text() {
+        stringObj s = $"{low}..{high}";
+        return s;
+    }
+}
+
+// ---- the panel and the namespace --------------------------------------------------------------------
+
+object panel {
+    auto rows = {
+        int _n = 4;
+        int operator () { return _n; }
+        void operator = (int v) {
+            if (v < outer.minRows) v = outer.minRows;
+            if (v > outer.maxRows) v = outer.maxRows;
+            _n = v;
+            if (board != null) board.height = v;
+        }
+    }
+    int minRows = 2;
+    int maxRows = 5;
+    array<int> marks[MARK_SLOTS];
+    eMode lastMode = eMode.bars;
+    emitter bool isTall { $i6Expr($self.rows > 3) }
+}
+
+object dash {
+    alias meter for Meter;
+    alias mode for eMode;
+    alias span for Span;
+}
+
+#includeI6 "grammar"

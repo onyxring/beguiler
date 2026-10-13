@@ -1,0 +1,253 @@
+Room A
+Room A. The stall. The store is to the east.
+You can see an apple crate, a bean crate, a corn crate, a stall and a purse here.
+> sums
+Apples and beans: 1.80. With a tip: 1.30. With a big tip: 1.60.
+Heavier crate of apples and beans: 400g. Priced by name: 3.00.
+Corn costs over a pound and apples outweigh beans.
+Bean price without its weight: 1.20. Fifties in it: 2. Twenties in 1.00: 5.
+The cheaper of corn and apples: 1.20.
+Weights, light first: 75g 250g 500g 1000g
+Prices, dear first: 1.50 1.20 0.60
+Sum of prices: 3.30. Dearest: 1.50. Till: 0.00.
+Half the corn: 0.75. Half of that: 0.37. The fee twice: 0.10.
+Quarters to reach the beans: 3.
+Over 0.70: 2. Lines over 1.00: 0. One is under 0.70.
+Last in now points at the purse: 3.00.
+> extras
+Forty doubled: 0.80. Coins of 20 in 2.00: 10. Tip on 1.00: 1.10.
+Small weights: 50g 20g 10g. Float: 1.00.
+Coins under 20p: 3.
+No line costs the same as a coin.
+Purse, plus a penny, less the fee: 2.96.
+Apples are 30p a time and beans are not.
+Bean price, fee and float: 1.20 0.05 1.00
+Apple price plus 5p: 0.35 per 100g; the crate still asks 0.30.
+A new local starts at 0.00.
+> stall
+Sales: 0. Takings: 0.00. All crates: 0.00.
+Stall cash: 2.00. Best sale: 0.00. Lowest purse: 3.00.
+Coins it gives: pound fifty twenty ten five copper
+All three crates cost 3.30.
+> x apple crate
+Crate of apples: 400g at 0.30 per 100g, costs 1.20. Last paid 0.00.
+> x bean crate
+Crate of beans: 250g at 1.20 per 500g, costs 0.60. Last paid 0.00.
+> x corn crate
+Crate of corn: 1000g at 0.15 per 100g, costs 1.50. Last paid 0.00.
+> receipt
+The receipt is empty.
+> sums
+Apples and beans: 1.80. With a tip: 1.30. With a big tip: 1.60.
+Heavier crate of apples and beans: 400g. Priced by name: 3.00.
+Corn costs over a pound and apples outweigh beans.
+Bean price without its weight: 1.20. Fifties in it: 2. Twenties in 1.00: 5.
+The cheaper of corn and apples: 1.20.
+Weights, light first: 75g 250g 500g 1000g
+Prices, dear first: 1.50 1.20 0.60
+Sum of prices: 3.30. Dearest: 1.50. Till: 0.00.
+Half the corn: 0.75. Half of that: 0.37. The fee twice: 0.10.
+Quarters to reach the beans: 3.
+Over 0.70: 2. Lines over 1.00: 0. One is under 0.70.
+Last in now points at the purse: 2.96.
+> till
+The till is empty.
+> weigh apple
+Weighed: apples, 400g, 1.20.
+Heavier of it and the test weight: 500g. Cost in pence: 120.
+> weigh bean
+Weighed: beans, 250g, 0.60.
+Heavier of it and the test weight: 500g. Cost in pence: 60.
+> weigh corn
+Weighed: corn, 1000g, 1.50.
+Heavier of it and the test weight: 1000g. Cost in pence: 150.
+> receipt
+1. apples, 400g, 1.20
+2. beans, 250g, 0.60
+3. corn, 1000g, 1.50
+Sum: 3.30.
+Before corn came beans.
+Lines of a pound or more: 2.
+One weighs over 500g.
+Every line costs something.
+Cheapest: beans. Dearest: corn.
+First line weighs 400g.
+First line in pence: 120.
+After the first: 2. First two: 2.
+> sums
+Apples and beans: 1.80. With a tip: 1.30. With a big tip: 1.60.
+Heavier crate of apples and beans: 400g. Priced by name: 3.00.
+Corn costs over a pound and apples outweigh beans.
+Bean price without its weight: 1.20. Fifties in it: 2. Twenties in 1.00: 5.
+The cheaper of corn and apples: 1.20.
+Weights, light first: 75g 250g 500g 1000g
+Prices, dear first: 1.50 1.20 0.60
+Sum of prices: 3.30. Dearest: 1.50. Till: 0.00.
+Half the corn: 0.75. Half of that: 0.37. The fee twice: 0.10.
+Quarters to reach the beans: 3.
+Over 0.70: 2. Lines over 1.00: 2. One is under 0.70.
+First line now: apples, 410g, 1.23. Its cost: 1.23.
+Last in now points at the purse: 2.96.
+> buy apple
+Ticket 1: 1.30 with the ticket's 0.10, fee 0.05.
+You give 2.00 for 1.20 and get 0.80 back. The purse has 1.76.
+> till
+Till: 0.10 (ten) 0.20 (twenty) 0.50 (fifty)
+Biggest: 0.50 (50p of it is pence).
+A twenty is at 1.
+There is a fifty.
+Fives: 0.
+> buy corn
+The purse is 24p short.
+> buy bean
+Ticket 2: 0.70 with the ticket's 0.10, fee 0.05.
+You give 1.00 for 0.60 and get 0.40 back. The purse has 1.16.
+> till
+Till: 0.10 (ten) 0.20 (twenty) 0.20 (twenty) 0.20 (twenty) 0.50 (fifty)
+Biggest: 0.50 (50p of it is pence).
+A twenty is at 1.
+There is a fifty.
+Fives: 0.
+> stall
+Sales: 2. Takings: 1.80. All crates: 1.80.
+Stall cash: 3.80. Best sale: 1.20. Lowest purse: 1.16.
+Coins it gives: pound fifty twenty ten five copper
+All three crates cost 3.30.
+The purse has been short.
+> change
+The till had 5 coins and now has 6.
+Front two: 2.00 and 1.50.
+> till
+Till: 0.10 (ten) 0.20 (twenty) 0.20 (twenty) 0.20 (twenty) 1.50 (note) 2.00 (note)
+Biggest: 2.00 (0p of it is pence).
+A twenty is at 1.
+Fives: 0.
+> sums
+Apples and beans: 1.80. With a tip: 1.30. With a big tip: 1.60.
+Heavier crate of apples and beans: 400g. Priced by name: 3.00.
+Corn costs over a pound and apples outweigh beans.
+Bean price without its weight: 1.20. Fifties in it: 2. Twenties in 1.00: 5.
+The cheaper of corn and apples: 1.20.
+Weights, light first: 75g 250g 500g 1000g
+Prices, dear first: 1.50 1.20 0.60
+Sum of prices: 3.30. Dearest: 1.50. Till: 4.20.
+Half the corn: 0.75. Half of that: 0.37. The fee twice: 0.10.
+Quarters to reach the beans: 3.
+Over 0.70: 2. Lines over 1.00: 2. One is under 0.70.
+First line now: apples, 410g, 1.26. Its cost: 1.26.
+Till front, plus two pence: 2.02.
+Last in now points at the purse: 1.16.
+> extras
+Forty doubled: 0.80. Coins of 20 in 2.00: 10. Tip on 1.00: 1.10.
+Small weights: 50g 20g 10g. Float: 1.00.
+Coins under 20p: 3.
+No line costs the same as a coin.
+Last line of 400g or more: corn, 1000g, 1.50.
+Dear lines at the start: 1. Lines from the first heavy one: 1.
+Kinds of coin in the till: 4 of 6.
+Purse, plus a penny, less the fee: 1.12.
+Apples are 30p a time and beans are not.
+Bean price, fee and float: 1.20 0.05 1.00
+Apple price plus 5p: 0.35 per 100g; the crate still asks 0.30.
+A new local starts at 0.00.
+> copies
+a is 1.50, b is 1.75.
+After spoil, a is 1.50.
+Through r, a is 4.50.
+r moved to b: a is 4.50, b is 0.10.
+a and b differ.
+b is ten pence.
+The bigger is 4.50.
+a + b + 5p is 4.65 (465p).
+(a - b) * 2 is 8.80.
+Till front, bumped: 2.03.
+Test weight 1 is still 250g, the copy is 999g.
+300g is more than 250g.
+500g is test weight 2.
+Made from 205p: 2 pounds 5 pence.
+> swap
+The stall has 1.12 and the purse has 3.80.
+Last money in at the stall: 3.80.
+> stall
+Sales: 2. Takings: 1.80. All crates: 1.80.
+Stall cash: 1.12. Best sale: 1.20. Lowest purse: 1.16.
+Coins it gives: pound fifty twenty ten five copper
+All three crates cost 3.30.
+The purse has been short.
+> buy corn
+Ticket 3: 1.60 with the ticket's 0.10, fee 0.05.
+You give 2.00 for 1.50 and get 0.50 back. The purse has 2.30.
+> buy corn
+Ticket 4: 1.60 with the ticket's 0.10, fee 0.05.
+You give 2.00 for 1.50 and get 0.50 back. The purse has 0.80.
+> buy corn
+The purse is 120p short.
+> stall
+Sales: 4. Takings: 4.80. All crates: 4.80.
+Stall cash: 4.12. Best sale: 1.50. Lowest purse: 0.80.
+Coins it gives: pound fifty twenty ten five copper
+All three crates cost 3.30.
+The purse has been short.
+> x corn crate
+Crate of corn: 1000g at 0.15 per 100g, costs 1.50. Last paid 1.50.
+> weigh apple
+Weighed: apples, 400g, 1.20.
+Heavier of it and the test weight: 500g. Cost in pence: 120.
+> weigh apple
+Weighed: apples, 400g, 1.20.
+Heavier of it and the test weight: 500g. Cost in pence: 120.
+> weigh apple
+The receipt is full.
+> receipt
+1. apples, 410g, 1.26
+2. beans, 250g, 0.60
+3. corn, 1000g, 1.50
+4. apples, 400g, 1.20
+5. apples, 400g, 1.20
+Sum: 5.76.
+Before apples came apples.
+Lines of a pound or more: 4.
+One weighs over 500g.
+Every line costs something.
+Cheapest: beans. Dearest: corn.
+First line weighs 410g.
+First line in pence: 126.
+After the first: 4. First two: 2.
+> sums
+Apples and beans: 1.80. With a tip: 1.30. With a big tip: 1.60.
+Heavier crate of apples and beans: 400g. Priced by name: 3.00.
+Corn costs over a pound and apples outweigh beans.
+Bean price without its weight: 1.20. Fifties in it: 2. Twenties in 1.00: 5.
+The cheaper of corn and apples: 1.20.
+Weights, light first: 75g 250g 500g 1000g
+Prices, dear first: 1.50 1.20 0.60
+Sum of prices: 3.30. Dearest: 1.50. Till: 5.23.
+Half the corn: 0.75. Half of that: 0.37. The fee twice: 0.10.
+Quarters to reach the beans: 3.
+Over 0.70: 2. Lines over 1.00: 4. One is under 0.70.
+First line now: apples, 410g, 1.29. Its cost: 1.29.
+Till front, plus two pence: 2.05.
+Last in now points at the purse: 0.80.
+> extras
+Forty doubled: 0.80. Coins of 20 in 2.00: 10. Tip on 1.00: 1.10.
+Small weights: 50g 20g 10g. Float: 1.00.
+Coins under 20p: 3.
+No line costs the same as a coin.
+Last line of 400g or more: apples, 400g, 1.20.
+Dear lines at the start: 1. Lines from the first heavy one: 3.
+Kinds of coin in the till: 5 of 8.
+Purse, plus a penny, less the fee: 0.76.
+Apples are 30p a time and beans are not.
+Bean price, fee and float: 1.20 0.05 1.00
+Apple price plus 5p: 0.35 per 100g; the crate still asks 0.30.
+A new local starts at 0.00.
+> empty
+The till has 0 coins.
+> till
+The till is empty.
+> take bean crate
+It is too heavy. Buy it instead.
+> weigh purse
+Only a crate goes on the scale.
+> buy stall
+You can only buy a crate.

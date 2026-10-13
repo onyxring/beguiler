@@ -1,0 +1,487 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small valve-board program, on Glulx, leaning on names that meet.
+// Globals `count`, `total` and `level` beside class members, a static `Total`, value-class members, object
+// members, parameters, locals, loop variables and lambda parameters of the same names (several differing
+// only in case), told apart by bare names, `self.`, `Type.` and `::`; a `#define` (RATE, TAG) and a const
+// (LIMIT) beside members, parameters and named arguments of their names, read by member initializers,
+// default parameter values and object-body assignments in other letter cases; an enum value `flow`
+// beside an int member `flow` (`::flow` in a method and in an object body) and a lambda parameter; an
+// attribute `primed` beside a bool member (`has(::primed)`/`give(::primed)`) and a local; members named
+// like their own class (`Valve valve`, a chain walked by a local `valve`), a method named like its class
+// (`gauge()`), members named `object` and `string`, and parameters and locals named like classes and
+// objects; methods named like global routines (`scale`, `report` as a static, `word` added by `extend
+// class`) reaching them with `::`, a subclass `replace` reaching the base through a cast, and a method
+// named like the program's verb (`bleed`, `::Bleed` in `before`) and like a library verb (`fill`); a
+// namespace object imported with `#using` whose members (`count`, `width`, `scale`, `first`, a type
+// alias `Pipe`) meet globals, with the global winning; inherited statics written through a subclass name;
+// an object whose members are named like library globals and an attribute (`location`, `score`,
+// `Light`) and a method named like a library routine (`TestScope`); a routine whose local is named like
+// it; Inform 6 statement words (`spaces`, `jump`, `font`, `style`, `box`, `inversion`) as locals and
+// parameters; locals named like library verbs (`take`) and globals (`score`, `turns`); named arguments
+// spelled in other cases; and <linq> filter/count over lambdas whose parameters reuse these names.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+#define RATE 3
+#define TAG "valve"
+const int LIMIT = 9;
+
+int count = 0;
+int total = 0;
+int level = 50;
+
+enum Mode { idle, flow, shut }
+
+attribute primed;
+
+// ---- global routines that methods and locals share names with ---------------------------------------
+
+int scale(int n) { return n * 2; }
+
+int report(int n) { return n + 1000; }
+
+string word(Mode mode) {
+    switch (mode) {
+        case idle: return "idle";
+        case flow: return "flow";
+        case shut: return "shut";
+    }
+    return "?";
+}
+
+// a local named like its own routine
+int sum() {
+    int sum = 0;
+    for (Valve valve in valves) sum += valve.level;
+    return sum;
+}
+
+// parameters named like globals, a const and a #define
+int mix(int count, int total = 0, int Limit = LIMIT, int rate = RATE) {
+    return ::count * 1000 + count * 100 + total * 10 + Limit + rate;
+}
+
+// statement words of Inform 6 as locals and parameters
+int pack(int spaces, int jump) {
+    int font = 2;
+    int style = 3;
+    int box = 1;
+    int inversion = 4;
+    spaces = spaces + box;
+    jump++;
+    font *= 2;
+    style += inversion;
+    return spaces * 1000 + jump * 100 + font * 10 + style;
+}
+
+// a parameter named like a class and an object
+int levelOf(Valve valve, object valveA = null) {
+    if (valveA == null) return valve.level;
+    return valve.level + ((Valve)valveA).level;
+}
+
+// ---- the valve class -----------------------------------------------------------------------------------
+
+class Valve : object {
+    int level = 0;
+    int COUNT = 0;                  // the global count, in another case
+    Mode mode = Mode.idle;
+    int flow = 1;                   // the enum value flow
+    int rate = RATE;                // the #define: read here, hidden in the methods
+    bool primed = false;            // the attribute
+    int limit = LIMIT;              // the const
+    Valve valve;                    // the next valve, named like the class
+    string label;
+    string tag = TAG;               // the #define TAG, read by the initializer
+
+    static int made = 0;
+    static int Total = 0;           // the global total, in another case
+
+    int scale(int n) { return ::scale(n) + rate; }
+
+    static int report(int n) { return n + 1; }
+
+    // the member, the global and the static of one name, side by side
+    int fill(int level) {
+        self.level += level;
+        ::level -= level;
+        total += level;
+        ::total += level;
+        count++;
+        ::count++;
+        return self.level;
+    }
+
+    // a method named like the program's verb
+    int bleed() {
+        int was = level;
+        level = 0;
+        mode = ::shut;
+        return was;
+    }
+
+    // the member flow beside the enum value flow
+    stringObj state() {
+        stringObj state = word(mode);
+        if (mode == ::flow) state += $"x{flow}";
+        return state;
+    }
+
+    int both() {
+        int a = report(1);
+        int b = ::report(1);
+        int c = Valve.report(2);
+        int d = scale(1);
+        int e = ::scale(1);
+        return a + b + c + d + e + rate + ::RATE;
+    }
+
+    bool isPrimed() {
+        return primed && self.has(::primed);
+    }
+
+    Valve tail() {
+        if (valve == null) return self;
+        return valve.tail();
+    }
+
+    int depth() {
+        int depth = 1;
+        Valve valve = self.valve;
+        while (valve != null) {
+            depth++;
+            valve = valve.valve;
+        }
+        return depth;
+    }
+
+    bool before() {
+        if (action == ::Bleed && level == 0) {
+            print($"The {label} valve is dry.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ---- a subclass and an extend whose names meet the base's ------------------------------------------------
+
+class BigValve : Valve {
+    int extra = 2;
+
+    int grab(int made) {
+        Total += made;
+        Valve.MADE++;
+        return BigValve.Total + Valve.total + ((Valve)self).LEVEL + made;
+    }
+
+    replace int scale(int n) { return ((Valve)self).scale(n) * extra; }
+}
+
+extend class Valve {
+    // a method named like a global routine, reaching it with `::`
+    string word() { return ::word(mode); }
+    int level2() { return level * 2 + ::level; }
+}
+
+// ---- a gauge whose members are named like types, a type keyword and its own class ----------------------
+
+class Gauge : object {
+    int object = 0;
+    bool string = false;
+    Valve valve;
+    Reading reading;
+    int level = 0;
+
+    Gauge gauge() { return self; }
+
+    int take(Valve valve) {
+        self.valve = valve;
+        reading = valve.level;
+        object++;
+        string = valve.level > ::level / 10;
+        Gauge gauge = gauge();
+        return gauge.reading.total() + gauge.object;
+    }
+
+    bool sees(object o) { return o.is(::Gauge) || o.is(::Valve); }
+}
+
+// ---- a namespace object with members named like globals ---------------------------------------------------
+
+object board {
+    int count = 7;
+    int width = 4;
+    alias Pipe for Valve;
+    int scale(int n) { return n * 10; }
+    Pipe first() { return valveA; }
+    int total() {
+        int total = 0;
+        for (Pipe pipe in valves) total += pipe.level;
+        return total + count + ::count;
+    }
+}
+
+#using board
+
+// ---- a value class whose members are named like globals --------------------------------------------------
+
+value class Reading {
+    int level;
+    int count;
+    Reading operator = (Reading r) { level = r.level; count = r.count; return self; }
+    Reading operator = (int level) { self.level = level; count++; return self; }
+    bool operator == (Reading r) { return level == r.level; }
+    bool operator != (Reading r) { return level != r.level; }
+    int total() { return level * 10 + count; }
+}
+
+Reading last;
+
+Reading readOf(Valve valve) {
+    Reading reading;
+    reading = valve.level;
+    return reading;
+}
+
+// ---- rooms and objects ----------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Valve valveA {
+    "valve A";
+    name = {.valve, .a};
+    parent = roomA;
+    label = "A";
+    level = 2;
+    valve = valveB;
+}
+
+Valve valveB {
+    "valve B";
+    name = {.valve, .b};
+    parent = roomA;
+    label = "B";
+    Level = 5;
+    VALVE = valveC;
+    mode = Mode.flow;
+    Flow = 3;
+}
+
+Valve valveC {
+    "valve C";
+    name = {.valve, .c};
+    parent = roomA;
+    label = "C";
+    LIMIT = 4;
+    Rate = 6;
+    TAG = "vc";
+}
+
+BigValve valveD {
+    "valve D";
+    name = {.valve, .d};
+    parent = roomA;
+    label = "D";
+    level = 8;
+    mode = flow;
+    EXTRA = 3;
+}
+
+Gauge dial {
+    "dial";
+    name = {.dial, .gauge};
+    parent = roomA;
+}
+
+object lamp {
+    "lamp";
+    name = {.lamp};
+    parent = roomA;
+    int Light = 3;                   // the attribute light, in another case
+    object location = roomA;         // the library global location
+    int score = 0;                   // the library global score
+
+    // a method named like a library routine, beside it
+    bool TestScope(object o) { return o == location; }
+
+    int show() {
+        int turns = 7;
+        object Location = parent;
+        score++;
+        return Light + (self.has(::light) ? 100 : 0) + turns + score * 10 + ::score
+             + (Location == ::location ? 1000 : 0);
+    }
+}
+
+array<Valve> valves = {valveA, valveB, valveC};
+
+bool Initialise() {
+    location = roomA;
+    Valve.made = 3;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs -------------------------------------------------------------------------------------------------
+
+verb Status {
+    grammar = {.status};
+    void handler() {
+        for (Valve valve in valves) {
+            print($"{valve.label}:{valve.level}/{valve.limit} {valve.state()} r{valve.rate}");
+            if (valve.isPrimed()) print(" primed");
+            print("; ");
+        }
+        print($"^count {count} total {total} level {level} Total {Valve.Total} sum {sum()}.^");
+    }
+}
+
+verb Charge {
+    grammar = {.charge, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Valve)) {
+            print("Only valves.^");
+            return;
+        }
+        Valve valve = (Valve)noun;
+        int level = valve.fill((int)second);
+        print($"The {valve.label} valve holds {level}; the board level is {::level}.^");
+    }
+}
+
+verb Bleed {
+    grammar = {.bleed, NOUN};
+    void handler() {
+        Valve valve = (Valve)noun;
+        int bleed = valve.bleed();
+        print($"Bled {bleed} from {valve.label}; now {valve.state()}.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        int count = board.count;
+        int total = board.total();
+        print($"Board {count}/{total}/{width}; global {::count}/{::total}; ");
+        print($"mix {mix(2)} {mix(count: 1, TOTAL: 2)} {mix(rate: 5, limit: 1, count: 0)}.^");
+        print($"pack {pack(1, 2)}; both {valveA.both()}; scale {scale(2)} {board.scale(2)} {valveC.scale(2)}.^");
+    }
+}
+
+verb Prime {
+    grammar = {.prime, NUMBER};
+    void handler() {
+        int primed = (int)noun;
+        int n = 0;
+        for (Valve valve in valves) {
+            if (valve.level >= primed) {
+                valve.primed = true;
+                valve.give(::primed);
+                n++;
+            }
+        }
+        print($"Primed {n} at {primed}; ");
+        print($"{valves.filter((Valve flow) => flow.isPrimed()).count()} primed, ");
+        print($"{valves.filter((Valve count) => count.level > ::count).count()} over {::count}.^");
+    }
+}
+
+verb Chain {
+    grammar = {.chain};
+    void handler() {
+        Pipe pipe = first();
+        print($"Chain from {pipe.label}: depth {pipe.depth()}, tail {pipe.tail().label}");
+        print($", levels {levelOf(pipe)} {levelOf(valve: valveB, valveA: valveC)}");
+        print($", tags {TAG} {pipe.tag} {pipe.tail().TAG}.^");
+    }
+}
+
+verb Sample {
+    grammar = {.sample, NOUN};
+    void handler() {
+        Valve valve = (Valve)noun;
+        Reading reading = readOf(valve);
+        bool same = reading == last;
+        last = reading;
+        last = last.level + 1;
+        print($"Reading {reading.level}x{reading.count} total {reading.total()}; same {same}; prior {last.level}x{last.count}.^");
+    }
+}
+
+verb Meter {
+    grammar = {.meter, NOUN};
+    void handler() {
+        if (!dial.sees(noun) || noun == dial) {
+            print("Only valves.^");
+            return;
+        }
+        Valve valve = (Valve)noun;
+        int take = dial.take(valve);
+        print($"Dial {take}: object {dial.object}, string {dial.string}, valve {dial.valve.label}, ");
+        print($"reading {dial.reading.level}x{dial.reading.count}; gauge {dial.gauge().gauge().object}.^");
+    }
+}
+
+verb Grab {
+    grammar = {.grab, NUMBER};
+    void handler() {
+        int made = (int)noun;
+        int grab = valveD.grab(made);
+        print($"Grab {grab}; made {Valve.made} {BigValve.MADE}; Total {Valve.Total}; ");
+        print($"D {valveD.word()} {valveD.level2()} {valveD.scale(1)} {((Valve)valveD).scale(1)} {valveD.LEVEL2()}.^");
+    }
+}
+
+verb Glow {
+    grammar = {.glow};
+    void handler() {
+        int score = lamp.show();
+        print($"Lamp {score} {lamp.show()} {lamp.score}; scope {lamp.TestScope(roomA)} {::TestScope(lamp, player)}.^");
+    }
+}
+
+// the global count read, then a loop over the valves
+int countUp() {
+    int seen = ::count;
+    for (Valve counted in valves) seen += counted.level;
+    return seen;
+}
+
+verb Census {
+    grammar = {.census};
+    void handler() {
+        func<int, int> scale = (int n) => n * 3;
+        print($"Census {countUp()}; scales {scale(2)} {::scale(2)} {::scale(3)}.^");
+    }
+}
+
+verb Limits {
+    grammar = {.limits};
+    void handler() {
+        int limit = 1;
+        int rate = 2;
+        print($"Limits {mix(5)} {mix(5, limit, rate)} {levelOf(valveC, valveD)}.^");
+    }
+}

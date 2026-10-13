@@ -1,0 +1,523 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-second pass: a ticket desk whose
+// public surface lives in namespaces. A root object `Company` holds a support branch as an `auto` member,
+// a billing branch, a static-only stats class and a superposed audit object as value aliases, and is
+// extended later with a reports branch (`auto`), an emitter-class value alias whose alias member is
+// reached two steps down, a type alias to an enum, a value-class member and methods that name its own
+// alias bare. The support branch aliases a ticket class, a subclass, a pooled subclass, two enums and an
+// `alias class`; billing aliases a value class and, through a later `extend`, a second value class; the
+// reports branch aliases the same types again. Paths appear as member
+// types, base classes, object declarations, globals, a global array of a value class, parameters
+// (`ref`, defaults built from enum values reached through the path), returns, a union return, casts
+// of receivers, `is()`, `new` with named arguments, `func<>` and `array<>` generic arguments, lambda
+// parameters, `for`-in variables, `switch` cases and an `extend class` of an aliased class. The
+// consumer imports the root, a branch reached by `auto`, a branch reached by a value alias and the
+// stats class with `#using`, then writes partial paths, bare type names, bare enum paths, imported
+// methods and imported static variables, and qualifies a name two imports share; a `func<>` returning the
+// aliased value class, a local value-class array typed through the reports branch and a `ref` value-class local
+// bound to the root's member.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Types, declared once under plain names -------------------------------------------------------------------
+
+enum eTkPriority { Low, Normal, High }
+enum eTkState { Active, Paused, Done }
+
+value class TkMoney {
+    int Cents;
+
+    TkMoney operator = (TkMoney o) {
+        Cents = o.Cents;
+        return self;
+    }
+    TkMoney operator = (int c) {
+        Cents = c;
+        return self;
+    }
+    TkMoney operator + (TkMoney o) {
+        TkMoney t;
+        t.Cents = Cents + o.Cents;
+        return t;
+    }
+    TkMoney operator * (int k) {
+        TkMoney t;
+        t.Cents = Cents * k;
+        return t;
+    }
+    int operator <=> (TkMoney o) { return Cents - o.Cents; }
+    bool operator == (TkMoney o) { return Cents == o.Cents; }
+    bool operator != (TkMoney o) { return Cents != o.Cents; }
+
+    void print() {
+        print(Cents / 100);
+        print(".");
+        if (Cents % 100 < 10) print("0");
+        print(Cents % 100);
+    }
+}
+
+alias class TkDesk for object {
+    string Label;
+    int Seats;
+}
+
+class TkTicket : object {
+    string Title;
+    Company.Support.Priority Prio = Company.Support.Priority.Normal;
+    Company.Support.State Status = eTkState.Active;
+    Company.Support.Desk Owner;
+
+    default string Kind() { return "ticket"; }
+    default Company.Billing.Money Quote() { return Company.Billing.Rate(Prio); }
+
+    void print() { print(Title); }
+}
+
+class TkBug : Company.Support.Ticket {
+    int Severity = 1;
+
+    string Kind() { return "bug"; }
+    Company.Billing.Money Quote() { return Company.Billing.Rate(Prio) * Severity; }
+}
+
+class TkTask[3] : Company.Support.Ticket {
+    int Hours;
+
+    void create(string what, int h = 1, Company.Support.Priority lvl = Company.Support.Priority.Low) {
+        Title = what;
+        Hours = h;
+        Prio = lvl;
+        Company.Stats.Opened++;
+    }
+    void destroy() { Company.Stats.Closed += 1; }
+
+    string Kind() { return "task"; }
+    Company.Billing.Money Quote() {
+        Company.Billing.Money m = Company.Billing.Rate(Prio);
+        return m * Hours;
+    }
+}
+
+class TkStats {
+    static int Opened = 0;
+    static int Closed = 0;
+    static int Pending() { return Opened - Closed; }
+}
+
+array<TkTicket> tkQueue[6];
+
+//-- The namespaces ------------------------------------------------------------------------------------------------
+
+object _tkBilling {
+    alias Money for TkMoney;
+
+    Money Rate(Company.Support.Priority p) {
+        Money m;
+        switch (p) {
+            case Company.Support.Priority.High:   m = 500;
+            case Company.Support.Priority.Normal: m = 250;
+            default:                              m = 100;
+        }
+        return m;
+    }
+
+    Money Zero() {
+        Money z;
+        z = 0;
+        return z;
+    }
+
+    void Charge(ref Money into, Money amount, int times = 1) {
+        into = into + amount * times;
+    }
+
+    string Describe() { return "billing"; }
+}
+
+object _tkSupport {
+    alias Ticket   for TkTicket;
+    alias Bug      for TkBug;
+    alias Task     for TkTask;
+    alias Priority for eTkPriority;
+    alias State    for eTkState;
+    alias Desk     for TkDesk;
+
+    ref array<Ticket> Queue;
+
+    bool Submit(Ticket t) {
+        if (Queue.contains(t)) return false;
+        Company.Audit.Note(t, "in");
+        return Queue.append(t);
+    }
+
+    Ticket Find(string title) {
+        for (Ticket t in Queue) if (t.Title == title) return t;
+        return null;
+    }
+
+    Ticket Next(Priority atLeast = Priority.Normal) {
+        return Queue.filter((Ticket t) => t.Prio >= atLeast && t.Status != State.Done).first();
+    }
+
+    int CountAt(Priority p) { return Queue.filter((Ticket t) => t.Prio == p).count(); }
+
+    Ticket | string Lookup(string title) {
+        Ticket t = Find(title);
+        if (t == null) return "no such ticket";
+        return t;
+    }
+
+    void Close(Ticket t) {
+        t.Status = State.Done;
+        Company.Audit.Note(t, "out");
+    }
+
+    string Describe() { return "support"; }
+}
+
+superposed object _tkAudit {
+    stringObj Log;
+    int Entries;
+
+    void Note(Company.Support.Ticket t, string what) {
+        Log += $"{what}:{t.Title} ";
+        Entries++;
+    }
+}
+
+emitter class TkRule {
+    void Line() { print "------"; new_line; }
+}
+
+emitter class TkFmt {
+    TkRule rule;
+    void Bar() { print "|"; }
+    int Width { 6 }
+}
+
+object Company {
+    auto  Support = _tkSupport;
+    alias Billing = _tkBilling;
+    alias Stats   = TkStats;
+    alias Audit   = _tkAudit;
+}
+
+object _tkReports {
+    alias Money  for Company.Billing.Money;
+    alias Ticket for Company.Support.Ticket;
+    alias Level  for Company.Support.Priority;
+
+    Money Total(array<Ticket> list) {
+        Money sum = Company.Billing.Zero();
+        for (Ticket t in list) sum = sum + t.Quote();
+        return sum;
+    }
+
+    Ticket Dearest(array<Ticket> list) {
+        Ticket best = null;
+        for (Ticket t in list) if (best == null || t.Quote() > best.Quote()) best = t;
+        return best;
+    }
+
+    string LevelWord(Level l) {
+        switch (l) {
+            case Level.High:   return "high";
+            case Level.Normal: return "normal";
+        }
+        return "low";
+    }
+
+    string Describe() { return "reports"; }
+}
+
+extend Company {
+    auto  Reports = _tkReports;
+    alias Fmt     = TkFmt;
+    alias Prio    for eTkPriority;
+    Company.Billing.Money Budget;
+
+    Prio Raise(Prio p) {
+        if (p == Prio.Low) return Prio.Normal;
+        return Prio.High;
+    }
+
+    bool Afford(Company.Reports.Money cost) { return cost <= Budget; }
+}
+
+value class TkInvoice {
+    Company.Billing.Money Amount;
+    Company.Support.Ticket Subject;
+
+    TkInvoice operator = (TkInvoice o) {
+        Amount = o.Amount;
+        Subject = o.Subject;
+        return self;
+    }
+
+    void print() { print($"{Subject}={Amount}"); }
+}
+
+extend _tkBilling {
+    alias Invoice for TkInvoice;
+
+    Invoice Bill(Company.Support.Ticket t) {
+        Invoice i;
+        i.Amount = t.Quote();
+        i.Subject = t;
+        return i;
+    }
+}
+
+extend class TkTicket {
+    Company.Support.Priority Level() { return Prio; }
+    bool IsUrgent() { return Prio == Company.Prio.High; }
+}
+
+//-- Instances, declared through the paths ---------------------------------------------------------------------
+
+Company.Support.Desk frontDesk {
+    "front desk";
+    Label = "front";
+    Seats = 2;
+}
+
+Company.Support.Bug bugCrash {
+    Title = "crash";
+    Prio = Company.Support.Priority.High;
+    Severity = 3;
+    Owner = frontDesk;
+}
+
+Company.Billing.Money Spent;
+array<Company.Billing.Money> Ledger[4];
+
+#using Company
+
+Support.Desk backDesk {
+    "back desk";
+    Label = "back";
+    Seats = 1;
+}
+
+Support.Ticket tkPrinter {
+    Title = "printer";
+    Owner = backDesk;
+}
+
+#using Company.Support
+
+Bug bugTypo {
+    Title = "typo";
+    Prio = Priority.Low;
+    Owner = backDesk;
+}
+
+Ticket tkLogin {
+    Title = "login";
+    Prio = Support.Priority.High;
+    Owner = frontDesk;
+}
+
+#using Company.Billing
+#using TkStats
+
+//-- Helpers written against the imports ------------------------------------------------------------------------
+
+string DeskOf(Ticket t) { return t.Owner?.Label ?? "nobody"; }
+
+Ticket Pick(Priority p, bool urgentOnly = false) {
+    for (Ticket t in Queue) {
+        if (urgentOnly && !t.IsUrgent()) continue;
+        if (t.Prio == p) return t;
+    }
+    return null;
+}
+
+void ShowLine(Company.Support.Ticket t) {
+    printLine($"{t.Kind()} {t} [{Reports.LevelWord(t.Level())}] {DeskOf(t)} {t.Quote()}");
+}
+
+Money QuoteAll(array<Ticket> list, Company.Reports.Level floor = Reports.Level.Low) {
+    Money sum = Zero();
+    for (Ticket t in list) if (t.Prio >= floor) Charge(sum, t.Quote());
+    return sum;
+}
+
+int SeverityOf(Ticket t) {
+    if (t.is(Bug)) return ((Bug)t).Severity;
+    if (t.is(Company.Support.Task)) return ((Company.Support.Task)t).Hours;
+    return 0;
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------------
+
+verb QueueCmd {
+    grammar = {.queue};
+    void handler() {
+        Submit(bugCrash);
+        Support.Submit(tkPrinter);
+        Company.Support.Submit(bugTypo);
+        Submit(tkLogin);
+        bool again = Submit(bugCrash);
+        printLine($"Queued {Queue.length}, again {again}.");
+        for (Ticket t in Company.Support.Queue) ShowLine(t);
+        printLine($"High {CountAt(Priority.High)}, normal {Support.CountAt(Support.Priority.Normal)}, low {Company.Support.CountAt(Company.Prio.Low)}.");
+        Ticket nx = Next();
+        printLine($"Next {nx}, next high {Next(Priority.High)}, next named {Next(atLeast: Reports.Level.Low)}.");
+    }
+}
+
+verb BillCmd {
+    grammar = {.bill};
+    void handler() {
+        Company.Budget = 1500;
+        Spent = Zero();
+        Charge(Spent, bugCrash.Quote());
+        Company.Billing.Charge(Spent, Rate(Priority.Low), 2);
+        Billing.Charge(into: Spent, amount: tkPrinter.Quote());
+        printLine($"Spent {Spent}, budget {Company.Budget}, afford crash {Company.Afford(bugCrash.Quote())}, afford spent {Afford(Spent)}.");
+        Ledger.append(Bill(bugCrash).Amount);
+        Ledger.append(Rate(Support.Priority.Normal));
+        Ledger.append(Company.Billing.Rate(Company.Reports.Level.High));
+        stringObj line = "Ledger:";
+        for (Money m in Ledger) line += $" {m}";
+        printLine(line);
+        Ledger.sort();
+        printLine($"Sorted first {Ledger[0]}, last {Ledger[Ledger.length - 1]}.");
+        Invoice inv = Bill(tkLogin);
+        Company.Billing.Invoice copy = inv;
+        copy.Amount = copy.Amount * 2;
+        printLine($"Invoice {inv}, copy {copy}, same {inv.Amount == copy.Amount}.");
+        printLine($"Total {Reports.Total(Queue)}, from normal {QuoteAll(Queue, Reports.Level.Normal)}, all {QuoteAll(Queue)}.");
+        printLine($"Dearest {Company.Reports.Dearest(Company.Support.Queue)}.");
+    }
+}
+
+verb TasksCmd {
+    grammar = {.tasks};
+    void handler() {
+        Company.Support.Task a = new Company.Support.Task("backup", 3);
+        Task b = new Task("patch", lvl: Priority.High);
+        Support.Task c = new Support.Task(h: 2, what: "audit");
+        Task d = new Task("extra");
+        printLine($"Made {a}, {b}, {c}; fourth {d?.Title ?? "none"}; opened {Opened}, pending {Company.Stats.Pending()}.");
+        Submit(a);
+        Submit(b);
+        for (Ticket t in Queue) if (t.is(Task)) ShowLine(t);
+        printLine($"Severity crash {SeverityOf(bugCrash)}, backup {SeverityOf(a)}, login {SeverityOf(tkLogin)}.");
+        Queue.removeValue(a);
+        delete a;
+        delete c;
+        printLine($"Closed {Stats.Closed}, pending {Pending()}, queued {Queue.length}.");
+        Task e = new Task("rerun", 4, Company.Raise(Priority.Low));
+        printLine($"Again {e?.Title ?? "none"} at {Reports.LevelWord(e.Prio)}, quote {e.Quote()}.");
+    }
+}
+
+verb LookupCmd {
+    grammar = {.lookup};
+    void handler() {
+        array<string> names = { "typo", "fax", "patch" };
+        for (string n in names) {
+            Ticket | string found = Lookup(n);
+            if (typeof(found) == eType.object) {
+                Company.Support.Ticket t = (Ticket)found;
+                printLine($"{n}: {t.Kind()} at {DeskOf(t)}");
+            } else {
+                printLine($"{n}: {(string)found}");
+            }
+        }
+        printLine($"Find crash {Find("crash")?.Kind() ?? "none"}, find fax {Find("fax")?.Kind() ?? "none"}.");
+        Ticket urgent = Pick(Company.Prio.High, urgentOnly: true);
+        Ticket lazy = Pick(Priority.Low);
+        Ticket none = Pick(Priority.Normal, true);
+        printLine($"Pick urgent {urgent}, low {lazy}, normal-urgent {none?.Title ?? "none"}.");
+        printLine($"Crash is bug {bugCrash.is(Company.Support.Bug)}, printer is bug {tkPrinter.is(Bug)}, typo severity {((Company.Support.Bug)bugTypo).Severity}.");
+        func<bool, Company.Support.Ticket> isUrgent = (Company.Support.Ticket t) => t.IsUrgent();
+        func<int, Ticket, Ticket> byQuote = (Ticket x, Ticket y) => x.Quote() <=> y.Quote();
+        array<Ticket> ranked = Queue.orderBy(byQuote);
+        stringObj line = "By quote:";
+        for (Company.Reports.Ticket r in ranked) line += $" {r}";
+        printLine(line);
+        printLine($"Urgent {Queue.filter(isUrgent).count()}, any front {Queue.any((Ticket t) => t.Owner == frontDesk)}, all owned {Queue.all((Ticket t) => t.Owner != null)}.");
+    }
+}
+
+verb ReportCmd {
+    grammar = {.report};
+    void handler() {
+        Close(bugCrash);
+        Company.Support.Close(tkLogin);
+        Ticket nx = Next();
+        printLine($"After closing, next {nx?.Title ?? "none"}, next low {Next(Priority.Low)}.");
+        object ns = Company.Support;
+        printLine($"Support is {ns == _tkSupport ? "the branch" : "something else"}; reports is {Company.Reports == _tkReports}.");
+        printLine($"Names: {Company.Support.Describe()}, {Company.Billing.Describe()}, {Reports.Describe()}.");
+        Company.Fmt.Bar();
+        print($"width {Company.Fmt.Width}");
+        Fmt.Bar();
+        print("^");
+        Company.Fmt.rule.Line();
+        printLine($"Audit {Company.Audit.Entries}: {Company.Audit.Log}");
+        Company.Prio p = Priority.Low;
+        for (int i = 0; i < 3; i++) {
+            print($"{Reports.LevelWord(p)} ");
+            p = Company.Raise(p);
+        }
+        printLine($"then {Reports.LevelWord(p)}.");
+    }
+}
+
+verb ExtrasCmd {
+    grammar = {.extras};
+    void handler() {
+        func<Company.Billing.Money, Company.Support.Ticket> quoteOf = (Ticket t) => t.Quote();
+        array<Company.Reports.Money> costs[3];
+        for (Ticket t in _tkSupport.Queue) if (costs.length < costs.size) costs.append(quoteOf(t));
+        Company.Billing.Money cheapest = costs[0];
+        for (Money m in costs) if (m < cheapest) cheapest = m;
+        printLine($"Costs {costs.length}, cheapest {cheapest}, crash through the func {quoteOf(bugCrash)}.");
+        ref Company.Billing.Money r := Company.Budget;
+        r = r + Rate(Priority.High);
+        printLine($"Budget now {Company.Budget}, affords the dearest {Company.Afford(Reports.Total(Queue))}.");
+        switch (tkPrinter.Prio) {
+            case Support.Priority.High:          printLine("printer is high");
+            case Company.Support.Priority.Normal: printLine("printer is normal");
+            default:                              printLine("printer is low");
+        }
+        Company.Support.Priority bumped = Company.Raise(bugTypo.Prio);
+        printLine($"Typo raised to {Reports.LevelWord(bumped)}, is it high {bumped == Company.Prio.High}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    Company.Support.Queue := tkQueue;
+    location = roomA;
+    rfalse;
+}

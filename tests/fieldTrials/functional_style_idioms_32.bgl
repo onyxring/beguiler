@@ -1,0 +1,410 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a stop-and-link table written in a functional style, leaning on `?.` and `??`.
+// Stops are a class with nullable `next` and `branch` links, a label that may be unset, a func<bool,
+// Stop> member, a stringObj member and recursive methods that return a stop, a stringObj, a value class
+// or an int through `?.` (`hop(n, viaBranch:)`, `last()`, `depth()`, `path(sep:, limit:)`,
+// `fareTo()`, `find(pred)`); a subclass overrides a default method reached through `?.`, and owns a
+// member array of spokes with empty slots (`mainHub.spokes[i]?.label`). A value class `Fare` defines
+// `operator ?` (absent when it costs nothing) and is coalesced with `??` and chained with `?.`.
+// `?.` is used as a statement on variables, members, elements, call results, casts, chain results and
+// static method results, with default and named arguments, with `++`, `+=` and stringObj `+=`;
+// `?.` and `??` appear in declarations, assignments, arguments, returns, default-argument callers,
+// interpolation, ternaries, `if`/`while`/`for`/`do`/`switch` conditions, inside lambdas and <linq>
+// predicates and mappers, after <linq> terminals (`filter(f).first()?.hop(2)?.label`), on stringObj
+// results (`s?.path()?.toUpper()`, `?.length`, `?.contains()`), on string members (`label?.length`),
+// on func members (`s?.allows(t)`), on parenthesized `??` results (`(a ?? b)?.next`), and in
+// right-nested `??` chains (`a ?? b ?? c`); verbs read noun and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 32; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXSPOKES = 4;
+
+//-- A value class with a presence test ------------------------------------------------------------
+
+// A fare is absent when it costs nothing.
+value class Fare {
+    int cents;
+    int legs;
+
+    Fare operator = (Fare o) {
+        cents = o.cents;
+        legs = o.legs;
+        return self;
+    }
+
+    Fare operator + (Fare o) {
+        Fare f;
+        f.cents = cents + o.cents;
+        f.legs = legs + o.legs;
+        return f;
+    }
+
+    emitter eBool operator ? () { ($self ~= 0 && $self.cents ~= 0) }
+
+    int perLeg() { return legs == 0 ? 0 : cents / legs; }
+
+    Fare scaled(int times = 2) {
+        Fare f;
+        f.cents = cents * times;
+        f.legs = legs;
+        return f;
+    }
+}
+
+Fare noFare;
+
+//-- Stops ------------------------------------------------------------------------------------------
+
+class Stop : object {
+    attributeList attributes = {scenery};
+    string label;
+    string code;
+    int toll;
+    int visits;
+    Stop next;
+    Stop branch;
+    func<bool, Stop> allows;
+    stringObj notes;
+
+    // The stop n links along, or null when the line ends first.
+    Stop hop(int n = 1, bool viaBranch = false) {
+        if (n <= 0) return self;
+        Stop s = viaBranch ? branch ?? next : next;
+        return s?.hop(n - 1, viaBranch: viaBranch);
+    }
+
+    Stop last() { return next?.last() ?? self; }
+
+    int depth() { return 1 + next?.depth(); }
+
+    default string labelOr(string fallback = "unnamed") { return label ?? fallback; }
+
+    Stop mark(int by = 1) {
+        visits += by;
+        return self;
+    }
+
+    stringObj path(string sep = " > ", int limit = 9) {
+        stringObj s;
+        s = labelOr("?");
+        if (limit > 1 && next?) {
+            s += sep;
+            s += next.path(sep, limit - 1);
+        }
+        return s;
+    }
+
+    Fare fare() {
+        Fare f;
+        f.cents = toll;
+        f.legs = 1;
+        return f;
+    }
+
+    // The fare from here up to and including dest; absent when dest is not further along.
+    Fare fareTo(Stop dest) {
+        if (self == dest) return fare();
+        Fare rest = next?.fareTo(dest) ?? noFare;
+        if (!rest?) return noFare;
+        return fare() + rest;
+    }
+
+    Stop find(func<bool, Stop> pred) {
+        if (pred(self)) return self;
+        return next?.find(pred);
+    }
+
+    static Stop longest() { return line.orderBy(byDepthDesc).first(); }
+}
+
+class Hub : Stop {
+    array<Stop> spokes[MAXSPOKES];
+
+    string labelOr(string fallback = "unnamed") { return label ?? code ?? fallback; }
+
+    Stop spoke(int i) { return i >= 0 && i < spokes.length ? spokes[i] : null; }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Stop alder { "alder stop"; name = {.alder, .stop}; label = "Alder"; code = "AL"; toll = 2; next = birch; allows = anyStop; parent = roomA; }
+Stop birch { "birch stop"; name = {.birch, .stop}; label = "Birch"; code = "BI"; toll = 3; next = cedar; branch = elm; allows = paidStop; parent = roomA; }
+Stop cedar { "cedar stop"; name = {.cedar, .stop}; code = "CE"; toll = 0; next = dock; allows = anyStop; parent = roomA; }
+Stop dock  { "dock stop";  name = {.dock, .stop};  label = "Dock";  code = "DK"; toll = 4; allows = paidStop; parent = roomA; }
+Stop elm   { "elm stop";   name = {.elm, .stop};   label = "Elm";   code = "EL"; toll = 1; next = fern; allows = anyStop; parent = roomA; }
+Stop fern  { "fern stop";  name = {.fern, .stop};  label = "Fern";  code = "FE"; toll = 5; branch = dock; allows = paidStop; parent = roomA; }
+Hub  mainHub   { "hub stop";   name = {.hub, .stop};                   code = "HB"; toll = 0; next = alder; allows = anyStop; parent = roomA; }
+
+array<Stop> line = {mainHub, alder, birch, cedar, dock, elm, fern};
+array<Stop> slots[6];
+Stop cursor;
+
+//-- Pure helpers -----------------------------------------------------------------------------------
+
+bool anyStop(Stop s) { return true; }
+bool paidStop(Stop s) { return s?.toll > 0; }
+bool forks(Stop s) { return s?.branch?; }
+bool unnamed(Stop s) { return !s.label?; }
+
+int byDepthDesc(Stop a, Stop b) {
+    if (a.depth() != b.depth()) return b.depth() - a.depth();
+    return a.code.compareTo(b.code);
+}
+
+int byToll(Stop a, Stop b) {
+    if (a.toll != b.toll) return a.toll - b.toll;
+    return a.code.compareTo(b.code);
+}
+
+Stop lookup(int i) { return i >= 0 && i < line.length ? line[i] : null; }
+
+Stop byCode(string c) { return line.filter((Stop s) => s.code == c).first(); }
+
+string nameOf(Stop s, string dflt = "none") { return s?.label ?? dflt; }
+
+Stop firstOf(Stop a, Stop b, Stop c) { return a ?? b ?? c; }
+
+// The stop reached by following next links until one passes pred, or null.
+Stop seek(Stop s, func<bool, Stop> pred) {
+    return s == null ? null : pred(s) ? s : seek(s.next, pred);
+}
+
+int tollSum(Stop s) { return s == null ? 0 : s.toll + tollSum(s?.next); }
+
+stringObj codes(Stop s, string sep = ",") {
+    stringObj out;
+    for (Stop t = s; t?; t = t.next) {
+        out += t.code ?? "--";
+        if (t.next?) out += sep;
+    }
+    return out;
+}
+
+void showStop(Stop s) {
+    print($"{s.labelOr()} [{s.code}] toll {s.toll}: next {nameOf(s.next)}, branch {s.branch?.label ?? "-"}, ");
+    print($"after two {s.hop(2)?.labelOr() ?? "end"}, last {s.last()?.labelOr("?")}, depth {s.depth()}^");
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb LinesVerb {
+    grammar = {{.lines}};
+    void handler() {
+        for (Stop s in line) showStop(s);
+        print($"unnamed: {line.filter(unnamed).count()}, forks: {line.filter(forks).count()}, paid: {line.filter(paidStop).count()}^");
+    }
+}
+
+verb RouteVerb {
+    grammar = {{.route, NOUN}};
+    void handler() {
+        if (!noun.is(Stop)) {
+            print("That is not a stop.^");
+            return;
+        }
+        Stop s = (Stop)noun;
+        print($"route: {s?.path()}^");
+        print($"upper: {s?.path(sep: "-")?.toUpper()}^");
+        print($"short: {s?.path(limit: 2, sep: "/") ?? "none"}, length {s?.path()?.length}^");
+        print($"codes: {codes(s)}; {codes(s?.branch, "+") ?? "no branch"}^");
+        stringObj via = s?.branch?.path(" = ") ?? "no branch";
+        print($"via branch: {via}^");
+        print($"tolls ahead {tollSum(s)}, by branch {tollSum(s.branch)}^");
+    }
+}
+
+verb HopVerb {
+    grammar = {{.hop, NOUN, NUMBER}};
+    void handler() {
+        Stop s = (Stop)noun;
+        int n = parsed_number;
+        print($"{nameOf(s)} hop {n}: {s?.hop(n)?.label ?? "off the end"}; ");
+        print($"by branch: {s?.hop(viaBranch: true, n: n)?.labelOr("?") ?? "off the end"}; ");
+        print($"one then branch: {s?.hop()?.hop(n - 1, viaBranch: true)?.code ?? "--"}^");
+        Stop end = ((Stop)noun)?.hop(n) ?? ((Stop)noun).last();
+        print($"landing at {end.labelOr()}, next {end?.next?.labelOr() ?? "nothing"}^");
+    }
+}
+
+verb FareVerb {
+    grammar = {{.fare, NOUN, .to, NOUN}};
+    void handler() {
+        Stop a = (Stop)noun;
+        Stop b = (Stop)second;
+        Fare f = a?.fareTo(b) ?? noFare;
+        if (f?) {
+            print($"{nameOf(a)} to {nameOf(b, "unnamed")}: {f.cents} over {f.legs} legs, {f.perLeg()} a leg^");
+            print($"doubled {a?.fareTo(b)?.scaled()?.cents}, tripled {f.scaled(times: 3).cents}^");
+        } else {
+            print($"no fare from {nameOf(a)} to {b?.labelOr()}^");
+        }
+        Fare first = a?.fare() ?? noFare;
+        print($"first leg {first?.cents}^");
+    }
+}
+
+verb SeekVerb {
+    grammar = {{.seek, NUMBER}};
+    void handler() {
+        int t = parsed_number;
+        Stop from = lookup(0);
+        Stop hit = from?.find((Stop s) => s.toll >= t);
+        print($"first toll of {t} or more from {from?.labelOr() ?? "nowhere"}: {nameOf(hit)}^");
+        print($"its next: {from?.find((Stop s) => s.toll >= t)?.next?.label ?? "none"}^");
+        print($"by seek: {seek(alder, (Stop s) => s.toll >= t)?.code ?? "--"}^");
+        print($"on the elm line: {elm?.find((Stop s) => s?.toll >= t)?.labelOr("?") ?? "none"}^");
+        Stop paid = line.filter((Stop s) => s.toll >= t).orderBy(byToll).first();
+        print($"cheapest such: {paid?.label ?? "none"}, two on: {line.filter((Stop s) => s.toll >= t).orderBy(byToll).first()?.hop(2)?.label ?? "none"}^");
+    }
+}
+
+verb VisitVerb {
+    grammar = {{.visit, NOUN}};
+    void handler() {
+        cursor = (Stop)noun;
+        cursor?.mark();
+        cursor?.next?.mark(by: 2);
+        cursor?.branch?.mark(3);
+        cursor?.visits++;
+        cursor?.notes += "v";
+        cursor?.next?.notes += $"{cursor.code}>";
+        ((Stop)noun)?.mark().mark(by: 10);
+        line.filter(forks).first()?.mark();
+        lookup(9)?.mark(by: 100);
+        byCode("ZZ")?.mark(by: 100);
+        print($"{cursor?.label ?? "unnamed"} visits {cursor?.visits}, next {cursor?.next?.visits}, branch {cursor?.branch?.visits}^");
+        print($"notes here {cursor?.notes}, next {cursor?.next?.notes ?? "none"}^");
+    }
+}
+
+verb TallyVerb {
+    grammar = {{.tally}};
+    void handler() {
+        array<var> seen = line.map((var s) => ((Stop)s)?.visits);
+        for (int i = 0; i < line.length; i++) print($" {line[i].code}={seen[i]}");
+        print("^");
+        print($"most visited: {line.orderBy((Stop a, Stop b) => b.visits != a.visits ? b.visits - a.visits : a.code.compareTo(b.code)).first()?.labelOr() ?? "none"}^");
+        print($"any visited with notes: {line.any((Stop s) => s.visits > 0 && s.notes?.contains("v"))}^");
+        print($"next-of-visited: {line.filter((Stop s) => s.visits > 0).filter((Stop s) => s.next?).count()}^");
+    }
+}
+
+verb SlotsVerb {
+    grammar = {{.slots}};
+    void handler() {
+        for (int i = 0; i < slots.size; i++) {
+            print($"slot {i}: {slots[i]?.label ?? "empty"} -> {slots[i]?.next?.code ?? "--"}^");
+        }
+        int filled = 0;
+        for (int i = 0; i < slots.size; i++) if (slots[i]?) filled++;
+        print($"{filled} filled; first fork {slots.filter(forks).first()?.labelOr() ?? "none"}^");
+    }
+}
+
+verb SpokesVerb {
+    grammar = {{.spokes}};
+    void handler() {
+        for (int i = 0; i < MAXSPOKES; i++) {
+            print($"spoke {i}: {mainHub?.spoke(i)?.labelOr("blank") ?? "empty"}, {mainHub.spokes[i]?.hop()?.code ?? "--"}^");
+        }
+        print($"hub says {mainHub?.labelOr()}; as a stop {((Stop)mainHub)?.labelOr()}^");
+        print($"first spoke with a branch: {mainHub.spokes.filter(forks).first()?.branch?.label ?? "none"}^");
+        mainHub?.spoke(2)?.mark(by: 5);
+        mainHub.spokes[1]?.mark(by: 5);
+        print($"elm visits {elm.visits}^");
+    }
+}
+
+verb WalkVerb {
+    grammar = {{.walk, NOUN}};
+    void handler() {
+        Stop c = (Stop)noun;
+        int steps = 0;
+        while (c?.next?) {
+            c = c.next;
+            steps++;
+        }
+        print($"{steps} steps to {c?.labelOr()}^");
+        Stop d = (Stop)noun;
+        do {
+            print($" {d?.code ?? "--"}");
+            d = d?.branch ?? d?.next;
+        } while (d?);
+        print("^");
+        for (Stop e = ((Stop)noun)?.branch; e?; e = e?.next) print($" [{e.label ?? "?"}]");
+        print(" .^");
+    }
+}
+
+verb SortVerb {
+    grammar = {{.sort, NOUN}};
+    void handler() {
+        Stop s = (Stop)noun;
+        switch (s?.label ?? "none") {
+            case "Alder": print("first of the main line^");
+            case "Dock":  print("end of the main line^");
+            case "none":  print("an unnamed stop^");
+            default:      print($"a stop called {s.label}^");
+        }
+        string kind = s?.branch? ? "fork" : s?.next? ? "through" : "terminus";
+        print($"kind {kind}; label length {s?.label?.length}; allows its next: {s?.allows(s?.next ?? s)}^");
+        if (s?.allows(s) && s?.next?.allows(s.next)) print("both pass^");
+        else print("not both^");
+        if (s?.toll > 2 || s?.next?.toll > 2) print("dear^");
+    }
+}
+
+verb PickVerb {
+    grammar = {{.pick, NUMBER}};
+    void handler() {
+        Stop s = firstOf(lookup(parsed_number - 1), cursor, mainHub);
+        print($"picked {s.labelOr()} ({s?.code})^");
+        Stop t = (lookup(parsed_number - 1) ?? cursor)?.next;
+        print($"its next {t?.labelOr() ?? "none"}; first or longest {(lookup(parsed_number - 1) ?? Stop.longest())?.code}^");
+        print($"longest line starts at {Stop.longest()?.labelOr()}, depth {Stop.longest()?.depth()}, ends at {Stop.longest()?.last()?.label ?? "?"}^");
+        func<Stop, Stop> step = (Stop x) => x?.next ?? x?.branch;
+        print($"step: {step(s)?.code ?? "--"}, twice: {step(step(s))?.code ?? "--"}^");
+    }
+}
+
+verb ResetVerb {
+    grammar = {{.reset, NUMBER}};
+    void handler() {
+        lookup(parsed_number - 1)?.visits = 0;
+        Stop.longest()?.last()?.mark(by: 1);
+        lookup(parsed_number - 1)?.next?.visits -= 1;
+        print($"{nameOf(lookup(parsed_number - 1), "no stop")} visits {lookup(parsed_number - 1)?.visits}, next {lookup(parsed_number - 1)?.next?.visits}; dock visits {dock.visits}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    slots.length = slots.size;
+    mainHub.spokes.length = MAXSPOKES;
+    slots[1] = birch;
+    slots[3] = cedar;
+    slots[4] = fern;
+    mainHub.spokes[0] = birch;
+    mainHub.spokes[2] = elm;
+    location = roomA;
+    rfalse;
+}

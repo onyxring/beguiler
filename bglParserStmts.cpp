@@ -699,7 +699,18 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         isChildrenSource = true;
         string owner = arrExprText.substr(0, arrExprText.size() - 9);
         arrName = func != nullptr ? qualifyIdentifier(owner, func, body) : owner;   // container's emitted name
-        string ownerType = resolveIdentifierType(owner, func, body);
+        string ownerType = owner.find('.') == string::npos ? resolveIdentifierType(owner, func, body)
+                                                           : resolvePathType(owner, func, body);   // `ns.shelf.children`
+        if(owner.find('.') == string::npos){
+            objectDef* od = languageService.findObjectType(owner);
+            if(od == nullptr)   // the source may arrive already renamed for I6 (`_box.children`)
+                for(typeDef* t : languageService.objectInstances)
+                    if(auto* o = dynamic_cast<objectDef*>(t); o && !o->i6name.empty() && strcasecmp(o->i6name.c_str(), owner.c_str()) == 0){ od = o; break; }
+            if(od != nullptr){
+                if(ownerType.empty()) ownerType = od->name;
+                if(arrName.empty()) arrName = objectI6Name(od->name);
+            }
+        }
         // `x.parent.children`: the owner is a read (`(parent(x))`), an object.
         if(arrName.empty() && !owner.empty() && owner[0] == '('){ arrName = owner; ownerType = "object"; }
         // Each child is an instance of the class that declares `children` (the world-tree root).
@@ -940,13 +951,13 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             if(currentClass != nullptr){
                 for(typeMember* m : currentClass->members)
                     if(m->name == name)
-                        parsingWarning("Loop variable '" + name + "' shadows a member of class '" + currentClass->dName() + "'.");
+                        warnOnceHere("Loop variable '" + name + "' shadows a member of class '" + currentClass->dName() + "'.");
                 // Walk base class hierarchy for inherited members (vars and functions) — warning only
                 function<void(classDef*)> checkBases = [&](classDef* c){
                     for(typeMember* m : c->members)
                         if(m->name == name)
                             if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
-                                parsingWarning("Loop variable '" + name + "' shadows inherited member '" + name + "' from class '" + c->dName() + "'.");
+                                warnOnceHere("Loop variable '" + name + "' shadows inherited member '" + name + "' from class '" + c->dName() + "'.");
                     for(classDef* base : c->baseClasses) checkBases(base);
                 };
                 for(classDef* base : currentClass->baseClasses) checkBases(base);
@@ -954,9 +965,14 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             if(currentObject != nullptr)
                 for(typeMember* m : currentObject->members)
                     if(m->name == name)
-                        parsingWarning("Loop variable '" + name + "' shadows a member of object '" + currentObject->name + "'.");
+                        warnOnceHere("Loop variable '" + name + "' shadows a member of object '" + currentObject->name + "'.");
         };
         checkShadow(nameTok.value);
+        // Inform 6 hoists the loop variable to the whole routine, so a global read above it would read it.
+        if(currentFunc != nullptr && currentFunc->fileScopeReads.count(nameTok.value))
+            parsingError(format("'{0}' is read above as the global, then declared here as a loop variable; Inform 6 "
+                "would read the variable throughout the routine. Rename the loop variable.",
+                nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
         if(file.peekToken().is("in")){
             isForIn = true;
             elemVarName = nameTok.value;
@@ -965,7 +981,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             if(body != nullptr)
                 for(statement* s : body->statements)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == elemVarName){
+                        if(vd->name == elemVarName && !vd->scopeEnded){
                             if(vd->type.name != elemVarType)
                                 parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
                                     elemVarName, elemVarType, vd->type.name));
@@ -974,6 +990,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                         }
             if(!alreadyDeclared){
                 variableDeclaration& elemDecl = *(new variableDeclaration());
+                forInLoopDecl = &elemDecl;
                 elemDecl.name = elemVarName;
                 elemDecl.type = languageService.getType(elemVarType);
                 // getType returns the base type for templated names (func<…>/array<…>); keep the
@@ -990,7 +1007,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             if(body != nullptr)
                 for(statement* s : body->statements)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == nameTok.value){
+                        if(vd->name == nameTok.value && !vd->scopeEnded){
                             if(vd->type.name != typeTok.value)
                                 parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
                                     nameTok.value, typeTok.value, vd->type.name));
@@ -1043,12 +1060,14 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     // for-in shared (Form 1 and Form 2)
     file.getToken("in");
 
-    // Inline initializer list: for(int j in {1, 2, 3})
-    if(file.peekToken(1).is(token::braceOpen)){
-        return processForInLiteralList(elemVarName, elemVarType, stmtLoc, func, body);
-    }
-
-    return processForIn(elemVarName, elemVarType, stmtLoc, func, body);
+    // A loop variable declared in the head is the loop's: out of scope once the loop ends (§3.10).
+    variableDeclaration* loopDecl = forInLoopDecl;
+    forInLoopDecl = nullptr;
+    bool r = file.peekToken(1).is(token::braceOpen)   // inline initializer list: for(int j in {1, 2, 3})
+           ? processForInLiteralList(elemVarName, elemVarType, stmtLoc, func, body)
+           : processForIn(elemVarName, elemVarType, stmtLoc, func, body);
+    if(loopDecl != nullptr) loopDecl->scopeEnded = true;
+    return r;
 }
 
 bool bglParser::processDo(vector<token>& t, Qualifiers&, abstractObject& ctx) {
@@ -1503,6 +1522,12 @@ void bglParser::resolveDeletes(){
 
 // `++x;` / `--x;` — prefix increment or decrement as a whole statement.
 bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
+    // `++((P)o).n;`
+    if(file.peekToken(1).is(token::parenOpen)){
+        file.getToken();
+        if(rewriteComputedReceiverStatement("(", 1, sc, op.value)) return false;
+        parsingError(format("'{0}' needs a variable or member to change", op.value));
+    }
     // A target reached through a call or subscript (`++f().n`, `++arr[i].n`): parse it as the path
     // statement it starts, which finishes this operation when it reaches the `;`.
     {
@@ -1530,13 +1555,15 @@ bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
 }
 
 // `ClassName.member` naming a static member: the global it is stored in, or "" for any other path.
-string bglParser::staticMemberGlobal(const string& path){
+string bglParser::staticMemberGlobal(const string& pathIn){
+    bool global = pathIn.rfind("::", 0) == 0;   // `::Valve.total`: the class at file scope
+    const string path = global ? pathIn.substr(2) : pathIn;
     size_t dot = path.rfind('.');
     if(dot == string::npos) return "";
     string ownerPath = path.substr(0, dot), propName = path.substr(dot + 1);
     classDef* cls = nullptr;
     // A path from a member, written in its own object's code: the member is nearer than a global.
-    if(currentObject != nullptr)
+    if(!global && currentObject != nullptr)
         for(typeMember* m : currentObject->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd != nullptr
                && vd->name == ownerPath.substr(0, ownerPath.find('.'))){
@@ -1546,6 +1573,19 @@ string bglParser::staticMemberGlobal(const string& path){
     if(cls == nullptr) cls = languageService.findClass(ownerPath);
     if(cls == nullptr && ownerPath.find('.') != string::npos)
         if(string t = resolveNamespacedType(ownerPath); !t.empty()) cls = languageService.findClass(t);
+    // An instance's static (`valve.total`, a member named like its class): the class's one variable.
+    classDef* instanceCls = nullptr;
+    if(!global && currentFunc != nullptr){
+        statementBlock* b = !activeBlockStack.empty() ? activeBlockStack.back() : dynamic_cast<statementBlock*>(currentFunc->body);
+        string t = ownerPath.find('.') == string::npos ? resolveIdentifierType(ownerPath, currentFunc, b)
+                                                       : resolvePathType(ownerPath, currentFunc, b);
+        instanceCls = getDispatchClass(t);
+    }
+    if(instanceCls != nullptr && instanceCls->isPrimitive) instanceCls = nullptr;
+    if(instanceCls != nullptr && (cls == nullptr || resolveIdentifierType(ownerPath.substr(0, ownerPath.find('.')), currentFunc, nullptr) != ""))
+        if(findMemberInHierarchy(instanceCls, [&](typeMember* m){
+               auto* vd = dynamic_cast<variableDeclaration*>(m); return vd && vd->isStatic && vd->name == propName; }))
+            cls = instanceCls;
     if(cls == nullptr) return "";
     typeMember* sm = findMemberInHierarchy(cls, [&](typeMember* m){
         auto* vd = dynamic_cast<variableDeclaration*>(m); return vd && vd->isStatic && vd->name == propName; });
@@ -1617,6 +1657,21 @@ token bglParser::parseStatementPath(token& tok, StatementContext& sc){
             if(pathSoFar.empty()) pathSoFar = tok.value;
             string pathType = resolveIdentifierType(tok.value, func, body);
             if(pathType.empty()) pathType = resolvePathType(tok.value, func, body);
+            // `panel.focus?.n += 1`: an accessor is tested, and written through, as what its getter reads.
+            if(functionDef* g = func != nullptr && !pathType.empty() ? nativeGetterOf(pathType) : nullptr;
+               g != nullptr && !declaresOwnOperator(pathType, "?")){
+                classDef* rc = getDispatchClass(g->returnType.name);
+                if(rc != nullptr && !rc->isPrimitive){
+                    static int counter = 0;
+                    string tmp = format("_bglacc_q{0}", counter++);
+                    file.openText(g->returnType.name + " " + tmp + " = " + tok.value + ";", sc.src.file, sc.src.line);
+                    try { processStatementDispatch(file.getToken(), *func); } catch(...) { file.close(); throw; }
+                    file.close();
+                    tok.value = tok.originalValue = tmp;
+                    pathSoFar = tmp;
+                    pathType = g->returnType.name;
+                }
+            }
             classDef* cls = !pathType.empty() ? languageService.classOf(pathType) : nullptr;
             functionDef* nullTestFn = nullptr;
             if(cls != nullptr)
@@ -2385,6 +2440,22 @@ bool bglParser::rewriteElementCompound(token tok, StatementContext& sc){
                 auto* fd = dynamic_cast<functionDef*>(m);
                 if(fd && fd->name == want && fd->params.size() == (incDec ? 0u : 1u)){ overloads++; if(!fd->isEmitter) methods++; }
                 return false; });
+            // A stringObj slot may be empty until its first store: the value is built in a stringObj of
+            // its own, then stored, and the element's store allocates the slot.
+            if(elemType == "stringobj" && !incDec && overloads > 0){
+                string tmp = format("_bglel{0}", counter++);
+                string v = interpolated ? r : "(" + rhs + ")";
+                string text = decls + (interpolatedAssign
+                    ? "{ stringObj " + tmp + " = " + v + "; " + lhs + " = " + tmp + "; }"
+                    : "{ stringObj " + tmp + " = \"\"; if (" + lhs + "?) " + tmp + " = " + lhs + "; "
+                      + tmp + " " + want + " " + v + "; " + lhs + " = " + tmp + "; }");
+                size_t statements = count(decls.begin(), decls.end(), ';') + 1;
+                file.openText(text, sc.src.file, sc.src.line);
+                try { for(size_t n = 0; n < statements; n++) processStatementDispatch(file.getToken(), *sc.func); }
+                catch(...) { file.close(); throw; }
+                file.close();
+                return true;
+            }
             if(methods > 0 || (overloads > 0 && !incDec && (interpolated || overloads > 1))){
                 if(interpolated) rhs = r;
                 string tmp = format("_bglel{0}", counter++);
@@ -2457,6 +2528,104 @@ bool bglParser::rewriteElementCompound(token tok, StatementContext& sc){
     return true;
 }
 
+// A statement whose target is reached through something computed — a call, a subscript followed by a
+// call, a parenthesized or cast receiver (`bank[i].peer().lvl = 9;`, `((Panel)bank[0]).lamps[3] = 1;`,
+// `++((P)o).n;`): the receiver is bound to a local first, and the statement is written on that local, so
+// the member is reached the way it is through any named receiver. `head` is the source already read.
+bool bglParser::rewriteComputedReceiverStatement(const string& head, int depth, StatementContext& sc, const string& prefixOp){
+    if(sc.func == nullptr || file.hasPendingToken) return false;
+    fileLexer::mark_t at = file.mark();
+    string text = head + file.getRawTextToStatementEnd(depth);
+    auto fail = [&]{ file.rewind(at); return false; };
+    // The top-level assignment, if any, and the last top-level `.` of what it assigns.
+    int d = 0;
+    size_t opAt = string::npos, opLen = 0;
+    for(size_t i = 0; i < text.size(); i++){
+        char c = text[i];
+        if(c == '"' || c == '\''){ for(i++; i < text.size() && text[i] != c; i++) if(text[i] == '\\') i++; continue; }
+        if(c == '(' || c == '[' || c == '{') d++;
+        else if(c == ')' || c == ']' || c == '}') d--;
+        if(d != 0) continue;
+        if(c == '=' && (i + 1 >= text.size() || text[i + 1] != '=')){
+            char p = i > 0 ? text[i - 1] : ' ';
+            if(p == '=' || p == '!' || p == '<' || p == '>' || p == ':') {
+                if(p == '<' && i >= 2 && text[i - 2] == '<'){ opAt = i - 2; opLen = 3; break; }
+                if(p == '>' && i >= 2 && text[i - 2] == '>'){ opAt = i - 2; opLen = 3; break; }
+                continue;
+            }
+            if(string("+-*/%|&^").find(p) != string::npos){ opAt = i - 1; opLen = 2; }
+            else { opAt = i; opLen = 1; }
+            break;
+        }
+    }
+    string lhs = opAt == string::npos ? text : text.substr(0, opAt);
+    string tail = opAt == string::npos ? "" : text.substr(opAt);
+    while(!lhs.empty() && isspace((unsigned char)lhs.back())) lhs.pop_back();
+    string post;
+    if(opAt == string::npos && lhs.size() > 2 && (lhs.compare(lhs.size() - 2, 2, "++") == 0 || lhs.compare(lhs.size() - 2, 2, "--") == 0)){
+        post = lhs.substr(lhs.size() - 2);
+        lhs.pop_back(); lhs.pop_back();
+        while(!lhs.empty() && isspace((unsigned char)lhs.back())) lhs.pop_back();
+    }
+    size_t dot = string::npos;
+    d = 0;
+    for(size_t i = 0; i < lhs.size(); i++){
+        char c = lhs[i];
+        if(c == '"' || c == '\''){ for(i++; i < lhs.size() && lhs[i] != c; i++) if(lhs[i] == '\\') i++; continue; }
+        if(c == '(' || c == '[' || c == '{') d++;
+        else if(c == ')' || c == ']' || c == '}') d--;
+        else if(c == '.' && d == 0 && (i == 0 || lhs[i - 1] != '?')) dot = i;
+    }
+    bool writes = opAt != string::npos || !post.empty() || !prefixOp.empty();
+    if(dot == string::npos || dot == 0) return fail();
+    string recv = lhs.substr(0, dot), member = lhs.substr(dot + 1);
+    if(recv.find_first_of("([") == string::npos) return fail();   // a plain path: the ordinary statement handles it
+    if(!writes && member.find('(') == string::npos) return fail();
+    if(head == "("){
+        // Only a receiver that is one parenthesized whole: `(deriv)a.barks = 9` casts the member, not `a`.
+        int dd = 0; size_t close = string::npos;
+        for(size_t i = 0; i < recv.size(); i++){
+            if(recv[i] == '(') dd++;
+            else if(recv[i] == ')' && --dd == 0){ close = i; break; }
+        }
+        if(!writes || close != recv.size() - 1) return fail();
+    }
+    // The receiver's type, from a parse whose set-up is thrown away.
+    string recvType;
+    {
+        vector<statement*> savedPending = pendingInjections, savedPost = postInjections;
+        statementBlock scratch;
+        file.openText(recv + ";", sc.src.file, sc.src.line);
+        try { if(expression* e = parseExpression(file.getToken(), {token::endStatement}, sc.func, &scratch)) recvType = e->resolvedType; }
+        catch(...) { file.close(); pendingInjections = savedPending; postInjections = savedPost; file.rewind(at); throw; }
+        file.close();
+        pendingInjections = savedPending; postInjections = savedPost;
+    }
+    // A receiver typed as an object is that object.
+    if(objectDef* od = languageService.findObjectType(recvType); od != nullptr && languageService.findClass(recvType) == nullptr){
+        string self = od->dName();
+        string stmt = !prefixOp.empty() ? prefixOp + self + "." + member
+                    : self + "." + member + (post.empty() ? " " + tail : post);
+        static int seen = 0;
+        file.openText("{ var _bglrcvo" + to_string(seen++) + " = " + recv + "; " + stmt + "; }", sc.src.file, sc.src.line);
+        try { processStatementDispatch(file.getToken(), *sc.func); } catch(...) { file.close(); throw; }
+        file.close();
+        return true;
+    }
+    classDef* rc = getDispatchClass(recvType);
+    if(recvType.empty() || rc == nullptr || rc->isPrimitive || isWordArrayType(recvType) || recvType == "bytearray") return fail();
+    static int counter = 0;
+    string tmp = format("_bglrcv{0}", counter++);
+    string bind = isValueClass(rc) ? "ref " + recvType + " " + tmp + " := " : recvType + " " + tmp + " = ";
+    string stmt = !prefixOp.empty() ? prefixOp + tmp + "." + member
+                : tmp + "." + member + (post.empty() ? " " + tail : post);
+    string out = "{ " + bind + recv + "; " + stmt + "; }";
+    file.openText(out, sc.src.file, sc.src.line);
+    try { processStatementDispatch(file.getToken(), *sc.func); } catch(...) { file.close(); throw; }
+    file.close();
+    return true;
+}
+
 // `name[i] …` — an element write, a chained subscript, or member access on the element.
 bool bglParser::processSubscriptStatement(token tok, StatementContext& sc){
     functionDef* func = sc.func;
@@ -2476,6 +2645,18 @@ bool bglParser::processSubscriptStatement(token tok, StatementContext& sc){
             arrPath = tok.value = "self." + arrPath;
     }
     if(rewriteElementCompound(tok, sc)) return false;
+    // `bank[i].peer().lvl = 9;`: a call after the element makes the target computed.
+    {
+        int k = 1, depth = 1;
+        for(token pk = file.peekToken(k); depth > 0 && !pk.is(eTokenType::eof) && !pk.is(token::endStatement); pk = file.peekToken(++k)){
+            if(pk.is(token::bracketOpen)) depth++;
+            else if(pk.is(token::bracketClose)) depth--;
+        }
+        bool callAfter = false;
+        for(token pk = file.peekToken(k); !pk.is(eTokenType::eof) && !pk.is(token::endStatement) && !pk.is(token::assignment); pk = file.peekToken(++k))
+            if(pk.is(token::parenOpen)){ callAfter = true; break; }
+        if(callAfter && rewriteComputedReceiverStatement(tok.value + "[", 1, sc)) return false;
+    }
     // `name[i](args);` calls the element and `name[i]?.m(…);` calls through it: one expression each.
     {
         int k = 1, depth = 1;
@@ -2648,8 +2829,10 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         // to Base — the door. Reads are unaffected (fires only on this assignment path).
         {   string hideOwnerType = (!stmtCastType.empty() && ownerPath.find('.') == string::npos)
                                  ? stmtCastType : ownerType;
-            if(!hideOwnerType.empty())
+            if(!hideOwnerType.empty()){
                 enforceHidden(getDispatchClass(hideOwnerType), propName, "=", {}, ownerPath);
+                t.hideOwnerType = hideOwnerType; t.hideMember = propName; t.hideOwnerPath = ownerPath;
+            }
         }
         if(!ownerType.empty()){
             // The owner may be a classDef (direct class reference) or an objectDef
@@ -2822,6 +3005,11 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
 
 // Applies `operator =` dispatch (emitter, method, or conversion) to one assignment node.
 void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign){
+    // A hide narrowed to one overload (`hide fill.operator = (int);`) blocks a write of that operand's type.
+    if(!t.hideOwnerType.empty() && val != nullptr && !val->resolvedType.empty()){
+        string vt = literalBaseType(val->resolvedType).empty() ? val->resolvedType : literalBaseType(val->resolvedType);
+        enforceHidden(getDispatchClass(t.hideOwnerType), t.hideMember, "=", {vt}, t.hideOwnerPath);
+    }
     if(t.leftType != nullptr && !isBindAssign) applyImplicitConversion(val, t.leftType->name);
     if(t.leftType != nullptr && t.leftType->name == "verb") applyActionConstant(val);
     const string& emitterSelfForLhs = t.emitterSelf;
@@ -3391,7 +3579,12 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
         a.emitterParam = op->params[0]->name;
         a.assignedExpression = new expression();
         a.assignedExpression->resolvedType = "interpolatedstringliteral";
+        // A `?.` guard on the path opens before the append and closes after it.
+        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+        pendingInjections.clear();
         if(body != nullptr) body->statements.push_back(&a);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
         return false;
     }
 
@@ -3546,6 +3739,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             }
             i6RawNode& node = *(new i6RawNode());
             node.text = lhs + "." + opFunc->i6name + "(" + rhs->text() + ");";
+            node.cooked = true;   // built from Beguile expressions: locals take their renames
             node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
             emitterFound = true;
@@ -3706,6 +3900,15 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
                && !qualifyFromCurrentClass(rawName) && !qualifyFromCaptures(rawName))
                 return rawName;
         }
+        // A method imported by `#using` is called through its object, unless a routine of the name, or
+        // something nearer, is in scope: a verb or variable named like it can't be called.
+        if(languageService.findGlobalAs<functionDef>(rawName) == nullptr && !qualifyFromParams(rawName, func)
+           && !qualifyFromBodyLocals(rawName, body) && !qualifyFromAncestorBlocks(rawName, body)
+           && !qualifyFromCurrentObject(rawName) && !qualifyFromCurrentClass(rawName))
+            for(objectDef* imp : usingObjectImports)
+                for(typeMember* m : imp->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == rawName && !fd->isValueEmitter)
+                        return imp->name + "." + rawName;
         string qualified = qualifyIdentifier(rawName, func, body);
         // A method of this object or class is called by its Beguile name: the arguments choose among its overloads.
         if(qualified.rfind("self.", 0) == 0 && strcasecmp(qualified.c_str() + 5, rawName.c_str()) != 0){
@@ -4081,7 +4284,7 @@ void bglParser::hoistOpcodeOperands(functionCallStatement& cs){
         if(text.empty() || std::regex_match(text, simple)) continue;
         static const std::regex constantArithmetic(R"re(^(\$[0-9A-Fa-f]+|[0-9+\-*/%() ])+$)re");   // Inform 6 folds it
         if(std::regex_match(text, constantArithmetic)) continue;
-        string temp = format("_bgl_temp{0}", languageService.ternaryTempCount++);
+        string temp = newChainTemp();
         i6RawNode* inj = new i6RawNode();
         inj->text = temp + " = " + text + ";";
         inj->cooked = true;
@@ -4314,6 +4517,14 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
     parseCallArgsWithHints(callStmt, sc);
 
     string chainReturnType;
+    // `print($"…")` in a class with `print()` and `print(int)`: when no overload of the member takes the
+    // arguments, a global function of the name does, as it would beside a single overload.
+    if(callStmt.functionName.rfind("self.", 0) == 0 && callStmt.functionName.find('.', 5) == string::npos
+       && languageService.findGlobalAs<functionDef>(tok.value) != nullptr){
+        string selfType = currentObject ? currentObject->name : (currentClass ? currentClass->name : string());
+        if(!selfType.empty() && resolveMethod(selfType, "self", tok.value, callStmt.args).method == nullptr)
+            callStmt.functionName = tok.value;
+    }
     size_t dotPos = callStmt.functionName.rfind('.');  // use LAST dot for method name
     if(dotPos != string::npos){
         if(bindMethodCallStatement(callStmt, tok, chainReturnType, sc)) return false;
@@ -4335,7 +4546,7 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
     // `sp` is only a store operand (`-> sp`); a `$target = …` in the body takes a temporary instead.
     if(callStmt.emitterBody.find("$target") != string::npos){
         if(regex_search(callStmt.emitterBody, regex(R"((^|[^>\s])\s*\$target\b)"))){
-            string temp = format("_bgl_temp{0}", languageService.ternaryTempCount++);
+            string temp = newChainTemp();
             callStmt.emitterBody = regex_replace(callStmt.emitterBody, regex(R"((->\s*)\$target\b)"), "$1sp");
             callStmt.emitterBody = replaceWord(callStmt.emitterBody, "$target", temp);
         } else
@@ -4395,6 +4606,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     sc.body = sc.func ? dynamic_cast<statementBlock*>(sc.func->body) : nullptr;
 
     if(!pendingStatementCast.empty()){ sc.castType = pendingStatementCast; pendingStatementCast.clear(); }
+    // `(b.peer()).lvl = 9;`, `((board)o).count = 1;`, `((Panel)bank[0]).lamps[3] = 1;`: a computed receiver.
+    if(tok.is(token::parenOpen) && sc.func != nullptr && sc.castType.empty() && rewriteComputedReceiverStatement("(", 1, sc))
+        return false;
     // `((T)a.b).member…;` — a cast of a member path: read again as `a.b.member…;` with the cast on its receiver.
     if(tok.is(token::parenOpen) && sc.func != nullptr && file.peekToken(1).is(token::parenOpen)
        && file.peekToken(2).is(eTokenType::dataType) && file.peekToken(3).is(token::parenClose)
@@ -4609,7 +4823,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         for(statement* inj : pendingInjections) if(sc.body != nullptr) sc.body->statements.push_back(inj);
         pendingInjections.clear();
         // A `?.` call ran in its set-up; what is left is the temporary that held its value.
-        static const regex bareTemp(R"(^\s*_bgl_temp\d+\s*$)");
+        static const regex bareTemp(R"(^\s*_bgl_tempL?\d+\s*$)");
         if(!regex_match(text, bareTemp)){
             i6RawNode& node = *(new i6RawNode());
             node.text = text + ";";
@@ -4628,6 +4842,38 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 // `path <symbol> …` — the statement a name or dotted path starts, by the token after it: a value
 // emitter, subscript, assignment, compound assignment, `++`/`--`, or call.
 bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext& sc){
+    // `panel.focus.n = 5;`: a write through what an accessor's getter returns, held in a local first.
+    if(sc.func != nullptr && postInjections.empty() && !file.hasPendingToken && tok.value.find('.') != string::npos
+       && (symbol.is(token::assignment) || symbol.value == "++" || symbol.value == "--"
+           || (symbol.is(eTokenType::oper) && symbol.value.size() >= 2 && symbol.value.back() == '=' && symbol.value != "=="
+               && symbol.value != "!=" && symbol.value != "<=" && symbol.value != ">="))){
+        vector<string> segs;
+        for(size_t from = 0, dot; ; from = dot + 1){
+            dot = tok.value.find('.', from);
+            segs.push_back(tok.value.substr(from, dot == string::npos ? string::npos : dot - from));
+            if(dot == string::npos) break;
+        }
+        string prefix = segs[0];
+        for(size_t i = 1; i + 1 < segs.size(); i++){
+            prefix += "." + segs[i];
+            string pt = resolvePathType(prefix, sc.func, sc.body);
+            functionDef* getter = pt.empty() ? nullptr : nativeGetterOf(pt);
+            if(getter == nullptr || isOwnMember(pt, segs[i + 1])) continue;
+            string rt = getter->returnType.name;
+            classDef* rc = getDispatchClass(rt);
+            if(rc == nullptr || rc->isPrimitive) break;
+            string rest = segs[i + 1];
+            for(size_t j = i + 2; j < segs.size(); j++) rest += "." + segs[j];
+            static int counter = 0;
+            string tmp = format("_bglacc{0}", counter++);
+            string text = "{ " + rt + " " + tmp + " = " + prefix + "; " + tmp + "." + rest + " " + symbol.value + " "
+                        + file.getRawTextToStatementEnd() + "; }";
+            file.openText(text, sc.src.file, sc.src.line);
+            try { processStatementDispatch(file.getToken(), *sc.func); } catch(...) { file.close(); throw; }
+            file.close();
+            return false;
+        }
+    }
     // `bank[0]?.hits++;` / `find()?.hits = 3;`: a computed receiver, then `?.` and a write. The receiver is held in a
     // local and the write runs when it isn't null.
     if(tok.is(eTokenType::name) && sc.func != nullptr && !symbol.is(token::endStatement)){
@@ -4718,18 +4964,50 @@ bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext&
         });
         token afterCall;
         if(closed && ahead.size() >= 2 && ahead[ahead.size() - 2].is(token::parenClose)){ scanned = true; afterCall = ahead.back(); }
-        if(scanned && afterCall.is("?.") && !file.hasPendingToken){
+        // `line.filter(p).first().mark();`: a chain off a call on an array is an expression's chain too.
+        bool arrayChain = false;
+        bool assigns = false;   // `things.second().w = 7;` writes through the result: the write path handles it
+        if(scanned && (afterCall.is(token::period) || afterCall.is(eTokenType::dictionaryWord)))
+            for(token pk : file.peekTokens(100000, [](token& t){ return t.is(token::endStatement) || t.is(eTokenType::eof); }))
+                if(pk.is(token::assignment) || pk.is(token::bindAssignment) || pk.value == "++" || pk.value == "--"
+                   || (pk.is(eTokenType::oper) && pk.value.size() >= 2 && pk.value.back() == '=' && pk.value != "==" && pk.value != "!="
+                       && pk.value != "<=" && pk.value != ">=")){ assigns = true; break; }
+        if(!assigns && scanned && (afterCall.is(token::period) || afterCall.is(eTokenType::dictionaryWord)) && !file.hasPendingToken){
+            size_t dot = tok.value.rfind('.');
+            if(dot != string::npos && sc.func != nullptr){
+                string recv = tok.value.substr(0, dot);
+                string rt = recv.find('.') == string::npos ? resolveIdentifierType(recv, sc.func, sc.body) : resolvePathType(recv, sc.func, sc.body);
+                arrayChain = isWordArrayType(rt);
+            }
+        }
+        if(scanned && (afterCall.is("?.") || arrayChain) && !file.hasPendingToken){
             bool path = tok.value.find('.') != string::npos;
+            expression* e = nullptr;
+            bool savedAllowVoid = allowVoidReturnExpr;
+            allowVoidReturnExpr = true;
             if(path){
                 // `boxes.peek()?.bump();`: the path is one token here; read the statement again as an expression.
                 string text = (tok.originalValue.empty() ? tok.value : tok.originalValue) + "(" + file.getRawTextToStatementEnd(1) + ";";
                 file.openText(text, sc.src.file, sc.src.line);
-                try { parseExpression(file.getToken(), {token::endStatement}, sc.func, sc.body); } catch(...) { file.close(); throw; }
+                try { e = parseExpression(file.getToken(), {token::endStatement}, sc.func, sc.body); }
+                catch(...) { allowVoidReturnExpr = savedAllowVoid; file.close(); throw; }
                 file.close();
             } else {
                 file.pendingToken = symbol;
                 file.hasPendingToken = true;
-                parseExpression(tok, {token::endStatement}, sc.func, sc.body);
+                try { e = parseExpression(tok, {token::endStatement}, sc.func, sc.body); }
+                catch(...) { allowVoidReturnExpr = savedAllowVoid; throw; }
+            }
+            allowVoidReturnExpr = savedAllowVoid;
+            // What the set-up didn't run is left as the expression: run it as a statement.
+            string rest = e != nullptr ? e->text() : "";
+            if(arrayChain && !rest.empty() && (rest.rfind("_bgl_temp", 0) != 0 || rest.find_first_of("(.") != string::npos)){
+                for(statement* inj : pendingInjections) if(sc.body != nullptr) sc.body->statements.push_back(inj);
+                pendingInjections.clear();
+                i6RawNode& node = *(new i6RawNode());
+                node.text = rest + ";";
+                node.src = sc.src;
+                if(sc.body != nullptr) sc.body->statements.push_back(&node);
             }
             for(statement* inj : pendingInjections) if(sc.body != nullptr) sc.body->statements.push_back(inj);
             pendingInjections.clear();
