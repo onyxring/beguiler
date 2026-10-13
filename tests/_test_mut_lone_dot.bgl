@@ -1,0 +1,4 @@
+/* Mutation pass: a dictionary word with a stray dot before it */
+// EXPECT_ERROR: A '.' with nothing before it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ dictionaryWord w = .x; if (w == . .stamp) print(1); }

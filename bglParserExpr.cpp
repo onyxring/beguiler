@@ -4990,7 +4990,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     // MAIN EXPRESSION LOOP — processes one token per iteration
     // Branches by token type: parens, literals, identifiers, operators, etc.
     // ═══════════════════════════════════════════════════════════════════════
-    optional<token> prevTok;
+    optional<token> prevTok, prevPrevTok;
     while(true){
         if(exprIsTerminator(st, cur)){ expr->terminator = cur.value; break; }
         if(cur.is(eTokenType::eof)){
@@ -5037,6 +5037,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 parsingError(format("'{0}' has nothing before it: an operand is missing.", cur.value));
             }
         }
+        // `..word` / `. .word`: a dictionary word has one dot, and a member access needs a left side.
+        if(cur.value == "." && !cur.isString() && !cur.is(eTokenType::charLiteral)){
+            const string back = expr->tokens.empty() ? string("(") : expr->tokens.back();
+            static const set<string> leftless = {"(", ",", "+", "-", "*", "/", "%", "<", ">", "<=", ">=", "==", "!=",
+                                                 "~=", "&&", "||", "|", "&", "^", "=", "~~", "?", ":"};
+            if(file.peekToken().value == "." || leftless.count(back))
+                parsingError("A '.' with nothing before it: a dictionary word is written `.word`, with no space.");
+        }
+        // `s.x x`: a member name followed straight by another name.
+        if(cur.is(eTokenType::name) && prevTok && prevTok->is(eTokenType::name) && prevPrevTok && prevPrevTok->value == "."
+           && cur.src.line == prevTok->src.line)
+            parsingError(format("'{0}' follows '.{1}' with nothing between them: an operator is missing.",
+                                cur.value, prevTok->value));
+        prevPrevTok = prevTok;
         prevTok = cur;
 
         ExprStep step = ExprStep::Advance;
