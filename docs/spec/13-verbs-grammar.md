@@ -165,7 +165,9 @@ verb Twirl {
 **Description**
 
 `perform()` runs the verb's action from code. The active IF library's action runner is used: it saves
-and restores the current actor, action, noun and second, and runs the surrounding before/after rules.
+and restores the current actor, action, noun and second, and runs the surrounding before/after rules
+(under the Inform 6 standard library, not the before rules while a `meta` verb is running: the library
+skips them for meta actions).
 `perform()` works on any verb, native or `extern`, whether or not it defines a `handler()`. To run an
 action and then return true from the enclosing function, follow the call with an explicit `rtrue;`.
 

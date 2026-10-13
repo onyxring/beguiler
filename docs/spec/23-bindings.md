@@ -125,6 +125,13 @@ Beyond the routines it documents, each binding declares every other routine the 
 
 Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
+A declaration on an `extern` class, the binding's or a program's `extend extern class object { … }` (§8.7.1),
+only gives a library property its type; it gives no object the property. An object holds a property
+only when its class, or the object itself, declares or sets it, so writing one on an object that
+doesn't hold it fails at run time, not when the program is compiled: `with_key = k;` in a class that
+never declares `with_key`, or `short_name` written from a pooled class's `create()`. Declare the
+property in the class that writes it (`object with_key;`, `string short_name;`).
+
 ### 23.3.5 Additive Properties
 
 Additive properties belong to the library that defines them, so the binding declares them (§11.7.2). The `i6StandardLibrary` binding declares `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`; the `punyInform` binding declares `before`, `after`, `life`, `describe`, `time_out` and `each_turn` (`orders` is an ordinary property in PunyInform). `name` is additive in the Inform 6 compiler itself and is declared by the core (§21.5.2), not by a binding.
@@ -225,6 +232,12 @@ action, and the others follow the same table.
 **The player's words.** Inside `parse_name` (and other parsing routines) `NextWord()` returns the next
 word as a `dictionaryWord`, or `null` for a word not in the dictionary, and advances `wn`;
 `NextWordStopped()` returns -1 once the words run out. Both are declared by the binding.
+
+**Telling objects apart.** When the parser asks whether two objects that share a `parse_name` can be
+told apart, it sets `parser_action` to `TheSame` and the objects in `parser_one` and `parser_two`; the
+routine answers -1 when they are the same and -2 when they differ (0 leaves it to their `name` words). A `parse_name` that matched a plural
+word sets `parser_action = PluralFound;`. The binding declares all three (PunyInform has `parser_action`
+only, for `PluralFound`).
 
 **The topic of Ask, Tell and Answer.** For Ask and Tell the parser puts the topic's first word (after a
 leading "the") in `second`; for Answer (`answer ⟨topic⟩ to ⟨character⟩`) it is in `noun`, and `second`
