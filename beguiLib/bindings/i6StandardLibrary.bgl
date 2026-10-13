@@ -139,6 +139,9 @@ extern int          multiflag;             /// multiple-object flag
 extern int          keep_silent;           /// suppress action output
 extern int          reason_code;           /// reason for "life" rule
 extern verb         receive_action;        /// ##PutOn or ##Insert
+extern verb         parser_action;         /// what the parser asks of parse_name (##TheSame), or a parse_name's reply (##PluralFound)
+extern var          parser_one;            /// the first object the parser hands to parse_name or a user routine
+extern var          parser_two;            /// the second object the parser hands to parse_name or a user routine
 extern int          lm_n;                  /// LibraryMessages: message number
 extern int          lm_o;                  /// LibraryMessages: message object
 extern int          lm_s;                  /// LibraryMessages: message second parameter

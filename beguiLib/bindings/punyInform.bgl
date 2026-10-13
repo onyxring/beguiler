@@ -96,6 +96,7 @@ extern int      lookmode;                   /// verbosity: 1=brief, 2=verbose, 3
 extern object   noun;                       /// first noun
 extern object   second;                     /// second noun
 extern verb     action;                     /// current action being performed
+extern verb     parser_action;              /// a parse_name's reply to the parser (##PluralFound)
 extern int      parsed_number;              /// user-supplied number
 extern int      consult_from;               /// start word of consult topic
 extern int      consult_words;              /// number of words in topic

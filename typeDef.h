@@ -278,6 +278,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
     public:
         typeDef type;
         bool isConst = false;
+        bool foldedAtCompile = false;   // a const read where only a literal will do (an array size): its I6 Constant is then unreferenced
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
         bool isSuperposed = false;
         // isSuperposed: file-scope globals/arrays only — withhold the declaration and emit it

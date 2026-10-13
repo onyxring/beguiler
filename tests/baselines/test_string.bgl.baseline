@@ -1124,12 +1124,14 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    append[text retval;
+    append[text retval lk;
+        lk=_bglstr.ambiguouslock(text);
         
             retval = self.clone();
             _bglBuf.appendBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         
+        _bglstr.ambiguousfree(text, lk);
         return retval;
     ],
     appendChar[c retval;
@@ -1141,12 +1143,14 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    prepend[text retval;
+    prepend[text retval lk;
+        lk=_bglstr.ambiguouslock(text);
         
             retval = self.clone();
             _bglBuf.prependBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         
+        _bglstr.ambiguousfree(text, lk);
         return retval;
     ],
     toLower[retval;

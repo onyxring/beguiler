@@ -1587,6 +1587,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             if(!alreadyReg){
                 variableDeclaration& stub = *(new variableDeclaration());
                 stub.name = nameStr;
+                stub.displayName = nameTok.originalValue;
+                stub.src = nameTok.src;
                 stub.type.name = classType;
                 stub.isPrePassStub = true;
                 stub.isExternal = isExtern;

@@ -1094,6 +1094,7 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
                 if(!conditionType.empty()) currentExpectedType = conditionType;
                 expression* val = parseExpression(file.getToken(), {":", ",", "to"}, func, body);
                 currentExpectedType = savedExpectedCase;
+                foldCaseConstant(val);
                 // The class's `operator switch` taking this value's type compares it; the emitter
                 // looks its body up by the type recorded on the value.
                 string emitterKey;
@@ -2761,6 +2762,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
         if(!elem.empty()) checkClasslessAssignable(val, leftType->name + "<" + elem + ">", "variable");
     }
     if(val != nullptr && !isBindAssign) rejectNullIntoValueClass(val, classType);
+    if(val != nullptr && !isBindAssign) rejectUnionInto(val, classType);
     // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
     // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
     // operator= into whatever the slot currently points at, exactly as it would on a

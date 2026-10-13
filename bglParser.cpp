@@ -2718,6 +2718,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
                             const string& t = vd->type.name;
                             if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                         }
+                        if(dynamic_cast<verbObjectDef*>(g) != nullptr) continue;   // a verb, exempt as a local is (§3.10)
                         if(auto* cd = dynamic_cast<classDef*>(g))   // a type, not a global `::` reaches
                             warnOnce("Parameter '" + param.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                                 + "'; in this routine the name means the parameter, though it still names the type in declarations.");

@@ -1,0 +1,26 @@
+/*  run_measure5_forms — forms measurement round 5 found broken (D1345, D1346).  */
+// EXPECT_OUTPUT: true 7 | high mid
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+
+value class Reading { int day; int value; Reading operator = (Reading o) { day = o.day; value = o.value; return self; } }
+array<Reading> log[4];
+const int LIMIT = 100;
+
+string band(int n) {
+    switch (n) {
+        case LIMIT + 1 to 999: return "high";
+        case 1 to LIMIT:       return "mid";
+        default:               return "low";
+    }
+}
+
+void main() {
+    bglInit();
+    log.append(Reading{ day = 7; value = 42; });
+    int day = 7;
+    bool hit = log.any((Reading r) => r.day == day);
+    print($"{hit} {log[0].day} | {band(101)} {band(50)}");
+    print("^");
+}

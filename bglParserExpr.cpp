@@ -483,9 +483,11 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
     for(auto& cap : fd.captures){
         i6RawNode& load = *(new i6RawNode());
         load.text = cap.globalName + " = " + cap.outerName + ";";
+        load.cooked = true;   // the local is renamed here as everywhere else in the routine
         pendingInjections.push_back(&load);
         i6RawNode& unload = *(new i6RawNode());
         unload.text = cap.outerName + " = " + cap.globalName + ";";
+        unload.cooked = true;
         postInjections.push_back(&unload);
     }
 
@@ -1813,8 +1815,19 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
         }
     }
     // Check for cast expression: (TypeName)expr
-    if(file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose)){
-        castType = file.getToken(eTokenType::dataType).value;
+    // A type alias named bare (an imported one, or the object's own inside its body) casts as its type does.
+    string aliasCast;
+    if(file.peekToken(1).is(eTokenType::identifier) && file.peekToken(2).is(token::parenClose)
+       && !qualifyFromParams(file.peekToken(1).value, func) && !qualifyFromBodyLocals(file.peekToken(1).value, body)){
+        token aliasTok = file.peekToken(1);
+        for(objectDef* imp : usingObjectImports)
+            for(typeMember* m : imp->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isAlias && vd->name == aliasTok.value
+                   && (languageService.isClassType(vd->type.name) || languageService.findEnum(vd->type.name) != nullptr))
+                    aliasCast = vd->type.name;
+    }
+    if(!aliasCast.empty() || (file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose))){
+        castType = aliasCast.empty() ? file.getToken(eTokenType::dataType).value : (file.getToken(), aliasCast);
         file.getToken(token::parenClose);
         // A `!` or another cast after the cast is its operand (`(int)!t`, `(int)(char)c`):
         // parse that operand on its own and convert its result, so neither the operator nor the
@@ -5059,7 +5072,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
 // An integer expression of literals alone that overflows the target's word (`32767 + 1` on the
 // Z-machine) is folded here, wrapping as the same arithmetic does at run time: I6 would fold it too,
 // and reject the overflow. One that stays in range is left for I6.
-void bglParser::foldOverflowingConstant(expression* expr){
+void bglParser::foldOverflowingConstant(expression* expr, bool always){
     if(expr == nullptr || expr->tokens.empty()) return;
     const string text = expr->text();
     if(text.find_first_not_of("0123456789+-*/%() \t") != string::npos) return;
@@ -5105,8 +5118,33 @@ void bglParser::foldOverflowingConstant(expression* expr){
     };
     long long v = sum();
     skip();
-    if(bad || i != text.size() || !overflowed) return;
+    if(bad || i != text.size() || (!overflowed && !always)) return;
     expr->tokens = { v < 0 ? "(" + to_string(v) + ")" : to_string(v) };
+}
+
+// A switch case value is a constant to Inform 6, which won't take arithmetic on a named constant
+// (`case LIMIT + 1:`): global consts with literal values are put in and the whole is folded.
+void bglParser::foldCaseConstant(expression* expr){
+    if(expr == nullptr || expr->tokens.empty()) return;
+    string text = expr->text(), out;
+    bool named = false, ops = false;
+    for(size_t i = 0; i < text.size();){
+        if(isalpha((unsigned char)text[i]) || text[i] == '_'){
+            size_t e = i;
+            while(e < text.size() && (isalnum((unsigned char)text[e]) || text[e] == '_')) e++;
+            string w = text.substr(i, e - i), lw = w;
+            transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
+            auto* vd = languageService.findGlobalAs<variableDeclaration>(lw);
+            if(vd == nullptr || !vd->isConst || vd->declaredExpressionValue == nullptr) return;
+            string v = vd->declaredExpressionValue->text();
+            if(v.empty() || v.find_first_not_of("-0123456789() ") != string::npos) return;
+            out += "(" + v + ")"; named = true; i = e;
+        } else { if(strchr("+-*/%", text[i])) ops = true; out += text[i++]; }
+    }
+    if(!named || !ops) return;
+    expression probe; probe.tokens = { out };
+    foldOverflowingConstant(&probe, true);
+    if(probe.tokens.size() == 1 && probe.tokens[0] != out) expr->tokens = probe.tokens;
 }
 
 // `self` names the object a method runs on; a global function or a static method has none.

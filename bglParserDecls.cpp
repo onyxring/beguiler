@@ -368,6 +368,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     arrDecl.src = file.currentLocation();
     arrDecl.inLoop = loopDepth > 0;
     arrDecl.name = (string)name;
+    if(!isExternal && getCurrentCompileContext() == eCompileContext::global && bglLanguageService::isI6StatementKeyword(arrDecl.name))
+        parsingError(format("Array '{0}' is named like an Inform 6 keyword or built-in function, which Inform 6 won't take "
+                            "as an array's name; rename it.", name.originalValue.empty() ? (string)name : name.originalValue));
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
     arrDecl.isExternal = isExternal;
@@ -839,6 +842,7 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
     classDef* classType=getDispatchClass((string)dataType);
     if((classType == nullptr || ((string)dataType).find('<') != string::npos) && rhs != nullptr && !isRef)
         checkClasslessAssignable(rhs, (string)dataType, "variable");
+    if(classType != nullptr && rhs != nullptr && !isRef) rejectUnionInto(rhs, classType);
     if(classType != nullptr && rhs != nullptr && !isRef){
         string valueTypeName = rhs->resolvedType;
         if(!valueTypeName.empty()){
@@ -1401,8 +1405,10 @@ int bglParser::readCompileTimeInt(const string& what){
             string v = vd->declaredExpressionValue->text();
             v.erase(remove(v.begin(), v.end(), ' '), v.end());
             while(v.size() > 2 && v.front() == '(' && v.back() == ')') v = v.substr(1, v.size() - 2);
-            if(!v.empty() && v.find_first_not_of("-0123456789") == string::npos && v.find('-', 1) == string::npos)
+            if(!v.empty() && v.find_first_not_of("-0123456789") == string::npos && v.find('-', 1) == string::npos){
+                vd->foldedAtCompile = true;
                 return stoi(v);
+            }
         }
         auto it = definedSymbols.find(t.value);
         if(it != definedSymbols.end()){
@@ -2140,5 +2146,37 @@ void bglParser::checkEmitterTokens(functionDef& fn, const string& body, bool isG
         if(all_of(low.begin(), low.end(), [](char h){ return isxdigit((unsigned char)h); })) continue;
         parsingError(format("'${0}' in emitter '{1}' is neither one of its parameters nor a substitution token.",
                             word, fn.dName()));
+    }
+}
+
+// A union doesn't fit one of its member types (§2.8): `stringObj s = u;` needs the union narrowed
+// first, unless the class has an `operator =` that takes the union (or any value) itself.
+void bglParser::rejectUnionInto(expression* val, classDef* target){
+    if(val == nullptr || target == nullptr || !target->unionMembers.empty() || target->isPrimitive) return;
+    string vt = val->resolvedType;
+    classDef* vc = languageService.findClass(vt);
+    bool isUnion = isUnionType(vt) || (vc != nullptr && !vc->unionMembers.empty());
+    if(!isUnion) return;
+    // A union whose every member already is the target (`x ? roomA : roomB` into an object) fits as is.
+    vector<string> members = isUnionType(vt) ? splitUnionType(vt) : vc->unionMembers;
+    bool allDirect = true;
+    for(const string& m : members){
+        classDef* mc = languageService.classOf(m);
+        if(objectDef* od = languageService.findObjectType(m); od != nullptr && od->objectClass) mc = od->objectClass;
+        if(mc == nullptr || !(mc == target || mc->hasAncestor(target))) allDirect = false;
+    }
+    if(allDirect) return;
+    bool takesIt = false;
+    target->forEachMember([&](typeMember* m){
+        auto* f = dynamic_cast<functionDef*>(m);
+        if(f && f->name == "=" && !f->isStatic && f->params.size() == 1
+           && (f->params[0]->type.name == vt || f->params[0]->type.name == "var")) takesIt = true;
+    });
+    if(!takesIt){
+        string shown;
+        if(isUnionType(vt)) for(const string& m : splitUnionType(vt)) shown += (shown.empty() ? "" : " | ") + typeDisplayName(m);
+        else shown = typeDisplayName(vt);
+        parsingError(format("A '{0}' value doesn't fit a '{1}' directly: narrow the union first with a cast, "
+                            "such as `({1})value`.", shown, target->dName()));
     }
 }

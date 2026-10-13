@@ -598,7 +598,8 @@ class bglParser {
         struct PendingDelete { i6RawNode* node; classDef* cls; string var; };
         vector<PendingDelete> pendingDeletes;
         string copyInitSource;   // a sized local array's initializer, re-read as an assignment
-        void foldOverflowingConstant(expression* expr);
+        void foldOverflowingConstant(class expression* expr, bool always = false);
+        void foldCaseConstant(class expression* expr);
         bool namesProperty(const string& name);
         static bool isI6OperatorWord(const string& name);
         // Parse an optional `asI6 <i6name>` / `asBgl <beguileName>` clause (§3.11). The two run in
@@ -1362,6 +1363,7 @@ class bglParser {
         void rejectAccessModifier(token& tok);
         void rejectStrayOuter(class functionDef* func, class statementBlock* body);
         void convertIntoValueClass(class expression* arg, const string& typeName);
+        void rejectUnionInto(class expression* val, class classDef* target);
         bool readingForBind = false;   // parsing the right side of `:=`: a member read names the instance, not its getter's value
         string checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked);
         bool memberArrayDeclTracked(class arrayDeclaration* ad);

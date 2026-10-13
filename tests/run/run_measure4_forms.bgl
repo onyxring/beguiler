@@ -1,0 +1,35 @@
+/*  run_measure4_forms — forms measurement round 4 found broken (D1335, D1339, D1340).  */
+// EXPECT_OUTPUT: b Q | 2 3 | true team A 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+stringObj mk() { stringObj s = "Q"; return s; }
+
+enum eGrade { tin, iron, gold }
+object smith {
+    alias grade for eGrade;
+    eGrade g = tin;
+    int bump() { g = (grade)((int)g + 1); return (int)g; }
+}
+
+value class Tally { int N; Tally operator = (Tally o) { N = o.N; return self; } }
+class Team : object { string label = "team A"; Tally Wins; }
+Team teamA { }
+value class Pair {
+    Team Side;
+    int Score;
+    Pair operator = (Pair o) { Side = o.Side; Score = o.Score; return self; }
+}
+Pair g;
+
+void main() {
+    bglInit();
+    stringObj b = "b ";
+    b += mk();
+    print(b); print(" | ");
+    print(smith.bump()); print(" "); print(smith.bump()); print(" | ");
+    bool empty = g.Side == null;
+    g.Side = teamA; g.Score = 2;
+    print($"{empty} {g.Side.label} {g.Score}");
+    print("^");
+}

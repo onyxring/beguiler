@@ -968,11 +968,13 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     var append(var text) {
         var retval;
+        bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
         #i6 {
             retval = self.clone();
             _bglBuf.appendBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         }
+        _bglStr.ambiguousFree(text, lk);
         return retval;
     }
 
@@ -989,11 +991,13 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     var prepend(var text) {
         var retval;
+        bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
         #i6 {
             retval = self.clone();
             _bglBuf.prependBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
             retval = retval.free();
         }
+        _bglStr.ambiguousFree(text, lk);
         return retval;
     }
 

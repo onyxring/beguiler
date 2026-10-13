@@ -1,0 +1,6 @@
+/* A func<> value is called with its function type's parameters. */
+// EXPECT_ERROR: 'g' can't take this call: arg 1: 'intLiteral' is not compatible with parameter type 'Box'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Box : object { int n; }
+bool same(Box a, int b) { return a.n == b; }
+void main(){ func<bool, Box, int> g = same; print(g(7, 7)); }

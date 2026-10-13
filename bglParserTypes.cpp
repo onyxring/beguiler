@@ -1434,7 +1434,9 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
     // A local or parameter func<> of the name is nearer than any routine (`func<int,int> cap; cap(4)`).
     if(func != nullptr && (qualifyFromParams(name, func) || qualifyFromBodyLocals(name, body) || qualifyFromAncestorBlocks(name, body)))
         if(string varType = resolveIdentifierType(name, func, body); varType.rfind("func<", 0) == 0)
-            if(vector<string> targs = funcTypeArgs(varType); !targs.empty()){ result.funcVarReturnType = targs[0]; return result; }
+            if(vector<string> targs = funcTypeArgs(varType); !targs.empty()){
+                result.funcVarReturnType = targs[0]; result.varType = varType; return result;
+            }
     functionDef* upcastMatch = nullptr;       // every non-exact argument reaches its parameter's class by inheritance
     functionDef* conversionMatch = nullptr;
     functionDef* varFallback = nullptr;
@@ -1520,7 +1522,22 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
 
 string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, const vector<expression*>& args){
     size_t argCount = args.size();
-    if(!gcm.funcVarReturnType.empty()) return gcm.funcVarReturnType;
+    if(!gcm.funcVarReturnType.empty()){
+        // A func<> value is called with its function type's parameters (§2.9).
+        vector<string> targs = funcTypeArgs(gcm.varType);
+        if(targs.size() > 1){
+            if(argCount != targs.size() - 1)
+                parsingError(format("'{0}' takes {1} argument(s), but {2} were supplied.", funcName, targs.size() - 1, argCount));
+            for(size_t i = 0; i < argCount; i++){
+                const string& at = args[i]->resolvedType;
+                const string& pt = targs[i + 1];
+                if(at.empty() || pt == "var" || isTypeCompatible(at, pt)) continue;
+                parsingError(format("'{0}' can't take this call: arg {1}: '{2}' is not compatible with parameter type '{3}'.",
+                                    funcName, i + 1, typeDisplayName(at), typeDisplayName(pt)));
+            }
+        }
+        return gcm.funcVarReturnType;
+    }
     if(gcm.nameMatch == nullptr){
         // Loose mode (#bgl{} content): unresolved function names are assumed to be I6
         // routines defined in the surrounding stream. Return "var" as the inferred type;

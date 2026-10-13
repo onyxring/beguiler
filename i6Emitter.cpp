@@ -810,7 +810,7 @@ void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, 
 static bool endsInReturn(statementBlock* body){
     if(body == nullptr || body->statements.empty()) return false;
     statement* last = body->statements.back();
-    if(dynamic_cast<returnStatement*>(last) != nullptr) return true;
+    if(dynamic_cast<returnStatement*>(last) != nullptr || dynamic_cast<throwStatement*>(last) != nullptr) return true;   // a throw leaves too
     if(auto* is = dynamic_cast<ifStatement*>(last)) return endsInReturn(is->thenBlock) && endsInReturn(is->elseBlock);
     if(auto* sw = dynamic_cast<switchStatement*>(last)){
         bool hasDefault = false;
@@ -1879,6 +1879,7 @@ for(typeDef* g : languageService.globals){
         string value = staticText(vd->declaredExpressionValue);
         if(value.empty() || !plain(value)) continue;
         out << format("constant {0} = {1};\n", vd->dName(), value);
+        if(vd->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", vd->dName());   // used, though folded away
         earlyDeclaredGlobals.insert(vd->name);
         known.insert(lower(vd->dName()));
     }
@@ -2706,10 +2707,14 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     }
     if(!funcNode->src.file.empty())
         pushSourceMap(currentLine(), funcNode->src.file, funcNode->src.line);
-    out << format("[{0}", funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name);
+    string headerName = funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name;
+    out << format("[{0}", headerName);
+    auto lc = [](string t){ transform(t.begin(), t.end(), t.begin(), ::tolower); return t; };
     for(paramDef* param : funcNode->params)
-        if(currentSpillAliases.find(param->name) == currentSpillAliases.end())
+        if(currentSpillAliases.find(param->name) == currentSpillAliases.end()){
             out << format(" {0}", spillName(param->name));
+            routineParams[lc(headerName)].insert(lc(spillName(param->name)));
+        }
         else if(currentTryParamRaw.count(param->name))
             out << " " << currentTryParamRaw[param->name];
 
@@ -3747,6 +3752,8 @@ classDef* i6Emitter::ownedFieldClass(variableDeclaration* vd, const set<classDef
         // Field type must be a real, statically-instantiable class
         classDef* fieldCls = languageService.findClass(vd->type.name);
         if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isExternal) return nullptr;
+        // A member of a reference class refers to an instance owned elsewhere (§8.3.4).
+        if(!isValueClass(fieldCls)) return nullptr;
         // Skip if already on the instantiation path — same-class fields and any indirect cycles
         // are deliberately left at default (references owned elsewhere).
         if(visited.count(fieldCls)) return nullptr;
@@ -3983,6 +3990,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         if(varNode->declaredExpressionValue != nullptr)
             out << format(" = {0}", staticText(varNode->declaredExpressionValue));
         out << ";\n";
+        if(varNode->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", varNode->dName());   // used, though folded away
         return;
     }
     if(varNode->type.name == "attribute"){

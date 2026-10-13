@@ -1,0 +1,6 @@
+/* A union doesn't fit one of its member types directly (§2.8). */
+// EXPECT_ERROR: A 'string | stringObj' value doesn't fit a 'stringObj' directly
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+void pad(string | stringObj text){ stringObj p = text; print(p); }
+void main(){ pad("a"); }

@@ -1,0 +1,5 @@
+/* An array can't be named like an Inform 6 built-in function. */
+// EXPECT_ERROR: Array 'parent' is named like an Inform 6 keyword or built-in function
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+array<int> parent[8];
+void main(){ parent[0] = 1; }

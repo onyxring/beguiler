@@ -71,11 +71,11 @@ class _bglClass_wrapper
     head
 ;
 [main;
-    print (string)child.title;
-    if(child.words provides print) child.words.print(); else print (name)child.words;
+    print (string)_child.title;
+    if(_child.words provides print) _child.words.print(); else print (name)_child.words;
     print (string)w.head.title;
 ];
-_bglClass_menu child
+_bglClass_menu _child
   with linkto root,
        title "a child",
        words 'foo' 'bar' 'baz' 
