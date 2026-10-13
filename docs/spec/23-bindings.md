@@ -37,7 +37,7 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 
 | File | Library | I6 includes it corresponds to | Target notes |
 |---|---|---|---|
-| `bindings/i6StandardLibrary.bgl` | The Inform 6 standard library | `parser`, `verblib`, `grammar` | Z-machine and Glulx. Declares the Glulx window globals (`gg_mainwin`, `gg_statuswin`, …). |
+| `bindings/i6StandardLibrary.bgl` | The Inform 6 standard library, version 6.12 | `parser`, `verblib`, `grammar` | Z-machine and Glulx. Declares the Glulx window globals (`gg_mainwin`, `gg_statuswin`, …). An earlier library (6/10, 6/11) lacks some of what it declares. |
 | `bindings/punyInform.bgl` | PunyInform | `globals`, `puny` | Z-machine. PunyInform uses no classes; objects are distinguished by attributes alone. |
 
 Each binding is `#once`-guarded.

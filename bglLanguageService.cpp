@@ -393,17 +393,12 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal, stri
 variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& varDef){
     string lowerName = varDef.name;
     transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-    // Check for collision with a previously registered global variable.
-    // Exception: verb-typed globals are exempt from collision checks against any other global
-    // because I6 action routines are accessed as ##VerbName and live in a completely separate
-    // I6 namespace from regular globals (e.g. 'score' int vs 'Score' verb, 'open' attr vs 'Open' verb).
+    // Check for collision with a previously registered global variable. A variable of type verb
+    // (`extern verb action;`) is an Inform 6 global like any other, so it collides too.
     if(variableDeclaration* existing = findGlobalAs<variableDeclaration>(lowerName)){
-        string existingType = existing->type.name;
-        string newType      = varDef.type.name;
-        bool eitherIsVerb   = (existingType == "verb" || newType == "verb");
         // Allow full pass to claim a pre-pass stub — replace the pointer so subclass info
         // (e.g. arrayDeclaration::elementType) is preserved in the emitted output
-        if(existing->isPrePassStub && !eitherIsVerb){
+        if(existing->isPrePassStub){
             for(typeDef*& g : globals)
                 if(g == existing){ g = &varDef; break; }
             varDef.isPrePassStub = false;
@@ -414,10 +409,7 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
             if(existing->needsEarlyGlobalDecl) varDef.needsEarlyGlobalDecl = true;
             return varDef;
         }
-        if(!eitherIsVerb){
-            string loc = fmtSrc(existing->src);
-            parser.parsingError(format("'{0}' is already defined (originally declared at {1})", varDef.name, loc));
-        }
+        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", varDef.name, fmtSrc(existing->src)));
     }
     // Check for collision with a registered type (class/object/enum) of the same name
     if(isObjectType(lowerName)){

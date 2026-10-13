@@ -1,0 +1,6 @@
+/* `extern verb X;` is a variable, an Inform 6 global, so it can't share a property's name. */
+// EXPECT_ERROR: 'name' is already defined
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+extern verb Name;
+void main(){ }

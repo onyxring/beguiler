@@ -168,6 +168,7 @@ class i6Emitter{
         set<const variableDeclaration*> runtimeMemberValues;   // object member values bglInit assigns
         vector<string> runtimeMemberInits;
 
+        static string renameLocal(const string& str, const string& from, const string& to);
         static string replaceWord(string str, const string& from, const string& to);
         // replaceWord for an expression value: each substitution is bracketed when the operators
         // beside it in str bind at least as tightly as the value's own loosest operator, so the body

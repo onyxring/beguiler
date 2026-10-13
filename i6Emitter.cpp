@@ -596,6 +596,29 @@ string i6Emitter::replaceWord(string str, const string& from, const string& to){
     return str;
 }
 
+// Inform 6's word operators: a local of the name is renamed, but the operator itself, standing between
+// two operands (`obj has light`), keeps its spelling.
+static const set<string> i6WordOperators = {"has", "hasnt", "in", "notin", "ofclass", "provides", "or", "to"};
+static bool operandEnd(char c){ return isalnum((unsigned char)c) || c == '_' || c == ')' || c == ']' || c == '\'' || c == '"'; }
+static bool operandStart(char c){ return isalnum((unsigned char)c) || c == '_' || c == '(' || c == '\'' || c == '"' || c == '$' || c == '-' || c == '~'; }
+string i6Emitter::renameLocal(const string& str, const string& from, const string& to){
+    if(!i6WordOperators.count(from)) return replaceWord(str, from, to);
+    string out;
+    size_t pos = 0, at;
+    while((at = findWordCI(str, from, pos)) != string::npos){
+        size_t l = at, r = at + from.size();
+        while(l > 0 && str[l - 1] == ' ') l--;
+        while(r < str.size() && str[r] == ' ') r++;
+        bool infix = l > 0 && operandEnd(str[l - 1]) && r < str.size() && operandStart(str[r]);
+        bool whole = (at == 0 || !(isalnum((unsigned char)str[at - 1]) || str[at - 1] == '_' || str[at - 1] == '$' || str[at - 1] == '.'))
+                  && (at + from.size() >= str.size() || !(isalnum((unsigned char)str[at + from.size()]) || str[at + from.size()] == '_'));
+        out += str.substr(pos, at - pos);
+        out += infix || !whole ? str.substr(at, from.size()) : to;
+        pos = at + from.size();
+    }
+    return out + str.substr(pos);
+}
+
 // Resolve whether the named target is a Z-machine variant
 static bool isZTarget(const string& t){ return t=="z3"||t=="z5"||t=="z8"; }
 
@@ -1129,7 +1152,7 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     collectDottedAccessNames(body, propNames);
     // Inform 6 reads these as part of a statement or condition when a local carries the name
     // (`move x to to;`, `if (x in in)`), though a global or object of the same name is fine.
-    static const set<string> statementWords = {"to", "has", "in"};
+    static const set<string> statementWords = {"to", "has", "hasnt", "in", "notin", "ofclass", "provides", "or"};
     // Raw I6 that nothing renames (compiler-written nodes, islands with parts) keeps a local's name.
     string rawI6; collectRawI6Text(body, rawI6);
     transform(rawI6.begin(), rawI6.end(), rawI6.begin(), ::tolower);
@@ -1171,7 +1194,8 @@ string i6Emitter::exprText(expression* expr){
         auto sp = currentSpillAliases.find(tok);
         if(sp != currentSpillAliases.end()){ result += sp->second; continue; }
         auto rn = currentLocalRenames.find(tok);
-        if(rn != currentLocalRenames.end()){ result += rn->second; continue; }
+        bool asOperator = i6WordOperators.count(tok) && !result.empty() && operandEnd(result.back());
+        if(rn != currentLocalRenames.end() && !asOperator){ result += rn->second; continue; }
         auto dn = currentDisplayNames.find(tok);
         result += (dn != currentDisplayNames.end()) ? dn->second : tok;
     }
@@ -1181,7 +1205,7 @@ string i6Emitter::exprText(expression* expr){
     if(currentLocalRenames.empty() && currentSpillAliases.empty()) return result;
     return mapOutsideLiterals(result, [&](string code){
         for(auto& [from, to] : currentSpillAliases)  code = replaceWord(code, from, to);   // a frame slot wins over a rename
-        for(auto& [from, to] : currentLocalRenames)  code = replaceWord(code, from, to);
+        for(auto& [from, to] : currentLocalRenames)  code = renameLocal(code, from, to);
         code = restoreCallEscapes(code);
         return currentSpillAliases.empty() ? code : groupFrameSlots(code);
     });
@@ -1229,7 +1253,7 @@ string i6Emitter::spillWord(const string& text){
     if(currentSpillAliases.empty() && currentLocalRenames.empty()) return text;
     return mapOutsideLiterals(text, [&](string code){
         for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
-        for(auto& [from, to] : currentLocalRenames) code = replaceWord(code, from, to);
+        for(auto& [from, to] : currentLocalRenames) code = renameLocal(code, from, to);
         code = restoreCallEscapes(code);
         return currentSpillAliases.empty() ? code : groupFrameSlots(code);
     });

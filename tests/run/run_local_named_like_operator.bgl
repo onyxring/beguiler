@@ -1,0 +1,15 @@
+// run_local_named_like_operator — locals named like Inform 6's word operators (`has`, `hasnt`, `ofclass`,
+// `provides`) are renamed, and the operators `.has()`, `.hasnt()`, `.is()`, `.provides()` emit keep theirs.
+// EXPECT_OUTPUT: 1 1 1
+#beguilerSettings { target = z5; informName = "none"; }
+attribute shiny;
+class Box : object { int lid; }
+Box crate { attributes = {shiny}; }
+bool check(object obj){
+    bool has = obj.has(shiny);
+    bool hasnt = obj.hasnt(shiny);
+    bool ofclass = obj.is(Box);
+    bool provides = obj.provides(lid);
+    return has && !hasnt && ofclass && provides;
+}
+void main(){ bglInit(); print($"{(int)check(crate)} {(int)check(crate)} {(int)check(crate)}^"); }

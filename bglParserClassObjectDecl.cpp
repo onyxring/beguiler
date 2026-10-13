@@ -1548,8 +1548,9 @@ void bglParser::rejectRunTimeMemberRead(expression* e, const string& memberName)
             string w = (*it)[2].str(), lw = w;
             transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
             auto* g = languageService.findGlobalAs<variableDeclaration>(lw);
+            // A library name may be a constant the binding doesn't mark (`selfobj` reads like `player`).
             if(g == nullptr || g->isConst || g->isExternal || g->isPrePassStub || dynamic_cast<arrayDeclaration*>(g) != nullptr) continue;
-            if(classDef* tc = languageService.findClass(g->type.name); tc != nullptr && !tc->isPrimitive)
+            if(classDef* tc = languageService.findClass(g->type.name); tc != nullptr && !tc->isPrimitive && isValueClass(tc))
                 continue;   // static data names the instance it holds
             const string& gt = g->type.name;
             if(gt == "attribute" || gt == "property" || gt == "verb" || gt == "grammartoken" || g->isNamespaceAlias()) continue;

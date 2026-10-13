@@ -1,0 +1,468 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: the older Inform 6 library, release 6/10, through the i6StandardLibrary binding, on z8.
+// A character with life (Ask and Tell topics read with wn/NextWord, Give, Show), orders and
+// each_turn; ChangePlayer to the character and back; a pooled class of tokens made with new and
+// freed with delete, matched by a parse_name that answers TheSame and sets PluralFound, grouped by
+// list_together; darkness with a switchable light source, DarkToDark and an InScope entry point;
+// a SCOPE(routine) grammar token; add_to_scope; react_before and react_after; describe, initial and
+// invent; ChooseObjects; ParseNumber; PrintVerb; BeforeParsing; WriteListFrom with eListStyle
+// flags; a death caught by AfterLife and one reported by DeathMessage; the 6/10 end-of-game menu
+// (AMUSING_PROVIDED = 0, Amusing, then UNDO from the menu); an enum state machine, a switch on a
+// stringObj, <linq> over an array of objects, a union, and a save/restore.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib610";
+}
+
+const int MAX_SCORE = 5;
+const int AMUSING_PROVIDED = 0;   // 6/10 reads 0 as "Amusing provided"
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum eMood { calm, curious, annoyed }
+
+// ---- counters ------------------------------------------------------------------------------------
+
+int parses = 0;
+int reactions = 0;
+int darkMoves = 0;
+int lives = 1;
+
+// ---- rooms --------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light};
+}
+
+Room roomA {
+    short_name = "Room A";
+    description = "Room A. Room B is east. A cellar is below.";
+    object e_to = roomB;
+    object d_to = cellar;
+}
+
+Room roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    object w_to = roomA;
+    var n_to() {
+        print("A curtain of beads blocks the north.^");
+        return true;
+    }
+}
+
+object cellar {
+    short_name = "Cellar";
+    description = "A cellar. Stairs lead up; a passage leads north.";
+    object u_to = roomA;
+    object n_to = vault;
+}
+
+object vault {
+    short_name = "Vault";
+    description = "A vault. The passage leads south.";
+    object s_to = cellar;
+    // WORKAROUND(libs-3): 6/10 has no Going fake action (the binding declares one), so the vault checks Go.
+    bool before() {
+        if (action == Go && noun == s_obj && redStone.parent == player) rtrue("The red stone will not leave the vault.^");
+        rfalse;
+    }
+}
+
+// ---- things -------------------------------------------------------------------------------------
+
+object lantern {
+    short_name = "lantern";
+    name = {.lantern};
+    parent = roomA;
+    description = "A brass lantern.";
+    string initial = "A lantern stands on the floor.";
+    bool after() {
+        switch (action) {
+            case SwitchOn:  give(light); rfalse;
+            case SwitchOff: ungive(light); rfalse;
+        }
+        rfalse;
+    }
+    bool invent() {
+        if (inventory_stage == 2 && has(on)) { print(" (lit)"); }
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+object moss {
+    short_name = "glowing moss";
+    name = {.glowing, .moss};
+    parent = cellar;
+    description = "Faintly glowing moss.";
+    attributes = {static};
+}
+
+object statue {
+    short_name = "statue";
+    name = {.statue};
+    parent = roomB;
+    description = "A stone statue on a plinth.";
+    rawArray<object> add_to_scope = {plinth};
+    attributes = {static};
+}
+
+object plinth {
+    short_name = "plinth";
+    name = {.plinth};
+    description = "The plinth is part of the statue.";
+}
+
+object gong {
+    short_name = "gong";
+    name = {.gong};
+    parent = roomB;
+    description = "A bronze gong.";
+    bool describe() {
+        rtrue("^A gong hangs from a frame.^");
+    }
+    bool react_before() {
+        if (action == Sing) rtrue("The gong hums along.^");
+        rfalse;
+    }
+    bool react_after() {
+        if (action == Drop) reactions++;
+        rfalse;
+    }
+    attributes = {static};
+}
+
+object jar {
+    short_name = "jar";
+    name = {.jar};
+    parent = roomA;
+    description = "A glass jar.";
+    attributes = {container, open};
+}
+
+object redStone {
+    short_name = "red stone";
+    name = {.red, .stone};
+    parent = vault;
+}
+
+object blueStone {
+    short_name = "blue stone";
+    name = {.blue, .stone};
+    parent = vault;
+}
+
+int ChooseObjects(object obj, int code) {
+    if (code < 2) return 0;
+    if (obj == blueStone) return 3;
+    return 0;
+}
+
+// ---- tokens: a pool, matched by parse_name --------------------------------------------------------
+
+class Token[4] : object, bglAllocated {
+    int value;
+    string list_together = "tokens";
+    void create(int v) {
+        value = v;
+    }
+    bool short_name() {
+        print($"{value} token");
+        return true;
+    }
+    string plural = "tokens";
+    int parse_name() {
+        int n = 0;
+        if (parser_action == TheSame) {
+            if (((Token)parser_one).value == ((Token)parser_two).value) return -1;
+            return -2;
+        }
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .token) n++;
+            else if (w == ..tokens) { parser_action = PluralFound; n++; }
+            else if (w == .one && value == 1) n++;
+            else if (w == .two && value == 2) n++;
+            else if (w == null && TryNumber(wn - 1) == value) n++;
+            else return n;
+        }
+        return n;
+    }
+}
+
+array<Token> minted[4];
+
+// ---- a character --------------------------------------------------------------------------------
+
+class Person : object {
+    attributes = {animate, proper};
+    eMood mood = eMood.calm;
+}
+
+Person bob {
+    "Bob";
+    name = {.bob};
+    parent = roomA;
+    int nudges = 0;
+    int heard = 0;
+    description = "Bob.";
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Ask, Tell:
+                heard++;
+                wn = consult_from;
+                w = NextWord();
+                if (w == .the) w = NextWord();
+                if (w == .stone) { mood = eMood.curious; rtrue("~Stones are in the vault,~ says Bob.^"); }
+                if (w == .gong) rtrue("~Do not sing near the gong,~ says Bob.^");
+                rtrue("Bob shrugs.^");
+            case Give:
+                if (noun.is(Token)) {
+                    Token t = (Token)noun;
+                    print($"Bob pockets the {t.value} token.^");
+                    t.parent = self;
+                    rtrue;
+                }
+                rtrue("Bob declines.^");
+            case Show:
+                rtrue($"Bob looks at the {noun}.^");
+            case Attack:
+                mood = eMood.annoyed;
+                rtrue("Bob steps back.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        if (player == self) rfalse;
+        switch (action) {
+            case Take:
+                if (noun.parent == location) {
+                    noun.parent = self;
+                    rtrue($"Bob picks up the {noun}.^");
+                }
+                rtrue("Bob cannot reach that.^");
+            case Jump:
+                rtrue("Bob hops.^");
+        }
+        rtrue("Bob ignores the order.^");
+    }
+    void each_turn() {
+        nudges++;
+    }
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+void BeforeParsing() {
+    parses++;
+}
+
+void DarkToDark() {
+    darkMoves++;
+}
+
+bool InScope(object who) {
+    if (location == thedark && real_location == cellar) PlaceInScope(moss);
+    rfalse;
+}
+
+int ParseNumber(rawArray<char> text, int length) {
+    if (length == 5 && text[0] == 'd' && text[1] == 'o' && text[2] == 'z') return 12;
+    return 0;
+}
+
+bool PrintVerb(dictionaryWord word) {
+    if (word == .mint) { print("stamp out"); rtrue; }
+    rfalse;
+}
+
+void AfterLife() {
+    if (deadflag == 1 && lives > 0) {
+        lives--;
+        deadflag = 0;
+        print("^You get up again.^");
+    }
+}
+
+void DeathMessage() {
+    print("You have been gonged");
+}
+
+void Amusing() {
+    print("Try asking Bob about the gong.^");
+}
+
+// ---- verbs --------------------------------------------------------------------------------------
+
+verb Mint {
+    grammar = {{.mint, NUMBER}};
+    void handler() {
+        if (minted.length >= 4) { print("No tokens left.^"); return; }
+        Token t = new Token(parsed_number);
+        t.parent = location;
+        minted.append(t);
+        print($"A {parsed_number} token appears.^");
+    }
+}
+
+verb Melt {
+    grammar = {{.melt, NOUN}};
+    void handler() {
+        if (!noun.is(Token)) { print("Only tokens melt.^"); return; }
+        Token t = (Token)noun;
+        int i = minted.indexOf(t);
+        if (i >= 0) minted.remove(i);
+        print($"The {t.value} token melts away.^");
+        delete t;
+    }
+}
+
+verb Tokens {
+    meta = true;
+    grammar = {.tokens};
+    void handler() {
+        int total = 0;
+        for (Token t in minted) total += t.value;
+        int here = minted.filter((Token t) => t.parent == location).count();
+        int held = minted.filter((Token t) => t.parent == player).count();
+        print($"Tokens {minted.length}, total {total}, here {here}, held {held}");
+        if (minted.any((Token t) => t.parent == bob)) print(", Bob has some");
+        print(".^");
+    }
+}
+
+bool farScope() {
+    if (scope_stage == 2) {
+        for (object o in vault.children) PlaceInScope(o);
+        return true;
+    }
+    if (scope_stage == 3) print("Nothing like that is in the vault.^");
+    return false;
+}
+
+verb Sense {
+    grammar = {{.sense, SCOPE(farScope)}};
+    void handler() {
+        print($"You sense the {noun} in the vault.^");
+    }
+}
+
+verb Survey {
+    meta = true;
+    grammar = {.survey};
+    void handler() {
+        object first = location.child;
+        if (first == null) { print("Nothing here.^"); return; }
+        print("Plain: ");
+        WriteListFrom(first, eListStyle.english);
+        print(".^Definite: ");
+        WriteListFrom(first, eListStyle.english | eListStyle.defArt | eListStyle.conceal);
+        print(".^Tall:^");
+        WriteListFrom(first, eListStyle.newline | eListStyle.indent | eListStyle.recurse | eListStyle.conceal, 1);
+    }
+}
+
+verb Become {
+    grammar = {{.become, .me}, {.become, CREATURE}};
+    void handler() {
+        if (noun == null || noun == selfobj || noun == player) {
+            ChangePlayer(selfobj);
+            print("You are yourself again.^");
+            return;
+        }
+        if (noun != bob) { print("You can't become that.^"); return; }
+        ChangePlayer(bob, 1);
+        print("You are now Bob.^");
+    }
+}
+
+verb Mood {
+    meta = true;
+    grammar = {.mood};
+    void handler() {
+        stringObj m;
+        switch (bob.mood) {
+            case eMood.calm:    m = "calm";
+            case eMood.curious: m = "curious";
+            case eMood.annoyed: m = "annoyed";
+        }
+        switch (m) {
+            case "calm":    print("Bob is calm");
+            case "curious": print("Bob is curious");
+            default:        print($"Bob is {m.toUpper()}");
+        }
+        print($". Heard {bob.heard}, nudges {bob.nudges}, parses {parses}, reactions {reactions}, dark moves {darkMoves}, lives {lives}.^");
+    }
+}
+
+verb Strike {
+    grammar = {{.strike, NOUN}};
+    void handler() {
+        if (noun != gong) { print("Nothing happens.^"); return; }
+        deadflag = 3;
+        print("The gong booms.^");
+    }
+}
+
+verb Trip {
+    grammar = {.trip};
+    void handler() {
+        deadflag = 1;
+        print("You trip over your own feet.^");
+    }
+}
+
+verb Finish {
+    grammar = {.finish};
+    void handler() {
+        score = MAX_SCORE;
+        deadflag = 2;
+        print("Done.^");
+    }
+}
+
+union labelOrCount = string | int;
+
+void showLabel(labelOrCount v) {
+    if (typeof(v) == eType.string) print((string)v);
+    else print($"#{(int)v}");
+    print("^");
+}
+
+verb Labels {
+    meta = true;
+    grammar = {.labels};
+    void handler() {
+        array<labelOrCount> vs = {"jar", 3, "gong", minted.length};
+        for (labelOrCount v in vs) showLabel(v);
+    }
+}
+
+verb Errand {
+    grammar = {.errand};
+    void handler() {
+        Insert.perform(lantern, jar);
+        informLibrary.begin_action(Look);
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

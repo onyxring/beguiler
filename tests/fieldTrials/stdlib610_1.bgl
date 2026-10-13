@@ -1,0 +1,441 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: the older Inform 6 library, release 6/10, through the i6StandardLibrary binding, on z5.
+// The library's options set as Beguile constants before its includes (MAX_SCORE, NUMBER_TASKS, the
+// 6/10 form TASKS_PROVIDED = 0 and a byte task_scores array); a LibraryMessages object between the
+// parser and verblib includes, reading lm_n; PrintRank, which 6/10 still stubs; entry points
+// (NewRoom, TimePasses, GamePreRoutine, GamePostRoutine, ParserError, UnknownVerb, LookRoutine);
+// Achieved and FULL SCORE; doors with door_to/door_dir routines, a lock and key, a container that
+// takes only some things (Receive); a timer (StartTimer/time_left/time_out) and a daemon; a class
+// hierarchy with func<void> members set from lambdas; a namespace object of counters; <string> and
+// <array>; my own verbs, an extend adding grammar to a library verb and one evicting a word from it;
+// perform() of library actions; and a save/restore.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib610";
+}
+
+const int MAX_SCORE = 10;
+const int NUMBER_TASKS = 3;
+const int TASKS_PROVIDED = 0;     // 6/10 reads 0 as "tasks provided"
+rawArray<char> task_scores = {3, 4, 3};
+
+#includeI6 "parser"
+
+int g_messages = 0;
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Jump:
+                g_messages++;
+                rtrue("You jump in place.^");
+            case Take:
+                if (lm_n == 1) { g_messages++; rtrue("Got it.^"); }
+            case Drop:
+                if (lm_n == 4) { g_messages++; rtrue("Put down.^"); }
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---- counters, kept in a namespace object --------------------------------------------------------
+
+object tally {
+    int rooms = 0;
+    int preActs = 0;
+    int postActs = 0;
+    int parserErrors = 0;
+    int ticks = 0;
+    void show() {
+        print($"Rooms {rooms}, pre {preActs}, post {postActs}, parser errors {parserErrors}, ticks {ticks}, messages {g_messages}.^");
+    }
+}
+
+// ---- classes ------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light};
+    int visits = 0;
+}
+
+class Gadget : object {
+    func<void> onUse;
+    int uses = 0;
+    string label = "gadget";
+    void use() {
+        uses++;
+        if (onUse != null) onUse();
+        else print($"The {label} does nothing.^");
+    }
+}
+
+class Lamp : Gadget {
+    attributes = {switchable};
+    string when_on = "A lamp glows here.";
+    string when_off = "A lamp sits here, dark.";
+}
+
+// ---- rooms --------------------------------------------------------------------------------------
+
+Room roomA {
+    short_name = "Room A";
+    description = "Room A. A door is east. Room C is north.";
+    object e_to = oakDoor;
+    object n_to = roomC;
+}
+
+Room roomB {
+    short_name = "Room B";
+    description = "Room B. A door is west.";
+    object w_to = oakDoor;
+}
+
+Room roomC {
+    short_name = "Room C";
+    description = "Room C. Room A is south.";
+    object s_to = roomA;
+    string cant_go = "Only south from here.";
+}
+
+object oakDoor {
+    short_name = "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {roomA, roomB};
+    object with_key = brassKey;
+    void description() {
+        if (has(open)) print("The oak door is open.^");
+        else if (has(locked)) print("The oak door is locked.^");
+        else print("The oak door is closed.^");
+    }
+    object door_to() {
+        if (location == roomA) return roomB;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)e_to;
+        return (property)w_to;
+    }
+    bool after() {
+        switch (action) {
+            case Unlock: Achieved(0); rfalse;
+        }
+        rfalse;
+    }
+    attributes = {door, static, openable, lockable, locked};
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = roomC;
+    description = "A brass key.";
+}
+
+object crate {
+    short_name = "crate";
+    name = {.crate};
+    parent = roomB;
+    int capacity = 2;
+    description = "A wooden crate.";
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun == brassKey) rtrue("The key will not go in the crate.^");
+        }
+        rfalse;
+    }
+    bool after() {
+        switch (action) {
+            case Receive:
+                if (noun == pebble) Achieved(1);
+                rfalse;
+        }
+        rfalse;
+    }
+    attributes = {container, open, static};
+}
+
+object pebble {
+    short_name = "pebble";
+    name = {.pebble};
+    parent = roomB;
+    description = "A grey pebble.";
+}
+
+Lamp oilLamp {
+    short_name = "lamp";
+    name = {.lamp};
+    parent = roomA;
+    label = "lamp";
+    description = "A small lamp.";
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartTimer(self, 3);
+                rfalse;
+            case SwitchOff:
+                StopTimer(self);
+                rfalse;
+        }
+        rfalse;
+    }
+    int time_left;
+    bool time_out() {
+        ungive(on);
+        rtrue("^The lamp flickers out.^");
+    }
+}
+
+Gadget bell {
+    short_name = "bell";
+    name = {.bell};
+    parent = roomC;
+    label = "bell";
+    description = "A bell.";
+}
+
+Gadget whistle {
+    short_name = "whistle";
+    name = {.whistle};
+    parent = roomC;
+    label = "whistle";
+    description = "A whistle.";
+}
+
+object clock {
+    short_name = "clock";
+    name = {.clock};
+    parent = roomA;
+    description = "A wall clock.";
+    int number = 0;
+    void daemon() {
+        number++;
+        tally.ticks++;
+        if (number % 4 == 0 && location == roomA) print("^The clock chimes.^");
+    }
+    attributes = {static};
+}
+
+// ---- state ---------------------------------------------------------------------------------------
+
+array<string> seenRooms[6];
+stringObj trail;
+int bellRings = 0;
+int pitch = 3;
+
+void noteRoom(string n) {
+    if (seenRooms.length < 6) seenRooms.append(n);
+    if (trail.length == 0) trail = n;
+    else trail = trail.append(">").append(n);
+}
+
+// ---- entry points --------------------------------------------------------------------------------
+
+void PrintRank() {
+    if (score >= 7) print(", earning the rank of Expert.^");
+    else print(", earning the rank of Novice.^");
+}
+
+bool PrintTaskName(int task) {
+    switch (task) {
+        case 0: print("unlocking the door^");
+        case 1: print("filling the crate^");
+        case 2: print("ringing the bell^");
+    }
+    rtrue;
+}
+
+void NewRoom() {
+    tally.rooms++;
+    if (location == roomA) noteRoom("A");
+    else if (location == roomB) noteRoom("B");
+    else if (location == roomC) noteRoom("C");
+    if (location.is(Room)) ((Room)location).visits++;
+}
+
+void TimePasses() {
+    if (turns == 2) print("[Turn two.]^");
+}
+
+bool GamePreRoutine() {
+    tally.preActs++;
+    if (action == Smell && noun == null) rtrue("Dust.^");
+    rfalse;
+}
+
+bool GamePostRoutine() {
+    tally.postActs++;
+    rfalse;
+}
+
+bool ParserError(eParserError err) {
+    tally.parserErrors++;
+    switch (err) {
+        case eParserError.verb:   rtrue("No such verb here.^");
+        case eParserError.cantSee: rtrue("Nothing like that is here.^");
+    }
+    rfalse;
+}
+
+dictionaryWord UnknownVerb(dictionaryWord word) {
+    if (word == .peer) return .examine;
+    return null;
+}
+
+void LookRoutine() {
+    if (location == roomC) print($"[Room C visits: {((Room)roomC).visits}.]^");
+}
+
+// ---- my verbs -----------------------------------------------------------------------------------
+
+verb Ring {
+    grammar = {{.ring, NOUN}};
+    void handler() {
+        if (!noun.is(Gadget)) { print("That does not ring.^"); return; }
+        ((Gadget)noun).use();
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        tally.show();
+        print($"Score {score} of {MAX_SCORE}. Turns {turns}. Trail [{trail}] ({trail.length}).^");
+        print("Seen:");
+        for (string v in seenRooms) print($" {v}");
+        print($" ({seenRooms.length})^");
+        print($"Bell {bell.uses}, whistle {whistle.uses}, rings {bellRings}. Clock {clock.number}.^");
+        print("Lamp: ");
+        if (oilLamp.has(on)) print($"on, {oilLamp.time_left} left^");
+        else print("off^");
+    }
+}
+
+verb Rooms {
+    meta = true;
+    grammar = {.rooms};
+    void handler() {
+        int n = 0;
+        for (object o in roomA.children) n++;
+        print($"Room A visits {roomA.visits}, Room B {roomB.visits}, Room C {roomC.visits}; Room A holds {n}.^");
+    }
+}
+
+verb Errands {
+    grammar = {.errands};
+    void handler() {
+        // Library actions launched from my own code.
+        Take.perform(pebble);
+        Drop.perform(pebble);
+        Examine.perform(clock);
+    }
+}
+
+extend Take {
+    grammar += { {.grab, MULTI} };
+}
+
+// WORKAROUND(libs-1): the binding claims .pry/.prise/.lever/.jemmy/.force for Unlock, but 6/10's grammar has none, so `Extend 'pry'` fails in Inform 6; the line is added under .unlock.
+extend Unlock {
+    grammar += { {.unlock, NOUN, .using, HELD} };
+}
+
+extend Examine {
+    grammar -= { {.read} };
+}
+
+verb Peruse {
+    grammar = {{.read, NOUN}};
+    void handler() {
+        print($"You read the {noun}: nothing written.^");
+    }
+}
+
+// Which build this is, as Beguile and as Inform 6 see it.
+verb Build {
+    meta = true;
+    grammar = {.build};
+    void handler() {
+        print("Beguile: ");
+        #if DEBUG
+            print("debug");
+        #else
+            print("release");
+        #endif
+        print(". Inform 6: ");
+        #i6 {
+            #Ifdef DEBUG; print "debug"; #Ifnot; print "release"; #Endif;
+        }
+        print($". Library {LibRelease}.^");
+    }
+}
+
+array<int> readings[8];
+
+verb Note {
+    grammar = {{.note, NUMBER}};
+    void handler() {
+        if (readings.length >= 8) { print("The notes are full.^"); return; }
+        readings.append(parsed_number);
+        print($"Noted {parsed_number}.^");
+    }
+}
+
+verb Notes {
+    meta = true;
+    grammar = {.notes};
+    void handler() {
+        if (readings.length == 0) { print("No notes.^"); return; }
+        array<int> sorted = readings;
+        sorted.sort();
+        int total = 0;
+        for (int r in readings) total += r;
+        print("As noted:");
+        for (int r in readings) print($" {r}");
+        print(". Sorted:");
+        for (int r in sorted) print($" {r}");
+        print($". Total {total}, high {sorted[sorted.length - 1]}, index of 5: {readings.indexOf(5)}.^");
+    }
+}
+
+verb Spell {
+    meta = true;
+    grammar = {.spell};
+    void handler() {
+        stringObj t = trail;
+        stringObj u = t.toUpper();
+        stringObj r = t.reverse();
+        print($"Trail {t}; upper {u}; reversed {r}; first B at {t.indexOf("B")}; ");
+        if (t.contains("C")) print("has C.^");
+        else print("no C.^");
+    }
+}
+
+// ---- start --------------------------------------------------------------------------------------
+
+bool Initialise() {
+    location = roomA;
+    bell.onUse = () => {
+        bellRings++;
+        print($"Ding ({bellRings}).^");
+        if (bellRings == 2) Achieved(2);
+    };
+    whistle.onUse = () => { print($"A whistle at pitch {pitch}.^"); };
+    StartDaemon(clock);
+    rfalse;
+}
+
+#includeI6 "grammar"

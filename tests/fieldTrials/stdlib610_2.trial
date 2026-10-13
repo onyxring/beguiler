@@ -1,0 +1,219 @@
+Room A
+Room A. Room B is east. A cellar is below.
+A lantern stands on the floor.
+You can also see a jar (which is empty) and Bob here.
+> look
+Room A
+Room A. Room B is east. A cellar is below.
+A lantern stands on the floor.
+You can also see a jar (which is empty) and Bob here.
+> mood
+Bob is calm. Heard 0, nudges 1, parses 2, reactions 0, dark moves 0, lives 1.
+> ask bob about stone
+"Stones are in the vault," says Bob.
+> ask bob about the gong
+"Do not sing near the gong," says Bob.
+> tell bob about rain
+Bob shrugs.
+> mint 1
+A 1 token appears.
+> mint 2
+A 2 token appears.
+> mint dozen
+A 12 token appears.
+> mint 1
+A 1 token appears.
+> mint
+No tokens left.
+> i
+You are carrying nothing.
+> take tokens
+1 token: Taken.
+12 token: Taken.
+2 token: Taken.
+1 token: Taken.
+> i
+You are carrying:
+  four tokens:
+    two tokens
+    a 2 token
+    a 12 token
+> tokens
+Tokens 4, total 16, here 0, held 4.
+> give two token to bob
+Bob pockets the 2 token.
+> tokens
+Tokens 4, total 16, here 0, held 3, Bob has some.
+> melt 12 token
+The 12 token melts away.
+> tokens
+Tokens 3, total 4, here 0, held 2, Bob has some.
+> survey
+Plain: yourself, a lantern, a jar and Bob.
+Definite: the lantern, the jar and Bob.
+Tall:
+  a lantern
+  a jar
+  Bob
+> bob, jump
+Bob hops.
+> bob, take jar
+Bob picks up the jar.
+> bob, sing
+Bob ignores the order.
+> show lantern to bob
+(first taking the lantern)
+Bob looks at the lantern.
+> become bob
+You are now Bob.
+> i
+You are carrying:
+  a jar
+  a 2 token
+> e
+Room B (as Bob)
+Room B. Room A is west.
+A gong hangs from a frame.
+You can also see a statue here.
+> x plinth
+The plinth is part of the statue.
+> sing
+The gong hums along.
+> drop token
+Dropped.
+> drop token
+The 2 token is already here.
+> sense stone
+(the blue stone)
+You sense the blue stone in the vault.
+> sense jar
+Nothing like that is in the vault.
+> labels
+jar
+#3
+gong
+#3
+> w
+Room A (as Bob)
+You can see your former self here.
+> become me
+You are yourself again.
+> i
+You are carrying:
+  a lantern
+  two tokens
+> survey
+Plain: Bob and yourself.
+Definite: Bob.
+Tall:
+  Bob
+> d
+Darkness
+It is pitch dark, and you can't see a thing.
+> look
+Darkness
+It is pitch dark, and you can't see a thing.
+> x moss
+Darkness, noun.  An absence of light to see by.
+> n
+Darkness
+> s
+Darkness
+> u
+Room A
+You can see Bob here.
+> turn lantern on
+You switch the lantern on.
+> i
+You are carrying:
+  a lantern (lit) (providing light)
+  two tokens
+> d
+Cellar
+A cellar. Stairs lead up; a passage leads north.
+You can see a glowing moss here.
+> n
+Vault
+A vault. The passage leads south.
+You can see a red stone and a blue stone here.
+> take stone
+(the blue stone)
+Taken.
+> take red stone
+Taken.
+> s
+The red stone will not leave the vault.
+> drop red stone
+Dropped.
+> mood
+Bob is curious. Heard 3, nudges 32, parses 52, reactions 1, dark moves 2, lives 1.
+> save
+>>s610b
+*Ok.
+> drop all
+blue stone: Dropped.
+> tokens
+Tokens 3, total 4, here 0, held 2.
+> restore
+>>s610b
+*Ok.
+> i
+You are carrying:
+  a blue stone
+  a lantern (lit) (providing light)
+  two tokens
+> tokens
+Tokens 3, total 4, here 0, held 2.
+> mood
+Bob is curious. Heard 3, nudges 32, parses 56, reactions 1, dark moves 2, lives 1.
+> s
+Cellar
+You can see a glowing moss here.
+> u
+Room A
+You can see Bob here.
+> errand
+You put the lantern into the jar.
+Room A
+Room A. Room B is east. A cellar is below.
+You can see Bob here.
+> i
+You are carrying:
+  a blue stone
+  two tokens
+> trip
+You trip over your own feet.
+You get up again.
+> mood
+Bob is curious. Heard 3, nudges 35, parses 62, reactions 1, dark moves 2, lives 0.
+> e
+Room B
+A gong hangs from a frame.
+You can also see a 2 token and a statue here.
+> strike gong
+The gong booms.
+    *** You have been gonged ***
+In that game you scored 0 out of a possible 5, in 50 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?
+> undo
+Room B
+[Previous turn undone.]
+> mood
+Bob is curious. Heard 3, nudges 35, parses 64, reactions 1, dark moves 2, lives 0.
+> finish
+Done.
+    *** You have won ***
+In that game you scored 5 out of a possible 5, in 50 turns.
+Would you like to RESTART, RESTORE a saved game, see some suggestions for AMUSING things to do or QUIT?
+> amusing
+Try asking Bob about the gong.
+Would you like to RESTART, RESTORE a saved game, see some suggestions for AMUSING things to do or QUIT?
+> undo
+Room B
+[Previous turn undone.]
+> mood
+Bob is curious. Heard 3, nudges 35, parses 65, reactions 1, dark moves 2, lives 0.
+> x gong
+A bronze gong.
+> tokens
+Tokens 3, total 4, here 1, held 2.

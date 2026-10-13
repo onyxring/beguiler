@@ -1,0 +1,193 @@
+Room A
+Room A. A door is east. Room C is north.
+A lamp sits here, dark.
+You can also see an oak door and a clock here.
+> look
+Room A
+Room A. A door is east. Room C is north.
+A lamp sits here, dark.
+You can also see an oak door and a clock here.
+[Turn two.]
+> status
+Rooms 1, pre 2, post 2, parser errors 0, ticks 1, messages 0.
+Score 0 of 10. Turns 2. Trail [A] (1).
+Seen: A (1)
+Bell 0, whistle 0, rings 0. Clock 1.
+Lamp: off
+> build
+Beguile: release. Inform 6: debug. Library 6/10.
+> take lamp
+Got it.
+> turn on lamp
+You switch the lamp on.
+> i
+You are carrying:
+  a lamp
+The clock chimes.
+> jump
+You jump in place.
+> x clock
+A wall clock.
+The lamp flickers out.
+> peer clock
+A wall clock.
+> peer at clock
+Nothing like that is here.
+> xyzzy
+No such verb here.
+> take unicorn
+Nothing like that is here.
+> n
+Room C
+Room C. Room A is south.
+You can see a brass key, a bell and a whistle here.
+[Room C visits: 1.]
+> take key
+Got it.
+> ring bell
+Ding (1).
+> ring whistle
+A whistle at pitch 3.
+> ring bell
+Ding (2).
+[Your score has just gone up by three points.]
+> ring key
+That does not ring.
+> read bell
+You read the bell: nothing written.
+> spell
+Trail A>C; upper A>C; reversed C>A; first B at -1; has C.
+> s
+Room A
+You can see an oak door and a clock here.
+> verbose
+ is now in its "verbose" mode, which always gives long descriptions of locations (even if you've been there before).
+> look
+Room A
+Room A. A door is east. Room C is north.
+You can see an oak door and a clock here.
+The clock chimes.
+> brief
+ is now in its normal "brief" printing mode, which gives long descriptions of places never before visited and short descriptions otherwise.
+> unlock door using key
+You unlock the oak door.
+[Your score has just gone up by three points.]
+> open door
+You open the oak door.
+> e
+Room B
+Room B. A door is west.
+You can see an oak door, a crate (which is empty) and a pebble here.
+> grab pebble
+Got it.
+> put pebble in crate
+You put the pebble into the crate.
+[Your score has just gone up by four points.]
+> put key in crate
+The key will not go in the crate.
+> drop lamp
+Put down.
+> status
+Rooms 4, pre 25, post 20, parser errors 3, ticks 23, messages 5.
+Score 10 of 10. Turns 24. Trail [A>C>A>B] (7).
+Seen: A C A B (4)
+Bell 2, whistle 1, rings 2. Clock 23.
+Lamp: off
+> errands
+Got it.
+Put down.
+A wall clock.
+> rooms
+Room A visits 2, Room B 1, Room C 1; Room A holds 1.
+> note 7
+Noted 7.
+> note 5
+Noted 5.
+> note 12
+Noted 12.
+> note 1
+Noted 1.
+> notes
+As noted: 7 5 12 1. Sorted: 1 5 7 12. Total 25, high 12, index of 5: 1.
+> save
+>>s610a
+*Ok.
+> score
+You have so far scored 10 out of a possible 10, in 29 turns, earning the rank of Expert.
+> full score
+You have so far scored 10 out of a possible 10, in 29 turns, earning the rank of Expert.
+The score is made up as follows:
+     3 unlocking the door
+     4 filling the crate
+     3 ringing the bell
+    10 total (out of 10)
+> grab all
+pebble: Got it.
+lamp: Got it.
+oak door: That's fixed in place.
+crate: That's fixed in place.
+> note 99
+Noted 99.
+> w
+Room A
+You can see an oak door and a clock here.
+> n
+Room C
+You can see a bell and a whistle here.
+[Room C visits: 2.]
+> notes
+As noted: 7 5 12 1 99. Sorted: 1 5 7 12 99. Total 124, high 99, index of 5: 1.
+> restore
+>>s610a
+*Ok.
+> status
+Rooms 4, pre 33, post 23, parser errors 3, ticks 28, messages 7.
+Score 10 of 10. Turns 29. Trail [A>C>A>B] (7).
+Seen: A C A B (4)
+Bell 2, whistle 1, rings 2. Clock 28.
+Lamp: off
+> notes
+As noted: 7 5 12 1. Sorted: 1 5 7 12. Total 25, high 12, index of 5: 1.
+> i
+You are carrying:
+  a brass key
+> smell
+Dust.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> status
+Rooms 4, pre 39, post 28, parser errors 3, ticks 34, messages 7.
+Score 10 of 10. Turns 35. Trail [A>C>A>B] (7).
+Seen: A C A B (4)
+Bell 2, whistle 1, rings 2. Clock 34.
+Lamp: off
+> close door
+You close the oak door.
+> lock door with key
+You lock the oak door.
+> x door
+The oak door is locked.
+> w
+You can't, since the oak door is in the way.
+> objects
+Objects you have handled:
+the brass key   (held)
+the pebble   (in Room B)
+the lamp   (in Room B)
+> places
+You have visited: Room A, Room B and Room C.
+> spell
+Trail A>C>A>B; upper A>C>A>B; reversed B>A>C>A; first B at 6; has C.
+> undo
+Room B
+[Previous turn undone.]
+> superbrief
+ is now in its "superbrief" mode, which always gives short descriptions of locations (even if you haven't been there before).
+> e
+You can't go that way.
