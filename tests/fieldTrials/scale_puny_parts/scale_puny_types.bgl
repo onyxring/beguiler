@@ -1,0 +1,209 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// Shared types: sizes, enums with emitter members, bnums, value classes and the `sp` namespace object
+// every other part opens with `#using sp`.
+
+#once
+#include <array>
+#include <string>
+
+// --- sizes ------------------------------------------------------------------------------------------
+
+const int GRID_ROWS   = 5;
+const int GRID_COLS   = 8;
+const int GRID_CELLS  = 40;
+const int CRATE_COUNT = 150;
+const int TICKER_COUNT = 12;
+const int SHELF_SLOTS = 6;
+
+// --- enums ------------------------------------------------------------------------------------------
+
+enum eTier {
+    low = 1, mid, high, top,
+    emitter int rank        { ($self * 10) }
+    emitter bool above(eTier t) { ($self > $t) }
+}
+
+enum eDir {
+    north, south, east, west,
+    emitter int dRow { (($self == 2) - ($self == 1)) }
+    emitter int dCol { (($self == 3) - ($self == 4)) }
+}
+
+extend enum eDir {
+    emitter eDir opposite { ($self + 1 - 2 * (($self + 1) % 2)) }
+}
+
+enum eShade { pale, plain, dark, black }
+
+enum eLevel { idle = 0, warm = 5, hot = 10, critical = 20 }
+
+// --- bnums ------------------------------------------------------------------------------------------
+
+bnum eMark { painted, cracked, sealed, labeled, stamped, weighed, counted, moved }
+
+bnum eDoorFlags { }
+bnum eDoorSide : eDoorFlags { inner = 1, outer = 2 }
+bnum eDoorState : eDoorFlags { shut = 4, barred = 8, warded = 16 }
+
+// --- value classes ----------------------------------------------------------------------------------
+
+value class Coord {
+    int row;
+    int col;
+
+    Coord operator = (Coord o) {
+        row = o.row;
+        col = o.col;
+        return self;
+    }
+
+    replace eBool operator == (Coord o) { return row == o.row && col == o.col; }
+    replace eBool operator != (Coord o) { return row != o.row || col != o.col; }
+
+    int index() {
+        return row * GRID_COLS + col;
+    }
+
+    bool inside() {
+        return row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS;
+    }
+
+    void step(eDir d) {
+        row += d.dRow;
+        col += d.dCol;
+    }
+
+    void fromIndex(int i) {
+        row = i / GRID_COLS;
+        col = i % GRID_COLS;
+    }
+
+    int distance(Coord o) {
+        int dr = row - o.row;
+        int dc = col - o.col;
+        if (dr < 0) dr = -dr;
+        if (dc < 0) dc = -dc;
+        return dr + dc;
+    }
+}
+
+value class Tally {
+    int count;
+    int total;
+    int peak;
+
+    Tally operator = (Tally o) {
+        count = o.count;
+        total = o.total;
+        peak = o.peak;
+        return self;
+    }
+
+    Tally operator += (int v) {
+        count++;
+        total += v;
+        if (v > peak) peak = v;
+        return self;
+    }
+
+    int mean() {
+        if (count == 0) return 0;
+        return total / count;
+    }
+
+    void reset() {
+        count = 0;
+        total = 0;
+        peak = 0;
+    }
+
+    void show(string label) {
+        print($"{label}: n {count} sum {total} peak {peak} mean {mean()}");
+    }
+}
+
+value class Span : Coord {
+    int width;
+
+    Span operator = (Span o) {
+        width = o.width;
+        (Coord)self = o;
+        return self;
+    }
+
+    bool covers(Coord c) {
+        return c.row == row && c.col >= col && c.col < col + width;
+    }
+}
+
+// --- the namespace object ---------------------------------------------------------------------------
+
+object sp {
+    alias coord for Coord;
+    alias tally for Tally;
+    alias tier  for eTier;
+    alias dir   for eDir;
+    alias mark  for eMark;
+
+    int calls = 0;
+
+    int clamp(int v, int lo, int hi) {
+        calls++;
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
+
+    tier tierFor(int weight) {
+        calls++;
+        if (weight >= 9) return tier.top;
+        if (weight >= 6) return tier.high;
+        if (weight >= 3) return tier.mid;
+        return tier.low;
+    }
+
+    string tierName(tier t) {
+        switch (t) {
+            case tier.low:  return "low";
+            case tier.mid:  return "mid";
+            case tier.high: return "high";
+            case tier.top:  return "top";
+        }
+        return "none";
+    }
+
+    string dirName(dir d) {
+        switch (d) {
+            case dir.north: return "north";
+            case dir.south: return "south";
+            case dir.east:  return "east";
+            case dir.west:  return "west";
+        }
+        return "?";
+    }
+
+    int markCount(mark m) {
+        int n = 0;
+        int bits = (int)m;
+        while (bits != 0) {
+            if (bits & 1) n++;
+            bits = bits / 2;
+        }
+        return n;
+    }
+}
+
+// --- emitters a library author ships ----------------------------------------------------------------
+
+emitter kit {
+    bool lit(object o)          { ($o has light) }
+    int  half(int n)            { ($n / 2) }
+    int  wrap(int i, int n)     { ((($i % $n) + $n) % $n) }
+    void rule()                 { print "----^"; }
+    int  topWord(int n)         { ($n / 256) }
+}
+
+emitter int  sqr(int n)  { ($n * $n) }
+emitter bool between(int v, int lo, int hi) { ($v >= $lo && $v <= $hi) }
+emitter int  wordsPerCell { 2 }

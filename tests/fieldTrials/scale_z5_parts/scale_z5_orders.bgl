@@ -1,0 +1,270 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Orders: a small pool of orders for crates of a shade, opened and filled by commands; a pending queue
+// worked as a deque; queries with any, all, takeWhile, skipWhile, skip, map and a comparator sort;
+// a switch on a stringObj; an order's state as an enum with emitter members.
+
+#once
+#include "scale_z5_kit"
+#include "scale_z5_crates"
+#using sk
+
+/// Where an order stands.
+enum eOrderState {
+    open = 0, partial, filled, cancelled,
+    /// True while the order still wants crates.
+    emitter bool live { ($self <= 1) }
+}
+
+/// An order for a number of crates of one shade.
+class Order[10] : object {
+    int id;
+    eShade wanted;
+    int quantity;
+    int received = 0;
+    int weightIn = 0;
+    eOrderState state = eOrderState.open;
+
+    void create(int i, int s, int q) {
+        id = i;
+        wanted = (eShade)s;
+        quantity = q;
+        ordersOpen++;
+    }
+
+    void destroy() { ordersOpen--; }
+
+    bool short_name() {
+        print($"order {id}");
+        rtrue;
+    }
+
+    /// Takes a crate if it is of the wanted shade and the order still wants one.
+    bool accept(Crate c) {
+        if (!state.live || c.shade != wanted) return false;
+        received++;
+        weightIn += c.weight;
+        c.addMark(eMark.checked);
+        if (received >= quantity) state = eOrderState.filled;
+        else state = eOrderState.partial;
+        return true;
+    }
+
+    /// The order in words.
+    stringObj text() {
+        stringObj s = $"#{id} {received}/{quantity} ";
+        s += sk.shadeName(wanted);
+        s += " ";
+        s += orderStateName(state);
+        return s;
+    }
+}
+
+/// How many orders are out of the pool.
+int ordersOpen = 0;
+/// The next order number.
+int nextOrderId = 1;
+
+/// The live orders, oldest first.
+array<Order> book[10];
+/// Ids of orders waiting to be worked, as a deque.
+array<int> pending[10];
+
+/// An order state's name.
+string orderStateName(eOrderState s) {
+    switch (s) {
+        case eOrderState.open:      return "open";
+        case eOrderState.partial:   return "partial";
+        case eOrderState.filled:    return "filled";
+        default:                    return "cancelled";
+    }
+}
+
+/// The shade named by a word, or -1.
+int shadeFromWord(dictionaryWord w) {
+    for (int i = 0; i < shadeWords.length; i++) {
+        if (shadeWords[i] == w) return i;
+    }
+    return -1;
+}
+
+/// Opens an order; null when the pool is out.
+Order openOrder(int shade, int quantity) {
+    Order o = new Order(nextOrderId, shade, quantity);
+    if (o == null) return null;
+    nextOrderId++;
+    book += o;
+    pending.enqueue(o.id);
+    return o;
+}
+
+/// The order with an id, or null.
+Order orderWithId(int id) {
+    for (Order o in book) {
+        if (o.id == id) return o;
+    }
+    return null;
+}
+
+/// Gives each carried crate to the first live order that takes it; how many were taken.
+int fillFromCarried() {
+    int n = 0;
+    for (object x in player.children) {
+        if (!x.is(Crate)) continue;
+        Crate c = (Crate)x;
+        for (Order o in book) {
+            if (o.accept(c)) {
+                n++;
+                c.parent = null;
+                break;
+            }
+        }
+    }
+    return n;
+}
+
+/// Removes the filled and cancelled orders from the book, returning them to the pool; how many.
+int sweepOrders() {
+    int n = 0;
+    array<Order> done[10];
+    done = book.filter((Order o) => !o.state.live);
+    for (Order o in done) {
+        book.removeValue(o);
+        pending.removeValue(o.id);
+        delete o;
+        n++;
+    }
+    return n;
+}
+
+/// Orders by how many crates they still want, most first, then by id.
+int moreWanted(Order a, Order b) {
+    int wa = a.quantity - a.received;
+    int wb = b.quantity - b.received;
+    if (wa != wb) return wb - wa;
+    return a.id - b.id;
+}
+
+/// A survey of the book through the chain operators.
+stringObj bookSurvey() {
+    stringObj s = "";
+    int n = book.length;
+    bool anyFilled = book.any((Order o) => o.state == eOrderState.filled);
+    bool allLive = book.all((Order o) => o.state.live);
+    int leading = book.takeWhile((Order o) => o.state.live).count();
+    int trailing = book.skipWhile((Order o) => o.state.live).count();
+    int later = book.skip(1).count();
+    s += $"{n} orders; any filled {anyFilled}; all live {allLive}; live run {leading}, after it {trailing}, after first {later}";
+    array<Order> ranked[10];
+    ranked = book.orderBy(moreWanted);
+    s += "; by want:";
+    for (Order o in ranked) s += $" {o.id}";
+    int total = 0;
+    for (var w in book.map((Order o) => o.weightIn)) total += (int)w;
+    s += $"; weight in {total}";
+    return s;
+}
+
+verb OrderCrates {
+    grammar = { {.order, NUMBER, TOPIC}, {.order, NUMBER} };
+    void handler() {
+        int q = parsed_number;
+        int shade = 0;
+        if (consult_words > 0) {
+            wn = consult_from;
+            shade = shadeFromWord(NextWord());
+        }
+        if (shade < 0) {
+            print("No such shade.^");
+            return;
+        }
+        if (q < 1 || q > 9) {
+            print("Orders are for one to nine crates.^");
+            return;
+        }
+        Order o = openOrder(shade, q);
+        if (o == null) {
+            print("The order book is full.^");
+            return;
+        }
+        stringObj t = o.text();
+        print("Opened ");
+        print(t);
+        print(".^");
+    }
+}
+
+verb FillOrders {
+    grammar = {.fill};
+    void handler() {
+        int n = fillFromCarried();
+        print($"{n} crates went to orders.^");
+    }
+}
+
+verb OrderBook {
+    grammar = {.orders};
+    meta = true;
+    void handler() {
+        if (book.length == 0) {
+            print("No orders.^");
+            return;
+        }
+        for (Order o in book) {
+            stringObj t = o.text();
+            print(t);
+            print("^");
+        }
+        stringObj s = bookSurvey();
+        print(s);
+        print($". Pending:");
+        for (int id in pending) print($" {id}");
+        print($". Pool out {ordersOpen}.^");
+    }
+}
+
+verb CancelOrder {
+    grammar = {.cancel, NUMBER};
+    void handler() {
+        Order o = orderWithId(parsed_number);
+        if (o == null) {
+            print($"No order {parsed_number}.^");
+            return;
+        }
+        o.state = eOrderState.cancelled;
+        print($"Order {o.id} is cancelled.^");
+    }
+}
+
+verb CleanUp {
+    grammar = {.clean, .up};
+    void handler() {
+        int n = sweepOrders();
+        print($"{n} orders closed; {ordersOpen} out of the pool.^");
+    }
+}
+
+verb WorkOrder {
+    grammar = {.work};
+    void handler() {
+        if (pending.length == 0) {
+            print("Nothing pending.^");
+            return;
+        }
+        int id = pending.dequeue();
+        Order o = orderWithId(id);
+        stringObj t = o.text();
+        stringObj word = orderStateName(o.state);
+        switch (word) {
+            case "open":    print("Starting ");
+            case "partial": print("Continuing ");
+            default:        print("Closing ");
+        }
+        print(t);
+        if (o.state.live) {
+            pending.enqueue(id);
+            print("; back in the queue");
+        }
+        print($". Next: {pending.peek()}, last: {pending.peekEnd()}.^");
+    }
+}

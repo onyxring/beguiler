@@ -1,0 +1,204 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// Things that run on their own: lamps with a timer and a clamped charge level, a conveyor daemon
+// that walks crates along a row, a pool of beacons that each run a daemon (up to the library's
+// MAX_TIMERS, raised by #defineI6), a clock daemon that keeps snapshots, and a job queue of literal
+// func<void> values run one per turn.
+
+#once
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+extend extern class object {
+    int time_left;
+}
+
+// ---- lamps: a timer each ---------------------------------------------------------------------------------
+
+class Lamp : Item {
+    kind = kFuel;
+    weight = 3;
+    time_left = 0;
+    clampedLevel charge;
+    int burns = 0;
+    attributes = {switchable};
+
+    void time_out() {
+        ungive(on);
+        burns++;
+        charge = charge - 25;
+        if (location == roomOfThing(self)) printLine($"{cThe(self)} clicks off.");
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                if (charge <= 0) {
+                    ungive(on);
+                    printLine($"{cThe(self)} has no charge.");
+                    rtrue;
+                }
+                StartTimer(self, 3);
+                printLine($"{cThe(self)} glows at {charge}%. It will run 3 turns.");
+                rtrue;
+            case SwitchOff:
+                StopTimer(self);
+                printLine($"{cThe(self)} goes dark.");
+                rtrue;
+        }
+        rfalse;
+    }
+
+    void description() {
+        printLine($"{cThe(self)}: {onOff(self)}, charge {charge}%, burned {burns} time{pluralS(burns)}.");
+    }
+}
+
+string onOff(object o) { return o.has(on) ? "on" : "off"; }
+
+object roomOfThing(object o) {
+    object p = o;
+    while (p.parent != null) p = p.parent;
+    return p;
+}
+
+Lamp lampA { "lamp A"; name = {.lamp, .a}; parent = roomB; }
+Lamp lampB { "lamp B"; name = {.lamp, .b}; parent = roomB; }
+
+// ---- the conveyor: a daemon walking crates east along row C -----------------------------------------------
+
+object conveyor {
+    "conveyor";
+    name = {.conveyor, .belt};
+    parent = roomB;
+    description = "A conveyor control. Switch it on to move crates along row C.";
+    int shifted = 0;
+    int ticks = 0;
+    int column = 0;
+    attributes = {switchable, static};
+
+    void daemon() {
+        ticks++;
+        GridRoom from = world.at(2, column);
+        int nextCol = (column + 1) % GRID_COLS;
+        GridRoom into = world.at(2, nextCol);
+        object c = from.child;
+        while (c != null && !c.is(Crate)) c = c.sibling;
+        if (c != null) {
+            c.parent = into;
+            shifted++;
+        }
+        column = nextCol;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartDaemon(self);
+                printLine("The conveyor starts.");
+                rtrue;
+            case SwitchOff:
+                StopDaemon(self);
+                printLine($"The conveyor stops after {ticks} tick{pluralS(ticks)}, {shifted} crate{pluralS(shifted)} moved.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ---- beacons: a pool of daemons -------------------------------------------------------------------------------
+
+int beaconPulses = 0;
+
+class Beacon[BEACON_POOL] : object {
+    int id = 0;
+    int pulses = 0;
+
+    void create(int n) { id = n; }
+
+    void daemon() {
+        pulses++;
+        beaconPulses++;
+    }
+
+    void destroy() { StopDaemon(self); }
+}
+
+object beacons {
+    array<Beacon> live[BEACON_POOL];
+
+    /// Starts n more beacons; the number actually started.
+    int start(int n) {
+        int made = 0;
+        for (int i = 0; i < n; i++) {
+            if (live.length >= BEACON_POOL || live.length >= MAX_TIMERS - 8) break;
+            Beacon b = new Beacon(live.length + 1);
+            if (b == null) break;
+            live += b;
+            StartDaemon(b);
+            made++;
+        }
+        return made;
+    }
+
+    /// Stops and frees every beacon; how many there were.
+    int stopAll() {
+        int n = live.length;
+        for (Beacon b in live) delete b;
+        live.clear();
+        return n;
+    }
+
+    int total() {
+        int t = 0;
+        for (Beacon b in live) t += b.pulses;
+        return t;
+    }
+}
+
+// ---- the clock: turn snapshots ------------------------------------------------------------------------------
+
+object clock {
+    int ticks = 0;
+    array<int> snapshots[8];
+
+    void daemon() {
+        ticks++;
+        if (ticks % 10 == 0) {
+            if (snapshots.length == snapshots.size) snapshots.dequeue();
+            snapshots.enqueue(stock.crates.length);
+        }
+        runJob();
+    }
+}
+
+// ---- jobs: literal callbacks run one per turn -----------------------------------------------------------------
+
+array<literal func<void>> jobs[6];
+int jobsRun = 0;
+int jobMarks = 0;
+
+void runJob() {
+    if (jobs.length == 0) return;
+    func<void> j = jobs.dequeue();
+    j();
+    jobsRun++;
+}
+
+void jobMark() { jobMarks++; }
+void jobCount() {
+    for (Crate c in stock.crates) c.flags = c.flags | counted;
+}
+void jobUncount() {
+    for (Crate c in stock.crates) {
+        if ((c.flags & counted) != 0) c.flags = c.flags ^ counted;
+    }
+}
+
+bool queueJob(literal func<void> j) {
+    if (jobs.length == jobs.size) return false;
+    jobs.enqueue(j);
+    return true;
+}

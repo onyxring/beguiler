@@ -670,8 +670,12 @@ void bglParser::validateVerbNameClashes(bool early){
             if(g == v || lower(g->dName()) != name) continue;
             string kind; sourceLocation gsrc;
             if(auto* fd = dynamic_cast<functionDef*>(g)){
-                if(fd->isEmitter || (fd->isPrePassStub && !early) || fd->isReplacedDead) continue;
-                kind = "function"; gsrc = fd->src;
+                // A program's own emitter is a global name too (`rule;` would reach the verb); the library's
+                // emitters are left to the library-name checks.
+                bool libraryEmitter = fd->isEmitter && (fd->src.file.empty()
+                    || fd->src.file.find(settings.libPath) == 0);
+                if(libraryEmitter || (fd->isPrePassStub && !early) || fd->isReplacedDead) continue;
+                kind = fd->isEmitter ? "emitter" : "function"; gsrc = fd->src;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
                 if(vd->isNamespaceAlias() || (vd->isPrePassStub && !early) || vd->isInstanceBacking || vd->isSynthetic) continue;
                 kind = dynamic_cast<arrayDeclaration*>(vd) || vd->type.name.rfind("array", 0) == 0 || vd->type.name.rfind("rawarray", 0) == 0
@@ -2373,6 +2377,18 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
         if(auto* f = dynamic_cast<functionDef*>(&contextObject))
             namesLocal = qualifyFromParams(tok.value, f) || qualifyFromBodyLocals(tok.value, dynamic_cast<statementBlock*>(f->body))
                       || qualifyFromAncestorBlocks(tok.value, dynamic_cast<statementBlock*>(f->body));
+    // So is a member of the class or object being compiled.
+    if(!namesLocal && tok.is(eTokenType::identifier) && getCurrentCompileContext() == eCompileContext::codeBlock){
+        classDef* cls = currentClass != nullptr ? currentClass : currentObject != nullptr ? currentObject->objectClass : nullptr;
+        auto realMember = [&](typeMember* m){   // an alias member is a type name, not a member to reach
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return m->name == tok.value && !(vd && vd->isNamespaceAlias());
+        };
+        if(currentObject != nullptr)
+            for(typeMember* m : currentObject->members) if(realMember(m)){ namesLocal = true; break; }
+        if(!namesLocal && cls != nullptr)
+            namesLocal = cls->findMember(realMember) != nullptr;
+    }
     if(tok.is(eTokenType::identifier) && !tok.isDataType() && !namesLocal){
         for(objectDef* imp : usingObjectImports)
             for(typeMember* m : imp->members)

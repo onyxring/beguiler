@@ -1,0 +1,68 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a program at scale, on Glulx, across twelve files (2,900 lines). A grid of 48 pooled rooms
+// linked by loops with walls from a table; up to 180 pooled crates stocked from initializer tables,
+// each with a parse_name taking "crate 17" and "navy crate"; pooled keys, lockers, shelves, orders,
+// signals and beacons; a tool class hierarchy with a required member and default methods; lamps with
+// timers and a clamped accessor; a conveyor, a clock, a heat field and up to 40 beacon daemons with
+// MAX_TIMERS raised by #defineI6; a queue of literal func<void> jobs; <linq> chains over the 150-crate
+// list, beyond the default scratch size (raised in the settings); tallies with a float mean; orders
+// filled by rules that throw ints and objects through nested try blocks; a breadth-first route over
+// an array queue; a 40-entry catalog of inline objects reached by general parsing routines, a SCOPE()
+// routine over every crate and a NOUN() filter; inline accessors with outer; subscript operators; a
+// union read through typeof; a text-grid map and a text-buffer log through <glulxWindow>;
+// library-author emitters (array, global, value, namespace, a lease emitter class over an I6 pool,
+// composed emitter classes); a namespace object with type aliases and a superposed arithmetic kit;
+// enums with emitter members; bnum flags; 55 verbs through verb classes; the library's Take, Examine
+// and Drop extended and a grammar object. The .trial tours every file, saves and restores, and runs
+// a pooled churn 500 times.
+//
+// Measured 2026-10-12: compile 1.3 s (beguiler 1.2 s of it; 7,723 lines of I6), story 421,376 bytes.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+    linqScratchSize = 200;
+}
+
+#defineI6 MAX_TIMERS 48
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+#include "scale_glulx_parts/scale_glulx_core"
+#include "scale_glulx_parts/scale_glulx_kit"
+#include "scale_glulx_parts/scale_glulx_world"
+#include "scale_glulx_parts/scale_glulx_items"
+#include "scale_glulx_parts/scale_glulx_devices"
+#include "scale_glulx_parts/scale_glulx_ledger"
+#include "scale_glulx_parts/scale_glulx_orders"
+#include "scale_glulx_parts/scale_glulx_panels"
+
+bool Initialise() {
+    bglInit();
+    world.build();
+    stock.fill(CRATE_START);
+    cutterB.parent = stock.lockers[2];
+    setupPricing();
+    heat.fill(0);
+    StartDaemon(clock);
+    panels.openBoard();
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+#include "scale_glulx_parts/scale_glulx_verbs"
+#include "scale_glulx_parts/scale_glulx_catalog"
+#include "scale_glulx_parts/scale_glulx_heat"

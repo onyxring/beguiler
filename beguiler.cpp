@@ -722,6 +722,7 @@ bool beguiler::runInform6() {
 
     char buf[4096];
     bool sawError = false;
+    bool limitReported = false;   // a Z-machine limit was named; the errors after it are its fall-out
     int i6WarnHidden = 0;   // count of BLR-internal I6 warnings filtered from display
     while(fgets(buf, sizeof(buf), pipe)){
         string line(buf);
@@ -732,6 +733,35 @@ bool beguiler::runInform6() {
             string file = m[1].matched ? string(m[1]) : string(m[3]);
             int lineNo = stoi(m[2].matched ? string(m[2]) : string(m[4]));
             if(namesSplitWord(file, lineNo)){ i6WarnHidden++; continue; }
+        }
+        // A Z-machine limit Inform 6 runs into: say which one, once, in Beguile's terms; what Inform 6
+        // reports after it is the fall-out.
+        {
+            static const vector<pair<string, string>> limits = {
+                {"attributes already declared",
+                 "The program and its library declare more attributes than the Z-machine's 48. Use bool members for "
+                 "some flags (they cost no attribute), or target Glulx."},
+                {"global variables already declared",
+                 "The program and its library use more global variables than the Z-machine's 233 (compiler temporaries "
+                 "such as lambda captures count too). Keep some values in an object or an array, or target Glulx."},
+                {"properties already declared",
+                 "The program and its library declare more common properties than the Z-machine's 61 (a `property` "
+                 "declaration, and an extern property a class declares, is one). Make some members individual "
+                 "(declared on a class or object instead), or target Glulx."},
+                {"overflowed the maximum readable-memory size",
+                 "The program's data is larger than the Z-machine's 64K of readable memory. Shrink pooled classes "
+                 "(`class X[N]`: every slot copies all its properties), the <string> pool (bglStringPoolReserve x "
+                 "bglStringDefaultSize) or large arrays, or target Glulx. Inform 6's memory map follows."},
+            };
+            bool hit = false;
+            for(auto& [i6Text, bglText] : limits)
+                if(line.find(i6Text) != string::npos){
+                    if(!limitReported) cerr << "ERROR: " << bglText << "\n";
+                    limitReported = sawError = hit = true;
+                }
+            if(hit) continue;
+            if(limitReported && (line.find("Error:") != string::npos || line.find("Fatal error:") != string::npos || regex_match(line, m, i6DiagRe) || regex_match(line, m, i6DiagReE2)))
+                continue;
         }
         if(line.find("No 'Main' routine has been defined") != string::npos){
             cerr << "ERROR: The program has no main() function, so it has nowhere to start.\n";

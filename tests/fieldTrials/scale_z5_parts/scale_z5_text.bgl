@@ -1,0 +1,212 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Text: roman numerals, a shift cipher over a stringObj by index, padded columns for a machine table,
+// a word count, format patterns, captured output, and string ordering used by a sort; the methods of
+// <string> across one place.
+
+#once
+#include "scale_z5_kit"
+#include "scale_z5_machines"
+#using sk
+
+/// Roman numeral values and symbols, largest first.
+array<int> romanValues = { 1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1 };
+array<string> romanSymbols = { "M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I" };
+
+/// A number from 1 to 3999 as a roman numeral.
+stringObj roman(int n) {
+    stringObj s = "";
+    if (n < 1 || n > 3999) {
+        s = "?";
+        return s;
+    }
+    for (int i = 0; i < romanValues.length; i++) {
+        while (n >= romanValues[i]) {
+            s += romanSymbols[i];
+            n -= romanValues[i];
+        }
+    }
+    return s;
+}
+
+/// The value of a roman numeral, or -1 when a character is not a numeral.
+int unroman(stringObj s) {
+    int total = 0;
+    int i = 0;
+    while (i < s.length) {
+        bool matched = false;
+        for (int k = 0; k < romanSymbols.length; k++) {
+            string sym = romanSymbols[k];
+            if (sym.length == 2 && i + 1 < s.length) {
+                stringObj two = s.mid(i, 2);
+                if (two == sym) {
+                    total += romanValues[k];
+                    i += 2;
+                    matched = true;
+                    break;
+                }
+            } else if (sym.length == 1 && s[i] == sym[0]) {
+                total += romanValues[k];
+                i++;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) return -1;
+    }
+    return total;
+}
+
+/// Shifts each letter of s by k places, wrapping within the alphabet; other characters stay.
+stringObj shifted(stringObj s, int k) {
+    stringObj out = s;
+    k = ((k % 26) + 26) % 26;
+    for (int i = 0; i < out.length; i++) {
+        char c = out[i];
+        if (c >= 'a' && c <= 'z') out[i] = (char)('a' + (c - 'a' + k) % 26);
+        else if (c >= 'A' && c <= 'Z') out[i] = (char)('A' + (c - 'A' + k) % 26);
+    }
+    return out;
+}
+
+/// s padded with spaces on the right to width w, or cut to it.
+stringObj padRight(stringObj s, int w) {
+    stringObj out = s.left(w);
+    while (out.length < w) out += ' ';
+    return out;
+}
+
+/// s padded with spaces on the left to width w.
+stringObj padLeft(stringObj s, int w) {
+    stringObj out = "";
+    for (int i = s.length; i < w; i++) out += ' ';
+    out += s;
+    return out;
+}
+
+/// The number of words in s, split on spaces.
+int wordCount(stringObj s) {
+    int n = 0;
+    bool inWord = false;
+    for (int i = 0; i < s.length; i++) {
+        if (s[i] == ' ') inWord = false;
+        else if (!inWord) {
+            inWord = true;
+            n++;
+        }
+    }
+    return n;
+}
+
+/// A machine's row of the table: number, state, output and faults in columns.
+stringObj machineRow(Machine m) {
+    stringObj num = $"{m.num}";
+    stringObj st = stateName(m.state);
+    stringObj out = $"{m.output}";
+    stringObj f = $"{m.faults}";
+    stringObj row = padLeft(num, 3);
+    row += " ";
+    row += padRight(st, 8);
+    row += padLeft(out, 5);
+    row += padLeft(f, 3);
+    return row;
+}
+
+/// What printing a machine's description writes, captured.
+stringObj captureDescription(Machine m) {
+    stringObj s = "";
+    s.capture();
+    m.description();
+    s.release();
+    if (s.length > 0 && (s[s.length - 1] == (char)13 || s[s.length - 1] == (char)10)) return s.left(s.length - 1);
+    return s.trim();
+}
+
+/// Machine names ordered by their state's name, then number.
+int byStateName(Machine a, Machine b) {
+    stringObj x = stateName(a.state);
+    stringObj y = stateName(b.state);
+    int c = x.compareTo(y);
+    if (c != 0) return c;
+    return a.num - b.num;
+}
+
+verb RomanVerb {
+    grammar = {.roman, NUMBER};
+    meta = true;
+    void handler() {
+        stringObj r = roman(parsed_number);
+        int back = unroman(r);
+        stringObj low = r.toLower();
+        print($"{parsed_number} is ");
+        print(r);
+        print(" (");
+        print(low);
+        print($"), read back {back}.^");
+    }
+}
+
+verb CipherVerb {
+    grammar = {.cipher, NUMBER};
+    meta = true;
+    void handler() {
+        stringObj plain = "Room A1, crate 17: Machine Twelve.";
+        stringObj enc = shifted(plain, parsed_number);
+        stringObj dec = shifted(enc, -parsed_number);
+        print(enc);
+        print(" / ");
+        print(dec);
+        print($" / same {dec == plain}, {wordCount(enc)} words.^");
+    }
+}
+
+verb TableVerb {
+    grammar = {.table};
+    meta = true;
+    void handler() {
+        print("  # state    out  f^");
+        for (Machine m in machines) {
+            stringObj row = machineRow(m);
+            print(row);
+            print("^");
+        }
+    }
+}
+
+verb SortedVerb {
+    grammar = {.sorted};
+    meta = true;
+    void handler() {
+        array<Machine> ms[12];
+        ms = machines;
+        ms.sort(byStateName);
+        stringObj s = "";
+        for (Machine m in ms) {
+            if (s.length > 0) s += " ";
+            s += stateName(m.state).left(1);
+            s += $"{m.num}";
+        }
+        print(s);
+        print(".^");
+    }
+}
+
+verb WordsVerb {
+    grammar = {.words};
+    meta = true;
+    void handler() {
+        stringObj d = captureDescription(machine3);
+        stringObj a = d.replace("Machine", "Unit");
+        stringObj b = a.insert(0, "[");
+        stringObj c = b.append("]");
+        stringObj e = c.delete(1, 5);
+        stringObj f = "middle";
+        stringObj g = f.format("$0 and $1 ($2)", "left", "right");
+        print(c);
+        print($" {wordCount(d)} words, at {d.indexOf("output")}, ends {d.endsWith(".")}, starts {d.startsWith("Mach")}.^");
+        print(e);
+        print("^");
+        print(g);
+        print($" / {g.reverse().left(4)} / {padLeft("x", 3).length}.^");
+    }
+}

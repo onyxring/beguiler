@@ -1,0 +1,252 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The map: a grid of 48 pooled rooms built at start-up and linked by loops, with walls from a table,
+// two named rooms joined to it, the zone of each row, a breadth-first route finder over an array
+// queue, and a text map of the grid.
+
+#once
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+}
+
+// ---- the grid rooms --------------------------------------------------------------------------------------
+
+class GridRoom[48] : object {
+    int row = 0;
+    int col = 0;
+    eZone zone = zoneDock;
+    gridMark marks;
+    int visits = 0;
+    n_to = null;
+    s_to = null;
+    e_to = null;
+    w_to = null;
+    u_to = null;
+    attributes = {light};
+
+    void create(int r, int c) {
+        row = r;
+        col = c;
+        zone = zoneFor(r);
+    }
+
+    bool short_name() {
+        print($"Room {rowLetter(row)}{col + 1}");
+        rtrue;
+    }
+
+    void description() {
+        printLine($"Room {rowLetter(row)}{col + 1}, in the {zoneName(zone)} zone. Exits: {exitText(self)}.");
+    }
+
+    Cell cell() {
+        Cell x;
+        x.r = row;
+        x.c = col;
+        return x;
+    }
+
+    bool after() {
+        if (action == Go) {
+            visits++;
+            marks = marks | visitedMark;
+        }
+        rfalse;
+    }
+}
+
+eZone zoneFor(int r) {
+    if (r <= 1) return zoneDock;
+    if (r <= 3) return zoneStore;
+    if (r == 4) return zoneCold;
+    return zoneYard;
+}
+
+stringObj exitText(object room) {
+    stringObj s = "";
+    if (room.n_to != null) s += "north ";
+    if (room.s_to != null) s += "south ";
+    if (room.e_to != null) s += "east ";
+    if (room.w_to != null) s += "west ";
+    if (room.u_to != null) s += "up ";
+    if (room.d_to != null) s += "down ";
+    if (s.length == 0) s = "none";
+    else s = s.trim();
+    return s;
+}
+
+// ---- the named rooms ---------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. The grid is down. Room B is east.";
+    d_to = null;
+    attributes = {light};
+    int visits = 0;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+extend roomA {
+    e_to = roomB;
+}
+
+// ---- walls: pairs of cells with no way between them ------------------------------------------------------
+
+array<array<int>> walls = {
+    { 2, 3 }, { 10, 11 }, { 18, 19 },
+    { 12, 20 }, { 13, 21 }, { 14, 22 },
+    { 29, 30 }, { 37, 38 },
+    { 40, 41 }, { 33, 41 }
+};
+
+// ---- the world object: builds, finds, routes and draws --------------------------------------------------------
+
+/// The grid of rooms and everything that walks it.
+object world {
+    array<GridRoom> rooms[48];
+    int built = 0;
+    int linkCount = 0;
+    int routeCalls = 0;
+
+    /// Makes every room and links each to its neighbours, leaving out the walls.
+    void build() {
+        for (int r = 0; r < GRID_ROWS; r++) {
+            for (int c = 0; c < GRID_COLS; c++) {
+                GridRoom g = new GridRoom(r, c);
+                if (g == null) return;
+                rooms += g;
+                built++;
+            }
+        }
+        for (int i = 0; i < rooms.length; i++) {
+            GridRoom g = rooms[i];
+            if (g.col < GRID_COLS - 1 && !walled(i, i + 1)) {
+                g.e_to = rooms[i + 1];
+                rooms[i + 1].w_to = g;
+                linkCount++;
+            }
+            if (g.row < GRID_ROWS - 1 && !walled(i, i + GRID_COLS)) {
+                g.s_to = rooms[i + GRID_COLS];
+                rooms[i + GRID_COLS].n_to = g;
+                linkCount++;
+            }
+        }
+        rooms[0].u_to = roomA;
+        roomA.d_to = rooms[0];
+    }
+
+    bool walled(int a, int b) {
+        for (array<int> w in walls) {
+            if ((w[0] == a && w[1] == b) || (w[0] == b && w[1] == a)) return true;
+        }
+        return false;
+    }
+
+    /// The room at a row and column, or null outside the grid.
+    GridRoom at(int r, int c) {
+        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) return null;
+        return rooms[r * GRID_COLS + c];
+    }
+
+    GridRoom atCell(Cell x) { return at(x.r, x.c); }
+
+    /// The grid room an object is in, or null when it is outside the grid.
+    GridRoom roomOf(object o) {
+        object p = o;
+        while (p != null && !p.is(GridRoom)) p = p.parent;
+        if (p == null) return null;
+        return (GridRoom)p;
+    }
+
+    object neighbour(GridRoom g, eHeading h) {
+        switch (h) {
+            case hNorth: return g.n_to;
+            case hEast:  return g.e_to;
+            case hSouth: return g.s_to;
+            case hWest:  return g.w_to;
+        }
+        return null;
+    }
+
+    /// The number of steps from one room to another, or -1 when there is no way.
+    int route(GridRoom from, GridRoom into, array<int> path) {
+        routeCalls++;
+        array<int> dist[48];
+        array<int> prev[48];
+        array<int> queue[48];
+        for (int i = 0; i < 48; i++) {
+            dist += -1;
+            prev += -1;
+        }
+        int start = from.cell().index();
+        int goal = into.cell().index();
+        dist[start] = 0;
+        queue.enqueue(start);
+        while (queue.length > 0) {
+            int cur = queue.dequeue();
+            if (cur == goal) break;
+            GridRoom g = rooms[cur];
+            for (int h = 1; h <= 4; h++) {
+                object nx = neighbour(g, (eHeading)h);
+                if (nx == null || !nx.is(GridRoom)) continue;
+                int k = ((GridRoom)nx).cell().index();
+                if (dist[k] >= 0) continue;
+                dist[k] = dist[cur] + 1;
+                prev[k] = cur;
+                queue.enqueue(k);
+            }
+        }
+        path.clear();
+        if (dist[goal] < 0) return -1;
+        int back = goal;
+        while (back != start) {
+            path.insert(0, back);
+            back = prev[back];
+        }
+        return dist[goal];
+    }
+
+    /// A row of the map: one character per room.
+    stringObj mapRow(int r, GridRoom here) {
+        stringObj s = $"{rowLetter(r)} ";
+        for (int c = 0; c < GRID_COLS; c++) {
+            GridRoom g = at(r, c);
+            if (g == here) s += '@';
+            else if ((g.marks & blockedMark) != 0) s += '#';
+            else if ((g.marks & marked) != 0) s += '*';
+            else if (g.visits > 0) s += 'o';
+            else s += '.';
+            if (c < GRID_COLS - 1) {
+                if (g.e_to != null) s += '-';
+                else s += '|';
+            }
+        }
+        return s;
+    }
+
+    /// How many rooms of the grid lie in a zone.
+    int inZone(eZone z) {
+        int n = 0;
+        for (GridRoom g in rooms) {
+            if (g.zone == z) n++;
+        }
+        return n;
+    }
+}

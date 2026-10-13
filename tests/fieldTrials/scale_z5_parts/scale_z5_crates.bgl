@@ -1,0 +1,180 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Crates: a pool of a hundred and fifty, numbered, shaded and weighted from formulas and spread over
+// the grid; a parse_name that reads "crate 17" and "red crate"; queries over them with <linq>; marks as
+// a bnum; and a small pool of tokens that the long run takes and returns.
+
+#once
+#include "scale_z5_kit"
+#include "scale_z5_grid"
+#using sk
+
+const int crateTotal = 150;
+
+/// Words for the shades, in shade order.
+array<dictionaryWord> shadeWords = { .red, .orange, .yellow, .green, .blue, .indigo, .violet, .gray };
+
+/// A numbered crate.
+class Crate[crateTotal] : object {
+    int num;
+    eShade shade;
+    int weight;
+    eMark marks = 0;
+
+    void create(int n, int s, int w) {
+        num = n;
+        shade = (eShade)s;
+        weight = w;
+    }
+
+    bool short_name() {
+        print(sk.shadeName(shade));
+        print($" crate {num}");
+        rtrue;
+    }
+
+    void description() {
+        stringObj m = sk.markList(marks);
+        print($"Crate {num}: {sk.shadeName(shade)}, weight {weight}, marks ");
+        print(m);
+        print(".^");
+    }
+
+    /// Reads "crate", "crates", this crate's shade and this crate's number, in any order.
+    int parse_name() {
+        if (parser_action == TheSame) return -2;
+        int n = 0;
+        bool numbered = false;
+        while (wn <= num_words) {
+            dictionaryWord w = NextWord();
+            if (w == .crate || w == .crates) { n++; continue; }
+            if (w == shadeWords[(int)shade]) { n++; continue; }
+            wn--;
+            int k = TryNumber(wn);
+            if (k == num) {
+                n++;
+                wn++;
+                numbered = true;
+                continue;
+            }
+            if (k != -1000 && !numbered) return 0;
+            break;
+        }
+        return n;
+    }
+
+    bool hasMark(eMark m) { return (marks & m) != 0; }
+    void addMark(eMark m) { marks = marks | m; }
+    void clearMark(eMark m) { if (hasMark(m)) marks = marks ^ m; }
+
+    bool after() {
+        switch (action) {
+            case Take:
+                addMark(eMark.moved);
+                rfalse;
+            case Drop:
+                addMark(eMark.stacked);
+                rfalse;
+        }
+        rfalse;
+    }
+}
+
+/// Every crate, by number less one.
+array<Crate> crates[crateTotal];
+
+/// Makes the crates and spreads them over the grid; the number made.
+int buildCrates() {
+    for (int k = 1; k <= crateTotal; k++) {
+        Crate c = new Crate(k, (k * 3) % 8, (k * 7) % 23 + 1);
+        if (c == null) return k - 1;
+        if (k % 5 == 0) c.addMark(eMark.sealed);
+        if (k % 7 == 0) c.addMark(eMark.labeled);
+        if (k % 11 == 0) c.addMark(eMark.dented);
+        c.parent = grid[(k * 11) % gridCells];
+        crates += c;
+    }
+    return crates.length;
+}
+
+/// The crate numbered n, or null.
+Crate crateNumbered(int n) {
+    if (n < 1 || n > crates.length) return null;
+    return crates[n - 1];
+}
+
+/// How many crates have each shade, as "red 19, orange 19, ...".
+stringObj shadeCensus() {
+    stringObj s = "";
+    for (int i = 0; i < 8; i++) {
+        eShade sh = (eShade)i;
+        int n = crates.filter((Crate c) => c.shade == sh).count();
+        if (i > 0) s += ", ";
+        s += sk.shadeNames[i];
+        s += $" {n}";
+    }
+    return s;
+}
+
+/// The total weight of the crates in a holder.
+int weightIn(object holder) {
+    int w = 0;
+    for (object o in holder.children) {
+        if (o.is(Crate)) w += ((Crate)o).weight;
+    }
+    return w;
+}
+
+/// Crates ordered heaviest first, then by number.
+int heavierFirst(Crate a, Crate b) {
+    if (a.weight != b.weight) return b.weight - a.weight;
+    return a.num - b.num;
+}
+
+/// The numbers of the n heaviest crates.
+stringObj heaviest(int n) {
+    array<Crate> top[8];
+    top = crates.orderBy(heavierFirst).take(n);
+    stringObj s = "";
+    for (Crate c in top) {
+        if (s.length > 0) s += " ";
+        s += $"{c.num}({c.weight})";
+    }
+    return s;
+}
+
+/// The crates that are warm-shaded, sealed and heavier than w, as a count.
+int warmSealedOver(int w) {
+    return crates.filter((Crate c) => c.shade.warm)
+                 .filter((Crate c) => c.hasMark(eMark.sealed))
+                 .filter((Crate c) => c.weight > w)
+                 .count();
+}
+
+/// The distinct weights carried by crates of shade s, ascending.
+stringObj weightsOf(eShade s) {
+    array<int> ws[crateTotal];
+    for (Crate c in crates) {
+        if (c.shade == s) ws += c.weight;
+    }
+    array<int> d[32];
+    d = ws.distinct().orderBy();
+    stringObj out = "";
+    for (int w in d) {
+        if (out.length > 0) out += ",";
+        out += $"{w}";
+    }
+    return out;
+}
+
+// ---- Tokens: a small pool the long run takes from and returns to ----
+
+/// A token with a value; eight can be out at once.
+class Token[8] : object {
+    int value;
+    void create(int v) { value = v; tokensOut++; }
+    void destroy() { tokensOut--; }
+}
+
+/// How many tokens are out of the pool.
+int tokensOut = 0;

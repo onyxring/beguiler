@@ -1,0 +1,304 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// Twelve hand-declared rooms in a 4 x 3 block (Room A to Room L), a door between Room D and Room H, and
+// the objects an author places by hand: keys, boxes, lamps, signs, shelves and a scale.
+
+#once
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+// --- room classes -----------------------------------------------------------------------------------
+
+class HubRoom : object {
+    attributeList attributes = {light};
+    int entries = 0;
+
+    bool after() {
+        if (action == Go) {
+            entries++;
+            hubEntries++;
+        }
+        rfalse;
+    }
+}
+
+class DimRoom : HubRoom {
+    attributes = {!light};
+}
+
+int hubEntries = 0;
+
+// --- rooms: row 1 -----------------------------------------------------------------------------------
+
+HubRoom roomA {
+    "Room A";
+    description = "Room A. Room B is east. Room E is south.";
+    e_to = roomB;
+    s_to = roomE;
+}
+
+HubRoom roomB {
+    "Room B";
+    description = "Room B. Room A is west, Room C east, Room F south.";
+    w_to = roomA;
+    e_to = roomC;
+    s_to = roomF;
+}
+
+HubRoom roomC {
+    "Room C";
+    description = "Room C. Room B is west, Room D east, Room G south.";
+    w_to = roomB;
+    e_to = roomD;
+    s_to = roomG;
+}
+
+HubRoom roomD {
+    "Room D";
+    description = "Room D. Room C is west. A door is south. Stairs lead down to the grid.";
+    w_to = roomC;
+    s_to = ironDoor;
+    d_to = null;
+}
+
+// --- rooms: row 2 -----------------------------------------------------------------------------------
+
+HubRoom roomE {
+    "Room E";
+    description = "Room E. Room A is north, Room F east, Room I south.";
+    n_to = roomA;
+    e_to = roomF;
+    s_to = roomI;
+}
+
+HubRoom roomF {
+    "Room F";
+    description = "Room F. Room B is north, Room E west, Room G east, Room J south.";
+    n_to = roomB;
+    w_to = roomE;
+    e_to = roomG;
+    s_to = roomJ;
+}
+
+HubRoom roomG {
+    "Room G";
+    description = "Room G. Room C is north, Room F west, Room H east, Room K south.";
+    n_to = roomC;
+    w_to = roomF;
+    e_to = roomH;
+    s_to = roomK;
+}
+
+HubRoom roomH {
+    "Room H";
+    description = "Room H. A door is north. Room G is west, Room L south.";
+    n_to = ironDoor;
+    w_to = roomG;
+    s_to = roomL;
+}
+
+// --- rooms: row 3 -----------------------------------------------------------------------------------
+
+HubRoom roomI {
+    "Room I";
+    description = "Room I. Room E is north, Room J east.";
+    n_to = roomE;
+    e_to = roomJ;
+}
+
+DimRoom roomJ {
+    "Room J";
+    description = "Room J. Room F is north, Room I west, Room K east.";
+    n_to = roomF;
+    w_to = roomI;
+    e_to = roomK;
+}
+
+HubRoom roomK {
+    "Room K";
+    description = "Room K. Room G is north, Room J west, Room L east.";
+    n_to = roomG;
+    w_to = roomJ;
+    e_to = roomL;
+}
+
+HubRoom roomL {
+    "Room L";
+    description = "Room L. Room H is north, Room K west.";
+    n_to = roomH;
+    w_to = roomK;
+}
+
+// --- the door ---------------------------------------------------------------------------------------
+
+object ironDoor {
+    "iron door";
+    article = "an";
+    name = {.iron, .door};
+    description = "An iron door.";
+    rawArray<object>   found_in = {roomD, roomH};
+    rawArray<property> door_dir = {(property)s_to, (property)n_to};
+    object with_key = keyIron;
+    eDoorFlags flags = eDoorSide.inner | eDoorState.shut;
+    attributes = {door, openable, lockable, locked, static};
+
+    bool after() {
+        switch (action) {
+            case Open:   if ((flags & eDoorState.shut) != 0) flags = flags ^ eDoorState.shut;
+            case Close:  flags = flags | eDoorState.shut;
+            case Unlock: flags = flags | eDoorState.warded;
+        }
+        rfalse;
+    }
+}
+
+// --- keys -------------------------------------------------------------------------------------------
+
+class Key : object {
+    int cuts = 1;
+    eShade shade = eShade.plain;
+    name = {.key};
+}
+
+Key keyIron   { "iron key";   parent = roomB; name = {.iron, .key};   article = "an";   cuts = 4; shade = eShade.dark; }
+Key keyBrass  { "brass key";  parent = roomC; name = {.brass, .key};  cuts = 2; }
+Key keyTin    { "tin key";    parent = roomE; name = {.tin, .key};    cuts = 1; shade = eShade.pale; }
+Key keySteel  { "steel key";  parent = roomG; name = {.steel, .key};  cuts = 5; shade = eShade.black; }
+Key keyCopper { "copper key"; parent = roomI; name = {.copper, .key}; cuts = 3; }
+Key keyBone   { "bone key";   parent = roomK; name = {.bone, .key};   cuts = 2; shade = eShade.pale; }
+
+// --- boxes ------------------------------------------------------------------------------------------
+
+class Box : object {
+    attributeList attributes = {container, openable};
+    int capacity = 3;
+    name = {.box};
+
+    bool before() {
+        if (action == Receive) {
+            int n = 0;
+            for (object o in self.children) n++;
+            if (n >= capacity) rtrue($"{cThe(self)} is full.^");
+        }
+        rfalse;
+    }
+}
+
+Box boxRed    { "red box";    parent = roomA; name = {.red, .box}; }
+Box boxBlue   { "blue box";   parent = roomB; name = {.blue, .box};   capacity = 1; }
+Box boxGreen  { "green box";  parent = roomF; name = {.green, .box};  attributes = {open}; }
+Box boxBlack  { "black box";  parent = roomG; name = {.black, .box};  capacity = 2; attributes = {open}; }
+Box boxWhite  { "white box";  parent = roomK; name = {.white, .box}; }
+Box boxGray   { "gray box";   parent = roomL; name = {.gray, .grey, .box}; capacity = 5; attributes = {open}; }
+
+object pebble  { "pebble";  parent = boxRed;   name = {.pebble}; }
+object marble  { "marble";  parent = boxRed;   name = {.marble}; }
+object button  { "button";  parent = boxWhite; name = {.button}; }
+object feather { "feather"; parent = roomF;    name = {.feather}; }
+object thimble { "thimble"; parent = roomJ;    name = {.thimble}; }
+
+// --- lamps ------------------------------------------------------------------------------------------
+
+class Lamp : object {
+    attributeList attributes = {switchable};
+    int fuel = 40;
+    int burned = 0;
+    name = {.lamp};
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        burned++;
+        fuel--;
+        if (fuel <= 0) {
+            ungive(on);
+            ungive(light);
+            StopDaemon(self);
+            if (parent == player || parent == location) printLine($"{cThe(self)} goes out.");
+        }
+    }
+}
+
+Lamp lampOil   { "oil lamp";   parent = roomE; name = {.oil, .lamp}; article = "an"; }
+Lamp lampTin   { "tin lamp";   parent = roomH; name = {.tin, .lamp}; fuel = 3; }
+Lamp lampGlass { "glass lamp"; parent = roomL; name = {.glass, .lamp}; fuel = 900; }
+
+// --- signs ------------------------------------------------------------------------------------------
+
+class Sign : object {
+    attributeList attributes = {static, scenery};
+    string text;
+    int reads = 0;
+    name = {.sign};
+
+    bool before() {
+        if (action == Examine) {
+            reads++;
+            signReads++;
+            rtrue($"The sign reads: {text}^");
+        }
+        rfalse;
+    }
+}
+
+int signReads = 0;
+
+Sign signA { "sign"; parent = roomA; text = "A. North of the block."; }
+Sign signD { "sign"; parent = roomD; text = "D. Grid below."; }
+Sign signH { "sign"; parent = roomH; text = "H. Door north."; }
+Sign signL { "sign"; parent = roomL; text = "L. Corner."; }
+
+// --- shelves ----------------------------------------------------------------------------------------
+
+class Shelf : object {
+    attributeList attributes = {supporter, static};
+    array<object> log[SHELF_SLOTS];
+    name = {.shelf};
+
+    bool after() {
+        if (action == Receive) {
+            if (log.length == SHELF_SLOTS) log.dequeue();
+            log.enqueue(noun);
+        }
+        rfalse;
+    }
+
+    void history() {
+        print($"{cThe(self)} history:");
+        if (log.length == 0) print(" none");
+        for (object o in log) print($" {o}");
+        printLine(".");
+    }
+}
+
+Shelf shelfOak  { "oak shelf";  parent = roomC; name = {.oak, .shelf}; article = "an"; }
+Shelf shelfPine { "pine shelf"; parent = roomG; name = {.pine, .shelf}; }
+
+// --- the scale --------------------------------------------------------------------------------------
+
+object scale {
+    "scale";
+    parent = roomF;
+    name = {.scale};
+    description = "A scale with a pan.";
+    Tally weighings;
+    attributes = {supporter, static};
+
+    int weigh(object o) {
+        int w = weightOf(o);
+        weighings += w;
+        return w;
+    }
+}

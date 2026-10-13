@@ -369,7 +369,10 @@ object _bglBuf
        indexOf [buf searchTextBuf startingIndex stblen blen o i;
     stblen=self.length(searchTextBuf);
     blen=self.length(buf);
-    for (o = startingindex : o < blen : o++) {
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o + stblen <= blen : o++) {
         for (i = 0 : i < stblen : i++) {
             if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
                 break;

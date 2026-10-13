@@ -1,0 +1,103 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// What a library author adds: array emitters, global emitters and an emitter value, an emitter
+// namespace for text looks, a lease emitter class over an I6 ticket pool, and an emitter class that
+// composes the others as alias members.
+
+#once
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+// ---- array emitters ------------------------------------------------------------------------------------
+
+extend extern class array {
+    emitter T second() { $i6Expr($self[1]) }
+    emitter T penultimate() { $i6Expr($self[$self.length - 2]) }
+}
+
+// ---- global emitters -----------------------------------------------------------------------------------
+
+emitter int sgTwice(int n) { ($n * 2) }
+emitter int sgSquare(int n) { ($n * $n) }
+emitter bool sgEven(int n) { (($n % 2) == 0) }
+emitter int sgWordBytes { WORDSIZE }
+emitter void sgRule(int n) { for (sg_rule_i = 0: sg_rule_i < $n: sg_rule_i++) print "-"; new_line; }
+
+#i6 {
+    Global sg_rule_i = 0;
+    Global sg_tickets_out = 0;
+    Global sg_tickets_made = 0;
+    Array sg_ticket_used --> 8;
+    [ SG_TicketTake i;
+        for (i = 0: i < 8: i++) {
+            if (sg_ticket_used-->i == 0) {
+                sg_ticket_used-->i = 1;
+                sg_tickets_out++;
+                sg_tickets_made++;
+                return i + 1;
+            }
+        }
+        return 0;
+    ];
+    [ SG_TicketGive t;
+        if (t == 0) return;
+        sg_ticket_used-->(t - 1) = 0;
+        sg_tickets_out--;
+    ];
+}
+
+/// How many tickets are out.
+extern int sg_tickets_out asBgl ticketsOut;
+/// How many tickets were ever handed out.
+extern int sg_tickets_made asBgl ticketsMade;
+
+// ---- an emitter namespace of text looks ----------------------------------------------------------------
+
+emitter sgLook {
+    void strong() { style bold; }
+    void slanted() { style underline; }
+    void plain() { style roman; }
+    void mono() { font off; }
+    void prose() { font on; }
+}
+
+// ---- a ticket held for the length of one block ---------------------------------------------------------
+
+/// A ticket taken from the I6 pool when declared and handed back when its block ends.
+emitter class Ticket {
+    emitter void init() { $self = SG_TicketTake(); }
+    emitter void deinit() { SG_TicketGive($self); }
+    /// True when the pool had a ticket.
+    emitter eBool operator ? () { ($self ~= 0) }
+    /// The ticket's number, 1..8, or 0.
+    emitter int number { $self }
+}
+
+// ---- composed namespaces -------------------------------------------------------------------------------
+
+emitter class sgCounts {
+    emitter int tickets { sg_tickets_out }
+    emitter int made { sg_tickets_made }
+    emitter int bytes { WORDSIZE }
+}
+
+emitter class sgFormat {
+    emitter int half(int n) { ($n / 2) }
+    emitter int tenths(int n) { (($n * 10) / 100) }
+}
+
+emitter class sgKit { }
+extend class sgKit {
+    sgCounts counts;
+    sgFormat format;
+}
+
+/// Counts tickets taken inside nested blocks; how many were out at the deepest point.
+int ticketDepth(int depth) {
+    Ticket t;
+    if (!t?) return ticketsOut;
+    if (depth <= 1) return ticketsOut;
+    return ticketDepth(depth - 1);
+}

@@ -1,0 +1,192 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Tables: a sieve of three thousand byte flags and the primes it yields; a forty-by-forty table of
+// grid distances filled by breadth-first search from each room; number words built from tables of
+// strings; a route between two rooms read back from the distance table.
+
+#once
+#include "scale_z5_kit"
+#include "scale_z5_grid"
+#using sk
+
+const int sieveSize = 3000;
+
+/// One flag per number below sieveSize: 1 when composite.
+array<char> sieve[sieveSize];
+/// The primes below sieveSize, in order.
+array<int> primes[450];
+
+/// Distances between grid rooms, by from * 40 + to; -1 where no path exists.
+array<int> distances[1600];
+
+/// Words for numbers.
+array<string> onesWords = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                            "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                            "seventeen", "eighteen", "nineteen" };
+array<string> tensWords = { "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety" };
+
+/// Marks the composites and lists the primes; the number of primes found.
+int runSieve() {
+    sieve[0] = 1;
+    sieve[1] = 1;
+    for (int i = 2; i * i < sieveSize; i++) {
+        if (sieve[i] == 0) {
+            for (int j = i * i; j < sieveSize; j += i) sieve[j] = 1;
+        }
+    }
+    primes.clear();
+    for (int i = 2; i < sieveSize; i++) {
+        if (sieve[i] == 0) primes += i;
+    }
+    return primes.length;
+}
+
+/// The number of primes below n.
+int primesBelow(int n) {
+    int k = 0;
+    for (int p in primes) {
+        if (p >= n) break;
+        k++;
+    }
+    return k;
+}
+
+/// The neighbors of a cell reachable in one step, by the grid's exits.
+int neighborsOf(int c, array<int> into) {
+    into.clear();
+    GridRoom r = grid[c];
+    if (inGrid(r.n_to)) into += c - 8;
+    if (inGrid(r.e_to)) into += c + 1;
+    if (inGrid(r.s_to)) into += c + 8;
+    if (inGrid(r.w_to)) into += c - 1;
+    return into.length;
+}
+
+/// Fills the distance table by a breadth-first search from every room; the longest distance.
+int fillDistances() {
+    int longest = 0;
+    array<int> queue[gridCells];
+    array<int> next[4];
+    for (int from = 0; from < gridCells; from++) {
+        for (int to = 0; to < gridCells; to++) distances[from * 40 + to] = -1;
+        distances[from * 40 + from] = 0;
+        queue.clear();
+        queue.enqueue(from);
+        while (queue.length > 0) {
+            int c = queue.dequeue();
+            int d = distances[from * 40 + c];
+            if (d > longest) longest = d;
+            neighborsOf(c, next);
+            for (int n in next) {
+                if (distances[from * 40 + n] == -1) {
+                    distances[from * 40 + n] = d + 1;
+                    queue.enqueue(n);
+                }
+            }
+        }
+    }
+    return longest;
+}
+
+/// The cells of a shortest route from one cell to another, as names joined by dashes.
+stringObj routeText(int from, int to) {
+    stringObj s = sk.cellName(from);
+    if (distances[from * 40 + to] < 0) {
+        s += " (no route)";
+        return s;
+    }
+    int at = from;
+    array<int> next[4];
+    while (at != to) {
+        neighborsOf(at, next);
+        int best = next.first();
+        for (int n in next) {
+            if (distances[n * 40 + to] < distances[best * 40 + to]) best = n;
+        }
+        at = best;
+        s += "-";
+        s += sk.cellName(at);
+    }
+    return s;
+}
+
+/// A number from 0 to 9999 in words.
+stringObj wordsFor(int n) {
+    stringObj s = "";
+    if (n < 0 || n > 9999) {
+        s = "out of range";
+        return s;
+    }
+    if (n >= 1000) {
+        s += onesWords[n / 1000];
+        s += " thousand";
+        n = n % 1000;
+        if (n == 0) return s;
+        s += n < 100 ? " and " : " ";
+    }
+    if (n >= 100) {
+        s += onesWords[n / 100];
+        s += " hundred";
+        n = n % 100;
+        if (n == 0) return s;
+        s += " and ";
+    }
+    if (n >= 20) {
+        s += tensWords[n / 10];
+        if (n % 10 != 0) {
+            s += "-";
+            s += onesWords[n % 10];
+        }
+    } else if (s.length == 0 || n > 0) {
+        s += onesWords[n];
+    }
+    return s;
+}
+
+verb Prime {
+    grammar = { {.prime, NUMBER}, {.primes, .below, NUMBER} };
+    meta = true;
+    void handler() {
+        int n = parsed_number;
+        if ((dictionaryWord)verb_word == .primes) {
+            print($"{primesBelow(n)} primes below {n}.^");
+            return;
+        }
+        if (n < 1 || n > primes.length) {
+            print($"There are {primes.length} primes in the table.^");
+            return;
+        }
+        int p = primes[n - 1];
+        print($"Prime {n} is {p}; composite flags near it: {(int)sieve[p - 1]}{(int)sieve[p]}{(int)sieve[p + 1]}.^");
+    }
+}
+
+verb Spell {
+    grammar = {.spell, NUMBER};
+    meta = true;
+    void handler() {
+        stringObj s = wordsFor(parsed_number);
+        stringObj u = s.toUpper();
+        print(s);
+        print(" / ");
+        print(u);
+        print($" ({s.length} letters with spaces).^");
+    }
+}
+
+verb Route {
+    grammar = { {.route, NUMBER}, {.route, .to, NUMBER} };
+    meta = true;
+    void handler() {
+        int to = parsed_number - 1;
+        if (to < 0 || to >= gridCells || !location.is(GridRoom)) {
+            print("No route.^");
+            return;
+        }
+        int from = ((GridRoom)location).cell;
+        stringObj r = routeText(from, to);
+        print($"{distances[from * 40 + to]} steps: ");
+        print(r);
+        print(".^");
+    }
+}

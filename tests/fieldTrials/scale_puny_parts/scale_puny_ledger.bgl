@@ -1,0 +1,284 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// The ledger: a stringObj journal trimmed to a bounded length, string switches, a table of operations
+// held as func<> values, try/catch over checked arithmetic and lookups, recursion over strings and
+// numbers, and an order book of value-class entries.
+
+#once
+#include <array>
+#include <string>
+#include <linq>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+// --- the journal ------------------------------------------------------------------------------------
+
+stringObj journal;
+int journalLines = 0;
+int journalDropped = 0;
+
+void jot(string what, int n) {
+    journalLines++;
+    journal += $"{what}={n};";
+    if (journal.length > 60) {
+        journal = journal.right(40);
+        journalDropped++;
+    }
+}
+
+void showJournal() {
+    printLine($"Journal {journalLines} lines, dropped {journalDropped}, length {journal.length}.");
+    printLine(journal);
+}
+
+// --- string switches --------------------------------------------------------------------------------
+
+int codeFor(string word) {
+    switch (word) {
+        case "alpha": return 1;
+        case "beta":  return 2;
+        case "gamma": return 3;
+        case "delta": return 4;
+    }
+    return 0;
+}
+
+string wordFor(int code) {
+    switch (code) {
+        case 1: return "alpha";
+        case 2: return "beta";
+        case 3: return "gamma";
+        case 4: return "delta";
+        case 5 to 9: return "many";
+        case >= 10: return "lots";
+    }
+    return "none";
+}
+
+array<string> codeWords = { "gamma", "alpha", "zeta", "delta", "beta" };
+
+int codeSum() {
+    int t = 0;
+    for (string w in codeWords) t += codeFor(w);
+    return t;
+}
+
+// --- operations as func<> values --------------------------------------------------------------------
+
+int opAdd(int a, int b) { return a + b; }
+int opSub(int a, int b) { return a - b; }
+int opMul(int a, int b) { return a * b; }
+int opMax(int a, int b) { return a > b ? a : b; }
+
+array<func<int, int, int>> ops = { opAdd, opSub, opMul, opMax };
+array<string> opNames = { "add", "sub", "mul", "max" };
+
+int fold(array<int> values, func<int, int, int> f, int start) {
+    int acc = start;
+    for (int v in values) acc = f(acc, v);
+    return acc;
+}
+
+void opTable() {
+    array<int> values = { 4, 9, 2, 7 };
+    for (int i = 0; i < ops.length; i++) {
+        int r = fold(values, ops[i], i == 2 ? 1 : 0);
+        print($"{opNames[i]} {r}; ");
+    }
+    printLine();
+}
+
+func<int, int> scaler(int k) {
+    switch (k) {
+        case 2: return (int n) => n * 2;
+        case 3: return (int n) => n * 3;
+    }
+    return (int n) => n;
+}
+
+int applyTwice(func<int, int> f, int v) {
+    return f(f(v));
+}
+
+// --- checked arithmetic and lookups -----------------------------------------------------------------
+
+const int ERR_ZERO   = 1;
+const int ERR_RANGE  = 2;
+const int ERR_ABSENT = 3;
+
+int checkedDiv(int a, int b) {
+    if (b == 0) throw ERR_ZERO;
+    return a / b;
+}
+
+int checkedCell(int i) {
+    if (i < 0 || i >= GRID_CELLS) throw ERR_RANGE;
+    return i;
+}
+
+int crateWeightOrThrow(int n) {
+    Crate c = crateNo(n);
+    if (!(c?)) throw ERR_ABSENT;
+    return c.weight;
+}
+
+int errors = 0;
+
+string errName(int e) {
+    switch (e) {
+        case ERR_ZERO:   return "zero";
+        case ERR_RANGE:  return "range";
+        case ERR_ABSENT: return "absent";
+    }
+    return "other";
+}
+
+int safely(func<int, int> f, int arg) {
+    try {
+        return f(arg);
+    } catch (int e) {
+        errors++;
+        print($"[{errName(e)}] ");
+        return -1;
+    }
+}
+
+void checks() {
+    print("Checks: ");
+    print($"{safely((int n) => checkedDiv(100, n), 7)} ");
+    print($"{safely((int n) => checkedDiv(100, n), 0)} ");
+    print($"{safely((int n) => checkedCell(n), 39)} ");
+    print($"{safely((int n) => checkedCell(n), 40)} ");
+    print($"{safely((int n) => crateWeightOrThrow(n), 4)} ");
+    print($"{safely((int n) => crateWeightOrThrow(n), 999)} ");
+    printLine($"errors {errors}.");
+}
+
+// Nested try: the inner catch rethrows anything but a range error.
+int nested(int a, int b) {
+    try {
+        try {
+            int cell = checkedCell(a);
+            return checkedDiv(cell, b);
+        } catch (int e) {
+            if (e == ERR_RANGE) return -2;
+            throw e;
+        }
+    } catch (int outerErr) {
+        return -10 - outerErr;
+    }
+    return 0;
+}
+
+// --- recursion --------------------------------------------------------------------------------------
+
+int digitSum(int n) {
+    if (n < 10) return n;
+    return n % 10 + digitSum(n / 10);
+}
+
+stringObj spellDigits(int n) {
+    array<string> names = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
+    if (n < 10) {
+        stringObj s = names[n];
+        return s;
+    }
+    stringObj head = spellDigits(n / 10);
+    head += "-";
+    head += names[n % 10];
+    return head;
+}
+
+int gcd(int a, int b) {
+    if (b == 0) return a;
+    return gcd(b, a % b);
+}
+
+// --- an order book ----------------------------------------------------------------------------------
+
+value class Order {
+    int crate;
+    int qty;
+    eTier wanted;
+    bool filled;
+
+    Order operator = (Order o) {
+        crate = o.crate;
+        qty = o.qty;
+        wanted = o.wanted;
+        filled = o.filled;
+        return self;
+    }
+
+    int operator <=> (Order o) { return qty - o.qty; }
+}
+
+array<Order> orderBook[12];
+int ordersFilled = 0;
+
+void placeOrder(int crateNum, int qty, eTier t) {
+    Order o;
+    o.crate = crateNum;
+    o.qty = qty;
+    o.wanted = t;
+    o.filled = false;
+    orderBook.append(o);
+}
+
+int fillOrders() {
+    int n = 0;
+    for (int i = 0; i < orderBook.length; i++) {
+        Order o = orderBook[i];
+        if (o.filled) continue;
+        Crate c = crateNo(o.crate);
+        if (!(c?) || c.grade != o.wanted) continue;
+        o.filled = true;
+        orderBook[i] = o;
+        n++;
+        ordersFilled++;
+    }
+    return n;
+}
+
+void showOrders() {
+    print($"Orders {orderBook.length}, filled {ordersFilled}:");
+    for (Order o in orderBook) {
+        print($" {o.crate}x{o.qty}");
+        if (o.filled) print("*");
+    }
+    printLine(".");
+}
+
+void sortOrders() {
+    orderBook.sort();
+    print("By qty:");
+    for (Order o in orderBook) print($" {o.qty}");
+    printLine(".");
+}
+
+// --- text building ----------------------------------------------------------------------------------
+
+stringObj crateList(array<int> numbers) {
+    stringObj s;
+    for (int i = 0; i < numbers.length; i++) {
+        if (i > 0) s += ", ";
+        s += $"crate {numbers[i]}";
+    }
+    return s;
+}
+
+void textTour() {
+    stringObj a = "Grid";
+    a += " ";
+    a += "rows";
+    stringObj b = a.toUpper();
+    printLine($"{a} / {b} / {b.length} / {a.startsWith("Grid")}");
+    stringObj c = $"{GRID_ROWS}x{GRID_COLS}={GRID_CELLS}";
+    printLine($"{c} {c.indexOf("=")}");
+    array<int> picks = { 4, 10, 19 };
+    stringObj list = crateList(picks);
+    printLine(list);
+    printLine($"{spellDigits(4096)} {digitSum(4096)} {gcd(84, 36)}");
+}

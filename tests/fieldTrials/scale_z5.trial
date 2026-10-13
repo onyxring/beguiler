@@ -1,0 +1,379 @@
+Room M
+Room M. The grid is south.
+> status
+Built 40 rooms, 150 crates, 430 primes; longest walk 11.
+Turn 0. Sweeper: 0 moves, 0 turns, 0 bumps, at A1 facing east.
+Machines: iiiiiiiiiiiX, output 0. Signals sent 0. Tokens out 0.
+--------
+> map
+S4434443
+44444434
+44344344
+43444344
+34443444
+> census
+red 18, orange 19, yellow 19, green 19, blue 19, indigo 18, violet 19, gray 19. Heaviest: 13(23) 36(23) 59(23) 82(23) 105(23). Warm sealed over 12: 4. Exits: 118.
+> x machine 3
+Machine 3: idle, output 0, rate 1, faults 0.
+> start machine 2
+Machine 2 will not start: jammed.
+> start machine 2
+Machine 2 will not start: jammed.
+> start all machines
+7 started; refused: 4 overheated, 6 empty, 8 locked, 10 unknown, 12 locked.
+> machines
+wwwiwiwiwiwX output 0, faults 6 machines.
+> table
+  # state    out  f
+  1 warming     0  0
+  2 warming     0  2
+  3 warming     0  0
+  4 idle        0  1
+  5 warming     0  0
+  6 idle        0  1
+  7 warming     0  0
+  8 idle        0  1
+  9 warming     0  0
+ 10 idle        0  1
+ 11 warming     0  0
+ 12 broken      0  1
+> z
+Time passes.
+> z
+Time passes.
+> machines
+RRRiRiRiRiRX output 0, faults 6 machines.
+> sorted
+b12 i4 i6 i8 i10 r1 r2 r3 r5 r7 r9 r11.
+> rule 1
+Rates by rule 1: 112223334445.
+> rule 2
+Rates by rule 2: 222222222222.
+> alpha
+Signal alpha (1).
+> bravo
+Signal bravo (2).
+> zulu
+Signal zulu (26).
+> xray
+Signal xray (24).
+> relay 5
+Signal echo (5).
+> send 13
+Signal mike (13).
+> transmit 4
+Signal delta (4).
+> transmit 99
+No signal has code 99.
+> relay code 26
+Signal zulu (26).
+> log
+8 logged, 8 sent, sum 428, odd 3, high 26, distinct 1 2 4 5 13 24 26. Letters: abzxemdz.
+> idle
+Time passes.
+> words
+[Unit 3: running, output 24, rate 2, faults 0.] 9 words, at 20, ends true, starts true.
+[3: running, output 24, rate 2, faults 0.]
+middle and left (right) / )thg / 3.
+> s
+Room A1
+Grid room A1. Exits: north east south.
+You can see a red crate 120, a red crate 80 and a red crate 40 here.
+> here
+3 crates here, weight 27; carried weight 0, visits here 1.
+> take crate 40
+Taken.
+> lift crate 80
+Taken.
+> hoist crate 120
+Taken.
+> i
+You're carrying:
+  a red crate 120
+  a red crate 80
+  a red crate 40
+> tally
+Posted 3 crates; balance 27, load 27 (high 27), entries 1.
+History: 27.
+> label crate 80
+RED-80/sealed+counted+moved+tagged; packed 2384: lo 80 hi 9 sum 89 set.
+> mark crate 40 with 4
+Crate 40 marks (4): sealed,wet,counted,moved.
+> mark crate 40 with 4
+Crate 40 marks (3): sealed,counted,moved.
+> mark crate 40 with 11
+Crate 40 marks (4): sealed,counted,moved,held.
+> x crate 40
+Crate 40: red, weight 5, marks sealed,counted,moved,held.
+> inspect crate 80
+Crate 80: red, weight 9, marks sealed,counted,moved,tagged.
+> check over crate 120
+Crate 120: red, weight 13, marks sealed,counted,moved.
+> where
+you 0,0; sweeper 1,4; you first; apart 1,4.
+> route 40
+11 steps: A1-B1-C1-C2-D2-E2-E3-F3-G3-H3-H4-H5.
+> route 2
+1 steps: A1-B1.
+> e
+Room B1
+Grid room B1. Exits: east south west.
+You can see an orange crate 131, an orange crate 91, an orange crate 51 and an orange crate 11 here.
+> map
+.P434443
+44444434
+44344344
+43444344
+S4443444
+> consult 77
+Crate 77 is in Room H1.
+> consult 200
+No crate 200.
+> consult 40
+Crate 40 is carried.
+> teleport 22
+Room F3
+Grid room F3. Exits: north east south west.
+You can see an indigo crate 111, an indigo crate 71 and an indigo crate 31 here.
+> look
+Room F3
+Grid room F3. Exits: north east south west.
+You can see an indigo crate 111, an indigo crate 71 and an indigo crate 31 here.
+> here
+3 crates here, weight 45; carried weight 27, visits here 2.
+> take crate 31
+Taken.
+> take indigo crate 71
+Taken.
+> take crate 9
+You can't see any such thing.
+> fits crate 31
+Crate 31 fits: +++--+-+.
+> weights 3
+Weights of green (next blue, warm false): 2,3,4,5,6,7,8,9,10,12,13,15,16,17,18,19,20,22,23.
+> weights 9
+Shades run from 0 to 7.
+> census
+red 18, orange 19, yellow 19, green 19, blue 19, indigo 18, violet 19, gray 19. Heaviest: 13(23) 36(23) 59(23) 82(23) 105(23). Warm sealed over 12: 4. Exits: 118.
+> set down crate 71
+Dropped.
+> survey
+Room F3
+Grid room F3. Exits: north east south west.
+You can see an indigo crate 71 and an indigo crate 111 here.
+> order 3 red
+Opened #1 0/3 red open.
+> order 2
+Opened #2 0/2 red open.
+> order 4 indigo
+Opened #3 0/4 indigo open.
+> order 2 mauve
+No such shade.
+> order 12 red
+Orders are for one to nine crates.
+> fill
+4 crates went to orders.
+> orders
+#1 3/3 red filled
+#2 0/2 red open
+#3 1/4 indigo partial
+3 orders; any filled true; all live false; live run 0, after it 3, after first 2; by want: 3 2 1; weight in 38. Pending: 1 2 3. Pool out 3.
+> work
+Closing #1 3/3 red filled. Next: 2, last: 3.
+> work
+Starting #2 0/2 red open; back in the queue. Next: 3, last: 2.
+> work
+Continuing #3 1/4 indigo partial; back in the queue. Next: 2, last: 3.
+> cancel 3
+Order 3 is cancelled.
+> clean up
+2 orders closed; 1 out of the pool.
+> orders
+#2 0/2 red open
+1 orders; any filled false; all live true; live run 1, after it 0, after first 0; by want: 2; weight in 0. Pending: 2. Pool out 1.
+> teleport 23
+Room G3
+Grid room G3. Exits: north east south west.
+You can see a violet crate 122, a violet crate 82, a violet crate 42 and a violet crate 2 here.
+> take crate 122
+Taken.
+> take violet crate 2
+Taken.
+> teleport 1
+Room A1
+Grid room A1. Exits: north east south.
+> n
+Room M
+Room M. The grid is south.
+You can see a machine 1, a machine 2, a machine 3, a machine 4, a machine 5, a machine 6, a machine 7, a machine 8, a machine 9, a machine 10, a machine 11 and a machine 12 here.
+> e
+Room S
+Room S. Room M is west.
+You can see a shelf A, a shelf B, a bin A (which is empty), a red bin (which is empty), a blue bin (which is empty), a rack A, a cold rack and a scale here.
+> store
+shelf A: 0/3, loads 0.
+shelf B: 0/2, loads 0.
+bin A: 0/4, loads 0.
+red bin: 0/4, loads 0, keeps red.
+blue bin: 0/4, loads 0, keeps blue.
+rack A: 0/3, loads 0, limit 12.
+cold rack: 0/3, loads 0, limit 10, cold.
+scale: 0/1, loads 0.
+0 crates in the store; 0 fixtures carry weight.
+> put crate 2 on scale
+The scale reads 15.
+> put crate 122 on scale
+No room for violet crate 122.
+> put crate 122 in red bin
+No room for violet crate 122.
+> put crate 122 on cold rack
+You put the violet crate 122 on the cold rack.
+> fits crate 2
+Crate 2 fits: +++-----.
+> put crate 2 in bin a
+(first taking the violet crate 2 off the scale)
+You put the violet crate 2 into the bin A.
+> put crate 2 on shelf b
+(first taking the violet crate 2 out of the bin A)
+You put the violet crate 2 on the shelf B.
+> put machine 1 on shelf a
+You can't see any such thing.
+> store
+shelf A: 0/3, loads 0.
+shelf B: 1/2, loads 1.
+bin A: 0/4, loads 1.
+red bin: 0/4, loads 0, keeps red.
+blue bin: 0/4, loads 0, keeps blue.
+rack A: 0/3, loads 0, limit 12.
+cold rack: 1/3, loads 1, limit 10, cold.
+scale: 0/1, loads 1.
+2 crates in the store; 2 fixtures carry weight.
+> x scale
+You see nothing special about the scale.
+> roman 1994
+1994 is MCMXCIV (mcmxciv), read back 1994.
+> roman 3999
+3999 is MMMCMXCIX (mmmcmxcix), read back 3999.
+> roman 0
+0 is ? (?), read back -1.
+> cipher 3
+Urrp D1, fudwh 17: Pdfklqh Wzhoyh. / Room A1, crate 17: Machine Twelve. / same true, 6 words.
+> cipher 25
+Qnnl Z1, bqzsd 17: Lzbghmd Svdkud. / Room A1, crate 17: Machine Twelve. / same true, 6 words.
+> spell 1234
+one thousand two hundred and thirty-four / ONE THOUSAND TWO HUNDRED AND THIRTY-FOUR (40 letters with spaces).
+> spell 70
+seventy / SEVENTY (7 letters with spaces).
+> spell 9017
+nine thousand and seventeen / NINE THOUSAND AND SEVENTEEN (27 letters with spaces).
+> spell 0
+zero / ZERO (4 letters with spaces).
+> prime 1
+Prime 1 is 2; composite flags near it: 100.
+> prime 100
+Prime 100 is 541; composite flags near it: 101.
+> prime 431
+There are 430 primes in the table.
+> prime 500
+There are 430 primes in the table.
+> primes below 1000
+168 primes below 1000.
+> count 27
+27 reaches 1 in 111 steps; a crate has that number, weight 6; clamped 27, low 27, high 0.
+> count 400
+400 reaches 1 in 27 steps; no crate has that number, weight -1; clamped 99, low 144, high 1.
+> notes
+1. plain text
+2. crate 7 in Room F5
+3. 150 crates
+4. crate 150 in Room C2
+> stats
+34 actions of 9 kinds; top: take 7, look 6, examine 5, go 4, puton 4, wait 3, inv 2, insert 2.
+> tick 3
+Ticks 3 (3), ring 3, plus ten 13.
+> tick 5
+Ticks 8 (8), ring 8, plus ten 18.
+> sweep off
+The sweeper is off.
+> z
+Time passes.
+> where
+you 0,0; sweeper 1,4; you first; apart 1,4.
+> sweep on
+The sweeper is on.
+> pray for 3
+Nothing practical results from your prayer.
+> w
+Room M
+Room M. The grid is south.
+You can see a machine 1, a machine 2, a machine 3, a machine 4, a machine 5, a machine 6, a machine 7, a machine 8, a machine 9, a machine 10, a machine 11 and a machine 12 here.
+> machines
+RRiiiiRiiiiX output 555, faults 6 machines.
+> table
+  # state    out  f
+  1 running   131  0
+  2 running   131  2
+  3 idle       40  0
+  4 idle        0  1
+  5 idle       40  0
+  6 idle        0  1
+  7 running   133  0
+  8 idle        0  1
+  9 idle       40  0
+ 10 idle        0  1
+ 11 idle       40  0
+ 12 broken      0  1
+> stop machine 3
+Machine 3 is idle.
+> stop all machines
+Every machine is stopped.
+> repair machine 12
+Machine 12 is repaired.
+> repair machine 1
+Machine 1 is not broken.
+> start machine 12
+Machine 12 is warming.
+> machines
+iiiiiiiiiiiw output 561, faults 6 machines.
+> churn
+Churned.
+> counts
+Churns 1, caught 1, checksum 80, tokens out 0.
+> status
+Built 40 rooms, 150 crates, 430 primes; longest walk 11.
+Turn 78. Sweeper: 76 moves, 25 turns, 0 bumps, at A4 facing north.
+Machines: iiiiiiiiiiiw, output 561. Signals sent 8. Tokens out 0.
+--------
+> save
+>>sz5a
+*Ok.
+#repeat 500
+> churn
+Churned.
+> counts
+Churns 501, caught 446, checksum 9581, tokens out 0.
+> status
+Built 40 rooms, 150 crates, 430 primes; longest walk 11.
+Turn 578. Sweeper: 576 moves, 191 turns, 0 bumps, at C4 facing south.
+Machines: iiiiiiiiiiii, output 601. Signals sent 8. Tokens out 0.
+--------
+> machines
+iiiiiiiiiiii output 601, faults 6 machines.
+> log
+8 logged, 8 sent, sum 428, odd 3, high 26, distinct 1 2 4 5 13 24 26. Letters: abzxemdz.
+> stats
+37 actions of 10 kinds; top: take 7, look 6, examine 5, go 5, wait 4, puton 4, inv 2, insert 2.
+> restore
+>>sz5a
+*Ok.
+> counts
+Churns 1, caught 1, checksum 80, tokens out 0.
+> status
+Built 40 rooms, 150 crates, 430 primes; longest walk 11.
+Turn 78. Sweeper: 76 moves, 25 turns, 0 bumps, at A4 facing north.
+Machines: iiiiiiiiiiiw, output 561. Signals sent 8. Tokens out 0.
+--------
+> where
+you 0,0; sweeper 0,3; you first; apart 0,3.
+> i
+You're carrying nothing.

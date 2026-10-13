@@ -1,0 +1,184 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// A library author's kit: an I6 island with a counter table and a routine bound through `extern`, an
+// emitter class over that table with subscript operators, a stats object with inline accessors that
+// reach their host through `outer`, a gauge class with `operator ()` and comparison operators, inline
+// objects built from positional members, and a function replaced with `replaced()`.
+
+#once
+#include <array>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+// --- what the I6 side owns --------------------------------------------------------------------------
+
+#i6 {
+    Array spk_counters --> 16;
+    Global spk_bumps = 0;
+    [ Spk_Bump i n;
+        spk_counters-->i = spk_counters-->i + n;
+        spk_bumps++;
+        return spk_counters-->i;
+    ];
+    [ Spk_Total i t;
+        for (i = 0 : i < 16 : i++) t = t + spk_counters-->i;
+        return t;
+    ];
+}
+
+/// The number of bumps made through the counter table.
+extern int spk_bumps asBgl spkBumps;
+/// Adds `n` to counter `i` and returns the new value.
+extern int Spk_Bump(int i, int n);
+/// The sum of all counters.
+extern int Spk_Total();
+
+/// A view over the I6 counter table.
+emitter class CounterTable {
+    int operator [] (int i)          { (spk_counters-->$i) }
+    void operator []= (int i, int v) { spk_counters-->$i = $v }
+    int size                         { 16 }
+}
+
+CounterTable counters;
+
+void bumpFor(Crate c) {
+    Spk_Bump((int)c.grade, 1);
+    Spk_Bump(4 + (int)c.shade, c.weight);
+}
+
+void counterReport() {
+    print("Counters:");
+    for (int i = 1; i <= 8; i++) print($" {counters[i]}");
+    printLine($"; bumps {spkBumps}, total {Spk_Total()}.");
+}
+
+// --- a stats object with inline accessors -----------------------------------------------------------
+
+object stats {
+    int writes = 0;
+    int rejected = 0;
+    int ceiling = 500;
+
+    auto load = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            outer.writes++;
+            if (v > outer.ceiling) {
+                outer.rejected++;
+                v = outer.ceiling;
+            }
+            _v = v;
+        }
+    }
+
+    auto label = {
+        stringOrRoutine _l = "unset";
+        stringOrRoutine operator () { return _l; }
+        void operator = (stringOrRoutine v) {
+            outer.writes++;
+            _l = v;
+        }
+    }
+
+    void show() {
+        print($"Load {load}, writes {writes}, rejected {rejected}, label ");
+        print(label);
+        printLine(".");
+    }
+}
+
+void statsLabel() {
+    print($"routine at {stats.load}");
+}
+
+// --- a gauge class with conversion and comparison ---------------------------------------------------
+
+class Gauge : object {
+    int reading = 0;
+    int limit = 10;
+
+    int operator () { return reading; }
+    int operator <=> (Gauge o) { return reading - o.reading; }
+
+    Gauge operator += (int n) {
+        reading += n;
+        if (reading > limit) reading = limit;
+        return self;
+    }
+
+    bool full() {
+        return reading >= limit;
+    }
+}
+
+Gauge gaugeA { "gauge A"; limit = 12; }
+Gauge gaugeB { "gauge B"; limit = 30; }
+Gauge gaugeC { "gauge C"; }
+
+array<Gauge> gauges = { gaugeA, gaugeB, gaugeC };
+
+void gaugeRound(int k) {
+    gaugeA += k;
+    gaugeB += k * 2;
+    gaugeC += k * 3;
+}
+
+void gaugeReport() {
+    print("Gauges:");
+    for (Gauge g in gauges) {
+        int v = (int)g;
+        print($" {v}");
+        if (g.full()) print("F");
+    }
+    printLine($"; A<B {gaugeA < gaugeB}, top {gauges.orderBy((Gauge x, Gauge y) => x <=> y).last()}.");
+}
+
+// --- inline objects from positional members ---------------------------------------------------------
+
+class Pair : object {
+    inline int a;
+    inline int b;
+}
+
+int pairSum(Pair p) {
+    return p.a + p.b;
+}
+
+int pairArea(int w, int h) {
+    Pair p = Pair{ w, h };
+    return p.a * p.b;
+}
+
+Pair fixedPair = Pair{ 6, 7 };
+
+// --- a replaced function ----------------------------------------------------------------------------
+
+int scoreCrate(Crate c) {
+    return c.weight;
+}
+
+replace int scoreCrate(Crate c) {
+    int base = replaced(c);
+    if (c.marked(eMark.painted)) base += 5;
+    if (c.marked(eMark.cracked)) base -= 3;
+    return base;
+}
+
+int scoreRange(int from, int to) {
+    int t = 0;
+    for (int n = from; n <= to; n++) {
+        Crate c = crateNo(n);
+        if (c?) t += scoreCrate(c);
+    }
+    return t;
+}
+
+void kitTour() {
+    printLine($"Pairs {pairSum(fixedPair)} {pairArea(4, 5)} {pairSum(Pair{ 2, 3 })}; sqr {sqr(12)} half {kit.half(GRID_CELLS)} wrap {kit.wrap(-3, GRID_CELLS)}.");
+    printLine($"Scores 1-10 {scoreRange(1, 10)}, 1-30 {scoreRange(1, 30)}; between {between(5, 1, 9)} {between(15, 1, 9)}.");
+    printLine($"Tier ranks {tier.low.rank} {tier.top.rank}, above {eTier.high.above(tier.mid)} {eTier.low.above(tier.top)}; dirs {(int)eDir.north.opposite} {(int)eDir.east.opposite}.");
+}

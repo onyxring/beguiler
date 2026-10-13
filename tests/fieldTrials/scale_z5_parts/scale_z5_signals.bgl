@@ -1,0 +1,149 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Signals: twenty-six verbs declared through one verb class, each a word of the spelling alphabet
+// with a code; a log of the codes sent, read back with <linq>; and grammar added to, taken from and
+// aliased onto library verbs.
+
+#once
+#include "scale_z5_kit"
+#using sk
+
+/// The codes sent, newest last; the oldest drops out when full.
+array<int> signalLog[24];
+/// How many signals have been sent in all.
+int signalsSent = 0;
+
+/// A verb that sends one signal: its word and its code.
+class SignalVerb : verb {
+    int code = 0;
+    string word = "?";
+    void handler() {
+        if (signalLog.length == signalLog.size) signalLog.remove(0);
+        signalLog += code;
+        signalsSent++;
+        print($"Signal {word} ({code}).^");
+    }
+}
+
+SignalVerb SigAlpha   { grammar = {.alpha};    code = 1;  word = "alpha"; }
+SignalVerb SigBravo   { grammar = {.bravo};    code = 2;  word = "bravo"; }
+SignalVerb SigCharlie { grammar = {.charlie};  code = 3;  word = "charlie"; }
+SignalVerb SigDelta   { grammar = {.delta};    code = 4;  word = "delta"; }
+SignalVerb SigEcho    { grammar = {.echo};     code = 5;  word = "echo"; }
+SignalVerb SigFoxtrot { grammar = {.foxtrot};  code = 6;  word = "foxtrot"; }
+SignalVerb SigGolf    { grammar = {.golf};     code = 7;  word = "golf"; }
+SignalVerb SigHotel   { grammar = {.hotel};    code = 8;  word = "hotel"; }
+SignalVerb SigIndia   { grammar = {.india};    code = 9;  word = "india"; }
+SignalVerb SigJuliett { grammar = {.juliett};  code = 10; word = "juliett"; }
+SignalVerb SigKilo    { grammar = {.kilo};     code = 11; word = "kilo"; }
+SignalVerb SigLima    { grammar = {.lima};     code = 12; word = "lima"; }
+SignalVerb SigMike    { grammar = {.mike};     code = 13; word = "mike"; }
+SignalVerb SigNovember { grammar = {.november}; code = 14; word = "november"; }
+SignalVerb SigOscar   { grammar = {.oscar};    code = 15; word = "oscar"; }
+SignalVerb SigPapa    { grammar = {.papa};     code = 16; word = "papa"; }
+SignalVerb SigQuebec  { grammar = {.quebec};   code = 17; word = "quebec"; }
+SignalVerb SigRomeo   { grammar = {.romeo};    code = 18; word = "romeo"; }
+SignalVerb SigSierra  { grammar = {.sierra};   code = 19; word = "sierra"; }
+SignalVerb SigTango   { grammar = {.tango};    code = 20; word = "tango"; }
+SignalVerb SigUniform { grammar = {.uniform};  code = 21; word = "uniform"; }
+SignalVerb SigVictor  { grammar = {.victor};   code = 22; word = "victor"; }
+SignalVerb SigWhiskey { grammar = {.whiskey};  code = 23; word = "whiskey"; }
+SignalVerb SigXray    { grammar = {.xray};     code = 24; word = "xray"; }
+SignalVerb SigYankee  { grammar = {.yankee};   code = 25; word = "yankee"; }
+SignalVerb SigZulu    { grammar = {.zulu};     code = 26; word = "zulu"; }
+
+/// Every signal verb, in code order.
+array<SignalVerb> signalVerbs = {
+    SigAlpha, SigBravo, SigCharlie, SigDelta, SigEcho, SigFoxtrot, SigGolf, SigHotel, SigIndia,
+    SigJuliett, SigKilo, SigLima, SigMike, SigNovember, SigOscar, SigPapa, SigQuebec, SigRomeo,
+    SigSierra, SigTango, SigUniform, SigVictor, SigWhiskey, SigXray, SigYankee, SigZulu
+};
+
+/// The log as words, the first letters of the codes, oldest first.
+stringObj logLetters() {
+    stringObj s = "";
+    for (int c in signalLog) s += (char)('a' + c - 1);
+    return s;
+}
+
+/// A summary of the log: count, sum of codes, odd codes, highest and the distinct codes in order.
+stringObj logSummary() {
+    stringObj s = "";
+    int n = signalLog.count();
+    int odd = signalLog.filter((int c) => skBits.odd(c)).count();
+    int high = signalLog.orderBy().last();
+    array<int> seen[24];
+    seen = signalLog.distinct().orderBy();
+    s += $"{n} logged, {signalsSent} sent, sum {sk.digest(seen)}, odd {odd}, high {high}, distinct";
+    for (int c in seen) s += $" {c}";
+    return s;
+}
+
+/// Sends the signal with a code from code; false when there is none.
+bool sendCode(int code) {
+    for (SignalVerb v in signalVerbs) {
+        if (v.code == code) {
+            // WORKAROUND(scale-7): perform() through a verb-class variable runs the object's number as an action.
+            v.handler();
+            return true;
+        }
+    }
+    return false;
+}
+
+verb Relay {
+    grammar = { {.relay, NUMBER}, {.relay, .code, NUMBER} };
+    void handler() {
+        if (!sendCode(parsed_number)) print($"No signal has code {parsed_number}.^");
+    }
+}
+
+verb Log {
+    grammar = { {.log}, {.log, .letters} };
+    meta = true;
+    void handler() {
+        stringObj s = logSummary();
+        print(s);
+        print(". Letters: ");
+        stringObj l = logLetters();
+        print(l);
+        print(".^");
+    }
+}
+
+// ---- Library verbs: new words and lines, an evicted word, aliases ----
+
+extend Take    { synonyms = {.lift, .hoist}; }
+extend Examine { grammar += { {.inspect, NOUN}, {.check, .over, NOUN} }; }
+extend Look    { priority = 5; grammar += { {.survey} }; }
+extend Wait    { synonyms = {.idle}; }
+extend Drop    { grammar += { {.set, .down, HELD} }; }
+
+// 'pray' now takes only "pray for <number>", which still runs the library's prayer.
+extend Pray    { replace grammar = { {.pray, .for, NUMBER} }; }
+
+// 'consult' leaves the library verb and becomes this verb's word.
+extend Consult { grammar -= { {.consult} }; }
+verb Lookup {
+    grammar = { {.consult, NUMBER} };
+    void handler() {
+        Crate c = crateNumbered(parsed_number);
+        if (c == null) print($"No crate {parsed_number}.^");
+        else {
+            GridRoom r = (GridRoom)c.parent;
+            if (c.parent == player) print($"Crate {c.num} is carried.^");
+            else if (c.parent.is(GridRoom)) {
+                stringObj n = sk.cellName(r.cell);
+                print($"Crate {c.num} is in Room ");
+                print(n);
+                print(".^");
+            } else print($"Crate {c.num} is elsewhere.^");
+        }
+    }
+}
+
+/// Lines reached through a grammar object.
+grammar signalLines {
+    grammarRule s1 = {Relay, {.send, NUMBER}};
+    grammarRule s2 = {Relay, {.transmit, NUMBER}, 5};
+}

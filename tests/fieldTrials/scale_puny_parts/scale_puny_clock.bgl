@@ -1,0 +1,179 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// Daemons and timers: a pool of tickers, each a daemon with its own period, started and stopped in
+// bulk; a bell on a timer that re-arms itself; a counter object with each_turn; and a log of firings
+// kept in a bounded queue.
+
+#once
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+class Ticker[TICKER_COUNT] : object {
+    int period;
+    int left;
+    int fired = 0;
+    int slot;
+    bool running = false;
+
+    void create(int s, int p) {
+        slot = s;
+        period = p;
+        left = p;
+    }
+
+    bool short_name() {
+        print($"ticker {slot}");
+        rtrue;
+    }
+
+    void daemon() {
+        left--;
+        if (left > 0) return;
+        left = period;
+        fired++;
+        tickTotal++;
+        tickLog.note(slot);
+    }
+
+    void begin() {
+        if (running) return;
+        running = true;
+        StartDaemon(self);
+    }
+
+    void end() {
+        if (!running) return;
+        running = false;
+        StopDaemon(self);
+    }
+}
+
+array<Ticker> tickers[TICKER_COUNT];
+int tickTotal = 0;
+array<int> tickPeriods = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+
+object tickLog {
+    array<int> recent[8];
+    int notes = 0;
+
+    void note(int slot) {
+        notes++;
+        if (recent.length == 8) recent.dequeue();
+        recent.enqueue(slot);
+    }
+
+    void show() {
+        print($"Log {notes}:");
+        for (int s in recent) print($" {s}");
+        printLine(".");
+    }
+}
+
+void buildTickers() {
+    for (int i = 0; i < TICKER_COUNT; i++) {
+        Ticker t = new Ticker(i + 1, tickPeriods[i]);
+        if (!(t?)) return;
+        tickers.append(t);
+    }
+}
+
+int startTickers(func<bool, Ticker> which) {
+    int n = 0;
+    for (Ticker t in tickers) {
+        if (!which(t) || t.running) continue;
+        t.begin();
+        n++;
+    }
+    return n;
+}
+
+int stopTickers() {
+    int n = 0;
+    for (Ticker t in tickers) {
+        if (!t.running) continue;
+        t.end();
+        n++;
+    }
+    return n;
+}
+
+void tickerReport() {
+    int running = tickers.filter((Ticker t) => t.running).count();
+    print($"Tickers {tickers.length}, running {running}, total {tickTotal}; fired");
+    for (Ticker t in tickers) print($" {t.fired}");
+    printLine(".");
+}
+
+// --- a bell on a timer that re-arms -----------------------------------------------------------------
+
+object bell {
+    "bell";
+    parent = roomA;
+    name = {.bell};
+    description = "A bell.";
+    int time_left;
+    int rings = 0;
+    int every = 4;
+    bool armed = false;
+    attributes = {static};
+
+    void arm(int n) {
+        every = n;
+        armed = true;
+        StartTimer(self, n);
+    }
+
+    void disarm() {
+        armed = false;
+        StopTimer(self);
+    }
+
+    void time_out() {
+        rings++;
+        if (location == parent) printLine("The bell rings.");
+        if (armed) StartTimer(self, every);
+    }
+}
+
+// --- each_turn on a counter -------------------------------------------------------------------------
+
+object counter {
+    "counter";
+    parent = roomB;
+    name = {.counter};
+    description = "A counter.";
+    int seen = 0;
+    eLevel level = eLevel.idle;
+    attributes = {static};
+
+    void each_turn() {
+        seen++;
+        level = levelFor(seen);
+    }
+}
+
+eLevel levelFor(int n) {
+    switch (n) {
+        case 0 to 4:  return eLevel.idle;
+        case 5 to 9:  return eLevel.warm;
+        case 10 to 19: return eLevel.hot;
+    }
+    return eLevel.critical;
+}
+
+// --- a turn tally kept by a daemon on a plain object ------------------------------------------------
+
+object turnKeeper {
+    Tally gaps;
+    int last = 0;
+    int calls = 0;
+
+    void daemon() {
+        calls++;
+        int gap = turns - last;
+        last = turns;
+        gaps += gap;
+    }
+}

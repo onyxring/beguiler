@@ -381,7 +381,10 @@ object _bglBuf
        indexOf [buf searchTextBuf startingIndex stblen blen o i;
     stblen=self.length(searchTextBuf);
     blen=self.length(buf);
-    for (o = startingindex : o < blen : o++) {
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o + stblen <= blen : o++) {
         for (i = 0 : i < stblen : i++) {
             if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
                 break;
@@ -534,8 +537,8 @@ object _bglBuf
                 break;
             }
             if(retval==0) {
-                print "[ERROR: Unable to allocate a new instance.]";
-                return 0;
+                print "^[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]^";
+                quit;
             }
             move retval to _bglAllocatedObjects;
             return retval;

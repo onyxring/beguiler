@@ -207,11 +207,23 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
                 parsingError(format("bnum '{0}': explicit value {1} is not a power of 2", newEnum.dName(), val));
             sep=file.getToken({token::braceClose, token::comma});
         }
+        // A bnum's values are bits of one word: 16 on the Z-machine, 32 on Glulx.
         newVal.value=val;
         val = nextEnumValue(isBnum, val);
         newEnum.namedValues.push_back(&newVal);
         if(sep.is(token::braceClose)) break;
     }
+    // A bnum's values are bits of one word: 16 on the Z-machine, 32 on Glulx.
+    if(isBnum)
+        for(size_t i = 0; i < newEnum.namedValues.size(); i++){
+            unsigned v = (unsigned)newEnum.namedValues[i]->value;
+            bool past = targetIsZcode() ? v > 0x8000u
+                      : (v == 0 && i > 0 && (unsigned)newEnum.namedValues[i - 1]->value == 0x80000000u);
+            if(past)
+                parsingError(format("bnum '{0}': '{1}' is one value too many: a {2} word holds {3} bits.",
+                                    newEnum.dName(), newEnum.namedValues[i]->name,
+                                    targetIsZcode() ? "Z-machine" : "Glulx", targetIsZcode() ? 16 : 32));
+        }
     return false;
 }
 
@@ -407,6 +419,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         arrDecl.arraySize = readCompileTimeInt("an array's capacity");
         if(arrDecl.arraySize < 1)
             parsingError(format("Array '{0}' needs a capacity of at least 1.", arrDecl.dName()));
+        if(targetIsZcode() && arrDecl.arraySize > 32767 - 3)
+            parsingError(format("Array '{0}' holds {1} elements; a Z-machine array holds at most 32764 (Glulx has "
+                                "no such limit).", arrDecl.dName(), arrDecl.arraySize));
         file.getToken(token::bracketClose);
         hasInitializer = file.getToken({token::endStatement, token::assignment}).is(token::assignment);
     }

@@ -1,0 +1,336 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// Verbs: eight marking verbs declared through one verb class, crate handling verbs with NUMBER grammar,
+// grid travel, worker and clock control, fifteen report verbs through a meta verb class, and
+// extensions of the library's Take, Push, Examine, Wait and Sing.
+
+#once
+#include <array>
+#include <string>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+// --- marking verbs ----------------------------------------------------------------------------------
+
+class MarkVerb : verb {
+    eMark which;
+    string past = "marked";
+    int uses = 0;
+
+    void handler() {
+        uses++;
+        if (!noun.is(Crate)) {
+            printLine($"Only crates can be {past}.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        if (c.marked(which)) {
+            printLine($"Crate {c.number} is already {past}.");
+            return;
+        }
+        c.mark(which);
+        markUses++;
+        printLine($"Crate {c.number} is now {past}.");
+    }
+}
+
+int markUses = 0;
+
+MarkVerb Paint   { grammar = {.paint, NOUN};   which = eMark.painted; past = "painted"; }
+MarkVerb Crack   { grammar = {.crack, NOUN};   which = eMark.cracked; past = "cracked"; }
+MarkVerb Seal    { grammar = {.seal, NOUN};    which = eMark.sealed;  past = "sealed"; }
+MarkVerb Label   { grammar = {.label, NOUN};   which = eMark.labeled; past = "labeled"; }
+MarkVerb Stamp   { grammar = {.stamp, NOUN};   which = eMark.stamped; past = "stamped"; }
+MarkVerb Tag     { grammar = {.tag, NOUN};     which = eMark.counted; past = "tagged"; }
+MarkVerb Brand   { grammar = {.brand, NOUN};   which = eMark.labeled | eMark.stamped; past = "branded"; }
+MarkVerb Chalk   { grammar = {.chalk, NOUN};   which = eMark.painted | eMark.counted; past = "chalked"; }
+
+// --- crate handling ---------------------------------------------------------------------------------
+
+verb Weigh {
+    grammar = { {.weigh, NOUN}, {.weigh, NOUN, .on, NOUN} };
+    void handler() {
+        int w = scale.weigh(noun);
+        if (noun.is(Crate)) ((Crate)noun).mark(eMark.weighed);
+        printLine($"{cThe(noun)} weighs {w}.");
+    }
+}
+
+verb Inspect {
+    grammar = {.marks, NOUN};
+    void handler() {
+        if (!noun.is(Crate)) {
+            printLine("No marks.");
+            return;
+        }
+        ((Crate)noun).describeMarks();
+    }
+}
+
+verb Locate {
+    meta = true;
+    grammar = {.locate, NUMBER};
+    void handler() {
+        Crate c = crateNo(parsed_number);
+        if (!(c?)) {
+            printLine($"No crate {parsed_number}.");
+            return;
+        }
+        object at = c.parent;
+        if (!(at?)) printLine($"Crate {c.number} is nowhere.");
+        else printLine($"Crate {c.number} is in {the(at)}.");
+    }
+}
+
+verb Fetch {
+    grammar = {.fetch, NUMBER};
+    void handler() {
+        Crate c = crateNo(parsed_number);
+        if (!(c?)) {
+            printLine($"No crate {parsed_number}.");
+            return;
+        }
+        if (c.parent == location) {
+            printLine($"Crate {c.number} is already here.");
+            return;
+        }
+        c.parent = location;
+        c.mark(eMark.moved);
+        printLine($"Crate {c.number} arrives.");
+    }
+}
+
+verb GatherCrates {
+    grammar = {.gather, NUMBER};
+    void handler() {
+        if (parsed_number < 1 || parsed_number > 4) {
+            printLine("Grades are 1 to 4.");
+            return;
+        }
+        if (!location.is(GridRoom)) {
+            printLine("Gather only on the grid.");
+            return;
+        }
+        int n = gather((tier)parsed_number, (GridRoom)location);
+        printLine($"Gathered {n} {sp.tierName((tier)parsed_number)} crates.");
+    }
+}
+
+verb RetireCrate {
+    grammar = {.retire, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        if (!retire(n)) {
+            printLine($"No crate {n}.");
+            return;
+        }
+        printLine($"Crate {n} retired; {crates.length} left.");
+    }
+}
+
+verb Restock {
+    grammar = {.restock, NUMBER};
+    void handler() {
+        if (crateNo(parsed_number)?) {
+            printLine($"Crate {parsed_number} exists.");
+            return;
+        }
+        Crate c = replacement(parsed_number);
+        if (!(c?)) {
+            printLine("The crate pool is full.");
+            return;
+        }
+        c.parent = location;
+        printLine($"Crate {c.number} made, weight {c.weight}.");
+    }
+}
+
+verb Request {
+    grammar = {.order, NUMBER};
+    void handler() {
+        Crate c = crateNo(parsed_number);
+        if (!(c?)) {
+            printLine($"No crate {parsed_number}.");
+            return;
+        }
+        if (orderBook.length == orderBook.size) {
+            printLine("The order book is full.");
+            return;
+        }
+        placeOrder(c.number, orderBook.length + 1, c.grade);
+        printLine($"Order {orderBook.length} for crate {c.number}.");
+    }
+}
+
+// --- grid travel ------------------------------------------------------------------------------------
+
+verb Visit {
+    grammar = {.visit, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        int c = (int)second;
+        GridRoom g = cellRC(r, c);
+        if (!(g?)) {
+            printLine($"No cell {r}-{c}.");
+            return;
+        }
+        PlayerTo(g, 1);
+        g.visits++;
+        gridVisits++;
+        printLine($"You are at {g}.");
+    }
+}
+
+verb Hub {
+    grammar = {.hub};
+    void handler() {
+        PlayerTo(roomD, 1);
+        printLine("You are in Room D.");
+    }
+}
+
+// --- workers and clock ------------------------------------------------------------------------------
+
+verb Summon {
+    grammar = {.summon, NUMBER};
+    void handler() {
+        Worker w = workers.filter((Worker x) => x.id == parsed_number).first();
+        if (!(w?)) {
+            printLine($"No worker {parsed_number}.");
+            return;
+        }
+        w.parent = location;
+        w.active = false;
+        printLine($"{cThe(w)} arrives and waits.");
+    }
+}
+
+verb Haul {
+    grammar = {.haul, NUMBER};
+    void handler() {
+        Crate c = crateNo(parsed_number);
+        if (!(c?)) {
+            printLine($"No crate {parsed_number}.");
+            return;
+        }
+        Hauler h = haulerG.loads <= haulerH.loads ? haulerG : haulerH;
+        c.parent = h;
+        printLine($"{cThe(h)} takes crate {c.number}.");
+    }
+}
+
+verb StartTicks {
+    grammar = {.ticks, .on, NUMBER};
+    void handler() {
+        int limit = parsed_number;
+        int n = startTickers((Ticker t) => t.period <= limit);
+        printLine($"Started {n} tickers.");
+    }
+}
+
+verb StopTicks {
+    grammar = {.ticks, .off};
+    void handler() {
+        printLine($"Stopped {stopTickers()} tickers.");
+    }
+}
+
+verb ArmBell {
+    grammar = { {.arm, .bell, NUMBER}, {.disarm, .bell} };
+    void handler() {
+        if ((dictionaryWord)verb_word == .disarm) {
+            bell.disarm();
+            printLine("Bell disarmed.");
+            return;
+        }
+        bell.arm(parsed_number);
+        printLine($"Bell armed for {parsed_number}.");
+    }
+}
+
+verb Pump {
+    grammar = {.pump, NUMBER};
+    void handler() {
+        gaugeRound(parsed_number);
+        printLine($"Pumped {parsed_number}: {(int)gaugeA} {(int)gaugeB} {(int)gaugeC}.");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        churnRound();
+    }
+}
+
+// --- report verbs -----------------------------------------------------------------------------------
+
+class ReportVerb : verb {
+    meta = true;
+    int shown = 0;
+}
+
+ReportVerb GridInfo {
+    grammar = {.gridinfo};
+    void handler() {
+        shown++;
+        gridSummary();
+        for (int r = 0; r < GRID_ROWS; r++) gridRow(r);
+        coord corner;
+        GridRoom far = farthestFrom(corner);
+        printLine($"Farthest from 0-0: {far}, heavy there {heavyIn(far)}.");
+    }
+}
+ReportVerb CrateInfo   { grammar = {.crateinfo};   void handler() { shown++; gradeReport(); shadeReport(); markReport(); printLine($"Moved {countMoved()}."); } }
+ReportVerb Heavy       { grammar = {.heavy, NUMBER}; void handler() { shown++; heaviest(parsed_number); } }
+ReportVerb Lightest    { grammar = {.lightest, NUMBER}; void handler() { shown++; lightestIn(parsed_number); } }
+ReportVerb VisitInfo      { grammar = {.visits};      void handler() { shown++; visitReport(); printLine($"Hub entries {hubEntries}."); } }
+ReportVerb RosterInfo      { grammar = {.roster};      void handler() { shown++; roster.report(); } }
+ReportVerb TickInfo       { grammar = {.tickers};      void handler() { shown++; tickerReport(); tickLog.show(); } }
+ReportVerb Clock       { grammar = {.clock};       void handler() { shown++; clockReport(); } }
+ReportVerb Ledger      { grammar = {.ledger};      void handler() { shown++; showJournal(); } }
+ReportVerb OpsInfo         { grammar = {.ops};         void handler() { shown++; opTable(); checks(); printLine($"Codes {codeSum()}: {wordFor(3)} {wordFor(7)} {wordFor(12)} {wordFor(0)}; nested {nested(5, 1)} {nested(50, 1)} {nested(5, 0)}."); } }
+ReportVerb Texts       { grammar = {.texts};       void handler() { shown++; textTour(); } }
+ReportVerb OrderInfo      { grammar = {.orders};      void handler() { shown++; int n = fillOrders(); printLine($"Filled {n} now."); showOrders(); } }
+ReportVerb OrderSort   { grammar = {.sortorders};  void handler() { shown++; sortOrders(); } }
+ReportVerb KitInfo         { grammar = {.kit};         void handler() { shown++; kitTour(); counterReport(); } }
+ReportVerb StatsInfo       { grammar = {.stats};       void handler() { shown++; stats.show(); gaugeReport(); } }
+ReportVerb Shelves     { grammar = {.shelves};     void handler() { shown++; shelfOak.history(); shelfPine.history(); } }
+ReportVerb Reports     { grammar = {.reports};     void handler() { reportTotals(); } }
+
+array<ReportVerb> reportVerbs = { GridInfo, CrateInfo, Heavy, Lightest, VisitInfo, RosterInfo, TickInfo, Clock,
+                                  Ledger, OpsInfo, Texts, OrderInfo, OrderSort, KitInfo, StatsInfo, Shelves };
+
+void reportTotals() {
+    int total = 0;
+    int used = 0;
+    for (ReportVerb v in reportVerbs) {
+        total += v.shown;
+        if (v.shown > 0) used++;
+    }
+    printLine($"Reports {reportVerbs.length}, used {used}, shown {total}; mark verbs used {markUses}.");
+}
+
+// --- library verbs extended -------------------------------------------------------------------------
+
+extend Take {
+    synonyms = {.grab, .lift};
+}
+
+extend Push {
+    grammar += { {.nudge, NOUN} };
+}
+
+extend Examine {
+    grammar += { {.study, NOUN} };
+}
+
+extend Wait {
+    synonyms = {.idle};
+}
+
+extend Sing {
+    replace grammar = { {.sing, .loudly} };
+}

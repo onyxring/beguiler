@@ -1,0 +1,5 @@
+/* A bnum with more values than a Z-machine word has bits. */
+// EXPECT_ERROR: 'b16' is one value too many: a Z-machine word holds 16 bits.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+bnum eBig { b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16 }
+void main(){ }

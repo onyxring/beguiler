@@ -1,0 +1,246 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a program at scale on the Z-machine, in twelve files. A grid of forty pooled rooms wired
+// from a wall table, a hundred and fifty pooled crates with a parse_name, twelve machines run by an
+// enum state machine with timers, daemons and thrown faults, twenty-six verbs from one verb class,
+// grammar added to, evicted from, replaced on and aliased onto library verbs, a grammar object, a
+// three-thousand-entry byte sieve and a sixteen-hundred-entry distance table filled by search, <linq>
+// chains over the pools, value classes with operators, inline and named accessors, an emitter class,
+// an emitter namespace and global emitters, a class hierarchy of fixtures chaining to ancestors by
+// cast, a pool of orders worked as a deque, text built with every <string> method, thirty-eight action
+// counters kept as globals, an #i6 island bound with extern, unions, lambdas in tables and as
+// callbacks, and a churn that a long run repeats to show any leak of pooled or owned storage.
+//
+// Measured 2026-10-12 (the .trial has no comment syntax, so the figures are kept here): beguiler
+// 0.85 s alone, 0.89 s with Inform 6 (a 200-line trial takes 0.41 s); 5,781 lines of I6; story file
+// 175,104 bytes; dynamic memory 57,003 bytes; readable memory ends at 63,700 of 65,534. Beguiler
+// prints no statistics of its own. Near two limits on purpose: readable memory (the sieve was cut
+// from 20,000 to 3,000 entries and the string pool to 18 buffers of 160 characters to fit) and
+// global variables (43 of the program's own; 47 fail a release build and 45 a debug build).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    linqScratchSize = 160;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+#emitfirst { Constant bglStringDefaultSize 160; }
+#i6 { Constant bglStringPoolReserve 18; }
+#include "scale_z5_parts/scale_z5_kit"
+#include "scale_z5_parts/scale_z5_grid"
+#include "scale_z5_parts/scale_z5_crates"
+#include "scale_z5_parts/scale_z5_machines"
+#include "scale_z5_parts/scale_z5_signals"
+#include "scale_z5_parts/scale_z5_tables"
+#include "scale_z5_parts/scale_z5_ledger"
+#include "scale_z5_parts/scale_z5_orders"
+#include "scale_z5_parts/scale_z5_text"
+#include "scale_z5_parts/scale_z5_stats"
+#include "scale_z5_parts/scale_z5_fixtures"
+
+#using sk
+
+/// What Initialise built, for the status report.
+object setup {
+    int rooms = 0;
+    int crateCount = 0;
+    int primeCount = 0;
+    int longest = 0;
+}
+
+bool Initialise() {
+    bglInit();
+    setup.rooms = buildGrid();
+    setup.crateCount = buildCrates();
+    setup.primeCount = runSieve();
+    setup.longest = fillDistances();
+    roomM.s_to = grid[0];
+    grid[0].n_to = roomM;
+    sweeper.start();
+    location = roomM;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+// ---- Reports ----
+
+verb Status {
+    grammar = {.status};
+    meta = true;
+    void handler() {
+        print($"Built {setup.rooms} rooms, {setup.crateCount} crates, {setup.primeCount} primes; longest walk {setup.longest}.^");
+        print($"Turn {turns}. Sweeper: {sweeper.moves} moves, {sweeper.turnsMade} turns, {sweeper.bumps} bumps, at ");
+        stringObj c = sk.cellName(sweeper.at.cell());
+        print(c);
+        print($" facing {sk.headingNames[(int)sweeper.at.facing]}.^");
+        stringObj m = machineLine();
+        print("Machines: ");
+        print(m);
+        print($", output {totalOutput()}. Signals sent {signalsSent}. Tokens out {tokensOut}.^");
+        divider;
+    }
+}
+
+verb Map {
+    grammar = {.map};
+    meta = true;
+    void handler() { printMap(); }
+}
+
+verb Census {
+    grammar = {.census};
+    meta = true;
+    void handler() {
+        stringObj s = shadeCensus();
+        print(s);
+        print($". Heaviest: {heaviest(5)}. Warm sealed over 12: {warmSealedOver(12)}. Exits: {exitTotal()}.^");
+    }
+}
+
+verb Weights {
+    grammar = {.weights, NUMBER};
+    meta = true;
+    void handler() {
+        int n = parsed_number;
+        if (n < 0 || n > 7) {
+            print("Shades run from 0 to 7.^");
+            return;
+        }
+        eShade s = (eShade)n;
+        stringObj w = weightsOf(s);
+        print($"Weights of {sk.shadeName(s)} (next {sk.shadeName(s.next)}, warm {s.warm}): ");
+        print(w);
+        print(".^");
+    }
+}
+
+verb Here {
+    grammar = {.here};
+    meta = true;
+    void handler() {
+        int n = 0;
+        int w = weightIn(location);
+        for (object o in location.children) {
+            if (o.is(Crate)) n++;
+        }
+        print($"{n} crates here, weight {w}; carried weight {weightIn(player)}");
+        if (location.is(GridRoom)) print($", visits here {((GridRoom)location).visits}");
+        print(".^");
+    }
+}
+
+verb Sweep {
+    grammar = { {.sweep, .on}, {.sweep, .off} };
+    void handler() {
+        if (sweeper.active) sweeper.stop();
+        else sweeper.start();
+        print($"The sweeper is {sweeper.active ? "on" : "off"}.^");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Crate)) {
+            print("Only crates are marked.^");
+            return;
+        }
+        Crate c = (Crate)noun;
+        int bit = parsed_number;
+        if (bit < 0 || bit > 11) {
+            print("Marks run from 0 to 11.^");
+            return;
+        }
+        eMark m = (eMark)(1 << bit);
+        if (c.hasMark(m)) c.clearMark(m);
+        else c.addMark(m);
+        stringObj l = sk.markList(c.marks);
+        print($"Crate {c.num} marks ({sk.markCount(c.marks)}): ");
+        print(l);
+        print(".^");
+    }
+}
+
+verb Teleport {
+    grammar = {.teleport, NUMBER};
+    void handler() {
+        int n = parsed_number - 1;
+        if (n < 0 || n >= gridCells) {
+            print("No such room.^");
+            return;
+        }
+        PlayerTo(grid[n]);
+    }
+}
+
+// ---- Odds and ends: unions, null tests, loops of every shape ----
+
+/// Something a note can hold: text, a crate or a routine to run.
+union noteItem = string | Crate | func<void>;
+
+/// Notes kept for the notes command, oldest first.
+array<noteItem> notes[6];
+
+void noteCrateCount() { print($"{crates.length} crates"); }
+
+/// Prints a note by what it holds.
+void printNote(noteItem n) {
+    switch (typeof(n)) {
+        case eType.string:
+            print((string)n);
+        case eType.routine:
+            func<void> f = (func<void>)n;
+            f();
+        default:
+            Crate c = (Crate)n;
+            print($"crate {c.num} in ");
+            print(c.parent ?? roomM);
+    }
+}
+
+verb NotesVerb {
+    grammar = {.notes};
+    meta = true;
+    void handler() {
+        notes.clear();
+        notes += "plain text";
+        notes += crateNumbered(7);
+        notes += noteCrateCount;
+        notes += crateNumbered(150);
+        int i = 0;
+        do {
+            print($"{i + 1}. ");
+            printNote(notes[i]);
+            print("^");
+            i++;
+        } until (i >= notes.length);
+    }
+}
+
+verb CountVerb {
+    grammar = {.count, NUMBER};
+    meta = true;
+    void handler() {
+        int n = parsed_number;
+        int steps = 0;
+        int x = n;
+        while (x != 1 && x > 0 && steps < 500) {
+            x = skBits.odd(x) ? 3 * x + 1 : x / 2;
+            steps++;
+        }
+        Crate c = crateNumbered(n);
+        int w = c != null ? c.weight : -1;
+        string kind = c? ? "a crate" : "no crate";
+        print($"{n} reaches 1 in {steps} steps; {kind} has that number, weight {w}; clamped {skBits.clamp(n, 10, 99)}, low {skBits.low(n)}, high {skBits.high(n)}.^");
+    }
+}

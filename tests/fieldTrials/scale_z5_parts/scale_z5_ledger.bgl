@@ -1,0 +1,222 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// The ledger: an object with an inline accessor that keeps a history through outer, a named accessor
+// class, value-class positions, packed pairs through an emitter class, callbacks over the crates, and
+// text built with the <string> methods; the churn the long run repeats, taking and returning every
+// kind of pooled and owned thing so that a leak shows as a failure.
+
+#once
+#include "scale_z5_kit"
+#include "scale_z5_grid"
+#include "scale_z5_crates"
+#using sk
+
+object ledger {
+    int entries = 0;
+    int churns = 0;
+    int caught = 0;
+    int checksum = 0;
+    Gauge load;
+    Vec home;
+    Vec far;
+
+    /// The balance: every write is kept in a short history and counted on the ledger.
+    auto balance = {
+        static array<int> history[6];
+        int _raw;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            if (history.length == history.size) history.remove(0);
+            history += v;
+            _raw = v;
+            outer.entries++;
+        }
+    };
+
+    /// The history as a list, oldest first.
+    stringObj historyText() {
+        stringObj s = "";
+        for (int v in balance.history) {
+            if (s.length > 0) s += " ";
+            s += $"{v}";
+        }
+        return s;
+    }
+
+    /// Posts an amount to the balance and the load; returns the new balance.
+    int post(int amount) {
+        balance = balance + amount;
+        load = load + amount;
+        return balance;
+    }
+
+    /// Settles the balance to zero; the amount settled.
+    int settle() {
+        int was = balance;
+        balance = 0;
+        load = 0;
+        return was;
+    }
+}
+
+/// Applies a callback to each crate in a holder; how many it accepted.
+int eachCrate(object holder, func<bool, Crate> f) {
+    int n = 0;
+    for (object o in holder.children) {
+        if (o.is(Crate) && f((Crate)o)) n++;
+    }
+    return n;
+}
+
+/// Weighs the crates the player carries and posts their weight.
+int postCarried() {
+    int total = 0;
+    int n = eachCrate(player, (Crate c) => {
+        total += c.weight;
+        c.addMark(eMark.counted);
+        return true;
+    });
+    ledger.post(total);
+    return n;
+}
+
+/// The positions of the player and the sweeper, and the cells between them.
+stringObj positions() {
+    Vec me;
+    Vec sw;
+    if (location.is(GridRoom)) {
+        int c = ((GridRoom)location).cell;
+        me.set(c % 8, c / 8);
+    }
+    sw.set(sweeper.at.x, sweeper.at.y);
+    stringObj s = $"you {me.x},{me.y}; sweeper {sw.x},{sw.y}";
+    if (me == sw) s += "; together";
+    else if ((me <=> sw) < 0) s += "; you first";
+    else s += "; sweeper first";
+    Vec d = sw;
+    Vec back;
+    back.set(-me.x, -me.y);
+    d += back;
+    s += $"; apart {d.x},{d.y}";
+    return s;
+}
+
+/// Packs a crate's number and weight into one word and reads them back through the emitter class.
+stringObj packCrate(Crate c) {
+    Packed p;
+    p.setLo(c.num);
+    p.setHi(c.weight);
+    stringObj s = $"packed {(int)p}: lo {p.lo} hi {p.hi} sum {p.sum}";
+    if (p?) s += " set";
+    return s;
+}
+
+/// A label for a crate made with the <string> methods.
+stringObj labelFor(Crate c) {
+    stringObj base = sk.shadeName(c.shade);
+    stringObj up = base.toUpper();
+    stringObj s = up.left(3);
+    s += "-";
+    s += $"{c.num}";
+    stringObj marks = sk.markList(c.marks);
+    if (marks.contains(",")) {
+        stringObj m = marks.replaceAll(",", "+");
+        s += "/";
+        s += m;
+    } else if (!(marks == "none")) {
+        s += "/";
+        s += marks;
+    }
+    return s;
+}
+
+/// One pass of the long run: tokens out and back, a thrown fault caught, text built and dropped, a
+/// chain over the crates, a lambda over the grid. Prints nothing; the counts show any drift.
+void churnOnce() {
+    ledger.churns++;
+    array<Token> held[8];
+    for (int i = 0; i < 6; i++) {
+        Token t = new Token(i + ledger.churns % 3);
+        if (t != null) held += t;
+    }
+    int sum = 0;
+    for (Token t in held) sum += t.value;
+    for (Token t in held) delete t;
+    held.clear();
+    try {
+        raiseFor(ledger.churns % 9);
+    } catch (eFault f) {
+        ledger.caught++;
+    }
+    stringObj a = sk.cellName(ledger.churns % 40);
+    stringObj b = a + "/";
+    b += sk.shadeName((eShade)(ledger.churns % 8));
+    stringObj c = b.reverse();
+    int heavy = crates.filter((Crate k) => k.weight > 20).count();
+    int eastward = grid.filter((GridRoom r) => r.e_to != null).count();
+    ledger.checksum = (ledger.checksum + sum + c.length + heavy + eastward) % 10000;
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        churnOnce();
+        print("Churned.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        int n = postCarried();
+        print($"Posted {n} crates; balance {ledger.balance}, load {ledger.load} (high {ledger.load.high()}), entries {ledger.entries}.^");
+        stringObj h = ledger.historyText();
+        print("History: ");
+        print(h);
+        print(".^");
+    }
+}
+
+verb Settle {
+    grammar = {.settle};
+    void handler() {
+        int was = ledger.settle();
+        print($"Settled {was}; balance {ledger.balance}, load high {ledger.load.high()}, entries {ledger.entries}.^");
+    }
+}
+
+verb Where {
+    grammar = {.where};
+    meta = true;
+    void handler() {
+        stringObj s = positions();
+        print(s);
+        print(".^");
+    }
+}
+
+verb Label {
+    grammar = {.label, NOUN};
+    void handler() {
+        if (!noun.is(Crate)) {
+            print("Only crates take labels.^");
+            return;
+        }
+        Crate c = (Crate)noun;
+        c.addMark(eMark.tagged);
+        stringObj l = labelFor(c);
+        stringObj p = packCrate(c);
+        print(l);
+        print("; ");
+        print(p);
+        print(".^");
+    }
+}
+
+verb Counts {
+    grammar = {.counts};
+    meta = true;
+    void handler() {
+        print($"Churns {ledger.churns}, caught {ledger.caught}, checksum {ledger.checksum}, tokens out {tokensOut}.^");
+    }
+}

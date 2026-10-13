@@ -1,0 +1,193 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Statistics: one counter per library action, kept in globals the way an author keeps tallies, bumped
+// from GamePreRoutine through a switch over the action; an I6 island that keeps its own tally, bound
+// with extern declarations; and a report sorted with a comparator.
+
+#once
+#include "scale_z5_kit"
+#using sk
+
+// ---- Counters, one per action ----
+
+int statTake = 0;
+int statDrop = 0;
+int statExamine = 0;
+int statLook = 0;
+int statGo = 0;
+int statWait = 0;
+int statInv = 0;
+int statPush = 0;
+int statPull = 0;
+int statTurn = 0;
+int statOpen = 0;
+int statClose = 0;
+int statEat = 0;
+int statWear = 0;
+int statDisrobe = 0;
+int statSearch = 0;
+int statListen = 0;
+int statSmell = 0;
+int statTouch = 0;
+int statJump = 0;
+int statSing = 0;
+int statSleep = 0;
+int statThink = 0;
+int statPray = 0;
+int statWave = 0;
+int statRub = 0;
+int statSqueeze = 0;
+int statInsert = 0;
+int statPutOn = 0;
+int statEnter = 0;
+int statExit = 0;
+int statClimb = 0;
+int statAttack = 0;
+int statBurn = 0;
+int statCut = 0;
+int statDig = 0;
+int statFill = 0;
+int statTie = 0;
+
+/// The names of the counted actions, in counter order.
+array<string> statNames = {
+    "take", "drop", "examine", "look", "go", "wait", "inv", "push",
+    "pull", "turn", "open", "close", "eat", "wear", "disrobe", "search",
+    "listen", "smell", "touch", "jump", "sing", "sleep", "think", "pray",
+    "wave", "rub", "squeeze", "insert", "puton", "enter", "exit", "climb",
+    "attack", "burn", "cut", "dig", "fill", "tie"
+};
+
+/// Counts each action as it begins.
+bool GamePreRoutine() {
+    switch (action) {
+        case Take: statTake++;
+        case Drop: statDrop++;
+        case Examine: statExamine++;
+        case Look: statLook++;
+        case Go: statGo++;
+        case Wait: statWait++;
+        case Inv: statInv++;
+        case Push: statPush++;
+        case Pull: statPull++;
+        case Turn: statTurn++;
+        case Open: statOpen++;
+        case Close: statClose++;
+        case Eat: statEat++;
+        case Wear: statWear++;
+        case Disrobe: statDisrobe++;
+        case Search: statSearch++;
+        case Listen: statListen++;
+        case Smell: statSmell++;
+        case Touch: statTouch++;
+        case Jump: statJump++;
+        case Sing: statSing++;
+        case Sleep: statSleep++;
+        case Think: statThink++;
+        case Pray: statPray++;
+        case Wave: statWave++;
+        case Rub: statRub++;
+        case Squeeze: statSqueeze++;
+        case Insert: statInsert++;
+        case PutOn: statPutOn++;
+        case Enter: statEnter++;
+        case Exit: statExit++;
+        case Climb: statClimb++;
+        case Attack: statAttack++;
+        case Burn: statBurn++;
+        case Cut: statCut++;
+        case Dig: statDig++;
+        case Fill: statFill++;
+        case Tie: statTie++;
+    }
+    rfalse;
+}
+
+/// The counters, in counter order, copied into an array.
+void statValues(array<int> into) {
+    into.clear();
+    into += { statTake, statDrop, statExamine, statLook, statGo, statWait };
+    into += { statInv, statPush, statPull, statTurn, statOpen, statClose };
+    into += { statEat, statWear, statDisrobe, statSearch, statListen, statSmell };
+    into += { statTouch, statJump, statSing, statSleep, statThink, statPray };
+    into += { statWave, statRub, statSqueeze, statInsert, statPutOn, statEnter };
+    into += { statExit, statClimb, statAttack, statBurn, statCut, statDig };
+    into += { statFill, statTie };
+}
+
+// ---- An I6 island with its own tally, bound for Beguile ----
+
+#i6 {
+    Global sz5_turn_ticks = 0;
+    Array sz5_ring --> 8;
+    [ Sz5_Tick n;
+        sz5_turn_ticks = sz5_turn_ticks + n;
+        sz5_ring-->(sz5_turn_ticks % 8) = n;
+        return sz5_turn_ticks;
+    ];
+    [ Sz5_RingSum i t;
+        for (i = 0 : i < 8 : i++) t = t + sz5_ring-->i;
+        return t;
+    ];
+}
+
+/// Ticks counted by the I6 side.
+extern int sz5_turn_ticks asBgl i6Ticks;
+/// Adds n ticks on the I6 side; the new total.
+extern int Sz5_Tick(int n) asBgl i6Tick;
+/// The sum of the I6 ring of recent tick sizes.
+extern int Sz5_RingSum() asBgl i6RingSum;
+
+/// An I6 helper reached through an emitter that names it with $i6Expr.
+emitter int ticksPlus(int k) { ($i6Expr(i6Ticks) + $k) }
+
+/// Counters ordered by count, most first, then by position.
+int statOrder(int a, int b) {
+    array<int> v[40];
+    statValues(v);
+    if (v[a] != v[b]) return v[b] - v[a];
+    return a - b;
+}
+
+/// The k most-used actions, as "name count" pairs.
+stringObj topActions(int k) {
+    array<int> order[40];
+    for (int i = 0; i < statNames.length; i++) order += i;
+    order.sort(statOrder);
+    array<int> v[40];
+    statValues(v);
+    stringObj s = "";
+    for (int i = 0; i < k; i++) {
+        int at = order[i];
+        if (v[at] == 0) break;
+        if (s.length > 0) s += ", ";
+        s += statNames[at];
+        s += $" {v[at]}";
+    }
+    if (s.length == 0) s = "none";
+    return s;
+}
+
+verb Stats {
+    grammar = {.stats};
+    meta = true;
+    void handler() {
+        array<int> v[40];
+        statValues(v);
+        int total = 0;
+        for (int n in v) total += n;
+        int kinds = v.filter((int n) => n > 0).count();
+        stringObj top = topActions(8);
+        print($"{total} actions of {kinds} kinds; top: ");
+        print(top);
+        print(".^");
+    }
+}
+
+verb Tick {
+    grammar = {.tick, NUMBER};
+    void handler() {
+        int t = i6Tick(parsed_number);
+        print($"Ticks {t} ({i6Ticks}), ring {i6RingSum()}, plus ten {ticksPlus(10)}.^");
+    }
+}

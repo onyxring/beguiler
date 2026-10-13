@@ -1,0 +1,221 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// The catalog: forty entries in an initializer table of inline objects, a price matrix as an array of
+// arrays, a tool hierarchy with default and replaced methods and a hidden accessor write, <linq>
+// chains over the table, and a pooled parcel class whose slots are reused.
+
+#once
+#include <array>
+#include <string>
+#include <linq>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+// --- the table --------------------------------------------------------------------------------------
+
+class Entry : object {
+    inline int code;
+    inline int price;
+    inline eTier grade;
+    inline string title;
+    int sold = 0;
+}
+
+array<Entry> catalog = {
+    Entry{ 101, 12, eTier.low,  "bolt" },      Entry{ 102, 15, eTier.low,  "nut" },
+    Entry{ 103, 40, eTier.mid,  "hinge" },     Entry{ 104, 55, eTier.mid,  "latch" },
+    Entry{ 105, 90, eTier.high, "lock" },      Entry{ 106, 140, eTier.top, "safe" },
+    Entry{ 107, 8,  eTier.low,  "washer" },    Entry{ 108, 22, eTier.low,  "rivet" },
+    Entry{ 109, 35, eTier.mid,  "bracket" },   Entry{ 110, 60, eTier.mid,  "clamp" },
+    Entry{ 111, 75, eTier.high, "vice" },      Entry{ 112, 18, eTier.low,  "pin" },
+    Entry{ 113, 27, eTier.low,  "clip" },      Entry{ 114, 44, eTier.mid,  "plate" },
+    Entry{ 115, 66, eTier.mid,  "beam" },      Entry{ 116, 99, eTier.high, "winch" },
+    Entry{ 117, 130, eTier.top, "crane" },     Entry{ 118, 11, eTier.low,  "tack" },
+    Entry{ 119, 33, eTier.mid,  "strap" },     Entry{ 120, 48, eTier.mid,  "chain" },
+    Entry{ 121, 82, eTier.high, "pulley" },    Entry{ 122, 150, eTier.top, "hoist" },
+    Entry{ 123, 9,  eTier.low,  "staple" },    Entry{ 124, 24, eTier.low,  "hook" },
+    Entry{ 125, 39, eTier.mid,  "spring" },    Entry{ 126, 52, eTier.mid,  "gear" },
+    Entry{ 127, 88, eTier.high, "axle" },      Entry{ 128, 120, eTier.top, "engine" },
+    Entry{ 129, 14, eTier.low,  "screw" },     Entry{ 130, 29, eTier.low,  "nail" },
+    Entry{ 131, 41, eTier.mid,  "pipe" },      Entry{ 132, 58, eTier.mid,  "valve" },
+    Entry{ 133, 95, eTier.high, "pump" },      Entry{ 134, 160, eTier.top, "boiler" },
+    Entry{ 135, 16, eTier.low,  "cap" },       Entry{ 136, 31, eTier.low,  "plug" },
+    Entry{ 137, 46, eTier.mid,  "flange" },    Entry{ 138, 63, eTier.mid,  "coupling" },
+    Entry{ 139, 79, eTier.high, "bearing" },   Entry{ 140, 110, eTier.top, "turbine" }
+};
+
+// Price bands by grade (row) and quantity step (column).
+array<array<int>> priceMatrix = {
+    { 100, 95, 90, 85, 80, 75, 70, 65 },
+    { 100, 96, 92, 88, 84, 80, 76, 72 },
+    { 100, 97, 94, 91, 88, 85, 82, 79 },
+    { 100, 98, 96, 94, 92, 90, 88, 86 }
+};
+
+int catalogSales = 0;
+int catalogRevenue = 0;
+
+Entry findEntry(int code) {
+    for (Entry e in catalog) {
+        if (e.code == code) return e;
+    }
+    return null;
+}
+
+int unitPrice(Entry e, int qty) {
+    int step = qty - 1;
+    if (step > 7) step = 7;
+    if (step < 0) step = 0;
+    return e.price * priceMatrix[(int)e.grade - 1][step] / 100;
+}
+
+int sell(int code, int qty) {
+    Entry e = findEntry(code);
+    if (!(e?)) throw ERR_ABSENT;
+    if (qty < 1) throw ERR_RANGE;
+    int cost = unitPrice(e, qty) * qty;
+    e.sold += qty;
+    catalogSales += qty;
+    catalogRevenue += cost;
+    return cost;
+}
+
+void catalogSummary() {
+    int n = catalog.length;
+    int top = catalog.filter((Entry e) => e.grade == tier.top).count();
+    int cheap = catalog.filter((Entry e) => e.price < 20).count();
+    bool allPriced = catalog.all((Entry e) => e.price > 0);
+    bool anyFree = catalog.any((Entry e) => e.price == 0);
+    printLine($"Catalog {n}, top {top}, under 20 {cheap}, priced {allPriced}, free {anyFree}.");
+    array<Entry> ordered[40];
+    ordered = catalog.orderBy((Entry a, Entry b) => a.price - b.price);
+    print("Cheapest:");
+    for (Entry e in ordered.take(4)) print($" {e.title}/{e.price}");
+    print("; dearest:");
+    for (Entry e in ordered.skip(36)) print($" {e.title}/{e.price}");
+    printLine(".");
+    int lead = catalog.takeWhile((Entry e) => e.price < 100).count();
+    var firstCode = catalog.map((var e) => ((Entry)e).code).first();
+    printLine($"Run under 100: {lead}; first code {firstCode}; sales {catalogSales} for {catalogRevenue}.");
+}
+
+void gradeTitles(tier t) {
+    print($"{sp.tierName(t)}:");
+    for (Entry e in catalog.filter((Entry x) => x.grade == t).take(5)) print($" {e.title}");
+    printLine(".");
+}
+
+int distinctPrices() {
+    array<int> prices[40];
+    for (Entry e in catalog) prices.append(e.price / 10);
+    return prices.distinct().count();
+}
+
+// --- tools: a hierarchy -----------------------------------------------------------------------------
+
+value class Charge {
+    int _level = 0;
+    int operator () { return _level; }
+    void operator = (int v) {
+        _level = v < 0 ? 0 : (v > 100 ? 100 : v);
+    }
+}
+
+class Tool : object {
+    int uses = 0;
+    Charge charge;
+
+    default string kind() { return "tool"; }
+
+    default int work(int load) {
+        uses++;
+        return load;
+    }
+
+    void summary() {
+        printLine($"{self}: {kind()}, uses {uses}, charge {charge}.");
+    }
+}
+
+class PowerTool : Tool {
+    int draw = 10;
+
+    string kind() { return "power tool"; }
+
+    replace int work(int load) {
+        if (charge < draw) return 0;
+        charge = charge - draw;
+        uses++;
+        return load * 2;
+    }
+}
+
+class SealedTool : PowerTool {
+    hide charge.operator =;
+}
+
+Tool hammer { "hammer"; }
+PowerTool drill { "drill"; draw = 25; }
+PowerTool saw { "saw"; draw = 40; }
+SealedTool sander { "sander"; draw = 5; }
+
+array<Tool> tools = { hammer, drill, saw, sander };
+
+void chargeAll(int v) {
+    for (Tool t in tools) t.charge = v;
+}
+
+int workAll(int load) {
+    int done = 0;
+    for (Tool t in tools) done += t.work(load);
+    return done;
+}
+
+void toolReport() {
+    for (Tool t in tools) t.summary();
+}
+
+// --- parcels: a reused pool -------------------------------------------------------------------------
+
+class Parcel[6] : object {
+    int code;
+    int qty;
+    static int packed = 0;
+    static int unpacked = 0;
+
+    void create(int c, int q) {
+        code = c;
+        qty = q;
+        Parcel.packed++;
+    }
+
+    void destroy() {
+        Parcel.unpacked++;
+    }
+}
+
+array<Parcel> shelfParcels[6];
+
+int packParcels(int startCode, int count) {
+    int made = 0;
+    for (int i = 0; i < count; i++) {
+        Parcel p = new Parcel(startCode + i, i + 1);
+        if (!(p?)) break;
+        shelfParcels.append(p);
+        made++;
+    }
+    return made;
+}
+
+int shipParcels() {
+    int value = 0;
+    while (shelfParcels.length > 0) {
+        Parcel p = shelfParcels.popEnd();
+        Entry e = findEntry(p.code);
+        if (e?) value += unitPrice(e, p.qty) * p.qty;
+        delete p;
+    }
+    return value;
+}

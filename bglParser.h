@@ -308,6 +308,7 @@ class bglParser {
         // `T name` where T is not a declared type: names the library include that declares T, if any.
         void unknownTypeError(const token& typeTok);
         void checkExpressionShape(expression* expr, bool whole = true);
+        bool definesExternGlobal(const string& name);
         int exprParseDepth = 0;
         bool allowEmptyExpr = false;   // a `for(;;)` header part is parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
@@ -1075,7 +1076,7 @@ class bglParser {
         // is reached through its owner and property (`$self`/`$prop` = owner, prop); anything else is
         // the array itself with a 0 sentinel. A `ref` member holds a pointer, so it is a value too.
         // `objName` is the receiver's emitted text and may be rewritten (a ref member's read).
-        struct ArrayReceiver { bool isMember = false; string owner, prop; };
+        struct ArrayReceiver { bool isMember = false; string owner, prop, staticElemType; };   // staticElemType: set when the path named a static array
         ArrayReceiver arrayReceiver(string& objName, const string& rawObjName, const string& objType,
                                     functionDef* func, statementBlock* body);
         // `size`/`length` of a member word array, read straight from its property layout: core

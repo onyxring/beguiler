@@ -1,0 +1,163 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The books: <linq> queries over the crate list (filter, map, orderBy with a comparator, take, skip,
+// distinct, any, all, first, last), tallies by shade and zone in arrays of arrays, a float load
+// figure, a fixed-width table, and an audit that marks rooms and builds a stringObj report.
+
+#once
+#include <array>
+#include <linq>
+#include <string>
+
+#using bgl.printRules;
+
+object ledger {
+    /// Per zone, per shade: crate counts. Rows are zones 1..4, columns shades 1..5.
+    array<array<int>> byZone = {
+        { 0, 0, 0, 0, 0 },
+        { 0, 0, 0, 0, 0 },
+        { 0, 0, 0, 0, 0 },
+        { 0, 0, 0, 0, 0 }
+    };
+    array<int> byShade[5];
+    Tally weights;
+    Tally lastWeights;
+    int audits = 0;
+
+    /// Recounts every table from the crate list.
+    void recount() {
+        for (array<int> row in byZone) {
+            for (int i = 0; i < row.length; i++) row[i] = 0;
+        }
+        byShade.clear();
+        for (int i = 0; i < 5; i++) byShade += 0;
+        lastWeights = weights;
+        weights.reset();
+        for (Crate c in stock.crates) {
+            int s = (int)c.shade - 1;
+            byShade[s] = byShade[s] + 1;
+            GridRoom g = world.roomOf(c);
+            if (g != null) {
+                int z = (int)g.zone - 1;
+                byZone[z][s] = byZone[z][s] + 1;
+            }
+            weights += c.weight;
+        }
+    }
+
+    int zoneTotal(eZone z) {
+        int t = 0;
+        for (int n in byZone[(int)z - 1]) t += n;
+        return t;
+    }
+
+    /// The heaviest crates, heaviest first, ties by number.
+    void heaviest(int n) {
+        array<Crate> top = stock.crates.orderBy((Crate a, Crate b) => {
+            if (a.weight != b.weight) return a.weight > b.weight ? -1 : 1;
+            return a.number < b.number ? -1 : 1;
+        }).take(n);
+        int rank = 1;
+        for (Crate c in top) {
+            printLine($"{rank}. {c.summary()} in {roomName(c)}");
+            rank++;
+        }
+    }
+
+    /// Crates of one shade, in number order, skipping the first few.
+    void ofShade(eShade s, int skipCount, int takeCount) {
+        array<Crate> list = stock.crates.filter((Crate c) => c.shade == s).orderBy((Crate a, Crate b) => a.number - b.number);
+        print($"{shadeName(s)} ({list.length}):");
+        for (Crate c in list.skip(skipCount).take(takeCount)) print($" {c.number}");
+        printLine(".");
+    }
+
+    /// Facts about the whole crate list, each from one chain.
+    void facts() {
+        int sealedCount = stock.crates.filter((Crate c) => (c.flags & sealed) != 0).count();
+        int fragileCount = stock.crates.filter((Crate c) => (c.flags & fragile) != 0).count();
+        bool anyDamaged = stock.crates.any((Crate c) => (c.flags & damaged) != 0);
+        bool allNumbered = stock.crates.all((Crate c) => c.number > 0);
+        Crate firstHeavy = stock.crates.filter((Crate c) => c.isHeavy()).first();
+        Crate lastLight = stock.crates.filter((Crate c) => c.weight < 5).last();
+        printLine($"Sealed {sealedCount}, fragile {fragileCount}, damaged {yn(anyDamaged)}, numbered {yn(allNumbered)}.");
+        printLine($"First heavy: {firstHeavy}. Last light: {lastLight}.");
+        int distinctWeights = stock.crates.map((Crate c) => c.weight).distinct().count();
+        int units = 0;
+        for (var u in stock.crates.map((Crate c) => c.units)) units += u;
+        printLine($"Distinct weights {distinctWeights}, units {units}.");
+    }
+
+    /// The load of the grid as a float percentage of what the pool can hold.
+    float loadPercent() {
+        return (float)stock.crates.length * 100 / CRATE_POOL;
+    }
+
+    /// The share of crates in each zone, one decimal each.
+    void shares() {
+        recount();
+        int total = stock.crates.length;
+        for (int z = 1; z <= 4; z++) {
+            int n = zoneTotal((eZone)z);
+            float share = 0.0;
+            if (total > 0) share = (float)n * 100 / total;
+            printLine($"{zoneName((eZone)z)}: {n} ({oneDecimal(share)}%)");
+        }
+    }
+
+    /// The table of shades by zone, fixed width.
+    void table() {
+        recount();
+        stringObj head = padRight("zone", 6);
+        for (int s = 1; s <= 5; s++) {
+            stringObj h = $"{shadeName((eShade)s)}";
+            head += padLeft(h.left(3), 4);
+        }
+        head += "  sum";
+        printLine($"{fixed}{head}{roman}");
+        for (int z = 1; z <= 4; z++) {
+            stringObj zn = zoneName((eZone)z);
+            stringObj line = padRight(zn, 6);
+            int sum = 0;
+            for (int s = 0; s < 5; s++) {
+                int n = byZone[z - 1][s];
+                sum += n;
+                stringObj figure = $"{n}";
+                line += padLeft(figure, 4);
+            }
+            stringObj total = $"{sum}";
+            line += padLeft(total, 5);
+            printLine($"{fixed}{line}{roman}");
+        }
+    }
+
+    /// Marks every room holding a sealed crate and counts them; the report as text.
+    stringObj audit() {
+        audits++;
+        int markedRooms = 0;
+        for (GridRoom g in world.rooms) {
+            if ((g.marks & marked) != 0) g.marks = g.marks ^ marked;
+        }
+        for (Crate c in stock.crates) {
+            if ((c.flags & sealed) == 0) continue;
+            GridRoom home = world.roomOf(c);
+            if (home == null) continue;
+            if ((home.marks & marked) == 0) {
+                home.marks = home.marks | marked;
+                markedRooms++;
+            }
+        }
+        recount();
+        stringObj r = $"Audit {audits}: {stock.crates.length} crates, {markedRooms} rooms with sealed crates; weights {weights.summary()}.";
+        return r;
+    }
+}
+
+stringObj roomName(object o) {
+    GridRoom g = world.roomOf(o);
+    stringObj s = "";
+    if (g != null) s = $"{g}";
+    else if (o.parent == player) s = "hand";
+    else s = $"{o.parent}";
+    return s;
+}

@@ -1,0 +1,467 @@
+Room A
+Room A. The grid is down. Room B is east.
+You can see a wrench, a cutter A and a trolley here.
+> status
+Crates 150/180, made 150, scrapped 0.
+Rooms 48, links 72, routes 0.
+Beacons 0, pulses 0; conveyor 0 ticks, 0 moved.
+Clock 0, snapshots 0; jobs run 0, marks 0; lifts 0.
+> census
+150 crates: crimson 32 olive 35 navy 24 slate 12 ivory 47.
+> table
+zone   cri oli nav sla ivo  sum
+dock    12  13   9   6  10   50
+store    0  16   9   0  25   50
+cold     7   6   6   6   0   25
+yard    13   0   0   0  12   25
+> shares
+dock: 50 (33.3%)
+store: 50 (33.3%)
+cold: 25 (16.7%)
+yard: 25 (16.7%)
+> facts
+Sealed 13, fragile 16, damaged no, numbered yes.
+First heavy: crate 4. Last light: crate 147.
+Distinct weights 16, units 597.
+> heaviest
+1. #7 olive 30kg H in Room A2
+2. #23 navy 30kg H in Room C2
+3. #39 olive 30kg H in Room E2
+> heaviest 5
+1. #7 olive 30kg H in Room A2
+2. #23 navy 30kg H in Room C2
+3. #39 olive 30kg H in Room E2
+4. #55 olive 30kg SH in Room A2
+5. #71 navy 30kg H in Room C2
+> list 3
+navy (24): 9 15 17 23 26 36.
+> list 5 6
+ivory (47): 24 25 27 29 31 38.
+> list 7
+Shades run from 1 to 5.
+> shades
+1 crimson; 2 olive; 3 navy; 4 slate; 5 ivory;
+> audit
+Audit 1: 150 crates, 13 rooms with sealed crates; weights n 150, low 2, high 30, mean 11.9.
+> tally
+Now: n 150, low 2, high 30, mean 11.9.
+Before: n 150, low 2, high 30, mean 11.9.
+Spread 14.0; load 83.0%.
+> kit
+Second 8, penultimate 23, second crate crate 2.
+--------------------
+Looks: strong slanted.
+Ticket 1, out 1, word 4, tenths 45.
+Sealed share 8%; kinds 10 20; portable box yes, fuel no.
+> take wrench
+Taken.
+> take trolley
+Taken.
+> take cutter a
+Taken.
+> i
+You're carrying:
+  a cutter A
+  a trolley
+  a wrench
+> e
+Room B
+Room B. Room A is west.
+You can see a stamp, a lamp A, a lamp B and a conveyor here.
+> take lamp a
+Taken.
+> turn on lamp a
+The lamp A glows at 50%. It will run 3 turns.
+> x lamp a
+The lamp A: on, charge 50%, burned 0 times.
+The lamp A is currently switched on.
+> switch on conveyor
+The conveyor starts.
+> z
+Time passes.
+The lamp A clicks off.
+> switch off conveyor
+The conveyor stops after 2 ticks, 2 crates moved.
+> x conveyor
+A conveyor control. Switch it on to move crates along row C.
+> w
+Room A
+Room A. The grid is down. Room B is east.
+> d
+Room A1
+Room A1, in the dock zone. Exits: south east up.
+You can see a key 1, a crate 144, a crate 96 and a crate 48 here.
+> look
+Room A1
+Room A1, in the dock zone. Exits: south east up.
+You can see a key 1, a crate 144, a crate 96 and a crate 48 here.
+> map
+  12345678
+A @**.....
+B ..***...
+C ....**..
+D .....***
+E .......*
+F **......
+> x crate 48
+Crate 48: crimson, 4kg, 7 units, flags -.
+> weigh crate 96
+The crate 96 weighs 4kg (light).
+> tag crate 48
+You tag the crate 48.
+> tag crate 48
+The crate 48 is already tagged.
+> untag crate 48
+You untag the crate 48.
+> untag crate 48
+The crate 48 has no tag.
+> hoist crate 144
+Taken.
+> drop crate 144
+Dropped.
+> paint crate 48 2
+The crate 48 goes from crimson to olive.
+> paint crate 48 8
+Shades run from 1 to 5.
+> x crate 48
+Crate 48: olive, 4kg, 7 units, flags -.
+> dent crate 48
+You dent the crate 48. Flags now D.
+> inspect crate 48
+Crate 48: olive, 4kg, 7 units, flags D.
+> dye crate 96 navy
+The crate 96 is dyed navy (was crimson).
+> lift key
+Taken.
+> lift crate 48
+Taken.
+> find 88
+Crate 88 is in Room F1.
+> fetch 88
+The crate 88 is brought to Room A1.
+> seal crate 88
+The crate 88 is already sealed.
+> crack crate 88
+You crack the crate 88 open. Flags now D.
+> seal crate 88
+The stamp: stamps the crate 88 (use 1).
+> unseal crate 88
+The cutter A: cuts the seal on the crate 88 (use 1).
+Wear on the cutter A: 2.
+> scrap crate 88
+Crate 88 is scrapped. 149 left; 1 scrapped in all.
+> find 88
+No crate 88.
+> weigh wrench
+That is not a crate.
+> stride 2
+You stride east 2 rooms; the next heading is south.
+Room A3
+Room A3, in the dock zone. Exits: south west.
+You can see a key 7, a crate 110, a crate 62 and a crate 14 here.
+> stride 3
+You stride south 5 rooms; the next heading is west.
+Room F3
+Room F3, in the yard zone. Exits: north east west.
+You can see a locker 3 (which is closed), a crate 150, a crate 102, a crate 54 and a crate 6 here.
+> stride 4
+You stride west 1 room; the next heading is north.
+Room F2
+Room F2, in the yard zone. Exits: east.
+You can see a locker 2 (which is closed), a crate 143, a crate 95 and a crate 47 here.
+> stride 1
+There is no way north.
+> map
+  12345678
+A o**.....
+B ..***...
+C ..o.**..
+D ..o..***
+E ..o....*
+F *@o.....
+> route 1 1
+Room F2 to Room A1: 8 steps via F3 E3 D3 C3 B3 A3 A2 A1.
+> route 6 8
+Room F2 to Room F8: 6 steps via F3 F4 F5 F6 F7 F8.
+> warp 9 9
+No such room.
+> warp 6 1
+Room F1
+Room F1, in the yard zone. Exits: north.
+You can see a locker 1 (which is closed), a crate 136 and a crate 40 here.
+> unlock locker 1 with key 1
+You unlock the locker 1.
+> open locker 1
+You open the locker 1, revealing nothing.
+> put crate 48 in locker 1
+You put the crate 48 into the locker 1.
+> x locker 1
+Locker 1: open, opened by key 1.
+> warp 6 3
+Room F3
+Room F3, in the yard zone. Exits: north east west.
+You can see a locker 3 (which is closed), a crate 150, a crate 102, a crate 54 and a crate 6 here.
+> open locker 3 using key 1
+The key 1 doesn't seem to fit the lock.
+> warp 4 5
+Room D5
+Room D5, in the store zone. Exits: north south east west.
+You can see a shelf 7, a crate 148, a crate 100, a crate 52 and a crate 4 here.
+> look
+Room D5
+Room D5, in the store zone. Exits: north south east west.
+You can see a shelf 7, a crate 148, a crate 100, a crate 52 and a crate 4 here.
+> take crate 52
+Taken.
+> put crate 52 on shelf
+You put the crate 52 on the shelf 7.
+> x shelf
+You see nothing special about the shelf 7.
+> drop trolley
+Dropped.
+> take crate 4
+The crate 4 is too heavy to lift by hand.
+> take trolley
+Taken.
+> take crate 4
+Taken.
+> manifest
+You're carrying:
+  a crate 4
+  a trolley
+  a key 1
+  a lamp A
+  a cutter A
+  a wrench
+> survey
+Room D5
+Room D5, in the store zone. Exits: north south east west.
+You can see a shelf 7 (on which is a crate 52), a crate 148 and a crate 100 here.
+> unload crate 4
+Dropped.
+> locate crate 77
+The crate 77 is in Room B4, 5kg ivory.
+> locate crate 999
+No crate like that is on the books.
+> lookup drill
+DRILL: tool, 3 on hand, 90 each, sells at 99
+Kept on the locked shelf; lookups 1, last 12.
+> price bolt
+BOLT: part, 120 on hand, 2 each, sells at 2
+Kept on the open shelf; lookups 2, last 0.
+> lookup zorb
+I didn't understand that sentence.
+> kinds 2
+tool (10): file 9 rasp 12 pliers 14 chisel 16 clamp 18 spanner 19 level 20 hammer 25 saw 40 drill 90.
+> kinds 5
+food (8): biscuit 1 salt 1 beans 2 rice 2 flour 3 sugar 3 tea 5 coffee 9.
+> kinds 9
+Kinds run from 1 to 5.
+> dearest
+Dearest: drill 90 propane 45 saw 40 pallet 35 diesel 30.
+> worth
+Worth 9371: box 1924 tool 1592 part 2599 fuel 2060 food 1196.
+Low: drill; high: nut.
+> discount 15
+Discount 15% (markup 10%).
+> discount 99
+Discount 30% (markup 10%).
+> lookup drill
+DRILL: tool, 3 on hand, 90 each, sells at 70
+Kept on the locked shelf; lookups 3, last 12.
+> grep ar
+"ar": 3 hits: ch_coal, sug_, c_ton.
+> grep er
+"er": 5 hits: wash_, hamm_, pli_s, spann_, k_osene.
+> grep ee
+"ee": 1 hit: coff_.
+> grep oil
+"oil": 1 hit: _.
+> order 0 of 1
+Opened order 1: 0 crimson, filled 0, fault none.
+> order 40 of 5
+Opened order 2: 40 ivory, filled 0, fault none.
+> order 5 of 4
+Opened order 3: 5 slate, filled 0, fault none.
+> order 3 of 9
+Shades run from 1 to 5.
+> orders
+order 1: 0 crimson, filled 0, fault none
+order 2: 40 ivory, filled 0, fault none
+order 3: 5 slate, filled 0, fault none
+Done 0, failed 0, shipped 0; faults none; opened 3, closed 0.
+> process
+Order 1 failed: no stock (qty 0).
+Order 2 shipped: 10 crates, price 125.
+Order 3 shipped: 5 crates, price 65.
+> orders
+No open orders.
+Done 2, failed 1, shipped 15; faults 1,0,0; opened 3, closed 3.
+> cancel 4
+No open order 4.
+> order 2 of 2
+Opened order 4: 2 olive, filled 0, fault none.
+> cancel 4
+Order 4 cancelled.
+> orders
+No open orders.
+Done 2, failed 1, shipped 15; faults 1,0,0; opened 4, closed 4.
+> tickets 3
+Depth 3: 3 out at the deepest, 0 out now, 4 made.
+> tickets 9
+Depth 9: 8 out at the deepest, 0 out now, 12 made.
+> math 84 36
+gcd 12, isqrt 9, digits 12, sign 1, twice 168, square 1296, even yes.
+Half 42, word 4, calls 12.
+> math 7 7
+gcd 7, isqrt 2, digits 7, sign 0, twice 14, square 49, even no.
+Half 3, word 4, calls 17.
+> log
+Log open (2 lines so far).
+[win 1] Log
+> tag crate 52
+You tag the crate 52.
+[win 1] 3. tag 52
+> audit
+Audit 2: 149 crates, 12 rooms with sealed crates; weights n 149, low 2, high 30, mean 12.0.
+[win 1] 4. Audit 2: 149 crates, 12
+> log
+Log closed.
+> board
+Board closed.
+> board
+Board open: yes.
+> view
+The board shows zones.
+> view
+The board shows orders.
+> view
+The board shows map.
+> beacons 10
+Started 10; 10 running.
+> beacons 30
+Started 30; 40 running.
+> z
+Time passes.
+> z
+Time passes.
+> status
+Crates 149/180, made 150, scrapped 1.
+Rooms 48, links 72, routes 2.
+Beacons 40, pulses 130; conveyor 2 ticks, 2 moved.
+Clock 75, snapshots 7; jobs run 0, marks 0; lifts 8.
+> calm
+Stopped 40 beacons after 130 pulses.
+> jobs
+Queued 4; 4 waiting.
+> jobs
+Queued 3; 6 waiting.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> status
+Crates 149/180, made 150, scrapped 1.
+Rooms 48, links 72, routes 2.
+Beacons 0, pulses 130; conveyor 2 ticks, 2 moved.
+Clock 83, snapshots 8; jobs run 7, marks 22; lifts 8.
+> vent 3 4
+Vent at C4: 300.
+> heatmap
+A
+B    .
+C    #.
+D    .
+E
+F
+Total 293, mean 6.1, hottest C4 at 225, passes 1.
+> reading 3 4
+Reading at C4: searing.
+> reading 1 1
+Reading at A1: cold.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> heatmap
+A    .
+B    :.
+C    +:.
+D   ...
+E    .
+F
+Total 269, mean 5.6, hottest C4 at 115, passes 4.
+> reading 3 5
+Reading at C5: 43.
+> signals 3
+Laid 4 on row C; 4 in the bank.
+> signals 4
+Laid 4 on row D; 8 in the bank.
+> pulse
+Step 1: 1 fired; armed 7, firing 1, spent 0.
+> pulse
+Step 2: 0 fired; armed 7, firing 0, spent 1.
+> pulse
+Step 3: 0 fired; armed 7, firing 0, spent 1.
+> sweep
+Swept 1; left: 1/armed 2/armed 4/armed 5/armed 6/armed 7/armed 8/armed.
+> signals 9
+No such row.
+> cool
+The field is cold after 11 passes.
+> heatmap
+A
+B
+C
+D
+E
+F
+Total 0, mean 0.0, hottest A1 at 0, passes 11.
+> spawn 5
+Made 5 of 5; 154 crates, pool 180.
+> board
+Board closed.
+> save
+>> scale_glulx_1
+Ok.
+> spawn 40
+Made 26 of 40; 180 crates, pool 180.
+> scrap crate 52
+Crate 52 is scrapped. 179 left; 2 scrapped in all.
+> status
+Crates 179/180, made 181, scrapped 2.
+Rooms 48, links 72, routes 2.
+Beacons 0, pulses 130; conveyor 2 ticks, 2 moved.
+Clock 98, snapshots 8; jobs run 7, marks 22; lifts 8.
+> restore
+>> scale_glulx_1
+Ok.
+> status
+Crates 154/180, made 155, scrapped 1.
+Rooms 48, links 72, routes 2.
+Beacons 0, pulses 130; conveyor 2 ticks, 2 moved.
+Clock 96, snapshots 8; jobs run 7, marks 22; lifts 8.
+> find 52
+Crate 52 is in Room D5.
+> churn
+Churned 3, heavy 1, back to 154 of 154; fault no stock; tickets 3/0; B2-F7 9.
+#repeat 500
+> churn
+Churned 3, heavy 1, back to 154 of 154; fault no stock; tickets 3/0; B2-F7 9.
+> status
+Crates 154/180, made 1658, scrapped 1504.
+Rooms 48, links 72, routes 2.
+Beacons 0, pulses 130; conveyor 2 ticks, 2 moved.
+Clock 96, snapshots 8; jobs run 7, marks 22; lifts 8.
+> census
+154 crates: crimson 29 olive 38 navy 26 slate 12 ivory 49.
+> find 158
+No crate 158.

@@ -12,6 +12,7 @@
 - [18.9 Pay-Only-If-Used Emission](#189-pay-only-if-used-emission)
 - [18.10 The Frame Pool](#1810-the-frame-pool)
 - [18.11 Dead Code and Economy](#1811-dead-code-and-economy)
+- [18.12 Z-machine Capacity](#1812-z-machine-capacity)
 <!-- /toc -->
 
 ## 18.1 Overview
@@ -223,3 +224,20 @@ written, the compiler runs Inform 6 once with `-u` to compute the optimal `Abbre
 those directives at the top of the transpiled file, and compiles with `-e`. If the program already
 contains any `Abbreviate` directive of its own, the pass is skipped and a console note says so. The
 pass is best-effort: if the pre-pass fails, the build proceeds without abbreviations.
+
+## 18.12 Z-machine Capacity
+
+A Z-machine story shares fixed tables between the program, the runtime library and the IF library:
+
+| Resource | Z-machine capacity | What uses it |
+| --- | --- | --- |
+| Global variables | 233 | Library globals, the runtime's, a program's globals, and compiler temporaries such as lambda captures |
+| Attributes | 48 | Library attributes and a program's `attribute` declarations |
+| Common properties | 61 | Library properties and a program's `property` declarations |
+| Readable memory | 64K | Objects (every slot of a pooled class copies all its properties), arrays, the `<string>` pool's buffers |
+| Entries in one array | 32,764 | One `array<T>` (a tracked array spends three words of the I6 limit) |
+
+The compiler reports an array declared larger than the limit itself. The others depend on what the
+library declares, so Inform 6 finds them; the compiler then reports which capacity ran out in its own
+words instead of Inform 6's. Glulx has none of these limits.
+

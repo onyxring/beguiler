@@ -1,0 +1,225 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// One hundred and fifty numbered crates: a pooled class filled from initializer tables at start-up,
+// spread over the grid, named "crate N" by short_name and parse_name, with bnum marks, an ordering
+// operator, recursive weights and <linq> queries over arrays of them.
+
+#once
+#include <linq>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+// Initializer tables: a crate's weight and shade cycle through these by number.
+array<int>    weightTable = { 3, 7, 1, 9, 4, 6, 2, 8, 5, 10, 2, 4, 6, 1, 3 };
+array<eShade> shadeTable  = { eShade.pale, eShade.plain, eShade.dark, eShade.plain, eShade.black };
+array<string> shadeNames  = { "pale", "plain", "dark", "black" };
+
+class Crate[CRATE_COUNT] : object {
+    int number;
+    int weight;
+    tier grade;
+    eShade shade;
+    eMark marks;
+    attributeList attributes = {container, open};
+
+    void create(int n) {
+        number = n;
+        weight = weightTable[(n - 1) % weightTable.length];
+        shade = shadeTable[(n - 1) % shadeTable.length];
+        grade = sp.tierFor(weight);
+        cratesMade++;
+    }
+
+    void destroy() {
+        cratesGone++;
+    }
+
+    bool short_name() {
+        print($"crate {number}");
+        rtrue;
+    }
+
+    int parse_name() {
+        dictionaryWord w = NextWord();
+        if (w != .crate) return 0;
+        int k = TryNumber(wn);
+        if (k == number) return 2;
+        if (k >= 0) return 0;
+        return 1;
+    }
+
+    int operator <=> (Crate o) { return weight - o.weight; }
+
+    void mark(eMark m) {
+        marks = marks | m;
+    }
+
+    bool marked(eMark m) {
+        return (marks & m) == m;
+    }
+
+    void describeMarks() {
+        print($"crate {number} marks {sp.markCount(marks)}:");
+        if (marked(eMark.painted)) print(" painted");
+        if (marked(eMark.cracked)) print(" cracked");
+        if (marked(eMark.sealed))  print(" sealed");
+        if (marked(eMark.labeled)) print(" labeled");
+        if (marked(eMark.stamped)) print(" stamped");
+        if (marked(eMark.weighed)) print(" weighed");
+        if (marked(eMark.counted)) print(" counted");
+        if (marked(eMark.moved))   print(" moved");
+        printLine(".");
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                rtrue($"Crate {number}: weight {weight}, {sp.tierName(grade)}, {shadeNames[(int)shade - 1]}.^");
+            case Take:
+                if (weight >= 9) rtrue($"Crate {number} is too heavy.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        if (action == Take) mark(eMark.moved);
+        rfalse;
+    }
+}
+
+array<Crate> crates[CRATE_COUNT];
+int cratesMade = 0;
+int cratesGone = 0;
+
+void buildCrates() {
+    for (int n = 1; n <= CRATE_COUNT; n++) {
+        Crate c = new Crate(n);
+        if (!(c?)) {
+            printLine($"[crate pool exhausted at {n}]");
+            return;
+        }
+        crates.append(c);
+        int cell = (n * 7) % GRID_CELLS;
+        c.parent = grid[cell];
+    }
+    // Every tenth crate is painted, every fifteenth sealed, every crate over 8 cracked.
+    for (Crate c in crates) {
+        if (c.number % 10 == 0) c.mark(eMark.painted);
+        if (c.number % 15 == 0) c.mark(eMark.sealed);
+        if (c.weight > 8) c.mark(eMark.cracked);
+    }
+}
+
+Crate crateNo(int n) {
+    for (Crate c in crates) {
+        if (c.number == n) return c;
+    }
+    return null;
+}
+
+// The weight of an object and everything inside it.
+int weightOf(object o) {
+    int w = 1;
+    if (o.is(Crate)) w = ((Crate)o).weight;
+    if (o.is(Key)) w = 1;
+    for (object inner in o.children) w += weightOf(inner);
+    return w;
+}
+
+// --- queries ----------------------------------------------------------------------------------------
+
+int countGrade(tier t) {
+    return crates.filter((Crate c) => c.grade == t).count();
+}
+
+int heavyIn(GridRoom g) {
+    int n = 0;
+    for (object o in g.children) {
+        if (o.is(Crate) && ((Crate)o).weight >= 8) n++;
+    }
+    return n;
+}
+
+void gradeReport() {
+    printLine($"Grades low {countGrade(tier.low)} mid {countGrade(tier.mid)} high {countGrade(tier.high)} top {countGrade(tier.top)}.");
+    int total = 0;
+    for (Crate c in crates) total += c.weight;
+    printLine($"Crates {crates.length}, made {cratesMade}, gone {cratesGone}, total weight {total}.");
+}
+
+void shadeReport() {
+    array<int> byShade[4];
+    for (int i = 0; i < 4; i++) byShade.append(0);
+    for (Crate c in crates) byShade[(int)c.shade - 1]++;
+    print("Shades");
+    for (int i = 0; i < 4; i++) print($" {shadeNames[i]} {byShade[i]}");
+    printLine(".");
+}
+
+void markReport() {
+    int painted = crates.filter((Crate c) => c.marked(eMark.painted)).count();
+    int sealed  = crates.filter((Crate c) => c.marked(eMark.sealed)).count();
+    int cracked = crates.filter((Crate c) => c.marked(eMark.cracked)).count();
+    bool anyMoved = crates.any((Crate c) => c.marked(eMark.moved));
+    printLine($"Marks painted {painted} sealed {sealed} cracked {cracked} moved {anyMoved}.");
+}
+
+// The heaviest crates, numbered, through a linq chain captured into a typed array.
+void heaviest(int k) {
+    array<Crate> top[8];
+    top = crates.filter((Crate c) => c.weight >= 9).take(k);
+    print($"Heaviest {top.length}:");
+    for (Crate c in top) print($" {c.number}");
+    printLine(".");
+}
+
+void lightestIn(int r) {
+    array<Crate> local[16];
+    for (int c = 0; c < GRID_COLS; c++) {
+        GridRoom g = cellRC(r, c);
+        for (object o in g.children) {
+            if (o.is(Crate)) local.append((Crate)o);
+        }
+    }
+    local.sort();
+    print($"Row {r} has {local.length}; lightest");
+    for (int i = 0; i < 3 && i < local.length; i++) print($" {local[i].number}/{local[i].weight}");
+    printLine(".");
+}
+
+// Moves every crate of a grade into one cell; returns how many moved.
+int gather(tier t, GridRoom dest) {
+    int n = 0;
+    for (Crate c in crates) {
+        if (c.grade != t || c.parent == dest) continue;
+        c.parent = dest;
+        c.mark(eMark.moved);
+        n++;
+    }
+    return n;
+}
+
+int countMoved() {
+    return crates.filter((Crate c) => c.marked(eMark.moved)).count();
+}
+
+// Retires a crate: removes it from play and from the table, and returns the pool slot.
+bool retire(int n) {
+    Crate c = crateNo(n);
+    if (!(c?)) return false;
+    int at = crates.indexOf(c);
+    crates.remove(at);
+    c.parent = null;
+    delete c;
+    return true;
+}
+
+// A fresh crate in a freed slot; numbered past the original run.
+Crate replacement(int n) {
+    Crate c = new Crate(n);
+    if (!(c?)) return null;
+    crates.append(c);
+    return c;
+}

@@ -1,0 +1,310 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The shared vocabulary of the program: enums and bnums, the value classes every other part uses
+// (a grid cell, a running tally, a clamped level), small text helpers and the `sg` namespace object.
+
+#once
+#include <string>
+
+#using bgl.printRules;
+#include <array>
+
+// ---- sizes ---------------------------------------------------------------------------------------
+
+const int GRID_ROWS   = 6;
+const int GRID_COLS   = 8;
+const int GRID_CELLS  = 48;
+const int CRATE_POOL  = 180;
+const int CRATE_START = 150;
+const int ORDER_POOL  = 12;
+const int BEACON_POOL = 40;
+
+// ---- enums ---------------------------------------------------------------------------------------
+
+enum eKind {
+    kBox = 1, kTool, kPart, kFuel, kFood,
+    emitter int code     { ($self * 10) }
+    emitter bool portable() { ($self ~= 4) }
+}
+
+enum eShade { crimson = 1, olive, navy, slate, ivory }
+
+enum eHeading {
+    hNorth = 1, hEast, hSouth, hWest,
+    emitter int dr { (($self == 3) - ($self == 1)) }
+    emitter int dc { (($self == 2) - ($self == 4)) }
+}
+
+extend enum eHeading {
+    emitter eHeading turned() { (($self % 4) + 1) }
+}
+
+enum eZone { zoneDock = 1, zoneStore, zoneCold, zoneYard }
+
+enum eFault { fNone = 0, fNoStock, fTooHeavy, fSealed, fNoRoute, fPoolOut }
+
+bnum crateFlag { sealed, fragile, heavy, tagged, counted, damaged }
+
+bnum gridMark { marked, visitedMark, blockedMark }
+
+// ---- small helpers -------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+string pluralS(int n) { return n == 1 ? "" : "s"; }
+
+char rowLetter(int r) { return (char)('A' + r); }
+
+int pct(int part, int whole) {
+    if (whole == 0) return 0;
+    return part * 100 / whole;
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj oneDecimal(float f) {
+    bool negative = f < 0.0;
+    if (negative) f = -f;
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{negative ? "-" : ""}{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+string shadeName(eShade s) {
+    switch (s) {
+        case crimson: return "crimson";
+        case olive:   return "olive";
+        case navy:    return "navy";
+        case slate:   return "slate";
+        case ivory:   return "ivory";
+    }
+    return "plain";
+}
+
+string kindName(eKind k) {
+    switch (k) {
+        case kBox:  return "box";
+        case kTool: return "tool";
+        case kPart: return "part";
+        case kFuel: return "fuel";
+        case kFood: return "food";
+    }
+    return "thing";
+}
+
+string zoneName(eZone z) {
+    switch (z) {
+        case zoneDock:  return "dock";
+        case zoneStore: return "store";
+        case zoneCold:  return "cold";
+        case zoneYard:  return "yard";
+    }
+    return "none";
+}
+
+string faultName(eFault f) {
+    switch (f) {
+        case fNone:     return "none";
+        case fNoStock:  return "no stock";
+        case fTooHeavy: return "too heavy";
+        case fSealed:   return "sealed";
+        case fNoRoute:  return "no route";
+        case fPoolOut:  return "pool out";
+    }
+    return "unknown";
+}
+
+string headingName(eHeading h) {
+    switch (h) {
+        case hNorth: return "north";
+        case hEast:  return "east";
+        case hSouth: return "south";
+        case hWest:  return "west";
+    }
+    return "?";
+}
+
+stringObj flagText(crateFlag f) {
+    stringObj s = "";
+    if ((f & sealed) != 0)  s += 'S';
+    if ((f & fragile) != 0) s += 'F';
+    if ((f & heavy) != 0)   s += 'H';
+    if ((f & tagged) != 0)  s += 'T';
+    if ((f & counted) != 0) s += 'C';
+    if ((f & damaged) != 0) s += 'D';
+    if (s.length == 0) s = "-";
+    return s;
+}
+
+// ---- a grid cell: a value class with operators -----------------------------------------------------
+
+value class Cell {
+    int r = 0;
+    int c = 0;
+
+    Cell operator = (Cell o) { r = o.r; c = o.c; return self; }
+
+    static bool operator == (Cell a, Cell b) { return a.r == b.r && a.c == b.c; }
+    static bool operator != (Cell a, Cell b) { return a.r != b.r || a.c != b.c; }
+    static int operator <=> (Cell a, Cell b) {
+        if (a.r != b.r) return a.r < b.r ? -1 : 1;
+        if (a.c != b.c) return a.c < b.c ? -1 : 1;
+        return 0;
+    }
+
+    bool inside() { return r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS; }
+    int index() { return r * GRID_COLS + c; }
+
+    int distance(Cell o) {
+        int dr = r - o.r;
+        int dc = c - o.c;
+        if (dr < 0) dr = -dr;
+        if (dc < 0) dc = -dc;
+        return dr + dc;
+    }
+
+    void step(eHeading h) {
+        r += h.dr;
+        c += h.dc;
+    }
+
+    stringObj label() {
+        stringObj s = $"{rowLetter(r)}{c + 1}";
+        return s;
+    }
+}
+
+Cell cellAt(int index) {
+    Cell x;
+    x.r = index / GRID_COLS;
+    x.c = index % GRID_COLS;
+    return x;
+}
+
+// ---- a running tally: low, high, sum and count, with a float mean ----------------------------------
+
+value class Tally {
+    int lo = 0;
+    int hi = 0;
+    int sum = 0;
+    int n = 0;
+
+    Tally operator = (Tally o) {
+        lo = o.lo;
+        hi = o.hi;
+        sum = o.sum;
+        n = o.n;
+        return self;
+    }
+
+    Tally operator += (int v) {
+        if (n == 0 || v < lo) lo = v;
+        if (n == 0 || v > hi) hi = v;
+        sum += v;
+        n++;
+        return self;
+    }
+
+    void reset() { lo = 0; hi = 0; sum = 0; n = 0; }
+
+    float mean() {
+        if (n == 0) return 0.0;
+        return (float)sum / n;
+    }
+
+    float spread() {
+        if (n == 0) return 0.0;
+        return (float)(hi - lo) / 2;
+    }
+
+    stringObj summary() {
+        stringObj s = $"n {n}, low {lo}, high {hi}, mean {oneDecimal(mean())}";
+        return s;
+    }
+}
+
+// ---- a clamped level: a named accessor class --------------------------------------------------------
+
+value class clampedLevel {
+    int _v = 50;
+    int operator () { return _v; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        _v = v;
+    }
+}
+
+// ---- arithmetic kit: a superposed object reached through the namespace -------------------------------
+
+superposed object sgMath {
+    int calls = 0;
+
+    int clamp(int v, int lo, int hi) {
+        calls++;
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
+
+    int sign(int v) {
+        calls++;
+        if (v < 0) return -1;
+        if (v > 0) return 1;
+        return 0;
+    }
+
+    int gcd(int a, int b) {
+        calls++;
+        if (b == 0) return a;
+        return gcd(b, a % b);
+    }
+
+    int isqrt(int n) {
+        calls++;
+        int x = 0;
+        while ((x + 1) * (x + 1) <= n) x++;
+        return x;
+    }
+
+    int digitSum(int n) {
+        calls++;
+        int s = 0;
+        while (n > 0) {
+            s += n % 10;
+            n = n / 10;
+        }
+        return s;
+    }
+}
+
+// ---- the namespace -------------------------------------------------------------------------------------
+
+/// The program's namespace: its types and its arithmetic.
+object sg {
+    alias cell    for Cell;
+    alias tally   for Tally;
+    alias kind    for eKind;
+    alias shade   for eShade;
+    alias heading for eHeading;
+    alias math = sgMath;
+
+    int seed = 7;
+
+    /// A repeatable pseudo-random number in 0..n-1.
+    int roll(int n) {
+        seed = (seed * 75 + 74) % 65537;
+        if (n <= 0) return 0;
+        return seed % n;
+    }
+
+    void reseed(int s) { seed = s; }
+}

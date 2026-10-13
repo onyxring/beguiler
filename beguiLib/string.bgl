@@ -66,8 +66,8 @@
                 break;
             }
             if(retval==0) {
-                print "[ERROR: Unable to allocate a new instance.]";
-                return 0;
+                print "^[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]^";
+                quit;
             }
             move retval to _bglAllocatedObjects;
             return retval;

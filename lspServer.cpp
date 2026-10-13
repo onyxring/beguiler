@@ -888,6 +888,15 @@ void LspServer::publishDiagnostics(const string& uri) {
             }
             if(line < 0) line = 0;
             if(col < 0) col = 0;
+            // An error in another file (an #include) has that file's line: show it at the top of this
+            // document, naming where it is.
+            if(firstColon != string::npos && firstColon > 0 && line + col > 0) {
+                string errFile = err.substr(0, firstColon);
+                if(canonPath(errFile) != canonPath(uriToPath(uri))) {
+                    message = filesystem::path(errFile).filename().string() + ":" + to_string(line + 1) + ": " + message;
+                    line = 0; col = 0;
+                }
+            }
 
             diagnostics.push_back({
                 {"range", {

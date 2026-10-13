@@ -117,7 +117,6 @@ least 1.
 | `framePoolSize` | int | sized from the program, at least `64` | Word slots in the frame pool, which backs local arrays on both targets and, on the Z-machine, local-variable overflow (§18.10). Emitted only when some routine needs it. |
 | `linqScratchSize` | int | `32` | Elements per scratch buffer for `<linq>` query chains (§22.5). Emitted only when `<linq>` is included. |
 | `worldBufSize` | int | `128` | Objects per scratch buffer for `bgl.world` queries (§21.9); a walk that would exceed it stops there. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
-| `forInScratchSize` | int | `31` | Maximum elements in a literal-list `for (x in {…})` (§5.9.1). Emitted only when that form is used. |
 | `rewritePaths` | bool | `true` | Rewrite `/` and `\` in every path (settings paths, `#include`, `#includeI6`) to the platform separator (§18.5). |
 | `autoInitialize` | bool | `true` | When `true`, the library binding wraps the program's entry point so that `bglInit()` runs first (§21.2, §23.3.1). Set `false` when another library already replaces `Main`; the program then calls `bglInit()` itself. A program built on no binding at all always calls it itself, whatever this is set to — there is nothing to do the wrapping. |
 
@@ -248,7 +247,7 @@ that is not a declared property is a compile-time error.
 | Result | Properties |
 | --- | --- |
 | string | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName`, `informPath`, `beguiLibPath`, `errorFormat`, `serial`, `includePaths` |
-| int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `worldBufSize`, `forInScratchSize` |
+| int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `worldBufSize` |
 | bool | `generateBlorb`, `autoInitialize`, `economy`, `filterVerbSplitWarnings`, `omitUnusedRoutines`, `rewritePaths` |
 
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.

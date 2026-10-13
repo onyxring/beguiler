@@ -1,0 +1,291 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// A heat field over the grid and a bank of signals: a class with subscript operators over a flat
+// array of 48 cells, smoothed each turn by a daemon while vents add heat; a float average and a
+// hottest-cell search; a pooled Signal class whose state is an enum stepped by a switch; a union of
+// int and string read through typeof; and the verbs that drive them.
+
+#once
+#include <array>
+#include <linq>
+#include <string>
+
+#using bgl.printRules;
+
+// ---- the field: a flat array behind subscript operators -----------------------------------------------------
+
+class HeatField : object {
+    array<int> cells[48];
+    int passes = 0;
+
+    void fill(int v) {
+        cells.clear();
+        for (int i = 0; i < GRID_CELLS; i++) cells += v;
+    }
+
+    int operator [] (int i) { return cells[i]; }
+    int operator []= (int i, int v) {
+        cells[i] = sgMath.clamp(v, 0, 999);
+        return cells[i];
+    }
+
+    int at(int r, int c) { return cells[r * GRID_COLS + c]; }
+
+    /// One smoothing pass: each cell moves a quarter of the way toward the mean of its open neighbours.
+    void smooth() {
+        passes++;
+        array<int> next[48];
+        for (int i = 0; i < GRID_CELLS; i++) {
+            GridRoom g = world.rooms[i];
+            int sum = 0;
+            int n = 0;
+            for (int h = 1; h <= 4; h++) {
+                object nx = world.neighbour(g, (eHeading)h);
+                if (nx == null || !nx.is(GridRoom)) continue;
+                sum += cells[((GridRoom)nx).cell().index()];
+                n++;
+            }
+            int v = cells[i];
+            if (n > 0) v = v + (sum / n - v) / 4;
+            next += v;
+        }
+        for (int i = 0; i < GRID_CELLS; i++) cells[i] = next[i];
+    }
+
+    int total() {
+        int t = 0;
+        for (int v in cells) t += v;
+        return t;
+    }
+
+    float average() { return (float)total() / GRID_CELLS; }
+
+    int hottest() {
+        int best = 0;
+        for (int i = 1; i < GRID_CELLS; i++) {
+            if (cells[i] > cells[best]) best = i;
+        }
+        return best;
+    }
+
+    char shadeChar(int v) {
+        if (v >= 200) return '#';
+        if (v >= 100) return '+';
+        if (v >= 40) return ':';
+        if (v > 0) return '.';
+        return ' ';
+    }
+
+    stringObj row(int r) {
+        stringObj s = $"{rowLetter(r)} ";
+        for (int c = 0; c < GRID_COLS; c++) s += shadeChar(at(r, c));
+        return s;
+    }
+}
+
+HeatField heat {
+    int vents = 0;
+    bool running = false;
+
+    void daemon() {
+        smooth();
+    }
+}
+
+// ---- signals: a pooled class with an enum state machine ------------------------------------------------------
+
+enum eSignal { sigOff = 1, sigArmed, sigFiring, sigSpent }
+
+class Signal[24] : object {
+    int id = 0;
+    eSignal state = sigOff;
+    int fired = 0;
+    int cellIndex = 0;
+
+    void create(int n, int where) {
+        id = n;
+        cellIndex = where;
+    }
+
+    /// Steps the state machine once; true when the signal fired this step.
+    bool step() {
+        switch (state) {
+            case sigOff:
+                return false;
+            case sigArmed:
+                if (heat[cellIndex] >= 40) {
+                    state = sigFiring;
+                    fired++;
+                    return true;
+                }
+                return false;
+            case sigFiring:
+                state = sigSpent;
+                return false;
+            case sigSpent:
+                return false;
+        }
+        return false;
+    }
+}
+
+string signalName(eSignal s) {
+    switch (s) {
+        case sigOff:    return "off";
+        case sigArmed:  return "armed";
+        case sigFiring: return "firing";
+        case sigSpent:  return "spent";
+    }
+    return "?";
+}
+
+object signalBank {
+    array<Signal> all[24];
+    int steps = 0;
+    int fires = 0;
+
+    /// Places a signal on every other cell of a row; how many were placed.
+    int lay(int r) {
+        int n = 0;
+        for (int c = 0; c < GRID_COLS; c += 2) {
+            Signal s = new Signal(all.length + 1, r * GRID_COLS + c);
+            if (s == null) break;
+            all += s;
+            n++;
+        }
+        return n;
+    }
+
+    void armAll() {
+        for (Signal s in all) {
+            if (s.state == sigOff) s.state = sigArmed;
+        }
+    }
+
+    int stepAll() {
+        steps++;
+        int f = 0;
+        for (Signal s in all) {
+            if (s.step()) f++;
+        }
+        fires += f;
+        return f;
+    }
+
+    int inState(eSignal st) { return all.filter((Signal s) => s.state == st).count(); }
+
+    int clearSpent() {
+        array<Signal> spent = all.filter((Signal s) => s.state == sigSpent);
+        int n = spent.length;
+        for (Signal s in spent) {
+            all -= s;
+            delete s;
+        }
+        return n;
+    }
+}
+
+// ---- readings: a union of a number and a word ------------------------------------------------------------------
+
+union reading = int | string;
+
+reading readingFor(int i) {
+    int v = heat[i];
+    if (v == 0) return "cold";
+    if (v >= 200) return "searing";
+    return v;
+}
+
+stringObj readingText(reading r) {
+    stringObj s = "";
+    if (typeof(r) == eType.int) s = $"{(int)r}";
+    else s = (string)r;
+    return s;
+}
+
+// ---- verbs -------------------------------------------------------------------------------------------------
+
+verb Vent {
+    grammar = {.vent, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        int c = (int)second - 1;
+        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) {
+            printLine("No such room.");
+            return;
+        }
+        int i = r * GRID_COLS + c;
+        heat[i] = heat[i] + 300;
+        heat.vents++;
+        if (!heat.running) {
+            StartDaemon(heat);
+            heat.running = true;
+        }
+        printLine($"Vent at {cellAt(i).label()}: {heat[i]}.");
+    }
+}
+
+reportVerb HeatMap {
+    grammar = {.heatmap};
+    void handler() {
+        for (int r = 0; r < GRID_ROWS; r++) printLine($"{fixed}{heat.row(r)}{roman}");
+        int h = heat.hottest();
+        printLine($"Total {heat.total()}, mean {oneDecimal(heat.average())}, hottest {cellAt(h).label()} at {heat[h]}, passes {heat.passes}.");
+    }
+}
+
+reportVerb ReadHeat {
+    grammar = {.reading, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        int c = (int)second - 1;
+        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) {
+            printLine("No such room.");
+            return;
+        }
+        reading x = readingFor(r * GRID_COLS + c);
+        printLine($"Reading at {rowLetter(r)}{c + 1}: {readingText(x)}.");
+    }
+}
+
+verb Cool {
+    grammar = {.cool};
+    void handler() {
+        if (heat.running) StopDaemon(heat);
+        heat.running = false;
+        heat.fill(0);
+        printLine($"The field is cold after {heat.passes} pass{heat.passes == 1 ? "" : "es"}.");
+    }
+}
+
+verb LaySignals {
+    grammar = {.signals, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        if (r < 0 || r >= GRID_ROWS) {
+            printLine("No such row.");
+            return;
+        }
+        int n = signalBank.lay(r);
+        signalBank.armAll();
+        printLine($"Laid {n} on row {rowLetter(r)}; {signalBank.all.length} in the bank.");
+    }
+}
+
+verb StepSignals {
+    grammar = {.pulse};
+    void handler() {
+        int f = signalBank.stepAll();
+        printLine($"Step {signalBank.steps}: {f} fired; armed {signalBank.inState(sigArmed)}, firing {signalBank.inState(sigFiring)}, spent {signalBank.inState(sigSpent)}.");
+    }
+}
+
+verb ClearSignals {
+    grammar = {.sweep};
+    void handler() {
+        int n = signalBank.clearSpent();
+        print($"Swept {n}; left:");
+        for (Signal s in signalBank.all) print($" {s.id}/{signalName(s.state)}");
+        printLine(".");
+    }
+}

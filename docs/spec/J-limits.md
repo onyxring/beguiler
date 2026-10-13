@@ -10,7 +10,12 @@ is specified in the section named in the last column; this table does not add li
 | Arguments passed natively on a routine call; the rest travel through compiler-emitted globals | 5 | Z-machine | §18.10 |
 | Frame pool size, in words (`framePoolSize`) | 64 by default; at least 1 | both | §17.4, §18.10 |
 | Words per object property, counting the length slot; a larger member array uses separate storage | 32 | Z-machine | §12.7 |
-| Distinct values in one `bnum` | 16 / 32 | Z-machine / Glulx | §2.7.2 |
+| Distinct values in one `bnum`; one more is a compile-time error | 16 / 32 | Z-machine / Glulx | §2.7.2 |
+| Global variables, shared with the library and the runtime | 233 | Z-machine | §18.12 |
+| Attributes, shared with the library | 48 | Z-machine | §18.12 |
+| Common properties, shared with the library | 61 | Z-machine | §18.12 |
+| Readable memory | 64K | Z-machine | §18.12 |
+| Entries in one array | 32,764 | Z-machine | §18.12 |
 | Parameters of a pooled class's `create()` | 3 | both | §8.2.6 |
 | `create()` and `destroy()` declarations per pooled class | one of each | both | §8.2.6 |
 | Type parameters per class; only the first binds | 1 | both | §8.1.1 |
@@ -21,11 +26,11 @@ is specified in the section named in the last column; this table does not add li
 | Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
 | Include nesting depth | 255 | both | §14.1.6, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
-| Elements in a literal-list `for (x in {…})` (`forInScratchSize`) | 31 by default; at least 1 | both | §17.4, §5.9.1 |
 | Elements per `<linq>` scratch buffer (`linqScratchSize`) | 32 by default; at least 1 | both | §17.4, §22.5 |
 | `<linq>` chain nesting depth (a chain inside a chain's predicate or mapper) | 2 | both | §22.5 |
 | Arguments to `stringObj.format()` after the pattern (`$1`, `$2`) | 2 | both | §22.3 |
-| String objects in the `<string>` pool (`bglStringPoolReserve`) | 10 by default | both | §22.3 |
+| String objects in the `<string>` pool (`bglStringPoolReserve`); running out stops the program | 10 by default | both | §22.3 |
+| Tracked `<buf>` buffers beyond the `<string>` pool's (`bglTrackedBufferReserve`) | 116 by default | both | §22.2 |
 | Characters per `<buf>` / `<string>` buffer (`bglStringDefaultSize`) | 500 by default | both | §22.2 |
 | `<buf>` capture nesting depth | 16 | both | §22.2 |
 | Objects per `bgl.world` result buffer; a longer walk stops at the limit | 128 | both | §21.9 |

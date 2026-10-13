@@ -1,0 +1,191 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// The grid: forty pooled rooms made with `new` at start-up, wired north/south/east/west by loops, with
+// a short_name, a description routine, per-room counters and walks over the grid with a value-class
+// coordinate.
+
+#once
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+class GridRoom[GRID_CELLS] : object {
+    attributeList attributes = {light, proper};
+    int row;
+    int col;
+    int visits = 0;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object u_to;
+
+    void create(int r, int c) {
+        row = r;
+        col = c;
+        gridMade++;
+    }
+
+    bool short_name() {
+        print($"Grid {row}-{col}");
+        rtrue;
+    }
+
+    void description() {
+        print($"Grid {row}-{col}. Exits:");
+        if (n_to) print(" north");
+        if (s_to) print(" south");
+        if (e_to) print(" east");
+        if (w_to) print(" west");
+        if (u_to) print(" up");
+        printLine(".");
+    }
+
+    bool after() {
+        if (action == Go) {
+            visits++;
+            gridVisits++;
+        }
+        rfalse;
+    }
+
+    coord where() {
+        coord c;
+        c.row = row;
+        c.col = col;
+        return c;
+    }
+
+    int crateCount() {
+        int n = 0;
+        for (object o in self.children) {
+            if (o.is(Crate)) n++;
+        }
+        return n;
+    }
+}
+
+array<GridRoom> grid[GRID_CELLS];
+int gridMade = 0;
+int gridVisits = 0;
+
+GridRoom cellAt(coord c) {
+    if (!c.inside()) return null;
+    return grid[c.index()];
+}
+
+GridRoom cellRC(int r, int c) {
+    coord k;
+    k.row = r;
+    k.col = c;
+    return cellAt(k);
+}
+
+void buildGrid() {
+    for (int r = 0; r < GRID_ROWS; r++) {
+        for (int c = 0; c < GRID_COLS; c++) {
+            GridRoom g = new GridRoom(r, c);
+            if (!(g?)) {
+                printLine("[grid pool exhausted]");
+                return;
+            }
+            grid.append(g);
+        }
+    }
+    for (int i = 0; i < grid.length; i++) {
+        GridRoom g = grid[i];
+        coord here = g.where();
+        for (dir d in {dir.north, dir.south, dir.east, dir.west}) {
+            coord next = here;
+            next.step(d);
+            GridRoom other = cellAt(next);
+            if (!(other?)) continue;
+            switch (d) {
+                case dir.north: g.n_to = other;
+                case dir.south: g.s_to = other;
+                case dir.east:  g.e_to = other;
+                case dir.west:  g.w_to = other;
+            }
+        }
+    }
+    GridRoom first = grid[0];
+    first.u_to = roomD;
+    roomD.d_to = first;
+}
+
+int exitCount(GridRoom g) {
+    int n = 0;
+    if (g.n_to) n++;
+    if (g.s_to) n++;
+    if (g.e_to) n++;
+    if (g.w_to) n++;
+    return n;
+}
+
+// Walks from a start cell in one direction until the edge, returning the cells passed.
+int runLength(coord start, dir d) {
+    coord at = start;
+    int n = 0;
+    while (true) {
+        at.step(d);
+        if (!at.inside()) break;
+        n++;
+    }
+    return n;
+}
+
+void gridSummary() {
+    array<int> byExits[5];
+    for (int i = 0; i < 5; i++) byExits.append(0);
+    for (GridRoom g in grid) byExits[exitCount(g)]++;
+    printLine($"Grid {grid.length} cells, made {gridMade}; exits 2:{byExits[2]} 3:{byExits[3]} 4:{byExits[4]}.");
+    int lit = 0;
+    for (GridRoom g in grid) {
+        if (kit.lit(g)) lit++;
+    }
+    coord mid;
+    mid.row = 2;
+    mid.col = 3;
+    printLine($"Lit {lit}; from 2-3 runs n{runLength(mid, dir.north)} s{runLength(mid, dir.south)} e{runLength(mid, dir.east)} w{runLength(mid, dir.west)}.");
+}
+
+void gridRow(int r) {
+    print($"Row {r}:");
+    for (int c = 0; c < GRID_COLS; c++) {
+        GridRoom g = cellRC(r, c);
+        print($" {g.crateCount()}");
+    }
+    printLine(".");
+}
+
+// The farthest occupied cell from a point, by grid distance.
+GridRoom farthestFrom(coord from) {
+    GridRoom best = null;
+    int bestD = -1;
+    for (GridRoom g in grid) {
+        if (g.crateCount() == 0) continue;
+        int d = from.distance(g.where());
+        if (d > bestD) {
+            bestD = d;
+            best = g;
+        }
+    }
+    return best;
+}
+
+void visitReport() {
+    int seen = 0;
+    int most = 0;
+    GridRoom busiest = null;
+    for (GridRoom g in grid) {
+        if (g.visits > 0) seen++;
+        if (g.visits > most) {
+            most = g.visits;
+            busiest = g;
+        }
+    }
+    print($"Grid visits {gridVisits}, cells seen {seen}");
+    if (busiest?) print($", busiest {busiest} ({most})");
+    printLine(".");
+}

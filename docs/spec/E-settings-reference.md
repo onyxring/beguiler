@@ -17,7 +17,6 @@ that `#beguilerSettings.prop` may read (§17.7).
 | `filterVerbSplitWarnings` | bool | `true` | first | `-filterVerbSplitWarnings=<true\|false>` | yes | §17.3 |
 | `firstPublished` | string | `""` | first | — | yes | §17.5 |
 | `forgiveness` | string | `""` | first | — | yes | §17.5 |
-| `forInScratchSize` | int | `31` | first | — | yes | §17.4 |
 | `framePoolSize` | int | `64` | first | — | yes | §17.4 |
 | `generateBlorb` | bool | `false` | first | — | yes | §17.6 |
 | `genre` | string | `""` | first | — | yes | §17.5 |

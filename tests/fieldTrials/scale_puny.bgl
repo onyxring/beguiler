@@ -1,0 +1,225 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a large PunyInform (z5) program across twelve files (about 2,700 lines): twelve
+// hand-declared rooms with a lockable door, keys, boxes, lamps, signs, shelves and a scale; a grid of
+// forty pooled rooms wired by loops; one hundred and fifty pooled crates built from initializer tables,
+// named by short_name/parse_name, marked with a bnum and queried with <linq>; eight workers on routes
+// moved by a daemon, with life and orders; a pool of twelve ticker daemons, a re-arming timer and an
+// each_turn counter; a stringObj journal, string switches, func<> tables, nested try/catch and
+// recursion; a library kit (an I6 island bound through extern, an emitter class with subscripts,
+// inline accessors with outer, conversion and comparison operators, positional inline objects, a
+// replaced function); a catalog of forty inline objects with a price matrix, a tool hierarchy with
+// default/replace/hide and a reused parcel pool; breadth-first routes and flood-fill regions over the
+// grid; and forty-odd verbs, sixteen of them through one report verb class and eight through one
+// marking verb class, plus extensions of Take, Push, Examine, Wait and Sing. The trial tours every
+// part, runs one allocation-heavy command 500 times and saves and restores around it.
+//
+// Scale (measured 2026-10-12): beguiler 0.82 s, Inform 6 0.01 s. Story 127.5K of 256K; readable
+// memory 57,664 of 65,536 bytes (88%); 487 objects, 34 classes, 150 of 233 globals, 29 of 48
+// attributes, 26 of 61 common and 266 individual properties, 326 dictionary words, 140 verbs, 809
+// routines. Readable memory is the limit PunyInform reaches first: each pooled crate slot costs
+// about 114 bytes there, so the crate pool tops out near 215 slots (near 191 with the <string> pool at
+// its default 500 x 12 bytes, which this program trims to 160 x 14 below). Past that, Inform 6
+// reports the overflow with its memory map; beguiler says nothing.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+    linqScratchSize = 160;
+    framePoolSize = 400;
+}
+
+#defineI6 OPTIONAL_SIMPLE_DOORS
+#defineI6 OPTIONAL_EXTENDED_VERBSET
+
+// The <string> pool trimmed, leaving readable memory for the crate pool.
+#emitfirst {
+    Constant bglStringPoolReserve 12;
+    Constant bglStringDefaultSize 160;
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#include <linq>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string article;
+    string description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+    object u_to;
+    object d_to;
+}
+
+#include "scale_puny_parts/scale_puny_types"
+#include "scale_puny_parts/scale_puny_hub"
+#include "scale_puny_parts/scale_puny_grid"
+#include "scale_puny_parts/scale_puny_crates"
+#include "scale_puny_parts/scale_puny_clock"
+#include "scale_puny_parts/scale_puny_ledger"
+#include "scale_puny_parts/scale_puny_workers"
+#include "scale_puny_parts/scale_puny_kit"
+#include "scale_puny_parts/scale_puny_catalog"
+#include "scale_puny_parts/scale_puny_survey"
+#include "scale_puny_parts/scale_puny_verbs"
+
+#using sp;
+
+void clockReport() {
+    printLine($"Bell rings {bell.rings}, armed {bell.armed}; counter {counter.seen} level {(int)counter.level}; keeper {turnKeeper.calls}.");
+    turnKeeper.gaps.show("Gaps");
+    printLine();
+}
+
+int churns = 0;
+
+// One round of allocation-heavy work: a crate retired and restocked, strings built and dropped, a
+// local array sorted, a linq chain captured, a lambda through func<>, a throw caught.
+void churnRound() {
+    churns++;
+    Crate c = crateNo(150);
+    int w = c.weight;
+    retire(150);
+    Crate d = replacement(150);
+    d.parent = grid[(150 * 7) % GRID_CELLS];
+    stringObj s = $"churn {w}";
+    s += " ok";
+    stringObj t = s.toUpper();
+    array<int> local = { 5, 3, 9, 1 };
+    local.sort();
+    array<Crate> picked[8];
+    picked = crates.filter((Crate k) => k.number <= 3).take(3);
+    func<int, int> f = scaler(3);
+    int r = applyTwice(f, 2);
+    int e = nested(5, 0);
+    jot("c", churns % 3);
+    printLine($"{t} {w}={d.weight} {local[0]}{local[3]} {picked.length} {r} {e}.");
+}
+
+// --- catalog verbs ----------------------------------------------------------------------------------
+
+ReportVerb CatalogInfo {
+    grammar = {.catalog};
+    void handler() {
+        shown++;
+        catalogSummary();
+        for (tier t in {tier.low, tier.mid, tier.high, tier.top}) gradeTitles(t);
+        printLine($"Distinct price bands {distinctPrices()}.");
+    }
+}
+
+verb SellEntry {
+    grammar = {.sell, NUMBER, NUMBER};
+    void handler() {
+        int code = (int)noun;
+        int qty = (int)second;
+        try {
+            int cost = sell(code, qty);
+            printLine($"Sold {qty} of {code} for {cost}.");
+        } catch (int e) {
+            printLine($"Cannot sell: {errName(e)}.");
+        }
+    }
+}
+
+verb ToolsInfo {
+    meta = true;
+    grammar = {.tools};
+    void handler() {
+        toolReport();
+    }
+}
+
+verb ChargeTools {
+    grammar = {.charge, NUMBER};
+    void handler() {
+        chargeAll(parsed_number);
+        printLine($"Charged to {hammer.charge}.");
+    }
+}
+
+verb WorkTools {
+    grammar = {.work, NUMBER};
+    void handler() {
+        printLine($"Work done {workAll(parsed_number)}.");
+    }
+}
+
+verb Pack {
+    grammar = {.pack, NUMBER};
+    void handler() {
+        int n = packParcels(101, parsed_number);
+        printLine($"Packed {n}; on shelf {shelfParcels.length}; packed {Parcel.packed}.");
+    }
+}
+
+verb Ship {
+    grammar = {.ship};
+    void handler() {
+        int v = shipParcels();
+        printLine($"Shipped for {v}; unpacked {Parcel.unpacked}.");
+    }
+}
+
+// --- survey verbs -----------------------------------------------------------------------------------
+
+ReportVerb SurveyInfo {
+    grammar = {.survey};
+    void handler() {
+        shown++;
+        surveyReport();
+        sumReport();
+    }
+}
+
+verb Route {
+    meta = true;
+    grammar = {.route, NUMBER, NUMBER};
+    void handler() {
+        int from = (int)noun;
+        int to = (int)second;
+        if (!between(from, 0, GRID_CELLS - 1) || !between(to, 0, GRID_CELLS - 1)) {
+            printLine($"Cells are 0 to {GRID_CELLS - 1}.");
+            return;
+        }
+        survey.printRoute(from, to);
+    }
+}
+
+verb Wall {
+    meta = true;
+    grammar = {.wall, NUMBER};
+    void handler() {
+        int c = parsed_number;
+        survey.clearBlocks();
+        for (int r = 0; r < GRID_ROWS - 1; r++) survey.block(r, c);
+        printLine($"Wall in column {c}: {survey.blockCount()} blocks, {survey.regions()} regions.");
+        survey.printRoute(cellIndexRC(0, 0), cellIndexRC(0, GRID_COLS - 1));
+        survey.clearBlocks();
+    }
+}
+
+bool Initialise() {
+    buildGrid();
+    buildCrates();
+    buildTickers();
+    roster.place();
+    StartDaemon(roster);
+    StartDaemon(turnKeeper);
+    for (int n = 1; n <= 30; n++) bumpFor(crateNo(n));
+    stats.load = 120;
+    stats.label = statsLabel;
+    jot("start", crates.length);
+    rfalse;
+}

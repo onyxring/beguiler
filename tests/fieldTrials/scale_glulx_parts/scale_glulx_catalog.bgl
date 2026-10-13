@@ -1,0 +1,324 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The parts catalog: 40 entries in an initializer table of inline objects, looked up by a general
+// parsing routine that scans their dictionary words; a SCOPE() routine that puts every crate in scope;
+// a NOUN() filter; an object with inline accessors that reach their host through `outer`; string
+// work on the entries (toUpper, replace, indexOf, format, compareTo, switch on a stringObj); a value
+// class ordered by a static <=> and sorted; and the verbs that reach all of it.
+
+#once
+#include <array>
+#include <linq>
+#include <string>
+
+#using bgl.printRules;
+
+class PartSpec : object {
+    inline string label;
+    inline dictionaryWord word;
+    inline eKind kind;
+    inline int onHand;
+    inline int price;
+}
+
+array<PartSpec> catalog = {
+    { "bolt",     .bolt,     kPart, 120, 2 },
+    { "nut",      .nut,      kPart, 300, 1 },
+    { "washer",   .washer,   kPart, 250, 1 },
+    { "bracket",  .bracket,  kPart, 40,  6 },
+    { "hinge",    .hinge,    kPart, 35,  8 },
+    { "spring",   .spring,   kPart, 80,  3 },
+    { "gasket",   .gasket,   kPart, 60,  4 },
+    { "pulley",   .pulley,   kPart, 12,  22 },
+    { "chain",    .chain,    kPart, 18,  15 },
+    { "cable",    .cable,    kPart, 25,  11 },
+    { "hammer",   .hammer,   kTool, 9,   25 },
+    { "saw",      .saw,      kTool, 4,   40 },
+    { "drill",    .drill,    kTool, 3,   90 },
+    { "clamp",    .clamp,    kTool, 14,  18 },
+    { "level",    .level,    kTool, 6,   20 },
+    { "chisel",   .chisel,   kTool, 8,   16 },
+    { "file",     .file,     kTool, 10,  9 },
+    { "rasp",     .rasp,     kTool, 5,   12 },
+    { "pliers",   .pliers,   kTool, 11,  14 },
+    { "spanner",  .spanner,  kTool, 7,   19 },
+    { "oil",      .oil,      kFuel, 30,  7 },
+    { "grease",   .grease,   kFuel, 22,  6 },
+    { "diesel",   .diesel,   kFuel, 15,  30 },
+    { "kerosene", .kerosene, kFuel, 9,   28 },
+    { "propane",  .propane,  kFuel, 6,   45 },
+    { "coal",     .coal,     kFuel, 70,  5 },
+    { "charcoal", .charcoal, kFuel, 44,  6 },
+    { "wax",      .wax,      kFuel, 33,  4 },
+    { "biscuit",  .biscuit,  kFood, 200, 1 },
+    { "rice",     .rice,     kFood, 90,  2 },
+    { "beans",    .beans,    kFood, 75,  2 },
+    { "flour",    .flour,    kFood, 50,  3 },
+    { "sugar",    .sugar,    kFood, 48,  3 },
+    { "salt",     .salt,     kFood, 66,  1 },
+    { "tea",      .tea,      kFood, 27,  5 },
+    { "coffee",   .coffee,   kFood, 19,  9 },
+    { "carton",   .carton,   kBox,  140, 2 },
+    { "pallet",   .pallet,   kBox,  16,  35 },
+    { "drum",     .drum,     kBox,  21,  24 },
+    { "bin",      .bin,      kBox,  58,  10 }
+};
+
+int catalogIndexOf(dictionaryWord w) {
+    for (int i = 0; i < catalog.length; i++) {
+        if (catalog[i].word == w) return i;
+    }
+    return -1;
+}
+
+// ---- a price band: a value class ordered by a static <=> -----------------------------------------------------
+
+value class PriceBand {
+    int price = 0;
+    int index = 0;
+
+    PriceBand operator = (PriceBand o) { price = o.price; index = o.index; return self; }
+    static int operator <=> (PriceBand a, PriceBand b) {
+        if (a.price != b.price) return a.price < b.price ? -1 : 1;
+        return a.index < b.index ? -1 : 1;
+    }
+}
+
+// ---- grammar routines --------------------------------------------------------------------------------------
+
+/// A general parsing routine: one catalog word, its index put in parsed_number.
+int parsePartWord() {
+    dictionaryWord w = NextWord();
+    int i = catalogIndexOf(w);
+    if (i < 0) return -1;
+    parsed_number = i;
+    return 1;
+}
+
+/// A general parsing routine: a shade word, its value put in parsed_number.
+int parseShadeWord() {
+    dictionaryWord w = NextWord();
+    int i = shadeWords.indexOf(w);
+    if (i < 0) return -1;
+    parsed_number = i + 1;
+    return 1;
+}
+
+/// A scope routine: every crate in the grid, wherever it is.
+bool allCratesScope() {
+    if (scope_stage == 2) {
+        for (Crate c in stock.crates) PlaceInScope(c);
+        return true;
+    }
+    if (scope_stage == 3) printLine("No crate like that is on the books.");
+    return false;
+}
+
+/// A noun filter: only sealed crates.
+bool isSealedCrate() {
+    if (!noun.is(Crate)) return false;
+    return (((Crate)noun).flags & sealed) != 0;
+}
+
+// ---- the catalog desk: inline accessors with outer ----------------------------------------------------------
+
+object catalogDesk {
+    int markup = 10;
+    int lookups = 0;
+    int lastIndex = -1;
+
+    auto discount = {
+        int _pct = 0;
+        int operator () { return _pct; }
+        void operator = (int v) {
+            if (v < 0) v = 0;
+            if (v > outer.markup * 3) v = outer.markup * 3;
+            _pct = v;
+        }
+    }
+
+    auto picked = {
+        int _i = -1;
+        int operator () { return _i; }
+        void operator = (int v) {
+            _i = v;
+            outer.lookups++;
+            outer.lastIndex = v;
+        }
+    }
+
+    /// The selling price of an entry after markup and discount.
+    int sellPrice(PartSpec p) {
+        int base = p.price * (100 + markup) / 100;
+        return base - base * discount / 100;
+    }
+
+    stringObj describe(PartSpec p) {
+        stringObj name = p.label;
+        stringObj up = name.toUpper();
+        stringObj s = $"{up}: {kindName(p.kind)}, {p.onHand} on hand, {p.price} each, sells at {sellPrice(p)}";
+        return s;
+    }
+
+    /// The entries of a kind, cheapest first.
+    void listKind(eKind k) {
+        array<PartSpec> list = catalog.filter((PartSpec p) => p.kind == k).orderBy((PartSpec a, PartSpec b) => {
+            if (a.price != b.price) return a.price < b.price ? -1 : 1;
+            stringObj an = a.label;
+            return an.compareTo(b.label);
+        });
+        print($"{kindName(k)} ({list.length}):");
+        for (PartSpec p in list) print($" {p.label} {p.price}");
+        printLine(".");
+    }
+
+    /// The most expensive entries by a PriceBand sort.
+    void dearest(int n) {
+        array<PriceBand> bands[40];
+        for (int i = 0; i < catalog.length; i++) {
+            PriceBand b;
+            b.price = catalog[i].price;
+            b.index = i;
+            bands.append(b);
+        }
+        bands.sort(PriceBand::operator <=>);
+        bands.reverse();
+        print("Dearest:");
+        for (int i = 0; i < n && i < bands.length; i++) print($" {catalog[bands[i].index].label} {bands[i].price}");
+        printLine(".");
+    }
+
+    /// Words that hold a letter run, by indexOf, and a replace on each.
+    void search(string fragment) {
+        stringObj f = fragment;
+        int hits = 0;
+        stringObj found = "";
+        for (PartSpec p in catalog) {
+            stringObj l = p.label;
+            int at = l.indexOf(fragment);
+            if (at < 0) continue;
+            hits++;
+            stringObj marked = l.replace(fragment, "_");
+            if (found.length > 0) found += ", ";
+            found += marked;
+        }
+        printLine($"\"{fragment}\": {hits} hit{pluralS(hits)}: {found}.");
+    }
+
+    /// The stock value of every entry and of each kind.
+    void worth() {
+        int total = 0;
+        array<int> byKind = { 0, 0, 0, 0, 0 };
+        for (PartSpec p in catalog) {
+            int v = p.onHand * p.price;
+            total += v;
+            byKind[(int)p.kind - 1] = byKind[(int)p.kind - 1] + v;
+        }
+        print($"Worth {total}:");
+        for (int k = 1; k <= 5; k++) print($" {kindName((eKind)k)} {byKind[k - 1]}");
+        printLine(".");
+        PartSpec lo = catalog.orderBy((PartSpec a, PartSpec b) => a.onHand - b.onHand).first();
+        PartSpec hi = catalog.orderBy((PartSpec a, PartSpec b) => b.onHand - a.onHand).first();
+        stringObj loName = lo.label;
+        stringObj hiName = hi.label;
+        stringObj line = loName.format("Low: $0; high: $1.", hiName);
+        printLine(line);
+    }
+
+    string grade(stringObj label) {
+        switch (label) {
+            case "drill":   return "locked shelf";
+            case "propane": return "outside cage";
+            case "diesel":  return "outside cage";
+        }
+        return "open shelf";
+    }
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------------
+
+reportVerb Lookup {
+    grammar = {
+        {.lookup, parsePartWord},
+        {.price, parsePartWord}
+    };
+    void handler() {
+        PartSpec p = catalog[parsed_number];
+        catalogDesk.picked = parsed_number;
+        printLine(catalogDesk.describe(p));
+        stringObj l = p.label;
+        printLine($"Kept on the {catalogDesk.grade(l)}; lookups {catalogDesk.lookups}, last {catalogDesk.lastIndex}.");
+    }
+}
+
+reportVerb KindList {
+    grammar = {.kinds, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        if (k < 1 || k > 5) {
+            printLine("Kinds run from 1 to 5.");
+            return;
+        }
+        catalogDesk.listKind((eKind)k);
+    }
+}
+
+reportVerb Dearest {
+    grammar = {.dearest};
+    void handler() { catalogDesk.dearest(5); }
+}
+
+reportVerb Worth {
+    grammar = {.worth};
+    void handler() { catalogDesk.worth(); }
+}
+
+reportVerb Discount {
+    grammar = {.discount, NUMBER};
+    void handler() {
+        catalogDesk.discount = (int)noun;
+        printLine($"Discount {catalogDesk.discount}% (markup {catalogDesk.markup}%).");
+    }
+}
+
+array<dictionaryWord> fragmentWords = { .ar, .er, .ee, .oil };
+array<string> fragments = { "ar", "er", "ee", "oil" };
+
+/// A general parsing routine: one of the search fragments, its index put in parsed_number.
+int parseFragment() {
+    int i = fragmentWords.indexOf(NextWord());
+    if (i < 0) return -1;
+    parsed_number = i;
+    return 1;
+}
+
+reportVerb PartSearch {
+    grammar = {.grep, parseFragment};
+    void handler() { catalogDesk.search(fragments[parsed_number]); }
+}
+
+reportVerb Locate {
+    grammar = {.locate, SCOPE(allCratesScope)};
+    void handler() {
+        Crate c = (Crate)noun;
+        printLine($"{cThe(c)} is in {roomName(c)}, {c.weight}kg {shadeName(c.shade)}.");
+    }
+}
+
+crateVerb Crack {
+    grammar = {.crack, NOUN(isSealedCrate)};
+    void act(Crate c) {
+        c.flags = c.flags ^ sealed;
+        c.flags = c.flags | damaged;
+        printLine($"You crack {the(c)} open. Flags now {flagText(c.flags)}.");
+    }
+}
+
+crateVerb Dye {
+    grammar = {.dye, NOUN, parseShadeWord};
+    void act(Crate c) {
+        eShade was = c.shade;
+        c.shade = (eShade)parsed_number;
+        printLine($"{cThe(c)} is dyed {shadeName(c.shade)} (was {shadeName(was)}).");
+    }
+}

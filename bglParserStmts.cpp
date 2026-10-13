@@ -663,6 +663,10 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         string recv = arrExprText;
         memberSrc = arrayReceiver(recv, arrExprText, arrExpr->resolvedType, func, body);
         viaPointer = !memberSrc.isMember;   // a ref member, read as its array
+        if(!memberSrc.staticElemType.empty()){                     // a static array: one global
+            arrName = recv; viaPointer = false;
+            if(arrElemType.empty()) arrElemType = memberSrc.staticElemType;
+        }
         if(memberSrc.isMember){
             arrName = arrExprText;
             if(arrElemType.empty()) arrElemType = resolveArrayElementTypeDotted(memberSrc.owner, memberSrc.prop, func, body);

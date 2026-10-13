@@ -1,0 +1,280 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Machines: twelve numbered machines in Room A1 run by an enum state machine; a start that can throw
+// a fault from deep in a call, caught by the verb; timers that warm and cool them; daemons that count
+// their output silently, so a long run prints nothing until asked; a lambda table of rate rules.
+
+#once
+#include "scale_z5_kit"
+#using sk
+
+/// Rules that set a machine's rate from its number: by parity, by thirds and a flat rule.
+array<func<int, int>> rateRules = {
+    (int n) => n % 2 + 1,
+    (int n) => n / 3 + 1,
+    (int n) => 2
+};
+
+/// A numbered machine.
+class Machine : object {
+    int num;
+    eMachineState state = eMachineState.idle;
+    int faultCode = 0;
+    int output = 0;
+    int rate = 1;
+    int limit = 40;
+    int starts = 0;
+    int faults = 0;
+    int time_left;
+    attributeList attributes = {static};
+
+    bool short_name() {
+        print($"machine {num}");
+        rtrue;
+    }
+
+    void description() {
+        print($"Machine {num}: ");
+        print(stateName(state));
+        print($", output {output}, rate {rate}, faults {faults}.^");
+    }
+
+    int parse_name() {
+        if (parser_action == TheSame) return -2;
+        int n = 0;
+        bool numbered = false;
+        while (wn <= num_words) {
+            dictionaryWord w = NextWord();
+            if (w == .machine || w == .machines) { n++; continue; }
+            wn--;
+            int k = TryNumber(wn);
+            if (k == num) {
+                n++;
+                wn++;
+                numbered = true;
+                continue;
+            }
+            if (k != -1000 && !numbered) return 0;
+            break;
+        }
+        return n;
+    }
+
+    /// Starts warming; throws the fault for the machine's fault code, which one attempt clears.
+    void start() {
+        switch (state) {
+            case eMachineState.broken:
+                throw eFault.locked;
+            case eMachineState.warming, eMachineState.running:
+                return;
+        }
+        int code = faultCode;
+        if (faultCode > 0) faultCode--;
+        check(code);
+        starts++;
+        state = eMachineState.warming;
+        StartTimer(self, 2);
+    }
+
+    /// Raises the fault for a code through the kit, two calls down.
+    void check(int code) { raiseFor(code); }
+
+    void stop() {
+        switch (state) {
+            case eMachineState.warming:
+                StopTimer(self);
+            case eMachineState.running:
+                StopDaemon(self);
+            case eMachineState.cooling:
+                StopTimer(self);
+        }
+        if (state != eMachineState.broken) state = eMachineState.idle;
+    }
+
+    void time_out() {
+        switch (state) {
+            case eMachineState.warming:
+                state = eMachineState.running;
+                StartDaemon(self);
+            case eMachineState.cooling:
+                state = eMachineState.idle;
+        }
+    }
+
+    void daemon() {
+        output += rate;
+        if (output % limit == 0) {
+            StopDaemon(self);
+            state = eMachineState.cooling;
+            StartTimer(self, 3);
+        }
+    }
+}
+
+/// The room the machines stand in, north of the grid.
+object roomM {
+    "Room M";
+    description = "Room M. The grid is south.";
+    attributes = {light};
+    object s_to;
+}
+
+Machine machine1  { num = 1;  parent = roomM; }
+Machine machine2  { num = 2;  parent = roomM; faultCode = 2; }
+Machine machine3  { num = 3;  parent = roomM; }
+Machine machine4  { num = 4;  parent = roomM; faultCode = 4; }
+Machine machine5  { num = 5;  parent = roomM; }
+Machine machine6  { num = 6;  parent = roomM; faultCode = 5; }
+Machine machine7  { num = 7;  parent = roomM; }
+Machine machine8  { num = 8;  parent = roomM; faultCode = 7; }
+Machine machine9  { num = 9;  parent = roomM; }
+Machine machine10 { num = 10; parent = roomM; faultCode = 9; }
+Machine machine11 { num = 11; parent = roomM; }
+Machine machine12 { num = 12; parent = roomM; state = eMachineState.broken; }
+
+/// Every machine, in number order.
+array<Machine> machines = { machine1, machine2, machine3, machine4, machine5, machine6,
+                            machine7, machine8, machine9, machine10, machine11, machine12 };
+
+/// A state's name.
+string stateName(eMachineState s) {
+    switch (s) {
+        case eMachineState.idle:    return "idle";
+        case eMachineState.warming: return "warming";
+        case eMachineState.running: return "running";
+        case eMachineState.cooling: return "cooling";
+        default:                    return "broken";
+    }
+}
+
+/// One letter per machine for its state.
+stringObj machineLine() {
+    stringObj s = "";
+    for (Machine m in machines) {
+        switch (m.state) {
+            case eMachineState.idle:    s += 'i';
+            case eMachineState.warming: s += 'w';
+            case eMachineState.running: s += 'R';
+            case eMachineState.cooling: s += 'c';
+            default:                    s += 'X';
+        }
+    }
+    return s;
+}
+
+/// Sets every machine's rate from one of the rate rules.
+void applyRule(int which) {
+    func<int, int> f = rateRules[which % rateRules.length];
+    for (Machine m in machines) m.rate = f(m.num);
+}
+
+/// Starts a machine; the fault's name when it would not start, else null.
+string tryStart(Machine m) {
+    try {
+        m.start();
+    } catch (eFault f) {
+        m.faults++;
+        return faultName(f);
+    }
+    return null;
+}
+
+/// The total output of every machine.
+int totalOutput() {
+    int t = 0;
+    for (Machine m in machines) t += m.output;
+    return t;
+}
+
+verb StartMachine {
+    grammar = { {.start, NOUN}, {.run, NOUN} };
+    void handler() {
+        if (!noun.is(Machine)) {
+            print("Only machines start.^");
+            return;
+        }
+        Machine m = (Machine)noun;
+        string why = tryStart(m);
+        if (why != null) print($"Machine {m.num} will not start: {why}.^");
+        else print($"Machine {m.num} is {stateName(m.state)}.^");
+    }
+}
+
+verb StartAll {
+    grammar = { {.start, .all, .machines}, {.startall} };
+    void handler() {
+        int ok = 0;
+        stringObj why = "";
+        for (Machine m in machines) {
+            string f = tryStart(m);
+            if (f == null) ok++;
+            else {
+                if (why.length > 0) why += ", ";
+                why += $"{m.num} {f}";
+            }
+        }
+        print($"{ok} started; refused: ");
+        print(why);
+        print(".^");
+    }
+}
+
+verb StopMachine {
+    grammar = { {.stop, NOUN}, {.halt, NOUN} };
+    void handler() {
+        if (!noun.is(Machine)) {
+            print("Only machines stop.^");
+            return;
+        }
+        Machine m = (Machine)noun;
+        m.stop();
+        print($"Machine {m.num} is {stateName(m.state)}.^");
+    }
+}
+
+verb StopAll {
+    grammar = { {.stop, .all, .machines}, {.stopall} };
+    void handler() {
+        for (Machine m in machines) m.stop();
+        print("Every machine is stopped.^");
+    }
+}
+
+verb MachineReport {
+    grammar = {.machines};
+    meta = true;
+    void handler() {
+        stringObj s = machineLine();
+        print(s);
+        print($" output {totalOutput()}, faults {machines.map((Machine m) => m.faults).filter((var f) => f > 0).count()} machines.^");
+    }
+}
+
+verb Rule {
+    grammar = {.rule, NUMBER};
+    void handler() {
+        applyRule(parsed_number);
+        stringObj s = "";
+        for (Machine m in machines) s += (char)('0' + m.rate);
+        print($"Rates by rule {parsed_number}: ");
+        print(s);
+        print(".^");
+    }
+}
+
+verb Repair {
+    grammar = {.repair, NOUN};
+    void handler() {
+        if (!noun.is(Machine)) {
+            print("Only machines are repaired.^");
+            return;
+        }
+        Machine m = (Machine)noun;
+        if (m.state != eMachineState.broken) {
+            print($"Machine {m.num} is not broken.^");
+            return;
+        }
+        m.state = eMachineState.idle;
+        print($"Machine {m.num} is repaired.^");
+    }
+}

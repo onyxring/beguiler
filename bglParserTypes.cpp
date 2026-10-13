@@ -872,7 +872,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // #define symbols
     {
         auto it = definedSymbols.find(name);
-        if(it != definedSymbols.end() && !it->second.empty()){
+        if(it != definedSymbols.end() && !it->second.empty() && !definesExternGlobal(name)){
             candidates.push_back({defineLiteral(it->second).second, format("#define symbol '{0}'", name), false});
         }
     }
@@ -3380,7 +3380,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // #define symbols (substitute literal value)
     {
         auto it = definedSymbols.find(name);
-        if(it != definedSymbols.end() && !it->second.empty()){
+        if(it != definedSymbols.end() && !it->second.empty() && !definesExternGlobal(name)){
             auto [text, ct] = defineLiteral(it->second);
             // A #defineI6 symbol is an I6 Constant too: it is read by name.
             if(auto i6 = i6DefinedSymbols.find(name); i6 != i6DefinedSymbols.end()) text = i6->second;
@@ -3414,6 +3414,14 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         return cls != nullptr ? cls->i6Name() : name;
     }
     return "";
+}
+
+// `#defineI6 MAX_TIMERS 48` sets the value of a constant the bindings declare `extern`: both names are the
+// one Inform 6 constant, so the extern declaration (typed) is the name and the define isn't a rival.
+bool bglParser::definesExternGlobal(const string& name){
+    if(!i6DefinedSymbols.count(name)) return false;
+    auto* vd = languageService.findGlobalAs<variableDeclaration>(name);
+    return vd != nullptr && vd->isExternal;
 }
 
 // Register a closure capture: creates a global variable for the captured value.
@@ -4982,6 +4990,19 @@ token bglParser::consumeTypeToken(token first){
         return first;
     // Check #using imported alias members (bare type from import)
     if(!file.peekToken().is(token::period)){
+        // A member of the class or object being compiled, or a parameter, outranks an import (§10.4).
+        auto ownMember = [&](const string& n){
+            auto real = [&](typeMember* m){   // an alias member is a type name, not a member to reach
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                return m->name == n && !(vd && vd->isNamespaceAlias());
+            };
+            classDef* cls = currentClass != nullptr ? currentClass : currentObject != nullptr ? currentObject->objectClass : nullptr;
+            if(currentObject != nullptr)
+                for(typeMember* m : currentObject->members) if(real(m)) return true;
+            return cls != nullptr && cls->findMember(real) != nullptr;
+        };
+        if(currentFunc != nullptr && (ownMember(first.value) || qualifyFromParams(first.value, currentFunc)))
+            return first;
         for(objectDef* imp : usingObjectImports)
             for(typeMember* m : imp->members)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(m))

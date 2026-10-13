@@ -579,7 +579,8 @@ object _bglBuf {
     int indexOf(array<char> buf, array<char> searchTextBuf, int startingIndex = 0){
         int stblen = length(searchTextBuf);
         int blen   = length(buf);
-        for(int o = startingIndex; o < blen; o++){
+        if(startingIndex < 0) startingIndex = 0;
+        for(int o = startingIndex; o + stblen <= blen; o++){   // a match lies wholly inside the text
             int i;
             for(i = 0; i < stblen; i++){
                 if(_bglGetByte(buf, o + i + bgl.wordsize) != _bglGetByte(searchTextBuf, i + bgl.wordsize)) break;

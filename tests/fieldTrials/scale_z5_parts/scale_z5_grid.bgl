@@ -1,0 +1,179 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// The grid: forty rooms in eight columns and five rows, taken from a pool and wired from a wall table;
+// room descriptions that list their exits; a sweeper that walks the grid from a daemon; a map.
+
+#once
+#include "scale_z5_kit"
+#using sk
+
+/// Columns and rows of the grid.
+const int gridCols = 8;
+const int gridRows = 5;
+const int gridCells = 40;
+
+/// Walls, one entry per cell: bit 1 blocks north, 2 east, 4 south, 8 west.
+array<int> gridWalls = {
+    0, 0, 2, 8, 0, 0, 0, 4,
+    0, 4, 0, 0, 2, 8, 0, 0,
+    0, 1, 0, 4, 0, 0, 0, 0,
+    2, 8, 0, 1, 0, 4, 2, 8,
+    0, 0, 0, 0, 0, 1, 0, 0
+};
+
+/// A room of the grid.
+class GridRoom[gridCells] : object {
+    int cell;
+    int visits = 0;
+    object n_to;
+    object e_to;
+    object s_to;
+    object w_to;
+    attributeList attributes = {light};
+
+    void create(int c) { cell = c; }
+
+    bool short_name() {
+        stringObj n = sk.cellName(cell);
+        print("Room ");
+        print(n);
+        rtrue;
+    }
+
+    void description() {
+        stringObj n = sk.cellName(cell);
+        print($"Grid room {n}. Exits:");
+        int shown = 0;
+        if (n_to != null) { print(" north"); shown++; }
+        if (e_to != null) { print(" east"); shown++; }
+        if (s_to != null) { print(" south"); shown++; }
+        if (w_to != null) { print(" west"); shown++; }
+        if (shown == 0) print(" none");
+        print(".^");
+    }
+
+    /// The crates on the floor here.
+    int crateCount() {
+        int n = 0;
+        for (object o in children) {
+            if (o.is(Crate)) n++;
+        }
+        return n;
+    }
+
+    void each_turn() { visits++; }
+}
+
+/// The forty rooms, by cell.
+array<GridRoom> grid[gridCells];
+
+/// Whether a wall blocks heading h out of cell c.
+bool walled(int c, eHeading h) {
+    int bit = 1 << (int)h;
+    return (gridWalls[c] & bit) != 0;
+}
+
+/// Allocates the grid and wires each room's exits from the wall table; walls block both sides.
+int buildGrid() {
+    for (int c = 0; c < gridCells; c++) {
+        GridRoom r = new GridRoom(c);
+        if (r == null) return c;
+        grid += r;
+    }
+    for (int c = 0; c < gridCells; c++) {
+        GridRoom r = grid[c];
+        int col = c % gridCols;
+        int row = c / gridCols;
+        if (row > 0 && !walled(c, eHeading.north) && !walled(c - 8, eHeading.south)) r.n_to = grid[c - 8];
+        if (col < 7 && !walled(c, eHeading.east) && !walled(c + 1, eHeading.west))   r.e_to = grid[c + 1];
+        if (row < 4 && !walled(c, eHeading.south) && !walled(c + 8, eHeading.north)) r.s_to = grid[c + 8];
+        if (col > 0 && !walled(c, eHeading.west) && !walled(c - 1, eHeading.east))   r.w_to = grid[c - 1];
+    }
+    return gridCells;
+}
+
+/// Whether an exit leads to a room of the grid.
+bool inGrid(object o) { return o != null && o.is(GridRoom); }
+
+/// How many exits the whole grid has, counting each direction of a passage once.
+int exitTotal() {
+    int n = 0;
+    for (GridRoom r in grid) {
+        if (inGrid(r.n_to)) n++;
+        if (inGrid(r.e_to)) n++;
+        if (inGrid(r.s_to)) n++;
+        if (inGrid(r.w_to)) n++;
+    }
+    return n;
+}
+
+// ---- The sweeper: walks the grid from a daemon, turning right at a wall ----
+
+object sweeper {
+    "sweeper";
+    name = {.sweeper};
+    Walker at;
+    int moves = 0;
+    int turnsMade = 0;
+    int bumps = 0;
+    bool active = false;
+
+    /// One step: turn right until the way ahead is open, then step.
+    void daemon() {
+        for (int tries = 0; tries < 4; tries++) {
+            if (wayOpen(at)) {
+                at.step();
+                moves++;
+                self.parent = grid[at.cell()];
+                return;
+            }
+            at.turnRight();
+            turnsMade++;
+        }
+        bumps++;
+    }
+
+    /// Whether the cell ahead of w is in the grid and reachable.
+    bool wayOpen(Walker w) {
+        GridRoom r = grid[w.cell()];
+        switch (w.facing) {
+            case eHeading.north: return inGrid(r.n_to);
+            case eHeading.east:  return inGrid(r.e_to);
+            case eHeading.south: return inGrid(r.s_to);
+            default:             return inGrid(r.w_to);
+        }
+    }
+
+    void start() {
+        at.set(0, 0);
+        at.facing = eHeading.east;
+        self.parent = grid[0];
+        active = true;
+        StartDaemon(self);
+    }
+
+    void stop() {
+        active = false;
+        StopDaemon(self);
+    }
+}
+
+/// The grid as rows of characters: P for the player, S for the sweeper, a digit for crates (+ past 9).
+void printMap() {
+    for (int row = 0; row < gridRows; row++) {
+        stringObj line = "";
+        for (int col = 0; col < gridCols; col++) {
+            GridRoom r = grid[cellOf(col, row)];
+            if (location == r)            line += 'P';
+            else if (sweeper.parent == r) line += 'S';
+            else {
+                int k = r.crateCount();
+                if (k == 0)     line += '.';
+                else if (k > 9) line += '+';
+                else            line += (char)('0' + k);
+            }
+        }
+        print(line);
+        print("^");
+    }
+}

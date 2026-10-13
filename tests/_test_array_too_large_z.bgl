@@ -1,0 +1,5 @@
+/* A Z-machine array past Inform 6's entry limit. */
+// EXPECT_ERROR: a Z-machine array holds at most 32764
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+array<int> big[33000];
+void main(){ }

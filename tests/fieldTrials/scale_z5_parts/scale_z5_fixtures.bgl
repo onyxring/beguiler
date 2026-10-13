@@ -1,0 +1,182 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// Fixtures: a store room east of Room M holding shelves, bins, racks and a scale, from a hierarchy of
+// classes that override a capacity rule, a report and a before rule, chaining to the parent's with a
+// cast; a typed-property interface read through `is` and casts; puts and inserts checked by capacity.
+
+#once
+#include "scale_z5_kit"
+#include "scale_z5_crates"
+#include "scale_z5_machines"
+#using sk
+
+/// Anything fixed in the store that holds crates.
+class Fixture : object {
+    int capacity = 3;
+    int loads = 0;
+    attributeList attributes = {static};
+
+    /// How many crates are on or in it.
+    int held() {
+        int n = 0;
+        for (object o in children) {
+            if (o.is(Crate)) n++;
+        }
+        return n;
+    }
+
+    /// Whether one more crate would fit; a subclass narrows it.
+    default bool fits(Crate c) { return c != null && held() < capacity; }
+
+    /// A line about the fixture.
+    default stringObj report() {
+        stringObj s = "";
+        s.capture();
+        print(self);
+        s.release();
+        s += $": {held()}/{capacity}, loads {loads}";
+        return s;
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Crate)) rtrue("Only crates go there.^");
+                if (!fits((Crate)noun)) {
+                    print($"No room for ");
+                    print(noun);
+                    rtrue(".^");
+                }
+                loads++;
+        }
+        rfalse;
+    }
+}
+
+/// A shelf: crates go on it.
+class Shelf : Fixture {
+    attributeList attributes = {static, supporter};
+}
+
+/// A bin: crates go in it, and it is always open.
+class Bin : Fixture {
+    attributeList attributes = {static, container, open};
+    capacity = 4;
+}
+
+/// A rack takes only crates up to a weight limit.
+class Rack : Shelf {
+    int maxWeight = 10;
+    default bool fits(Crate c) {
+        if (c.weight > maxWeight) return false;
+        return held() < capacity;
+    }
+    default stringObj report() {
+        stringObj s = ((Shelf)self).report();
+        s += $", limit {maxWeight}";
+        return s;
+    }
+}
+
+/// A cold rack: a rack that also refuses warm shades.
+class ColdRack : Rack {
+    bool fits(Crate c) {
+        if (c.shade.warm) return false;
+        return ((Rack)self).fits(c);
+    }
+    stringObj report() {
+        stringObj s = ((Rack)self).report();
+        s += ", cold";
+        return s;
+    }
+}
+
+/// A sorting bin: a bin that keeps one shade.
+class SortBin : Bin {
+    eShade keeps = eShade.red;
+    bool fits(Crate c) {
+        if (c.shade != keeps) return false;
+        return ((Bin)self).fits(c);
+    }
+    stringObj report() {
+        stringObj s = ((Bin)self).report();
+        s += ", keeps ";
+        s += sk.shadeName(keeps);
+        return s;
+    }
+}
+
+/// A scale: a shelf of one crate that reads its weight.
+class WeighScale : Shelf {
+    capacity = 1;
+    int readings = 0;
+    int lastReading = 0;
+    bool after() {
+        switch (action) {
+            case Receive:
+                readings++;
+                lastReading = ((Crate)noun).weight;
+                print($"The scale reads {lastReading}.^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+/// The store room, east of Room M.
+object roomS {
+    "Room S";
+    description = "Room S. Room M is west.";
+    attributes = {light};
+    object w_to = roomM;
+}
+
+extend roomM {
+    object e_to = roomS;
+}
+
+Shelf     shelfA    { "shelf A";    name = {.shelf, .a};    parent = roomS; }
+Shelf     shelfB    { "shelf B";    name = {.shelf, .b};    parent = roomS; capacity = 2; }
+Bin       binA      { "bin A";      name = {.bin, .a};      parent = roomS; }
+SortBin   binRed    { "red bin";    name = {.red, .bin};    parent = roomS; }
+SortBin   binBlue   { "blue bin";   name = {.blue, .bin};   parent = roomS; keeps = eShade.blue; }
+Rack      rackA     { "rack A";     name = {.rack, .a};     parent = roomS; maxWeight = 12; }
+ColdRack  rackCold  { "cold rack";  name = {.cold, .rack};  parent = roomS; }
+WeighScale scaleA   { "scale";      name = {.scale};        parent = roomS; }
+
+/// Every fixture, in store order.
+array<Fixture> fixtures = { shelfA, shelfB, binA, binRed, binBlue, rackA, rackCold, scaleA };
+
+verb Store {
+    grammar = {.store};
+    meta = true;
+    void handler() {
+        int total = 0;
+        for (Fixture f in fixtures) {
+            stringObj r = f.report();
+            print(r);
+            print(".^");
+            total += f.held();
+        }
+        print($"{total} crates in the store; {fixtures.map((Fixture f) => weightIn(f)).filter((var w) => w > 0).count()} fixtures carry weight.^");
+    }
+}
+
+verb Fits {
+    grammar = {.fits, NOUN};
+    meta = true;
+    void handler() {
+        if (!noun.is(Crate)) {
+            print("Only crates fit.^");
+            return;
+        }
+        Crate c = (Crate)noun;
+        stringObj s = "";
+        for (Fixture f in fixtures) {
+            s += f.fits(c) ? '+' : '-';
+        }
+        print($"Crate {c.num} fits: ");
+        print(s);
+        print(".^");
+    }
+}

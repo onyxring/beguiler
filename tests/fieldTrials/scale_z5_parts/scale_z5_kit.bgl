@@ -1,0 +1,192 @@
+/*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
+
+// The kit: enums and bnums, value classes with operators, an emitter class and an emitter namespace of
+// the kind a library author writes, global emitters, and the `sk` namespace object that the other
+// parts reach through `#using sk`.
+
+#once
+#include <linq>
+#include <string>
+
+// ---- Enumerations -------------------------------------------------------------------------------
+
+/// The eight shades a crate can be.
+enum eShade {
+    red = 0, orange, yellow, green, blue, indigo, violet, gray,
+    /// True for the warm half of the shades.
+    emitter bool warm { ($self <= 2) }
+    /// The shade after this one, wrapping round.
+    emitter eShade next { (($self + 1) % 8) }
+}
+
+/// Marks a crate can carry, as flags.
+bnum eMark { sealed, dented, labeled, stacked, wet, checked, counted, moved, tagged, stamped, scanned, held }
+
+/// The faults a machine can raise.
+enum eFault { none = 0, jammed = 20, overheated, empty, locked, unknown }
+
+/// A machine's state.
+enum eMachineState { idle = 0, warming, running, cooling, broken }
+
+/// The four grid directions.
+enum eHeading { north = 0, east, south, west }
+
+// ---- Emitters a library author writes ------------------------------------------------------------
+
+/// Bit and range helpers, expanded in place.
+emitter skBits {
+    int  clamp(int v, int lo, int hi) { (($v < $lo) * $lo + ($v > $hi) * $hi + ($v >= $lo && $v <= $hi) * $v) }
+    int  low(int v)                   { ($v & 255) }
+    int  high(int v)                  { (($v / 256) & 255) }
+    bool odd(int v)                   { ($v % 2 ~= 0) }
+}
+
+/// The cell index of a grid position.
+emitter int cellOf(int c, int r) { ($r * 8 + $c) }
+
+/// A divider line, written straight to the output.
+emitter void divider { print "--------^"; }
+
+/// A pair of small numbers packed into one word, with emitter accessors.
+emitter class Packed {
+    emitter int  lo     { ($self & 255) }
+    emitter int  hi     { (($self / 256) & 255) }
+    emitter int  sum    { (($self & 255) + (($self / 256) & 255)) }
+    emitter void setLo(int v) { $self = ($self & 65280) | ($v & 255); }
+    emitter void setHi(int v) { $self = ($self & 255) | (($v & 255) * 256); }
+    emitter eBool operator ? () { ($self ~= 0) }
+}
+
+// ---- Value classes -------------------------------------------------------------------------------
+
+/// A grid position.
+value class Vec {
+    int x;
+    int y;
+    Vec operator = (Vec o)      { x = o.x; y = o.y; return self; }
+    Vec operator += (Vec o)     { x = x + o.x; y = y + o.y; return self; }
+    bool operator == (Vec o)    { return x == o.x && y == o.y; }
+    bool operator != (Vec o)    { return x != o.x || y != o.y; }
+    int operator <=> (Vec o)    { return (y * 8 + x) - (o.y * 8 + o.x); }
+    int cell()                  { return y * 8 + x; }
+    bool inside()               { return x >= 0 && x < 8 && y >= 0 && y < 5; }
+    void set(int nx, int ny)    { x = nx; y = ny; }
+}
+
+/// A position with a heading.
+value class Walker : Vec {
+    eHeading facing;
+    Walker operator = (Walker o) { facing = o.facing; (Vec)self = o; return self; }
+    void turnRight() { facing = (eHeading)(((int)facing + 1) % 4); }
+    void step() {
+        switch (facing) {
+            case eHeading.north: y--;
+            case eHeading.east:  x++;
+            case eHeading.south: y++;
+            case eHeading.west:  x--;
+        }
+    }
+}
+
+/// A running total that remembers its high mark; read and written as an int.
+value class Gauge {
+    int _val;
+    int _high;
+    int operator ()         { return _val; }
+    void operator = (int v) {
+        _val = v;
+        if (v > _high) _high = v;
+    }
+    int high() { return _high; }
+}
+
+// ---- The kit namespace ---------------------------------------------------------------------------
+
+/// Types, tables and helpers, reached as sk.
+object sk {
+    alias shade   for eShade;
+    alias mark    for eMark;
+    alias fault   for eFault;
+    alias heading for eHeading;
+    alias vec     for Vec;
+    alias walker  for Walker;
+
+    /// Shade names, in shade order.
+    array<string> shadeNames = { "red", "orange", "yellow", "green", "blue", "indigo", "violet", "gray" };
+    /// Mark names, in bit order.
+    array<string> markNames = { "sealed", "dented", "labeled", "stacked", "wet", "checked",
+                                "counted", "moved", "tagged", "stamped", "scanned", "held" };
+    /// Heading names, in heading order.
+    array<string> headingNames = { "north", "east", "south", "west" };
+    /// Column letters of the grid.
+    array<char> columns = "ABCDEFGH";
+
+    /// The name of a shade.
+    string shadeName(eShade s) { return shadeNames[(int)s]; }
+
+    /// The marks set in m, as words joined by commas; "none" for no marks.
+    stringObj markList(eMark m) {
+        stringObj s = "";
+        if (m == 0) {
+            s = "none";
+            return s;
+        }
+        for (int i = 0; i < markNames.length; i++) {
+            if ((m & (eMark)(1 << i)) != 0) {
+                if (s.length > 0) s += ",";
+                s += markNames[i];
+            }
+        }
+        return s;
+    }
+
+    /// How many marks are set in m.
+    int markCount(eMark m) {
+        int n = 0;
+        for (int i = 0; i < 12; i++) {
+            if ((m & (eMark)(1 << i)) != 0) n++;
+        }
+        return n;
+    }
+
+    /// A cell's name, such as C4.
+    stringObj cellName(int cell) {
+        stringObj s = "";
+        s += (char)columns[cell % 8];
+        s += (char)('1' + cell / 8);
+        return s;
+    }
+
+    /// A digest of an int array: each element times its position plus one, summed.
+    int digest(array<int> a) {
+        int d = 0;
+        for (int i = 0; i < a.length; i++) d += a[i] * (i + 1);
+        return d;
+    }
+}
+
+#using sk
+
+/// The fault that a machine code raises, thrown from deep in a call; none for a good code.
+void raiseFor(int code) {
+    switch (code) {
+        case 0:        return;
+        case 1 to 3:   throw fault.jammed;
+        case 4:        throw fault.overheated;
+        case 5, 6:     throw fault.empty;
+        case 7:        throw fault.locked;
+        default:       throw fault.unknown;
+    }
+}
+
+/// A fault's name.
+string faultName(eFault f) {
+    switch (f) {
+        case eFault.none:       return "none";
+        case eFault.jammed:     return "jammed";
+        case eFault.overheated: return "overheated";
+        case eFault.empty:      return "empty";
+        case eFault.locked:     return "locked";
+        default:                return "unknown";
+    }
+}

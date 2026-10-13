@@ -1,0 +1,32 @@
+// run_scale_name_resolution — a class's own members outrank a #using-imported alias of the same name;
+// an imported enum alias reaches its values' emitter members; a cast before an enum value with a member
+// applies to the whole chain; an accessor's static array is iterated through its member.
+// EXPECT_OUTPUT: 2 30 1 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+bnum eMark { painted, cracked }
+enum eTier { low = 1, mid, high, emitter int rank { ($self * 10) } }
+enum eDir { north, south, emitter int dRow { (($self == 2) - ($self == 1)) } }
+object ns { alias mark for eMark; alias tier for eTier; }
+#using ns;
+class Crate : object {
+    eMark marks;
+    void mark(eMark m) { marks = marks | m; }
+    void go() { mark(eMark.cracked); }
+}
+Crate c1 { }
+object meter {
+    auto level = {
+        static array<int> history[4];
+        int _raw;
+        int operator () { return _raw; }
+        void operator = (int v) { history += v; _raw = v; }
+    };
+    int sum() { int t = 0; for (int v in level.history) t += v; return t; }
+}
+void main(){
+    bglInit();
+    c1.go();
+    meter.level = 7;
+    print($"{(int)c1.marks} {tier.high.rank} {(int)eDir.south.dRow} {meter.sum()}^");
+}

@@ -1,0 +1,190 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// Orders: a pooled SgOrder class taken from a queue and filled by checks that throw an eFault (as an int)
+// or the order itself, caught in nested try blocks; a rule class whose instances carry a func<> check;
+// a switch on the fault; and a static func<> member assigned a lambda.
+
+#once
+#include <array>
+#include <linq>
+#include <string>
+
+#using bgl.printRules;
+
+class SgOrder[ORDER_POOL] : object {
+    int id = 0;
+    eShade want = crimson;
+    int qty = 0;
+    int filled = 0;
+    eFault fault = fNone;
+    static int opened = 0;
+    static int closed = 0;
+    static func<int, int> priceOf;
+
+    void create(int n, eShade s, int q) {
+        id = n;
+        want = s;
+        qty = q;
+        SgOrder.opened++;
+    }
+
+    void destroy() { SgOrder.closed++; }
+
+    bool short_name() {
+        print($"order {id}");
+        rtrue;
+    }
+
+    stringObj line() {
+        stringObj s = $"order {id}: {qty} {shadeName(want)}, filled {filled}, fault {faultName(fault)}";
+        return s;
+    }
+}
+
+// ---- rules: each a check that may throw ------------------------------------------------------------------
+
+class OrderRule : object {
+    inline string label;
+    inline func<int, SgOrder> check;
+}
+
+int ruleStock(SgOrder o) {
+    int have = stock.crates.filter((Crate c) => c.shade == o.want && (c.flags & sealed) == 0).count();
+    if (have < o.qty) throw (int)fNoStock;
+    return have;
+}
+
+int ruleWeight(SgOrder o) {
+    int w = 0;
+    array<Crate> picks = stock.crates.filter((Crate c) => c.shade == o.want && (c.flags & sealed) == 0).take(o.qty);
+    for (Crate c in picks) w += c.weight;
+    if (w > 120) throw (int)fTooHeavy;
+    return w;
+}
+
+int ruleSize(SgOrder o) {
+    if (o.qty <= 0) throw o;
+    return o.qty;
+}
+
+array<OrderRule> orderRules = {
+    { "size", ruleSize },
+    { "stock", ruleStock },
+    { "weight", ruleWeight },
+    OrderRule{ "price", (SgOrder o) => SgOrder.priceOf(o.qty) }
+};
+
+// ---- the desk: opening, filling, cancelling ----------------------------------------------------------------
+
+object desk {
+    array<SgOrder> pending[ORDER_POOL];
+    array<int> faults[6];
+    int nextId = 1;
+    int done = 0;
+    int failed = 0;
+    int shipped = 0;
+
+    /// Opens an order; null when the pool is out.
+    SgOrder take(eShade s, int q) {
+        SgOrder o = new SgOrder(nextId, s, q);
+        if (o == null) return null;
+        nextId++;
+        pending += o;
+        return o;
+    }
+
+    /// Runs every rule over an order; the fault, or fNone with the order filled.
+    eFault fill(SgOrder o) {
+        int price = 0;
+        try {
+            try {
+                for (OrderRule r in orderRules) {
+                    int v = r.check(o);
+                    if (r.label == "price") price = v;
+                }
+            } catch (int code) {
+                // A catch takes whatever is thrown: a small number is a fault, anything else the order.
+                if (code > (int)fPoolOut) throw (SgOrder)code;
+                o.fault = (eFault)code;
+                if (o.fault == fTooHeavy && o.qty > 1) {
+                    o.qty = o.qty - 1;
+                    throw o;
+                }
+                return o.fault;
+            }
+        } catch (SgOrder again) {
+            if (again.qty <= 0) {
+                again.fault = fNoStock;
+                return fNoStock;
+            }
+            return fill(again);
+        }
+        o.fault = fNone;
+        ship(o);
+        printLine($"Order {o.id} shipped: {o.filled} crates, price {price}.");
+        return fNone;
+    }
+
+    /// Moves the order's crates to Room B.
+    void ship(SgOrder o) {
+        array<Crate> picks = stock.crates.filter((Crate c) => c.shade == o.want && (c.flags & sealed) == 0).take(o.qty);
+        for (Crate c in picks) {
+            c.parent = roomB;
+            c.flags = c.flags | counted;
+            o.filled++;
+            shipped++;
+        }
+    }
+
+    /// Fills every open order in turn and closes it; a line per order.
+    void runAll() {
+        if (pending.length == 0) {
+            printLine("No open orders.");
+            return;
+        }
+        while (pending.length > 0) {
+            SgOrder o = pending.dequeue();
+            eFault f = fill(o);
+            switch (f) {
+                case fNone:
+                    done++;
+                case fNoStock, fTooHeavy:
+                    failed++;
+                    printLine($"Order {o.id} failed: {faultName(f)} (qty {o.qty}).");
+                default:
+                    failed++;
+                    printLine($"Order {o.id} stopped: {faultName(f)}.");
+            }
+            if (faults.length == faults.size) faults.dequeue();
+            faults.enqueue((int)f);
+            delete o;
+        }
+    }
+
+    /// Cancels the order with an id; false when there is none.
+    bool cancel(int id) {
+        for (int i = 0; i < pending.length; i++) {
+            if (pending[i].id == id) {
+                SgOrder o = pending[i];
+                pending.remove(i);
+                delete o;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    stringObj faultTrail() {
+        stringObj s = "";
+        for (int f in faults) {
+            if (s.length > 0) s += ',';
+            s += $"{f}";
+        }
+        if (s.length == 0) s = "none";
+        return s;
+    }
+}
+
+void setupPricing() {
+    SgOrder.priceOf = (int q) => q * 12 + sgMath.clamp(q, 0, 5);
+}

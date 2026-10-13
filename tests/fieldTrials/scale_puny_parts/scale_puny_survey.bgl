@@ -1,0 +1,199 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// The survey: breadth-first routes over the grid with blocked cells, a queue held in a tracked array,
+// distance tables, flood-fill regions, per-row and per-column crate sums, and a route printer that
+// walks the table back from the goal.
+
+#once
+#include <array>
+#include <linq>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+object survey {
+    array<int>  dist[GRID_CELLS];
+    array<int>  prev[GRID_CELLS];
+    array<bool> blocked[GRID_CELLS];
+    array<int>  region[GRID_CELLS];
+    int runs = 0;
+    int lastLength = -1;
+
+    void reset() {
+        dist.clear();
+        prev.clear();
+        for (int i = 0; i < GRID_CELLS; i++) {
+            dist.append(-1);
+            prev.append(-1);
+        }
+    }
+
+    void clearBlocks() {
+        blocked.clear();
+        for (int i = 0; i < GRID_CELLS; i++) blocked.append(false);
+    }
+
+    void block(int r, int c) {
+        coord k;
+        k.row = r;
+        k.col = c;
+        if (k.inside()) blocked[k.index()] = true;
+    }
+
+    int blockCount() {
+        int n = 0;
+        for (bool b in blocked) {
+            if (b) n++;
+        }
+        return n;
+    }
+
+    // Breadth-first search from one cell; fills dist and prev.
+    void spread(int start) {
+        reset();
+        runs++;
+        array<int> queue[GRID_CELLS];
+        dist[start] = 0;
+        queue.enqueue(start);
+        while (queue.length > 0) {
+            int at = queue.dequeue();
+            coord here;
+            here.fromIndex(at);
+            for (dir d in {dir.north, dir.south, dir.east, dir.west}) {
+                coord next = here;
+                next.step(d);
+                if (!next.inside()) continue;
+                int n = next.index();
+                if (blocked[n] || dist[n] >= 0) continue;
+                dist[n] = dist[at] + 1;
+                prev[n] = at;
+                queue.enqueue(n);
+            }
+        }
+    }
+
+    int routeLength(int from, int to) {
+        spread(from);
+        lastLength = dist[to];
+        return lastLength;
+    }
+
+    void printRoute(int from, int to) {
+        int len = routeLength(from, to);
+        if (len < 0) {
+            printLine($"No route from {cellName(from)} to {cellName(to)}.");
+            return;
+        }
+        array<int> path[GRID_CELLS];
+        int at = to;
+        while (at != from) {
+            path.push(at);
+            at = prev[at];
+        }
+        path.push(from);
+        print($"Route {len}:");
+        for (int i = 0; i < path.length; i++) {
+            if (i > 0 && i % 6 == 0) print(" ..");
+            if (i % 6 == 0 || i == path.length - 1) print($" {cellName(path[i])}");
+        }
+        printLine(".");
+    }
+
+    int reachable(int from) {
+        spread(from);
+        return dist.filter((int d) => d >= 0).count();
+    }
+
+    int farthest(int from) {
+        spread(from);
+        int best = 0;
+        for (int d in dist) {
+            if (d > best) best = d;
+        }
+        return best;
+    }
+
+    // Labels connected open cells; returns the number of regions.
+    int regions() {
+        region.clear();
+        for (int i = 0; i < GRID_CELLS; i++) region.append(0);
+        int lbl = 0;
+        for (int i = 0; i < GRID_CELLS; i++) {
+            if (blocked[i] || region[i] != 0) continue;
+            lbl++;
+            fill(i, lbl);
+        }
+        return lbl;
+    }
+
+    void fill(int at, int lbl) {
+        if (blocked[at] || region[at] != 0) return;
+        region[at] = lbl;
+        coord here;
+        here.fromIndex(at);
+        for (dir d in {dir.north, dir.south, dir.east, dir.west}) {
+            coord next = here;
+            next.step(d);
+            if (next.inside()) fill(next.index(), lbl);
+        }
+    }
+
+    int regionSize(int lbl) {
+        return region.filter((int r) => r == lbl).count();
+    }
+}
+
+stringObj cellName(int i) {
+    GridRoom g = grid[i];
+    stringObj s = $"{g.row}-{g.col}";
+    return s;
+}
+
+int cellIndexRC(int r, int c) {
+    return r * GRID_COLS + c;
+}
+
+// --- sums -------------------------------------------------------------------------------------------
+
+array<int> rowSums[GRID_ROWS];
+array<int> colSums[GRID_COLS];
+
+void sumGrid() {
+    rowSums.clear();
+    colSums.clear();
+    for (int r = 0; r < GRID_ROWS; r++) rowSums.append(0);
+    for (int c = 0; c < GRID_COLS; c++) colSums.append(0);
+    for (GridRoom g in grid) {
+        int w = 0;
+        for (object o in g.children) {
+            if (o.is(Crate)) w += ((Crate)o).weight;
+        }
+        rowSums[g.row] += w;
+        colSums[g.col] += w;
+    }
+}
+
+void sumReport() {
+    sumGrid();
+    print("Row sums");
+    for (int v in rowSums) print($" {v}");
+    print("; col sums");
+    for (int v in colSums) print($" {v}");
+    int total = 0;
+    for (int v in rowSums) total += v;
+    int check = 0;
+    for (int v in colSums) check += v;
+    printLine($"; total {total} {total == check}.");
+}
+
+void surveyReport() {
+    survey.clearBlocks();
+    printLine($"Open: reach {survey.reachable(0)}, far {survey.farthest(0)}, regions {survey.regions()}.");
+    for (int r = 0; r < GRID_ROWS - 1; r++) survey.block(r, 4);
+    printLine($"Wall: blocks {survey.blockCount()}, reach {survey.reachable(0)}, far {survey.farthest(0)}, regions {survey.regions()}.");
+    survey.block(4, 4);
+    int n = survey.regions();
+    printLine($"Split: regions {n}, sizes {survey.regionSize(1)} {survey.regionSize(2)}, runs {survey.runs}.");
+    survey.clearBlocks();
+}

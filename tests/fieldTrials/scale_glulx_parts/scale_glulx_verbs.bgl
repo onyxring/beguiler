@@ -1,0 +1,557 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The commands: a crate-verb class whose verbs share a handler shape and a noun check, report verbs
+// through a meta class, verbs taking NOUN, NUMBER and two NUMBERs, and the library's Take, Examine
+// and Drop extended with new words and grammar lines, plus a grammar object.
+
+#once
+#include <array>
+#include <linq>
+#include <string>
+
+#using bgl.printRules;
+
+// ---- verbs on one crate ------------------------------------------------------------------------------------
+
+/// A verb aimed at one crate: the noun is checked once, and act() does the work.
+class crateVerb : verb {
+    void handler() {
+        if (noun == null || !noun.is(Crate)) {
+            printLine("That is not a crate.");
+            return;
+        }
+        act((Crate)noun);
+    }
+    default void act(Crate c) { printLine($"Nothing happens to {the(c)}."); }
+}
+
+crateVerb Tag {
+    grammar = {.tag, NOUN};
+    void act(Crate c) {
+        if ((c.flags & tagged) != 0) {
+            printLine($"{cThe(c)} is already tagged.");
+            return;
+        }
+        c.flags = c.flags | tagged;
+        printLine($"You tag {the(c)}.");
+        stringObj t = $"tag {c.number}";
+        panels.note(t);
+    }
+}
+
+crateVerb Untag {
+    grammar = {.untag, NOUN};
+    void act(Crate c) {
+        if ((c.flags & tagged) == 0) {
+            printLine($"{cThe(c)} has no tag.");
+            return;
+        }
+        c.flags = c.flags ^ tagged;
+        printLine($"You untag {the(c)}.");
+    }
+}
+
+crateVerb Weigh {
+    grammar = {.weigh, NOUN};
+    void act(Crate c) {
+        string band = "light";
+        if (c.weight >= 20) band = "heavy";
+        else if (c.weight >= 10) band = "middling";
+        printLine($"{cThe(c)} weighs {c.weight}kg ({band}).");
+    }
+}
+
+crateVerb Seal {
+    grammar = {.seal, NOUN};
+    void act(Crate c) {
+        if ((c.flags & sealed) != 0) {
+            printLine($"{cThe(c)} is already sealed.");
+            return;
+        }
+        c.flags = c.flags | sealed;
+        stamp.use(c);
+    }
+}
+
+crateVerb Unseal {
+    grammar = {
+        {.unseal, NOUN},
+        {.cut, NOUN, .open}
+    };
+    void act(Crate c) {
+        if ((c.flags & sealed) == 0) {
+            printLine($"{cThe(c)} is not sealed.");
+            return;
+        }
+        Cutter held = null;
+        if (cutterA.parent == player) held = cutterA;
+        else if (cutterB.parent == player) held = cutterB;
+        if (held == null) {
+            printLine("You need a cutter.");
+            return;
+        }
+        c.flags = c.flags ^ sealed;
+        held.use(c);
+        printLine($"Wear on {the(held)}: {held.wear()}.");
+    }
+}
+
+crateVerb Scrap {
+    grammar = {.scrap, NOUN};
+    void act(Crate c) {
+        int n = c.number;
+        stock.scrap(c);
+        printLine($"Crate {n} is scrapped. {stock.crates.length} left; {Crate.scrapped} scrapped in all.");
+    }
+}
+
+crateVerb Paint {
+    grammar = {.paint, NOUN, NUMBER};
+    void act(Crate c) {
+        int s = (int)second;
+        if (s < 1 || s > 5) {
+            printLine("Shades run from 1 to 5.");
+            return;
+        }
+        eShade was = c.shade;
+        c.shade = (eShade)s;
+        printLine($"{cThe(c)} goes from {shadeName(was)} to {shadeName(c.shade)}.");
+    }
+}
+
+crateVerb Damage {
+    grammar = {.dent, NOUN};
+    void act(Crate c) {
+        c.flags = c.flags | damaged;
+        printLine($"You dent {the(c)}. Flags now {flagText(c.flags)}.");
+    }
+}
+
+// ---- verbs that report: meta, no turn passes ----------------------------------------------------------------
+
+class reportVerb : verb {
+    meta = true;
+}
+
+reportVerb Find {
+    grammar = {
+        {.find, NUMBER},
+        {.find, .crate, NUMBER}
+    };
+    void handler() {
+        Crate c = stock.find((int)noun);
+        if (c == null) {
+            printLine($"No crate {(int)noun}.");
+            return;
+        }
+        printLine($"Crate {c.number} is in {roomName(c)}.");
+    }
+}
+
+reportVerb Census {
+    grammar = {.census};
+    void handler() {
+        ledger.recount();
+        print($"{stock.crates.length} crates:");
+        for (int s = 1; s <= 5; s++) print($" {shadeName((eShade)s)} {ledger.byShade[s - 1]}");
+        printLine(".");
+    }
+}
+
+reportVerb Heaviest {
+    grammar = {
+        {.heaviest},
+        {.heaviest, NUMBER}
+    };
+    void handler() {
+        int n = 3;
+        if (noun != null) n = (int)noun;
+        n = sgMath.clamp(n, 1, 8);
+        ledger.heaviest(n);
+    }
+}
+
+reportVerb ListShade {
+    grammar = {
+        {.list, NUMBER},
+        {.list, NUMBER, NUMBER}
+    };
+    void handler() {
+        int s = (int)noun;
+        if (s < 1 || s > 5) {
+            printLine("Shades run from 1 to 5.");
+            return;
+        }
+        int skipCount = 0;
+        if (second != null) skipCount = (int)second;
+        ledger.ofShade((eShade)s, skipCount, 6);
+    }
+}
+
+reportVerb Shades {
+    grammar = {.shades};
+    void handler() {
+        for (int s = 1; s <= 5; s++) print($"{s} {shadeName((eShade)s)}; ");
+        printLine();
+    }
+}
+
+reportVerb Facts {
+    grammar = {.facts};
+    void handler() { ledger.facts(); }
+}
+
+reportVerb Shares {
+    grammar = {.shares};
+    void handler() { ledger.shares(); }
+}
+
+reportVerb Table {
+    grammar = {.table};
+    void handler() { ledger.table(); }
+}
+
+reportVerb Audit {
+    grammar = {.audit};
+    void handler() {
+        stringObj r = ledger.audit();
+        printLine(r);
+        panels.note(r.left(24));
+    }
+}
+
+reportVerb TallyVerb {
+    grammar = {.tally};
+    void handler() {
+        ledger.recount();
+        printLine($"Now: {ledger.weights.summary()}.");
+        printLine($"Before: {ledger.lastWeights.summary()}.");
+        printLine($"Spread {oneDecimal(ledger.weights.spread())}; load {oneDecimal(ledger.loadPercent())}%.");
+    }
+}
+
+reportVerb MapVerb {
+    grammar = {.map};
+    void handler() {
+        GridRoom here = world.roomOf(player);
+        printLine($"{fixed}  12345678{roman}");
+        for (int r = 0; r < GRID_ROWS; r++) {
+            stringObj row = world.mapRow(r, here);
+            stringObj squeezed = "";
+            for (int i = 0; i < row.length; i++) {
+                if (i < 2 || i % 2 == 0) squeezed += row[i];
+            }
+            printLine($"{fixed}{squeezed}{roman}");
+        }
+    }
+}
+
+reportVerb Route {
+    grammar = {.route, NUMBER, NUMBER};
+    void handler() {
+        GridRoom here = world.roomOf(player);
+        if (here == null) {
+            printLine("You are not in the grid.");
+            return;
+        }
+        GridRoom there = world.at((int)noun - 1, (int)second - 1);
+        if (there == null) {
+            printLine("No such room.");
+            return;
+        }
+        array<int> path[48];
+        int steps = world.route(here, there, path);
+        if (steps < 0) {
+            printLine($"No way from {here} to {there}.");
+            return;
+        }
+        print($"{here} to {there}: {steps} step{pluralS(steps)}");
+        if (steps > 0) {
+            print(" via");
+            for (int k in path) print($" {cellAt(k).label()}");
+        }
+        printLine(".");
+    }
+}
+
+reportVerb OrderList {
+    grammar = {.orders};
+    void handler() {
+        if (desk.pending.length == 0) printLine("No open orders.");
+        for (SgOrder o in desk.pending) printLine(o.line());
+        printLine($"Done {desk.done}, failed {desk.failed}, shipped {desk.shipped}; faults {desk.faultTrail()}; opened {SgOrder.opened}, closed {SgOrder.closed}.");
+    }
+}
+
+reportVerb Tickets {
+    grammar = {.tickets, NUMBER};
+    void handler() {
+        int depth = sgMath.clamp((int)noun, 1, 12);
+        int deepest = ticketDepth(depth);
+        printLine($"Depth {depth}: {deepest} out at the deepest, {ticketsOut} out now, {sgKit.counts.made} made.");
+    }
+}
+
+reportVerb MathVerb {
+    grammar = {.math, NUMBER, NUMBER};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        printLine($"gcd {sg.math.gcd(a, b)}, isqrt {sgMath.isqrt(a)}, digits {sg.math.digitSum(a)}, sign {sgMath.sign(a - b)}, twice {sgTwice(a)}, square {sgSquare(b)}, even {yn(sgEven(a))}.");
+        printLine($"Half {sgKit.format.half(a)}, word {sgWordBytes}, calls {sgMath.calls}.");
+    }
+}
+
+reportVerb Panel {
+    grammar = {.board};
+    void handler() {
+        if (panels.board == null) {
+            panels.openBoard();
+            printLine($"Board open: {yn(panels.board != null)}.");
+        } else {
+            panels.closeBoard();
+            printLine("Board closed.");
+        }
+    }
+}
+
+reportVerb LogVerb {
+    grammar = {.log};
+    void handler() {
+        if (panels.logPanel == null) {
+            panels.openLog();
+            printLine($"Log open ({panels.logLines} lines so far).");
+        } else {
+            panels.closeLog();
+            printLine("Log closed.");
+        }
+    }
+}
+
+reportVerb ViewVerb {
+    grammar = {.view};
+    void handler() {
+        panels.cycle();
+        printLine($"The board shows {panels.viewName()}.");
+        DrawStatusLine();
+    }
+}
+
+reportVerb Status {
+    grammar = {.status};
+    void handler() {
+        printLine($"Crates {stock.crates.length}/{CRATE_POOL}, made {Crate.made}, scrapped {Crate.scrapped}.");
+        printLine($"Rooms {world.built}, links {world.linkCount}, routes {world.routeCalls}.");
+        printLine($"Beacons {beacons.live.length}, pulses {beaconPulses}; conveyor {conveyor.ticks} ticks, {conveyor.shifted} moved.");
+        printLine($"Clock {clock.ticks}, snapshots {clock.snapshots.length}; jobs run {jobsRun}, marks {jobMarks}; lifts {Item.lifts}.");
+    }
+}
+
+// ---- verbs that change the world ------------------------------------------------------------------------------
+
+verb Fetch {
+    grammar = {.fetch, NUMBER};
+    void handler() {
+        Crate c = stock.find((int)noun);
+        if (c == null) {
+            printLine($"No crate {(int)noun}.");
+            return;
+        }
+        if (c.parent == location) {
+            printLine($"{cThe(c)} is already here.");
+            return;
+        }
+        c.parent = location;
+        printLine($"{cThe(c)} is brought to {location}.");
+    }
+}
+
+verb Warp {
+    grammar = {.warp, NUMBER, NUMBER};
+    void handler() {
+        GridRoom g = world.at((int)noun - 1, (int)second - 1);
+        if (g == null) {
+            printLine("No such room.");
+            return;
+        }
+        PlayerTo(g);
+    }
+}
+
+verb Stride {
+    grammar = {.stride, NUMBER};
+    void handler() {
+        GridRoom here = world.roomOf(player);
+        if (here == null || (int)noun < 1 || (int)noun > 4) {
+            printLine("Stride 1 to 4 (north, east, south, west), inside the grid.");
+            return;
+        }
+        eHeading h = (eHeading)noun;
+        int steps = 0;
+        GridRoom at = here;
+        while (true) {
+            object nx = world.neighbour(at, h);
+            if (nx == null || !nx.is(GridRoom)) break;
+            at = (GridRoom)nx;
+            at.visits++;
+            steps++;
+        }
+        if (steps == 0) {
+            printLine($"There is no way {headingName(h)}.");
+            return;
+        }
+        printLine($"You stride {headingName(h)} {steps} room{pluralS(steps)}; the next heading is {headingName(h.turned())}.");
+        PlayerTo(at);
+    }
+}
+
+verb Spawn {
+    grammar = {.spawn, NUMBER};
+    void handler() {
+        int want = sgMath.clamp((int)noun, 1, 60);
+        int made = 0;
+        int n = stock.nextNumber();
+        for (int i = 0; i < want; i++) {
+            if (!stock.spawn(n + i)) break;
+            made++;
+        }
+        printLine($"Made {made} of {want}; {stock.crates.length} crates, pool {CRATE_POOL}.");
+    }
+}
+
+verb OrderVerb {
+    grammar = {.order, NUMBER, .of, NUMBER};
+    void handler() {
+        int s = (int)second;
+        if (s < 1 || s > 5) {
+            printLine("Shades run from 1 to 5.");
+            return;
+        }
+        SgOrder o = desk.take((eShade)s, (int)noun);
+        if (o == null) {
+            printLine("The order book is full.");
+            return;
+        }
+        printLine($"Opened {o.line()}.");
+    }
+}
+
+verb Process {
+    grammar = {.process};
+    void handler() { desk.runAll(); }
+}
+
+verb Cancel {
+    grammar = {.cancel, NUMBER};
+    void handler() {
+        if (desk.cancel((int)noun)) printLine($"Order {(int)noun} cancelled.");
+        else printLine($"No open order {(int)noun}.");
+    }
+}
+
+verb StartBeacons {
+    grammar = {.beacons, NUMBER};
+    void handler() {
+        int made = beacons.start((int)noun);
+        printLine($"Started {made}; {beacons.live.length} running.");
+    }
+}
+
+verb Calm {
+    grammar = {.calm};
+    void handler() {
+        int pulses = beacons.total();
+        int n = beacons.stopAll();
+        printLine($"Stopped {n} beacon{pluralS(n)} after {pulses} pulse{pluralS(pulses)}.");
+    }
+}
+
+verb QueueJobs {
+    grammar = {.jobs};
+    void handler() {
+        int q = 0;
+        if (queueJob(jobMark)) q++;
+        if (queueJob(jobCount)) q++;
+        if (queueJob(=> { jobMarks += 10; })) q++;
+        if (queueJob(jobUncount)) q++;
+        printLine($"Queued {q}; {jobs.length} waiting.");
+    }
+}
+
+/// Makes and frees a burst of everything the program pools, the same way each time.
+verb Churn {
+    grammar = {.churn};
+    meta = true;
+    int runs = 0;
+    void handler() {
+        runs++;
+        int before = stock.crates.length;
+        int n = stock.nextNumber();
+        int made = 0;
+        for (int i = 0; i < 3; i++) {
+            if (stock.spawn(n + i)) made++;
+        }
+        int heavyNew = stock.crates.filter((Crate c) => c.number >= n && c.isHeavy()).count();
+        array<Crate> fresh = stock.crates.filter((Crate c) => c.number >= n);
+        for (Crate c in fresh) stock.scrap(c);
+        SgOrder o = desk.take(navy, 0);
+        eFault f = fNone;
+        if (o != null) {
+            f = desk.fill(o);
+            desk.pending -= o;
+            delete o;
+        }
+        int depth = ticketDepth(3);
+        Cell a = cellAt(9);
+        Cell b = cellAt(46);
+        stringObj line = $"Churned {made}, heavy {heavyNew}, back to {stock.crates.length} of {before}; fault {faultName(f)}; tickets {depth}/{ticketsOut}; {a.label()}-{b.label()} {a.distance(b)}.";
+        printLine(line);
+    }
+}
+
+// ---- the library's verbs, extended ------------------------------------------------------------------------------
+
+extend Take {
+    grammar += { {.lift, NOUN} };
+    synonyms = {.hoist};
+}
+
+extend Examine {
+    synonyms = {.inspect};
+}
+
+extend Drop {
+    grammar += { {.unload, MULTIHELD} };
+}
+
+grammar depotExtras {
+    rule1 = {Inv, {.manifest}};
+    array<grammarRule> rules = {
+        {Look, {.survey}},
+        {Unlock, {.open, NOUN, .using, HELD}}
+    };
+}
+
+// ---- the kit's emitters, reached from one verb -----------------------------------------------------------------
+
+reportVerb KitVerb {
+    grammar = {.kit};
+    void handler() {
+        array<int> ws = { 4, 8, 15, 16, 23, 42 };
+        printLine($"Second {ws.second()}, penultimate {ws.penultimate()}, second crate {stock.crates.second()}.");
+        sgRule(20);
+        print("Looks: ");
+        sgLook.strong();
+        print("strong");
+        sgLook.plain();
+        print(" ");
+        sgLook.slanted();
+        print("slanted");
+        sgLook.plain();
+        printLine(".");
+        Ticket t;
+        printLine($"Ticket {t.number}, out {sgKit.counts.tickets}, word {sgKit.counts.bytes}, tenths {sgKit.format.tenths(450)}.");
+        int sealedCount = stock.crates.filter((Crate c) => (c.flags & sealed) != 0).count();
+        printLine($"Sealed share {pct(sealedCount, stock.crates.length)}%; kinds {kBox.code} {kTool.code}; portable box {yn(kBox.portable())}, fuel {yn(kFuel.portable())}.");
+    }
+}

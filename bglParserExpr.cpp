@@ -139,6 +139,21 @@ bglParser::ArrayReceiver bglParser::arrayReceiver(string& objName, const string&
         objName = r.owner + "." + r.prop;
         r.isMember = false;
     }
+    // A static array reached through an instance (`level.history` in an accessor) is one global array.
+    if(r.isMember){
+        string owner = r.owner.rfind("self.", 0) == 0 ? r.owner.substr(5) : r.owner;
+        string ot = owner == "self" ? "" : owner.find('.') != string::npos ? resolvePathType(owner, func, body)
+                                                                           : resolveIdentifierType(owner, func, body);
+        if(classDef* c = ot.empty() ? nullptr : getDispatchClass(ot)){
+            typeMember* sm = findMemberInHierarchy(c, [&](typeMember* m){
+                auto* ad = dynamic_cast<arrayDeclaration*>(m); return ad && ad->isStatic && ad->name == r.prop; });
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(sm)){
+                objName = "_bgl_" + c->declaringClass(ad)->name + "_" + r.prop;
+                r.isMember = false;
+                r.staticElemType = ad->elementType;
+            }
+        }
+    }
     return r;
 }
 
@@ -324,10 +339,15 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         // Block body
         functionDef* savedFunc = currentFunc;
         currentFunc = &fd;
+        // Set-up the enclosing statement is still collecting (an earlier lambda's capture load) runs
+        // before that statement, not in this body.
+        vector<statement*> savedPending = pendingInjections, savedPost = postInjections;
+        pendingInjections.clear(); postInjections.clear();
         openCompileContext(eCompileContext::codeBlock, lambdaBody);
         fd.isLambda = true;   // its first `return` sets the return type (processReturnExpr)
         while(processNextStatement(fd) == false){}
         closeCompileContext(eCompileContext::codeBlock);
+        pendingInjections = savedPending; postInjections = savedPost;
         currentFunc = savedFunc;
         if(fd.returnType.name.empty()) fd.returnType.name = hasReturn(lambdaBody) ? "var" : "void";
     } else {
@@ -3577,6 +3597,8 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
         if(func != nullptr) for(paramDef* p : func->params) if(p->name == cur.value){ shadowed = true; break; }
         if(!shadowed && body != nullptr) for(statement* s : body->statements)
             if(auto* lv = dynamic_cast<variableDeclaration*>(s)) if(lv->name == cur.value){ shadowed = true; break; }
+        if(!shadowed && func != nullptr && (qualifyFromCurrentObject(cur.value) || qualifyFromCurrentClass(cur.value)))
+            shadowed = true;   // a member outranks an import (§10.4)
         if(!shadowed)
             for(objectDef* imp : usingObjectImports)
                 for(typeMember* m : imp->members)
@@ -3585,7 +3607,8 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
                             string tgt = avd->declaredExpressionValue ? avd->declaredExpressionValue->text() : avd->type.name;
                             if(!tgt.empty()
                                && (languageService.findClass(tgt) != nullptr
-                                   || languageService.findObjectType(tgt) != nullptr))
+                                   || languageService.findObjectType(tgt) != nullptr
+                                   || (avd->isAlias && languageService.findEnum(tgt) != nullptr)))
                                 cur.value = tgt;
                         }
     }
@@ -3750,7 +3773,8 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
         // dropped and the comparison failed ("No operator '==' on type 'int'
         // accepting '<enum>'"). Mirrors the property-access cast handling below and the
         // already-working cast on an enum *variable*.
-        if(!castType.empty()){
+        // A member after the value (`(int)E.south.dRow`) is read first; the cast is the chain's.
+        if(!castType.empty() && afterMember.value != "."){
             expr->tokens.back() = applyCastConversion(expr->tokens.back(), expr->resolvedType, castType);
             expr->resolvedType = castType;
             castType = "";

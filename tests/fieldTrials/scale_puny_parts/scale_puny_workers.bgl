@@ -1,0 +1,152 @@
+/*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
+
+// Workers: eight animate objects declared from one class, each with a route over the grid, moved by a
+// shared daemon; `life` answering Ask, Give and Attack; `orders` taking commands through perform();
+// a hauler subclass that carries crates; and a roster object that reports on them.
+
+#once
+#include <array>
+#include "scale_puny_types"
+
+#using sp;
+#using bgl.printRules;
+
+class Worker : object {
+    attributeList attributes = {animate};
+    int id;
+    int home;
+    int stride = 1;
+    int steps = 0;
+    int asked = 0;
+    int given = 0;
+    bool active = true;
+    name = {.worker};
+
+    // The worker's cell index, computed rather than stored.
+    int cellIndex() {
+        return kit.wrap(home + steps * stride, GRID_CELLS);
+    }
+
+    void moveOn() {
+        if (!active) return;
+        steps++;
+        parent = grid[cellIndex()];
+    }
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .crates || w == .crate) rtrue($"{cThe(self)} says: {crateCountHere()} crates here.^");
+                if (w == .grid) rtrue($"{cThe(self)} says: {GRID_ROWS} rows of {GRID_COLS}.^");
+                rtrue($"{cThe(self)} shrugs.^");
+            case Give:
+                given++;
+                if (noun.is(Crate)) {
+                    Crate c = (Crate)noun;
+                    c.parent = self;
+                    rtrue($"{cThe(self)} takes crate {c.number}.^");
+                }
+                rtrue($"{cThe(self)} declines.^");
+            case Attack:
+                rtrue($"{cThe(self)} steps aside.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                active = false;
+                rtrue($"{cThe(self)} stops.^");
+            case Jump:
+                active = true;
+                rtrue($"{cThe(self)} starts moving.^");
+        }
+        rtrue($"{cThe(self)} ignores the order.^");
+    }
+
+    int crateCountHere() {
+        if (!(parent?)) return 0;
+        int n = 0;
+        for (object o in parent.children) {
+            if (o.is(Crate)) n++;
+        }
+        return n;
+    }
+}
+
+class Hauler : Worker {
+    int loads = 0;
+
+    replace void moveOn() {
+        if (!active) return;
+        steps++;
+        object dest = grid[cellIndex()];
+        for (object o in self.children) {
+            if (o.is(Crate)) {
+                o.parent = dest;
+                loads++;
+                break;
+            }
+        }
+        parent = dest;
+    }
+}
+
+Worker workerA { "worker A"; name = {.worker, .a}; id = 1; home = 1;  stride = 1; }
+Worker workerB { "worker B"; name = {.worker, .b}; id = 2; home = 6;  stride = 3; }
+Worker workerC { "worker C"; name = {.worker, .c}; id = 3; home = 11; stride = 5; }
+Worker workerD { "worker D"; name = {.worker, .d}; id = 4; home = 17; stride = 7; }
+Worker workerE { "worker E"; name = {.worker, .e}; id = 5; home = 22; stride = 9; }
+Worker workerF { "worker F"; name = {.worker, .f}; id = 6; home = 28; stride = 11; }
+Hauler haulerG { "hauler G"; name = {.hauler, .g}; id = 7; home = 33; stride = 13; }
+Hauler haulerH { "hauler H"; name = {.hauler, .h}; id = 8; home = 0;  stride = 8; }
+
+array<Worker> workers = { workerA, workerB, workerC, workerD, workerE, workerF, haulerG, haulerH };
+
+object roster {
+    int rounds = 0;
+
+    void daemon() {
+        rounds++;
+        for (Worker w in workers) w.moveOn();
+    }
+
+    void place() {
+        for (Worker w in workers) w.parent = grid[w.cellIndex()];
+    }
+
+    void report() {
+        print($"Rounds {rounds}:");
+        for (Worker w in workers) {
+            GridRoom g = (GridRoom)w.parent;
+            print($" {w.id}@{g.row}-{g.col}");
+            if (!w.active) print("!");
+        }
+        printLine(".");
+        int hauled = 0;
+        for (Worker w in workers) {
+            if (w.is(Hauler)) hauled += ((Hauler)w).loads;
+        }
+        int talk = 0;
+        for (Worker w in workers) talk += w.asked + w.given;
+        printLine($"Hauled {hauled}, talks {talk}, idle {workers.filter((Worker w) => !w.active).count()}.");
+    }
+
+    Worker nearest(coord from) {
+        Worker best = null;
+        int bestD = 999;
+        for (Worker w in workers) {
+            GridRoom g = (GridRoom)w.parent;
+            int d = from.distance(g.where());
+            if (d < bestD) {
+                bestD = d;
+                best = w;
+            }
+        }
+        return best;
+    }
+}

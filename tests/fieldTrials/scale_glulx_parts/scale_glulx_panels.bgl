@@ -1,0 +1,107 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The screen: the status line redrawn from a replaced DrawStatusLine, a text-grid map split above the
+// main window and redrawn each turn, a text-buffer log split to the right that can be closed and
+// reopened, a view enum cycled by a verb, and a style sheet for each.
+
+#once
+#include <glulxWindow>
+#include <string>
+#include <array>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+enum ePanelView { pvMap = 1, pvZones, pvOrders }
+
+styleSheet mapLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ reverse = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ italics = true; };
+};
+
+object panels {
+    textGridWindowHorz board = null;
+    textBufferWindowVert logPanel = null;
+    ePanelView view = pvMap;
+    int logLines = 0;
+    int draws = 0;
+
+    void openBoard() {
+        if (board != null) return;
+        board = bgl.ui.mainWin.splitUpGrid(GRID_ROWS + 1, fixed, border, styles: mapLook);
+    }
+
+    void closeBoard() {
+        if (board == null) return;
+        board.close();
+        board = null;
+    }
+
+    void openLog() {
+        if (logPanel != null) return;
+        logPanel = bgl.ui.mainWin.splitRightBuffer(30, fixed, styles: logLook);
+        logPanel?.printLine("Log");
+    }
+
+    void closeLog() {
+        if (logPanel == null) return;
+        logPanel.close();
+        logPanel = null;
+    }
+
+    void note(stringObj text) {
+        logLines++;
+        logPanel?.printLine($"{logLines}. {text}");
+    }
+
+    string viewName() {
+        switch (view) {
+            case pvMap:    return "map";
+            case pvZones:  return "zones";
+            case pvOrders: return "orders";
+        }
+        return "?";
+    }
+
+    void cycle() {
+        int next = (int)view % 3 + 1;
+        view = (ePanelView)next;
+    }
+
+    void draw() {
+        if (board == null) return;
+        draws++;
+        board.clear();
+        GridRoom here = world.roomOf(player);
+        switch (view) {
+            case pvMap:
+                for (int r = 0; r < GRID_ROWS; r++) {
+                    if (r >= board.height) break;
+                    board.moveCursor(0, r);
+                    board.print(world.mapRow(r, here));
+                }
+            case pvZones:
+                ledger.recount();
+                for (int z = 1; z <= 4; z++) {
+                    if (z - 1 >= board.height) break;
+                    board.moveCursor(0, z - 1);
+                    board.print($"{zoneName((eZone)z)}: {ledger.zoneTotal((eZone)z)}");
+                }
+            case pvOrders:
+                board.moveCursor(0, 0);
+                board.print($"open {desk.pending.length} done {desk.done} failed {desk.failed}");
+        }
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | crates {stock.crates.length} | load {oneDecimal(ledger.loadPercent())}% | {panels.viewName()}");
+    panels.draw();
+}

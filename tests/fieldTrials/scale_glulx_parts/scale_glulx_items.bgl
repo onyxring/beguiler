@@ -1,0 +1,356 @@
+/*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
+
+// The things in the grid: an Item base class; a pooled Crate subclass of up to 180, numbered and
+// shaded, with a parse_name that takes "crate 17" and "navy crate"; pooled keys and lockers matched
+// by code; a tool hierarchy with a required member and default methods; shelves; and the stocking
+// routine that fills the grid from an initializer table.
+
+#once
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+extend extern class object {
+    object with_key;
+    int capacity;
+}
+
+array<dictionaryWord> shadeWords = { .crimson, .olive, .navy, .slate, .ivory };
+
+// ---- items ---------------------------------------------------------------------------------------------
+
+class Item : object {
+    int weight = 1;
+    eKind kind = kBox;
+    crateFlag flags;
+    int handled = 0;
+    static int lifts = 0;
+
+    bool isHeavy() { return (flags & heavy) != 0; }
+
+    default stringObj summary() {
+        stringObj s = $"{kindName(kind)} {weight}kg {flagText(flags)}";
+        return s;
+    }
+
+    bool before() {
+        if (action == Take) {
+            if (isHeavy() && !carryingTrolley()) {
+                printLine($"{cThe(self)} is too heavy to lift by hand.");
+                rtrue;
+            }
+            handled++;
+            Item.lifts++;
+        }
+        rfalse;
+    }
+}
+
+// ---- crates --------------------------------------------------------------------------------------------
+
+class Crate[CRATE_POOL] : Item {
+    int number = 0;
+    eShade shade = crimson;
+    int units = 0;
+    static int made = 0;
+    static int scrapped = 0;
+
+    void create(int n, int w, eShade s) {
+        number = n;
+        weight = w;
+        shade = s;
+        units = n % 7 + 1;
+        kind = kBox;
+        if (w >= 20) flags = flags | heavy;
+        if (n % 9 == 0) flags = flags | fragile;
+        if (n % 11 == 0) flags = flags | sealed;
+        Crate.made++;
+    }
+
+    void destroy() {
+        Crate.scrapped++;
+        parent = null;
+    }
+
+    bool short_name() {
+        print($"crate {number}");
+        rtrue;
+    }
+
+    void description() {
+        printLine($"Crate {number}: {shadeName(shade)}, {weight}kg, {units} unit{pluralS(units)}, flags {flagText(flags)}.");
+    }
+
+    int parse_name() {
+        int n = 0;
+        bool sawNumber = false;
+        bool sawShade = false;
+        while (true) {
+            int k = TryNumber(wn);
+            if (!sawNumber && k == number) {
+                sawNumber = true;
+                wn++;
+                n++;
+                continue;
+            }
+            dictionaryWord w = NextWord();
+            if (w == .crate || w == .box) {
+                n++;
+                continue;
+            }
+            if (!sawShade && w == shadeWords[(int)shade - 1]) {
+                sawShade = true;
+                n++;
+                continue;
+            }
+            break;
+        }
+        return n;
+    }
+
+    stringObj summary() {
+        stringObj s = $"#{number} {shadeName(shade)} {weight}kg {flagText(flags)}";
+        return s;
+    }
+}
+
+// ---- keys and lockers ------------------------------------------------------------------------------------
+
+class SgKey[12] : Item {
+    int code = 0;
+    name = {.key};
+
+    void create(int c) {
+        code = c;
+        kind = kPart;
+        weight = 0;
+    }
+
+    bool short_name() {
+        print($"key {code}");
+        rtrue;
+    }
+
+    int parse_name() {
+        int n = 0;
+        while (true) {
+            int k = TryNumber(wn);
+            if (k == code) {
+                wn++;
+                n++;
+                continue;
+            }
+            if (NextWord() == .key) {
+                n++;
+                continue;
+            }
+            break;
+        }
+        return n;
+    }
+}
+
+class Locker[12] : object {
+    int code = 0;
+    with_key = null;
+    capacity = 4;
+    attributes = {container, openable, lockable, locked, static};
+
+    void create(int c, SgKey k) {
+        code = c;
+        with_key = k;
+    }
+
+    bool short_name() {
+        print($"locker {code}");
+        rtrue;
+    }
+
+    int parse_name() {
+        int n = 0;
+        while (true) {
+            int k = TryNumber(wn);
+            if (k == code) {
+                wn++;
+                n++;
+                continue;
+            }
+            if (NextWord() == .locker) {
+                n++;
+                continue;
+            }
+            break;
+        }
+        return n;
+    }
+
+    void description() {
+        string state = "closed";
+        if (has(locked)) state = "locked";
+        else if (has(open)) state = "open";
+        printLine($"Locker {code}: {state}, opened by key {code}.");
+    }
+}
+
+// ---- tools -----------------------------------------------------------------------------------------------
+
+class Tool : Item {
+    kind = kTool;
+    weight = 2;
+    int uses = 0;
+
+    required string useText();
+
+    default int wear() { return uses; }
+
+    void use(object target) {
+        uses++;
+        printLine($"{cThe(self)}: {useText()} {the(target)} (use {uses}).");
+    }
+}
+
+class Cutter : Tool {
+    string useText() { return "cuts the seal on"; }
+    int wear() { return uses * 2; }
+}
+
+Tool wrench {
+    "wrench";
+    name = {.wrench};
+    parent = roomA;
+    description = "A wrench.";
+    string useText() { return "tightens"; }
+}
+
+Cutter cutterA {
+    "cutter A";
+    name = {.cutter, .a};
+    parent = roomA;
+    description = "A seal cutter.";
+}
+
+Cutter cutterB {
+    "cutter B";
+    name = {.cutter, .b};
+    description = "A second seal cutter.";
+}
+
+Tool stamp {
+    "stamp";
+    name = {.stamp};
+    parent = roomB;
+    description = "A rubber stamp.";
+    string useText() { return "stamps"; }
+}
+
+object trolley {
+    "trolley";
+    name = {.trolley};
+    parent = roomA;
+    description = "A flat trolley. Carrying it lets you lift heavy crates.";
+    attributes = {supporter};
+}
+
+bool carryingTrolley() { return trolley.parent == player; }
+
+// ---- shelves: one supporter per store room -----------------------------------------------------------------
+
+class Shelf[16] : object {
+    int slot = 0;
+    attributes = {supporter, static};
+    name = {.shelf};
+    void create(int s) { slot = s; }
+    bool short_name() {
+        print($"shelf {slot}");
+        rtrue;
+    }
+}
+
+// ---- stocking the grid -------------------------------------------------------------------------------------
+
+/// The weights crates are given in turn.
+array<int> weightPlan = { 4, 9, 12, 3, 25, 7, 15, 30, 6, 11, 2, 18, 22, 5, 8, 14 };
+
+/// The shades crates are given in turn, by zone row.
+array<array<eShade>> shadePlan = {
+    { crimson, olive },
+    { navy, slate, ivory },
+    { olive, olive, navy },
+    { ivory },
+    { slate, crimson, navy, olive },
+    { crimson, ivory }
+};
+
+object stock {
+    array<Crate> crates[CRATE_POOL];
+    array<SgKey> keys[12];
+    array<Locker> lockers[12];
+    array<Shelf> shelves[16];
+    int failed = 0;
+
+    /// Fills the grid: crates spread across rooms, lockers on the last row, a shelf per store room.
+    void fill(int count) {
+        for (int n = 1; n <= count; n++) {
+            if (!spawn(n)) failed++;
+        }
+        for (int i = 0; i < 8; i++) {
+            SgKey k = new SgKey(i + 1);
+            Locker l = new Locker(i + 1, k);
+            if (k == null || l == null) {
+                failed++;
+                continue;
+            }
+            keys += k;
+            lockers += l;
+            l.parent = world.at(GRID_ROWS - 1, i);
+            k.parent = world.at(0, (i * 3) % GRID_COLS);
+        }
+        int s = 1;
+        for (GridRoom g in world.rooms) {
+            if (g.zone != zoneStore) continue;
+            if (g.col % 2 == 1) continue;
+            Shelf sh = new Shelf(s);
+            if (sh == null) break;
+            sh.parent = g;
+            shelves += sh;
+            s++;
+        }
+    }
+
+    /// Makes crate n and places it; false when the pool is out.
+    bool spawn(int n) {
+        int w = weightPlan[n % weightPlan.length];
+        int cellIndex = (n * 7) % GRID_CELLS;
+        Cell x = cellAt(cellIndex);
+        array<eShade> row = shadePlan[x.r];
+        eShade sh = row[n % row.length];
+        Crate c = new Crate(n, w, sh);
+        if (c == null) return false;
+        c.parent = world.at(x.r, x.c);
+        crates += c;
+        return true;
+    }
+
+    /// The live crate with a number, or null.
+    Crate find(int n) {
+        for (Crate c in crates) {
+            if (c.number == n) return c;
+        }
+        return null;
+    }
+
+    /// Scraps a crate: out of the list and back to the pool.
+    void scrap(Crate c) {
+        crates -= c;
+        delete c;
+    }
+
+    int nextNumber() {
+        int best = 0;
+        for (Crate c in crates) {
+            if (c.number > best) best = c.number;
+        }
+        return best + 1;
+    }
+}

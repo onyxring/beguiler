@@ -189,7 +189,7 @@ message and halts the story with `quit`, except where stated.
 | `<linq>` query step exceeds its buffer (§22.5) | `[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]` (the method name varies) | Raise `linqScratchSize`. |
 | `<linq>` query chains nested more than two deep (§22.5) | `[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. …]` | Capture the inner result in a local first. |
 | An array `length` assigned beyond the word range (§12.3) | `[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
-| `<string>` pool full (§22.3) | `[ERROR: Unable to allocate a new instance.]` | Raise `bglStringPoolReserve`. |
+| `<string>` pool full (§22.3) — the program stops | `[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]` | Raise `bglStringPoolReserve`. |
 | `<buf>` registry full (§22.2) | `[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]` | Raise `bglTrackedBufferReserve`. |
 | Pooled class full (§8.2.6) | none: `new` returns `nothing` | Test the result of `new`, or size the pool larger. |
 | `bgl.world` result buffer full (§21.9) | none: the walk stops at 128 objects | Narrow the query. |
