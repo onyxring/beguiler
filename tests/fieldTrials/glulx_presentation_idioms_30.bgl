@@ -1,0 +1,576 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a switchboard of four lines shown in a text grid. A class Line : object (static through
+// a class attributeList) with a label, a letter char, a number, an enum state, a wait count and
+// answered/missed counts, methods returning char, bool, int and stringObj, and a before() that
+// answers Examine and Push; a board object whose daemon() takes queued calls from an <array> queue
+// (append, dequeue, contains), rings lines, counts the wait and drops a call left too long; a
+// value class Ledger (answered, missed, longest wait, copy operator, += of a Line, a float rate and a
+// stringObj summary); a text grid split above the main window with a border and a styleSheet, made
+// taller and shorter through its height, redrawn from a replaced DrawStatusLine; a text-buffer log
+// split below with its own styleSheet, cleared through ?.; a call history in an <array> (append,
+// prepend, insert, remove, removeValue, indexOf, last via peekEnd); stringObj text with format(),
+// toUpper, trim and char appends; verbs taking NOUN or NUMBER, report verbs with a meta flag; <linq>
+// filter, count, orderBy with a lambda comparator, first, take, any and all over an array<Line>, a
+// predicate capturing a local; a switch over a string; a for over an enum list; links with
+// block-bodied lambda targets and enum-valued targets handled in HandleGlkEvent; a fixed-pitch table
+// with padded columns; a float to one decimal; a const int and #define sizes.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GRID_LINES 7
+#define LOG_LINES 5
+#define QUEUE_MAX 6
+#define HISTORY_MAX 8
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eLineState { idle, ringing, connected, faulty }
+enum eLinks { linkSummary = 61, linkWipe }
+
+const int maxWait = 3;
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet boardLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert = style{ reverse = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 2; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz boardGrid = null;
+textBufferWindowHorz logPane = null;
+array<Line> pending[QUEUE_MAX];
+array<Line> history[HISTORY_MAX];
+int gridRows = GRID_LINES;
+int dropped = 0;
+int busySignals = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj oneDecimal(float f) {
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+string stateName(eLineState s) {
+    switch (s) {
+        case eLineState.idle:      return "idle";
+        case eLineState.ringing:   return "ringing";
+        case eLineState.connected: return "connected";
+        case eLineState.faulty:    return "faulty";
+    }
+    return "?";
+}
+
+void logLine(stringObj text) {
+    logPane?.printLine($"[{turns}] {text}");
+}
+
+void logEvent(string what, char letter) {
+    stringObj text = what;
+    text += ' ';
+    text += letter;
+    logLine(text);
+}
+
+// ---- the ledger ----------------------------------------------------------------------------------
+
+value class Ledger {
+    int answered;
+    int missed;
+    int longest;
+
+    Ledger operator = (Ledger o) {
+        answered = o.answered;
+        missed = o.missed;
+        longest = o.longest;
+        return self;
+    }
+
+    Ledger operator += (Line l) {
+        answered += l.answered;
+        missed += l.missed;
+        if (l.longestWait > longest) longest = l.longestWait;
+        return self;
+    }
+
+    int total() { return answered + missed; }
+
+    float rate() {
+        if (total() == 0) return 0.0;
+        return (float)answered * 100 / total();
+    }
+
+    stringObj summary() {
+        stringObj a = $"{answered}";
+        stringObj m = $"{missed}";
+        stringObj out = a.format("$0 answered, $1 missed", m);
+        return out;
+    }
+}
+
+// ---- lines ---------------------------------------------------------------------------------------
+
+class Line : object {
+    attributeList attributes = {static};
+    string label = "line";
+    char letter = '?';
+    int number = 0;
+    eLineState state = eLineState.idle;
+    int wait = 0;
+    int longestWait = 0;
+    int answered = 0;
+    int missed = 0;
+
+    char lamp() {
+        switch (state) {
+            case eLineState.idle:      return '.';
+            case eLineState.ringing:   return '!';
+            case eLineState.connected: return '=';
+            case eLineState.faulty:    return 'x';
+        }
+        return '?';
+    }
+
+    bool isFree() { return state == eLineState.idle; }
+
+    int calls() { return answered + missed; }
+
+    stringObj row() {
+        stringObj bar = "";
+        for (int i = 0; i < maxWait; i++) {
+            if (i < wait) bar += '#';
+            else bar += '-';
+        }
+        stringObj tag = $"{letter} {number}";
+        stringObj out = $"{padRight(tag, 5)}{lamp()} {padRight(stateName(state), 10)}[{bar}] {answered}/{calls()}";
+        return out;
+    }
+
+    void ring() {
+        state = eLineState.ringing;
+        wait = 0;
+        printLine($"Line {letter} rings.");
+        logEvent("ring", letter);
+    }
+
+    void answer() {
+        if (wait > longestWait) longestWait = wait;
+        state = eLineState.connected;
+        answered++;
+        wait = 0;
+        if (!history.append(self)) {
+            history.remove(0);
+            history.append(self);
+        }
+        printLine($"You answer line {letter}.");
+        logEvent("answer", letter);
+    }
+
+    void miss() {
+        if (wait > longestWait) longestWait = wait;
+        state = eLineState.idle;
+        missed++;
+        wait = 0;
+        dropped++;
+        printLine($"Line {letter} stops ringing.");
+        logEvent("missed", letter);
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"Line {letter} (number {number}) is {stateName(state)}; answered {answered} of {calls()}.");
+                rtrue;
+            case Push:
+                if (state == eLineState.ringing) {
+                    answer();
+                } else {
+                    printLine($"Line {letter} is not ringing.");
+                }
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A switchboard with four lines.";
+    attributes = {light};
+}
+
+Line lineA { "A line"; parent = roomA; name = {.a, .line}; label = "A"; letter = 'A'; number = 11; }
+Line lineB { "B line"; parent = roomA; name = {.b, .line}; label = "B"; letter = 'B'; number = 12; }
+Line lineC { "C line"; parent = roomA; name = {.c, .line}; label = "C"; letter = 'C'; number = 13; }
+Line lineD { "D line"; parent = roomA; name = {.d, .line}; label = "D"; letter = 'D'; number = 14; state = eLineState.faulty; }
+
+array<Line> lines = { lineA, lineB, lineC, lineD };
+
+object board {
+    "board";
+    parent = roomA;
+    name = {.board, .switchboard};
+    description = "A board of jacks.";
+    attributes = {static};
+
+    void daemon() {
+        for (Line l in lines) {
+            if (l.state == eLineState.ringing) {
+                l.wait++;
+                if (l.wait > maxWait) l.miss();
+            }
+        }
+        if (pending.length == 0) return;
+        Line next = pending.dequeue();
+        if (next.isFree()) {
+            next.ring();
+        } else {
+            busySignals++;
+            printLine($"A call to line {next.letter} gets a busy signal.");
+            logEvent("busy", next.letter);
+        }
+    }
+}
+
+// ---- the board grid ------------------------------------------------------------------------------
+
+stringObj queueLetters() {
+    stringObj out = "";
+    for (Line l in pending) out += l.letter;
+    return out;
+}
+
+void drawBoard() {
+    if (boardGrid == null) return;
+    boardGrid.clear();
+    boardGrid.moveCursor(0, 0);
+    boardGrid.print("Line L State     Wait  Ans");
+    int row = 1;
+    for (Line l in lines) {
+        if (row >= gridRows) break;
+        boardGrid.moveCursor(0, row);
+        boardGrid.print(l.row());
+        row++;
+    }
+    if (row < gridRows) {
+        boardGrid.moveCursor(0, row);
+        boardGrid.print($"queue [{queueLetters()}] {pending.length}/{QUEUE_MAX} dropped {dropped}");
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    stringObj last = "none";
+    if (history.length > 0) last = $"{history.peekEnd().letter}";
+    bgl.ui.statusBar.print($"{location} | turn {turns} | last answered {last}");
+    drawBoard();
+}
+
+// ---- reports -------------------------------------------------------------------------------------
+
+void showTable() {
+    printLine($"{fixed}{bold}{padRight("Line", 6)}{padRight("No.", 5)}{padRight("State", 11)}{padLeft("Ans", 4)}{padLeft("Miss", 5)}{roman}");
+    for (Line l in lines) {
+        stringObj a = $"{l.label}";
+        stringObj n = $"{l.number}";
+        stringObj s = stateName(l.state);
+        stringObj k = $"{l.answered}";
+        stringObj m = $"{l.missed}";
+        printLine($"{fixed}{padRight(a, 6)}{padRight(n, 5)}{padRight(s, 11)}{padLeft(k, 4)}{padLeft(m, 5)}{roman}");
+    }
+    for (eLineState st in {eLineState.idle, eLineState.ringing, eLineState.connected, eLineState.faulty}) {
+        int k = lines.filter((Line l) => l.state == st).count();
+        if (k > 0) printLine($"{stateName(st)}: {k}");
+    }
+}
+
+void showLedger() {
+    Ledger all;
+    for (Line l in lines) all += l;
+    Ledger early = all;
+    early += lineA;
+    printLine($"Ledger: {all.summary()}; longest wait {all.longest}.");
+    printLine($"Answer rate {oneDecimal(all.rate())}%; counting A twice: {early.summary()}.");
+    printLine($"Busy signals {busySignals}; dropped {dropped}.");
+}
+
+void showBusiest() {
+    array<Line> used[4];
+    used = lines.filter((Line l) => l.calls() > 0);
+    if (used.count() == 0) {
+        printLine("No line has had a call.");
+        return;
+    }
+    array<Line> order[4];
+    order = used.orderBy((Line a, Line b) => b.calls() - a.calls());
+    Line top = order.first();
+    printLine($"Busiest: line {top.letter} with {top.calls()} call{top.calls() == 1 ? "" : "s"}.");
+    stringObj firstTwo = "";
+    for (Line l in order.take(2)) firstTwo += l.letter;
+    printLine($"Top two: {firstTwo}.");
+    if (lines.all((Line l) => l.calls() > 0)) printLine("Every line has had a call.");
+    else if (lines.any((Line l) => l.state == eLineState.faulty)) printLine("A faulty line takes no calls.");
+}
+
+void showHistory() {
+    if (history.length == 0) {
+        printLine("No calls answered yet.");
+        return;
+    }
+    stringObj letters = "";
+    for (Line l in history) letters += l.letter;
+    printLine($"Answered in order: {letters}.");
+    int at = history.indexOf(lineB);
+    if (at >= 0) printLine($"First B answer is call {at + 1}.");
+    else printLine("B has not been answered.");
+}
+
+// ---- links ---------------------------------------------------------------------------------------
+
+void queueFromLink(Line l) {
+    if (pending.append(l)) logEvent("queued", l.letter);
+    else logLine("queue full");
+    drawBoard();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.linkSummary:
+                Ledger all;
+                for (Line l in lines) all += l;
+                logLine(all.summary());
+            case (int)eLinks.linkWipe:
+                logPane?.clear();
+                logLine("log wiped");
+            default:
+                return 0;
+        }
+        drawBoard();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    boardGrid = bgl.ui.mainWin.splitUpGrid(GRID_LINES, fixed, border, styles: boardLook);
+    logPane = bgl.ui.mainWin.splitDownBuffer(LOG_LINES, fixed, border, styles: logLook);
+    logLine("board ready");
+    StartDaemon(board);
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Line asLine(object o) {
+    if (o == null || !o.is(Line)) {
+        printLine("That is not a line.");
+        return null;
+    }
+    return (Line)o;
+}
+
+Line lineByNumber(int n) {
+    for (Line l in lines) {
+        if (l.number == n) return l;
+    }
+    return null;
+}
+
+verb Queue {
+    grammar = { {.queue, NOUN}, {.queue, NUMBER} };
+    void handler() {
+        Line l = null;
+        if (noun != null && ((object)noun).is(Line)) l = (Line)noun;
+        else l = lineByNumber((int)noun);
+        if (l == null) {
+            printLine("No line has that number.");
+            return;
+        }
+        if (pending.contains(l)) {
+            printLine($"A call to line {l.letter} is already queued.");
+            return;
+        }
+        if (!pending.append(l)) {
+            printLine("The queue is full.");
+            return;
+        }
+        printLine($"Queued a call to line {l.letter} ({pending.length} waiting).");
+    }
+}
+
+verb AnswerLine {
+    grammar = {.answer, NOUN};
+    void handler() {
+        Line l = asLine(noun);
+        if (l == null) return;
+        if (l.state != eLineState.ringing) {
+            printLine($"Line {l.letter} is {stateName(l.state)}, not ringing.");
+            return;
+        }
+        l.answer();
+    }
+}
+
+verb HangUp {
+    grammar = {.hangup, NOUN};
+    void handler() {
+        Line l = asLine(noun);
+        if (l == null) return;
+        if (l.state != eLineState.connected) {
+            printLine($"Line {l.letter} is not connected.");
+            return;
+        }
+        l.state = eLineState.idle;
+        printLine($"You pull the plug on line {l.letter}.");
+    }
+}
+
+verb Mend {
+    grammar = {.mend, NOUN};
+    void handler() {
+        Line l = asLine(noun);
+        if (l == null) return;
+        if (l.state != eLineState.faulty) {
+            printLine($"Line {l.letter} needs no mending.");
+            return;
+        }
+        l.state = eLineState.idle;
+        stringObj note = $"  {l.label} mended  ";
+        printLine($"{note.trim()}.");
+        logLine(note.trim().toUpper());
+    }
+}
+
+verb Forget {
+    grammar = {.forget, NOUN};
+    void handler() {
+        Line l = asLine(noun);
+        if (l == null) return;
+        if (!history.contains(l)) {
+            printLine($"Line {l.letter} is not in the history.");
+            return;
+        }
+        history.removeValue(l);
+        printLine($"Forgot line {l.letter}; {history.length} left.");
+    }
+}
+
+verb Pin {
+    grammar = {.pin, NOUN};
+    void handler() {
+        Line l = asLine(noun);
+        if (l == null) return;
+        if (history.length >= HISTORY_MAX) history.remove(history.length - 1);
+        history.prepend(l);
+        if (history.length > 2) history.insert(2, l);
+        printLine($"Pinned line {l.letter}; history has {history.length}.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    meta = true;
+    void handler() { showTable(); }
+}
+
+verb Ledgers {
+    grammar = {.ledger};
+    meta = true;
+    void handler() { showLedger(); }
+}
+
+verb Busiest {
+    grammar = {.busiest};
+    meta = true;
+    void handler() { showBusiest(); }
+}
+
+verb Calls {
+    grammar = {.calls};
+    meta = true;
+    void handler() { showHistory(); }
+}
+
+void resize(string how) {
+    if (boardGrid == null) return;
+    switch (how) {
+        case "taller":
+            if (gridRows >= GRID_LINES) {
+                printLine("The board is already full height.");
+                return;
+            }
+            gridRows++;
+        case "shorter":
+            if (gridRows <= 3) {
+                printLine("The board is as short as it goes.");
+                return;
+            }
+            gridRows--;
+    }
+    boardGrid.height = gridRows;
+    printLine($"Board height {boardGrid.height}.");
+    drawBoard();
+}
+
+verb Taller {
+    grammar = {.taller};
+    meta = true;
+    void handler() { resize("taller"); }
+}
+
+verb Shorter {
+    grammar = {.shorter};
+    meta = true;
+    void handler() { resize("shorter"); }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Queue: {link("A", => { queueFromLink(lineA); })} {link("B", => { queueFromLink(lineB); })} {link("C", => { queueFromLink(lineC); })}");
+        printLine($"Also: {link("summary", eLinks.linkSummary)} {link("wipe", eLinks.linkWipe)}");
+    }
+}
+
+#includeI6 "grammar"

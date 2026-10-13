@@ -1,0 +1,132 @@
+Trackside
+Trackside. A single line runs east to west past a signal box, whose door is at the top of a wooden stair. The points beside you are set for the main line.
+You can see a tin box (which is closed) here.
+> frame
+Frame: 1N 2N 3N 4N. Mask 0. Train away, 0 through. Score 0.
+> x points
+The blades lie across for the main line.
+> x signal
+The home signal arm stands level, at danger.
+> open tin box
+You open the tin box, revealing a brass key.
+A bell rings in the signal box.
+> take key
+Taken.
+> listen
+You hear nothing unexpected.
+> unlock door with key
+You unlock the box door.
+A bell rings in the signal box.
+> open door
+You open the box door.
+> u
+Signal Box
+Signal Box. A frame of four levers faces the window, with a block bell and a register on the shelf above.
+You can see a red lever, a yellow lever, a blue lever, a black lever, a block bell and a train register here.
+> listen
+The block instrument ticks.
+The block bell rings: three beats.
+> x bell
+A brass bell and a needle dial reading LINE BLOCKED.
+> ring bell
+Ring how many beats?
+> ring 5
+You ring 5 beats. Nobody answers.
+The block bell rings: three beats.
+> ring 12
+That is not a bell code.
+> pull 7
+The levers are numbered 1 to 4.
+> take lever 2
+The levers only pull and push.
+The block bell rings: three beats.
+> x 4
+Lever 4 works the points. It stands normal.
+> ring 3
+You ring three beats back. The needle swings to TRAIN ON LINE.
+> x lever 3
+Lever 3 works the facing point lock. It stands normal.
+> x red lever
+Lever 1 works the home signal. It stands normal.
+A goods train draws up at the home signal and whistles.
+> pull 2
+Lever 2 is locked: lever 1 must be pulled first.
+The goods train whistles at the home signal.
+> pull 1
+Lever 1 is locked: lever 3 must be pulled first.
+The goods train whistles at the home signal.
+> pull black lever
+You heave the black lever over. The blades grind across.
+The goods train whistles at the home signal.
+> push 4
+You push the black lever back. The blades grind across.
+The goods train whistles at the home signal.
+> push 4
+Lever 4 is already normal.
+The goods train whistles at the home signal.
+> pull 3
+You heave the blue lever over and the bolt shoots home.
+The goods train whistles at the home signal.
+> pull 4
+Lever 4 is locked by lever 3.
+The goods train whistles at the home signal.
+> pull lever 1
+You heave the red lever over and the wire clatters as the arm drops.
+The goods train draws away past the box.
+[The score has just gone up by one point.]
+> pull 2
+You heave the yellow lever over and the wire clatters as the arm drops.
+> frame
+Frame: 1R 2R 3R 4N. Mask 7. Train passed, 1 through. Score 1.
+> ring 3
+You ring three beats. Nobody answers.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> ring 2
+Lever 1 is still over.
+> push 1
+Lever 1 is held over by lever 2.
+> push 2
+You push the yellow lever back and the arm rises to danger.
+> push 1
+You push the red lever back and the arm rises to danger.
+> push 3
+You push the blue lever back and the bolt withdraws.
+> read register
+The last lever moves are entered: 1 over, 2 over, 2 back, 1 back, 3 back.
+> ring 2
+You ring two beats: train out of section.
+[The score has just gone up by one point.]
+> frame
+Frame: 1N 2N 3N 4N. Mask 0. Train away, 1 through. Score 2.
+> pull 3
+You heave the blue lever over and the bolt shoots home.
+> pull 1
+You heave the red lever over and the wire clatters as the arm drops.
+The block bell rings: three beats.
+> pull 2
+You heave the yellow lever over and the wire clatters as the arm drops.
+> x signal
+The home signal arm stands off, lowered to clear. Below it the distant arm is off too.
+> listen
+The block instrument ticks.
+The block bell rings: three beats.
+> ring 3
+You ring three beats back. The needle swings to TRAIN ON LINE.
+> frame
+Frame: 1R 2R 3R 4N. Mask 7. Train approaching, 2 to go, 1 through. Score 2.
+> wait
+Time passes.
+> wait
+Time passes.
+The goods train runs through at speed, wagons rattling past the box.
+[The score has just gone up by two points.]
+*** You have won ***
+In that game you scored 4 out of a possible 4, in 48 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

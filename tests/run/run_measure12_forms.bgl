@@ -1,0 +1,33 @@
+// run_measure12_forms — `.new` as a dictionary word, a pool sized by a #define, a member array of a
+// class declared below its use, and an inline value whose object member takes a subscript.
+// EXPECT_OUTPUT: new 2 2 7 0:B 1:A
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#define NSLOTS 2
+dictionaryWord w = .new;
+class Chip[NSLOTS] : object { int n; }
+object boxA { int tag = 'A'; }
+object boxB { int tag = 'B'; }
+array<object> boxes = {boxA, boxB};
+value class Pair { object who = null; int n = 0; Pair operator = (Pair o) { who = o.who; n = o.n; return self; } }
+array<Pair> pairs[4];
+void probe() {
+    crate.Items.append(7);
+    crate.Items.append(8);
+    print($"{crate.Items.length} ");
+}
+class Box : object { array<int> Items[4]; }
+Box crate { }
+void main() {
+    bglInit();
+    print(w); print(" ");
+    Chip a = new Chip();
+    Chip b = new Chip();
+    print($"{(a != null && b != null) ? 2 : 0} ");
+    probe();
+    print($"{crate.Items[0]} ");
+    array<int> idx = {1, 0};
+    for (int i = 0; i < idx.length; i++) pairs += Pair{ who = boxes[idx[i]]; n = i; };
+    for (Pair p in pairs) { print(p.n); print(":"); print(p.who == boxB ? "B" : "A"); print(" "); }
+    print("^");
+}

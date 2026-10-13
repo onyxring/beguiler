@@ -1,0 +1,510 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirtieth pass: a lift controller.
+// A value class for a clock time with a copy operator, `+` by minutes, `==`/`!=`, a `<=>` that `<`/`>`
+// come from, a static factory and its own `print()` used inside interpolation, held in a global and in a
+// pooled class's member; a named property accessor (a value class counting changes) as a lift's floor,
+// moved with `++`/`--` and with a method of its own; the State pattern: a state base class with `default`
+// `Enter()`/`Tick()`/`AcceptsCalls()` overridden by four subclasses, each with a singleton object, one
+// state's `Enter()` chaining to the base version with an ancestor cast; a lift class holding its state, an
+// owned `array<int>` of stops and a static transition counter; landings with `required` members; a
+// building object with an inline `auto` accessor reaching its host through `outer`; a pooled request class
+// with `create()`/`destroy()`, a static counter and a `print()` override; a pooled fault thrown from a
+// dispatcher method and caught by a typed `catch`; the Strategy pattern as a `func<int, Lift, int>` member
+// swapped between a named function and a lambda; an observer list of `func<void, Lift, LiftState>`
+// listeners; overloads (a call by floor number or by landing) with a default argument; `<linq>`
+// `filter`/`count`/`any`/`all`/`orderBy`/`map`/`first`; enum switches; `is` tests and downcasts;
+// `?.`/`??`; named arguments; interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eDir { Up, Down, Idle }
+enum eFault { BadFloor, OutOfService, Full }
+
+string DirName(eDir d) {
+    switch (d) {
+        case eDir.Up:   return "up";
+        case eDir.Down: return "down";
+        case eDir.Idle: return "idle";
+    }
+    return "?";
+}
+
+string FaultName(eFault f) {
+    switch (f) {
+        case eFault.BadFloor:     return "no such floor";
+        case eFault.OutOfService: return "no lift in service";
+        case eFault.Full:         return "request queue full";
+    }
+    return "?";
+}
+
+//-- Clock: a value type ---------------------------------------------------------------------------------------
+
+value class Clock {
+    int Minutes;
+
+    Clock operator = (Clock o) {
+        Minutes = o.Minutes;
+        return self;
+    }
+
+    Clock operator + (int mins) {
+        Clock later;
+        later.Minutes = Minutes + mins;
+        return later;
+    }
+
+    bool operator == (Clock o) { return Minutes == o.Minutes; }
+    bool operator != (Clock o) { return Minutes != o.Minutes; }
+    int operator <=> (Clock o) { return Minutes - o.Minutes; }
+
+    static Clock At(int hours, int minutes = 0) {
+        Clock c;
+        c.Minutes = hours * 60 + minutes;
+        return c;
+    }
+
+    void print() {
+        int h = Minutes / 60;
+        int m = Minutes % 60;
+        if (h < 10) print("0");
+        print(h);
+        print(":");
+        if (m < 10) print("0");
+        print(m);
+    }
+}
+
+Clock Now;
+
+//-- A property accessor: the floor a lift is on ---------------------------------------------------------------
+
+value class FloorGauge {
+    int _level;
+    int _changes;
+
+    int operator () { return _level; }
+
+    void operator = (int v) {
+        if (v != _level) _changes++;
+        _level = v;
+    }
+
+    int Changes() { return _changes; }
+}
+
+//-- Landings --------------------------------------------------------------------------------------------------
+
+class Landing : object {
+    required int Level;
+    required string Label;
+    bool Express = false;
+}
+
+Landing lobby { Level = 0; Label = "Lobby"; }
+Landing mezzanine { Level = 2; Label = "Mezzanine"; }
+Landing deck { Level = 5; Label = "Deck"; Express = true; }
+
+object building {
+    int TopFloor = 5;
+    int AlarmCount;
+    auto Alarm = {
+        bool _on;
+        bool operator () { return _on; }
+        void operator = (bool v) {
+            if (v && !_on) outer.AlarmCount++;
+            _on = v;
+        }
+    }
+}
+
+//-- The State pattern -----------------------------------------------------------------------------------------
+
+class LiftState : object {
+    string Label = "state";
+
+    default void Enter(Lift car) { car.Dir = eDir.Idle; }
+    default void Tick(Lift car) { }
+    default bool AcceptsCalls() { return true; }
+}
+
+class IdleState : LiftState {
+    void Tick(Lift car) {
+        if (car.Stops.length > 0) car.TransitionTo(moving);
+    }
+}
+
+class MovingState : LiftState {
+    void Enter(Lift car) {
+        int target = car.Target();
+        car.Dir = target > car.Floor ? eDir.Up : (target < car.Floor ? eDir.Down : eDir.Idle);
+    }
+
+    void Tick(Lift car) {
+        int target = car.Target();
+        if (car.Floor < target) car.Floor++;
+        else if (car.Floor > target) car.Floor--;
+        if (car.Floor == target) {
+            car.Stops.remove(0);
+            controller.Arrived(car, target);
+            car.TransitionTo(doorsOpen);
+        }
+    }
+}
+
+class DoorsOpenState : LiftState {
+    int HoldTicks = 1;
+
+    void Enter(Lift car) {
+        ((LiftState)self).Enter(car);
+        car.DoorTimer = HoldTicks;
+    }
+
+    void Tick(Lift car) {
+        if (car.DoorTimer > 0) {
+            car.DoorTimer--;
+            return;
+        }
+        car.TransitionTo(idle);
+    }
+}
+
+class MaintenanceState : LiftState {
+    bool AcceptsCalls() { return false; }
+}
+
+IdleState idle { Label = "idle"; }
+MovingState moving { Label = "moving"; }
+DoorsOpenState doorsOpen { Label = "doors open"; HoldTicks = 2; }
+MaintenanceState maintenance { Label = "maintenance"; }
+
+//-- Lifts -----------------------------------------------------------------------------------------------------
+
+class Lift : object {
+    string Tag;
+    FloorGauge Floor;
+    LiftState State;
+    eDir Dir = eDir.Idle;
+    array<int> Stops[6];
+    int DoorTimer;
+    int Served;
+    static int Transitions;
+
+    void TransitionTo(LiftState next) {
+        LiftState was = State;
+        State = next;
+        Transitions++;
+        next.Enter(self);
+        controller.Notify(self, was);
+    }
+
+    bool AddStop(int level) {
+        if (Stops.contains(level)) return false;
+        return Stops.append(level);
+    }
+
+    int Target() { return Stops.length > 0 ? Stops[0] : Floor; }
+
+    int DistanceTo(int level) {
+        int d = level - Floor;
+        return d < 0 ? -d : d;
+    }
+
+    bool IsBusy() { return Stops.length > 0; }
+
+    void print() { print($"{Tag}@{Floor}"); }
+}
+
+Lift carA { Tag = "A"; }
+Lift carB { Tag = "B"; }
+
+//-- Requests and faults ---------------------------------------------------------------------------------------
+
+class Request[4] : object {
+    int Level;
+    eDir Dir = eDir.Idle;
+    Clock At;
+    Lift AssignedTo;
+    static int Made;
+    static int Done;
+
+    void create(int atLevel, eDir heading) {
+        Level = atLevel;
+        Dir = heading;
+        At = Now;
+        Request.Made++;
+    }
+
+    void destroy() { Request.Done++; }
+
+    void print() { print($"floor {Level} {DirName(Dir)} at {At}"); }
+}
+
+class LiftFault[2] : object {
+    eFault Code;
+    int Level;
+    static int Raised;
+
+    void create(eFault why, int atLevel) {
+        Code = why;
+        Level = atLevel;
+        LiftFault.Raised++;
+    }
+}
+
+//-- The dispatcher --------------------------------------------------------------------------------------------
+
+int NearestCost(Lift car, int level) {
+    int cost = car.DistanceTo(level);
+    if (car.IsBusy()) cost += 2;
+    return cost;
+}
+
+class Dispatcher : object {
+    array<Lift> Cars[2];
+    array<Request> Pending[4];
+    array<func<void, Lift, LiftState>> Listeners[2];
+    func<int, Lift, int> Cost;
+
+    void Register(Lift car) {
+        Cars.append(car);
+        car.TransitionTo(idle);
+    }
+
+    void Subscribe(func<void, Lift, LiftState> listener) { Listeners.append(listener); }
+
+    void Notify(Lift car, LiftState was) {
+        for (func<void, Lift, LiftState> listener in Listeners) listener(car, was);
+    }
+
+    Lift Choose(int level) {
+        Lift best = null;
+        int bestCost = 999;
+        for (Lift car in Cars) {
+            if (!car.State.AcceptsCalls()) continue;
+            int c = Cost(car, level);
+            if (c < bestCost) {
+                best = car;
+                bestCost = c;
+            }
+        }
+        return best;
+    }
+
+    Request Call(int level, eDir dir = eDir.Idle) {
+        if (level < 0 || level > building.TopFloor) throw new LiftFault(eFault.BadFloor, level);
+        Lift car = Choose(level);
+        if (car == null) throw new LiftFault(eFault.OutOfService, level);
+        Request r = new Request(level, dir);
+        if (r == null) throw new LiftFault(eFault.Full, level);
+        r.AssignedTo = car;
+        car.AddStop(level);
+        Pending.append(r);
+        return r;
+    }
+
+    Request Call(Landing at) {
+        return Call(at.Level, at.Express ? eDir.Up : eDir.Idle);
+    }
+
+    void Arrived(Lift car, int level) {
+        for (int i = Pending.length - 1; i >= 0; i--) {
+            Request r = Pending[i];
+            if (r.AssignedTo == car && r.Level == level) {
+                Pending.remove(i);
+                car.Served++;
+                delete r;
+            }
+        }
+    }
+
+    int Reassign(Lift from) {
+        int moved = 0;
+        for (Request r in Pending) {
+            if (r.AssignedTo != from) continue;
+            Lift other = Choose(r.Level);
+            if (other == null) continue;
+            r.AssignedTo = other;
+            other.AddStop(r.Level);
+            moved++;
+        }
+        from.Stops.clear();
+        return moved;
+    }
+
+    void Tick() {
+        for (Lift car in Cars) car.State.Tick(car);
+        Now = Now + 1;
+    }
+}
+
+Dispatcher controller { }
+
+//-- Listeners and helpers -------------------------------------------------------------------------------------
+
+int DoorOpenings;
+
+void LogTransition(Lift car, LiftState was) {
+    printLine($"  {Now} {car.Tag}: {was?.Label ?? "none"} -> {car.State.Label} at {car.Floor}");
+}
+
+void TryCall(int level, eDir dir = eDir.Idle) {
+    try {
+        Request r = controller.Call(level, dir);
+        printLine($"Call {r} -> {r.AssignedTo}.");
+    } catch (LiftFault f) {
+        printLine($"Fault: {FaultName(f.Code)} ({f.Level}).");
+        delete f;
+    }
+}
+
+int ByServedDescending(Lift a, Lift b) { return b.Served - a.Served; }
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        Now = Clock.At(8, 58);
+        controller.Cost = NearestCost;
+        controller.Subscribe(LogTransition);
+        controller.Subscribe((Lift c, LiftState w) => { if (c.State.is(DoorsOpenState)) DoorOpenings++; });
+        carB.Floor = 4;
+        controller.Register(carA);
+        controller.Register(carB);
+        Clock nine = Clock.At(hours: 9);
+        Clock later = Now + 5;
+        printLine($"Now {Now}; nine {nine}; later {later}; before {Now < nine}, after {later > nine}, same {later == nine + 3}.");
+        printLine($"Cars {controller.Cars.length}, listeners {controller.Listeners.length}, top {building.TopFloor}.");
+    }
+}
+
+verb CallLift {
+    grammar = {.call};
+    void handler() {
+        TryCall(3, eDir.Up);
+        TryCall(1);
+        Request r = controller.Call(mezzanine);
+        printLine($"Landing {mezzanine.Label}: {r} -> {r.AssignedTo}.");
+        TryCall(9);
+        TryCall(level: 5, dir: eDir.Down);
+        TryCall(0);
+        printLine($"Pending {controller.Pending.length}, made {Request.Made}, faults {LiftFault.Raised}.");
+    }
+}
+
+verb StepTime {
+    grammar = {.step};
+    void handler() {
+        controller.Tick();
+        printLine($"{Now} A {carA} {carA.State.Label}, B {carB} {carB.State.Label}");
+    }
+}
+
+verb Status {
+    grammar = {.status};
+    void handler() {
+        for (Lift car in controller.Cars) {
+            stringObj stops = "";
+            for (int s in car.Stops) stops += $" {s}";
+            if (car.Stops.length == 0) stops = " none";
+            printLine($"{car} {car.State.Label} {DirName(car.Dir)}; stops{stops}; served {car.Served}; changes {car.Floor.Changes()}");
+        }
+        for (Request r in controller.Pending) printLine($"  waiting: {r} on {r.AssignedTo.Tag}");
+        printLine($"Done {Request.Done}, transitions {Lift.Transitions}, doors {DoorOpenings}.");
+    }
+}
+
+verb Service {
+    grammar = {.service};
+    void handler() {
+        building.Alarm = true;
+        building.Alarm = true;
+        carB.TransitionTo(maintenance);
+        int moved = controller.Reassign(carB);
+        printLine($"Alarm {building.Alarm}, raised {building.AlarmCount}; moved {moved}.");
+        TryCall(4);
+        carA.TransitionTo(maintenance);
+        TryCall(2);
+        carA.TransitionTo(idle);
+        building.Alarm = false;
+        printLine($"Alarm {building.Alarm}, raised {building.AlarmCount}.");
+    }
+}
+
+verb Strategy {
+    grammar = {.strategy};
+    void handler() {
+        controller.Cost = (Lift car, int level) => car.DistanceTo(level) + car.Served;
+        carB.TransitionTo(idle);
+        TryCall(level: 4);
+        controller.Cost = NearestCost;
+        TryCall(level: 1);
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int idleCars = controller.Cars.filter((Lift c) => c.State == idle).count();
+        bool anyBusy = controller.Cars.any((Lift c) => c.IsBusy());
+        bool allServing = controller.Cars.all((Lift c) => c.State.AcceptsCalls());
+        printLine($"Idle {idleCars}, busy {anyBusy}, all in service {allServing}.");
+
+        stringObj line = "By served:";
+        for (Lift c in controller.Cars.orderBy(ByServedDescending)) line += $" {c.Tag}={c.Served}";
+        printLine(line);
+
+        array<var> floors = controller.Cars.map((Lift c) => c.Floor);
+        int sum = 0;
+        for (var f in floors) sum += f;
+        printLine($"Floors total {sum} over {floors.length}.");
+
+        Request oldest = controller.Pending.first();
+        string tag = oldest?.AssignedTo?.Tag ?? "none";
+        printLine($"Oldest request on {tag}.");
+
+        for (LiftState s in { idle, moving, doorsOpen, maintenance }) {
+            if (s.is(DoorsOpenState)) {
+                DoorsOpenState d = (DoorsOpenState)s;
+                printLine($"{s.Label}: calls {s.AcceptsCalls()}, hold {d.HoldTicks}");
+            } else {
+                printLine($"{s.Label}: calls {s.AcceptsCalls()}");
+            }
+        }
+        for (Landing l in { lobby, mezzanine, deck }) {
+            Lift near = controller.Choose(l.Level);
+            printLine($"{l.Label} ({l.Level}{l.Express ? ", express" : ""}): nearest {near?.Tag ?? "none"}");
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

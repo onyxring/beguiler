@@ -1,0 +1,734 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirtieth first-time-programmer program, a small garden bed where plants grow a little
+// each turn while they have water, dry out and wilt when they don't, are watered from a can that has
+// to be filled at a tap, are picked into a basket when they are grown, and are sown again from a seed
+// packet, written the way a beginner writes it after reading the spec once. Counts in int globals with
+// consts for the can size, the basket size, the growing days and the seed packet, bool flags, an enum
+// for how far a plant has grown kept in a class member and switched on, a bnum of plant tags combined
+// with | and tested with &, a named getter/setter accessor class (the soil water, clamped by its setter)
+// used as a class member and given its starting value with an inline object, read, written, bumped with
+// += and -- and read inside interpolation, a static member counting sowings, a value class for a picked
+// crop with a copy operator, == and != and <=> (so the basket sorts and searches by content) kept in an
+// array of the value class sized by a const, a seed packet used as a stack with push / pop / peek /
+// peekEnd / popEnd, prepend / insert / removeValue / -= / += with a list / swap / reverse / clear, a class
+// of plants (kind, tags, growth, water, days, a method for how fast it grows, a grow method, a before()
+// for Examine and Take) with a subclass that replaces the speed (still calling the class's through a
+// cast), a watering can object with an inline auto accessor for its water that uses outer, a gardener
+// object with a daemon that walks the plants with for-in over a literal list, helper functions (one with
+// a default argument, one called with named arguments, one overloaded for an int and a crop, one that
+// throws when the basket is full), try / catch / throw, a switch with ranges and a guard, a string
+// switch, C-style for loops with break and continue, a while loop, a do/while, <linq> filter / count /
+// any / all / orderBy / first / last / map / take / skipWhile / distinct with lambdas (one capturing a
+// local), stringObj text changed with replace, replaceAll, delete, prepend, append, toLower, right,
+// indexOf, contains and startsWith, and verbs with no noun, one noun and a number (water, fill, pick,
+// sow, garden, basket, seeds, report, word) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how much water the can holds
+const int CAN_SIZE = 6;
+// the most water the soil can hold
+const int SOIL_MAX = 5;
+// how many crops fit in the basket
+const int BASKET_SIZE = 3;
+// how many days a plant needs to sprout
+const int SPROUT_DAYS = 2;
+// how many days a plant needs to be grown
+const int GROWN_DAYS = 4;
+// how many seeds the packet can hold
+const int PACKET_SIZE = 6;
+// how many turns have gone by
+int dayCount = 0;
+// how many crops have been picked
+int pickedCount = 0;
+// how many times the can was filled
+int fillCount = 0;
+// has a plant ever wilted?
+bool everWilted = false;
+// was the basket ever full?
+bool basketWasFull = false;
+
+// ===== KINDS OF THINGS =====
+
+enum Growth { seed, sprout, grown, wilted }
+
+bnum Tag { leafy, climbs, smells }
+
+// ===== THE WATER IN THE SOIL =====
+
+// water that never goes below 0 or above SOIL_MAX
+value class SoilWater {
+    int _level = 0;
+    int operator () {
+        return _level;
+    }
+    void operator = (int v) {
+        if (v < 0) {
+            v = 0;
+        }
+        if (v > SOIL_MAX) {
+            v = SOIL_MAX;
+        }
+        _level = v;
+    }
+}
+
+// ===== CROPS =====
+
+// one crop in the basket
+value class Crop {
+    string kind;
+    int size;
+    int day;
+    Crop operator = (Crop o) {
+        kind = o.kind;
+        size = o.size;
+        day = o.day;
+        return self;
+    }
+    bool operator == (Crop o) {
+        return kind == o.kind && size == o.size;
+    }
+    bool operator != (Crop o) {
+        return !(kind == o.kind && size == o.size);
+    }
+    // bigger crops sort later; the same size sorts by kind
+    int operator <=> (Crop o) {
+        if (size < o.size) {
+            return -1;
+        }
+        if (size > o.size) {
+            return 1;
+        }
+        return kind.compareTo(o.kind);
+    }
+}
+
+// ===== LISTS =====
+
+// the basket
+array<Crop> basket[BASKET_SIZE];
+
+// the seed packet (the front is the next seed)
+array<string> packet[PACKET_SIZE];
+
+// every kind ever picked, in order
+array<string> pickedKinds[10];
+
+// how big each crop was, in order
+array<int> pickedSizes[10];
+
+// ===== HELPER FUNCTIONS =====
+
+// "day" or "days"
+string dayWord(int n) {
+    if (n == 1) {
+        return "day";
+    }
+    return "days";
+}
+
+// prints how big a crop is
+void showSize(int size) {
+    switch (size) {
+        case 0: print("tiny");
+        case 1 to 2: print("small");
+        case 3: print("good");
+        case >= 4: print("big");
+    }
+}
+
+// prints a crop: its size and kind
+void showSize(Crop c) {
+    showSize(c.size);
+    print($" {c.kind}");
+}
+
+// how big a crop is when picked
+int cropSize(int days, int water, int bonus = 0) {
+    int size = days - GROWN_DAYS + 1 + bonus;
+    if (water >= 3) {
+        size++;
+    }
+    return size;
+}
+
+// puts a crop in the basket; throws how many are in it when it is full
+void putInBasket(string kind, int size) {
+    if (basket.length >= BASKET_SIZE) {
+        basketWasFull = true;
+        throw basket.length;
+    }
+    Crop c;
+    c.kind = kind;
+    c.size = size;
+    c.day = dayCount;
+    basket.append(c);
+}
+
+// ===== PLANTS =====
+
+class Plant : object {
+    // what grows here
+    string kind;
+    // the number on the stake
+    int stake = 1;
+    // how far it has grown
+    Growth growth = Growth.seed;
+    // the water in its soil
+    SoilWater water;
+    // what sort of plant it is
+    int tags = 0;
+    // how many days it has grown
+    int days = 0;
+    string description;
+
+    // how many sowings there have been
+    static int sownCount = 0;
+
+    // how many days it grows in one turn
+    int speed() {
+        return 1;
+    }
+
+    // one turn goes by
+    void grow() {
+        if (growth == Growth.wilted) {
+            return;
+        }
+        // the soil dries out every second day
+        if (dayCount % 2 == 0) {
+            water--;
+        }
+        if (water == 0) {
+            growth = Growth.wilted;
+            everWilted = true;
+            print($"^The {kind} at stake {stake} wilts.^");
+            return;
+        }
+        days += speed();
+        if (growth == Growth.seed && days >= SPROUT_DAYS) {
+            growth = Growth.sprout;
+            print($"^The {kind} at stake {stake} sprouts.^");
+        } else if (growth == Growth.sprout && days >= GROWN_DAYS) {
+            growth = Growth.grown;
+            print($"^The {kind} at stake {stake} is ready to pick.^");
+        }
+    }
+
+    // starts it again from a seed
+    void sow(string newKind) {
+        kind = newKind;
+        growth = Growth.seed;
+        days = 0;
+        water = 3;
+        sownCount++;
+    }
+
+    // prints what sort of plant it is
+    void sayTags() {
+        if (tags == 0) {
+            print("plain");
+            return;
+        }
+        bool first = true;
+        if (tags & Tag.leafy) {
+            print("leafy");
+            first = false;
+        }
+        if (tags & Tag.climbs) {
+            if (!first) {
+                print(", ");
+            }
+            print("climbs");
+            first = false;
+        }
+        if (tags & Tag.smells) {
+            if (!first) {
+                print(", ");
+            }
+            print("smells");
+        }
+    }
+
+    // prints how it is doing
+    void sayState() {
+        print($"Stake {stake} ({kind}): ");
+        switch (growth) {
+            case Growth.seed: print($"a seed, water {water}");
+            case Growth.sprout: print($"a sprout, {days} {dayWord(days)} old, water {water}");
+            case Growth.grown: print($"grown, water {water}");
+            case Growth.wilted: print("wilted");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"Stake {stake}. It grows {speed()} a turn. It is ");
+            sayTags();
+            print(".^");
+            sayState();
+            rtrue;
+        }
+        if (action == Take) {
+            rtrue("Pick it instead.^");
+        }
+        rfalse;
+    }
+}
+
+// a climbing plant grows twice as fast while it is a sprout
+class Climber : Plant {
+    replace int speed() {
+        if (growth == Growth.sprout) {
+            return ((Plant)self).speed() * 2;
+        }
+        return ((Plant)self).speed();
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The garden bed. The shed is to the north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The shed. The bed is to the south.";
+    object s_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE PLANTS =====
+
+Plant plantOne {
+    "first plant";
+    parent = roomA;
+    name = {.first, .plant};
+    kind = "kale";
+    stake = 1;
+    water = SoilWater{ _level = 4; };
+    tags = Tag.leafy;
+    description = "A plant.";
+    attributes = {static};
+}
+
+Climber plantTwo {
+    "second plant";
+    parent = roomA;
+    name = {.second, .plant};
+    kind = "bean";
+    stake = 2;
+    water = SoilWater{ _level = 3; };
+    tags = Tag.climbs | Tag.leafy;
+    description = "A plant.";
+    attributes = {static};
+}
+
+Plant plantThree {
+    "third plant";
+    parent = roomA;
+    name = {.third, .plant};
+    kind = "mint";
+    stake = 3;
+    water = SoilWater{ _level = 5; };
+    tags = Tag.smells;
+    description = "A plant.";
+    attributes = {static};
+}
+
+// ===== THE CAN, THE TAP AND THE GARDENER =====
+
+object can {
+    "watering can";
+    parent = roomA;
+    name = {.watering, .can};
+    string description = "A watering can.";
+    // is it empty?
+    bool dry = true;
+    auto water = {
+        int _amount = 0;
+        int operator () {
+            return _amount;
+        }
+        void operator = (int v) {
+            if (v > CAN_SIZE) {
+                v = CAN_SIZE;
+            }
+            _amount = v;
+            outer.dry = (v <= 0);
+        }
+    }
+}
+
+object tap {
+    "tap";
+    parent = roomB;
+    name = {.tap};
+    string description = "A tap.";
+    attributes = {static};
+}
+
+object gardener {
+    "gardener";
+    parent = roomA;
+    name = {.gardener};
+    string description = "The gardener.";
+    attributes = {animate, static};
+    void daemon() {
+        dayCount++;
+        for (Plant p in {plantOne, plantTwo, plantThree}) {
+            p.grow();
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    packet += { "pea", "leek", "kale" };
+    packet.prepend("mint");
+    packet.insert(2, "bean");
+    StartDaemon(gardener);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the plants) =====
+
+// how many plants are grown
+int plantsGrown() {
+    int n = 0;
+    for (object o in roomA.children) {
+        if (!(o.is(Plant))) {
+            continue;
+        }
+        Plant p = (Plant)o;
+        if (p.growth == Growth.grown) {
+            n++;
+        }
+    }
+    return n;
+}
+
+// ===== VERBS =====
+
+// WATER <plant> - pours water from the can
+verb WaterPlant {
+    grammar = {.water, NOUN};
+    void handler() {
+        if (!(noun.is(Plant))) {
+            print("You can only water a plant.^");
+            return;
+        }
+        Plant p = (Plant)noun;
+        if (p.growth == Growth.wilted) {
+            print("It is too late for that one.^");
+            return;
+        }
+        if (can.dry) {
+            print("The can is empty.^");
+            return;
+        }
+        int pour = 2;
+        if (can.water < pour) {
+            pour = can.water;
+        }
+        can.water -= pour;
+        p.water += pour;
+        print($"You water the {p.kind}. Its soil has {p.water}; the can has {can.water}.^");
+    }
+}
+
+// FILL - fills the can at the tap
+verb FillCan {
+    grammar = {.fill};
+    void handler() {
+        if (location != roomB) {
+            print("The tap is in the shed.^");
+            return;
+        }
+        if (can.parent != player) {
+            print("You are not holding the can.^");
+            return;
+        }
+        can.water = 99;
+        fillCount++;
+        print($"You fill the can. It has {can.water}.^");
+    }
+}
+
+// PICK <plant> - picks a grown plant into the basket
+verb PickPlant {
+    grammar = {.pick, NOUN};
+    void handler() {
+        if (!(noun.is(Plant))) {
+            print("You can only pick a plant.^");
+            return;
+        }
+        Plant p = (Plant)noun;
+        if (p.growth != Growth.grown) {
+            print($"The {p.kind} is not ready.^");
+            return;
+        }
+        int bonus = 0;
+        if (p.tags & Tag.leafy) {
+            bonus = 1;
+        }
+        int size = cropSize(water: p.water, days: p.days, bonus: bonus);
+        try {
+            putInBasket(p.kind, size);
+        } catch (int inBasket) {
+            print($"The basket is full ({inBasket}).^");
+            return;
+        }
+        pickedCount++;
+        pickedKinds.append(p.kind);
+        pickedSizes.append(size);
+        print("You pick a ");
+        showSize(size);
+        print($" {p.kind}.^");
+        p.growth = Growth.wilted;
+    }
+}
+
+// SOW <plant> - sows the next seed where a plant has wilted
+verb SowPlant {
+    grammar = {.sow, NOUN};
+    void handler() {
+        if (!(noun.is(Plant))) {
+            print("You can only sow at a stake.^");
+            return;
+        }
+        Plant p = (Plant)noun;
+        if (p.growth != Growth.wilted) {
+            print($"The {p.kind} is still growing.^");
+            return;
+        }
+        if (packet.length == 0) {
+            print("The packet is empty.^");
+            return;
+        }
+        string next = packet.pop();
+        p.sow(next);
+        print($"You sow {next} at stake {p.stake}. Sowings: {Plant.sownCount}.^");
+    }
+}
+
+// GARDEN - every plant and how it is
+verb ShowGarden {
+    meta = true;
+    grammar = {.garden};
+    void handler() {
+        for (Plant p in {plantOne, plantTwo, plantThree}) {
+            p.sayState();
+        }
+        print($"Grown: {plantsGrown()}. Day {dayCount}.^");
+    }
+}
+
+// SEEDS - what is in the packet
+verb ShowSeeds {
+    meta = true;
+    grammar = {.seeds};
+    void handler() {
+        if (packet.length == 0) {
+            print("The packet is empty.^");
+            return;
+        }
+        stringObj row = "Seeds:";
+        for (string s in packet) {
+            row += " ";
+            row += s;
+        }
+        print(row);
+        print("^");
+        print($"Next: {packet.peek()}. Last: {packet.peekEnd()}.^");
+        if (packet.contains("leek")) {
+            print("There is a leek seed.^");
+        }
+    }
+}
+
+// BASKET - the crops, smallest first
+verb ShowBasket {
+    meta = true;
+    grammar = {.basket};
+    void handler() {
+        if (basket.length == 0) {
+            print("The basket is empty.^");
+            return;
+        }
+        array<Crop> sorted[BASKET_SIZE];
+        sorted = basket;
+        sorted.sort();
+        for (Crop c in sorted) {
+            showSize(c);
+            print($" (day {c.day})^");
+        }
+        Crop small = sorted.first();
+        Crop large = sorted.last();
+        print($"Smallest: {small.kind}. Largest: {large.kind}.^");
+        Crop look;
+        look.kind = "kale";
+        look.size = small.size;
+        int at = sorted.indexOf(look);
+        print($"A kale that size is at {at}.^");
+        int leafy = basket.filter((Crop c) => c.kind == "kale" || c.kind == "bean").count();
+        print($"Leafy crops: {leafy}.^");
+        int need = 3;
+        if (basket.any((Crop c) => c.size >= need)) {
+            print("There is a good one.^");
+        }
+        if (basket.all((Crop c) => c.size > 0)) {
+            print("None are tiny.^");
+        }
+    }
+}
+
+// REPORT - how the garden is doing
+verb ShowReport {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        print($"Days: {dayCount}. Picked: {pickedCount}. Fills: {fillCount}.^");
+        print($"Sowings: {Plant.sownCount}. Seeds left: {packet.length}.^");
+        if (pickedKinds.length > 0) {
+            array<string> kinds[10];
+            kinds = pickedKinds.distinct();
+            stringObj row = "Kinds:";
+            int i = 0;
+            do {
+                row += " ";
+                row += kinds[i];
+                i++;
+            } while (i < kinds.length);
+            print(row);
+            print("^");
+            array<int> sizes[10];
+            sizes = pickedSizes.orderBy();
+            print($"Sizes, small first: {sizes.first()} to {sizes.last()}.^");
+            int doubled = pickedSizes.map((int n) => n * 2).first();
+            print($"First size doubled: {doubled}.^");
+            int firstTwo = pickedSizes.take(2).count();
+            print($"First two: {firstTwo}.^");
+            int fromBig = pickedSizes.skipWhile((int n) => n < 3).count();
+            print($"From the first good one: {fromBig}.^");
+        }
+        // count plants until the first wilted one
+        int alive = 0;
+        for (Plant p in {plantOne, plantTwo, plantThree}) {
+            if (p.growth == Growth.wilted) {
+                break;
+            }
+            alive++;
+        }
+        print($"Plants before a wilted one: {alive}.^");
+        int total = 0;
+        for (int i = 0; i < pickedSizes.length; i++) {
+            total += pickedSizes[i];
+        }
+        print($"Total size: {total}.^");
+        if (everWilted) {
+            print("A plant has wilted.^");
+        }
+        if (basketWasFull) {
+            print("The basket has been full.^");
+        }
+    }
+}
+
+// SHUFFLE - turns the packet around and moves seeds about
+verb ShuffleSeeds {
+    grammar = {.shuffle};
+    void handler() {
+        if (packet.length < 2) {
+            print("There is not enough to shuffle.^");
+            return;
+        }
+        packet.reverse();
+        packet.swap(0, packet.length - 1);
+        string dropped = packet.popEnd();
+        packet -= "pea";
+        packet.removeValue("pear");
+        stringObj row = $"Dropped {dropped}. Now:";
+        int i = 0;
+        while (i < packet.length) {
+            row += $" {packet[i]}";
+            i++;
+        }
+        print(row);
+        print("^");
+    }
+}
+
+// EMPTY - throws away every seed in the packet
+verb EmptyPacket {
+    grammar = {.empty};
+    void handler() {
+        packet.clear();
+        packet.push("kale");
+        print($"The packet has {packet.length} seed: {packet[0]}.^");
+    }
+}
+
+// WORD <number> - a seed's name, changed about
+verb SeedWord {
+    meta = true;
+    grammar = {.word, NUMBER};
+    void handler() {
+        int at = (int)noun;
+        if (at < 1 || at > packet.length) {
+            print($"There are {packet.length} seeds.^");
+            return;
+        }
+        string kind = packet[at - 1];
+        stringObj s = kind;
+        stringObj line = s.prepend("a ");
+        line = line.append(" seed");
+        print(line);
+        print(" / ");
+        print(line.replace("seed", "plant"));
+        print(" / ");
+        stringObj e = s.replaceAll("e", "E");
+        print(e.toLower());
+        print(" / ");
+        print(s.right(2));
+        print(" / ");
+        print(s.delete(0, 1));
+        print("^");
+        int where = s.indexOf("e");
+        if (where >= 0) {
+            print($"First e at {where}.^");
+        }
+        if (s.contains("ea")) {
+            print("It has ea in it.^");
+        }
+        if (line.startsWith("a k")) {
+            print("It starts with k.^");
+        }
+        switch (kind) {
+            case "mint": print("It smells.^");
+            case "bean", "pea": print("It climbs.^");
+            default: print($"Seed {at} of {packet.length}.^");
+        }
+    }
+}

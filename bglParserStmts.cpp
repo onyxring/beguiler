@@ -269,6 +269,14 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
         if(classDef* rc = languageService.findClass(currentFunc->returnType.name); rc && isValueClass(rc) && !rc->isEmitterClass)
             parsingError(format("'{0}' returns a '{1}', which is copied out by value, so it can't return null.",
                                 funcName, rc->dName()));
+    // A local array of a value class releases its elements' instances as the routine leaves.
+    if(retExpr && currentFunc && first.is(eTokenType::identifier) && retExpr->tokens.size() == 1
+       && retExpr->resolvedType.rfind("array", 0) == 0)
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(first.value, currentFunc, body));
+           ad != nullptr && languageService.findGlobalAs<variableDeclaration>(first.value) != ad)
+            if(classDef* ec = languageService.findClass(ad->elementType); ec && isValueClass(ec) && !ec->isEmitterClass && classHasStoredFields(ec))
+                parsingError(format("'{0}' returns its local array of '{1}', whose instances are released as it returns; "
+                    "fill an array the caller passes in instead.", funcName, ec->dName()));
     returnStatement& rs = *(new returnStatement());
     rs.src = file.currentLocation();
     rs.returnExpression = retExpr ? retExpr->text() : "";

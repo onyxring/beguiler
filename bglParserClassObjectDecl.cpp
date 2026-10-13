@@ -184,6 +184,13 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
                 if(n <= 0)
                     parsingError(format("class '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
                 newClass.poolSize = n;
+            } else if(auto d = definedSymbols.find(inner.value); d != definedSymbols.end()){
+                // A #define is its value here: Inform 6 never sees the symbol.
+                string v = d->second;
+                if(v.empty() || v.find_first_not_of("0123456789") != string::npos || stoi(v) <= 0)
+                    parsingError(format("class '{0}': pool size '{1}' must be a positive integer", (string)nameTok, inner.value));
+                newClass.poolSize = stoi(v);
+                newClass.poolSizeExpr.clear();
             } else {
                 newClass.poolSize    = 1;  // positive sentinel — "is pooled" downstream checks
                 newClass.poolSizeExpr = inner.value;

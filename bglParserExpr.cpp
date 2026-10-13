@@ -1405,7 +1405,7 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
         token afterQ = file.peekToken(2);
         bool ternaryAhead = afterQ.is(eTokenType::name) || afterQ.is(eTokenType::integer) || afterQ.is(eTokenType::floatLiteral)
             || afterQ.isString() || afterQ.is(eTokenType::charLiteral) || afterQ.is(eTokenType::dictionaryWord)
-            || afterQ.is(token::parenOpen) || afterQ.value == "!" || afterQ.value == "-" || afterQ.value == "$" || afterQ.is("new");
+            || afterQ.is(token::parenOpen) || afterQ.value == "!" || afterQ.value == "-" || afterQ.value == "$" || (afterQ.is("new") && !afterQ.is(eTokenType::dictionaryWord));
         if(file.peekToken(1).is("?") && !ternaryAhead){
             classDef* cls = getDispatchClass(opType);
             functionDef* queryFn = nullptr;
@@ -3941,7 +3941,7 @@ bglParser::ExprStep bglParser::parseExprPostfixQuery(ExprParseState& st, token& 
         token after = file.peekToken();
         if(after.is(eTokenType::name) || after.is(eTokenType::integer) || after.is(eTokenType::floatLiteral)
            || after.isString() || after.is(eTokenType::charLiteral) || after.is(eTokenType::dictionaryWord)
-           || after.is(token::parenOpen) || after.value == "!" || after.value == "-" || after.value == "$" || after.is("new"))
+           || after.is(token::parenOpen) || after.value == "!" || after.value == "-" || after.value == "$" || (after.is("new") && !after.is(eTokenType::dictionaryWord)))
             qIsTerminator = true;
     }
     string varName = cur.value;
@@ -5211,7 +5211,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             parsingError("An interpolated string has no value, so it can't be part of an expression "
                          "such as a ?: branch or an operand. Pass it straight to print() or an emitter that takes "
                          "interpolatedStringLiteral, or assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
-        else if(cur.is("new"))                            step = parseExprNew(st);
+        else if(cur.is("new") && !cur.is(eTokenType::dictionaryWord)) step = parseExprNew(st);
         else if((cur.is(eTokenType::dataType) || cur.is(eTokenType::identifier))
                 && getDispatchClass(cur.value) != nullptr && file.peekToken().is(token::braceOpen))
                                                           step = parseExprInlineObject(st);

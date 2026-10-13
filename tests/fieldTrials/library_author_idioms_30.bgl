@@ -1,0 +1,655 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a tools-and-workbench kit and its consumer. The kit declares an enum of edges; a value
+// class of wear with two copy operators, + and - over ints, + over wear, <=> (giving < and >), == and
+// != against an int, a static maker from a percentage of a lifespan and a show method; a routine giving
+// the next edge by a switch. A tool class with a required positional lifespan, an owned wear, an edge
+// with an initializer, a const tag given per object, a broken flag, static work and break counts, a
+// required trade() routine, a default cost() and honeable(), a work() with a default parameter that
+// throws when the tool breaks, and a before() that takes over the library's Examine; a saw subclass
+// that can't be honed, costs more and adds teeth. A rack class with a required positional hook count,
+// an operator [] that walks its children for the i-th tool, a count() and a hang() that throws when it
+// is full. A pooled order class with name words and a short_name in the class body, an owned
+// stringObj code built in create(), a tool member, a steps count, a daemon() started with StartDaemon
+// that counts down and mends the tool, static counters and a destroy() that stops the daemon and takes
+// it out of the tree. The bench object is a namespace (alias … for the enum and the wear) holding an
+// array of racks, an array of orders swept with remove/delete in a while loop, a stringObj log, an
+// owned wear total, an inline accessor that clamps the repair time and counts changes through outer.,
+// an open() returning null when the pool is empty, a collect() that finds an order with <linq>
+// filter().first(), a rehang() that catches hang()'s throws in a for loop with break, a grind() through
+// a ref parameter, a union-returning search and a func<> walk. The consumer has one room with two
+// racks and three tools (positional lives, one a saw), extends the tool class with tests and the bench
+// with a capturing <linq> count and a ternary; its verbs work, hone, order, collect and rack tools, set
+// the repair time with a named argument, find the most worn tool through typeof and casts, and report
+// with <linq> filter/count/any/all/first/last/skip/orderBy/takeWhile, ??, ?., stringObj methods,
+// bgl.world.instances and inParent with predicates, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA30_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: tools that wear down, racks to hang them on, orders to mend them. ====
+
+/// How keen a tool's edge is.
+enum eLa30Edge { dull, keen, sharp }
+
+/// The next edge up; sharp stays sharp.
+eLa30Edge la30NextEdge(eLa30Edge e) {
+    switch (e) {
+        case eLa30Edge.dull: return eLa30Edge.keen;
+        default:             return eLa30Edge.sharp;
+    }
+}
+
+/// An amount of wear, copied on assignment.
+value class La30Wear {
+    int w;
+    La30Wear operator = (La30Wear o) { w = o.w; return self; }
+    La30Wear operator = (int n) { w = n; return self; }
+    /// The wear with some more.
+    La30Wear operator + (int n) {
+        La30Wear r;
+        r.w = w + n;
+        return r;
+    }
+    /// The two amounts together.
+    La30Wear operator + (La30Wear o) {
+        La30Wear r;
+        r.w = w + o.w;
+        return r;
+    }
+    /// The wear with some taken off, never below none.
+    La30Wear operator - (int n) {
+        La30Wear r;
+        r.w = bgl.util.math.max(w - n, 0);
+        return r;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La30Wear o) { return w - o.w; }
+    /// True when it is exactly so much.
+    bool operator == (int n) { return w == n; }
+    /// True when it is not exactly so much.
+    bool operator != (int n) { return w != n; }
+
+    /// So many percent of a lifespan, rounded down.
+    static La30Wear percentOf(int pct, int lifespan) {
+        La30Wear r;
+        r.w = pct * lifespan / 100;
+        return r;
+    }
+
+    /// Prints the wear as a count of nicks.
+    void show() {
+        if (w == 0) {
+            print("clean");
+            return;
+        }
+        print($"{w} nick");
+        if (w != 1) print("s");
+    }
+}
+
+/// A tool that wears with work until it breaks.
+class La30Tool : object {
+    /// How much wear it takes before it breaks.
+    required inline int lifespan;
+    La30Wear worn;
+    eLa30Edge edge = eLa30Edge.dull;
+    /// A short tag; each tool is given its own.
+    const string tag = "?";
+    bool broken = false;
+    La30Rack home;
+    /// Jobs done with any tool.
+    static int jobs = 0;
+    /// Tools broken so far.
+    static int breaks = 0;
+
+    /// What trade it belongs to.
+    required string trade();
+    /// Wear one job costs.
+    default int cost() { return 1; }
+    /// True when it can be honed.
+    default bool honeable() { return true; }
+
+    /// Does some jobs with it. Throws its lifespan when it breaks; throws 0 when it is broken already.
+    void work(int times = 1) {
+        if (broken) throw 0;
+        for (int i = 0; i < times; i++) {
+            worn = worn + cost();
+            jobs++;
+            if (worn.w >= lifespan) {
+                broken = true;
+                breaks++;
+                throw lifespan;
+            }
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case ::Examine:
+                print($"The {self}, a {trade()} tool, tag {tag}, lifespan {lifespan}, ");
+                worn.show();
+                if (broken) print(", broken");
+                else if (worn != 0) print($", {lifespan - worn.w} to go");
+                print(".^");
+                return true;
+        }
+        return false;
+    }
+}
+
+/// A saw: it takes more wear per job and can't be honed.
+class La30Saw : La30Tool {
+    int teeth = 0;
+    int cost() { return 2; }
+    bool honeable() { return false; }
+}
+
+/// A rack with a few hooks.
+class La30Rack : object {
+    attributes = {supporter, static};
+    /// How many tools it holds.
+    required inline int hooks;
+
+    /// How many tools hang on it.
+    int count() {
+        int n = 0;
+        for (object o in children) {
+            if (o.is(La30Tool)) n++;
+        }
+        return n;
+    }
+
+    /// The i-th tool on it, from 0, or null.
+    La30Tool operator [] (int i) {
+        int n = 0;
+        for (object o in children) {
+            if (!o.is(La30Tool)) continue;
+            if (n == i) return (La30Tool)o;
+            n++;
+        }
+        return null;
+    }
+
+    /// Hangs a tool on it. Throws its hook count when it is full.
+    void hang(La30Tool t) {
+        if (count() >= hooks) throw hooks;
+        t.parent = self;
+    }
+}
+
+/// A repair order for a tool; made with new and done away with by delete.
+class La30Order[2] : object {
+    string short_name = "order";
+    name = {.order, .ticket};
+    stringObj code;
+    La30Tool tool;
+    int steps;
+    bool done = false;
+    /// Orders opened so far.
+    static int opened = 0;
+    /// Orders closed so far.
+    static int closed = 0;
+
+    void create(La30Tool t, int n) {
+        tool = t;
+        opened++;
+        code = $"{t.tag}#{opened}";
+        steps = n;
+        parent = location;
+        StartDaemon(self);
+    }
+
+    void daemon() {
+        if (done) return;
+        steps--;
+        if (steps > 0) return;
+        done = true;
+        tool.worn = 0;
+        tool.broken = false;
+        tool.edge = eLa30Edge.keen;
+        la30Bench.log += $"done:{code} ";
+        print($"Order {code} is done.^");
+        StopDaemon(self);
+    }
+
+    void destroy() {
+        StopDaemon(self);
+        tool = null;
+        parent = null;
+        closed++;
+    }
+}
+
+/// Report verbs: they take no time.
+class La30Info : verb {
+    meta = true;
+}
+
+// ==== The bench. ====
+
+/// The bench: knows the racks and the orders, mends tools, and keeps a log.
+object la30Bench {
+    "bench";
+    parent = roomA;
+    attributes = {supporter, static};
+    name = {.bench};
+    alias edge for eLa30Edge;
+    alias wear for La30Wear;
+    array<La30Rack> racks[2];
+    array<La30Order> queue[2];
+    stringObj log;
+    /// All the wear mended so far.
+    wear mended;
+    int changes = 0;
+
+    /// Turns an order takes, kept from 1 to 6; each change is counted.
+    auto turns = {
+        int _n = 2;
+        int operator () { return _n; }
+        void operator = (int v) {
+            int n = bgl.util.math.clamp(v, 1, 6);
+            if (n != _n) outer.changes++;
+            _n = n;
+        }
+    }
+
+    /// Adds a rack; false when it is there already or there is no room.
+    bool register(La30Rack r) {
+        if (racks.contains(r)) return false;
+        return racks.append(r);
+    }
+
+    /// A word for an edge.
+    string word(edge e) {
+        switch (e) {
+            case edge.dull: return "dull";
+            case edge.keen: return "keen";
+            default:        return "sharp";
+        }
+    }
+
+    /// Opens an order to mend a tool. Null when it isn't broken or no order is free.
+    La30Order open(La30Tool t) {
+        if (!t.broken) {
+            print($"The {t} isn't broken.^");
+            return null;
+        }
+        if (queue.any((La30Order o) => o.tool == t)) {
+            print($"The {t} is already in.^");
+            return null;
+        }
+        La30Order o = new La30Order(t, turns);
+        if (o == null) {
+            print("The bench has no orders left.^");
+            return null;
+        }
+        queue.append(o);
+        mended = mended + t.worn;
+        t.parent = self;
+        log += $"open:{o.code} ";
+        print($"Order {o.code} opened for the {t}, {turns} turns.^");
+        return o;
+    }
+
+    /// Takes a mended tool back: its order is closed. False when there is none ready.
+    bool collect(La30Tool t) {
+        La30Order o = queue.filter((La30Order x) => x.tool == t).first();
+        if (o == null) return false;
+        if (!o.done) {
+            print($"Order {o.code} has {o.steps} turns to go.^");
+            return true;
+        }
+        queue.remove(queue.indexOf(o));
+        log += $"shut:{o.code} ";
+        delete o;
+        rehang(t, t.home);
+        return true;
+    }
+
+    /// Hangs a tool on a rack, or on the next one with room. Returns the rack, or null.
+    La30Rack rehang(La30Tool t, La30Rack first) {
+        int at = racks.indexOf(first);
+        La30Rack got = null;
+        for (int tried = 0; tried < racks.length; tried++) {
+            La30Rack r = racks[(at + tried) % racks.length];
+            try {
+                r.hang(t);
+            } catch (int hooks) {
+                print($"The {r} is full ({hooks} hooks).^");
+                log += "full ";
+                continue;
+            }
+            got = r;
+            break;
+        }
+        if (got == null) {
+            t.parent = player;
+            print($"You keep the {t}.^");
+        } else {
+            print($"The {t} goes on the {got}.^");
+        }
+        return got;
+    }
+
+    /// Grinds some wear off.
+    void grind(ref wear w, int by) {
+        w = w - by;
+    }
+
+    /// Tears up orders whose tool has gone. Returns how many went.
+    int sweep() {
+        int gone = 0;
+        int i = 0;
+        while (i < queue.length) {
+            La30Order o = queue[i];
+            if (o.tool != null) {
+                i++;
+                continue;
+            }
+            queue.remove(i);
+            delete o;
+            gone++;
+        }
+        if (gone > 0) log += $"sweep{gone} ";
+        return gone;
+    }
+
+    /// The most worn working tool, or a word when none is worn.
+    La30Tool | string worst() {
+        La30Tool best = null;
+        for (object o in bgl.world.instances(La30Tool)) {
+            La30Tool t = (La30Tool)o;
+            if (t.broken || t.worn == 0) continue;
+            if (best == null || t.worn > best.worn) best = t;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Runs a step on each rack, in the order they were registered.
+    void each(func<void, La30Rack> step) {
+        for (La30Rack r in racks) step(r);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La30Rack leftRack {
+    2, "left rack";
+    parent = roomA;
+    name = {.left, .rack};
+}
+
+La30Rack rightRack {
+    1, "right rack";
+    parent = roomA;
+    name = {.right, .rack};
+}
+
+La30Tool hammer {
+    5, "hammer";
+    parent = leftRack;
+    home = leftRack;
+    tag = "H";
+    name = {.hammer};
+    string trade() { return "joiner"; }
+}
+
+La30Tool chisel {
+    3, "chisel";
+    parent = leftRack;
+    home = leftRack;
+    tag = "C";
+    edge = eLa30Edge.keen;
+    name = {.chisel};
+    string trade() { return "carver"; }
+    int cost() { return 1; }
+}
+
+La30Saw saw {
+    6, "saw";
+    parent = rightRack;
+    home = rightRack;
+    tag = "S";
+    teeth = 40;
+    name = {.saw};
+    string trade() { return "joiner"; }
+}
+
+/// Every tool can say how much lifespan it has left.
+extend class La30Tool {
+    /// Wear it can still take.
+    int left() { return lifespan - worn.w; }
+    /// True when it hangs on a rack.
+    bool racked() { return parent != null && parent.is(La30Rack); }
+}
+
+/// The bench can count tools near breaking and sum itself up in a word.
+extend la30Bench {
+    /// How many working tools have no more than so much lifespan left.
+    int nearBreaking(int most) {
+        return bgl.world.instances(La30Tool, (object o) => !((La30Tool)o).broken).filter((object o) => ((La30Tool)o).left() <= most).count();
+    }
+
+    /// A one-word state.
+    string pace() {
+        return turns <= 2 ? "quick" : "slow";
+    }
+}
+
+/// True when the noun is a tool.
+bool la30IsTool() { return noun.is(La30Tool); }
+
+/// Prints a rack's line.
+void la30ShowRack(La30Rack r) {
+    print($"{r} {r.count()}/{r.hooks}:");
+    for (int i = 0; i < r.count(); i++) {
+        La30Tool t = r[i];
+        print($" {t.tag}");
+    }
+    print("^");
+}
+
+/// Sets the repair time and says so.
+void la30SetTurns(int n, bool loud = false) {
+    la30Bench.turns = n;
+    if (loud) print($"turns {la30Bench.turns}, changes {la30Bench.changes}, {la30Bench.pace()}.^");
+}
+
+// ==== Verbs. ====
+
+verb La30Work {
+    grammar = {.work, .with, NOUN(la30IsTool)};
+    void handler() {
+        La30Tool t = (La30Tool)noun;
+        try {
+            t.work();
+        } catch (int lifespan) {
+            if (lifespan == 0) print($"The {t} is broken.^");
+            else print($"The {t} breaks after {lifespan} nicks.^");
+            return;
+        }
+        print($"You work with the {t}: ");
+        t.worn.show();
+        print($", {t.left()} left");
+        if (t.worn > La30Wear.percentOf(50, t.lifespan)) print(", past half");
+        print(".^");
+    }
+}
+
+verb La30Hone {
+    grammar = {.hone, NOUN(la30IsTool)};
+    void handler() {
+        La30Tool t = (La30Tool)noun;
+        if (!t.honeable()) {
+            print($"The {t} can't be honed.^");
+            return;
+        }
+        if (t.broken) {
+            print($"The {t} is broken.^");
+            return;
+        }
+        t.edge = la30NextEdge(t.edge);
+        la30Bench.grind(t.worn, 1);
+        print($"The {t} is {la30Bench.word(t.edge)} now, ");
+        t.worn.show();
+        print(".^");
+    }
+}
+
+verb La30Mend {
+    grammar = {.mend, NOUN(la30IsTool)};
+    void handler() {
+        la30Bench.open((La30Tool)noun);
+    }
+}
+
+verb La30Collect {
+    grammar = {.collect, NOUN(la30IsTool)};
+    void handler() {
+        La30Tool t = (La30Tool)noun;
+        if (!la30Bench.collect(t)) print($"The {t} has no order.^");
+    }
+}
+
+verb La30Rehang {
+    grammar = {.rack, HELD, .on, NOUN};
+    void handler() {
+        if (!noun.is(La30Tool)) {
+            print("Only tools go on racks.^");
+            return;
+        }
+        if (!second.is(La30Rack)) {
+            print("That is not a rack.^");
+            return;
+        }
+        la30Bench.rehang((La30Tool)noun, (La30Rack)second);
+    }
+}
+
+verb La30Sweep {
+    grammar = {.sweep};
+    void handler() {
+        int n = la30Bench.sweep();
+        print($"swept {n}; orders {la30Bench.queue.length}.^");
+    }
+}
+
+La30Info La30Turns {
+    grammar = {.turns, NUMBER};
+    void handler() {
+        la30SetTurns((int)noun, loud: true);
+    }
+}
+
+La30Info La30Worst {
+    grammar = {.worst};
+    void handler() {
+        La30Tool | string r = la30Bench.worst();
+        if (typeof(r) == eType.object) {
+            La30Tool t = (La30Tool)r;
+            print($"The {t} is most worn: {t.worn.w} of {t.lifespan}, a {la30Bench.word(t.edge)} {t.trade()} tool.^");
+        } else {
+            print($"Most worn: {(string)r}.^");
+        }
+    }
+}
+
+La30Info La30Racks {
+    grammar = {.racks};
+    void handler() {
+        la30Bench.each((La30Rack r) => la30ShowRack(r));
+        int broke = bgl.world.instances(La30Tool, (object o) => ((La30Tool)o).broken).count();
+        print($"broken {broke}, jobs {La30Tool.jobs}, breaks {La30Tool.breaks}");
+        if (la30Bench.racks.any((La30Rack r) => r.count() >= r.hooks)) print(", one full");
+        if (la30Bench.racks.all((La30Rack r) => r.count() > 0)) print(", none empty");
+        La30Rack firstEmpty = la30Bench.racks.filter((La30Rack r) => r.count() == 0).first();
+        object which = firstEmpty ?? roomA;
+        print($"; first empty {which}; mended ");
+        la30Bench.mended.show();
+        print("^");
+        print($"orders {la30Bench.queue.length} (opened {La30Order.opened}, closed {La30Order.closed}); log {la30Bench.log}^");
+#if LA30_TRACE
+        print($"turns {la30Bench.turns}, near breaking {la30Bench.nearBreaking(2)}^");
+#endif
+    }
+}
+
+La30Info La30Orders {
+    grammar = {.orders};
+    void handler() {
+        if (la30Bench.queue.length == 0) {
+            print("No orders.^");
+            return;
+        }
+        stringObj line;
+        for (La30Order o in la30Bench.queue) {
+            line += o.code.toLower();
+            if (o.done) line += "*";
+            line += " ";
+        }
+        line = line.trim();
+        print($"{line} ({line.length} chars)");
+        if (line.startsWith("s")) print(", saw first");
+        print(".^");
+    }
+}
+
+La30Info La30Tools {
+    grammar = {.tools};
+    void handler() {
+        array<object> all[4];
+        all = bgl.world.instances(La30Tool);
+        array<object> byLeft[4];
+        byLeft = all.orderBy((object a, object b) => ((La30Tool)a).left() - ((La30Tool)b).left());
+        for (object o in byLeft) {
+            La30Tool t = (La30Tool)o;
+            print($"{t.tag}={t.left()} ");
+        }
+        La30Tool most = (La30Tool)byLeft.last();
+        print($"most left {most.tag}");
+        int low = byLeft.takeWhile((object o) => ((La30Tool)o).left() < 3).count();
+        print($", {low} low");
+        La30Tool next = (La30Tool)byLeft.skip(1).first();
+        print($", second {next.tag}.^");
+        for (object o in bgl.world.inParent(roomA, (object x) => x.is(La30Rack))) {
+            La30Rack r = (La30Rack)o;
+            La30Tool top = r[0];
+            print($"{r}: {top?.tag ?? "-"} ");
+        }
+        print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la30Bench.register(leftRack);
+    la30Bench.register(rightRack);
+    la30Bench.register(leftRack);
+    rfalse;
+}
+
+#includeI6 "grammar"

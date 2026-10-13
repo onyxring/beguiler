@@ -1,0 +1,438 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a coin-op vending panel kept in tables. An enum of coins indexing parallel value,
+// name, word, held and capacity tables, read by a general parsing routine; a bnum of item tags
+// beside tag-name and tag-word tables, listed by bit position into a stringObj; an item table as
+// an array of a value class written as bare { … } (string, dictionary word, price, stock, bnum),
+// changed in place through subscripted members (--, +=); an inline auto { … } credit accessor on
+// an object whose setter refuses over a cap and counts refusals through outer; a greedy
+// change-maker filling a local array passed by parameter, walked high to low with a C-style for;
+// a coin tray array fed with append and emptied with popEnd; a sale log of a value class appended
+// with an inline Sale{ … } and trimmed with remove(0); switch with ranges picking a price band;
+// <linq> filter/orderBy/count/any/all/first/map with lambdas capturing locals; a NUMBER grammar
+// token after a routine token; stringObj rows padded to columns with interpolated +=.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int COINS = 5;
+const int ITEM_COUNT = 6;
+const int TAG_COUNT = 4;
+const int LOG_MAX = 4;
+const int TRAY_MAX = 12;
+const int STOCK_MAX = 6;
+const int CREDIT_MAX = 200;
+const int NONE = -1;
+
+enum eCoin { p5 = 0, p10, p20, p50, p100 }
+bnum eTag { cold, sweet, salty, hot }
+
+//-- Coin tables ---------------------------------------------------------------
+
+//                                  p5      p10     p20       p50      p100
+array<int> coinValue            = { 5,      10,     20,       50,      100 };
+array<string> coinNames         = { "5p",   "10p",  "20p",    "50p",   "100p" };
+array<dictionaryWord> coinWords = { .five,  .ten,   .twenty,  .fifty,  .hundred };
+array<int> coinHeld             = { 3,      4,      2,        1,       0 };
+array<int> coinCap              = { 10,     10,     8,        4,       3 };
+
+//-- Tag tables ----------------------------------------------------------------
+
+array<string> tagNames         = { "cold", "sweet", "salty", "hot" };
+array<dictionaryWord> tagWords = { .cold,  .sweet,  .salty,  .hot };
+
+//-- Item table ----------------------------------------------------------------
+
+value class Item {
+    inline string label;
+    inline dictionaryWord code;
+    inline int price;
+    inline int stock;
+    inline eTag tags;
+    Item operator = (Item o) {
+        label = o.label; code = o.code; price = o.price; stock = o.stock; tags = o.tags;
+        return self;
+    }
+}
+
+array<Item> items = {
+    { "water",  .a1, 60,  3, cold },
+    { "cola",   .a2, 85,  2, cold | sweet },
+    { "crisps", .b1, 45,  4, salty },
+    { "toffee", .b2, 35,  0, sweet },
+    { "soup",   .c1, 120, 2, hot | salty },
+    { "tea",    .c2, 70,  5, hot }
+};
+
+array<int> itemIndex = { 0, 1, 2, 3, 4, 5 };
+array<int> soldCount = { 0, 0, 0, 0, 0, 0 };
+
+//-- Sale log and coin tray ----------------------------------------------------
+
+value class Sale {
+    inline int item;
+    inline int paid;
+    inline int change;
+    Sale operator = (Sale o) {
+        item = o.item; paid = o.paid; change = o.change;
+        return self;
+    }
+}
+
+array<Sale> sales[LOG_MAX];
+array<int> tray[TRAY_MAX];
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object machine {
+    "vending machine";
+    name = {.machine, .panel};
+    parent = roomA;
+    attributes = {static};
+    int takings = 0;
+    int refusals = 0;
+    auto credit = {
+        int _pence = 0;
+        int operator () { return _pence; }
+        void operator = (int v) {
+            if (v > CREDIT_MAX) { outer.refusals++; return; }
+            _pence = v;
+        }
+    }
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseCoin() {
+    int at = coinWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseTag() {
+    int at = tagWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseItem() {
+    dictionaryWord w = NextWord();
+    for (int i in 0 to ITEM_COUNT - 1) {
+        if (items[i].code == w) {
+            parsed_number = i;
+            return 1;
+        }
+    }
+    return -1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+void tagsInto(ref stringObj s, eTag t) {
+    if (t == 0) { s += "-"; return; }
+    bool first = true;
+    for (int b in 0 to TAG_COUNT - 1) {
+        if ((t & (eTag)(1 << b)) == 0) continue;
+        if (!first) s += ", ";
+        s += tagNames[b];
+        first = false;
+    }
+}
+
+string band(int price) {
+    switch (price) {
+        case 0 to 49:   return "cheap";
+        case 50 to 99:  return "mid";
+        default:        return "dear";
+    }
+}
+
+int floatTotal() {
+    int total = 0;
+    for (int c in 0 to COINS - 1) total += coinHeld[c] * coinValue[c];
+    return total;
+}
+
+// Fills plan[] with a count per coin, largest coin first; returns what could not be paid.
+int planChange(int amount, array<int> plan) {
+    int left = amount;
+    for (int c = COINS - 1; c >= 0; c--) {
+        int want = left / coinValue[c];
+        int n = want < coinHeld[c] ? want : coinHeld[c];
+        plan[c] = n;
+        left -= n * coinValue[c];
+    }
+    return left;
+}
+
+void planInto(ref stringObj s, array<int> plan) {
+    bool first = true;
+    for (int c = COINS - 1; c >= 0; c--) {
+        if (plan[c] == 0) continue;
+        s += first ? " " : ", ";
+        s += coinNames[c];
+        if (plan[c] > 1) s += $" x{plan[c]}";
+        first = false;
+    }
+}
+
+void logSale(int i, int paid, int change) {
+    if (sales.length == LOG_MAX) sales.remove(0);
+    sales += Sale{ i, paid, change };
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb PayTest {
+    grammar = {.pay, parseCoin};
+    void handler() {
+        int c = (int)noun;
+        if (coinHeld[c] >= coinCap[c]) {
+            print($"The {coinNames[c]} tube is full; coin returned.^");
+            return;
+        }
+        int was = machine.credit;
+        machine.credit = was + coinValue[c];
+        if (machine.credit == was) {
+            print($"Credit is capped at {CREDIT_MAX}p; coin returned.^");
+            return;
+        }
+        coinHeld[c]++;
+        tray.append(c);
+        print($"Credit: {machine.credit}p.^");
+    }
+}
+
+verb RefundTest {
+    grammar = {.refund};
+    void handler() {
+        if (tray.length == 0) { print("Nothing to refund.^"); return; }
+        stringObj line = "Returned:";
+        while (tray.length > 0) {
+            int c = tray.popEnd();
+            coinHeld[c]--;
+            line += $" {coinNames[c]}";
+        }
+        machine.credit = 0;
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb VendTest {
+    grammar = {.vend, parseItem};
+    void handler() {
+        int i = (int)noun;
+        if (items[i].stock == 0) {
+            print($"{items[i].label} is sold out.^");
+            return;
+        }
+        int price = items[i].price;
+        int have = machine.credit;
+        if (have < price) {
+            print($"{items[i].label} costs {price}p; credit is {have}p.^");
+            return;
+        }
+        array<int> plan = { 0, 0, 0, 0, 0 };
+        int owed = planChange(have - price, plan);
+        if (owed > 0) {
+            print("Exact change only.^");
+            return;
+        }
+        for (int c in 0 to COINS - 1) coinHeld[c] -= plan[c];
+        items[i].stock--;
+        soldCount[i] += 1;
+        machine.takings += price;
+        machine.credit = 0;
+        tray.clear();
+        logSale(i, have, have - price);
+        stringObj line = $"{items[i].label} drops.";
+        if (have > price) {
+            line += " Change:";
+            planInto(line, plan);
+            line += ".";
+        }
+        line.print();
+        print("^");
+    }
+}
+
+verb ChangeTest {
+    grammar = {.change, NUMBER};
+    void handler() {
+        int amount = (int)noun;
+        array<int> plan = { 0, 0, 0, 0, 0 };
+        int owed = planChange(amount, plan);
+        stringObj line = $"{amount}p:";
+        if (amount == 0) line += " nothing";
+        else planInto(line, plan);
+        if (owed > 0) line += $" ({owed}p short)";
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        for (Item it in items) {
+            stringObj row = it.label;
+            padTo(row, 8);
+            row += $"{it.price}p";
+            padTo(row, 14);
+            if (it.stock == 0) row += "sold out";
+            else row += $"{it.stock} left";
+            padTo(row, 24);
+            tagsInto(row, it.tags);
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb CoinsTest {
+    grammar = {.coins};
+    void handler() {
+        for (int c in 0 to COINS - 1) {
+            stringObj row = coinNames[c];
+            padTo(row, 6);
+            row += $"{coinHeld[c]} of {coinCap[c]}";
+            row.print();
+            print("^");
+        }
+        int empty = itemIndex.take(COINS).filter((int c) => coinHeld[c] == 0).count();
+        print($"Float: {floatTotal()}p, {empty} empty.^");
+    }
+}
+
+verb PriceTest {
+    grammar = {.price, parseItem};
+    void handler() {
+        int i = (int)noun;
+        int p = items[i].price;
+        print($"{items[i].label}: {p}p, {band(p)}.^");
+    }
+}
+
+verb TaggedTest {
+    grammar = {.tagged, parseTag};
+    void handler() {
+        int b = (int)noun;
+        eTag t = (eTag)(1 << b);
+        array<int> hits[ITEM_COUNT] = itemIndex.filter((int i) => (items[i].tags & t) != 0);
+        stringObj line = $"{tagNames[b]}:";
+        if (hits.length == 0) line += " none";
+        for (int i in hits) line += $" {items[i].label}";
+        int ready = hits.filter((int i) => items[i].stock > 0).count();
+        line += $" ({ready} in stock).";
+        line.print();
+        print("^");
+    }
+}
+
+verb AffordTest {
+    grammar = {.afford};
+    void handler() {
+        int have = machine.credit;
+        array<int> ok[ITEM_COUNT] = itemIndex.filter((int i) => items[i].price <= have && items[i].stock > 0);
+        if (ok.length == 0) {
+            print($"Nothing for {have}p.^");
+            return;
+        }
+        stringObj line = $"For {have}p:";
+        for (int i in ok) line += $" {items[i].label}";
+        line += ".";
+        line.print();
+        print("^");
+        int cheapest = ok.orderBy((int a, int b) => items[a].price - items[b].price).first();
+        print($"Cheapest: {items[cheapest].label}.^");
+    }
+}
+
+verb RestockTest {
+    grammar = {.restock, parseItem, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        int n = (int)second;
+        int room = STOCK_MAX - items[i].stock;
+        if (room == 0) {
+            print($"{items[i].label} is full.^");
+            return;
+        }
+        if (n > room) n = room;
+        items[i].stock += n;
+        print($"{items[i].label}: {items[i].stock} in stock.^");
+    }
+}
+
+verb SalesTest {
+    grammar = {.sales};
+    void handler() {
+        if (sales.length == 0) { print("No sales yet.^"); return; }
+        for (Sale s in sales) {
+            stringObj row = items[s.item].label;
+            padTo(row, 8);
+            row += $"paid {s.paid}p";
+            if (s.change > 0) row += $", change {s.change}p";
+            row.print();
+            print("^");
+        }
+        int total = 0;
+        for (var p in sales.map((Sale s) => s.paid - s.change)) total += p;
+        print($"Logged takings: {total}p.^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        array<int> sold[ITEM_COUNT] = itemIndex
+            .filter((int i) => soldCount[i] > 0)
+            .orderBy((int a, int b) => soldCount[a] != soldCount[b] ? soldCount[b] - soldCount[a] : a - b);
+        if (sold.length == 0) { print("Nothing sold.^"); return; }
+        for (int i in sold) print($"{items[i].label}: {soldCount[i]}^");
+        bool allHot = sold.all((int i) => (items[i].tags & hot) != 0);
+        bool anyOut = itemIndex.any((int i) => items[i].stock == 0);
+        print($"Takings: {machine.takings}p.^");
+        if (allHot) print("Only hot items sold.^");
+        if (anyOut) print("Something is sold out.^");
+        if (machine.refusals > 0) print($"Coins refused at the cap: {machine.refusals}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

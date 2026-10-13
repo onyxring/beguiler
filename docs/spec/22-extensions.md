@@ -346,7 +346,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
-**Chain results.** A non-terminal's result lives in a scratch buffer that the next chain reuses. Consume it in the same statement, reduce it with a terminal, or capture it by assigning it to a typed array, which copies it (§22.4). Do not return a chain result from a function whose source is a local array (§12.6).
+**Chain results.** A non-terminal's result lives in a scratch buffer that the next chain reuses. Consume it in the same statement, reduce it with a terminal, or capture it by assigning it to a typed array, which copies it (§22.4). A `for` loop over a chain result is not the same statement as its body: a chain the body runs, directly or in a function it calls, can overwrite the elements the loop is reading, so capture the result first when the body uses a chain. Do not return a chain result from a function whose source is a local array (§12.6).
 
 **Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to a depth of two (a chain inside a chain). Deeper nesting is a runtime error that ends the program.
 

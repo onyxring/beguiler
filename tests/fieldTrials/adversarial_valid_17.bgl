@@ -1,0 +1,509 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small belt-and-scale program, on Glulx.
+// A value-class getter/setter clamping to a `const int`, with its own `operator + (int)`, owned by a class
+// that inherits from `object` and a non-object base holding an `inline` member with a default and a
+// `default` method, reached from the override through a cast on `self`; the class re-lists
+// `instanceName` first, and an `extend class` written after four positional object declarations
+// appends a positional member they already fill (one omits the trailing base slot, one fills by name);
+// a subclass with its own leading `inline` member, `hide` of an inherited `selfType` method reached
+// again through an upcast, and a replaced method chaining two casts deep; `inline` object initializers
+// for owned members; a bnum combined with `|`, tested with `&`, and built from `1 << n` by cast; an enum
+// with gapped values given an emitter value by `extend enum`; a `required` routine met by objects, one
+// replaced later through `extend`; a `static func<int, int>` member initialized with a function declared
+// after it, swapped by a ternary whose branch is a lambda and compared with `==`; a throw of an object
+// caught by class type, with a nested try inside the catch; an inline `auto` accessor with a static
+// counter, `outer`, a method called through the member, and `++` through the setter; a named union
+// filled from a ternary over a string and a function, printed through a global overload; a pooled class
+// with a member array, create/destroy and statics; `extend` of an object array by `inject … after`;
+// an array of arrays with rows of different sizes, written by subscript and walked by nested for-in;
+// a `ref` value-class parameter and a `ref` local rebound with `:=` to members of array elements; <linq>
+// orderBy by operator reference and by lambda over `<=>`, filter/count/any/all/first/last, and a
+// `<` derived from a static `<=>`; `?.` and `??` on a chain result; NUMBER as the first grammar
+// token read from `noun`; a `before` routine switching on `action` with a multi-value case; and a
+// children walk that moves the current child and breaks out early.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+const int MAX_GRAMS = 500;
+
+bnum crateFlag { fragile, heavy, sealed, rejected }
+
+enum chute { chuteA = 10, chuteB, chuteC = 20 }
+
+// ---- weights ------------------------------------------------------------------------------------------
+
+value class Grams {
+    int _g = 0;
+    int operator () { return _g; }
+    void operator = (int v) { _g = v < 0 ? 0 : (v > MAX_GRAMS ? MAX_GRAMS : v); }
+    int operator + (int n) { return _g + n; }
+}
+
+string band(int g) {
+    switch (g) {
+        case 0:          return "empty";
+        case 1 to 99:    return "light";
+        case 100, 160:   return "round";
+        case >= 450:     return "max";
+        default:         return "mid";
+    }
+}
+
+// ---- crates -------------------------------------------------------------------------------------------
+
+class Tagged {
+    inline string code = "--";
+    default void stamp() { print($"[{code}]"); }
+}
+
+class Crate : object, Tagged {
+    inline instanceName;
+    inline int load;
+    Grams weight;
+    crateFlag flags;
+    static int weighed = 0;
+
+    void stamp() {
+        ((Tagged)self).stamp();
+        print(weight);
+    }
+
+    selfType mark(crateFlag f) {
+        flags = flags | f;
+        return self;
+    }
+
+    bool hasFlag(crateFlag f) { return (flags & f) != 0; }
+
+    static int operator <=> (Crate a, Crate b) { return a.weight - b.weight; }
+
+    bool before() {
+        switch (action) {
+            case Take, Remove:
+                if (hasFlag(heavy) || weight + load > 200) {
+                    printLine($"{cThe(self)} is too heavy.");
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+}
+
+// ---- scales -------------------------------------------------------------------------------------------
+
+class Scale : object {
+    required int limit();
+    static func<int, int> rounding = roundTen;
+    int readings = 0;
+
+    int weigh(Crate c) {
+        readings++;
+        Crate.weighed++;
+        int g = Scale.rounding(c.weight + c.load);
+        if (g > limit()) throw c;
+        return g;
+    }
+}
+
+int roundTen(int g) { return (g + 5) / 10 * 10; }
+
+// ---- world --------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Scale benchScale {
+    "bench scale";
+    parent = roomA;
+    attributes = {static};
+    name = {.bench, .scale};
+    description = "A bench scale.";
+    int limit() { return 300; }
+}
+
+Scale floorScale {
+    "floor scale";
+    parent = roomA;
+    attributes = {static};
+    name = {.floor, .scale};
+    description = "A floor scale.";
+    int limit() { return 600; }
+}
+
+object belt {
+    "belt";
+    parent = roomA;
+    attributes = {static, supporter};
+    name = {.belt};
+    description = "A belt.";
+    int maxSpeed = 3;
+    auto speed = {
+        static int changes = 0;
+        int _s = 1;
+        int operator () { return _s; }
+        void operator = (int v) {
+            _s = v < 1 ? 1 : (v > outer.maxSpeed ? outer.maxSpeed : v);
+            changes++;
+        }
+        int changeCount() { return changes; }
+    };
+}
+
+Crate crateRed {
+    "red crate", 40, 1, "R1";
+    parent = belt;
+    name = {.red, .crate};
+    description = "A red crate.";
+    weight = Grams{ _g = 120; };
+    flags = fragile | sealed;
+}
+
+Crate crateBlue {
+    "blue crate", 25, 2, "B7";
+    parent = belt;
+    name = {.blue, .crate};
+    description = "A blue crate.";
+    weight = Grams{ _g = 280; };
+    flags = heavy;
+}
+
+Crate crateGrey {
+    "grey crate", 60, 3;
+    parent = belt;
+    name = {.grey, .crate};
+    description = "A grey crate.";
+    weight = Grams{ _g = 75; };
+}
+
+Crate crateTiny {
+    "tiny crate";
+    load = 5;
+    laneNo = 2;
+    code = "T0";
+    parent = belt;
+    name = {.tiny, .crate};
+    description = "A tiny crate.";
+}
+
+extend class Crate {
+    inline int laneNo = 1;
+}
+
+class Drum : Crate {
+    inline int rings;
+    hide mark;
+
+    replace void stamp() {
+        print("(drum)");
+        ((Crate)self).stamp();
+    }
+
+    void seal() { ((Crate)self).mark(sealed); }
+}
+
+Drum drumGreen {
+    2, "green drum", 90, 3, "D4";
+    parent = belt;
+    name = {.green, .drum};
+    description = "A green drum.";
+    weight = Grams{ _g = 200; };
+}
+
+extend floorScale {
+    replace int limit() { return 500; }
+}
+
+class Bin : object {
+    inline chute which;
+    int count = 0;
+}
+
+Bin binA { chute.chuteA, "bin A"; parent = roomA; attributes = {container, open, static}; name = {.bin, .a}; description = "Bin A."; }
+Bin binB { chute.chuteB, "bin B"; parent = roomA; attributes = {container, open, static}; name = {.bin, .b}; description = "Bin B."; }
+Bin binC { chute.chuteC, "bin C"; parent = roomA; attributes = {container, open, static}; name = {.bin, .c}; description = "Bin C."; }
+
+Bin binFor(int laneNo) {
+    switch (laneNo) {
+        case 1:  return binA;
+        case 2:  return binB;
+    }
+    return binC;
+}
+
+array<Crate> manifest = { crateRed, crateBlue, crateGrey, crateTiny };
+extend manifest {
+    inject drumGreen after crateGrey;
+}
+
+extend enum chute {
+    emitter int slot { ($self - 9) }
+}
+
+array<array<int>> laneLog = { {0, 0, 0}, {0, 0}, {0} };
+array<int> laneFill = {0, 0, 0};
+
+// ---- notes --------------------------------------------------------------------------------------------
+
+union note = string | func<void>;
+
+void ding() { print("*ding*"); }
+
+void print(note n) {
+    if (typeof(n) == eType.routine) ((func<void>)n)();
+    else print((string)n);
+}
+
+// ---- pallets ------------------------------------------------------------------------------------------
+
+class Pallet[2] : object {
+    array<Crate> stack[3];
+    int no;
+    static int made = 0;
+    static int broken = 0;
+
+    void create() {
+        made++;
+        no = made;
+    }
+
+    void destroy() {
+        stack.clear();
+        broken++;
+    }
+
+    void print() { ::print($"pallet {no}({stack.length})"); }
+}
+
+array<Pallet> pallets[2];
+
+Grams grandTotal;
+
+void addInto(ref Grams total, int g) { total = total + g; }
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs --------------------------------------------------------------------------------------------
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(Crate)) {
+            printLine("Only crates.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        try {
+            int g = benchScale.weigh(c);
+            printLine($"{cThe(benchScale)} reads {g} for {c} ({band(g)}).");
+        } catch (Crate over) {
+            try {
+                int g2 = floorScale.weigh(over);
+                printLine($"Too much for the bench; {floorScale} reads {g2} ({band(g2)}).");
+            } catch (Crate again) {
+                again.mark(rejected).stamp();
+                printLine(" rejected.");
+            }
+        }
+        printLine($"Readings {benchScale.readings}/{floorScale.readings}, weighed {Crate.weighed}.");
+    }
+}
+
+verb Add {
+    grammar = {.add, NUMBER, .to, NOUN};
+    void handler() {
+        if (!second.is(Crate)) {
+            printLine("Only crates.");
+            return;
+        }
+        Crate c = (Crate)second;
+        int before = c.weight;
+        c.weight += (int)noun;
+        printLine($"{c}: {before} -> {c.weight}.");
+    }
+}
+
+verb Flag {
+    grammar = {.flag, NOUN, NUMBER};
+    void handler() {
+        Crate c = (Crate)noun;
+        crateFlag f = (crateFlag)(1 << ((int)second - 1));
+        c.mark(f).mark(f);
+        printLine($"{c} flags {(int)c.flags}; heavy {c.hasFlag(heavy) ? "yes" : "no"}.");
+    }
+}
+
+verb Speed {
+    grammar = {.speed, NUMBER};
+    void handler() {
+        belt.speed = (int)noun;
+        printLine($"Belt speed {belt.speed}, changes {belt.speed.changeCount()}.");
+    }
+}
+
+verb Run {
+    grammar = {.run};
+    void handler() {
+        int moved = 0;
+        for (object o in belt.children) {
+            Crate c = (Crate)o;
+            if (c.hasFlag(rejected)) continue;
+            Bin b = binFor(c.laneNo);
+            o.parent = b;
+            b.count++;
+            int l = c.laneNo - 1;
+            int k = laneFill[l];
+            if (k < laneLog[l].size) {
+                laneLog[l][k] = c.weight;
+                laneFill[l]++;
+            }
+            moved++;
+            if (moved >= belt.speed) break;
+        }
+        belt.speed++;
+        printLine($"Moved {moved}; belt now {belt.speed}; bins {binA.count}/{binB.count}/{binC.count}.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        array<Crate> byWeight[5];
+        byWeight = manifest.orderBy(Crate::operator <=>);
+        print("By weight:");
+        for (Crate c in byWeight) print($" {c.code}={c.weight}");
+        printLine(".");
+        int over = manifest.filter((Crate x) => x.weight + x.load > 200).count();
+        bool anySealed = manifest.any((Crate x) => x.hasFlag(sealed));
+        bool allLoaded = manifest.all((Crate x) => x.load > 0);
+        printLine($"Over 200: {over}; sealed {anySealed ? "yes" : "no"}; all loaded {allLoaded ? "yes" : "no"}.");
+        Crate lightest = byWeight.first();
+        Crate heaviest = byWeight.last();
+        printLine($"{lightest} < {heaviest}: {lightest < heaviest ? "yes" : "no"}.");
+        stringObj s = "codes:";
+        for (Crate y in manifest) s += $" {y.code}";
+        printLine(s.toUpper());
+    }
+}
+
+verb Notes {
+    grammar = {.notes};
+    void handler() {
+        for (Crate x in manifest) {
+            note n = x.hasFlag(fragile) ? "careful" : ding;
+            x.stamp();
+            print(" ");
+            print(n);
+            print(" ");
+        }
+        printLine();
+    }
+}
+
+verb Stack {
+    grammar = {.stack};
+    void handler() {
+        Pallet p = new Pallet();
+        if (p == null) {
+            printLine("No pallets.");
+            return;
+        }
+        for (Crate x in manifest.orderBy((Crate a, Crate b) => b <=> a)) {
+            if (x.hasFlag(fragile)) continue;
+            if (!p.stack.append(x)) break;
+        }
+        pallets.append(p);
+        print($"Stacked {p}:");
+        for (Crate x in p.stack) print($" {x.code}");
+        printLine($"; made {Pallet.made}.");
+    }
+}
+
+verb Unstack {
+    grammar = {.unstack};
+    void handler() {
+        Pallet p = pallets.popEnd();
+        if (!p?) {
+            printLine("No pallet to unstack.");
+            return;
+        }
+        printLine($"Unstacking {p}.");
+        delete p;
+        printLine($"Made {Pallet.made}, broken {Pallet.broken}, left {pallets.length}.");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        grandTotal = 0;
+        for (Crate x in manifest) addInto(grandTotal, x.weight);
+        ref Grams top := crateRed.weight;
+        for (Crate x in manifest) {
+            if (x.weight > top) top := x.weight;
+        }
+        print($"Total {grandTotal}, top {top}; lanes");
+        for (array<int> row in laneLog) {
+            print(" |");
+            for (int v in row) print($" {v}");
+        }
+        printLine($"; chutes {binA.which.slot}/{binB.which.slot}/{binC.which.slot}.");
+    }
+}
+
+verb Seal {
+    grammar = {.seal, NOUN};
+    void handler() {
+        if (noun.is(Drum)) {
+            Drum d = (Drum)noun;
+            d.seal();
+            d.stamp();
+            printLine($" rings {d.rings}, sealed {d.hasFlag(sealed) ? "yes" : "no"}.");
+            return;
+        }
+        printLine("Only drums.");
+    }
+}
+
+verb Find {
+    grammar = {.find, NUMBER};
+    void handler() {
+        int lane = (int)noun;
+        Crate found = manifest.filter((Crate x) => x.laneNo == lane && !x.hasFlag(rejected)).first();
+        string label = found?.code ?? "none";
+        print($"Lane {lane}: {label} ");
+        found?.stamp();
+        int inBin = 0;
+        for (object o in bgl.world.inParent(binFor(lane))) inBin++;
+        printLine($"; in its bin {inBin}.");
+    }
+}
+
+verb Exact {
+    grammar = {.exact};
+    void handler() {
+        Scale.rounding = Scale.rounding == roundTen ? (int g) => g : roundTen;
+        printLine($"Rounding 47 gives {Scale.rounding(47)}.");
+    }
+}

@@ -1,0 +1,172 @@
+Room A
+Room A. A workbench stands here. A ladder leads up to Room B.
+You can see a workbench (on which are a large gear and a lantern), a toolbox (which is closed) and a clockmaker here.
+> status
+Score 0 of 3. Clock stopped at 12, spring 0, ticks 0.
+Fitted 0, strikes 0, windings 0, sets 0, oil 40, asked 0.
+> gears
+Gears: small gear, medium gear (worn), medium gear, large gear.
+0 on the train, 3 not worn.
+> spindles
+small: empty
+medium: empty
+large: empty
+> struck
+The clock has not struck.
+> log
+The log is empty.
+> examine lantern
+A brass lantern, unlit, with 40 turns of oil.
+The lantern is currently switched off.
+> open toolbox
+You open the toolbox, revealing a small gear and a worn gear.
+> take all from toolbox
+small gear: Removed.
+worn gear: Removed.
+> take large gear
+Taken.
+> take lantern
+Taken.
+> examine worn gear
+A medium brass gear with 24 teeth. Its teeth are worn down.
+> ask clockmaker about gear
+The clockmaker says: one of each size, and none worn.
+> ask clockmaker about clock
+The clockmaker says: wind it, then push the pendulum.
+> ask clockmaker about lantern
+The clockmaker says: it is dark up the ladder.
+> ask clockmaker about cheese
+The clockmaker shrugs.
+> give worn gear to clockmaker
+The clockmaker takes the worn gear and hands you a spare gear.
+> give small gear to clockmaker
+The clockmaker says: that one is fine.
+> give worn gear to clockmaker
+You can't see any such thing.
+> clockmaker, wait
+The clockmaker waits.
+> clockmaker, jump
+The clockmaker says: do it yourself.
+> gears
+Gears: small gear, medium gear (worn), medium gear, large gear.
+0 on the train, 3 not worn.
+> up
+Darkness
+It is pitch dark here!
+> turn on lantern
+You switch the lantern on.
+Room B
+Room B. A gear train, a pendulum and a clock face fill the wall. A ladder leads down.
+You can see a gear train (which is empty), a pendulum and a clock face here.
+> up
+You can't go that way.
+> look
+Room B
+Room B. A gear train, a pendulum and a clock face fill the wall. A ladder leads down.
+You can see a gear train (which is empty), a pendulum and a clock face here.
+> examine clock
+A clock face. The hands show 12 o'clock. The spring holds 0 turns.
+> push pendulum
+The pendulum swings once and stops. The gear train is not complete.
+> put lantern in train
+Only gears fit the spindles.
+> put small gear in train
+You fit the small gear. 1 of 3 spindles hold gears.
+> put large gear in train
+You fit the large gear. 2 of 3 spindles hold gears.
+> push pendulum
+The pendulum swings once and stops. The gear train is not complete.
+> put spare gear in train
+You fit the spare gear. The gear train is complete.
+[The score has just gone up by 1 point.]
+> push pendulum
+The pendulum swings once and stops. The spring is slack.
+> wind lantern
+The lantern has no key to wind.
+> wind clock
+You wind the clock. The spring holds 3 turns.
+> wind clock
+You wind the clock. The spring holds 6 turns.
+> wind clock
+You wind the clock. The spring holds 8 turns.
+> examine clock
+A clock face. The hands show 12 o'clock. The spring holds 8 turns.
+> set clock to 13
+The dial has no 13.
+> set clock to 0
+The dial has no 0.
+> set lantern to 3
+You can't set the lantern.
+> set clock to 9
+You set the hands to 9 o'clock.
+> pull pendulum
+The pendulum hangs still.
+> push pendulum
+The pendulum swings. The clock ticks.
+[The score has just gone up by 1 point.]
+> set clock to 10
+Stop the pendulum first.
+The clock strikes: bong bong bong (and 7 more).
+> push pendulum
+The pendulum is already swinging.
+> z
+Nothing happens.
+The clock strikes: bong bong bong (and 8 more).
+> z
+Nothing happens.
+> z
+Nothing happens.
+The clock strikes: bong bong bong (and 9 more).
+[The score has just gone up by 1 point.]
+> status
+Score 3 of 3. Clock running at 12, spring 2, ticks 6.
+Fitted 3, strikes 3, windings 3, sets 4, oil 13, asked 4.
+> take small gear
+You take the small gear. The pendulum stops.
+> push pendulum
+The pendulum swings once and stops. The gear train is not complete.
+> put small gear in train
+You fit the small gear. 3 of 3 spindles hold gears.
+> push pendulum
+The pendulum swings. The clock ticks.
+> z
+Nothing happens.
+The clock strikes: bong.
+The pendulum slows and stops.
+> z
+Nothing happens.
+> z
+Nothing happens.
+> status
+Score 3 of 3. Clock stopped at 1, spring 0, ticks 8.
+Fitted 3, strikes 4, windings 3, sets 5, oil 6, asked 4.
+> set clock to 3
+You set the hands to 3 o'clock.
+> examine clock
+A clock face. The hands show 3 o'clock. The spring holds 0 turns.
+> wind clock
+You wind the clock. The spring holds 3 turns.
+> push pendulum
+The pendulum swings. The clock ticks.
+The lantern gutters.
+> pull pendulum
+You stop the pendulum.
+> pull pendulum
+The pendulum hangs still.
+The lantern goes out.
+It is now pitch dark in here.
+> struck
+Struck: 1 10 11 12. 4 different hours.
+It has struck twelve.
+> gears
+Gears: small gear, medium gear (worn), medium gear, large gear.
+3 on the train, 3 not worn.
+> spindles
+small: small gear
+medium: medium gear
+large: large gear
+> log
+Log (22): swapped 24; lantern on; fitted 12; fitted 48; fitted 24; wound 3; wound 6; wound 8; set 9; started; struck 10; struck 11; struck 12; fitted 12; started; struck 1; ran down; set 3; wound 3; started; stopped; lantern out;
+A gear was swapped.
+> score
+You have so far scored 3 out of a possible 3, in 55 turns.

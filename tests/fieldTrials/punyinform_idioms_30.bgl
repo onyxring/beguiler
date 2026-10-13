@@ -1,0 +1,558 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirtieth PunyInform program, written plainly: two rooms (a lit Room A with a workbench,
+// a toolbox, a lantern and a clockmaker, a dark Room B above with a gear train, a pendulum and a
+// clock face) and OPTIONAL_SCORED; a `Gear` class with an enum size, a worn flag, a `print()` method
+// and a description routine with a `switch` over the size, its teeth read from an `array<int>` indexed
+// by an enum cast; a gear train whose `before` takes `Receive` (gears only, not worn, one of each
+// size) and whose `after` takes `Receive` and `LetGo` to count fitted gears over `children`; a
+// pendulum whose `before` takes `Push` and `Pull` and starts or stops the clock's daemon; a clock
+// owning a value class `Spring` (`operator ()`, `=` from int, `+=`, `-=`, a method) and an inline
+// `auto` hour accessor that wraps and counts sets through `outer`; a `wind NOUN` verb and a `set
+// NOUN to NUMBER` verb that checks the hour with `throw` and `try`/`catch`; a lantern whose daemon
+// burns oil, giving and taking `light`; a clockmaker with `life` (Ask through NextWord, Give of a
+// worn gear swapped for a spare) and `orders`; an `array<int>` of struck hours with `+=`, `sort`,
+// `contains` and a `distinct`/`count` chain; `bgl.world.instances` with a predicate and a `<linq>`
+// `filter`/`orderBy` chain; a `stringObj` log built with interpolated strings; `for`, `for … in`,
+// `while` and `do`/`while` loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object u_to;
+    object d_to;
+}
+
+extern bool scope_modified;
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eSize { small, medium, large }
+
+array<string> sizeNames = {"small", "medium", "large"};
+array<int>    sizeTeeth = {12, 24, 48};
+
+const int SPRING_MAX     = 8;
+const int TICKS_PER_HOUR = 2;
+const int LANTERN_OIL    = 40;
+
+value class Spring {
+    int _turns = 0;
+
+    int  operator ()        { return _turns; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > SPRING_MAX) v = SPRING_MAX;
+        _turns = v;
+    }
+    void operator += (int v) {
+        _turns = _turns + v;
+        if (_turns > SPRING_MAX) _turns = SPRING_MAX;
+    }
+    void operator -= (int v) {
+        _turns = _turns - v;
+        if (_turns < 0) _turns = 0;
+    }
+
+    bool slack() {
+        return _turns == 0;
+    }
+}
+
+stringObj workLog;
+int logLines   = 0;
+int fitted     = 0;
+int strikes    = 0;
+int windings   = 0;
+bool trainDone = false;
+bool firstRun  = false;
+
+array<int> struck[12];
+
+void jot(string what, int n = -1) {
+    logLines++;
+    if (n < 0) workLog += $"{what}; ";
+    else workLog += $"{what} {n}; ";
+}
+
+string sizeName(eSize s) {
+    return sizeNames[(int)s - 1];
+}
+
+int teethOf(eSize s) {
+    return sizeTeeth[(int)s - 1];
+}
+
+// Throws the hour back when it is not on the dial.
+int checkHour(int h) {
+    if (h < 1 || h > 12) throw h;
+    return h;
+}
+
+// --- gears ------------------------------------------------------------------------------------------
+
+class Gear : object {
+    eSize size = eSize.small;
+    bool worn = false;
+    name = {.gear};
+
+    void print() {
+        print($"{sizeName(size)} gear");
+    }
+
+    void description() {
+        switch (size) {
+            case eSize.small:  print("A small brass gear");
+            case eSize.medium: print("A medium brass gear");
+            case eSize.large:  print("A large brass gear");
+        }
+        print($" with {teethOf(size)} teeth");
+        if (worn) printLine(". Its teeth are worn down.");
+        else printLine(".");
+    }
+}
+
+int teethOrder(object a, object b) {
+    return bgl.util.math.sign(teethOf(((Gear)a).size) - teethOf(((Gear)b).size));
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A workbench stands here. A ladder leads up to Room B.";
+    u_to = roomB;
+    attributes = {light};
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A gear train, a pendulum and a clock face fill the wall. A ladder leads down.";
+    d_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object workbench {
+    "workbench";
+    parent = roomA;
+    name = {.workbench, .bench};
+    description = "A wooden workbench.";
+    attributes = {supporter, static};
+}
+
+object toolbox {
+    "toolbox";
+    parent = roomA;
+    name = {.toolbox, .box};
+    description = "A tin toolbox.";
+    attributes = {container, openable};
+}
+
+Gear smallGear {
+    "small gear";
+    parent = toolbox;
+    name = {.small};
+    size = eSize.small;
+}
+
+Gear wornGear {
+    "worn gear";
+    parent = toolbox;
+    name = {.worn, .medium};
+    size = eSize.medium;
+    worn = true;
+}
+
+Gear largeGear {
+    "large gear";
+    parent = workbench;
+    name = {.large};
+    size = eSize.large;
+}
+
+Gear spareGear {
+    "spare gear";
+    name = {.new, .spare, .medium};
+    size = eSize.medium;
+}
+
+object lantern {
+    "lantern";
+    parent = workbench;
+    name = {.lantern, .lamp};
+    int oil = LANTERN_OIL;
+    attributes = {switchable};
+
+    void description() {
+        if (has(on)) printLine($"A brass lantern, lit, with {oil} turns of oil.");
+        else printLine($"A brass lantern, unlit, with {oil} turns of oil.");
+    }
+
+    bool before() {
+        if (action == SwitchOn && oil == 0) rtrue("The lantern is out of oil.^");
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+                jot("lantern on");
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+                jot("lantern off");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        oil--;
+        if (oil == 2) printLine("The lantern gutters.");
+        if (oil == 0) {
+            ungive(on);
+            ungive(light);
+            StopDaemon(self);
+            printLine("The lantern goes out.");
+            jot("lantern out");
+        }
+    }
+}
+
+object clockmaker {
+    "clockmaker";
+    parent = roomA;
+    name = {.clockmaker, .maker};
+    description = "A clockmaker with a loupe.";
+    bool swapped = false;
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .gear || w == .gears) rtrue("The clockmaker says: one of each size, and none worn.^");
+                if (w == .clock) rtrue("The clockmaker says: wind it, then push the pendulum.^");
+                if (w == .lantern || w == .lamp) rtrue("The clockmaker says: it is dark up the ladder.^");
+                rtrue("The clockmaker shrugs.^");
+            case Give:
+                if (!noun.is(Gear)) rtrue("The clockmaker says: keep it.^");
+                Gear g = (Gear)noun;
+                if (!g.worn) rtrue("The clockmaker says: that one is fine.^");
+                if (swapped) rtrue("The clockmaker says: I have no more spares.^");
+                swapped = true;
+                g.parent = null;
+                spareGear.parent = player;
+                scope_modified = true;
+                jot("swapped", teethOf(g.size));
+                rtrue($"The clockmaker takes {the(g)} and hands you {a(spareGear)}.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The clockmaker waits.^");
+        }
+        rtrue("The clockmaker says: do it yourself.^");
+    }
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+object gearTrain {
+    "gear train";
+    parent = roomB;
+    name = {.train, .spindle, .spindles};
+    description = "A gear train with three spindles: small, medium and large.";
+    attributes = {container, open, static};
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Gear)) rtrue("Only gears fit the spindles.^");
+                Gear g = (Gear)noun;
+                if (g.worn) rtrue($"{cThe(g)} slips on its spindle.^");
+                for (object o in children) {
+                    if (((Gear)o).size == g.size) rtrue($"The {sizeName(g.size)} spindle is taken.^");
+                }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive, LetGo:
+                recount();
+                if (action == Receive) {
+                    jot("fitted", teethOf(((Gear)noun).size));
+                    if (fitted == 3 && !trainDone) {
+                        trainDone = true;
+                        score++;
+                        rtrue($"You fit {the(noun)}. The gear train is complete.^");
+                    }
+                    rtrue($"You fit {the(noun)}. {fitted} of 3 spindles hold gears.^");
+                }
+                if (pendulum.swinging) {
+                    pendulum.swinging = false;
+                    StopDaemon(clockFace);
+                    rtrue($"You take {the(noun)}. The pendulum stops.^");
+                }
+        }
+        rfalse;
+    }
+
+    void recount() {
+        fitted = 0;
+        object o = self.child;
+        while (o != null) {
+            fitted++;
+            o = o.sibling;
+        }
+    }
+}
+
+object pendulum {
+    "pendulum";
+    parent = roomB;
+    name = {.pendulum, .bob};
+    description = "A long pendulum with a brass bob.";
+    bool swinging = false;
+    attributes = {static};
+
+    bool before() {
+        switch (action) {
+            case Push:
+                if (swinging) rtrue("The pendulum is already swinging.^");
+                if (fitted < 3) rtrue("The pendulum swings once and stops. The gear train is not complete.^");
+                if (clockFace.spring.slack()) rtrue("The pendulum swings once and stops. The spring is slack.^");
+                swinging = true;
+                StartDaemon(clockFace);
+                jot("started");
+                if (!firstRun) {
+                    firstRun = true;
+                    score++;
+                }
+                rtrue("The pendulum swings. The clock ticks.^");
+            case Pull:
+                if (!swinging) rtrue("The pendulum hangs still.^");
+                swinging = false;
+                StopDaemon(clockFace);
+                jot("stopped");
+                rtrue("You stop the pendulum.^");
+        }
+        rfalse;
+    }
+}
+
+object clockFace {
+    "clock face";
+    parent = roomB;
+    name = {.clock, .face, .hands};
+    int sets = 0;
+    int ticks = 0;
+    Spring spring;
+    attributes = {static};
+
+    auto hour = {
+        int _h = 12;
+        int  operator ()        { return _h; }
+        void operator = (int v) {
+            while (v > 12) v -= 12;
+            while (v < 1) v += 12;
+            _h = v;
+            outer.sets++;
+        }
+    }
+
+    void description() {
+        printLine($"A clock face. The hands show {hour} o'clock. The spring holds {(int)spring} turns.");
+    }
+
+    void daemon() {
+        ticks++;
+        spring -= 1;
+        if (ticks % TICKS_PER_HOUR == 0) strike();
+        if (spring.slack()) {
+            pendulum.swinging = false;
+            StopDaemon(self);
+            jot("ran down");
+            if (location == roomB) printLine("The pendulum slows and stops.");
+        }
+    }
+
+    void strike() {
+        hour = hour + 1;
+        int h = hour;
+        strikes++;
+        struck += h;
+        jot("struck", h);
+        if (location == roomB) {
+            print("The clock strikes:");
+            int i = 0;
+            do {
+                print(" bong");
+                i++;
+            } while (i < h && i < 3);
+            if (h > 3) print($" (and {h - 3} more)");
+            printLine(".");
+        }
+        if (h == 12) score++;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb WindUp {
+    grammar = {.wind, NOUN};
+    void handler() {
+        if (noun != clockFace) {
+            printLine($"{cThe(noun)} has no key to wind.");
+            return;
+        }
+        if ((int)clockFace.spring == SPRING_MAX) {
+            printLine("The spring is already tight.");
+            return;
+        }
+        clockFace.spring += 3;
+        windings++;
+        jot("wound", (int)clockFace.spring);
+        printLine($"You wind the clock. The spring holds {(int)clockFace.spring} turns.");
+    }
+}
+
+verb SetHands {
+    grammar = { {.set, NOUN, .to, NUMBER} };
+    void handler() {
+        if (noun != clockFace) {
+            printLine($"You can't set {the(noun)}.");
+            return;
+        }
+        if (pendulum.swinging) {
+            printLine("Stop the pendulum first.");
+            return;
+        }
+        try {
+            clockFace.hour = checkHour(parsed_number);
+        } catch (int bad) {
+            printLine($"The dial has no {bad}.");
+            return;
+        }
+        jot("set", parsed_number);
+        printLine($"You set the hands to {clockFace.hour} o'clock.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string run = pendulum.swinging ? "running" : "stopped";
+        printLine($"Score {score} of {MAX_SCORE}. Clock {run} at {clockFace.hour}, spring {(int)clockFace.spring}, ticks {clockFace.ticks}.");
+        printLine($"Fitted {fitted}, strikes {strikes}, windings {windings}, sets {clockFace.sets}, oil {lantern.oil}, asked {clockmaker.asked}.");
+    }
+}
+
+verb ListGears {
+    meta = true;
+    grammar = {.gears};
+    void handler() {
+        array<object> all[8];
+        all = bgl.world.instances(Gear).orderBy(teethOrder);
+        print("Gears:");
+        for (int i = 0; i < all.length; i++) {
+            Gear g = (Gear)all[i];
+            print(" ");
+            print(g);
+            if (g.worn) print(" (worn)");
+            if (i < all.length - 1) print(",");
+        }
+        printLine(".");
+        array<object> onTrain[8];
+        onTrain = bgl.world.instances(Gear, (object o) => o.parent == gearTrain);
+        int good = all.filter((object o) => !((Gear)o).worn).count();
+        printLine($"{onTrain.length} on the train, {good} not worn.");
+    }
+}
+
+verb ListStruck {
+    meta = true;
+    grammar = {.struck};
+    void handler() {
+        if (struck.length == 0) {
+            printLine("The clock has not struck.");
+            return;
+        }
+        array<int> sorted[12];
+        sorted = struck;
+        sorted.sort();
+        print("Struck:");
+        for (int h in sorted) print($" {h}");
+        int kinds = struck.distinct().count();
+        printLine($". {kinds} different hours.");
+        if (struck.contains(12)) printLine("It has struck twelve.");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (workLog.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logLines}): {workLog}");
+        if (workLog.contains("swapped")) printLine("A gear was swapped.");
+    }
+}
+
+verb Spindles {
+    meta = true;
+    grammar = {.spindles};
+    void handler() {
+        for (int s in 1 to 3) {
+            eSize sz = (eSize)s;
+            object held = null;
+            for (object o in gearTrain.children) {
+                if (((Gear)o).size == sz) held = o;
+            }
+            if (held == null) printLine($"{sizeName(sz)}: empty");
+            else printLine($"{sizeName(sz)}: {held}");
+        }
+    }
+}
+
+bool Initialise() {
+    clockFace.spring = 0;
+    rfalse;
+}

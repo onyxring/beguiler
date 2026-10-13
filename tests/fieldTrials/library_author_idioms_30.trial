@@ -1,0 +1,124 @@
+Room A
+Room A.
+You can see a bench, a left rack (on which are a hammer and a chisel) and a right rack (on which is a saw) here.
+> racks
+left rack 2/2: H C
+right rack 1/1: S
+broken 0, jobs 0, breaks 0, one full, none empty; first empty Room A; mended clean
+orders 0 (opened 0, closed 0); log 
+turns 2, near breaking 0
+> orders
+No orders.
+> tools
+C=3 H=5 S=6 most left S, 0 low, second H.
+left rack: H right rack: S 
+> worst
+Most worn: none.
+> examine hammer
+The hammer, a joiner tool, tag H, lifespan 5, clean.
+> examine saw
+The saw, a joiner tool, tag S, lifespan 6, clean.
+> work with hammer
+You work with the hammer: 1 nick, 4 left.
+> work with saw
+You work with the saw: 2 nicks, 4 left.
+> examine saw
+The saw, a joiner tool, tag S, lifespan 6, 2 nicks, 4 to go.
+> worst
+The saw is most worn: 2 of 6, a dull joiner tool.
+> hone saw
+The saw can't be honed.
+> hone chisel
+The chisel is sharp now, clean.
+> work with chisel
+You work with the chisel: 1 nick, 2 left.
+> work with chisel
+You work with the chisel: 2 nicks, 1 left, past half.
+> work with chisel
+The chisel breaks after 3 nicks.
+> work with chisel
+The chisel is broken.
+> examine chisel
+The chisel, a carver tool, tag C, lifespan 3, 3 nicks, broken.
+> racks
+left rack 2/2: H C
+right rack 1/1: S
+broken 1, jobs 5, breaks 1, one full, none empty; first empty Room A; mended clean
+orders 0 (opened 0, closed 0); log 
+turns 2, near breaking 0
+> mend chisel
+Order C#1 opened for the chisel, 2 turns.
+> mend chisel
+The chisel is already in.
+Order C#1 is done.
+> mend hammer
+The hammer isn't broken.
+> orders
+c#1* (4 chars).
+> collect chisel
+The chisel goes on the left rack.
+> turns 9
+turns 6, changes 1, slow.
+> work with saw
+You work with the saw: 4 nicks, 2 left, past half.
+> racks
+left rack 2/2: C H
+right rack 1/1: S
+broken 0, jobs 6, breaks 1, one full, none empty; first empty Room A; mended 3 nicks
+orders 0 (opened 1, closed 1); log open:C#1 done:C#1 shut:C#1 
+turns 6, near breaking 1
+> worst
+The saw is most worn: 4 of 6, a dull joiner tool.
+> work with saw
+The saw breaks after 6 nicks.
+> mend saw
+Order S#2 opened for the saw, 6 turns.
+> orders
+s#2 (3 chars), saw first.
+> tools
+S=0 C=3 H=4 most left H, 1 low, second C.
+left rack: C right rack: - 
+> wait
+Time passes.
+> collect chisel
+The chisel has no order.
+> racks
+left rack 2/2: C H
+right rack 0/1:
+broken 1, jobs 7, breaks 2, one full; first empty right rack; mended 9 nicks
+orders 1 (opened 2, closed 1); log open:C#1 done:C#1 shut:C#1 open:S#2 
+turns 6, near breaking 0
+> rack saw on left rack
+(first taking the saw)
+The left rack is full (2 hooks).
+The saw goes on the right rack.
+> wait
+Time passes.
+> wait
+Time passes.
+Order S#2 is done.
+> wait
+Time passes.
+> wait
+Time passes.
+> orders
+s#2* (4 chars), saw first.
+> collect saw
+The right rack is full (1 hooks).
+The left rack is full (2 hooks).
+You keep the saw.
+> collect hammer
+The hammer has no order.
+> racks
+left rack 2/2: C H
+right rack 0/1:
+broken 0, jobs 7, breaks 2, one full; first empty right rack; mended 9 nicks
+orders 0 (opened 2, closed 2); log open:C#1 done:C#1 shut:C#1 open:S#2 full done:S#2 shut:S#2 full full 
+turns 6, near breaking 0
+> tools
+C=3 H=4 S=6 most left S, 0 low, second H.
+left rack: C right rack: - 
+> sweep
+swept 0; orders 0.
+> turns 1
+turns 1, changes 2, quick.

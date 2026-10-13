@@ -2542,6 +2542,10 @@ bool bglParser::rejectRawMemberLengthOp(const std::string& owner, const std::str
     if(!languageService.arrayInUse) return false;
     if(memberArrayIsTracked(owner, prop, func, body)) return false;
     string what = methName == "length =" ? string("Assigning 'length'") : "'" + methName + "()'";
+    // A member declared `array<T>` that names an additive property: the declaration is what's wrong.
+    if(languageService.isAdditiveProperty(prop))
+        parsingError(format("'{0}.{1}' is an ADDITIVE property, so the member must be declared `rawArray<T>`, and "
+            "{2} needs a tracked array; give the member another name.", owner, prop, what));
     parsingError(format("{0} needs an array's length word, but '{1}.{2}' is a RAW member array "
         "(rawArray<T>, or array<dictionaryWord>, whose layout I6 owns). It is inline property data "
         "with no length word — its extent is fixed at {1}.#{2}/WORDSIZE — so the operation would "
@@ -4359,6 +4363,11 @@ bool bglParser::isLiteralValue(const expression* e, string& why){
             return false;
         }
         if(c == '"' || c == '\'' || c == '$' || isdigit((unsigned char)c)) continue;   // literal text or number
+        // A composite token (`( _bglAt(arr, i, 0)-->0 )`, a checked subscript) that calls something.
+        if(!isalpha((unsigned char)c) && c != '_' && t.size() > 1){
+            static const std::regex call(R"([A-Za-z_]\w*\s*\()");
+            if(std::regex_search(t, call)){ why = "a subscript or call, evaluated at run time"; return false; }
+        }
         if(!isalpha((unsigned char)c) && c != '_') continue;                           // operator, punctuation
         // A `literal` variable or member holds only literal values, so reading one is literal too.
         auto readsLiteralSlot = [&](){

@@ -1,0 +1,250 @@
+Room A
+Room A. The garden bed. The shed is to the north.
+You can see a first plant, a second plant, a third plant, a watering can and a gardener here.
+> garden
+Stake 1 (kale): a seed, water 4.
+Stake 2 (bean): a seed, water 3.
+Stake 3 (mint): a seed, water 5.
+Grown: 0. Day 0.
+> seeds
+Seeds: mint pea bean leek kale
+Next: mint. Last: kale.
+There is a leek seed.
+> basket
+The basket is empty.
+> report
+Days: 0. Picked: 0. Fills: 0.
+Sowings: 0. Seeds left: 5.
+Plants before a wilted one: 3.
+Total size: 0.
+> word 1
+a mint seed / a mint plant / mint / nt / int
+It smells.
+> word 2
+a pea seed / a pea plant / pea / ea / ea
+First e at 1.
+It has ea in it.
+It climbs.
+> word 3
+a bean seed / a bean plant / bean / an / ean
+First e at 1.
+It has ea in it.
+It climbs.
+> word 4
+a leek seed / a leek plant / leek / ek / eek
+First e at 1.
+Seed 4 of 5.
+> word 5
+a kale seed / a kale plant / kale / le / ale
+First e at 3.
+It starts with k.
+Seed 5 of 5.
+> word 9
+There are 5 seeds.
+> water second plant
+The can is empty.
+> fill
+The tap is in the shed.
+The kale at stake 1 sprouts.
+The bean at stake 2 sprouts.
+The mint at stake 3 sprouts.
+> take can
+Taken.
+The bean at stake 2 is ready to pick.
+> n
+Room B
+Room B. The shed. The bed is to the south.
+You can see a tap here.
+The kale at stake 1 is ready to pick.
+The mint at stake 3 is ready to pick.
+> fill
+You fill the can. It has 6.
+> s
+Room A
+Room A. The garden bed. The shed is to the north.
+You can see a first plant, a second plant, a third plant and a gardener here.
+The bean at stake 2 wilts.
+> water second plant
+It is too late for that one.
+> water first plant
+You water the kale. Its soil has 3; the can has 4.
+> examine second plant
+Stake 2. It grows 1 a turn. It is leafy, climbs.
+Stake 2 (bean): wilted.
+> garden
+Stake 1 (kale): grown, water 2.
+Stake 2 (bean): wilted.
+Stake 3 (mint): grown, water 1.
+Grown: 2. Day 9.
+> pick second plant
+The bean is not ready.
+The mint at stake 3 wilts.
+> pick first plant
+You pick a big kale.
+> water third plant
+It is too late for that one.
+> pick third plant
+The mint is not ready.
+> garden
+Stake 1 (kale): wilted.
+Stake 2 (bean): wilted.
+Stake 3 (mint): wilted.
+Grown: 0. Day 13.
+> basket
+big kale (day 10)
+Smallest: kale. Largest: kale.
+A kale that size is at 0.
+Leafy crops: 1.
+There is a good one.
+None are tiny.
+> report
+Days: 13. Picked: 1. Fills: 1.
+Sowings: 0. Seeds left: 5.
+Kinds: kale
+Sizes, small first: 8 to 8.
+First size doubled: 16.
+First two: 1.
+From the first good one: 1.
+Plants before a wilted one: 0.
+Total size: 8.
+A plant has wilted.
+> shuffle
+Dropped kale. Now: mint leek bean
+> seeds
+Seeds: mint leek bean
+Next: mint. Last: bean.
+There is a leek seed.
+> word 2
+a leek seed / a leek plant / leek / ek / eek
+First e at 1.
+Seed 2 of 3.
+> sow second plant
+You sow mint at stake 2. Sowings: 1.
+> sow first plant
+You sow leek at stake 1. Sowings: 2.
+The mint at stake 2 sprouts.
+> wait
+Time passes.
+The leek at stake 1 sprouts.
+The mint at stake 2 is ready to pick.
+> water first plant
+You water the leek. Its soil has 4; the can has 2.
+> water second plant
+You water the mint. Its soil has 3; the can has 0.
+The leek at stake 1 is ready to pick.
+> water third plant
+It is too late for that one.
+> garden
+Stake 1 (leek): grown, water 2.
+Stake 2 (mint): grown, water 2.
+Stake 3 (mint): wilted.
+Grown: 2. Day 20.
+> wait
+Time passes.
+> wait
+Time passes.
+> garden
+Stake 1 (leek): grown, water 1.
+Stake 2 (mint): grown, water 1.
+Stake 3 (mint): wilted.
+Grown: 2. Day 22.
+> pick first plant
+You pick a big leek.
+> pick second plant
+You pick a big mint.
+> basket
+big leek (day 22)
+big kale (day 10)
+big mint (day 23)
+Smallest: leek. Largest: mint.
+A kale that size is at -1.
+Leafy crops: 1.
+There is a good one.
+None are tiny.
+> wait
+Time passes.
+> garden
+Stake 1 (leek): wilted.
+Stake 2 (mint): wilted.
+Stake 3 (mint): wilted.
+Grown: 0. Day 25.
+> n
+Room B
+Room B. The shed. The bed is to the south.
+You can see a tap here.
+> fill
+You fill the can. It has 6.
+> s
+Room A
+Room A. The garden bed. The shed is to the north.
+You can see a first plant, a second plant, a third plant and a gardener here.
+> sow third plant
+You sow bean at stake 3. Sowings: 3.
+> water third plant
+You water the bean. Its soil has 5; the can has 4.
+The bean at stake 3 sprouts.
+> sow second plant
+The packet is empty.
+> seeds
+The packet is empty.
+> garden
+Stake 1 (leek): wilted.
+Stake 2 (mint): wilted.
+Stake 3 (bean): a sprout, 3 days old, water 4.
+Grown: 0. Day 31.
+> wait
+Time passes.
+The bean at stake 3 is ready to pick.
+> pick third plant
+The basket is full (3).
+> wait
+Time passes.
+> pick third plant
+The basket is full (3).
+> garden
+Stake 1 (leek): wilted.
+Stake 2 (mint): wilted.
+Stake 3 (bean): grown, water 2.
+Grown: 1. Day 35.
+> basket
+big leek (day 22)
+big kale (day 10)
+big mint (day 23)
+Smallest: leek. Largest: mint.
+A kale that size is at -1.
+Leafy crops: 1.
+There is a good one.
+None are tiny.
+> report
+Days: 35. Picked: 3. Fills: 2.
+Sowings: 3. Seeds left: 0.
+Kinds: kale leek mint
+Sizes, small first: 5 to 8.
+First size doubled: 16.
+First two: 2.
+From the first good one: 3.
+Plants before a wilted one: 0.
+Total size: 21.
+A plant has wilted.
+The basket has been full.
+> empty
+The packet has 1 seed: kale.
+> seeds
+Seeds: kale
+Next: kale. Last: kale.
+> sow first plant
+You sow kale at stake 1. Sowings: 4.
+> seeds
+The packet is empty.
+> take third plant
+Pick it instead.
+The kale at stake 1 sprouts.
+The bean at stake 3 wilts.
+> examine third plant
+Stake 3. It grows 1 a turn. It is smells.
+Stake 3 (bean): wilted.
+> sow gardener
+You can only sow at a stake.
+The kale at stake 1 is ready to pick.
+> water can
+You can only water a plant.

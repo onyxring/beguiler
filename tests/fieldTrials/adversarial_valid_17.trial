@@ -1,0 +1,154 @@
+Room A
+Room A.
+
+You can see a bench scale, a floor scale, a belt (on which are a red crate, a blue crate, a grey crate, a tiny crate and a green drum), a bin A (which is empty), a bin B (which is empty) and a bin C (which is empty) here.
+
+> notes
+[R1]120 careful [B7]280 *ding* [--]75 *ding* (drum)[D4]200 *ding* [T0]0 *ding* 
+
+> report
+By weight: T0=0 --=75 R1=120 D4=200 B7=280.
+Over 200: 2; sealed yes; all loaded yes.
+tiny crate < blue crate: yes.
+CODES: R1 B7 -- D4 T0
+
+> tally
+Total 500, top 280; lanes | 0 0 0 | 0 0 | 0; chutes 1/2/11.
+
+> find 2
+Lane 2: B7 [B7]280; in its bin 0.
+
+> find 3
+Lane 3: -- [--]75; in its bin 0.
+
+> weigh red crate
+The bench scale reads 160 for red crate (round).
+Readings 1/0, weighed 1.
+
+> weigh blue crate
+Too much for the bench; floor scale reads 310 (mid).
+Readings 2/1, weighed 3.
+
+> weigh drum
+The bench scale reads 290 for green drum (mid).
+Readings 3/1, weighed 4.
+
+> seal drum
+(drum)[D4]200 rings 2, sealed yes.
+
+> seal red crate
+Only drums.
+
+> add 400 to blue crate
+blue crate: 280 -> 500.
+
+> weigh blue crate
+[B7]500 rejected.
+Readings 4/2, weighed 6.
+
+> weigh blue crate
+[B7]500 rejected.
+Readings 5/3, weighed 8.
+
+> find 2
+Lane 2: T0 [T0]0; in its bin 0.
+
+> find 9
+Lane 9: none ; in its bin 0.
+
+> flag grey crate 1
+grey crate flags 1; heavy no.
+
+> flag tiny crate 2
+tiny crate flags 2; heavy yes.
+
+> notes
+[R1]120 careful [B7]500 *ding* [--]75 careful (drum)[D4]200 *ding* [T0]0 *ding* 
+
+> take blue crate
+The blue crate is too heavy.
+
+> take drum
+The green drum is too heavy.
+
+> speed 9
+Belt speed 3, changes 1.
+
+> speed 0
+Belt speed 1, changes 2.
+
+> exact
+Rounding 47 gives 47.
+
+> weigh grey crate
+The bench scale reads 135 for grey crate (mid).
+Readings 6/3, weighed 9.
+
+> exact
+Rounding 47 gives 50.
+
+> weigh tiny crate
+The bench scale reads 10 for tiny crate (light).
+Readings 7/3, weighed 10.
+
+> stack
+Stacked pallet 1(3): B7 D4 T0; made 1.
+
+> stack
+Stacked pallet 2(3): B7 D4 T0; made 2.
+
+> stack
+No pallets.
+
+> unstack
+Unstacking pallet 2(3).
+Made 2, broken 1, left 1.
+
+> run
+Moved 1; belt now 2; bins 1/0/0.
+
+> run
+Moved 2; belt now 3; bins 1/1/1.
+
+> run
+Moved 1; belt now 3; bins 1/1/2.
+
+> look
+
+Room A
+Room A.
+
+You can see a bench scale, a floor scale, a belt (on which is a blue crate), a bin A (in which is a red crate), a bin B (in which is a tiny crate) and a bin C (in which are a green drum and a grey crate) here.
+
+> find 3
+Lane 3: -- [--]75; in its bin 2.
+
+> find 1
+Lane 1: R1 [R1]120; in its bin 1.
+
+> tally
+Total 500, top 500; lanes | 120 0 0 | 0 0 | 75; chutes 1/2/11.
+
+> report
+By weight: T0=0 --=75 R1=120 D4=200 B7=500.
+Over 200: 2; sealed yes; all loaded yes.
+tiny crate < blue crate: yes.
+CODES: R1 B7 -- D4 T0
+
+> unstack
+Unstacking pallet 1(3).
+Made 2, broken 2, left 0.
+
+> unstack
+No pallet to unstack.
+
+> weigh bench scale
+Only crates.
+
+> take red crate
+Taken.
+
+> i
+You're carrying:
+  a red crate
+

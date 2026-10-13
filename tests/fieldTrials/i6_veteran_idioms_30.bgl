@@ -1,0 +1,532 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a signal box over a
+// stretch of line. A Lever class (int number member, a per-object dictionaryWord colour, a class
+// parse_name reading NextWord and TryNumber, a class description and before rule on Pull/Push/Take)
+// with four levers; an interlocking held in two global array<int> tables of bit masks indexed by
+// lever number, a global int frame mask flipped with ^= and tested with & and a Bit() routine using
+// <<; a sized ring array<int> logging each lever move (signed by direction) read back in a for loop;
+// a train object with an enum run state switched on in its daemon (StartDaemon from Initialise,
+// StopDaemon once through, a Reset method restarting it for a second train), a distance count and a
+// bool set when it passes at speed; a home signal found_in both rooms whose description reads the
+// frame; a box door (door_to, door_dir, found_in, with_key, rooms' u_to/d_to) and a tin box holding
+// its key; native RingCode (NUMBER, with a switch on ranges) and Ring (NOUN) verbs sharing the new
+// word ring; a PullNo/PushNo pair adding NUMBER lines ahead of the library's pull and push and
+// forwarding through Pull.perform/Push.perform; a LibraryMessages override of Listen; a meta Frame
+// verb printing the mask bit by bit in a do/while; deadflag at MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 4;
+const int NLEVERS = 4;
+const int NLOG = 5;
+const int APPROACH = 3;          // turns from acceptance to the home signal
+const int OFFER_EVERY = 3;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Listen:
+                if (location == signalBox) rtrue("The block instrument ticks.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum runState { away, approaching, standing, passed }
+
+// Interlocking, indexed by lever number (entry 0 unused):
+// needs[n] - levers that must be reversed before lever n may be reversed;
+// locks[n] - levers that must be normal before lever n may move at all.
+array<int> needs = {0, 4, 1, 0, 0};
+array<int> locks = {0, 0, 0, 0, 4};
+
+int frameMask;                   // bit n-1 set while lever n is reversed
+array<int> moveLog[NLOG];        // +n reversed, -n put back; oldest dropped when full
+int nMoves;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+int Bit(int n) {
+    return 1 << (n - 1);
+}
+
+bool IsReversed(int n) {
+    return (frameMask & Bit(n)) != 0;
+}
+
+void LogMove(int m) {
+    if (nMoves == NLOG) {
+        for (int i = 1; i < NLOG; i++) moveLog[i - 1] = moveLog[i];
+        nMoves--;
+    }
+    moveLog[nMoves] = m;
+    nMoves++;
+}
+
+// The lowest-numbered lever in mask, or 0.
+int FirstIn(int mask) {
+    for (int n = 1; n <= NLEVERS; n++) {
+        if ((mask & Bit(n)) != 0) return n;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object trackside {
+    short_name = "Trackside";
+    void description() {
+        print("Trackside. A single line runs east to west past a signal box, whose door is at the top of a wooden stair. ");
+        print("The points beside you are set for the ");
+        if (IsReversed(4)) print("siding");
+        else print("main line");
+        print(".^");
+    }
+    object u_to = boxDoor;
+    attributes = {light};
+}
+
+object signalBox {
+    short_name = "Signal Box";
+    description = "Signal Box. A frame of four levers faces the window, with a block bell and a register on the shelf above.";
+    object d_to = boxDoor;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- trackside
+
+object tinBox {
+    short_name = "tin box";
+    name = {.tin, .box};
+    parent = trackside;
+    description = "A dented tin box screwed to a post.";
+    attributes = {static, container, openable};
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = tinBox;
+    description = "A brass key with a paper tag.";
+}
+
+object boxDoor {
+    short_name = "box door";
+    name = {.box, .door, .stair, .stairs};
+    rawArray<object> found_in = {trackside, signalBox};
+    object with_key = brassKey;
+    object door_to() {
+        if (location == trackside) return signalBox;
+        return trackside;
+    }
+    property door_dir() {
+        if (location == trackside) return u_to;
+        return d_to;
+    }
+    void description() {
+        print("A green door at the top of the stair");
+        if (has(locked)) print(", locked");
+        else if (has(open)) print(", standing open");
+        print(".^");
+    }
+    attributes = {door, openable, lockable, locked, static, scenery};
+}
+
+object homeSignal {
+    short_name = "home signal";
+    name = {.home, .signal, .arm};
+    rawArray<object> found_in = {trackside, signalBox};
+    void description() {
+        print("The home signal arm stands ");
+        if (IsReversed(1)) print("off, lowered to clear");
+        else print("level, at danger");
+        if (IsReversed(2)) print(". Below it the distant arm is off too");
+        print(".^");
+    }
+    attributes = {static, scenery};
+}
+
+object points {
+    short_name = "points";
+    name = {.points, .switch, .blades};
+    parent = trackside;
+    void description() {
+        print("The blades lie across for the ");
+        if (IsReversed(4)) print("siding");
+        else print("main line");
+        if (IsReversed(3)) print(", bolted by the lock");
+        print(".^");
+    }
+    attributes = {static, scenery, pluralname};
+}
+
+// ---------------------------------------------------------------- the frame
+
+class Lever : object {
+    int number;
+    dictionaryWord colour;
+    string job;
+    int parse_name() {
+        if (parser_action == TheSame) return -2;
+        int n = 0;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .lever || w == .levers) {
+                n++;
+                continue;
+            }
+            if (w != null && w == colour) {
+                n++;
+                continue;
+            }
+            if (w == null && TryNumber(wn - 1) == number) {
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+    void description() {
+        print($"Lever {number} works the {job}. It stands ");
+        if (IsReversed(number)) print("reversed");
+        else print("normal");
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Pull:
+                MoveLever(number, true);
+                rtrue;
+            case Push:
+                MoveLever(number, false);
+                rtrue;
+            case Take, Turn:
+                rtrue("The levers only pull and push.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+Lever lever1 {
+    short_name = "red lever";
+    number = 1;
+    colour = .red;
+    job = "home signal";
+    parent = signalBox;
+}
+
+Lever lever2 {
+    short_name = "yellow lever";
+    number = 2;
+    colour = .yellow;
+    job = "distant signal";
+    parent = signalBox;
+}
+
+Lever lever3 {
+    short_name = "blue lever";
+    number = 3;
+    colour = .blue;
+    job = "facing point lock";
+    parent = signalBox;
+}
+
+Lever lever4 {
+    short_name = "black lever";
+    number = 4;
+    colour = .black;
+    job = "points";
+    parent = signalBox;
+}
+
+array<object> levers = {lever1, lever2, lever3, lever4};
+
+// Moves lever n over (rev true) or back, if the interlocking frees it.
+bool MoveLever(int n, bool rev) {
+    if (location != signalBox) {
+        print("The levers are in the signal box.^");
+        return false;
+    }
+    if (n < 1 || n > NLEVERS) {
+        print($"The levers are numbered 1 to {NLEVERS}.^");
+        return false;
+    }
+    int b = Bit(n);
+    if (rev == IsReversed(n)) {
+        print($"Lever {n} is already ");
+        if (rev) print("reversed.^");
+        else print("normal.^");
+        return false;
+    }
+    int held = frameMask & locks[n];
+    if (held != 0) {
+        print($"Lever {n} is locked by lever {FirstIn(held)}.^");
+        return false;
+    }
+    if (rev) {
+        int missing = needs[n] ^ (needs[n] & frameMask);
+        if (missing != 0) {
+            print($"Lever {n} is locked: lever {FirstIn(missing)} must be pulled first.^");
+            return false;
+        }
+    } else {
+        for (int j = 1; j <= NLEVERS; j++) {
+            if (IsReversed(j) && (needs[j] & b) != 0) {
+                print($"Lever {n} is held over by lever {j}.^");
+                return false;
+            }
+        }
+        if (n == 1 && train.state == approaching && train.dist <= 1) {
+            print("Too late to throw the signal back in the driver's face.^");
+            return false;
+        }
+    }
+    frameMask ^= b;
+    if (rev) LogMove(n);
+    else LogMove(-n);
+    Lever l = (Lever)levers[n - 1];
+    if (rev) print($"You heave {the(l)} over");
+    else print($"You push {the(l)} back");
+    switch (n) {
+        case 1, 2:
+            if (rev) print(" and the wire clatters as the arm drops.^");
+            else print(" and the arm rises to danger.^");
+        case 3:
+            if (rev) print(" and the bolt shoots home.^");
+            else print(" and the bolt withdraws.^");
+        default:
+            print(". The blades grind across.^");
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------- the shelf
+
+object bell {
+    short_name = "block bell";
+    name = {.block, .bell, .instrument, .needle};
+    parent = signalBox;
+    void description() {
+        print("A brass bell and a needle dial reading ");
+        switch (train.state) {
+            case away:         print("LINE BLOCKED");
+            case approaching, standing:
+                               print("TRAIN ON LINE");
+            default:           print("LINE BLOCKED");
+        }
+        print(".^");
+    }
+    attributes = {static};
+}
+
+object register {
+    short_name = "train register";
+    name = {.train, .register, .book};
+    parent = signalBox;
+    void description() {
+        print("The last lever moves are entered:");
+        if (nMoves == 0) print(" none");
+        for (int i = 0; i < nMoves; i++) {
+            int m = moveLog[i];
+            if (m > 0) print($" {m} over");
+            else print($" {-m} back");
+            if (i < nMoves - 1) print(",");
+        }
+        print(".^");
+    }
+}
+
+// ---------------------------------------------------------------- the train
+
+object train {
+    short_name = "goods train";
+    name = {.goods, .train, .engine};
+    runState state = away;
+    int dist;
+    int ticks;
+    bool atSpeed;
+    bool offered;
+
+    int count;                   // trains through so far
+
+    void Reset() {
+        state = away;
+        ticks = 0;
+        dist = 0;
+        offered = false;
+        atSpeed = false;
+        StartDaemon(self);
+    }
+
+    bool RouteSet() {
+        return IsReversed(1) && !IsReversed(4);
+    }
+
+    void Pass() {
+        state = passed;
+        count++;
+        remove();
+        StopDaemon(self);
+        Award();
+        if (atSpeed) {
+            print("^The goods train runs through at speed, wagons rattling past the box.^");
+            Award();
+        } else {
+            print("^The goods train draws away past the box.^");
+        }
+    }
+
+    void daemon() {
+        ticks++;
+        switch (state) {
+            case away:
+                if (ticks % OFFER_EVERY == 0) {
+                    offered = true;
+                    if (location == signalBox) print("^The block bell rings: three beats.^");
+                    else print("^A bell rings in the signal box.^");
+                }
+            case approaching:
+                dist--;
+                if (dist == 1) atSpeed = IsReversed(1) && IsReversed(2);
+                if (dist > 0) return;
+                if (RouteSet()) {
+                    Pass();
+                    return;
+                }
+                state = standing;
+                parent = trackside;
+                print("^A goods train draws up at the home signal and whistles.^");
+            case standing:
+                if (RouteSet()) Pass();
+                else print("^The goods train whistles at the home signal.^");
+        }
+    }
+    description = "A tank engine and a string of wagons.";
+    attributes = {static};
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb RingCode {
+    grammar = {.ring, NUMBER};
+    void handler() {
+        if (location != signalBox) {
+            print("There is no bell here.^");
+            return;
+        }
+        int n = (int)noun;
+        switch (n) {
+            case 3:
+                if (train.state != away || !train.offered) {
+                    print("You ring three beats. Nobody answers.^");
+                    return;
+                }
+                train.state = approaching;
+                train.dist = APPROACH;
+                print("You ring three beats back. The needle swings to TRAIN ON LINE.^");
+            case 2:
+                if (train.state != passed) {
+                    print("There is no train to clear.^");
+                    return;
+                }
+                if (frameMask != 0) {
+                    print($"Lever {FirstIn(frameMask)} is still over.^");
+                    return;
+                }
+                print("You ring two beats: train out of section.^");
+                train.Reset();
+                Award();
+            case 1, 4 to 9:
+                print($"You ring {n} beats. Nobody answers.^");
+            default:
+                print("That is not a bell code.^");
+        }
+    }
+}
+
+verb Ring {
+    grammar = {.ring, NOUN};
+    void handler() {
+        if (noun != bell) {
+            print("You can't ring that.^");
+            return;
+        }
+        print("Ring how many beats?^");
+    }
+}
+
+verb PullNo {
+    grammar = {.pull, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (location == signalBox && n >= 1 && n <= NLEVERS) {
+            Pull.perform(levers[n - 1]);
+            return;
+        }
+        MoveLever(n, true);
+    }
+}
+
+verb PushNo {
+    grammar = {.push, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (location == signalBox && n >= 1 && n <= NLEVERS) {
+            Push.perform(levers[n - 1]);
+            return;
+        }
+        MoveLever(n, false);
+    }
+}
+
+verb Frame {
+    grammar = {.frame};
+    meta = true;
+    void handler() {
+        print("Frame:");
+        int b = 1;
+        int n = 1;
+        do {
+            if ((frameMask & b) != 0) print($" {n}R");
+            else print($" {n}N");
+            b = b << 1;
+            n++;
+        } while (n <= NLEVERS);
+        print($". Mask {frameMask}. Train ");
+        switch (train.state) {
+            case away:         print("away");
+            case approaching:  print($"approaching, {train.dist} to go");
+            case standing:     print("standing");
+            case passed:       print("passed");
+        }
+        print($", {train.count} through. Score {score}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = trackside;
+    StartDaemon(train);
+    rfalse;
+}

@@ -1122,7 +1122,7 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                   if(bt.isDataType() || bt.is(eTokenType::identifier)){
                       token typeTok = bt;
                       // The whole type, `func<…>` or a union `A | B` included, before the member's name.
-                      preScanConsumeGenericSuffix(typeTok);
+                      string memberGeneric = preScanConsumeGenericSuffix(typeTok);
                       while(file.peekToken().value == "|"){
                           file.getToken();
                           token alt = file.getToken();
@@ -1273,9 +1273,17 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                           for(typeMember* m : cls->members)
                               if(m->name == pname){ exists = true; break; }
                           if(!exists){
-                              variableDeclaration& vd = *(new variableDeclaration());
+                              // A member array stays an array (with its element type), so a use above the class sees one.
+                              bool isArr = (typeTok.value == "array" || typeTok.value == "rawarray") && memberGeneric.size() > 2;
+                              variableDeclaration& vd = isArr ? *(new arrayDeclaration()) : *(new variableDeclaration());
+                              if(isArr){
+                                  auto& ad = static_cast<arrayDeclaration&>(vd);
+                                  ad.elementType = memberGeneric.substr(1, memberGeneric.size() - 2);
+                                  ad.isRaw = typeTok.value == "rawarray";
+                                  ad.isByteArray = ad.elementType == "char" && !ad.isRaw;
+                              }
                               vd.name = pname;
-                              vd.type.name = typeTok.value;
+                              vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : typeTok.value;
                               vd.isInline = sawInline;   // carry inline so braceArgHints treats the class as inline-constructible pre-main-pass
                               vd.isPrePassStub = true;
                               cls->members.push_back(&vd);

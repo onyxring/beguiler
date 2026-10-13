@@ -222,6 +222,9 @@ freed by the time the caller sees it. To keep the result, assign it to a typed l
 first being assigned, the behavior is undefined. The same applies to results of `<array>` methods and
 chains on a local array (§22.4, §22.5).
 
+A local array of a value class can't be returned: the instances its slots own are released as the
+function leaves, so there would be nothing to copy. Fill an array the caller passes in instead.
+
 **Example**
 
 ```bgl

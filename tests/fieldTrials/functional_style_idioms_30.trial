@@ -1,0 +1,144 @@
+Room A
+Room A.
+
+> table
+No matches played.
+
+> goals
+No matches played.
+
+> form ash
+ash has not played.
+
+> play
+Round 1:
+  ash 2-1 birch
+  cedar 0-0 oak
+  elm 1-3 fir
+
+> table
+1. fir P1 W1 D0 L0 3-1 (+2) 3
+2. ash P1 W1 D0 L0 2-1 (+1) 3
+3. cedar P1 W0 D1 L0 0-0 (0) 1
+4. oak P1 W0 D1 L0 0-0 (0) 1
+5. birch P1 W0 D0 L1 1-2 (-1) 0
+6. elm P1 W0 D0 L1 1-3 (-2) 0
+
+> play 2
+Round 2:
+  ash 1-1 cedar
+  elm 2-0 birch
+  fir 0-2 oak
+Round 3:
+  ash 0-1 elm
+  fir 2-2 cedar
+  oak 3-1 birch
+
+> form ash
+ash: WDL (last 3: WDL), unbeaten run 2
+
+> team ash
+ash (north): rank 4, 4 points, 1.3333 a game
+best win: ash 2-1 birch (round 1)
+Failed to score at least once.
+
+> compare ash with elm
+elm is above (4 v 2)
+Round 3: ash 0-1 elm; ash lost
+
+> compare birch with oak
+oak is above (6 v 1)
+Round 3: oak 3-1 birch; birch lost
+
+> groups
+north:
+1. ash P3 W1 D1 L1 3-3 (0) 4
+2. cedar P3 W0 D3 L0 3-3 (0) 3
+3. birch P3 W0 D0 L3 2-7 (-5) 0
+south:
+1. oak P3 W2 D1 L0 5-1 (+4) 7
+2. elm P3 W2 D0 L1 4-3 (+1) 6
+3. fir P3 W1 D1 L1 5-5 (0) 4
+
+> goals
+22 goals in 9 matches, 2.4444 a match, most 4
+9 different scorelines
+  round 1: elm 1-3 fir
+  round 3: oak 3-1 birch
+At least one goalless draw.
+
+> leaders
+on 7: oak
+unbeaten: cedar
+
+> runs
+cedar 3
+oak 3
+ash 2
+
+> play 5
+Round 4:
+  ash 3-0 fir
+  oak 1-1 elm
+  birch 2-0 cedar
+Round 5:
+  ash 1-2 oak
+  birch 1-1 fir
+  cedar 2-1 elm
+
+> play
+All rounds played.
+
+> table
+1. oak P5 W3 D2 L0 8-3 (+5) 11
+2. ash P5 W2 D1 L2 7-5 (+2) 7
+3. elm P5 W2 D1 L2 6-6 (0) 7
+4. cedar P5 W1 D3 L1 5-6 (-1) 6
+5. fir P5 W1 D2 L2 6-9 (-3) 5
+6. birch P5 W1 D1 L3 5-8 (-3) 4
+
+> groups
+north:
+1. ash P5 W2 D1 L2 7-5 (+2) 7
+2. cedar P5 W1 D3 L1 5-6 (-1) 6
+3. birch P5 W1 D1 L3 5-8 (-3) 4
+south:
+1. oak P5 W3 D2 L0 8-3 (+5) 11
+2. elm P5 W2 D1 L2 6-6 (0) 7
+3. fir P5 W1 D2 L2 6-9 (-3) 5
+
+> form cedar
+cedar: DDDLW (last 3: DLW), unbeaten run 3
+
+> team fir
+fir (south): rank 5, 5 points, 1.0000 a game
+best win: elm 1-3 fir (round 1)
+Failed to score at least once.
+
+> team cedar
+cedar (north): rank 4, 6 points, 1.2000 a game
+best win: cedar 2-1 elm (round 5)
+Failed to score at least once.
+
+> compare cedar with fir
+cedar is above (4 v 5)
+Round 3: fir 2-2 cedar; cedar drew
+
+> compare ash with ash
+Pick two teams.
+
+> leaders
+on 11: oak
+unbeaten: oak
+
+> runs
+oak 5
+cedar 3
+elm 3
+
+> goals
+37 goals in 15 matches, 2.4667 a match, most 4
+11 different scorelines
+  round 4: ash 3-0 fir
+  round 1: elm 1-3 fir
+At least one goalless draw.

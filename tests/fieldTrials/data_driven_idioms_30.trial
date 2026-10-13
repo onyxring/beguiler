@@ -1,0 +1,182 @@
+Room A
+> stock
+water   60p   3 left    cold
+cola    85p   2 left    cold, sweet
+crisps  45p   4 left    salty
+toffee  35p   sold out  sweet
+soup    120p  2 left    salty, hot
+tea     70p   5 left    hot
+> coins
+5p    3 of 10
+10p   4 of 10
+20p   2 of 8
+50p   1 of 4
+100p  0 of 3
+Float: 145p, 1 empty.
+> vend a1
+water costs 60p; credit is 0p.
+> afford
+Nothing for 0p.
+> pay fifty
+Credit: 50p.
+> pay twenty
+Credit: 70p.
+> afford
+For 70p: water crisps tea.
+Cheapest: crisps.
+> vend a1
+water drops. Change: 10p.
+> change 35
+35p: 20p, 10p, 5p.
+> change 0
+0p: nothing.
+> change 250
+250p: 50p x2, 20p x3, 10p x3, 5p x3 (45p short).
+> pay hundred
+Credit: 100p.
+> pay hundred
+Credit: 200p.
+> pay five
+Credit is capped at 200p; coin returned.
+> vend c1
+soup drops. Change: 50p, 20p, 10p.
+> refund
+Nothing to refund.
+> pay ten
+Credit: 10p.
+> pay twenty
+Credit: 30p.
+> vend b2
+toffee is sold out.
+> refund
+Returned: 20p 10p.
+> restock b2 4
+toffee: 4 in stock.
+> restock a1 9
+water: 6 in stock.
+> restock a1 1
+water is full.
+> price c1
+soup: 120p, dear.
+> price b2
+toffee: 35p, cheap.
+> price a2
+cola: 85p, mid.
+> tagged hot
+hot: soup tea (2 in stock).
+> tagged sweet
+sweet: cola toffee (2 in stock).
+> pay fifty
+Credit: 50p.
+> vend b2
+toffee drops. Change: 10p, 5p.
+> pay twenty
+Credit: 20p.
+> pay twenty
+Credit: 40p.
+> pay twenty
+Credit: 60p.
+> vend a2
+cola costs 85p; credit is 60p.
+> pay twenty
+Credit: 80p.
+> pay ten
+Credit: 90p.
+> vend a2
+cola drops. Change: 5p.
+> sales
+water   paid 70p, change 10p
+soup    paid 200p, change 80p
+toffee  paid 50p, change 15p
+cola    paid 90p, change 5p
+Logged takings: 300p.
+> pay hundred
+Credit: 100p.
+> pay hundred
+The 100p tube is full; coin returned.
+> vend b1
+crisps drops. Change: 50p, 5p.
+> pay fifty
+Credit: 50p.
+> vend b2
+Exact change only.
+> refund
+Returned: 50p.
+> sales
+soup    paid 200p, change 80p
+toffee  paid 50p, change 15p
+cola    paid 90p, change 5p
+crisps  paid 100p, change 55p
+Logged takings: 285p.
+> tally
+water: 1
+cola: 1
+crisps: 1
+toffee: 1
+soup: 1
+Takings: 345p.
+Coins refused at the cap: 1.
+> pay fifty
+Credit: 50p.
+> pay fifty
+Credit: 100p.
+> pay fifty
+Credit: 150p.
+> vend c1
+soup drops. Change: 20p, 10p.
+> tally
+soup: 2
+water: 1
+cola: 1
+crisps: 1
+toffee: 1
+Takings: 465p.
+Something is sold out.
+Coins refused at the cap: 1.
+> coins
+5p    0 of 10
+10p   1 of 10
+20p   5 of 8
+50p   4 of 4
+100p  3 of 3
+Float: 610p, 1 empty.
+> stock
+water   60p   6 left    cold
+cola    85p   1 left    cold, sweet
+crisps  45p   3 left    salty
+toffee  35p   3 left    sweet
+soup    120p  sold out  salty, hot
+tea     70p   5 left    hot
+> tagged hot
+hot: soup tea (1 in stock).
+> tagged cold
+cold: water cola (2 in stock).
+> tagged salty
+salty: crisps soup (1 in stock).
+> afford
+Nothing for 0p.
+> pay twenty
+Credit: 20p.
+> pay twenty
+Credit: 40p.
+> afford
+For 40p: toffee.
+Cheapest: toffee.
+> pay fifty
+The 50p tube is full; coin returned.
+> pay twenty
+Credit: 60p.
+> afford
+For 60p: water crisps toffee.
+Cheapest: toffee.
+> pay twenty
+The 20p tube is full; coin returned.
+> refund
+Returned: 20p 20p 20p.
+> coins
+5p    0 of 10
+10p   1 of 10
+20p   5 of 8
+50p   4 of 4
+100p  3 of 3
+Float: 610p, 1 empty.

@@ -1,0 +1,97 @@
+Room A
+Room A.
+
+> setup
+  08:58 A: none -> idle at 0
+  08:58 B: none -> idle at 4
+Now 08:58; nine 09:00; later 09:03; before true, after true, same true.
+Cars 2, listeners 2, top 5.
+
+> call
+Call floor 3 up at 08:58 -> B@4.
+Call floor 1 idle at 08:58 -> A@0.
+Landing Mezzanine: floor 2 idle at 08:58 -> A@0.
+Fault: no such floor (9).
+Call floor 5 down at 08:58 -> B@4.
+Fault: request queue full (0).
+Pending 4, made 4, faults 2.
+
+> step
+  08:58 A: idle -> moving at 0
+  08:58 B: idle -> moving at 4
+08:59 A A@0 moving, B B@4 moving
+
+> step
+  08:59 A: moving -> doors open at 1
+  08:59 B: moving -> doors open at 3
+09:00 A A@1 doors open, B B@3 doors open
+
+> step
+09:01 A A@1 doors open, B B@3 doors open
+
+> status
+A@1 doors open idle; stops 2; served 1; changes 1
+B@3 doors open idle; stops 5; served 1; changes 2
+  waiting: floor 2 idle at 08:58 on A
+  waiting: floor 5 down at 08:58 on B
+Done 2, transitions 6, doors 2.
+
+> step
+09:02 A A@1 doors open, B B@3 doors open
+
+> step
+  09:02 A: doors open -> idle at 1
+  09:02 B: doors open -> idle at 3
+09:03 A A@1 idle, B B@3 idle
+
+> step
+  09:03 A: idle -> moving at 1
+  09:03 B: idle -> moving at 3
+09:04 A A@1 moving, B B@3 moving
+
+> step
+  09:04 A: moving -> doors open at 2
+09:05 A A@2 doors open, B B@4 moving
+
+> service
+  09:05 B: moving -> maintenance at 4
+Alarm true, raised 1; moved 1.
+Call floor 4 idle at 09:05 -> A@2.
+  09:05 A: doors open -> maintenance at 2
+Fault: no lift in service (2).
+  09:05 A: maintenance -> idle at 2
+Alarm false, raised 1.
+
+> status
+A@2 idle idle; stops 5 4; served 2; changes 2
+B@4 maintenance idle; stops none; served 1; changes 3
+  waiting: floor 5 down at 08:58 on A
+  waiting: floor 4 idle at 09:05 on A
+Done 3, transitions 14, doors 3.
+
+> strategy
+  09:05 B: maintenance -> idle at 4
+Call floor 4 idle at 09:05 -> B@4.
+Call floor 1 idle at 09:05 -> A@2.
+
+> step
+  09:05 A: idle -> moving at 2
+  09:05 B: idle -> moving at 4
+09:06 A A@2 moving, B B@4 moving
+
+> step
+  09:06 B: moving -> doors open at 4
+09:07 A A@3 moving, B B@4 doors open
+
+> report
+Idle 0, busy true, all in service true.
+By served: A=2 B=2
+Floors total 7 over 2.
+Oldest request on A.
+idle: calls true
+moving: calls true
+doors open: calls true, hold 2
+maintenance: calls false
+Lobby (0): nearest B
+Mezzanine (2): nearest B
+Deck (5, express): nearest B

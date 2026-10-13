@@ -1,0 +1,153 @@
+Room A
+Room A. A ticket spike stands on the counter. Room B is north.
+You can see an oil can, a duster and a ticket spike here.
+> bench
+cuckoo clock 01:50 stopped dusty wind 0
+wall clock 03:40 stopped dusty wind 0
+mantel clock 11:00 wind 2
+Running 1, faulty 3, ticketed 0, mended 0.
+Latest: mantel clock.
+> tickets
+The spike is empty.
+> examine spike
+A steel spike. Tickets marked ~A~ go here, 50^ each.
+> take oil can
+Taken.
+> take duster
+Taken.
+> north
+Room B
+Room B. A workbench runs along the wall. Room A is south.
+You can see a wall clock, a mantel clock and a cuckoo clock here.
+> bench
+cuckoo clock 01:50 stopped dusty wind 0
+wall clock 03:40 stopped dusty wind 0
+mantel clock 12:20 wind 1
+Running 1, faulty 3, ticketed 0, mended 0.
+Latest: mantel clock.
+> wind wall clock
+You wind the wall clock from 0 to 4.
+> oil wall clock
+You oil the wall clock; the train turns freely. 5 drops left.
+The wall clock: Bong-bong-bong-bong.
+The mantel clock: Bong.
+> wait
+Time passes.
+> oil wall clock
+You oil the wall clock. It was not stuck.
+> dust cuckoo clock
+You dust the cuckoo clock.
+The wall clock: Bong-bong-bong-bong-bong.
+> dust cuckoo clock
+The cuckoo clock is already clean.
+> wind up cuckoo clock
+You wind the cuckoo clock from 0 to 4.
+The cuckoo clock: Cuckoo x2.
+> wind cuckoo clock
+You wind the cuckoo clock from 3 to 7.
+The wall clock: Bong-bong-bong-bong-bong-bong.
+> wind cuckoo clock
+You wind the cuckoo clock from 7 to 8.
+> bench
+mantel clock 01:00 stopped wind 0
+cuckoo clock 02:50 wind 8
+wall clock 06:20 dusty wind 1
+Running 2, faulty 2, ticketed 0, mended 0.
+Latest: wall clock.
+> adjust cuckoo clock to 13
+Clock hours run 1 to 12.
+The cuckoo clock: Cuckoo x3.
+> turn cuckoo clock to 2
+You set the cuckoo clock to 02:00.
+The wall clock: Bong-bong-bong-bong-bong-bong-bong.
+> take wall clock
+Taken.
+> take mantel clock
+Taken.
+The cuckoo clock: Cuckoo x3.
+> south
+Room A
+Room A. A ticket spike stands on the counter. Room B is north.
+You can see a ticket spike here.
+> book wall clock
+Ticket 1 for the wall clock goes on the spike.
+> book mantel clock
+Ticket 2 for the mantel clock goes on the spike.
+> book wall clock
+The wall clock already has ticket 1.
+> tickets
+#1 wall clock (4); #2 mantel clock (2);
+Strikes so far: 6.
+Held: A clock with a brass face.
+The spike holds 2.
+> collect wall clock
+The wall clock is still dusty.
+> drop oil can
+Dropped.
+> north
+Room B
+Room B. A workbench runs along the wall. Room A is south.
+You can see a cuckoo clock here.
+> book cuckoo clock
+The spike is in Room A.
+> dust wall clock
+You dust the wall clock.
+The cuckoo clock: Cuckoo x6.
+> clean wall clock
+The wall clock is already clean.
+> wait
+Time passes.
+> wait
+Time passes.
+The cuckoo clock: Cuckoo x7.
+> wait
+Time passes.
+> south
+Room A
+Room A. A ticket spike stands on the counter. Room B is north.
+You can see an oil can and a ticket spike here.
+> collect wall clock
+The spring of the wall clock holds only 0.
+> collect mantel clock
+The hands of the mantel clock are loose.
+> tighten mantel clock
+You tighten the hands of the mantel clock.
+> collect mantel clock
+The spring of the mantel clock holds only 0.
+> wind mantel clock
+You wind the mantel clock from 0 to 4.
+> collect mantel clock
+Ticket 2 is closed; the mantel clock reads 01:20.
+> tickets
+#1 wall clock (4);
+Strikes so far: 4.
+Held: A clock with a brass face.
+The spike holds 2.
+> north
+Room B
+Room B. A workbench runs along the wall. Room A is south.
+You can see a cuckoo clock here.
+> take cuckoo clock
+Taken.
+> south
+Room A
+Room A. A ticket spike stands on the counter. Room B is north.
+You can see an oil can and a ticket spike here.
+> book cuckoo clock
+Ticket 3 for the cuckoo clock goes on the spike.
+> book wall clock
+The wall clock already has ticket 1.
+> tickets
+#1 wall clock (4); #3 cuckoo clock (9);
+Strikes so far: 13.
+Held: A clock with a brass face.
+The spike holds 2.
+> oil cuckoo clock
+You have no oil can.
+> bench
+mantel clock 03:40 wind 2
+wall clock 07:00 stopped wind 0
+cuckoo clock 09:00 stopped wind 0
+Running 1, faulty 0, ticketed 2, mended 1.
+Every clock is sound.
+Latest: cuckoo clock.

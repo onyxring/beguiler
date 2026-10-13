@@ -1,0 +1,433 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, three clocks on a
+// bench, an oil can, a duster and a spike of repair tickets. A clock class with positional members
+// (`inline instanceName` re-listed, `inline int` hour and minute), a bnum of faults set with `|`,
+// tested with `&` and cleared with `^`, a named accessor value class spring that clamps its tension
+// and is driven by `=` and `+=`, a `default` method overridden by a cuckoo subclass, and a class-wide
+// static counter; a pooled ticket class with `create`/`destroy`, obtained with `new` and released with
+// `delete`, kept in a global `array<Ticket>` searched with a lambda and removed from; a regulator
+// daemon started in `Initialise` that advances the running clocks and strikes the hour; a check
+// routine with a default parameter, called positionally and by name, that `throw`s int codes caught
+// and switched on (with a range and a guard case) in the verb handler; a `stringObj` time padded with
+// `prepend` in a `do … until` and assembled with `format`; <linq> `orderBy` with a comparator,
+// `filter`, `count`, `all`, `last` and `map` over a global `array<Clock>`; `?.` and `??` on a lookup
+// that can be null; a value class tally filled through a `ref` parameter; `NUMBER` grammar with
+// alternation; `#define` values tested by `#if`/`#else`; hex and binary literals; a raw string;
+// mixed-case keywords, Allman, K&R and one-line braces, tab indentation in one routine, comments
+// between tokens and in argument lists, and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define NCLOCKS    3
+#define NTICKETS   2
+#define FULL_WIND  8
+#define STEP_MIN   20     // minutes a running clock gains each turn
+
+// ---- constants -----------------------------------------------------------------------------------
+
+const int OIL_DROPS = $06 ;            // drops in a full can
+CONST INT WIND_TURN = $$100 ;          // tension one wind adds
+Const int
+    NOON        = 12 ;
+
+bnum eFault { dusty , stuck , /* the hard one */ loose }
+
+// ---- rooms ---------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A ticket spike stands on the counter. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. A workbench runs along the wall. Room A is south." ;
+    object s_to = roomA ;
+}
+
+// ---- the spring accessor -------------------------------------------------------------------------
+
+/// Spring tension, held between 0 and FULL_WIND.
+value class Spring
+{
+    int _t = 0 ;
+    int  operator () { return _t ; }
+    void operator = ( int v )
+    {
+        if      (v < 0)         _t = 0 ;
+        else if (v > FULL_WIND) _t = FULL_WIND ;
+        else                    _t = v ;
+    }
+}
+
+// ---- clocks --------------------------------------------------------------------------------------
+
+class Clock : object
+{
+    inline instanceName ;
+    inline int hour   = NOON ;
+    inline int minute = 0 ;
+    eFault faults = 0 ;
+    Spring spring ;
+    int    strikes = 0 ;
+    string description = "A clock with a brass face." ;
+
+    static int mended = 0 ;
+
+    bool runs () { return spring > 0 && (faults & eFault.stuck) == 0 ; }
+
+    /// Prints the sound of one hour.
+    default void strike ()
+    {
+        for (int i = 0 ; i < hour ; i++) print(i == 0 ? "Bong" : "-bong") ;
+        printLine(".") ;
+    }
+}
+
+class CuckooClock : Clock
+{
+    void strike () { printLine($"Cuckoo x{hour}.") ; }
+}
+
+Clock wallClock   { "wall clock" , 3 , 40 ; name = { .wall , .clock } ; parent = roomB ; faults = eFault.dusty | eFault.stuck ; }
+Clock mantelClock
+{
+    "mantel clock" ,
+    $0B ,              // eleven
+    0 ;
+    name   = { .mantel , .clock } ;
+    parent = roomB ;
+    faults = eFault.loose ;
+}
+CuckooClock cuckoo { "cuckoo clock" , 1 , 50 ; name = { .cuckoo , .clock } ; parent = roomB ; faults = eFault.dusty ; }
+
+array<Clock> clocks = { wallClock , mantelClock , cuckoo } ;
+
+// ---- tools ---------------------------------------------------------------------------------------
+
+object oilCan
+{
+    "oil can" ;
+    parent = roomA ;
+    name   = { .oil , .can } ;
+    string description = "A small oil can with a long spout." ;
+    int drops = OIL_DROPS ;
+}
+
+object duster { "duster" ; parent = roomA ; name = { .duster } ; string description = "A feather duster." ; }
+
+object spike
+{
+    "ticket spike" ;
+    parent     = roomA ;
+    name       = { .ticket , .spike } ;
+    attributes = { static } ;
+    string description = @"A steel spike. Tickets marked ~A~ go here, 50^ each." ;
+}
+
+// ---- tickets -------------------------------------------------------------------------------------
+
+class Ticket[NTICKETS] : object
+{
+    Clock clock = null ;
+    int   number = 0 ;
+    static int issued = 0 ;
+
+    void create ( Clock c )
+    {
+        clock  = c ;
+        number = ++Ticket.issued ;
+    }
+    void destroy () { clock = null ; }
+}
+
+array<Ticket> tickets[NTICKETS] ;
+
+Ticket ticketFor ( Clock c )
+{
+    for (Ticket t in tickets) if (t.clock == c) return t ;
+    return null ;
+}
+
+// ---- time ----------------------------------------------------------------------------------------
+
+/// Two-digit text for n, padded with zeros.
+stringObj twoDigits ( int n )
+{
+    stringObj s = $"{n}" ;
+    do
+    {
+        if (s.length >= 2) break ;
+        s = s.prepend('0') ;
+    } until (s.length >= 2) ;
+    return s ;
+}
+
+stringObj timeOf ( Clock c )
+{
+    stringObj h = twoDigits(c.hour) ;
+    stringObj m = twoDigits(c.minute) ;
+    stringObj out = h.format("$0:$1" , m) ;
+    return out ;
+}
+
+void advance ( Clock c , int mins )
+{
+	c.minute += mins ;
+	while (c.minute >= 60)
+	{
+		c.minute -= 60 ;
+		c.hour = c.hour % NOON + 1 ;
+		c.spring -= 1 ;
+		c.strikes++ ;
+		if (c.parent == location)
+		{
+			print($"{cThe(c)}: ") ;
+			c.strike() ;
+		}
+	}
+}
+
+object regulator
+{
+    "regulator" ;
+    void daemon ()
+    {
+        for (Clock c in clocks)
+        {
+            if (!c.runs()) continue ;
+            advance(c , STEP_MIN) ;
+        }
+    }
+}
+
+// ---- checks --------------------------------------------------------------------------------------
+
+/// Throws 1 for dust, 2 for a stuck train, 3 for a loose hand, 10 + n for a weak spring.
+void check ( Clock c , int need = 1 )
+{
+    if ((c.faults & eFault.dusty)  != 0) throw 1 ;
+    if ((c.faults & eFault.stuck)  != 0) throw 2 ;
+    if ((c.faults & eFault.loose)  != 0) throw 3 ;
+    if (c.spring < need)                 throw 10 + c.spring ;
+}
+
+value class Tally
+{
+    int running ; int faulty ; int ticketed ;
+    Tally operator = ( Tally o ) { running = o.running ; faulty = o.faulty ; ticketed = o.ticketed ; return self ; }
+}
+
+void tallyBench ( ref Tally t )
+{
+    t.running  = clocks.filter((Clock c) => c.runs()).count() ;
+    t.faulty   = clocks.filter((Clock c) => c.faults != 0).count() ;
+    t.ticketed = tickets.length ;
+}
+
+Clock heldClock ()
+{
+    for (Clock c in clocks) if (c.parent == player) return c ;
+    return null ;
+}
+
+// ---- startup -------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    mantelClock.spring = 2 ;
+    StartDaemon(regulator) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands ------------------------------------------------------------------------------------
+
+verb WindUp
+{
+    grammar = { { .wind , NOUN } , { .wind , .up , NOUN } } ;
+    void handler ()
+    {
+        if (!noun.is(Clock)) { printLine("That has no spring.") ; return ; }
+        Clock c = (Clock) noun ;
+        int was = c.spring ;
+        c.spring += WIND_TURN ;
+        if (c.spring == was) printLine($"{cThe(c)} is fully wound.") ;
+        else                 printLine($"You wind {the(c)} from {was} to {c.spring}.") ;
+    }
+}
+
+verb Oil {
+    grammar = { .oil , NOUN } ;
+    void handler () {
+        if (!noun.is(Clock))           { printLine("Oil is for clocks.") ; return ; }
+        if (oilCan.parent != player)   { printLine("You have no oil can.") ; return ; }
+        if (oilCan.drops <= 0)         { printLine("The oil can is empty.") ; return ; }
+        Clock c = (Clock) noun ;
+        oilCan.drops-- ;
+        if ((c.faults & eFault.stuck) == 0) { printLine($"You oil {the(c)}. It was not stuck.") ; return ; }
+        c.faults = c.faults ^ eFault.stuck ;
+        printLine($"You oil {the(c)}; the train turns freely. {oilCan.drops} drops left.") ;
+    }
+}
+
+verb Dust { grammar = { { .dust , NOUN } , { .clean , NOUN } } ;
+    void handler () {
+        if (duster.parent != player) { printLine("You have no duster.") ; return ; }
+        if (!noun.is(Clock))        { printLine("That is clean enough.") ; return ; }
+        Clock c = (Clock) noun ;
+        if ((c.faults & eFault.dusty) != 0) { c.faults ^= eFault.dusty ; printLine($"You dust {the(c)}.") ; }
+        else                                printLine($"{cThe(c)} is already clean.") ;
+    }
+}
+
+verb Tighten
+{
+    grammar = { .tighten , NOUN } ;
+    void handler ()
+    {
+        if (!noun.is(Clock)) { printLine("Nothing there is loose.") ; return ; }
+        Clock c = (Clock) noun ;
+        if ((c.faults & eFault.loose) == 0) { printLine("The hands are firm.") ; return ; }
+        c.faults = c.faults ^ eFault.loose ;
+        printLine($"You tighten the hands of {the(c)}.") ;
+    }
+}
+
+verb AdjustHands
+{
+    grammar = { { .adjust , NOUN , .to , NUMBER } , { .adjust | .turn , NOUN , .to , NUMBER } } ;
+    void handler ()
+    {
+        if (!noun.is(Clock)) { printLine("That has no hands.") ; return ; }
+        Clock c = (Clock) noun ;
+        int h = parsed_number ;
+        switch (h)
+        {
+            case 1 to 12 :
+                c.hour   = h ;
+                c.minute = 0 ;
+                printLine($"You set {the(c)} to {timeOf(c)}.") ;
+            default :
+                printLine("Clock hours run 1 to 12.") ;
+        }
+    }
+}
+
+verb Book
+{
+    grammar = { .book , NOUN } ;
+    void handler ()
+    {
+        if (!noun.is(Clock))   { printLine("Only clocks get tickets.") ; return ; }
+        if (location != roomA) { printLine("The spike is in Room A.") ; return ; }
+        Clock c = (Clock) noun ;
+        if (ticketFor(c) != null) { printLine($"{cThe(c)} already has ticket {ticketFor(c).number}.") ; return ; }
+        Ticket t = new Ticket(c) ;
+        if (t == null) { printLine("The spike is full.") ; return ; }
+        tickets.append(t) ;
+        printLine($"Ticket {t.number} for {the(c)} goes on the spike.") ;
+    }
+}
+
+verb Collect
+{
+    grammar = { { .collect , NOUN } , { .return , NOUN } } ;
+    void handler ()
+    {
+        if (!noun.is(Clock)) { printLine("That was not left for repair.") ; return ; }
+        Clock c = (Clock) noun ;
+        Ticket t = ticketFor(c) ;
+        if (t == null) { printLine($"{cThe(c)} has no ticket.") ; return ; }
+        try
+        {
+            if (c == mantelClock) check(c , need: 3) ;   // the mantel clock must hold a day
+            else                  check(c) ;
+        }
+        CATCH (int code)
+        {
+            switch (code)
+            {
+                case 1      : printLine($"{cThe(c)} is still dusty.") ;
+                case 2      : printLine($"{cThe(c)} is still stuck.") ;
+                case 3      : printLine($"The hands of {the(c)} are loose.") ;
+                case >= 10  : printLine($"The spring of {the(c)} holds only {code - 10}.") ;
+                default     : printLine("Something is wrong.") ;
+            }
+            return ;
+        }
+        int n = t.number ;
+        tickets.remove(tickets.indexOf(t)) ;
+        delete t ;
+        Clock.mended++ ;
+        printLine($"Ticket {n} is closed; {the(c)} reads {timeOf(c)}.") ;
+    }
+}
+
+verb BenchList
+{
+    meta    = true ;
+    grammar = { { .bench } , { .clocks } } ;
+    void handler ()
+    {
+        array<Clock> byHour = clocks.orderBy( (Clock a , Clock b) => a.hour < b.hour ? -1 : (a.hour > b.hour ? 1 : 0) ) ;
+        for (Clock c in byHour)
+        {
+            stringObj tm = timeOf(c) ;
+            print($"{c} {tm}") ;
+            if (!c.runs())                     print(" stopped") ;
+            if ((c.faults & eFault.dusty) != 0) print(" dusty") ;
+            printLine($" wind {c.spring}") ;
+        }
+        Tally t ;
+        tallyBench(t) ;
+        printLine($"Running {t.running}, faulty {t.faulty}, ticketed {t.ticketed}, mended {Clock.mended}.") ;
+        if (clocks.all((Clock c) => c.faults == 0)) printLine("Every clock is sound.") ;
+        Clock latest = byHour.last() ;
+        printLine($"Latest: {latest}.") ;
+    }
+}
+
+verb TicketList
+{
+    META    = TRUE ;
+    grammar = { { .tickets } , { .spike } } ;
+    void handler ()
+    {
+        if (tickets.length == 0) { printLine("The spike is empty.") ; return ; }
+        for (Ticket t in tickets)
+            print($"#{t.number} {t.clock} ({t.clock?.strikes}); ") ;
+        printLine("") ;
+        array<var> counts = tickets.map((Ticket t) => t.clock.strikes) ;
+        int total = 0 ;
+        for (int i = 0 ; i < counts.length ; i++) total += (int) counts[i] ;
+        printLine($"Strikes so far: {total}.") ;
+        Clock h = heldClock() ;
+        printLine($"Held: {h?.description ?? "nothing"}") ;
+#if NTICKETS > 4
+        printLine("A long spike.") ;
+#else
+        printLine($"The spike holds {NTICKETS}.") ;
+#endif
+    }
+}

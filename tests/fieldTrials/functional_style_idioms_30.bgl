@@ -1,0 +1,459 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small league table written in a functional style on Glulx. Teams are scenery objects
+// of a class with an enum group, held in a global array; fixtures are a global array<array<int>> of
+// packed rounds (home, away and both scores per match) decoded by pure helpers; played matches are a
+// value class with a copy operator, appended to a sized global array<Result> from a named inline value
+// and walked by <linq> chains (filter, map, orderBy with comparators, skip, take, distinct, first,
+// last, any, all, count); a value class standing row with a copy operator, an instance `operator +`
+// and an instance `operator <=>` ranking order, folded per team through a generic fold that takes a
+// func<Row, Row, Result>, sorted with sort() and returned as a local array captured into a sized
+// typed local; derived `<` from `<=>`; float points per game; recursive helpers with accumulators
+// (form letters into a `ref stringObj`, longest unbeaten run, joined labels returned by value);
+// `?.` and `??` on a chain's first(); an enum outcome switched in a block lambda; named and
+// defaulted parameters; verbs reading noun, second and parsed_number.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int NTEAMS = 6;
+const int MAXPLAYED = 16;
+const int WIN = 3;
+
+//-- Teams ----------------------------------------------------------------------------------------
+
+enum eGroup { north, south }
+enum eOutcome { win, draw, loss }
+
+class Team : object {
+    attributeList attributes = {scenery};
+    string label;
+    eGroup group;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Team ash   { "ash";   name = {.ash};   label = "ash";   group = eGroup.north; parent = roomA; }
+Team birch { "birch"; name = {.birch}; label = "birch"; group = eGroup.north; parent = roomA; }
+Team cedar { "cedar"; name = {.cedar}; label = "cedar"; group = eGroup.north; parent = roomA; }
+Team elm   { "elm";   name = {.elm};   label = "elm";   group = eGroup.south; parent = roomA; }
+Team fir   { "fir";   name = {.fir};   label = "fir";   group = eGroup.south; parent = roomA; }
+Team oak   { "oak";   name = {.oak};   label = "oak";   group = eGroup.south; parent = roomA; }
+
+array<Team> teams = {ash, birch, cedar, elm, fir, oak};
+array<eGroup> groups = {eGroup.north, eGroup.south};
+
+// One inner array per round: home index, away index, home score, away score for each match.
+array<array<int>> fixtures = {
+    {0, 1, 2, 1,   2, 5, 0, 0,   3, 4, 1, 3},
+    {0, 2, 1, 1,   3, 1, 2, 0,   4, 5, 0, 2},
+    {0, 3, 0, 1,   4, 2, 2, 2,   5, 1, 3, 1},
+    {0, 4, 3, 0,   5, 3, 1, 1,   1, 2, 2, 0},
+    {0, 5, 1, 2,   1, 4, 1, 1,   2, 3, 2, 1}
+};
+
+int nextRound = 0;
+
+//-- Results --------------------------------------------------------------------------------------
+
+value class Result {
+    int round = 0;
+    Team home = null;
+    Team away = null;
+    int hg = 0;
+    int ag = 0;
+
+    Result operator = (Result o) {
+        round = o.round;
+        home = o.home;
+        away = o.away;
+        hg = o.hg;
+        ag = o.ag;
+        return self;
+    }
+}
+
+array<Result> played[MAXPLAYED];
+
+bool involves(Result r, Team t) { return r.home == t || r.away == t; }
+int goalsFor(Result r, Team t) { return r.home == t ? r.hg : r.ag; }
+int goalsAgainst(Result r, Team t) { return r.home == t ? r.ag : r.hg; }
+int totalGoals(Result r) { return r.hg + r.ag; }
+
+eOutcome outcomeFor(Result r, Team t) {
+    int d = goalsFor(r, t) - goalsAgainst(r, t);
+    return d > 0 ? eOutcome.win : d == 0 ? eOutcome.draw : eOutcome.loss;
+}
+
+string letter(eOutcome o) {
+    switch (o) {
+        case eOutcome.win:  return "W";
+        case eOutcome.draw: return "D";
+        default:            return "L";
+    }
+}
+
+array<Result> matchesOf(Team t) {
+    return played.filter((Result r) => involves(r, t));
+}
+
+//-- Standing rows --------------------------------------------------------------------------------
+
+value class Row {
+    Team team = null;
+    int played = 0;
+    int won = 0;
+    int drawn = 0;
+    int lost = 0;
+    int gf = 0;
+    int ga = 0;
+
+    Row operator = (Row o) {
+        team = o.team;
+        played = o.played;
+        won = o.won;
+        drawn = o.drawn;
+        lost = o.lost;
+        gf = o.gf;
+        ga = o.ga;
+        return self;
+    }
+
+    Row operator + (Row o) {
+        Row r;
+        r.team = team != null ? team : o.team;
+        r.played = played + o.played;
+        r.won = won + o.won;
+        r.drawn = drawn + o.drawn;
+        r.lost = lost + o.lost;
+        r.gf = gf + o.gf;
+        r.ga = ga + o.ga;
+        return r;
+    }
+
+    int points() { return won * WIN + drawn; }
+    int diff() { return gf - ga; }
+
+    // Ranking order: more points first, then goal difference, goals for, and label.
+    int operator <=> (Row o) {
+        if (points() != o.points()) return o.points() - points();
+        if (diff() != o.diff()) return o.diff() - diff();
+        if (gf != o.gf) return o.gf - gf;
+        return team.label.compareTo(o.team.label);
+    }
+
+    float perGame() {
+        if (played == 0) return 0.0;
+        return (float)points() / played;
+    }
+}
+
+Row rowOf(Result r, Team t) {
+    Row one;
+    one.team = t;
+    if (!involves(r, t)) return one;
+    one.played = 1;
+    one.gf = goalsFor(r, t);
+    one.ga = goalsAgainst(r, t);
+    switch (outcomeFor(r, t)) {
+        case eOutcome.win:  one.won = 1;
+        case eOutcome.draw: one.drawn = 1;
+        default:            one.lost = 1;
+    }
+    return one;
+}
+
+Row foldResults(array<Result> rs, func<Row, Row, Result> step, Row seed) {
+    Row acc = seed;
+    for (Result r in rs) acc = step(acc, r);
+    return acc;
+}
+
+Row standingOf(Team t) {
+    Row empty;
+    empty.team = t;
+    return foldResults(played, (Row acc, Result r) => acc + rowOf(r, t), empty);
+}
+
+/// Fills `rows` with the standings of the teams `include` keeps (all of them by default).
+void standings(array<Row> rows, func<bool, Team> include = null) {
+    rows.clear();
+    for (Team t in teams) {
+        if (include == null || include(t)) rows.append(standingOf(t));
+    }
+    rows.sort();
+}
+
+int rankOf(Team t) {
+    array<Row> rows[NTEAMS];
+        standings(rows);
+    for (int i = 0; i < rows.length; i++) {
+        if (rows[i].team == t) return i + 1;
+    }
+    return 0;
+}
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int foldInts(array<int> xs, func<int, int, int> f, int seed = 0) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int plus(int a, int b) { return a + b; }
+int larger(int a, int b) { return a > b ? a : b; }
+
+string groupName(eGroup g) { return g == eGroup.north ? "north" : "south"; }
+string countWord(int n, string one, string many) { return n == 1 ? one : many; }
+
+string signed(int n) { return n > 0 ? "+" : ""; }
+
+// Form letters for rs[i..], oldest first.
+void formFrom(array<Result> rs, Team t, ref stringObj out, int i = 0) {
+    if (i >= rs.length) return;
+    out += letter(outcomeFor(rs[i], t));
+    formFrom(rs, t, out, i + 1);
+}
+
+// Longest run of matches without a loss, from rs[i] on.
+int unbeatenRun(array<Result> rs, Team t, int i = 0, int run = 0, int best = 0) {
+    if (i >= rs.length) return larger(run, best);
+    if (outcomeFor(rs[i], t) == eOutcome.loss) return unbeatenRun(rs, t, i + 1, 0, larger(run, best));
+    return unbeatenRun(rs, t, i + 1, run + 1, best);
+}
+
+int runOf(Team t) {
+    array<Result> mine[MAXPLAYED] = matchesOf(t);
+    return unbeatenRun(mine, t);
+}
+
+stringObj joinFrom(array<Team> xs, int i = 0, string sep = ", ") {
+    stringObj s;
+    if (i >= xs.length) return s;
+    s = xs[i].label;
+    if (i + 1 < xs.length) {
+        s += sep;
+        s += joinFrom(xs, i + 1, sep);
+    }
+    return s;
+}
+
+stringObj scoreLine(Result r) {
+    stringObj s = $"{r.home.label} {r.hg}-{r.ag} {r.away.label}";
+    return s;
+}
+
+// Larger margin first; equal margins by more goals, then by round.
+int byMargin(Result a, Result b) {
+    int ma = a.hg > a.ag ? a.hg - a.ag : a.ag - a.hg;
+    int mb = b.hg > b.ag ? b.hg - b.ag : b.ag - b.hg;
+    if (ma != mb) return mb - ma;
+    if (totalGoals(a) != totalGoals(b)) return totalGoals(b) - totalGoals(a);
+    return a.round - b.round;
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+Team teamOf(object o) {
+    if (!o.is(Team)) {
+        print("That is not a team.^");
+        return null;
+    }
+    return (Team)o;
+}
+
+void showRow(Row r, int rank) {
+    print($"{rank}. {r.team.label} P{r.played} W{r.won} D{r.drawn} L{r.lost} {r.gf}-{r.ga} ({signed(r.diff())}{r.diff()}) {r.points()}^");
+}
+
+verb PlayVerb {
+    grammar = {{.play}, {.play, NUMBER}};
+    void handler() {
+        int rounds = parsed_number > 0 ? parsed_number : 1;
+        if (nextRound >= fixtures.length) {
+            print("All rounds played.^");
+            return;
+        }
+        for (int n = 0; n < rounds && nextRound < fixtures.length; n++) {
+            array<int> f = fixtures[nextRound];
+            nextRound++;
+            print($"Round {nextRound}:^");
+            for (int m = 0; m + 3 < f.length; m += 4) {
+                played += Result{ round = nextRound; home = teams[f[m]]; away = teams[f[m + 1]]; hg = f[m + 2]; ag = f[m + 3]; };
+                print($"  {scoreLine(played.last())}^");
+            }
+        }
+    }
+}
+
+verb TableVerb {
+    grammar = {{.table}};
+    void handler() {
+        if (played.length == 0) {
+            print("No matches played.^");
+            return;
+        }
+        array<Row> rows[NTEAMS];
+        standings(rows);
+        for (int i = 0; i < rows.length; i++) showRow(rows[i], i + 1);
+    }
+}
+
+verb GroupsVerb {
+    grammar = {{.groups}};
+    void handler() {
+        for (eGroup g in groups) {
+            array<Row> rows[NTEAMS];
+        standings(rows, (Team t) => t.group == g);
+            print($"{groupName(g)}:^");
+            for (int i = 0; i < rows.length; i++) showRow(rows[i], i + 1);
+        }
+    }
+}
+
+verb FormVerb {
+    grammar = {{.form, NOUN}};
+    void handler() {
+        Team t = teamOf(noun);
+        if (t == null) return;
+        array<Result> mine[MAXPLAYED] = matchesOf(t);
+        if (mine.length == 0) {
+            print($"{t.label} has not played.^");
+            return;
+        }
+        array<Result> recent[MAXPLAYED] = mine.skip(mine.length - 3);
+        stringObj all;
+        stringObj last3;
+        formFrom(mine, t, all);
+        formFrom(recent, t, last3);
+        print($"{t.label}: {all} (last {recent.length}: {last3}), unbeaten run {runOf(t)}^");
+    }
+}
+
+verb TeamVerb {
+    grammar = {{.team, NOUN}};
+    void handler() {
+        Team t = teamOf(noun);
+        if (t == null) return;
+        Row r = standingOf(t);
+        if (r.played == 0) {
+            print($"{t.label} has not played.^");
+            return;
+        }
+        print($"{t.label} ({groupName(t.group)}): rank {rankOf(t)}, {r.points()} {countWord(r.points(), "point", "points")}, {r.perGame()} a game^");
+        array<Result> wins[MAXPLAYED] = matchesOf(t).filter((Result m) => outcomeFor(m, t) == eOutcome.win);
+        if (wins.length == 0) print("best win: none^");
+        else {
+            Result best = wins.orderBy(byMargin).first();
+            print($"best win: {scoreLine(best)} (round {best.round})^");
+        }
+        bool scoredEvery = matchesOf(t).all((Result m) => goalsFor(m, t) > 0);
+        print(scoredEvery ? "Scored in every match.^" : "Failed to score at least once.^");
+    }
+}
+
+verb CompareVerb {
+    grammar = {{.compare, NOUN, .with, NOUN}};
+    void handler() {
+        Team a = teamOf(noun);
+        if (a == null) return;
+        Team b = teamOf(second);
+        if (b == null) return;
+        if (a == b) {
+            print("Pick two teams.^");
+            return;
+        }
+        Row ra = standingOf(a);
+        Row rb = standingOf(b);
+        string above = ra < rb ? a.label : b.label;
+        print($"{above} is above ({rankOf(a)} v {rankOf(b)})^");
+        array<Result> meet[MAXPLAYED] = played.filter((Result r) => involves(r, a) && involves(r, b));
+        if (meet.length == 0) {
+            print("They have not met.^");
+            return;
+        }
+        Result m = meet.first();
+        func<string, Result> say = (Result x) => {
+            switch (outcomeFor(x, a)) {
+                case eOutcome.win:  return "won";
+                case eOutcome.draw: return "drew";
+                default:            return "lost";
+            }
+        };
+        string verdict = say(m);
+        print($"Round {m.round}: {scoreLine(m)}; {a.label} {verdict}^");
+    }
+}
+
+verb GoalsVerb {
+    grammar = {{.goals}};
+    void handler() {
+        if (played.length == 0) {
+            print("No matches played.^");
+            return;
+        }
+        array<int> totals = played.map((var r) => totalGoals((Result)r));
+        int sum = foldInts(totals, plus);
+        print($"{sum} goals in {played.length} matches, {(float)sum / played.length} a match, most {foldInts(totals, larger)}^");
+        array<int> lines = played.map((var r) => ((Result)r).hg * 10 + ((Result)r).ag);
+        array<int> once = lines.distinct();
+        print($"{once.count()} different scorelines^");
+        array<Result> big[MAXPLAYED] = played.orderBy(byMargin).take(2);
+        for (Result r in big) print($"  round {r.round}: {scoreLine(r)}^");
+        bool anyGoalless = played.any((Result r) => totalGoals(r) == 0);
+        print(anyGoalless ? "At least one goalless draw.^" : "No goalless draws.^");
+    }
+}
+
+verb LeadersVerb {
+    grammar = {{.leaders}};
+    void handler() {
+        array<Row> rows[NTEAMS];
+        standings(rows);
+        array<Team> top[NTEAMS];
+        int best = rows.length > 0 ? rows[0].points() : 0;
+        for (Row r in rows) {
+            if (r.points() == best && r.played > 0) top += r.team;
+        }
+        print($"on {best}: {joinFrom(top)}^");
+        Team unbeaten = teams.filter((Team t) => matchesOf(t).count() > 0)
+                             .filter((Team t) => !matchesOf(t).any((Result m) => outcomeFor(m, t) == eOutcome.loss))
+                             .first();
+        print($"unbeaten: {unbeaten?.label ?? "none"}^");
+    }
+}
+
+verb RunsVerb {
+    grammar = {{.runs}};
+    void handler() {
+        array<Team> ranked = teams.orderBy((Team a, Team b) => {
+            int d = runOf(b) - runOf(a);
+            if (d != 0) return d;
+            return a.label.compareTo(b.label);
+        });
+        array<Team> top = ranked.take(3);
+        for (Team t in top) print($"{t.label} {runOf(t)}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,663 @@
+#grids
+Room A
+Room A. A switchboard with four lines.
+You can see an A line, a B line, a C line, a D line and a board here.
+[win 1] [0] board ready
+> report
+Line  No.  State       Ans Miss
+A     11   idle          0    0
+B     12   idle          0    0
+C     13   idle          0    0
+D     14   faulty        0    0
+idle: 3
+faulty: 1
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/0                        |
+|B 12 . idle      [---] 0/0                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 0                            |
+|                                                  |
+[grid 2]
+|Room A | turn 0 | last answered none              |
+> queue a line
+(the A line)
+Queued a call to line A (1 waiting).
+Line A rings.
+[win 1] [1] ring A
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [---] 0/0                        |
+|B 12 . idle      [---] 0/0                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 0                            |
+|                                                  |
+[grid 2]
+|Room A | turn 1 | last answered none              |
+> queue 12
+Queued a call to line B (1 waiting).
+Line B rings.
+[win 1] [2] ring B
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [#--] 0/0                        |
+|B 12 ! ringing   [---] 0/0                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 0                            |
+|                                                  |
+[grid 2]
+|Room A | turn 2 | last answered none              |
+> queue 12
+Queued a call to line B (1 waiting).
+A call to line B gets a busy signal.
+[win 1] [3] busy B
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [##-] 0/0                        |
+|B 12 ! ringing   [#--] 0/0                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 0                            |
+|                                                  |
+[grid 2]
+|Room A | turn 3 | last answered none              |
+> queue 99
+No line has that number.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [###] 0/0                        |
+|B 12 ! ringing   [##-] 0/0                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 0                            |
+|                                                  |
+[grid 2]
+|Room A | turn 4 | last answered none              |
+> examine a line
+(the A line)
+Line A (number 11) is ringing; answered 0 of 0.
+Line A stops ringing.
+[win 1] [5] missed A
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 ! ringing   [###] 0/0                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 1                            |
+|                                                  |
+[grid 2]
+|Room A | turn 5 | last answered none              |
+> answer a line
+(the A line)
+Line A is idle, not ringing.
+Line B stops ringing.
+[win 1] [6] missed B
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 6 | last answered none              |
+> wait
+Time passes.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 7 | last answered none              |
+> answer a
+(the A line)
+Line A is idle, not ringing.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 8 | last answered none              |
+> push b
+Line B is not ringing.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 9 | last answered none              |
+> queue d
+(the D line)
+Queued a call to line D (1 waiting).
+A call to line D gets a busy signal.
+[win 1] [10] busy D
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 10 | last answered none             |
+> wait
+Time passes.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 x faulty    [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 11 | last answered none             |
+> mend d
+(the D line)
+D mended.
+[win 1] [11] D MENDED
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 . idle      [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 12 | last answered none             |
+> queue d
+(the D line)
+Queued a call to line D (1 waiting).
+Line D rings.
+[win 1] [13] ring D
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 ! ringing   [---] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 13 | last answered none             |
+> wait
+Time passes.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 ! ringing   [#--] 0/0                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 14 | last answered none             |
+> answer d
+(the D line)
+You answer line D.
+[win 1] [14] answer D
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 15 | last answered D                |
+> hangup a
+(the A line)
+Line A is not connected.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 16 | last answered D                |
+> hangup c
+Line C is not connected.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | last answered D                |
+> calls
+Answered in order: D.
+B has not been answered.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | last answered D                |
+> ledger
+Ledger: 1 answered, 2 missed; longest wait 4.
+Answer rate 33.3%; counting A twice: 1 answered, 3 missed.
+Busy signals 2; dropped 2.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | last answered D                |
+> busiest
+Busiest: line A with 1 call.
+Top two: AB.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | last answered D                |
+> pin c
+Pinned line C; history has 2.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 18 | last answered D                |
+> calls
+Answered in order: CD.
+B has not been answered.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 18 | last answered D                |
+> forget a
+(the A line)
+Line A is not in the history.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 19 | last answered D                |
+> pin a
+(the A line)
+Pinned line A; history has 4.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 20 | last answered D                |
+> calls
+Answered in order: ACAD.
+B has not been answered.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 20 | last answered D                |
+> forget a
+(the A line)
+Forgot line A; 2 left.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | last answered D                |
+> calls
+Answered in order: CD.
+B has not been answered.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | last answered D                |
+> panel
+Queue: A B C
+Also: summary wipe
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | last answered D                |
+> @link 1
+[win 1] [21] queued A
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [A] 1/6 dropped 2                           |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | last answered D                |
+> @link 3
+[win 1] [21] queued C
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 . idle      [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [AC] 2/6 dropped 2                          |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | last answered D                |
+> queue a
+(the A line)
+A call to line A is already queued.
+Line A rings.
+[win 1] [22] ring A
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [C] 1/6 dropped 2                           |
+|                                                  |
+[grid 2]
+|Room A | turn 22 | last answered D                |
+> @link 4
+[win 1] [22] 1 answered, 2 missed
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [---] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 . idle      [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [C] 1/6 dropped 2                           |
+|                                                  |
+[grid 2]
+|Room A | turn 22 | last answered D                |
+>> wait
+wait
+Time passes.
+Line C rings.
+[win 1] [23] ring C
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [#--] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 ! ringing   [---] 0/0                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 23 | last answered D                |
+> answer c
+You answer line C.
+[win 1] [23] answer C
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 ! ringing   [##-] 0/1                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 24 | last answered C                |
+> push a
+(the A line)
+You answer line A.
+[win 1] [24] answer A
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 = connected [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 25 | last answered A                |
+> hangup d
+(the D line)
+You pull the plug on line D.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 26 | last answered A                |
+> report
+Line  No.  State       Ans Miss
+A     11   connected     1    1
+B     12   idle          0    1
+C     13   connected     1    0
+D     14   idle          1    0
+idle: 2
+connected: 2
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 . idle      [---] 0/1                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 26 | last answered A                |
+> queue 12
+Queued a call to line B (1 waiting).
+Line B rings.
+[win 1] [27] ring B
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 ! ringing   [---] 0/1                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 27 | last answered A                |
+> wait
+Time passes.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 ! ringing   [#--] 0/1                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 28 | last answered A                |
+> answer b
+You answer line B.
+[win 1] [28] answer B
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> calls
+Answered in order: CDCAB.
+First B answer is call 5.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> busiest
+Busiest: line A with 2 calls.
+Top two: AB.
+Every line has had a call.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> ledger
+Ledger: 4 answered, 2 missed; longest wait 4.
+Answer rate 66.7%; counting A twice: 5 answered, 3 missed.
+Busy signals 2; dropped 2.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+|                                                  |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> shorter
+Board height 6.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+|queue [] 0/6 dropped 2                            |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> shorter
+Board height 5.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+|D 14 . idle      [---] 1/1                        |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> shorter
+Board height 4.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> shorter
+Board height 3.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> shorter
+The board is as short as it goes.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> taller
+Board height 4.
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+[grid 2]
+|Room A | turn 29 | last answered B                |
+> @link 5
+[win 1] [29] log wiped
+[grid 1]
+|Line L State     Wait  Ans                        |
+|A 11 = connected [---] 1/2                        |
+|B 12 = connected [---] 1/2                        |
+|C 13 = connected [---] 1/1                        |
+[grid 2]
+|Room A | turn 29 | last answered B                |
