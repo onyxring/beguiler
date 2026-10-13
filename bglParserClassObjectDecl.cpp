@@ -905,6 +905,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             varDef.declaredExpressionValue = list;
         } else {
             expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+            foldIntLiteralToFloat(expr, (string)returnType);
             if(!isMemberStatic) rejectRunTimeMemberRead(expr, varDef.dName());
             if(!isMemberStatic) rejectValueClassInitializer(expr, (string)returnType, varDef.dName());
             if(initializerList* list = asSingleElementList(expr, (string)returnType))

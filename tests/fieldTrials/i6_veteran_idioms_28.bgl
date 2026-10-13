@@ -1,0 +1,447 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a potting shed and a
+// greenhouse. A Seed class (an enum crop member, plural dictionary words, list_together) with three
+// seeds; a Pot class (int number, stage and water members, a crop member, a class description
+// switching on stage and on water with ranges and guards, a parse_name reading NextWord and TryNumber,
+// a before rule on the Receive fake action that sows a seed and remove()s it); crop names held in a
+// global array<string> indexed by the enum; a watering can with an int charge member filled at a tap
+// (before on Fill and Empty) and a native Water verb (NOUN, and NOUN .with HELD); a heat lamp
+// (switchable) whose after rule on SwitchOn starts a timer (time_left, time_out ungiving on); a
+// daemon on a bench object growing every watered pot each turn the lamp is on and every other turn
+// otherwise, logging each pot that flowers in a sized array<int> and awarding a point; a gardener
+// with orders (Water through a shared routine, Go refused), life on Ask/Tell (consult_from and
+// NextWord) and Give, and react_before warning on Take of the shears; a LibraryMessages override of
+// Smell; LookRoutine; a meta Survey verb walking the pots through bgl.world.instances(Pot) and
+// printing the bloom log; deadflag when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int NPOTS = 3;
+const int CAN_HOLDS = 3;
+const int LAMP_TURNS = 4;
+const int FLOWER = 4;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Smell:
+                if (location == greenhouse) rtrue("Damp earth and warm glass.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum crop { bean, pea, marrow }
+
+array<string> cropNames = {"bean", "pea", "marrow"};
+array<int> bloomLog[NPOTS];     // pot numbers in the order they flowered
+int nBloomed;
+int g_ticks;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+string CropName(crop c) {
+    return cropNames[(int)c - 1];
+}
+
+// ---------------------------------------------------------------- seeds
+
+class Seed : object {
+    crop kind;
+    string list_together = "seeds";
+    void description() {
+        print($"A dry {CropName(kind)} seed.^");
+    }
+}
+
+Seed beanSeed {
+    short_name = "bean seed";
+    name = {.bean, .seed, ..seeds};
+    parent = seedTray;
+    kind = bean;
+}
+
+Seed peaSeed {
+    short_name = "pea seed";
+    name = {.pea, .seed, ..seeds};
+    parent = seedTray;
+    kind = pea;
+}
+
+Seed marrowSeed {
+    short_name = "marrow seed";
+    name = {.marrow, .seed, ..seeds};
+    parent = seedTray;
+    kind = marrow;
+}
+
+// ---------------------------------------------------------------- pots
+
+class Pot : object {
+    int number;
+    int stage;          // 0 bare, 1 sown, 2 shoot, 3 bud, 4 flower
+    int water;
+    crop sown;
+    bool short_name() {
+        print($"pot {number}");
+        return true;
+    }
+    int parse_name() {
+        if (parser_action == TheSame) return -2;
+        int n = 0;
+        bool named = false;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .pot || w == .flowerpot) {
+                named = true;
+                n++;
+                continue;
+            }
+            if (w == ..pots) {
+                parser_action = PluralFound;
+                named = true;
+                n++;
+                continue;
+            }
+            if (w == null && TryNumber(wn - 1) == number) {
+                n++;
+                continue;
+            }
+            if (!named) return 0;
+            return n;
+        }
+    }
+    void description() {
+        print($"Pot {number} holds ");
+        switch (stage) {
+            case 0:
+                print("bare soil");
+            case 1:
+                print($"a sown {CropName(sown)} seed");
+            case 2, 3:
+                print($"a {CropName(sown)} shoot");
+                if (stage == 3) print(" in bud");
+            default:
+                print($"a {CropName(sown)} plant in flower");
+        }
+        switch (water) {
+            case 0:      print(", dry");
+            case 1 to 2: print(", damp");
+            case >= 3:   print(", soaked");
+        }
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Seed)) rtrue("Only seeds go in the pots.^");
+                if (stage != 0) rtrue($"Pot {number} is already sown.^");
+                Seed s = (Seed)noun;
+                sown = s.kind;
+                stage = 1;
+                s.remove();
+                rtrue($"You press {the(s)} into pot {number}.^");
+            case Take, Push, Pull:
+                rtrue("The pots are set into the staging.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+Pot pot1 { parent = greenhouse; number = 1; }
+Pot pot2 { parent = greenhouse; number = 2; }
+Pot pot3 { parent = greenhouse; number = 3; }
+
+// Pours from whatever supply the caller has; false if the pot won't take it.
+bool WaterPot(Pot p, int amount, object by) {
+    if (p.stage == 0) {
+        print($"There is nothing growing in pot {p.number}.^");
+        return false;
+    }
+    if (p.stage == FLOWER) {
+        print($"Pot {p.number} needs no more water.^");
+        return false;
+    }
+    p.water = p.water + amount;
+    if (by == player) print($"You water pot {p.number}.^");
+    else print($"{cThe(by)} waters pot {p.number}.^");
+    return true;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object shed {
+    short_name = "Potting Shed";
+    description = "Potting Shed. A tap is set over a sink. The greenhouse is east.";
+    object e_to = greenhouse;
+    attributes = {light};
+}
+
+object greenhouse {
+    short_name = "Greenhouse";
+    void description() {
+        print("Greenhouse. Three pots stand on the staging");
+        if (heatLamp.has(on)) print(" under a glowing lamp");
+        print(". The shed is west.^");
+    }
+    object w_to = shed;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- the shed
+
+object tap {
+    short_name = "tap";
+    name = {.tap, .faucet, .sink};
+    parent = shed;
+    description = "A brass tap over a stone sink.";
+    bool before() {
+        switch (action) {
+            case Turn, SwitchOn:
+                rtrue("Water splashes into the sink and stops.^");
+        }
+        rfalse;
+    }
+    attributes = {static, scenery};
+}
+
+object seedTray {
+    short_name = "seed tray";
+    name = {.seed, .tray};
+    parent = shed;
+    description = "A shallow wooden tray.";
+    attributes = {container, open};
+}
+
+object can {
+    short_name = "watering can";
+    name = {.watering, .can};
+    parent = shed;
+    int charge;
+    void description() {
+        print("A tin watering can");
+        switch (charge) {
+            case 0:         print(", empty");
+            case CAN_HOLDS: print(", full");
+            default:        print($", with {charge} pourings left");
+        }
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Fill:
+                if (location != shed) rtrue("There is no water here.^");
+                if (charge == CAN_HOLDS) rtrue("The can is already full.^");
+                charge = CAN_HOLDS;
+                rtrue("You fill the can at the tap.^");
+            case Empty:
+                if (charge == 0) rtrue("The can is already empty.^");
+                charge = 0;
+                rtrue("You tip the water out.^");
+        }
+        rfalse;
+    }
+}
+
+object shears {
+    short_name = "shears";
+    name = {.shears, .clippers};
+    parent = greenhouse;
+    description = "A pair of garden shears.";
+    attributes = {pluralname};
+}
+
+object gardener {
+    short_name = "gardener";
+    name = {.gardener, .man};
+    parent = greenhouse;
+    description = "A gardener in a canvas apron.";
+    bool g_thanked;
+    bool react_before() {
+        switch (action) {
+            case Take:
+                if (noun == shears) print("~Mind those, they're sharp,~ says the gardener.^");
+        }
+        rfalse;
+    }
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Give:
+                if (noun != shears) rtrue("The gardener has no use for that.^");
+                shears.parent = self;
+                if (!g_thanked) {
+                    g_thanked = true;
+                    print("The gardener hangs the shears on his belt.^");
+                    Award();
+                    rtrue;
+                }
+                rtrue("The gardener takes the shears back.^");
+            case Ask, Tell:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .pot || w == .pots || w == .seed || w == .seeds) rtrue("~Sow them, then keep them wet.~^");
+                if (w == .lamp) rtrue("~It runs a few turns at a time.~^");
+                if (w == .can || w == .water) rtrue("~The tap's in here.~^");
+                rtrue("The gardener shrugs.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        switch (action) {
+            case Water:
+                if (!noun.is(Pot)) rtrue("~That doesn't need watering.~^");
+                WaterPot((Pot)noun, 2, self);
+                rtrue;
+            case Go:
+                rtrue("~I'm stopping here,~ says the gardener.^");
+        }
+        rfalse;
+    }
+    attributes = {animate, male};
+}
+
+// ---------------------------------------------------------------- the greenhouse
+
+object heatLamp {
+    short_name = "heat lamp";
+    name = {.heat, .lamp};
+    parent = greenhouse;
+    description = "A heat lamp on a chain.";
+    int time_left;
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartTimer(self, LAMP_TURNS);
+                rtrue("The lamp hums and glows red.^");
+            case SwitchOff:
+                StopTimer(self);
+        }
+        rfalse;
+    }
+    void time_out() {
+        ungive(on);
+        if (location == greenhouse) print("^The heat lamp clicks off.^");
+    }
+    attributes = {static, switchable};
+}
+
+object bench {
+    short_name = "staging";
+    name = {.staging, .bench};
+    parent = greenhouse;
+    description = "Slatted staging along the glass.";
+    void daemon() {
+        g_ticks++;
+        if (!heatLamp.has(on) && g_ticks % 2 == 1) return;
+        for (int i = 1; i <= NPOTS; i++) {
+            Pot p = PotNumbered(i);
+            if (p.stage == 0 || p.stage == FLOWER || p.water == 0) continue;
+            p.water--;
+            p.stage++;
+            if (p.stage == FLOWER) {
+                bloomLog[nBloomed] = p.number;
+                nBloomed++;
+                if (location == greenhouse) print($"^The {CropName(p.sown)} in pot {p.number} flowers.^");
+                Award();
+            }
+        }
+    }
+    attributes = {static, scenery, supporter};
+}
+
+Pot PotNumbered(int n) {
+    switch (n) {
+        case 1: return pot1;
+        case 2: return pot2;
+        case 3: return pot3;
+    }
+    return null;
+}
+
+// ---------------------------------------------------------------- entry points
+
+void LookRoutine() {
+    if (location == greenhouse && nBloomed > 0) {
+        print($"Flowers: {nBloomed}.^");
+    }
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Water {
+    grammar = {
+        {.water, NOUN},
+        {.water, NOUN, .with, HELD},
+    };
+    void handler() {
+        if (second != null && second != can) {
+            print($"You can't water anything with {the(second)}.^");
+            return;
+        }
+        if (can.parent != player) {
+            print("You have nothing to water with.^");
+            return;
+        }
+        if (!noun.is(Pot)) {
+            print("That doesn't need watering.^");
+            return;
+        }
+        if (can.charge == 0) {
+            print("The watering can is empty.^");
+            return;
+        }
+        if (WaterPot((Pot)noun, 1, player)) can.charge--;
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        int nSown = 0;
+        int nWet = 0;
+        for (object o in bgl.world.instances(Pot)) {
+            Pot p = (Pot)o;
+            if (p.stage > 0) nSown++;
+            if (p.water > 0) nWet++;
+        }
+        print($"Pots: {nSown} sown, {nWet} wet. Can: {can.charge}. Lamp: ");
+        if (heatLamp.has(on)) print($"on, {heatLamp.time_left} left");
+        else print("off");
+        print($". Score {score}.^");
+        print("Bloomed:");
+        if (nBloomed == 0) print(" none");
+        for (int i = 0; i < nBloomed; i++) print($" {bloomLog[i]}");
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = shed;
+    StartDaemon(bench);
+    rfalse;
+}

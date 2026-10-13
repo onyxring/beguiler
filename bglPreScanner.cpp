@@ -1507,6 +1507,11 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                         fd.isEmitter = memberIsEmitter;
                         fd.isPrePassStub = true;
                         preScanCaptureParams(fd.params);
+                        // A parameter typed by one of the object's own aliases is typed by its target.
+                        for(paramDef* p : fd.params)
+                            for(typeMember* m : objStub->members)
+                                if(auto* av = dynamic_cast<variableDeclaration*>(m); av && av->isAlias && av->isPrePassStub
+                                   && av->declaredExpressionValue == nullptr && av->name == p->type.name){ p->type = languageService.getType(av->type.name); break; }
                         token bodyStart = file.getToken();
                         if(bodyStart.is("asi6")){ fd.i6name = file.getToken().value; bodyStart = file.getToken(); }   // `name(...) asI6 <i6name> {…}`
                         if(bodyStart.is(token::braceOpen)){

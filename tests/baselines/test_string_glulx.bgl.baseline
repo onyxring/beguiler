@@ -35,13 +35,16 @@ object _glulx
 ];
 [_bglResumeLineInput buffer typed;
 ];
-[_bglGlkEvent event context buffer _l_target typed;
+[_bglGlkEvent event context buffer _l_target known n typed;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
     _l_target = _bgl_bglOpCodes_aload(event, 2);
     __glkHook(258, _bgl_bglOpCodes_aload(event, 1));
-    if ((~~(metaclass(_l_target) == Routine))) {
+    known=false;
+    n = 0;
+     for (n = _bglLinkRoutines-->0 : n > 0 : n--) if (_bglLinkRoutines-->n == _l_target) known = true; 
+    if (~~known) {
         return false;
     }
     typed = 0;
@@ -839,6 +842,11 @@ object _bglStr
      tmp = str.appendChar(c); str.free(); 
     return tmp;
   ],
+       prependChar [s c str tmp;
+    str = self.new(s);
+     tmp = str.prependChar(c); str.free(); 
+    return tmp;
+  ],
        prepend [s text lk_text str tmp;
     lk_text=self.ambiguouslock(text);
     str = self.new(s);
@@ -1211,6 +1219,16 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
+    prependChar[c one retval;
+        
+            one = _bglStr.new();
+            one.setChar(0, c);
+            one.setLength(1);
+            retval = one.append(self);
+            one.free();
+        
+        return retval;
+    ],
     prepend[text retval lk;
         lk=_bglstr.ambiguouslock(text);
         
@@ -1429,6 +1447,9 @@ class _bglString(bglstringpoolreserve)
         if (_bglAuthorGlkEvent) return _bglAuthorGlkEvent(event, context, buffer);
         return 0;
     ];
+
+
+    Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
     @copy sp api;

@@ -1,0 +1,118 @@
+Room A
+Room A.
+You can see a red box (which is closed), a blue box (which is closed) and an iron box (which is closed) here.
+> boxes
+red box Ann 0/2 flag down got 0 refused 0
+blue box Bo 0/1 flag up got 0 refused 0
+iron box Cy 0/3 flag locked dial 0 got 0 refused 0
+open 0, delivered 0, returned 0; first empty red box; takings $0.00
+letters written 0, gone 0, sack 0; log
+waiting red 0 blue 0 iron 0
+> sack
+The sack is empty.
+> fullest
+Fullest: none.
+> open red box
+You open the red box; it is empty.
+> write to red box
+You write a standard letter, Ann-1.
+> examine letter
+A standard letter to Ann-1, paid $0.00 of 50c.
+> stamp letter with 30
+You stamp Ann-1: $0.30.
+> post letter
+You post Ann-1.
+> deliver
+Ann-1 comes back: short postage.
+0 letters delivered.
+> stamp letter with 30
+You stamp Ann-1: $0.60.
+> post letter
+You post Ann-1.
+> express to blue box
+You write a express letter, Bo-2.
+> stamp letter with 75
+You stamp Bo-2: $0.75.
+> post letter
+You post Bo-2.
+> deliver
+2 letters delivered.
+> open red box
+The red box is already open.
+> write to blue box
+You write a standard letter, Bo-3.
+> stamp letter with 50
+(the letter with that)
+You stamp Bo-3: $0.50.
+> post letter
+(the letter)
+You post Bo-3.
+> deliver
+Bo-3 comes back: the blue box is full.
+0 letters delivered.
+> record to iron box
+You write a recorded letter, Cy-4.
+> stamp letter with 200
+You stamp Cy-4: $2.00.
+> sack
+bo-3 cy-4 (9 chars), one for Cy.
+> hand
+Bo-3 Cy-4 - 2 held, paid $2.50.
+> post letter
+You post Cy-4.
+> write to iron box
+You have no paper left.
+> burn letter
+You burn Bo-3.
+> write to red box
+You write a standard letter, Ann-5.
+> write to red box
+You have no paper left.
+> write to red box
+You have no paper left.
+> boxes
+red box Ann 1/2 flag down got 1 refused 0
+blue box Bo 1/1 flag up full got 1 refused 1
+iron box Cy 0/3 flag locked dial 0 got 0 refused 0
+open 1, delivered 2, returned 2, one full; first empty iron box; takings $3.85
+letters written 5, gone 1, sack 2; log write:Ann post:Ann-1 short deliver0 post:Ann-1 write:Bo post:Bo-2 deliver2 write:Bo post:Bo-3 full deliver0 write:Cy post:Cy-4 burn write:Ann
+waiting red 0 blue 0 iron 1
+> deliver
+1 letter delivered.
+> dial iron box
+The dial turns to 1.
+> dial red box
+It has no dial.
+> surcharge 100
+surcharge 90, changes 1, dear, express 140.
+> surcharge 100
+surcharge 90, changes 1, dear, express 140.
+> surcharge 10
+surcharge 10, changes 2, cheap, express 60.
+> boxes
+red box Ann 1/2 flag down got 1 refused 0
+blue box Bo 1/1 flag up full got 1 refused 1
+iron box Cy 1/3 flag dialled dial 1 got 1 refused 0
+open 1, delivered 3, returned 2, one full, none empty; first empty Room A; takings $3.85
+letters written 5, gone 1, sack 1; log write:Ann post:Ann-1 short deliver0 post:Ann-1 write:Bo post:Bo-2 deliver2 write:Bo post:Bo-3 full deliver0 write:Cy post:Cy-4 burn write:Ann deliver1
+waiting red 0 blue 0 iron 0
+> fullest
+The red box is fullest with 1; 1 more fit; north street.
+> rank
+red box=1 blue box=1 iron box=1 tie.
+blue box red box hold least.
+> collect from blue box
+You collect 1 letter from the blue box.
+> collect from iron box
+You collect 1 letter from the iron box.
+> sack
+ann-5 (5 chars).
+> hand
+Ann-5 - 1 held, paid $0.00.
+> boxes
+red box Ann 1/2 flag down got 1 refused 0
+blue box Bo 0/1 flag up got 1 refused 1
+iron box Cy 0/3 flag dialled dial 1 got 1 refused 0
+open 1, delivered 3, returned 2; first empty blue box; takings $3.85
+letters written 5, gone 3, sack 1; log write:Ann post:Ann-1 short deliver0 post:Ann-1 write:Bo post:Bo-2 deliver2 write:Bo post:Bo-3 full deliver0 write:Cy post:Cy-4 burn write:Ann deliver1 collect1 collect1
+waiting red 0 blue 0 iron 0

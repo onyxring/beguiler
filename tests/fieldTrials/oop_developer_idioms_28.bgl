@@ -1,0 +1,501 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-eighth pass: a package planner.
+// A value class for a version number with a copy operator, `==`/`!=` and a `<=>` that `<`/`>=` come
+// from, a static factory with default arguments, a `Bumped()` returning a new value and a formatter
+// returning a `stringObj`; a requirement value class owning a `Version` member, held in a member
+// `array<Requirement>`; a named property accessor (a value class clamping at zero) as a package's user
+// count, changed with `++`, `--` and `-=`; the Visitor pattern with double dispatch: `default` `Accept()`
+// on a package base overridden by a native-package subclass, and visitor subclasses overriding `default`
+// visit methods, one of them owning a `stringObj` member; a catalogue with an `operator []` indexer; a
+// planner running a depth-first topological sort over the requirements, recursing through a member
+// method and throwing a pooled error for a cycle or a too-old version, caught by a typed `catch`; an
+// setupService with an observer list of `func<void, Package>` listeners (a named function and a capturing
+// lambda) and a fluent `selfType` `Needs()`; `<linq>` `filter`/`count`/`any`/`all`/`orderBy`/`map`
+// (one chain inside another's predicate); enum switches; `is` tests and downcasts; `?.`/`??`; named
+// arguments; interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eKind { Library, Tool, Native }
+enum eState { Absent, Installed, Held }
+enum eBump { Major, Minor, Patch }
+
+string KindName(eKind k) {
+    switch (k) {
+        case eKind.Library: return "library";
+        case eKind.Tool:    return "tool";
+        case eKind.Native:  return "native";
+    }
+    return "?";
+}
+
+//-- Version: a value type -------------------------------------------------------------------------------------
+
+value class Version {
+    int Major;
+    int Minor;
+    int Patch;
+
+    Version operator = (Version o) {
+        Major = o.Major;
+        Minor = o.Minor;
+        Patch = o.Patch;
+        return self;
+    }
+
+    bool operator == (Version o) { return Major == o.Major && Minor == o.Minor && Patch == o.Patch; }
+    bool operator != (Version o) { return !(self == o); }
+
+    int operator <=> (Version o) {
+        if (Major != o.Major) return Major - o.Major;
+        if (Minor != o.Minor) return Minor - o.Minor;
+        return Patch - o.Patch;
+    }
+
+    static Version Of(int major, int minor = 0, int patch = 0) {
+        Version v;
+        v.Major = major;
+        v.Minor = minor;
+        v.Patch = patch;
+        return v;
+    }
+
+    Version Bumped(eBump part) {
+        switch (part) {
+            case eBump.Major: return Version.Of(Major + 1);
+            case eBump.Minor: return Version.Of(Major, Minor + 1);
+        }
+        return Version.Of(Major, Minor, Patch + 1);
+    }
+
+    stringObj ToText() {
+        stringObj text = $"{Major}.{Minor}.{Patch}";
+        return text;
+    }
+}
+
+//-- A clamped counter: a property accessor --------------------------------------------------------------------
+
+value class NonNegative {
+    int _value;
+    int operator () { return _value; }
+    void operator = (int v) {
+        if (v < 0) _value = 0;
+        else _value = v;
+    }
+}
+
+//-- Packages --------------------------------------------------------------------------------------------------
+
+value class Requirement {
+    Package Target;
+    Version Minimum;
+
+    Requirement operator = (Requirement o) {
+        Target = o.Target;
+        Minimum = o.Minimum;
+        return self;
+    }
+}
+
+class Package : object {
+    string Title;
+    eKind Kind = eKind.Library;
+    eState State = eState.Absent;
+    int Size;
+    Version Ver;
+    array<Requirement> Requires[3];
+    NonNegative Users;
+
+    selfType Needs(Package target, int major, int minor = 0) {
+        Requirement r;
+        r.Target = target;
+        r.Minimum = Version.Of(major, minor);
+        Requires.append(r);
+        return self;
+    }
+
+    bool DependsOn(Package other) {
+        for (Requirement r in Requires) {
+            if (r.Target == other) return true;
+        }
+        return false;
+    }
+
+    default void Accept(PackageVisitor v) { v.VisitPackage(self); }
+
+    stringObj Label() {
+        stringObj verText = Ver.ToText();
+        stringObj text = $"{Title} {verText}";
+        return text;
+    }
+}
+
+class NativePackage : Package {
+    string Platform;
+
+    void Accept(PackageVisitor v) { v.VisitNative(self); }
+}
+
+Package pkgCore { "core"; Title = "core"; Size = 40; }
+Package pkgText { "text"; Title = "text"; Size = 25; }
+Package pkgJson { "json"; Title = "json"; Size = 30; }
+Package pkgHttp { "http"; Title = "http"; Size = 55; }
+Package pkgCli { "cli"; Title = "cli"; Kind = eKind.Tool; Size = 15; }
+NativePackage pkgZip { "zip"; Title = "zip"; Kind = eKind.Native; Size = 70; Platform = "z5"; }
+Package pkgLoopA { "loopa"; Title = "loopa"; Size = 5; }
+Package pkgLoopB { "loopb"; Title = "loopb"; Size = 5; }
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class ResolveError[2] : object {
+    Package Culprit;
+    string Reason;
+    static int Raised;
+
+    void create(Package p, string why) {
+        Culprit = p;
+        Reason = why;
+        ResolveError.Raised++;
+    }
+}
+
+//-- Visitors: double dispatch ---------------------------------------------------------------------------------
+
+class PackageVisitor : object {
+    default void VisitPackage(Package p) { }
+    default void VisitNative(NativePackage p) { VisitPackage(p); }
+}
+
+class SizeVisitor : PackageVisitor {
+    int Total;
+    int NativeTotal;
+
+    void VisitPackage(Package p) { Total += p.Size; }
+
+    void VisitNative(NativePackage p) {
+        Total += p.Size;
+        NativeTotal += p.Size;
+    }
+}
+
+class ListVisitor : PackageVisitor {
+    stringObj Text;
+    int Seen;
+
+    void VisitPackage(Package p) {
+        if (Seen > 0) Text += ", ";
+        Text += p.Title;
+        Seen++;
+    }
+
+    void VisitNative(NativePackage p) {
+        if (Seen > 0) Text += ", ";
+        Text += $"{p.Title}[{p.Platform}]";
+        Seen++;
+    }
+}
+
+SizeVisitor sizer { }
+ListVisitor lister { }
+
+//-- The catalogue ----------------------------------------------------------------------------------------------
+
+class Registry : object {
+    array<Package> All[10];
+
+    Package operator [] (int i) { return All[i]; }
+
+    void Register(Package p) { All.append(p); }
+
+    int Count() { return All.length; }
+
+    void Walk(PackageVisitor v) {
+        for (Package p in All) p.Accept(v);
+    }
+}
+
+Registry catalogue { }
+
+//-- The planner: depth-first topological order ---------------------------------------------------------------
+
+class Resolver : object {
+    array<Package> Plan[10];
+    array<Package> Visiting[10];
+    static int Runs;
+
+    void Visit(Package p) {
+        if (Plan.contains(p)) return;
+        if (Visiting.contains(p)) throw new ResolveError(p, "cycle");
+        Visiting.append(p);
+        for (int i = 0; i < p.Requires.length; i++) {
+            Package target = p.Requires[i].Target;
+            if (target.Ver < p.Requires[i].Minimum) throw new ResolveError(target, "too old");
+            Visit(target);
+        }
+        Visiting.popEnd();
+        Plan.append(p);
+    }
+
+    bool Resolve(Package root) {
+        Resolver.Runs++;
+        Plan.clear();
+        Visiting.clear();
+        try {
+            Visit(root);
+            return true;
+        } catch (ResolveError e) {
+            stringObj ver = e.Culprit.Ver.ToText();
+            printLine($"Cannot resolve {root.Title}: {e.Reason} at {e.Culprit.Title} {ver}.");
+            delete e;
+        }
+        return false;
+    }
+
+    stringObj PlanText() {
+        stringObj text = "";
+        for (int i = 0; i < Plan.length; i++) {
+            if (i > 0) text += " > ";
+            text += Plan[i].Title;
+        }
+        return text;
+    }
+}
+
+Resolver planner { }
+
+//-- The setupService: a service with listeners -------------------------------------------------------------------
+
+class Installer : object {
+    array<func<void, Package>> Listeners[3];
+    int InstalledCount;
+
+    void Subscribe(func<void, Package> listener) { Listeners.append(listener); }
+
+    bool Install(Package root) {
+        if (!planner.Resolve(root)) return false;
+        for (Package p in planner.Plan) {
+            if (p != root) p.Users++;
+            if (p.State == eState.Installed) continue;
+            p.State = eState.Installed;
+            InstalledCount++;
+            for (func<void, Package> listener in Listeners) listener(p);
+        }
+        return true;
+    }
+
+    // Refuses while any installed package still requires it.
+    bool Uninstall(Package p) {
+        if (p.State != eState.Installed) return false;
+        bool needed = catalogue.All.any((Package q) => q.State == eState.Installed && q.DependsOn(p));
+        if (needed) {
+            printLine($"{p.Title} is still required.");
+            return false;
+        }
+        p.State = eState.Absent;
+        InstalledCount--;
+        for (int i = 0; i < p.Requires.length; i++) p.Requires[i].Target.Users--;
+        printLine($"Removed {p.Title}.");
+        return true;
+    }
+}
+
+Installer setupService { }
+
+//-- Listeners and predicates ----------------------------------------------------------------------------------
+
+int InstalledBytes;
+
+void LogInstall(Package p) {
+    stringObj label = p.Label();
+    printLine($"  + {label} ({KindName(p.Kind)})");
+}
+
+bool IsInstalled(Package p) { return p.State == eState.Installed; }
+
+int BySizeDescending(Package a, Package b) { return b.Size - a.Size; }
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        pkgCore.Ver = Version.Of(1, 4, 2);
+        pkgText.Ver = Version.Of(2, 0);
+        pkgJson.Ver = Version.Of(1, 1);
+        pkgHttp.Ver = Version.Of(3);
+        pkgCli.Ver = Version.Of(major: 0, patch: 9);
+        pkgZip.Ver = Version.Of(1, 0, 5);
+        pkgLoopA.Ver = Version.Of(1);
+        pkgLoopB.Ver = Version.Of(1);
+
+        pkgText.Needs(pkgCore, 1, 2);
+        pkgJson.Needs(pkgText, 2).Needs(pkgCore, 1);
+        pkgHttp.Needs(pkgJson, 1, 1).Needs(pkgZip, 1).Needs(pkgCore, 1, 4);
+        pkgCli.Needs(pkgHttp, 3).Needs(target: pkgText, major: 2, minor: 1);
+        pkgLoopA.Needs(pkgLoopB, 1);
+        pkgLoopB.Needs(pkgLoopA, 1);
+
+        for (Package p in { pkgCore, pkgText, pkgJson, pkgHttp, pkgCli, pkgZip, pkgLoopA, pkgLoopB }) {
+            catalogue.Register(p);
+        }
+
+        setupService.Subscribe(LogInstall);
+        int overhead = 2;
+        setupService.Subscribe((Package p) => { InstalledBytes += p.Size + overhead; });
+
+        printLine($"Registered {catalogue.Count()}, listeners {setupService.Listeners.length}.");
+    }
+}
+
+verb Catalog {
+    grammar = {.catalog};
+    void handler() {
+        lister.Text = "";
+        lister.Seen = 0;
+        catalogue.Walk(lister);
+        printLine($"Packages: {lister.Text}.");
+        sizer.Total = 0;
+        sizer.NativeTotal = 0;
+        catalogue.Walk(sizer);
+        printLine($"Size {sizer.Total}, native {sizer.NativeTotal}.");
+        for (int i = 0; i < catalogue.Count(); i++) {
+            Package p = catalogue[i];
+            if (p.Requires.length == 0) continue;
+            stringObj line = p.Label();
+            line += " needs";
+            for (Requirement r in p.Requires) {
+                stringObj min = r.Minimum.ToText();
+                line += $" {r.Target.Title}>={min}";
+            }
+            printLine(line);
+        }
+    }
+}
+
+verb Plan {
+    grammar = {.plan};
+    void handler() {
+        for (Package root in { pkgJson, pkgHttp, pkgCli, pkgLoopA }) {
+            if (planner.Resolve(root)) {
+                stringObj order = planner.PlanText();
+                printLine($"{root.Title}: {order}");
+            }
+        }
+        printLine($"Runs {Resolver.Runs}, errors {ResolveError.Raised}.");
+    }
+}
+
+verb Install {
+    grammar = {.install};
+    void handler() {
+        bool ok = setupService.Install(pkgCli);
+        printLine($"cli installed: {ok}.");
+        ok = setupService.Install(pkgHttp);
+        printLine($"http installed: {ok}, total {setupService.InstalledCount}, bytes {InstalledBytes}.");
+    }
+}
+
+verb Upgrade {
+    grammar = {.upgrade};
+    void handler() {
+        Version before = pkgText.Ver;
+        pkgText.Ver = pkgText.Ver.Bumped(eBump.Minor);
+        stringObj was = before.ToText();
+        stringObj now = pkgText.Ver.ToText();
+        printLine($"text {was} to {now}; newer {pkgText.Ver > before}, same {pkgText.Ver == before}.");
+        Version major = pkgCore.Ver.Bumped(eBump.Major);
+        Version patch = pkgCore.Ver.Bumped(eBump.Patch);
+        stringObj m = major.ToText();
+        stringObj p = patch.ToText();
+        printLine($"core bumps {m} and {p}; ordered {patch < major}, at least {major >= patch}.");
+        bool ok = setupService.Install(pkgCli);
+        printLine($"cli installed: {ok}, total {setupService.InstalledCount}, bytes {InstalledBytes}.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int live = catalogue.All.filter(IsInstalled).count();
+        bool anyNative = catalogue.All.any((Package p) => p.is(NativePackage) && p.State == eState.Installed);
+        bool allSmall = catalogue.All.filter(IsInstalled).all((Package p) => p.Size < 100);
+        printLine($"Installed {live} of {catalogue.Count()}, native {anyNative}, all small {allSmall}.");
+
+        stringObj line = "Largest first:";
+        for (Package p in catalogue.All.filter(IsInstalled).orderBy(BySizeDescending)) line += $" {p.Title}";
+        printLine(line);
+
+        line = "Users:";
+        for (Package p in catalogue.All) {
+            if (p.Users > 0) line += $" {p.Title}={p.Users}";
+        }
+        printLine(line);
+
+        array<var> sizes = catalogue.All.filter(IsInstalled).map((Package p) => p.Size);
+        int total = 0;
+        for (var s in sizes) total += s;
+        printLine($"Sizes sum {total} over {sizes.length}.");
+
+        bool leaf = catalogue.All.filter((Package p) => p.Requires.any((Requirement r) => r.Target == pkgCore)).count() == 3;
+        Package heavy = catalogue.All.filter((Package p) => p.Size > 60).first();
+        string heavyName = heavy?.Title ?? "none";
+        string hugeName = catalogue.All.filter((Package p) => p.Size > 500).first()?.Title ?? "none";
+        printLine($"Three need core {leaf}; heavy {heavyName}; huge {hugeName}.");
+
+        for (Package p in catalogue.All) {
+            if (!p.is(NativePackage)) continue;
+            NativePackage n = (NativePackage)p;
+            printLine($"{n.Title} is native for {n.Platform}.");
+        }
+    }
+}
+
+verb Purge {
+    grammar = {.purge};
+    void handler() {
+        setupService.Uninstall(pkgCore);
+        setupService.Uninstall(pkgCli);
+        setupService.Uninstall(pkgHttp);
+        setupService.Uninstall(pkgLoopA);
+        pkgZip.Users -= 5;
+        printLine($"zip users {pkgZip.Users}, core users {pkgCore.Users}, total {setupService.InstalledCount}.");
+        string state;
+        switch (pkgHttp.State) {
+            case eState.Absent:    state = "absent";
+            case eState.Installed: state = "installed";
+            case eState.Held:      state = "held";
+        }
+        printLine($"http is {state}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

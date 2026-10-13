@@ -1,0 +1,391 @@
+#grids
+Room A
+Room A. Four pots stand on the bench.
+You can see a basil pot, a mint pot, a sage pot, a fern pot and a watering can here.
+[win 1] T0: bench ready
+[grid 1]
+|  Pot    Water                                    |
+|B o basil  [======    ]  6                        |
+|M o mint   [====      ]  4                        |
+|S o sage   [========  ]  8                        |
+|F o fern   [===       ]  3                        |
+|can 6/12 total 21 trend +                         |
+[grid 2]
+|Room A | turn 0 | wilted 0                        |
+> survey
+Pot     Wat Grw Got  Stage
+basil     6   0   0  seed
+mint      4   0   0  seed
+sage      8   0   0  seed
+fern      3   0   0  seed
+[grid 1]
+|  Pot    Water                                    |
+|B o basil  [======    ]  6                        |
+|M o mint   [====      ]  4                        |
+|S o sage   [========  ]  8                        |
+|F o fern   [===       ]  3                        |
+|can 6/12 total 21 trend +                         |
+[grid 2]
+|Room A | turn 0 | wilted 0                        |
+> water basil pot
+You water the basil pot: +3, now 9.
+[win 1] T0: basil +3
+[win 1] T1: fern wilted
+[grid 1]
+|  Pot    Water                                    |
+|B o basil  [========  ]  8                        |
+|M o mint   [==        ]  2 dry                    |
+|S o sage   [=======   ]  7                        |
+|F x fern   [          ]  0                        |
+|can 3/12 total 17 trend +:                        |
+[grid 2]
+|Room A | turn 1 | wilted 1                        |
+> water mint pot with 4
+You water the mint pot: +3, now 5.
+[win 1] T1: mint +3
+[grid 1]
+|  Pot    Water                                    |
+|B o basil  [=======   ]  7                        |
+|M o mint   [===       ]  3                        |
+|S o sage   [======    ]  6                        |
+|F x fern   [          ]  0                        |
+|can 0/12 total 16 trend +::                       |
+[grid 2]
+|Room A | turn 2 | wilted 1                        |
+> water fern pot with 9
+The fern pot has wilted; water won't help now.
+[win 1] T3: basil now sprout
+[win 1] T3: sage now sprout
+[grid 1]
+|  Pot    Water                                    |
+|B i basil  [======    ]  6                        |
+|M o mint   [=         ]  1 dry                    |
+|S i sage   [=====     ]  5                        |
+|F x fern   [          ]  0                        |
+|can 0/12 total 12 trend +:::                      |
+[grid 2]
+|Room A | turn 3 | wilted 1                        |
+> driest
+Driest: the mint pot at 1; wettest: the basil pot at 6.
+[grid 1]
+|  Pot    Water                                    |
+|B i basil  [======    ]  6                        |
+|M o mint   [=         ]  1 dry                    |
+|S i sage   [=====     ]  5                        |
+|F x fern   [          ]  0                        |
+|can 0/12 total 12 trend +:::                      |
+[grid 2]
+|Room A | turn 3 | wilted 1                        |
+> readings
+Total water over 4 turns: 12-21, mean 16.5.
+Pots now: 0-6, mean 3.0; with the can: 0-6.
+Growth in all: 7; wilted so far: 1.
+Some pots are wilted.
+[grid 1]
+|  Pot    Water                                    |
+|B i basil  [======    ]  6                        |
+|M o mint   [=         ]  1 dry                    |
+|S i sage   [=====     ]  5                        |
+|F x fern   [          ]  0                        |
+|can 0/12 total 12 trend +:::                      |
+[grid 2]
+|Room A | turn 3 | wilted 1                        |
+> fill can
+You fill the watering can to 12.
+[win 1] T3: can filled (1)
+[win 1] T4: mint wilted
+[grid 1]
+|  Pot    Water                                    |
+|B i basil  [=====     ]  5                        |
+|M x mint   [          ]  0                        |
+|S i sage   [====      ]  4                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 9 trend +:::.                     |
+[grid 2]
+|Room A | turn 4 | wilted 2                        |
+> fill can
+The watering can is already full.
+[grid 1]
+|  Pot    Water                                    |
+|B i basil  [====      ]  4                        |
+|M x mint   [          ]  0                        |
+|S i sage   [===       ]  3                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 7 trend +:::..                    |
+[grid 2]
+|Room A | turn 5 | wilted 2                        |
+> soak
+No pot needs soaking.
+[win 1] T6: basil now leafy
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [===       ]  3                        |
+|M x mint   [          ]  0                        |
+|S i sage   [==        ]  2 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 5 trend :::...                    |
+[grid 2]
+|Room A | turn 6 | wilted 2                        |
+> wait
+Time passes.
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [==        ]  2 dry                    |
+|M x mint   [          ]  0                        |
+|S i sage   [=         ]  1 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 3 trend ::....                    |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+> survey
+Pot     Wat Grw Got  Stage
+basil     2   6   1  leafy
+mint      0   1   1  wilted
+sage      1   5   0  sprout
+fern      0   0   0  wilted
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [==        ]  2 dry                    |
+|M x mint   [          ]  0                        |
+|S i sage   [=         ]  1 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 3 trend ::....                    |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+> panel
+Water: basil mint sage fern
+Also: fill survey driest
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [==        ]  2 dry                    |
+|M x mint   [          ]  0                        |
+|S i sage   [=         ]  1 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 3 trend ::....                    |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+> @link 1
+You water the basil pot: +3, now 5.
+[win 1] T7: basil +3
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [=====     ]  5                        |
+|M x mint   [          ]  0                        |
+|S i sage   [=         ]  1 dry                    |
+|F x fern   [          ]  0                        |
+|can 9/12 total 6 trend ::....                     |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+> @link 3
+You water the sage pot: +3, now 4.
+[win 1] T7: sage +3
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [=====     ]  5                        |
+|M x mint   [          ]  0                        |
+|S i sage   [====      ]  4                        |
+|F x fern   [          ]  0                        |
+|can 6/12 total 9 trend ::....                     |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+> @link 5
+You fill the watering can to 12.
+[win 1] T7: can filled (2)
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [=====     ]  5                        |
+|M x mint   [          ]  0                        |
+|S i sage   [====      ]  4                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 9 trend ::....                    |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+> @link 6
+[win 1] T7: living 2, dry 0
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [=====     ]  5                        |
+|M x mint   [          ]  0                        |
+|S i sage   [====      ]  4                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 9 trend ::....                    |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+>> @link 7
+[win 1] T7: driest sage (4)
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [=====     ]  5                        |
+|M x mint   [          ]  0                        |
+|S i sage   [====      ]  4                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 9 trend ::....                    |
+[grid 2]
+|Room A | turn 7 | wilted 2                        |
+>> soak
+soak
+No pot needs soaking.
+[win 1] T8: sage now leafy
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [====      ]  4                        |
+|M x mint   [          ]  0                        |
+|S Y sage   [===       ]  3                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 7 trend :.....                    |
+[grid 2]
+|Room A | turn 8 | wilted 2                        |
+> wait
+Time passes.
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [===       ]  3                        |
+|M x mint   [          ]  0                        |
+|S Y sage   [==        ]  2 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 5 trend ......                    |
+[grid 2]
+|Room A | turn 9 | wilted 2                        |
+> wait
+Time passes.
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [==        ]  2 dry                    |
+|M x mint   [          ]  0                        |
+|S Y sage   [=         ]  1 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 3 trend ......                    |
+[grid 2]
+|Room A | turn 10 | wilted 2                       |
+> examine fern pot
+The fern pot: wilted, water 0 of 10, grown 0, watered 0 times.
+[win 1] T11: sage wilted
+[grid 1]
+|  Pot    Water                                    |
+|B Y basil  [=         ]  1 dry                    |
+|M x mint   [          ]  0                        |
+|S x sage   [          ]  0                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 1 trend ......                    |
+[grid 2]
+|Room A | turn 11 | wilted 3                       |
+> prune fern pot
+You cut the fern pot back to a seed.
+[win 1] T11: fern pruned
+[win 1] T12: basil wilted
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S x sage   [          ]  0                        |
+|F o fern   [=         ]  1 dry                    |
+|can 12/12 total 1 trend ......                    |
+[grid 2]
+|Room A | turn 12 | wilted 4                       |
+> prune sage pot
+You cut the sage pot back to a seed.
+[win 1] T12: sage pruned
+[win 1] T13: fern wilted
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [===       ]  3                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 3 trend ......                    |
+[grid 2]
+|Room A | turn 13 | wilted 5                       |
+> log
+Log closed.
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [===       ]  3                        |
+|F x fern   [          ]  0                        |
+|can 12/12 total 3 trend ......                    |
+[grid 2]
+|Room A | turn 13 | wilted 5                       |
+> wait
+Time passes.
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [==        ]  2 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 2 trend ......                    |
+[grid 2]
+|Room A | turn 14 | wilted 5                       |
+> log
+Log open.
+[win 2] T14: log reopened
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [==        ]  2 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 2 trend ......                    |
+[grid 2]
+|Room A | turn 14 | wilted 5                       |
+> readings
+Total water over 6 turns: 1-5, mean 2.5.
+Pots now: 0-2, mean 0.5; with the can: 0-12.
+Growth in all: 10; wilted so far: 5.
+Some pots are wilted.
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [==        ]  2 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 2 trend ......                    |
+[grid 2]
+|Room A | turn 14 | wilted 5                       |
+> water can
+That is not a pot.
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [=         ]  1 dry                    |
+|F x fern   [          ]  0                        |
+|can 12/12 total 1 trend ......                    |
+[grid 2]
+|Room A | turn 15 | wilted 5                       |
+> water sage pot with 2
+You water the sage pot: +2, now 3.
+[win 2] T15: sage +2
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [==        ]  2 dry                    |
+|F x fern   [          ]  0                        |
+|can 10/12 total 2 trend ......                    |
+[grid 2]
+|Room A | turn 16 | wilted 5                       |
+> water sage pot with 9
+You water the sage pot: +8, now 10.
+[win 2] T16: sage +8
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [========= ]  9                        |
+|F x fern   [          ]  0                        |
+|can 2/12 total 9 trend ......                     |
+[grid 2]
+|Room A | turn 17 | wilted 5                       |
+> driest
+Driest: the sage pot at 9; wettest: the sage pot at 9.
+[grid 1]
+|  Pot    Water                                    |
+|B x basil  [          ]  0                        |
+|M x mint   [          ]  0                        |
+|S o sage   [========= ]  9                        |
+|F x fern   [          ]  0                        |
+|can 2/12 total 9 trend ......                     |
+[grid 2]
+|Room A | turn 17 | wilted 5                       |

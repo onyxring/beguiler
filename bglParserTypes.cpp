@@ -1463,71 +1463,76 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
     functionDef* upcastMatch = nullptr;       // every non-exact argument reaches its parameter's class by inheritance
     functionDef* conversionMatch = nullptr;
     functionDef* varFallback = nullptr;
-    for(typeDef* g : languageService.globals){
-        if(auto* fd = dynamic_cast<functionDef*>(g)){
-            if(fd->name != name) continue;
-            if(result.nameMatch == nullptr) result.nameMatch = fd;
-            size_t req = 0;
-            for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-            if(args.size() >= req && args.size() <= fd->params.size()){
-                if(result.arityMatch == nullptr) result.arityMatch = fd;
-                bool argsOk = true;
-                bool usesVar = false;
-                bool needsConversion = false;
-                bool onlyUpcasts = true;
-                for(size_t i = 0; i < args.size() && argsOk; i++){
-                    string argType = args[i]->resolvedType;
-                    string paramType = fd->params[i]->type.name;
-                    // An arg whose type is `var` or UNKNOWN (empty — e.g. a computed-property read
-                    // `obj.(p)`) can only be matched SAFELY by the `var`-param overload; assuming it's
-                    // any concrete type is an order-dependent guess (whichever compatible concrete
-                    // overload — print(bool)/print(string)/… — happens to be first in the globals list).
-                    // So: var/unknown arg + `var` param = EXACT (the right, deterministic match);
-                    // var/unknown arg + concrete param = a conversion (ranked below exact), so the var
-                    // overload wins. A concrete arg against a `var` param stays the catch-all fallback.
-                    bool argUnknown = argType.empty() || argType == "var";
-                    if(paramType == "var"){ if(!argUnknown) usesVar = true; }
-                    else if(argUnknown) needsConversion = true;
-                    else if(argType == paramType || objectsClassName(argType) == paramType) {} // exact (an object is its class's)
-                    else if(isTypeCompatible(argType, paramType) || argFitsByRule(args[i], paramType)){
-                        needsConversion = true;
-                        if(!isUpcast(paramType, argType)) onlyUpcasts = false;
-                    }
-                    else argsOk = false;
-                    if(argsOk && !genericValueFits(args[i], paramType, func, body)) argsOk = false;
-                }
-                if(argsOk){
-                    if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
-                    else if(!needsConversion){ result.match = fd; return result; }
-                    else if(onlyUpcasts){ if(upcastMatch == nullptr) upcastMatch = fd; }
-                    else if(conversionMatch == nullptr) conversionMatch = fd;
-                }
-            }
-        }
-    }
-    if(result.match == nullptr) result.match = upcastMatch;
-    if(result.match == nullptr) result.match = conversionMatch;
-    if(result.match == nullptr) result.match = varFallback;
-    // If no global found, check #using imports for a method with the matching name.
-    // This lets `#using bgl.asm` make `get_prop_len(x)` work as a bare call.
-    auto checkImportMember = [&](typeMember* m){
-        auto* fd = dynamic_cast<functionDef*>(m);
-        if(!fd || fd->name != name) return;
+    // Ranks one candidate; true when it is an exact match (nothing can beat it).
+    auto consider = [&](functionDef* fd) -> bool {
+        if(fd->name != name) return false;
         if(result.nameMatch == nullptr) result.nameMatch = fd;
         size_t req = 0;
         for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-        if(args.size() >= req && args.size() <= fd->params.size()){
-            if(result.arityMatch == nullptr) result.arityMatch = fd;
-            if(result.match == nullptr) result.match = fd;
+        if(args.size() < req || args.size() > fd->params.size()) return false;
+        if(result.arityMatch == nullptr) result.arityMatch = fd;
+        bool argsOk = true;
+        bool usesVar = false;
+        bool needsConversion = false;
+        bool onlyUpcasts = true;
+        for(size_t i = 0; i < args.size() && argsOk; i++){
+            string argType = args[i]->resolvedType;
+            string paramType = fd->params[i]->type.name;
+            // An arg whose type is `var` or UNKNOWN (empty — e.g. a computed-property read
+            // `obj.(p)`) can only be matched SAFELY by the `var`-param overload; assuming it's
+            // any concrete type is an order-dependent guess (whichever compatible concrete
+            // overload — print(bool)/print(string)/… — happens to be first in the globals list).
+            // So: var/unknown arg + `var` param = EXACT (the right, deterministic match);
+            // var/unknown arg + concrete param = a conversion (ranked below exact), so the var
+            // overload wins. A concrete arg against a `var` param stays the catch-all fallback.
+            bool argUnknown = argType.empty() || argType == "var";
+            if(paramType == "var"){ if(!argUnknown) usesVar = true; }
+            else if(argUnknown) needsConversion = true;
+            else if(argType == paramType || objectsClassName(argType) == paramType) {} // exact (an object is its class's)
+            else if(isTypeCompatible(argType, paramType) || argFitsByRule(args[i], paramType)){
+                needsConversion = true;
+                if(!isUpcast(paramType, argType)) onlyUpcasts = false;
+            }
+            else argsOk = false;
+            if(argsOk && !genericValueFits(args[i], paramType, func, body)) argsOk = false;
         }
+        if(!argsOk) return false;
+        if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
+        else if(!needsConversion){ result.match = fd; return true; }
+        else if(onlyUpcasts){ if(upcastMatch == nullptr) upcastMatch = fd; }
+        else if(conversionMatch == nullptr) conversionMatch = fd;
+        return false;
     };
+    auto settle = [&]{
+        if(result.match == nullptr) result.match = upcastMatch;
+        if(result.match == nullptr) result.match = conversionMatch;
+        if(result.match == nullptr) result.match = varFallback;
+    };
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g))
+            if(consider(fd)) return result;
+    settle();
+    // If no global found, check #using imports for a method with the matching name, ranked the same way.
+    // This lets `#using bgl.asm` make `get_prop_len(x)` work as a bare call.
     if(result.match == nullptr){
-        for(classDef* imp : usingImports)
-            for(typeMember* m : imp->members) checkImportMember(m);
-    }
-    if(result.match == nullptr){
-        for(objectDef* imp : usingObjectImports)
-            for(typeMember* m : imp->members) checkImportMember(m);
+        bool exact = false;
+        functionDef* globalArity = result.arityMatch;
+        result.arityMatch = nullptr;
+        for(classDef* imp : usingImports){
+            for(typeMember* m : imp->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && consider(fd)){ exact = true; break; }
+            if(exact) break;
+        }
+        if(!exact)
+            for(objectDef* imp : usingObjectImports){
+                for(typeMember* m : imp->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && consider(fd)){ exact = true; break; }
+                if(exact) break;
+            }
+        settle();
+        // A member's own arguments are checked when the call is validated; one matching by arity still binds.
+        if(result.match == nullptr && result.arityMatch != nullptr) result.match = result.arityMatch;
+        if(result.arityMatch == nullptr) result.arityMatch = globalArity;
     }
     // If no global found, check for func<> variable
     if(result.nameMatch == nullptr){
@@ -4104,8 +4109,25 @@ bool bglParser::argFitsByRule(expression* e, const string& paramType){
     return t.rfind("self.", 0) == 0 && languageService.isKnownPropertyName(t.substr(5));
 }
 
+// An integer literal where a float is stored is that float literal (`80` → `$+80.0`), so it needs no
+// conversion at run time — which a value fixed when the program is compiled can't have.
+bool bglParser::foldIntLiteralToFloat(expression* e, const string& targetType){
+    if(e == nullptr || targetType != "float") return false;
+    if(e->resolvedType != "intliteral" && e->resolvedType != "negativeintliteral") return false;
+    string t = e->text(), digits = t;
+    t.erase(remove(t.begin(), t.end(), ' '), t.end());
+    bool negative = !t.empty() && t[0] == '-';
+    digits = negative ? t.substr(1) : t;
+    if(digits.size() > 2 && digits.front() == '(' && digits.back() == ')') digits = digits.substr(1, digits.size() - 2);
+    if(digits.empty() || digits.find_first_not_of("0123456789") != string::npos) return false;
+    e->tokens.assign(1, string("$") + (negative ? "-" : "+") + digits + ".0");
+    e->resolvedType = "float";
+    return true;
+}
+
 bool bglParser::applyImplicitConversion(expression* e, const string& targetType){
     if(e == nullptr || targetType.empty() || targetType == "var") return false;
+    if(foldIntLiteralToFloat(e, targetType)) return true;
     const string valueType = e->resolvedType;
     if(valueType.empty() || valueType == "var" || valueType == targetType) return false;
     // A literal 0 is every bnum's empty set (§2.7.2).

@@ -293,6 +293,7 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
         if(languageService.findEnum(elementType) != nullptr || elementType.rfind("func", 0) == 0) currentExpectedType = elementType;
         expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
         currentExpectedType = savedExpected;
+        foldIntLiteralToFloat(elem, elementType);
         list->elements.push_back(elem);
         if(elem->terminator == token::braceClose) break;
         t = file.getToken();

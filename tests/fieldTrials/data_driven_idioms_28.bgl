@@ -1,0 +1,458 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a bus timetable kept in tables. An enum of stops indexing parallel name and word
+// tables; a symmetric leg-time matrix as an array of arrays read [from][to]; a jagged route table
+// (array<array<int>> of stop numbers) beside a value-class route record table written as
+// bare { … } with positional fields; a Clock value class with a copy operator, `+ int`, a
+// three-way `<=>` that supplies `<`, `>`, `<=` and `>=`, `==`/`!=`, and a method that formats
+// hh:mm into a stringObj; Clock values returned from functions and kept in a local array<Clock>
+// sorted with sort(); a bnum of stop amenities listed by bit position; per-route delays in an
+// array<int> changed with += and cleared; a query log as array<int> fed with enqueue and trimmed
+// with dequeue when full; general parsing routines over the word table; a switch with ranges
+// grading waits; <linq> filter/map/count/any/all/orderBy/first/distinct with lambdas capturing
+// locals and parameters; stringObj rows padded to columns with interpolated +=.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int STOPS = 5;
+const int ROUTE_COUNT = 3;
+const int LOG_MAX = 4;
+
+const int NONE = -1;
+
+enum eStop { depot = 0, market, school, park, harbor }
+bnum eAmenity { shelter, bench, lamp }
+const int AMENITY_KINDS = 3;
+
+//-- Stop tables ---------------------------------------------------------------
+
+//                                depot     market     school     park     harbor
+array<string> stopNames        = { "depot", "market", "school", "park", "harbor" };
+array<dictionaryWord> stopWords = { .depot, .market,  .school,  .park,  .harbor };
+array<eAmenity> stopAmenities  = { shelter | bench | lamp, bench, shelter, 0, lamp };
+
+array<string> amenityNames = { "shelter", "bench", "lamp" };
+
+// Minutes between neighboring stops; 0 means no direct road.
+array<array<int>> legs = {
+    //  dep mkt sch prk hbr
+    {   0,  6,  0,  9,  0 },   // depot
+    {   6,  0,  4,  0,  7 },   // market
+    {   0,  4,  0,  5,  0 },   // school
+    {   9,  0,  5,  0,  8 },   // park
+    {   0,  7,  0,  8,  0 }    // harbor
+};
+
+//-- Clock ---------------------------------------------------------------------
+
+value class Clock {
+    inline int mins;
+
+    Clock operator = (Clock o) {
+        mins = o.mins;
+        return self;
+    }
+
+    Clock operator + (int m) {
+        Clock c;
+        c.mins = mins + m;
+        return c;
+    }
+
+    int operator <=> (Clock o) {
+        return mins - o.mins;
+    }
+
+    bool operator == (Clock o) { return mins == o.mins; }
+    bool operator != (Clock o) { return mins != o.mins; }
+
+    void into(ref stringObj s) {
+        int h = mins / 60;
+        int m = mins % 60;
+        if (h < 10) s += "0";
+        s += $"{h}:";
+        if (m < 10) s += "0";
+        s += $"{m}";
+    }
+}
+
+Clock clockOf(int hhmm) {
+    Clock c;
+    c.mins = (hhmm / 100) * 60 + hhmm % 100;
+    return c;
+}
+
+bool validTime(int hhmm) {
+    return hhmm >= 0 && hhmm / 100 < 24 && hhmm % 100 < 60;
+}
+
+//-- Route tables --------------------------------------------------------------
+
+value class Route {
+    inline int no;
+    inline int first;     // first departure, minutes after midnight
+    inline int every;     // minutes between departures
+    inline int last;      // last departure
+    inline bool running;
+    Route operator = (Route o) {
+        no = o.no; first = o.first; every = o.every; last = o.last; running = o.running;
+        return self;
+    }
+}
+
+array<Route> routes = {
+    { 1, 360, 20, 1320, true },
+    { 2, 420, 30, 1260, true },
+    { 3, 480, 45, 1080, true }
+};
+
+array<array<int>> routeStops = {
+    { 0, 1, 2, 3 },        // route 1: depot market school park
+    { 0, 3, 4 },           // route 2: depot park harbor
+    { 1, 4, 3, 2 }         // route 3: market harbor park school
+};
+
+array<int> delays = { 0, 0, 0 };
+array<int> queryLog[LOG_MAX];
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object board {
+    "timetable board";
+    name = {.board, .timetable};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseStop() {
+    int at = stopWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+bool validRoute(int r) {
+    return r >= 0 && r < routes.length;
+}
+
+// Minutes from a route's first stop to the stop at position pos.
+int offsetAt(int r, int pos) {
+    int sum = 0;
+    for (int i in 1 to pos) {
+        sum += legs[routeStops[r][i - 1]][routeStops[r][i]];
+    }
+    return sum;
+}
+
+int positionOf(int r, int stop) {
+    return routeStops[r].indexOf(stop);
+}
+
+// The first departure at or after the given minute, or NONE.
+int departureFrom(int r, int m) {
+    Route rt = routes[r];
+    if (!rt.running) return NONE;
+    if (m <= rt.first) return rt.first;
+    int k = (m - rt.first + rt.every - 1) / rt.every;
+    int d = rt.first + k * rt.every;
+    if (d > rt.last) return NONE;
+    return d;
+}
+
+// When route r next reaches stop, at or after minute m; NONE if it doesn't.
+int nextAt(int r, int stop, int m) {
+    int pos = positionOf(r, stop);
+    if (pos == NONE) return NONE;
+    int off = offsetAt(r, pos) + delays[r];
+    int d = departureFrom(r, m - off);
+    if (d == NONE) return NONE;
+    return d + off;
+}
+
+string waitWord(int w) {
+    switch (w) {
+        case 0:        return "now";
+        case 1 to 5:   return "soon";
+        case 6 to 20:  return "a short wait";
+        default:       return "a long wait";
+    }
+}
+
+void amenitiesInto(ref stringObj s, eAmenity a) {
+    if (a == 0) { s += "none"; return; }
+    bool first = true;
+    for (int b in 0 to AMENITY_KINDS - 1) {
+        if ((a & (eAmenity)(1 << b)) == 0) continue;
+        if (!first) s += ",";
+        s += amenityNames[b];
+        first = false;
+    }
+}
+
+void logQuery(int stop) {
+    if (queryLog.length == LOG_MAX) queryLog.dequeue();
+    queryLog.enqueue(stop);
+}
+
+int routesServing(int stop) {
+    return routeStops.filter((array<int> rs) => rs.contains(stop)).count();
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb StopsTest {
+    grammar = {.stops};
+    void handler() {
+        for (int s in 0 to STOPS - 1) {
+            stringObj line = stopNames[s];
+            padTo(line, 8);
+            line += $"{routesServing(s)} routes  ";
+            amenitiesInto(line, stopAmenities[s]);
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb RouteTest {
+    grammar = {.route, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        if (!validRoute(r)) { print($"No route {r + 1}.^"); return; }
+        Route rt = routes[r];
+        stringObj line = $"Route {rt.no}:";
+        for (int pos in 0 to routeStops[r].length - 1) {
+            line += $" {stopNames[routeStops[r][pos]]}+{offsetAt(r, pos)}";
+        }
+        if (!rt.running) line += " (not running)";
+        else if (delays[r] > 0) line += $" (late {delays[r]})";
+        line.print();
+        print("^");
+    }
+}
+
+verb TripTest {
+    grammar = {.trip, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        int t = (int)second;
+        if (!validRoute(r)) { print($"No route {r + 1}.^"); return; }
+        if (!validTime(t)) { print($"{t} is not a time.^"); return; }
+        int d = departureFrom(r, clockOf(t).mins);
+        if (d == NONE) { print($"No route {r + 1} bus leaves after that.^"); return; }
+        Clock start;
+        start.mins = d + delays[r];
+        stringObj line = "";
+        for (int pos in 0 to routeStops[r].length - 1) {
+            Clock at = start + offsetAt(r, pos);
+            if (pos > 0) line += ", ";
+            line += $"{stopNames[routeStops[r][pos]]} ";
+            at.into(line);
+        }
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb NextTest {
+    grammar = {.next, parseStop, NUMBER};
+    void handler() {
+        int stop = (int)noun;
+        int t = (int)second;
+        if (!validTime(t)) { print($"{t} is not a time.^"); return; }
+        logQuery(stop);
+        Clock now = clockOf(t);
+        array<Clock> times[ROUTE_COUNT];
+        array<int> whichRoute[ROUTE_COUNT];
+        for (int r in 0 to ROUTE_COUNT - 1) {
+            int m = nextAt(r, stop, now.mins);
+            if (m == NONE) continue;
+            Clock c;
+            c.mins = m;
+            times.append(c);
+            whichRoute.append(r);
+        }
+        if (times.length == 0) { print($"Nothing more calls at {stopNames[stop]}.^"); return; }
+        for (int i in 0 to times.length - 1) {
+            stringObj line = $"Route {whichRoute[i] + 1} at ";
+            times[i].into(line);
+            line += $", {waitWord(times[i].mins - now.mins)}.";
+            line.print();
+            print("^");
+        }
+        times.sort();
+        Clock best = times[0];
+        stringObj tail = "Earliest: ";
+        best.into(tail);
+        if (best == now) tail += " (due now)";
+        else if (best <= now + 5) tail += " (within five minutes)";
+        tail += ".";
+        tail.print();
+        print("^");
+    }
+}
+
+verb LinkTest {
+    grammar = {.link, parseStop, parseStop};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        if (a == b) { print("That is the same stop.^"); return; }
+        int m = legs[a][b];
+        if (m == 0) { print($"No direct road from {stopNames[a]} to {stopNames[b]}.^"); return; }
+        print($"{stopNames[a]} to {stopNames[b]}: {m} minutes.^");
+    }
+}
+
+verb DelayTest {
+    grammar = {.delay, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        int m = (int)second;
+        if (!validRoute(r)) { print($"No route {r + 1}.^"); return; }
+        delays[r] += m;
+        print($"Route {r + 1} is now {delays[r]} minutes late.^");
+    }
+}
+
+verb CutTest {
+    grammar = {.cut, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        if (!validRoute(r)) { print($"No route {r + 1}.^"); return; }
+        if (!routes[r].running) { print($"Route {r + 1} is already cut.^"); return; }
+        routes[r].running = false;
+        print($"Route {r + 1} cut; {routes.filter((Route x) => x.running).count()} still running.^");
+    }
+}
+
+verb RestoreTest {
+    grammar = {.reset};
+    void handler() {
+        for (int r in 0 to ROUTE_COUNT - 1) {
+            routes[r].running = true;
+            delays[r] = 0;
+        }
+        print("All routes running on time.^");
+    }
+}
+
+verb BusiestTest {
+    grammar = {.busiest};
+    void handler() {
+        array<int> order[STOPS] = { 0, 1, 2, 3, 4 };
+        array<int> ranked[STOPS] = order.orderBy((int a, int b) => routesServing(b) - routesServing(a));
+        int top = ranked.first();
+        print($"Busiest: {stopNames[top]} ({routesServing(top)} routes).^");
+        stringObj line = "Order:";
+        for (int s in ranked) line += $" {stopNames[s]}";
+        line += ".";
+        line.print();
+        print("^");
+        int quiet = order.filter((int s) => routesServing(s) == 1).count();
+        print($"{quiet} stops have one route.^");
+    }
+}
+
+verb SummaryTest {
+    grammar = {.summary};
+    void handler() {
+        int running = routes.filter((Route r) => r.running).count();
+        bool anyLate = delays.any((int d) => d > 0);
+        bool allRun = routes.all((Route r) => r.running);
+        int lateLimit = 10;
+        int veryLate = delays.filter((int d) => d >= lateLimit).count();
+        print($"{running} of {routes.length} routes running.^");
+        print(allRun ? "Every route is running.^" : "Some routes are cut.^");
+        if (anyLate) print($"{veryLate} routes are {lateLimit}+ minutes late.^");
+        else print("Nothing is late.^");
+        int busesPerHour = 0;
+        for (Route r in routes) {
+            if (r.running) busesPerHour += 60 / r.every;
+        }
+        print($"About {busesPerHour} buses an hour.^");
+    }
+}
+
+verb LogTest {
+    grammar = {.log};
+    void handler() {
+        if (queryLog.length == 0) { print("No queries yet.^"); return; }
+        stringObj line = "Asked about:";
+        for (int s in queryLog) line += $" {stopNames[s]}";
+        int kinds = queryLog.distinct().count();
+        line += $" ({kinds} different).";
+        line.print();
+        print("^");
+    }
+}
+
+verb TableTest {
+    grammar = {.table, parseStop};
+    void handler() {
+        int stop = (int)noun;
+        stringObj head = "route";
+        padTo(head, 7);
+        head += "first  last   every";
+        head.print();
+        print("^");
+        for (int r in 0 to ROUTE_COUNT - 1) {
+            int pos = positionOf(r, stop);
+            if (pos == NONE) continue;
+            int off = offsetAt(r, pos) + delays[r];
+            Clock f;
+            f.mins = routes[r].first + off;
+            Clock l;
+            l.mins = routes[r].last + off;
+            stringObj row = $"{r + 1}";
+            padTo(row, 7);
+            f.into(row);
+            padTo(row, 14);
+            l.into(row);
+            padTo(row, 21);
+            row += $"{routes[r].every}";
+            if (!routes[r].running) row += " cut";
+            row.print();
+            print("^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

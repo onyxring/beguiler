@@ -1,0 +1,17 @@
+// run_measure10_floats — integer literals initializing float storage fixed at compile time: a
+// global, a const, array elements, a class member default, an object member and a positional member.
+// EXPECT_OUTPUT: 80.0000 1.0000 2.0000 3.0000 4.0000 5.0000 1.0000 -2.0000
+#beguilerSettings { target = Glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+class Box : object { inline float cap; float rate = 1; }
+Box boxA { 80; }
+Box boxB { 80.0; rate = 2; }
+object single { float w = 3; }
+float g = 4;
+const float C = 5;
+array<float> fs = { 1, -2 };
+void Main() {
+    glulxConsole();
+    print(boxA.cap); print(" "); print(boxA.rate); print(" "); print(boxB.rate); print(" ");
+    print(single.w); print(" "); print(g); print(" "); print(C); print(" "); print(fs[0]); print(" "); print(fs[1]); print("^");
+}

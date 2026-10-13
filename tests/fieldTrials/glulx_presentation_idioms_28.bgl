@@ -1,0 +1,532 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a watering bench of four pots shown in a text grid. A class Pot : object (static through
+// a class attributeList) with a label, a letter char, a water level, a thirst, a growth count, an enum
+// stage and a watering count, a static wilt counter, methods returning char, bool and stringObj, a
+// daemon() that dries the pot, grows it and wilts it (StopDaemon), and a before() that answers
+// Examine; a watering can object whose before() answers the library's Fill action; a value class
+// Reading (low, high, sum and count, copy operator, += of an int, a float mean and a stringObj span)
+// over a history ring and over the pots; a room each_turn() that records the total water into an
+// <array> ring (enqueue, dequeue) drawn as a sparkline through a switch with ranges; a text grid
+// split above the main window with a border and a styleSheet, redrawn from a replaced
+// DrawStatusLine; a text-buffer log split to the right with its own styleSheet, closed and reopened,
+// written through ?.; a verb with two grammar lines (NOUN, and NOUN with NUMBER) told apart by
+// second; a do/while; <linq> filter, count, orderBy with a lambda comparator, first, last, any, all
+// and map over an array<Pot>; links with block-bodied lambda targets, a named-function target and
+// enum-valued targets handled in HandleGlkEvent; a fixed-pitch table with padded columns; a float
+// to one decimal; a const int and #define sizes.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GRID_LINES 6
+#define LOG_WIDTH 28
+#define HISTORY_LEN 6
+#define FULL 10
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eStage { seed, sprout, leafy, flowering, wilted }
+enum eLinks { linkSurvey = 71, linkDriest }
+
+const int canMax = 12;
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet gridLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 1; };
+    alert = style{ fontWeight = 1; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz benchGrid = null;
+textBufferWindowVert logPane = null;
+array<int> history[HISTORY_LEN];
+int logLines = 0;
+int fills = 0;
+int clicks = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj oneDecimal(float f) {
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+int clamp(int v, int lo, int hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+string stageName(eStage s) {
+    switch (s) {
+        case eStage.seed:      return "seed";
+        case eStage.sprout:    return "sprout";
+        case eStage.leafy:     return "leafy";
+        case eStage.flowering: return "flowering";
+        case eStage.wilted:    return "wilted";
+    }
+    return "?";
+}
+
+char sparkChar(int total) {
+    switch (total) {
+        case 0:        return '_';
+        case 1 to 10:  return '.';
+        case 11 to 20: return ':';
+        case 21 to 30: return '+';
+        default:       return '#';
+    }
+    return '?';
+}
+
+// ---- the log -------------------------------------------------------------------------------------
+
+void openLog() {
+    logPane = bgl.ui.mainWin.splitRightBuffer(LOG_WIDTH, fixed, border, styles: logLook);
+}
+
+void logLine(stringObj text) {
+    logLines++;
+    logPane?.printLine($"T{turns}: {text}");
+}
+
+// ---- readings ------------------------------------------------------------------------------------
+
+value class Reading {
+    int low;
+    int high;
+    int sum;
+    int n;
+
+    Reading operator = (Reading o) {
+        low = o.low;
+        high = o.high;
+        sum = o.sum;
+        n = o.n;
+        return self;
+    }
+
+    Reading operator += (int v) {
+        if (n == 0 || v < low) low = v;
+        if (n == 0 || v > high) high = v;
+        sum += v;
+        n++;
+        return self;
+    }
+
+    float mean() {
+        if (n == 0) return 0.0;
+        return (float)sum / n;
+    }
+
+    stringObj span() {
+        stringObj out = $"{low}-{high}";
+        return out;
+    }
+}
+
+// ---- pots ----------------------------------------------------------------------------------------
+
+class Pot : object {
+    attributeList attributes = {static};
+    string label = "pot";
+    char letter = '?';
+    int water = 5;
+    int thirst = 1;
+    int growth = 0;
+    eStage stage = eStage.seed;
+    int waterings = 0;
+    static int wilts = 0;
+
+    char glyph() {
+        switch (stage) {
+            case eStage.seed:      return 'o';
+            case eStage.sprout:    return 'i';
+            case eStage.leafy:     return 'Y';
+            case eStage.flowering: return '*';
+            case eStage.wilted:    return 'x';
+        }
+        return '?';
+    }
+
+    bool isDry() { return stage != eStage.wilted && water <= 2; }
+
+    stringObj gauge() {
+        stringObj out = "[";
+        for (int i = 1; i <= FULL; i++) {
+            if (i <= water) out += '=';
+            else out += ' ';
+        }
+        out += ']';
+        return out;
+    }
+
+    stringObj row() {
+        stringObj tag = $"{label}";
+        stringObj w = $"{water}";
+        stringObj out = $"{letter} {glyph()} {padRight(tag, 7)}{gauge()} {padLeft(w, 2)}";
+        if (isDry()) out += " dry";
+        return out;
+    }
+
+    void daemon() {
+        if (stage == eStage.wilted) return;
+        water -= thirst;
+        if (water <= 0) {
+            water = 0;
+            stage = eStage.wilted;
+            wilts++;
+            stringObj note = $"{label} wilted";
+            logLine(note);
+            StopDaemon(self);
+            return;
+        }
+        if (water >= 3) {
+            growth++;
+            if (growth % 3 == 0 && stage != eStage.flowering) {
+                stage = (eStage)((int)stage + 1);
+                stringObj note = $"{label} now {stageName(stage)}";
+                logLine(note);
+            }
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)}: {stageName(stage)}, water {water} of {FULL}, grown {growth}, watered {waterings} time{waterings == 1 ? "" : "s"}.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Four pots stand on the bench.";
+    attributes = {light};
+
+    void each_turn() {
+        int total = 0;
+        for (Pot p in pots) total += p.water;
+        if (history.length == history.size) history.dequeue();
+        history.enqueue(total);
+    }
+}
+
+Pot basilPot { "basil pot"; parent = roomA; name = {.basil, .pot}; label = "basil"; letter = 'B'; water = 6; thirst = 1; }
+Pot mintPot  { "mint pot";  parent = roomA; name = {.mint, .pot};  label = "mint";  letter = 'M'; water = 4; thirst = 2; }
+Pot sagePot  { "sage pot";  parent = roomA; name = {.sage, .pot};  label = "sage";  letter = 'S'; water = 8; thirst = 1; }
+Pot fernPot  { "fern pot";  parent = roomA; name = {.fern, .pot};  label = "fern";  letter = 'F'; water = 3; thirst = 3; }
+
+array<Pot> pots = { basilPot, mintPot, sagePot, fernPot };
+
+object wateringCan {
+    "watering can";
+    parent = roomA;
+    name = {.watering, .can};
+    description = "A tin watering can.";
+    int level = 6;
+
+    bool before() {
+        switch (action) {
+            case Fill:
+                if (level == canMax) {
+                    printLine("The watering can is already full.");
+                    rtrue;
+                }
+                level = canMax;
+                fills++;
+                printLine($"You fill the watering can to {canMax}.");
+                stringObj note = $"can filled ({fills})";
+                logLine(note);
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ---- the bench -----------------------------------------------------------------------------------
+
+int totalWater() {
+    int total = 0;
+    for (Pot p in pots) total += p.water;
+    return total;
+}
+
+stringObj sparkline() {
+    stringObj out = "";
+    for (int v in history) out += sparkChar(v);
+    return out;
+}
+
+void drawBench() {
+    if (benchGrid == null) return;
+    benchGrid.clear();
+    benchGrid.moveCursor(0, 0);
+    benchGrid.print("  Pot    Water");
+    int line = 1;
+    for (Pot p in pots) {
+        benchGrid.moveCursor(0, line);
+        benchGrid.print(p.row());
+        line++;
+    }
+    benchGrid.moveCursor(0, line);
+    benchGrid.print($"can {wateringCan.level}/{canMax} total {totalWater()} trend {sparkline()}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | wilted {Pot.wilts}");
+    drawBench();
+}
+
+int waterPot(Pot p, int amount) {
+    if (p.stage == eStage.wilted) {
+        printLine($"{cThe(p)} has wilted; water won't help now.");
+        return 0;
+    }
+    if (wateringCan.level == 0) {
+        printLine("The watering can is empty.");
+        return 0;
+    }
+    int room = FULL - p.water;
+    int given = clamp(amount, 0, room);
+    if (given > wateringCan.level) given = wateringCan.level;
+    if (given == 0) {
+        printLine($"{cThe(p)} is already full.");
+        return 0;
+    }
+    p.water += given;
+    p.waterings++;
+    wateringCan.level -= given;
+    printLine($"You water {the(p)}: +{given}, now {p.water}.");
+    stringObj note = $"{p.label} +{given}";
+    logLine(note);
+    return given;
+}
+
+void showSurvey() {
+    printLine($"{fixed}{bold}{padRight("Pot", 7)}{padLeft("Wat", 4)}{padLeft("Grw", 4)}{padLeft("Got", 4)}  Stage{roman}");
+    for (Pot p in pots) {
+        stringObj n = $"{p.label}";
+        stringObj w = $"{p.water}";
+        stringObj g = $"{p.growth}";
+        stringObj t = $"{p.waterings}";
+        printLine($"{fixed}{padRight(n, 7)}{padLeft(w, 4)}{padLeft(g, 4)}{padLeft(t, 4)}  {stageName(p.stage)}{roman}");
+    }
+}
+
+void showDriest() {
+    array<Pot> living[4];
+    living = pots.filter((Pot p) => p.stage != eStage.wilted);
+    if (living.count() == 0) {
+        printLine("Every pot has wilted.");
+        return;
+    }
+    array<Pot> order[4];
+    order = living.orderBy((Pot a, Pot b) => a.water - b.water);
+    Pot dry = order.first();
+    Pot wet = order.last();
+    printLine($"Driest: {the(dry)} at {dry.water}; wettest: {the(wet)} at {wet.water}.");
+}
+
+// A click at the prompt can't print to the main window (it is waiting for a line), so these log.
+void logCounts() {
+    stringObj note = $"living {pots.filter((Pot p) => p.stage != eStage.wilted).count()}, dry {pots.filter((Pot p) => p.isDry()).count()}";
+    logLine(note);
+}
+
+void logDriest() {
+    if (pots.all((Pot p) => p.stage == eStage.wilted)) {
+        logLine("all wilted");
+        return;
+    }
+    Pot dry = pots.filter((Pot p) => p.stage != eStage.wilted).orderBy((Pot a, Pot b) => a.water - b.water).first();
+    stringObj note = $"driest {dry.label} ({dry.water})";
+    logLine(note);
+}
+
+void fillFromLink() {
+    clicks++;
+    Fill.perform(wateringCan);
+    drawBench();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.linkSurvey: logCounts();
+            case (int)eLinks.linkDriest: logDriest();
+            default: return 0;
+        }
+        clicks++;
+        drawBench();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    benchGrid = bgl.ui.mainWin.splitUpGrid(GRID_LINES, fixed, border, styles: gridLook);
+    openLog();
+    for (Pot p in pots) StartDaemon(p);
+    history.enqueue(totalWater());
+    logLine("bench ready");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Pot asPot(object o) {
+    if (o == null || !o.is(Pot)) {
+        printLine("That is not a pot.");
+        return null;
+    }
+    return (Pot)o;
+}
+
+verb Water {
+    grammar = { {.water, NOUN}, {.water, NOUN, .with, NUMBER} };
+    void handler() {
+        Pot p = asPot(noun);
+        if (p == null) return;
+        int amount = 3;
+        if (second != null) amount = (int)second;
+        waterPot(p, amount);
+    }
+}
+
+verb Soak {
+    grammar = {.soak};
+    void handler() {
+        int poured = 0;
+        int rounds = 0;
+        do {
+            array<Pot> thirsty[4];
+            thirsty = pots.filter((Pot p) => p.isDry());
+            if (thirsty.count() == 0 || wateringCan.level == 0) break;
+            poured += waterPot(thirsty.first(), 2);
+            rounds++;
+        } while (rounds < 4);
+        if (rounds == 0) printLine("No pot needs soaking.");
+        else printLine($"Soaked in {rounds} pour{rounds == 1 ? "" : "s"}, {poured} in all.");
+    }
+}
+
+verb Prune {
+    grammar = {.prune, NOUN};
+    void handler() {
+        Pot p = asPot(noun);
+        if (p == null) return;
+        if (p.stage != eStage.wilted) {
+            printLine($"{cThe(p)} doesn't need pruning.");
+            return;
+        }
+        p.stage = eStage.seed;
+        p.growth = 0;
+        p.water = 4;
+        StartDaemon(p);
+        printLine($"You cut {the(p)} back to a seed.");
+        stringObj note = $"{p.label} pruned";
+        logLine(note);
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() { showSurvey(); }
+}
+
+verb Driest {
+    grammar = {.driest};
+    meta = true;
+    void handler() { showDriest(); }
+}
+
+verb Readings {
+    grammar = {.readings};
+    meta = true;
+    void handler() {
+        Reading trend;
+        for (int v in history) trend += v;
+        printLine($"Total water over {trend.n} turns: {trend.span()}, mean {oneDecimal(trend.mean())}.");
+        Reading now;
+        for (Pot p in pots) now += p.water;
+        Reading before = now;
+        now += wateringCan.level;
+        printLine($"Pots now: {before.span()}, mean {oneDecimal(before.mean())}; with the can: {now.span()}.");
+        int grown = 0;
+        for (var g in pots.map((Pot p) => p.growth)) grown += g;
+        printLine($"Growth in all: {grown}; wilted so far: {Pot.wilts}.");
+        if (pots.all((Pot p) => p.stage != eStage.wilted)) printLine("No pot is wilted.");
+        else if (pots.any((Pot p) => p.stage == eStage.flowering)) printLine("Something flowers despite the losses.");
+        else printLine("Some pots are wilted.");
+    }
+}
+
+verb ToggleLog {
+    grammar = {.log};
+    meta = true;
+    void handler() {
+        if (logPane != null) {
+            logPane.close();
+            logPane = null;
+            printLine("Log closed.");
+        } else {
+            openLog();
+            logLine("log reopened");
+            printLine("Log open.");
+        }
+    }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Water: {link("basil", => { waterPot(basilPot, 3); drawBench(); })} {link("mint", => { waterPot(mintPot, 3); drawBench(); })} {link("sage", => { waterPot(sagePot, 3); drawBench(); })} {link("fern", => { waterPot(fernPot, 3); drawBench(); })}");
+        printLine($"Also: {link("fill", fillFromLink)} {link("survey", eLinks.linkSurvey)} {link("driest", eLinks.linkDriest)}");
+    }
+}
+
+#includeI6 "grammar"

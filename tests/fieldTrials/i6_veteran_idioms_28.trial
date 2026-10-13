@@ -1,0 +1,162 @@
+Potting Shed
+Potting Shed. A tap is set over a sink. The greenhouse is east.
+You can see a seed tray (in which are three seeds (a bean seed, a pea seed and a marrow seed)) and a watering can here.
+> survey
+Pots: 0 sown, 0 wet. Can: 0. Lamp: off. Score 0.
+Bloomed: none.
+> smell
+You smell nothing unexpected.
+> x can
+A tin watering can, empty.
+> water can
+You have nothing to water with.
+> fill can
+You fill the can at the tap.
+> take can
+Taken.
+> x can
+A tin watering can, full.
+> fill can
+The can is already full.
+> empty can
+You tip the water out.
+> fill can
+You fill the can at the tap.
+> take seeds
+bean seed: Taken.
+pea seed: Taken.
+marrow seed: Taken.
+> i
+You're carrying:
+  three seeds:
+    a marrow seed
+    a pea seed
+    a bean seed
+  a watering can
+> e
+Greenhouse
+Greenhouse. Three pots stand on the staging. The shed is west.
+You can see a pot 1 (which is empty), a pot 2 (which is empty), a pot 3 (which is empty), some shears, a gardener and a heat lamp here.
+> smell
+Damp earth and warm glass.
+> ask gardener about lamp
+"It runs a few turns at a time."
+> ask gardener about pots
+"Sow them, then keep them wet."
+> tell gardener about weather
+The gardener shrugs.
+> take shears
+"Mind those, they're sharp," says the gardener.
+Taken.
+> give shears to gardener
+The gardener hangs the shears on his belt.
+[The score has just gone up by one point.]
+> give can to gardener
+The gardener has no use for that.
+> x pot 2
+Pot 2 holds bare soil, dry.
+> water pot 2
+There is nothing growing in pot 2.
+> put bean seed in pot 1
+You press the bean seed into pot 1.
+> put pea seed in pot 2
+You press the pea seed into pot 2.
+> put can in pot 3
+Only seeds go in the pots.
+> x pot 1
+Pot 1 holds a sown bean seed, dry.
+> water pot 1
+You water pot 1.
+> water pot 1 with shears
+You can't see any such thing.
+> water pot 1
+You water pot 1.
+> water pot 2
+You water pot 2.
+> water pot 2
+The watering can is empty.
+> water bench
+That doesn't need watering.
+> x can
+A tin watering can, empty.
+> gardener, water pot 3
+There is nothing growing in pot 3.
+> gardener, go west
+"I'm stopping here," says the gardener.
+> gardener, water pot 2
+The gardener waters pot 2.
+> survey
+Pots: 2 sown, 1 wet. Can: 0. Lamp: off. Score 1.
+Bloomed: none.
+> turn on lamp
+The lamp hums and glows red.
+The pea in pot 2 flowers.
+[The score has just gone up by one point.]
+> look
+Greenhouse
+Greenhouse. Three pots stand on the staging under a glowing lamp. The shed is west.
+You can see a pot 1 (which is empty), a pot 2 (which is empty), a pot 3 (which is empty), a gardener and a heat lamp here.
+Flowers: 1.
+> x lamp
+A heat lamp on a chain.
+> survey
+Pots: 2 sown, 0 wet. Can: 0. Lamp: on, 1 left. Score 2.
+Bloomed: 2.
+> x pot 1
+Pot 1 holds a bean shoot in bud, dry.
+> wait
+Time passes.
+The heat lamp clicks off.
+> x pot 2
+Pot 2 holds a pea plant in flower, dry.
+> wait
+Time passes.
+> x pot 1
+Pot 1 holds a bean shoot in bud, dry.
+> survey
+Pots: 2 sown, 0 wet. Can: 0. Lamp: off. Score 2.
+Bloomed: 2.
+> put marrow seed in pot 3
+You press the marrow seed into pot 3.
+> gardener, water pot 3
+The gardener waters pot 3.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> x pot 3
+Pot 3 holds a marrow shoot in bud, dry.
+> survey
+Pots: 3 sown, 0 wet. Can: 0. Lamp: off. Score 2.
+Bloomed: 2.
+> wait
+Time passes.
+> x pot 3
+Pot 3 holds a marrow shoot in bud, dry.
+> w
+Potting Shed
+Potting Shed. A tap is set over a sink. The greenhouse is east.
+You can see a seed tray (which is empty) here.
+> fill can
+You fill the can at the tap.
+> e
+Greenhouse
+Greenhouse. Three pots stand on the staging. The shed is west.
+You can see a pot 1 (which is empty), a pot 2 (which is empty), a pot 3 (which is empty), a gardener and a heat lamp here.
+Flowers: 1.
+> turn on lamp
+The lamp hums and glows red.
+> survey
+Pots: 3 sown, 0 wet. Can: 3. Lamp: on, 3 left. Score 2.
+Bloomed: 2.
+> water pot 3
+You water pot 3.
+The marrow in pot 3 flowers.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 56 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

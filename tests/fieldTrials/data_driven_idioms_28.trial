@@ -1,0 +1,119 @@
+Room A
+> log
+No queries yet.
+> summary
+3 of 3 routes running.
+Every route is running.
+Nothing is late.
+About 6 buses an hour.
+> route 1
+Route 1: depot+0 market+6 school+10 park+15
+> route 2
+Route 2: depot+0 park+9 harbor+17
+> route 3
+Route 3: market+0 harbor+7 park+15 school+20
+> route 4
+No route 4.
+> link depot market
+depot to market: 6 minutes.
+> link market depot
+market to depot: 6 minutes.
+> link depot harbor
+No direct road from depot to harbor.
+> link park park
+That is the same stop.
+> trip 1 800
+depot 08:00, market 08:06, school 08:10, park 08:15.
+> trip 1 801
+depot 08:20, market 08:26, school 08:30, park 08:35.
+> trip 2 2300
+No route 2 bus leaves after that.
+> trip 3 960
+960 is not a time.
+> trip 3 1035
+market 11:00, harbor 11:07, park 11:15, school 11:20.
+> next park 800
+Route 1 at 08:15, a short wait.
+Route 2 at 08:09, a short wait.
+Route 3 at 08:15, a short wait.
+Earliest: 08:09.
+> next harbor 1000
+Route 2 at 10:17, a short wait.
+Route 3 at 10:22, a long wait.
+Earliest: 10:17.
+> next school 2350
+Nothing more calls at school.
+> next market 1240
+Route 1 at 12:46, a short wait.
+Route 3 at 13:15, a long wait.
+Earliest: 12:46.
+> delay 1 5
+Route 1 is now 5 minutes late.
+> delay 1 7
+Route 1 is now 12 minutes late.
+> route 1
+Route 1: depot+0 market+6 school+10 park+15 (late 12)
+> trip 1 800
+depot 08:12, market 08:18, school 08:22, park 08:27.
+> next park 800
+Route 1 at 08:07, a short wait.
+Route 2 at 08:09, a short wait.
+Route 3 at 08:15, a short wait.
+Earliest: 08:07.
+> table park
+route  first  last   every
+1      06:27  22:27  20
+2      07:09  21:09  30
+3      08:15  18:15  45
+> cut 2
+Route 2 cut; 2 still running.
+> cut 2
+Route 2 is already cut.
+> route 2
+Route 2: depot+0 park+9 harbor+17 (not running)
+> next harbor 1000
+Route 3 at 10:22, a long wait.
+Earliest: 10:22.
+> summary
+2 of 3 routes running.
+Some routes are cut.
+1 routes are 10+ minutes late.
+About 4 buses an hour.
+> busiest
+Busiest: park (3 routes).
+Order: park depot market school harbor.
+0 stops have one route.
+> log
+Asked about: school market park harbor (4 different).
+> next depot 600
+Route 1 at 06:12, a short wait.
+Earliest: 06:12.
+> log
+Asked about: market park harbor depot (4 different).
+> table school
+route  first  last   every
+1      06:22  22:22  20
+3      08:20  18:20  45
+> reset
+All routes running on time.
+> summary
+3 of 3 routes running.
+Every route is running.
+Nothing is late.
+About 6 buses an hour.
+> table park
+route  first  last   every
+1      06:15  22:15  20
+2      07:09  21:09  30
+3      08:15  18:15  45
+> next park 815
+Route 1 at 08:15, now.
+Route 2 at 08:39, a long wait.
+Route 3 at 08:15, now.
+Earliest: 08:15 (due now).
+> next market 803
+Route 1 at 08:06, soon.
+Route 3 at 08:45, a long wait.
+Earliest: 08:06 (within five minutes).
+> log
+Asked about: harbor depot park market (4 different).

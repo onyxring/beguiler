@@ -23,13 +23,16 @@ object _glulx
 ];
 [_bglResumeLineInput buffer typed;
 ];
-[_bglGlkEvent event context buffer _l_target typed;
+[_bglGlkEvent event context buffer _l_target known n typed;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
     _l_target = _bgl_bglOpCodes_aload(event, 2);
     __glkHook(258, _bgl_bglOpCodes_aload(event, 1));
-    if ((~~(metaclass(_l_target) == Routine))) {
+    known=false;
+    n = 0;
+     for (n = _bglLinkRoutines-->0 : n > 0 : n--) if (_bglLinkRoutines-->n == _l_target) known = true; 
+    if (~~known) {
         return false;
     }
     typed = 0;
@@ -114,6 +117,9 @@ object _bglMaybe
         if (_bglAuthorGlkEvent) return _bglAuthorGlkEvent(event, context, buffer);
         return 0;
     ];
+
+
+    Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
     @copy sp api;

@@ -85,13 +85,38 @@ bool _bglGlkEvent(var event, int context, var buffer){
     if(bgl.asm.aload(event, 0) != (int)eGlulxEventType.hyperlink) return false;
     var target = bgl.asm.aload(event, 2);
     bgl.asm.requestHyperlinkEvent(bgl.asm.aload(event, 1));   // a request lasts for one click
-    if(!_bglMcRoutine(target)) return false;
+    bool known = false;
+    int n = 0;
+    #i6 { for (n = _bglLinkRoutines-->0 : n > 0 : n--) if (_bglLinkRoutines-->n == target) known = true; }
+    if(!known) return false;
 
     int typed = 0;
     if(context == 0) typed = _bglSuspendLineInput(buffer);
     #i6 { target(); }
     if(context == 0) _bglResumeLineInput(buffer, typed);
     return true;
+}
+
+// The routines printed as link targets: an int or enum target can share a routine's address test,
+// so only a value recorded here is called.
+#emitlast {
+    Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
+}
+superposed void _bglNoteLinkRoutine(var v){
+    int n = 0;
+    #i6 {
+        for (n = _bglLinkRoutines-->0 : n > 0 : n--) if (_bglLinkRoutines-->n == v) return;
+        if (_bglLinkRoutines-->0 < 32) { _bglLinkRoutines-->0 = _bglLinkRoutines-->0 + 1; _bglLinkRoutines-->(_bglLinkRoutines-->0) = v; }
+    }
+}
+
+superposed void _bglLink(string text, int value){
+    if(bgl.asm.gestalt(11, 0) == 0){ print(text); return; }   // 11: gestalt_Hyperlinks
+    int win = _bglCurrentWindow();
+    if(win != 0) bgl.asm.requestHyperlinkEvent(win);
+    bgl.asm.setHyperlink(value);
+    print(text);
+    bgl.asm.setHyperlink(0);
 }
 
 // The window the current output stream belongs to, or 0 (a file or memory stream).
@@ -106,15 +131,15 @@ int _bglCurrentWindow(){
 }
 
 extend _bglPrintRules {
-    /// Print `text` as a hyperlink: clicking it calls a function `target`, or passes an int or enum `target` to HandleGlkEvent.
+    /// Print `text` as a hyperlink that passes an int or enum `target` to HandleGlkEvent when clicked.
+    void link(string text, int target){
+        _bglLink(text, target);
+    }
+    /// Print `text` as a hyperlink that calls `target` when clicked.
     /// A lambda target must capture no variables; without hyperlink support the text prints plain.
-    void link(string text, literal func<void> | int target){
-        if(bgl.asm.gestalt(11, 0) == 0){ print(text); return; }   // 11: gestalt_Hyperlinks
-        int win = _bglCurrentWindow();
-        if(win != 0) bgl.asm.requestHyperlinkEvent(win);
-        bgl.asm.setHyperlink((int)target);
-        print(text);
-        bgl.asm.setHyperlink(0);
+    void link(string text, literal func<void> target){
+        _bglNoteLinkRoutine(target);
+        _bglLink(text, (int)target);
     }
 }
 

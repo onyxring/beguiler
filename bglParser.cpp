@@ -2970,7 +2970,28 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             // routine runs, nothing is printed). So permit void in segment position.
             bool savedAllowVoid = allowVoidReturnExpr;
             allowVoidReturnExpr = true;
-            expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
+            expression* exprNode = nullptr;
+            int savedBraceDepth = file.braceDepth;
+            try {
+                exprNode = parseExpression(exprFirst, {"}"}, func, body);
+            } catch(...) {
+                // Leave the reader past the whole string, so recovery doesn't start inside it.
+                allowVoidReturnExpr = savedAllowVoid;
+                file.braceDepth = savedBraceDepth;
+                int depth = file.hasPendingToken && file.pendingToken.is(token::braceClose) ? 0 : 1;
+                file.hasPendingToken = false;
+                for(int ch = file.readChar(); ch != EOF; ch = file.readChar()){
+                    if(ch == '\\'){ file.readChar(); continue; }
+                    if(ch == '"' && depth > 0){   // a string inside the expression
+                        for(int q = file.readChar(); q != EOF && q != '"'; q = file.readChar()) if(q == '\\') file.readChar();
+                        continue;
+                    }
+                    if(ch == '{') depth++;
+                    else if(ch == '}' && depth > 0) depth--;
+                    else if(ch == '"' && depth == 0) break;
+                }
+                throw;
+            }
             allowVoidReturnExpr = savedAllowVoid;
             // A property accessor prints its value, as `print(x)` does — unless its class prints itself.
             // An object prints as itself: its class's conversion operator isn't a property getter.

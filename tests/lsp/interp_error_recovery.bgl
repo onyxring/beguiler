@@ -1,0 +1,18 @@
+#beguilerSettings { target = Glulx; }
+#include <string>
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj row(int water) {
+    stringObj out = $"w {padLeft($"{water}", 2)}";
+    if (water < 3) out += " dry";
+    return out;
+}
+
+void Main() {
+    bglInit();
+    print($"[{row(7)}] can't");
+}

@@ -436,6 +436,12 @@ object _bglStr {
         #i6 { tmp = str.appendChar(c); str.free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
+    var prependChar(var s, int c) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.prependChar(c); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
     var prepend(var s, var text) {
         bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
@@ -988,6 +994,19 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return retval;
     }
 
+    var prependChar(int c) {
+        var one;
+        var retval;
+        #i6 {
+            one = _bglStr.new();
+            one.setChar(0, c);
+            one.setLength(1);
+            retval = one.append(self);
+            one.free();
+        }
+        return retval;
+    }
+
     var prepend(var text) {
         var retval;
         bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
@@ -1188,6 +1207,7 @@ extend class string {
     emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
     emitter stringObj  append(array<char> v)                        { _bglStr.append($val, _bglStr.fromChars($v)) }
     /// Return a new string with `v` joined on the FRONT.
+    emitter stringObj  prepend(char v)                       { _bglStr.prependChar($val, $v) }
     emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
     emitter stringObj prepend(array<char> v) { _bglStr.prepend($val, _bglStr.fromChars($v)) }
     /// Return an upper-case copy.
@@ -1396,6 +1416,7 @@ emitter class stringObj {
     emitter stringObj  append(stringObj v)                      { _bglStr.append($val, $v) }
     emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
     emitter stringObj  append(array<char> v)                        { _bglStr.append($val, _bglStr.fromChars($v)) }
+    emitter stringObj  prepend(char v)                       { _bglStr.prependChar($val, $v) }
     emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
     emitter stringObj prepend(array<char> v) { _bglStr.prepend($val, _bglStr.fromChars($v)) }
     emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }

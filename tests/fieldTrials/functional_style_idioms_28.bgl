@@ -1,0 +1,476 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small loan desk written in a functional style on Glulx. Books and members are scenery
+// objects of classes with an enum genre, a page count, a holder reference and a due day, held in
+// global arrays. Fine rules are func<int, int> values returned from a switch over the enum (named
+// functions and non-capturing lambdas) and called straight off the call; a value class tally with
+// a copy operator and an `operator +`, folded over a filtered array and returned by value; float
+// averages and ratios; <linq> filter/count/any/all/orderBy/take/skip/distinct/map over global and
+// returned local arrays, with two-key comparators and a chain inside a predicate; a recursive join
+// building a stringObj returned by value; a `ref stringObj` log; a hand-written fold and scan over
+// func<> parameters with named and defaulted arguments; a returned rule held in a local func<> and
+// called from a map lambda; an array of the enum ordered by a comparator that folds; a renewal policy
+// passed as a named lambda argument; verbs reading noun, second and parsed_number.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int LOANDAYS = 7;
+const int MAXLOG = 12;
+
+//-- Members and books ----------------------------------------------------------------------------
+
+enum eGenre { fiction, history, science }
+
+class Member : object {
+    attributeList attributes = {scenery};
+    string label;
+    int limit = 2;
+}
+
+class Book : object {
+    attributeList attributes = {scenery};
+    string label;
+    eGenre genre;
+    int pages;
+    Member holder = null;
+    int due = 0;
+    int loans = 0;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Member amy { "Amy"; name = {.amy}; label = "Amy"; parent = roomA; }
+Member ben { "Ben"; name = {.ben}; label = "Ben"; limit = 1; parent = roomA; }
+Member cal { "Cal"; name = {.cal}; label = "Cal"; limit = 3; parent = roomA; }
+
+Book atlas  { "atlas";  name = {.atlas};  label = "atlas";  genre = eGenre.history; pages = 320; parent = roomA; }
+Book fable  { "fable";  name = {.fable};  label = "fable";  genre = eGenre.fiction; pages = 180; parent = roomA; }
+Book gears  { "gears";  name = {.gears};  label = "gears";  genre = eGenre.science; pages = 410; parent = roomA; }
+Book harbor { "harbor"; name = {.harbor}; label = "harbor"; genre = eGenre.fiction; pages = 250; parent = roomA; }
+Book ledger { "ledger"; name = {.ledger}; label = "ledger"; genre = eGenre.history; pages = 140; parent = roomA; }
+Book orbit  { "orbit";  name = {.orbit};  label = "orbit";  genre = eGenre.science; pages = 290; parent = roomA; }
+
+array<Book> books = {atlas, fable, gears, harbor, ledger, orbit};
+array<Member> members = {amy, ben, cal};
+array<eGenre> genres = {eGenre.fiction, eGenre.history, eGenre.science};
+
+int today = 1;
+
+// Fines paid, in the order they were paid.
+array<int> paid[MAXLOG];
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int foldInts(array<int> xs, func<int, int, int> f, int seed = 0) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+// Running totals: element i is f folded over xs[0..i].
+array<int> scan(array<int> xs, func<int, int, int> f) {
+    array<int> out[MAXLOG];
+    int acc = 0;
+    for (int x in xs) {
+        acc = f(acc, x);
+        out += acc;
+    }
+    return out;
+}
+
+int plus(int a, int b) { return a + b; }
+
+string genreName(eGenre g) {
+    switch (g) {
+        case eGenre.fiction: return "fiction";
+        case eGenre.history: return "history";
+        default:             return "science";
+    }
+}
+
+string countWord(int n, string one, string many) { return n == 1 ? one : many; }
+
+bool onLoan(Book b)    { return b.holder != null; }
+bool onShelf(Book b)   { return b.holder == null; }
+int  daysLate(Book b)  { return onLoan(b) && today > b.due ? today - b.due : 0; }
+bool isLate(Book b)    { return daysLate(b) > 0; }
+
+int flatFine(int late)  { return late; }
+
+// Each genre's fine for a number of late days.
+func<int, int> fineRule(eGenre g) {
+    switch (g) {
+        case eGenre.fiction: return flatFine;
+        case eGenre.history: return (int late) => late * 2;
+        default:             return (int late) => late > 4 ? 10 : late * 2 + 1;
+    }
+}
+
+int fineOf(Book b) {
+    int late = daysLate(b);
+    if (late == 0) return 0;
+    return fineRule(b.genre)(late);
+}
+
+array<Book> heldBy(Member m) {
+    return books.filter((Book b) => b.holder == m);
+}
+
+int finesOwed(Member m) {
+    int total = 0;
+    for (Book b in heldBy(m)) total += fineOf(b);
+    return total;
+}
+
+// Joins labels from position i on, recursively.
+stringObj joinFrom(array<Book> xs, int i, string sep = ", ") {
+    stringObj s;
+    if (i >= xs.length) return s;
+    s = xs[i].label;
+    if (i + 1 < xs.length) {
+        s += sep;
+        s += joinFrom(xs, i + 1, sep);
+    }
+    return s;
+}
+
+stringObj joinLabels(array<Book> xs, string empty = "none") {
+    stringObj s;
+    if (xs.length == 0) {
+        s = empty;
+        return s;
+    }
+    s = joinFrom(xs, 0);
+    return s;
+}
+
+//-- Tallies --------------------------------------------------------------------------------------
+
+value class Tally {
+    int count = 0;
+    int pages = 0;
+    int fines = 0;
+
+    Tally operator = (Tally o) {
+        count = o.count;
+        pages = o.pages;
+        fines = o.fines;
+        return self;
+    }
+
+    Tally operator + (Tally o) {
+        Tally t;
+        t.count = count + o.count;
+        t.pages = pages + o.pages;
+        t.fines = fines + o.fines;
+        return t;
+    }
+
+    float meanPages() {
+        if (count == 0) return 0.0;
+        return (float)pages / count;
+    }
+}
+
+Tally tallyOf(Book b) {
+    Tally t;
+    t.count = 1;
+    t.pages = b.pages;
+    t.fines = fineOf(b);
+    return t;
+}
+
+Tally foldBooks(array<Book> xs, func<bool, Book> ok) {
+    Tally acc;
+    for (Book b in xs) {
+        if (ok(b)) acc = acc + tallyOf(b);
+    }
+    return acc;
+}
+
+void showTally(string what, Tally t) {
+    print($"{what}: {t.count} book{countWord(t.count, "", "s")}, {t.pages} pages, mean {t.meanPages()}, fines {t.fines}^");
+}
+
+//-- Ordering -------------------------------------------------------------------------------------
+
+int byLabel(Book a, Book b) { return a.label.compareTo(b.label); }
+
+// Latest first; equal lateness by label.
+int byLateness(Book a, Book b) {
+    int d = daysLate(b) - daysLate(a);
+    if (d != 0) return d;
+    return byLabel(a, b);
+}
+
+array<Book> lateBooks() {
+    array<Book> late = books.filter(isLate);
+    return late.orderBy(byLateness);
+}
+
+//-- Log ------------------------------------------------------------------------------------------
+
+void note(ref stringObj log, string who, int amount) {
+    if (!log.isEmpty()) log += "; ";
+    log += $"{who} {amount}";
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+Book bookOf(object o) {
+    if (!o.is(Book)) {
+        print("That is not a book.^");
+        return null;
+    }
+    return (Book)o;
+}
+
+Member memberOf(object o) {
+    if (!o.is(Member)) {
+        print("That is not a member.^");
+        return null;
+    }
+    return (Member)o;
+}
+
+verb LendVerb {
+    grammar = {{.lend, NOUN, .to, NOUN}};
+    void handler() {
+        Book b = bookOf(noun);
+        if (b == null) return;
+        Member m = memberOf(second);
+        if (m == null) return;
+        if (onLoan(b)) {
+            print($"The {b.label} is out with {b.holder.label}.^");
+            return;
+        }
+        int held = heldBy(m).count();
+        if (held >= m.limit) {
+            print($"{m.label} already has {held} of {m.limit}.^");
+            return;
+        }
+        if (heldBy(m).any(isLate)) {
+            print($"{m.label} has a late book.^");
+            return;
+        }
+        b.holder = m;
+        b.due = today + LOANDAYS;
+        b.loans++;
+        print($"The {b.label} goes to {m.label}, due day {b.due}.^");
+    }
+}
+
+verb CheckInVerb {
+    grammar = {{.checkin, NOUN}};
+    void handler() {
+        Book b = bookOf(noun);
+        if (b == null) return;
+        if (onShelf(b)) {
+            print($"The {b.label} is on the shelf.^");
+            return;
+        }
+        int fine = fineOf(b);
+        string who = b.holder.label;
+        if (fine > 0) {
+            if (!paid.append(fine)) print("(The fine log is full.)^");
+        }
+        b.holder = null;
+        b.due = 0;
+        if (fine > 0) print($"The {b.label} comes back from {who}, fine {fine}.^");
+        else print($"The {b.label} comes back from {who}.^");
+    }
+}
+
+verb AdvanceVerb {
+    grammar = {{.advance, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n < 1 || n > 30) {
+            print("Advance 1 to 30 days.^");
+            return;
+        }
+        today += n;
+        int late = books.filter(isLate).count();
+        print($"Day {today}. {late} late.^");
+    }
+}
+
+verb OverdueVerb {
+    grammar = {{.overdue}};
+    void handler() {
+        array<Book> late = lateBooks();
+        if (late.length == 0) {
+            print("Nothing is late.^");
+            return;
+        }
+        for (Book b in late) {
+            print($"{b.label} ({genreName(b.genre)}, {b.holder.label}): {daysLate(b)} days, fine {fineOf(b)}^");
+        }
+        array<int> fines = late.map((var b) => fineOf((Book)b));
+        print($"total {foldInts(fines, plus)}, worst {foldInts(fines, (int a, int x) => x > a ? x : a)}^");
+    }
+}
+
+verb MemberVerb {
+    grammar = {{.member, NOUN}};
+    void handler() {
+        Member m = memberOf(noun);
+        if (m == null) return;
+        array<Book> mine = heldBy(m);
+        array<Book> sorted = mine.orderBy(byLabel);
+        print($"{m.label} holds {joinLabels(sorted)} ({mine.count()} of {m.limit}); owes {finesOwed(m)}^");
+    }
+}
+
+verb ShelfVerb {
+    grammar = {{.shelf}};
+    void handler() {
+        array<Book> shelf = books.filter(onShelf).orderBy((Book a, Book b) => a.pages - b.pages);
+        print($"shelf: {joinLabels(shelf, "empty")}^");
+        array<Book> rest = shelf.skip(2);
+        array<Book> shortest = shelf.take(2);
+        print($"shortest two: {joinLabels(shortest)}; then {joinLabels(rest)}^");
+    }
+}
+
+verb GenresVerb {
+    grammar = {{.genres}};
+    void handler() {
+        Tally all;
+        for (eGenre g in genres) {
+            Tally t = foldBooks(books, (Book b) => b.genre == g);
+            showTally(genreName(g), t);
+            all = all + t;
+        }
+        showTally("all", all);
+        Tally out = foldBooks(books, onLoan);
+        float share = (float)out.pages / all.pages;
+        print($"out: {out.count}, page share {share}^");
+    }
+}
+
+verb HoldersVerb {
+    grammar = {{.holders}};
+    void handler() {
+        array<var> who = books.filter(onLoan).map((var b) => ((Book)b).holder);
+        array<var> once = who.distinct();
+        print($"{who.count()} loans among {once.count()} members^");
+        bool allClear = members.all((Member m) => !heldBy(m).any(isLate));
+        print(allClear ? "Every member is clear.^" : "Some member has a late book.^");
+    }
+}
+
+verb BusiestVerb {
+    grammar = {{.busiest}};
+    void handler() {
+        array<Book> ranked = books.orderBy((Book a, Book b) => {
+            if (a.loans != b.loans) return b.loans - a.loans;
+            return byLabel(a, b);
+        });
+        for (Book b in ranked.take(3)) print($"{b.label} {b.loans}^");
+    }
+}
+
+verb PaidVerb {
+    grammar = {{.paid}};
+    void handler() {
+        if (paid.length == 0) {
+            print("No fines paid.^");
+            return;
+        }
+        array<int> running = scan(paid, plus);
+        for (int i = 0; i < paid.length; i++) {
+            if (i > 0) print(", ");
+            print($"{paid[i]}->{running[i]}");
+        }
+        print($"^total {foldInts(paid, plus)}, mean {(float)foldInts(paid, plus) / paid.length}^");
+    }
+}
+
+verb SettleVerb {
+    grammar = {{.settle}};
+    void handler() {
+        stringObj log;
+        for (Member m in members) {
+            int owed = finesOwed(m);
+            if (owed > 0) note(log, m.label, owed);
+        }
+        print($"owed: {log.isEmpty() ? "nothing" : log}^");
+        Tally late = foldBooks(books, isLate);
+        print($"{late.count} late, {late.fines} in fines^");
+    }
+}
+
+verb RatesVerb {
+    grammar = {{.rates}};
+    void handler() {
+        array<int> days = {1, 3, 5, 8};
+        for (eGenre g in genres) {
+            func<int, int> rule = fineRule(g);
+            array<var> fines = days.map((var d) => rule(d));
+            print($"{genreName(g)}:");
+            for (int i = 0; i < days.length; i++) print($" {days[i]}d={fines[i]}");
+            print("^");
+        }
+    }
+}
+
+int genreFines(eGenre g) { return foldBooks(books, (Book b) => b.genre == g).fines; }
+
+verb WorstVerb {
+    grammar = {{.worst}};
+    void handler() {
+        array<eGenre> order = genres.orderBy((eGenre a, eGenre b) => genreFines(b) - genreFines(a));
+        print("by fines:");
+        for (eGenre g in order) print($" {genreName(g)} {genreFines(g)}");
+        print("^");
+    }
+}
+
+// Pushes a due day back by what the policy allows for the book.
+verb RenewVerb {
+    grammar = {{.renew, NOUN}};
+    void handler() {
+        Book b = bookOf(noun);
+        if (b == null) return;
+        if (onShelf(b)) {
+            print($"The {b.label} is on the shelf.^");
+            return;
+        }
+        if (isLate(b)) {
+            print($"The {b.label} is late; check it in first.^");
+            return;
+        }
+        int extra = renewal(b, policy: (Book x) => x.pages > 300 ? LOANDAYS : LOANDAYS / 2);
+        print($"The {b.label} is now due day {b.due} (+{extra}).^");
+    }
+}
+
+int renewal(Book b, func<int, Book> policy, int cap = 10) {
+    int extra = policy(b);
+    if (extra > cap) extra = cap;
+    b.due += extra;
+    return extra;
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

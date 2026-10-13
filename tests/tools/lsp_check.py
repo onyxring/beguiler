@@ -17,6 +17,8 @@ CASES = [
          has=['asm', 'ui', 'util'], lacks=['==(_bglobject)', 'instancename', 'print()', 'operator()']),
     # A Glulx-only library file opened on its own parses under the default target.
     dict(name='glulxWindow.bgl alone', doc='beguiLib/glulxWindow.bgl', at=(1, 0), no_diagnostics=True),
+    # An error inside an interpolated string's expression leaves recovery after the string.
+    dict(name='recovery after an interpolation error', doc='tests/lsp/interp_error_recovery.bgl', at=(1, 0), diagnostics=1),
 ]
 
 def run_case(case):
@@ -60,6 +62,8 @@ def run_case(case):
     problems = []
     if case.get('no_diagnostics') and diags:
         problems += [f'diagnostic at line {l}: {m}' for l, m in diags[:5]]
+    if 'diagnostics' in case and len(diags) != case['diagnostics']:
+        problems += [f'{len(diags)} diagnostics, want {case["diagnostics"]}'] + [f'line {l}: {m}' for l, m in diags[:5]]
     problems += [f'completion lacks {x!r}' for x in case.get('has', []) if x not in labels]
     problems += [f'completion offers {x!r}' for x in case.get('lacks', []) if x in labels]
     return problems

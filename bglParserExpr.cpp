@@ -1264,7 +1264,11 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         // An overload set emits the routine name of the overload that was resolved — the Beguile
         // name belongs to all of them, so asking qualifyIdentifier for it would be asking which
         // one, a question only the arguments answer.
-        if(resolvedGlobal != nullptr && !resolvedGlobal->i6name.empty() && !resolvedGlobal->isEmitter)
+        bool importedMember = false;
+        if(resolvedGlobal != nullptr)
+            for(objectDef* imp : usingObjectImports)
+                for(typeMember* m : imp->members) if(m == resolvedGlobal) importedMember = true;
+        if(resolvedGlobal != nullptr && !importedMember && !resolvedGlobal->i6name.empty() && !resolvedGlobal->isEmitter)
             callEmit = resolvedGlobal->i6name;
         else if(resolvedGlobal != nullptr && isUsingImportedValueEmitter(callName))
             ;   // the call is the global function's; a value emitter of the same name is never called
@@ -1273,6 +1277,15 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         else {
             string q = qualifyIdentifier(callName, func, body);
             if(!q.empty()) callEmit = q;
+            // A method of an imported object (`bgl.printRules.link`): the overload's own routine name.
+            size_t dot = callEmit.rfind('.');
+            if(resolvedGlobal != nullptr && !resolvedGlobal->isEmitter && !resolvedGlobal->isStatic && dot != string::npos){
+                string owner = callEmit.substr(0, dot);
+                if(objectDef* od = languageService.findObjectType(owner)){
+                    mangleOverloadSetForReceiver(od->name, resolvedGlobal->name);
+                    if(!resolvedGlobal->i6name.empty()) callEmit = owner + "." + resolvedGlobal->i6name;
+                }
+            }
         }
         // A static method a `#using` class import names: the class's free routine, not a message send.
         if(resolvedGlobal != nullptr && resolvedGlobal->isStatic && !resolvedGlobal->isEmitter)
@@ -1733,9 +1746,15 @@ bglParser::ExprStep bglParser::parseExprOperatorRef(ExprParseState& st){
 
 void bglParser::rejectInterpolatedArgsInExpression(const ParsedArgList& pal, const string& callee){
     for(auto& segs : pal.interpSegmentsPerArg)
-        if(!segs.empty())
+        if(!segs.empty()){
+            // A routine can't take one anywhere; only an emitter can, as a statement.
+            vector<functionDef*> cands = collectGlobalCandidates(callee);
+            if(!cands.empty() && none_of(cands.begin(), cands.end(), [](functionDef* f){ return f->isEmitter; }))
+                parsingError(format("An interpolated string ($\"…\") has no value, so it can only be passed to an "
+                    "emitter, which prints it in place; '{0}' is a routine. Print the text inside it instead.", callee));
             parsingError(format("An interpolated string ($\"…\") can be passed to '{0}' only in a call that "
                 "is a statement of its own, such as `{0}($\"…\");`, not inside an expression.", callee));
+        }
 }
 
 // `=> body` at the start of an operand — a parameterless lambda, the same as `() => body`.
@@ -3864,7 +3883,8 @@ bglParser::ExprStep bglParser::parseExprMemberAccess(ExprParseState& st, token& 
         string t = resolveIdentifierType(cur.value, st.func, st.body);
         classDef* pc = isPropertyClassType(t) ? getDispatchClass(t) : nullptr;
         string m = file.peekToken().value;
-        if(pc != nullptr && findMemberInHierarchy(pc, [&](typeMember* x){ return x->name == m; }) == nullptr
+        // Only the property class's own members (`children.length`) read off the property itself.
+        if(pc != nullptr && none_of(pc->members.begin(), pc->members.end(), [&](typeMember* x){ return x->name == m; })
            && qualifyIdentifier(cur.value, st.func, st.body).rfind("self.", 0) == 0){
             token member = cur;
             cur.value = "self";

@@ -1,0 +1,238 @@
+Room A
+Room A. A bench stands under a tap. Room B is east.
+You can see a bench (on which are a watering can and a seed packet (which contains a red seed, a blue seed and a white seed)) and a tap here.
+> status
+Score 0 of 3. Heater off, 0 warm turns. Can 0.
+Sown 0, watered 0, picked 0, given 0, gardener asked 0.
+> plants
+3 plants: 0 potted, 3 still seeds.
+blue seed: seed, water 0, weight 2, in the seed packet.
+red seed: seed, water 0, weight 3, in the seed packet.
+white seed: seed, water 0, weight 4, in the seed packet.
+> stages
+seed: 3
+sprout: 0
+bud: 0
+flower: 0
+> pots
+Pot 1: empty
+Pot 2: empty
+Pot 3: empty
+> picked
+Nothing picked.
+> log
+The log is empty.
+> examine can
+An empty watering can.
+> water red seed
+You are not holding the watering can.
+> take can
+Taken.
+> fill can
+You fill the watering can at the tap.
+> fill can
+The watering can is already full.
+> take red seed
+Taken.
+> examine red seed
+A red seed, dry.
+> water red seed
+The red seed is not in a pot.
+> take blue seed
+Taken.
+> take white seed
+Taken.
+> sow tap in packet
+Only seeds are sown.
+> east
+Room B
+Room B. Three pots stand in a row by a heater. Room A is west.
+You can see a pot 1 (which is empty), a pot 2 (which is empty), a pot 3 (which is empty), a heater and a gardener here.
+> examine pot one
+Pot 1. It is empty.
+> sow red seed in pot one
+You put the red seed into the pot 1.
+[The score has just gone up by 1 point.]
+> sow blue seed in pot one
+Pot 1 already holds something.
+> sow blue seed in pot two
+You put the blue seed into the pot 2.
+> put can in pot three
+Only seeds go in the pots.
+> sow white seed in pot three
+You put the white seed into the pot 3.
+> pots
+Pot 1: red seed, growth 0
+Pot 2: blue seed, growth 0
+Pot 3: white seed, growth 0
+> examine pot two
+Pot 2. It holds a blue seed.
+> water red seed
+You water the red seed (4). The can holds 2.
+> water pot two
+You water the blue seed (2). The can holds 0.
+> water white seed
+The watering can is empty.
+> examine red seed
+A red seed, well watered.
+> examine blue seed
+A blue seed, damp.
+> wait
+Nothing happens.
+> switch heater on
+The heater hums.
+> wait
+Nothing happens.
+The red plant in pot 1 is now a sprout.
+The blue plant in pot 2 is now a sprout.
+> pots
+Pot 1: red sprout, growth 0
+Pot 2: blue sprout, growth 0
+Pot 3: white seed, growth 0
+> ask gardener about seeds
+The gardener says: one seed to a pot.
+> ask gardener about water
+The gardener says: a pot holds 4 of water.
+The red plant in pot 1 is now a bud.
+> ask gardener about rain
+The gardener has nothing to say about that.
+> gardener, wait
+The gardener waits.
+> gardener, jump
+The gardener says: I am busy.
+> give can to gardener
+The gardener says: keep it.
+> give red seed to gardener
+(first taking the red seed)
+The gardener says: the red seed is not in flower.
+> plants
+3 plants: 2 potted, 1 still seeds.
+blue seed: sprout, water 0, weight 2, in the pot 2.
+red seed: bud, water 0, weight 3, in yourself.
+white seed: seed, water 0, weight 4, in the pot 3.
+A potted plant is dry.
+> west
+Room A
+You can see a bench (on which is a seed packet (which is empty)) and a tap here.
+> fill can
+You fill the watering can at the tap.
+> east
+Room B
+You can see a pot 1 (which is empty), a pot 2 (which contains a blue seed), a pot 3 (which contains a white seed), a heater and a gardener here.
+> water red
+The red seed is not in a pot.
+> water blue
+You water the blue seed (4). The can holds 2.
+> water white
+You water the white seed (2). The can holds 0.
+The blue plant in pot 2 is now a bud.
+> wait
+Nothing happens.
+The white plant in pot 3 is now a sprout.
+> wait
+Nothing happens.
+The blue plant in pot 2 is now a flower.
+[The score has just gone up by 1 point.]
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> pots
+Pot 1: empty
+Pot 2: blue flower, growth 0
+Pot 3: white sprout, growth 0
+> pick red
+The red seed is not in flower.
+> pick red
+The red seed is not in flower.
+> pick white
+The white seed is not in flower.
+> pick blue
+You pick the blue seed.
+> stages
+seed: 0
+sprout: 1
+bud: 1
+flower: 1
+> give red to gardener
+The gardener says: the red seed is not in flower.
+> give white to gardener
+(first taking the white seed)
+The gardener says: the white seed is not in flower.
+> put red in pot one
+You put the red seed into the pot 1.
+> put white in pot three
+You put the white seed into the pot 3.
+> west
+Room A
+You can see a bench (on which is a seed packet (which is empty)) and a tap here.
+> fill can
+You fill the watering can at the tap.
+> east
+Room B
+You can see a pot 1 (which contains a red seed), a pot 2 (which is empty), a pot 3 (which contains a white seed), a heater and a gardener here.
+> water red
+You water the red seed (4). The can holds 2.
+> water white
+You water the white seed (2). The can holds 0.
+The red plant in pot 1 is now a flower.
+> wait
+Nothing happens.
+The white plant in pot 3 is now a bud.
+> pots
+Pot 1: red flower, growth 0
+Pot 2: empty
+Pot 3: white bud, growth 0
+> west
+Room A
+You can see a bench (on which is a seed packet (which is empty)) and a tap here.
+> fill can
+You fill the watering can at the tap.
+> east
+Room B
+You can see a pot 1 (which contains a red seed), a pot 2 (which is empty), a pot 3 (which contains a white seed), a heater and a gardener here.
+> water white
+You water the white seed (4). The can holds 2.
+> wait
+Nothing happens.
+The white plant in pot 3 is now a flower.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> pots
+Pot 1: red flower, growth 0
+Pot 2: empty
+Pot 3: white flower, growth 0
+> pick red
+You pick the red seed.
+> pick white
+You pick the white seed.
+> give blue to gardener
+The gardener takes the blue seed.
+> give red to gardener
+The gardener takes the red seed.
+[The score has just gone up by 1 point.]
+> give white to gardener
+The gardener takes the white seed.
+> examine pot three
+Pot 3. It is empty.
+> switch heater off
+The heater goes quiet.
+> wait
+Nothing happens.
+> picked
+Picked: 2 3 4. Total 9, 2 heavy. The first pick was number 1 by weight.
+> plants
+3 plants: 0 potted, 0 still seeds.
+Every plant has flowered.
+> stages
+seed: 0
+sprout: 0
+bud: 0
+flower: 3
+> status
+Score 3 of 3. Heater off, 46 warm turns. Can 2.
+Sown 3, watered 7, picked 3, given 3, gardener asked 3.
+> log
+Log (33): 1. filled. 2. sown 1. 3. sown 2. 4. sown 3. 5. watered 4. 6. watered 2. 7. heat on. 8. red 2. 9. blue 2. 10. red 3. 11. unpotted 1. 12. filled. 13. watered 4. 14. watered 2. 15. blue 3. 16. white 2. 17. blue 4. 18. picked 2. 19. unpotted 3. 20. filled. 21. watered 4. 22. watered 2. 23. red 4. 24. white 3. 25. filled. 26. watered 4. 27. white 4. 28. picked 3. 29. picked 4. 30. given 1. 31. given 2. 32. given 3. 33. heat off.

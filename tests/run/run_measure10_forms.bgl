@@ -1,0 +1,27 @@
+// run_measure10_forms — a method parameter typed by its object's alias called from above the object,
+// a bare `parent.is(…)` in a class method, and `prepend` with a char.
+// EXPECT_OUTPUT: b boxed 045 zabc
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+enum eKind { a, b }
+class Box : object { }
+class Thing : object {
+    eKind sort = eKind.b;
+    void show() { print(hub.word(sort)); print(" "); }
+    bool boxed() { return parent != null && parent.is(Box); }
+}
+object hub {
+    alias kind for eKind;
+    string word(kind k) { if (k == kind.a) return "a"; return "b"; }
+}
+Box crate { }
+Thing ball { parent = crate; }
+void main() {
+    bglInit();
+    ball.show();
+    print(ball.boxed() ? "boxed " : "loose ");
+    stringObj w = "45";
+    stringObj v = w.prepend('0'); v.print(); print(" ");
+    stringObj x = "abc";
+    stringObj y = x.prepend('z'); y.print(); print("^");
+}

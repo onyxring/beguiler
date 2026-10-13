@@ -1,0 +1,458 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a sack of four
+// letters and a parcel, a franking machine, a scale and a rack of pigeonholes. A letter class with
+// positional members (`inline instanceName` re-listed, an `inline` enum zone and an `inline int`
+// weight), a bnum of marks set with `|=`, tested with `&` and cleared with `^`, `default` methods
+// overridden by a parcel subclass, a class-wide static counter and a static method; a franking machine
+// with an inline `auto { … }` ink accessor that clamps through `outer`, driven by `-=` and `=`; a scale
+// whose reading is a named accessor class that rounds up; a rack with a member `array<int>` of hole
+// counts read and bumped by enum index; a value class day total with methods, held in a global; a
+// global `array<Letter>` of sorted mail appended to, searched with `contains` and walked with <linq>
+// `orderBy`, `filter`, `count`, `any`, `all`, `first` and `map`; a franking routine that `throw`s int
+// codes caught and switched on in the verb handler; a `stringObj` postmark padded with `prepend` in a
+// `do … until` and assembled with `format`, `toUpper()` and `+=`; a `switch` on a string; a `for` over
+// a literal list of enum values; `?.` and `??` on a lookup that can be null; `#define` values tested
+// by `#if`/`#else`; hex and binary literals; mixed-case keywords, Allman, K&R and one-line braces,
+// comments between tokens and in argument lists, and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include    <linq>
+
+#using bgl.printRules ;
+
+#define INK_TANK    60
+#define SORT_MAX    6       // room on the sorted list
+#define HEAVY       100
+
+// ---- constants -------------------------------------------------------------------------------------
+
+const int REGISTERED_FEE = $5 ;           // five pence
+CONST INT PARCEL_STEP    = $$11111010 ;   // 250 grams
+Const int INK_PER_STAMP  = 4 ;
+
+/// The delivery zone written on an envelope.
+enum eZone
+{
+    inner ,
+    outer ,     // the next town out
+    rural ,
+    abroad
+}
+
+/// Marks on a piece of mail.
+bnum eMark { franked , registered , /* 4 */ damaged }
+
+string zoneName ( eZone z )
+{
+    switch (z)
+    {
+        case eZone.inner  : return "inner" ;
+        case eZone.outer  : return "outer" ;
+        case eZone.rural  : return "rural" ;
+        default           : return "abroad" ;
+    }
+}
+
+int zoneRate(eZone z){switch(z){case eZone.inner:return 2;case eZone.outer:return 3;case eZone.rural:return 4;default:return 9;}}
+
+// ---- rooms -----------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A franking machine, a scale and a rack of pigeonholes are here. Room B is east." ;
+    object e_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = @"Room B. A mail sack lies on the floor. Room A is west." ;
+    object w_to = roomA ;
+}
+
+object sack
+{
+    "mail sack" ;
+    parent     = roomB ;
+    name       = { .mail , .sack } ;
+    attributes = { container , open , static } ;
+    string description = "A canvas sack." ;
+}
+
+// ---- mail ------------------------------------------------------------------------------------------
+
+class Letter : object
+{
+    inline instanceName ;
+    inline eZone zone  = eZone.inner ;
+    inline int   grams = 20 ;
+    eMark  marks ;
+    string description = "A plain envelope." ;
+
+    static int handled = 0 ;
+
+    /// Pence due before any fee.
+    default int postage ()
+    {
+        int p = zoneRate(zone) ;
+        if (grams > HEAVY) p += 2 ;
+        return p ;
+    }
+    default string kindWord () { return "letter" ; }
+
+    int fullPostage ()
+    {
+        int p = postage() ;
+        if ((marks & eMark.registered) != 0) p += REGISTERED_FEE ;
+        return p ;
+    }
+
+    bool isFranked () { return (marks & eMark.franked) != 0 ; }
+
+    static string handledWord ( int n ) { if (n == 1) return "piece" ; return "pieces" ; }
+}
+
+class Parcel : Letter
+{
+    int    postage  () { return zoneRate(zone) * 2 + grams / PARCEL_STEP ; }
+    string kindWord () { return "parcel" ; }
+}
+
+Letter blueLetter
+{
+    "blue letter" , eZone.inner , 20 ;
+    name   = { .blue , .letter } ;
+    parent = sack ;
+}
+Letter greyLetter { "grey letter" , eZone.outer , 45 ; name = { .grey , .letter } ; parent = sack ; }
+Letter thickLetter
+{
+    "thick letter" ,
+    eZone.rural ,          // zone by position
+    $6E ;                  // 110 grams
+    name   = { .thick , .letter } ;
+    parent = sack ;
+    marks  = eMark.registered ;
+}
+Letter airLetter { "air letter" , eZone.abroad , 15 ; name = { .air , .letter } ; parent = sack ; marks = eMark.registered ; }
+Parcel smallParcel
+{
+    "small parcel" , eZone.outer , 640 ;
+    name   = { .small , .parcel } ;
+    parent = sack ;
+    marks  = eMark.damaged ;
+    description = "A brown paper parcel." ;
+}
+
+array<Letter> allMail = { blueLetter , greyLetter , thickLetter , airLetter , smallParcel } ;
+array<Letter> sorted[SORT_MAX] ;
+
+// ---- the franking machine --------------------------------------------------------------------------
+
+object franker
+{
+    "franking machine" ;
+    parent     = roomA ;
+    name       = { .franking , .machine , .franker } ;
+    attributes = { static } ;
+    string description = "A franking machine with an ink tank." ;
+    int capacity = INK_TANK ;
+    int stamps   = 0 ;
+
+    auto ink = {
+        int _level = 22 ;
+        int  operator () { return _level ; }
+        void operator = ( int v )
+        {
+            if (v < 0)               v = 0 ;
+            if (v > outer.capacity)  v = outer.capacity ;
+            _level = v ;
+        }
+    }
+}
+
+int inkCost ( Letter l ) { return INK_PER_STAMP + l.fullPostage() / 3 ; }
+
+/// Franks a held letter; throws a code when it can't.
+///  1 already franked, 2 low ink, 3 damaged, 4 not held.
+int frankLetter ( Letter l )
+{
+    if (l.parent != player)              throw 4 ;
+    if (l.isFranked())                   throw 1 ;
+    if ((l.marks & eMark.damaged) != 0)  throw 3 ;
+    int cost = inkCost(l) ;
+    if (franker.ink < cost)              throw 2 ;
+    franker.ink -= cost ;
+    franker.stamps++ ;
+    l.marks |= eMark.franked ;
+    today.add(l) ;
+    return l.fullPostage() ;
+}
+
+// ---- the scale -------------------------------------------------------------------------------------
+
+/// A reading rounded up to the next ten grams.
+value class roundedGrams
+{
+    int _g = 0 ;
+    int  operator ()        { return _g ; }
+    void operator = (int v) { _g = ((v + 9) / 10) * 10 ; }
+}
+
+object scale
+{
+    "scale" ;
+    parent     = roomA ;
+    name       = { .scale } ;
+    attributes = { static } ;
+    string description = "A brass letter scale." ;
+    roundedGrams reading ;
+}
+
+// ---- the rack --------------------------------------------------------------------------------------
+
+object rack
+{
+    "rack of pigeonholes" ;
+    parent     = roomA ;
+    name       = { .rack , .pigeonholes , .holes } ;
+    attributes = { container , open , static } ;
+    string description = "Four pigeonholes, one per zone." ;
+    array<int> holes = { 0 , 0 , 0 , 0 } ;
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Receive :
+                rtrue("Use SORT to file mail.^") ;
+        }
+        rfalse ;
+    }
+}
+
+// ---- the day's total -------------------------------------------------------------------------------
+
+value class DayTotal
+{
+    int pieces ;
+    int pence ;
+    int heaviest ;
+
+    void add ( Letter l )
+    {
+        pieces++ ;
+        pence += l.fullPostage() ;
+        if (l.grams > heaviest) heaviest = l.grams ;
+    }
+    int average () { if (pieces == 0) return 0 ; return pence / pieces ; }
+}
+
+DayTotal today ;
+
+// ---- postmarks -------------------------------------------------------------------------------------
+
+/// `OUTER/0045` style postmark, with ` R` for registered mail.
+stringObj postmark ( Letter l )
+{
+    stringObj z = zoneName(l.zone) ;
+    stringObj up = z.toUpper() ;
+    stringObj w = $"{l.grams}" ;
+    do
+    {
+        w = w.prepend('0') ;
+    } until (w.length >= 4) ;
+    stringObj s = up.format("$0/$1" , w) ;
+    if ((l.marks & eMark.registered) != 0) s += " R" ;
+    return s ;
+}
+
+/// A word on how a zone is carried, by its name.
+string carrier ( string zn )
+{
+    switch (zn)
+    {
+        case "inner"  : return "on foot" ;
+        case "rural"  : return "by van" ;
+        case "abroad" : return "by air" ;
+        default       : return "by bus" ;
+    }
+}
+
+Letter findHeavier ( int over )
+{
+    for (int i = 0 ; i < sorted.length ; i++)
+        if (sorted[i].grams > over) return sorted[i] ;
+    return null ;
+}
+
+// ---- startup ---------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands --------------------------------------------------------------------------------------
+
+verb Frank
+{
+    grammar = { { .frank , NOUN } , { .stamp , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Letter))) { printLine("Only mail can be franked.") ; return ; }
+        if (location != roomA)  { printLine("The franking machine is in Room A.") ; return ; }
+        Letter l = (Letter) noun ;
+        int paid ;
+        TRY
+        {
+            paid = frankLetter(l) ;
+        }
+        catch (int code)
+        {
+            Switch (code)
+            {
+                CASE 1 : printLine($"{cThe(l)} is already franked.") ;
+                case 2 : printLine($"Not enough ink (needs {inkCost(l)}, has {franker.ink}).") ;
+                case 3 : printLine($"{cThe(l)} is torn. Tape it first.") ;
+                default: printLine("You need to hold it.") ;
+            }
+            return ;
+        }
+        printLine($"Ka-chunk. {cThe(l)} is franked for {paid}p. Ink left: {franker.ink}.") ;
+    }
+}
+
+verb Tape
+{
+    grammar = { .tape , NOUN } ;
+    void handler ()
+    {
+        if (!(noun.is(Letter))) { printLine("That needs no tape.") ; return ; }
+        Letter l = (Letter) noun ;
+        if ((l.marks & eMark.damaged) == 0) { printLine($"{cThe(l)} is not torn.") ; return ; }
+        l.marks = l.marks ^ eMark.damaged ;
+        printLine($"You tape up {the(l)}.") ;
+    }
+}
+
+verb Weigh
+{
+    grammar = { { .weigh , NOUN } } ;
+    void handler ()
+    {
+        if (location != roomA) { printLine("The scale is in Room A.") ; return ; }
+        if (!(noun.is(Letter))) { printLine("That does not need weighing.") ; return ; }
+        Letter l = (Letter) noun ;
+        scale.reading = l.grams ;
+        print($"{cThe(l)}: a {l.kindWord()} of {l.grams}g (scale shows {scale.reading}g), ") ;
+        printLine($"{zoneName(l.zone)} zone, {l.fullPostage()}p.") ;
+    }
+}
+
+verb SortMail
+{
+    grammar = { { .sort , NOUN } , { .file , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Letter))) { printLine("Only mail goes in the rack.") ; return ; }
+        if (location != roomA)  { printLine("The rack is in Room A.") ; return ; }
+        Letter l = (Letter) noun ;
+        if (sorted.contains(l))  { printLine($"{cThe(l)} is already sorted.") ; return ; }
+        if (!l.isFranked())      { printLine($"Frank {the(l)} first.") ; return ; }
+        if (!sorted.append(l))   { printLine("The rack is full.") ; return ; }
+        l.parent = rack ;
+        rack.holes[(int) l.zone - 1]++ ;
+        Letter.handled++ ;
+        printLine($"You file {the(l)} in the {zoneName(l.zone)} hole, to go {carrier(zoneName(l.zone))}.") ;
+    }
+}
+
+verb Refill
+{
+    grammar = { .refill , NOUN } ;
+    void handler ()
+    {
+        if (noun != franker) { printLine("That takes no ink.") ; return ; }
+        int was = franker.ink ;
+        franker.ink = was + /* a full bottle */ 100 ;
+        printLine($"You top up the ink from {was} to {franker.ink}.") ;
+    }
+}
+
+verb Holes
+{
+    meta    = true ;
+    grammar = { { .holes } , { .pigeonholes } } ;
+    void handler ()
+    {
+        bool first = true ;
+        for (eZone z in { eZone.inner , eZone.outer , eZone.rural , eZone.abroad })
+        {
+            if (!first) print(", ") ;
+            print($"{zoneName(z)} {rack.holes[(int) z - 1]}") ;
+            first = false ;
+        }
+        printLine($". {Letter.handled} {Letter.handledWord(Letter.handled)} sorted.") ;
+    }
+}
+
+verb Manifest
+{
+    meta    = TRUE ;
+    grammar = { { .manifest } , { .list , .mail } } ;
+    void handler ()
+    {
+        if (sorted.length == 0) { printLine("Nothing sorted yet.") ; return ; }
+        for (Letter l in sorted.orderBy( (Letter a , Letter b) => b.fullPostage() - a.fullPostage() ))
+        {
+            stringObj pm = postmark(l) ;
+            pm.print() ;
+            printLine($" {l} {l.fullPostage()}p") ;
+        }
+        int regs = sorted.filter((Letter l) => (l.marks & eMark.registered) != 0).count() ;
+        print($"{regs} registered") ;
+        if (sorted.any( (Letter l) => l.zone == eZone.abroad )) print(", some abroad") ;
+        if (sorted.all((Letter l) => l.isFranked())) print(", all franked") ;
+        printLine(".") ;
+        int grams = 0 ;
+        for (var g in sorted.map((Letter l) => l.grams)) grams += (int) g ;
+        Letter big = findHeavier(HEAVY) ;
+        printLine($"Total {grams}g; over {HEAVY}g: {big?.grams}g.") ;
+    }
+}
+
+verb Takings
+{
+    meta    = true ;
+    grammar = { { .takings } , { .total } } ;
+    void handler ()
+    {
+        printLine($"Franked {today.pieces}, {today.pence}p, average {today.average()}p, heaviest {today.heaviest}g.") ;
+        Letter next = allMail.filter((Letter l) => !l.isFranked()).first() ;
+        if (next == null) printLine("Everything is franked.") ;
+        else              printLine($"Next unfranked: {the(next)}.") ;
+        printLine($"Next kind: {next?.kindWord() ?? "none"}.") ;
+#if INK_TANK > 50
+        printLine($"Ink {franker.ink} of {INK_TANK}; {franker.stamps} stamps.") ;
+#else
+        printLine("A small tank.") ;
+#endif
+    }
+}

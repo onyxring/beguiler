@@ -803,6 +803,11 @@ object _bglStr
      tmp = str.appendChar(c); str.free(); 
     return tmp;
   ],
+       prependChar [s c str tmp;
+    str = self.new(s);
+     tmp = str.prependChar(c); str.free(); 
+    return tmp;
+  ],
        prepend [s text lk_text str tmp;
     lk_text=self.ambiguouslock(text);
     str = self.new(s);
@@ -1172,6 +1177,16 @@ class _bglString(bglstringpoolreserve)
             retval.setChar(retval.getLength(), c);
             retval.setLength(retval.getLength() + 1);
             retval = retval.free();
+        
+        return retval;
+    ],
+    prependChar[c one retval;
+        
+            one = _bglStr.new();
+            one.setChar(0, c);
+            one.setLength(1);
+            retval = one.append(self);
+            one.free();
         
         return retval;
     ],

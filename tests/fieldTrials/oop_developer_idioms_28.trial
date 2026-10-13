@@ -1,0 +1,61 @@
+Room A
+Room A.
+
+> setup
+Registered 8, listeners 2.
+
+> catalog
+Packages: core, text, json, http, cli, zip[z5], loopa, loopb.
+Size 245, native 70.
+text 2.0.0 needs core>=1.2.0
+json 1.1.0 needs text>=2.0.0 core>=1.0.0
+http 3.0.0 needs json>=1.1.0 zip>=1.0.0 core>=1.4.0
+cli 0.0.9 needs http>=3.0.0 text>=2.1.0
+loopa 1.0.0 needs loopb>=1.0.0
+loopb 1.0.0 needs loopa>=1.0.0
+
+> plan
+json: core > text > json
+http: core > text > json > zip > http
+Cannot resolve cli: too old at text 2.0.0.
+Cannot resolve loopa: cycle at loopa 1.0.0.
+Runs 4, errors 2.
+
+> install
+Cannot resolve cli: too old at text 2.0.0.
+cli installed: false.
+  + core 1.4.2 (library)
+  + text 2.0.0 (library)
+  + json 1.1.0 (library)
+  + zip 1.0.5 (native)
+  + http 3.0.0 (library)
+http installed: true, total 5, bytes 230.
+
+> report
+Installed 5 of 8, native true, all small true.
+Largest first: zip http core json text
+Users: core=1 text=1 json=1 zip=1
+Sizes sum 220 over 5.
+Three need core true; heavy zip; huge none.
+zip is native for z5.
+
+> upgrade
+text 2.0.0 to 2.1.0; newer true, same false.
+core bumps 2.0.0 and 1.4.3; ordered true, at least true.
+  + cli 0.0.9 (tool)
+cli installed: true, total 6, bytes 247.
+
+> report
+Installed 6 of 8, native true, all small true.
+Largest first: zip http core json text cli
+Users: core=2 text=2 json=2 http=1 zip=2
+Sizes sum 235 over 6.
+Three need core true; heavy zip; huge none.
+zip is native for z5.
+
+> purge
+core is still required.
+Removed cli.
+Removed http.
+zip users 0, core users 1, total 4.
+http is absent.

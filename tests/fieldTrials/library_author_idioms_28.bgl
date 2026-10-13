@@ -1,0 +1,617 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a letters-and-mailboxes kit and its consumer. The kit declares an enum of services; a
+// value class of cents with two copy operators, + over ints and over cents, - over cents, <=> (giving
+// < and >), == and != against an int and a show method that prints dollars; a price routine that
+// switches on the enum and reads an accessor of the post object; a plural helper. A mailbox class with
+// attributes in the class body, a required positional capacity, received and refused counts, static
+// delivery and return counts, a required owner() routine, a default flag(), a held() count that walks
+// children with is(), an accept() that throws a reason code, and an after() that takes over the
+// library's Open; a strongbox subclass that overrides flag() and adds a turn of its dial. A pooled
+// letter class with name words and a short_name in the class body, an owned stringObj address built
+// in create(), a box member, an enum member with an initializer, an owned cents member, static
+// counters, a destroy() that takes it out of the tree and a before() that takes over Examine and
+// Burn. The post object is a namespace (alias … for the enum and the cents) holding an array of boxes,
+// a sack of letters swept with remove in a while loop, a stringObj log, an owned cents of takings, an
+// inline accessor that clamps a surcharge and counts changes through outer., a write() returning null
+// when the pool is empty, a deliver() that catches accept()'s throws, a collect() that deletes a box's
+// children while iterating them, a string switch on an owner, a union-returning search and a func<>
+// walk. The consumer has one room with three boxes (positional capacities, one a strongbox), extends
+// the box class with tests and the post with a capturing <linq> count and a ternary; its verbs write,
+// stamp, post, deliver and collect letters through a NOUN(filter) token, set the surcharge, find the
+// fullest box through typeof and casts, and report with <linq> filter/count/any/all/first/orderBy/
+// take, ??, stringObj methods, a copied and lambda-sorted local array, bgl.world.instances with a
+// predicate, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA28_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: letters written, stamped, posted and delivered into boxes. ====
+
+/// How a letter travels.
+enum eLa28Service { standard, express, recorded }
+
+/// An amount of postage in cents, copied on assignment.
+value class La28Cents {
+    int c;
+    La28Cents operator = (La28Cents o) { c = o.c; return self; }
+    La28Cents operator = (int n) { c = n; return self; }
+    /// The amount with some cents more.
+    La28Cents operator + (int n) {
+        La28Cents r;
+        r.c = c + n;
+        return r;
+    }
+    /// The two amounts together.
+    La28Cents operator + (La28Cents o) {
+        La28Cents r;
+        r.c = c + o.c;
+        return r;
+    }
+    /// The amount less another, never below nothing.
+    La28Cents operator - (La28Cents o) {
+        La28Cents r;
+        r.c = bgl.util.math.max(c - o.c, 0);
+        return r;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La28Cents o) { return c - o.c; }
+    /// True when it is exactly so many cents.
+    bool operator == (int n) { return c == n; }
+    /// True when it is not so many cents.
+    bool operator != (int n) { return c != n; }
+
+    /// Prints the amount as dollars and cents.
+    void show() {
+        print($"${c / 100}.{(c % 100) / 10}{c % 10}");
+    }
+}
+
+/// "s" unless there is exactly one.
+string la28Plural(int n) {
+    if (n == 1) return "";
+    return "s";
+}
+
+/// What a service costs in cents.
+int la28Price(eLa28Service s) {
+    switch (s) {
+        case eLa28Service.standard: return 50;
+        case eLa28Service.express:  return 50 + la28Post.surcharge;
+        default:                    return 120;
+    }
+}
+
+/// A mailbox that takes letters for one owner.
+class La28Box : object {
+    attributes = {container, openable, static};
+    /// How many letters it holds.
+    required inline int capacity;
+    /// Letters delivered into it.
+    int received = 0;
+    /// Letters it turned away as full.
+    int refused = 0;
+    /// Letters delivered into any box.
+    static int deliveries = 0;
+    /// Letters sent back to the writer.
+    static int returns = 0;
+
+    /// Whose box it is.
+    required string owner();
+    /// What its flag shows.
+    default string flag() { return "down"; }
+
+    /// How many letters are in it now.
+    int held() {
+        int n = 0;
+        for (object o in children) {
+            if (o.is(La28Letter)) n++;
+        }
+        return n;
+    }
+
+    /// Takes a letter in. Throws 1 when the box is full, 2 when the postage is short.
+    void accept(La28Letter l) {
+        if (held() >= capacity) {
+            refused++;
+            throw 1;
+        }
+        if (l.paid.c < la28Price(l.service)) throw 2;
+        l.parent = self;
+        received++;
+        La28Box.deliveries++;
+    }
+
+    bool after() {
+        switch (action) {
+            case ::Open: {
+                int n = held();
+                if (n == 0) print($"You open the {self}; it is empty.^");
+                else print($"You open the {self}; it holds {n} letter{la28Plural(n)}.^");
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+/// A box with a dial: a bigger capacity, and its flag shows how far the dial is turned.
+class La28Strongbox : La28Box {
+    int dial = 0;
+    string flag() {
+        if (dial > 0) return "dialled";
+        return "locked";
+    }
+    /// Turns the dial one step.
+    void turn() { dial = (dial + 1) % 4; }
+}
+
+/// A letter written for a box; made with new and handed back with delete.
+class La28Letter[4] : object {
+    string short_name = "letter";
+    name = {.letter, .envelope};
+    stringObj address;
+    La28Box dest;
+    eLa28Service service = eLa28Service.standard;
+    La28Cents paid;
+    bool posted = false;
+    /// Letters written so far.
+    static int written = 0;
+    /// Letters burnt or collected so far.
+    static int gone = 0;
+
+    void create(La28Box b, eLa28Service s) {
+        dest = b;
+        service = s;
+        written++;
+        address = $"{b.owner()}-{written}";
+        parent = player;
+    }
+
+    void destroy() {
+        dest = null;
+        parent = null;
+        gone++;
+    }
+
+    bool before() {
+        switch (action) {
+            case ::Examine:
+                print($"A {la28Post.word(service)} letter to {address}, paid ");
+                paid.show();
+                print($" of {la28Price(service)}c.^");
+                return true;
+            case ::Burn:
+                la28Post.burn(self);
+                return true;
+        }
+        return false;
+    }
+}
+
+/// Report verbs: they take no time.
+class La28Info : verb {
+    meta = true;
+}
+
+// ==== The post. ====
+
+/// The post: knows the boxes and the sack of letters, takes the postage, and keeps a log.
+object la28Post {
+    "post office";
+    alias service for eLa28Service;
+    alias cents for La28Cents;
+    array<La28Box> boxes[3];
+    array<La28Letter> sack[4];
+    stringObj log;
+    /// All the postage taken so far.
+    cents takings;
+    int changes = 0;
+
+    /// Cents added to an express letter, kept from 0 to 90; each change is counted.
+    auto surcharge = {
+        int _s = 25;
+        int operator () { return _s; }
+        void operator = (int v) {
+            int n = bgl.util.math.clamp(v, 0, 90);
+            if (n != _s) outer.changes++;
+            _s = n;
+        }
+    }
+
+    /// Adds a box; false when it is there already or there is no room.
+    bool register(La28Box b) {
+        if (boxes.contains(b)) return false;
+        return boxes.append(b);
+    }
+
+    /// A word for a service.
+    string word(service s) {
+        switch (s) {
+            case service.standard: return "standard";
+            case service.express:  return "express";
+            default:               return "recorded";
+        }
+    }
+
+    /// Where an owner lives.
+    string street(La28Box b) {
+        switch (b.owner()) {
+            case "Ann": return "north";
+            case "Bo":  return "east";
+            default:    return "far";
+        }
+    }
+
+    /// Writes a letter for a box into the player's hand; null when no more can be written.
+    La28Letter write(La28Box b, service s) {
+        La28Letter l = new La28Letter(b, s);
+        if (l == null) {
+            print("You have no paper left.^");
+            return null;
+        }
+        sack.append(l);
+        log += $"write:{b.owner()} ";
+        print($"You write a {word(s)} letter, {l.address}.^");
+        return l;
+    }
+
+    /// Puts stamps on a letter.
+    void stamp(La28Letter l, int c) {
+        l.paid = l.paid + c;
+        takings = takings + c;
+        print($"You stamp {l.address}: ");
+        l.paid.show();
+        print(".^");
+    }
+
+    /// Posts a letter: it leaves the player's hand.
+    void post(La28Letter l) {
+        l.posted = true;
+        l.parent = self;
+        log += $"post:{l.address} ";
+        print($"You post {l.address}.^");
+    }
+
+    /// Delivers every posted letter. Returns how many reached a box.
+    int deliver() {
+        int done = 0;
+        int i = 0;
+        while (i < sack.length) {
+            La28Letter l = sack[i];
+            if (!l.posted) {
+                i++;
+                continue;
+            }
+            try {
+                l.dest.accept(l);
+            } catch (int why) {
+                l.posted = false;
+                l.parent = player;
+                La28Box.returns++;
+                if (why == 1) {
+                    print($"{l.address} comes back: the {l.dest} is full.^");
+                    log += "full ";
+                } else {
+                    print($"{l.address} comes back: short postage.^");
+                    log += "short ";
+                }
+                i++;
+                continue;
+            }
+            sack.remove(i);
+            done++;
+        }
+        log += $"deliver{done} ";
+        return done;
+    }
+
+    /// Clears a box. Returns how many letters went.
+    int collect(La28Box b) {
+        int n = 0;
+        for (object o in b.children) {
+            if (!o.is(La28Letter)) continue;
+            La28Letter l = (La28Letter)o;
+            delete l;
+            n++;
+        }
+        if (n > 0) log += $"collect{n} ";
+        return n;
+    }
+
+    /// Burns a letter that hasn't been posted.
+    void burn(La28Letter l) {
+        int at = sack.indexOf(l);
+        if (at >= 0) sack.remove(at);
+        print($"You burn {l.address}.^");
+        log += "burn ";
+        delete l;
+    }
+
+    /// The box holding the most letters, or a word when every box is empty.
+    La28Box | string fullest() {
+        La28Box best = null;
+        for (La28Box b in boxes) {
+            if (b.held() == 0) continue;
+            if (best == null || b.held() > best.held()) best = b;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Runs a step on each box, in the order they were registered.
+    void each(func<void, La28Box> step) {
+        for (La28Box b in boxes) step(b);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La28Box redBox {
+    2, "red box";
+    parent = roomA;
+    name = {.red, .box};
+    string owner() { return "Ann"; }
+}
+
+La28Box blueBox {
+    1, "blue box";
+    parent = roomA;
+    name = {.blue, .box};
+    string owner() { return "Bo"; }
+    string flag() { return "up"; }
+}
+
+La28Strongbox ironBox {
+    3, "iron box";
+    parent = roomA;
+    name = {.iron, .box};
+    string owner() { return "Cy"; }
+}
+
+/// Every box can say whether it has room.
+extend class La28Box {
+    /// True when it can take no more.
+    bool full() { return held() >= capacity; }
+    /// How many more letters it takes.
+    int space() { return capacity - held(); }
+}
+
+/// The post can count the letters waiting and sum itself up in a word.
+extend la28Post {
+    /// How many letters in the sack are posted and bound for a box.
+    int waiting(La28Box b) {
+        return sack.filter((La28Letter l) => l.posted && l.dest == b).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return surcharge >= 50 ? "dear" : "cheap";
+    }
+}
+
+/// True when the noun is a mailbox.
+bool la28IsBox() { return noun.is(La28Box); }
+
+/// The letter the player names, or null with a message when it isn't one.
+La28Letter la28Held(object o) {
+    if (!o.is(La28Letter)) {
+        print("That is not a letter.^");
+        return null;
+    }
+    return (La28Letter)o;
+}
+
+/// Prints a box's line.
+void la28ShowBox(La28Box b) {
+    print($"{b} {b.owner()} {b.held()}/{b.capacity} flag {b.flag()}");
+    if (b.full()) print(" full");
+    if (b.is(La28Strongbox)) print($" dial {((La28Strongbox)b).dial}");
+    print($" got {b.received} refused {b.refused}^");
+}
+
+// ==== Verbs. ====
+
+verb La28Write {
+    grammar = {.write, .to, NOUN(la28IsBox)};
+    void handler() {
+        la28Post.write((La28Box)noun, eLa28Service.standard);
+    }
+}
+
+verb La28Express {
+    grammar = {.express, .to, NOUN(la28IsBox)};
+    void handler() {
+        la28Post.write((La28Box)noun, eLa28Service.express);
+    }
+}
+
+verb La28Record {
+    grammar = {.record, .to, NOUN(la28IsBox)};
+    void handler() {
+        la28Post.write((La28Box)noun, eLa28Service.recorded);
+    }
+}
+
+verb La28Stamp {
+    grammar = {.stamp, HELD, .with, NUMBER};
+    void handler() {
+        La28Letter l = la28Held(noun);
+        if (l == null) return;
+        int c = (int)second;
+        if (c <= 0) {
+            print("You add no stamps.^");
+            return;
+        }
+        la28Post.stamp(l, c);
+    }
+}
+
+verb La28PostIt {
+    grammar = {.post, HELD};
+    void handler() {
+        La28Letter l = la28Held(noun);
+        if (l == null) return;
+        la28Post.post(l);
+    }
+}
+
+verb La28Deliver {
+    grammar = {.deliver};
+    void handler() {
+        int n = la28Post.deliver();
+        print($"{n} letter{la28Plural(n)} delivered.^");
+    }
+}
+
+verb La28Collect {
+    grammar = {.collect, .from, NOUN(la28IsBox)};
+    void handler() {
+        int n = la28Post.collect((La28Box)noun);
+        print($"You collect {n} letter{la28Plural(n)} from the {noun}.^");
+    }
+}
+
+verb La28Dial {
+    grammar = {.dial, NOUN};
+    void handler() {
+        if (!noun.is(La28Strongbox)) {
+            print("It has no dial.^");
+            return;
+        }
+        La28Strongbox s = (La28Strongbox)noun;
+        s.turn();
+        print($"The dial turns to {s.dial}.^");
+    }
+}
+
+La28Info La28Surcharge {
+    grammar = {.surcharge, NUMBER};
+    void handler() {
+        la28Post.surcharge = (int)noun;
+        print($"surcharge {la28Post.surcharge}, changes {la28Post.changes}, {la28Post.mood()}, express {la28Price(eLa28Service.express)}.^");
+    }
+}
+
+La28Info La28Fullest {
+    grammar = {.fullest};
+    void handler() {
+        La28Box | string r = la28Post.fullest();
+        if (typeof(r) == eType.object) {
+            La28Box b = (La28Box)r;
+            print($"The {b} is fullest with {b.held()}; {b.space()} more fit; {la28Post.street(b)} street.^");
+        } else {
+            print($"Fullest: {(string)r}.^");
+        }
+    }
+}
+
+La28Info La28Boxes {
+    grammar = {.boxes};
+    void handler() {
+        la28Post.each((La28Box b) => la28ShowBox(b));
+        int nOpen = la28Post.boxes.filter((La28Box b) => b.has(open)).count();
+        print($"open {nOpen}, delivered {La28Box.deliveries}, returned {La28Box.returns}");
+        if (la28Post.boxes.any((La28Box b) => b.full())) print(", one full");
+        if (la28Post.boxes.all((La28Box b) => b.held() > 0)) print(", none empty");
+        La28Box firstEmpty = la28Post.boxes.filter((La28Box b) => b.held() == 0).first();
+        object which = firstEmpty ?? roomA;
+        print($"; first empty {which}; takings ");
+        la28Post.takings.show();
+        print("^");
+        print($"letters written {La28Letter.written}, gone {La28Letter.gone}, sack {la28Post.sack.length}; log {la28Post.log}^");
+#if LA28_TRACE
+        print($"waiting red {la28Post.waiting(redBox)} blue {la28Post.waiting(blueBox)} iron {la28Post.waiting(ironBox)}^");
+#endif
+    }
+}
+
+La28Info La28Sack {
+    grammar = {.sack};
+    void handler() {
+        if (la28Post.sack.length == 0) {
+            print("The sack is empty.^");
+            return;
+        }
+        stringObj line;
+        for (La28Letter l in la28Post.sack) {
+            line += l.address.toLower();
+            if (l.posted) line += "+";
+            line += " ";
+        }
+        line = line.trim();
+        print($"{line} ({line.length} chars)");
+        if (line.contains("cy")) print(", one for Cy");
+        print(".^");
+    }
+}
+
+La28Info La28Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La28Box> order[3];
+        order = la28Post.boxes;
+        order.sort((La28Box a, La28Box b) => b.received - a.received);
+        for (La28Box b in order) print($"{b}={b.received} ");
+        La28Box top = order.first();
+        if (top.received == 0) print("none delivered");
+        else if (top.received > order[1].received) print($"top {top}");
+        else print("tie");
+        print(".^");
+        for (La28Box b in la28Post.boxes.orderBy((La28Box a, La28Box b) => a.capacity - b.capacity).take(2)) {
+            print($"{b} ");
+        }
+        print("hold least.^");
+    }
+}
+
+La28Info La28Hand {
+    grammar = {.hand};
+    void handler() {
+        int n = 0;
+        La28Cents total;
+        for (object o in bgl.world.instances(La28Letter, (object x) => x.parent == player)) {
+            La28Letter l = (La28Letter)o;
+            print($"{l.address} ");
+            total = total + l.paid;
+            n++;
+        }
+        print($"- {n} held, paid ");
+        total.show();
+        if (total > la28Post.takings) print(", more than taken");
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la28Post.register(redBox);
+    la28Post.register(blueBox);
+    la28Post.register(ironBox);
+    la28Post.register(blueBox);
+    rfalse;
+}
+
+#includeI6 "grammar"

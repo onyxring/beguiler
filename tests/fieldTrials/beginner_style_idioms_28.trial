@@ -1,0 +1,285 @@
+Room A
+Room A. The car park. The office is to the north.
+You can see a red bay, a blue bay, a green bay and a warden here.
+> bays
+Bay 1 (red): empty.
+Bay 2 (blue): empty.
+Bay 3 (green): empty.
+Bays in use: 0.
+> queue
+1. KT 101 for 4
+2. ZX 220 for 9
+Next: [KT 101]
+> tickets
+The book is empty.
+> report
+The car park: 6 coins, 0 in fines.
+turns: 0
+Parked: 0. Driven off: 0.
+Bays before an empty one: 0.
+MN 508 is car 5.
+Long stays: 3.
+> examine green bay
+Bay 3. One coin buys 3 turns.
+Bay 3 (green): empty.
+> take red bay
+It is painted on the ground.
+> park
+KT 101 parks in the red bay. The meter is empty.
+A car (AB 345) joins the queue.
+> feed red bay
+The red meter shows 2. Coins: 5.
+> feed red bay
+The red meter shows 3. Coins: 4.
+> feed red bay
+The red meter shows 4. Coins: 3.
+The car in the red bay (KT 101) drives away.
+A car (KT 412) joins the queue.
+> feed red bay
+There is no car in the red bay.
+> park
+ZX 220 parks in the red bay. The meter is empty.
+> bays
+Bay 1 (red): ZX 220, meter run out 1 turn ago.
+Bay 2 (blue): empty.
+Bay 3 (green): empty.
+Bays in use: 1.
+> queue
+1. AB 345 for 3
+2. KT 412 for 10
+Next: [AB 345]
+> wait
+Time passes.
+The warden writes a ticket for ZX 220.
+A car (MN 508) joins the queue.
+> wait
+Time passes.
+> wait
+Time passes.
+> bays
+Bay 1 (red): ZX 220, meter run out 4 turns ago.
+Bay 2 (blue): empty.
+Bay 3 (green): empty.
+Bays in use: 1.
+> feed blue bay
+There is no car in the blue bay.
+A car (ZX 613) sees the queue and drives off.
+> feed green bay
+There is no car in the green bay.
+> bays
+Bay 1 (red): ZX 220, meter run out 6 turns ago.
+Bay 2 (blue): empty.
+Bay 3 (green): empty.
+Bays in use: 1.
+> plate 1
+KT / 101
+KT101
+kt 101
+A KT plate.
+The first one.
+> plate 7
+QR / 777
+QR777
+qr 777
+It has a 7.
+The last one.
+> plate 4
+KT / 412
+KT412
+kt 412
+A KT plate.
+Stays 10.
+> plate 9
+There are 7 plates.
+> park
+AB 345 parks in the blue bay. The meter is empty.
+> wait
+Time passes.
+The warden writes a ticket for AB 345.
+A car (QR 777) joins the queue.
+> wait
+Time passes.
+The car in the red bay (ZX 220) drives away.
+The car in the blue bay (AB 345) drives away.
+> wait
+Time passes.
+> wait
+Time passes.
+A car (KT 101) sees the queue and drives off.
+> tickets
+[AB 345] bay 2, 5
+[ZX 220] bay 1, 5
+First: AB 345. Last: ZX 220.
+Unpaid: 2. Owed: 10.
+> fines 2
+Bay 2: 1 ticket.
+In the first two: 1.
+> fines 3
+Bay 3: 0 tickets.
+> fines 1
+Bay 1: 1 ticket.
+In the first two: 1.
+> n
+Room B
+Room B. The office. The car park is to the south.
+You can see a clerk here.
+> collect
+The clerk takes 10 for 2 tickets.
+> collect
+Nothing is owed.
+A car (ZX 220) sees the queue and drives off.
+> tear
+You tear out the ticket for ZX 220. 1 left.
+> tickets
+[AB 345]* bay 2, 5
+First: AB 345. Last: AB 345.
+Unpaid: 0. Owed: 0.
+All paid.
+> s
+Room A
+Room A. The car park. The office is to the north.
+You can see a red bay, a blue bay, a green bay and a warden here.
+> clear blue bay
+The blue bay is already empty.
+A car (AB 345) sees the queue and drives off.
+> clear blue bay
+The blue bay is already empty.
+> park
+KT 412 parks in the red bay. The meter is empty.
+> queue
+1. MN 508 for 5
+2. QR 777 for 8
+Next: [MN 508]
+QR 777 is waiting.
+> wait
+Time passes.
+The warden writes a ticket for KT 412.
+A car (KT 412) joins the queue.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+A car (MN 508) sees the queue and drives off.
+> wait
+Time passes.
+> wait
+Time passes.
+> tickets
+[AB 345]* bay 2, 5
+[KT 412] bay 1, 5
+First: AB 345. Last: KT 412.
+Unpaid: 1. Owed: 5.
+> report
+The car park: 3 coins, 10 in fines.
+turns: 32
+Parked: 4. Driven off: 5.
+Gone: AB 345, KT 101, ZX 220
+KT plates gone: 1.
+Bays before an empty one: 1.
+MN 508 is car 5.
+Long stays: 3.
+Fines have been collected.
+> n
+Room B
+Room B. The office. The car park is to the south.
+You can see a clerk here.
+A car (ZX 613) sees the queue and drives off.
+> collect
+The clerk takes 5 for 1 ticket.
+> report
+The car park: 3 coins, 15 in fines.
+turns: 34
+Parked: 4. Driven off: 6.
+Gone: AB 345, KT 101, ZX 220
+KT plates gone: 1.
+Bays before an empty one: 1.
+MN 508 is car 5.
+Long stays: 3.
+Fines have been collected.
+> s
+Room A
+Room A. The car park. The office is to the north.
+You can see a red bay, a blue bay, a green bay and a warden here.
+The car in the red bay (KT 412) drives away.
+> park
+MN 508 parks in the red bay. The meter is empty.
+A car (QR 777) joins the queue.
+> park
+QR 777 parks in the blue bay. The meter is empty.
+The warden writes a ticket for MN 508.
+> park
+KT 412 parks in the green bay. The meter is empty.
+The warden's book is full (3 tickets).
+> bays
+Bay 1 (red): MN 508, meter run out 3 turns ago.
+Bay 2 (blue): QR 777, meter run out 2 turns ago.
+Bay 3 (green): KT 412, meter run out 1 turn ago.
+Bays in use: 3.
+> feed green bay
+The green meter shows 3. Coins: 2.
+A car (KT 101) joins the queue.
+> feed green bay
+The green meter shows 5. Coins: 1.
+The car in the red bay (MN 508) drives away.
+> feed green bay
+The green meter shows 6. Coins: 0.
+> feed green bay
+The meter is full (5 turns).
+A car (ZX 220) joins the queue.
+> examine green bay
+Bay 3. One coin buys 3 turns.
+Bay 3 (green): KT 412, meter 4.
+> feed blue bay
+You have no coins.
+The car in the blue bay (QR 777) drives away.
+> bays
+Bay 1 (red): empty.
+Bay 2 (blue): empty.
+Bay 3 (green): KT 412, meter 2.
+Bays in use: 1.
+> wait
+Time passes.
+A car (AB 345) sees the queue and drives off.
+> wait
+Time passes.
+The meter on the green bay runs out.
+> tickets
+[AB 345]* bay 2, 5
+[KT 412]* bay 1, 5
+[MN 508] bay 1, 5
+First: AB 345. Last: MN 508.
+Unpaid: 1. Owed: 5.
+> fines 3
+Bay 3: 0 tickets.
+> report
+The car park: 0 coins, 15 in fines.
+turns: 46
+Parked: 7. Driven off: 7.
+Gone: AB 345, KT 101, KT 412, MN 508, QR 777, ZX 220
+KT plates gone: 2.
+Bays before an empty one: 0.
+MN 508 is car 5.
+Long stays: 3.
+The ticket book has been full.
+Fines have been collected.
+> n
+Room B
+Room B. The office. The car park is to the south.
+You can see a clerk here.
+The car in the green bay (KT 412) drives away.
+> collect
+The clerk takes 5 for 1 ticket.
+A car (KT 412) sees the queue and drives off.
+> tear
+You tear out the ticket for AB 345. 2 left.
+> tear
+You tear out the ticket for KT 412. 1 left.
+> tear
+You tear out the ticket for MN 508. 0 left.
+A car (MN 508) sees the queue and drives off.
+> tear
+No ticket is paid.
+> tickets
+The book is empty.

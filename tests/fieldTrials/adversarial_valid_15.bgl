@@ -1,0 +1,426 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small tank-gauge program, on Glulx, built around `float`.
+// A `const float` (one negative) and a `#define` mixed into float arithmetic; int-to-float widening
+// on declaration, as an `inline` positional argument, a member default, a parameter default and a
+// setter argument, and float-to-int casts truncating toward zero; a value class of readings whose
+// `ref` member chains instances bound with `:=`, walked by a `ref` local rebound in a loop and tested
+// with `!`, a `ref` parameter versus a copied parameter, and a subclass copy operator chaining to its
+// base by cast; a named float accessor clamping its setter, owned by a tank class and read inside
+// float arithmetic; an inline `auto` accessor on an object reaching its host through `outer`; global
+// overloads told apart by int, float and value-class arguments; a float switch of comparison guards
+// and a float value case, and an int switch of ranges over a cast; float `%`, `*=`, `/=`, unary minus
+// and comparisons inside nested ternaries; a replaced float function chained through `replaced()`, an
+// array of func<float, float> mixing named functions, a lambda and the replaced one, a function that
+// returns one of two function values from a ternary, and one that applies a func a defaulted number of
+// times, called with named arguments; a lambda that writes a captured float local; an array<float>
+// with negatives sorted bare (float's `<=>`), searched with indexOf and contains, and summed by
+// for-in; bgl.util.math float forms (sqrt, floor, ceil, abs, pow); a static `<=>` over float results
+// handed to sort() through an operator reference and giving a derived `>`; a `selfType` method that
+// throws a float, chained, and caught by a `float` catch; static counters; a children walk summing
+// float results; and NUMBER grammar read into a float.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+#define SCALE 4
+
+const float RATE = 1.5;
+const float FLOOR_MARK = -2.5;
+
+// ---- readings: a value class chained through ref members -------------------------------------------
+
+value class Reading {
+    float level;
+    int hour;
+    ref Reading next;
+
+    Reading operator = (Reading o) {
+        level = o.level;
+        hour = o.hour;
+        return self;
+    }
+
+    float delta() {
+        if (!next) return 0.0;
+        return next.level - level;
+    }
+}
+
+value class StampedReading : Reading {
+    char tag;
+
+    StampedReading operator = (StampedReading o) {
+        tag = o.tag;
+        (Reading)self = o;
+        return self;
+    }
+}
+
+Reading r0;
+Reading r1;
+Reading r2;
+Reading r3;
+StampedReading stampA;
+StampedReading stampB;
+
+void setReading(ref Reading r, float lvl, int h) {
+    r.level = lvl;
+    r.hour = h;
+}
+
+void bumpCopy(Reading r) { r.level += 10; }
+void bumpRef(ref Reading r) { r.level += 10; }
+
+float chainTotal(ref Reading head) {
+    float t = 0;
+    ref Reading cur := head;
+    int hops = 0;
+    while (true) {
+        t += cur.level;
+        hops++;
+        if (!cur.next) break;
+        cur := cur.next;
+    }
+    print($"[{hops}]");
+    return t;
+}
+
+// ---- overloads ---------------------------------------------------------------------------------------
+
+void show(int n)     { print($"i{n} "); }
+void show(float f)   { print($"f{f} "); }
+void show(Reading r) { print($"r{r.hour}:{r.level} "); }
+
+// ---- conversions: function values ---------------------------------------------------------------------
+
+float half(float x) { return x / 2; }
+
+float evaporate(float v) { return v - 0.5; }
+replace float evaporate(float v) { return replaced(v) * 2; }
+
+array<func<float, float>> steps = { half, (float x) => x * 3, evaporate };
+
+func<float, float> pick(bool soft) {
+    return soft ? half : evaporate;
+}
+
+float applyTimes(float start, func<float, float> fn, int times = 1) {
+    float v = start;
+    for (int i in 1 to times) v = fn(v);
+    return v;
+}
+
+void each(array<float> a, func<void, float> fn) {
+    for (float x in a) fn(x);
+}
+
+// ---- bands -------------------------------------------------------------------------------------------
+
+string band(float lv) {
+    switch (lv) {
+        case < 0.0:    return "under";
+        case < 25.5:   return "low";
+        case 50.0:     return "half";
+        case >= 99.5:  return "full";
+        default:       return "mid";
+    }
+}
+
+string decile(float lv) {
+    switch ((int)(lv / 10)) {
+        case 0:        return "d0";
+        case 1 to 4:   return "d1-4";
+        case 5, 6:     return "d5-6";
+        default:       return "d7+";
+    }
+}
+
+// ---- tanks -------------------------------------------------------------------------------------------
+
+value class Percent {
+    float _p;
+    float operator () { return _p; }
+    void operator = (float v) { _p = v < 0 ? 0.0 : (v > 100 ? 100.0 : v); }
+}
+
+class Tank : object {
+    inline float capacity;
+    inline instanceName;
+    Percent fill;
+    float leak = 1;
+    static int pours = 0;
+
+    static int operator <=> (Tank a, Tank b) {
+        float d = a.liters() - b.liters();
+        return d < 0 ? -1 : (d > 0 ? 1 : 0);
+    }
+
+    float liters() { return capacity * fill / 100; }
+
+    selfType pour(float amount) {
+        float room = capacity - liters();
+        if (amount > room) throw amount - room;
+        fill = (liters() + amount) * 100 / capacity;
+        Tank.pours++;
+        return self;
+    }
+
+    void seep() {
+        float l = liters() - leak * RATE;
+        fill = l * 100 / capacity;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Tank tankA { 200.0, "tank A"; parent = roomA; name = {.tank, .a}; description = "Tank A."; }
+Tank tankB { 80, "tank B"; parent = roomA; name = {.tank, .b}; leak = 0.5; description = "Tank B."; }
+Tank tankC { 50.5, "tank C"; parent = roomA; name = {.tank, .c}; description = "Tank C."; }
+
+object meter {
+    "meter";
+    parent = roomA;
+    attributes = {static};
+    name = {.meter};
+    description = "A meter.";
+    float bias = 0.5;
+    auto offset = {
+        float _o;
+        float operator () { return _o + outer.bias; }
+        void operator = (float v) {
+            _o = v * SCALE;
+            outer.bias = outer.bias / 2;
+        }
+    }
+}
+
+array<Tank> tanks = { tankA, tankB, tankC };
+array<float> marks = { 3.5, -1.25, 0.0, -7.0, 12.0 };
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    tankA.fill = 25;
+    tankB.fill = 50.0;
+    tankC.fill = 140.0;
+    setReading(r0, 10.0, 6);
+    setReading(r1, 12.5, 7);
+    setReading(r2, 11.0, 8);
+    setReading(r3, -0.75, 9);
+    r0.next := r1;
+    r1.next := r2;
+    r2.next := r3;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs ---------------------------------------------------------------------------------------------
+
+verb Chain {
+    grammar = {.chain};
+    void handler() {
+        float total = chainTotal(r0);
+        printLine($" total {total}.");
+        print("Deltas:");
+        ref Reading cur := r0;
+        while (true) {
+            print($" {cur.delta()}");
+            if (!cur.next) break;
+            cur := cur.next;
+        }
+        printLine(".");
+        bumpCopy(r1);
+        print($"Copy {r1.level}, ");
+        bumpRef(r1);
+        printLine($"ref {r1.level}.");
+        cur := r2;
+        cur.level = cur.level * 2;
+        printLine($"Through ref {r2.level}; sum {chainTotal(r1)}.");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp};
+    void handler() {
+        stampA.level = 4.25;
+        stampA.hour = 3;
+        stampA.tag = 'q';
+        stampB = stampA;
+        stampA.tag = 'z';
+        stampA.level = 0.0;
+        printLine($"Stamp {stampB.tag} {stampB.hour} {stampB.level}; A {stampA.tag} {stampA.level}.");
+        Reading plain;
+        plain = stampB;
+        show(plain);
+        show(plain.hour);
+        show(plain.level);
+        show(3);
+        show(-3.5);
+        printLine();
+    }
+}
+
+verb Mix {
+    grammar = {.mix};
+    void handler() {
+        float a = (float)314 / 100;
+        float b = (float)(314 / 100);
+        int c = 314 / 100;
+        float d = 7;
+        d /= 2;
+        float e = d;
+        e *= -RATE;
+        float m = 7.5 % 2;
+        printLine($"a {a} b {b} c {c} d {d} e {e} m {m}.");
+        int t1 = (int)FLOOR_MARK;
+        int t2 = (int)(-FLOOR_MARK * SCALE);
+        int t3 = (int)e;
+        printLine($"Trunc {t1} {t2} {t3}; scaled {FLOOR_MARK * SCALE}.");
+        float big = a > 3 ? (d < 3.5 ? 1.0 : 2.0) : -1.0;
+        bool eq = d == 3.5;
+        printLine($"Pick {big} eq {eq ? "yes" : "no"} neg {-a}.");
+    }
+}
+
+verb Bands {
+    grammar = {.bands};
+    void handler() {
+        for (float x in marks) print($"{band(x)} ");
+        printLine();
+        print($"{band(25.5)} {band(50)} {band(99.5)} {band(60.25)}; ");
+        printLine($"{decile(4.9)} {decile(10.0)} {decile(49.99)} {decile(65.0)} {decile(-3.0)}.");
+    }
+}
+
+verb Convert {
+    grammar = {.convert};
+    void handler() {
+        float v = 9.0;
+        for (func<float, float> f in steps) {
+            v = f(v);
+            print($" {v}");
+        }
+        printLine(".");
+        func<float, float> soft = pick(true);
+        func<float, float> hard = pick(false);
+        printLine($"Soft {soft(5.0)} hard {hard(5.0)}.");
+        float once = applyTimes(64.0, half);
+        float thrice = applyTimes(times: 3, fn: half, start: 64.0);
+        float tripled = applyTimes(1.5, (float x) => x * 3, 2);
+        printLine($"Once {once} thrice {thrice} tripled {tripled} evap {evaporate(RATE)}.");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        float acc = 0;
+        float k = 2;
+        each(marks, (float x) => { acc += x * k; });
+        printLine($"Acc {acc}.");
+        marks.sort();
+        print("Sorted");
+        for (float x in marks) print($" {x}");
+        printLine(".");
+        printLine($"At {marks.indexOf(-1.25)} {marks.indexOf(12.0)} {marks.indexOf(5.0)}; has {marks.contains(0.0) ? "yes" : "no"}.");
+        float sum = 0;
+        for (float x in marks) sum += x;
+        printLine($"Sum {sum} mean {sum / marks.length}.");
+    }
+}
+
+verb Calc {
+    grammar = {.calc};
+    void handler() {
+        float r = bgl.util.math.sqrt(20.25);
+        float fl = bgl.util.math.floor(FLOOR_MARK);
+        float ce = bgl.util.math.ceil(2.1);
+        float ab = bgl.util.math.abs(-1.25);
+        float pw = bgl.util.math.pow(1.5, 2.0);
+        printLine($"Root {r} floor {fl} ceil {ce} abs {ab} pow {pw}.");
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    void handler() {
+        for (Tank t in tanks) print($"{t}: {t.fill}% {t.liters()}L {band(t.fill)}; ");
+        printLine();
+        float total = 0;
+        for (object o in roomA.children) {
+            if (!o.is(Tank)) continue;
+            total += ((Tank)o).liters();
+        }
+        printLine($"Total {total}L.");
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        array<Tank> list[3];
+        for (Tank t in tanks) list.append(t);
+        list.sort(Tank::operator <=>);
+        print("Order");
+        for (Tank t in list) print($" {t.capacity}");
+        printLine(".");
+        bool fuller = tankA > tankB;
+        printLine($"A>B {fuller ? 1 : 0} C>A {tankC > tankA ? 1 : 0}.");
+    }
+}
+
+verb Charge {
+    grammar = {.charge, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks fill.");
+            return;
+        }
+        Tank t = (Tank)noun;
+        float amount = parsed_number;
+        try {
+            t.pour(amount / 2).pour(amount / 2);
+            printLine($"{cThe(t)} holds {t.liters()}L ({t.fill}%); pours {Tank.pours}.");
+        } catch (float over) {
+            printLine($"{cThe(t)} overflows by {over}L at {t.fill}%.");
+        }
+    }
+}
+
+verb Seep {
+    grammar = {.seep};
+    void handler() {
+        for (Tank t in tanks) {
+            t.seep();
+            print($"{t.liters()} ");
+        }
+        printLine();
+    }
+}
+
+verb Tune {
+    grammar = {.tune};
+    void handler() {
+        print($"Offset {meter.offset} bias {meter.bias}; ");
+        meter.offset = 1.25;
+        print($"{meter.offset} bias {meter.bias}; ");
+        meter.offset = 2;
+        printLine($"{meter.offset} bias {meter.bias}.");
+    }
+}

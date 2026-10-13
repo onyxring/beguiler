@@ -1,0 +1,6 @@
+// Negative test: a routine can't take an interpolated string, in an expression as anywhere else.
+// EXPECT_ERROR: has no value, so it can only be passed to an emitter
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+stringObj padLeft(stringObj s, int width) { return s; }
+void main() { int n = 3; stringObj a = padLeft($"{n}", 3); }

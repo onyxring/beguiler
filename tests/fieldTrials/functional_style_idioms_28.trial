@@ -1,0 +1,171 @@
+Room A
+Room A.
+
+> shelf
+shelf: ledger, fable, harbor, orbit, atlas, gears
+shortest two: ledger, fable; then harbor, orbit, atlas, gears
+
+> genres
+fiction: 2 books, 430 pages, mean 215.0000, fines 0
+history: 2 books, 460 pages, mean 230.0000, fines 0
+science: 2 books, 700 pages, mean 350.0000, fines 0
+all: 6 books, 1590 pages, mean 265.0000, fines 0
+out: 0, page share 0.0000
+
+> overdue
+Nothing is late.
+
+> lend atlas to amy
+The atlas goes to Amy, due day 8.
+
+> lend gears to amy
+The gears goes to Amy, due day 8.
+
+> lend orbit to amy
+Amy already has 2 of 2.
+
+> lend fable to ben
+The fable goes to Ben, due day 8.
+
+> lend harbor to ben
+Ben already has 1 of 1.
+
+> lend amy to ben
+That is not a book.
+
+> lend ledger to fable
+That is not a member.
+
+> lend gears to cal
+The gears is out with Amy.
+
+> member amy
+Amy holds atlas, gears (2 of 2); owes 0
+
+> member ben
+Ben holds fable (1 of 1); owes 0
+
+> member cal
+Cal holds none (0 of 3); owes 0
+
+> holders
+3 loans among 2 members
+Every member is clear.
+
+> advance 9
+Day 10. 3 late.
+
+> overdue
+atlas (history, Amy): 2 days, fine 4
+fable (fiction, Ben): 2 days, fine 2
+gears (science, Amy): 2 days, fine 5
+total 11, worst 5
+
+> settle
+owed: Amy 9; Ben 2
+3 late, 11 in fines
+
+> lend harbor to amy
+Amy already has 2 of 2.
+
+> checkin fable
+The fable comes back from Ben, fine 2.
+
+> lend harbor to ben
+The harbor goes to Ben, due day 17.
+
+> checkin gears
+The gears comes back from Amy, fine 5.
+
+> advance 0
+Advance 1 to 30 days.
+
+> advance 5
+Day 15. 1 late.
+
+> overdue
+atlas (history, Amy): 7 days, fine 14
+total 14, worst 14
+
+> paid
+2->2, 5->7
+total 7, mean 3.5000
+
+> genres
+fiction: 2 books, 430 pages, mean 215.0000, fines 0
+history: 2 books, 460 pages, mean 230.0000, fines 14
+science: 2 books, 700 pages, mean 350.0000, fines 0
+all: 6 books, 1590 pages, mean 265.0000, fines 14
+out: 2, page share 0.3585
+
+> checkin atlas
+The atlas comes back from Amy, fine 14.
+
+> checkin orbit
+The orbit is on the shelf.
+
+> checkin harbor
+The harbor comes back from Ben.
+
+> checkin harbor
+The harbor is on the shelf.
+
+> paid
+2->2, 5->7, 14->21
+total 21, mean 7.0000
+
+> overdue
+Nothing is late.
+
+> holders
+0 loans among 0 members
+Every member is clear.
+
+> busiest
+atlas 1
+fable 1
+gears 1
+
+> shelf
+shelf: ledger, fable, harbor, orbit, atlas, gears
+shortest two: ledger, fable; then harbor, orbit, atlas, gears
+
+> settle
+owed: nothing
+0 late, 0 in fines
+
+> rates
+fiction: 1d=1 3d=3 5d=5 8d=8
+history: 1d=2 3d=6 5d=10 8d=16
+science: 1d=3 3d=7 5d=10 8d=10
+
+> lend gears to cal
+The gears goes to Cal, due day 22.
+
+> lend ledger to cal
+The ledger goes to Cal, due day 22.
+
+> renew gears
+The gears is now due day 29 (+7).
+
+> renew ledger
+The ledger is now due day 25 (+3).
+
+> renew fable
+The fable is on the shelf.
+
+> member cal
+Cal holds gears, ledger (2 of 3); owes 0
+
+> advance 12
+Day 27. 1 late.
+
+> renew ledger
+The ledger is late; check it in first.
+
+> worst
+by fines: history 4 fiction 0 science 0
+
+> overdue
+ledger (history, Cal): 2 days, fine 4
+total 4, worst 4

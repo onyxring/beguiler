@@ -1,0 +1,91 @@
+Room A
+Room A. A franking machine, a scale and a rack of pigeonholes are here. Room B is east.
+You can see a franking machine, a scale and a rack of pigeonholes (which is empty) here.
+> takings
+Franked 0, 0p, average 0p, heaviest 0g.
+Next unfranked: the blue letter.
+Next kind: letter.
+Ink 22 of 60; 0 stamps.
+> manifest
+Nothing sorted yet.
+> holes
+inner 0, outer 0, rural 0, abroad 0. 0 pieces sorted.
+> east
+Room B
+Room B. A mail sack lies on the floor. Room A is west.
+You can see a mail sack (in which are a blue letter, a grey letter, a thick letter, an air letter and a small parcel) here.
+> take all from sack
+blue letter: Removed.
+grey letter: Removed.
+thick letter: Removed.
+air letter: Removed.
+small parcel: Removed.
+> west
+Room A
+Room A. A franking machine, a scale and a rack of pigeonholes are here. Room B is east.
+You can see a franking machine, a scale and a rack of pigeonholes (which is empty) here.
+> weigh blue letter
+The blue letter: a letter of 20g (scale shows 20g), inner zone, 2p.
+> weigh thick letter
+The thick letter: a letter of 110g (scale shows 110g), rural zone, 11p.
+> weigh small parcel
+The small parcel: a parcel of 640g (scale shows 640g), outer zone, 8p.
+> weigh air letter
+The air letter: a letter of 15g (scale shows 20g), abroad zone, 14p.
+> frank blue letter
+Ka-chunk. The blue letter is franked for 2p. Ink left: 18.
+> frank blue letter
+The blue letter is already franked.
+> frank small parcel
+The small parcel is torn. Tape it first.
+> tape small parcel
+You tape up the small parcel.
+> tape small parcel
+The small parcel is not torn.
+> frank thick letter
+Ka-chunk. The thick letter is franked for 11p. Ink left: 11.
+> frank grey letter
+Ka-chunk. The grey letter is franked for 3p. Ink left: 6.
+> frank air letter
+Not enough ink (needs 8, has 6).
+> refill machine
+You top up the ink from 6 to 60.
+> frank air letter
+Ka-chunk. The air letter is franked for 14p. Ink left: 52.
+> sort blue letter
+You file the blue letter in the inner hole, to go on foot.
+> sort blue letter
+The blue letter is already sorted.
+> put grey letter in rack
+Use SORT to file mail.
+> sort grey letter
+You file the grey letter in the outer hole, to go by bus.
+> sort thick letter
+You file the thick letter in the rural hole, to go by van.
+> sort small parcel
+Frank the small parcel first.
+> frank small parcel
+Ka-chunk. The small parcel is franked for 8p. Ink left: 46.
+> sort small parcel
+You file the small parcel in the outer hole, to go by bus.
+> sort air letter
+You file the air letter in the abroad hole, to go by air.
+> holes
+inner 1, outer 2, rural 1, abroad 1. 5 pieces sorted.
+> manifest
+ABROAD/0015 R air letter 14p
+RURAL/0110 R thick letter 11p
+OUTER/0640 small parcel 8p
+OUTER/0045 grey letter 3p
+INNER/0020 blue letter 2p
+2 registered, some abroad, all franked.
+Total 830g; over 100g: 110g.
+> takings
+Franked 5, 38p, average 7p, heaviest 640g.
+Everything is franked.
+Next kind: none.
+Ink 46 of 60; 5 stamps.
+> refill scale
+That takes no ink.
+> frank scale
+Only mail can be franked.

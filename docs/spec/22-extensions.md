@@ -186,7 +186,7 @@ result (`s.append(t.trim())`).
 |---|---|---|
 | `s.print()` | `void` | Print the text. |
 | `s.append(v)` | `stringObj` | `s` followed by a string or a `char`. |
-| `s.prepend(v)` | `stringObj` | `v` followed by `s`. |
+| `s.prepend(v)` | `stringObj` | A string or a `char` followed by `s`. |
 | `s.toUpper()` / `s.toLower()` | `stringObj` | Case conversion. |
 | `s.trim()` / `s.trimLeft()` / `s.trimRight()` | `stringObj` | Without leading and/or trailing spaces. |
 | `s.reverse()` | `stringObj` | Characters in reverse order. |
