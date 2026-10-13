@@ -2964,6 +2964,12 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
     if(arrLoc->inLoop && !arrLoc->isByteArray && arrLoc->arraySize > 0 && arrLoc->declaredExpressionValue == nullptr
        && arrLoc->copySource.empty() && arrLoc->copyLength.empty()){
         string name = spillName(arrLoc->name);
+        // The last pass's elements are given back first.
+        if(languageService.arrayInUse && !arrLoc->isRaw){
+            string dtor = findStaticDeinit(languageService.findClass(arrLoc->elementType));
+            if(dtor.empty()) dtor = valueElementRoutine(arrLoc->elementType, "_bglValFree_");
+            if(!dtor.empty()) out << format("{0}_bglArray.freeAll({1}, 0, {2});\n", indent, name, dtor);
+        }
         int last = arrLoc->arraySize + ((languageService.arrayInUse && !arrLoc->isRaw) ? 1 : 0);
         for(int k = arrLoc->isRaw ? 0 : 1; k <= last; k++)
             out << format("{0}{1}-->{2} = 0;\n", indent, name, k);
@@ -3774,17 +3780,18 @@ void i6Emitter::emitInterpolatedEmitterBody(const string& body, const string& pa
             out << indent << after << ";\n";
     }
 }
-// Emit a superposed accessor class's I6 `Class` directive right before the backing instance that
-// needs it — once. Its source-order emit was withheld (Pass-3 skips superposed classes), so a
+// Emit a backing instance's class right before it, once: a superposed accessor class, or one declared
+// further down. Its source-order emit was withheld (Pass-3 skips superposed classes), so a
 // baked backing (in create+populate) triggers it here. When the host object is itself superposed,
 // this runs inside the host's captured block, so class + backing + object materialize (or evaporate)
 // together. `emittedClasses` is shared with Pass-3's emitClassRecursive so nothing double-emits.
 void i6Emitter::emitDeferredBackingClass(classDef* cls){
-    if(!cls || !cls->isSuperposed) return;
+    if(!cls || cls->isExternal || cls->isEmitterClass || cls->isAlias) return;
     if(!emittedClasses.insert(cls).second) return;    // already emitted
-    for(classDef* base : cls->baseClasses)
-        if(base && base->isSuperposed) emitDeferredBackingClass(base);  // non-superposed bases came out in source order
+    // A class declared below the backing's host comes out here too: Inform 6 needs it first.
+    for(classDef* base : cls->baseClasses) emitDeferredBackingClass(base);
     generateI6(cls);
+    if(!cls->isSuperposed) return;
     // Emitted in-place (here, inside the host's block) — drop the name-triggered capture so
     // resolvedOutput() won't also revive it.
     const string& k = cls->i6Name();
@@ -5098,6 +5105,10 @@ void i6Emitter::synthesizeValueElementPools(){
                 for(typeDef* g : languageService.globals){
                     if(auto* od = dynamic_cast<objectDef*>(g); od && derivesFrom(od->objectClass, rec.hostClass)) copies++;
                     if(auto* cd = dynamic_cast<classDef*>(g); cd && cd->poolSize > 0 && derivesFrom(cd, rec.hostClass)) copies += cd->poolSize;
+                    // A value-class host's instances are its variables' backings.
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && isValueClass(rec.hostClass) && !vd->isExternal
+                       && dynamic_cast<arrayDeclaration*>(vd) == nullptr && derivesFrom(languageService.findClass(vd->type.name), rec.hostClass))
+                        copies++;
                 }
             }
             N += cap * copies;

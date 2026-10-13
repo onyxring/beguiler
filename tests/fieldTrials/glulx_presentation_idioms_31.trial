@@ -1,0 +1,469 @@
+#grids
+Room A
+Room A. A sign hangs over a tray of word tiles.
+You can see a red tile, a blue tile, a green tile, a gold tile and a sign here.
+[win 1] [0] sign ready
+[grid 1]
+|Sign: (blank)                                     |
+|++                                                |
+|0 chars, 0 edits | blank                          |
+|last NONE -                                       |
+[grid 2]
+|Room A | turn 0 | 0 saved                         |
+> saved
+Nothing saved yet.
+[grid 1]
+|Sign: (blank)                                     |
+|++                                                |
+|0 chars, 0 edits | blank                          |
+|last NONE -                                       |
+[grid 2]
+|Room A | turn 0 | 0 saved                         |
+> spell
+Nothing to spell.
+[grid 1]
+|Sign: (blank)                                     |
+|++                                                |
+|0 chars, 0 edits | blank                          |
+|last NONE -                                       |
+[grid 2]
+|Room A | turn 0 | 0 saved                         |
+> add red tile
+The sign now reads "red".
+[win 1] [0] add: red
+[grid 1]
+|Sign: red                                         |
+|+---+                                             |
+|3 chars, 1 edit | short                           |
+|last ADD red                                      |
+[grid 2]
+|Room A | turn 1 | 1 saved                         |
+> add blue tile
+The sign now reads "red blue".
+[win 1] [1] add: red blue
+[grid 1]
+|Sign: red blue                                    |
+|+--------+                                        |
+|8 chars, 2 edits | short                          |
+|last ADD blue                                     |
+[grid 2]
+|Room A | turn 2 | 2 saved                         |
+> examine sign
+The sign reads "red blue" (8 chars, 2 edits).
+[grid 1]
+|Sign: red blue                                    |
+|+--------+                                        |
+|8 chars, 2 edits | short                          |
+|last ADD blue                                     |
+[grid 2]
+|Room A | turn 3 | 2 saved                         |
+> compare red tile
+The sign sorts after red.
+red comes first.
+Order -1, compareTo 1, ignoring case 1.
+Starts yes, ends no, at 0.
+[grid 1]
+|Sign: red blue                                    |
+|+--------+                                        |
+|8 chars, 2 edits | short                          |
+|last ADD blue                                     |
+[grid 2]
+|Room A | turn 3 | 2 saved                         |
+> front gold tile
+The sign now reads "gold red blue".
+[win 1] [3] front: gold red blue
+[grid 1]
+|Sign: gold red blue                               |
+|+-------------+                                   |
+|13 chars, 3 edits | short                         |
+|last FRONT gold                                   |
+[grid 2]
+|Room A | turn 4 | 3 saved                         |
+> swap blue tile
+The sign now reads "gold red BLU".
+[win 1] [4] swap: gold red BLU
+[grid 1]
+|Sign: gold red BLU                                |
+|+------------+                                    |
+|12 chars, 4 edits | short                         |
+|last SWAP blue                                    |
+[grid 2]
+|Room A | turn 5 | 4 saved                         |
+> wrap green tile
+The sign now reads "~gold red BLU~".
+[win 1] [5] wrap: ~gold red BLU~
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 6 | 5 saved                         |
+> examine green tile
+The green tile, marked '~', spelled green; used 1 time.
+Last: wrapped on turn 5.
+Alternate: none (uses the word).
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 7 | 5 saved                         |
+> examine blue tile
+The blue tile, marked '#', spelled BLU; used 2 times.
+Last: swapped on turn 4.
+Alternate: BLU.
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> saved
+1. "(blank)" (0)
+2. "red" (3)
+3. "red blue" (8)
+4. "gold red blue" (13)
+5. "gold red BLU" (12)
+Now sorts after the newest.
+4 with an e; first over ten: gold red blue; current saved: no at -1.
+Sorted: (blank)|gold red BLU|gold red blue|red|red blue
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> checks
+Copy ~gold red BLU~; with bang ~gold red BLU~!; copy unchanged: yes.
+Digits 890123, 30 long, ends 987.
+The sign is something else.
+<~gold red BLU~> by wrap and short
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> spell
+Spelled: ~-g-o-l-d-/-r-e-d-/-B-L-U-~
+[win 1] [8] L-U-~
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> nest 3
+Nested 3: (((~gold red BLU~)))
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> echo
+Echo: ~GOLD RED BLU~ / green / ~
+[ a red tile, The blue tile, *red* #blue# ]
+green/GLD and RED
+<*red:1 #BLU:2> after 2 tags
+Ends: ~...~ (same)
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> snap
+Captured 33: Room A holds 4 tiles and the sign
+Description 24: A sign of loose letters.
+[ Room A hol|letters. ]
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> stamps
+red   >added on turn 0 (16, >ADD)
+blue  >swapped on turn 4 (18, >SWA)
+green >wrapped on turn 5 (18, >WRA)
+gold  >fronted on turn 3 (18, >FRO)
+Gauge [====]
+4 stamped; first added: red.
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> stutter gold tile
+g-g-gold (from gold, 4 added)
+[grid 1]
+|Sign: ~gold red BLU~                              |
+|+--------------+                                  |
+|14 chars, 5 edits | short                         |
+|last WRAP green                                   |
+[grid 2]
+|Room A | turn 8 | 5 saved                         |
+> strike red tile
+The sign now reads "~gold --- BLU~".
+[win 1] [8] strike: ~gold --- BLU~
+[grid 1]
+|Sign: ~gold --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 6 edits | short                         |
+|last STRIKE red                                   |
+[grid 2]
+|Room A | turn 9 | 5 saved                         |
+> loud
+The sign now reads "~GOLD --- BLU~".
+[win 1] [9] shout: ~GOLD --- BLU~
+[grid 1]
+|Sign: ~GOLD --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 7 edits | short                         |
+|last SHOUT -                                      |
+[grid 2]
+|Room A | turn 10 | 5 saved                        |
+> compare gold tile
+The sign sorts after gold.
+gold comes first.
+Order -1, compareTo 1, ignoring case 1.
+Starts no, ends no, at 1.
+[grid 1]
+|Sign: ~GOLD --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 7 edits | short                         |
+|last SHOUT -                                      |
+[grid 2]
+|Room A | turn 10 | 5 saved                        |
+> hush
+The sign now reads "~gold --- Blu~".
+[win 1] [10] hush: ~gold --- Blu~
+[grid 1]
+|Sign: ~gold --- Blu~                              |
+|+--------------+                                  |
+|14 chars, 8 edits | short                         |
+|last HUSH -                                       |
+[grid 2]
+|Room A | turn 11 | 5 saved                        |
+> report
+Tile   Mark Spell  Uses  On sign
+red..  *    red       2  no
+blue.  #    BLU       2  no
+green  ~    green     1  no
+gold.  +    GLD       1  yes at 1
+In order: blue,gold,green,red.
+1 tile on the sign; 2 vowels.
+blue sorts before red.
+[grid 1]
+|Sign: ~gold --- Blu~                              |
+|+--------------+                                  |
+|14 chars, 8 edits | short                         |
+|last HUSH -                                       |
+[grid 2]
+|Room A | turn 11 | 5 saved                        |
+> back
+The sign now reads "~GOLD --- BLU~".
+[win 1] [11] back: ~GOLD --- BLU~
+[grid 1]
+|Sign: ~GOLD --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 9 edits | short                         |
+|last BACK -                                       |
+[grid 2]
+|Room A | turn 12 | 4 saved                        |
+> back
+The sign now reads "~gold --- BLU~".
+[win 1] [12] back: ~gold --- BLU~
+[grid 1]
+|Sign: ~gold --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 10 edits | short                        |
+|last BACK -                                       |
+[grid 2]
+|Room A | turn 13 | 3 saved                        |
+> flip
+The sign now reads "~ULB --- dlog~".
+[win 1] [13] flip: ~ULB --- dlog~
+[grid 1]
+|Sign: ~ULB --- dlog~                              |
+|+--------------+                                  |
+|14 chars, 11 edits | short                        |
+|last FLIP -                                       |
+[grid 2]
+|Room A | turn 14 | 4 saved                        |
+> flip
+The sign now reads "~gold --- BLU~".
+[win 1] [14] flip: ~gold --- BLU~
+[grid 1]
+|Sign: ~gold --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 12 edits | short                        |
+|last FLIP -                                       |
+[grid 2]
+|Room A | turn 15 | 5 saved                        |
+> pad
+The sign now reads "  ~gold --- BLU~  ".
+[win 1] [15] pad:   ~gold --- BLU~
+[grid 1]
+|Sign:   ~gold --- BLU~                            |
+|+------------------+                              |
+|18 chars, 13 edits | short                        |
+|last PAD -                                        |
+[grid 2]
+|Room A | turn 16 | 5 saved                        |
+> tidy
+The sign now reads "~gold --- BLU~".
+[win 1] [16] tidy: ~gold --- BLU~
+[grid 1]
+|Sign: ~gold --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 14 edits | short                        |
+|last TIDY -                                       |
+[grid 2]
+|Room A | turn 17 | 5 saved                        |
+> tidy
+The sign is already tidy.
+[grid 1]
+|Sign: ~gold --- BLU~                              |
+|+--------------+                                  |
+|14 chars, 14 edits | short                        |
+|last TIDY -                                       |
+[grid 2]
+|Room A | turn 18 | 5 saved                        |
+> shorten 6
+The sign now reads "~gold ".
+[win 1] [18] shorten: ~gold
+[grid 1]
+|Sign: ~gold                                       |
+|+------+                                          |
+|6 chars, 15 edits | short                         |
+|last CUT -                                        |
+[grid 2]
+|Room A | turn 19 | 5 saved                        |
+> shorten 50
+The sign is only 6 long.
+[grid 1]
+|Sign: ~gold                                       |
+|+------+                                          |
+|6 chars, 15 edits | short                         |
+|last CUT -                                        |
+[grid 2]
+|Room A | turn 20 | 5 saved                        |
+> add sign
+That is not a tile.
+[grid 1]
+|Sign: ~gold                                       |
+|+------+                                          |
+|6 chars, 15 edits | short                         |
+|last CUT -                                        |
+[grid 2]
+|Room A | turn 21 | 5 saved                        |
+> add green tile
+The sign now reads "~gold  green".
+[win 1] [21] add: ~gold  green
+[grid 1]
+|Sign: ~gold  green                                |
+|+------------+                                    |
+|12 chars, 16 edits | short                        |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 22 | 5 saved                        |
+> add green tile
+The sign now reads "~gold  green green".
+[win 1] [22] add: ~gold  green green
+[grid 1]
+|Sign: ~gold  green green                          |
+|+------------------+                              |
+|18 chars, 17 edits | short                        |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 23 | 5 saved                        |
+> add green tile
+The sign now reads "~gold  green green green".
+[win 1] [23] add: ~gold  green green green
+[grid 1]
+|Sign: ~gold  green green green                    |
+|+------------------------+                        |
+|24 chars, 18 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 24 | 5 saved                        |
+> add green tile
+The sign now reads "~gold  green green green green".
+[win 1] [24] add: ~gold  green green green green
+[grid 1]
+|Sign: ~gold  green green green green              |
+|+------------------------------+                  |
+|30 chars, 19 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 25 | 5 saved                        |
+> add green tile
+The sign now reads "~gold  green green green green green".
+[win 1] [25] add: ~gold  green green green green green
+[grid 1]
+|Sign: ~gold  green green green green green        |
+|+------------------------------------+            |
+|36 chars, 20 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 26 | 5 saved                        |
+> add green tile
+The sign has no room for 5 more.
+[grid 1]
+|Sign: ~gold  green green green green green        |
+|+------------------------------------+            |
+|36 chars, 20 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 27 | 5 saved                        |
+> saved
+1. "~gold " (6)
+2. "~gold  green" (12)
+3. "~gold  green green" (18)
+4. "~gold  green green green" (24)
+5. "~gold  green green green green" (30)
+Now sorts after the newest.
+4 with an e; first over ten: ~gold  green; current saved: no at -1.
+Sorted: ~gold |~gold  green|~gold  green green|~gold  green green green|~gold  green green green green
+[grid 1]
+|Sign: ~gold  green green green green green        |
+|+------------------------------------+            |
+|36 chars, 20 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 27 | 5 saved                        |
+> notes
+22: add: ~gold  green green
+23: add: ~gold  green green green
+24: add: ~gold  green green green green
+25: add: ~gold  green green green green green
+Newest now ADD: ~GOLD  GREEN GREEN GREEN GREEN GREEN; caption 36 CHARS, 20 EDITS; oldest 23 vs copy 36.
+[grid 1]
+|Sign: ~gold  green green green green green        |
+|+------------------------------------+            |
+|36 chars, 20 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 27 | 5 saved                        |
+> panel
+Add: red blue gold
+[grid 1]
+|Sign: ~gold  green green green green green        |
+|+------------------------------------+            |
+|36 chars, 20 edits | long                         |
+|last ADD green                                    |
+[grid 2]
+|Room A | turn 27 | 5 saved                        |

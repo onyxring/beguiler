@@ -1,0 +1,142 @@
+Room A
+Room A. The desk room. The store is to the east.
+You can see a small bin (which is empty), a big bin (which is empty), a red parcel, a blue parcel, a green parcel and a desk here.
+> tally
+Desk: looked at 0, label DESK, likes the small bin, shelf is shelf.
+Global: sorted 0, label none, weight 0.
+Two tags for 6: DESK-HEAVY and HEAVY.
+Bin small: 0 of 2, up to 5, large 0, lid up. All bins: 0.
+Bin big: 0 of 3, up to 8, large 0, lid up. All bins: 0.
+Bin total 0. Parcels made 4.
+Parcel blank: weight 2, small, handled 0.
+Parcel blank: weight 6, large, handled 0.
+Parcel blank: weight 4, medium, handled 0.
+Parcel blank: weight 9, large, handled 0.
+Heavy ones sorted: 0 of 0.
+Shelf list: 3 after one, 3 free now.
+A run is 3 labels; asking for 2 gives 2.
+Add up: 3 and 3.
+Big parcels: 2. Max weight: 9.
+> weigh red parcel
+The blank parcel weighs 2.
+With what is sorted that makes 2. Points: 20 (plain 20).
+It is still a parcel.
+> weigh blue
+The blank parcel weighs 6.
+With what is sorted that makes 6. Points: 60 (plain 60).
+It is still a parcel.
+> label red
+You write LIGHT on it (DESK-LIGHT at the desk). Last label: LIGHT.
+> label red
+You write LIGHT on it (DESK-LIGHT at the desk). Last label: LIGHT.
+> label red
+It has room for 3 labels and has 3.
+> label red
+It has room for 3 labels and has 3.
+> x red
+Parcel LIGHT: weight 2, small, handled 3.
+> sort red
+Into the small bin. Sorted: 1. Points: 20.
+> sort red
+It is sorted already.
+> sort blue
+Into the big bin. Sorted: 2. Points: 60.
+> sort green
+Into the big bin. Sorted: 3. Points: 40.
+> x green
+Parcel blank: weight 4, medium, handled 0, sorted (flag).
+> tally
+Desk: looked at 5, label DESK, likes the small bin, shelf is shelf.
+Global: sorted 3, label LIGHT, weight 12.
+Two tags for 6: DESK-HEAVY and HEAVY.
+Bin small: 1 of 2, up to 5, large 0, lid up. All bins: 12.
+Bin big: 2 of 3, up to 8, large 1, lid up. All bins: 12.
+Bin total 12. Parcels made 4.
+Parcel LIGHT: weight 2, small, handled 3, sorted (flag).
+Parcel blank: weight 6, large, handled 1, sorted (flag).
+Parcel blank: weight 4, medium, handled 0, sorted (flag).
+Parcel blank: weight 9, large, handled 0.
+Heavy ones sorted: 1 of 3.
+Shelf list: 3 after one, 0 free now.
+A run is 3 labels; asking for 2 gives 2.
+Add up: 15 and 15.
+Big parcels: 2. Max weight: 9.
+The desk's bin holds the LIGHT parcel.
+> shut lid on big bin
+The big bin's lid goes down. It is still open for PUT.
+> put red in big bin
+(first taking the red parcel out of the small bin)
+You put the red parcel into the big bin.
+> e
+Room B
+Room B. The store. The desk room is to the west.
+You can see a grey parcel and a shelf here.
+> weigh grey
+The blank parcel weighs 9.
+With what is sorted that makes 21. Points: 90 (plain 90).
+It is still a parcel.
+> label grey
+You write HEAVY on it (DESK-HEAVY at the desk). Last label: HEAVY.
+> take grey
+Taken.
+> w
+Room A
+Room A. The desk room. The store is to the east.
+You can see a small bin (which is empty), a big bin (in which are a red parcel, a green parcel and a blue parcel) and a desk here.
+> tally
+Desk: looked at 7, label DESK, likes the small bin, shelf is shelf.
+Global: sorted 3, label HEAVY, weight 12.
+Two tags for 6: DESK-HEAVY and HEAVY.
+Bin small: 0 of 2, up to 5, large 0, lid up. All bins: 12.
+Bin big: 3 of 3, up to 8, large 1, lid down. All bins: 12.
+Bin total 12. Parcels made 4.
+Parcel LIGHT: weight 2, small, handled 3, sorted (flag).
+Parcel blank: weight 6, large, handled 1, sorted (flag).
+Parcel blank: weight 4, medium, handled 0, sorted (flag).
+Parcel HEAVY: weight 9, large, handled 2.
+Heavy ones sorted: 1 of 3.
+Shelf list: 3 after one, 0 free now.
+A run is 3 labels; asking for 2 gives 2.
+Add up: 15 and 15.
+Big parcels: 2. Max weight: 9.
+You hold the HEAVY parcel.
+> sort grey
+The big bin's lid is down.
+> put grey in big bin
+There is no more room in the big bin.
+> put grey in small bin
+You put the grey parcel into the small bin.
+> sort grey
+Already in the desk's bin.
+The big bin's lid is down.
+> spare
+No parcels here.
+> drop grey
+(first taking the grey parcel out of the small bin)
+Dropped.
+> spare
+The HEAVY parcel goes on the shelf.
+1 parcels go to the shelf.
+Spare done.
+> e
+Room B
+Room B. The store. The desk room is to the west.
+You can see a shelf (on which is a grey parcel) here.
+> x grey
+Parcel HEAVY: weight 9, large, handled 2.
+> tally
+Desk: looked at 8, label DESK, likes the small bin, shelf is shelf.
+Global: sorted 3, label HEAVY, weight 12.
+Two tags for 6: DESK-HEAVY and HEAVY.
+Bin small: 0 of 2, up to 5, large 0, lid up. All bins: 12.
+Bin big: 3 of 3, up to 8, large 1, lid down. All bins: 12.
+Bin total 12. Parcels made 4.
+Parcel LIGHT: weight 2, small, handled 3, sorted (flag).
+Parcel blank: weight 6, large, handled 1, sorted (flag).
+Parcel blank: weight 4, medium, handled 0, sorted (flag).
+Parcel HEAVY: weight 9, large, handled 2.
+Heavy ones sorted: 1 of 3.
+Shelf list: 3 after one, 0 free now.
+A run is 3 labels; asking for 2 gives 2.
+Add up: 15 and 15.
+Big parcels: 2. Max weight: 9.

@@ -1158,10 +1158,13 @@ extend class string {
     // disagree (content vs address) on the same pair of values.
     replace emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
     replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
+    replace emitter eBool operator == (stringObj v)     { _bglStr.areEqual($val, $v, false) }
     replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
     replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
+    replace emitter eBool operator != (stringObj v)     { (~~_bglStr.areEqual($val, $v, false)) }
     emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
     // Switch comparison — Phase B typed dispatch
     emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
@@ -1477,10 +1480,13 @@ extend class stringLiteral {
     // the same test with a string on the left compared by content.
     replace emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
     replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
+    replace emitter eBool operator == (stringObj v)     { _bglStr.areEqual($val, $v, false) }
     replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
     replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
+    replace emitter eBool operator != (stringObj v)     { (~~_bglStr.areEqual($val, $v, false)) }
     emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 }
 
 replace emitter void print(string str) { _bglStr.print($str) }

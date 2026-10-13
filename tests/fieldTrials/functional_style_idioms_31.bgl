@@ -1,0 +1,451 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a parts-bin ledger written in a functional style on z5, leaning on members reached
+// through computed receivers. Bins are container objects of a class with a member array of parts, a
+// member log array too large for one property (separate storage), a named accessor class, an inline
+// `auto` accessor declared in the class body, a neighbour reference, a func<bool, Part> member and
+// methods that return self (chained), a part, or a value class tally. Parts are a class with a
+// `default` method overridden by a subclass. Members are read, written, compound-assigned and called
+// through casts `((Bin)x.parent).m`, nested casts with ancestor dispatch `((Part)(Bolt)x).worth()`,
+// call results `binOf(p).held[0].label`, array elements `bins[i].held[j].mass`, chain results
+// `bins.orderBy(f).first().heaviest().label`, operator results `(a.tally() + b.tally()).mass`,
+// static method results `Bin.emptiest().label`, chained self-returning calls `b.note(1).note(2).log`,
+// func members through elements `bins[i].accepts(p)`, accessors through elements, casts and calls
+// (`binOf(p).fill -= n`, `bins[i].level++`), inside lambdas, <linq> predicates, conditions,
+// interpolation and `?.`/`??`; method results chained off loop variables and comparator lambda
+// parameters (`p.home().neighbour.held.length`); verbs reading noun, second and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXHELD = 6;
+const int LOGSIZE = 40;
+
+//-- Value types ----------------------------------------------------------------------------------
+
+// Read as an int; a negative write is stored as zero.
+value class Gauge {
+    int _v = 0;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v < 0 ? 0 : v; }
+}
+
+value class Tally {
+    int n = 0;
+    int mass = 0;
+    int worth = 0;
+
+    Tally operator = (Tally o) {
+        n = o.n;
+        mass = o.mass;
+        worth = o.worth;
+        return self;
+    }
+
+    Tally operator + (Tally o) {
+        Tally t;
+        t.n = n + o.n;
+        t.mass = mass + o.mass;
+        t.worth = worth + o.worth;
+        return t;
+    }
+
+    int average() { return n == 0 ? 0 : mass / n; }
+}
+
+//-- Parts and bins -------------------------------------------------------------------------------
+
+class Part : object {
+    attributeList attributes = {scenery};
+    string label;
+    int mass;
+    int cost;
+    default int worth() { return cost; }
+    Bin home() { return (Bin)parent; }
+}
+
+class Bolt : Part {
+    int thread;
+    int worth() { return cost + thread * 2; }
+}
+
+class Bin : object {
+    attributeList attributes = {scenery, container, open};
+    string label;
+    int limit;
+    array<Part> held[MAXHELD];
+    array<int> log[LOGSIZE];
+    Gauge fill;
+    auto level = {
+        int _raw = 0;
+        int  operator ()        { return _raw; }
+        void operator = (int v) { _raw = v > 9 ? 9 : v; }
+    };
+    Bin neighbour;
+    func<bool, Part> accepts;
+
+    Bin note(int code) {
+        log += code;
+        return self;
+    }
+
+    Part heaviest() { return held.orderBy(byMassDesc).first(); }
+
+    Part at(int i) { return i >= 0 && i < held.length ? held[i] : null; }
+
+    Tally tally() {
+        Tally t;
+        for (Part p in held) {
+            t.n++;
+            t.mass += p.mass;
+            t.worth += p.worth();
+        }
+        return t;
+    }
+
+    default string tagLine() { return "plain"; }
+
+    static Bin emptiest() { return bins.orderBy(byLoad).first(); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Bin binL { "left bin";   name = {.left, .bin};   label = "left";   limit = 40; parent = roomA; accepts = takesAny; }
+Bin binM { "middle bin"; name = {.middle, .bin}; label = "middle"; limit = 30; parent = roomA; accepts = takesAny; }
+Bin binR {
+    "right bin"; name = {.right, .bin}; label = "right"; limit = 25; parent = roomA; accepts = takesLight;
+    string tagLine() { return "spare"; }
+}
+
+Bolt steelBolt  { "steel bolt";    name = {.steel, .bolt};    label = "steel bolt";    mass = 12; cost = 5; thread = 3; parent = binL; }
+Part ironNut    { "iron nut";      name = {.iron, .nut};      label = "iron nut";      mass = 4;  cost = 2; parent = binL; }
+Part tinPlate   { "tin plate";     name = {.tin, .plate};     label = "tin plate";     mass = 20; cost = 4; parent = binL; }
+Bolt brassBolt  { "brass bolt";    name = {.brass, .bolt};    label = "brass bolt";    mass = 9;  cost = 7; thread = 2; parent = binM; }
+Part copperRing { "copper washer"; name = {.copper, .washer}; label = "copper washer"; mass = 2;  cost = 3; parent = binM; }
+Part oakPeg     { "oak peg";       name = {.oak, .peg};       label = "oak peg";       mass = 6;  cost = 1; parent = binR; }
+Bolt zincBolt   { "zinc bolt";     name = {.zinc, .bolt};     label = "zinc bolt";     mass = 7;  cost = 2; thread = 1; parent = binR; }
+
+array<Bin> bins = {binL, binM, binR};
+array<Part> parts = {steelBolt, ironNut, tinPlate, brassBolt, copperRing, oakPeg, zincBolt};
+
+//-- Pure helpers ---------------------------------------------------------------------------------
+
+bool takesAny(Part p) { return true; }
+bool takesLight(Part p) { return p.mass <= 10; }
+bool isBolt(Part p) { return p.is(Bolt); }
+
+// Heavier first; equal masses by label.
+int byMassDesc(Part a, Part b) {
+    if (a.mass != b.mass) return b.mass - a.mass;
+    return a.label.compareTo(b.label);
+}
+
+// Lighter load first; equal loads by label.
+int byLoad(Bin a, Bin b) {
+    int d = a.tally().mass - b.tally().mass;
+    if (d != 0) return d;
+    return a.label.compareTo(b.label);
+}
+
+Bin binOf(Part p) { return (Bin)p.parent; }
+Bin binAt(int i) { return i >= 0 && i < bins.length ? bins[i] : null; }
+Part pick(int i) { return i >= 0 && i < parts.length ? parts[i] : null; }
+
+Part asPart(object o) {
+    if (!o.is(Part)) {
+        print("That is not a part.^");
+        return null;
+    }
+    return (Part)o;
+}
+
+int sumFrom(array<int> xs, int i = 0, int acc = 0) {
+    if (i >= xs.length) return acc;
+    return sumFrom(xs, i + 1, acc + xs[i]);
+}
+
+stringObj labelsFrom(Bin b, int i = 0) {
+    stringObj s;
+    if (i >= b.held.length) return s;
+    s = b.held[i].label;
+    if (i + 1 < b.held.length) {
+        s += ", ";
+        s += labelsFrom(b, i + 1);
+    }
+    return s;
+}
+
+// Puts every part into the held array of the bin it sits in, and sets each bin's gauges.
+void restock() {
+    for (int i = 0; i < bins.length; i++) {
+        bins[i].held = parts.filter((Part p) => p.parent == bins[i]);
+        bins[i].fill = bins[i].tally().mass;
+        bins[i].level = bins[i].held.length;
+    }
+}
+
+void showBin(Bin b) {
+    print($"{b.label} ({b.tagLine()}): {b.held.length} parts, {b.tally().mass} g of {b.limit}, fill {b.fill}, level {b.level}^");
+    print($"  holds {labelsFrom(b)}; heaviest {b.heaviest()?.label ?? "none"}; next to {b.neighbour.label}^");
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb BinsVerb {
+    grammar = {{.bins}};
+    void handler() {
+        for (Bin b in bins) showBin(b);
+    }
+}
+
+verb WeighVerb {
+    grammar = {{.weigh, NOUN}};
+    void handler() {
+        Part p = asPart(noun);
+        if (p == null) return;
+        print($"{p.label}: {p.mass} g, worth {p.worth()}, in the {((Bin)noun.parent).label} bin^");
+        int rank = binOf(p).held.orderBy(byMassDesc).filter((Part q) => q.mass > p.mass).count() + 1;
+        print($"rank {rank} of {binOf(p).held.length} by mass; heaviest there is {binOf(p).heaviest().label}^");
+        if (noun.is(Bolt)) {
+            print($"thread {((Bolt)noun).thread}, base worth {((Part)(Bolt)noun).worth()}, worth {((Bolt)noun).worth()}^");
+        }
+        Bin n = binOf(p).neighbour;
+        print($"the {n.label} bin next door holds {n.held.length}, first {n.at(0)?.label ?? "nothing"}^");
+    }
+}
+
+verb ShiftVerb {
+    grammar = {{.shift, NOUN, .to, NOUN}};
+    void handler() {
+        Part p = asPart(noun);
+        if (p == null) return;
+        if (!second.is(Bin)) {
+            print("That is not a bin.^");
+            return;
+        }
+        if (binOf(p) == second) {
+            print($"The {p.label} is already in the {((Bin)second).label} bin.^");
+            return;
+        }
+        if (!((Bin)second).accepts(p)) {
+            print($"The {((Bin)second).label} bin does not take the {p.label}.^");
+            return;
+        }
+        if (((Bin)second).held.length >= ((Bin)second).held.size) {
+            print($"The {((Bin)second).label} bin is full.^");
+            return;
+        }
+        binOf(p).fill -= p.mass;
+        binOf(p).held.removeValue(p);
+        binOf(p).level--;
+        binOf(p).note(-p.mass);
+        p.parent = second;
+        binOf(p).held += p;
+        binOf(p).fill += p.mass;
+        binOf(p).level++;
+        binOf(p).note(p.mass);
+        print($"The {p.label} goes to the {binOf(p).label} bin (fill {binOf(p).fill}, level {binOf(p).level}).^");
+        if (binOf(p).fill > binOf(p).limit) print($"The {binOf(p).label} bin is over its limit.^");
+    }
+}
+
+verb AuditVerb {
+    grammar = {{.audit}};
+    void handler() {
+        print($"lightest bin: {bins.orderBy(byLoad).first().label} with {bins.orderBy(byLoad).first().held.length} parts^");
+        print($"heaviest part of the heaviest bin: {bins.orderBy(byLoad).last().heaviest().label}^");
+        print($"emptiest: {Bin.emptiest().label}, its first part {Bin.emptiest().at(0)?.label ?? "none"}^");
+        Tally all = binL.tally() + binM.tally() + binR.tally();
+        print($"all: {all.n} parts, {all.mass} g, worth {all.worth}, average {all.average()} g^");
+        print($"left and middle: {(binL.tally() + binM.tally()).mass} g, average {(bins[0].tally() + bins[1].tally()).average()} g^");
+        array<int> loads = bins.map((var b) => ((Bin)b).tally().mass);
+        print($"loads {loads[0]} {loads[1]} {loads[2]}, total {sumFrom(loads)}^");
+        print($"thread of the first bolt: {((Bolt)parts.filter(isBolt).first()).thread}^");
+        int withBolts = bins.filter((Bin b) => b.held.any(isBolt)).count();
+        print($"bins holding bolts: {withBolts}^");
+        for (Part p in parts.orderBy(byMassDesc).take(3)) print($"  {p.label} {p.mass} g in {binOf(p).label}^");
+    }
+}
+
+verb BoltsVerb {
+    grammar = {{.bolts}};
+    void handler() {
+        array<Part> bs[MAXHELD] = parts.filter(isBolt);
+        for (int i = 0; i < bs.length; i++) {
+            print($"{bs[i].label}: thread {((Bolt)bs[i]).thread}, worth {bs[i].worth()} (base {((Part)(Bolt)bs[i]).worth()}), in {binOf(bs[i]).label}^");
+        }
+        Bolt top = (Bolt)bs.orderBy((Part a, Part b) => ((Bolt)b).thread - ((Bolt)a).thread).first();
+        print($"finest thread: {top.label}, {((Part)top).worth()} base^");
+    }
+}
+
+verb TagVerb {
+    grammar = {{.tag, NOUN, NUMBER}};
+    void handler() {
+        if (!noun.is(Bin)) {
+            print("That is not a bin.^");
+            return;
+        }
+        int code = parsed_number;
+        int n = ((Bin)noun).note(code).note(code * 10).log.length;
+        print($"{((Bin)noun).label} log has {n} entries, last {((Bin)noun).log.last()}^");
+    }
+}
+
+verb LogVerb {
+    grammar = {{.log, NOUN}};
+    void handler() {
+        if (!noun.is(Bin)) {
+            print("That is not a bin.^");
+            return;
+        }
+        Bin b = (Bin)noun;
+        if (b.log.length == 0) {
+            print($"The {b.label} log is empty.^");
+            return;
+        }
+        array<int> entries[LOGSIZE] = b.log;
+        print($"{b.label} log: {entries.length} entries, sum {sumFrom(entries)}, {b.log.filter((int c) => c < 0).count()} out, first {b.log[0]}^");
+        for (int i = 0; i < b.log.length; i++) print($" {b.log[i]}");
+        print("^");
+    }
+}
+
+verb FitsVerb {
+    grammar = {{.fits, NOUN}};
+    void handler() {
+        Part p = asPart(noun);
+        if (p == null) return;
+        for (int i = 0; i < bins.length; i++) {
+            string room = bins[i].held.length < bins[i].held.size ? "room" : "full";
+            print($"{bins[i].label}: {bins[i].accepts(p) ? "takes" : "refuses"} it, {room}^");
+        }
+        array<Bin> takers[3] = bins.filter((Bin b) => b.accepts(p) && b != binOf(p));
+        print($"could go to {takers.length} other bins; first {takers.first()?.label ?? "none"}^");
+    }
+}
+
+verb PolishVerb {
+    grammar = {{.polish, NUMBER}};
+    void handler() {
+        Bin b = binAt(parsed_number - 1);
+        if (b == null) {
+            print("No such bin.^");
+            return;
+        }
+        if (b.held.length == 0) {
+            print($"The {b.label} bin is empty.^");
+            return;
+        }
+        for (int j = 0; j < bins[parsed_number - 1].held.length; j++) bins[parsed_number - 1].held[j].cost += 1;
+        binAt(parsed_number - 1).held[0].cost += 1;
+        print($"{b.label} worth now {binAt(parsed_number - 1).tally().worth}; first {b.at(0).label} costs {bins[parsed_number - 1].held[0].cost}^");
+    }
+}
+
+verb PickVerb {
+    grammar = {{.pick, NUMBER}};
+    void handler() {
+        Part p = pick(parsed_number - 1);
+        if (p == null) {
+            print("No such part.^");
+            return;
+        }
+        print($"{pick(parsed_number - 1).label} in {binOf(pick(parsed_number - 1)).label}, next to {binOf(pick(parsed_number - 1)).neighbour.label} (fill {binOf(p).neighbour.fill})^");
+        print($"its bin's second part: {binOf(p).at(1)?.label ?? "none"}; neighbour's heaviest: {binOf(p).neighbour.heaviest()?.label ?? "none"}^");
+    }
+}
+
+verb WidenVerb {
+    grammar = {{.widen, NOUN}};
+    void handler() {
+        if (!noun.is(Bin)) {
+            print("That is not a bin.^");
+            return;
+        }
+        ((Bin)noun).limit += 10;
+        ((Bin)noun).neighbour.limit -= 5;
+        ((Bin)noun).level += 2;
+        ((Bin)noun).fill -= 100;
+        bins[0].level++;
+        print($"{((Bin)noun).label} limit {((Bin)noun).limit}, level {((Bin)noun).level}, fill {((Bin)noun).fill}; {((Bin)noun).neighbour?.label ?? "none"} limit {((Bin)noun).neighbour.limit}^");
+        print($"bolts in the emptiest bin: {Bin.emptiest().held.filter(isBolt).count()}; its heaviest is worth {Bin.emptiest().heaviest().worth()}; first part's bin first part worth {binOf(Bin.emptiest().held[0]).held[0].worth()}^");
+    }
+}
+
+verb HomesVerb {
+    grammar = {{.homes}};
+    void handler() {
+        array<Part> byHome[7] = parts.orderBy((Part a, Part b) => {
+            int d = a.home().fill - b.home().fill;
+            if (d != 0) return d;
+            return byMassDesc(a, b);
+        });
+        for (Part p in byHome) print($"{p.label}: {p.home().label} ({p.home().fill}), next {p.home().neighbour.label} with {p.home().neighbour.held.length}^");
+        print($"lightest home holds {byHome.first().home().held.length}; heaviest part's home is {parts.orderBy(byMassDesc).first().home().label}^");
+        print($"homes of bolts: {parts.filter(isBolt).filter((Part q) => q.home().held.length > 1).count()} share a bin^");
+    }
+}
+
+int both(int a, int b) { return a + b; }
+
+verb CheckVerb {
+    grammar = {{.check}};
+    void handler() {
+        bool steady = bins.all((Bin b) => b.fill == b.tally().mass && b.level == b.held.length);
+        print(steady ? "Gauges agree with the contents.^" : "Gauges disagree.^");
+        print($"over limit: {bins.filter((Bin b) => b.fill > b.limit).count()}; holding a part over 10 g: {bins.filter((Bin b) => b.held.any((Part q) => q.mass > 10)).count()}^");
+        print($"left and right fill {both(bins[0].fill, bins[2].fill)}, levels {bins[0].level + binAt(1).level + Bin.emptiest().level}^");
+        array<int> levels = bins.map((var b) => ((Bin)b).level);
+        print($"levels {levels[0]} {levels[1]} {levels[2]}, fullest {bins.orderBy(byLoad).last().label} at {bins.orderBy(byLoad).last().fill}^");
+        for (int i = 0; i < bins.length; i++) {
+            string mark = bins[i].fill > bins[i].neighbour.fill ? "more" : "less";
+            print($"{bins[i].label} holds {mark} than {bins[i].neighbour.label}, two along is {bins[i].neighbour.neighbour.label}; last part {bins[i].at(bins[i].held.length - 1)?.label ?? "none"}^");
+        }
+    }
+}
+
+verb ChooseVerb {
+    grammar = {{.choose, NUMBER}};
+    void handler() {
+        func<Bin, int> chooser = binAt;
+        Bin b = chooser(parsed_number - 1);
+        if (b == null) {
+            print("No such bin.^");
+            return;
+        }
+        chooser(parsed_number - 1).level = 9;
+        binAt(parsed_number - 1).fill = -5;
+        print($"{chooser(parsed_number - 1).label}: level {chooser(parsed_number - 1).level}, fill {b.fill}^");
+        if (b.log.length > 0) {
+            print($"first log entry {binAt(parsed_number - 1).log[0]}^");
+        }
+        restock();
+        print($"after restock: level {binAt(parsed_number - 1).level}, fill {bins[parsed_number - 1].fill}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    binL.neighbour = binM;
+    binM.neighbour = binR;
+    binR.neighbour = binL;
+    restock();
+    location = roomA;
+    rfalse;
+}

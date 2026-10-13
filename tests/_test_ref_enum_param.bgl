@@ -1,0 +1,6 @@
+// Negative test: an enumeration is held directly, so a `ref` parameter of one has nothing to refer to.
+// EXPECT_ERROR: 'eGauge' is an enumeration
+#beguilerSettings { target = z5; informName = "none"; }
+enum eGauge { thin, medium, thick }
+void up(ref eGauge g) { g = eGauge.thick; }
+void main() { eGauge x = eGauge.thin; up(x); }

@@ -1,0 +1,57 @@
+// run_target1_values — a positional section opening with an inline value, a ref argument written back
+// after an element's method call, a value copy through a `ref` of a base class, and an array of values
+// that is a value class's member.
+// EXPECT_OUTPUT: 2 1 1 3 a<4>| 5 7 6 7 2 1 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+value class Pt {
+    inline int x;
+    inline int y;
+    Pt operator = (Pt o) { x = o.x; y = o.y; return self; }
+    int far(int a) { return gap(x, a); }
+    void into(ref stringObj s) { s += $"<{x}>"; }
+}
+class Stake : object { inline Pt at; inline int code; }
+Stake s1 { Pt{ 2, 1 }, 1, "s1"; }
+int gap(int a, int b) { return a > b ? a - b : b - a; }
+value class Mark : Pt {
+    int weight;
+    Mark operator = (Mark o) { (Pt)self = o; weight = o.weight; return self; }
+}
+Mark m;
+void setPt(ref Pt a, Pt b) { a = b; }
+value class Route {
+    array<Pt> stops[2];
+    Route operator = (Route o) { stops.clear(); for (Pt p in o.stops) stops += p; return self; }
+}
+Route saved;
+void show(ref stringObj s, Route r) {
+    for (int i in 0 to r.stops.length - 1) r.stops[i].into(s);
+}
+void other(ref stringObj row) { row += "|"; }
+void main() {
+    bglInit();
+    print($"{s1.at.x} {s1.at.y} {s1.code} {s1.at.far(5)} ");
+    Route r;
+    Pt p; p.x = 4;
+    r.stops += p;
+    stringObj a = "a";
+    show(a, r);
+    other(a);
+    print(a); print(" ");
+    m.x = 1; m.weight = 7;
+    Pt q; q.x = 5;
+    setPt(m, q);
+    print($"{m.x} {m.weight} ");
+    ref Pt rp := m;
+    q.x = 6;
+    rp = q;
+    print($"{m.x} {m.weight} ");
+    Route r2;
+    Pt t;
+    t.x = 1; r2.stops += t;
+    t.x = 2; r2.stops += t;
+    saved = r2;
+    print($"{saved.stops.length} {saved.stops[0].x} {saved.stops[1].x}");
+}

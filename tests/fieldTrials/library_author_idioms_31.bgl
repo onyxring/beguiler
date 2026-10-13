@@ -1,0 +1,598 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a wiring kit whose public names are reached only through namespaces. A parts object
+// holds type aliases (two enums, a value class of ohms, a wire class, a device class, a pooled job
+// class) and helpers that name them bare inside its own body; a superposed calc object is reached by
+// a value alias; an emitter class of formatting with an alias member is reached by a class value
+// alias; the root object holds parts as an auto member, calc and fmt as aliases and a member array
+// typed through the alias path, and is extended later with a further type alias, a value alias to a
+// static-only class and a method that uses both. The alias paths appear as class member types, a base
+// class, object declarations, parameters, ref parameters, returns, unions, casts, is(), new, array
+// and func<> generic arguments, lambda parameters, for-in variables, enum values in initializers,
+// switch cases and comparisons, a value-class operator's parameter and a default argument. The
+// consumer imports with #using (the root for partial paths, a branch for bare names, an emitter
+// class) at file scope and inside a routine, reaches an emitter alias member three steps down, a
+// static method through a class value alias and the pooled class through an imported alias with new
+// and a named argument, and drives wires and devices with <linq> filters, ?. and ?? over alias-typed
+// results, stringObj logs and named arguments.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: wires, devices and jobs, published through la31. ====
+
+/// How thick a wire is.
+enum eLa31Gauge { thin, medium, thick }
+
+/// What a device does.
+enum eLa31Kind { lamp, bell, fan }
+
+/// A resistance, copied on assignment.
+value class La31Ohms {
+    int r;
+    La31Ohms operator = (La31Ohms o) { r = o.r; return self; }
+    La31Ohms operator = (int n) { r = n; return self; }
+    /// The two in series.
+    la31.parts.ohms operator + (la31.parts.ohms o) {
+        la31.parts.ohms t;
+        t.r = r + o.r;
+        return t;
+    }
+    /// The resistance times a whole number.
+    La31Ohms operator * (int n) {
+        La31Ohms t;
+        t.r = r * n;
+        return t;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La31Ohms o) { return r - o.r; }
+    /// True when it is exactly so much.
+    bool operator == (int n) { return r == n; }
+    /// True when it is not exactly so much.
+    bool operator != (int n) { return r != n; }
+
+    /// Prints the resistance.
+    void show() {
+        print($"{r} ohm");
+        if (r != 1) print("s");
+    }
+}
+
+/// A length of wire that feeds one device.
+class La31Wire : object {
+    /// How many spans long it is.
+    required inline int spans;
+    la31.parts.gauge gauge = la31.parts.gauge.medium;
+    la31.parts.device load;
+    /// Wires laid so far.
+    static int laid = 0;
+
+    /// Its resistance: the gauge's rate times its length.
+    la31.parts.ohms resistance() {
+        return la31.parts.per(gauge) * spans;
+    }
+}
+
+/// A device on the end of a wire.
+class La31Device : object {
+    la31.parts.kind kind = la31.parts.kind.lamp;
+    /// Current it draws when on.
+    int draw = 1;
+    bool on = false;
+    La31Wire feed;
+
+    /// What it does when it runs.
+    default string effect() { return "hums"; }
+}
+
+/// A fan: it draws more and says so.
+class La31Fan : la31.parts.device {
+    int blades = 3;
+    string effect() { return "whirs"; }
+}
+
+/// A job to lay or lift a wire; made with new and done away with by delete.
+class La31Job[2] : object {
+    la31.parts.wire wire;
+    bool lift = false;
+    int turnsLeft;
+    /// Jobs started so far.
+    static int started = 0;
+
+    void create(la31.parts.wire w, bool up = false, int turnsTaken = 2) {
+        wire = w;
+        lift = up;
+        turnsLeft = turnsTaken;
+        started++;
+    }
+
+    void destroy() {
+        wire = null;
+    }
+}
+
+/// The kit's type names, and helpers that use them bare.
+object _la31Parts {
+    alias wire   for La31Wire;
+    alias device for La31Device;
+    alias gauge  for eLa31Gauge;
+    alias kind   for eLa31Kind;
+    alias ohms   for La31Ohms;
+    alias job    for La31Job;
+
+    /// Resistance per span of a gauge.
+    ohms per(gauge g) {
+        ohms o;
+        switch (g) {
+            case gauge.thin:   o = 3;
+            case gauge.medium: o = 2;
+            default:           o = 1;
+        }
+        return o;
+    }
+
+    /// A word for a gauge.
+    string gaugeWord(gauge g) {
+        if (g == gauge.thin) return "thin";
+        if (g == gauge.medium) return "medium";
+        return "thick";
+    }
+
+    /// A word for a kind of device.
+    string kindWord(kind k) {
+        switch (k) {
+            case kind.lamp: return "lamp";
+            case kind.bell: return "bell";
+            default:        return "fan";
+        }
+    }
+
+    /// The next gauge up; thick stays thick.
+    gauge thicker(gauge g) {
+        if (g == gauge.thin) return gauge.medium;
+        return gauge.thick;
+    }
+}
+
+/// Load sums; part of the program only when la31.calc is used.
+superposed object _la31Calc {
+    /// The voltage drop on a wire at its load's draw.
+    int drop(la31.parts.wire w) {
+        if (w.load == null || !w.load.on) return 0;
+        la31.parts.ohms o = w.resistance();
+        return o.r * w.load.draw;
+    }
+
+    /// True when a wire is too thin for what it feeds.
+    bool strained(la31.parts.wire w, int limit = 8) {
+        return drop(w) > limit;
+    }
+
+    /// A count of devices of a kind that are on; lamps unless told.
+    int running(la31.parts.kind k = la31.parts.kind.lamp) {
+        return bgl.world.instances(la31.parts.device, (object o) => ((la31.parts.device)o).on && ((la31.parts.device)o).kind == k).count();
+    }
+}
+
+/// Bracketed output.
+emitter class La31Box {
+    void open()  { print "["; }
+    void shut()  { print "]"; }
+}
+
+/// Formatting, reached as la31.fmt.
+emitter class La31Fmt {
+    La31Box box;
+    void rule()  { print "--"; new_line; }
+    int width    { 5 }
+}
+
+/// The kit's root: everything is reached from here.
+object la31 {
+    auto  parts = _la31Parts;
+    alias calc  = _la31Calc;
+    alias fmt   = La31Fmt;
+    array<la31.parts.wire> wires[4];
+    stringObj log;
+
+    /// Adds a wire to the board; false when it is there already or the board is full.
+    bool lay(la31.parts.wire w) {
+        if (wires.contains(w)) return false;
+        if (!wires.append(w)) return false;
+        la31.parts.wire.laid++;
+        log += $"lay:{w} ";
+        return true;
+    }
+
+    /// Takes a wire off the board; false when it is not on it.
+    bool lift(la31.parts.wire w) {
+        int at = wires.indexOf(w);
+        if (at < 0) return false;
+        wires.remove(at);
+        log += $"lift:{w} ";
+        return true;
+    }
+
+    /// The wire feeding a device, or null.
+    la31.parts.wire feeding(la31.parts.device d) {
+        return wires.filter((la31.parts.wire w) => w.load == d).first();
+    }
+
+    /// The device a wire feeds, or a word when it feeds nothing.
+    la31.parts.device | string loadOf(la31.parts.wire w) {
+        if (w.load == null) return "nothing";
+        return w.load;
+    }
+
+    /// Starts a job; null when no job is free.
+    la31.parts.job begin(la31.parts.wire w, bool up = false, int turnsTaken = 2) {
+        la31.parts.job j = new la31.parts.job(w, up, turnsTaken);
+        if (j == null) {
+            print("No job is free.^");
+            return null;
+        }
+        log += $"job:{w} ";
+        return j;
+    }
+
+    /// Runs a step on every wire on the board.
+    void each(func<void, la31.parts.wire> step) {
+        for (la31.parts.wire w in wires) step(w);
+    }
+}
+
+/// Totals kept for the whole board; only statics.
+class La31Totals {
+    static int switches = 0;
+    static int upgrades = 0;
+    /// Everything counted.
+    static int all() { return switches + upgrades; }
+}
+
+/// Later additions to the root: a meter type, a totals alias and a summary.
+extend la31 {
+    alias meter  for La31Meter;
+    alias totals = La31Totals;
+
+    /// The total resistance of all the wires on the board.
+    la31.parts.ohms sum() {
+        la31.parts.ohms t;
+        t = 0;
+        for (la31.parts.wire w in wires) t = t + w.resistance();
+        return t;
+    }
+
+    /// A meter reading of the board.
+    meter read() {
+        meter m;
+        m.ohms = sum();
+        m.wires = wires.length;
+        totals.switches++;
+        return m;
+    }
+}
+
+/// A reading: resistance and how many wires.
+value class La31Meter {
+    la31.parts.ohms ohms;
+    int wires;
+    La31Meter operator = (La31Meter o) { ohms = o.ohms; wires = o.wires; return self; }
+
+    /// Prints the reading.
+    void show() {
+        print($"{wires} wire");
+        if (wires != 1) print("s");
+        print(", ");
+        ohms.show();
+    }
+}
+
+// ==== The consumer. ====
+
+#using la31
+#using La31Fmt
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+la31.parts.device lampA {
+    "lamp";
+    parent = roomA;
+    name = {.lamp};
+    kind = la31.parts.kind.lamp;
+    draw = 2;
+    string effect() { return "glows"; }
+}
+
+parts.device bellA {
+    "bell";
+    parent = roomA;
+    name = {.bell};
+    kind = parts.kind.bell;
+    draw = 3;
+    string effect() { return "rings"; }
+}
+
+La31Fan fanA {
+    "fan";
+    parent = roomA;
+    name = {.fan};
+    kind = la31.parts.kind.fan;
+    draw = 4;
+    blades = 5;
+}
+
+la31.parts.wire redWire {
+    2, "red wire";
+    parent = roomA;
+    name = {.red, .wire};
+    load = lampA;
+}
+
+parts.wire blueWire {
+    3, "blue wire";
+    parent = roomA;
+    name = {.blue, .wire};
+    gauge = parts.gauge.thin;
+    load = bellA;
+}
+
+#using la31.parts
+
+wire greenWire {
+    4, "green wire";
+    parent = roomA;
+    name = {.green, .wire};
+    gauge = gauge.thick;
+    load = fanA;
+}
+
+/// Every wire can say how it is gauged.
+extend class La31Wire {
+    /// A short tag: gauge and length.
+    stringObj tagged() {
+        stringObj t = $"{la31.parts.gaugeWord(gauge)}/{spans}";
+        return t;
+    }
+    /// True when it is on the board.
+    bool onBoard() { return la31.wires.contains(self); }
+}
+
+/// The device behind the noun, or null.
+device la31DeviceOf(object o) {
+    if (o.is(device)) return (device)o;
+    if (o.is(la31.parts.wire)) return ((wire)o).load;
+    return null;
+}
+
+/// The next gauge up, counted as an upgrade.
+gauge la31Upgrade(gauge g) {
+    La31Totals.upgrades++;
+    return la31.parts.thicker(g);
+}
+
+/// Adds a wire's resistance into a running total.
+void la31AddInto(ref ohms total, wire w) {
+    total = total + w.resistance();
+}
+
+/// Prints a wire's line: tag, load and drop.
+void la31ShowWire(wire w) {
+    print($"{w} {w.tagged()} ");
+    w.resistance().show();
+    la31.parts.device | string l = la31.loadOf(w);
+    if (typeof(l) == eType.object) {
+        device d = (device)l;
+        print($" -> {d} ({la31.parts.kindWord(d.kind)})");
+    } else {
+        print($" -> {(string)l}");
+    }
+    print($", drop {la31.calc.drop(w)}^");
+}
+
+/// Prints the board with the kit's own formatting.
+void la31ShowBoard(bool rules = true) {
+    #using la31.calc
+    if (rules) rule();
+    la31.each((wire w) => la31ShowWire(w));
+    int strainedCount = la31.wires.filter((wire w) => strained(w)).count();
+    print($"strained {strainedCount}, lamps on {running()}, fans on {running(kind.fan)}^");
+    if (rules) la31.fmt.rule();
+}
+
+// ==== Verbs. ====
+
+/// True when the noun is a wire.
+bool la31IsWire() { return noun.is(la31.parts.wire); }
+
+verb La31Lay {
+    grammar = {.lay, NOUN(la31IsWire)};
+    void handler() {
+        wire w = (wire)noun;
+        if (!la31.lay(w)) {
+            print($"The {w} is already laid, or the board is full.^");
+            return;
+        }
+        print($"You lay the {w}: {w.tagged()}, {la31.wires.length} on the board.^");
+    }
+}
+
+verb La31Lift {
+    grammar = {.lift, NOUN(la31IsWire)};
+    void handler() {
+        la31.parts.wire w = (la31.parts.wire)noun;
+        if (!w.onBoard()) {
+            print($"The {w} is not laid.^");
+            return;
+        }
+        la31.parts.job j = la31.begin(w, up: true);
+        if (j == null) return;
+        la31.lift(j.wire);
+        print($"You lift the {j.wire} ({j.turnsLeft} turns).^");
+        delete j;
+    }
+}
+
+verb La31Switch {
+    grammar = {.toggle, NOUN};
+    void handler() {
+        device d = la31DeviceOf(noun);
+        if (d == null) {
+            print("That is not wired to anything.^");
+            return;
+        }
+        wire w = la31.feeding(d);
+        if (w == null) {
+            print($"The {d} has no wire on the board.^");
+            return;
+        }
+        d.on = !d.on;
+        la31.totals.switches++;
+        if (d.on) print($"The {d} {d.effect()}");
+        else print($"The {d} stops");
+        print($" (drop {la31.calc.drop(w)}");
+        if (la31.calc.strained(w)) print(", strained");
+        if (la31.calc.strained(w, limit: 20)) print(", burning");
+        print(").^");
+    }
+}
+
+verb La31Thicken {
+    grammar = {.thicken, NOUN(la31IsWire)};
+    void handler() {
+        wire w = (wire)noun;
+        if (w.gauge == gauge.thick) {
+            print($"The {w} is as thick as it goes.^");
+            return;
+        }
+        w.gauge = la31Upgrade(w.gauge);
+        print($"The {w} is {la31.parts.gaugeWord(w.gauge)} now: ");
+        w.resistance().show();
+        print(".^");
+    }
+}
+
+/// Report verbs: they take no time.
+class La31Info : verb {
+    meta = true;
+}
+
+La31Info La31Board {
+    grammar = {.board};
+    void handler() {
+        if (la31.wires.length == 0) {
+            print("The board is empty.^");
+            return;
+        }
+        la31ShowBoard();
+        meter m = la31.read();
+        print("reading ");
+        m.show();
+        print($"; log {la31.log}^");
+    }
+}
+
+La31Info La31Sums {
+    grammar = {.sums};
+    void handler() {
+        ohms all;
+        all = 0;
+        for (object o in bgl.world.instances(la31.parts.wire)) la31AddInto(all, (wire)o);
+        la31.parts.ohms onBoard = la31.sum();
+        print("all wires ");
+        all.show();
+        print(", on the board ");
+        onBoard.show();
+        if (onBoard < all) print(", some unlaid");
+        if (onBoard == 0) print(", none laid");
+        print(".^");
+        array<wire> thin[3];
+        for (object o in bgl.world.instances(la31.parts.wire)) {
+            wire w = (wire)o;
+            if (w.gauge == la31.parts.gauge.thin) thin.append(w);
+        }
+        print($"thin {thin.length}: {thin.first()?.tagged() ?? "none"}");
+        wire longest = la31.wires.orderBy((wire a, wire b) => b.spans - a.spans).first();
+        print($"; longest laid {longest?.tagged() ?? "none"}");
+        print($"; laid {wire.laid}, switches {La31Totals.switches}, upgrades {la31.totals.upgrades}, jobs {la31.parts.job.started}.^");
+    }
+}
+
+La31Info La31Kinds {
+    grammar = {.kinds};
+    void handler() {
+        func<bool, device> isOn = (device d) => d.on;
+        for (object o in bgl.world.instances(device)) {
+            device d = (device)o;
+            print($"{d}: {la31.parts.kindWord(d.kind)}, draw {d.draw}");
+            switch (d.kind) {
+                case la31.parts.kind.lamp: print(", lit");
+                case kind.bell:            print(", loud");
+                default:                   ;
+            }
+            if (isOn(d)) print(", on");
+            if (d.is(La31Fan)) print($", {((La31Fan)d).blades} blades");
+            wire w = la31.feeding(d);
+            print($", fed by {w?.tagged() ?? "-"}");
+            print("^");
+        }
+        box.open();
+        print(width);
+        box.shut();
+        la31.fmt.box.open();
+        print(la31.fmt.width * 2);
+        la31.fmt.box.shut();
+        print("^");
+    }
+}
+
+La31Info La31Plan {
+    grammar = {.plan};
+    void handler() {
+        array<job> made[3];
+        for (object o in bgl.world.inParent(roomA, (object x) => x.is(wire))) {
+            job j = new job((wire)o, turnsTaken: ((wire)o).spans);
+            if (j == null) {
+                print($"no job for the {o}; ");
+                continue;
+            }
+            made.append(j);
+        }
+        func<int, job> turnsOf = (job j) => j.turnsLeft;
+        print($"planned {made.length}, longest {made.orderBy((job a, job b) => turnsOf(b) - turnsOf(a)).first()?.wire?.tagged() ?? "none"}");
+        print($", lifts {made.filter((job j) => j.lift).count()}, started {La31Job.started}.^");
+        while (made.length > 0) {
+            job j = made.popEnd();
+            delete j;
+        }
+        print($"counted {la31.totals.all()}; ");
+        fmt.box.open();
+        print(calc.drop(redWire) + calc.drop(blueWire));
+        fmt.box.shut();
+        print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la31.lay(redWire);
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,62 @@
+// run_target1_strings — `'~'`, `=~`/`==` between string and stringObj, a subscript on a call's
+// stringObj, element operators of an array<stringObj>, a stringObj loop variable, a loop-local
+// array<stringObj> each pass, and a call's stringObj passed to a union parameter.
+// EXPECT_OUTPUT: ~126 true true true false rr r x!?ww1 n=1, n=2 a ab abb [== 2222222222 x|RED x|RED
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <array>
+stringObj framed(string w) { return w.prepend('*').append('*'); }
+stringObj upper(string w) { return w.toUpper(); }
+stringObj join(string | stringObj a, string | stringObj b) {
+    stringObj out = "";
+    out += (string)a;
+    out += '|';
+    if (typeof(b) == eType.string) out += (string)b;
+    else out += (stringObj)b;
+    return out;
+}
+array<stringObj> hist[3];
+array<stringObj> notes[2];
+void main() {
+    bglInit();
+    char t = '~';
+    print(t); print((int)t); print(" ");
+    string w = "red";
+    stringObj b = "RED";
+    stringObj same = "red";
+    print(w =~ b); print(" "); print("red" =~ b); print(" "); print(w == same); print(" "); print(w != same); print(" ");
+    char c1 = framed("red")[1];
+    print(c1); print(framed("red")[1]); print(" ");
+    print(w.toUpper()[0] == 'R' ? "r" : "?"); print(" ");
+    hist += "x";
+    hist[0] += '!';
+    char q = '?';
+    hist[0] += q;
+    string ws = "w";
+    hist[0] += ws;
+    stringObj o = "w";
+    hist[0] += o;
+    hist[0] += $"{1}";
+    print(hist[0]); print(" ");
+    int n = 1;
+    notes += "";
+    notes[0] = $"n={n}";
+    n++;
+    notes[0] += $", n={n}";
+    print(notes[0]); print(" ");
+    for (stringObj s = "a"; s.length < 4; s += 'b') { print(s); print(" "); }
+    stringObj g = "";
+    for (g = "["; g.length < 3; g += '=') { }
+    print(g); print(" ");
+    for (int i = 0; i < 10; i++) {
+        array<stringObj> pass[4];
+        pass += "red";
+        pass += "blue";
+        print(pass.length);
+    }
+    print(" ");
+    print(join("x", upper("red"))); print(" ");
+    stringObj held = upper("red");
+    print(join("x", held));
+}

@@ -348,6 +348,12 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     if(isExplicitConversion && funcDef.name != "operator()")
         parsingError("'explicit' is only valid on conversion operators (operator())");
     processParameterList(funcDef);
+    // A binary operator declared with no operand would be unary, which Beguile has none of.
+    static const set<string> binaryOps = {"+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>", "==", "!=", "<", ">",
+                                          "<=", ">=", "<=>", "?=", "=~", "+=", "-=", "*=", "/=", "%=", "="};
+    if(binaryOps.count(funcDef.name) && funcDef.params.empty() && !isMemberStatic)
+        parsingError(format("'operator {0}' needs an operand: Beguile has no unary 'operator {0}'. Write a method for it instead.",
+                            funcDef.name));
     consumeMethodI6Alias(funcDef);      // `Type method(...) as <i6name> { … }` (§3.11)
     // Synthesize the instance and copy-in for each param whose class copies.
     // Same machinery as the top-level call from processRoutineDeclaration; pass the
@@ -911,7 +917,10 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             }
             varDef.declaredExpressionValue = list;
         } else {
-            expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+            inMemberInitializer = true;   // fixed at compile time: a bare name is a global, never a member
+            expression* expr = nullptr;
+            try { expr = parseExpression(first, {token::endStatement}, nullptr, nullptr); } catch(...) { inMemberInitializer = false; throw; }
+            inMemberInitializer = false;
             foldIntLiteralToFloat(expr, (string)returnType);
             if(!isMemberStatic) rejectRunTimeMemberRead(expr, varDef.dName());
             if(!isMemberStatic) rejectValueClassInitializer(expr, (string)returnType, varDef.dName());
@@ -1465,6 +1474,20 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
                 t = file.getToken();
                 continue;
             }
+            // In an attribute list a bare name is the attribute, ahead of a member of that name.
+            if(listElementType(typeName) == "attribute" && t.is(eTokenType::name)
+               && (file.peekToken().is(token::comma) || file.peekToken().is(token::braceClose)))
+                if(auto* av = languageService.findGlobalAs<variableDeclaration>(t.value); av && av->type.name == "attribute"){
+                    expression* elem = new expression();
+                    elem->tokens.push_back(av->i6name.empty() ? av->name : av->i6name);
+                    elem->resolvedType = "attribute";
+                    token sep = file.getToken();
+                    elem->terminator = sep.value;
+                    list->elements.push_back(elem);
+                    if(sep.is(token::braceClose)) break;
+                    t = file.getToken();
+                    continue;
+                }
             expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
             list->elements.push_back(elem);
             if(elem->terminator == token::braceClose) break;
@@ -1487,7 +1510,10 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
         // The member's type disambiguates the value (an enum member beats a same-named global).
         string savedExpected = currentExpectedType;
         if(typeName != "auto") currentExpectedType = typeName;
-        expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+        inMemberInitializer = true;   // fixed at compile time: a bare name is a global, never a member
+        expression* expr = nullptr;
+        try { expr = parseExpression(first, {token::endStatement}, nullptr, nullptr); } catch(...) { inMemberInitializer = false; throw; }
+        inMemberInitializer = false;
         currentExpectedType = savedExpected;
         // The object's I6 header name: text fixed when the program is compiled, so only a literal.
         if(prop.name == "instancename"){
@@ -2589,6 +2615,7 @@ bool bglParser::startsPositionalSection(token tok){
     if(tok.is(token::braceOpen) || tok.is("-") || tok.is(token::parenOpen)) return true;
     if(tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)){
         token next = file.peekToken();
+        if(next.is(token::braceOpen) && tok.isDataType()) return true;   // an inline value, `Pt{ 2, 1 }`
         if((next.is(token::period) || next.is(eTokenType::dictionaryWord)) && languageService.findEnum(tok.value) != nullptr)
             return true;   // `eGrade.high`
         if(next.is(token::period)){   // a dotted value (`ns.edge.bottom`): a path that ends the value
@@ -3222,6 +3249,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         tok = file.getToken();
         return;
     }
+    if(!assignsMember) typeFromMemberAliasOrPath(newObj, tok);
     objectMemberIsConst = q.isConst;   // a `const` member, as in a class body (§8.3.2)
     if(q.isStatic)  memberError("'static' is not valid inside an object body");
     if(q.isDefault) memberError("'default' is only valid in class declarations, not object instances");
@@ -3607,6 +3635,31 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
     return false;
 }
 
+// A member declaration whose type is written as an alias member of the object (`meter twice()`) or as a
+// path to one (`ns.parts.ohms make()`): `tok` becomes that type.
+void bglParser::typeFromMemberAliasOrPath(objectDef& obj, token& tok){
+    if(!tok.is(eTokenType::identifier) || tok.isDataType()) return;
+    if(file.peekToken().is(eTokenType::name) && !file.peekToken().is("operator")){
+        for(typeMember* m : obj.members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd != nullptr && vd->name == tok.value
+               && (vd->isAlias || (vd->isValueAlias && vd->declaredExpressionValue == nullptr))
+               && languageService.isClassType(vd->type.name)){
+                tok.value = vd->type.name; tok.originalValue = vd->type.dName(); tok.tokenType = eTokenType::dataType;
+                return;
+            }
+        return;
+    }
+    // A path: names joined by `.`, then the member's name.
+    int k = 1;
+    string path = tok.value;
+    while(file.peekToken(k).is(token::period) && file.peekToken(k + 1).is(eTokenType::name)){ path += "." + file.peekToken(k + 1).value; k += 2; }
+    if(k == 1 || !file.peekToken(k).is(eTokenType::name)) return;
+    string t = resolveNamespacedType(path);
+    if(t.empty()) return;
+    for(int i = 1; i < k; i++) file.getToken();
+    tok.value = t; tok.originalValue = languageService.getType(t).dName(); tok.tokenType = eTokenType::dataType;
+}
+
 // ===============================================================================
 // extend object { ... } - add members to an existing object
 // ===============================================================================
@@ -3634,6 +3687,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
         return;
     }
     if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
+    typeFromMemberAliasOrPath(*obj, tok);
     if(isExternalObj && !q.isEmitter){
         // For extern objects, only compound assignment on collection members is allowed,
         // plus a few block-local directives that don't actually mutate the extern object

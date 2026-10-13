@@ -1,0 +1,111 @@
+Sorting Room
+Sorting Room. A scale stands beside a rack of three bins. A conveyor comes in through the east wall.
+You can see a scale, a rack (which is empty) and a red parcel here.
+> ledger
+Bins: [inland empty] [coastal empty] [overseas empty]. Weighed 0g (0kg) in 0 parcels. Stamps used 0. On the scale 0g, used 0 times. Last weighed: none. 0 in the rack. Score 0.
+> trace 101
+The red parcel is in the Sorting Room; postage 0 of 2.
+> trace 104
+No parcel 104 is booked.
+> trace 102
+The blue parcel is still on the conveyor; postage 0 of 3.
+> x red parcel
+A parcel marked 101 for the inland zone, with 0 stamps. Handled 0 times.
+> sort red parcel
+The red parcel has not been weighed.
+A blue parcel drops off the conveyor.
+> weigh red parcel
+You set the red parcel on the scale. It reads 1200g.
+> x scale
+A parcel scale with a 3000g dial. It reads 1200g.
+A green parcel drops off the conveyor.
+> sort red
+The red parcel needs 2 more in stamps.
+> stamp red
+You stick a stamp on the red parcel. Paid 2 of 2.
+> sort red
+The red parcel goes into the inland bin.
+The scale needle drops back to zero.
+[The score has just gone up by one point.]
+> x rack
+Three bins: inland holding the red parcel, coastal empty, overseas empty. Sorted so far: 101.
+> ledger
+Bins: [inland 101 1200g] [coastal empty] [overseas empty]. Weighed 1200g (1kg) in 1 parcels. Stamps used 1. On the scale 0g, used 1 times. Last weighed: 101 (inland, 1200g), inland. 1 in the rack. Heaviest bin: inland. Score 1.
+> trace 101
+The red parcel is in the rack; postage 2 of 2; all the weight so far.
+> e
+Loading Bay
+Loading Bay. The conveyor runs west through the wall.
+> w
+Sorting Room
+Sorting Room. A scale stands beside a rack of three bins. A conveyor comes in through the east wall.
+You can see a green parcel, a blue parcel, a scale and a rack (in which is a red parcel) here.
+> look
+Sorting Room
+Sorting Room. A scale stands beside a rack of three bins. A conveyor comes in through the east wall.
+You can see a green parcel, a blue parcel, a scale and a rack (in which is a red parcel) here.
+> weigh blue
+You set the blue parcel on the scale. It reads 450g.
+Lighter than the red parcel.
+> weigh green
+You set the green parcel on the scale. It reads 2600g.
+Heavier than the blue parcel.
+> stamp blue
+You stick a stamp on the blue parcel. Paid 2 of 3.
+> sort blue
+The blue parcel needs 1 more in stamps.
+> stamp blue
+You stick a stamp on the blue parcel. Paid 4 of 3.
+> stamp blue
+You stick a stamp on the blue parcel. Paid 6 of 3.
+> sort blue
+The blue parcel goes into the coastal bin.
+[The score has just gone up by one point.]
+> x blue parcel
+A parcel marked 102 for the coastal zone, weighed at 450g, with 3 stamps. Handled 4 times.
+> trace 102
+The blue parcel is in the rack; postage 6 of 3.
+> open blue
+Parcels stay sealed.
+> weigh green
+You set the green parcel on the scale. It reads 2600g.
+> stamp green
+You stick a stamp on the green parcel. Paid 2 of 6.
+> stamp green
+You stick a stamp on the green parcel. Paid 4 of 6.
+> x green parcel
+A parcel marked 103 for the overseas zone, weighed at 2600g, with 2 stamps. Handled 4 times.
+> trace 103
+The green parcel is in the Sorting Room; postage 4 of 6.
+> weigh scale
+Only parcels go on the scale.
+> stamp scale
+Stamps go on parcels.
+> sort scale
+Only parcels are sorted here.
+> e
+Loading Bay
+Loading Bay. The conveyor runs west through the wall.
+> weigh green
+You can't see any such thing.
+> sort green
+You can't see any such thing.
+> w
+Sorting Room
+Sorting Room. A scale stands beside a rack of three bins. A conveyor comes in through the east wall.
+You can see a green parcel, a scale and a rack (in which are a blue parcel and a red parcel) here.
+> ledger
+Bins: [inland 101 1200g] [coastal 102 450g] [overseas empty]. Weighed 4250g (4kg) in 3 parcels. Stamps used 6. On the scale 2600g, used 4 times. Last weighed: 103 (overseas, 2600g), overseas. 2 in the rack. Heaviest bin: inland. Score 2.
+> stamp green
+You stick a stamp on the green parcel. Paid 6 of 6.
+> stamp green
+You stick a stamp on the green parcel. Paid 8 of 6.
+> stamp green
+There is no room left on the green parcel.
+> sort green
+The green parcel goes into the overseas bin.
+The scale needle drops back to zero.
+[The score has just gone up by one point.]
+*** You have won ***
+In that game you scored 3 out of a possible 3, in 33 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

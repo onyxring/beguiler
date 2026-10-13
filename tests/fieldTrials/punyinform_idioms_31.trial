@@ -1,0 +1,211 @@
+Room A
+> status
+Links 0, pulses 0, presses 0, farthest 0.
+Charges: P=0 Q=0 R=0 ?=0.
+Hits: P=0 Q=0 R=0 ?=0.
+Strongest: none; last read empty.
+> chains
+0 chain(s); 0 relay(s) feed a charged relay.
+By weight: P Q R ?.
+From P the chain ends at P.
+> notes
+No notes.
+> where
+You are in Room A; the doorway leads to Room B.
+Relay V is in Room B.
+Caught relay V.
+> trace relay p
+Chain: P.
+Head P, last P, 1 from here.
+Next none, after that none, back none.
+This is a short run; next holds 0.
+Text length 1; blank in it: no.
+> link p to q
+You link P to Q. Chain: P > Q.
+> link q to r
+You link Q to R. Chain: P > Q > R.
+> trace p
+Chain: P > Q > R.
+Head P, last R, 3 from here.
+Next Q, after that R, back none.
+This is a long run; next holds 0.
+Text length 9; blank in it: no.
+> trace q
+Chain: P > Q > R.
+Head P, last R, 2 from here.
+Next R, after that none, back P.
+This is a short run; next holds 0.
+Text length 9; blank in it: no.
+> trace r
+Chain: P > Q > R.
+Head P, last R, 1 from here.
+Next none, after that none, back Q.
+This is a short run; next holds 0.
+Text length 9; blank in it: no.
+> link r to p
+That would close a loop through P.
+> link r to r
+A relay can't feed itself.
+> link p to fuse
+Only relays link.
+> pulse p
+P takes 3, holds 3.
+Q takes 2, holds 2.
+R takes 1, holds 1.
+> status
+Links 2, pulses 1, presses 0, farthest 3.
+Charges: P=3 Q=2 R=1 ?=0.
+Hits: P=1 Q=1 R=1 ?=0.
+Strongest: P; last read empty.
+> history p
+P took 3, then 0 before; next took 2, back took 0.
+P has fed: Q  (2 chars); next has fed 2 chars.
+> history q
+Q took 2, then 0 before; next took 1, back took 0.
+Q has fed: R  (2 chars); next has fed 0 chars.
+> history fuse
+The fuse has no history.
+> skip p by 1
+Plain: Q. Wrapped: Q.
+Two more: none.
+> skip p by 3
+Plain: none. Wrapped: P.
+Two more: none.
+> skip q by 3
+Plain: none. Wrapped: Q.
+Two more: none.
+> skip r by 4
+Plain: none. Wrapped: P.
+Two more: none.
+> gauge q
+The relay Q reads 2 over 2 hop(s), weight 4.
+> gauge r
+The relay R reads 1 over 1 hop(s), weight 1.
+> gauge fuse
+The fuse has no gauge.
+> chains
+1 chain(s); 2 relay(s) feed a charged relay.
+By weight: P Q R ?.
+From P the chain ends at R.
+> push button
+The button clicks. 1 chain(s) answer; P is strongest.
+> pulse fuse
+The fuse carries no charge.
+> pulse r at 4
+R takes 4, holds 5.
+The pulse reaches 1 relay(s), ending at R.
+> pulse p at 6
+P takes 6, holds 9.
+Q takes 5, holds 8.
+R takes 4, holds 9.
+The pulse reaches 3 relay(s), ending at R.
+> examine relay p
+Relay P, charge 9, linked to Q.
+> examine q
+Relay Q, charge 8, linked to R, fed by P.
+> east
+Room B
+Room B. A fourth relay and a meter. A doorway leads west.
+You can see a relay V and a meter here.
+> examine meter
+The meter reads 9 at P, 3 hop(s) to the end, weight 27.
+> examine relay v
+Relay (blank), charge 0.
+> take relay v
+Taken.
+> where
+You are in Room B; the doorway leads to Room A.
+Relay V is nowhere.
+Caught relay V.
+> west
+Room A
+You can see a relay P, a relay Q, a relay R, a switchboard and a parts tray (which contains a fuse) here.
+> link r to v
+You link R to a blank relay. Chain: P > Q > R > ?.
+> trace v
+Chain: P* > Q* > R* > ?.
+Head P, last (blank), 1 from here.
+Next none, after that none, back R.
+This is a short run; next holds 0.
+Text length 13; blank in it: yes.
+> trace p
+Chain: P* > Q* > R* > ?.
+Head P, last (blank), 4 from here.
+Next Q, after that R, back none.
+This is a long run; next holds 8.
+Text length 13; blank in it: yes.
+> chains
+1 chain(s); 2 relay(s) feed a charged relay.
+By weight: P Q R ?.
+From P the chain ends at a blank relay.
+> unlink q
+You unlink Q from R.
+> trace p
+Chain: P* > Q*.
+Head P, last Q, 2 from here.
+Next Q, after that none, back none.
+This is a short run; next holds 8.
+Text length 5; blank in it: no.
+> trace r
+Chain: R* > ?.
+Head R, last (blank), 2 from here.
+Next none, after that none, back none.
+This is a short run; next holds 0.
+Text length 5; blank in it: yes.
+> echo q
+P takes 1, holds 9.
+Echo done; P fed back, farthest 3.
+> echo r
+Blank relay takes 2, holds 2.
+Blank relay takes 1, holds 3.
+Echo done; nothing fed back, farthest 3.
+> echo fuse
+The fuse gives no echo.
+> history r
+R took 4, then 4 before; next took 1, back took 0.
+R has fed: ?  (2 chars); next has fed 0 chars.
+> history v
+? took 1, then 2 before; next took 0, back took 4.
+? has fed:  (0 chars); next has fed 0 chars.
+> status
+Links 3, pulses 4, presses 1, farthest 3.
+Charges: P=9 Q=8 R=9 ?=3.
+Hits: P=5 Q=3 R=3 ?=2.
+Strongest: P; last read held.
+> unlink q
+The relay Q feeds nothing.
+> unlink fuse
+Only relays unlink.
+> push button
+The button clicks. 2 chain(s) answer; P is strongest.
+> status
+Links 3, pulses 6, presses 2, farthest 3.
+Charges: P=9 Q=9 R=9 ?=4.
+Hits: P=6 Q=4 R=4 ?=3.
+Strongest: P; last read held.
+> gauge v
+The relay V reads 4 over 1 hop(s), weight 4.
+> drain
+You drain 4 relay(s).
+> status
+Links 3, pulses 6, presses 2, farthest 3.
+Charges: P=0 Q=0 R=0 ?=0.
+Hits: P=7 Q=5 R=5 ?=4.
+Strongest: none; last read empty.
+> gauge p
+The relay P reads nothing.
+> drop v
+Dropped.
+> east
+Room B
+You can see a meter here.
+> examine meter
+The meter reads zero.
+> notes
+Notes: link P; link Q; pulse P; board P; pulse R; pulse P; link R; unlink Q; board P; drain -;
+Q was linked.
+Labels: P-+, length 1.
+> chains
+2 chain(s); 0 relay(s) feed a charged relay.
+By weight: P Q R ?.
+From P the chain ends at Q.

@@ -1,0 +1,72 @@
+// run_target1_forward — uses above declarations: an object of a class declared below it, members and
+// parameters typed by later types and alias paths, a static returning an alias path, an owned value
+// member whose class comes later, an array sized by a later const, and emitter values declared below.
+// EXPECT_OUTPUT: 1200 3 2 5 20 24 2 104 303 3 9 heavy 2001 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+value class Grams {
+    int g;
+    Grams operator = (Grams o) { g = o.g; return self; }
+    Grams operator = (int n) { g = n; return self; }
+}
+void showBox() { boxA.w = 1200; print(boxA.w.g); print(" "); }
+array<Box> boxes = {boxB, boxC};
+Box boxA { }
+class Box : object { Grams w; int k; }
+Box boxB { k = 1; }
+Box boxC { k = 2; }
+void showHolder() { print($"{(int)holder.mode} {holder.crate.k} "); }
+object holder { eMode mode = beta; Crate crate = crateA; }
+enum eMode { alpha, beta }
+class Crate : object { int k; }
+Crate crateA { k = 5; }
+enum eZone { inland, coastal }
+object post { alias zone for eZone; }
+int rate(eZone z) { return (int)z * 10; }
+int peek(Tray b) { return rate(b.zone); }
+class Tray : object { post.zone zone; }
+Tray trayA { zone = coastal; }
+int route() { eZone z = coastal; return sorter.route(z) + twice(z); }
+object sorter { int route(post.zone z) { return (int)z * 10; } }
+int twice(post.zone z) { return (int)z * 2; }
+object ns { alias pick for Pick; }
+void showPick() { print(Pick.find(2).k); print(" "); }
+class Pick : object {
+    int k;
+    static ns.pick find(int c) { if (c == 2) return pickB; return null; }
+}
+Pick pickB { k = 2; }
+void showRack() { rack.stamped = 4; int n = rack.stamped; print(n); print(" "); }
+void bump() { shelf.stamped++; shelf.stamped += 2; int n = shelf.stamped; print(n); print(" "); }
+object rack { Tally stamped; }
+object shelf { Tally stamped; }
+value class Tally {
+    int _n;
+    int operator () { return _n + 100; }
+    void operator = (int v) { _n = v; }
+}
+array<int> bins[NBINS];
+const int NBINS = 3;
+void showHeavy() { int n = 2500; if (n > HEAVY) print("heavy "); int h = HEAVY + 1; print(h); print(" "); }
+emitter int HEAVY { 2000 }
+void showKg() { print(lumpA.kg); }
+class Lump : object { int g; }
+Lump lumpA { g = 3500; }
+extend class Lump {
+    emitter int kg { ($self.g / 1000) }
+}
+void main() {
+    bglInit();
+    showBox();
+    print(boxes[0].k + boxes[1].k); print(" ");
+    showHolder();
+    print(peek(trayA)); print(" ");
+    print(route()); print(" ");
+    showPick();
+    showRack();
+    bump();
+    bins[2] = 9;
+    print($"{bins.size} {bins[2]} ");
+    showHeavy();
+    showKg();
+}

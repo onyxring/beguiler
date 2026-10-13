@@ -2720,6 +2720,8 @@ bool bglParser::processParameterList(functionDef& funcDef){
         if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> and union types
         if(param.isRef){
             string why = refNotApplicable(getDispatchClass(param.type.name), typeDisplayName(param.type.name));
+            if(why.empty() && languageService.findEnum(param.type.name) != nullptr)
+                why = "'" + typeDisplayName(param.type.name) + "' is an enumeration — its value is held directly, so there is nothing to refer to.";
             if(!why.empty()) parsingError("'ref': " + why);
         }
         tok=file.getToken(); // name, "=", ",", or ")"
@@ -2760,6 +2762,8 @@ bool bglParser::processParameterList(functionDef& funcDef){
                         else
                             warnOnce("Parameter '" + param.name + "' shadows global of the same name; '::" + param.name + "' reaches the global.");
                     }
+                if(definedSymbols.count(param.name))
+                    warnOnce("Parameter '" + param.name + "' has the name of a #define symbol; in this routine the name means the parameter.");
                 // A static method has no receiver, so a member can't be shadowed.
                 if(currentClass != nullptr && !funcDef.isStatic){
                     for(typeMember* m : currentClass->members)

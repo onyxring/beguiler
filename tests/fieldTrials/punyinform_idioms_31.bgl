@@ -1,0 +1,585 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-first PunyInform program that leans on `?.`, `??` and postfix `?`: two rooms
+// (Room A with three relays, a switchboard and a parts tray; Room B with a fourth, portable relay and a meter);
+// a `Relay` class linked forward and back through class-typed members, whose methods walk the links
+// recursively through `?.` (`depth()`, `last()`, `head()`), take default and named arguments through
+// `?.` calls (`forward(steps:, wrap:)`, `pass(amount, hop:, loud:)`), hold a `Gauge` accessor class
+// read and assigned through chains and in interpolation, a member `array<int>` read through `took()`
+// off a chain, a `stringObj` member appended with `+=` through `?.` and read with `?.length` and `??`,
+// and return a value class `Reading` with its own
+// `operator ?` used with `?.`, `??` and postfix `?`; `?.` statements on variables, members, array
+// elements, call results and casts; `??` chains on objects, strings, value classes and call results,
+// in declarations, assignments, arguments, returns, interpolation and `throw`; postfix `?` and `?.`
+// in `if`, `while`, `for`, `do`/`while`, `switch` and a parenthesized ternary; `?.` inside <linq>
+// lambdas over `bgl.world.instances`; string and stringObj results reached through chains (`label?.`,
+// `toUpper()`, `length`, `contains`); library properties (`parent`, `e_to`, `w_to`) through `?.`;
+// a switchboard whose `before` takes Push; and `link`/`unlink`/`pulse`/`trace`/`skip`/`gauge` verbs
+// plus meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+extern bool scope_modified;
+
+// --- shared types -----------------------------------------------------------------------------------
+
+const int GAUGE_MAX = 9;
+
+value class Gauge {
+    int _v = 0;
+
+    int  operator ()        { return _v; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > GAUGE_MAX) v = GAUGE_MAX;
+        _v = v;
+    }
+}
+
+value class Reading {
+    int volts;
+    int hops;
+
+    Reading operator = (Reading o) {
+        volts = o.volts;
+        hops = o.hops;
+        return self;
+    }
+    emitter eBool operator ? () { ($self ~= 0 && $self.volts ~= 0) }
+
+    int weight() {
+        return volts * hops;
+    }
+}
+
+int farthest = 0;
+int linksMade = 0;
+int pulsesSent = 0;
+stringObj jotted;
+Reading lastRead;
+Reading noRead;
+
+array<Relay> bank[6];
+
+void note(string what, Relay r = null) {
+    jotted += $"{what} {r?.label ?? "-"}; ";
+}
+
+// --- relays -----------------------------------------------------------------------------------------
+
+class Relay : object {
+    Relay next;
+    Relay back;
+    string label;
+    char letter;
+    Gauge charge;
+    int hits = 0;
+    array<int> history[4];
+    stringObj fedTo;
+    name = {.relay};
+
+    void description() {
+        print($"Relay {label ?? "(blank)"}, charge {charge}");
+        if (next?) print($", linked to {next.label ?? "(blank)"}");
+        if (back?.label?) print($", fed by {back.label}");
+        printLine(".");
+    }
+
+    Relay forward(int steps = 1, bool wrap = false) {
+        if (steps <= 0) return self;
+        if (next?) return next.forward(steps - 1, wrap: wrap);
+        if (wrap) return head().forward(wrap: true, steps: steps - 1);
+        return null;
+    }
+
+    Relay head() {
+        return back?.head() ?? self;
+    }
+
+    Relay last() {
+        return next?.last() ?? self;
+    }
+
+    int depth() {
+        return 1 + next?.depth();
+    }
+
+    void pass(int amount, int hop = 1, bool loud = false) {
+        charge += amount;
+        history[hits % 4] = amount;
+        hits++;
+        if (hop > farthest) farthest = hop;
+        if (loud) printLine($"{label ?? "Blank relay"} takes {amount}, holds {charge}.");
+        if (amount > 1) next?.pass(amount - 1, loud: loud, hop: hop + 1);
+    }
+
+    int took(int ago = 0) {
+        if (ago >= hits || ago > 3) return 0;
+        return history[(hits - 1 - ago) % 4];
+    }
+
+    void detach() {
+        back = null;
+    }
+
+    void cut() {
+        next?.detach();
+        next = null;
+    }
+
+    Reading read() {
+        Reading r;
+        r.volts = charge;
+        r.hops = depth();
+        return r;
+    }
+}
+
+Relay relayAt(int i) {
+    if (i < 0 || i >= bank.size) return null;
+    return bank[i];
+}
+
+Relay byLetter(char c) {
+    for (int i = 0; i < bank.size; i++) {
+        if (bank[i]?.letter == c) return bank[i];
+    }
+    return null;
+}
+
+int slotOf(Relay r) {
+    for (int i = 0; i < bank.size; i++) {
+        if (bank[i] == r) return i;
+    }
+    return -1;
+}
+
+bool reaches(Relay from, Relay to) {
+    for (Relay c = from; c?; c = c.next) {
+        if (c == to) return true;
+    }
+    return false;
+}
+
+string labelOf(Relay r, string blank = "none") {
+    return r?.label ?? blank;
+}
+
+stringObj chainText(Relay r, string sep = " > ", bool marks = false) {
+    stringObj s;
+    Relay c = r?.head();
+    while (c?) {
+        s += c.label ?? "?";
+        if (marks && c.charge > 0) s += "*";
+        if (c.next?) s += sep;
+        c = c?.next;
+    }
+    return s;
+}
+
+Relay strongest() {
+    Relay best = null;
+    for (int i = 0; i < bank.size; i++) {
+        Relay r = bank[i];
+        if (!r?) continue;
+        if (r.charge > (best?.charge)) best = r;
+    }
+    return best;
+}
+
+int weightOrder(object a, object b) {
+    return ((Relay)b).read().weight() - ((Relay)a).read().weight();
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Three relays stand in a row beside a switchboard. A doorway leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A fourth relay and a meter. A doorway leads west.";
+    w_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+Relay relayP {
+    "relay P";
+    parent = roomA;
+    name = {.p};
+    attributes = {static};
+    label = "P";
+    letter = 'p';
+}
+
+Relay relayQ {
+    "relay Q";
+    parent = roomA;
+    name = {.q};
+    attributes = {static};
+    label = "Q";
+    letter = 'q';
+}
+
+Relay relayR {
+    "relay R";
+    parent = roomA;
+    name = {.r};
+    attributes = {static};
+    label = "R";
+    letter = 'r';
+}
+
+object switchboard {
+    "switchboard";
+    parent = roomA;
+    name = {.switchboard, .board, .button};
+    description = "A switchboard with one button.";
+    int presses = 0;
+    attributes = {static};
+
+    bool before() {
+        switch (action) {
+            case Push:
+                presses++;
+                int sent = 0;
+                for (int i = 0; i < bank.size; i++) {
+                    Relay r = relayAt(i);
+                    if (r?.back?) continue;
+                    if (!r?.next?) continue;
+                    r?.pass(2);
+                    sent++;
+                }
+                pulsesSent += sent;
+                note("board", strongest());
+                if (sent == 0) rtrue("The button clicks. No chain answers.^");
+                rtrue($"The button clicks. {sent} chain(s) answer; {labelOf(strongest())} is strongest.^");
+        }
+        rfalse;
+    }
+}
+
+object tray {
+    "parts tray";
+    parent = roomA;
+    name = {.tray, .parts};
+    description = "A shallow parts tray.";
+    attributes = {container, open, static};
+}
+
+object fuse {
+    "fuse";
+    parent = tray;
+    name = {.fuse};
+    description = "A glass fuse.";
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+Relay relayV {
+    "relay V";
+    parent = roomB;
+    name = {.v};
+    letter = 'v';
+}
+
+object meter {
+    "meter";
+    parent = roomB;
+    name = {.meter, .dial};
+    attributes = {static};
+
+    void description() {
+        Relay top = strongest();
+        Reading r = top?.read() ?? noRead;
+        if (!r?) {
+            printLine("The meter reads zero.");
+            return;
+        }
+        printLine($"The meter reads {r.volts} at {labelOf(top)}, {r.hops} hop(s) to the end, weight {r.weight()}.");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb LinkUp {
+    grammar = {.link, NOUN, .to, NOUN};
+    void handler() {
+        if (!noun.is(Relay) || !second.is(Relay)) {
+            printLine("Only relays link.");
+            return;
+        }
+        Relay a = (Relay)noun;
+        Relay b = (Relay)second;
+        if (a == b) {
+            printLine("A relay can't feed itself.");
+            return;
+        }
+        if (reaches(b, a)) {
+            printLine($"That would close a loop through {labelOf(b, blank: "a blank relay")}.");
+            return;
+        }
+        a.cut();
+        ((Relay)second)?.back?.cut();
+        a.next = b;
+        b.back = a;
+        a?.fedTo += $"{labelOf(b, "?")} ";
+        linksMade++;
+        note("link", a);
+        printLine($"You link {labelOf(a)} to {labelOf(b.back?.next, "a blank relay")}. Chain: {chainText(a)}.");
+    }
+}
+
+verb Unlink {
+    grammar = {.unlink, NOUN};
+    void handler() {
+        if (!noun.is(Relay)) {
+            printLine("Only relays unlink.");
+            return;
+        }
+        Relay r = (Relay)noun;
+        if (!r.next?) {
+            printLine($"{cThe(r)} feeds nothing.");
+            return;
+        }
+        string was = labelOf(r.next, "a blank relay");
+        r.cut();
+        note("unlink", r);
+        printLine($"You unlink {labelOf(r)} from {was}.");
+    }
+}
+
+verb Pulse {
+    grammar = {.pulse, NOUN};
+    void handler() {
+        Relay r = noun.is(Relay) ? (Relay)noun : null;
+        r?.pass(3, loud: true);
+        if (!r?) {
+            printLine($"{cThe(noun)} carries no charge.");
+            return;
+        }
+        pulsesSent++;
+        note("pulse", r);
+    }
+}
+
+verb PulseAt {
+    grammar = {.pulse, NOUN, .at, NUMBER};
+    void handler() {
+        if (!noun.is(Relay)) {
+            printLine($"{cThe(noun)} carries no charge.");
+            return;
+        }
+        farthest = 0;
+        Relay r = (Relay)noun;
+        r?.pass(hop: 1, amount: parsed_number, loud: true);
+        pulsesSent++;
+        note("pulse", r);
+        printLine($"The pulse reaches {farthest} relay(s), ending at {labelOf(r.forward(farthest - 1) ?? r.last())}.");
+    }
+}
+
+verb Echo {
+    grammar = {.echo, NOUN};
+    void handler() {
+        Relay r = noun.is(Relay) ? (Relay)noun : null;
+        if (!r?) {
+            printLine($"{cThe(noun)} gives no echo.");
+            return;
+        }
+        byLetter(r.letter)?.next?.pass(loud: true, amount: 2);
+        relayAt(slotOf(r))?.forward(wrap: true)?.pass(1, loud: true);
+        ((Relay)noun)?.back?.pass(hop: 1, amount: 1);
+        printLine($"Echo done; {r.back?.label ?? "nothing"} fed back, farthest {farthest}.");
+    }
+}
+
+verb Trace {
+    meta = true;
+    grammar = {.trace, NOUN};
+    void handler() {
+        Relay r = noun.is(Relay) ? (Relay)noun : null;
+        if (!r?) {
+            printLine($"{cThe(noun)} is not on any chain.");
+            return;
+        }
+        printLine($"Chain: {chainText(r, marks: true)}.");
+        printLine($"Head {r.head()?.label ?? "(blank)"}, last {r.last()?.label ?? "(blank)"}, {r.depth()} from here.");
+        printLine($"Next {r.next?.label ?? "none"}, after that {r.next?.next?.label ?? "none"}, back {r.back?.label ?? "none"}.");
+        string mid = r.next?.next? ? "long" : "short";
+        printLine($"This is a {mid} run; next holds {r?.next?.charge}.");
+        printLine($"Text length {chainText(r)?.length}; blank in it: {(chainText(r, sep: "")?.contains("?")) ? "yes" : "no"}.");
+    }
+}
+
+verb History {
+    meta = true;
+    grammar = {.history, NOUN};
+    void handler() {
+        Relay r = noun.is(Relay) ? (Relay)noun : null;
+        if (!r?) {
+            printLine($"{cThe(noun)} has no history.");
+            return;
+        }
+        int nextIn = r.next?.history[(r.next?.hits + 3) % 4];
+        printLine($"{labelOf(r, "?")} took {r?.took()}, then {r?.took(ago: 1)} before; next took {nextIn}, back took {r.back?.took(1)}.");
+        printLine($"{labelOf(r, "?")} has fed: {r?.fedTo ?? "nothing"} ({r?.fedTo?.length} chars); next has fed {r.next?.fedTo?.length} chars.");
+    }
+}
+
+verb Skip {
+    meta = true;
+    grammar = {.skip, NOUN, .by, NUMBER};
+    void handler() {
+        Relay r = noun.is(Relay) ? (Relay)noun : null;
+        Relay plain = r?.forward(parsed_number);
+        Relay wrapped = r?.forward(wrap: true, steps: parsed_number);
+        printLine($"Plain: {labelOf(plain)}. Wrapped: {labelOf(wrapped)}.");
+        printLine($"Two more: {r?.forward(parsed_number)?.forward(2)?.label ?? "none"}.");
+    }
+}
+
+verb GaugeIt {
+    grammar = {.gauge, NOUN};
+    void handler() {
+        Relay r = noun.is(Relay) ? (Relay)noun : null;
+        if (!r?) {
+            printLine($"{cThe(noun)} has no gauge.");
+            return;
+        }
+        lastRead = r.read();
+        Reading shown = lastRead ?? noRead;
+        if (shown?) printLine($"{cThe(r)} reads {shown.volts} over {shown.hops} hop(s), weight {lastRead?.weight()}.");
+        else printLine($"{cThe(r)} reads nothing.");
+    }
+}
+
+verb Drain {
+    grammar = {.drain};
+    void handler() {
+        int n = 0;
+        for (int i = 0; i < bank.size; i++) {
+            if (bank[i]?.charge > 0) n++;
+            bank[i]?.charge = 0;
+            bank[i]?.hits++;
+        }
+        lastRead = noRead;
+        note("drain");
+        printLine($"You drain {n} relay(s).");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        printLine($"Links {linksMade}, pulses {pulsesSent}, presses {switchboard.presses}, farthest {farthest}.");
+        print("Charges:");
+        int i = 0;
+        do {
+            print($" {labelOf(bank[i], "?")}={bank[i]?.charge}");
+            i++;
+        } while (bank[i]?);
+        printLine(".");
+        print("Hits:");
+        for (int j = 0; j < bank.size; j++) {
+            if (!bank[j]?) break;
+            print($" {bank[j]?.label ?? "?"}={bank[j]?.hits}");
+        }
+        printLine(".");
+        Relay top = strongest();
+        printLine($"Strongest: {top?.label ?? "none"}; last read {(lastRead?) ? "held" : "empty"}.");
+    }
+}
+
+verb Chains {
+    meta = true;
+    grammar = {.chains};
+    void handler() {
+        int heads = bgl.world.instances(Relay, (object o) => !((Relay)o).back? && ((Relay)o).next?).count();
+        int lit = bgl.world.instances(Relay).filter((object o) => ((Relay)o).next?.charge > 0).count();
+        printLine($"{heads} chain(s); {lit} relay(s) feed a charged relay.");
+        array<object> byWeight[6];
+        byWeight = bgl.world.instances(Relay).orderBy(weightOrder);
+        print("By weight:");
+        for (object o in byWeight) print($" {labelOf((Relay)o, "?")}");
+        printLine(".");
+        Relay c = byLetter('p');
+        while (c?.next?) c = c.next;
+        printLine($"From P the chain ends at {c?.label ?? "a blank relay"}.");
+    }
+}
+
+verb Notes {
+    meta = true;
+    grammar = {.notes};
+    void handler() {
+        if (jotted?.isEmpty()) {
+            printLine("No notes.");
+            return;
+        }
+        printLine($"Notes: {jotted}");
+        stringObj up = byLetter('q')?.label?.toUpper();
+        if (jotted.contains("link Q")) printLine($"{up} was linked.");
+        printLine($"Labels: {labelOf(byLetter('p'))}{labelOf(byLetter('x'), blank: "-")}{byLetter('v')?.label ?? "+"}, length {byLetter('r')?.label?.length}.");
+    }
+}
+
+verb Where {
+    meta = true;
+    grammar = {.where};
+    void handler() {
+        object up = player?.parent;
+        object out = up?.e_to ?? up?.w_to ?? roomA;
+        printLine($"You are in {up}; the doorway leads to {out}.");
+        switch (byLetter('v')?.parent) {
+            case roomA: printLine("Relay V is here in Room A.");
+            case roomB: printLine("Relay V is in Room B.");
+            default: printLine("Relay V is nowhere.");
+        }
+        try {
+            throw bank[5] ?? relayV;
+        } catch (object o) {
+            printLine($"Caught {o}.");
+        }
+    }
+}
+
+bool Initialise() {
+    bank[0] = relayP;
+    bank[1] = relayQ;
+    bank[2] = relayR;
+    bank[3] = relayV;
+    rfalse;
+}

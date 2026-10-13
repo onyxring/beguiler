@@ -1,0 +1,5 @@
+// Negative test: a local's initializer naming the same-named global would read the new local in Inform 6.
+// EXPECT_ERROR: 'heavy' in its own initializer names the global
+#beguilerSettings { target = z5; informName = "none"; }
+const int HEAVY = 6;
+void main() { int heavy = HEAVY + 1; print(heavy); }

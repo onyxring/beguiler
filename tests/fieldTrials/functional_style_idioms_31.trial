@@ -1,0 +1,208 @@
+Room A
+Room A.
+
+> bins
+left (plain): 3 parts, 36 g of 40, fill 36, level 3
+  holds steel bolt, iron nut, tin plate; heaviest tin plate; next to middle
+middle (plain): 2 parts, 11 g of 30, fill 11, level 2
+  holds brass bolt, copper washer; heaviest brass bolt; next to right
+right (spare): 2 parts, 13 g of 25, fill 13, level 2
+  holds oak peg, zinc bolt; heaviest zinc bolt; next to left
+
+> weigh steel bolt
+steel bolt: 12 g, worth 11, in the left bin
+rank 2 of 3 by mass; heaviest there is tin plate
+thread 3, base worth 5, worth 11
+the middle bin next door holds 2, first brass bolt
+
+> weigh oak peg
+oak peg: 6 g, worth 1, in the right bin
+rank 2 of 2 by mass; heaviest there is zinc bolt
+the left bin next door holds 3, first steel bolt
+
+> weigh left bin
+That is not a part.
+
+> audit
+lightest bin: middle with 2 parts
+heaviest part of the heaviest bin: tin plate
+emptiest: middle, its first part brass bolt
+all: 7 parts, 60 g, worth 36, average 8 g
+left and middle: 47 g, average 9 g
+loads 36 11 13, total 60
+thread of the first bolt: 3
+bins holding bolts: 3
+  tin plate 20 g in left
+  steel bolt 12 g in left
+  brass bolt 9 g in middle
+
+> bolts
+steel bolt: thread 3, worth 11 (base 5), in left
+brass bolt: thread 2, worth 11 (base 7), in middle
+zinc bolt: thread 1, worth 4 (base 2), in right
+finest thread: steel bolt, 5 base
+
+> fits tin plate
+left: takes it, room
+middle: takes it, room
+right: refuses it, room
+could go to 1 other bins; first middle
+
+> shift tin plate to right bin
+The right bin does not take the tin plate.
+
+> shift tin plate to middle bin
+The tin plate goes to the middle bin (fill 31, level 3).
+The middle bin is over its limit.
+
+> shift tin plate to middle bin
+The tin plate is already in the middle bin.
+
+> shift iron nut to right bin
+The iron nut goes to the right bin (fill 17, level 3).
+
+> shift oak peg to steel bolt
+That is not a bin.
+
+> bins
+left (plain): 1 parts, 12 g of 40, fill 12, level 1
+  holds steel bolt; heaviest steel bolt; next to middle
+middle (plain): 3 parts, 31 g of 30, fill 31, level 3
+  holds brass bolt, copper washer, tin plate; heaviest tin plate; next to right
+right (spare): 3 parts, 17 g of 25, fill 17, level 3
+  holds oak peg, zinc bolt, iron nut; heaviest zinc bolt; next to left
+
+> log left bin
+left log: 2 entries, sum -24, 2 out, first -20
+ -20 -4
+
+> log middle bin
+middle log: 1 entries, sum 20, 0 out, first 20
+ 20
+
+> tag right bin 4
+right log has 3 entries, last 40
+
+> tag left bin 1
+left log has 4 entries, last 10
+
+> log right bin
+right log: 3 entries, sum 48, 0 out, first 4
+ 4 4 40
+
+> log left bin
+left log: 4 entries, sum -13, 2 out, first -20
+ -20 -4 1 10
+
+> polish 2
+middle worth now 22; first brass bolt costs 9
+
+> homes
+steel bolt: left (12), next middle with 3
+zinc bolt: right (17), next left with 1
+oak peg: right (17), next left with 1
+iron nut: right (17), next left with 1
+tin plate: middle (31), next right with 3
+brass bolt: middle (31), next right with 3
+copper washer: middle (31), next right with 3
+lightest home holds 1; heaviest part's home is middle
+homes of bolts: 2 share a bin
+
+> pick 3
+tin plate in middle, next to right (fill 17)
+its bin's second part: copper washer; neighbour's heaviest: zinc bolt
+
+> pick 9
+No such part.
+
+> weigh brass bolt
+brass bolt: 9 g, worth 13, in the middle bin
+rank 2 of 3 by mass; heaviest there is tin plate
+thread 2, base worth 9, worth 13
+the right bin next door holds 3, first oak peg
+
+> audit
+lightest bin: left with 1 parts
+heaviest part of the heaviest bin: tin plate
+emptiest: left, its first part steel bolt
+all: 7 parts, 60 g, worth 40, average 8 g
+left and middle: 43 g, average 10 g
+loads 12 31 17, total 60
+thread of the first bolt: 3
+bins holding bolts: 3
+  tin plate 20 g in middle
+  steel bolt 12 g in left
+  brass bolt 9 g in middle
+
+> fits zinc bolt
+left: takes it, room
+middle: takes it, room
+right: takes it, room
+could go to 2 other bins; first left
+
+> check
+Gauges agree with the contents.
+over limit: 1; holding a part over 10 g: 2
+left and right fill 29, levels 5
+levels 1 3 3, fullest middle at 31
+left holds less than middle, two along is right; last part steel bolt
+middle holds more than right, two along is left; last part tin plate
+right holds more than left, two along is middle; last part iron nut
+
+> choose 3
+right: level 9, fill 0
+first log entry 4
+after restock: level 3, fill 17
+
+> choose 2
+middle: level 9, fill 0
+first log entry 20
+after restock: level 3, fill 31
+
+> check
+Gauges agree with the contents.
+over limit: 1; holding a part over 10 g: 2
+left and right fill 29, levels 5
+levels 1 3 3, fullest middle at 31
+left holds less than middle, two along is right; last part steel bolt
+middle holds more than right, two along is left; last part copper washer
+right holds more than left, two along is middle; last part zinc bolt
+
+> choose 7
+No such bin.
+
+> widen middle bin
+middle limit 40, level 5, fill 0; right limit 20
+bolts in the emptiest bin: 1; its heaviest is worth 11; first part's bin first part worth 11
+
+> widen steel bolt
+That is not a bin.
+
+> check
+Gauges disagree.
+over limit: 0; holding a part over 10 g: 2
+left and right fill 29, levels 9
+levels 2 5 3, fullest middle at 0
+left holds more than middle, two along is right; last part steel bolt
+middle holds less than right, two along is left; last part copper washer
+right holds more than left, two along is middle; last part zinc bolt
+
+> bins
+left (plain): 1 parts, 12 g of 40, fill 12, level 2
+  holds steel bolt; heaviest steel bolt; next to middle
+middle (plain): 3 parts, 31 g of 40, fill 0, level 5
+  holds tin plate, brass bolt, copper washer; heaviest tin plate; next to right
+right (spare): 3 parts, 17 g of 20, fill 17, level 3
+  holds iron nut, oak peg, zinc bolt; heaviest zinc bolt; next to left
+
+> homes
+tin plate: middle (0), next right with 3
+brass bolt: middle (0), next right with 3
+copper washer: middle (0), next right with 3
+steel bolt: left (12), next middle with 3
+zinc bolt: right (17), next left with 1
+oak peg: right (17), next left with 1
+iron nut: right (17), next left with 1
+lightest home holds 3; heaviest part's home is middle
+homes of bolts: 2 share a bin
+

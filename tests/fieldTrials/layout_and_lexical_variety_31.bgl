@@ -1,0 +1,398 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, three crates, two
+// bins and a scale, written so that its names meet. `#define` values (an int, a string, a bare word,
+// and one changed with `#redef`) share their names, in other letter cases, with class members, object
+// members, parameters, named arguments, a default parameter value, lambda parameters, locals and loop
+// variables, and are reached from inside methods with `::`; a member initializer in an object body
+// reads a `#define` that a member of the same class is named after; consts and globals (`count`,
+// `Total`, `HEAVY`) share names with instance members, a static member and value-class members, read
+// bare, through `self.`, through `Type.` and through `::`; a member named like its own type
+// (`Crate crate` in a bin), parameters and locals named like classes with `::Crate` in `is()`;
+// methods named like global functions (`report`, `heft`) and like a verb (`weigh` beside `verb
+// Weigh`), with `::Weigh` in `action ==` and a `switch (action)` case; a method named like a global
+// variable; a local named like a global routine; members and locals named like library globals
+// (`turns`, `score`) with `::turns`; member access in other letter cases (`CRATEB.WEIGHT`); an enum
+// whose values are also member and local names; interpolation reading every one of these; <linq>
+// `filter`, `count`, `orderBy`, `first` and `any` with lambdas whose parameters reuse the names;
+// `#if` on the redefined symbol; mixed-case keywords and identifiers, Allman, K&R and one-line braces,
+// tab indentation in one routine, comments between tokens and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define LIMIT     12            // the most any bin may be rated for
+#define CAPACITY  12            // named like the library property `capacity`
+#define TARE      1             // the scale pan's own weight
+#define Label     "bin"         // a string symbol, also a member name below
+#define SHELF     corner        // a bare word: the string "corner"
+
+// ---- constants and globals -----------------------------------------------------------------------
+
+const int HEAVY = 6 ;
+CONST INT
+    Light_Load = $02 ;          // anything this or less goes in by hand
+
+int count = 0 ;                 // weighings made
+int Total = 0 ;                 // weight weighed, in all
+int Stowed = 0 ;
+
+enum eGrade { low , mid , high }
+
+// ---- rooms ---------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. Crates wait by the wall. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB { "Room B" ; description = "Room B. A scale stands in the middle. Room A is south." ;
+    object s_to = roomA ; }
+
+// ---- global helpers that methods are named after -------------------------------------------------
+
+/// The weight of c less the pan.
+int heft ( Crate c ) { return c.weight - TARE ; }
+
+/// Prints the running totals.
+void report ()
+{
+    printLine($"Weighings {COUNT}, total {total}, crates weighed {Crate.TOTAL}, stowed {stowed}.") ;
+}
+
+// ---- crates --------------------------------------------------------------------------------------
+
+class Crate : object
+{
+    inline instanceName ;
+    inline int weight ;
+    eGrade grade = eGrade.low ;
+    int    count = 0 ;                  // times this crate was weighed
+    static int total = 0 ;              // weighings of every crate
+    string description = "A wooden crate." ;
+
+    /// The crate's weight less a tare.
+    int heft ( int tare = TARE ) { return weight - tare ; }
+
+    eGrade gradeOf ()
+    {
+        if (weight >= HEAVY)          return eGrade.high ;
+        else if (weight > Light_Load) return eGrade.mid ;
+        return eGrade.low ;
+    }
+
+    void tally ()
+    {
+        count++ ;           // the member
+        ::count++ ;         // the global
+        TOTAL++ ;           // the static
+        ::Total += weight ;
+        grade = gradeOf() ;
+    }
+
+    bool agrees () { return heft() == ::heft(self) ; }
+}
+
+Crate crateA { "red crate"   , 5 ; name = { .red , .crate }   ; parent = roomA ; }
+Crate crateB
+{
+    "blue crate" ,
+    $09 ;                               // nine
+    name   = { .blue , .crate } ;
+    parent = roomA ;
+}
+Crate crateC { "green crate" , $$10 ; name = { .green , .crate } ; parent = roomA ; }
+
+array<Crate> crates = { crateA , crateB , crateC } ;
+
+// ---- bins ----------------------------------------------------------------------------------------
+
+class Bin : object
+{
+    int    limit = 10 ;              // named like the LIMIT symbol
+    int    load     = 0 ;
+    int    count    = 0 ;
+    Crate  crate    = null ;            // the last crate put in
+    string label    = "plain" ;
+    attributeList attributes = { static } ;
+
+    bool fits ( Crate c ) { return load + c.weight <= limit ; }
+
+    bool rated () { return limit <= ::LIMIT ; }
+
+    void report ()
+    {
+        print($"{cThe(self)} ({label}, {LABEL}): {load} of {Limit}, limit {::LIMIT}, {COUNT} in") ;
+        if (crate != null) print($", last {crate}") ;
+        printLine(".") ;
+    }
+
+    void take ( Crate crate )           // the parameter hides the member
+    {
+        load += crate.weight ;
+        count++ ;
+        self.crate = crate ;
+        crate.parent = self ;
+        ::stowed++ ;
+    }
+}
+
+Bin binA
+{
+    "small bin" ;
+    name     = { .small , .bin } ;
+    parent   = roomA ;
+    limit = 10 ;
+    label    = "left" ;
+}
+
+Bin binB
+{
+    "large bin" ;
+    name     = { .large , .bin } ;
+    parent   = roomA ;
+    limit = LIMIT ;
+    label    = ::Label ;
+}
+
+array<Bin> bins = { binA , binB } ;
+
+// ---- the scale -----------------------------------------------------------------------------------
+
+object scale
+{
+    "scale" ;
+    parent     = roomB ;
+    name       = { .scale , .pan } ;
+    attributes = { static } ;
+    string description = "A flat scale with one pan." ;
+
+    int turns = 0 ;                     // weighings the player made; the library's turns is ::turns
+    int last  = 0 ;
+    int firstTurn = -1 ;
+
+    int weigh ( Crate c )               // named like the verb
+    {
+        if (action == ::Weigh) turns++ ;
+        last = c.heft() ;
+        if (firstTurn < 0) firstTurn = ::turns ;
+        c.tally() ;
+        return last ;
+    }
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Take , Push , Pull :
+                printLine("The scale is bolted down.") ;
+                rtrue ;
+            case ::Weigh :
+                if (noun == self) { printLine($"The empty pan reads {TARE}.") ; rtrue ; }
+        }
+        rfalse ;
+    }
+}
+
+// ---- a reading -----------------------------------------------------------------------------------
+
+value class Reading
+{
+    int count ;                         // like the global
+    int total ;                         // like the global Total
+    int heavy ;                         // like the const HEAVY
+    Reading operator = ( Reading o ) { count = o.count ; total = o.total ; heavy = o.heavy ; return self ; }
+
+    void add ( int weight ) { COUNT++ ; Total += weight ; if (weight >= ::HEAVY) heavy++ ; }
+}
+
+Reading latest ;
+
+void readAll ( ref Reading r )
+{
+    for (Crate crate in crates)         // the loop variable is named like the class
+        if (crate.count > 0) r.add(crate.weight) ;
+}
+
+// ---- name meetings in plain routines -------------------------------------------------------------
+
+/// Weight past the tare; the parameter is named like the TARE symbol.
+int net ( int gross , int tare = TARE ) { return gross - tare ; }
+
+bool isCrate ( object crate ) { return crate.is(::Crate) ; }
+
+int roomFor ( Bin bin )
+{
+    int limit = bin.limit ;       // a local named like the symbol
+    return limit - bin.load ;
+}
+
+int scoreLike ()
+{
+    int score = 3 ;                     // a local named like the library's score
+    return score + ::score ;
+}
+
+int heavyCount ( int heavy )            // a parameter named like the const
+{
+    return crates.filter( (Crate c) => c.weight >= heavy ).count() ;
+}
+
+int countOver ( int count )
+{
+	int n = 0 ;
+	for ( int i = 0 ; i < crates.length ; i++ )
+	{
+		if ( crates[i].weight > count ) n++ ;
+	}
+	return n + ::count * 0 ;
+}
+
+stringObj gradeName ( eGrade grade )
+{
+    stringObj s ;
+    switch (grade)
+    {
+        case eGrade.low  : s = "low" ;
+        case eGrade.mid  : s = "mid" ;
+        case eGrade.high : s = "high" ;
+    }
+    return s ;
+}
+
+object accounts
+{
+    "accounts" ;
+    int count () { return ::count + ::stowed ; }     // a method named like the global
+    int sum   () { return count() * 10 + ::Count ; }
+}
+
+// ---- startup -------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands ------------------------------------------------------------------------------------
+
+verb Weigh
+{
+    grammar = { { .weigh , NOUN } , { .weigh , NOUN , .on , .scale } } ;
+    void handler ()
+    {
+        if (!isCrate(noun))    { printLine("Only crates go on the pan.") ; return ; }
+        if (location != roomB) { printLine("The scale is in Room B.") ; return ; }
+        Crate crate = (Crate) noun ;
+        int got = scale.weigh(crate) ;
+        printLine($"{cThe(crate)} weighs {crate.weight}; less the pan, {got}. Graded {gradeName(crate.grade)}.") ;
+        if (!crate.agrees()) printLine("The two hefts disagree.") ;
+    }
+}
+
+verb Stow
+{
+    grammar = { .stow , NOUN , .in , NOUN } ;
+    void handler ()
+    {
+        if (!isCrate(noun))         { printLine("Only crates are stowed.") ; return ; }
+        if (!second.is(Bin))        { printLine("That is not a bin.") ; return ; }
+        Crate crate = (Crate) noun ;
+        Bin   bin   = (Bin) second ;
+        if (crate.count == 0)       { printLine($"{cThe(crate)} has not been weighed.") ; return ; }
+        if (!bin.fits(crate))
+        {
+            printLine($"{cThe(crate)} needs {crate.weight}; {the(bin)} has room for {roomFor(bin)}.") ;
+            return ;
+        }
+        bin.take(crate) ;
+        printLine($"You stow {the(crate)} in {the(bin)}.") ;
+    }
+}
+
+verb Grade {
+    grammar = { .grade , NOUN } ;
+    void handler () {
+        if (!isCrate(noun)) { printLine("That has no grade.") ; return ; }
+        Crate c = (Crate) noun ;
+        eGrade high = c.gradeOf() ;     // a local named like an enum value
+        if (high == eGrade.high) printLine($"{cThe(c)} is heavy ({c.weight} >= {HEAVY}).") ;
+        else                     printLine($"{cThe(c)} is {gradeName(high)}.") ;
+    }
+}
+
+verb Tally
+{
+    meta    = true ;
+    grammar = { { .tally } , { .ledger } } ;
+    void handler ()
+    {
+        report() ;
+        for (Bin bin in bins) bin.report() ;
+        Reading r ;
+        readAll(r) ;
+        latest = r ;
+        printLine($"Reading: {latest.count} weighed, {latest.TOTAL} in all, {latest.Heavy} heavy.") ;
+        printLine($"Scale: {scale.turns} on the pan, last {scale.last}, first on turn {scale.firstTurn}.") ;
+        array<Crate> byWeight = crates.orderBy( (Crate a , Crate b) => a.weight - b.weight ) ;
+        for (Crate crate in byWeight) print($"{crate.weight} ") ;
+        printLine("") ;
+        printLine($"Heavy {heavyCount(HEAVY)}, over {countOver(Light_Load)}, unweighed {crates.filter((Crate count) => count.count == 0).count()}.") ;
+        Crate weighty = crates.filter( (Crate crate) => crate.weight >= HEAVY ).first() ;
+        printLine($"First heavy: {weighty?.description ?? "none"}") ;
+        if (crates.any((Crate total) => total.count > 1)) printLine("Something was weighed twice.") ;
+        printLine($"Accounts {accounts.count()}, {accounts.sum()}.") ;
+    }
+}
+
+verb Checks
+{
+    meta    = TRUE ;
+    grammar = { .checks } ;
+    void handler ()
+    {
+        printLine($"net {net(10)} {net(10 , tare: 4)} {net(gross: 7 , TARE: 2)}") ;
+        printLine($"shelf {SHELF}, label {label}, cap {::CAPACITY}") ;
+        printLine($"room {roomFor(binA)} {roomFor(binB)}, rated {binA.rated()} {binB.rated()}") ;
+        printLine($"score {scoreLike()}, crate {isCrate(crateA)} {isCrate(binA)}") ;
+        printLine($"hefts {crateA.heft()} {crateA.heft(tare: 0)} {heft(crateA)}") ;
+        printLine($"case {CRATEB.WEIGHT} {crateb.Weight} {BinB.LIMIT} {binb.Label} {CrateA.HEFT(TARE: 3)} {BINA.Fits(CRATEc)}") ;
+        Bin Report = binA ;             // a local named like the global routine
+        Report.REPORT() ;
+    }
+}
+
+#redef TARE 2
+
+verb Retare
+{
+    meta = true ;
+    grammar = { .retare } ;
+    void handler ()
+    {
+#if TARE > 1
+        printLine($"Tare is now {TARE}; net(10) still uses {net(10)}.") ;
+#else
+        printLine("Tare unchanged.") ;
+#endif
+    }
+}

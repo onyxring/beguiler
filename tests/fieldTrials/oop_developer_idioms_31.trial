@@ -1,0 +1,66 @@
+Room A
+Room A.
+
+> shapes
+r1@(1,1) rect / a plain shape: area 8, perimeter 12
+s1@(5,0) square / a square-ish rect: area 9, perimeter 12
+c1@(5,4) circle / a plain shape: area 12, perimeter 12
+b1@(2,7) rect / a plain shape: area 6, perimeter 14
+Items 4, solid 1, wide 3, moves 5.
+
+> overloads
+rect r1@(1,1) 4x2
+rect s1@(5,0) 3x3
+shape c1@(5,4) area 12
+point (5,4)
+int 42
+fill solid
+text plain
+something else
+Distance r1-s1 5, c1-origin 9, points 7.
+Scale r1 16, x3 24, 3/2 12, named 6, 60.
+Apply 40 and 20.
+Clamp 0 7 9 3 9.
+Sq 49 15 16.
+Total 35, hollow 14, solid 9.
+
+> points
+a (2,3) b (4,4) c (6,7) d (12,13) e (6,3) dot 20.
+c (9,11); a==b false, a!=b true, a<b true, c>a true, a<=>b -3.
+Nudged a (3,4), r1 r1@(2,2).
+Path: (0,1) (1,1) (5,0) (3,3)
+Index of (5,0): 2; same true; contains false.
+Walked 2 to (2,2), in r1; negated a (-3,-4).
+
+> compare
+r1==s1 false, r1!=c1 true, s1==c1 false, r1<s1 true, c1>b1 true, s1<=>r1 1.
+r1+s1 17, c1+3 15, b1+point 8.
+By area: b1=6 r1=8 s1=9 c1=12
+Smallest b1, largest c1.
+First over 8: s1.
+
+> probe
+(1,1): none
+(2,2): r1
+(5,6): c1
+(7,8): none
+Cells in r1 8; c1 has (5,4) true, (5,6) true.
+Shapes over (5,1): 1.
+
+> draw
+  plot 0,0
+  plot 2,2
+  plot 5,4
+  plot 2,7
+  plot 3,7
+  plot 4,7
+  plot 5,0
+  plot 6,0
+Plotted 8.
+Now 3 items, first b1@(2,7), c1 found c1, b9 found none.
+
+> measure
+Units: 05 12cm 2x2 s1:9 07mm.
+rect r1@(2,2) 2x2
+rect b1@(2,7) 8x2
+r1 a square-ish rect, b1 a plain shape, c1 circle, s1 a square-ish rect.

@@ -1,0 +1,44 @@
+// run_target1_namespaces — an alias as a method's return type in an extend body, a return type and a
+// local written as an alias path, statics reached through alias paths (read and write, from the host's
+// own code too), a value alias added by extend, and bare aliases in the host's methods.
+// EXPECT_OUTPUT: 8 4 2 0 14 1 5 5
+#beguilerSettings { target = z5; informName = "none"; }
+value class Ohms { int r; Ohms operator = (int n) { r = n; return self; } Ohms operator = (Ohms o) { r = o.r; return self; } }
+class Wire : object { static int laid = 0; }
+class Tally { static int n = 0; }
+class Counts { static int n = 0; }
+object helper { int k = 5; int get() { return k; } }
+object _parts { alias ohms for Ohms; alias wire for Wire; }
+object ns {
+    auto parts = _parts;
+    alias tally = Counts;
+    alias help  = helper;
+    void bump()   { parts.wire.laid++; tally.n++; }
+    int viaBare() { return help.get(); }
+}
+extend ns {
+    alias meter for Ohms;
+    alias totals = Tally;
+    meter twice(Ohms p) { Ohms q; q = p.r * 2; return q; }
+    ns.parts.ohms make() {
+        ns.parts.ohms t;
+        t = 4;
+        return t;
+    }
+}
+void main() {
+    bglInit();
+    Ohms o; o = 4;
+    Ohms t = ns.twice(o);
+    print(t.r); print(" ");
+    Ohms m = ns.make();
+    print(m.r); print(" ");
+    ns.parts.wire.laid++;
+    ns.bump();
+    print(ns.parts.wire.laid); print(" ");
+    print(Wire.laid - ns.parts.wire.laid); print(" ");
+    ns.totals.n += 10;
+    ns.totals.n++;
+    ns.totals.n += 3;
+    print($"{ns.totals.n} {ns.tally.n} {ns.help.get()} {ns.viaBare()}");
+}

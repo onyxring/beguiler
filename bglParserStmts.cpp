@@ -399,7 +399,17 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
     forStmt.src = stmtLoc;
     string initText = loopVarName;
     token tt = file.getToken();
-    if(!loopVarName.empty() && tt.is(token::assignment)){
+    // A variable whose class owns its value (stringObj, a value class) is set by its operator =, as a
+    // statement of its own ahead of the loop.
+    classDef* varCls = !loopVarName.empty() && func != nullptr ? getDispatchClass(resolveIdentifierType(loopVarName, func, body)) : nullptr;
+    if(varCls != nullptr && !varCls->isPrimitive && refNotApplicable(varCls, varCls->name).empty()
+       && tt.is(token::assignment) && !file.hasPendingToken){
+        string text = loopVarName + " = " + file.getRawTextToStatementEnd() + ";";
+        file.openText(text, stmtLoc.file, stmtLoc.line);
+        try { processStatementDispatch(file.getToken(), *func); } catch(...) { file.close(); throw; }
+        file.close();
+        initText = "";
+    } else if(!loopVarName.empty() && tt.is(token::assignment)){
         // `name = expr`: parse the value like any other expression, so calls, member access and
         // emitters in it are translated (the raw token text reached I6 as written).
         expression* initExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
@@ -925,6 +935,8 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                         parsingWarning("Loop variable '" + name + "' shadows global of the same name; '::" + name + "' reaches the global.");
                     break;
                 }
+            if(definedSymbols.count(name))
+                parsingWarning("Loop variable '" + name + "' has the name of a #define symbol; in the loop the name means the variable.");
             if(currentClass != nullptr){
                 for(typeMember* m : currentClass->members)
                     if(m->name == name)
@@ -985,7 +997,15 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                             alreadyDeclared = true;
                             break;
                         }
-            if(!alreadyDeclared){
+            classDef* varCls = getDispatchClass(typeTok.value);
+            if(!alreadyDeclared && func != nullptr && varCls != nullptr && !varCls->isPrimitive
+               && refNotApplicable(varCls, typeTok.value).empty()){
+                // Declared as any local is, so it takes its buffer or instance and gives it back.
+                file.openText((typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue) + " "
+                              + (nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue) + ";", stmtLoc.file, stmtLoc.line);
+                try { processStatementDispatch(file.getToken(), *func); } catch(...) { file.close(); throw; }
+                file.close();
+            } else if(!alreadyDeclared){
                 variableDeclaration& loopVar = *(new variableDeclaration());
                 loopVar.name = nameTok.value;
                 loopVar.type = languageService.getType(typeTok.value);
@@ -1487,7 +1507,7 @@ bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
     // statement it starts, which finishes this operation when it reaches the `;`.
     {
         int k = 2;
-        while(file.peekToken(k).is(token::period) && file.peekToken(k + 1).is(eTokenType::identifier)) k += 2;
+        while(file.peekToken(k).is(token::period) && file.peekToken(k + 1).is(eTokenType::name)) k += 2;   // a member may lex as a type
         if(file.peekToken(1).is(eTokenType::identifier)
            && (file.peekToken(k).is(token::parenOpen) || file.peekToken(k).is(token::bracketOpen))){
             pendingPrefixOp = op;
@@ -1501,7 +1521,7 @@ bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
     }
     token varName = file.getToken(eTokenType::identifier);
     // A member path (`++self.count`), as the postfix form takes.
-    while(file.peekToken(1).is(token::period) && file.peekToken(2).is(eTokenType::identifier)){
+    while(file.peekToken(1).is(token::period) && file.peekToken(2).is(eTokenType::name)){
         file.getToken();
         varName.value += "." + file.getToken().value;
     }
@@ -1514,7 +1534,16 @@ string bglParser::staticMemberGlobal(const string& path){
     size_t dot = path.rfind('.');
     if(dot == string::npos) return "";
     string ownerPath = path.substr(0, dot), propName = path.substr(dot + 1);
-    classDef* cls = languageService.findClass(ownerPath);
+    classDef* cls = nullptr;
+    // A path from a member, written in its own object's code: the member is nearer than a global.
+    if(currentObject != nullptr)
+        for(typeMember* m : currentObject->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd != nullptr
+               && vd->name == ownerPath.substr(0, ownerPath.find('.'))){
+                if(string t = resolveNamespacedType(currentObject->name + "." + ownerPath); !t.empty()) cls = languageService.findClass(t);
+                break;
+            }
+    if(cls == nullptr) cls = languageService.findClass(ownerPath);
     if(cls == nullptr && ownerPath.find('.') != string::npos)
         if(string t = resolveNamespacedType(ownerPath); !t.empty()) cls = languageService.findClass(t);
     if(cls == nullptr) return "";
@@ -1786,6 +1815,8 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
             }
         file.getToken(token::endStatement);
         if(body != nullptr) body->statements.push_back(&callStmt);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);   // copied-back `ref` arguments
+        postInjections.clear();
         return false;
     } else if(afterMember.is(token::assignment)){
         // Property assignment: arr[i].prop = value
@@ -2310,6 +2341,13 @@ bool bglParser::rewriteElementCompound(token tok, StatementContext& sc){
         smatch m;
         if(regex_match(tail, m, compound)){ op = m[1]; rhs = m[2]; }
     }
+    // `a[i] = $"…"`: an interpolated string has no value, so it goes to the element's operator through a ref.
+    bool interpolatedAssign = false;
+    if(ok && op.empty() && !pendingPrefixOp && tail.size() > 1 && tail[0] == '=' && tail[1] != '='){
+        string v = tail.substr(1);
+        v.erase(0, v.find_first_not_of(" \t\r\n"));
+        if(v.rfind("$\"", 0) == 0 || v.rfind("$@\"", 0) == 0){ op = "="; rhs = tail.substr(1); interpolatedAssign = true; }
+    }
     if(op.empty()){ file.rewind(at); return false; }
     const bool incDec = pendingPrefixOp.has_value() || tail == "++" || tail == "--";
     pendingPrefixOp.reset();
@@ -2333,18 +2371,27 @@ bool bglParser::rewriteElementCompound(token tok, StatementContext& sc){
     for(size_t d = 1; d < indexes.size() && elemType.rfind("array<", 0) == 0; d++)
         elemType = elemType.substr(6, elemType.size() - 7);
     bool arrayElement = elemType.rfind("array<", 0) == 0 && tail.size() > 1 && tail[1] == '=';
-    // A reference-class element whose class declares the operator as a method: through a local bound
-    // to the element, which dispatches as any named receiver does.
+    // A reference-class element whose class declares the operator as a method, overloads it, or is given
+    // an interpolated string: through a local bound to the element, which dispatches as any named
+    // receiver does.
     if(!arrayElement)
         if(classDef* ec = getDispatchClass(elemType); ec != nullptr && !ec->isPrimitive){
-            const string want = incDec ? op + op : op + "=";
-            if(findMemberInHierarchy(ec, [&](typeMember* m){
-                    auto* fd = dynamic_cast<functionDef*>(m); return fd && !fd->isEmitter && fd->name == want; })){
+            const string want = incDec ? op + op : interpolatedAssign ? op : op + "=";
+            string r = rhs;
+            r.erase(0, r.find_first_not_of(" \t\r\n"));
+            bool interpolated = r.rfind("$\"", 0) == 0 || r.rfind("$@\"", 0) == 0;
+            int overloads = 0, methods = 0;
+            findMemberInHierarchy(ec, [&](typeMember* m){
+                auto* fd = dynamic_cast<functionDef*>(m);
+                if(fd && fd->name == want && fd->params.size() == (incDec ? 0u : 1u)){ overloads++; if(!fd->isEmitter) methods++; }
+                return false; });
+            if(methods > 0 || (overloads > 0 && !incDec && (interpolated || overloads > 1))){
+                if(interpolated) rhs = r;
                 string tmp = format("_bglel{0}", counter++);
                 // A value-class element is reached through a `ref`, so the operator works on the slot's instance.
-                string bind = ec->isValue ? "ref " + elemType + " " + tmp + " := " : elemType + " " + tmp + " = ";
+                string bind = refNotApplicable(ec, elemType).empty() ? "ref " + elemType + " " + tmp + " := " : elemType + " " + tmp + " = ";
                 string text = decls + "{ " + bind + lhs + "; "
-                            + (incDec ? tmp + want : tmp + " " + want + " (" + rhs + ")") + "; }";
+                            + (incDec ? tmp + want : tmp + " " + want + (interpolated ? " " + rhs : " (" + rhs + ")")) + "; }";
                 size_t statements = count(decls.begin(), decls.end(), ';') + 1;
                 file.openText(text, sc.src.file, sc.src.line);
                 try {
@@ -2825,6 +2872,10 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                     string paramName = opFunc->params[0]->name;
                     // An ancestor cast calls THAT class's routine statically (I6 `obj.Base::prop`).
                     string routine = t.ancestorCast != nullptr ? t.ancestorCast->i6Name() + "::" + opFunc->i6name : opFunc->i6name;
+                    // A value variable is its declared type, though a `ref` may be bound to a derived one.
+                    if(t.ancestorCast == nullptr && isValueClass(classType))
+                        if(classDef* owner = classType->declaringClass(opFunc); owner != nullptr && hasDerivedClass(owner))
+                            routine = owner->i6Name() + "::" + opFunc->i6name;
                     convertToParam(a.assignedExpression, valueTypeName, opFunc->params[0]->type.name);
                     a.emitterBody  = format("$target.{0}(${1});", routine, paramName);
                     a.emitterParam = paramName;
@@ -3072,6 +3123,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     bool savedForBind = readingForBind;
     readingForBind = isBindAssign;
     expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
+    absorbPostfixQuery(rhs);   // `s = a.up? ? x : y;`: the first `?` queries `a.up`
     if(rhs != nullptr && rhs->resolvedType == "array<char>") rhs->resolvedType = "bytearray";   // a row of an array<array<char>>
     readingForBind = savedForBind;
     currentExpectedType = savedExpectedAssign;
@@ -3469,16 +3521,25 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     // A regular-method `operator op=`: called on the left-hand value — an object's own first.
     if(!emitterFound && lhsClass != nullptr && rhs != nullptr){
         string rhsType = rhs->resolvedType;
+        // The overload taking the right-hand side's own type (a literal's base type) first, then any it converts to.
+        bool exactOnly = true;
         auto fits = [&](typeMember* m){
             auto* fn = dynamic_cast<functionDef*>(m);
-            return fn != nullptr && fn->name == symbol.value && !fn->isEmitter && fn->params.size() == 1
-                && (fn->params[0]->type.name == rhsType || isTypeCompatible(rhsType, fn->params[0]->type.name));
+            if(fn == nullptr || fn->name != symbol.value || fn->isEmitter || fn->params.size() != 1) return false;
+            const string& pt = fn->params[0]->type.name;
+            if(pt == rhsType || literalBaseType(rhsType) == pt) return true;
+            return !exactOnly && isTypeCompatible(rhsType, pt);
         };
         typeMember* m = nullptr;
-        if(objectDef* od = languageService.findObjectType(lhsTypeName))
-            for(typeMember* om : od->members) if(fits(om)){ m = om; break; }
-        if(m == nullptr) m = findMemberInHierarchy(lhsClass, fits);
+        for(bool exact : {true, false}){
+            exactOnly = exact;
+            if(objectDef* od = languageService.findObjectType(lhsTypeName))
+                for(typeMember* om : od->members) if(fits(om)){ m = om; break; }
+            if(m == nullptr) m = findMemberInHierarchy(lhsClass, fits);
+            if(m != nullptr) break;
+        }
         if(auto* opFunc = dynamic_cast<functionDef*>(m)){
+            mangleOverloadSetForReceiver(lhsTypeName, symbol.value);
             if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
             if(opFunc->params[0]->type.name == "float" && rhs != nullptr && rhs->resolvedType != "float" && rhs->resolvedType != "var"){
                 rhs->tokens = {applyCastConversion(rhs->text(), rhs->resolvedType, "float")}; rhs->resolvedType = "float";
@@ -3646,6 +3707,14 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
                 return rawName;
         }
         string qualified = qualifyIdentifier(rawName, func, body);
+        // A method of this object or class is called by its Beguile name: the arguments choose among its overloads.
+        if(qualified.rfind("self.", 0) == 0 && strcasecmp(qualified.c_str() + 5, rawName.c_str()) != 0){
+            bool isMethod = false;
+            if(currentObject != nullptr)
+                for(typeMember* m : currentObject->members)
+                    if(dynamic_cast<functionDef*>(m) != nullptr && m->name == rawName){ isMethod = true; break; }
+            if(isMethod) qualified = "self." + rawName;
+        }
         // A global function renamed for I6 (`_Swap`) is still called by its Beguile name; binding picks the routine.
         if(auto* gf = languageService.findGlobalAs<functionDef>(rawName); gf != nullptr && !gf->i6name.empty()
            && strcasecmp(qualified.c_str(), gf->i6name.c_str()) == 0)
@@ -4352,11 +4421,14 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 return false;
             }
     }
-    // `((T)obj).member.more…;` — a path through a member of the retyped receiver, read off a local of type T.
+    // `((T)obj).member.more…;` or `((T)obj).member += v;` — through a member of the retyped receiver, off a local of type T.
     if(tok.is(token::parenOpen) && sc.func != nullptr && file.peekToken(1).is(token::parenOpen) && file.peekToken(2).is(eTokenType::dataType)
        && file.peekToken(3).is(token::parenClose) && file.peekToken(4).is(eTokenType::name)
        && file.peekToken(5).is(token::parenClose) && file.peekToken(6).is(token::period)
-       && (file.peekToken(8).is(token::period) || file.peekToken(8).is(token::bracketOpen))){
+       && (file.peekToken(8).is(token::period) || file.peekToken(8).is(token::bracketOpen)
+           || file.peekToken(8).is(token::assignment)
+           || (file.peekToken(8).is(eTokenType::oper) && file.peekToken(8).value != "=" && file.peekToken(8).value.size() >= 2
+               && (file.peekToken(8).value.back() == '=' || file.peekToken(8).value == "++" || file.peekToken(8).value == "--")))){
         file.getToken(token::parenOpen);
         string castType = file.getToken(eTokenType::dataType).value;
         file.getToken(token::parenClose);
@@ -4366,6 +4438,65 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
         string recv = qualifyIdentifier(objTok.value, sc.func, sc.body);
         return dispatchWriteThroughReceiver(recv.empty() ? objTok.value : recv, castType, memberTok, sc);
+    }
+    // `((T)o)?.m += v;`: a parenthesized receiver, then `?.` and a write — the write runs when it isn't null.
+    if(tok.is(token::parenOpen) && sc.func != nullptr){
+        int depth = 1, k = 1;
+        for(; k < 400 && depth > 0; k++){
+            token pk = file.peekToken(k);
+            if(pk.is(token::parenOpen)) depth++;
+            else if(pk.is(token::parenClose)) depth--;
+            else if(pk.is(token::endStatement) || pk.is(eTokenType::eof)) break;
+        }
+        bool writes = false;
+        if(depth == 0 && file.peekToken(k).is("?."))
+            for(int j = k + 1; j < k + 200; j++){
+                token pk = file.peekToken(j);
+                if(pk.is(token::endStatement) || pk.is(eTokenType::eof)) break;
+                if(pk.is(token::assignment) || pk.value == "++" || pk.value == "--"
+                   || (pk.is(eTokenType::oper) && pk.value.size() >= 2 && pk.value.back() == '=' && pk.value != "=="
+                       && pk.value != "!=" && pk.value != "<=" && pk.value != ">=")){ writes = true; break; }
+            }
+        if(writes){
+            expression* recv = parseExpression(file.getToken(), {token::parenClose}, sc.func, sc.body);
+            file.getToken("?.");
+            string local = bindReceiverLocal(recv->text(), recv->resolvedType, sc);
+            string rest = file.getRawTextToStatementEnd();
+            i6RawNode* open = new i6RawNode();
+            open->text = "if (" + local + " ~= 0) {";
+            open->src = sc.src;
+            if(sc.body != nullptr) sc.body->statements.push_back(open);
+            file.openText(local + "." + rest + ";", sc.src.file, sc.src.line);
+            try { processStatementDispatch(file.getToken(), *sc.func); } catch(...) { file.close(); throw; }
+            file.close();
+            i6RawNode* close = new i6RawNode();
+            close->text = "}";
+            close->src = sc.src;
+            if(sc.body != nullptr) sc.body->statements.push_back(close);
+            return false;
+        }
+    }
+    // `((T)f()).m = v;` / `((T)a[i]).m += v;`: a computed receiver under a cast, written through.
+    if(tok.is(token::parenOpen) && sc.func != nullptr && file.peekToken(1).is(token::parenOpen) && file.peekToken(2).is(eTokenType::dataType)
+       && file.peekToken(3).is(token::parenClose) && !(file.peekToken(4).is(eTokenType::name) && file.peekToken(5).is(token::parenClose))){
+        int depth = 1, k = 1;
+        for(; k < 400 && depth > 0; k++){
+            token pk = file.peekToken(k);
+            if(pk.is(token::parenOpen)) depth++;
+            else if(pk.is(token::parenClose)) depth--;
+            else if(pk.is(token::endStatement) || pk.is(eTokenType::eof)) break;
+        }
+        // k is now one past the group's ')': `.` member, then the write.
+        token op = file.peekToken(k + 2);
+        bool writes = depth == 0 && file.peekToken(k).is(token::period)
+            && (op.is(token::assignment) || (op.is(eTokenType::oper) && op.value.size() >= 2 && op.value != "=="
+                && op.value != "!=" && op.value != "<=" && op.value != ">=" && (op.value.back() == '=' || op.value == "++" || op.value == "--")));
+        if(writes){
+            expression* recv = parseExpression(file.getToken(), {token::parenClose}, sc.func, sc.body);
+            file.getToken(token::period);
+            token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            return dispatchWriteThroughReceiver(recv->text(), recv->resolvedType, memberTok, sc);
+        }
     }
     // `((T)obj).member…;` — the cast retypes the receiver (a strict ancestor's method runs its own version).
     if(tok.is(token::parenOpen) && file.peekToken(1).is(token::parenOpen) && file.peekToken(2).is(eTokenType::dataType)
@@ -4497,6 +4628,54 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 // `path <symbol> …` — the statement a name or dotted path starts, by the token after it: a value
 // emitter, subscript, assignment, compound assignment, `++`/`--`, or call.
 bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext& sc){
+    // `bank[0]?.hits++;` / `find()?.hits = 3;`: a computed receiver, then `?.` and a write. The receiver is held in a
+    // local and the write runs when it isn't null.
+    if(tok.is(eTokenType::name) && sc.func != nullptr && !symbol.is(token::endStatement)){
+        int depth = 0, k = 1, at = -1;
+        bool computed = false, writes = false;
+        if(symbol.is(token::parenOpen) || symbol.is(token::bracketOpen)){ computed = true; depth = 1; }
+        else if(symbol.is("?.")) at = 0;
+        for(; k < 400; k++){
+            token pk = file.peekToken(k);
+            if(pk.is(eTokenType::eof) || pk.is(token::endStatement) || pk.is(token::braceOpen)) break;
+            if(pk.is(token::parenOpen) || pk.is(token::bracketOpen)){ if(at < 0) computed = true; depth++; }
+            else if(pk.is(token::parenClose) || pk.is(token::bracketClose)) depth--;
+            else if(depth == 0 && at < 0 && pk.is("?.")) at = k;
+            else if(depth == 0 && at >= 0 && (pk.is(token::assignment) || pk.value == "++" || pk.value == "--"
+                    || (pk.is(eTokenType::oper) && pk.value.size() >= 2 && pk.value.back() == '=' && pk.value != "=="
+                        && pk.value != "!=" && pk.value != "<=" && pk.value != ">="))) writes = true;
+        }
+        if(at > 0 && computed && writes){
+            string whole = (tok.originalValue.empty() ? tok.value : tok.originalValue) + symbol.value + file.getRawTextToStatementEnd(symbol.is(token::parenOpen) || symbol.is(token::bracketOpen) ? 1 : 0);
+            size_t split = string::npos; int d = 0; char q = 0;
+            for(size_t i = 0; i + 1 < whole.size(); i++){
+                char c = whole[i];
+                if(q){ if(c == '\\') i++; else if(c == q) q = 0; continue; }
+                if(c == '"' || c == '\'') q = c;
+                else if(c == '(' || c == '[') d++;
+                else if(c == ')' || c == ']') d--;
+                else if(d == 0 && c == '?' && whole[i + 1] == '.'){ split = i; break; }
+            }
+            string recvSrc = whole.substr(0, split), rest = whole.substr(split + 2);
+            file.openText(recvSrc + ")", sc.src.file, sc.src.line);
+            expression* recv = nullptr;
+            try { recv = parseExpression(file.getToken(), {token::parenClose}, sc.func, sc.body); } catch(...) { file.close(); throw; }
+            file.close();
+            string local = bindReceiverLocal(recv->text(), recv->resolvedType, sc);
+            i6RawNode* open = new i6RawNode();
+            open->text = "if (" + local + " ~= 0) {";
+            open->src = sc.src;
+            if(sc.body != nullptr) sc.body->statements.push_back(open);
+            file.openText(local + "." + rest + ";", sc.src.file, sc.src.line);
+            try { processStatementDispatch(file.getToken(), *sc.func); } catch(...) { file.close(); throw; }
+            file.close();
+            i6RawNode* close = new i6RawNode();
+            close->text = "}";
+            close->src = sc.src;
+            if(sc.body != nullptr) sc.body->statements.push_back(close);
+            return false;
+        }
+    }
     if(pendingPrefixOp && symbol.is(token::endStatement)){   // `++<computed receiver>.member;`
         token op = *pendingPrefixOp;
         pendingPrefixOp.reset();

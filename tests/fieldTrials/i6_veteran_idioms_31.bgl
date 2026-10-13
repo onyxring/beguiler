@@ -1,0 +1,538 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5 written top-down, the way a veteran lays out a file
+// whose routines and verbs come first and whose objects and classes follow, so that most names are
+// used above their declarations. `extend` bodies on three objects declared further down (a method
+// calling a method of the object, a new member used by the object's own methods, an `auto` value
+// alias on a namespace object); globals typed by an alias type path to a class declared below and by
+// one to an enum declared below, initialized with an enum value through the alias path; routines
+// taking alias-typed and class-typed parameters, a `ref` parameter of a value class, overloads
+// chosen between a value class and a class declared below; reads of an inline `auto` accessor (with
+// `outer` reaching members declared after it) and `++` and reads of a named accessor member from
+// routines and verbs above the object; member arrays of an object and of a class written and read
+// from above, through a value alias (`post.desk.slots[b]`) and through casts to the class and to an
+// object (`((scale)post.office.Pan()).uses`); a global array of the value class read and `+=`d by
+// element and compared with derived `>`; a value class's copy, conversion-assignment, `+=`, `==`,
+// `!=` and `<=>` operators; static members and a static method of a class declared below; enum
+// values through an alias path in `case`, a global initializer and casts; `is()` with an alias
+// path; objects declared ahead of their class, whose base is declared after it, with an owned member
+// given by inline objects of the value class and of its alias path; an `extend class` method
+// called from above; `??` on a parent; a children loop over an object declared below; a conveyor
+// daemon feeding parcels from a member array; native Weigh, Stamp, Sort verbs and meta Ledger and
+// Trace verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- additions to objects below
+
+extend scale {
+    void Zero() {
+        reading = 0;
+        print("The scale needle drops back to zero.^");
+    }
+}
+
+extend rack {
+    int logCount = 0;
+}
+
+extend post {
+    auto desk = rack;
+}
+
+// ---------------------------------------------------------------- globals
+
+Grams weighedTotal;
+array<Grams> binLoad[NBINS];
+post.parcel lastWeighed;
+post.zone lastZone = post.zone.inland;
+array<Parcel> booked = {parcelRed, parcelBlue, parcelGreen};
+
+// ---------------------------------------------------------------- routines
+
+bool Initialise() {
+    location = sortingRoom;
+    parcelRed.weight = 1200;
+    scale.SetReading(0);
+    StartDaemon(conveyor);
+    rfalse;
+}
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+Grams WeightOf(post.parcel p) {
+    Grams w = p.weight;
+    return w;
+}
+
+void AddTo(ref Grams total, Grams w) {
+    total += w;
+}
+
+int Rate(eZone z) {
+    switch (z) {
+        case post.zone.inland:   return 2;
+        case coastal:            return 3;
+        default:                 return 4;
+    }
+}
+
+void ZoneName(post.zone z) {
+    switch (z) {
+        case inland:    print("inland");
+        case coastal:   print("coastal");
+        case overseas:  print("overseas");
+    }
+}
+
+int Postage(Parcel p) {
+    int due = Rate(p.zone);
+    if (p.Heavy()) due = due + 2;
+    return due;
+}
+
+int Paid(Parcel p) {
+    int sum = 0;
+    for (int i = 0; i < p.nStamps; i++) sum = sum + p.stamps[i];
+    return sum;
+}
+
+void Report(Grams w) {
+    print($"{w.g}g");
+}
+
+void Report(Parcel p) {
+    print($"{p.code} (");
+    ZoneName(p.zone);
+    print(", ");
+    Report(p.weight);
+    print(")");
+}
+
+void WeighParcel(Parcel p) {
+    scale.reading = p.weight.g;
+    print($"You set {the(p)} on the scale. It reads {scale.reading}g");
+    if (scale.reading >= scale.capacity) print(", hard against the stop");
+    print(".^");
+    p.Handle();
+    if (!p.weighed) {
+        p.weighed = true;
+        AddTo(weighedTotal, p.weight);
+        Parcel.seen++;
+    }
+    if (lastWeighed != null && lastWeighed != p) {
+        Grams before = WeightOf(lastWeighed);
+        if (p.weight > before) print($"Heavier than {the(lastWeighed)}.^");
+        else if (p.weight < before) print($"Lighter than {the(lastWeighed)}.^");
+        else if (p.weight == before) print($"The same as {the(lastWeighed)}.^");
+    }
+    lastWeighed = p;
+    lastZone = p.zone;
+}
+
+void StampParcel(Parcel p) {
+    if (p.nStamps >= MAXSTAMPS) {
+        print($"There is no room left on {the(p)}.^");
+        return;
+    }
+    p.stamps[p.nStamps] = STAMP_VALUE;
+    p.nStamps++;
+    rack.stamped++;
+    p.Handle();
+    print($"You stick a stamp on {the(p)}. Paid {Paid(p)} of {Postage(p)}.^");
+}
+
+bool SortParcel(post.parcel p) {
+    if (!p.weighed) {
+        print($"{cThe(p)} has not been weighed.^");
+        return false;
+    }
+    int due = Postage(p);
+    int got = Paid(p);
+    if (got < due) {
+        print($"{cThe(p)} needs {due - got} more in stamps.^");
+        return false;
+    }
+    int b = post.office.Route(p.zone);
+    if (rack.slots[b] != null) {
+        print("That bin is already full.^");
+        return false;
+    }
+    rack.slots[b] = p;
+    binLoad[b] += p.weight;
+    rack.Log(p.code);
+    p.parent = rack;
+    print($"{cThe(p)} goes into the ");
+    ZoneName(p.zone);
+    print(" bin.^");
+    if (scale.reading > 0 && lastWeighed == p) scale.Zero();
+    Award();
+    return true;
+}
+
+int HeaviestBin() {
+    int best = -1;
+    for (int b = 0; b < NBINS; b++) {
+        if (rack.slots[b] == null) continue;
+        if (best < 0 || binLoad[b] > binLoad[best]) best = b;
+    }
+    return best;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(Parcel)) {
+            print("Only parcels go on the scale.^");
+            return;
+        }
+        if (location != sortingRoom) {
+            print("The scale is in the sorting room.^");
+            return;
+        }
+        WeighParcel((Parcel)noun);
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (!noun.is(post.parcel)) {
+            print("Stamps go on parcels.^");
+            return;
+        }
+        StampParcel((Parcel)noun);
+    }
+}
+
+verb Sort {
+    grammar = {.sort, NOUN};
+    void handler() {
+        if (!noun.is(Parcel)) {
+            print("Only parcels are sorted here.^");
+            return;
+        }
+        if (location != sortingRoom) {
+            print("The rack is in the sorting room.^");
+            return;
+        }
+        SortParcel((Parcel)noun);
+    }
+}
+
+verb Ledger {
+    grammar = {.ledger};
+    meta = true;
+    void handler() {
+        print("Bins:");
+        for (int b = 0; b < NBINS; b++) {
+            print(" [");
+            ZoneName((post.zone)(b + 1));
+            object o = post.desk.slots[b];
+            if (o == null) {
+                print(" empty");
+            } else {
+                print($" {((Parcel)o).code} ");
+                Report(binLoad[b]);
+            }
+            print("]");
+        }
+        print($". Weighed {weighedTotal.g}g ({weighedTotal.kg}kg) in {Parcel.seen} parcels.");
+        print($" Stamps used {rack.stamped}. On the scale {scale.reading}g, used {((scale)post.office.Pan()).uses} times.");
+        print(" Last weighed: ");
+        if (lastWeighed == null) {
+            print("none");
+        } else {
+            Report(lastWeighed);
+            print(", ");
+            ZoneName(lastZone);
+        }
+        int n = 0;
+        for (object o in rack.children) {
+            if (o.is(Parcel)) n++;
+        }
+        print($". {n} in the rack");
+        int h = HeaviestBin();
+        if (h >= 0) {
+            print(". Heaviest bin: ");
+            ZoneName(post.office.ZoneOf(h));
+        }
+        print($". Score {score}.^");
+    }
+}
+
+verb Trace {
+    grammar = {.trace, NUMBER};
+    meta = true;
+    void handler() {
+        post.parcel p = Parcel.Lookup((int)noun);
+        if (p == null) {
+            print($"No parcel {(int)noun} is booked.^");
+            return;
+        }
+        object where = p.parent ?? conveyor;
+        print($"{cThe(p)} is ");
+        if (where == rack) print("in the rack");
+        else if (where == conveyor) print("still on the conveyor");
+        else print($"in {the(where)}");
+        print($"; postage {Paid(p)} of {Postage(p)}");
+        if (p.weighed && p.weight == weighedTotal) print("; all the weight so far");
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+// ---------------------------------------------------------------- rooms
+
+object sortingRoom {
+    short_name = "Sorting Room";
+    description = "Sorting Room. A scale stands beside a rack of three bins. A conveyor comes in through the east wall.";
+    object e_to = loadingBay;
+    attributes = {light};
+}
+
+object loadingBay {
+    short_name = "Loading Bay";
+    description = "Loading Bay. The conveyor runs west through the wall.";
+    object w_to = sortingRoom;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- fittings
+
+object scale {
+    short_name = "scale";
+    name = {.scale, .pan, .needle};
+    parent = sortingRoom;
+    auto reading = {
+        int _raw;
+        int operator () { return _raw - outer.tare; }
+        void operator = (int v) {
+            if (v > outer.capacity) v = outer.capacity;
+            _raw = v + outer.tare;
+            if (v > 0) outer.uses++;
+        }
+    }
+    int tare = TARE;
+    int capacity = SCALE_MAX;
+    int uses;
+    void SetReading(int v) {
+        reading = v;
+    }
+    void description() {
+        print($"A parcel scale with a {capacity}g dial. It reads {reading}g.^");
+    }
+    attributes = {static};
+}
+
+object rack {
+    short_name = "rack";
+    name = {.rack, .bins, .bin};
+    parent = sortingRoom;
+    array<object> slots[NBINS];
+    array<int> sortLog[NLOG];
+    Tally stamped;
+    void Log(int code) {
+        if (logCount == NLOG) {
+            for (int i = 1; i < NLOG; i++) sortLog[i - 1] = sortLog[i];
+            logCount--;
+        }
+        sortLog[logCount] = code;
+        logCount++;
+    }
+    void description() {
+        print("Three bins:");
+        for (int b = 0; b < NBINS; b++) {
+            print(" ");
+            ZoneName(sorter.ZoneOf(b));
+            if (slots[b] == null) print(" empty");
+            else print($" holding {the(slots[b])}");
+            if (b < NBINS - 1) print(",");
+        }
+        print(". Sorted so far:");
+        if (logCount == 0) print(" nothing");
+        for (int i = 0; i < logCount; i++) print($" {sortLog[i]}");
+        print(".^");
+    }
+    attributes = {static, container, open};
+}
+
+object sorter {
+    int Route(post.zone z) {
+        return (int)z - 1;
+    }
+    post.zone ZoneOf(int bin) {
+        return (post.zone)(bin + 1);
+    }
+    object Pan() {
+        return scale;
+    }
+}
+
+object conveyor {
+    short_name = "conveyor";
+    name = {.conveyor, .belt};
+    rawArray<object> found_in = {sortingRoom, loadingBay};
+    array<object> queue = {parcelBlue, parcelGreen};
+    int next;
+    int ticks;
+    void daemon() {
+        ticks++;
+        if (ticks % 2 != 0) return;
+        if (next >= queue.length) {
+            StopDaemon(self);
+            return;
+        }
+        Parcel p = (Parcel)queue[next];
+        next++;
+        p.parent = sortingRoom;
+        if (location == sortingRoom) print($"^{cA(p)} drops off the conveyor.^");
+        else print("^The conveyor rattles.^");
+    }
+    description = "A rubber belt on rollers.";
+    attributes = {static, scenery};
+}
+
+// ---------------------------------------------------------------- parcels, ahead of their class
+
+Parcel parcelRed {
+    short_name = "red parcel";
+    name = {.red, .parcel};
+    parent = sortingRoom;
+    code = 101;
+    zone = inland;
+}
+
+Parcel parcelBlue {
+    short_name = "blue parcel";
+    name = {.blue, .parcel};
+    code = 102;
+    zone = post.zone.coastal;
+    weight = Grams{ g = 450; };
+}
+
+Parcel parcelGreen {
+    short_name = "green parcel";
+    name = {.green, .parcel};
+    code = 103;
+    zone = overseas;
+    weight = post.weight{ g = 2600; };
+}
+
+// ---------------------------------------------------------------- the namespace
+
+object post {
+    alias parcel for Parcel;
+    alias zone   for eZone;
+    alias weight for Grams;
+    alias office = sorter;
+}
+
+// ---------------------------------------------------------------- classes
+
+class Parcel : Item {
+    static int seen;
+    static post.parcel Lookup(int c) {
+        for (Parcel q in booked) {
+            if (q.code == c) return q;
+        }
+        return null;
+    }
+    Grams weight;
+    post.zone zone;
+    int code;
+    array<int> stamps[MAXSTAMPS];
+    int nStamps;
+    bool weighed;
+    void description() {
+        print($"A parcel marked {code} for the ");
+        ZoneName(zone);
+        print(" zone");
+        if (weighed) {
+            print(", weighed at ");
+            Report(weight);
+        }
+        print($", with {nStamps} stamp");
+        if (nStamps != 1) print("s");
+        print($". Handled {handled} times.^");
+    }
+    bool before() {
+        switch (action) {
+            case Open:
+                rtrue("Parcels stay sealed.^");
+        }
+        rfalse;
+    }
+}
+
+class Item : object {
+    int handled;
+    default void Handle() {
+        handled++;
+    }
+}
+
+extend class Parcel {
+    bool Heavy() {
+        return weight > HEAVY;
+    }
+}
+
+// ---------------------------------------------------------------- value classes
+
+value class Grams {
+    int g;
+    Grams operator = (Grams o) { g = o.g; return self; }
+    Grams operator = (int n) { g = n; return self; }
+    Grams operator += (Grams o) { g = g + o.g; return self; }
+    bool operator == (Grams o) { return g == o.g; }
+    bool operator != (Grams o) { return g != o.g; }
+    int operator <=> (Grams o) { return g - o.g; }
+    int operator <=> (int n) { return g - n; }
+}
+
+value class Tally {
+    int _n;
+    int operator () { return _n; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        _n = v;
+    }
+}
+
+extend class Grams {
+    emitter int kg { ($self.g / 1000) }
+}
+
+enum eZone { inland, coastal, overseas }
+
+const int STAMP_VALUE = 2;
+const int SCALE_MAX = 3000;
+const int TARE = 40;
+const int NBINS = 3;
+const int NLOG = 4;
+const int MAXSTAMPS = 4;
+emitter int HEAVY { 2000 }
+

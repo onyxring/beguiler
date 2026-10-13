@@ -1,0 +1,105 @@
+Room A
+Room A.
+
+You can see a panel, a tank A, a tank B and a sealed tank here.
+
+> status
+Bank: tank A=0/12:dry tank B=0/6:dry sealed tank=0/4:dry.
+#0 'unset' #2 #2; adds 1; writes 0/0/0.
+
+> pour 3
+Tank A now 4 (part); room 8; same yes.
+
+> bump tank b
+The tank B: 0 -> 6.
+
+> bump panel
+Only tanks.
+
+> spread
+Spread: tank A=5/12:part tank B=5/6:part sealed tank=3/4:part.
+A==B yes; A!=C yes; A<=C no.
+
+> steps
+B 11; cast 22; writes 12.
+
+> status
+Bank: tank A=5/12:part tank B=11/6:full sealed tank=3/4:part.
+#5 'unset' #5 #5; adds 14; writes 4/12/1.
+
+> gauge 1
+high; shown 11, ticks 11, over 3, set, writes 12.
+
+> gauge 2
+low; shown 4, ticks 3, over 3, set, writes 1.
+
+> check tank b
+11/6 unset over; room -5, gauge full.
+
+> check sealed tank
+3/4 unset; room 1, gauge part.
+
+> check panel
+Only tanks.
+
+> dial 5
+Dial 5 (last 5, turns 1): mid.
+
+> dial 19
+Dial 3 (last 19, turns 2): low.
+
+> mode 2
+Mode 2; dial 5; zero no.
+
+> spin
+Spun 7; dial 2; turns 11.
+
+> trim 4
+Trim 4 then 14 then 15.
+
+> seal 2
+Sealed reads 30; via cast 3; gauge part.
+
+> find 3
+Above 3: 5 unset; then 6.
+
+> find 50
+Above 50: 0 none; then 0.
+
+> name 0
+Labels first/unset/unset; sets 1, all 1.
+
+> name 1
+Labels first/second/unset; sets 1, all 2.
+
+> name 2
+Labels first/second/third; sets 1, all 3.
+
+> name 7
+No such tank.
+
+> report
+Wet 3; full yes; named yes; low sealed tank 3; high tank B 11.
+
+> peak
+Peak was 11, now 13; bank tank A=6/12:part tank B=13/6:full sealed tank=3/4:part.
+
+> probe 4
+Probe from 0 to 9 (-9), writes 2.
+
+> probe 20
+Probe from 0 to 25 (25), writes 2.
+
+> drain
+Drained 22; A 0; writes 6.
+
+> gauge 9
+empty; shown 4, ticks 0, over 0, unset, writes 4.
+
+> check tank a
+0/12 first; room 12, gauge dry.
+
+> status
+Bank: tank A=0/12:dry tank B=0/6:dry sealed tank=0/4:dry.
+#0 'second' #2 #2; adds 30; writes 6/15/4.
+

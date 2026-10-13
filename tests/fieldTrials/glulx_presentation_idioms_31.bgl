@@ -1,0 +1,755 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a sign whose text is built from word tiles and shown in a text grid split above the
+// main window, with a text-buffer log split below. Text is held as a global stringObj, a stringObj
+// member of an object, a stringObj member of each Tile instance and an array<stringObj> history;
+// it is passed as string, stringObj, ref stringObj and string | stringObj (narrowed with typeof),
+// returned as string and stringObj (from ?:, ??, method chains and recursion), appended and
+// prepended with chars and strings (+, +=, append, prepend, chained), compared (==, <, =~, <=>,
+// compareTo), switched on (a call result), indexed and written by character, trimmed, reversed,
+// cut (left, right, mid), replaced (replace, replaceAll), inserted into and deleted from, formatted,
+// captured (capture/release, captureOutput). Interpolated strings go to print, printLine, window
+// print/printLine, the status bar, a stringObj declaration, assignment and +=, a program emitter
+// taking interpolatedStringLiteral and expression-bodied lambdas; their spans hold method chains,
+// ternaries, ??, chars, elements, element methods, calls taking and returning stringObj, article
+// and style print rules and links. The pool is pressed by loops that build and drop text each pass
+// and by recursion holding a stringObj per frame. A value class Note with a stringObj field, copied
+// and kept in an array<Note>; ref stringObj bound to a member and passed an element's field; ?. on
+// a string feeding ??; postfix ? on a string. <linq> orderBy (compareTo, case-insensitive), filter,
+// count, first and any over an array<Tile> and an array<stringObj>; a fixed-pitch table built from
+// an array<stringObj> of cells.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define SIGN_ROWS 4
+#define LOG_ROWS 5
+#define HISTORY_MAX 5
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 64; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+emitter void boxed(interpolatedStringLiteral v) { print "[ "; $v; print " ]^"; }
+
+const int maxWidth = 40;
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet signLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 2; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz signGrid = null;
+textBufferWindowHorz logPane = null;
+stringObj signText;
+array<stringObj> history[HISTORY_MAX];
+string lastVerb = null;
+string lastTile = null;
+int edits = 0;
+
+// ---- text helpers --------------------------------------------------------------------------------
+
+string suffixS(int n) {
+    return n == 1 ? "" : "s";
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(string | stringObj v, int width) {
+    stringObj s;
+    if (typeof(v) == eType.string) s = (string)v;
+    else s = (stringObj)v;
+    while (s.length < width) s = s.prepend(' ');
+    return s;
+}
+
+stringObj joinWords(string | stringObj a, string | stringObj b, char sep) {
+    stringObj out = "";
+    if (typeof(a) == eType.string) out += (string)a;
+    else out += (stringObj)a;
+    if (out.length > 0) out += sep;
+    if (typeof(b) == eType.string) out += (string)b;
+    else out += (stringObj)b;
+    return out;
+}
+
+stringObj orBlank(stringObj s) {
+    if (s.isEmpty()) return "(blank)";
+    return s;
+}
+
+string stateWord(stringObj s) {
+    return s.isEmpty() ? "blank" : (s.length > 20 ? "long" : "short");
+}
+
+void shoutInto(ref stringObj s) {
+    s = s.toUpper();
+}
+
+stringObj withBang(stringObj s) {
+    s += '!';
+    return s;
+}
+
+stringObj capitals(stringObj s) {
+    stringObj out = s;
+    for (int i = 0; i < out.length; i++) {
+        if (i == 0 || out[i - 1] == ' ') {
+            char c = out[i];
+            if (c >= 'a' && c <= 'z') out[i] = (char)((int)c - 32);
+        }
+    }
+    return out;
+}
+
+stringObj spelled(ref stringObj s, int at) {
+    if (at >= s.length) return "";
+    stringObj rest = spelled(s, at + 1);
+    stringObj here = "";
+    here += s[at];
+    if (s[at] == ' ') here = "/";
+    if (rest.isEmpty()) return here;
+    return here + "-" + rest;
+}
+
+stringObj nested(int depth, char open, char close) {
+    if (depth <= 0) return "";
+    stringObj inner = nested(depth - 1, open, close);
+    return inner.prepend(open).append(close);
+}
+
+stringObj stutter(stringObj s, int n) {
+    if (n <= 1) return s;
+    s = s.left(1) + "-" + s;
+    return stutter(s, n - 1);
+}
+
+int vowelsIn(stringObj s) {
+    int n = 0;
+    for (int i = 0; i < s.length; i++) {
+        switch (s[i]) {
+            case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U': n++;
+        }
+    }
+    return n;
+}
+
+int tagCount = 0;
+
+stringObj taggedWord(Tile t) {
+    tagCount++;
+    stringObj out = $"{t.mark}{t.spelling()}:{tagCount}";
+    return out;
+}
+
+value class Note {
+    stringObj text;
+    int turn;
+
+    Note operator = (Note o) {
+        text = o.text;
+        turn = o.turn;
+        return self;
+    }
+
+    stringObj line() {
+        stringObj out = $"{turn}: {text}";
+        return out;
+    }
+}
+
+array<Note> notes[4];
+
+void logLine(stringObj text) {
+    logPane?.printLine($"[{turns}] {text}");
+    Note n;
+    n.text = text;
+    n.turn = turns;
+    if (notes.length >= 4) notes.remove(0);
+    notes += n;
+}
+
+// ---- tiles ---------------------------------------------------------------------------------------
+
+class Tile : object {
+    attributeList attributes = {static};
+    string word = "word";
+    string alt = null;
+    char mark = '*';
+    stringObj stamp;
+    int uses = 0;
+
+    string spelling() { return alt ?? word; }
+
+    stringObj framed() { return word.prepend(mark).append(mark); }
+
+    stringObj padded(int width) {
+        stringObj s = word;
+        while (s.length < width) s += '.';
+        return s;
+    }
+
+    void used(string how) {
+        uses++;
+        stamp = $"{how} on turn {turns}";
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"The {word} tile, marked '{mark}', spelled {spelling()}; used {uses} time{suffixS(uses)}.");
+                if (!stamp.isEmpty()) printLine($"Last: {stamp}.");
+                stringObj loudAlt = alt?.toUpper() ?? "none";
+                printLine($"Alternate: {loudAlt}{alt? ? "" : " (uses the word)"}.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A sign hangs over a tray of word tiles.";
+    attributes = {light};
+}
+
+Tile redTile   { "red tile";   parent = roomA; name = {.red, .tile};   word = "red";   mark = '*'; }
+Tile blueTile  { "blue tile";  parent = roomA; name = {.blue, .tile};  word = "blue";  mark = '#'; alt = "BLU"; }
+Tile greenTile { "green tile"; parent = roomA; name = {.green, .tile}; word = "green"; mark = '~'; }
+Tile goldTile  { "gold tile";  parent = roomA; name = {.gold, .tile};  word = "gold";  mark = '+'; alt = "GLD"; }
+
+array<Tile> tiles = { redTile, blueTile, greenTile, goldTile };
+
+object sign {
+    "sign";
+    parent = roomA;
+    name = {.sign};
+    description = "A sign of loose letters.";
+    attributes = {static};
+    stringObj caption;
+
+    void recaption() {
+        caption = $"{signText.length} char{suffixS(signText.length)}, {edits} edit{suffixS(edits)}";
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"The sign reads \"{orBlank(signText)}\" ({caption}).");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ---- the sign grid -------------------------------------------------------------------------------
+
+void drawSign() {
+    if (signGrid == null) return;
+    signGrid.clear();
+    signGrid.moveCursor(0, 0);
+    signGrid.print($"Sign: {orBlank(signText)}");
+    signGrid.moveCursor(0, 1);
+    stringObj rule = "+";
+    for (int i = 0; i < signText.length; i++) rule += '-';
+    rule += '+';
+    signGrid.print(rule);
+    signGrid.moveCursor(0, 2);
+    signGrid.print($"{sign.caption} | {stateWord(signText)}");
+    signGrid.moveCursor(0, 3);
+    signGrid.print($"last {(lastVerb ?? "none").toUpper()} {lastTile ?? "-"}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | {history.length} saved");
+    drawSign();
+}
+
+// ---- editing -------------------------------------------------------------------------------------
+
+void remember(string why) {
+    if (history.length >= HISTORY_MAX) history.remove(0);
+    history += signText;
+    lastVerb = why;
+    edits++;
+}
+
+void changed(string why, Tile t) {
+    lastTile = t == null ? null : t.word;
+    sign.recaption();
+    stringObj entry = why;
+    entry += ": ";
+    entry += orBlank(signText);
+    logLine(entry);
+    printLine($"The sign now reads \"{orBlank(signText)}\".");
+}
+
+Tile asTile(object o) {
+    if (o == null || !o.is(Tile)) {
+        printLine("That is not a tile.");
+        return null;
+    }
+    return (Tile)o;
+}
+
+bool fits(string | stringObj extra) {
+    int more = 0;
+    if (typeof(extra) == eType.string) {
+        stringObj s = (string)extra;
+        more = s.length;
+    } else {
+        more = ((stringObj)extra).length;
+    }
+    if (signText.length + more + 1 > maxWidth) {
+        printLine($"The sign has no room for {more} more.");
+        return false;
+    }
+    return true;
+}
+
+// ---- reports -------------------------------------------------------------------------------------
+
+void showTable() {
+    printLine($"{fixed}{bold}{padRight("Tile", 7)}{padRight("Mark", 5)}{padRight("Spell", 6)}{padLeft("Uses", 5)}  On sign{roman}");
+    for (Tile t in tiles) {
+        array<stringObj> cells[5];
+        cells += padRight(t.padded(5), 7);
+        cells += "";
+        cells[1] += t.mark;
+        cells[1] = padRight(cells[1], 5);
+        cells += padRight(t.spelling(), 6);
+        cells += "";
+        cells[3] = $"{t.uses}";
+        cells[3] = padLeft(cells[3], 5);
+        cells += signText.contains(t.word) ? "  yes" : "  no";
+        if (signText.contains(t.word)) cells[4] += $" at {signText.indexOf(t.word)}";
+        stringObj row = "";
+        for (stringObj c in cells) row += c;
+        printLine($"{fixed}{row}{roman}");
+    }
+    array<Tile> order[4];
+    order = tiles.orderBy((Tile a, Tile b) => a.word.compareTo(b.word));
+    stringObj sorted = "";
+    for (Tile t in order) sorted = joinWords(sorted, t.word, ',');
+    printLine($"In order: {sorted}.");
+    int shown = tiles.filter((Tile t) => signText.contains(t.word)).count();
+    printLine($"{shown} tile{suffixS(shown)} on the sign; {vowelsIn(signText)} vowel{suffixS(vowelsIn(signText))}.");
+    Tile first = order.first();
+    Tile last = order.last();
+    if (first.word < last.word) printLine($"{first.word} sorts before {last.word}.");
+}
+
+void showHistory() {
+    if (history.length == 0) {
+        printLine("Nothing saved yet.");
+        return;
+    }
+    for (int i = 0; i < history.length; i++) {
+        printLine($"{i + 1}. \"{orBlank(history[i])}\" ({history[i].length})");
+    }
+    stringObj newest = history[history.length - 1];
+    int cmp = signText <=> newest;
+    printLine($"Now {cmp < 0 ? "sorts before" : (cmp > 0 ? "sorts after" : "matches")} the newest.");
+    if (signText =~ newest) printLine("Same text, ignoring case.");
+    int withE = history.filter((stringObj h) => h.contains("e")).count();
+    stringObj firstLong = history.any((stringObj h) => h.length > 10) ? history.filter((stringObj h) => h.length > 10).first() : "none";
+    printLine($"{withE} with an e; first over ten: {orBlank(firstLong)}; current saved: {history.contains(signText) ? "yes" : "no"} at {history.indexOf(signText)}.");
+    printLine($"Sorted: {sortedHistory()}");
+}
+
+stringObj sortedHistory() {
+    array<stringObj> order[HISTORY_MAX];
+    order = history.orderBy((stringObj x, stringObj y) => x.compareTo(y, true));
+    stringObj out = "";
+    for (stringObj h in order) {
+        out = joinWords(out, orBlank(h), '|');
+    }
+    return out;
+}
+
+void showChecks() {
+    stringObj copy = signText;
+    stringObj loud = withBang(copy);
+    printLine($"Copy {orBlank(copy)}; with bang {loud}; copy unchanged: {copy == signText ? "yes" : "no"}.");
+    stringObj acc = "";
+    for (int i = 0; i < 30; i++) {
+        stringObj digit = $"{i}";
+        acc += digit.right(1);
+    }
+    printLine($"Digits {acc.mid(8, 6)}, {acc.length} long, ends {acc.right(3).reverse()}.");
+    stringObj word = "";
+    switch (signText.toLower()) {
+        case "": word = "empty";
+        case "red": word = "just red";
+        case "red blue": word = "red then blue";
+        default: word = "something else";
+    }
+    printLine($"The sign is {word}.");
+    stringObj f = signText.format("<$0> by $1 and $2", lastVerb ?? "nobody", stateWord(signText));
+    printLine(f);
+}
+
+void snapshot() {
+    stringObj shot = "";
+    shot.capture();
+    print("Room A holds ");
+    print(tiles.length);
+    print(" tiles and ");
+    the(sign);
+    shot.release();
+    stringObj desc = "";
+    desc.captureOutput(sign, description);
+    printLine($"Captured {shot.length}: {shot}");
+    printLine($"Description {desc.length}: {desc.trimRight()}");
+    boxed($"{shot.left(10)}|{desc.right(8)}");
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Add {
+    grammar = {.add, NOUN};
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null || !fits(t.word)) return;
+        remember("add");
+        if (!signText.isEmpty()) signText += ' ';
+        signText += t.word;
+        t.used("added");
+        changed("add", t);
+    }
+}
+
+verb Front {
+    grammar = {.front, NOUN};
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null || !fits(t.word)) return;
+        remember("front");
+        if (signText.isEmpty()) signText = t.word;
+        else signText = signText.prepend(' ').prepend(t.word);
+        t.used("fronted");
+        changed("front", t);
+    }
+}
+
+verb Wrap {
+    grammar = {.wrap, NOUN};
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null || !fits("xx")) return;
+        remember("wrap");
+        signText = signText.prepend(t.mark).append(t.mark);
+        t.used("wrapped");
+        changed("wrap", t);
+    }
+}
+
+verb Strike {
+    grammar = {.strike, NOUN};
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null) return;
+        if (!signText.contains(t.word)) {
+            printLine($"There is no {t.word} on the sign.");
+            return;
+        }
+        remember("strike");
+        stringObj dashes = "";
+        for (int i = 0; i < t.word.length; i++) dashes += '-';
+        signText = signText.replaceAll(t.word, dashes);
+        t.used("struck");
+        changed("strike", t);
+    }
+}
+
+verb Swap {
+    grammar = {.swap, NOUN};
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null) return;
+        int at = signText.indexOf(t.word);
+        if (at < 0) {
+            printLine($"There is no {t.word} on the sign.");
+            return;
+        }
+        remember("swap");
+        signText = signText.delete(at, t.word.length).insert(at, t.spelling());
+        t.used("swapped");
+        changed("swap", t);
+    }
+}
+
+verb Flip {
+    grammar = {.flip};
+    void handler() {
+        remember("flip");
+        signText = signText.reverse();
+        changed("flip", null);
+    }
+}
+
+verb Loud {
+    grammar = {.loud};
+    void handler() {
+        remember("shout");
+        shoutInto(signText);
+        changed("shout", null);
+    }
+}
+
+verb Hush {
+    grammar = {.hush};
+    void handler() {
+        remember("hush");
+        signText = capitals(signText.toLower());
+        changed("hush", null);
+    }
+}
+
+verb Tidy {
+    grammar = {.tidy};
+    void handler() {
+        stringObj trimmed = signText.trim().replace("  ", " ");
+        if (trimmed == signText) {
+            printLine("The sign is already tidy.");
+            return;
+        }
+        remember("tidy");
+        signText = trimmed;
+        changed("tidy", null);
+    }
+}
+
+verb Pad {
+    grammar = {.pad};
+    void handler() {
+        if (!fits("    ")) return;
+        remember("pad");
+        signText = "  " + signText + "  ";
+        changed("pad", null);
+    }
+}
+
+verb Shorten {
+    grammar = {.shorten, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n >= signText.length) {
+            printLine($"The sign is only {signText.length} long.");
+            return;
+        }
+        remember("cut");
+        signText = signText.left(n);
+        changed("shorten", null);
+    }
+}
+
+verb Back {
+    grammar = {.back};
+    void handler() {
+        if (history.length == 0) {
+            printLine("Nothing to go back to.");
+            return;
+        }
+        signText = history[history.length - 1];
+        history.remove(history.length - 1);
+        lastVerb = "back";
+        edits++;
+        changed("back", null);
+    }
+}
+
+verb Spell {
+    grammar = {.spell};
+    meta = true;
+    void handler() {
+        if (signText.isEmpty()) {
+            printLine("Nothing to spell.");
+            return;
+        }
+        printLine($"Spelled: {spelled(signText, 0)}");
+        logLine(spelled(signText, signText.length - 3));
+    }
+}
+
+verb Nest {
+    grammar = {.nest, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        if (n > 12) n = 12;
+        stringObj inside = nested(n, '(', ')');
+        stringObj both = inside.insert(n, orBlank(signText));
+        printLine($"Nested {n}: {both}");
+    }
+}
+
+verb Compare {
+    grammar = {.compare, NOUN};
+    meta = true;
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null) return;
+        string w = t.word;
+        stringObj bare = signText.trim();
+        if (bare == w) printLine($"The sign is exactly {w}.");
+        else if (bare < w) printLine($"The sign sorts before {w}.");
+        else printLine($"The sign sorts after {w}.");
+        if (w < bare) printLine($"{w} comes first.");
+        if (w =~ bare) printLine($"{w} matches, ignoring case.");
+        printLine($"Order {w <=> bare}, compareTo {bare.compareTo(w)}, ignoring case {bare.compareTo(w, true)}.");
+        printLine($"Starts {bare.startsWith(w) ? "yes" : "no"}, ends {bare.endsWith(t.spelling()) ? "yes" : "no"}, at {bare.toLower().indexOf(w)}.");
+    }
+}
+
+verb Stamps {
+    grammar = {.stamps};
+    meta = true;
+    void handler() {
+        for (Tile t in tiles) {
+            ref stringObj st := t.stamp;
+            if (st.isEmpty()) {
+                printLine($"{t.word}: never");
+                continue;
+            }
+            st = st.prepend('>');
+            printLine($"{padRight(t.word, 6)}{st} ({st.length}, {t.stamp.toUpper().left(4)})");
+        }
+        int used = tiles.filter((Tile t) => !t.stamp.isEmpty()).count();
+        stringObj gauge;
+        for (gauge = "["; gauge.length <= used; gauge += '=') {}
+        gauge += ']';
+        printLine($"Gauge {gauge}");
+        Tile last = tiles.filter((Tile t) => t.stamp.contains("added")).first();
+        printLine($"{used} stamped; first added: {last == null ? "none" : last.word}.");
+    }
+}
+
+verb Repeat {
+    grammar = {.stutter, NOUN};
+    meta = true;
+    void handler() {
+        Tile t = asTile(noun);
+        if (t == null) return;
+        stringObj w = t.word;
+        stringObj s = stutter(w, t.uses + 2);
+        printLine($"{s} (from {w}, {s.length - w.length} added)");
+    }
+}
+
+verb ShowNotes {
+    grammar = {.notes};
+    meta = true;
+    void handler() {
+        for (Note n in notes) printLine(n.line());
+        shoutInto(notes[notes.length - 1].text);
+        shoutInto(sign.caption);
+        Note oldest = notes[0];
+        oldest.text += $" (copy of {oldest.turn})";
+        printLine($"Newest now {notes[notes.length - 1].text}; caption {sign.caption}; oldest {notes[0].text.length} vs copy {oldest.text.length}.");
+        sign.recaption();
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    meta = true;
+    void handler() { showTable(); }
+}
+
+verb Saved {
+    grammar = {.saved};
+    meta = true;
+    void handler() { showHistory(); }
+}
+
+verb Checks {
+    grammar = {.checks};
+    meta = true;
+    void handler() { showChecks(); }
+}
+
+verb Snap {
+    grammar = {.snap};
+    meta = true;
+    void handler() { snapshot(); }
+}
+
+verb Echo {
+    grammar = {.echo};
+    meta = true;
+    void handler() {
+        func<void> say = () => printLine($"Echo: {signText.trim().toUpper()} / {lastTile ?? "no tile"} / {signText.isEmpty() ? '-' : signText[0]}");
+        say();
+        boxed($"{a(redTile)}, {cThe(blueTile)}, {joinWords(redTile.framed(), blueTile.framed(), ' ')}");
+        stringObj line = $"{greenTile.spelling()}/{goldTile.spelling()}";
+        line += $" and {redTile.spelling().toUpper()}";
+        printLine(line);
+        stringObj nestedCapture = $"<{taggedWord(redTile)} {taggedWord(blueTile)}>";
+        printLine($"{nestedCapture} after {tagCount} tags");
+        if (!signText.isEmpty()) {
+            char first = signText.trim()[0];
+            char last = signText.trim()[signText.trim().length - 1];
+            printLine($"Ends: {first}...{last}{first == last ? " (same)" : ""}");
+        }
+    }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Add: {link("red", => { addFromLink(redTile); })} {link("blue", => { addFromLink(blueTile); })} {link("gold", => { addFromLink(goldTile); })}");
+    }
+}
+
+void addFromLink(Tile t) {
+    if (!fits(t.word)) return;
+    remember("link");
+    signText = joinWords(signText, t.word, ' ');
+    t.used("linked");
+    sign.recaption();
+    stringObj note = $"linked {t.word}";
+    logLine(note);
+    drawSign();
+}
+
+bool Initialise() {
+    location = roomA;
+    signText = "";
+    sign.recaption();
+    signGrid = bgl.ui.mainWin.splitUpGrid(SIGN_ROWS, fixed, border, styles: signLook);
+    logPane = bgl.ui.mainWin.splitDownBuffer(LOG_ROWS, fixed, border, styles: logLook);
+    logLine("sign ready");
+    rfalse;
+}
+
+#includeI6 "grammar"

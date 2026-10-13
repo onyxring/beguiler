@@ -1,0 +1,465 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small tank-and-dial program, on the Z-machine, leaning on
+// property accessors reached from above their declarations and through computed receivers.
+// Routines above the array and objects they walk that read, write, compare and return a named accessor
+// member, and take a `ref` parameter of the accessor class (with a defaulted second parameter given by
+// name, and both arguments by name), so compound assignment runs through a reference; the accessor class
+// declares `==`/`!=` taking int, an instance `<=>` (used directly and by derived `<`, `>`, `<=`, `>=`)
+// and its own `operator + (int)`, so `t.level + 2`, `2 + t.level`, `a.level == b.level` and
+// `a.level >= a.cap` each take a different path, and `++`, `--`, `+=`, `-=`, `*=` fall back through
+// its `+`/`-` and setter; an inline `auto` accessor in a class body with a string getter and a static
+// counter, read through `?.` and `??`, passed to an overloaded routine that picks the string overload
+// by the getter's type; an inline accessor in an object body whose setter uses `outer` members declared
+// after it, and a second one whose setter writes the first through `outer` (`outer.dial = outer.dial +
+// v`); an `extend` written above its object adding a third inline accessor with `outer`; a subclass
+// that hides the setter, written through an upcast receiver `((Tank)x).level = n`; accessors reached
+// through casts, call results, array elements, `selfType` chain results and `?.`, and chained into the
+// accessor's own methods; accessors in `if`, `while`, `do/until`, `for` bounds, `switch` (on a call
+// result), ternaries, interpolation, returns, arguments, and lambdas (one capturing a local) in <linq>
+// filter/count/any/all/orderBy/first/last; a `ref` local bound to an accessor member, rebound with `:=`
+// in a loop and assigned through; a pooled class with an owned accessor member reset on `new`; and
+// `(int)` casts of accessor reads.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+// ---- forward users: everything they name is declared further down ------------------------------------
+
+int levelOf(Tank t) { return t.level; }
+
+void bump(ref Level l, int by = 1) { l += by; }
+
+void setTo(ref Level l, int v) {
+    if (l == v) return;
+    l = v;
+}
+
+Tank pick(int i) { return bank[i]; }
+
+Tank firstAbove(int lo) {
+    for (Tank t in bank) {
+        if (t.level > lo) return t;
+    }
+    return null;
+}
+
+string gaugeText(Tank t) {
+    return t.level == 0 ? "dry" : (t.level >= t.cap ? "full" : "part");
+}
+
+void show(int n)    { print($"#{n}"); }
+void show(string s) { print($"'{s}'"); }
+
+int drainAll() {
+    int total = 0;
+    for (Tank t in bank) {
+        total += t.level;
+        t.level = 0;
+    }
+    return total;
+}
+
+void listBank() {
+    for (Tank t in bank) print($" {t}={t.level}/{t.cap}:{gaugeText(t)}");
+    printLine(".");
+}
+
+// Added to an object declared further down.
+extend panel {
+    auto trim = {
+        int _t = 0;
+        int operator () { return _t + outer.bias; }
+        void operator = (int v) { _t = v - outer.bias; }
+    };
+}
+
+// ---- verbs --------------------------------------------------------------------------------------------
+
+#includeI6 "grammar"
+
+verb Status {
+    grammar = {.status};
+    void handler() {
+        print("Bank:");
+        listBank();
+        show(tankA.level);
+        print(" ");
+        show(tankB.label);
+        print(" ");
+        show(pick(2).level + 2);
+        print(" ");
+        show(2 + pick(2).level);
+        printLine($"; adds {Level.adds}; writes {tankA.level.writes()}/{bank[1].level.writes()}/{((Tank)sealedC).level.writes()}.");
+    }
+}
+
+verb Pour {
+    grammar = {.pour, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        int after = pick(0).fill(n).fill(1).level;
+        printLine($"Tank A now {after} ({gaugeText(pick(0))}); room {pick(0).room()}; same {pick(0).fill(0).level == tankA.level ? "yes" : "no"}.");
+    }
+}
+
+verb Raise {
+    grammar = {.bump, NOUN};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks.");
+            return;
+        }
+        int before = ((Tank)noun).level;
+        bump(((Tank)noun).level);
+        bump(((Tank)noun).level, by: 3);
+        bump(by: 2, l: ((Tank)noun).level);
+        printLine($"{cThe(noun)}: {before} -> {levelOf((Tank)noun)}.");
+    }
+}
+
+verb Spread {
+    grammar = {.spread};
+    void handler() {
+        for (int i = 0; i < bank.length; i++) bump(bank[i].level, i + 1);
+        setTo(pick(1).level, pick(0).level);
+        setTo(firstAbove(0).level, firstAbove(0).level);
+        print("Spread:");
+        listBank();
+        printLine($"A==B {tankA.level == tankB.level ? "yes" : "no"}; A!=C {tankA.level != pick(2).level ? "yes" : "no"}; A<=C {tankA.level <= sealedC.level ? "yes" : "no"}.");
+    }
+}
+
+verb Steps {
+    grammar = {.steps};
+    void handler() {
+        tankB.level = 1;
+        tankB.level++;
+        ++tankB.level;
+        tankB.level *= 3;
+        tankB.level -= 2;
+        tankB.level--;
+        bank[1].level += bank[0].level;
+        printLine($"B {tankB.level}; cast {(int)tankB.level * 2}; writes {tankB.level.writes()}.");
+    }
+}
+
+verb Dial {
+    grammar = {.dial, NUMBER};
+    void handler() {
+        panel.dial = (int)noun;
+        print($"Dial {panel.dial} (last {panel.lastSet}, turns {panel.dial.turnCount()}): ");
+        switch (panel.dial) {
+            case 0:       printLine("zero.");
+            case 1 to 3:  printLine("low.");
+            case 7:       printLine("top.");
+            default:      printLine("mid.");
+        }
+    }
+}
+
+verb Mode {
+    grammar = {.mode, NUMBER};
+    void handler() {
+        panel.mode = (int)noun;
+        printLine($"Mode {panel.mode}; dial {panel.dial}; zero {panel.dial.atZero() ? "yes" : "no"}.");
+    }
+}
+
+verb Spin {
+    grammar = {.spin};
+    void handler() {
+        int laps = 0;
+        panel.dial = 1;
+        while (panel.dial != 0) {
+            panel.dial = panel.dial + 3;
+            laps++;
+        }
+        do {
+            panel.dial++;
+            laps++;
+        } until (panel.dial >= 2);
+        printLine($"Spun {laps}; dial {panel.dial}; turns {panel.dial.turnCount()}.");
+    }
+}
+
+verb Trim {
+    grammar = {.trim, NUMBER};
+    void handler() {
+        panel.trim = (int)noun;
+        int a = panel.trim;
+        panel.bias = 10;
+        int b = panel.trim;
+        panel.trim += 1;
+        printLine($"Trim {a} then {b} then {panel.trim}.");
+    }
+}
+
+verb Seal {
+    grammar = {.seal, NUMBER};
+    void handler() {
+        ((Tank)sealedC).level = (int)noun;
+        ((Tank)sealedC).level += 1;
+        printLine($"Sealed reads {sealedC.reading()}; via cast {((Tank)sealedC).level}; gauge {gaugeText(sealedC)}.");
+    }
+}
+
+verb Find {
+    grammar = {.find, NUMBER};
+    void handler() {
+        int lo = (int)noun;
+        int got = firstAbove(lo)?.level;
+        string lbl = firstAbove(lo)?.label ?? "none";
+        print($"Above {lo}: {got} {lbl}");
+        firstAbove(lo)?.fill(1);
+        printLine($"; then {firstAbove(lo)?.level}.");
+    }
+}
+
+verb Tag {
+    grammar = {.name, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= bank.length) {
+            printLine("No such tank.");
+            return;
+        }
+        switch (i) {
+            case 0:  pick(i).label = "first";
+            case 1:  bank[i].label = "second";
+            default:
+                ((Tank)pick(i)).label = "third";
+        }
+        print($"Labels {labelOf(tankA)}/{tankB.label}/{sealedC.label}; sets {bank[i].label.sets()}, all {pick(i).label.allSets()}");
+        printLine(".");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int wet = bank.filter((Tank t) => t.level > 0).count();
+        bool anyFull = bank.any((Tank t) => t.level >= t.cap);
+        bool allNamed = bank.all((Tank t) => t.label.sets() > 0);
+        Tank low = bank.orderBy((Tank a, Tank b) => a.level - b.level).first();
+        Tank high = bank.orderBy((Tank a, Tank b) => a.level <=> b.level).last();
+        printLine($"Wet {wet}; full {anyFull ? "yes" : "no"}; named {allNamed ? "yes" : "no"}; low {low} {low.level}; high {high} {high.level + 0}.");
+    }
+}
+
+verb Peak {
+    grammar = {.peak};
+    void handler() {
+        ref Level hi := pick(0).level;
+        for (Tank t in bank) {
+            if (t.level > hi) hi := t.level;
+        }
+        int seen = hi;
+        hi = seen + 1;
+        hi += 1;
+        print($"Peak was {seen}, now {hi}; bank");
+        listBank();
+    }
+}
+
+verb Gauge {
+    grammar = {.gauge, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i >= bank.length) i = bank.length - 1;
+        switch (pick(i).level) {
+            case 0:       print("empty");
+            case 1 to 5:  print("low");
+            default:      print("high");
+        }
+        int shown = bank[i].level > 3 ? bank[i].level : bank[i].cap;
+        int ticks = 0;
+        for (int k = 0; k < pick(i).level; k++) ticks++;
+        int lim = i;
+        int over = bank.filter((Tank t) => t.level + 0 > lim).count();
+        print($"; shown {shown}, ticks {ticks}, over {over}");
+        if (pick(i).level?) print(", set");
+        else print(", unset");
+        printLine($", writes {pick(i)?.level.writes()}.");
+    }
+}
+
+verb Check {
+    grammar = {.check, NOUN};
+    void handler() {
+        if (!noun.is(Tank)) {
+            printLine("Only tanks.");
+            return;
+        }
+        print($"{((Tank)noun).level}/{((Tank)noun).cap} {((Tank)noun).label}");
+        if (((Tank)noun).level != 0 && ((Tank)noun).level >= ((Tank)noun).cap) print(" over");
+        printLine($"; room {((Tank)noun).room()}, gauge {gaugeText((Tank)noun)}.");
+    }
+}
+
+verb Drain {
+    grammar = {.drain};
+    void handler() {
+        int got = drainAll();
+        printLine($"Drained {got}; A {tankA.level}; writes {tankA.level.writes()}.");
+    }
+}
+
+verb Sound {
+    grammar = {.probe, NUMBER};
+    void handler() {
+        Probe p = new Probe();
+        if (p == null) {
+            printLine("No probes.");
+            return;
+        }
+        int start = p.depth;
+        p.depth = (int)noun;
+        bump(p.depth, 5);
+        int deep = p.depth > 10 ? p.depth : -p.depth;
+        printLine($"Probe from {start} to {p.depth} ({deep}), writes {p.depth.writes()}.");
+        delete p;
+    }
+}
+
+// ---- types --------------------------------------------------------------------------------------------
+
+value class Level {
+    int _v = 0;
+    int _w = 0;
+    int  operator ()        { return _v; }
+    void operator = (int v) {
+        _v = v < 0 ? 0 : v;
+        _w++;
+    }
+    bool operator == (int n)  { return _v == n; }
+    bool operator != (int n)  { return _v != n; }
+    int  operator <=> (int n) { return _v - n; }
+    static int adds = 0;
+    int  operator + (int n) {
+        adds++;
+        return _v + n;
+    }
+    int  writes() { return _w; }
+    emitter eBool operator ? () { ($self._v ~= 0) }
+}
+
+class Probe[2] : object {
+    Level depth;
+}
+
+class Tank : object {
+    inline instanceName;
+    inline int cap;
+    Level level;
+    auto label = {
+        static int total = 0;
+        string _s = "unset";
+        int _n = 0;
+        string operator () { return _s; }
+        void operator = (string v) {
+            _s = v;
+            _n++;
+            total++;
+        }
+        int sets() { return _n; }
+        int allSets() { return total; }
+    };
+
+    selfType fill(int n) {
+        level += n;
+        return self;
+    }
+
+    int room() { return cap - level; }
+}
+
+class SealedTank : Tank {
+    hide level.operator =;
+    int reading() { return level * 10; }
+}
+
+// ---- world --------------------------------------------------------------------------------------------
+
+array<Tank> bank = { tankA, tankB, sealedC };
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object panel {
+    "panel";
+    parent = roomA;
+    attributes = {static};
+    name = {.panel};
+    description = "A panel.";
+    auto dial = {
+        static int turns = 0;
+        int _d = 0;
+        int operator () { return _d; }
+        void operator = (int v) {
+            _d = v % outer.steps;
+            if (_d < 0) _d = _d + outer.steps;
+            turns++;
+            outer.lastSet = v;
+        }
+        int turnCount() { return turns; }
+        bool atZero() { return _d == 0; }
+    };
+    auto mode = {
+        int _m = 1;
+        int operator () { return _m; }
+        void operator = (int v) {
+            _m = v;
+            outer.dial = outer.dial + v;
+        }
+    };
+    int steps = 8;
+    int lastSet = 0;
+    int bias = 0;
+}
+
+string labelOf(Tank t) { return t.label; }
+
+Tank tankA {
+    "tank A", 12;
+    parent = roomA;
+    attributes = {static};
+    name = {.tank, .a};
+    description = "Tank A.";
+}
+
+Tank tankB {
+    "tank B", 6;
+    parent = roomA;
+    attributes = {static};
+    name = {.tank, .b};
+    description = "Tank B.";
+}
+
+SealedTank sealedC {
+    "sealed tank", 4;
+    parent = roomA;
+    attributes = {static};
+    name = {.sealed, .tank, .c};
+    description = "Tank C.";
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}

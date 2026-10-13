@@ -1,0 +1,53 @@
+// run_target1_names — `::name` for a global beside a same-named #define, a #define beside a property of
+// its name (bare and `::`), `::name` in a same-named local's initializer, a member named like a #define
+// reaching the symbol through `::`, a host member nearer than a class of its name, and an object's own
+// overloads calling one another and its `operator []` overloads; a nested cast on an element.
+// EXPECT_OUTPUT: 8 12 12 21 13 1 1,3 1,7 1 8 99 5
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#define SPEED 3
+int speed = 8;
+property capacity;
+#define CAPACITY 12
+int total = 12;
+#define LIMIT 12
+class Bin : object { int limit = LIMIT; int f() { return limit + ::LIMIT; } }
+Bin binA { }
+class Tally { static int n = 0; }
+class Counts { static int n = 0; }
+object ns {
+    alias tally = Counts;
+    void bump() { tally.n++; }
+}
+class Shape : object { int X; }
+Shape sh { X = 1; }
+object canvas {
+    int plotted;
+    void plot(int x, int y) { plotted++; print($"{x},{y} "); }
+    void plot(Shape s) { plot(1, 2); }
+    void plot(Shape s, int times) { plot(1, times); }
+}
+object box {
+    int operator [] (int i) { return i * 2; }
+    int operator [] (string s) { return 99; }
+}
+class Part : object { int worth() { return 5; } }
+class Bolt : Part { replace int worth() { return 11; } }
+Bolt boltA { }
+array<Part> parts = { boltA };
+int addTo(int w) {
+    int total = ::total + w;
+    return total;
+}
+void main() {
+    bglInit();
+    print($"{::speed} {CAPACITY} {::CAPACITY} {addTo(9)} ");
+    binA.limit = 1;
+    print($"{binA.f()} ");
+    ns.bump();
+    print($"{Counts.n + Tally.n} ");
+    canvas.plot(1, 3);
+    canvas.plot(sh, 7);
+    print($"{canvas.plotted - 1} {box[4]} {box["a"]} ");
+    for (int i = 0; i < parts.length; i++) print(((Part)(Bolt)parts[i]).worth());
+}

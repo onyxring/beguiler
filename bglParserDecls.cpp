@@ -715,12 +715,16 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                             parsingError(format("Variable '{0}' is already declared in an enclosing block. "
                                 "A nested declaration would share the outer variable's storage, not shadow it, "
                                 "so it must have a different name.", varDecl.name));
+        if(currentFunc != nullptr && currentFunc->fileScopeReads.count(varDecl.name))
+            parsingError(format("'{0}' is read above as the global, then declared here as a local; Inform 6 would "
+                "read the local throughout the routine. Rename the local, or declare it before its first use.", varDecl.dName()));
         for(typeDef* g : languageService.globals)
             if(g->name == varDecl.name){
                 if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
                     const string& t = vd->type.name;
                     if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                 }
+                if(dynamic_cast<verbObjectDef*>(g) != nullptr) continue;   // a verb's name is exempt (§3.10)
                 if(auto* cd = dynamic_cast<classDef*>(g))
                     parsingWarning("Local variable '" + varDecl.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                         + "'; in this routine the name means the variable, though the class still declares types.");
@@ -1382,8 +1386,13 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                             "declaration. Write 'ref {0} {1} := …' to bind, or '=' to copy.",
                             (string)dataType, (string)variableName));
 
-    if(parseVariableInitializer(varDecl, dataType, variableName, symbol, isAuto, isRef, func, body))
-        return false;   // folded into an object declaration — no variable emitted
+    if(func != nullptr) localBeingInitialized = varDecl.name;
+    bool folded = parseVariableInitializer(varDecl, dataType, variableName, symbol, isAuto, isRef, func, body);
+    localBeingInitialized.clear();
+    if(folded) return false;   // folded into an object declaration — no variable emitted
+    if(func != nullptr && currentFunc != nullptr && currentFunc->fileScopeReads.count(varDecl.name))
+        parsingError(format("'{0}' in its own initializer names the global, but Inform 6 would read the new "
+            "local there. Rename the local.", varDecl.dName()));
     if(isRef && symbol.value == token::bindAssignment) rejectMemberArrayBind(varDecl.declaredExpressionValue, func, body);
 
     // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp

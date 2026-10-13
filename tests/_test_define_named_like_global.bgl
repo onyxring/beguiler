@@ -1,0 +1,6 @@
+// Negative test: a #define and a global variable of one name are ambiguous; `::name` is the variable.
+// EXPECT_ERROR: Write '::speed' for the declaration, or rename the #define
+#beguilerSettings { target = z5; informName = "none"; }
+#define SPEED 3
+int speed = 8;
+void main() { print(speed); }

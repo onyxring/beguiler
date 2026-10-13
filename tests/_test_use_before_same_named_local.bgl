@@ -1,0 +1,5 @@
+// Negative test: Inform 6 hoists locals, so a global read above a same-named local would read the local.
+// EXPECT_ERROR: 'heavy' is read above as the global, then declared here as a local
+#beguilerSettings { target = z5; informName = "none"; }
+int heavy = 6;
+void main() { print(heavy); int heavy = 1; print(heavy); }

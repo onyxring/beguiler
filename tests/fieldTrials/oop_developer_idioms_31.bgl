@@ -1,0 +1,460 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-first pass: a 2-D drawing kit
+// built around overloads. A value class for a point with a copy operator, a conversion `operator = (int)`,
+// `+`/`-`/`*` overloaded by a point and by an int (`*` by a point is the dot product), `+=` by a point
+// and by an int, an instance `==` that `indexOf`/`contains` use, a `static` `<=>` passed to `sort`, overloaded
+// static factories and its own `print()`; a shape hierarchy (shape, rect, square, circle, strip) with overloaded `MoveBy`/`MoveTo`/
+// `Contains`/`Describe` methods, some `default` and overridden one overload at a time, an override that
+// reaches the base overload through an ancestor cast, an overload added by `extend class`, and `hide`
+// of one overload; instance `==`/`!=`/`+` and a `static` `<=>` on the base used with subclass operands,
+// with `<`/`>` derived from it and `Shape::operator <=>` passed to `sort` and `orderBy`; global overload
+// sets chosen by class, by ancestor, by enum, by int, by string, by `func<>` arity, with a `var`
+// fallback, a `ref` value-class overload, an overload `replace`d with `replaced()`, overloaded emitters,
+// default and named arguments selecting between overloads; a canvas object with overloaded methods,
+// `+=`/`-=` and `[]`/`[]=` operators; a units object whose overloads are imported with `#using`;
+// overload calls in conditions, loops, ternaries, lambdas, `<linq>` chains and interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eFill { Hollow, Solid, Hatched }
+
+string FillName(eFill f) {
+    switch (f) {
+        case eFill.Hollow:  return "hollow";
+        case eFill.Solid:   return "solid";
+        case eFill.Hatched: return "hatched";
+    }
+    return "?";
+}
+
+//-- Point: a value type with overloaded operators -------------------------------------------------------------
+
+value class Point {
+    int X;
+    int Y;
+
+    static Point Of(int both) {
+        Point p;
+        p = both;
+        return p;
+    }
+
+    Point operator = (Point o) {
+        X = o.X;
+        Y = o.Y;
+        return self;
+    }
+
+    Point operator = (int both) {
+        X = both;
+        Y = both;
+        return self;
+    }
+
+    Point operator + (Point o) { return Point.Of(X + o.X, Y + o.Y); }
+    Point operator + (int n) { return Point.Of(X + n, Y + n); }
+    Point operator - (Point o) { return Point.Of(X - o.X, Y - o.Y); }
+    Point operator * (int k) { return Point.Of(X * k, Y * k); }
+    int operator * (Point o) { return X * o.X + Y * o.Y; }
+
+    Point operator += (Point o) {
+        X += o.X;
+        Y += o.Y;
+        return self;
+    }
+
+    Point operator += (int n) {
+        X += n;
+        Y += n;
+        return self;
+    }
+
+    bool operator == (Point o) { return X == o.X && Y == o.Y; }
+    bool operator != (Point o) { return X != o.X || Y != o.Y; }
+    static bool operator == (Point a, Point b) { return a.X == b.X && a.Y == b.Y; }
+    static int operator <=> (Point a, Point b) { return (a.X + a.Y) - (b.X + b.Y); }
+
+    Point Negated() { return Point.Of(-X, -Y); }
+
+    int Manhattan() { return (X < 0 ? -X : X) + (Y < 0 ? -Y : Y); }
+
+    void print() { print($"({X},{Y})"); }
+
+    static Point Of(int x, int y) {
+        Point p;
+        p.X = x;
+        p.Y = y;
+        return p;
+    }
+}
+
+Point Origin;
+
+//-- Shapes ----------------------------------------------------------------------------------------------------
+
+class Shape : object {
+    string Tag = "shape";
+    Point At;
+    eFill Fill = eFill.Hollow;
+    static int Moves;
+
+    default int Area() { return 0; }
+    default int Perimeter() { return 0; }
+
+    void MoveBy(int dx, int dy) {
+        At = At + Point.Of(dx, dy);
+        Shape.Moves++;
+    }
+    void MoveBy(Point delta) { MoveBy(delta.X, delta.Y); }
+    void MoveBy(int d) { MoveBy(d, d); }
+
+    void MoveTo(Point p) { MoveBy(p - At); }
+    void MoveTo(Shape other) { MoveTo(other.At); }
+
+    default bool Contains(int x, int y) { return x == At.X && y == At.Y; }
+    bool Contains(Point p) { return Contains(p.X, p.Y); }
+
+    default string Describe() { return "shape"; }
+    default string Describe(bool verbose) { return verbose ? "a plain shape" : Describe(); }
+
+    bool operator == (Shape o) { return Area() == o.Area(); }
+    bool operator != (Shape o) { return Area() != o.Area(); }
+    int operator + (Shape o) { return Area() + o.Area(); }
+    int operator + (int extra) { return Area() + extra; }
+    static int operator <=> (Shape a, Shape b) { return a.Area() - b.Area(); }
+
+    void print() { print($"{Tag}@{At}"); }
+}
+
+class Rect : Shape {
+    int W;
+    int H;
+
+    int Area() { return W * H; }
+    int Perimeter() { return 2 * (W + H); }
+
+    void Resize(int newW, int newH) {
+        W = newW;
+        H = newH;
+    }
+    void Resize(int side) { Resize(side, side); }
+
+    bool Contains(int x, int y) {
+        return x >= At.X && x < At.X + W && y >= At.Y && y < At.Y + H;
+    }
+
+    string Describe() { return "rect"; }
+    string Describe(bool verbose) {
+        if (!verbose) return Describe();
+        if (W == H) return "a square-ish rect";
+        return ((Shape)self).Describe(true);
+    }
+}
+
+class Square : Rect {
+    replace string Describe() { return "square"; }
+}
+
+class Circle : Shape {
+    int R;
+
+    int Area() { return 3 * R * R; }
+    int Perimeter() { return 6 * R; }
+
+    bool Contains(int x, int y) {
+        Point d = Point.Of(x, y) - At;
+        return d * d <= R * R;
+    }
+
+    string Describe() { return "circle"; }
+}
+
+class Strip : Rect {
+    hide Resize(int);
+}
+
+extend class Shape {
+    void MoveTo(int x, int y) { MoveTo(Point.Of(x, y)); }
+    int operator + (Point p) { return Area() + p.X + p.Y; }
+}
+
+Rect r1 { Tag = "r1"; W = 4; H = 2; }
+Square s1 { Tag = "s1"; W = 3; H = 3; Fill = eFill.Solid; }
+Circle c1 { Tag = "c1"; R = 2; Fill = eFill.Hatched; }
+Strip b1 { Tag = "b1"; W = 6; H = 1; }
+
+//-- Global overload sets --------------------------------------------------------------------------------------
+
+void Show(Shape s) { printLine($"shape {s} area {s.Area()}"); }
+void Show(Rect r) { printLine($"rect {r} {r.W}x{r.H}"); }
+void Show(Point p) { printLine($"point {p}"); }
+void Show(int n) { printLine($"int {n}"); }
+void Show(eFill f) { printLine($"fill {FillName(f)}"); }
+void Show(string s) { printLine($"text {s}"); }
+void Show(var v) { printLine("something else"); }
+
+int Distance(Point a, Point b) { return (a - b).Manhattan(); }
+int Distance(Shape a, Shape b) { return Distance(a.At, b.At); }
+int Distance(Shape a, Point b) { return Distance(a.At, b); }
+
+void Nudge(ref Point p) { p += 1; }
+void Nudge(Shape s) { s.MoveBy(1); }
+
+int Scale(Shape s, int factor = 2) { return s.Area() * factor; }
+int Scale(Shape s, int num, int den) { return s.Area() * num / den; }
+
+int Apply(func<int, int> f, int v) { return f(v); }
+int Apply(func<int, int, int> f, int v) { return f(v, v + 1); }
+
+int Clamp(int v) { return v < 0 ? 0 : v; }
+int Clamp(int v, int hi) { return v > hi ? hi : Clamp(v); }
+replace int Clamp(int v, int hi) {
+    int r = replaced(v, hi);
+    return r == hi ? hi - 1 : r;
+}
+
+emitter int Sq(int v) { ($v * $v) }
+emitter int Sq(int v, int w) { ($v * $w) }
+
+int TotalArea(array<Shape> list) {
+    int t = 0;
+    for (Shape s in list) t += s.Area();
+    return t;
+}
+int TotalArea(array<Shape> list, eFill only) {
+    int t = 0;
+    for (Shape s in list) if (s.Fill == only) t += s.Area();
+    return t;
+}
+
+//-- The canvas ------------------------------------------------------------------------------------------------
+
+array<Shape> drawn[6];
+
+object canvas {
+    ref array<Shape> Items;
+    int Plotted;
+
+    void Plot(int x, int y) {
+        Plotted++;
+        printLine($"  plot {x},{y}");
+    }
+    void Plot(Point p) { Plot(p.X, p.Y); }
+    void Plot(Shape s) { Plot(s.At.X, s.At.Y); }
+    void Plot(Shape s, int times) {
+        for (int i = 0; i < times; i++) Plot(s.At.X + i, s.At.Y);
+    }
+
+    Shape operator [] (int i) { return Items[i]; }
+    Shape operator [] (string tag) {
+        for (Shape s in Items) if (s.Tag == tag) return s;
+        return null;
+    }
+    void operator []= (int i, Shape s) { Items[i] = s; }
+
+    void operator += (Shape s) { if (!Items.contains(s)) Items.append(s); }
+    void operator -= (Shape s) {
+        int i = Items.indexOf(s);
+        if (i >= 0) Items.remove(i);
+    }
+
+    int Count() { return Items.length; }
+    int Count(eFill f) { return Items.filter((Shape s) => s.Fill == f).count(); }
+    int Count(func<bool, Shape> test) { return Items.filter(test).count(); }
+}
+
+object units {
+    void Fmt(int n) {
+        if (n >= 0 && n < 10) print("0");
+        print(n);
+    }
+    void Fmt(int n, string unit) {
+        Fmt(n);
+        print(unit);
+    }
+    void Fmt(Point p) { print($"{p.X}x{p.Y}"); }
+    void Fmt(Shape s) { print($"{s.Tag}:{s.Area()}"); }
+}
+
+#using units
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Shapes {
+    grammar = {.shapes};
+    void handler() {
+        canvas += r1;
+        canvas += s1;
+        canvas += c1;
+        canvas += b1;
+        canvas += r1;
+        r1.MoveTo(1, 1);
+        s1.MoveTo(Point.Of(5, 0));
+        c1.MoveTo(s1);
+        c1.MoveBy(0, 4);
+        b1.MoveBy(Point.Of(2, 7));
+        for (Shape s in canvas.Items) printLine($"{s} {s.Describe()} / {s.Describe(true)}: area {s.Area()}, perimeter {s.Perimeter()}");
+        printLine($"Items {canvas.Count()}, solid {canvas.Count(eFill.Solid)}, wide {canvas.Count((Shape s) => s.Area() > 6)}, moves {Shape.Moves}.");
+    }
+}
+
+verb Overloads {
+    grammar = {.overloads};
+    void handler() {
+        Show(r1);
+        Show(s1);
+        Show(c1);
+        Show(c1.At);
+        Show(42);
+        Show(s1.Fill);
+        Show("plain");
+        Show(roomA);
+        printLine($"Distance r1-s1 {Distance(r1, s1)}, c1-origin {Distance(c1, Origin)}, points {Distance(Point.Of(1, 2), Point.Of(4, -2))}.");
+        printLine($"Scale r1 {Scale(r1)}, x3 {Scale(r1, 3)}, 3/2 {Scale(r1, 3, 2)}, named {Scale(s1, den: 3, num: 2)}, {Scale(factor: 5, s: c1)}.");
+        printLine($"Apply {Apply((int n) => n * 10, 4)} and {Apply((int a, int b) => a * b, 4)}.");
+        printLine($"Clamp {Clamp(-5)} {Clamp(7)} {Clamp(12, 10)} {Clamp(3, 10)} {Clamp(10, 10)}.");
+        printLine($"Sq {Sq(7)} {Sq(3, 5)} {Sq(Sq(2))}.");
+        printLine($"Total {TotalArea(canvas.Items)}, hollow {TotalArea(canvas.Items, eFill.Hollow)}, solid {TotalArea(list: canvas.Items, only: eFill.Solid)}.");
+    }
+}
+
+verb Points {
+    grammar = {.points};
+    void handler() {
+        Point a = Point.Of(2, 3);
+        Point b = 4;
+        Point c = a + b;
+        Point d = a + 10;
+        Point e = (b - a) * 3;
+        int dot = a * b;
+        printLine($"a {a} b {b} c {c} d {d} e {e} dot {dot}.");
+        c += a;
+        c += 1;
+        printLine($"c {c}; a==b {a == b}, a!=b {a != b}, a<b {a < b}, c>a {c > a}, a<=>b {a <=> b}.");
+        Nudge(a);
+        Nudge(r1);
+        printLine($"Nudged a {a}, r1 {r1}.");
+        array<Point> path[5];
+        path.append(Point.Of(3, 3));
+        path.append(Point.Of(0, 1));
+        path.append(Point.Of(5, 0));
+        path.append(Point.Of(1, 1));
+        path.sort(Point::operator <=>);
+        stringObj line = "Path:";
+        for (Point p in path) line += $" {p}";
+        printLine(line);
+        func<bool, Point, Point> same = (Point x, Point y) => x == y;
+        printLine($"Index of (5,0): {path.indexOf(Point.Of(5, 0))}; same {same(path[0], Point.Of(0, 1))}; contains {path.contains(Point.Of(9, 9))}.");
+        Point walker = Origin;
+        int steps = 0;
+        while (!r1.Contains(walker) && steps < 10) {
+            walker += 1;
+            steps++;
+        }
+        string where = c1.Contains(walker) ? "in c1" : (r1.Contains(walker.X, walker.Y) ? "in r1" : "outside");
+        printLine($"Walked {steps} to {walker}, {where}; negated a {a.Negated()}.");
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        printLine($"r1==s1 {r1 == s1}, r1!=c1 {r1 != c1}, s1==c1 {s1 == c1}, r1<s1 {r1 < s1}, c1>b1 {c1 > b1}, s1<=>r1 {s1 <=> r1}.");
+        printLine($"r1+s1 {r1 + s1}, c1+3 {c1 + 3}, b1+point {b1 + Point.Of(1, 1)}.");
+        array<Shape> sorted = canvas.Items.orderBy(Shape::operator <=>);
+        stringObj line = "By area:";
+        for (Shape s in sorted) line += $" {s.Tag}={s.Area()}";
+        printLine(line);
+        canvas.Items.sort(Shape::operator <=>);
+        printLine($"Smallest {canvas[0].Tag}, largest {canvas[canvas.Count() - 1].Tag}.");
+        Shape big = canvas.Items.filter((Shape s) => s + 0 > 8).first();
+        printLine($"First over 8: {big?.Tag ?? "none"}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        array<Point> spots = { Point.Of(1, 1), Point.Of(2, 2), Point.Of(5, 6), Point.Of(7, 8) };
+        for (Point p in spots) {
+            stringObj hits = "";
+            for (Shape s in canvas.Items) if (s.Contains(p)) hits += $" {s.Tag}";
+            if (hits.length == 0) hits = " none";
+            printLine($"{p}:{hits}");
+        }
+        int inR1 = 0;
+        for (int y = 0; y < 4; y++) for (int x = 0; x < 6; x++) if (r1.Contains(x, y)) inR1++;
+        printLine($"Cells in r1 {inR1}; c1 has (5,4) {c1.Contains(5, 4)}, (5,6) {c1.Contains(Point.Of(5, 6))}.");
+        int covering = canvas.Count((Shape s) => s.Contains(Point.Of(5, 1)));
+        printLine($"Shapes over (5,1): {covering}.");
+    }
+}
+
+verb Draw {
+    grammar = {.draw};
+    void handler() {
+        canvas.Plot(0, 0);
+        canvas.Plot(Point.Of(2, 2));
+        canvas.Plot(c1);
+        canvas.Plot(b1, 3);
+        canvas.Plot(times: 2, s: s1);
+        printLine($"Plotted {canvas.Plotted}.");
+        canvas -= b1;
+        canvas[0] = b1;
+        printLine($"Now {canvas.Count()} items, first {canvas[0]}, c1 found {canvas["c1"]?.Tag ?? "none"}, b9 found {canvas["b9"]?.Tag ?? "none"}.");
+    }
+}
+
+verb Measure {
+    grammar = {.measure};
+    void handler() {
+        print("Units: ");
+        Fmt(5);
+        print(" ");
+        Fmt(12, "cm");
+        print(" ");
+        Fmt(r1.At);
+        print(" ");
+        Fmt(s1);
+        print(" ");
+        units.Fmt(7, "mm");
+        printLine(".");
+        r1.Resize(2);
+        b1.Resize(8, 2);
+        Show(r1);
+        Show(b1);
+        printLine($"r1 {r1.Describe(true)}, b1 {b1.Describe(true)}, c1 {c1.Describe(false)}, s1 {s1.Describe(true)}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    canvas.Items := drawn;
+    location = roomA;
+    rfalse;
+}

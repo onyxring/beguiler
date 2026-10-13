@@ -351,6 +351,8 @@ class functionDef:public typeMember, public typeDef{
         // Names read as `::name` while a parameter or local of the same name is in scope. I6 has no
         // way past a local to the global, so the emitter renames those locals.
         set<string> globalEscapes;
+        // Names read at file scope; a local declared afterwards under one of them is an error.
+        set<string> fileScopeReads;
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
         bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'

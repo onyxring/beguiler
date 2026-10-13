@@ -1,0 +1,544 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-first first-time-programmer program, a parcel desk where parcels are weighed,
+// labelled, sorted into bins by size and tallied, written by a beginner who reuses the same few words
+// for everything and leans on the spec's scope rules to tell them apart. Globals count, total and
+// label beside class members, object members and locals of the same names (some differing only in
+// case), reached with bare names and with ::name; a const LIMIT beside a member limit and a parameter
+// Limit; a #define MAXWEIGHT beside a member maxWeight, a #define SHELF_SIZE beside a local Shelf_Size
+// and a parameter shelf_size; a global function points() beside a method
+// points() that calls it through ::points; a global function tagFor() beside an object method tagFor();
+// a program attribute `sorted` beside a bool member `sorted` (has(::sorted) / give(::sorted)); a member
+// `open` beside the library attribute open; a member `capacity` that is the library's capacity
+// property (the library enforces it on PUT IN); enum values small/medium/large beside a member `large`
+// and a static member `total`; a member `Bin bin` beside class Bin and a member `shelf` beside object
+// shelf; a method named like a library routine (IndirectlyContains) beside ::IndirectlyContains; a local
+// `parcel` of class Parcel (differing only in case) with ::Parcel for the type after it; locals named
+// like objects, a library verb (drop) and a const; a loop variable named like an object; a lambda
+// parameter named like a global; parameters named like members and globals called with named arguments
+// spelled in another case; and a verb whose method name a class also uses (weigh vs Weigh), called
+// through a receiver.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== NUMBERS =====
+
+// how heavy a parcel can be before the desk refuses it
+#define MAXWEIGHT 9
+// how many parcels the shelf list holds
+#define SHELF_SIZE 4
+// the most parcels one label run can do
+const int LIMIT = 3;
+
+// how many parcels have been sorted
+int count = 0;
+// the weight of everything sorted
+int total = 0;
+// the last label written
+string label = "none";
+
+enum Size { small, medium, large }
+
+// a parcel that has been put in a bin
+attribute sorted;
+
+// every weight sorted, in order
+array<int> weights[SHELF_SIZE];
+
+// ===== HELPER FUNCTIONS =====
+
+// points for a weight
+int points(int weight) {
+    return weight * 10;
+}
+
+// the word for a size
+string sizeWord(Size s) {
+    switch (s) {
+        case small: return "small";
+        case medium: return "medium";
+        case large: return "large";
+    }
+    return "?";
+}
+
+// a label for a parcel of some weight
+string tagFor(int weight) {
+    if (weight >= 5) {
+        return "HEAVY";
+    }
+    return "LIGHT";
+}
+
+// how many parcels a label run can do; the parameter is named like the const, differing only in
+// case, so here LIMIT is the parameter and ::LIMIT is the const
+int runLength(int Limit) {
+    if (Limit > ::LIMIT) {
+        return ::LIMIT;
+    }
+    return LIMIT;
+}
+
+// adds up weights; the parameters are named like the globals
+int addUp(int count, int total = 0) {
+    return ::total + total + count;
+}
+
+// ===== PARCELS =====
+
+class Parcel : object {
+    // how heavy it is
+    int weight = 1;
+    // how big it is
+    Size size = Size.small;
+    // how many times it has been handled
+    int count = 0;
+    // what is written on it
+    string label = "blank";
+    // has it been put in a bin?
+    bool sorted = false;
+    // how many labels it can take: the const's value to start with
+    int limit = LIMIT;
+    string description;
+
+    // how many parcels there are
+    static int made = 0;
+
+    // points for this parcel: the global points and one more for each handling
+    int points(int weight) {
+        return ::points(weight) + count;
+    }
+
+    // one more handling: the parameter is named like the member, but in another case
+    void handle(int Count) {
+        self.count += Count;
+        ::count += 0;
+    }
+
+    // is it a large one?
+    bool isBig() {
+        return size == large;
+    }
+
+    // weighs it and says so
+    int weigh() {
+        print($"The {label} parcel weighs {weight}.^");
+        return weight;
+    }
+
+    // writes a label on it, if there is room; LIMIT here is the member, ::LIMIT the const
+    bool write(string text) {
+        if (count >= LIMIT) {
+            print($"It has room for {limit} labels and has {count}.^");
+            return false;
+        }
+        label = text;
+        ::label = text;
+        count++;
+        return true;
+    }
+
+    // says everything about it
+    void show() {
+        print($"Parcel {label}: weight {weight}, {sizeWord(size)}, handled {count}");
+        if (sorted) {
+            print(", sorted");
+        }
+        if (self.has(::sorted)) {
+            print(" (flag)");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            show();
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ===== BINS =====
+
+class Bin : object {
+    // the library's capacity: how many things fit inside
+    int capacity = 2;
+    // how many large parcels went in
+    int large = 0;
+    // the heaviest parcel it takes
+    int maxWeight = 5;
+    // the name on the front
+    string label;
+    // is the lid up (not the open attribute)
+    bool open = true;
+    string description;
+
+    // the weight in every bin
+    static int total = 0;
+
+    // takes a parcel; says why not if it can't
+    bool takeParcel(Parcel p) {
+        // the bin's own IndirectlyContains (one argument), not the library's
+        if (IndirectlyContains(p)) {
+            print($"The {label} bin has it already.^");
+            return false;
+        }
+        if (!open) {
+            print($"The {label} bin's lid is down.^");
+            return false;
+        }
+        if (p.weight > maxWeight) {
+            print($"The {label} bin takes up to {maxWeight}, not {p.weight}.^");
+            return false;
+        }
+        if (p.weight > MAXWEIGHT) {
+            print("Nothing takes that.^");
+            return false;
+        }
+        p.parent = self;
+        p.sorted = true;
+        p.give(::sorted);
+        if (p.size == ::large) {
+            large++;
+        }
+        total += p.weight;
+        ::total += p.weight;
+        ::count++;
+        return true;
+    }
+
+    // is the parcel somewhere inside this bin? (named like the library's routine)
+    bool IndirectlyContains(object o) {
+        return ::IndirectlyContains(self, o);
+    }
+
+    // how many things are inside
+    int countInside() {
+        int n = 0;
+        for (object o in self.children) {
+            n++;
+        }
+        return n;
+    }
+
+    void show() {
+        print($"Bin {label}: {countInside()} of {capacity}, up to {maxWeight}, large {large}, lid ");
+        if (open) {
+            print("up");
+        } else {
+            print("down");
+        }
+        print($". All bins: {total}.^");
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The desk room. The store is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The store. The desk room is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE BINS =====
+
+Bin binA {
+    "small bin";
+    parent = roomA;
+    name = {.small, .bin};
+    label = "small";
+    description = "A bin for small parcels.";
+    attributes = {container, open, static};
+}
+
+Bin binB {
+    "big bin";
+    parent = roomA;
+    name = {.big, .bin};
+    label = "big";
+    capacity = 3;
+    maxWeight = 8;
+    description = "A bin for big parcels.";
+    attributes = {container, open, static};
+}
+
+// ===== THE PARCELS =====
+
+Parcel parcelA {
+    "red parcel";
+    parent = roomA;
+    name = {.red, .parcel};
+    weight = 2;
+    description = "A parcel.";
+}
+
+Parcel parcelB {
+    "blue parcel";
+    parent = roomA;
+    name = {.blue, .parcel};
+    weight = 6;
+    size = Size.large;
+    description = "A parcel.";
+}
+
+Parcel parcelC {
+    "green parcel";
+    parent = roomA;
+    name = {.green, .parcel};
+    weight = 4;
+    size = Size.medium;
+    description = "A parcel.";
+}
+
+Parcel parcelD {
+    "grey parcel";
+    parent = roomB;
+    name = {.grey, .parcel};
+    weight = 9;
+    size = large;
+    description = "A parcel.";
+}
+
+// ===== THE SHELF AND THE DESK =====
+
+object shelf {
+    "shelf";
+    parent = roomB;
+    name = {.shelf};
+    string description = "A shelf.";
+    attributes = {supporter, static};
+}
+
+object desk {
+    "desk";
+    parent = roomA;
+    name = {.desk};
+    string description = "A desk.";
+    attributes = {static};
+    // how many parcels the desk has looked at
+    int count = 0;
+    // the desk's own label, not the global one
+    string label = "DESK";
+    // the bin it likes best
+    Bin bin = binA;
+    // where spare parcels go
+    object shelf = shelf;
+
+    // its own tagFor, which marks a label with the desk's name
+    string tagFor(int weight) {
+        count++;
+        if (weight >= 5) {
+            return "DESK-HEAVY";
+        }
+        return "DESK-LIGHT";
+    }
+
+    void tally() {
+        print($"Desk: looked at {count}, label {label}, likes the {bin.label} bin, shelf is {shelf}.^");
+        print($"Global: sorted {::count}, label {::label}, weight {::total}.^");
+        print($"Two tags for 6: {tagFor(6)} and {::tagFor(6)}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    Parcel.made = 4;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// how much room is left; the parameter is named like the #define
+int roomLeft(int shelf_size, int used) {
+    return shelf_size - used;
+}
+
+// ===== MORE HELPERS (they use the parcels) =====
+
+// puts a parcel on a shelf; the parameters are named like the class and the object
+void putBack(Parcel parcel, object shelf) {
+    parcel.parent = shelf;
+    parcel.sorted = false;
+    parcel.ungive(sorted);
+    if (shelf == ::shelf) {
+        print($"The {parcel.label} parcel goes on the shelf.^");
+    } else {
+        print($"The {parcel.label} parcel goes on {shelf}.^");
+    }
+}
+
+// ===== VERBS =====
+
+// WEIGH <parcel>
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!(noun.is(Parcel))) {
+            print("Only parcels can be weighed.^");
+            return;
+        }
+        // a local named like its class, differing only in case
+        Parcel parcel = (Parcel)noun;
+        int weight = parcel.weigh();
+        // a local named like the global
+        int total = ::total + weight;
+        print($"With what is sorted that makes {total}. Points: {parcel.points(weight)} (plain {::points(weight)}).^");
+        parcel.handle(1);
+        if (noun.is(::Parcel)) {
+            print("It is still a parcel.^");
+        }
+    }
+}
+
+// LABEL <parcel>
+verb LabelParcel {
+    grammar = {.label, NOUN};
+    void handler() {
+        if (!(noun.is(Parcel))) {
+            print("Only parcels take labels.^");
+            return;
+        }
+        Parcel p = (Parcel)noun;
+        // a local named like the global label
+        string label = tagFor(p.weight);
+        string deskLabel = desk.tagFor(p.weight);
+        if (p.write(label)) {
+            print($"You write {label} on it ({deskLabel} at the desk). Last label: {::label}.^");
+        }
+    }
+}
+
+// SORT <parcel> - into the bin for its size
+verb SortParcel {
+    grammar = {.sort, NOUN};
+    void handler() {
+        if (!(noun.is(Parcel))) {
+            print("Only parcels can be sorted.^");
+            return;
+        }
+        Parcel p = (Parcel)noun;
+        if (p.has(sorted)) {
+            print("It is sorted already.^");
+            return;
+        }
+        // a local named like the object desk
+        Bin desk = binA;
+        if (p.size != small) {
+            desk = binB;
+        }
+        if (::desk.bin.IndirectlyContains(p)) {
+            print("Already in the desk's bin.^");
+        }
+        if (desk.takeParcel(p)) {
+            weights.append(p.weight);
+            print($"Into the {desk.label} bin. Sorted: {count}. Points: {points(p.weight)}.^");
+        }
+    }
+}
+
+// SHUT <bin> - puts a bin's lid down
+verb ShutLid {
+    grammar = {.shut, .lid, .on, NOUN};
+    void handler() {
+        if (!(noun.is(Bin))) {
+            print("That has no lid.^");
+            return;
+        }
+        Bin b = (Bin)noun;
+        b.open = false;
+        // the open attribute stays, the lid member changes
+        if (b.has(open)) {
+            print($"The {b.label} bin's lid goes down. It is still open for PUT.^");
+        }
+    }
+}
+
+// SPARE - moves every parcel left in the room to the shelf
+verb Spare {
+    grammar = {.spare};
+    void handler() {
+        int drop = 0;
+        // a loop variable named like the object shelf
+        for (object shelf in location.children) {
+            if (shelf.is(Parcel)) {
+                drop++;
+            }
+        }
+        if (drop == 0) {
+            print("No parcels here.^");
+            return;
+        }
+        array<object> moving[SHELF_SIZE];
+        for (object o in location.children) {
+            if (o.is(Parcel)) {
+                moving.append(o);
+            }
+        }
+        for (object o in moving) {
+            putBack((Parcel)o, desk.shelf);
+        }
+        print($"{drop} parcels go to the {desk.shelf}.^");
+        if (action == ::Spare) {
+            print("Spare done.^");
+        }
+    }
+}
+
+// TALLY - everything about the desk
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        desk.tally();
+        binA.show();
+        binB.show();
+        print($"Bin total {Bin.total}. Parcels made {Parcel.made}.^");
+        for (Parcel p in {parcelA, parcelB, parcelC, parcelD}) {
+            p.show();
+        }
+        // a lambda parameter named like the global
+        int heavy = weights.filter((int count) => count >= 5).count();
+        print($"Heavy ones sorted: {heavy} of {weights.length}.^");
+        // a local named like the #define, starting from its value
+        int Shelf_Size = SHELF_SIZE;
+        Shelf_Size -= 1;
+        print($"Shelf list: {Shelf_Size} after one, {roomLeft(Shelf_Size, weights.length)} free now.^");
+        int LIMIT = runLength(5);
+        print($"A run is {LIMIT} labels; asking for 2 gives {runLength(limit: 2)}.^");
+        print($"Add up: {addUp(COUNT: 2, Total: 1)} and {addUp(3)}.^");
+        int big = 0;
+        for (Parcel p in {parcelA, parcelB, parcelC, parcelD}) {
+            if (p.isBig()) {
+                big++;
+            }
+        }
+        print($"Big parcels: {big}. Max weight: {MAXWEIGHT}.^");
+        for (Parcel p in {parcelA, parcelB, parcelC, parcelD}) {
+            if (desk.bin.IndirectlyContains(p)) {
+                print($"The desk's bin holds the {p.label} parcel.^");
+            }
+            if (IndirectlyContains(player, p)) {
+                print($"You hold the {p.label} parcel.^");
+            }
+        }
+    }
+}

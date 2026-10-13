@@ -1,0 +1,110 @@
+Room A
+Room A. Crates wait by the wall. Room B is north.
+You can see a red crate, a blue crate, a green crate, a small bin and a large bin here.
+> checks
+net 9 6 5
+shelf corner, label bin, cap 12
+room 10 12, rated true true
+score 3, crate true false
+hefts 4 5 4
+case 9 9 12 bin 2 true
+The small bin (left, left): 0 of 10, limit 12, 0 in.
+> tally
+Weighings 0, total 0, crates weighed 0, stowed 0.
+The small bin (left, left): 0 of 10, limit 12, 0 in.
+The large bin (bin, bin): 0 of 12, limit 12, 0 in.
+Reading: 0 weighed, 0 in all, 0 heavy.
+Scale: 0 on the pan, last 0, first on turn -1.
+2 5 9
+Heavy 1, over 2, unweighed 3.
+First heavy: A wooden crate.
+Accounts 0, 0.
+> weigh red crate
+The scale is in Room B.
+> stow red crate in small bin
+The red crate has not been weighed.
+> stow red crate in green crate
+That is not a bin.
+> take red crate
+Taken.
+> take green crate
+Taken.
+> north
+Room B
+Room B. A scale stands in the middle. Room A is south.
+You can see a scale here.
+> weigh scale
+The empty pan reads 1.
+> take scale
+The scale is bolted down.
+> push scale
+The scale is bolted down.
+> weigh me
+Only crates go on the pan.
+> weigh red crate
+The red crate weighs 5; less the pan, 4. Graded mid.
+> weigh green crate
+The green crate weighs 2; less the pan, 1. Graded low.
+> grade red crate
+The red crate is mid.
+> grade green crate
+The green crate is low.
+> tally
+Weighings 2, total 7, crates weighed 2, stowed 0.
+The small bin (left, left): 0 of 10, limit 12, 0 in.
+The large bin (bin, bin): 0 of 12, limit 12, 0 in.
+Reading: 2 weighed, 7 in all, 0 heavy.
+Scale: 2 on the pan, last 1, first on turn 10.
+2 5 9
+Heavy 1, over 2, unweighed 1.
+First heavy: A wooden crate.
+Accounts 2, 22.
+> weigh red crate
+The red crate weighs 5; less the pan, 4. Graded mid.
+> south
+Room A
+Room A. Crates wait by the wall. Room B is north.
+You can see a blue crate, a small bin and a large bin here.
+> take blue crate
+Taken.
+> north
+Room B
+Room B. A scale stands in the middle. Room A is south.
+You can see a scale here.
+> weigh blue crate
+The blue crate weighs 9; less the pan, 8. Graded high.
+> grade blue crate
+The blue crate is heavy (9 >= 6).
+> south
+Room A
+Room A. Crates wait by the wall. Room B is north.
+You can see a small bin and a large bin here.
+> stow blue crate in small bin
+You stow the blue crate in the small bin.
+> stow red crate in small bin
+The red crate needs 5; the small bin has room for 1.
+> stow red crate in large bin
+You stow the red crate in the large bin.
+> stow green crate in large bin
+You stow the green crate in the large bin.
+> tally
+Weighings 4, total 21, crates weighed 4, stowed 3.
+The small bin (left, left): 9 of 10, limit 12, 1 in, last blue crate.
+The large bin (bin, bin): 7 of 12, limit 12, 2 in, last green crate.
+Reading: 3 weighed, 16 in all, 1 heavy.
+Scale: 4 on the pan, last 8, first on turn 10.
+2 5 9
+Heavy 1, over 2, unweighed 0.
+First heavy: A wooden crate.
+Something was weighed twice.
+Accounts 7, 74.
+> checks
+net 9 6 5
+shelf corner, label bin, cap 12
+room 1 5, rated true true
+score 3, crate true false
+hefts 4 5 4
+case 9 9 12 bin 2 false
+The small bin (left, left): 9 of 10, limit 12, 1 in, last blue crate.
+> retare
+Tare is now 2; net(10) still uses 9.

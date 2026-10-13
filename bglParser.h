@@ -629,10 +629,11 @@ class bglParser {
         void preScanI6NameClause(string& nameStr, string* asI6Name = nullptr);
         bool preScanNamespaceRedirect(token& t, class objectDef* obj);
         bool takesOwnOperand(class classDef* cls, const string& op);
+        int ancestorDistance(const string& paramType, const string& argType);
         void warnMemberHidesDefine(const string& name, const string& shown);
         bool foldIntLiteralToFloat(class expression* e, const string& targetType);
         void rejectValueClassInitializer(class expression* e, const string& typeName, const string& memberName);
-        void preScanAccessorGetter(class objectDef& obj, class variableDeclaration& stub, const string& body);
+        void preScanAccessorGetter(const string& owner, class variableDeclaration& stub, const string& body);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false, string docComment = "");
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
@@ -647,6 +648,7 @@ class bglParser {
         void ensureOwnPrintOverload(const string& typeName);
         functionDef* replaceOwner();
         map<string, string> forwardReplaceBodies;   // a global `replace emitter`'s body, by emitterSignatureKey
+        bool preScanIsConst = false;                // the pre-scanned declaration carries `const`
         bool preScanIsReplace = false;              // the pre-scanned declaration carries `replace`
         static string emitterSignatureKey(const functionDef& fd);
         void noteMethodRecursion(functionDef* called);   // the routine being parsed, past any lambdas it encloses
@@ -738,6 +740,12 @@ class bglParser {
         void convertStoragelessForPrint(expression* arg);
         string refBackGlobal(size_t index);
         string wrapRefBacks(const string& callText);
+        void subscriptCallResult(expression* expr, size_t callStart, functionDef* func, statementBlock* body);
+        void typeFromMemberAliasOrPath(class objectDef& obj, token& tok);
+        string preScanTypePath(const token& first, string* slot);
+        void preScanTypePathFixup(const string& path, string* slot);
+        bool hasDerivedClass(classDef* cls);   // some class has cls among its bases
+        bool queryIsPostfix(token after);
         string chainedSubscriptRead(functionDef* gm, const string& readText, const string& idxText, const string& curType);
         bool processSubscriptWrite(string arrPath, expression* indexExpr, StatementContext& sc);
         // `lhs = rhs;` / `lhs := rhs;` — plain assignment and reference binding.
@@ -831,6 +839,7 @@ class bglParser {
             optional<token> prefetched;         // a token a sub-parse produced that the loop must see next
             string castType;  // set when a (TypeName) cast prefix is detected
             bool receiverCast = false;  // `((T)obj).member`: castType retypes obj itself
+            string innerCast;           // `((A)(B)obj).member`: B, the type the receiver has under A
             string chainCast;           // `(int)((T)obj).member`: the cast on the whole chain, applied after the member
             string chainResultCast;     // `(T)a.f().g()`: the cast waits for the chain's last call
             // `<expr>?.member`: the receiver already parsed into expr, for parseExprOptionalChain.
@@ -1282,7 +1291,7 @@ class bglParser {
         // releaseTemporaries, beside another argument that can allocate: each such temporary is rewritten
         // to be held, and wrapHeldCall then releases them once the call has returned.
         struct HeldTemporaries { vector<classDef*> owners; bool any() const { return !owners.empty(); } };
-        HeldTemporaries holdCallTemporaries(const vector<pair<string*, string>>& operands);
+        HeldTemporaries holdCallTemporaries(const vector<pair<string*, string>>& operands, bool holdOne = false);
         // With `marks`, each mark is left as the placeholder heldMarkPlaceholder(k) and its text goes
         // to (*marks)[k], so the caller can take it earlier (before Z-machine argument spills).
         string wrapHeldCall(const HeldTemporaries& held, const string& callText, vector<string>* marks = nullptr);
@@ -1327,8 +1336,10 @@ class bglParser {
         // as a final tie-breaker when multiple candidates remain after memberHint filtering.
         // Always saved/restored at sub-context boundaries (function args, etc.) so it doesn't leak.
         string currentExpectedType;
-        class classDef* ownOperatorOperand = nullptr;
-        long declInjectionStart = -1;   // where the declaration being registered had its initializer's set-up flushed   // parsing the right operand of this class's own operator
+        class classDef* ownOperatorOperand = nullptr;   // parsing the right operand of this class's own operator
+        long declInjectionStart = -1;   // where the declaration being registered had its initializer's set-up flushed
+        bool inMemberInitializer = false;   // a member's initializer: its bare names are globals
+        string localBeingInitialized;   // the local whose initializer is being parsed
         // True while parsing the operand of `return ...;` inside a void function. Permits a
         // void function call to appear as the return expression — the C/I6 idiom
         // `return f();` ≡ `f(); return;`. Cleared at every other expression-context boundary.
@@ -1457,6 +1468,9 @@ class bglParser {
         struct DeferredClassBases { classDef* cls; vector<std::string> baseNames; };
         vector<DeferredClassBases> deferredClassBases;
         void drainDeferredClassBases();
+        // Pre-scan steps that need a name declared further down; run once the whole include tree is scanned.
+        std::vector<std::function<void()>> preScanFixups;
+        void drainPreScanFixups(){ auto f = std::move(preScanFixups); preScanFixups.clear(); for(auto& fn : f) fn(); }
         // True when `#using` brings in a value emitter (no parameter list) of this name. A call never
         // targets one, so a call of the name belongs to a same-named function.
         bool isUsingImportedValueEmitter(const string& name);

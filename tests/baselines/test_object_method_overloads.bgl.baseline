@@ -63,20 +63,20 @@ object _bglWidget
   with countsame_1_int [x;
     return x;
   ],
-       greet_1_int [n;
-    return n;
-  ],
-       doubleIt [n;
-    return n + n;
-  ],
        countsame_2_int_int [x y;
     return x + y;
   ],
        countsame_3_int_int_int [x y z;
     return x + y + z;
   ],
+       greet_1_int [n;
+    return n;
+  ],
        greet_1_string [s;
     return 7;
+  ],
+       doubleIt [n;
+    return n + n;
   ]
 ;
 object _bglMaybe

@@ -271,6 +271,14 @@ string that string. Any other word is a string literal of that word, so after `#
 removed it. Defining a symbol that is already defined is a compile-time error; use `#redef`
 (§14.2.2). Defining a symbol that was `#declare`d is a compile-time error (§14.2.3).
 
+A symbol shares its name with declarations, and Beguile names are case-insensitive, so `SPEED` and
+`speed` are one name. A parameter, local, loop variable or lambda parameter of that name hides the
+symbol where it is in scope, and so does a member of the class or object whose code is being compiled;
+each draws a warning. A member's initializer is outside that code and reads the symbol. `::NAME` skips
+the hiding declaration and reaches the symbol, unless a variable is declared at file scope under the
+name: then `::NAME` is that variable, and a bare `NAME` there is ambiguous and an error. A property of
+the name doesn't compete with the symbol except where a property is expected (`obj.provides(capacity)`).
+
 `#defineI6` is `#define` that also passes the symbol to Inform 6 as a `Constant` of the same name and
 value, placed ahead of any I6 include. The Beguile symbol is an ordinary `#define`d symbol, so `#if`
 tests it and it follows the same linear rule. In a Beguile expression a `#defineI6` symbol with a value

@@ -1,0 +1,65 @@
+// run_target1_accessors — `++x.m` where m is named like a class, orderings an accessor class derives
+// from its `<=>`, its `operator ?` as a postfix test and before `?.`, `==` beside `operator ?` in a
+// ternary, and a method of an inline accessor called above the declaration.
+// EXPECT_OUTPUT: 32 gt yes a b ab 4 yes eq 1 set yes
+#beguilerSettings { target = z5; informName = "none"; }
+void show() { print(panel.dial.turnCount()); print(" "); print(panel.dial.atZero() ? "zero" : "set"); print(" "); }
+bool anyLabeled(Box b) { return b.label.sets() > 0; }
+value class Level {
+    int _v = 0;
+    int  operator ()          { return _v; }
+    void operator = (int v)   { _v = v + 10; }
+    bool operator == (int n)  { return _v == n; }
+    bool operator != (int n)  { return _v != n; }
+    int  operator <=> (int n) { return n - _v; }
+    int  twice() { return _v * 2; }
+    emitter bool operator ? () { ($self._v ~= 0) }
+}
+class Tank : object { Level level; }
+Tank tankA { }
+Tank tankB { }
+Tank pick() { return tankA; }
+object panel {
+    int steps = 4;
+    auto dial = {
+        static int turns = 0;
+        int _d = 0;
+        int operator () { return _d; }
+        void operator = (int v) { _d = v % outer.steps; turns++; }
+        int turnCount() { return turns; }
+        bool atZero() { return _d == 0; }
+    };
+}
+class Box : object {
+    auto label = {
+        string _s = "unset";
+        int _n = 0;
+        string operator () { return _s; }
+        void operator = (string v) { _s = v; _n++; }
+        int sets() { return _n; }
+    };
+}
+Box boxA { }
+void main() {
+    bglInit();
+    tankA.level = 0;
+    tankA.level++;
+    ++tankA.level;
+    print(tankA.level); print(" ");
+    print(tankA.level > 40 ? "gt" : "le"); print(" ");
+    tankB.level = 22;
+    print(tankA.level == tankB.level ? "yes" : "no"); print(" ");
+    if (tankA.level?) print("a ");
+    if (pick().level?) print("b ");
+    tankB.level = -10;
+    print(tankA.level? ? "a" : "-"); print(tankB.level? ? "-" : "b"); print(" ");
+    tankA.level = -8;
+    print(tankA.level?.twice()); print(" ");
+    tankB.level = -8;
+    print(tankA.level == tankB.level ? "yes" : "no");
+    print(tankA.level != tankB.level ? " ne " : " eq ");
+    panel.dial = 6;
+    show();
+    boxA.label = "x";
+    print(anyLabeled(boxA) ? "yes" : "no");
+}

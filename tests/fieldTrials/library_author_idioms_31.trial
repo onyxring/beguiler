@@ -1,0 +1,100 @@
+Room A
+Room A.
+You can see a lamp, a bell, a fan, a red wire, a blue wire and a green wire here.
+> board
+--
+red wire medium/2 4 ohms -> lamp (lamp), drop 0
+strained 0, lamps on 0, fans on 0
+--
+reading 1 wire, 4 ohms; log lay:red wire
+> kinds
+lamp: lamp, draw 2, lit, fed by medium/2
+bell: bell, draw 3, loud, fed by -
+fan: fan, draw 4, 5 blades, fed by -
+[5][10]
+> sums
+all wires 17 ohms, on the board 4 ohms, some unlaid.
+thin 1: thin/3; longest laid medium/2; laid 1, switches 1, upgrades 0, jobs 0.
+> plan
+no job for the green wire; planned 2, longest thin/3, lifts 0, started 2.
+counted 1; [0]
+> lay blue wire
+You lay the blue wire: thin/3, 2 on the board.
+> lay green wire
+You lay the green wire: thick/4, 3 on the board.
+> board
+--
+red wire medium/2 4 ohms -> lamp (lamp), drop 0
+blue wire thin/3 9 ohms -> bell (bell), drop 0
+green wire thick/4 4 ohms -> fan (fan), drop 0
+strained 0, lamps on 0, fans on 0
+--
+reading 3 wires, 17 ohms; log lay:red wire lay:blue wire lay:green wire
+> toggle lamp
+The lamp glows (drop 8).
+> toggle bell
+The bell rings (drop 27, strained, burning).
+> toggle fan
+The fan whirs (drop 16, strained).
+> kinds
+lamp: lamp, draw 2, lit, on, fed by medium/2
+bell: bell, draw 3, loud, on, fed by thin/3
+fan: fan, draw 4, on, 5 blades, fed by thick/4
+[5][10]
+> sums
+all wires 17 ohms, on the board 17 ohms.
+thin 1: thin/3; longest laid thick/4; laid 3, switches 5, upgrades 0, jobs 2.
+> thicken blue wire
+The blue wire is medium now: 6 ohms.
+> thicken blue wire
+The blue wire is thick now: 3 ohms.
+> thicken blue wire
+The blue wire is as thick as it goes.
+> toggle bell
+The bell stops (drop 0).
+> toggle bell
+The bell rings (drop 9, strained).
+> sums
+all wires 11 ohms, on the board 11 ohms.
+thin 0: none; longest laid thick/4; laid 3, switches 7, upgrades 2, jobs 2.
+> lift red wire
+You lift the red wire (2 turns).
+> lift red wire
+The red wire is not laid.
+> board
+--
+blue wire thick/3 3 ohms -> bell (bell), drop 9
+green wire thick/4 4 ohms -> fan (fan), drop 16
+strained 2, lamps on 1, fans on 1
+--
+reading 2 wires, 7 ohms; log lay:red wire lay:blue wire lay:green wire job:red wire lift:red wire
+> toggle lamp
+The lamp has no wire on the board.
+> plan
+no job for the green wire; planned 2, longest thick/3, lifts 0, started 5.
+counted 10; [17]
+> lay red wire
+You lay the red wire: medium/2, 3 on the board.
+> board
+--
+blue wire thick/3 3 ohms -> bell (bell), drop 9
+green wire thick/4 4 ohms -> fan (fan), drop 16
+red wire medium/2 4 ohms -> lamp (lamp), drop 8
+strained 2, lamps on 1, fans on 1
+--
+reading 3 wires, 11 ohms; log lay:red wire lay:blue wire lay:green wire job:red wire lift:red wire lay:red wire
+> lay red wire
+The red wire is already laid, or the board is full.
+> toggle red wire
+The lamp stops (drop 0).
+> kinds
+lamp: lamp, draw 2, lit, fed by medium/2
+bell: bell, draw 3, loud, on, fed by thick/3
+fan: fan, draw 4, on, 5 blades, fed by thick/4
+[5][10]
+> sums
+all wires 11 ohms, on the board 11 ohms.
+thin 0: none; longest laid thick/4; laid 4, switches 10, upgrades 2, jobs 5.
+> plan
+no job for the green wire; planned 2, longest thick/3, lifts 0, started 7.
+counted 12; [9]
