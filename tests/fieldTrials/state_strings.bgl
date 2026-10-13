@@ -1,0 +1,355 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: stringObj state that lives across save/restore, undo and restart — a stringObj global
+// with an initializer and one without, stringObj members of a plain object, an array<stringObj>
+// global, a member with an initializer, and a pooled class (new/delete) with a stringObj member;
+// interpolation into a stringObj (assigned and `+=`, including from the target's own value),
+// append/prepend/`+`, toUpper/reverse/left/right/mid/replaceAll/trim, format with two arguments,
+// content comparisons (==, !=, <, <=>, =~, compareTo, a switch on a stringObj), a local
+// array<stringObj> sorted; a churn verb that allocates and frees strings, temporaries and a pooled
+// card, typed 1000 times, and a daemon that rebuilds a stringObj member every turn; the free-string,
+// free-buffer, lock-stack and frame-pool counters read back after each phase.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+// Runtime counters, read for the leak probe only.
+#i6 {
+    [ TrialFreeStrings o n;
+        objectloop (o in _bglObjectHeap && o ofclass _bglString) n++;
+        return n;
+    ];
+    [ TrialFreeBuffers o n;
+        objectloop (o in _bglObjectHeap && o ofclass _bglBufferWrapper) n++;
+        return n;
+    ];
+    [ TrialLockTop; return _bglStringLockStackTop; ];
+    [ TrialAppendTop; return _bglStrAppendTop; ];
+}
+extern int TrialFreeStrings();
+extern int TrialFreeBuffers();
+extern int TrialLockTop();
+extern int TrialAppendTop();
+extern var _bglFrameTop;
+
+extend extern class object {
+    string description;
+}
+
+stringObj journal;
+stringObj heading = "Log";
+array<stringObj> tags[4];
+int churns = 0;
+
+// A pool of three cards, each holding its own text.
+class card[3] : object, bglAllocated {
+    stringObj text;
+    void create(string t) {
+        text = t;
+    }
+}
+
+card held;
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+object slate {
+    "slate";
+    parent = roomA;
+    name = {.slate};
+    stringObj note;
+    stringObj tick;
+    stringObj label = "S";
+    int edits = 0;
+    description = "A slate.";
+    void daemon() {
+        stringObj t = $"t{turns % 7}";
+        t = t.prepend("<").append(">");
+        tick = t;
+    }
+}
+
+// Off-stage: only puts the words the verbs take into the dictionary.
+object lexicon {
+    "lexicon";
+    name = {.alpha, .beta, .gamma, .notes, .red, .blue, .green, .ace, .king};
+}
+
+// The text of a dictionary word, captured from its printed form.
+stringObj wordText(dictionaryWord w) {
+    stringObj s;
+    s.capture();
+    print(w);
+    s.release();
+    return s;
+}
+
+void showState() {
+    printLine($"{heading}: [{journal}] ({journal.length})");
+    printLine($"Slate {slate.label}: [{slate.note}] edits {slate.edits} tick {slate.tick}");
+    print("Tags:");
+    for (int i = 0; i < tags.length; i++) print($" {tags[i]}");
+    printLine($" ({tags.length})");
+    if (held == null) printLine("Card: none");
+    else printLine($"Card: [{held.text}]");
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(slate);
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        showState();
+    }
+}
+
+verb Tick {
+    meta = true;
+    grammar = {.tick};
+    void handler() {
+        printLine($"Tick: {slate.tick}");
+    }
+}
+
+verb Counters {
+    meta = true;
+    grammar = {.counters};
+    void handler() {
+        printLine($"Free strings {TrialFreeStrings()}, free buffers {TrialFreeBuffers()}, locks {TrialLockTop()}, appends {TrialAppendTop()}, frames {_bglFrameTop}.");
+        printLine($"Cards free {card.remaining()}, churns {churns}.");
+    }
+}
+
+verb Jot {
+    grammar = { {.jot, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Unknown word.");
+            return;
+        }
+        stringObj w = wordText((dictionaryWord)(var)special_word);
+        if (!journal.isEmpty()) journal += " ";
+        journal += w;
+        printLine($"Jotted {w}.");
+    }
+}
+
+verb Title {
+    grammar = { {.title, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Unknown word.");
+            return;
+        }
+        stringObj w = wordText((dictionaryWord)(var)special_word);
+        heading = w.left(1).toUpper() + w.right(w.length - 1);
+        printLine($"Heading is {heading}.");
+    }
+}
+
+verb Scrawl {
+    grammar = { {.scrawl, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Unknown word.");
+            return;
+        }
+        stringObj w = wordText((dictionaryWord)(var)special_word);
+        slate.edits++;
+        if (slate.note.isEmpty()) slate.note = w;
+        else slate.note = slate.note.append("-").append(w);
+        printLine($"Slate edit {slate.edits}.");
+    }
+}
+
+// Text built from its own value.
+verb Echo {
+    grammar = {.echo};
+    void handler() {
+        journal = $"{journal}+{journal.length}";
+        slate.label += $"/{slate.label.length}";
+        heading = heading.prepend(heading.left(1));
+        printLine("Echoed.");
+    }
+}
+
+verb Shout {
+    grammar = {.shout};
+    void handler() {
+        slate.note = slate.note.toUpper();
+        slate.edits++;
+        printLine("The slate is upper case.");
+    }
+}
+
+verb Tag {
+    grammar = { {.tag, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Unknown word.");
+            return;
+        }
+        stringObj w = wordText((dictionaryWord)(var)special_word);
+        if (tags.contains(w)) {
+            printLine($"Already tagged {w}.");
+            return;
+        }
+        if (!tags.append(w)) {
+            printLine("The tags are full.");
+            return;
+        }
+        printLine($"Tagged {w}.");
+    }
+}
+
+verb Untag {
+    grammar = {.untag};
+    void handler() {
+        if (tags.length == 0) {
+            printLine("No tags.");
+            return;
+        }
+        tags.remove(tags.length - 1);
+        printLine("Untagged.");
+    }
+}
+
+verb Deal {
+    grammar = { {.deal, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Unknown word.");
+            return;
+        }
+        if (held != null) {
+            printLine("A card is already held.");
+            return;
+        }
+        stringObj w = wordText((dictionaryWord)(var)special_word);
+        held = new card("card:");
+        if (held == null) {
+            printLine("No cards left.");
+            return;
+        }
+        held.text += w;
+        printLine($"Dealt {held.text}.");
+    }
+}
+
+verb Discard {
+    grammar = {.discard};
+    void handler() {
+        if (held == null) {
+            printLine("No card.");
+            return;
+        }
+        delete held;
+        held = null;
+        printLine("Discarded.");
+    }
+}
+
+verb Wipe {
+    grammar = {.wipe};
+    void handler() {
+        journal = "";
+        heading = "Log";
+        slate.note = "";
+        slate.edits = 0;
+        tags.clear();
+        if (held != null) {
+            delete held;
+            held = null;
+        }
+        printLine("Wiped.");
+    }
+}
+
+verb Compare {
+    meta = true;
+    grammar = {.compare};
+    void handler() {
+        stringObj a = journal.left(journal.indexOf(" ") < 0 ? journal.length : journal.indexOf(" "));
+        string b = "beta";
+        printLine($"First word {a}: == {a == b}, != {a != b}, < {a < b}, <=> {a <=> b}, compareTo {a.compareTo(b)}.");
+        printLine($"Ignoring case, {heading} matches LOG: {heading =~ "LOG"}.");
+        switch (a) {
+            case "alpha": printLine("It is alpha.");
+            case "beta":  printLine("It is beta.");
+            default:      printLine("It is neither.");
+        }
+    }
+}
+
+verb Report {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        stringObj n = $"{tags.length}";
+        stringObj m = $"{journal.length}";
+        stringObj line = heading.format("$0 has $1 tag(s) and $2 chars", n, m);
+        printLine(line);
+        printLine($"Reversed: [{journal.reverse()}]");
+        printLine($"Dashes: [{slate.note.replaceAll("-", " ")}]");
+    }
+}
+
+// One round of allocation-heavy work; leaves the visible state as it was.
+verb Churn {
+    meta = true;
+    grammar = {.churn};
+    void handler() {
+        stringObj a = "  alpha  ";
+        stringObj b = a.trim();
+        stringObj c = $"{b}/{churns % 10}";
+        c += "!";
+        c += $"[{c.length}]";
+        stringObj d = c.prepend(">").append('<');
+        stringObj e = d.toUpper().reverse().toLower();
+        stringObj f = e.format("$0|$1|$2", b, heading);
+        string lit = "alpha";
+        if (b != lit || !(b == "alpha") || b.compareTo(lit) != 0 || f.isEmpty()) printLine("Bad compare.");
+        stringObj saved = journal;
+        journal += $" {e.length}";
+        journal = saved;
+        stringObj noteCopy = slate.note;
+        slate.note = noteCopy + "";
+        if (held == null) {
+            card k = new card("x");
+            if (k == null) printLine("No card for churn.");
+            else {
+                k.text = k.text.append(f.left(3));
+                delete k;
+            }
+        }
+        array<stringObj> local[3];
+        local.append(b);
+        local.append(c.right(2));
+        local.append(f.mid(1, 4));
+        local.sort();
+        churns++;
+        printLine("Churned.");
+    }
+}

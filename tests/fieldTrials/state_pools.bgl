@@ -1,0 +1,427 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: pooled classes (`class X[N] : object, bglAllocated`) across save, restore, undo, restart
+// and a long run: `new` with create() arguments and `delete` with destroy(), `remaining()`, `copy()`
+// between two instances of one pooled class, slot reuse resetting members to their declared values, an
+// owned value-class member that itself owns a value-class member, a stringObj member on a pooled
+// class, a value class with init/deinit used as a local and a parameter, a value-class global,
+// pooled instances moved through the object tree (rooms, a container, the player), an each_turn that
+// allocates and frees every turn, and runtime counters (pool free slots, init/deinit balance, the
+// string pool's free list) that must come back to their start values.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#include <string>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+class room : object {
+    string description;
+    object e_to;
+    object w_to;
+    attributes = {light};
+}
+
+room roomA {
+    "Room A";
+    description = "Room A.";
+    e_to = roomB;
+    // Allocates and frees every turn the player is here.
+    void each_turn() {
+        turnsHere++;
+        Meter m;
+        m.amount = turnsHere;
+        crate t = new crate(0, turnsHere);
+        if (t == null) {
+            print("[each_turn: pool full]^");
+            return;
+        }
+        t.label.price.cents = m.amount;
+        delete t;
+    }
+}
+
+room roomB {
+    "Room B";
+    description = "Room B.";
+    w_to = roomA;
+}
+
+object shelf {
+    "wooden shelf";
+    name = {.wooden, .shelf};
+    parent = roomA;
+    attributes = {container, open, static};
+}
+
+// A sum of money: a value class with no lifecycle hooks.
+value class Coins {
+    int cents;
+    Coins operator = (Coins o) { cents = o.cents; return self; }
+}
+
+// A value class that owns another value class.
+value class Label {
+    Coins price;
+    int code;
+    Label operator = (Label o) {
+        price = o.price;
+        code = o.code;
+        return self;
+    }
+}
+
+// A value class whose init/deinit keep a count of live instances.
+value class Meter {
+    int amount;
+    Meter operator = (Meter o) { amount = o.amount; return self; }
+    emitter void init()   { liveMeters++; }
+    emitter void deinit() { liveMeters--; }
+}
+
+int liveMeters = 0;
+int turnsHere = 0;
+int nextSerial = 1;
+int made = 0;
+int scrapped = 0;
+Label tally;
+
+class crate[4] : object, bglAllocated {
+    int serial = 0;
+    bool live = false;
+    Label label;
+    stringObj mark;
+    name = {.crate};
+    bool short_name() {
+        print($"crate {serial}");
+        rtrue;
+    }
+    void create(int n, int cents) {
+        serial = n;
+        live = true;
+        label.price.cents = cents;
+        label.code = n * 10;
+        mark = "plain";
+    }
+    void destroy() {
+        live = false;
+    }
+}
+
+// A pooled subclass with a pool of its own.
+class bigCrate[2] : crate {
+    int size = 3;
+}
+
+// A second pool, for copy(): its members are values only.
+class seal[3] : object, bglAllocated {
+    int serial = 0;
+    Label label;
+}
+
+class wideSeal[2] : seal {
+    int width = 4;
+}
+
+crate findCrate(int serial) {
+    if (serial <= 0) return null;
+    for (object o in bgl.world.instances(crate)) {
+        crate c = (crate)o;
+        if (c.live && c.serial == serial) return c;
+    }
+    return null;
+}
+
+// Free slots of the crate pool, measured without disturbing it.
+int freeCrates() {
+    crate probe = new crate(0, 0);
+    if (probe == null) return 0;
+    int n = probe.remaining() + 1;
+    delete probe;
+    return n;
+}
+
+int freeBigCrates() {
+    bigCrate probe = new bigCrate(0, 0);
+    if (probe == null) return 0;
+    int n = probe.remaining() + 1;
+    delete probe;
+    return n;
+}
+
+int freeSeals() {
+    seal probe = new seal();
+    if (probe == null) return 0;
+    int n = probe.remaining() + 1;
+    delete probe;
+    return n;
+}
+
+int freeWideSeals() {
+    wideSeal probe = new wideSeal();
+    if (probe == null) return 0;
+    int n = probe.remaining() + 1;
+    delete probe;
+    return n;
+}
+
+// Members of the string pool's free list.
+int freeStrings() {
+    int n = 0;
+    object o = null;
+    #i6 { objectloop(o in _bglObjectHeap) n++; }
+    return n;
+}
+
+// Takes a copy: changes stay here.
+int priced(Meter m, Label l) {
+    m.amount = m.amount + l.price.cents;
+    l.price.cents = 0;
+    return m.amount;
+}
+
+void describeCrate(crate c) {
+    print($"{c}: in {c.parent}, price {c.label.price.cents}, code {c.label.code}, mark {c.mark}");
+    if (c.is(bigCrate)) print($", size {((bigCrate)c).size}");
+    print("^");
+}
+
+verb State {
+    grammar = {.state};
+    void handler() {
+        int n = 0;
+        for (object o in bgl.world.instances(crate)) {
+            crate c = (crate)o;
+            if (c.live) {
+                describeCrate(c);
+                n++;
+            }
+        }
+        print($"Crates: {n}. Made: {made}. Scrapped: {scrapped}. Next: {nextSerial}.^");
+        print($"Tally: price {tally.price.cents}, code {tally.code}. Turns in Room A: {turnsHere}.^");
+    }
+}
+
+verb Counters {
+    grammar = {.counters};
+    void handler() {
+        print($"Free crates: {freeCrates()}. Free big crates: {freeBigCrates()}.^");
+        print($"Free seals: {freeSeals()}. Free wide seals: {freeWideSeals()}.^");
+        print($"Meters: {liveMeters}. Free strings: {freeStrings()}.^");
+    }
+}
+
+verb Make {
+    grammar = {.make};
+    void handler() {
+        crate c = new crate(nextSerial, nextSerial * 5);
+        if (c == null) {
+            print("The crate pool is full.^");
+            return;
+        }
+        nextSerial++;
+        made++;
+        c.parent = location;
+        print($"Made {c}.^");
+    }
+}
+
+verb MakeBig {
+    grammar = {.makebig};
+    void handler() {
+        bigCrate c = new bigCrate(nextSerial, 100);
+        if (c == null) {
+            print("The big crate pool is full.^");
+            return;
+        }
+        nextSerial++;
+        made++;
+        c.size = c.size + c.serial;
+        c.parent = location;
+        print($"Made big {c}.^");
+    }
+}
+
+verb Scrap {
+    grammar = {.scrap, NUMBER};
+    void handler() {
+        crate c = findCrate((int)noun);
+        if (c == null) {
+            print("No such crate.^");
+            return;
+        }
+        delete c;
+        scrapped++;
+        print("Scrapped.^");
+    }
+}
+
+verb Raise {
+    grammar = {.raise, NUMBER};
+    void handler() {
+        crate c = findCrate((int)noun);
+        if (c == null) {
+            print("No such crate.^");
+            return;
+        }
+        Meter m;
+        m.amount = 7;
+        c.label.price.cents = priced(m, c.label);
+        c.mark += "+";
+        print($"{c} now costs {c.label.price.cents}.^");
+    }
+}
+
+verb Shelve {
+    grammar = {.shelve, NUMBER};
+    void handler() {
+        crate c = findCrate((int)noun);
+        if (c == null) {
+            print("No such crate.^");
+            return;
+        }
+        c.parent = shelf;
+        print($"{c} is on the shelf.^");
+    }
+}
+
+verb Send {
+    grammar = {.send, NUMBER};
+    void handler() {
+        crate c = findCrate((int)noun);
+        if (c == null) {
+            print("No such crate.^");
+            return;
+        }
+        c.parent = roomB;
+        print($"{c} is in Room B.^");
+    }
+}
+
+verb Carry {
+    grammar = {.carry, NUMBER};
+    void handler() {
+        crate c = findCrate((int)noun);
+        if (c == null) {
+            print("No such crate.^");
+            return;
+        }
+        c.parent = player;
+        print($"You hold {c}.^");
+    }
+}
+
+// Copies a crate into a fresh one beside it.
+verb Clone {
+    grammar = {.clone, NUMBER};
+    void handler() {
+        crate src = findCrate((int)noun);
+        if (src == null) {
+            print("No such crate.^");
+            return;
+        }
+        crate c = new crate(nextSerial, 0);
+        if (c == null) {
+            print("The crate pool is full.^");
+            return;
+        }
+        int keep = c.serial;
+        c.copy(src);
+        c.serial = keep;
+        c.parent = src.parent;
+        nextSerial++;
+        made++;
+        print($"Cloned {src} as {c}.^");
+    }
+}
+
+// One turn of ordinary play: every live crate gains a little, through value-class copies.
+verb Tick {
+    grammar = {.tick};
+    void handler() {
+        for (object o in bgl.world.instances(crate)) {
+            crate c = (crate)o;
+            if (!c.live) continue;
+            Meter m;
+            m.amount = 1;
+            c.label.price.cents = priced(m, c.label);
+            c.mark += "+";
+            if (c.mark.length > 20) c.mark = "plain";
+        }
+        print("Ticked.^");
+    }
+}
+
+verb Bump {
+    grammar = {.bump};
+    void handler() {
+        Label l = tally;
+        l.price.cents = l.price.cents + 3;
+        l.code++;
+        tally = l;
+        print($"Tally now {tally.price.cents}.^");
+    }
+}
+
+// One round of allocation-heavy work; every slot it takes is returned.
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        crate a = new crate(900, 1);
+        bigCrate b = new bigCrate(901, 2);
+        seal p = new seal();
+        seal q = new seal();
+        wideSeal w = new wideSeal();
+        if (a == null || b == null || p == null || q == null || w == null) {
+            print("Churn failed: pool full.^");
+            if (a != null) delete a;
+            if (b != null) delete b;
+            if (p != null) delete p;
+            if (q != null) delete q;
+            if (w != null) delete w;
+            return;
+        }
+        a.parent = shelf;
+        b.parent = player;
+        a.parent = b;
+        Meter m;
+        m.amount = priced(m, b.label);
+        a.mark += "x";
+        stringObj s = $"{a.serial}/{b.mark}";
+        Label l = b.label;
+        l.price.cents++;
+        a.label = l;
+        q.serial = 77;
+        q.label.price.cents = 5;
+        q.label.code = 6;
+        w.width = w.width + q.serial;
+        p.copy(w);
+        p.copy(q);
+        if (s != "900/plain" || a.mark != "plainx" || m.amount != 2 || a.label.price.cents != 3
+            || p.serial != 77 || p.label.code != 6 || p.label.price.cents != 5 || b.label.price.cents != 2
+            || w.width != 81) {
+            print("Churn mismatch.^");
+        }
+        delete a;
+        delete b;
+        delete q;
+        delete p;
+        delete w;
+        print("Churned.^");
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    tally.price.cents = 1;
+    tally.code = 2;
+    rfalse;
+}
+
+#includeI6 "grammar"

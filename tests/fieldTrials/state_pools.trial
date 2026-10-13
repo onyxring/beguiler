@@ -1,0 +1,212 @@
+Room A
+Room A.
+You can see a wooden shelf (which is empty) here.
+> state
+Crates: 0. Made: 0. Scrapped: 0. Next: 1.
+Tally: price 1, code 2. Turns in Room A: 0.
+> counters
+Free crates: 4. Free big crates: 2.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 12.
+> make
+Made crate 1.
+> make
+Made crate 2.
+> makebig
+Made big crate 3.
+> raise 1
+crate 1 now costs 12.
+> shelve 2
+crate 2 is on the shelf.
+> carry 3
+You hold crate 3.
+> bump
+Tally now 4.
+> state
+crate 1: in Room A, price 12, code 10, mark plain+
+crate 2: in wooden shelf, price 10, code 20, mark plain
+crate 3: in yourself, price 100, code 30, mark plain, size 6
+Crates: 3. Made: 3. Scrapped: 0. Next: 4.
+Tally: price 4, code 3. Turns in Room A: 9.
+> counters
+Free crates: 2. Free big crates: 1.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 9.
+> save
+>> sp1
+Please enter a file name (without an extension): Ok.
+> scrap 1
+Scrapped.
+> make
+Made crate 4.
+> raise 4
+crate 4 now costs 27.
+> send 2
+crate 2 is in Room B.
+> clone 4
+Cloned crate 4 as crate 5.
+> makebig
+Made big crate 6.
+> scrap 3
+Scrapped.
+> bump
+Tally now 7.
+> state
+crate 4: in Room A, price 27, code 40, mark plain+
+crate 2: in Room B, price 10, code 20, mark plain
+crate 5: in Room A, price 27, code 40, mark plain+
+crate 6: in Room A, price 100, code 60, mark plain, size 9
+Crates: 4. Made: 6. Scrapped: 2. Next: 7.
+Tally: price 7, code 4. Turns in Room A: 19.
+> counters
+Free crates: 1. Free big crates: 1.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 8.
+> restore
+>> sp1
+Please enter a file name (without an extension): Ok.
+> state
+crate 1: in Room A, price 12, code 10, mark plain+
+crate 2: in wooden shelf, price 10, code 20, mark plain
+crate 3: in yourself, price 100, code 30, mark plain, size 6
+Crates: 3. Made: 3. Scrapped: 0. Next: 4.
+Tally: price 4, code 3. Turns in Room A: 11.
+> counters
+Free crates: 2. Free big crates: 1.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 9.
+> inventory
+You're carrying:
+  a crate 3
+> look
+Room A
+Room A.
+You can see a crate 1 and a wooden shelf (in which is a crate 2) here.
+> raise 2
+crate 2 now costs 17.
+> undo
+Room A
+[Previous turn undone.]
+> state
+crate 1: in Room A, price 12, code 10, mark plain+
+crate 2: in wooden shelf, price 10, code 20, mark plain
+crate 3: in yourself, price 100, code 30, mark plain, size 6
+Crates: 3. Made: 3. Scrapped: 0. Next: 4.
+Tally: price 4, code 3. Turns in Room A: 15.
+> scrap 3
+Scrapped.
+> undo
+Room A
+[Previous turn undone.]
+> state
+crate 1: in Room A, price 12, code 10, mark plain+
+crate 2: in wooden shelf, price 10, code 20, mark plain
+crate 3: in yourself, price 100, code 30, mark plain, size 6
+Crates: 3. Made: 3. Scrapped: 0. Next: 4.
+Tally: price 4, code 3. Turns in Room A: 16.
+> make
+Made crate 4.
+> undo
+Room A
+[Previous turn undone.]
+> counters
+Free crates: 2. Free big crates: 1.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 9.
+> east
+Room B
+Room B.
+> look
+Room B
+Room B.
+> west
+Room A
+Room A.
+You can see a crate 1 and a wooden shelf (in which is a crate 2) here.
+> make
+Made crate 4.
+> make
+Made crate 5.
+[each_turn: pool full]
+> make
+The crate pool is full.
+[each_turn: pool full]
+> clone 1
+The crate pool is full.
+[each_turn: pool full]
+> state
+crate 1: in Room A, price 12, code 10, mark plain+
+crate 2: in wooden shelf, price 10, code 20, mark plain
+crate 4: in Room A, price 20, code 40, mark plain
+crate 5: in Room A, price 25, code 50, mark plain
+crate 3: in yourself, price 100, code 30, mark plain, size 6
+Crates: 5. Made: 5. Scrapped: 0. Next: 6.
+Tally: price 4, code 3. Turns in Room A: 23.
+[each_turn: pool full]
+> counters
+Free crates: 0. Free big crates: 1.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 7.
+[each_turn: pool full]
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A.
+You can see a wooden shelf (which is empty) here.
+> state
+Crates: 0. Made: 0. Scrapped: 0. Next: 1.
+Tally: price 1, code 2. Turns in Room A: 0.
+> counters
+Free crates: 4. Free big crates: 2.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 12.
+> look
+Room A
+Room A.
+You can see a wooden shelf (which is empty) here.
+#repeat 1000
+> churn
+Churned.
+> counters
+Free crates: 4. Free big crates: 2.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 12.
+> make
+Made crate 1.
+> make
+Made crate 2.
+> makebig
+Made big crate 3.
+#repeat 300
+> tick
+Ticked.
+> state
+crate 1: in Room A, price 305, code 10, mark plain++++++++++++
+crate 2: in Room A, price 310, code 20, mark plain++++++++++++
+crate 3: in Room A, price 400, code 30, mark plain++++++++++++, size 6
+Crates: 3. Made: 3. Scrapped: 0. Next: 4.
+Tally: price 1, code 2. Turns in Room A: 1307.
+> counters
+Free crates: 2. Free big crates: 1.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 9.
+#repeat 200
+> wait
+Time passes.
+> scrap 1
+Scrapped.
+> scrap 2
+Scrapped.
+> scrap 3
+Scrapped.
+> state
+Crates: 0. Made: 3. Scrapped: 3. Next: 4.
+Tally: price 1, code 2. Turns in Room A: 1512.
+> counters
+Free crates: 4. Free big crates: 2.
+Free seals: 3. Free wide seals: 2.
+Meters: 0. Free strings: 12.

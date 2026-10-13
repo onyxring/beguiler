@@ -1,0 +1,279 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: runtime state across save/restore, undo, restart and a long run, on PunyInform (z5)
+// instead of the Inform 6 standard library. A pooled class `Token[4]` mixing in `bglAllocated`, with
+// a `stringObj` member (owned backing per slot), `create()`/`destroy()`, a `short_name` that prints
+// the member, `new`, `delete` and `remaining()`; a tracked `array<object>` holding the live tokens
+// (`append`, `popEnd`, `length`, `for … in`) and a tracked `array<int>` history used as a bounded queue
+// (`enqueue`, `dequeue`); a global `stringObj` log appended with interpolated strings and trimmed with
+// `right()`; a PunyInform daemon (`StartDaemon`) that allocates a `stringObj` and a local array every
+// turn and a token every fifth turn; a timer (`StartTimer`, `time_left`, `time_out`) that logs when it
+// rings; OPTIONAL_PROVIDE_UNDO; a churn verb doing one round of allocation-heavy work (two tokens,
+// interpolation, `toUpper`, `format`, `replaceAll`, `+`, a `stringObj` returned from a function, local
+// tracked arrays with `sort` and copy-on-assign); and a counters verb reading the token pool and the
+// runtime's string pool, frame pool, lock stack and tracked-buffer registry.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_PROVIDE_UNDO
+
+#i6 { Constant bglStringPoolReserve 16; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// Runtime internals, read only by the counters verb.
+extern var    _bglFrameTop;
+extern var    _bglStringLockStackTop;
+extern var    _bglStrAppendTop;
+extern object _bglObjectHeap;
+extern object _bglAllocatedObjects;
+
+// --- state ------------------------------------------------------------------------------------------
+
+class Token[4] : object, bglAllocated {
+    int       weight = 0;
+    stringObj label;
+
+    void create(int w) {
+        weight = w;
+        label = $"token {w}";
+        liveTokens++;
+    }
+
+    void destroy() {
+        liveTokens--;
+    }
+
+    bool short_name() {
+        print(label);
+        rtrue;
+    }
+}
+
+array<object> inHand[4];
+array<int>    history[5];
+stringObj     logText;
+int           ticks     = 0;
+int           rings     = 0;
+int           liveTokens = 0;
+int           churns    = 0;
+
+void note(string what, int n) {
+    logText += $"{what}{n} ";
+    if (logText.length > 40) logText = logText.right(40);
+}
+
+void remember(int w) {
+    if (history.length == history.size) history.dequeue();
+    history.enqueue(w);
+}
+
+// --- rooms and objects ------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object ticker {
+    "ticker";
+    parent = roomB;
+    name = {.ticker};
+    description = "A ticker.";
+    attributes = {static};
+
+    void daemon() {
+        ticks++;
+        stringObj t = $"tick {ticks}";
+        array<int> marks[3];
+        marks += {ticks, t.length};
+        if (ticks % 5 == 0) {
+            Token spare = new Token(ticks);
+            if (spare != null) delete spare;
+        }
+    }
+}
+
+object bell {
+    "bell";
+    parent = roomB;
+    name = {.bell};
+    description = "A bell.";
+    int time_left;
+    attributes = {static};
+
+    void time_out() {
+        rings++;
+        note("r", rings);
+        printLine("The bell rings.");
+    }
+}
+
+// --- churn ------------------------------------------------------------------------------------------
+
+stringObj joined(stringObj a, string b) {
+    return a + "/" + b;
+}
+
+int churnOnce() {
+    Token a = new Token(7);
+    Token b = new Token(8);
+    if (a == null || b == null) {
+        if (a != null) delete a;
+        if (b != null) delete b;
+        return -1;
+    }
+    stringObj s = $"{a} and {b}";
+    stringObj u = s.toUpper();
+    stringObj f = u.format("[$0|$1]", "x");
+    s = f.replaceAll("TOKEN", "t");
+    stringObj j = joined(s, "end");
+    array<int> nums[4];
+    nums += {3, 1, 2};
+    nums.sort();
+    array<int> copy[4];
+    copy = nums;
+    int result = j.length + copy[0] + copy[2] + a.weight + b.weight;
+    delete a;
+    delete b;
+    return result;
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Make {
+    grammar = {.make, NUMBER};
+    void handler() {
+        int w = parsed_number;
+        if (inHand.length == inHand.size) {
+            printLine("Four tokens are held already.");
+            return;
+        }
+        Token t = new Token(w);
+        if (t == null) {
+            printLine("The token pool is empty.");
+            return;
+        }
+        inHand.append(t);
+        remember(w);
+        note("+", w);
+        printLine($"Made {t}.");
+    }
+}
+
+verb Free {
+    grammar = {.free};
+    void handler() {
+        if (inHand.length == 0) {
+            printLine("No token is held.");
+            return;
+        }
+        Token t = (Token)inHand.popEnd();
+        note("-", t.weight);
+        printLine($"Freed {t}.");
+        delete t;
+    }
+}
+
+verb Wind {
+    grammar = {.wind};
+    void handler() {
+        StartTimer(bell, 2);
+        printLine("The bell is wound.");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp};
+    void handler() {
+        note("s", logText.length % 10);
+        printLine("Stamped.");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        int r = churnOnce();
+        if (r < 0) printLine("Churn failed.");
+        else {
+            churns++;
+            printLine("Churned.");
+        }
+    }
+}
+
+verb State {
+    meta = true;
+    grammar = {.state};
+    void handler() {
+        if (inHand.length == 0) printLine("Held: none.");
+        else {
+            print("Held:");
+            for (object o in inHand) print($" {o} ({((Token)o).weight})");
+            printLine(".");
+        }
+        if (history.length == 0) printLine("History: none.");
+        else {
+            print("History:");
+            for (int w in history) print($" {w}");
+            printLine(".");
+        }
+        printLine($"Log: [{logText}]");
+        printLine($"Ticks {ticks}, rings {rings}, live {liveTokens}, churns {churns}.");
+    }
+}
+
+int countIn(object parent) {
+    int n = 0;
+    for (object c in parent.children) n++;
+    return n;
+}
+
+verb Counters {
+    meta = true;
+    grammar = {.counters};
+    void handler() {
+        Token probe = new Token(0);
+        int free = 0;
+        if (probe != null) {
+            free = probe.remaining() + 1;
+            delete probe;
+        }
+        printLine($"Token pool free {free}.");
+        printLine($"Heap free {countIn(_bglObjectHeap)}, live {countIn(_bglAllocatedObjects)}.");
+        printLine($"Frame top {_bglFrameTop}, locks {_bglStringLockStackTop}, appends {_bglStrAppendTop}.");
+    }
+}
+
+bool Initialise() {
+    StartDaemon(ticker);
+    rfalse;
+}

@@ -1,0 +1,298 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <glulxWindow> windows across save, restore, undo and restart — a text grid split above the
+// main window (opened, closed, made taller and shorter by verbs, redrawn from a replaced DrawStatusLine),
+// a text buffer split to the right (opened, closed, written to by verbs), a styleSheet passed to a split,
+// the status bar's own height; what the program believes (its window variables, ids and heights) set
+// against what Glk really has open (a walk of Glk's windows with windowIterate and windowGetType);
+// pool counts of the window classes read from the runtime (they are not bglAllocated); a churn verb
+// that opens, prints to, resizes and closes windows of each text kind, typed 1000 times; a TimePasses
+// that opens and closes a one-line grid every turn; an IdentifyGlkObject that reconciles the program's
+// windows with Glk's after restore, undo and restart.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+extend extern class object {
+    string description;
+}
+
+styleSheet gridLook = styleSheet{
+    alert = style{ reverse = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz hud = null;
+textBufferWindowVert side = null;
+int hudLines = 2;
+int notes = 0;
+int churns = 0;
+int ticks = 0;
+int statusLines = 1;
+
+object roomA {
+    "Room A";
+    description = "Room A. Nothing is here.";
+    attributes = {light};
+}
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+// Writes the hud's lines: the note count on the first, the turn count on the second.
+void drawHud() {
+    if (hud == null) return;
+    hud.clear();
+    hud.moveCursor(0, 0);
+    hud.print($"Notes {notes}");
+    if (hud.height > 1) {
+        hud.moveCursor(0, 1);
+        hud.print($"Ticks {ticks}");
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | hud {yn(hud != null)} | side {yn(side != null)}");
+    drawHud();
+}
+
+void openHud() {
+    hud = bgl.ui.mainWin.splitUpGrid(hudLines, fixed, border, styles: gridLook);
+    drawHud();
+}
+
+void openSide() {
+    side = bgl.ui.mainWin.splitRightBuffer(30, fixed);
+    side?.printLine("Side open.");
+}
+
+// Counts the windows Glk really has open, by type.
+int glkCount(int type) {
+    int n = 0;
+    int w = bgl.asm.windowIterate(0, 0);
+    while (w != 0) {
+        if (type == 0 || bgl.asm.windowGetType(w) == type) n++;
+        w = bgl.asm.windowIterate(w, 0);
+    }
+    return n;
+}
+
+// True when `id` is a window Glk has open.
+bool glkHas(int id) {
+    if (id == 0) return false;
+    int w = bgl.asm.windowIterate(0, 0);
+    while (w != 0) {
+        if (w == id) return true;
+        w = bgl.asm.windowIterate(w, 0);
+    }
+    return false;
+}
+
+void printState() {
+    if (hud == null) printLine("Hud: closed.");
+    else printLine($"Hud: open, {hud.height} lines, live {yn(glkHas(hud.id))}.");
+    if (side == null) printLine("Side: closed.");
+    else printLine($"Side: open, live {yn(glkHas(side.id))}.");
+    printLine($"Notes: {notes}. Lines setting: {hudLines}.");
+    printLine($"Status: {bgl.ui.statusBar.height} lines, live {yn(glkHas(bgl.ui.statusBar.id))}.");
+    printLine($"Main live: {yn(glkHas(bgl.ui.mainWin.id))}.");
+    printLine($"Glk: {glkCount(4)} grid, {glkCount(3)} buffer, {glkCount(1)} pair.");
+}
+
+// Pool counts read from the runtime directly: the window classes are pooled but not bglAllocated.
+#i6 {
+[ freeGrids; return _bglClass_textGridWindow.remaining(); ];
+[ freeBuffers; return _bglClass_textBufferWindow.remaining(); ];
+[ freeGraphics; return _bglClass_graphicsWindow.remaining(); ];
+}
+extern int freeGrids();
+extern int freeBuffers();
+extern int freeGraphics();
+
+// ---- recovering windows -------------------------------------------------------------------------
+
+// WORKAROUND(r9b-1): <glulxWindow> leaves windows unrecovered after restore/undo/restart; the program closes Glk's leftovers and reopens its own.
+array<int> leftovers[16];
+
+int IdentifyGlkObject(int phase, int type, int ref, int rock) {
+    if (phase == 0) {
+        leftovers.clear();
+        return 0;
+    }
+    if (phase == 1) {
+        if (type != 0 || rock != 0) return 0;
+        if (bgl.asm.windowGetType(ref) == 1) return 0;   // a pair goes when its children do
+        if (hud != null && ref == hud.id) return 0;
+        if (side != null && ref == side.id) return 0;
+        leftovers.enqueue(ref);
+        return 0;
+    }
+    for (int w in leftovers) bgl.asm.windowClose(w, 0);
+    leftovers.clear();
+    if (side != null && !glkHas(side.id)) {
+        side.id = 0;
+        delete side;
+        side = null;
+        openSide();
+    }
+    if (hud != null && !glkHas(hud.id)) {
+        hud.id = 0;
+        delete hud;
+        hud = null;
+        openHud();
+    }
+    // WORKAROUND(r9b-1): the status window keeps Glk's height across restore/undo; set the saved one again.
+    if (bgl.ui.statusBar.id != 0) bgl.ui.statusBar.height = statusLines;
+    return 0;
+}
+
+// ---- per turn ------------------------------------------------------------------------------------
+
+void TimePasses() {
+    ticks++;
+    auto blip = bgl.ui.mainWin.splitDownGrid(1);
+    if (blip == null) {
+        printLine("Blip refused.");
+        return;
+    }
+    blip.print($"Tick {ticks}");
+    blip.close();
+}
+
+bool Initialise() {
+    location = roomA;
+    openSide();
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb HudToggle {
+    grammar = {.hud};
+    void handler() {
+        if (hud == null) {
+            openHud();
+            if (hud == null) printLine("Hud refused.");
+            else printLine("Hud opened.");
+        } else {
+            hud.close();
+            hud = null;
+            printLine("Hud closed.");
+        }
+    }
+}
+
+verb SideToggle {
+    grammar = {.side};
+    void handler() {
+        if (side == null) {
+            openSide();
+            if (side == null) printLine("Side refused.");
+            else printLine("Side opened.");
+        } else {
+            side.close();
+            side = null;
+            printLine("Side closed.");
+        }
+    }
+}
+
+verb Taller {
+    grammar = {.taller};
+    void handler() {
+        hudLines++;
+        if (hud != null) hud.height = hudLines;
+        printLine($"Lines set to {hudLines}.");
+    }
+}
+
+verb Shorter {
+    grammar = {.shorter};
+    void handler() {
+        if (hudLines == 1) { printLine("Lines stay at 1."); return; }
+        hudLines--;
+        if (hud != null) hud.height = hudLines;
+        printLine($"Lines set to {hudLines}.");
+    }
+}
+
+verb Jot {
+    grammar = {.jot};
+    void handler() {
+        notes++;
+        side?.printLine($"Note {notes}.");
+        printLine($"Note {notes} written.");
+    }
+}
+
+verb StatusSize {
+    grammar = {.status, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 0 || n > 3) { printLine("Status lines run from 0 to 3."); return; }
+        statusLines = n;
+        bgl.ui.statusBar.height = n;
+        printLine($"Status set to {n}.");
+    }
+}
+
+verb ShowState {
+    grammar = {.state};
+    meta = true;
+    void handler() {
+        printState();
+    }
+}
+
+verb ChurnOnce {
+    grammar = {.churn};
+    meta = true;
+    void handler() {
+        churns++;
+        auto g = bgl.ui.mainWin.splitDownGrid(2, fixed, border, styles: gridLook);
+        auto b = bgl.ui.mainWin.splitLeftBuffer(20);
+        if (g == null || b == null) {
+            printLine("Churn refused.");
+            g?.close();
+            b?.close();
+            return;
+        }
+        g.moveCursor(0, 1);
+        g.print($"Churn {churns}");
+        g.height = 3;
+        b.printLine($"Churn {churns}");
+        auto inner = b.splitUpGrid(1);
+        inner?.print("x");
+        inner?.close();
+        b.close();
+        g.close();
+        printLine("Churned.");
+    }
+}
+
+verb ShowPools {
+    grammar = {.pools};
+    meta = true;
+    void handler() {
+        printLine($"Free: {freeGrids()} grid, {freeBuffers()} buffer, {freeGraphics()} graphics.");
+        printLine($"Glk: {glkCount(0)} windows.");
+    }
+}
+
+#includeI6 "grammar"

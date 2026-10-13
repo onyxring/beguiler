@@ -1,0 +1,188 @@
+Room A
+> state
+stack [2/8] 1 2
+line [1/8] 5
+pts [0/5]
+snap [0/5]
+kept [0]
+tokens free 6
+> push 7
+stack [3/8] 7 1 2
+> push 3
+stack [4/8] 3 7 1 2
+> queue 9
+Queued. Back 9.
+> point 5 2
+pts [1/5] (5,2)
+> point 1 1
+pts [2/5] (1,1) (5,2)
+> snap
+Snapped 2.
+> make 11
+kept [1] 11
+> state
+stack [4/8] 3 7 1 2
+line [2/8] 5 9
+pts [2/5] (1,1) (5,2)
+snap [2/5] (1,1) (5,2)
+kept [1] 11
+tokens free 5
+> save
+>> sv1
+Ok.
+> pop
+Popped 3. Next 7.
+> cut 0
+line [1/8] 9
+> wipe
+pts [0/5]
+> back
+pts [2/5] (1,1) (5,2)
+> forget 5 2
+pts [1/5] (1,1)
+> make 22
+kept [2] 11 22
+> free
+Freed 22.
+> free
+Freed 11.
+> sort
+stack [3/8] 1 2 7
+line [1/8] 9
+pts [1/5] (1,1)
+snap [0/5]
+kept [0]
+tokens free 6
+> state
+stack [3/8] 1 2 7
+line [1/8] 9
+pts [1/5] (1,1)
+snap [0/5]
+kept [0]
+tokens free 6
+> restore
+>> sv1
+Ok.
+> state
+stack [4/8] 3 7 1 2
+line [2/8] 5 9
+pts [2/5] (1,1) (5,2)
+snap [2/5] (1,1) (5,2)
+kept [1] 11
+tokens free 5
+> counters
+frame top 0, linq depth 0, tokens free 5, point slots 4
+turns 10, turn sum 24, churns 0
+> make 33
+kept [2] 11 33
+> undo
+Room A
+[Previous turn undone.]
+> state
+stack [4/8] 3 7 1 2
+line [2/8] 5 9
+pts [2/5] (1,1) (5,2)
+snap [2/5] (1,1) (5,2)
+kept [1] 11
+tokens free 5
+> shift 0 5
+pts [2/5] (6,1) (5,2)
+> undo
+Room A
+[Previous turn undone.]
+> state
+stack [4/8] 3 7 1 2
+line [2/8] 5 9
+pts [2/5] (1,1) (5,2)
+snap [2/5] (1,1) (5,2)
+kept [1] 11
+tokens free 5
+> query
+all [6/16] 3 7 1 2 5 9
+even 1, over 3 true, positive true
+top [3/3] 9 7 5
+first doubled 6, last 9
+in both 0
+> undo
+Room A
+[Previous turn undone.]
+> counters
+frame top 0, linq depth 0, tokens free 5, point slots 4
+turns 13, turn sum 30, churns 0
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A.
+> state
+stack [2/8] 1 2
+line [1/8] 5
+pts [0/5]
+snap [0/5]
+kept [0]
+tokens free 6
+> counters
+frame top 0, linq depth 0, tokens free 6, point slots 0
+turns 1, turn sum 2, churns 0
+> restore
+>> sv1
+Ok.
+> state
+stack [4/8] 3 7 1 2
+line [2/8] 5 9
+pts [2/5] (1,1) (5,2)
+snap [2/5] (1,1) (5,2)
+kept [1] 11
+tokens free 5
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A.
+> push 4
+stack [3/8] 4 1 2
+> point 2 2
+pts [1/5] (2,2)
+> point 6 1
+pts [2/5] (2,2) (6,1)
+> make 1
+kept [1] 1
+> locals
+squares [4/4] 1 4 9 16
+depth 45
+points 142
+pass 1: 2
+pass 2: 2
+pass 3: 2
+#repeat 1000
+> churn
+Churned.
+> counters
+frame top 0, linq depth 0, tokens free 5, point slots 2
+turns 1005, turn sum 2412, churns 1000
+> state
+stack [3/8] 4 1 2
+line [1/8] 5
+pts [2/5] (2,2) (6,1)
+snap [0/5]
+kept [1] 1
+tokens free 5
+#repeat 300
+> idle
+Idle.
+> counters
+frame top 0, linq depth 0, tokens free 5, point slots 2
+turns 1307, turn sum 3136, churns 1000
+> state
+stack [3/8] 4 1 2
+line [1/8] 5
+pts [2/5] (2,2) (6,1)
+snap [0/5]
+kept [1] 1
+tokens free 5

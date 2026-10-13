@@ -8,6 +8,8 @@
 // line's first character, or Return for an empty line). When stdin runs out and the story asks for
 // more, the run ends. A fatal VM error is printed as "Glulx fatal error: …" so a test fails on it.
 //
+// A save or restore's file prompt takes the next line as the file name.
+//
 // A line `@link N [partial]` clicks the Nth hyperlink printed so far (1-based) instead. `partial` is
 // text the player has typed at a pending line prompt without pressing Return; the story sees it if it
 // cancels the line input. A click with no hyperlink request pending prints a note and ends the run,
@@ -41,8 +43,8 @@ function finish(){
     if(finished) return;
     finished = true;
     for(const c of heldContent) collect(c);   // the story never asked for input: nothing to tell apart
-    process.stdout.write(out.join('').replace(/^\n+/, '') + '\n');
-    process.exit(0);
+    // Exit once the write has drained: a pipe takes 64 KiB at a time, and exiting earlier cuts it off.
+    process.stdout.write(out.join('').replace(/^\n+/, '') + '\n', () => process.exit(0));
 }
 
 // With GLULX_RUN_GRIDS=1, text-grid windows (status bars, menus) are tracked too, and a snapshot of
@@ -152,6 +154,14 @@ glkote.update = (arg) => {
         }
     } else collect(arg.content);
     if(arg.disable) return finish();                     // the story exited
+    // A save or restore asks for a file: the next line names it (files live in the working directory).
+    if(arg.specialinput && arg.specialinput.type === 'fileref_prompt'){
+        if(inputLines.length === 0) return finish();
+        const sp = arg.specialinput;
+        const ref = global.Dialog.file_construct_ref(inputLines.shift().trim(), sp.filetype, sp.gameid || '');
+        setImmediate(() => iface.accept({ type: 'specialresponse', gen: arg.gen, response: 'fileref_prompt', value: ref }));
+        return;
+    }
     const inputs = arg.input || [];
     const req = inputs.find(r => r.type);
     if(!req) return;
@@ -176,4 +186,5 @@ glkote.update = (arg) => {
 };
 
 new Q(0).init(story, () => {});
-setTimeout(() => { out.push('\n[glulx-run: timed out]\n'); finish(); }, 20000).unref();
+// Long-play runs (thousands of turns) need minutes; GLULX_RUN_TIMEOUT (ms) overrides.
+setTimeout(() => { out.push('\n[glulx-run: timed out]\n'); finish(); }, Number(process.env.GLULX_RUN_TIMEOUT) || 240000).unref();

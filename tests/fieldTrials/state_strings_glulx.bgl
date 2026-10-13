@@ -1,0 +1,377 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: string and buffer state across save/restore, undo, restart and a long run on Glulx.
+// A global stringObj, a global tracked array<char>, a global array<stringObj>, an object with a
+// stringObj member and an array<char> member, and a pooled class with a stringObj member made with
+// new and freed with delete. Verbs append and prepend words (a SPECIAL token captured into a
+// stringObj), build interpolated text, copy between buffers and string objects in both directions,
+// trim the note list, and clear everything. Churn verbs do one round of allocation work in locals
+// (stringObj, array<char>, array<stringObj>, interpolation, format, concatenation, capture, new/delete,
+// globals changed and put back), a light round typed 1000 times and a heavy one 100 times; a daemon
+// allocates every turn; a counters verb reads the string pool, the tracked-buffer registry, the
+// capture stack, the frame pool and the pooled class.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+// Runtime internals, read only by the counters verb.
+extern var _bglFrameTop;
+extern var _bglStringLockStackTop;
+extern var _bglStrAppendTop;
+
+stringObj        logText;
+array<char>      scratch[48];
+array<stringObj> notes[4];
+array<char>      dotText = ".";
+array<char>      underText = "_";
+int              ticks = 0;
+
+class Card[3] : object, bglAllocated {
+    stringObj text;
+    int       serial = 0;
+}
+
+Card held;
+int  cardsMade = 0;
+
+object roomA {
+    "Room A";
+    string description = "A plain room.";
+    attributes = {light};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+}
+
+object deskLamp {
+    "desk lamp";
+    parent = roomA;
+    name = {.desk, .lamp};
+}
+
+object board {
+    "board";
+    parent = roomA;
+    name = {.board};
+    attributes = {static};
+    stringObj   label;
+    array<char> tag[32];
+    int         writes = 0;
+    void daemon() {
+        stringObj t = $"tick {ticks}";
+        t += "!";
+        if (t.length > 0) ticks++;
+    }
+}
+
+// The text of a dictionary word, captured from its printed form.
+stringObj wordText(dictionaryWord w) {
+    stringObj s;
+    s.capture();
+    print(w);
+    s.release();
+    return s;
+}
+
+// Put a stringObj's text into a buffer, after what is there.
+// bgl.util.buf.set/append take no stringObj, so the text is captured.
+void bufAppend(array<char> b, stringObj s) {
+    array<char> tmp[48];
+    bgl.util.buf.capture(tmp);
+    print(s);
+    bgl.util.buf.release();
+    bgl.util.buf.append(b, tmp);
+}
+
+// The free slots of the string pool.
+int poolFree() {
+    int n = 0;
+    var o;
+    #i6 { objectloop (o in _bglObjectHeap) if (o ofclass _bglString) n++; }
+    return n;
+}
+
+// Tracked buffers known to the registry.
+int trackedCount() {
+    int n = 0;
+    #i6 { n = _bglBuf._trackedCount; }
+    return n;
+}
+
+// Open captures.
+int captureDepth() {
+    int n = 0;
+    #i6 { n = _bglBuf._stackTop; }
+    return n;
+}
+
+void showState() {
+    printLine($"Log: [{logText}] ({logText.length})");
+    print("Scratch: [");
+    bgl.util.buf.print(scratch);
+    printLine($"] ({scratch.length} of {scratch.size})");
+    print($"Notes ({notes.length}):");
+    for (int i = 0; i < notes.length; i++) print($" {i}={notes[i]}");
+    printLine(".");
+    print($"Board: [{board.label}] tag [");
+    bgl.util.buf.print(board.tag);
+    printLine($"] writes {board.writes}");
+    if (held == null) printLine("Card: none.");
+    else printLine($"Card {held.serial}: [{held.text}]");
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(board);
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb State {
+    meta = true;
+    grammar = {.state};
+    void handler() { showState(); }
+}
+
+verb Counters {
+    meta = true;
+    grammar = {.counters};
+    void handler() {
+        printLine($"Pool free {poolFree()}, cards free {Card.remaining()}, tracked {trackedCount()}.");
+        printLine($"Frame top {_bglFrameTop}, lock stack {_bglStringLockStackTop}, append temps {_bglStrAppendTop}, captures {captureDepth()}.");
+    }
+}
+
+verb TickCount {
+    meta = true;
+    grammar = {.ticks};
+    void handler() { printLine($"Ticks: {ticks}."); }
+}
+
+// Append a word everywhere: the log, the scratch buffer, the note list, the board.
+verb Add {
+    grammar = { {.add, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Only a known word can be added.");
+            return;
+        }
+        dictionaryWord dw = (var)special_word;
+        stringObj w = wordText(dw);
+        if (logText.length > 0) logText += " ";
+        logText += w;
+        if (scratch.length > 0) bgl.util.buf.append(scratch, "-");
+        bufAppend(scratch, w);
+        if (notes.length == notes.size) notes.remove(0);
+        notes += w;
+        board.writes++;
+        board.label = $"{w.toUpper()}#{board.writes}";
+        printLine($"Added {w}.");
+    }
+}
+
+// Put a word at the front of the log and the scratch buffer.
+verb Front {
+    grammar = { {.front, SPECIAL} };
+    void handler() {
+        if (special_word == 0) {
+            printLine("Only a known word can be added.");
+            return;
+        }
+        dictionaryWord dw = (var)special_word;
+        stringObj w = wordText(dw);
+        logText = logText.prepend(w + " ");
+        array<char> word[24];
+        bgl.util.buf.capture(word);
+        print(w);
+        bgl.util.buf.release();
+        bgl.util.buf.prepend(scratch, "+");
+        bgl.util.buf.prepend(scratch, word);
+        printLine($"Fronted {w}.");
+    }
+}
+
+// Copy between the buffers and the string objects, in both directions.
+verb CopyOver {
+    grammar = {.copy};
+    void handler() {
+        board.tag = scratch;                         // buffer to buffer
+        bgl.util.buf.toUpper(board.tag);
+        stringObj fromBuf;
+        fromBuf = fromBuf.append(board.tag);         // buffer into a stringObj
+        board.label = fromBuf.left(10);
+        bgl.util.buf.set(scratch, "");               // stringObj into a buffer
+        bufAppend(scratch, logText.right(5));
+        printLine($"Copied {fromBuf.length} characters.");
+    }
+}
+
+// Make a card from the log, or free the one held.
+verb MakeCard {
+    grammar = {.card};
+    void handler() {
+        if (held != null) {
+            delete held;
+            held = null;
+            printLine("Card freed.");
+            return;
+        }
+        held = new Card();
+        if (held == null) {
+            printLine("No card is free.");
+            return;
+        }
+        cardsMade++;
+        held.serial = cardsMade;
+        held.text = logText.left(8).trim();
+        held.text += $"/{notes.length}";
+        printLine($"Card {held.serial} made.");
+    }
+}
+
+verb Wipe {
+    grammar = {.wipe};
+    void handler() {
+        logText = "";
+        bgl.util.buf.set(scratch, "");
+        notes.clear();
+        board.label = "";
+        bgl.util.buf.set(board.tag, "");
+        printLine("Wiped.");
+    }
+}
+
+// One round of allocation-heavy work in locals; leaves the globals as they were.
+stringObj joinAll(array<stringObj> parts, string sep) {
+    stringObj out;
+    for (int i = 0; i < parts.length; i++) {
+        if (i > 0) out += sep;
+        out += parts[i];
+    }
+    return out;
+}
+
+int churnRound(int n, bool show) {
+    array<stringObj> parts[5];
+    array<char>      local[40];
+    stringObj        a = $"r{n}";
+    stringObj        b = a + ":" + logText.left(3);
+    for (int i = 0; i < 5; i++) {
+        stringObj e = $"{a}.{i}";
+        parts += e;
+    }
+    stringObj joined = joinAll(parts, ",");
+    bufAppend(local, joined);
+    bgl.util.buf.prepend(local, "<");
+    bgl.util.buf.append(local, ">");
+    bgl.util.buf.replaceAll(local, dotText, underText);
+    stringObj back;
+    back = back.append(local);
+    stringObj f = b.format("$0|$1|$2", a, back.mid(1, 4));
+    stringObj capt;
+    capt.capture();
+    print(f.length);
+    print("/");
+    print(back.reverse());
+    capt.release();
+    Card c = new Card();
+    if (c != null) {
+        c.text = capt.left(6);
+        c.text = c.text.prepend("c");
+        if (show) printLine($"Card text [{c.text}].");
+        delete c;
+    }
+    parts.clear();
+    stringObj   keep = logText;            // the globals are changed and put back
+    array<char> keepBuf[48];
+    keepBuf = scratch;
+    logText += $" +{n}";
+    bgl.util.buf.append(scratch, "*");
+    board.label = board.label + "?";
+    if (show) {
+        print("Changed: ");
+        bgl.util.buf.print(scratch);
+        printLine($" / {logText}");
+    }
+    scratch = keepBuf;
+    logText = keep;
+    board.label = board.label.left(board.label.length - 1);
+    if (show) printLine($"Captured [{capt}], buffer [{back}].");
+    return capt.length + local.length;
+}
+
+// A lighter round for the long run: temporaries, a local buffer, a pooled card, and a global changed
+// and put back.
+int churnLight(int n) {
+    stringObj   a = $"r{n}";
+    a += "-x";
+    stringObj   b = a.prepend("<") + ">";
+    array<char> local[24];
+    bufAppend(local, b);
+    bgl.util.buf.append(local, ".");
+    Card c = new Card();
+    if (c != null) {
+        c.text = b;
+        delete c;
+    }
+    stringObj keep = logText;
+    logText += b;
+    logText = keep;
+    return local.length + b.length;
+}
+
+verb Churn {
+    meta = true;
+    grammar = {.churn};
+    void handler() {
+        if (churnLight(7) == 13) printLine("Churned.");
+        else printLine("Churn differs.");
+    }
+}
+
+verb HeavyChurn {
+    meta = true;
+    grammar = {.heavy};
+    void handler() {
+        if (churnRound(7, false) == 55) printLine("Churned heavily.");
+        else printLine("Churn differs.");
+    }
+}
+
+// Print one churn round's text so the work is checked, not only counted.
+verb Sample {
+    meta = true;
+    grammar = {.sample};
+    void handler() {
+        stringObj a = "r7";
+        array<stringObj> parts[5];
+        for (int i = 0; i < 5; i++) {
+            stringObj e = $"{a}.{i}";
+            parts += e;
+        }
+        printLine(joinAll(parts, ","));
+        int total = churnRound(7, true);
+        printLine($"Round total {total}.");
+    }
+}
+
+// Normal play: waits a turn so the daemon runs.
+verb Pause {
+    grammar = {.pause};
+    void handler() { printLine("Time passes."); }
+}

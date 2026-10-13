@@ -1,0 +1,384 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: tracked arrays held as globals and as object members (inline and separately stored),
+// push/pop/enqueue/dequeue/popEnd, length assignment and clear(), length versus size, array copies,
+// member arrays of a pooled class (new/delete, remaining()), local arrays in recursive and
+// nested routines (frame pool), <linq> chains on globals, members and locals, for-in over literal
+// lists, a save made inside a routine holding a local array, and all of that state across
+// save/restore, undo, restart, 1000 rounds of churn and 300 turns of a turn-by-turn allocation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+// Runtime internals, read by the counters verb only.
+extern var _bglFrameTop;
+extern var _bglLinqActiveDepth;
+
+class Room : object {
+    string description;
+    attributeList attributes = {light};
+}
+
+class Token : object {
+    int weight;
+}
+
+// slots fits in one property; ledger is too large for one and is stored separately.
+class Shelf : object {
+    array<int> slots[6];
+    array<int> ledger[40];
+}
+
+// A pooled class whose instances each hold member arrays.
+class Crate[3] : object, bglAllocated {
+    array<int> items[4];
+    array<int> spill[40] = {5, 6};
+}
+
+Room roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    void each_turn() {
+        tick();
+    }
+}
+
+Token redToken   { short_name = "red token";   name = {.red, .token};   weight = 1; parent = roomA; }
+Token greenToken { short_name = "green token"; name = {.green, .token}; weight = 2; parent = roomA; }
+Token blueToken  { short_name = "blue token";  name = {.blue, .token};  weight = 3; parent = roomA; }
+Token grayToken  { short_name = "gray token";  name = {.gray, .token};  weight = 4; parent = roomA; }
+
+Shelf plank {
+    short_name = "shelf";
+    name = {.shelf};
+    parent = roomA;
+    attributeList attributes = {static};
+}
+
+array<int> stack[8];            // push/pop at the front
+array<object> queue[3];         // enqueue at the back, dequeue at the front
+array<int> history = {7, 8, 9}; // an initialized array: length 3, size 3
+array<object> crates[3];       // the crates in use, oldest first
+int nextValue = 1;
+int tokenTurn = 0;
+int ticks = 0;
+int tickSum = 0;
+
+// ---- helpers ------------------------------------------------------------------------------------
+
+void printInts(array<int> a) {
+    if (a.length == 0) { print("none"); return; }
+    for (int i in 0 to a.length - 1) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+}
+
+void printObjects(array<object> a) {
+    if (a.length == 0) { print("none"); return; }
+    for (int i in 0 to a.length - 1) {
+        if (i > 0) print(", ");
+        print(a[i]);
+    }
+}
+
+object nextToken() {
+    tokenTurn++;
+    switch (tokenTurn % 4) {
+        case 1: return redToken;
+        case 2: return greenToken;
+        case 3: return blueToken;
+    }
+    return grayToken;
+}
+
+// Each call holds two local arrays; every level checks its own values survived the deeper calls.
+int walk(int n) {
+    array<int> mine[4];
+    array<int> pair = {n, n * 10};
+    mine += n;
+    mine += n + 1;
+    int below = 0;
+    if (n > 0) below = walk(n - 1);
+    if (mine[0] != n || mine[1] != n + 1 || pair[1] != n * 10) {
+        print($"[walk {n} lost its locals]^");
+    }
+    return below + mine[0] + mine[1] + pair[0] + pair[1];
+}
+
+// A local array built here and returned: the caller copies it.
+array<int> evens(int upTo) {
+    array<int> out[8];
+    for (int i = 2; i <= upTo && out.length < out.size; i += 2) out += i;
+    return out;
+}
+
+// Nested: a routine with a local array calls one with its own, then chains over both.
+int nested(int k) {
+    array<int> outer[6];
+    array<int> got = evens(k);
+    for (int v in got) outer += v + 1;
+    int big = outer.filter((int x) => x > 3).count();
+    int firstOdd = outer.orderBy((int a, int b) => b - a).first();
+    return big * 100 + firstOdd;
+}
+
+int sumOf(array<int> a) {
+    int s = 0;
+    for (int v in a) s += v;
+    return s;
+}
+
+void tick() {
+    array<int> seen[4];
+    for (int v in {1, 2, 3}) seen += v * ticks;
+    Crate passing = new Crate();
+    if (passing != null) {
+        if (passing.items.length != 0 || passing.spill.length != 2) print("[a reused crate was not reset]^");
+        passing.items += ticks;
+        passing.spill += ticks;
+        delete passing;
+    }
+    ticks++;
+    tickSum += seen.filter((int x) => x > 0).count();
+}
+
+void showState() {
+    print("Stack: "); printInts(stack); print($" ({stack.length} of {stack.size}).^");
+    print("Queue: "); printObjects(queue); print($" ({queue.length} of {queue.size}).^");
+    array<int> slotCopy = plank.slots;
+    print("Slots: "); printInts(slotCopy); print($" ({plank.slots.length} of {plank.slots.size}).^");
+    print($"Ledger: {plank.ledger.length} of {plank.ledger.size}, sum {sumOf2()}.^");
+    print("History: "); printInts(history); print(".^");
+    print($"Crates: {crates.length}, free {Crate.remaining()}.");
+    for (object o in crates) {
+        Crate c = (Crate)o;
+        array<int> held = c.items;
+        print(" ["); printInts(held); print($" / {c.spill.length}:{c.spill[c.spill.length - 1]}]");
+    }
+    print("^");
+    print($"Next: {nextValue}. Ticks: {ticks}. Tick sum: {tickSum}.^");
+    int evensOnStack = stack.filter((int x) => x % 2 == 0).count();
+    int heaviest = 0;
+    if (queue.length > 0) heaviest = ((Token)queue.filter((object o) => ((Token)o).weight >= 2).orderBy((object a, object b) => ((Token)b).weight - ((Token)a).weight).first()).weight;
+    print($"Even on stack: {evensOnStack}. Heaviest queued: {heaviest}.^");
+}
+
+// The ledger is a member array, which can't be passed as an array argument.
+int sumOf2() {
+    int s = 0;
+    for (int i in 0 to plank.ledger.length - 1) s += plank.ledger[i];
+    return s;
+}
+
+// ---- verbs --------------------------------------------------------------------------------------
+
+verb State {
+    meta = true;
+    grammar = {.state};
+    void handler() { showState(); }
+}
+
+verb SPush {
+    grammar = {.spush};
+    void handler() {
+        if (stack.length == stack.size) { print("Stack full.^"); return; }
+        stack.push(nextValue);
+        if (plank.ledger.length < plank.ledger.size) plank.ledger += nextValue;
+        print($"Pushed {nextValue}.^");
+        nextValue++;
+    }
+}
+
+verb SPop {
+    grammar = {.spop};
+    void handler() {
+        if (stack.length == 0) { print("Stack empty.^"); return; }
+        int v = stack.pop();
+        print($"Popped {v}.^");
+    }
+}
+
+verb QIn {
+    grammar = {.qin};
+    void handler() {
+        if (queue.length == queue.size) {
+            object gone = queue.dequeue();
+            print($"Dropped {gone}. ");
+        }
+        object t = nextToken();
+        queue.enqueue(t);
+        print($"Queued {t}.^");
+    }
+}
+
+verb QOut {
+    grammar = {.qout};
+    void handler() {
+        if (queue.length == 0) { print("Queue empty.^"); return; }
+        object t = queue.dequeue();
+        print($"Took {t}.^");
+    }
+}
+
+verb SFill {
+    grammar = {.sfill};
+    void handler() {
+        if (!plank.slots.append(nextValue * 3)) { print("Slots full.^"); return; }
+        print($"Filled {nextValue * 3}.^");
+        nextValue++;
+    }
+}
+
+verb STrim {
+    grammar = {.strim};
+    void handler() {
+        if (plank.slots.length == 0) { print("Slots empty.^"); return; }
+        int v = plank.slots.popEnd();
+        print($"Trimmed {v}.^");
+    }
+}
+
+verb HRotate {
+    grammar = {.hrotate};
+    void handler() {
+        int h = history[0];
+        history.remove(0);
+        history += h + 3;
+        print("History: "); printInts(history); print(".^");
+    }
+}
+
+verb CNew {
+    grammar = {.cnew};
+    void handler() {
+        Crate c = new Crate();
+        if (c == null) { print("No crate free.^"); return; }
+        c.items += nextValue;
+        c.items += nextValue * 2;
+        c.spill += nextValue;
+        crates.enqueue(c);
+        print($"Crate holds {nextValue} and {nextValue * 2}.^");
+        nextValue++;
+    }
+}
+
+verb CFree {
+    grammar = {.cfree};
+    void handler() {
+        if (crates.length == 0) { print("No crate in use.^"); return; }
+        Crate c = (Crate)crates.dequeue();
+        print($"Freed the crate holding {c.items[0]}.^");
+        delete c;
+    }
+}
+
+verb Deep {
+    grammar = {.deep};
+    void handler() {
+        print($"Walk: {walk(5)}. Nested: {nested(8)}.^");
+    }
+}
+
+int gridRound() {
+    int grid = 0;
+    for (int a in {1, 2, 3}) {
+        for (int b in {100, 200}) grid += a * b;
+    }
+    return grid;
+}
+
+bool crateRound() {
+    Crate c = new Crate();
+    if (c == null) rfalse;
+    bool ok = true;
+    c.items += {1, 2, 3};
+    c.spill += 9;
+    array<int> spillCopy = c.spill;
+    if (spillCopy.length != 3 || spillCopy.filter((int x) => x > 5).count() != 2) ok = false;
+    if (!c.items.contains(2)) ok = false;
+    delete c;
+    return ok;
+}
+
+// One round of allocation-heavy work that leaves every array as it found it.
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        array<int> copy[8];
+        copy = stack;
+        if (stack.length < stack.size) {
+            stack.push(99);
+            stack.pop();
+        }
+        array<int> sorted = stack.orderBy((int a, int b) => a - b);
+        array<var> doubled = copy.map((var x) => x * 2);
+        int bad = 0;
+        if (sorted.length != stack.length || doubled.length != copy.length) bad++;
+        if (walk(4) != 135) bad++;
+        if (nested(6) != 207) bad++;
+        int lit = 0;
+        for (int v in {4, 5, 6}) lit += v;
+        for (object o in {redToken, blueToken}) lit += ((Token)o).weight;
+        if (lit != 19) bad++;
+        if (gridRound() != 1800) bad++;
+        if (!crateRound()) bad++;
+        plank.slots += 1;
+        plank.slots.popEnd();
+        plank.ledger += 1;
+        plank.ledger.popEnd();
+        if (queue.length > 0) {
+            object t = queue.dequeue();
+            queue.push(t);
+        }
+        if (bad == 0) print("Churned.^");
+        else print($"Churn went wrong ({bad}).^");
+    }
+}
+
+// Length assignment and clear(), to be undone.
+verb Squash {
+    grammar = {.squash};
+    void handler() {
+        stack.length = 1;
+        plank.slots.clear();
+        queue.clear();
+        print($"Squashed to {stack.length}, {plank.slots.length}, {queue.length}; slot 0 is {plank.slots[0]}.^");
+    }
+}
+
+// Saves from inside a routine that holds a local array: a restore resumes here with the array intact.
+verb Snap {
+    meta = true;
+    grammar = {.snap};
+    void handler() {
+        array<int> held = {4, 5, 6};
+        print($"Holding {held.length}, frame top {_bglFrameTop}.^");
+        SaveSub();
+        print($"Still holding {sumOf(held)}, frame top {_bglFrameTop}.^");
+    }
+}
+
+verb Counters {
+    meta = true;
+    grammar = {.counters};
+    void handler() {
+        print($"Frame top: {_bglFrameTop}. Chain depth: {_bglLinqActiveDepth}.^");
+        print($"Lengths: {stack.length} {queue.length} {plank.slots.length} {plank.ledger.length} {history.length}. Crates free: {Crate.remaining()}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

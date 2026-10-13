@@ -1,0 +1,128 @@
+Room A
+Room A.
+> status
+Turn 0. Chips: 0 []. Ledger:. Note: start. Stamps: 0.
+Ticks: 0, sum 0, caught 0. Seen: 0, len 0.
+Churns: 0, sum 0, caught 0. Cycles: 0.
+> counters
+Chips free: 6. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> add
+Chip 1 added.
+> add
+Chip 2 added.
+> stamp
+Stamped.
+> status
+Turn 3. Chips: 2 [1 2]. Ledger: 1 2. Note: added 2+. Stamps: 1.
+Ticks: 3, sum 24, caught 0. Seen: 3, len 7.
+Churns: 0, sum 0, caught 0. Cycles: 0.
+> save
+>> lr1
+Please enter a file name (without an extension): Ok.
+> add
+Chip 3 added.
+> shed
+Chip 3 shed.
+> shed
+Chip 2 shed.
+> stamp
+Stamped.
+> churn
+Churned.
+> status
+Turn 8. Chips: 1 [1]. Ledger: 1 2 3. Note: shed 2+. Stamps: 2.
+Ticks: 8, sum 62, caught 1. Seen: 8, len 7.
+Churns: 1, sum 34, caught 0. Cycles: 0.
+> counters
+Chips free: 5. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> restore
+>> lr1
+Please enter a file name (without an extension): Ok.
+> status
+Turn 3. Chips: 2 [1 2]. Ledger: 1 2. Note: added 2+. Stamps: 1.
+Ticks: 3, sum 24, caught 0. Seen: 3, len 7.
+Churns: 0, sum 0, caught 0. Cycles: 0.
+> counters
+Chips free: 4. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> shed
+Chip 2 shed.
+> status
+Turn 4. Chips: 1 [1]. Ledger: 1 2. Note: shed 2. Stamps: 1.
+Ticks: 4, sum 32, caught 0. Seen: 4, len 7.
+Churns: 0, sum 0, caught 0. Cycles: 0.
+> stamp
+Stamped.
+> undo
+Room A
+[Previous turn undone.]
+> status
+Turn 4. Chips: 1 [1]. Ledger: 1 2. Note: shed 2. Stamps: 1.
+Ticks: 4, sum 32, caught 0. Seen: 4, len 7.
+Churns: 0, sum 0, caught 0. Cycles: 0.
+> counters
+Chips free: 5. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A.
+> status
+Turn 0. Chips: 0 []. Ledger:. Note: start. Stamps: 0.
+Ticks: 0, sum 0, caught 0. Seen: 0, len 0.
+Churns: 0, sum 0, caught 0. Cycles: 0.
+> counters
+Chips free: 6. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> add
+Chip 1 added.
+> add
+Chip 2 added.
+#repeat 1000
+> churn
+Churned.
+> counters
+Chips free: 4. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+#repeat 500
+> wait
+Time passes.
+> status
+Turn 1502. Chips: 2 [1 2]. Ledger: 1 2. Note: added 2. Stamps: 0.
+Ticks: 1502, sum 938, caught 214. Seen: 1502, len 7.
+Churns: 1000, sum 366, caught 200. Cycles: 0.
+> counters
+Chips free: 4. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> save
+>> lr2
+Please enter a file name (without an extension): Ok.
+#repeat 1000
+> cycle
+Cycled.
+#repeat 500
+> wait
+Time passes.
+> status
+Turn 3002. Chips: 1 [859]. Ledger: 1 2. Note: added 2. Stamps: 0.
+Ticks: 3002, sum 860, caught 428. Seen: 3002, len 7.
+Churns: 1000, sum 366, caught 200. Cycles: 1000.
+> counters
+Chips free: 5. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.
+> restore
+>> lr2
+Please enter a file name (without an extension): Ok.
+> status
+Turn 1502. Chips: 2 [1 2]. Ledger: 1 2. Note: added 2. Stamps: 0.
+Ticks: 1502, sum 938, caught 214. Seen: 1502, len 7.
+Churns: 1000, sum 366, caught 200. Cycles: 0.
+> counters
+Chips free: 4. Strings free: 9.
+Frame top: 0. Lock top: 0. Append top: 0. Linq depth: 0.

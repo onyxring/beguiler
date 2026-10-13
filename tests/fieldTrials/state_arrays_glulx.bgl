@@ -1,0 +1,413 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: array state across save, restore, undo and restart on Glulx, and over a long run.
+// A global tracked array<int> used as a stack (push/pop/peek), a queue (enqueue/dequeue/peekEnd) and
+// a list (insert/remove/removeValue/+=/-=), with length and size printed after each change; an array
+// of a value class (copy operator, static == and <=>) filled by +=, insert, element stores, removed by
+// remove and -=, cleared, sorted, copied whole into a second array and back, and passed as an
+// array<Point> parameter; a pooled class (bglAllocated) whose instances are kept in an
+// array<Token> and released with delete, counted by remaining(); local arrays in routines (sized,
+// initialized, copied from a returned local, one per loop pass, one of a value class), recursion
+// with a local array per call; <linq> chains (filter, map, take, skip, distinct, orderBy, any, all,
+// first, last, count), a chain nested in a predicate, a chain captured by assignment; sort() with and
+// without a comparator; an each_turn that allocates a local array and a chain every turn; and the
+// runtime's frame-pool top, linq depth and value-class slot map read through extern for the leak probe.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+extern int _bglFrameTop;
+extern int _bglLinqActiveDepth;
+extern rawArray<char> _bglVal_Point_used;
+
+// ---- types ---------------------------------------------------------------------------------------
+
+value class Point {
+    int x;
+    int y;
+    Point operator = (Point o) { x = o.x; y = o.y; return self; }
+    static bool operator == (Point a, Point b) { return a.x == b.x && a.y == b.y; }
+    static int operator <=> (Point a, Point b) {
+        if (a.x != b.x) return a.x < b.x ? -1 : 1;
+        if (a.y != b.y) return a.y < b.y ? -1 : 1;
+        return 0;
+    }
+}
+
+class Token[6] : object, bglAllocated {
+    int value;
+}
+
+// ---- state ---------------------------------------------------------------------------------------
+
+array<int>   stack[8];
+array<int>   line[8];
+array<Point> pts[5];
+array<Point> snap[5];
+array<Token> kept[6];
+int turnCount;
+int turnSum;
+int churns;
+
+Point origin;
+
+// ---- the room ------------------------------------------------------------------------------------
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A.";
+    attributes = {light};
+    void each_turn() {
+        array<int> seen[6] = {1, 2, 3, 4};
+        seen += turnCount % 5;
+        turnSum += seen.filter((int v) => v > 2).count();
+        turnCount++;
+    }
+}
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+void showInts(array<int> a) {
+    print($"[{a.length}/{a.size}]");
+    for (int v in a) print($" {v}");
+    print("^");
+}
+
+void showPointArray(string label, array<Point> a) {
+    print($"{label} [{a.length}/{a.size}]");
+    for (int i = 0; i < a.length; i++) print($" ({a[i].x},{a[i].y})");
+    print("^");
+}
+
+void showPts() { showPointArray("pts", pts); }
+
+void showKept() {
+    print($"kept [{kept.length}]");
+    for (Token t in kept) print($" {t.value}");
+    print("^");
+}
+
+int pointSlotsUsed() {
+    int n = 0;
+    for (int i = 0; i < 13; i++) if (_bglVal_Point_used[i] != 0) n++;
+    return n;
+}
+
+int freeTokens() {
+    Token probe = new Token();
+    if (probe == null) return 0;
+    int n = probe.remaining();
+    delete probe;
+    return n + 1;
+}
+
+void showState() {
+    print("stack "); showInts(stack);
+    print("line "); showInts(line);
+    showPts();
+    showPointArray("snap", snap);
+    showKept();
+    print($"tokens free {freeTokens()}^");
+}
+
+array<int> squares(int n) {
+    array<int> tmp[6];
+    for (int i in 1 to n) tmp += i * i;
+    return tmp;
+}
+
+int depthSum(int n) {
+    array<int> mine = {n, n * 2};
+    if (n == 0) return mine[0] + mine[1];
+    return mine[0] + mine[1] + depthSum(n - 1);
+}
+
+int pointWork(int k) {
+    array<Point> local[3];
+    Point p;
+    p.x = k; p.y = k + 1;
+    local += p;
+    p.x = k + 2;
+    local += p;
+    local.insert(0, p);
+    local.sort();
+    int total = 0;
+    for (int i = 0; i < local.length; i++) total += local[i].x * 10 + local[i].y;
+    return total;
+}
+
+// ---- verbs: the int arrays -----------------------------------------------------------------------
+
+verb PushNum {
+    grammar = {.push, NUMBER};
+    void handler() {
+        if (stack.length == stack.size) { print("Stack full.^"); return; }
+        stack.push((int)noun);
+        print("stack "); showInts(stack);
+    }
+}
+
+verb PopNum {
+    grammar = {.pop};
+    void handler() {
+        if (stack.length == 0) { print("Stack empty.^"); return; }
+        int v = stack.pop();
+        print($"Popped {v}. Next {stack.peek()}.^");
+    }
+}
+
+verb QueueNum {
+    grammar = {.queue, NUMBER};
+    void handler() {
+        line.enqueue((int)noun);
+        print($"Queued. Back {line.peekEnd()}.^");
+    }
+}
+
+verb ServeNum {
+    grammar = {.serve};
+    void handler() {
+        if (line.length == 0) { print("Line empty.^"); return; }
+        print($"Served {line.dequeue()}.^");
+    }
+}
+
+verb InsertNum {
+    grammar = {.insert, NUMBER, .at, NUMBER};
+    void handler() {
+        if (!line.insert((int)second, (int)noun)) print("Insert refused.^");
+        print("line "); showInts(line);
+    }
+}
+
+verb DropAt {
+    grammar = {.cut, NUMBER};
+    void handler() {
+        line.remove((int)noun);
+        print("line "); showInts(line);
+    }
+}
+
+verb DropAll {
+    grammar = {.strip, NUMBER};
+    void handler() {
+        line -= (int)noun;
+        print("line "); showInts(line);
+    }
+}
+
+verb SortAll {
+    grammar = {.sort};
+    void handler() {
+        stack.sort();
+        line.sort((int a, int b) => b - a);
+        pts.sort();
+        showState();
+    }
+}
+
+// ---- verbs: the value class ----------------------------------------------------------------------
+
+verb AddPoint {
+    grammar = {.point, NUMBER, NUMBER};
+    void handler() {
+        if (pts.length == pts.size) { print("Points full.^"); return; }
+        Point p;
+        p.x = (int)noun;
+        p.y = (int)second;
+        if (pts.contains(p)) { print("Already there.^"); return; }
+        if (pts.length > 0 && p.x < pts[0].x) pts.insert(0, p);
+        else pts += p;
+        showPts();
+    }
+}
+
+verb MovePoint {
+    grammar = {.shift, NUMBER, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= pts.length) { print("No such point.^"); return; }
+        pts[i].x += (int)second;
+        showPts();
+    }
+}
+
+verb DropPoint {
+    grammar = {.unpoint, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= pts.length) { print("No such point.^"); return; }
+        pts.remove(i);
+        showPts();
+    }
+}
+
+verb ClearPoints {
+    grammar = {.wipe};
+    void handler() {
+        pts.clear();
+        origin.x = 0; origin.y = 0;
+        showPts();
+    }
+}
+
+verb ForgetPoint {
+    grammar = {.forget, NUMBER, NUMBER};
+    void handler() {
+        Point p;
+        p.x = (int)noun;
+        p.y = (int)second;
+        if (!pts.contains(p)) { print("No such point.^"); return; }
+        pts -= p;
+        showPts();
+    }
+}
+
+verb SnapPoints {
+    grammar = {.snap};
+    void handler() {
+        snap = pts;
+        print($"Snapped {snap.length}.^");
+    }
+}
+
+verb BackPoints {
+    grammar = {.back};
+    void handler() {
+        pts = snap;
+        snap.clear();
+        showPts();
+    }
+}
+
+// ---- verbs: the pooled class ---------------------------------------------------------------------
+
+verb MakeToken {
+    grammar = {.make, NUMBER};
+    void handler() {
+        Token t = new Token();
+        if (t == null) { print("No token free.^"); return; }
+        t.value = (int)noun;
+        kept += t;
+        showKept();
+    }
+}
+
+verb FreeToken {
+    grammar = {.free};
+    void handler() {
+        if (kept.length == 0) { print("No token held.^"); return; }
+        Token t = kept.popEnd();
+        print($"Freed {t.value}.^");
+        delete t;
+    }
+}
+
+// ---- verbs: queries and local arrays -------------------------------------------------------------
+
+verb Query {
+    grammar = {.query};
+    void handler() {
+        array<int> all[16];
+        for (int v in stack) all += v;
+        for (int v in line) all += v;
+        print("all "); showInts(all);
+        print($"even {all.filter((int v) => v % 2 == 0).count()}, ");
+        print($"over 3 {all.any((int v) => v > 3)}, ");
+        print($"positive {all.all((int v) => v > 0)}^");
+        array<int> top = all.distinct().orderBy((int a, int b) => b - a).take(3);
+        print("top "); showInts(top);
+        print($"first doubled {all.map((var v) => v * 2).first()}, last {all.skip(1).last()}^");
+        int inBoth = stack.filter((int v) => line.any((int w) => w == v)).count();
+        print($"in both {inBoth}^");
+    }
+}
+
+verb Locals {
+    grammar = {.locals};
+    void handler() {
+        array<int> sq = squares(4);
+        print("squares "); showInts(sq);
+        print($"depth {depthSum(5)}^");
+        print($"points {pointWork(3)}^");
+        for (int pass in 1 to 3) {
+            array<int> perPass[4];
+            perPass += pass;
+            perPass += pass * 10;
+            print($"pass {pass}: {perPass.length}^");
+        }
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        int added = 0;
+        for (int round in 1 to 2) {
+            Token t = new Token();
+            t.value = round;
+            kept += t;
+            stack.push(round);
+            line.enqueue(round + 1);
+            if (pts.length < pts.size) {
+                Point p;
+                p.x = round; p.y = 9;
+                pts += p;
+                added++;
+            }
+        }
+        array<int> sq = squares(5);
+        int s = sq.filter((int v) => v > 4).orderBy().skip(1).count();
+        int d = depthSum(4) + pointWork(s);
+        array<int> mix = stack.filter((int v) => v < 100).distinct();
+        mix.sort();
+        for (int round in 1 to 2) {
+            Token t = kept.popEnd();
+            delete t;
+            stack.pop();
+            line.popEnd();
+            if (added > 0) { pts.remove(pts.length - 1); added--; }
+        }
+        churns++;
+        if (d > 0 && mix.length >= 0) print("Churned.^");
+    }
+}
+
+verb Counters {
+    grammar = {.counters};
+    void handler() {
+        print($"frame top {_bglFrameTop}, linq depth {_bglLinqActiveDepth}, tokens free {freeTokens()}, point slots {pointSlotsUsed()}^");
+        print($"turns {turnCount}, turn sum {turnSum}, churns {churns}^");
+    }
+}
+
+verb ShowAll {
+    grammar = {.state};
+    void handler() { showState(); }
+}
+
+verb Idle {
+    grammar = {.idle};
+    void handler() { print("Idle.^"); }
+}
+
+bool Initialise() {
+    location = roomA;
+    stack += {1, 2};
+    line += {5};
+    rfalse;
+}
+
+#includeI6 "grammar"

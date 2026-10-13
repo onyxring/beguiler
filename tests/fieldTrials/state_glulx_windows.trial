@@ -1,0 +1,424 @@
+#grids
+Room A
+Room A. Nothing is here.
+[win 1] Side open.
+[grid 1]
+|Room A | hud no | side yes                        |
+> hud
+Hud opened.
+[grid 1]
+|Room A | hud yes | side yes                       |
+[grid 2]
+|Notes 0               |
+|Ticks 1               |
+> jot
+Note 1 written.
+[win 1] Note 1.
+[grid 1]
+|Room A | hud yes | side yes                       |
+[grid 2]
+|Notes 1               |
+|Ticks 2               |
+> taller
+Lines set to 3.
+[grid 1]
+|Room A | hud yes | side yes                       |
+[grid 2]
+|Notes 1               |
+|Ticks 3               |
+|                      |
+> status 2
+Status set to 2.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 2]
+|Notes 1               |
+|Ticks 4               |
+|                      |
+> state
+Hud: open, 3 lines, live yes.
+Side: open, live yes.
+Notes: 1. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 2 grid, 2 buffer, 3 pair.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 2]
+|Notes 1               |
+|Ticks 4               |
+|                      |
+> save
+>> sv1
+Ok.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 2]
+|Notes 1               |
+|Ticks 4               |
+|                      |
+> hud
+Hud closed.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> side
+Side closed.
+[grid 1]
+|Room A | hud no | side no                         |
+|                                                  |
+> shorter
+Lines set to 2.
+[grid 1]
+|Room A | hud no | side no                         |
+|                                                  |
+> jot
+Note 2 written.
+[grid 1]
+|Room A | hud no | side no                         |
+|                                                  |
+> jot
+Note 3 written.
+[grid 1]
+|Room A | hud no | side no                         |
+|                                                  |
+> status 1
+Status set to 1.
+[grid 1]
+|Room A | hud no | side no                         |
+> state
+Hud: closed.
+Side: closed.
+Notes: 3. Lines setting: 2.
+Status: 1 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 1 buffer, 1 pair.
+[grid 1]
+|Room A | hud no | side no                         |
+> pools
+Free: 8 grid, 8 buffer, 8 graphics.
+Glk: 3 windows.
+[grid 1]
+|Room A | hud no | side no                         |
+> restore
+>> sv1
+Ok.
+[win 2] Side open.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 3]
+|Notes 1               |
+|Ticks 4               |
+|                      |
+> state
+Hud: open, 3 lines, live yes.
+Side: open, live yes.
+Notes: 1. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 2 grid, 2 buffer, 3 pair.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 3]
+|Notes 1               |
+|Ticks 4               |
+|                      |
+> pools
+Free: 7 grid, 7 buffer, 8 graphics.
+Glk: 7 windows.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 3]
+|Notes 1               |
+|Ticks 4               |
+|                      |
+> jot
+Note 2 written.
+[win 2] Note 2.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 3]
+|Notes 2               |
+|Ticks 5               |
+|                      |
+> hud
+Hud closed.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> undo
+Room A
+[Previous turn undone.]
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 4]
+|Notes 2               |
+|Ticks 5               |
+|                      |
+> state
+Hud: open, 3 lines, live yes.
+Side: open, live yes.
+Notes: 2. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 2 grid, 2 buffer, 3 pair.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 4]
+|Notes 2               |
+|Ticks 5               |
+|                      |
+> hud
+Hud closed.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 2. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> hud
+Hud opened.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 5]
+|Notes 2               |
+|Ticks 7               |
+|                      |
+> undo
+Room A
+[Previous turn undone.]
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 2. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> side
+Side closed.
+[grid 1]
+|Room A | hud no | side no                         |
+|                                                  |
+> undo
+Room A
+[Previous turn undone.]
+[win 3] Side open.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 2. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> pools
+Free: 8 grid, 7 buffer, 8 graphics.
+Glk: 5 windows.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> save
+>> sv2
+Ok.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> hud
+Hud opened.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 6]
+|Notes 2               |
+|Ticks 7               |
+|                      |
+> jot
+Note 3 written.
+[win 3] Note 3.
+[grid 1]
+|Room A | hud yes | side yes                       |
+|                                                  |
+[grid 6]
+|Notes 3               |
+|Ticks 8               |
+|                      |
+> restore
+>> sv2
+Ok.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 2. Lines setting: 3.
+Status: 2 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> pools
+Free: 8 grid, 7 buffer, 8 graphics.
+Glk: 5 windows.
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+> restart
+>> y
+Are you sure you want to restart?
+[grid 1]
+|Room A | hud no | side yes                        |
+|                                                  |
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A. Nothing is here.
+[win 4] Side open.
+[grid 1]
+|Room A | hud no | side yes                        |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 0. Lines setting: 2.
+Status: 1 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+> pools
+Free: 8 grid, 7 buffer, 8 graphics.
+Glk: 5 windows.
+[grid 1]
+|Room A | hud no | side yes                        |
+> hud
+Hud opened.
+[grid 1]
+|Room A | hud yes | side yes                       |
+[grid 7]
+|Notes 0               |
+|Ticks 1               |
+> side
+Side closed.
+[grid 1]
+|Room A | hud yes | side no                        |
+[grid 7]
+|Notes 0                                           |
+|Ticks 2                                           |
+> status 3
+Status set to 3.
+[grid 1]
+|Room A | hud yes | side no                        |
+|                                                  |
+|                                                  |
+[grid 7]
+|Notes 0                                           |
+|Ticks 3                                           |
+> state
+Hud: open, 2 lines, live yes.
+Side: closed.
+Notes: 0. Lines setting: 2.
+Status: 3 lines, live yes.
+Main live: yes.
+Glk: 2 grid, 1 buffer, 2 pair.
+[grid 1]
+|Room A | hud yes | side no                        |
+|                                                  |
+|                                                  |
+[grid 7]
+|Notes 0                                           |
+|Ticks 3                                           |
+> restart
+>> y
+Are you sure you want to restart?
+[grid 1]
+|Room A | hud yes | side no                        |
+|                                                  |
+|                                                  |
+[grid 7]
+|Notes 0                                           |
+|Ticks 3                                           |
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A. Nothing is here.
+[win 5] Side open.
+[grid 1]
+|Room A | hud no | side yes                        |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 0. Lines setting: 2.
+Status: 1 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+> pools
+Free: 8 grid, 7 buffer, 8 graphics.
+Glk: 5 windows.
+[grid 1]
+|Room A | hud no | side yes                        |
+> status 0
+Status set to 0.
+[grid 1]
+#repeat 1000
+> churn
+Churned.
+[grid 1]
+> pools
+Free: 8 grid, 7 buffer, 8 graphics.
+Glk: 5 windows.
+[grid 1]
+#repeat 300
+> wait
+Time passes.
+[grid 1]
+> status 1
+Status set to 1.
+[grid 1]
+|Room A | hud no | side yes                        |
+> state
+Hud: closed.
+Side: open, live yes.
+Notes: 0. Lines setting: 2.
+Status: 1 lines, live yes.
+Main live: yes.
+Glk: 1 grid, 2 buffer, 2 pair.
+[grid 1]
+|Room A | hud no | side yes                        |
+> pools
+Free: 8 grid, 7 buffer, 8 graphics.
+Glk: 5 windows.
+[grid 1]
+|Room A | hud no | side yes                        |

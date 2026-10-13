@@ -1,0 +1,268 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: runtime state over a long run and across save, restore, undo and restart. A daemon and
+// an each_turn routine that, every turn, build and format stringObj locals, fill and discard local
+// arrays, run <linq> chains over them, create and delete pooled instances and now and then throw and
+// catch; verbs that change persistent state (a pool of chips onHand in a global array<chip>, a global
+// array<int> ledger, a global stringObj note) and print it; a churn verb doing one round of
+// allocation-heavy work (formatted and concatenated strings, local arrays copied from chains, pooled
+// copy(), a throw out of a called routine that owns a stringObj local); and a meta verb reading the
+// pool counters (remaining(), the string pool, the frame pool top, the string lock and append stacks,
+// the linq depth) through extern globals and an I6 helper.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+//-- Runtime counters, read for this probe only ------------------------------------------------
+#i6 {
+    [ LongRunStringsFree o n; objectloop (o in _bglObjectHeap) if (o ofclass _bglString) n++; return n; ];
+}
+
+extern int LongRunStringsFree();
+extern var _bglFrameTop;
+extern var _bglStringLockStackTop;
+extern var _bglStrAppendTop;
+extern var _bglLinqActiveDepth;
+
+//-- A pool of chips -------------------------------------------------------------------------
+class chip[6] : object, bglAllocated {
+    int serial = 0;
+    int weight = 0;
+    name = {.chip};
+    void create(int s) {
+        serial = s;
+        weight = s % 10;
+    }
+}
+
+class room : object {
+    string description;
+    attributes = {light};
+}
+
+//-- Persistent state ------------------------------------------------------------------------
+array<chip> onHand[6];
+array<int>  ledger[5];
+stringObj   note;
+int nextSerial  = 1;
+int stamps      = 0;
+int ticks       = 0;
+int tickSum     = 0;
+int tickCaught  = 0;
+int seen        = 0;
+int seenLen     = 0;
+int churns      = 0;
+int churnCaught = 0;
+int churnSum    = 0;
+int cycles      = 0;
+
+void record(int v) {
+    if (ledger.length >= ledger.size) ledger.remove(0);
+    ledger.append(v);
+}
+
+void printState() {
+    print($"Turn {turns}. Chips: {onHand.length} [");
+    for (int i in 0 to onHand.length - 1) {
+        if (i > 0) print(" ");
+        print(onHand[i].serial);
+    }
+    print("]. Ledger:");
+    for (int v in ledger) print($" {v}");
+    print($". Note: {note}. Stamps: {stamps}.^");
+    print($"Ticks: {ticks}, sum {tickSum}, caught {tickCaught}. Seen: {seen}, len {seenLen}.^");
+    print($"Churns: {churns}, sum {churnSum}, caught {churnCaught}. Cycles: {cycles}.^");
+}
+
+int chipsFree() {
+    chip probe = new chip(0);
+    if (probe == null) return 0;
+    int n = probe.remaining() + 1;
+    delete probe;
+    return n;
+}
+
+//-- The room, with an each_turn that formats text every turn -------------------------------
+room roomA {
+    "Room A";
+    description = "Room A.";
+    void each_turn() {
+        seen++;
+        stringObj a = $"s{seen % 10}";
+        stringObj b;
+        if (seen % 2 == 0) b = a.format("[$0|$1]", "x");
+        else b = "[" + a + "|y]";
+        b += $"{seen % 3}";
+        seenLen = b.length;
+    }
+}
+
+//-- A daemon that allocates every turn ------------------------------------------------------
+object ticker {
+    void daemon() {
+        ticks++;
+        stringObj line = $"tick {ticks % 100}";
+        array<int> work[5];
+        for (int i in 1 to 5) work.append((ticks + i) % 7);
+        int odd = work.filter((int x) => x % 2 == 1).count();
+        chip c = new chip(100);
+        if (c != null) {
+            tickSum += c.weight;
+            delete c;
+        }
+        try {
+            if (ticks % 7 == 0) throw ticks;
+            tickSum += odd;
+        } catch (int e) {
+            tickCaught++;
+        }
+        tickSum = (tickSum + line.length) % 1000;
+    }
+}
+
+//-- Verbs that change and print the state ---------------------------------------------------
+verb Add {
+    grammar = {.add};
+    void handler() {
+        chip c = new chip(nextSerial);
+        if (c == null) {
+            print("The pool is exhausted.^");
+            return;
+        }
+        nextSerial++;
+        onHand.append(c);
+        record(c.weight);
+        note = $"added {c.serial}";
+        print($"Chip {c.serial} added.^");
+    }
+}
+
+verb Shed {
+    grammar = {.shed};
+    void handler() {
+        if (onHand.length == 0) {
+            print("No chips.^");
+            return;
+        }
+        chip c = onHand.popEnd();
+        int s = c.serial;
+        delete c;
+        note = $"shed {s}";
+        print($"Chip {s} shed.^");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp};
+    void handler() {
+        stamps++;
+        note += "+";
+        print("Stamped.^");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        printState();
+    }
+}
+
+verb Counters {
+    meta = true;
+    grammar = {.counters};
+    void handler() {
+        print($"Chips free: {chipsFree()}. Strings free: {LongRunStringsFree()}.^");
+        print($"Frame top: {_bglFrameTop}. Lock top: {_bglStringLockStackTop}. Append top: {_bglStrAppendTop}. Linq depth: {_bglLinqActiveDepth}.^");
+    }
+}
+
+//-- One round of allocation-heavy work ------------------------------------------------------
+int checkRound(int r) {
+    stringObj tmp = $"r{r}";
+    if (r % 5 == 0) throw r;
+    return tmp.length;
+}
+
+int churnStrings() {
+    stringObj s = $"round {churns % 50}";
+    stringObj t = s.format("<$0/$1>", "x");
+    t += $" {t.length}";
+    stringObj u = t.toUpper().trim() + s.left(3);
+    return u.length;
+}
+
+int churnArrays() {
+    array<int> a[10];
+    for (int i in 0 to 9) a.append((churns * 7 + i * 3) % 11);
+    array<int> b = a.filter((int x) => x > 4).orderBy();
+    int odd = a.filter((int x) => x % 2 == 1).count();
+    return b.last() + odd;
+}
+
+void churnChips() {
+    chip c1 = new chip(900);
+    chip c2 = new chip(901);
+    if (c1 != null && c2 != null) c2.copy(c1);
+    if (c1 != null) delete c1;
+    if (c2 != null) delete c2;
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        churns++;
+        int n = churnStrings() + churnArrays();
+        churnChips();
+        int got = 0;
+        try {
+            got = checkRound(churns);
+        } catch (int e) {
+            churnCaught++;
+        }
+        churnSum = (churnSum + n + got) % 1000;
+        print("Churned.^");
+    }
+}
+
+// Fills the pool and empties it again, one chip a turn.
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        cycles++;
+        if (onHand.length < onHand.size) {
+            chip c = new chip(nextSerial);
+            if (c == null) {
+                print("The pool is exhausted.^");
+                return;
+            }
+            nextSerial++;
+            onHand.append(c);
+        } else {
+            while (onHand.length > 0) {
+                chip c = onHand.popEnd();
+                delete c;
+            }
+        }
+        print("Cycled.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    note = "start";
+    StartDaemon(ticker);
+    rtrue;
+}
+
+#includeI6 "grammar"

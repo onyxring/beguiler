@@ -1,0 +1,152 @@
+Room A
+A plain room.
+> state
+Log: [] (0)
+Scratch: [] (0 of 48)
+Notes (0):.
+Board: [] tag [] writes 0
+Card: none.
+> counters
+Pool free 38, cards free 3, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> ticks
+Ticks: 0.
+> add brass
+Added brass.
+> add key
+Added key.
+> front lamp
+Fronted lamp.
+> copy
+Copied 14 characters.
+> card
+Card 1 made.
+> state
+Log: [lamp brass key] (14)
+Scratch: [s key] (5 of 48)
+Notes (2): 0=brass 1=key.
+Board: [LAMP+BRASS] tag [LAMP+BRASS-KEY] writes 2
+Card 1: [lamp bra/2]
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> ticks
+Ticks: 5.
+> save
+>> sv1
+Ok.
+> wipe
+Wiped.
+> add desk
+Added desk.
+> card
+Card freed.
+> state
+Log: [desk] (4)
+Scratch: [desk] (4 of 48)
+Notes (1): 0=desk.
+Board: [DESK#3] tag [] writes 3
+Card: none.
+> counters
+Pool free 37, cards free 3, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> restore
+>> sv1
+Ok.
+> state
+Log: [lamp brass key] (14)
+Scratch: [s key] (5 of 48)
+Notes (2): 0=brass 1=key.
+Board: [LAMP+BRASS] tag [LAMP+BRASS-KEY] writes 2
+Card 1: [lamp bra/2]
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> ticks
+Ticks: 5.
+> add board
+Added board.
+> undo
+Room A
+[Previous turn undone.]
+> state
+Log: [lamp brass key] (14)
+Scratch: [s key] (5 of 48)
+Notes (2): 0=brass 1=key.
+Board: [LAMP+BRASS] tag [LAMP+BRASS-KEY] writes 2
+Card 1: [lamp bra/2]
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> wipe
+Wiped.
+> undo
+Room A
+[Previous turn undone.]
+> state
+Log: [lamp brass key] (14)
+Scratch: [s key] (5 of 48)
+Notes (2): 0=brass 1=key.
+Board: [LAMP+BRASS] tag [LAMP+BRASS-KEY] writes 2
+Card 1: [lamp bra/2]
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+A plain room.
+You can see a brass key, a desk lamp and a board here.
+> state
+Log: [] (0)
+Scratch: [] (0 of 48)
+Notes (0):.
+Board: [] tag [] writes 0
+Card: none.
+> counters
+Pool free 38, cards free 3, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> ticks
+Ticks: 0.
+> add brass
+Added brass.
+> add key
+Added key.
+> card
+Card 1 made.
+> sample
+r7.0,r7.1,r7.2,r7.3,r7.4
+Card text [c14/>4_].
+Changed: brass-key* / brass key +7
+Captured [14/>4_7r,3_7r,2_7r,1_7r,0_7r<], buffer [<r7_0,r7_1,r7_2,r7_3,r7_4>].
+Round total 55.
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+#repeat 1000
+> churn
+Churned.
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+#repeat 100
+> heavy
+Churned heavily.
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+#repeat 300
+> pause
+Time passes.
+> ticks
+Ticks: 303.
+> counters
+Pool free 35, cards free 2, tracked 44.
+Frame top 0, lock stack 0, append temps 0, captures 0.
+> state
+Log: [brass key] (9)
+Scratch: [brass-key] (9 of 48)
+Notes (2): 0=brass 1=key.
+Board: [KEY#2] tag [] writes 2
+Card 1: [brass ke/2]

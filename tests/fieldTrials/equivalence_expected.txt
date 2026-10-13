@@ -1,0 +1,59 @@
+# Equivalence runs (field_trials.py --equivalence) that are allowed to differ from the trial's .trial file.
+# One per line: `trial [variant]` then the reason. A listed run that differs is reported as EXPECTED.
+
+# A word is 16 bits on the Z-machine and 32 on Glulx.
+adversarial_valid_6 [-G]              mask of a full word
+beginner_style_idioms_5 [-G]          unsigned maximum
+beginner_style_idioms_9 [-G]          address arithmetic in bytes (&counted + 2)
+control_flow_and_errors [-G]          signed wrap-around
+functional_style_idioms_8 [-G]        40000 is negative in 16 bits, so the signed sort differs
+functional_style_idioms_9 [-G]        byte size of a word array
+i6_veteran_idioms_7 [-G]              WORDSIZE
+i6_veteran_idioms_10 [-G]             40000 as a signed word
+layout_and_lexical_variety_5 [-G]     WORDSIZE
+library_author_idioms_7 [-G]          unsigned maximum and checksum
+oop_developer_idioms_9 [-G]           packed characters overflow differently
+runtime_utilities [-G]                unsignedDiv of -1
+
+# The program prints or chooses by its target.
+directives_and_namespaces [-G]        prints the machine name
+layout_and_lexical_variety_23 [-G]    prints the target
+layout_and_lexical_variety_7 [-G]     prints the target
+library_author_idioms_2 [-G]          style chosen by target
+library_author_idioms_4 [-z5]         prints the target
+multi_file_and_namespaces [-G]        prints the target and version
+layout_and_lexical_variety [-G]       newline is 13 in ZSCII and 10 in Unicode
+
+# Code only one target has (deliberate #if TARGET_… sections, Glulx opcodes, float, Unicode literals).
+adversarial_valid_8 [-z5]             float
+functional_style_idioms_15 [-z5]      float
+functional_style_idioms_16 [-z5]      float
+functional_style_idioms_17 [-z5]      float
+functional_style_idioms_19 [-z5]      float
+functional_style_idioms_21 [-z5]      float
+i6_veteran_idioms_6 [-G]              Z opcode getprop addr
+layout_and_lexical_variety_3 [-z5]    U+03A9 has no ZSCII form
+layout_and_lexical_variety_9 [-G]     Z opcode log_shift
+library_author_idioms_3 [-G]          z8-only section by #error
+oop_developer_idioms_11 [-G]          accessor declared under #if TARGET_ZCODE
+score_and_status [-G]                 Z opcode set_cursor
+beginner_style_idioms_8 [-G]          #startup prints before the Glulx window opens
+beginner_style_idioms_2 [-G]          D1350: I6 library RunRoutines runs player.capacity as a routine on Glulx
+
+# A debug build differs on purpose.
+glulx_presentation_idioms_3 [--debug] glulxWindow's debug-only size diagnostic
+glulx_presentation_idioms_4 [--debug] glulxWindow's debug-only size diagnostic
+glulx_presentation_idioms_7 [--debug] glulxWindow's debug-only size diagnostic
+i6_veteran_idioms_2 [--debug]         prints the build kind
+library_author_idioms_6 [--debug]     `trace` is the library's debug verb (no turn passes)
+library_author_idioms_9 [--debug]     log() prints only in a debug build
+punyinform_idioms_9 [--debug]         log() prints only in a debug build
+runtime_utilities [--debug]           log() prints only in a debug build
+
+# Save and restore prompts differ by interpreter: zvm asks for a file name, Quixe doesn't.
+long_run [-G]                         save prompt
+state_arrays [-G]                     save prompt
+state_pools [-G]                      save prompt
+state_strings [-G]                    save prompt
+state_arrays_glulx [-z5]              save prompt
+state_strings_glulx [-z5]             save prompt; <buf>'s registry holds one fewer buffer on Z

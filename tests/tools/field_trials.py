@@ -14,6 +14,11 @@ Each trial is two files in tests/fieldTrials/:
       You're carrying:
         a brass key
 
+  A line `>> text` answers a prompt that isn't a command (a save's file name, restart's "Are you sure?"):
+  it is typed but starts no new command, so what follows it is still the command's output. A line
+  `#repeat N` before a command types it N times, and every one must print the expected lines. An
+  expected line with `*` in it matches any text there (a build's serial number after `restart`).
+
   On Glulx, text printed to a window other than the main one is a line of its own, `[win N] text`.
   A line `#grids` at the top also captures text-grid windows (the status line): a snapshot is printed
   as `[grid N]` followed by `|line|` rows wherever the story waits for input. Window and grid ids are
@@ -23,8 +28,13 @@ Each trial is two files in tests/fieldTrials/:
 
 The program is compiled by beguiler (which hands off to Inform 6), then run with the commands on stdin.
 
-Usage: field_trials.py [--only NAME] [--keep DIR] [--show]
-  --show   print each trial's full transcript (to write or check a .trial)
+Usage: field_trials.py [--only NAME] [--keep DIR] [--show] [--equivalence]
+  --show          print each trial's full transcript (to write or check a .trial)
+  --equivalence   also run every trial as a debug build (--debug) and on the other target (Z ↔ Glulx), and
+                  hold each to the same .trial. A trial that can't be built for the other target (PunyInform
+                  is Z only; Glulx windows, float and Glk have no Z form) is reported as not portable. Runs
+                  listed in tests/fieldTrials/equivalence_expected.txt (word size, target prints, debug-only
+                  output) are reported as expected.
 Exit status is non-zero when any trial fails.
 """
 import argparse, concurrent.futures, glob, os, re, shutil, subprocess, sys, tempfile
@@ -40,24 +50,38 @@ GLULX_RUN = os.path.join(HERE, 'glulx-run.js')
 def run(cmd, cwd, stdin='', env=None):
     try:
         p = subprocess.run(cmd, cwd=cwd, input=stdin, capture_output=True, text=True, encoding='utf-8',
-                           errors='replace', timeout=60, env=env)
+                           errors='replace', timeout=300, env=env)
         return p.returncode, p.stdout + p.stderr
     except subprocess.TimeoutExpired:
         return -1, 'TIMEOUT'
 
 
 def read_trial(path):
-    """(opening lines, [(command, expected lines)], grids?)"""
-    opening, steps, grids = [], [], False
+    """(opening lines, [(command, expected lines)], grids?, stdin lines)"""
+    opening, steps, grids, stdin, repeat = [], [], False, [], 1
     for raw in open(path, encoding='utf-8').read().split('\n'):
         line = raw.rstrip()
         if line == '#grids':
             grids = True
+        elif re.match(r'#repeat\s+\d+$', line):
+            repeat = int(line.split()[1])
+        elif line.startswith('>>'):
+            stdin.append(line[2:].strip())
         elif line.startswith('>'):
-            steps.append((line[1:].strip(), []))
+            want = []
+            for _ in range(repeat):
+                steps.append((line[1:].strip(), want))
+                stdin.append(line[1:].strip())
+            repeat = 1
         elif line.strip():
             (steps[-1][1] if steps else opening).append(line)
-    return opening, steps, grids
+    return opening, steps, grids, stdin
+
+
+def line_matches(want, got):
+    if '*' not in want:
+        return want == got
+    return re.fullmatch(re.escape(want).replace(r'\*', '.*'), got) is not None
 
 
 def split_transcript(text):
@@ -86,19 +110,19 @@ def renumber_windows(text):
     return re.sub(r'\[(win|grid) (\d+)\]', sub, text)
 
 
-def check(path, keep, show):
+def check(path, keep, show, flags=(), label=''):
     name = os.path.splitext(os.path.basename(path))[0]
     trial = os.path.splitext(path)[0] + '.trial'
     if not os.path.exists(trial):
         return name, 'NO-TRIAL', f'{os.path.basename(trial)} is missing', ''
-    opening, steps, grids = read_trial(trial)
-    work = os.path.join(keep or tempfile.mkdtemp(prefix='trial-'), name)
+    opening, steps, grids, stdin_lines = read_trial(trial)
+    work = os.path.join(keep or tempfile.mkdtemp(prefix='trial-'), name + label)
     os.makedirs(work, exist_ok=True)
     # A reused --keep directory holds the last build's story: clear it, or a failed build runs that.
     for f in os.listdir(work):
         if f.endswith(('.z5', '.z8', '.ulx')):
             os.remove(os.path.join(work, f))
-    code, out = run([BEGUILER, '-o', work, path], os.path.dirname(path))
+    code, out = run([BEGUILER, *flags, '-o', work, path], os.path.dirname(path))
     stories = [f for f in os.listdir(work) if f.endswith(('.z5', '.z8', '.ulx'))]
     # Inform 6 can leave a story behind after reporting errors, so its error count decides too; a
     # beguiler error stops before Inform 6 runs.
@@ -110,7 +134,7 @@ def check(path, keep, show):
     if 'Verb declaration no longer has any verbs associated' in out:
         return name, 'COMPILE-FAIL', 'Inform 6 warned of a verb emptied by a split; beguiler should hide it', out
     story = os.path.join(work, stories[0])
-    stdin = '\n'.join(c for c, _ in steps) + '\n'
+    stdin = '\n'.join(stdin_lines) + '\n'
     if story.endswith('.ulx'):
         env = dict(os.environ, GLULX_RUN_WINDOWS='1')
         if grids:
@@ -127,7 +151,7 @@ def check(path, keep, show):
     got_opening, got_steps = split_transcript(out)
     problems = []
     for line in opening:
-        if not any(line.strip() == g.strip() for g in got_opening):
+        if not any(line_matches(line.strip(), g.strip()) for g in got_opening):
             problems.append(f'opening: missing "{line.strip()}"')
     for i, (cmd, want) in enumerate(steps):
         if i >= len(got_steps):
@@ -136,11 +160,57 @@ def check(path, keep, show):
         got_cmd, got = got_steps[i]
         w = [l.rstrip() for l in want]
         g = [l.rstrip() for l in got]
-        if w != g:
+        if len(w) != len(g) or not all(line_matches(a, b) for a, b in zip(w, g)):
             problems.append(f'> {cmd}: want {w!r}, got {g!r}')
+            if len(problems) > 5:
+                break
     if problems:
         return name, 'MISMATCH', '\n      '.join(problems)[:1500], out
     return name, 'PASS', '', out
+
+
+def source_target(path):
+    m = re.search(r'target\s*=\s*"?(?:eTarget\.)?(\w+)', open(path, encoding='utf-8').read(), re.I)
+    return (m.group(1).lower() if m else 'glulx')
+
+
+def variants(path):
+    """The equivalence runs of a trial: a debug build, and the other target."""
+    out = [('--debug', ('--debug',))]
+    src = open(path, encoding='utf-8').read()
+    if source_target(path) == 'glulx':
+        out.append(('-z5', ('-z5',)))
+    elif 'punyInform' not in src and 'puny' not in src.lower():
+        out.append(('-G', ('-G',)))
+    return out
+
+
+def expected_differences():
+    """The equivalence runs listed in equivalence_expected.txt, which may differ from their .trial."""
+    out = set()
+    try:
+        for line in open(os.path.join(TRIALS, 'equivalence_expected.txt'), encoding='utf-8'):
+            m = re.match(r'\s*(\S+ \[\S+\])', line)
+            if m and not line.lstrip().startswith('#'):
+                out.add(m.group(1))
+    except FileNotFoundError:
+        pass
+    return out
+
+
+EXPECTED = expected_differences()
+
+
+def check_variant(path, keep, label, flags):
+    name, status, detail, out = check(path, keep, False, flags, label.replace('-', '_'))
+    if status != 'PASS' and f'{name} [{label}]' in EXPECTED:
+        return f'{name} [{label}]', 'EXPECTED', detail.split('\n')[0][:120], out
+    # A trial built for the other target may use what only its own target has: a Beguile error naming
+    # that is "not portable", not a defect.
+    if status == 'COMPILE-FAIL' and label in ('-z5', '-G') and re.search(r'Glulx|Z-machine|glk|window|float', out, re.I) \
+            and not re.search(r'Error running I6|Compiled with \d+ errors?', out):
+        status = 'NOT-PORTABLE'
+    return f'{name} [{label}]', status, detail, out
 
 
 def main():
@@ -148,19 +218,24 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--keep')
     ap.add_argument('--show', action='store_true')
+    ap.add_argument('--equivalence', action='store_true')
     a = ap.parse_args()
     paths = sorted(p for p in glob.glob(os.path.join(TRIALS, '*.bgl')) if not os.path.basename(p).startswith('_'))
     if a.only:
         paths = [p for p in paths if os.path.splitext(os.path.basename(p))[0] == a.only]
+    jobs = [lambda p=p: check(p, a.keep, a.show) for p in paths]
+    if a.equivalence:
+        jobs += [lambda p=p, l=l, f=f: check_variant(p, a.keep, l, f) for p in paths for l, f in variants(p)]
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as ex:
-        results = list(ex.map(lambda p: check(p, a.keep, a.show), paths))
+        results = list(ex.map(lambda j: j(), jobs))
     counts = {}
     for name, status, detail, _ in results:
         counts[status] = counts.get(status, 0) + 1
         if status != 'PASS':
-            print(f'  {status}: {name} — {detail}')
+            if status != 'EXPECTED':
+                print(f'  {status}: {name} — {detail}')
     print('Field trials: ' + (', '.join(f'{v} {k.lower()}' for k, v in sorted(counts.items())) or 'none'))
-    sys.exit(0 if all(s == 'PASS' for _, s, _, _ in results) else 1)
+    sys.exit(0 if all(s in ('PASS', 'NOT-PORTABLE', 'EXPECTED') for _, s, _, _ in results) else 1)
 
 
 if __name__ == '__main__':
