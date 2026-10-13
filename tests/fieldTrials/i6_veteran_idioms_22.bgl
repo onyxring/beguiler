@@ -1,0 +1,389 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a Heavy class
+// carrying a mass member, and a Weight subclass with a class parse_name (answering TheSame, a
+// while loop over NextWord against a per-object dictionaryWord member), a class invent rule and
+// a short_name per object; a recursive TotalMass over the object tree (children loop, is() test,
+// class cast); a balance scale (a Fixture class whose before refuses Take) with two pan
+// supporters holding a limited number of things (capacity), a describe rule naming its tilt
+// through an array<string> indexed by an enum, a before rule refusing the Receive fake action,
+// and an each_turn rule reporting a change of tilt and logging it in a sized ring array<int>; a
+// basket container carried onto a pan; a locked cabinet the scale unlocks when level under
+// enough load; a brass key opening a locked door between two rooms (door_to, door_dir, found_in,
+// with_key); a canvas sack whose mass changes under Fill and Empty (a bool member, TestScope); a
+// native verb weighing a noun with two grammar lines (one with a preposition); a meta verb
+// printing a tally with a do-while; NewRoom; deadflag when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 MAX_CARRIED 8
+
+const int MAX_SCORE = 2;
+const int UNLOCK_LOAD = 5;      // pounds a side needed to open the cabinet
+const int RING = 4;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+    object e_to;
+    object w_to;
+}
+
+enum eTilt { level = 0, leftDown, rightDown }
+
+array<string> tiltNames = {"level", "down on the left", "down on the right"};
+array<int> history[RING];       // left minus right, each time the scale settles
+int nHistory;
+int g_rooms;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- classes
+
+class Fixture : object {
+    bool before() {
+        switch (action) {
+            case Take, Remove, Push, Pull:
+                rtrue("It is fixed in place.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+class Heavy : object {
+    int mass = 1;
+}
+
+class Weight : Heavy {
+    dictionaryWord adj;
+    description = "An iron weight with its mass cast into the side.";
+    int parse_name() {
+        if (parser_action == TheSame) return -2;     // weights are always told apart
+        int n = 0;
+        dictionaryWord w = NextWord();
+        while (w == .weight || w == .iron || w == adj) {
+            n++;
+            w = NextWord();
+        }
+        return n;
+    }
+    bool invent() {
+        if (inventory_stage == 2) print($" ({mass} lb)");
+        rfalse;
+    }
+}
+
+int TotalMass(object o) {
+    int m = 0;
+    if (o.is(Heavy)) m = ((Heavy)o).mass;
+    for (object c in o.children) m = m + TotalMass(c);
+    return m;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A door leads east.";
+    e_to = oakDoor;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. A door leads west.";
+    w_to = oakDoor;
+    attributes = {light};
+}
+
+object oakDoor {
+    short_name = "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {roomA, roomB};
+    description = "A heavy oak door.";
+    string when_open = "The oak door is open.";
+    string when_closed = "The oak door is closed.";
+    object with_key = brassKey;
+    object door_to() {
+        if (location == roomA) return roomB;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)e_to;
+        return (property)w_to;
+    }
+    attributes = {door, openable, lockable, locked, static};
+}
+
+// ---------------------------------------------------------------- the scale
+
+eTilt Tilt() {
+    int l = TotalMass(leftPan);
+    int r = TotalMass(rightPan);
+    if (l > r) return leftDown;
+    if (r > l) return rightDown;
+    return level;
+}
+
+void Remember(int d) {
+    history[nHistory % RING] = d;
+    nHistory++;
+}
+
+Fixture scale {
+    short_name = "balance scale";
+    name = {.balance, .scale};
+    parent = roomA;
+    eTilt last = level;
+    void description() {
+        print($"A balance scale with a left pan and a right pan. It is {tiltNames[(int)Tilt()]}.^");
+    }
+    bool describe() {
+        print($"^A balance scale stands here, {tiltNames[(int)Tilt()]}.^");
+        rtrue;
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                rtrue("Put it on one of the pans.^");
+        }
+        rfalse;
+    }
+    void each_turn() {
+        eTilt t = Tilt();
+        if (t == last) return;
+        last = t;
+        Remember(TotalMass(leftPan) - TotalMass(rightPan));
+        switch (t) {
+            case level:
+                print("^The scale settles level.^");
+                if (cabinet.has(locked) && TotalMass(leftPan) >= UNLOCK_LOAD) {
+                    cabinet.ungive(locked);
+                    print("Something clicks inside the cabinet.^");
+                    Award();
+                }
+            case leftDown:
+                print("^The scale tips down on the left.^");
+            case rightDown:
+                print("^The scale tips down on the right.^");
+        }
+    }
+}
+
+object leftPan {
+    short_name = "left pan";
+    name = {.left, .pan};
+    parent = roomA;
+    description = "The left pan of the scale.";
+    int capacity = 2;
+    attributes = {supporter, static, scenery};
+}
+
+object rightPan {
+    short_name = "right pan";
+    name = {.right, .pan};
+    parent = roomA;
+    description = "The right pan of the scale.";
+    int capacity = 2;
+    attributes = {supporter, static, scenery};
+}
+
+// ---------------------------------------------------------------- weights
+
+Weight weight1 {
+    short_name = "small weight";
+    adj = .small;
+    mass = 1;
+    parent = roomA;
+}
+
+Weight weight2 {
+    short_name = "medium weight";
+    adj = .medium;
+    mass = 2;
+    parent = roomA;
+}
+
+Weight weight3 {
+    short_name = "large weight";
+    adj = .large;
+    mass = 3;
+    parent = roomA;
+}
+
+Weight weight4 {
+    short_name = "huge weight";
+    adj = .huge;
+    mass = 4;
+    parent = basket;
+}
+
+Heavy basket {
+    short_name = "wicker basket";
+    name = {.wicker, .basket};
+    parent = roomA;
+    mass = 1;
+    description = "A wicker basket.";
+    attributes = {container, open};
+}
+
+// ---------------------------------------------------------------- the cabinet
+
+object cabinet {
+    short_name = "glass cabinet";
+    name = {.glass, .cabinet};
+    parent = roomA;
+    description = "A glass cabinet with no keyhole.";
+    bool before() {
+        switch (action) {
+            case Unlock:
+                rtrue("There is no keyhole.^");
+        }
+        rfalse;
+    }
+    attributes = {container, openable, lockable, locked, static, transparent};
+}
+
+Heavy brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    parent = cabinet;
+    mass = 0;
+    description = "A small brass key.";
+}
+
+// ---------------------------------------------------------------- room B
+
+Heavy plate {
+    short_name = "lead plate";
+    name = {.lead, .plate};
+    parent = roomB;
+    mass = 6;
+    description = "A flat lead plate.";
+    bool after() {
+        switch (action) {
+            case Take:
+                if (!has(general)) {
+                    give(general);
+                    Award();
+                }
+        }
+        rfalse;
+    }
+}
+
+object sandpit {
+    short_name = "sandpit";
+    name = {.sand, .sandpit, .pit};
+    parent = roomB;
+    description = "A pit of dry sand.";
+    bool before() {
+        switch (action) {
+            case Take:
+                rtrue("It runs through your fingers.^");
+        }
+        rfalse;
+    }
+    attributes = {static, scenery};
+}
+
+Heavy sack {
+    short_name = "canvas sack";
+    name = {.canvas, .sack, .bag};
+    parent = roomB;
+    mass = 1;
+    bool full;
+    void description() {
+        if (full) print("A canvas sack full of sand.^");
+        else print("An empty canvas sack.^");
+    }
+    bool before() {
+        switch (action) {
+            case Fill:
+                if (full) rtrue("It is already full.^");
+                if (!TestScope(sandpit)) rtrue("There is nothing here to fill it with.^");
+                full = true;
+                mass = 4;
+                rtrue("You fill the sack with sand.^");
+            case Empty, EmptyT:
+                if (!full) rtrue("It is already empty.^");
+                full = false;
+                mass = 1;
+                rtrue("You empty the sand out of the sack.^");
+        }
+        rfalse;
+    }
+    bool invent() {
+        if (inventory_stage == 2 && full) print(" (full of sand)");
+        rfalse;
+    }
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Weigh {
+    grammar = {
+        {.weigh, NOUN},
+        {.weigh, NOUN, .on | .in, NOUN},
+    };
+    void handler() {
+        if (second != null && second != scale && second != leftPan && second != rightPan) {
+            print($"You can't weigh anything in {the(second)}.^");
+            return;
+        }
+        int m = TotalMass(noun);
+        print($"You weigh {the(noun)}: ");
+        switch (m) {
+            case 0:
+                print("too light to register");
+            case 1:
+                print("one pound");
+            default:
+                print($"{m} pounds");
+        }
+        print(".^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print($"Rooms {g_rooms}, score {score}, left {TotalMass(leftPan)}, right {TotalMass(rightPan)}, scale {tiltNames[(int)Tilt()]}.^");
+        if (nHistory == 0) { printLine("History: none."); return; }
+        int i = 0;
+        int n = nHistory;
+        if (n > RING) n = RING;
+        print("History:");
+        do {
+            print($" {history[i]}");
+            i++;
+        } while (i < n);
+        print($" (of {nHistory}).^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,651 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-third pass: a bank ledger with undo.
+// A value class for an amount of money with a copy operator, `+`/`-`, `==`/`!=` and a `<=>` that the
+// orderings `<`/`<=`/`>` come from, static factories with a default argument, and a formatter returning a
+// `stringObj`; an account base deriving from an "auditable" mixin with `default` virtual hooks
+// (`Kind`, `Available`, `CheckWithdraw`, `OnWithdrawn`, `RefundWithdrawal`), an owned `Money` balance given
+// a starting value by an inline object in each object body, a static counter and a `const` member; a
+// checking account whose overdraft is a clamping `auto { … }` accessor over a `Money`; a savings account
+// that limits withdrawals and calls the base versions through `((Account)self)`; a pooled error class
+// thrown from a guard and caught in a typed `catch`; the command pattern: a command base with `default`
+// `Execute`/`Undo`/`Describe`/`Dispose`, three pooled subclasses whose `create()` takes the account and a
+// `Money`, and a ledger with undo and redo stacks (`array<Command>` with `push`/`pop`/`popEnd`) that
+// disposes what drops off; a bank service with an `operator []`, a lookup that may return null (`?.`/`??`),
+// month-end processing switching on an enum and calling a `func<Money, Money>` fee policy held in a
+// static member and set from a lambda; a statement ordered by a `<linq>` `orderBy` comparator over the
+// money `<=>`, with `filter`/`count`/`any`/`all`/`first`; an audit trail kept in an `array<stringObj>`;
+// `while` and `for` loops with `break`; named and default arguments; ternaries; interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eAccountKind { Checking, Savings }
+enum eErrorCode { None, InvalidAmount, InsufficientFunds, LimitReached, SameAccount }
+
+//-- Money: a value type ---------------------------------------------------------------------------------------
+
+value class Money {
+    int Cents;
+
+    Money operator = (Money o) {
+        Cents = o.Cents;
+        return self;
+    }
+
+    Money operator + (Money o) {
+        Money sum;
+        sum.Cents = Cents + o.Cents;
+        return sum;
+    }
+
+    Money operator - (Money o) {
+        Money difference;
+        difference.Cents = Cents - o.Cents;
+        return difference;
+    }
+
+    bool operator == (Money o) { return Cents == o.Cents; }
+    bool operator != (Money o) { return Cents != o.Cents; }
+    int operator <=> (Money o) { return Cents - o.Cents; }
+
+    static Money Of(int dollars, int cents = 0) {
+        Money m;
+        m.Cents = dollars * 100 + cents;
+        return m;
+    }
+
+    static Money Zero() {
+        Money m;
+        return m;
+    }
+
+    bool IsPositive() { return Cents > 0; }
+    bool IsNegative() { return Cents < 0; }
+
+    // A whole-percent share, rounded down; kept in range of a 16-bit word.
+    Money Percent(int rate) {
+        Money share;
+        share.Cents = (Cents / 100) * rate + (Cents % 100) * rate / 100;
+        return share;
+    }
+
+    stringObj ToText() {
+        int whole = Cents;
+        stringObj text;
+        if (whole < 0) {
+            text = "-";
+            whole = -whole;
+        }
+        int dollars = whole / 100;
+        int rest = whole % 100;
+        if (rest < 10) text += $"{dollars}.0{rest}";
+        else text += $"{dollars}.{rest}";
+        return text;
+    }
+}
+
+//-- Audit trail -----------------------------------------------------------------------------------------------
+
+array<stringObj> AuditLog[4];
+int AuditDropped;
+
+void Audit(stringObj line) {
+    if (AuditLog.length == AuditLog.size) {
+        AuditLog.remove(0);
+        AuditDropped++;
+    }
+    AuditLog += line;
+    Auditable.Events++;
+}
+
+class Auditable : object {
+    static int Events;
+    default stringObj AuditTag() {
+        stringObj tag = "?";
+        return tag;
+    }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class BankError[2] : object {
+    eErrorCode Code;
+    Account Source;
+    int Cents;
+    static int Raised;
+
+    void create(eErrorCode why, Account from, int value) {
+        Code = why;
+        Source = from;
+        Cents = value;
+        BankError.Raised++;
+    }
+
+    stringObj Message() {
+        Money amount;
+        amount.Cents = Cents;
+        stringObj figure = amount.ToText();
+        stringObj text;
+        switch (Code) {
+            case eErrorCode.InvalidAmount:     text = $"{figure} is not a valid amount";
+            case eErrorCode.InsufficientFunds: text = $"{Source.Number} cannot cover {figure}";
+            case eErrorCode.LimitReached:      text = $"{Source.Number} has no withdrawals left";
+            case eErrorCode.SameAccount:       text = $"{Source.Number} cannot transfer to itself";
+            default:                           text = "unknown error";
+        }
+        return text;
+    }
+}
+
+//-- Accounts --------------------------------------------------------------------------------------------------
+
+class Account : Auditable {
+    inline instanceName;
+    inline string Number;
+    Money Balance;
+    int Transactions;
+    static int Opened;
+    const int MaxTransactions = 20;
+
+    default eAccountKind Kind() { return eAccountKind.Checking; }
+    default Money Available() { return Balance; }
+
+    default eErrorCode CheckWithdraw(Money amount) {
+        if (Transactions >= MaxTransactions) return eErrorCode.LimitReached;
+        if (amount > Available()) return eErrorCode.InsufficientFunds;
+        return eErrorCode.None;
+    }
+
+    default void OnWithdrawn() { }
+
+    default void RefundWithdrawal(Money amount) {
+        Balance += amount;
+        Transactions--;
+    }
+
+    stringObj AuditTag() {
+        stringObj tag = $"{Number}";
+        return tag;
+    }
+
+    void Fail(eErrorCode code, Money amount) {
+        BankError err = new BankError(code, self, amount.Cents);
+        if (err == null) {
+            printLine("[error pool exhausted]");
+            return;
+        }
+        throw err;
+    }
+
+    void Deposit(Money amount) {
+        if (!amount.IsPositive()) Fail(eErrorCode.InvalidAmount, amount);
+        Balance += amount;
+        Transactions++;
+    }
+
+    void Withdraw(Money amount) {
+        if (!amount.IsPositive()) Fail(eErrorCode.InvalidAmount, amount);
+        eErrorCode problem = CheckWithdraw(amount);
+        if (problem != eErrorCode.None) Fail(problem, amount);
+        Balance -= amount;
+        Transactions++;
+        OnWithdrawn();
+    }
+
+    void RefundDeposit(Money amount) {
+        Balance -= amount;
+        Transactions--;
+    }
+}
+
+class CheckingAccount : Account {
+    auto Overdraft = {
+        Money _limit;
+        Money operator () { return _limit; }
+        void operator = (Money v) {
+            if (v.IsNegative()) _limit = Money.Zero();
+            else _limit = v;
+        }
+    }
+
+    static func<Money, Money> FeePolicy;
+
+    Money Available() { return Balance + Overdraft; }
+}
+
+class SavingsAccount : Account {
+    int RatePercent = 2;
+    int WithdrawalsLeft = 2;
+    const int WithdrawalsPerMonth = 2;
+
+    eAccountKind Kind() { return eAccountKind.Savings; }
+
+    eErrorCode CheckWithdraw(Money amount) {
+        if (WithdrawalsLeft <= 0) return eErrorCode.LimitReached;
+        return ((Account)self).CheckWithdraw(amount);
+    }
+
+    void OnWithdrawn() { WithdrawalsLeft--; }
+
+    void RefundWithdrawal(Money amount) {
+        WithdrawalsLeft++;
+        ((Account)self).RefundWithdrawal(amount);
+    }
+
+    Money ApplyInterest() {
+        Money interest = Balance.Percent(RatePercent);
+        Balance += interest;
+        WithdrawalsLeft = WithdrawalsPerMonth;
+        return interest;
+    }
+}
+
+CheckingAccount checkA { "checking A", "C-100"; Balance = Money{ Cents = 10000; }; }
+SavingsAccount savingsB { "savings B", "S-200"; Balance = Money{ Cents = 15000; }; RatePercent = 3; }
+CheckingAccount checkC { "checking C", "C-300"; Balance = Money{ Cents = 4000; }; }
+
+//-- Commands --------------------------------------------------------------------------------------------------
+
+class Command : object {
+    static int Executed;
+    static int Undone;
+    static int Disposed;
+
+    default void Execute() { }
+    default void Undo() { }
+    default stringObj Describe() {
+        stringObj text = "command";
+        return text;
+    }
+    default void Dispose() { }
+}
+
+class DepositCommand[3] : Command {
+    Account Target;
+    Money Amount;
+
+    void create(Account into, Money value) {
+        Target = into;
+        Amount = value;
+    }
+
+    void Execute() { Target.Deposit(Amount); }
+    void Undo() { Target.RefundDeposit(Amount); }
+
+    stringObj Describe() {
+        stringObj figure = Amount.ToText();
+        stringObj text = $"deposit {figure} to {Target.Number}";
+        return text;
+    }
+
+    void Dispose() {
+        Command.Disposed++;
+        delete self;
+    }
+}
+
+class WithdrawCommand[3] : Command {
+    Account Source;
+    Money Amount;
+
+    void create(Account from, Money value) {
+        Source = from;
+        Amount = value;
+    }
+
+    void Execute() { Source.Withdraw(Amount); }
+    void Undo() { Source.RefundWithdrawal(Amount); }
+
+    stringObj Describe() {
+        stringObj figure = Amount.ToText();
+        stringObj text = $"withdraw {figure} from {Source.Number}";
+        return text;
+    }
+
+    void Dispose() {
+        Command.Disposed++;
+        delete self;
+    }
+}
+
+class TransferCommand[2] : Command {
+    Account Source;
+    Account Destination;
+    Money Amount;
+
+    void create(Account from, Account into, Money value) {
+        Source = from;
+        Destination = into;
+        Amount = value;
+    }
+
+    void Execute() {
+        if (Source == Destination) Source.Fail(eErrorCode.SameAccount, Amount);
+        Source.Withdraw(Amount);
+        Destination.Deposit(Amount);
+    }
+
+    void Undo() {
+        Destination.RefundDeposit(Amount);
+        Source.RefundWithdrawal(Amount);
+    }
+
+    stringObj Describe() {
+        stringObj figure = Amount.ToText();
+        stringObj text = $"transfer {figure} from {Source.Number} to {Destination.Number}";
+        return text;
+    }
+
+    void Dispose() {
+        Command.Disposed++;
+        delete self;
+    }
+}
+
+//-- The ledger: undo and redo ---------------------------------------------------------------------------------
+
+class Ledger : object {
+    array<Command> UndoStack[3];
+    array<Command> RedoStack[3];
+
+    // Runs a command; a refused one is disposed, an accepted one becomes the newest undo entry.
+    bool Run(Command cmd, bool fromRedo = false) {
+        if (cmd == null) {
+            printLine("No command slot free.");
+            return false;
+        }
+        try {
+            cmd.Execute();
+        } catch (BankError e) {
+            stringObj reason = e.Message();
+            printLine($"Refused: {reason}.");
+            delete e;
+            cmd.Dispose();
+            return false;
+        }
+        Command.Executed++;
+        if (UndoStack.length == UndoStack.size) {
+            Command oldest = UndoStack.popEnd();
+            oldest.Dispose();
+        }
+        UndoStack.push(cmd);
+        if (!fromRedo) ClearRedo();
+        stringObj done = cmd.Describe();
+        printLine($"{fromRedo ? "Redone" : "Done"}: {done}.");
+        Audit(done);
+        return true;
+    }
+
+    void ClearRedo() {
+        while (RedoStack.length > 0) {
+            Command stale = RedoStack.pop();
+            stale.Dispose();
+        }
+    }
+
+    bool Undo() {
+        if (UndoStack.length == 0) {
+            printLine("Nothing to undo.");
+            return false;
+        }
+        Command cmd = UndoStack.pop();
+        cmd.Undo();
+        RedoStack.push(cmd);
+        Command.Undone++;
+        stringObj what = cmd.Describe();
+        printLine($"Undone: {what}.");
+        stringObj entry = "undo " + what;
+        Audit(entry);
+        return true;
+    }
+
+    bool Redo() {
+        if (RedoStack.length == 0) {
+            printLine("Nothing to redo.");
+            return false;
+        }
+        return Run(RedoStack.pop(), fromRedo: true);
+    }
+}
+
+Ledger theLedger { }
+
+//-- The bank: a service ---------------------------------------------------------------------------------------
+
+class Bank : object {
+    array<Account> Accounts[4];
+
+    void Open(Account a) {
+        Accounts.append(a);
+        Account.Opened++;
+    }
+
+    Account operator [] (int slot) { return Accounts[slot]; }
+
+    int Count() { return Accounts.length; }
+
+    Account Find(string number) {
+        for (Account a in Accounts) {
+            if (a.Number == number) return a;
+        }
+        return null;
+    }
+
+    Money Total() {
+        Money sum;
+        for (Account a in Accounts) sum += a.Balance;
+        return sum;
+    }
+
+    void MonthEnd() {
+        for (Account a in Accounts) {
+            switch (a.Kind()) {
+                case eAccountKind.Savings:
+                    Money interest = ((SavingsAccount)a).ApplyInterest();
+                    stringObj figure = interest.ToText();
+                    printLine($"{a.Number}: interest {figure}.");
+                case eAccountKind.Checking:
+                    Money fee = CheckingAccount.FeePolicy(a.Balance);
+                    if (fee.IsPositive()) {
+                        a.Balance -= fee;
+                        stringObj figure = fee.ToText();
+                        printLine($"{a.Number}: fee {figure}.");
+                    } else {
+                        printLine($"{a.Number}: no fee.");
+                    }
+            }
+        }
+    }
+}
+
+Bank theBank { }
+
+//-- Helpers ---------------------------------------------------------------------------------------------------
+
+int ByBalanceDescending(Account a, Account b) {
+    if (a.Balance > b.Balance) return -1;
+    if (a.Balance < b.Balance) return 1;
+    return a.Number.compareTo(b.Number);
+}
+
+stringObj PadLeft(stringObj text, int width = 8) {
+    stringObj padded;
+    int gap = width - text.length;
+    while (gap > 0) {
+        padded += " ";
+        gap--;
+    }
+    padded += text;
+    return padded;
+}
+
+void ShowAccount(Account a, bool withAvailable = true) {
+    stringObj balance = PadLeft(a.Balance.ToText());
+    stringObj line = $"{a.Number} {balance}";
+    if (withAvailable && a.Available() != a.Balance) {
+        stringObj available = a.Available().ToText();
+        line += $" (available {available})";
+    }
+    line += $", {a.Transactions} tx";
+    if (a.Kind() == eAccountKind.Savings) {
+        line += $", {((SavingsAccount)a).WithdrawalsLeft} withdrawals left";
+    }
+    printLine(line);
+}
+
+void ShowBalances() {
+    for (int i = 0; i < theBank.Count(); i++) ShowAccount(theBank[i]);
+    stringObj total = theBank.Total().ToText();
+    printLine($"Total {total}.");
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        theBank.Open(checkA);
+        theBank.Open(savingsB);
+        theBank.Open(checkC);
+        checkA.Overdraft = Money.Of(25);
+        checkC.Overdraft = Money.Of(-5);
+        CheckingAccount.FeePolicy = (Money balance) => balance < Money.Of(50) ? Money.Of(1, 50) : Money.Zero();
+        stringObj total = theBank.Total().ToText();
+        stringObj limitA = checkA.Overdraft.ToText();
+        stringObj limitC = checkC.Overdraft.ToText();
+        printLine($"Accounts {Account.Opened}, total {total}, overdraft A {limitA}, overdraft C {limitC}.");
+    }
+}
+
+verb Balances {
+    grammar = {.balances};
+    void handler() { ShowBalances(); }
+}
+
+verb Deposit {
+    grammar = {.deposit};
+    void handler() {
+        theLedger.Run(new DepositCommand(checkA, Money.Of(20, 50)));
+        theLedger.Run(new DepositCommand(checkC, Money.Zero()));
+    }
+}
+
+verb Withdraw {
+    grammar = {.withdraw};
+    void handler() {
+        theLedger.Run(new WithdrawCommand(savingsB, Money.Of(30)));
+        theLedger.Run(new WithdrawCommand(checkC, Money.Of(45)));
+        theLedger.Run(new WithdrawCommand(savingsB, Money.Of(10, 5)));
+        theLedger.Run(new WithdrawCommand(savingsB, Money.Of(5)));
+    }
+}
+
+verb MoveFunds {
+    grammar = {.xfer};
+    void handler() {
+        theLedger.Run(new TransferCommand(checkA, checkC, Money.Of(120)));
+        theLedger.Run(new TransferCommand(checkC, checkC, Money.Of(1)));
+    }
+}
+
+verb Rollback {
+    grammar = {.rollback};
+    void handler() { theLedger.Undo(); }
+}
+
+verb Reapply {
+    grammar = {.reapply};
+    void handler() { theLedger.Redo(); }
+}
+
+verb History {
+    grammar = {.history};
+    void handler() {
+        printLine($"Undo {theLedger.UndoStack.length}, redo {theLedger.RedoStack.length}.");
+        int n = 0;
+        for (Command c in theLedger.UndoStack) {
+            stringObj what = c.Describe();
+            printLine($"  {n}: {what}");
+            n++;
+        }
+        printLine($"Executed {Command.Executed}, undone {Command.Undone}, disposed {Command.Disposed}, errors {BankError.Raised}.");
+    }
+}
+
+verb MonthEnd {
+    grammar = {.monthend};
+    void handler() {
+        theBank.MonthEnd();
+        ShowBalances();
+    }
+}
+
+verb Statement {
+    grammar = {.statement};
+    void handler() {
+        array<Account> ranked[4];
+        ranked = theBank.Accounts.orderBy(ByBalanceDescending);
+        int position = 1;
+        for (Account a in ranked) {
+            stringObj figure = a.Balance.ToText();
+            printLine($"{position}. {a} ({a.Number}) {figure}");
+            position++;
+        }
+        int checking = theBank.Accounts.filter((Account a) => a.Kind() == eAccountKind.Checking).count();
+        bool anyOverdrawn = theBank.Accounts.any((Account a) => a.Balance.IsNegative());
+        bool allActive = theBank.Accounts.all((Account a) => a.Transactions > 0);
+        printLine($"Checking {checking}, any overdrawn {anyOverdrawn}, all active {allActive}.");
+        Money floor = Money.Of(100);
+        Account firstRich = theBank.Accounts.filter((Account a) => a.Balance >= floor).first();
+        Account found = theBank.Find("S-200");
+        Account missing = theBank.Find("X-999");
+        string foundName = found?.Number ?? "none";
+        string missingName = missing?.Number ?? "none";
+        printLine($"First at 100.00 or more: {firstRich}; find S-200 {foundName}, X-999 {missingName}.");
+    }
+}
+
+verb AuditTrail {
+    grammar = {.audit};
+    void handler() {
+        printLine($"Events {Auditable.Events}, dropped {AuditDropped}.");
+        for (stringObj line in AuditLog) printLine($"- {line}");
+        int index = 0;
+        while (true) {
+            if (index >= theBank.Count()) break;
+            stringObj tag = theBank[index].AuditTag();
+            print(tag);
+            print(index < theBank.Count() - 1 ? ", " : ".^");
+            index++;
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

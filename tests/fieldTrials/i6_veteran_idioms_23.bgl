@@ -1,0 +1,497 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a Tank class (a
+// level, a limit and a mark held in int members) whose description prints a bar gauge with a for
+// loop and names its fill through a switch with ranges, and whose before rule refuses the Receive
+// fake action; a Valve class (switchable, with Tank-typed source and destination members, one of
+// them null for a drain) whose before rule turns Open, Close and Turn into SwitchOn and SwitchOff
+// through perform() and whose after rule reports them; a plumbing daemon started in Initialise that
+// walks an array<object> of valves each turn, moving water and noticing a stalled pipe through a
+// bool member; a cork float in the upper tank that rises at a level and carries a brass key
+// (assigning parent); a bucket with Fill (from a tank found by a children loop, or given as second)
+// and Empty / EmptyT rules; a hand pump worked through a native verb (two grammar lines) and from its
+// own before rule through perform(); a native Pour verb performing Empty or EmptyT; a Mark verb with
+// a NUMBER token read from second; a manual answering Consult by reading words from consult_from with
+// NextWord and switching on dictionary words; a synonym added to the library's Turn; a locked box
+// opened with the key (with_key); a sized ring array<int> of pump readings and a meta verb printing a
+// tally; NewRoom; deadflag when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 MAX_CARRIED 8
+
+const int MAX_SCORE = 2;
+const int FLOAT_LEVEL = 5;      // the cork float lifts clear of the bottom at this level
+const int BUCKET_HOLDS = 2;
+const int RING = 4;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+}
+
+array<int> pumpLog[RING];       // lower tank level after each stroke of the pump
+int nPumps;
+int g_rooms;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- classes
+
+class Tank : object {
+    int level;
+    int limit = 6;
+    int mark;                   // 0: no mark set
+
+    void Gauge() {
+        int i;
+        print("[");
+        for (i = 0; i < limit; i++) {
+            if (i < level) print("#");
+            else print(".");
+        }
+        print($"] {level} of {limit}, ");
+        int pct = level * 100 / limit;
+        switch (pct) {
+            case 0:
+                print("empty");
+            case 1 to 33:
+                print("low");
+            case 34 to 66:
+                print("half full");
+            case 67 to 99:
+                print("high");
+            default:
+                print("full");
+        }
+        if (mark > 0) print($", marked at {mark}");
+    }
+
+    void description() {
+        print($"A steel tank with a glass gauge down its side. The gauge reads ");
+        Gauge();
+        print(".^");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                rtrue("You would only get it wet. Pour water in instead.^");
+            case Take, Push, Pull:
+                rtrue("The tank is bolted to the floor.^");
+        }
+        rfalse;
+    }
+    attributes = {static, scenery, container, open};
+}
+
+void CheckMark(Tank t) {
+    if (t.mark > 0 && t.level == t.mark && TestScope(t))
+        print($"^The water in {the(t)} reaches the mark.^");
+}
+
+class Valve : object {
+    Tank src;
+    Tank dst;
+    bool stalled;
+
+    void description() {
+        print("A brass wheel valve on the pipe. It is ");
+        if (has(on)) print("open.^");
+        else print("closed.^");
+    }
+
+    bool before() {
+        switch (action) {
+            case Open:
+                SwitchOn.perform(self);
+                rtrue;
+            case Close:
+                SwitchOff.perform(self);
+                rtrue;
+            case Turn:
+                if (has(on)) SwitchOff.perform(self);
+                else SwitchOn.perform(self);
+                rtrue;
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                stalled = false;
+                print("You spin the wheel open. ");
+                if (src.level == 0) rtrue("Nothing flows.^");
+                rtrue("Water starts to run.^");
+            case SwitchOff:
+                rtrue("You spin the wheel shut. The pipe goes quiet.^");
+        }
+        rfalse;
+    }
+    attributes = {switchable, static};
+}
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A lower tank stands here, with a hand pump beside it. A doorway leads north.";
+    n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. An upper tank stands here, fed by a pipe from below. A doorway leads south.";
+    s_to = roomA;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- room A
+
+Tank lowerTank {
+    short_name = "lower tank";
+    name = {.lower, .tank, .gauge};
+    parent = roomA;
+    limit = 8;
+}
+
+Valve feedValve {
+    short_name = "feed valve";
+    name = {.feed, .valve, .wheel};
+    parent = roomA;
+    src = lowerTank;
+    dst = upperTank;
+}
+
+object handPump {
+    short_name = "hand pump";
+    name = {.hand, .pump, .handle};
+    parent = roomA;
+    description = "A cast-iron hand pump. Its spout runs into the lower tank.";
+    bool before() {
+        switch (action) {
+            case Push, Pull, Turn:
+                Pump.perform(self);
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {static, scenery};
+}
+
+void PumpOnce() {
+    if (lowerTank.level >= lowerTank.limit) {
+        print("The handle will not budge; the lower tank is full.^");
+        return;
+    }
+    lowerTank.level = lowerTank.level + 2;
+    if (lowerTank.level > lowerTank.limit) lowerTank.level = lowerTank.limit;
+    pumpLog[nPumps % RING] = lowerTank.level;
+    nPumps++;
+    print("You work the handle. Water gushes into the lower tank.^");
+    CheckMark(lowerTank);
+}
+
+object manual {
+    short_name = "plumbing manual";
+    name = {.plumbing, .manual, .book};
+    parent = roomA;
+    description = "A thin manual. You could look up a topic in it.";
+    bool before() {
+        switch (action) {
+            case Consult:
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                switch (w) {
+                    case .valve, .valves:
+                        rtrue("~Open the feed valve to send water up. Close it before the lower tank runs dry.~^");
+                    case .pump:
+                        rtrue("~Each stroke of the pump adds two measures to the lower tank.~^");
+                    case .float, .cork:
+                        rtrue("~The float lifts at five measures.~^");
+                    case .tank, .tanks:
+                        rtrue("~Mark a tank at a level to be told when the water reaches it.~^");
+                }
+                rtrue("The manual has nothing on that.^");
+        }
+        rfalse;
+    }
+}
+
+object bucket {
+    short_name = "tin bucket";
+    name = {.tin, .bucket, .pail};
+    parent = roomA;
+    int units;
+    void description() {
+        if (units == 0) print("An empty tin bucket.^");
+        else print($"A tin bucket holding {units} measures of water.^");
+    }
+    bool before() {
+        Tank t;
+        switch (action) {
+            case Fill:
+                if (units > 0) rtrue("It is already full.^");
+                if (second != null) {
+                    if (!second.is(Tank)) rtrue("You can't fill it from that.^");
+                    t = (Tank)second;
+                }
+                else t = TankHere();
+                if (t == null) rtrue("There is no water here.^");
+                if (t.level == 0) rtrue($"{cThe(t)} is empty.^");
+                units = BUCKET_HOLDS;
+                if (units > t.level) units = t.level;
+                t.level = t.level - units;
+                print($"You fill the bucket from {the(t)}.^");
+                CheckMark(t);
+                rtrue;
+            case Empty:
+                if (units == 0) rtrue("It is already empty.^");
+                units = 0;
+                rtrue("The water splashes across the floor and runs away.^");
+            case EmptyT:
+                if (units == 0) rtrue("It is already empty.^");
+                if (!second.is(Tank)) rtrue($"You can't pour water into {the(second)}.^");
+                t = (Tank)second;
+                if (t.level >= t.limit) rtrue($"{cThe(t)} is already full.^");
+                t.level = t.level + units;
+                units = 0;
+                if (t.level > t.limit) {
+                    t.level = t.limit;
+                    print($"You pour the water into {the(t)}. Some slops over the rim.^");
+                }
+                else print($"You pour the water into {the(t)}.^");
+                CheckMark(t);
+                rtrue;
+        }
+        rfalse;
+    }
+    bool invent() {
+        if (inventory_stage == 2 && units > 0) print(" (full of water)");
+        rfalse;
+    }
+}
+
+Tank TankHere() {
+    for (object o in location.children) {
+        if (o.is(Tank)) return (Tank)o;
+    }
+    return null;
+}
+
+// ---------------------------------------------------------------- room B
+
+Tank upperTank {
+    short_name = "upper tank";
+    name = {.upper, .tank, .gauge};
+    parent = roomB;
+    limit = 6;
+}
+
+object corkFloat {
+    short_name = "cork float";
+    name = {.cork, .float};
+    parent = upperTank;
+    void description() {
+        if (has(general)) print("A cork float, riding at the top of the water.^");
+        else print("A cork float, lying on the bottom of the tank.^");
+    }
+    bool before() {
+        switch (action) {
+            case Take, Pull, Push:
+                rtrue("It is chained to the bottom of the tank.^");
+        }
+        rfalse;
+    }
+    attributes = {supporter};
+}
+
+Valve drainValve {
+    short_name = "drain valve";
+    name = {.drain, .valve, .wheel};
+    parent = roomB;
+    src = upperTank;
+    dst = null;                 // drains to the floor
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    description = "A small brass key.";
+    bool after() {
+        switch (action) {
+            case Take:
+                if (!has(general)) {
+                    give(general);
+                    Award();
+                }
+        }
+        rfalse;
+    }
+}
+
+object strongbox {
+    short_name = "iron box";
+    name = {.iron, .box, .strongbox};
+    parent = roomB;
+    description = "A small iron box with a keyhole.";
+    object with_key = brassKey;
+    attributes = {container, openable, lockable, locked, static};
+}
+
+object token {
+    short_name = "copper token";
+    name = {.copper, .token};
+    parent = strongbox;
+    description = "A copper token.";
+    bool after() {
+        switch (action) {
+            case Take:
+                if (!has(general)) {
+                    give(general);
+                    Award();
+                }
+        }
+        rfalse;
+    }
+}
+
+// ---------------------------------------------------------------- the plumbing
+
+array<object> valves = {feedValve, drainValve};
+
+void Flow(Valve v) {
+    if (!v.has(on)) return;
+    Tank s = v.src;
+    Tank d = v.dst;
+    if (s.level > 0 && (d == null || d.level < d.limit)) {
+        s.level--;
+        CheckMark(s);
+        if (d != null) {
+            d.level++;
+            CheckMark(d);
+        }
+        v.stalled = false;
+        return;
+    }
+    if (v.stalled) return;
+    v.stalled = true;
+    if (v.parent == location) print($"^The pipe at {the(v)} falls silent.^");
+}
+
+object plumbing {
+    short_name = "plumbing";
+    void daemon() {
+        for (object v in valves) Flow((Valve)v);
+        if (upperTank.level >= FLOAT_LEVEL && !corkFloat.has(general)) {
+            corkFloat.give(general);
+            brassKey.parent = corkFloat;
+            if (location == roomB) print("^The cork float rises off the bottom of the upper tank. Something glints on top of it.^");
+        }
+    }
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+extend Turn { synonyms = {.spin}; }
+
+verb Pump {
+    grammar = {
+        {.pump},
+        {.pump, NOUN},
+    };
+    void handler() {
+        if (location != roomA) {
+            print("There is no pump here.^");
+            return;
+        }
+        if (noun != null && noun != handPump && noun != lowerTank) {
+            print($"You can't pump {the(noun)}.^");
+            return;
+        }
+        PumpOnce();
+    }
+}
+
+verb Pour {
+    grammar = {
+        {.pour, HELD},
+        {.pour, HELD, .into | .in, NOUN},
+    };
+    void handler() {
+        if (second == null) Empty.perform(noun);
+        else EmptyT.perform(noun, second);
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN, .at, NUMBER};
+    void handler() {
+        if (!noun.is(Tank)) {
+            print("You can only mark a tank.^");
+            return;
+        }
+        Tank t = (Tank)noun;
+        int n = (int)second;
+        if (n < 1 || n > t.limit) {
+            print($"The gauge on {the(t)} runs from 1 to {t.limit}.^");
+            return;
+        }
+        t.mark = n;
+        print($"You chalk a mark on the gauge of {the(t)} at {n}.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print($"Rooms {g_rooms}, score {score}.^Lower: ");
+        lowerTank.Gauge();
+        print(".^Upper: ");
+        upperTank.Gauge();
+        print(".^Valves:");
+        for (object v in valves) {
+            print(" ");
+            printName(v);
+            if (v.has(on)) print(" open");
+            else print(" shut");
+        }
+        print(".^");
+        if (nPumps == 0) { printLine("Pump: unused."); return; }
+        int n = nPumps;
+        if (n > RING) n = RING;
+        print("Pump:");
+        for (int i = 0; i < n; i++) print($" {pumpLog[i]}");
+        print($" (of {nPumps}).^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(plumbing);
+    rfalse;
+}

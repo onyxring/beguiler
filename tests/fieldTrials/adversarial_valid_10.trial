@@ -1,0 +1,54 @@
+Room A
+
+> probesecond
+Second 8 1 2 outlets.
+Rows 4 2 1 4.
+
+> probeschedule
+r0=5 r1=3 r2=8 r3=9
+Edit 5 13 sum 15 24 calls 2.
+
+> probewatts
+Draw 1800 1200 true false.
+Sorted 0 840 1200 1800 at 2 eq true ne true.
+
+> probecircuits
+lights r10 A upper h3; outlets r15 A lower h9; oven r30 C heavy h7; dryer r25 B heavy h7;
+Base 15 15 trips 0 0.
+Outlets 17 5 2 trips 1.
+
+> proberules
+amps:lights=7 room:oven=7 slots:outlets=2 rating:dryer=25.
+Readings 1440 240.
+
+> probemeter
+Volts 120 240 100 230.
+Calc 23 0 12 6.
+Until 6 64.
+Addr true true 6.
+
+> probereset
+Lights 16 1 trips 2.
+[reset lights] now 0 0 0 0.
+locked outlets; inner 5 outer outlets flags 5 amps 17.
+
+> probepanels
+left panel: lights/0 outlets/17; right panel: oven/0 dryer/10; heavy 2.
+
+> x left panel
+A breaker panel.
+
+> x main board
+A breaker panel.
+
+> x board
+Which do you mean, the left panel or the right panel?
+
+> flip dryer
+The dryer hums at 11.
+
+> flip oven
+Flipped oven.
+
+> probepanels
+left panel: lights/0 outlets/17; right panel: oven/0 dryer/11; heavy 2.

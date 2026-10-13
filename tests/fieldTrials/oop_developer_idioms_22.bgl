@@ -1,0 +1,521 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-second pass: a league table.
+// A value class for a win/draw/loss record with a copy operator, `+` combining a home and an away record,
+// `==`/`!=`, computed points and goal difference, and a static factory for an outcome; a team entity deriving
+// from a "ranked" base and a "sponsored" mixin, owning two record members, a recent-form `array<eOutcome>`
+// queue (`push`/`popEnd`) and a clamping `auto { … }` rating property; a guest-team subclass whose `default`
+// `CountsInTable` override drops it from the standings; a value class for a fixture holding its two teams
+// as `object` read back through `(Team)` casts, kept in a schedule's member `array<Fixture>` filled through a fluent
+// `selfType` builder and read through an `operator []`; a pooled error class thrown from a guard method and caught in a typed `catch`;
+// a league service with an observer list of `func<void, Fixture>` listeners (a named function and a
+// non-capturing lambda), a lookup by code that may return null (`?.`/`??`), and standings built by a `<linq>`
+// `filter` then `orderBy` with a named comparator (points, goal difference, goals for, then code by
+// `compareTo`); `<linq>` `count`/`any`/`all`/`first`/`take`/`map`; `while` and `do`/`while` loops with
+// `continue`/`break`; static counters and a `const` member; enum switches; `stringObj` padding and
+// interpolation; named and default arguments.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eOutcome { Win, Draw, Loss }
+
+//-- Record: a value type --------------------------------------------------------------------------------------
+
+value class Record {
+    int Won;
+    int Drawn;
+    int Lost;
+    int GoalsFor;
+    int GoalsAgainst;
+
+    const int PointsForWin = 3;
+
+    Record operator = (Record o) {
+        Won = o.Won;
+        Drawn = o.Drawn;
+        Lost = o.Lost;
+        GoalsFor = o.GoalsFor;
+        GoalsAgainst = o.GoalsAgainst;
+        return self;
+    }
+
+    Record operator + (Record o) {
+        Record sum;
+        sum.Won = Won + o.Won;
+        sum.Drawn = Drawn + o.Drawn;
+        sum.Lost = Lost + o.Lost;
+        sum.GoalsFor = GoalsFor + o.GoalsFor;
+        sum.GoalsAgainst = GoalsAgainst + o.GoalsAgainst;
+        return sum;
+    }
+
+    bool operator == (Record o) {
+        return Won == o.Won && Drawn == o.Drawn && Lost == o.Lost
+            && GoalsFor == o.GoalsFor && GoalsAgainst == o.GoalsAgainst;
+    }
+    bool operator != (Record o) { return !(self == o); }
+
+    static eOutcome OutcomeOf(int scored, int conceded) {
+        if (scored > conceded) return eOutcome.Win;
+        if (scored == conceded) return eOutcome.Draw;
+        return eOutcome.Loss;
+    }
+
+    int Played() { return Won + Drawn + Lost; }
+    int Points() { return Won * PointsForWin + Drawn; }
+    int GoalDifference() { return GoalsFor - GoalsAgainst; }
+
+    void Add(int scored, int conceded) {
+        switch (OutcomeOf(scored, conceded)) {
+            case eOutcome.Win:  Won++;
+            case eOutcome.Draw: Drawn++;
+            default:            Lost++;
+        }
+        GoalsFor += scored;
+        GoalsAgainst += conceded;
+    }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class ResultError[2] : object {
+    int Slot;
+    string Reason;
+    static int Raised;
+
+    void create(int fixtureSlot, string why) {
+        Slot = fixtureSlot;
+        Reason = why;
+        ResultError.Raised++;
+    }
+}
+
+//-- Base classes ----------------------------------------------------------------------------------------------
+
+class Ranked : object {
+    int Position;
+    default string Badge() { return Position == 1 ? "*" : " "; }
+}
+
+class Sponsored : object {
+    string Sponsor = "none";
+    bool HasSponsor() { return Sponsor != "none"; }
+}
+
+//-- Teams -----------------------------------------------------------------------------------------------------
+
+class Team : Ranked, Sponsored {
+    inline instanceName;
+    inline string Code;
+    Record Home;
+    Record Away;
+    array<eOutcome> Form[3];
+    static int ResultsRecorded;
+    auto Rating = {
+        int _value;
+        int operator () { return _value; }
+        void operator = (int v) {
+            if (v < 0) v = 0;
+            if (v > 10) v = 10;
+            _value = v;
+        }
+    }
+
+    default bool CountsInTable() { return true; }
+
+    Record Season() { return Home + Away; }
+
+    void RecordResult(int scored, int conceded, bool atHome) {
+        if (atHome) Home.Add(scored, conceded);
+        else Away.Add(scored, conceded);
+        eOutcome outcome = Record.OutcomeOf(scored, conceded);
+        if (Form.length == Form.size) Form.popEnd();
+        Form.push(outcome);
+        switch (outcome) {
+            case eOutcome.Win:  Rating = Rating + 4;
+            case eOutcome.Draw: Rating++;
+            default:            Rating = Rating - 3;
+        }
+        Team.ResultsRecorded++;
+    }
+
+    // The recent results, newest first, as letters.
+    stringObj FormText() {
+        stringObj text;
+        for (eOutcome o in Form) {
+            switch (o) {
+                case eOutcome.Win:  text += "W";
+                case eOutcome.Draw: text += "D";
+                default:            text += "L";
+            }
+        }
+        if (text.isEmpty()) text = "-";
+        return text;
+    }
+}
+
+class GuestTeam : Team {
+    bool CountsInTable() { return false; }
+    string Badge() { return "g"; }
+}
+
+Team teamA      { "team A", "ANT"; Sponsor = "brass key"; }
+Team teamB      { "team B", "BEE"; }
+Team teamC      { "team C", "CAT"; Sponsor = "red box"; }
+Team teamD      { "team D", "DOG"; }
+GuestTeam teamG { "team G", "GST"; }
+
+//-- Fixtures --------------------------------------------------------------------------------------------------
+
+value class Fixture {
+    Team HomeRef;
+    Team AwayRef;
+    int HomeGoals;
+    int AwayGoals;
+    bool Played;
+
+    Fixture operator = (Fixture o) {
+        HomeRef = o.HomeRef;
+        AwayRef = o.AwayRef;
+        HomeGoals = o.HomeGoals;
+        AwayGoals = o.AwayGoals;
+        Played = o.Played;
+        return self;
+    }
+
+    Team HomeSide() { return HomeRef; }
+    Team AwaySide() { return AwayRef; }
+
+    bool Involves(Team t) { return HomeRef == t || AwayRef == t; }
+
+    Team Winner() {
+        if (!Played || HomeGoals == AwayGoals) return null;
+        return HomeGoals > AwayGoals ? HomeSide() : AwaySide();
+    }
+
+    stringObj Describe() {
+        stringObj text = $"{HomeSide().Code} v {AwaySide().Code}";
+        if (Played) text += $" {HomeGoals}-{AwayGoals}";
+        else text += " (to play)";
+        return text;
+    }
+}
+
+class Schedule : object {
+    array<Fixture> Fixtures[8];
+
+    selfType Add(Team home, Team away) {
+        Fixture f;
+        f.HomeRef = home;
+        f.AwayRef = away;
+        Fixtures.append(f);
+        return self;
+    }
+
+    Fixture operator [] (int slot) { return Fixtures[slot]; }
+
+    int Count() { return Fixtures.length; }
+
+    int Remaining() { return Fixtures.filter((Fixture f) => !f.Played).count(); }
+}
+
+Schedule theSchedule { }
+
+//-- The league: a service -------------------------------------------------------------------------------------
+
+class League : object {
+    array<Team> Teams[6];
+    array<func<void, Fixture>> Listeners[3];
+    int Results;
+    static int Notifications;
+
+    void Register(Team t) { Teams.append(t); }
+
+    void Subscribe(func<void, Fixture> listener) { Listeners.append(listener); }
+
+    Team Find(string code) {
+        for (Team t in Teams) {
+            if (t.Code == code) return t;
+        }
+        return null;
+    }
+
+    void Reject(int slot, string why) {
+        ResultError err = new ResultError(slot, why);
+        if (err == null) return;
+        throw err;
+    }
+
+    // Records a result for one fixture, telling the listeners before the teams are updated; throws a ResultError when the result is refused.
+    void Enter(int slot, int homeGoals, int awayGoals) {
+        if (slot < 0 || slot >= theSchedule.Count()) Reject(slot, "no such fixture");
+        if (theSchedule[slot].Played) Reject(slot, "already played");
+        if (homeGoals < 0 || awayGoals < 0) Reject(slot, "negative score");
+        Fixture f = theSchedule[slot];
+        f.HomeGoals = homeGoals;
+        f.AwayGoals = awayGoals;
+        f.Played = true;
+        theSchedule.Fixtures[slot] = f;
+        for (func<void, Fixture> listener in Listeners) {
+            listener(f);
+            League.Notifications++;
+        }
+        f.HomeSide().RecordResult(homeGoals, awayGoals, atHome: true);
+        f.AwaySide().RecordResult(awayGoals, homeGoals, atHome: false);
+        Results++;
+    }
+
+    // Enter with the error reported instead of thrown.
+    bool TryEnter(int slot, int homeGoals, int awayGoals) {
+        try {
+            Enter(slot, homeGoals, awayGoals);
+            return true;
+        } catch (ResultError e) {
+            printLine($"Fixture {e.Slot} refused: {e.Reason}.");
+            delete e;
+        }
+        return false;
+    }
+
+    // The teams that count, best first; positions are written back to the teams.
+    void RankTeams(array<Team> table) {
+        table = Teams.filter((Team t) => t.CountsInTable()).orderBy(CompareStanding);
+        int position = 1;
+        for (Team t in table) {
+            t.Position = position;
+            position++;
+        }
+    }
+}
+
+League theLeague { }
+
+//-- Comparators and listeners ---------------------------------------------------------------------------------
+
+int Sign(int n) {
+    if (n > 0) return 1;
+    if (n < 0) return -1;
+    return 0;
+}
+
+// Points, then goal difference, then goals for, all descending; then code ascending.
+int CompareStanding(Team a, Team b) {
+    Record ra = a.Season();
+    Record rb = b.Season();
+    int byPoints = rb.Points() - ra.Points();
+    if (byPoints != 0) return Sign(byPoints);
+    int byDifference = rb.GoalDifference() - ra.GoalDifference();
+    if (byDifference != 0) return Sign(byDifference);
+    int byGoals = rb.GoalsFor - ra.GoalsFor;
+    if (byGoals != 0) return Sign(byGoals);
+    return a.Code.compareTo(b.Code);
+}
+
+int UpsetCount;
+
+// An upset is a win by a team rated more than two below the team it beat, before the result counts.
+void WatchUpsets(Fixture f) {
+    Team winner = f.Winner();
+    if (winner == null) return;
+    Team loser = winner == f.HomeSide() ? f.AwaySide() : f.HomeSide();
+    if (loser.Rating > winner.Rating + 2) UpsetCount++;
+}
+
+//-- Helpers ---------------------------------------------------------------------------------------------------
+
+// Text padded on the right with spaces to the given width.
+stringObj PadRight(stringObj text, int width = 4) {
+    while (text.length < width) text += " ";
+    return text;
+}
+
+stringObj Signed(int n) {
+    stringObj text;
+    if (n > 0) text = $"+{n}";
+    else text = $"{n}";
+    return text;
+}
+
+void ShowTable(bool withForm = false) {
+    array<Team> standings[6];
+    theLeague.RankTeams(standings);
+    printLine("Pos Team P  W D L  GD   Pts");
+    for (Team t in standings) {
+        Record r = t.Season();
+        stringObj code = PadRight(t.Code);
+        stringObj gd = PadRight(Signed(r.GoalDifference()), width: 5);
+        stringObj line = $"{t.Position}{t.Badge()}  {code} {r.Played()}  {r.Won} {r.Drawn} {r.Lost}  {gd}{r.Points()}";
+        if (withForm) {
+            stringObj form = t.FormText();
+            line += $"  {form}";
+        }
+        printLine(line);
+    }
+}
+
+void ShowTeam(Team t) {
+    Record r = t.Season();
+    stringObj form = t.FormText();
+    stringObj line = $"{t} ({t.Code}): home {t.Home.Points()} pts, away {t.Away.Points()} pts, rating {t.Rating}, form {form}";
+    if (t.HasSponsor()) line += $", sponsor {t.Sponsor}";
+    if (!t.CountsInTable()) line += ", guest";
+    line += ".";
+    printLine(line);
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        theLeague.Register(teamA);
+        theLeague.Register(teamB);
+        theLeague.Register(teamC);
+        theLeague.Register(teamD);
+        theLeague.Register(teamG);
+        for (Team t in theLeague.Teams) t.Rating = 5;
+        teamA.Rating = 8;
+        teamD.Rating = 2;
+        theLeague.Subscribe(WatchUpsets);
+        theLeague.Subscribe((Fixture f) => printLine($"Result: {f.Describe()}."));
+        theSchedule.Add(teamA, teamB).Add(teamC, teamD).Add(teamB, teamC).Add(teamD, teamA)
+            .Add(teamG, teamA).Add(teamA, teamC);
+        printLine($"Teams {theLeague.Teams.length}, fixtures {theSchedule.Count()}, to play {theSchedule.Remaining()}.");
+    }
+}
+
+verb Fixtures {
+    grammar = {.fixtures};
+    void handler() {
+        int slot = 0;
+        while (slot < theSchedule.Count()) {
+            stringObj text = theSchedule[slot].Describe();
+            printLine($"{slot}: {text}");
+            slot++;
+        }
+    }
+}
+
+verb RoundOne {
+    grammar = {.round1};
+    void handler() {
+        theLeague.TryEnter(0, 2, 1);
+        theLeague.TryEnter(1, 0, 3);
+        theLeague.TryEnter(1, 1, 1);
+        theLeague.TryEnter(9, 1, 0);
+        theLeague.TryEnter(2, -1, 2);
+        printLine($"Results {theLeague.Results}, notified {League.Notifications}, refused {ResultError.Raised}, upsets {UpsetCount}.");
+    }
+}
+
+verb Table {
+    grammar = {.table};
+    void handler() { ShowTable(); }
+}
+
+verb RoundTwo {
+    grammar = {.round2};
+    void handler() {
+        theLeague.TryEnter(2, 2, 2);
+        theLeague.TryEnter(3, 1, 0);
+        theLeague.TryEnter(4, 4, 0);
+        printLine($"Results {theLeague.Results}, to play {theSchedule.Remaining()}, recorded {Team.ResultsRecorded}, upsets {UpsetCount}.");
+        ShowTable(withForm: true);
+    }
+}
+
+verb Teams {
+    grammar = {.teams};
+    void handler() {
+        for (Team t in theLeague.Teams) ShowTeam(t);
+    }
+}
+
+verb Query {
+    grammar = {.query};
+    void handler() {
+        Team found = theLeague.Find("CAT");
+        Team missing = theLeague.Find("EEL");
+        string foundSponsor = found?.Sponsor ?? "none";
+        string missingSponsor = missing?.Sponsor ?? "none";
+        printLine($"CAT sponsor {foundSponsor}, EEL sponsor {missingSponsor}.");
+        int unbeaten = theLeague.Teams.filter((Team t) => t.Season().Lost == 0).count();
+        bool anyGuest = theLeague.Teams.any((Team t) => !t.CountsInTable());
+        bool allPlayed = theLeague.Teams.all((Team t) => t.Season().Played() > 0);
+        printLine($"Unbeaten {unbeaten}, any guest {anyGuest}, all played {allPlayed}.");
+        array<var> points = theLeague.Teams.map((Team t) => t.Season().Points());
+        printLine($"Points {points[0]} {points[1]} {points[2]} {points[3]} {points[4]}.");
+        int threshold = 4;
+        int strong = theLeague.Teams.filter((Team t) => t.Rating >= threshold).count();
+        Team firstSponsored = theLeague.Teams.filter((Team t) => t.HasSponsor()).first();
+        printLine($"Rated {threshold}+ {strong}, first sponsored {firstSponsored}.");
+        int played = 0;
+        for (Team t in theLeague.Teams.take(3)) played += t.Season().Played();
+        printLine($"Games by the first three {played}.");
+        Record combined = teamA.Season() + teamB.Season();
+        Record same = teamA.Home + teamA.Away;
+        bool equal = same == teamA.Season();
+        bool differs = teamA.Season() != teamB.Season();
+        printLine($"A+B played {combined.Played()}, goals {combined.GoalsFor}-{combined.GoalsAgainst}; A home+away equal {equal}, A differs from B {differs}.");
+    }
+}
+
+verb Leader {
+    grammar = {.leader};
+    void handler() {
+        array<Team> standings[6];
+        theLeague.RankTeams(standings);
+        Team top = standings.first();
+        printLine($"Leader {top}, {top.Season().Points()} points.");
+        int slot = -1;
+        do {
+            slot++;
+            if (slot >= theSchedule.Count()) break;
+            if (theSchedule[slot].Played) continue;
+            if (theSchedule[slot].Involves(top)) {
+                stringObj text = theSchedule[slot].Describe();
+                printLine($"Next for {top}: {text}.");
+                break;
+            }
+        } while (true);
+        int unplayedForLeader = theSchedule.Fixtures.filter((Fixture f) => !f.Played && f.Involves(top)).count();
+        printLine($"Leader has {unplayedForLeader} to play.");
+    }
+}
+
+verb Finish {
+    grammar = {.finish};
+    void handler() {
+        theLeague.TryEnter(5, 1, 3);
+        theLeague.TryEnter(5, 0, 0);
+        printLine($"To play {theSchedule.Remaining()}, upsets {UpsetCount}, refused {ResultError.Raised}.");
+        ShowTable(withForm: true);
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

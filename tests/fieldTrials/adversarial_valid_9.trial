@@ -1,0 +1,69 @@
+Room A
+
+> probenotch
+Notch 0 6 4 1 7.
+Slots 3 6 3.
+
+> probering
+Ring iron key/5 steel key/1 brass key/4 master key/0 (4).
+Sharp 2 9 first 5 read 2.
+Ordered 0 1 4 5.
+Match 2 any true all true.
+Tests 2 1 4.
+
+> probelookup
+Find iron key false true master plain.
+Uses 0 worn true false true.
+Props 4 0 1.
+[iron key p][steel key p][brass key p][master key M]
+
+> probespin 0 3
+Dials 3 0 0 turns 3 open false.
+
+> probespin 1 13
+Dials 3 5 0 turns 16 open false.
+
+> probespin 2 1
+Dials 3 5 1 turns 17 open true.
+
+> probespin 5 1
+No dial 5.
+
+> probeback 1 8
+Dials 3 5 1 turns 25 open true.
+
+> probehistory
+Hist [d1 1>0;d1 0>7;d1 7>6;d1 6>5;] 4 live 4 made 25 recycled 21.
+Last d1 6>5 first d1 1>0.
+
+> probereadout
+Read 3-5-1 351 1-5/3 8 true 3 5 1.
+Hook 3 moved 0 hook.
+
+> probetry
+iron key no; steel key no; brass key fits; master key fits;
+inner flag 1 outer steel key fits 2 tried 5 state chimed uses 2.
+
+> probereadout
+Read 3-5-1 351 1-5/3 8 true 3 5 1.
+Hook 2 moved 1 Room A.
+
+> probeperform
+Padlock rattles at 3.
+Jiggled hook.
+State chimed 6.
+
+> unlock padlock with brass key
+(first taking the brass key)
+The brass key turns in the padlock.
+
+> unlock padlock with iron key
+(first taking the iron key)
+The iron key does not fit.
+
+> jiggle padlock
+Padlock rattles at 3.
+
+> jiggle hook
+Jiggled hook.
+

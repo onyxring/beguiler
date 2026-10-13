@@ -1,0 +1,555 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small route planner over a weighted graph, written in a functional style on z5. Node
+// objects of a class with an enum terrain, held in a global array; a global array<array<int>> of
+// edge weights read through a helper; neighbour lists returned as local arrays and captured into
+// typed locals; recursive depth-first reachability marking a global array; breadth-first hop counts
+// with enqueue/dequeue; shortest paths by repeated relaxation with the next node picked by a
+// hand-written fold over a func<bool, int> filter; a value class route returned by value; the path
+// written into a `ref stringObj` parameter by recursion; an edge list packed as ints, ordered by
+// <linq> orderBy with a comparator that decodes it, and a spanning tree built from it with a
+// recursive union-find; predicates as named functions, a global func<> and lambdas, combined by a
+// helper taking two func<> parameters; <linq> chains (filter, map, orderBy, take, any, all, first,
+// last, count, distinct) on array<Node> and array<int>; `?.` and `??` on a chain's first(); named and
+// defaulted parameters; a `const int` bound.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int FAR = 9999;
+
+//-- Nodes ----------------------------------------------------------------------------------------
+
+enum eTerrain { road, track, ford }
+
+class Node : object {
+    string tag;
+    int id;
+    eTerrain terrain;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Node nodeA { "node A"; tag = "A"; id = 0; terrain = eTerrain.road; }
+Node nodeB { "node B"; tag = "B"; id = 1; terrain = eTerrain.track; }
+Node nodeC { "node C"; tag = "C"; id = 2; terrain = eTerrain.road; }
+Node nodeD { "node D"; tag = "D"; id = 3; terrain = eTerrain.ford; }
+Node nodeE { "node E"; tag = "E"; id = 4; terrain = eTerrain.track; }
+Node nodeF { "node F"; tag = "F"; id = 5; terrain = eTerrain.road; }
+
+array<Node> nodes = {nodeA, nodeB, nodeC, nodeD, nodeE, nodeF};
+
+// Edge weights; 0 means no edge.
+array<array<int>> weights = {
+    {0, 4, 1, 0, 0, 0},
+    {4, 0, 2, 5, 0, 0},
+    {1, 2, 0, 8, 0, 0},
+    {0, 5, 8, 0, 3, 0},
+    {0, 0, 0, 3, 0, 0},
+    {0, 0, 0, 0, 0, 0}
+};
+
+//-- Route (a value class) ------------------------------------------------------------------------
+
+value class Route {
+    int cost = 0;
+    int hops = 0;
+    bool found = false;
+
+    Route operator = (Route o) {
+        cost = o.cost;
+        hops = o.hops;
+        found = o.found;
+        return self;
+    }
+}
+
+//-- Pure helpers ---------------------------------------------------------------------------------
+
+int weight(int i, int j) { return weights[i][j]; }
+bool linked(int i, int j) { return weight(i, j) > 0; }
+
+int add(int a, int b) { return a + b; }
+
+int fold(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int countIf(array<int> xs, func<bool, int> p) {
+    int n = 0;
+    for (int x in xs) {
+        if (p(x)) n++;
+    }
+    return n;
+}
+
+array<int> neighbours(int i) {
+    array<int> out[8];
+    for (int j = 0; j < nodes.length; j++) {
+        if (linked(i, j)) out += j;
+    }
+    return out;
+}
+
+int degree(Node n) {
+    return weights[n.id].filter((int w) => w > 0).count();
+}
+
+int totalWeight(Node n) { return fold(weights[n.id], 0, add); }
+
+bool both(Node n, func<bool, Node> p, func<bool, Node> q) { return p(n) && q(n); }
+
+bool isRoad(Node n) { return n.terrain == eTerrain.road; }
+func<bool, Node> isBusy = (Node n) => degree(n) >= 3;
+
+string terrainName(eTerrain t) {
+    switch (t) {
+        case eTerrain.road:  return "road";
+        case eTerrain.track: return "track";
+        default:             return "ford";
+    }
+}
+
+void showInts(array<int> xs, string sep = " ") {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(sep);
+        print(xs[i]);
+    }
+}
+
+void showIds(array<int> ids) {
+    if (ids.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < ids.length; i++) {
+        if (i > 0) print(" ");
+        print(nodes[ids[i]].tag);
+    }
+}
+
+void showNodes(array<Node> ns) {
+    if (ns.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < ns.length; i++) {
+        if (i > 0) print(" ");
+        print(ns[i].tag);
+    }
+}
+
+bool validId(int k) { return k >= 0 && k < nodes.length; }
+
+//-- Depth-first reachability ---------------------------------------------------------------------
+
+array<int> seen[8];
+
+void resetSeen() {
+    seen.clear();
+    seen.length = nodes.length;
+}
+
+void visit(int i) {
+    if (seen[i] != 0) return;
+    seen[i] = 1;
+    array<int> ns = neighbours(i);
+    for (int j in ns) visit(j);
+}
+
+array<int> reachableFrom(int start) {
+    resetSeen();
+    visit(start);
+    array<int> out[8];
+    for (int i = 0; i < nodes.length; i++) {
+        if (seen[i] != 0) out += i;
+    }
+    return out;
+}
+
+//-- Breadth-first hops ---------------------------------------------------------------------------
+
+array<int> hops[8];
+
+void hopsFrom(int start) {
+    hops.clear();
+    for (int i = 0; i < nodes.length; i++) hops += -1;
+    array<int> queue[8];
+    hops[start] = 0;
+    queue.enqueue(start);
+    while (queue.length > 0) {
+        int at = queue.dequeue();
+        array<int> ns = neighbours(at);
+        for (int j in ns) {
+            if (hops[j] < 0) {
+                hops[j] = hops[at] + 1;
+                queue.enqueue(j);
+            }
+        }
+    }
+}
+
+//-- Shortest paths -------------------------------------------------------------------------------
+
+array<int> best[8];
+array<int> prev[8];
+array<int> done[8];
+
+// The open node with the least known cost, or -1.
+int pickNext(func<bool, int> open) {
+    int pick = -1;
+    for (int i = 0; i < nodes.length; i++) {
+        if (open(i) && (pick < 0 || best[i] < best[pick])) pick = i;
+    }
+    return pick;
+}
+
+void relaxFrom(int start) {
+    best.clear();
+    prev.clear();
+    done.clear();
+    for (int i = 0; i < nodes.length; i++) {
+        best += FAR;
+        prev += -1;
+        done += 0;
+    }
+    best[start] = 0;
+    int at = pickNext((int i) => done[i] == 0 && best[i] < FAR);
+    while (at >= 0) {
+        done[at] = 1;
+        for (int j = 0; j < nodes.length; j++) {
+            int w = weight(at, j);
+            if (w > 0 && best[at] + w < best[j]) {
+                best[j] = best[at] + w;
+                prev[j] = at;
+            }
+        }
+        at = pickNext((int i) => done[i] == 0 && best[i] < FAR);
+    }
+}
+
+int hopsBack(int to, int acc = 0) {
+    if (prev[to] < 0) return acc;
+    return hopsBack(prev[to], acc + 1);
+}
+
+Route routeTo(int from, int to) {
+    relaxFrom(from);
+    Route r;
+    if (best[to] < FAR) {
+        r.cost = best[to];
+        r.hops = hopsBack(to);
+        r.found = true;
+    }
+    return r;
+}
+
+void pathText(int to, ref stringObj s) {
+    if (prev[to] >= 0) {
+        pathText(prev[to], s);
+        s += "-";
+    }
+    s += nodes[to].tag;
+}
+
+//-- Edges and a spanning tree --------------------------------------------------------------------
+
+int edgeCode(int i, int j) { return i * 10 + j; }
+int edgeFrom(int code) { return code / 10; }
+int edgeTo(int code) { return code % 10; }
+int edgeWeight(int code) { return weight(edgeFrom(code), edgeTo(code)); }
+
+int byWeight(int a, int b) {
+    int d = edgeWeight(a) - edgeWeight(b);
+    if (d != 0) return d;
+    return a - b;
+}
+
+array<int> edges[16];
+
+void collectEdges() {
+    edges.clear();
+    for (int i = 0; i < nodes.length; i++) {
+        for (int j = i + 1; j < nodes.length; j++) {
+            if (linked(i, j)) edges += edgeCode(i, j);
+        }
+    }
+}
+
+void showEdge(int code) {
+    print($"{nodes[edgeFrom(code)].tag}{nodes[edgeTo(code)].tag}:{edgeWeight(code)}");
+}
+
+void showEdges(array<int> codes) {
+    if (codes.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < codes.length; i++) {
+        if (i > 0) print(" ");
+        showEdge(codes[i]);
+    }
+}
+
+array<int> setOf[8];
+
+int findRoot(int i) {
+    if (setOf[i] == i) return i;
+    return findRoot(setOf[i]);
+}
+
+array<int> spanningTree() {
+    collectEdges();
+    setOf.clear();
+    for (int i = 0; i < nodes.length; i++) setOf += i;
+    array<int> sorted = edges.orderBy(byWeight);
+    array<int> tree[8];
+    for (int code in sorted) {
+        int ra = findRoot(edgeFrom(code));
+        int rb = findRoot(edgeTo(code));
+        if (ra != rb) {
+            setOf[rb] = ra;
+            tree += code;
+        }
+    }
+    return tree;
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb GraphVerb {
+    grammar = {{.graph}};
+    void handler() {
+        for (Node n in nodes) {
+            array<int> ns = neighbours(n.id);
+            print($"{n.tag} ({terrainName(n.terrain)}) deg {degree(n)} sum {totalWeight(n)}: ");
+            showIds(ns);
+            print("^");
+        }
+    }
+}
+
+verb NearVerb {
+    grammar = {{.near, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validId(k)) {
+            print("No such node.^");
+            return;
+        }
+        array<int> ns = neighbours(k);
+        array<int> ws = ns.map((var j) => weight(k, (int)j));
+        print($"{nodes[k].tag} near: ");
+        showIds(ns);
+        print(" weights: ");
+        showInts(ws, sep: ",");
+        int cheap = countIf(ws, (int w) => w <= 2);
+        print($"^cheap links {cheap}, nearest {ns.orderBy((int a, int b) => weight(k, a) - weight(k, b)).first()}^");
+    }
+}
+
+verb ReachVerb {
+    grammar = {{.reach, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validId(k)) {
+            print("No such node.^");
+            return;
+        }
+        array<int> r = reachableFrom(k);
+        print($"from {nodes[k].tag}: ");
+        showIds(r);
+        int missing = nodes.length - r.length;
+        print($" ({r.length} reached, {missing} not)^");
+    }
+}
+
+verb HopsVerb {
+    grammar = {{.hops, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validId(k)) {
+            print("No such node.^");
+            return;
+        }
+        hopsFrom(k);
+        for (int i = 0; i < nodes.length; i++) {
+            if (i > 0) print(" ");
+            print($"{nodes[i].tag}{hops[i] < 0 ? "-" : ""}");
+            if (hops[i] >= 0) print(hops[i]);
+        }
+        int far = fold(hops, 0, (int a, int b) => a > b ? a : b);
+        print($"^farthest {far} hop{far == 1 ? "" : "s"}^");
+    }
+}
+
+verb RouteVerb {
+    grammar = {.route, NUMBER, NUMBER};
+    void handler() {
+        int from = (int)noun;
+        int to = (int)second;
+        if (!validId(from) || !validId(to)) {
+            print("No such node.^");
+            return;
+        }
+        Route r = routeTo(from, to);
+        if (!r.found) {
+            print($"{nodes[from].tag} to {nodes[to].tag}: no route^");
+            return;
+        }
+        stringObj path;
+        pathText(to, path);
+        print($"{nodes[from].tag} to {nodes[to].tag}: cost {r.cost} hops {r.hops} via ");
+        print(path);
+        print("^");
+    }
+}
+
+verb CostsVerb {
+    grammar = {{.costs, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validId(k)) {
+            print("No such node.^");
+            return;
+        }
+        relaxFrom(k);
+        array<int> known = best.filter((int c) => c < FAR);
+        print($"from {nodes[k].tag}: ");
+        for (int i = 0; i < nodes.length; i++) {
+            if (i > 0) print(" ");
+            if (best[i] < FAR) print($"{nodes[i].tag}{best[i]}");
+            else print($"{nodes[i].tag}?");
+        }
+        print($"^known {known.count()} total {fold(known, 0, add)} max {known.orderBy().last()}^");
+    }
+}
+
+verb EdgesVerb {
+    grammar = {{.edges}};
+    void handler() {
+        collectEdges();
+        print("edges: ");
+        showEdges(edges);
+        array<int> sorted = edges.orderBy(byWeight);
+        print("^by weight: ");
+        showEdges(sorted);
+        print("^cheapest two: ");
+        showEdges(edges.orderBy(byWeight).take(2));
+        array<int> ws = edges.map((var c) => edgeWeight((int)c));
+        array<int> distinctWs = ws.distinct();
+        print("^weights: ");
+        showInts(distinctWs);
+        print($"^all under ten {ws.all((int w) => w < 10)}, any over six {ws.any((int w) => w > 6)}^");
+    }
+}
+
+verb CheapVerb {
+    grammar = {{.cheap, NUMBER}};
+    void handler() {
+        int limit = parsed_number;
+        collectEdges();
+        array<int> cheap = edges.filter((int c) => edgeWeight(c) <= limit);
+        print($"at most {limit}: ");
+        showEdges(cheap);
+        print($" ({cheap.count()})^");
+    }
+}
+
+verb TreeVerb {
+    grammar = {{.tree}};
+    void handler() {
+        array<int> tree = spanningTree();
+        print("tree: ");
+        showEdges(tree);
+        int cost = fold(tree.map((var c) => edgeWeight((int)c)), 0, add);
+        print($"^tree cost {cost}, {tree.length} edges^");
+        array<int> roots = nodes.map((var n) => findRoot(((Node)n).id)).distinct();
+        print($"parts {roots.count()}^");
+    }
+}
+
+verb TerrainVerb {
+    grammar = {{.terrain}};
+    void handler() {
+        array<eTerrain> kinds = {eTerrain.road, eTerrain.track, eTerrain.ford};
+        for (eTerrain t in kinds) {
+            array<Node> group = nodes.filter((Node n) => n.terrain == t);
+            print($"{terrainName(t)}: ");
+            showNodes(group);
+            print("^");
+        }
+        print("busy roads: ");
+        showNodes(nodes.filter((Node n) => both(n, isRoad, isBusy)));
+        print("^busy: ");
+        showNodes(nodes.filter(isBusy));
+        Node quiet = nodes.filter((Node n) => degree(n) == 0).first();
+        Node ford = nodes.filter((Node n) => n.terrain == eTerrain.ford && degree(n) > 5).first();
+        print($"^isolated {quiet?.tag ?? "none"}, busy ford {ford?.tag ?? "none"}^");
+    }
+}
+
+verb RankVerb {
+    grammar = {{.rank}};
+    void handler() {
+        array<Node> byDegree = nodes.orderBy((Node a, Node b) => {
+            int d = degree(b) - degree(a);
+            if (d != 0) return d;
+            return totalWeight(a) - totalWeight(b);
+        });
+        print("by degree: ");
+        showNodes(byDegree);
+        print("^top three: ");
+        showNodes(byDegree.take(3));
+        Node top = byDegree.first();
+        Node bottom = byDegree.last();
+        print($"^top {top.tag} bottom {bottom.tag}^");
+        bool linkedAll = nodes.all((Node n) => degree(n) > 0);
+        bool anyFord = nodes.any((Node n) => n.terrain == eTerrain.ford);
+        print($"all linked {linkedAll}, any ford {anyFord}^");
+    }
+}
+
+verb LinkVerb {
+    grammar = {.link, NUMBER, NUMBER};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        if (!validId(a) || !validId(b) || a == b) {
+            print("No such link.^");
+            return;
+        }
+        int w = weight(a, b) == 0 ? 7 : 0;
+        weights[a][b] = w;
+        weights[b][a] = w;
+        if (w == 0) print($"{nodes[a].tag}{nodes[b].tag} cut^");
+        else print($"{nodes[a].tag}{nodes[b].tag} linked at {w}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

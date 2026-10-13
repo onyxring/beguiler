@@ -1,0 +1,467 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-third PunyInform program, written plainly: three halls (Room A, Room B and Room
+// C, one per level) of a `Hall` class whose `before` keeps the lift doors shut unless the lift is at
+// that level, and a lift cabin whose `w_to` is set at run time and whose description is a routine;
+// OPTIONAL_SCORED; a `press NUMBER` verb taking `press` ahead of the library's Push, queuing floors in
+// an `array<int>` (`contains`, `enqueue`, `dequeue`, `length`) served by a lift object on `StartTimer`
+// and `time_out`; a call button floating through the halls with `found_in` as a list; a level-3 lock
+// that needs a key card carried; an enum direction from a function with a `switch` over it; a `Load`
+// class with a weight, summed recursively over `children`, against the lift's limit; a value class
+// `Odometer` with `operator ()`, `=` and `+=`; a porter with `life` (Ask through NextWord, Give of a
+// load) and `orders` (Wait, Go); a `stringObj` log appended with interpolated strings by a helper with
+// a default argument; a `switch` with a range case and a guard; `bgl.world.instances` over the class
+// with a lambda predicate; `for`, `for … in` and `while` loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+bool GamePostRoutine() {
+    if (action == Drop) checkLoads();
+    rfalse;
+}
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eMotion { idle, up, down }
+
+array<string> motionNames = {"idle", "going up", "going down"};
+
+const int TOP_LEVEL  = 3;
+const int LIFT_LIMIT = 12;
+
+value class Odometer {
+    int _levels = 0;
+
+    int  operator ()         { return _levels; }
+    void operator = (int v)  { _levels = v < 0 ? 0 : v; }
+    void operator += (int v) { _levels = _levels + v; }
+}
+
+stringObj logText;
+int logCount     = 0;
+int tripsMade    = 0;
+bool topReached  = false;
+bool crateMoved  = false;
+bool boxMoved    = false;
+
+array<int> requests[4];
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string motionName(eMotion m) {
+    return motionNames[(int)m - 1];
+}
+
+eMotion motionTo(int target) {
+    if (target > lift.level) return eMotion.up;
+    if (target < lift.level) return eMotion.down;
+    return eMotion.idle;
+}
+
+object hallFor(int level) {
+    switch (level) {
+        case 1: return roomA;
+        case 2: return roomB;
+        case 3: return roomC;
+    }
+    return null;
+}
+
+int weightOf(object o) {
+    int total = 0;
+    if (o.is(Load)) total = ((Load)o).weight;
+    for (object c in o.children) total += weightOf(c);
+    return total;
+}
+
+string loadWord(int w) {
+    switch (w) {
+        case 0:       return "empty";
+        case 1 to 6:  return "light";
+        case 7 to 12: return "heavy";
+        case > 12:    return "over the limit";
+    }
+    return "unknown";
+}
+
+// --- halls ------------------------------------------------------------------------------------------
+
+class Hall : object {
+    int level = 1;
+    e_to = lift;
+    attributes = {light, proper};
+
+    bool before() {
+        if (action == Go && selected_direction == (property)e_to) {
+            if (lift.moving || lift.level != level) rtrue("The lift doors are shut.^");
+        }
+        rfalse;
+    }
+}
+
+Hall roomA {
+    "Room A";
+    description = "Room A, level 1. The lift is east.";
+    level = 1;
+}
+
+Hall roomB {
+    "Room B";
+    description = "Room B, level 2. The lift is east.";
+    level = 2;
+}
+
+Hall roomC {
+    "Room C";
+    description = "Room C, level 3. The lift is east.";
+    level = 3;
+}
+
+// --- the call button --------------------------------------------------------------------------------
+
+object callButton {
+    "call button";
+    name = {.call, .button};
+    description = "A call button for the lift.";
+    rawArray<object> found_in = {roomA, roomB, roomC};
+    attributes = {static, scenery};
+
+    bool before() {
+        if (action == Push) {
+            Hall h = (Hall)location;
+            if (!lift.moving && lift.level == h.level) rtrue("The lift is already here. Its doors are open.^");
+            if (!request(h.level)) rtrue("The button is already lit.^");
+            rtrue($"The button lights. The lift is called to level {h.level}.^");
+        }
+        rfalse;
+    }
+}
+
+// --- the lift ---------------------------------------------------------------------------------------
+
+object lift {
+    "Lift";
+    w_to = roomB;
+    int  level  = 2;
+    int  target = 0;
+    bool moving = false;
+    bool dwelling = false;
+    Odometer travelled;
+    int time_left;
+    attributes = {light};
+
+    void description() {
+        print($"A lift cabin. A panel has buttons 1 to {TOP_LEVEL}. The display shows {level}");
+        if (moving) printLine($", {motionName(motionTo(target))}.");
+        else printLine(".");
+        if (requests.length > 0) printLine($"Floors waiting: {requests.length}.");
+    }
+
+    bool before() {
+        if (action == Go && selected_direction == (property)w_to && moving) rtrue("The doors are shut while the lift moves.^");
+        rfalse;
+    }
+
+    void time_out() {
+        if (dwelling) {
+            dwelling = false;
+            serveNext();
+            return;
+        }
+        int steps = target - level;
+        if (steps < 0) steps = -steps;
+        travelled += steps;
+        level = target;
+        moving = false;
+        w_to = hallFor(level);
+        tripsMade++;
+        jot("arrived", level);
+        if (level == TOP_LEVEL && !topReached) {
+            topReached = true;
+            score++;
+        }
+        if (location == self || location == hallFor(level)) printLine($"Ding. The lift doors open at level {level}.");
+        if (requests.length > 0) {
+            dwelling = true;
+            StartTimer(self, 3);
+        }
+    }
+}
+
+bool request(int lvl) {
+    if (requests.contains(lvl)) return false;
+    if (liftMoving() && lift.target == lvl) return false;
+    requests.enqueue(lvl);
+    if (!liftMoving() && !lift.dwelling) serveNext();
+    return true;
+}
+
+bool liftMoving() {
+    return lift.moving;
+}
+
+void serveNext() {
+    while (requests.length > 0) {
+        int next = requests.dequeue();
+        if (next == lift.level) continue;
+        int w = weightOf(lift);
+        if (w > LIFT_LIMIT) {
+            jot("overload", w);
+            if (location == lift) printLine($"A buzzer sounds. The load is {w}; the limit is {LIFT_LIMIT}.");
+            requests.clear();
+            return;
+        }
+        if (location == lift || location == hallFor(lift.level)) printLine("The lift doors close.");
+        lift.target = next;
+        lift.moving = true;
+        int steps = next - lift.level;
+        if (steps < 0) steps = -steps;
+        StartTimer(lift, steps);
+        return;
+    }
+}
+
+object panel {
+    "panel";
+    parent = lift;
+    name = {.panel, .buttons};
+    attributes = {static, scenery};
+
+    bool before() {
+        if (action == Examine) {
+            print("A panel with buttons");
+            for (int i = 1; i <= TOP_LEVEL; i++) {
+                if (requests.contains(i) || (lift.moving && lift.target == i)) print($" [{i}]");
+                else print($" {i}");
+            }
+            printLine(". Level 3 needs a key card.");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// --- loads ------------------------------------------------------------------------------------------
+
+class Load : object {
+    int weight = 1;
+    object goal;
+
+    bool before() {
+        if (action == Examine) {
+            print($"{cThe(self)}, weight {weight}, for {goal}");
+            if (parent == goal) printLine(". It is where it should be.");
+            else printLine(".");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+Load crate {
+    "crate";
+    parent = roomA;
+    name = {.crate, .wooden};
+    weight = 8;
+    goal = roomB;
+    attributes = {container, open};
+}
+
+Load box {
+    "small box";
+    parent = roomA;
+    name = {.small, .box};
+    weight = 2;
+    goal = roomC;
+}
+
+Load sack {
+    "sack";
+    parent = roomA;
+    name = {.sack};
+    weight = 5;
+    goal = roomB;
+}
+
+object keyCard {
+    "key card";
+    parent = roomB;
+    name = {.key, .card};
+    description = "A key card for level 3.";
+}
+
+// --- the porter -------------------------------------------------------------------------------------
+
+object porter {
+    "porter";
+    parent = roomA;
+    name = {.porter};
+    description = "A porter in a gray coat.";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .lift) rtrue($"The porter says: the lift takes {LIFT_LIMIT} at most.^");
+                if (w == .card) rtrue("The porter says: the key card is in Room B.^");
+                if (w == .crate || w == .box || w == .sack) rtrue("The porter says: examine a load to see where it goes.^");
+                rtrue("The porter shrugs.^");
+            case Give:
+                if (noun.is(Load)) rtrue($"The porter says: carry {the(noun)} yourself.^");
+                rtrue("The porter says: no thank you.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The porter leans on the wall.^");
+            case Go:
+                rtrue("The porter says: I stay on level 1.^");
+        }
+        rtrue("The porter ignores you.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb PressLevel {
+    grammar = {.press, NUMBER};
+    void handler() {
+        if (location != lift) {
+            printLine("There are no numbered buttons here.");
+            return;
+        }
+        int lvl = parsed_number;
+        if (lvl < 1 || lvl > TOP_LEVEL) {
+            printLine($"There is no button {lvl}.");
+            return;
+        }
+        if (lvl == TOP_LEVEL && keyCard.parent != player) {
+            jot("refused", lvl);
+            printLine("Button 3 blinks red. It needs a key card.");
+            return;
+        }
+        int w = weightOf(lift);
+        if (w > LIFT_LIMIT) {
+            jot("overload", w);
+            printLine($"A buzzer sounds. The load is {w}; the limit is {LIFT_LIMIT}.");
+            return;
+        }
+        if (!lift.moving && lvl == lift.level) {
+            printLine($"The lift is already at level {lvl}.");
+            return;
+        }
+        if (!request(lvl)) {
+            printLine($"Button {lvl} is already lit.");
+            return;
+        }
+        jot("pressed", lvl);
+        printLine($"Button {lvl} lights.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        printLine($"Score {score} of {MAX_SCORE}. Lift at level {lift.level}, {motionName(motionTo(lift.target == 0 ? lift.level : lift.target))}.");
+        printLine($"Trips {tripsMade}, levels travelled {(int)lift.travelled}, porter asked {porter.asked}.");
+        int w = weightOf(lift);
+        printLine($"Lift load {w}, {loadWord(w)}.");
+    }
+}
+
+verb Queue {
+    meta = true;
+    grammar = {.queue};
+    void handler() {
+        if (requests.length == 0) {
+            printLine("No floors are waiting.");
+            return;
+        }
+        print("Waiting:");
+        for (int lvl in requests) print($" {lvl}");
+        printLine(".");
+    }
+}
+
+verb Loads {
+    meta = true;
+    grammar = {.loads};
+    void handler() {
+        int placed = bgl.world.instances(Load, (object o) => o.parent == ((Load)o).goal).length;
+        printLine($"{placed} of 3 loads are in place.");
+        for (object o in bgl.world.instances(Load)) {
+            Load l = (Load)o;
+            print($"{l}: weight {l.weight}, ");
+            if (l.parent == player) printLine("carried.");
+            else printLine($"in {the(l.parent)}.");
+        }
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logCount}): {logText}");
+    }
+}
+
+// --- scoring loads ----------------------------------------------------------------------------------
+
+void checkLoads() {
+    if (!crateMoved && crate.parent == crate.goal) {
+        crateMoved = true;
+        score++;
+        jot("crate placed");
+    }
+    if (!boxMoved && box.parent == box.goal) {
+        boxMoved = true;
+        score++;
+        jot("box placed");
+    }
+}
+
+bool Initialise() {
+    lift.travelled = 0;
+    rfalse;
+}

@@ -1,0 +1,423 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a kiln, a rack and
+// four tiles that are fired. A tile base class with `default` methods and a glazed subclass that
+// overrides them, calling the base `bake` through a cast; an enum stage reached both bare and through a
+// namespace object (`alias … for`); a kiln (container, openable, switchable) with an inline `auto { … }`
+// heat accessor whose setter clamps against `outer.maxHeat`, `before`/`after` rules and a daemon that
+// bakes the tiles inside and logs the heat; a value class tallied through a `ref` parameter; a routine
+// with default parameters called positionally and with named arguments; a `stringObj` label built from
+// char literals and `+=`, a three-digit pad built with `do … while`; an `array<Tile>` sorted with a
+// comparator lambda, an `array<int>` log kept with `append()`/`dequeue()` and read with <linq>
+// (`filter`, `count`, `all`, `any`, `orderBy`, `first`); `#define` values tested by `#if`/`#elif`/`#else`
+// and a settings test; a switch with a range case and a multi-value case; `NUMBER` grammar with
+// alternation; hex and binary literals, a raw string; mixed-case keywords, Allman and K&R braces,
+// comments between tokens and inside argument lists, a routine with no spaces, a declaration split over
+// lines and doc comments before and after declarations.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include   <linq>
+
+#using bgl.printRules ;
+
+#define LOG_MAX    4
+#define KILN_MODE  2           // 1 = quiet, 2 = chatty
+
+/* ---- constants ------------------------------------------------------------------------------- */
+
+const int BISQUE_HEAT = $64 ;          /// Lowest heat that fires a tile (100).
+const int CRACK_HEAT  = 180 ;          /// Glazed tiles crack above this.
+CONST INT FIRE_TURNS  = $$11 ;         /// Turns a plain tile needs (three).
+
+/// What has become of a tile.
+enum eStage
+{
+    raw ,
+    done ,      // fired through
+    cracked
+}
+
+object kinds { alias stage for eStage ; }
+
+/* ---- rooms ----------------------------------------------------------------------------------- */
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A kiln stands here. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = @"Room B. A rack holds tiles. Room A is south." ;
+    object s_to = roomA ;
+}
+
+object rack
+{
+    "rack" ;
+    parent     = roomB ;
+    name       = { .rack } ;
+    attributes = { supporter , static } ;
+    string description = "A wooden rack." ;
+}
+
+/* ---- tiles ----------------------------------------------------------------------------------- */
+
+class Tile : object
+{
+    eStage stage = eStage.raw ;
+    int    fired = 0 ;
+    int    mark ;
+    string description = "A clay tile." ;
+
+    default string finish () { return "plain" ; }
+    default int turnsNeeded () { return FIRE_TURNS ; }
+
+    /// Bakes one turn at heat `h`; true when the stage changed.
+    default bool bake ( int h )
+    {
+        if (stage != eStage.raw) return false ;
+        if (h < BISQUE_HEAT)     return false ;
+        fired++ ;
+        if (fired >= turnsNeeded())
+        {
+            stage = eStage.done ;
+            return true ;
+        }
+        return false ;
+    }
+}
+
+class GlazedTile : Tile
+{
+    string finish () { return "glazed" ; }
+    int turnsNeeded () { return FIRE_TURNS + 2 ; }
+
+    bool bake ( int h ) {
+        if (h > CRACK_HEAT)
+        {
+            if (stage != eStage.raw) return false ;
+            stage = eStage.cracked ;
+            return true ;
+        }
+        return ((Tile) self).bake(h) ;
+    }
+}
+
+Tile smallTile
+{
+    "small tile" ; parent = rack ; name = { .small , .tile } ;
+}
+Tile squareTile { "square tile" ; parent = rack ; name = { .square , .tile } ; }
+GlazedTile blueTile
+{
+    "blue tile" ;
+    parent = rack ;
+    name   = { .blue , .glazed , .tile } ;
+}
+GlazedTile greenTile { "green tile" ; parent = rack ; name = { .green , .glazed , .tile } ; }
+
+array<Tile> allTiles = { smallTile , squareTile , blueTile , greenTile } ;
+
+string stageName ( eStage s )
+{
+    switch (s)
+    {
+        case eStage.raw  : return "raw" ;
+        case eStage.done : return "fired" ;
+        DEFAULT          : return "cracked" ;
+    }
+}
+
+/* ---- labels ---------------------------------------------------------------------------------- */
+
+stringObj pad3 ( int n )
+{
+    stringObj s ;
+    int digits = 0 ;
+    int v = n ;
+    do
+    {
+        digits++ ;
+        v = v / 10 ;
+    } while (v > 0) ;
+    while (digits < 3) { s += '0' ; digits++ ; }
+    s += $"{n}" ;
+    return s ;
+}
+
+stringObj
+label
+    ( Tile t , bool brief = false , char prefix = 'T' )
+{
+    stringObj s ;
+    s += prefix ;
+    s += '-' ;
+    s += pad3(t.mark) ;
+    if (!brief)
+    {
+        s += $" {t.finish()} {stageName(t.stage)}" ;
+    }
+    return s ;
+}
+
+/* ---- tallies --------------------------------------------------------------------------------- */
+
+value class Batch
+{
+    int total ;
+    int fired ;
+    int cracked ;
+    Batch operator = ( Batch o ) { total = o.total ; fired = o.fired ; cracked = o.cracked ; return self ; }
+}
+
+void addTo ( ref Batch b , Tile t )
+{
+    b.total++ ;
+    switch (t.stage)
+    {
+        case kinds.stage.done    : b.fired++ ;
+        case kinds.stage.cracked : b.cracked++ ;
+    }
+}
+
+Batch tallyAll ()
+{
+    Batch b ;
+    for (Tile t in allTiles) addTo(b , t) ;
+    return b ;
+}
+
+/* ---- the kiln -------------------------------------------------------------------------------- */
+
+array<int> heatLog[LOG_MAX] ;
+
+void logHeat(int h){if(heatLog.length==LOG_MAX)heatLog.dequeue();heatLog.append(h);}
+
+object kiln
+{
+    "kiln" ;
+    parent     = roomA ;
+    name       = { .kiln , .oven } ;
+    attributes = { container , openable , switchable , static } ;
+    string description = "A brick kiln with a heat dial." ;
+    int maxHeat   = $C8 ;              // two hundred
+    int turnsLit  = 0 ;
+
+    auto heat = {
+        int _raw = 0 ;
+        int  operator () { return _raw ; }
+        void operator = ( int v )
+        {
+            if (v < 0)               v = 0 ;
+            if (v > outer.maxHeat)   v = outer.maxHeat ;
+            _raw = v ;
+        }
+    }
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Open :
+                if (self.has(on)) rtrue("The kiln is too hot to open.^") ;
+            case SwitchOn :
+                if (self.has(open)) rtrue("Close the kiln first.^") ;
+                if (heat == 0)      rtrue("The dial is at zero.^") ;
+        }
+        rfalse ;
+    }
+
+    bool after ()
+    {
+        Switch (action) {
+            CASE SwitchOn  : StartDaemon(self) ;
+            case SwitchOff :
+                StopDaemon(self) ;
+                heat = 0 ;
+        }
+        rfalse ;
+    }
+
+    void daemon ()
+    {
+        turnsLit++ ;
+        logHeat(heat) ;
+        for (object o in self.children)
+        {
+            if (!(o.is(Tile))) continue ;
+            Tile t = (Tile) o ;
+            if (t.bake(heat))
+            {
+#if KILN_MODE >= 2
+                if (location == roomA) print($"^{cThe(t)} is now {stageName(t.stage)}.^") ;
+#elif KILN_MODE == 1
+                if (location == roomA) print("^The kiln ticks.^") ;
+#else
+                ;
+#endif
+            }
+        }
+    }
+}
+
+/* ---- startup --------------------------------------------------------------------------------- */
+
+bool Initialise ()
+{
+    location = roomA ;
+    int n = 1 ;
+    for (Tile t in allTiles) { t.mark = n * 7 ; n++ ; }
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+/* ---- commands -------------------------------------------------------------------------------- */
+
+verb SetHeat
+{
+    grammar = {
+        { .heat , NUMBER } ,
+        { ( .heat | .dial ) , .kiln , .to , NUMBER } ,
+    } ;
+    void handler ()
+    {
+        if (location != roomA) { printLine("There is no kiln here.") ; return ; }
+        int n = (int) noun ;
+        if (kiln.has(on)) { printLine("Switch the kiln off first.") ; return ; }
+        kiln.heat = n ;
+        int got = kiln.heat ;
+        switch (got)
+        {
+            case 0                        : printLine("The dial rests at zero.") ;
+            case 1 to BISQUE_HEAT - 1     : printLine($"The dial is set to {got}, too cool to fire.") ;
+            case CRACK_HEAT + 1 to 9999   : printLine($"The dial is set to {got}, hot enough to crack glaze.") ;
+            default                       : printLine($"The dial is set to {got}.") ;
+        }
+    }
+}
+
+verb Readout
+{
+    meta    = true ;
+    grammar = { { .readout } , { .gauge } } ;
+    void handler ()
+    {
+        stringObj h = pad3(kiln.heat) ;
+        print("Heat ") ;
+        h.print() ;
+        print($"/{kiln.maxHeat}, {kiln.has(on) ? "on" : "off"}, {kiln.has(open) ? "open" : "closed"}") ;
+        printLine($", lit {kiln.turnsLit} turn{kiln.turnsLit == 1 ? "" : "s"}.") ;
+    }
+}
+
+verb Inspect
+{
+    grammar = { { ( .inspect | .check ) , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Tile))) { printLine("Only tiles can be inspected.") ; return ; }
+        Tile t = (Tile) noun ;
+        stringObj l = label(t) ;
+        l.print() ;
+        printLine($", {t.fired}/{t.turnsNeeded()} turns.") ;
+    }
+}
+
+verb Tag
+{
+    grammar = { .tag , NOUN , NUMBER } ;
+    void handler ()
+    {
+        if (!(noun.is(Tile))) { printLine("Only tiles take a tag.") ; return ; }
+        Tile t = (Tile) noun ;
+        t.mark = (int) second ;
+        stringObj l = label(t , /* brief */ true , prefix : 'X') ;
+        print($"{cThe(t)} is tagged ") ;
+        l.print() ;
+        printLine(".") ;
+    }
+}
+
+verb Tally
+{
+    meta    = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        Batch b = tallyAll() ;
+        printLine($"{b.total} tiles: {b.fired} fired, {b.cracked} cracked, {b.total - b.fired - b.cracked} raw.") ;
+    }
+}
+
+verb Roster
+{
+    meta    = true ;
+    grammar = { { .roster } , { .tiles } } ;
+    void handler ()
+    {
+        array<Tile> order[4] ;
+        for (Tile t in allTiles) order.append(t) ;
+        order.sort( ( Tile a , Tile b ) => (int) a.stage - (int) b.stage ) ;
+        stringObj line ;
+        for (Tile t in order)
+        {
+            if (!line.isEmpty()) line += "; " ;
+            line += label(t, brief: false) ;
+        }
+        line.print() ;
+        printLine(".") ;
+    }
+}
+
+verb ShowLog
+{
+    meta    = true ;
+    grammar = { .log } ;
+    void handler ()
+    {
+        if (heatLog.length == 0) { printLine("The log is empty.") ; return ; }
+        stringObj line ;
+        for (int h in heatLog)
+        {
+            if (!line.isEmpty()) line += ", " ;
+            line += $"{h}" ;
+        }
+        line.print() ;
+        int hot = heatLog.filter( ( int h ) => h > CRACK_HEAT ).count() ;
+        int low = heatLog.orderBy().first() ;
+        print($" - lowest {low}, {hot} over {CRACK_HEAT}") ;
+        if (heatLog.all((int h) => h >= BISQUE_HEAT)) print(", all firing") ;
+        else if (heatLog.any((int h) => h >= BISQUE_HEAT)) print(", some firing") ;
+        printLine(".") ;
+    }
+}
+
+verb Platform
+{
+    meta    = true ;
+    grammar = { .platform } ;
+    void handler ()
+    {
+#if #beguilerSettings.target == "z5"
+        printLine("Target z5.") ;
+#else
+        printLine("Target other.") ;
+#endif
+    }
+}

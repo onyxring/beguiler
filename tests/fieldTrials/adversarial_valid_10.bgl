@@ -1,0 +1,403 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small breaker-panel program, on Glulx.
+// An `extend extern class array` emitter (second()) called on a global array, a member array, an
+// inner row of an array of arrays and an array of objects; an array<array<int>> with rows of different
+// lengths walked by for-in and written through a double subscript; a value class with an `inline`
+// member, two static `==` overloads picked by an operator reference with an operand list, `<=>` handed
+// straight to sort(), and a getter; a named accessor class (getter and clamping setter) as an owned
+// member of an object; a panel class contributing to the additive `name` property, with objects adding
+// one word or two, matched by the parser; a circuit class with a `const` member given per object, a
+// `typesealed` enum member re-initialized in a subclass, a `required` routine met by objects and by a
+// subclass, `default` methods reached again through an ancestor cast, a `hide` of an inherited method
+// reached through an upcast, a static counter named through the subclass, `selfType` chains, and an
+// owned value-class member set through its int `operator =`; a rule class filled by bare `{ … }`
+// elements of an array of rules (one holding a lambda) and by a bare-initialized global; an inline
+// object passed as an argument with run-time members inside a loop; an object namespace with a value
+// alias to a class (its static methods) and to a superposed object; a static func<> member assigned a
+// lambda and called through the class; `&` on an array and an object; an `#if` / `#else` inside a
+// method; throw of a circuit and of an int caught in nested try blocks; do/until; a switch on an enum
+// with a list case; a children walk across two panels; and an `extend` adding `before` to a circuit.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#define LOAD_SLOTS 4
+#define TRACE_TRIPS
+
+extend extern class object {
+    string description;
+}
+
+extend extern class array {
+    emitter T second() { $i6Expr($self[1]) }
+}
+
+// ---- flags and phases ----------------------------------------------------------------------------
+
+bnum breakerFlag { tripped, locked, tagged }        // 1, 2, 4
+
+enum phaseKind { phaseA = 1, phaseB, phaseC }       // 1, 2, 3
+
+// ---- watts: a value class -------------------------------------------------------------------------
+
+value class Watts {
+    inline int w;
+
+    Watts operator = (Watts o) { w = o.w; return self; }
+    Watts operator = (int n)   { w = n;   return self; }
+    int operator () { return w; }
+
+    static bool operator == (Watts a, Watts b) { return a.w == b.w; }
+    static bool operator == (Watts a, int b)   { return a.w == b; }
+    static bool operator != (Watts a, Watts b) { return a.w != b.w; }
+    static int  operator <=> (Watts a, Watts b) { return a.w < b.w ? -1 : (a.w > b.w ? 1 : 0); }
+}
+
+func<bool, Watts, int> exactly = Watts::operator ==(int);
+
+// ---- a supply voltage: a named accessor class ------------------------------------------------------
+
+value class clampedVolts {
+    int _v = 120;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v < 100 ? 100 : (v > 240 ? 240 : v); }
+}
+
+// ---- the world ------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+class Panel : object {
+    rawArray<dictionaryWord> name = {.panel, .board};
+    description = "A breaker panel.";
+}
+
+Panel leftPanel  { "left panel";  parent = roomA; name = .left;            attributes = {supporter, static}; }
+Panel rightPanel { "right panel"; parent = roomA; name = {.right, .main};  attributes = {supporter, static}; }
+
+// ---- circuits -------------------------------------------------------------------------------------
+
+class Circuit : object {
+    inline instanceName;
+    inline int amps;
+    const int rating = 15;
+    typesealed phaseKind phase = phaseA;
+    breakerFlag flags;
+    Watts draw;
+    array<int> loads[LOAD_SLOTS];
+    static int trips = 0;
+
+    required string zone();
+
+    selfType add(int a) {
+        if (loads.length < LOAD_SLOTS) loads.append(a);
+        amps += a;
+        draw = amps * 120;
+        if (amps > rating && (flags & tripped) == 0) {
+            flags = flags | tripped;
+            trips++;
+        }
+        return self;
+    }
+
+    selfType tag() {
+        flags = flags | tagged;
+        return self;
+    }
+
+    default int headroom() { return rating - amps; }
+
+    default void reset() {
+        if ((flags & locked) != 0) throw self;
+        #if TRACE_TRIPS
+            if ((flags & tripped) != 0) print($"[reset {self}]");
+        #else
+            print("[reset]");
+        #endif
+        flags = (flags | tripped) ^ tripped;
+        amps = 0;
+        draw = 0;
+        loads.clear();
+    }
+}
+
+class HeavyCircuit : Circuit {
+    phase = phaseC;
+
+    string zone() { return "heavy"; }
+
+    int headroom() { return ((Circuit)self).headroom() / 2; }
+
+    hide reset();
+}
+
+Circuit lights  { "lights", 4;  parent = leftPanel;  name = .lights;  rating = 10; string zone() { return "upper"; } }
+Circuit outlets { "outlets", 6; parent = leftPanel;  name = .outlets; string zone() { return "lower"; } }
+HeavyCircuit oven  { "oven", 12; parent = rightPanel; name = .oven;  rating = 30; }
+HeavyCircuit dryer { "dryer", 0; parent = rightPanel; name = .dryer; rating = 25; phase = phaseB; }
+
+array<Circuit> board = { lights, outlets, oven, dryer };
+
+// ---- the load schedule: an array of arrays ---------------------------------------------------------
+
+array<array<int>> schedule = { {2, 3}, {1, 1, 1}, {8}, {5, 4} };
+
+array<int> spare = { 7, 8, 9 };
+
+// ---- rules: a class filled by bare inline objects --------------------------------------------------
+
+class rule : object {
+    inline string tag;
+    inline Circuit target;
+    inline func<int, Circuit> measure;
+}
+
+int ampsOf(Circuit c) { return c.amps; }
+
+array<rule> rules = {
+    { "amps", lights, ampsOf },
+    { "room", oven, (Circuit c) => c.headroom() },
+    rule{ "slots", outlets, (Circuit c) => c.loads.length },
+};
+
+rule fallbackRule = { "rating", dryer, (Circuit c) => c.rating };
+
+// ---- readings: an inline object with run-time members ----------------------------------------------
+
+class reading : object {
+    inline int volts;
+    inline int amps;
+}
+
+int wattsOf(reading r) { return r.volts * r.amps; }
+
+// ---- the meter namespace --------------------------------------------------------------------------
+
+class Calc {
+    static func<int, int> step;
+
+    static int ohms(int volts, int amps) { return amps == 0 ? 0 : volts / amps; }
+    static int twice(int n) { return n * 2; }
+}
+
+superposed object meterKit {
+    int sums = 0;
+
+    int sum(array<int> xs) {
+        int t = 0;
+        for (int x in xs) t += x;
+        sums++;
+        return t;
+    }
+}
+
+object meter {
+    alias calc = Calc;
+    alias kit  = meterKit;
+    clampedVolts volts;
+}
+
+// ---- free functions -------------------------------------------------------------------------------
+
+string phaseName(phaseKind p) {
+    switch (p) {
+        case phaseA:         return "A";
+        case phaseB, phaseC: return p == phaseB ? "B" : "C";
+        default:             return "?";
+    }
+}
+
+void lockOut(Circuit c) {
+    c.flags = c.flags | locked;
+    try {
+        c.reset();
+    } catch (Circuit held) {
+        print($"locked {held}; ");
+        c.flags = c.flags ^ locked;
+        throw (int)c.flags;
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs -----------------------------------------------------------------------------------
+
+class probeVerb : verb {
+    meta = true;
+}
+
+probeVerb ProbeSecond {
+    grammar = {.probesecond};
+    void handler() {
+        lights.add(1).add(2);
+        Circuit c = board.second();
+        printLine($"Second {spare.second()} {schedule[1].second()} {lights.loads.second()} {c}.");
+        printLine($"Rows {schedule.length} {schedule[0].length} {schedule[2].length} {schedule[3].second()}.");
+    }
+}
+
+probeVerb ProbeSchedule {
+    grammar = {.probeschedule};
+    void handler() {
+        int row = 0;
+        for (array<int> r in schedule) {
+            int total = 0;
+            for (int i = 0; i < r.length; i++) total += r[i];
+            print($"r{row}={total} ");
+            row++;
+        }
+        printLine();
+        schedule[2][0] = schedule[2][0] - 3;
+        schedule[0][1] += 10;
+        printLine($"Edit {schedule[2][0]} {schedule[0][1]} sum {meter.kit.sum(schedule[0])} {meter.kit.sum(spare)} calls {meterKit.sums}.");
+    }
+}
+
+probeVerb ProbeWatts {
+    grammar = {.probewatts};
+    void handler() {
+        oven.add(3);
+        dryer.add(10);
+        int ow = oven.draw;
+        Watts od = oven.draw;
+        Watts dd = dryer.draw;
+        printLine($"Draw {ow} {(int)dryer.draw} {exactly(od, 1800)} {exactly(dd, 1)}.");
+        array<Watts> ws[4];
+        for (Circuit c in board) ws.append(c.draw);
+        ws.sort(Watts::operator <=>);
+        print("Sorted");
+        for (Watts x in ws) print($" {(int)x}");
+        Watts probe = Watts{ 1200 };
+        printLine($" at {ws.indexOf(probe)} eq {probe == dryer.draw} ne {probe != oven.draw}.");
+    }
+}
+
+probeVerb ProbeCircuits {
+    grammar = {.probecircuits};
+    void handler() {
+        for (Circuit c in board) {
+            print($"{c} r{c.rating} {phaseName(c.phase)} {c.zone()} h{c.headroom()}; ");
+        }
+        printLine();
+        printLine($"Base {((Circuit)oven).headroom()} {((Circuit)dryer).headroom()} trips {HeavyCircuit.trips} {Circuit.trips}.");
+        outlets.add(6).add(5).tag();
+        printLine($"Outlets {outlets.amps} {(int)outlets.flags} {outlets.loads.length} trips {Circuit.trips}.");
+    }
+}
+
+probeVerb ProbeRules {
+    grammar = {.proberules};
+    void handler() {
+        for (rule r in rules) {
+            print($"{r.tag}:{r.target}={r.measure(r.target)} ");
+        }
+        printLine($"{fallbackRule.tag}:{fallbackRule.target}={fallbackRule.measure(fallbackRule.target)}.");
+        int total = 0;
+        for (int v in 1 to 3) {
+            int a = v * 2;
+            total += wattsOf({ 120, a });
+        }
+        printLine($"Readings {total} {wattsOf(reading{ 240, 1 })}.");
+    }
+}
+
+probeVerb ProbeMeter {
+    grammar = {.probemeter};
+    void handler() {
+        int before = meter.volts;
+        meter.volts = 300;
+        int high = meter.volts;
+        meter.volts = 12;
+        int low = meter.volts;
+        meter.volts = 230;
+        printLine($"Volts {before} {high} {low} {(int)meter.volts}.");
+        Calc.step = (int n) => n + meter.calc.twice(n);
+        printLine($"Calc {meter.calc.ohms(meter.volts, 10)} {Calc.ohms(120, 0)} {Calc.step(4)} {meter.calc.twice(Calc.step(1))}.");
+        int n = 0;
+        int acc = 1;
+        do {
+            acc = Calc.twice(acc);
+            n++;
+        } until (acc >= 50);
+        printLine($"Until {n} {acc}.");
+        printLine($"Addr {&spare == (int)spare} {&lights == (int)lights} {&n}.");
+    }
+}
+
+probeVerb ProbeReset {
+    grammar = {.probereset};
+    void handler() {
+        lights.add(9);
+        printLine($"Lights {lights.amps} {(int)lights.flags} trips {Circuit.trips}.");
+        lights.reset();
+        ((Circuit)oven).reset();
+        printLine($" now {lights.amps} {lights.loads.length} {oven.amps} {(int)oven.draw}.");
+        try {
+            try {
+                lockOut(outlets);
+                print("no throw ");
+            } catch (int code) {
+                print($"inner {code} ");
+                throw outlets;
+            }
+        } catch (Circuit c) {
+            print($"outer {c} ");
+        }
+        printLine($"flags {(int)outlets.flags} amps {outlets.amps}.");
+    }
+}
+
+probeVerb ProbePanels {
+    grammar = {.probepanels};
+    void handler() {
+        int heavy = 0;
+        for (object p in roomA.children) {
+            if (p.is(Panel)) {
+                print($"{p}:");
+                for (object o in p.children) {
+                    Circuit c = (Circuit)o;
+                    print($" {c}/{c.amps}");
+                    if (c.is(HeavyCircuit)) heavy++;
+                }
+                print("; ");
+            }
+        }
+        printLine($"heavy {heavy}.");
+    }
+}
+
+verb Flip {
+    grammar = {.flip, NOUN};
+    void handler() {
+        printLine($"Flipped {noun}.");
+    }
+}
+
+// ---- late additions -------------------------------------------------------------------------------
+
+extend dryer {
+    bool before() {
+        if (action == Flip) {
+            add(1);
+            printLine($"The {self} hums at {amps}.");
+            rtrue;
+        }
+        rfalse;
+    }
+}

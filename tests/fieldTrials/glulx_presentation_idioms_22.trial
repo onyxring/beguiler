@@ -1,0 +1,359 @@
+#grids
+Room A
+Room A. A shelf stands here. A doorway leads east.
+On the shelf are an oil lamp and a candle.
+You can see a fuel can here.
+[win 1] Notices
+[grid 1]
+|oil lamp [======  ] O |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend o               |
+[grid 2]
+|Room A | lit 0 | fuel 11 | 0                      |
+> panels
+HUD open: yes; notices open: yes.
+HUD 22 x 4.
+Notices width 30.
+[grid 1]
+|oil lamp [======  ] O |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend o               |
+[grid 2]
+|Room A | lit 0 | fuel 11 | 0                      |
+> fuel
+Lamp       fuel      %  level  burned
+torch       2/6   33.3  half   0
+candle      3/4   75.0  full   0
+oil lamp    6/8   75.0  full   0
+Most fuel: the oil lamp. Least: the torch. Can holds 10.
+[grid 1]
+|oil lamp [======  ] O |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend o               |
+[grid 2]
+|Room A | lit 0 | fuel 11 | 0                      |
+> take lamp
+Taken.
+[grid 1]
+|oil lamp [======  ] O |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend oo              |
+[grid 2]
+|Room A | lit 0 | fuel 11 | 1                      |
+> take candle
+Taken.
+[grid 1]
+|oil lamp [======  ] O |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend ooo             |
+[grid 2]
+|Room A | lit 0 | fuel 11 | 2                      |
+> i
+You're carrying:
+  a candle (3/4)
+  an oil lamp (6/8)
+[grid 1]
+|oil lamp [======  ] O |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend oooo            |
+[grid 2]
+|Room A | lit 0 | fuel 11 | 3                      |
+> turn on lamp
+You switch the oil lamp on.
+[win 1] 1: oil lamp lit at 6
+[grid 1]
+|oil lamp [=====   ] o |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend ooooo           |
+[grid 2]
+|Room A | lit 1 | fuel 10 | 4                      |
+> lamps
+Switch oil lamp, candle or torch.
+Lit: 1 of 3.
+[grid 1]
+|oil lamp [=====   ] o |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend ooooo           |
+[grid 2]
+|Room A | lit 1 | fuel 10 | 4                      |
+> wait
+Time passes.
+[grid 1]
+|oil lamp [====    ] o |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend oooooo          |
+[grid 2]
+|Room A | lit 1 | fuel 9 | 5                       |
+> wait
+Time passes.
+[grid 1]
+|oil lamp [===     ] o |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend ooooooo         |
+[grid 2]
+|Room A | lit 1 | fuel 8 | 6                       |
+> east
+Room B
+Room B. Bare walls.
+You can see a torch (2/6) here.
+The oil lamp flickers.
+[win 1] 2: oil lamp low (2 left)
+[grid 1]
+|oil lamp [==      ] . |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend oooooooo        |
+[grid 2]
+|Room B | lit 1 | fuel 7 | 7                       |
+> take torch
+Taken.
+[grid 1]
+|oil lamp [=       ] . |
+|candle   [======  ] O |
+|torch    [===     ] o |
+|trend oooooooo        |
+[grid 2]
+|Room B | lit 1 | fuel 6 | 8                       |
+> turn on torch
+You switch the torch on.
+The oil lamp goes out.
+The torch goes out.
+It is now pitch dark in here.
+[win 1] 3: torch lit at 2
+[win 1] 4: oil lamp out after 6
+[win 1] 5: torch out after 2
+[grid 1]
+|oil lamp [        ] _ |
+|candle   [======  ] O |
+|torch    [        ] _ |
+|trend oooooooo        |
+[grid 2]
+|Darkness | lit 0 | fuel 3 | 9                     |
+> wait
+Time passes.
+[grid 1]
+|oil lamp [        ] _ |
+|candle   [======  ] O |
+|torch    [        ] _ |
+|trend ooooooo.        |
+[grid 2]
+|Darkness | lit 0 | fuel 3 | 10                    |
+> survey
+Any empty: yes; all held: yes; low: 0; refills: 0.
+History (8): 11 11 10 9 8 7 6 3
+Latest total: 3.
+[grid 1]
+|oil lamp [        ] _ |
+|candle   [======  ] O |
+|torch    [        ] _ |
+|trend ooooooo.        |
+[grid 2]
+|Darkness | lit 0 | fuel 3 | 10                    |
+> fuel
+Lamp       fuel      %  level  burned
+oil lamp    0/8    0.0  empty  6
+torch       0/6    0.0  empty  2
+candle      3/4   75.0  full   0
+Most fuel: the candle. Least: the oil lamp. Can holds 10.
+[grid 1]
+|oil lamp [        ] _ |
+|candle   [======  ] O |
+|torch    [        ] _ |
+|trend ooooooo.        |
+[grid 2]
+|Darkness | lit 0 | fuel 3 | 10                    |
+> west
+Room A
+Room A. A shelf stands here. A doorway leads east.
+You can see a fuel can here.
+[grid 1]
+|oil lamp [        ] _ |
+|candle   [======  ] O |
+|torch    [        ] _ |
+|trend oooooo..        |
+[grid 2]
+|Room A | lit 0 | fuel 3 | 11                      |
+> refill torch from can
+You pour 6 into the torch: 0/6 (0.0%) to 6/6 (100.0%).
+[win 1] 6: torch refilled +6
+[grid 1]
+|oil lamp [        ] _ |
+|candle   [======  ] O |
+|torch    [========] O |
+|trend ooooo..o        |
+[grid 2]
+|Room A | lit 0 | fuel 9 | 12                      |
+> refill lamp from can
+You pour 4 into the oil lamp: 0/8 (0.0%) to 4/8 (50.0%).
+[win 1] 7: oil lamp refilled +4
+[grid 1]
+|oil lamp [====    ] o |
+|candle   [======  ] O |
+|torch    [========] O |
+|trend oooo..oo        |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 13                     |
+> refill candle from shelf
+You can't refill anything from the shelf.
+[grid 1]
+|oil lamp [====    ] o |
+|candle   [======  ] O |
+|torch    [========] O |
+|trend ooo..ooo        |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 14                     |
+> refill candle from can
+The fuel can is empty.
+[grid 1]
+|oil lamp [====    ] o |
+|candle   [======  ] O |
+|torch    [========] O |
+|trend oo..oooo        |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 15                     |
+> hud 2
+HUD is 2 lines.
+[grid 1]
+|oil lamp [====    ] o |
+|candle   [======  ] O |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 15                     |
+> notices
+Notices closed.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O                             |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 15                     |
+> wait
+Time passes.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O                             |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 16                     |
+> notices
+Notices open (7 so far).
+[win 2] Notices
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O                             |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 16                     |
+> lamps
+Switch oil lamp, candle or torch.
+Lit: 0 of 3.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O                             |
+[grid 2]
+|Room A | lit 0 | fuel 13 | 16                     |
+> @link 2
+You switch the candle on.
+[win 2] 8: candle lit at 3
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O *                           |
+[grid 2]
+|Room A | lit 1 | fuel 13 | 16                     |
+> fuel
+Lamp       fuel      %  level  burned
+candle      3/4   75.0  full   0
+oil lamp    4/8   50.0  half   6
+torch       6/6  100.0  full   2
+Most fuel: the torch. Least: the candle. Can holds 0.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O *                           |
+[grid 2]
+|Room A | lit 1 | fuel 13 | 16                     |
+> survey
+Any empty: no; all held: yes; low: 0; refills: 2.
+History (8): 6 3 3 9 13 13 13 13
+Latest total: 13.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O *                           |
+[grid 2]
+|Room A | lit 1 | fuel 13 | 16                     |
+> panels
+HUD open: yes; notices open: yes.
+HUD 50 x 2.
+Notices width 30.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [======  ] O *                           |
+[grid 2]
+|Room A | lit 1 | fuel 13 | 16                     |
+> i
+You're carrying:
+  a torch (6/6)
+  a candle (3/4, lit) (providing light)
+  an oil lamp (4/8)
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [====    ] o *                           |
+[grid 2]
+|Room A | lit 1 | fuel 12 | 17                     |
+> turn off candle
+You switch the candle off.
+[win 2] 9: candle off at 2
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [====    ] o                             |
+[grid 2]
+|Room A | lit 0 | fuel 12 | 18                     |
+> turn on candle
+You switch the candle on.
+The candle flickers.
+[win 2] 10: candle lit at 2
+[win 2] 11: candle low (1 left)
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [==      ] . *                           |
+[grid 2]
+|Room A | lit 1 | fuel 11 | 19                     |
+> wait
+Time passes.
+The candle goes out.
+[win 2] 12: candle out after 3
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [        ] _                             |
+[grid 2]
+|Room A | lit 0 | fuel 10 | 20                     |
+> turn on candle
+The candle has no fuel.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [        ] _                             |
+[grid 2]
+|Room A | lit 0 | fuel 10 | 21                     |
+> fuel
+Lamp       fuel      %  level  burned
+candle      0/4    0.0  empty  3
+oil lamp    4/8   50.0  half   6
+torch       6/6  100.0  full   2
+Most fuel: the torch. Least: the candle. Can holds 0.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [        ] _                             |
+[grid 2]
+|Room A | lit 0 | fuel 10 | 21                     |
+> hud 9
+The HUD takes 1 to 6 lines.
+[grid 1]
+|oil lamp [====    ] o                             |
+|candle   [        ] _                             |
+[grid 2]
+|Room A | lit 0 | fuel 10 | 21                     |

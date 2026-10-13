@@ -1,0 +1,135 @@
+Room A
+Room A. A door leads east.
+The oak door is closed.
+A balance scale stands here, level.
+You can also see a small weight (1 lb), a medium weight (2 lb), a large weight (3 lb), a wicker basket (in which is a huge weight (4 lb)) and a glass cabinet (which is closed) (in which is a brass key) here.
+> tally
+Rooms 1, score 0, left 0, right 0, scale level.
+History: none.
+> weigh basket
+You weigh the wicker basket: 5 pounds.
+> x huge
+An iron weight with its mass cast into the side.
+> take iron weight
+Which do you mean, the small weight, the medium weight, the large weight or the huge weight?
+> small
+Taken.
+> take medium
+Taken.
+> put small on scale
+Put it on one of the pans.
+> put small on left pan
+You put the small weight on the left pan.
+The scale tips down on the left.
+> put medium on right pan
+You put the medium weight on the right pan.
+The scale tips down on the right.
+> z
+Time passes.
+> x scale
+A balance scale with a left pan and a right pan. It is down on the right.
+> tally
+Rooms 1, score 0, left 1, right 2, scale down on the right.
+History: 1 -1 (of 2).
+> take small
+Taken.
+> take medium
+Taken.
+The scale settles level.
+> take basket
+Taken.
+> i
+You're carrying:
+  a wicker basket
+    a huge weight (4 lb)
+  a medium weight (2 lb)
+  a small weight (1 lb)
+> put basket on left pan
+You put the wicker basket on the left pan.
+The scale tips down on the left.
+> put medium on right pan
+You put the medium weight on the right pan.
+> weigh large weight on scale
+You weigh the large weight: 3 pounds.
+> take large
+Taken.
+> put large on right pan
+You put the large weight on the right pan.
+The scale settles level.
+Something clicks inside the cabinet.
+[The score has just gone up by one point.]
+> put small on right pan
+There is no more room on the right pan.
+> tally
+Rooms 1, score 1, left 5, right 5, scale level.
+History: 0 -1 0 5 (of 5).
+> look
+Room A
+Room A. A door leads east.
+On the left pan is a wicker basket. On the right pan are a large weight and a medium weight.
+The oak door is closed.
+A balance scale stands here, level.
+You can also see a glass cabinet (which is closed) (in which is a brass key) here.
+> put small on left pan
+You put the small weight on the left pan.
+The scale tips down on the left.
+> take small
+Taken.
+The scale settles level.
+> open cabinet
+You open the glass cabinet.
+> take key
+Taken.
+> weigh key
+You weigh the brass key: too light to register.
+> weigh basket in cabinet
+You can't weigh anything in the glass cabinet.
+> e
+You can't, since the oak door is in the way.
+> unlock door with key
+You unlock the oak door.
+> open door
+You open the oak door.
+> e
+Room B
+Room B. A door leads west.
+The oak door is open.
+You can also see a lead plate and a canvas sack here.
+> x sack
+An empty canvas sack.
+> empty sack
+It is already empty.
+> take sack
+Taken.
+> fill sack
+You fill the sack with sand.
+> i
+You're carrying:
+  a canvas sack (full of sand)
+  a brass key
+  a small weight (1 lb)
+> fill bag
+It is already full.
+> weigh sack
+You weigh the canvas sack: 4 pounds.
+> take sand
+It runs through your fingers.
+> empty sack
+You empty the sand out of the sack.
+> weigh sack
+You weigh the canvas sack: one pound.
+> drop sack
+Dropped.
+> fill sack
+You fill the sack with sand.
+> tally
+Rooms 2, score 1, left 5, right 5, scale level.
+History: 0 1 0 5 (of 7).
+> weigh plate
+You weigh the lead plate: 6 pounds.
+> take plate
+Taken.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 2 out of a possible 2, in 44 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

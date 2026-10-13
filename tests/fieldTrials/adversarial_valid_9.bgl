@@ -1,0 +1,428 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small dial-lock and key-ring program, on the Z-machine.
+// An enum with emitter methods that return the enum itself, chained on a subscript result, and an
+// emitter value added by an `extend enum` written at the end of the file after its uses; a bnum of
+// lock flags switched through an int; `#define` values used as an expression and a size, and an
+// `#if` around a statement inside an accessor; an object namespace with type aliases for a class, an
+// enum and a bnum, imported with `#using` so objects, members, parameters and a pooled class are
+// declared through the bare aliases (and once through the full path); a class with `inline`
+// positional members and `default` methods overridden in a subclass; a free-standing `property`
+// given to one object and tested with provides(), and a computed read through a `property`
+// parameter; a file-scope array of keys reordered at compile time by `extend` (inject, move); a
+// pooled class with a create(), destroy() and its own print(), queued in a sized global array and
+// recycled when the pool runs dry; an object whose inline accessor has only `[]` and `[]=` (no
+// getter), written from the object's own method through the bare accessor name; <linq> filter, map,
+// any, all, count, orderBy with a comparator, a chain inside a predicate over a member array, and a
+// chain captured into a local array; an array of func<bool, Key> mixing a named function and lambdas,
+// each handed to filter(); `?.`, `??` and postfix `?` on keys looked up by cut; a `string` switch on a
+// method result; a thrown bnum value and a thrown key caught in nested try blocks; a stringObj that
+// captures print output; a method returning a stringObj with a defaulted separator, called by
+// name and chained (replace, reverse, toUpper); a children walk that moves a child; NUMBER grammar
+// tokens; perform() from a non-meta verb reaching an object `before`; and an `extend` adding that
+// `before` to the padlock, answering Unlock and the program verb.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#define DIAL_COUNT 3
+#define TRACE_TURNS
+
+extend extern class object {
+    string description;
+}
+
+// ---- notches and flags -------------------------------------------------------------------------------
+
+enum notch {
+    zero = 0, one, two, three, four, five, six, seven,
+    emitter notch next() { (($self + 1) % 8) }
+    emitter notch back() { (($self + 7) % 8) }
+}
+
+bnum lockFlag { jammed, chimed, relocked }          // 1, 2, 4
+
+const int SLOTS = DIAL_COUNT;
+
+property keyWorn;
+
+// ---- keys --------------------------------------------------------------------------------------------
+
+class Key : object {
+    inline instanceName;
+    inline int cut;
+    int uses = 0;
+    static int tried = 0;
+
+    default string grade() { return "plain"; }
+    default bool fitsCut(int c) { return cut == c; }
+}
+
+class MasterKey : Key {
+    string grade() { return "master"; }
+    bool fitsCut(int c) { return c >= 0; }
+}
+
+// ---- the kit namespace ---------------------------------------------------------------------------------
+
+object lockKit {
+    alias blank for Key;
+    alias pos   for notch;
+    alias flag  for lockFlag;
+    int cutsRead = 0;
+
+    int cutOf(blank k) {
+        cutsRead++;
+        return k.cut;
+    }
+}
+
+#using lockKit
+
+// ---- the world ---------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object hook  { "hook"; parent = roomA; name = .hook; attributes = {supporter, static}; }
+
+blank brassKey { "brass key", 4; parent = hook; name = {.brass, .key}; }
+blank ironKey  { "iron key", 5;  parent = hook; name = {.iron, .key}; int keyWorn = 1; }
+lockKit.blank steelKey { "steel key", 1; parent = hook; name = {.steel, .key}; }
+MasterKey topKey { "master key", 0; parent = roomA; name = {.master, .key}; }
+
+array<Key> ring = { brassKey, ironKey };
+
+extend ring {
+    inject steelKey first;
+    inject topKey after brassKey;
+    move ironKey first;
+}
+
+// ---- dial moves: a pooled class --------------------------------------------------------------------
+
+class DialMove[4] : object {
+    int dial;
+    pos from;
+    pos to;
+    static int live = 0;
+    static int made = 0;
+
+    void create(int d, pos f, pos t) {
+        dial = d;
+        from = f;
+        to = t;
+        live++;
+        made++;
+    }
+
+    void destroy() { live--; }
+
+    void print() {
+        ::print($"d{dial} {(int)from}>{(int)to}");
+    }
+}
+
+array<DialMove> history[4];
+int recycled = 0;
+
+void record(int d, pos f, pos t) {
+    DialMove m = new DialMove(d, f, t);
+    if (m == null) {
+        DialMove old = history.dequeue();
+        delete old;
+        recycled++;
+        m = new DialMove(d, f, t);
+    }
+    history.enqueue(m);
+}
+
+// ---- the padlock ------------------------------------------------------------------------------------
+
+object padlock {
+    "padlock";
+    parent = roomA;
+    name = .padlock;
+    array<pos> code  = {three, five, one};
+    array<pos> dials = {zero, zero, zero};
+    flag flags;
+    int turns = 0;
+
+    auto dial = {
+        pos operator [] (int i) { return outer.dials[i]; }
+        void operator []= (int i, pos n) {
+            #if TRACE_TURNS
+                record(i, outer.dials[i], n);
+            #endif
+            outer.dials[i] = n;
+            outer.turns++;
+        }
+    }
+
+    void spin(int which, int by) {
+        while (by != 0) {
+            if (by > 0) {
+                dial[which] = dial[which].next();
+                by--;
+            } else {
+                dial[which] = dial[which].back();
+                by++;
+            }
+        }
+    }
+
+    bool isOpen() {
+        for (int i in 0 to DIAL_COUNT - 1) {
+            if (dials[i] != code[i]) return false;
+        }
+        return true;
+    }
+
+    stringObj readout(string sep = "-") {
+        stringObj s = "";
+        for (int i in 0 to SLOTS - 1) {
+            if (i > 0) s += sep;
+            s += $"{(int)dial[i]}";
+        }
+        return s;
+    }
+
+    string state() {
+        switch ((int)flags) {
+            case 0:          return "clear";
+            case 1, 3, 5, 7: return "jammed";
+            case 2, 6:       return "chimed";
+            default:         return "relocked";
+        }
+    }
+}
+
+// ---- free functions --------------------------------------------------------------------------------
+
+bool isWorn(Key k) { return k.provides(keyWorn); }
+
+array<func<bool, Key>> tests = { (Key k) => k.cut > 2, isWorn, (Key k) => k.uses == 0 };
+
+int readProp(object o, property p) { return o.p; }
+
+Key findCut(int c) {
+    for (Key k in ring) {
+        if (k.cut == c) return k;
+    }
+    return null;
+}
+
+int byCut(Key a, Key b) {
+    return a.cut < b.cut ? -1 : (a.cut > b.cut ? 1 : 0);
+}
+
+void tryKey(Key k) {
+    Key.tried++;
+    k.uses++;
+    if ((padlock.flags & jammed) != 0) throw jammed;
+    if (!k.fitsCut(padlock.code[0].mirror)) throw k;
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs -----------------------------------------------------------------------------------
+
+class probeVerb : verb {
+    meta = true;
+}
+
+probeVerb ProbeNotch {
+    grammar = {.probenotch};
+    void handler() {
+        pos p = seven;
+        pos q = p.next();
+        pos r = zero.back().back();
+        printLine($"Notch {(int)q} {(int)r} {three.mirror} {r.mirror} {(int)five.next().next()}.");
+        printLine($"Slots {SLOTS} {DIAL_COUNT * 2} {lockKit.pos.four.mirror}.");
+    }
+}
+
+probeVerb ProbeRing {
+    grammar = {.probering};
+    void handler() {
+        print("Ring");
+        for (Key k in ring) print($" {k}/{k.cut}");
+        printLine($" ({ring.length}).");
+        array<Key> sharp = ring.filter((Key k) => k.cut > 2);
+        int total = 0;
+        for (Key k in sharp) total += cutOf(k);
+        var firstCut = ring.map((var k) => ((Key)k).cut).first();
+        printLine($"Sharp {sharp.length} {total} first {firstCut} read {lockKit.cutsRead}.");
+        print("Ordered");
+        for (Key k in ring.orderBy(byCut)) print($" {k.cut}");
+        printLine(".");
+        int matching = ring.filter((Key k) => padlock.code.any((pos n) => (int)n == k.cut)).count();
+        printLine($"Match {matching} any {ring.any(isWorn)} all {ring.all((Key k) => k.cut >= 0)}.");
+        print("Tests");
+        for (func<bool, Key> t in tests) print($" {ring.filter(t).count()}");
+        printLine(".");
+    }
+}
+
+probeVerb ProbeLookup {
+    grammar = {.probelookup};
+    void handler() {
+        Key a = findCut(5);
+        Key b = findCut(9);
+        printLine($"Find {a} {b?} {a?} {(b ?? topKey).grade()} {(a ?? topKey).grade()}.");
+        int u = findCut(1)?.uses;
+        printLine($"Uses {u} worn {isWorn(ironKey)} {isWorn(brassKey)} {ironKey.provides(keyWorn)}.");
+        printLine($"Props {readProp(brassKey, cut)} {readProp(topKey, uses)} {readProp(ironKey, keyWorn)}.");
+        for (Key k in ring) {
+            switch (k.grade()) {
+                case "master": print($"[{k} M]");
+                case "plain":  print($"[{k} p]");
+                default:       print("[?]");
+            }
+        }
+        printLine();
+    }
+}
+
+probeVerb ProbeSpin {
+    grammar = {.probespin, NUMBER, NUMBER};
+    void handler() {
+        int which = (int)noun;
+        int by = (int)second;
+        if (which >= SLOTS) {
+            printLine($"No dial {which}.");
+            return;
+        }
+        padlock.spin(which, by);
+        print("Dials");
+        for (int i in 0 to SLOTS - 1) print($" {(int)padlock.dial[i]}");
+        printLine($" turns {padlock.turns} open {padlock.isOpen()}.");
+    }
+}
+
+probeVerb ProbeBack {
+    grammar = {.probeback, NUMBER, NUMBER};
+    void handler() {
+        padlock.spin((int)noun, 0 - (int)second);
+        print("Dials");
+        for (pos d in padlock.dials) print($" {(int)d}");
+        printLine($" turns {padlock.turns} open {padlock.isOpen()}.");
+    }
+}
+
+probeVerb ProbeHistory {
+    grammar = {.probehistory};
+    void handler() {
+        stringObj trail = "";
+        trail.capture();
+        for (DialMove m in history) {
+            print(m);
+            print(";");
+        }
+        trail.release();
+        printLine($"Hist [{trail}] {history.length} live {DialMove.live} made {DialMove.made} recycled {recycled}.");
+        DialMove last = history.peekEnd();
+        printLine($"Last {last} first {history.peek()}.");
+    }
+}
+
+probeVerb ProbeTry {
+    grammar = {.probetry};
+    void handler() {
+        int fits = 0;
+        for (Key k in ring) {
+            try {
+                tryKey(k);
+                fits++;
+                print($"{k} fits; ");
+            } catch (Key bad) {
+                print($"{bad} no; ");
+            }
+        }
+        printLine();
+        padlock.flags = padlock.flags | jammed | chimed;
+        try {
+            try {
+                tryKey(steelKey);
+                print("no throw ");
+            } catch (lockFlag f) {
+                print($"inner flag {(int)f} ");
+                throw steelKey;
+            }
+        } catch (Key bad) {
+            print($"outer {bad} ");
+        }
+        padlock.flags = padlock.flags ^ jammed;
+        printLine($"fits {fits} tried {Key.tried} state {padlock.state()} uses {steelKey.uses}.");
+    }
+}
+
+probeVerb ProbeReadout {
+    grammar = {.probereadout};
+    void handler() {
+        stringObj a = padlock.readout();
+        stringObj b = padlock.readout(sep: "");
+        stringObj c = a.replace("-", "/").reverse();
+        printLine($"Read {a} {b} {c} {a.length + b.length} {b == "351"} {padlock.readout(" ").toUpper()}.");
+        int carried = 0;
+        for (object o in hook.children) {
+            if (((Key)o).uses > 1) {
+                o.parent = roomA;
+                carried++;
+            }
+        }
+        printLine($"Hook {hook.children.length} moved {carried} {steelKey.parent}.");
+    }
+}
+
+verb Jiggle {
+    grammar = {.jiggle, NOUN};
+    void handler() {
+        printLine($"Jiggled {noun}.");
+    }
+}
+
+verb ProbePerform {
+    grammar = {.probeperform};
+    void handler() {
+        Jiggle.perform(padlock);
+        Jiggle.perform(hook);
+        padlock.flags = padlock.flags | relocked;
+        printLine($"State {padlock.state()} {(int)padlock.flags}.");
+    }
+}
+
+// ---- late additions -----------------------------------------------------------------------------
+
+extend padlock {
+    bool before() {
+        if (action == Unlock) {
+            Key k = (Key)second;
+            if (k.fitsCut(code[0].mirror)) printLine($"The {k} turns in the padlock.");
+            else printLine($"The {k} does not fit.");
+            rtrue;
+        }
+        if (action == Jiggle) {
+            printLine($"Padlock rattles at {(int)dial[0]}.");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+extend enum notch {
+    emitter int mirror { (7 - $self) }
+}

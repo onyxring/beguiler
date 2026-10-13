@@ -1,0 +1,158 @@
+Room A
+> log
+The log is empty.
+> summary temp
+No temp readings.
+> alerts
+No alerts.
+> days
+No days logged.
+> record temp 4
+Day 1: temp 4 C (cool).
+> record wind 22
+Day 1: wind 22 kph (breezy).
+> record rain 0
+Day 1: rain 0 mm (dry).
+> record temp minus 3
+Day 1: temp -3 C (freezing).
+Alert: hard frost.
+> record fog 3
+I didn't understand that sentence.
+> next
+Day 1 closed with 4 readings. Day 2.
+> record temp 9
+Day 2: temp 9 C (cool).
+> record wind 55
+Day 2: wind 55 kph (windy).
+Alert: gale.
+> record rain 12
+Day 2: rain 12 mm (steady).
+> next
+Day 2 closed with 3 readings. Day 3.
+> record temp 15
+Day 3: temp 15 C (mild).
+> record temp 26
+Day 3: temp 26 C (hot).
+> record wind 8
+Day 3: wind 8 kph (calm).
+> record rain 30
+Day 3: rain 30 mm (heavy).
+Alert: flood watch.
+> record rain 3
+Day 3: rain 3 mm (light).
+> log
+day 1  temp  4 C      cool
+day 1  wind  22 kph   breezy
+day 1  rain  0 mm     dry
+day 1  temp  -3 C     freezing
+day 2  temp  9 C      cool
+day 2  wind  55 kph   windy
+day 2  rain  12 mm    steady
+day 3  temp  15 C     mild
+day 3  temp  26 C     hot
+day 3  wind  8 kph    calm
+day 3  rain  30 mm    heavy
+day 3  rain  3 mm     light
+> summary temp
+temp: count 5 low -3 high 26 total 51
+> summary wind
+wind: count 3 low 8 high 55 total 85
+> summary rain
+rain: count 4 low 0 high 30 total 45
+> bands temp
+freezing  *
+cool      **
+mild      *
+hot       *
+> bands wind
+calm      *
+breezy    *
+windy     *
+storm
+> alerts
+day 1: frost
+day 2: gale
+day 3: flood
+> top temp
+1. day 3: 26 C
+2. day 3: 15 C
+3. day 2: 9 C
+> top rain
+1. day 3: 30 mm
+2. day 2: 12 mm
+3. day 3: 3 mm
+> days
+Days: 1 2 3
+> trend temp
+temp: 4 on day 1 to 26 on day 3, rising fast.
+> trend wind
+wind: 22 on day 1 to 8 on day 3, falling fast.
+> trend rain
+rain: 0 on day 1 to 3 on day 3, rising.
+> check
+Readings today: true. All dry: false. Warm readings: 2.
+Coldest: -3 C on day 1.
+> next
+Day 3 closed with 5 readings. Day 4.
+> check
+Readings today: false. All dry: false. Warm readings: 2.
+Coldest: -3 C on day 1.
+> purge 2
+Purged 4 readings before day 2; 8 kept.
+> log
+day 2  temp  9 C      cool
+day 2  wind  55 kph   windy
+day 2  rain  12 mm    steady
+day 3  temp  15 C     mild
+day 3  temp  26 C     hot
+day 3  wind  8 kph    calm
+day 3  rain  30 mm    heavy
+day 3  rain  3 mm     light
+> summary temp
+temp: count 3 low 9 high 26 total 50
+> trend wind
+wind: 55 on day 2 to 8 on day 3, falling fast.
+> days
+Days: 2 3
+> alerts
+day 1: frost
+day 2: gale
+day 3: flood
+> record temp minus 1
+Day 4: temp -1 C (freezing).
+Alert: hard frost.
+> alerts
+day 1: frost
+day 2: gale
+day 3: flood
+day 4: frost
+> record temp 26
+Day 4: temp 26 C (hot).
+> top temp
+1. day 3: 26 C
+2. day 4: 26 C
+3. day 3: 15 C
+> top wind
+1. day 2: 55 kph
+2. day 3: 8 kph
+> bands rain
+dry
+light     *
+steady    *
+heavy     *
+> summary temp
+temp: count 5 low -1 high 26 total 75
+> purge 9
+Purged 10 readings before day 9; 0 kept.
+> log
+The log is empty.
+> trend rain
+Too few rain readings.
+> top rain
+No rain readings.
+> check
+Readings today: false. All dry: true. Warm readings: 0.
+> days
+No days logged.
+> summary wind
+No wind readings.

@@ -1,0 +1,161 @@
+Room B
+Room B. The front desk. The stacks are to the south.
+You can see a desk and a calendar here.
+> loans
+Nothing is lent out.
+> stats
+Turn 1. Lent: 0 books. Late: 0.
+Most lent: Red Book (0).
+The Red Book is in.
+The desk is open.
+> waitlist
+Waiting: 1. Ann, 2. Bob
+> fines
+No fines yet.
+> titles
+Atlas; Blue Book; Green Magazine; Red Book;
+Titles with Book, up to Red: 2.
+> s
+Room A
+Room A. The stacks. The desk is to the north.
+You can see a shelf (on which are a red book, a blue book, a green magazine and an atlas) here.
+> onshelf
+Red Book (normal, 240 pages)
+Blue Book (thick, 420 pages)
+Green Magazine (thin, 30 pages)
+Atlas (thick, 600 pages)
+On the shelf: 4 books.
+> x atlas
+Atlas. 600 pages, a thick book.
+> take atlas
+Atlas stays in the library.
+> lend atlas
+Atlas is not for loan.
+> take red book
+Taken.
+> take green magazine
+Taken.
+> take blue book
+Taken.
+> lend red book
+Bring the book to the desk first.
+> n
+Room B
+Room B. The front desk. The stacks are to the south.
+You can see a desk and a calendar here.
+> lend red book
+You lend Red Book. It is due on turn 17.
+> lend red book
+Red Book is already out.
+> lend green magazine
+You lend Green Magazine. It is due on turn 17.
+> loans
+Red Book: lent out, due on turn 17.
+Green Magazine: lent out, due on turn 17.
+All on time.
+> late
+Nothing is late.
+Due soon: 2 books.
+Red Book is now late.
+Green Magazine is now late.
+> giveback blue book
+Blue Book was not lent.
+> wait
+Time passes.
+> late
+Late: Red Book Green Magazine.
+> loans
+Red Book: overdue, 4 late.
+Green Magazine: overdue, 4 late.
+2 are late.
+> lend blue book
+You lend Blue Book. It is due on turn 26.
+> late
+Late: Red Book Green Magazine.
+> reserve red book
+Cal wants Red Book.
+> reserve blue book
+Dee wants Blue Book.
+> waitlist
+Waiting: 1. Ann, 2. Bob, 3. Cal, 4. Dee
+Blue Book is now late.
+> next
+Serving ANN.
+Next is Bob.
+> giveback green magazine
+Back: Green Magazine, 11 late, fine 22.
+Bob is waiting for a book.
+> s
+Room A
+Room A. The stacks. The desk is to the north.
+You can see a shelf (on which are a green magazine and an atlas) here.
+> drop red book
+You drop Red Book. Bring it to the desk to give it back.
+> giveback red book
+Books go back at the desk.
+> n
+Room B
+Room B. The front desk. The stacks are to the south.
+You can see a desk and a calendar here.
+> wait
+Time passes.
+> loans
+Red Book: overdue, 17 late.
+Blue Book: overdue, 8 late.
+2 are late.
+> fines
+Fines: 22. Total 22.
+> s
+Room A
+Room A. The stacks. The desk is to the north.
+You can see a red book and a shelf (on which are a green magazine and an atlas) here.
+> take red book
+Taken.
+> n
+Room B
+Room B. The front desk. The stacks are to the south.
+You can see a desk and a calendar here.
+> giveback red book
+Back: Red Book, 21 late, fine 42.
+Bob is waiting for a book.
+> fines
+Fines: 42 22. Total 64.
+Smallest but one: 42.
+> stats
+Turn 39. Lent: 3 books. Late: 2.
+Most lent: Red Book (1).
+The Red Book is in.
+The desk is open.
+> next
+Serving BOB.
+Next is Cal.
+The desk shuts for the day.
+> next
+Serving CAL.
+Next is Dee.
+> next
+Serving DEE.
+> lend blue book
+The desk is shut.
+> waitlist
+Nobody is waiting.
+> next
+Nobody is waiting.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> giveback blue book
+Back: Blue Book, 22 late, fine 44.
+> loans
+Nothing is lent out.
+> fines
+Fines: 44 42 22. Total 108.
+Smallest but one: 42.
+> stats
+Turn 50. Lent: 3 books. Late: 3.
+Most lent: Red Book (1).
+The Red Book is in.
+The desk is shut.

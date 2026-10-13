@@ -1,0 +1,131 @@
+Room A
+> lend town to alpha
+The town history is for reference only.
+> lend novel to alpha
+Lent the short novel to alpha, due day 22.
+> lend chart to alpha
+Lent the star chart to alpha, due day 8.
+> lend guide to beta
+Lent the field guide to beta, due day 15.
+> lend atlas to gamma
+Lent the atlas of rivers to gamma, due day 8.
+> lend letters to gamma
+gamma is at the limit of 1.
+> lend chart to beta
+No copy of the star chart is in.
+> lend novel to beta
+Lent the short novel to beta, due day 22.
+> lend letters to beta
+beta is at the limit of 2.
+> lend dragon to beta
+I didn't understand that sentence.
+> members
+alpha  2 of 3
+beta   2 of 2
+gamma  1 of 1
+> catalog
+short novel      fiction  -        0/2
+town history     history  ref      1/1
+old letters      history  dmg      1/1
+field guide      science  -        1/2
+star chart       maps     big      0/1
+atlas of rivers  maps     dmg,big  0/1
+> due
+day 8   star chart       alpha
+day 8   atlas of rivers  gamma
+day 15  field guide      beta
+day 22  short novel      alpha
+day 22  short novel      beta
+> advance 10
+Day 11. 2 overdue.
+> stats
+6 titles, 8 copies, 5 out, 2 damaged.
+Any late: true. All maps: false.
+> due
+day 8   star chart       alpha  3 late
+day 8   atlas of rivers  gamma  3 late
+day 15  field guide      beta
+day 22  short novel      alpha
+day 22  short novel      beta
+> checkin chart from beta
+beta has no star chart.
+> checkin chart from alpha
+The star chart is back from alpha, 3 days late, fine 60.
+> lend letters to alpha
+alpha owes 60.
+> fines
+alpha: 60
+Owed 60; collected 0.
+> pay alpha 25
+alpha pays 25; 35 still owed.
+> advance 5
+Day 16. 2 overdue.
+> checkin atlas from gamma
+The atlas of rivers is back from gamma, 8 days late, fine 260.
+> checkin guide from beta
+The field guide is back from beta, 1 days late, fine 10.
+> checkin novel from beta
+The short novel is back from beta, on time.
+> shelf maps
+  star chart
+  atlas of rivers
+2 titles on maps, 0 out.
+> shelve
+Next on the cart: the star chart.
+The star chart goes to maps.
+The atlas of rivers goes to maps.
+The field guide goes to science.
+The short novel goes to fiction.
+4 shelved.
+> shelve
+The cart is empty.
+> fines
+alpha: 35
+beta: 10
+gamma: 260
+Owed 305; collected 25.
+> pay gamma 300
+gamma pays 260; 0 still owed.
+> pay gamma 5
+gamma owes nothing.
+> lend chart to gamma
+Lent the star chart to gamma, due day 23.
+> members
+alpha  1 of 3, owes 35
+beta   0 of 2, owes 10
+gamma  1 of 1
+> stats
+6 titles, 8 copies, 2 out, 2 damaged.
+Any late: false. All maps: false.
+> checkin novel from alpha
+The short novel is back from alpha, on time.
+> stats
+6 titles, 8 copies, 1 out, 2 damaged.
+Any late: false. All maps: true.
+> advance 30
+Day 46. 1 overdue.
+> checkin chart from gamma
+The star chart is back from gamma, 23 days late, fine 340.
+> due
+Nothing is out.
+> shelf fiction
+  short novel
+1 titles on fiction, 0 out.
+> shelf history
+  town history
+  old letters
+2 titles on history, 0 out.
+> advance 0
+No time passes.
+> catalog
+short novel      fiction  -        2/2
+town history     history  ref      1/1
+old letters      history  dmg      1/1
+field guide      science  -        2/2
+star chart       maps     big      1/1
+atlas of rivers  maps     dmg,big  1/1
+> fines
+alpha: 35
+beta: 10
+gamma: 340
+Owed 385; collected 285.

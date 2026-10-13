@@ -1,0 +1,104 @@
+Room A
+Room A.
+> list
+#0 (5): 3 4 add 5 mul
+#1 (5): 20 6 sub 2 div
+#2 (6): 9 dup mul 8 swap sub
+#3 (2): 1 add
+#4 (3): 7 0 div
+#5 (6): 2 3 max 7 max neg
+#6 (7): 1 2 3 4 5 6 7
+#7 (8): 10 drop 11 12 sub 5 add 4
+> run 0
+#0 = 35 (steps 5, depth 2)
+> run 1
+#1 = 7 (steps 5, depth 2)
+> run 2
+#2 = -73 (steps 6, depth 2)
+> run 3
+#3 fault: underflow after 1 step
+> run 4
+#4 fault: divide by zero after 2 steps
+> run 5
+#5 = -7 (steps 6, depth 2)
+> run 6
+#6 fault: overflow after 6 steps
+> run 7
+#7 = 4 (steps 8, depth 2, extra left)
+> run 9
+No such program.
+> trace 0
+#0 tops: 3,4,7,5,35 (5 shown)
+= 35 (steps 5, depth 2)
+> trace 3
+#3 tops: 1 (1 shown)
+fault: underflow after 1 step
+> steps 2
+  0: 9 -> [1] 9
+  1: dup -> [2] 9
+  2: mul -> [1] 81
+  3: 8 -> [2] 8
+  4: swap -> [2] 81
+  5: sub -> [1] -73
+= -73 (steps 6, depth 2)
+> steps 4
+  0: 7 -> [1] 7
+  1: 0 -> [2] 0
+fault: divide by zero after 2 steps
+> shape 0
+#0 pushes: 3,4,5
+sum 12, largest 5, binary ops 2
+ops used: add mul
+net pushes 1
+> shape 5
+#5 pushes: 2,3,7
+sum 12, largest 7, binary ops 2
+ops used: max neg
+net pushes 1
+> shape 3
+#3 pushes: 1
+sum 1, largest 1, binary ops 1
+ops used: add
+net pushes 0
+> fold 0
+#0 folded in 2 passes: 35
+before ok, after ok, same true, saved 4
+> fold 1
+#1 folded in 1 pass: 14 2 div
+before ok, after ok, same true, saved 2
+> fold 2
+#2 folded in 0 passes: 9 dup mul 8 swap sub
+before ok, after ok, same true, saved 0
+> fold 5
+#5 folded in 2 passes: 7 neg
+before ok, after ok, same true, saved 4
+> fold 7
+#7 folded in 0 passes: 10 drop 11 12 sub 5 add 4
+before ok, after ok, same true, saved 0
+> rank
+ok: #0 #1 #2 #5 #7
+faults: #3 #4 #6
+by result: #0=35 #1=7 #7=4 #5=-7 #2=-73
+top two: #0 #1
+rest: #7 #5 #2
+highest #0, lowest #2
+> check
+any negative true, all short true, all start with a push true
+foldable 3 of 8
+deepest stack 6, depths summed 19
+> set 0 1
+#0 first push 3 -> 1: = 25 (steps 5, depth 2)
+> set 4 3
+#4 first push 7 -> 3: fault: divide by zero after 2 steps
+> set 9 1
+Cannot set that.
+> rank
+ok: #0 #1 #2 #5 #7
+faults: #3 #4 #6
+by result: #0=25 #1=7 #7=4 #5=-7 #2=-73
+top two: #0 #1
+rest: #7 #5 #2
+highest #0, lowest #2
+> fold 4
+#4 folded in 0 passes: 3 0 div
+before divide by zero, after divide by zero, saved 0

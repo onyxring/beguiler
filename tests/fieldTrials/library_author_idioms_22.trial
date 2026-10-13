@@ -1,0 +1,122 @@
+Room A
+Room A.
+You can see an oak door, a tin box (which is closed) and a bent key here.
+[shut here: 2]
+> locks
+oak door brass |.|... shut tries 0 code 52
+iron chest iron ..||.. shut tries 0 code 123
+tin box tin .|.... shut tries 0 code 21
+master ||||..; shut 3; first open Room A
+blanks 0 (made 0, scrapped 0); log
+turns 0
+> keys
+brass key brass/brass |||... t0
+1 keys.
+> unlock tin box with brass key
+click: the tin box is unlocked with the brass key.
+> unlock tin box with bent key
+(first taking the bent key)
+The bent key will not turn in the tin box.
+> unlock oak door with bent key
+The bent key will not turn in the oak door.
+> unlock oak door with brass key
+click: the oak door is unlocked with the brass key.
+> open oak door
+You open the oak door.
+> cut 12
+k1 cut ..||..; wear 1, sharp.
+> keys
+k1 steel/tin ..||.. t0
+brass key brass/brass |||... t2
+bent key tin/tin |..... t0
+3 keys.
+> east
+Room B
+Room B.
+You can see an oak door and an iron chest (which is closed) here.
+[shut here: 1]
+> unlock chest with blank
+The k1 will not turn in the iron chest.
+> harden blank
+The k1 is brass now.
+> unlock chest with blank
+The k1 will not turn in the iron chest.
+> harden blank
+The k1 is iron now.
+> harden blank
+The k1 is as hard as it gets.
+> unlock chest with blank
+clank: the iron chest is unlocked with the steel key.
+> open chest
+You open the iron chest, revealing an iron coin.
+> take coin
+Taken.
+> unlock chest with coin
+That is not a key.
+> file blank 0
+k1: 2 to 3 notches, not master.
+> file blank 0
+k1: 3 to 3 notches, no change, not master.
+> file blank 1
+k1: 3 to 4 notches.
+> put blank in chest
+You put the k1 into the iron chest.
+> cut 3
+k2 cut ||....; wear 2, sharp.
+> rank
+iron chest=3 oak door=2 tin box=2 top iron chest.
+> scrap
+scrapped 1; blanks 1.
+> keys
+k2 steel/tin ||.... t0
+brass key brass/brass |||... t2
+bent key tin/tin |..... t0
+3 keys.
+> cut 3
+k3 cut ||....; wear 3, blunt.
+> cut 3
+No blank can be cut (wear 3, blanks 2).
+> hone
+wear 0, changes 4.
+> cut 4
+k4 cut ..|...; wear 1, sharp.
+> cut 5
+No blank can be cut (wear 1, blanks 3).
+> locks
+oak door brass |.|... open tries 2 code 52
+iron chest iron ..||.. open tries 3 code 123
+tin box tin .|.... open tries 2 code 21
+master ||||..; shut 0, one open; first open oak door
+blanks 3 (made 4, scrapped 1); log u:box u:door +k1 u:chest +k2 -k1 +k3 +k4
+turns 3
+> lock chest with brass key
+The brass key will not turn in the iron chest.
+> close chest
+You close the iron chest.
+> lock chest with brass key
+The brass key will not turn in the iron chest.
+> harden brass key
+The brass key is iron now.
+> lock chest with brass key
+The brass key will not turn in the iron chest.
+> west
+Room A
+Room A.
+You can see an oak door and a tin box (which is closed) here.
+> lock oak door with brass key
+(first closing the oak door)
+click: the oak door is locked with the brass key.
+> look
+Room A
+Room A.
+You can see an oak door and a tin box (which is closed) here.
+[shut here: 1]
+> locks
+oak door brass |.|... shut tries 3 code 52
+iron chest iron ..||.. open tries 6 code 123
+tin box tin .|.... open tries 2 code 21
+master ||||..; shut 1, one open; first open iron chest
+blanks 3 (made 4, scrapped 1); log u:box u:door +k1 u:chest +k2 -k1 +k3 +k4 l:door
+turns 4
+> rank
+iron chest=6 oak door=3 tin box=2 top iron chest.

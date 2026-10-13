@@ -1,0 +1,389 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a reading log kept in tables. An enum of sensors indexing parallel string, word and
+// unit tables; a band table as an array of arrays of limits read [sensor][band] beside a band-name
+// table of the same shape; a table of alert rules as an array of a value class written as bare { … }
+// (enum, int, bool, bnum, string); a bnum of alert flags combined with |= per day and listed by bit
+// position; readings as an array of a value class appended as Reading{ … }, removed by position and
+// copied into a local array sorted by a comparator lambda; a table of statistics as an
+// array<func<int, eSensor>> of named routines walked beside a name table; a general parsing routine
+// reading a signed number (an optional literal word then TryNumber); <linq> filter/map/distinct/
+// orderBy/take/first/last/count/any/all with lambdas capturing parameters and locals, a filter result
+// walked by for-in; a band picked by a loop over a table row and a trend word by a switch with ranges;
+// stringObj rows padded to columns and built with interpolated +=; and for-in over arrays and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int SENSORS = 3;
+const int BANDS = 4;
+const int RULE_COUNT = 4;
+const int ALERT_KINDS = 3;
+const int LOG_MAX = 16;
+const int NONE = -1;
+#define TOP_N 3
+
+enum eSensor { temp = 0, wind, rain }
+bnum eAlert { frost, gale, flood }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> sensorNames = { "temp", "wind", "rain" };
+array<dictionaryWord> sensorWords = { .temp, .wind, .rain };
+array<string> unitNames = { "C", "kph", "mm" };
+
+// Upper limit of each band (inclusive); the last band takes everything above.
+//                          band 0  band 1  band 2
+array<array<int>> bandTop = {
+    {                          0,     12,     24 },   // temp
+    {                         10,     30,     60 },   // wind
+    {                          0,      5,     20 }    // rain
+};
+
+array<array<string>> bandNames = {
+    { "freezing", "cool",  "mild",     "hot"   },
+    { "calm",     "breezy", "windy",   "storm" },
+    { "dry",      "light", "steady",   "heavy" }
+};
+
+array<string> alertNames = { "frost", "gale", "flood" };
+
+value class AlertRule {
+    inline eSensor sensor;
+    inline int limit;
+    inline bool above;
+    inline eAlert flag;
+    inline string text;
+    AlertRule operator = (AlertRule o) {
+        sensor = o.sensor; limit = o.limit; above = o.above; flag = o.flag; text = o.text;
+        return self;
+    }
+}
+
+array<AlertRule> rules = {
+    { temp, -1,  false, frost, "hard frost" },
+    { temp,  2,  false, frost, "frost risk" },
+    { wind,  50, true,  gale,  "gale" },
+    { rain,  25, true,  flood, "flood watch" },
+};
+
+value class Reading {
+    inline int day;
+    inline eSensor sensor;
+    inline int value;
+    Reading operator = (Reading o) { day = o.day; sensor = o.sensor; value = o.value; return self; }
+}
+
+array<Reading> log[LOG_MAX];
+array<int> dayAlerts[LOG_MAX];
+
+int today = 1;
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object mast {
+    "mast";
+    name = {.mast};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseSensor() {
+    int at = sensorWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+// Reads "N" or "minus N"; the signed value goes to parsed_number.
+int parseSigned() {
+    int sign = 1;
+    if (NextWord() == .minus) sign = -1;
+    else wn--;
+    int n = TryNumber(wn);
+    if (n == -1000) return -1;
+    wn++;
+    parsed_number = sign * n;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+void alertsInto(ref stringObj s, eAlert a) {
+    if (a == 0) { s += "-"; return; }
+    bool first = true;
+    for (int i in 0 to ALERT_KINDS - 1) {
+        if ((a & (eAlert)(1 << i)) == 0) continue;
+        if (!first) s += ",";
+        s += alertNames[i];
+        first = false;
+    }
+}
+
+// The band a value falls in for sensor s.
+int bandOf(eSensor s, int v) {
+    int row = (int)s;
+    for (int b in 0 to BANDS - 2) {
+        if (v <= bandTop[row][b]) return b;
+    }
+    return BANDS - 1;
+}
+
+// The first rule a reading trips, or NONE.
+int ruleFor(Reading r) {
+    for (int i in 0 to RULE_COUNT - 1) {
+        if (rules[i].sensor != r.sensor) continue;
+        if (rules[i].above && r.value >= rules[i].limit) return i;
+        if (!rules[i].above && r.value <= rules[i].limit) return i;
+    }
+    return NONE;
+}
+
+//-- Statistics ----------------------------------------------------------------
+
+int countOf(eSensor s) {
+    return log.filter((Reading r) => r.sensor == s).count();
+}
+
+int lowest(eSensor s) {
+    array<Reading> rs[LOG_MAX] = log.filter((Reading r) => r.sensor == s);
+    int low = rs[0].value;
+    for (Reading r in rs) {
+        if (r.value < low) low = r.value;
+    }
+    return low;
+}
+
+int highest(eSensor s) {
+    array<Reading> rs[LOG_MAX] = log.filter((Reading r) => r.sensor == s);
+    int high = rs[0].value;
+    for (Reading r in rs) {
+        if (r.value > high) high = r.value;
+    }
+    return high;
+}
+
+int total(eSensor s) {
+    int sum = 0;
+    for (Reading r in log.filter((Reading x) => x.sensor == s)) sum += r.value;
+    return sum;
+}
+
+array<func<int, eSensor>> stats = { countOf, lowest, highest, total };
+array<string> statNames = { "count", "low", "high", "total" };
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb RecordTest {
+    grammar = {.record, parseSensor, parseSigned};
+    void handler() {
+        eSensor s = (eSensor)(int)noun;
+        int v = (int)second;
+        if (!log.append(Reading{ today, s, v })) { print("The log is full.^"); return; }
+        int b = bandOf(s, v);
+        print($"Day {today}: {sensorNames[(int)s]} {v} {unitNames[(int)s]} ({bandNames[(int)s][b]}).^");
+        int k = ruleFor(Reading{ today, s, v });
+        if (k != NONE) {
+            dayAlerts[today] |= rules[k].flag;
+            print($"Alert: {rules[k].text}.^");
+        }
+    }
+}
+
+verb NextTest {
+    grammar = {.next};
+    void handler() {
+        if (today == LOG_MAX - 1) { print("No more days.^"); return; }
+        int day = today;
+        int n = log.filter((Reading r) => r.day == day).count();
+        today++;
+        print($"Day {day} closed with {n} readings. Day {today}.^");
+    }
+}
+
+verb LogTest {
+    grammar = {.log};
+    void handler() {
+        if (log.length == 0) { print("The log is empty.^"); return; }
+        for (Reading r in log) {
+            stringObj row = $"day {r.day}";
+            padTo(row, 7);
+            row += sensorNames[(int)r.sensor];
+            padTo(row, 13);
+            row += $"{r.value} {unitNames[(int)r.sensor]}";
+            padTo(row, 22);
+            row += bandNames[(int)r.sensor][bandOf(r.sensor, r.value)];
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb SummaryTest {
+    grammar = {.summary, parseSensor};
+    void handler() {
+        eSensor s = (eSensor)(int)noun;
+        if (countOf(s) == 0) { print($"No {sensorNames[(int)s]} readings.^"); return; }
+        stringObj row = sensorNames[(int)s];
+        row += ":";
+        for (int i in 0 to stats.length - 1) {
+            func<int, eSensor> f = stats[i];
+            row += $" {statNames[i]} {f(s)}";
+        }
+        row.print();
+        print("^");
+    }
+}
+
+verb BandsTest {
+    grammar = {.bands, parseSensor};
+    void handler() {
+        eSensor s = (eSensor)(int)noun;
+        int row = (int)s;
+        array<int> counts[BANDS] = { 0, 0, 0, 0 };
+        for (Reading r in log) {
+            if (r.sensor == s) counts[bandOf(s, r.value)]++;
+        }
+        for (int b in 0 to BANDS - 1) {
+            stringObj line = bandNames[row][b];
+            padTo(line, 10);
+            for (int i in 1 to counts[b]) line += "*";
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb AlertsTest {
+    grammar = {.alerts};
+    void handler() {
+        int shown = 0;
+        for (int d in 1 to today) {
+            if (dayAlerts[d] == 0) continue;
+            stringObj row = $"day {d}: ";
+            alertsInto(row, (eAlert)dayAlerts[d]);
+            row.print();
+            print("^");
+            shown++;
+        }
+        if (shown == 0) print("No alerts.^");
+    }
+}
+
+verb TopTest {
+    grammar = {.top, parseSensor};
+    void handler() {
+        eSensor s = (eSensor)(int)noun;
+        array<Reading> best[LOG_MAX] = log.filter((Reading r) => r.sensor == s);
+        if (best.length == 0) { print($"No {sensorNames[(int)s]} readings.^"); return; }
+        best.sort((Reading a, Reading b) => {
+            if (a.value != b.value) return b.value - a.value;
+            return a.day - b.day;
+        });
+        int n = 0;
+        for (Reading r in best) {
+            if (n == TOP_N) break;
+            print($"{n + 1}. day {r.day}: {r.value} {unitNames[(int)s]}^");
+            n++;
+        }
+    }
+}
+
+verb DaysTest {
+    grammar = {.days};
+    void handler() {
+        array<var> seen[LOG_MAX] = log.map((Reading r) => r.day).distinct();
+        if (seen.length == 0) { print("No days logged.^"); return; }
+        stringObj row = "Days:";
+        for (var d in seen) row += $" {d}";
+        row.print();
+        print("^");
+    }
+}
+
+verb TrendTest {
+    grammar = {.trend, parseSensor};
+    void handler() {
+        eSensor s = (eSensor)(int)noun;
+        array<Reading> rs[LOG_MAX] = log.filter((Reading r) => r.sensor == s);
+        if (rs.length < 2) { print($"Too few {sensorNames[(int)s]} readings.^"); return; }
+        Reading a = rs.first();
+        Reading b = rs.last();
+        int change = b.value - a.value;
+        string word = "";
+        switch (change) {
+            case < -10:     word = "falling fast";
+            case -10 to -1: word = "falling";
+            case 0:         word = "steady";
+            case 1 to 10:   word = "rising";
+            default:        word = "rising fast";
+        }
+        print($"{sensorNames[(int)s]}: {a.value} on day {a.day} to {b.value} on day {b.day}, {word}.^");
+    }
+}
+
+verb CheckTest {
+    grammar = {.check};
+    void handler() {
+        int day = today;
+        bool anyToday = log.any((Reading r) => r.day == day);
+        bool allDry = log.filter((Reading r) => r.sensor == rain).all((Reading r) => r.value <= 0);
+        int warm = log.filter((Reading r) => r.sensor == temp && r.value > 12).count();
+        print($"Readings today: {anyToday}. All dry: {allDry}. Warm readings: {warm}.^");
+        array<Reading> coldest[LOG_MAX] = log.filter((Reading r) => r.sensor == temp)
+            .orderBy((Reading a, Reading b) => a.value - b.value).take(1);
+        if (coldest.length > 0) print($"Coldest: {coldest[0].value} C on day {coldest[0].day}.^");
+    }
+}
+
+verb PurgeTest {
+    grammar = {.purge, NUMBER};
+    void handler() {
+        int before = (int)noun;
+        int gone = 0;
+        int i = 0;
+        while (i < log.length) {
+            if (log[i].day < before) {
+                log.remove(i);
+                gone++;
+            }
+            else i++;
+        }
+        print($"Purged {gone} readings before day {before}; {log.length} kept.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

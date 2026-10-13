@@ -1,0 +1,574 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a weight-and-capacity kit and its consumer. The kit declares an enum of hefts; a value
+// class of masses with two copy operators, + and - over masses, <=> (giving < and >), == and !=, a
+// switch with guards and a range giving a heft, and a show method that prints grams or kilograms; a
+// weighed base class with an owned mass, a default feel() and a total() that recurses through
+// children; a holder class with a required positional limit, a required kind() routine, static and
+// instance refusal counts, a room() method, and an after() that reports on the library's Receive. A
+// pooled cast-weight class with name words in the class body, a short_name set in create(),
+// destroy() taking it out of the tree, static counters and an overridden feel(). The scale object is a
+// namespace (alias … for the enum and the mass) holding an array of holders, an array of weights swept
+// with remove/delete in a while loop, a stringObj log, an owned heaviest mass, an inline accessor that
+// clamps a bias and counts changes through outer., a method that throws the excess to its own
+// try/catch, new returning null when the pool is empty, a switch on aliased values, a union-returning
+// search and a func<> walk. The consumer has one room with a cloth sack, a tin and a fixed crate
+// (positional limits), things of four weights; binds an I6 routine with extern, extends the holder
+// class with tests and the scale with a capturing <linq> count and a ternary; overrides the library's
+// ObjectDoesNotFit entry point for both Take and Insert; and its verbs weigh, compare, cast and scrap
+// weights, set the bias, find the roomiest holder through typeof and casts, and report with <linq>
+// filter/count/any/first, ??, a copied and lambda-sorted local array, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA23_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: things that weigh something, and holders that carry only so much. ====
+
+/// How heavy something feels in the hand.
+enum eLa23Heft { feather, light, heavy, crushing }
+
+/// A weight in grams, copied on assignment.
+value class La23Mass {
+    int grams;
+    La23Mass operator = (La23Mass o) { grams = o.grams; return self; }
+    La23Mass operator = (int g) { grams = g; return self; }
+    /// The two weights together.
+    La23Mass operator + (La23Mass o) {
+        La23Mass r;
+        r.grams = grams + o.grams;
+        return r;
+    }
+    /// The difference, never below nothing.
+    La23Mass operator - (La23Mass o) {
+        La23Mass r;
+        r.grams = grams - o.grams;
+        if (r.grams < 0) r.grams = 0;
+        return r;
+    }
+    /// Negative when this is lighter, 0 when the same, positive when heavier.
+    int operator <=> (La23Mass o) { return grams - o.grams; }
+    /// True when both weigh the same.
+    bool operator == (La23Mass o) { return grams == o.grams; }
+    /// True when the weights differ.
+    bool operator != (La23Mass o) { return grams != o.grams; }
+
+    /// How the weight feels.
+    eLa23Heft heft() {
+        switch (grams) {
+            case < 100:      return eLa23Heft.feather;
+            case 100 to 999: return eLa23Heft.light;
+            case < 2500:     return eLa23Heft.heavy;
+            default:         return eLa23Heft.crushing;
+        }
+    }
+
+    /// Prints the weight as grams, or as kilograms to one place.
+    void show() {
+        if (grams < 1000) {
+            print($"{grams}g");
+            return;
+        }
+        int tenths = (grams % 1000) / 100;
+        print($"{grams / 1000}.{tenths}kg");
+    }
+}
+
+/// Anything with a weight of its own.
+class La23Weighed : object {
+    La23Mass mass;
+    /// What the thing feels like.
+    default string feel() { return "solid"; }
+
+    /// The weight of this and of everything in it.
+    int total() {
+        int sum = mass.grams;
+        for (object o in children) {
+            if (o.is(La23Weighed)) sum += ((La23Weighed)o).total();
+        }
+        return sum;
+    }
+}
+
+/// A container that holds only up to its limit.
+class La23Holder : La23Weighed {
+    /// The most the holder takes, in grams, not counting itself.
+    required inline int limit;
+    /// Times this holder has refused something.
+    int refused = 0;
+    /// Refusals by every holder.
+    static int refusals = 0;
+
+    /// A word for what it is made of.
+    required string kind();
+
+    /// What its contents weigh.
+    int load() { return total() - mass.grams; }
+
+    /// How much more it takes.
+    int room() { return limit - load(); }
+
+    bool after() {
+        if (action != Receive) return false;
+        La23Mass now = load();
+        print($"[{self}: ");
+        now.show();
+        print($" of {limit}g]^");
+        return false;
+    }
+}
+
+/// A weight cast to order; made with new and handed back with delete.
+class La23Weight[3] : La23Weighed {
+    name = {.cast, .weight};
+    string short_name;
+    string label;
+    /// Weights cast so far.
+    static int made = 0;
+    /// Weights scrapped so far.
+    static int scrapped = 0;
+
+    void create(string l, int g) {
+        label = l;
+        short_name = l;
+        mass = g;
+        made++;
+    }
+
+    void destroy() {
+        parent = null;
+        scrapped++;
+    }
+
+    string feel() { return "rough"; }
+}
+
+/// Report verbs: they take no time.
+class La23Info : verb {
+    meta = true;
+}
+
+// ==== The scale. ====
+
+/// The scale: knows the holders, casts weights, weighs things with a bias, and keeps a log.
+object la23Scale {
+    "scale";
+    alias heft for eLa23Heft;
+    alias mass for La23Mass;
+    array<La23Holder> holders[4];
+    array<La23Weight> weights[3];
+    stringObj log;
+    mass heaviest;
+    /// The most the player carries, in grams.
+    int carryLimit = 2500;
+    int weighings = 0;
+    int changes = 0;
+
+    /// Added to every reading, kept from -50 to 50; each change is counted.
+    auto bias = {
+        int _b = 0;
+        int operator () { return _b; }
+        void operator = (int v) {
+            int c = v;
+            if (c < -50) c = -50;
+            if (c > 50) c = 50;
+            if (c != _b) outer.changes++;
+            _b = c;
+        }
+    }
+
+    /// Adds a holder; false when it is there already or there is no room.
+    bool register(La23Holder h) {
+        if (holders.contains(h)) return false;
+        return holders.append(h);
+    }
+
+    /// What a thing weighs, with what is in it; nothing for a thing that is not weighed.
+    int weightOf(object o) {
+        if (o.is(La23Weighed)) return ((La23Weighed)o).total();
+        return 0;
+    }
+
+    /// What the player carries.
+    int carried() {
+        int sum = 0;
+        for (object o in player.children) sum += weightOf(o);
+        return sum;
+    }
+
+    /// A reading of a thing on the scale; remembers the heaviest.
+    mass reading(La23Weighed w) {
+        weighings++;
+        int r = w.total() + bias;
+        if (r < 0) r = 0;
+        mass m = r;
+        if (m > heaviest) heaviest = m;
+        return m;
+    }
+
+    /// Throws how far over the limit a load would go.
+    void check(int load, int extra, int limit) {
+        if (load + extra > limit) throw load + extra - limit;
+    }
+
+    /// True (and says why) when the thing is too heavy for where it is going.
+    bool refuse(object obj, object into) {
+        int limit = 0;
+        int load = 0;
+        La23Holder h = null;
+        if (into == player) {
+            limit = carryLimit;
+            load = carried();
+        } else if (into.is(La23Holder)) {
+            h = (La23Holder)into;
+            limit = h.limit;
+            load = h.load();
+        } else {
+            return false;
+        }
+        try {
+            check(load, weightOf(obj), limit);
+        } catch (int over) {
+            mass m = over;
+            print($"The {obj} is too heavy by ");
+            m.show();
+            print(".^");
+            if (h != null) {
+                h.refused++;
+                La23Holder.refusals++;
+                log += $"x:{h.kind()} ";
+            } else {
+                log += "x:you ";
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /// Casts a weight; null when every weight is in use.
+    La23Weight cast(string label, int g) {
+        La23Weight w = new La23Weight(label, g);
+        if (!(w?)) return null;
+        weights.append(w);
+        log += $"+{label} ";
+        return w;
+    }
+
+    /// Scraps the cast weights lying in the place. Returns how many went.
+    int scrap(object place) {
+        int gone = 0;
+        int i = 0;
+        while (i < weights.length) {
+            La23Weight w = weights[i];
+            if (w.parent == place) {
+                log += $"-{w.label} ";
+                weights.remove(i);
+                delete w;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        return gone;
+    }
+
+    /// A word for a heft.
+    string word(heft h) {
+        switch (h) {
+            case heft.feather: return "feather";
+            case heft.light:   return "light";
+            case heft.heavy:   return "heavy";
+            default:           return "crushing";
+        }
+    }
+
+    /// The holder with the most room that takes the need, or a word when none does.
+    La23Holder | string roomiest(int need) {
+        La23Holder best = null;
+        for (La23Holder h in holders) {
+            if (h.room() < need) continue;
+            if (best == null || h.room() > best.room()) best = h;
+        }
+        if (best == null) return "nothing";
+        return best;
+    }
+
+    /// Runs a step on each holder, in the order they were registered.
+    void each(func<void, La23Holder> step) {
+        for (La23Holder h in holders) step(h);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La23Holder clothSack {
+    2000, "cloth sack";
+    parent = roomA;
+    name = {.cloth, .sack};
+    mass = La23Mass{ grams = 200; };
+    attributes = {container, open};
+    string kind() { return "cloth"; }
+    string feel() { return "soft"; }
+}
+
+La23Holder tinCan {
+    500, "tin can";
+    parent = roomA;
+    name = {.tin, .can};
+    mass = La23Mass{ grams = 100; };
+    attributes = {container, open};
+    string kind() { return "tin"; }
+}
+
+La23Holder woodCrate {
+    5000, "wooden crate";
+    parent = roomA;
+    name = {.wooden, .crate};
+    mass = La23Mass{ grams = 3000; };
+    attributes = {container, open, static};
+    string kind() { return "wood"; }
+}
+
+La23Weighed leadBall {
+    "lead ball";
+    parent = roomA;
+    name = {.lead, .ball};
+    mass = La23Mass{ grams = 1500; };
+    string feel() { return "dense"; }
+}
+
+La23Weighed grayStone {
+    "gray stone";
+    parent = roomA;
+    name = {.gray, .stone};
+    mass = La23Mass{ grams = 800; };
+}
+
+La23Weighed brassBell {
+    "brass bell";
+    parent = roomA;
+    name = {.brass, .bell};
+    mass = La23Mass{ grams = 400; };
+}
+
+La23Weighed whiteFeather {
+    "white feather";
+    parent = roomA;
+    name = {.white, .feather};
+    mass = La23Mass{ grams = 5; };
+    string feel() { return "soft"; }
+}
+
+object paperSlip {
+    "paper slip";
+    parent = roomA;
+    name = {.paper, .slip};
+}
+
+/// The labels the cast weights are given, in the order they are cast.
+array<string> la23Labels = {"w1", "w2", "w3", "w4"};
+int la23Casts = 0;
+
+#i6 {
+[ La23Pct part whole; if (whole < 100) return 0; return part / (whole / 100); ];
+}
+
+/// The share of a whole a part is, in percent; the consumer wrote it in I6.
+extern int La23Pct(int part, int whole);
+
+/// Every holder can say how full it is.
+extend class La23Holder {
+    /// How full, in percent.
+    int percent() { return La23Pct(load(), limit); }
+    /// True when it holds nothing.
+    bool empty() { return children.length == 0; }
+}
+
+/// The scale can count the holders with room for a weight and sum itself up in a word.
+extend la23Scale {
+    /// How many holders take the need.
+    int fits(int need) {
+        return holders.filter((La23Holder h) => h.room() >= need).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return bias == 0 ? "true" : "biased";
+    }
+}
+
+/// The library asks before a take or an insert: the scale decides by weight.
+bool ObjectDoesNotFit(object obj, object container) {
+    return la23Scale.refuse(obj, container);
+}
+
+/// Prints a holder's line.
+void la23ShowHolder(La23Holder h) {
+    print($"{h} {h.kind()} {h.load()}/{h.limit} {h.percent()}% refused {h.refused}");
+    if (h.empty()) print(" empty");
+    print("^");
+}
+
+// ==== Verbs. ====
+
+La23Info La23Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(La23Weighed)) {
+            print($"The {noun} weighs nothing worth reading.^");
+            return;
+        }
+        La23Weighed w = (La23Weighed)noun;
+        La23Mass m = la23Scale.reading(w);
+        print($"The {w} reads ");
+        m.show();
+        print($": {la23Scale.word(m.heft())}, {w.feel()}.^");
+    }
+}
+
+La23Info La23Compare {
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(La23Weighed) || !second.is(La23Weighed)) {
+            print("Only weighed things compare.^");
+            return;
+        }
+        La23Mass a = ((La23Weighed)noun).total();
+        La23Mass b = ((La23Weighed)second).total();
+        if (a == b) print($"The {noun} and the {second} weigh the same.^");
+        else if (a < b) {
+            La23Mass d = b - a;
+            print($"The {noun} is lighter by ");
+            d.show();
+            print(".^");
+        } else {
+            La23Mass d = a - b;
+            print($"The {noun} is heavier by ");
+            d.show();
+            print(".^");
+        }
+    }
+}
+
+verb La23Cast {
+    grammar = {.cast, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        string label = la23Labels[la23Casts % la23Labels.length];
+        La23Weight w = la23Scale.cast(label, g);
+        if (w == null) {
+            print($"No weight can be cast ({la23Scale.weights.length} in use).^");
+            return;
+        }
+        la23Casts++;
+        w.parent = location;
+        print($"{w} cast at ");
+        w.mass.show();
+        print(".^");
+    }
+}
+
+verb La23Scrap {
+    grammar = {.scrap};
+    void handler() {
+        int gone = la23Scale.scrap(location);
+        print($"scrapped {gone}; weights {la23Scale.weights.length}.^");
+    }
+}
+
+verb La23Tare {
+    grammar = {.tare, NUMBER};
+    void handler() {
+        la23Scale.bias = (int)noun;
+        print($"bias {la23Scale.bias}, changes {la23Scale.changes}, {la23Scale.mood()}.^");
+    }
+}
+
+verb La23Lighten {
+    grammar = {.lighten, NUMBER};
+    void handler() {
+        la23Scale.bias = la23Scale.bias - (int)noun;
+        print($"bias {la23Scale.bias}, changes {la23Scale.changes}, {la23Scale.mood()}.^");
+    }
+}
+
+La23Info La23Best {
+    grammar = {.best, NUMBER};
+    void handler() {
+        int need = (int)noun;
+        La23Holder | string r = la23Scale.roomiest(need);
+        if (typeof(r) == eType.object) {
+            La23Holder h = (La23Holder)r;
+            print($"{need}g fits best in the {h} ({h.room()}g left); {la23Scale.fits(need)} fit.^");
+        } else {
+            print($"{need}g fits in {(string)r}.^");
+        }
+    }
+}
+
+La23Info La23Holders {
+    grammar = {.holders};
+    void handler() {
+        la23Scale.each((La23Holder h) => la23ShowHolder(h));
+        int roomy = la23Scale.holders.filter((La23Holder h) => h.room() >= 500).count();
+        print($"roomy {roomy}");
+        bool anyEmpty = la23Scale.holders.any((La23Holder h) => h.empty());
+        if (anyEmpty) print(", one empty");
+        La23Holder firstEmpty = la23Scale.holders.filter((La23Holder h) => h.empty()).first();
+        object which = firstEmpty ?? roomA;
+        print($"; first empty {which}; carried {la23Scale.carried()}/{la23Scale.carryLimit}^");
+        print($"weights {la23Scale.weights.length} (made {La23Weight.made}, scrapped {La23Weight.scrapped}); refusals {La23Holder.refusals}; log {la23Scale.log}^");
+#if LA23_TRACE
+        print($"weighings {la23Scale.weighings}, heaviest ");
+        la23Scale.heaviest.show();
+        print("^");
+#endif
+    }
+}
+
+La23Info La23Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La23Holder> order[4];
+        order = la23Scale.holders;
+        order.sort((La23Holder a, La23Holder b) => b.load() - a.load());
+        for (La23Holder h in order) print($"{h}={h.load()} ");
+        La23Holder top = order.first();
+        if (top.load() == 0) print("all empty");
+        else if (top.load() != order[1].load()) print($"top {top}");
+        else print("tie");
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la23Scale.register(clothSack);
+    la23Scale.register(tinCan);
+    la23Scale.register(woodCrate);
+    la23Scale.register(tinCan);
+    rfalse;
+}
+
+#includeI6 "grammar"

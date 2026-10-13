@@ -1,0 +1,585 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-second first-time-programmer program, a small bakery where loaves of dough are
+// put in an oven, baked for some turns and set out on a shelf, written the way a beginner writes it
+// after reading the spec once. Counts kept in int globals with a const that sizes the tray, bool
+// flags, an enum for how done a loaf is, switched on and returned from a method, a class of loaves
+// (a kind string, turns in the oven, a price, methods that work out and say how done it is, a before()
+// for Eat and Insert, an after() for Take), a subclass for rolls that bake faster (a replaced method)
+// and a subclass of that for sweet rolls (another replaced method that calls the base one), the oven's
+// contents kept in an <array> array of the class that the loaves add themselves to, an array of
+// strings for the order book filled from a list, an oven with a daemon that bakes what is in it, a
+// clock with a timer, helper functions (one with a default argument, one with a ternary, one returning
+// a string from a switch with ranges, one adding to a total), <linq> filter / count / any / all /
+// map / take / first / last with lambdas (one capturing a local), sort with a comparator, stringObj
+// lines built with + and += and interpolation and changed with replace and left, a string switch,
+// for-in over a range, an array and children, a while loop, a do/while, and verbs with no noun, one
+// noun and a noun with a number (bake, oven, done, price, order, orders, tray, total,
+// sell, takings) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how many loaves the oven holds
+const int TRAY_SIZE = 4;
+// how many turns a loaf needs
+const int BAKE_TURNS = 3;
+// how much money came in
+int takings = 0;
+// how many loaves were sold
+int sold = 0;
+// how many loaves got burnt
+int burnt = 0;
+// is the oven lit?
+bool ovenLit = false;
+// is the shop shut?
+bool shopShut = false;
+// how many orders were filled
+int ordersFilled = 0;
+
+// ===== HOW DONE =====
+
+enum Doneness { raw, baking, done, burnt }
+
+// ===== THE ORDER BOOK =====
+
+// what people have asked for, by kind
+array<string> orderBook[5] = { "white", "rye", "sweet" };
+
+// ===== HELPER FUNCTIONS =====
+
+// prints a number of things, like "3 loaves" or "1 loaf"
+void printLoaves(int n, bool withWord = true) {
+    print(n);
+    if (withWord == true) {
+        if (n == 1) {
+            print(" loaf");
+        } else {
+            print(" loaves");
+        }
+    }
+}
+
+// "it" or "them"
+string itThem(int n) {
+    return (n == 1) ? "it" : "them";
+}
+
+// says how busy the day was
+string dayWord(int n) {
+    switch (n) {
+        case 0: return "a quiet day";
+        case 1 to 2: return "a slow day";
+        case 3 to 4: return "a good day";
+        default: return "a busy day";
+    }
+}
+
+// prints a doneness word
+void printDoneness(Doneness d) {
+    switch (d) {
+        case Doneness.raw: print("raw");
+        case Doneness.baking: print("baking");
+        case Doneness.done: print("done");
+        case Doneness.burnt: print("burnt");
+    }
+}
+
+// adds money to a total and gives back the new total
+int addMoney(int total, int amount) {
+    return total + amount;
+}
+
+// ===== LOAVES =====
+
+// what is in the oven
+array<Loaf> tray[TRAY_SIZE];
+
+class Loaf : object {
+    // what kind of loaf it is (a word)
+    string kind = "white";
+    // how many turns it has been in the oven
+    int turns = 0;
+    // what it sells for
+    int price = 3;
+    // was it sold?
+    bool isSold = false;
+    string description;
+
+    // how many turns it needs
+    int needs() {
+        return BAKE_TURNS;
+    }
+
+    // works out how done it is
+    Doneness doneness() {
+        if (turns == 0) {
+            return Doneness.raw;
+        }
+        if (turns < needs()) {
+            return Doneness.baking;
+        }
+        if (turns <= needs() + 1) {
+            return Doneness.done;
+        }
+        return Doneness.burnt;
+    }
+
+    // what it sells for now (burnt loaves sell for 1)
+    int worth() {
+        if (doneness() == Doneness.burnt) {
+            return 1;
+        }
+        return price;
+    }
+
+    // says how it is doing
+    void sayState() {
+        stringObj line = $"The {self} ({kind}) is ";
+        print(line);
+        printDoneness(doneness());
+        print($", {turns} of {needs()} turns.^");
+    }
+
+    bool before() {
+        if (action == Eat) {
+            if (doneness() == Doneness.raw) {
+                print("It is raw dough.^");
+            } else {
+                print("It is for selling.^");
+            }
+            rtrue;
+        }
+        if (action == Insert && second == oven) {
+            if (isSold == true) {
+                print("It is sold.^");
+                rtrue;
+            }
+            if (tray.length == TRAY_SIZE) {
+                print("The oven is full.^");
+                rtrue;
+            }
+            self.parent = oven;
+            tray.append(self);
+            print($"You put the {self} in the oven.^");
+            rtrue;
+        }
+        rfalse;
+    }
+
+    bool after() {
+        if (action == Take) {
+            if (tray.contains(self)) {
+                tray.removeValue(self);
+                print($"You take the {self} out of the oven. ");
+                printDoneness(doneness());
+                print(".^");
+                rtrue;
+            }
+        }
+        rfalse;
+    }
+}
+
+// a roll is a loaf that bakes faster
+class Roll : Loaf {
+    replace int needs() {
+        return 2;
+    }
+}
+
+// a sweet roll is a roll that takes one more turn than a roll
+class SweetRoll : Roll {
+    replace int needs() {
+        return ((Roll)self).needs() + 1;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The bakery. The shop is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The shop. The bakery is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE BENCH AND THE DOUGH =====
+
+object bench {
+    "bench";
+    parent = roomA;
+    name = {.bench};
+    string description = "A flour-covered bench.";
+    attributes = {static, supporter};
+}
+
+Loaf whiteLoaf {
+    "white loaf";
+    parent = bench;
+    name = {.white, .loaf};
+    kind = "white";
+    description = "A white loaf.";
+}
+
+Loaf ryeLoaf {
+    "rye loaf";
+    parent = bench;
+    name = {.rye, .loaf};
+    kind = "rye";
+    price = 4;
+    description = "A rye loaf.";
+}
+
+Roll plainRoll {
+    "plain roll";
+    parent = bench;
+    name = {.plain, .roll};
+    kind = "plain";
+    price = 2;
+    description = "A plain roll.";
+}
+
+SweetRoll sugarRoll {
+    "sweet roll";
+    parent = bench;
+    name = {.sweet, .roll};
+    kind = "sweet";
+    price = 2;
+    description = "A sweet roll.";
+}
+
+// ===== THE OVEN =====
+
+object oven {
+    "oven";
+    parent = roomA;
+    name = {.oven};
+    string description = "A brick oven.";
+    attributes = {static, container, open};
+    void daemon() {
+        if (ovenLit == false) {
+            return;
+        }
+        for (Loaf l in tray) {
+            l.turns++;
+            if (l.turns == l.needs() && location == roomA) {
+                print($"^The {l} smells done.^");
+            }
+            if (l.turns == l.needs() + 2) {
+                burnt++;
+                if (location == roomA) {
+                    print($"^The {l} is burning!^");
+                }
+            }
+        }
+    }
+}
+
+// ===== THE SHELF =====
+
+object shelf {
+    "shelf";
+    parent = roomB;
+    name = {.shelf};
+    string description = "A shelf in the shop.";
+    attributes = {static, supporter};
+}
+
+// ===== THE CLOCK =====
+
+object clock {
+    "clock";
+    parent = roomB;
+    name = {.clock};
+    string description = "A clock on the wall.";
+    attributes = {static};
+    int time_left;
+    void time_out() {
+        shopShut = true;
+        print("^The clock strikes. The shop is shut.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(oven);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the tray) =====
+
+// how many loaves in the oven are done
+int countDone() {
+    return tray.filter((Loaf l) => l.doneness() == Doneness.done).count();
+}
+
+// ===== VERBS =====
+
+// BAKE - lights the oven
+verb LightOven {
+    grammar = {.bake};
+    void handler() {
+        if (location != roomA) {
+            print("The oven is in Room A.^");
+            return;
+        }
+        if (ovenLit == true) {
+            print("The oven is already lit.^");
+            return;
+        }
+        ovenLit = true;
+        StartTimer(clock, 30);
+        print("You light the oven.^");
+    }
+}
+
+// OVEN - what is in the oven
+verb ShowOven {
+    grammar = {.oven};
+    void handler() {
+        if (tray.length == 0) {
+            print("The oven is empty.^");
+            return;
+        }
+        for (Loaf l in tray) {
+            l.sayState();
+        }
+        // how many need just one more turn
+        int oneMore = 1;
+        int nearly = tray.filter((Loaf l) => l.needs() - l.turns == oneMore).count();
+        if (nearly > 0) {
+            print($"{nearly} nearly done.^");
+        }
+        int d = countDone();
+        if (d > 0) {
+            print($"Take {itThem(d)} out soon.^");
+        }
+    }
+}
+
+// DONE - which loaves in the oven are done, and which need more time
+verb DoneList {
+    grammar = {.done};
+    void handler() {
+        if (tray.length == 0) {
+            print("The oven is empty.^");
+            return;
+        }
+        if (tray.all((Loaf l) => l.doneness() == Doneness.done)) {
+            print("Everything is done.^");
+            return;
+        }
+        if (tray.any((Loaf l) => l.doneness() == Doneness.burnt)) {
+            print("Something is burning.^");
+        }
+        array<Loaf> waiting = tray.filter((Loaf l) => l.turns < l.needs());
+        if (waiting.length == 0) {
+            print("Nothing is still baking.^");
+            return;
+        }
+        print("Still baking:");
+        for (Loaf l in waiting) {
+            int left = l.needs() - l.turns;
+            print($" {l} ({left})");
+        }
+        print(".^");
+    }
+}
+
+// PRICE - says what a loaf costs
+verb PriceOf {
+    grammar = {.price, NOUN};
+    void handler() {
+        if (!(noun.is(Loaf))) {
+            print("That is not for sale.^");
+            return;
+        }
+        Loaf l = (Loaf)noun;
+        print($"The {l} is {l.worth()} coins.^");
+        switch (l.kind) {
+            case "white": print("White sells best.^");
+            case "plain", "sweet": print("Rolls sell in the morning.^");
+            default:
+                stringObj k = l.kind;
+                print($"{k.toUpper()} is a special.^");
+        }
+    }
+}
+
+// ORDER - adds an order to the book
+verb AddOrder {
+    grammar = {.order, NOUN};
+    void handler() {
+        if (!(noun.is(Loaf))) {
+            print("You can't order that.^");
+            return;
+        }
+        Loaf l = (Loaf)noun;
+        if (orderBook.append(l.kind) == false) {
+            print("The order book is full.^");
+            return;
+        }
+        print($"Order for {l.kind} written down.^");
+    }
+}
+
+// ORDERS - lists the order book, in order
+verb ShowOrders {
+    grammar = {.orders};
+    void handler() {
+        if (orderBook.length == 0) {
+            print("No orders.^");
+            return;
+        }
+        array<string> sorted = orderBook;
+        sorted.sort((string a, string b) => a.compareTo(b));
+        stringObj line = "Orders: ";
+        int i = 0;
+        while (i < sorted.length) {
+            line += sorted[i];
+            if (i < sorted.length - 1) {
+                line += ", ";
+            }
+            i++;
+        }
+        line = line + ".";
+        print(line);
+        print("^");
+        print($"First: {orderBook.first()}. Last: {orderBook.last()}.^");
+    }
+}
+
+// TRAY - the first two loaves in the oven
+verb TrayTop {
+    grammar = {.tray};
+    void handler() {
+        if (tray.length == 0) {
+            print("The oven is empty.^");
+            return;
+        }
+        array<Loaf> top = tray.take(2);
+        for (int i in 1 to top.length) {
+            print($"{i}. {top[i - 1]}^");
+        }
+    }
+}
+
+// TOTAL - what the loaves on the shelf would sell for
+verb ShelfTotal {
+    grammar = {.total};
+    void handler() {
+        int total = 0;
+        int count = 0;
+        for (object o in shelf.children) {
+            if (o.is(Loaf)) {
+                Loaf l = (Loaf)o;
+                total = addMoney(total, l.worth());
+                count++;
+            }
+        }
+        print("On the shelf: ");
+        printLoaves(count);
+        print($", worth {total} coins.^");
+    }
+}
+
+// SELL - sells loaves of a kind for a number of coins each
+verb SellKind {
+    grammar = {.sell, NOUN, .for, NUMBER};
+    void handler() {
+        if (shopShut == true) {
+            print("The shop is shut.^");
+            return;
+        }
+        if (location != roomB) {
+            print("You sell in the shop.^");
+            return;
+        }
+        if (!(noun.is(Loaf))) {
+            print("You can't sell that.^");
+            return;
+        }
+        Loaf l = (Loaf)noun;
+        int asked = (int)second;
+        if (l.parent != shelf) {
+            print("Put it on the shelf first.^");
+            return;
+        }
+        if (l.doneness() == Doneness.raw) {
+            print("Nobody buys raw dough.^");
+            return;
+        }
+        if (asked > l.worth()) {
+            print($"Nobody will pay {asked} for that.^");
+            return;
+        }
+        l.isSold = true;
+        l.parent = null;
+        sold++;
+        takings = addMoney(takings, asked);
+        print($"Sold the {l} for {asked}.^");
+        // fill an order if there is one for this kind
+        int at = orderBook.indexOf(l.kind);
+        if (at >= 0) {
+            orderBook.remove(at);
+            ordersFilled++;
+            print("That fills an order.^");
+        }
+    }
+}
+
+// TAKINGS - how the day went
+verb DayReport {
+    meta = true;
+    grammar = {.takings};
+    void handler() {
+        print("Sold: ");
+        printLoaves(sold);
+        print(". Burnt: ");
+        printLoaves(burnt, false);
+        print($". Takings: {takings}.^");
+        print($"Orders filled: {ordersFilled}. That was {dayWord(sold)}.^");
+        // a row of coins, one per coin taken
+        stringObj coins = "";
+        int n = takings;
+        do {
+            if (n > 0) {
+                coins += "o";
+                n--;
+            }
+        } while (n > 0);
+        stringObj shown = coins.left(8);
+        if (coins.length > 8) {
+            shown += "+";
+        }
+        print($"[{shown}]^");
+        stringObj note = "The bakery had a day.";
+        note = note.replace("a day", dayWord(sold));
+        print(note);
+        print("^");
+        // the kinds still on order
+        array<var> kinds = orderBook.map((var k) => k);
+        print($"Open orders: {kinds.count()}.^");
+    }
+}

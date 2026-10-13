@@ -1,0 +1,113 @@
+Room A
+Room A.
+
+> balances
+Total 0.00.
+
+> setup
+Accounts 3, total 290.00, overdraft A 25.00, overdraft C 0.00.
+
+> balances
+C-100   100.00 (available 125.00), 0 tx
+S-200   150.00, 0 tx, 2 withdrawals left
+C-300    40.00, 0 tx
+Total 290.00.
+
+> deposit
+Done: deposit 20.50 to C-100.
+Refused: 0.00 is not a valid amount.
+
+> withdraw
+Done: withdraw 30.00 from S-200.
+Refused: C-300 cannot cover 45.00.
+Done: withdraw 10.05 from S-200.
+Refused: S-200 has no withdrawals left.
+
+> xfer
+Done: transfer 120.00 from C-100 to C-300.
+Refused: C-300 cannot transfer to itself.
+
+> balances
+C-100     0.50 (available 25.50), 2 tx
+S-200   109.95, 2 tx, 0 withdrawals left
+C-300   160.00, 1 tx
+Total 270.45.
+
+> history
+Undo 3, redo 0.
+  0: transfer 120.00 from C-100 to C-300
+  1: withdraw 10.05 from S-200
+  2: withdraw 30.00 from S-200
+Executed 4, undone 0, disposed 5, errors 4.
+
+> rollback
+Undone: transfer 120.00 from C-100 to C-300.
+
+> rollback
+Undone: withdraw 10.05 from S-200.
+
+> balances
+C-100   120.50 (available 145.50), 1 tx
+S-200   120.00, 1 tx, 1 withdrawals left
+C-300    40.00, 0 tx
+Total 280.50.
+
+> reapply
+Redone: withdraw 10.05 from S-200.
+
+> history
+Undo 2, redo 1.
+  0: withdraw 10.05 from S-200
+  1: withdraw 30.00 from S-200
+Executed 5, undone 2, disposed 5, errors 4.
+
+> withdraw
+Refused: S-200 has no withdrawals left.
+Refused: C-300 cannot cover 45.00.
+Refused: S-200 has no withdrawals left.
+Refused: S-200 has no withdrawals left.
+
+> history
+Undo 2, redo 1.
+  0: withdraw 10.05 from S-200
+  1: withdraw 30.00 from S-200
+Executed 5, undone 2, disposed 9, errors 8.
+
+> rollback
+Undone: withdraw 10.05 from S-200.
+
+> rollback
+Undone: withdraw 30.00 from S-200.
+
+> rollback
+Nothing to undo.
+
+> rollback
+Nothing to undo.
+
+> reapply
+Redone: withdraw 30.00 from S-200.
+
+> monthend
+C-100: no fee.
+S-200: interest 3.60.
+C-300: fee 1.50.
+C-100   120.50 (available 145.50), 1 tx
+S-200   123.60, 1 tx, 2 withdrawals left
+C-300    38.50, 0 tx
+Total 282.60.
+
+> statement
+1. savings B (S-200) 123.60
+2. checking A (C-100) 120.50
+3. checking C (C-300) 38.50
+Checking 2, any overdrawn false, all active false.
+First at 100.00 or more: checking A; find S-200 S-200, X-999 none.
+
+> audit
+Events 10, dropped 6.
+- withdraw 10.05 from S-200
+- undo withdraw 10.05 from S-200
+- undo withdraw 30.00 from S-200
+- withdraw 30.00 from S-200
+C-100, S-200, C-300.

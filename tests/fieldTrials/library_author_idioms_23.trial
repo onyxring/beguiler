@@ -1,0 +1,108 @@
+Room A
+Room A.
+You can see a cloth sack (which is empty), a tin can (which is empty), a wooden crate (which is empty), a lead ball, a gray stone, a brass bell, a white feather and a paper slip here.
+> holders
+cloth sack cloth 0/2000 0% refused 0 empty
+tin can tin 0/500 0% refused 0 empty
+wooden crate wood 0/5000 0% refused 0 empty
+roomy 3, one empty; first empty cloth sack; carried 0/2500
+weights 0 (made 0, scrapped 0); refusals 0; log
+weighings 0, heaviest 0g
+> weigh ball
+The lead ball reads 1.5kg: heavy, dense.
+> weigh sack
+The cloth sack reads 200g: light, soft.
+> take ball
+Taken.
+> take stone
+Taken.
+> take bell
+The brass bell is too heavy by 200g.
+> put stone in sack
+[cloth sack: 800g of 2000g]
+You put the gray stone into the cloth sack.
+> take bell
+Taken.
+> put ball in sack
+The lead ball is too heavy by 300g.
+> put bell in can
+[tin can: 400g of 500g]
+You put the brass bell into the tin can.
+> take feather
+Taken.
+> put feather in can
+[tin can: 405g of 500g]
+You put the white feather into the tin can.
+> holders
+cloth sack cloth 800/2000 40% refused 1
+tin can tin 405/500 81% refused 0
+wooden crate wood 0/5000 0% refused 0 empty
+roomy 2, one empty; first empty wooden crate; carried 1500/2500
+weights 0 (made 0, scrapped 0); refusals 1; log x:you x:cloth
+weighings 2, heaviest 1.5kg
+> weigh sack
+The cloth sack reads 1.0kg: heavy, soft.
+> compare sack with ball
+The cloth sack is lighter by 500g.
+> compare ball with stone
+The lead ball is heavier by 700g.
+> compare bell with bell
+The brass bell and the brass bell weigh the same.
+> best 600
+600g fits best in the wooden crate (5000g left); 2 fit.
+> best 2500
+2500g fits best in the wooden crate (5000g left); 1 fit.
+> rank
+cloth sack=800 tin can=405 wooden crate=0 top cloth sack.
+> tare 80
+bias 50, changes 1, biased.
+> weigh feather
+The white feather reads 55g: feather, soft.
+> lighten 120
+bias -50, changes 2, biased.
+> weigh feather
+The white feather reads 0g: feather, soft.
+> tare 0
+bias 0, changes 3, true.
+> cast 300
+w1 cast at 300g.
+> cast 900
+w2 cast at 900g.
+> cast 4000
+w3 cast at 4.0kg.
+> cast 100
+No weight can be cast (3 in use).
+> weigh weight
+The w3 reads 4.0kg: crushing, rough.
+> take sack
+Taken.
+> put ball in crate
+[wooden crate: 1.5kg of 5000g]
+You put the lead ball into the wooden crate.
+> scrap
+scrapped 3; weights 0.
+> holders
+cloth sack cloth 800/2000 40% refused 1
+tin can tin 405/500 81% refused 0
+wooden crate wood 1500/5000 30% refused 0
+roomy 2; first empty Room A; carried 1000/2500
+weights 0 (made 3, scrapped 3); refusals 1; log x:you x:cloth +w1 +w2 +w3 -w1 -w2 -w3
+weighings 6, heaviest 4.0kg
+> take slip
+Taken.
+> put slip in can
+[tin can: 405g of 500g]
+You put the paper slip into the tin can.
+> weigh slip
+The paper slip weighs nothing worth reading.
+> rank
+wooden crate=1500 cloth sack=800 tin can=405 top wooden crate.
+> take bell
+Taken.
+> holders
+cloth sack cloth 800/2000 40% refused 1
+tin can tin 5/500 1% refused 0
+wooden crate wood 1500/5000 30% refused 0
+roomy 2; first empty Room A; carried 1400/2500
+weights 0 (made 3, scrapped 3); refusals 1; log x:you x:cloth +w1 +w2 +w3 -w1 -w2 -w3
+weighings 6, heaviest 4.0kg

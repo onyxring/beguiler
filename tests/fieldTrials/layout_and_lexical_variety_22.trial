@@ -1,0 +1,118 @@
+Room A
+Room A. A shutter is east. A lever is set in the floor.
+You can see a shutter, a lever, a red parcel, a blue parcel, a green parcel and a scale (on which is a gray parcel) here.
+> weigh scale
+The scale reads 2 (1 item, heaviest 2).
+> ledger
+1 reading (2), top 2, 0 heavy.
+> manifest
+Nothing shipped.
+> totals
+Stamped 0, shipped 0/4, left 4, lever pulled 0.
+> take red parcel
+Taken.
+> weigh red parcel
+The red parcel weighs 4.
+> weigh lever
+The lever won't go on the scale.
+> inspect red parcel
+red, weight 4: stamped no, sealed no, light yes - not ready.
+> stamp red parcel with 7
+You stamp the red parcel P-007.
+> stamp red parcel with 8
+The red parcel is already stamped P-007.
+> seal red parcel
+You seal the red parcel.
+> seal red parcel
+The red parcel is already sealed.
+> check red parcel
+red, weight 4: stamped yes, sealed yes, light yes - ready.
+> put red parcel on scale
+You put the red parcel on the scale.
+> read scale
+The scale reads 6 (2 items, heaviest 4).
+> stamp blue parcel 12
+You stamp the blue parcel P-012.
+> stamp green parcel 0
+The stamp has no zero.
+> stamp green parcel 1000
+The stamp only goes to 999.
+> stamp green parcel 345
+You stamp the green parcel P-345.
+> seal green parcel
+You seal the green parcel.
+> inspect green parcel
+green, weight 11, fragile: stamped yes, sealed yes, light no - not ready.
+> grade green parcel
+The green parcel goes on the floor.
+> grade blue parcel
+The blue parcel goes in tray 2.
+> grade gray parcel
+The gray parcel goes in tray 1.
+> take green parcel
+Taken.
+> weigh green parcel
+The green parcel weighs 11, too heavy to ship.
+> ledger
+4 readings (2, 4, 6, 11), top 11, 1 heavy.
+> east
+The shutter is worked by the lever.
+You can't, since the shutter is in the way.
+> open shutter
+The shutter is worked by the lever.
+> pull lever
+The shutter rises.
+> take all from scale
+red parcel: Removed.
+gray parcel: Removed.
+> take blue parcel
+Taken.
+> seal blue parcel
+You seal the blue parcel.
+> inspect blue parcel
+blue, weight 3: stamped yes, sealed yes, light yes - ready.
+> east
+Room B
+Room B. A chute is here. A shutter is west.
+You can see a shutter and a chute (which is empty) here.
+> put red parcel in chute
+The chute takes the red parcel.
+> put green parcel in chute
+The chute rejects the green parcel (1 check failed).
+> put blue parcel in chute
+The chute takes the blue parcel.
+> manifest
+Shipped 2: blue P-012 (3); red P-007 (4). Total 7.
+> west
+Room A
+Room A. A shutter is east. A lever is set in the floor.
+You can see a shutter, a lever and a scale here.
+> push lever
+The shutter drops.
+> stamp gray parcel with 3
+You stamp the gray parcel P-003.
+> seal gray parcel
+You seal the gray parcel.
+> weigh scale
+The scale reads 0.
+> ledger
+4 readings (2, 4, 6, 11), top 11, 1 heavy.
+> totals
+Stamped 4, shipped 2/4, left 2, lever pulled 2.
+> inspect gray parcel
+gray, weight 2: stamped yes, sealed yes, light yes - ready.
+> weigh gray parcel
+The gray parcel weighs 2.
+> ledger
+4 readings (4, 6, 11, 2), top 11, 1 heavy.
+> drop gray parcel
+Dropped.
+> drop green parcel
+Dropped.
+> totals
+Stamped 4, shipped 2/4, left 2, lever pulled 2.
+> stamp gray parcel 4
+The gray parcel is already stamped P-003.
+> east
+The shutter is worked by the lever.
+You can't, since the shutter is in the way.

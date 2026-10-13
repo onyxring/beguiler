@@ -1,0 +1,154 @@
+Room A
+Room A. A lower tank stands here, with a hand pump beside it. A doorway leads north.
+You can see a feed valve, a plumbing manual and a tin bucket here.
+> tally
+Rooms 1, score 0.
+Lower: [........] 0 of 8, empty.
+Upper: [......] 0 of 6, empty.
+Valves: feed valve shut drain valve shut.
+Pump: unused.
+> x tank
+A steel tank with a glass gauge down its side. The gauge reads [........] 0 of 8, empty.
+> look up valves in manual
+"Open the feed valve to send water up. Close it before the lower tank runs dry."
+> read about float in manual
+"The float lifts at five measures."
+> consult manual about tea
+The manual has nothing on that.
+> fill bucket
+The lower tank is empty.
+> pump
+You work the handle. Water gushes into the lower tank.
+> push handle
+You work the handle. Water gushes into the lower tank.
+> x lower tank
+A steel tank with a glass gauge down its side. The gauge reads [####....] 4 of 8, half full.
+> mark tank at 9
+The gauge on the lower tank runs from 1 to 8.
+> mark tank at 5
+You chalk a mark on the gauge of the lower tank at 5.
+> mark bucket at 2
+You can only mark a tank.
+> take bucket
+Taken.
+> fill bucket from tank
+You fill the bucket from the lower tank.
+> i
+You're carrying:
+  a tin bucket (full of water)
+> fill pail
+It is already full.
+> empty bucket
+The water splashes across the floor and runs away.
+> fill bucket from manual
+You can't fill it from that.
+> fill bucket from lower tank
+You fill the bucket from the lower tank.
+> take tank
+The tank is bolted to the floor.
+> pump valve
+You can't pump the feed valve.
+> put bucket in tank
+You would only get it wet. Pour water in instead.
+> empty bucket into tank
+You pour the water into the lower tank.
+> turn handle
+You work the handle. Water gushes into the lower tank.
+> pump
+You work the handle. Water gushes into the lower tank.
+> pump
+You work the handle. Water gushes into the lower tank.
+> pump
+The handle will not budge; the lower tank is full.
+> tally
+Rooms 1, score 0.
+Lower: [########] 8 of 8, full, marked at 5.
+Upper: [......] 0 of 6, empty.
+Valves: feed valve shut drain valve shut.
+Pump: 8 4 4 6 (of 5).
+> spin feed valve
+You spin the wheel open. Water starts to run.
+> z
+Time passes.
+> n
+Room B
+Room B. An upper tank stands here, fed by a pipe from below. A doorway leads south.
+In the upper tank is a cork float.
+You can see a drain valve and an iron box (which is closed) here.
+> x upper tank
+A steel tank with a glass gauge down its side. The gauge reads [###...] 3 of 6, half full.
+> x float
+A cork float, lying on the bottom of the tank.
+The cork float rises off the bottom of the upper tank. Something glints on top of it.
+> take float
+It is chained to the bottom of the tank.
+> mark upper tank at 3
+You chalk a mark on the gauge of the upper tank at 3.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> x float
+A cork float, riding at the top of the water.
+> take key
+Taken.
+[The score has just gone up by one point.]
+> s
+Room A
+Room A. A lower tank stands here, with a hand pump beside it. A doorway leads north.
+You can see a feed valve and a plumbing manual here.
+> close feed valve
+You spin the wheel shut. The pipe goes quiet.
+> pour bucket
+It is already empty.
+> fill bucket from tank
+You fill the bucket from the lower tank.
+> n
+Room B
+Room B. An upper tank stands here, fed by a pipe from below. A doorway leads south.
+In the upper tank is a cork float.
+You can see a drain valve and an iron box (which is closed) here.
+> pour bucket into tank
+The upper tank is already full.
+> tally
+Rooms 4, score 1.
+Lower: [........] 0 of 8, empty, marked at 5.
+Upper: [######] 6 of 6, full, marked at 3.
+Valves: feed valve shut drain valve shut.
+Pump: 8 4 4 6 (of 5).
+> unlock box with key
+You unlock the iron box.
+> open box
+You open the iron box, revealing a copper token.
+> open drain valve
+You spin the wheel open. Water starts to run.
+> pour bucket into tank
+You pour the water into the upper tank. Some slops over the rim.
+> z
+Time passes.
+> z
+Time passes.
+The water in the upper tank reaches the mark.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+The pipe at the drain valve falls silent.
+> tally
+Rooms 4, score 1.
+Lower: [........] 0 of 8, empty, marked at 5.
+Upper: [......] 0 of 6, empty, marked at 3.
+Valves: feed valve shut drain valve open.
+Pump: 8 4 4 6 (of 5).
+> take token
+Taken.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 2 out of a possible 2, in 55 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

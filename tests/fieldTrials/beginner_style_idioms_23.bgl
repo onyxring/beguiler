@@ -1,0 +1,624 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-third first-time-programmer program, a small lending library where books are
+// lent out at a desk, come due after some turns and are brought back with a fine if they are late,
+// written the way a beginner writes it after reading the spec once. Counts kept in int globals with
+// consts for the loan length and the fine, bool flags, an enum for a book's state returned from a
+// method and switched on, a class of books (a title string, pages, the turn it is due, how many times
+// it was lent, methods that work out and say the state, a before() for Take and Examine, an after() for
+// Drop), a subclass for magazines with a shorter loan (a replaced method), a subclass for reference
+// books that can't be lent (a replaced method that still calls the base one), the loans kept in an
+// <array> array of the class, a waiting list kept as a queue (enqueue / dequeue / peek), an array of
+// ints for the fines paid sorted and reversed, a calendar with a daemon that moves the day on and
+// warns about late books, helper functions (one with a default argument, one with a ternary, one
+// returning a string from a switch with ranges and guards), C-style for loops with break and
+// continue, a do/until, <linq> filter / count / any / all / orderBy / first / skip with lambdas (one
+// capturing a local), stringObj lines built with + and += and interpolation and changed with
+// toUpper, trim, format and replaceAll, string tests with startsWith and contains, a string switch,
+// for-in over a range, an array and children, rtrue with a message, and verbs with no noun and one
+// noun (lend, giveback, loans, late, wait list, reserve, next, fines, shelf, titles, stats) that
+// drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how many turns a loan lasts
+const int LOAN_TURNS = 4;
+// the fine for each late turn
+const int FINE_PER_TURN = 2;
+// how many books one person can have out
+const int MAX_LOANS = 3;
+// what turn it is in the library
+int today = 0;
+// how many books were lent in all
+int totalLent = 0;
+// how many books came back late
+int lateCount = 0;
+// is the desk open?
+bool deskOpen = true;
+// did we already say the desk shut?
+bool saidShut = false;
+
+// ===== BOOK STATES =====
+
+enum BookState { onShelf, lent, overdue, notForLoan }
+
+// ===== LISTS =====
+
+// the fines that were paid, one entry each
+array<int> finesPaid[10];
+
+// names of people waiting for a book, first come first served
+array<string> waitList[6];
+
+// ===== HELPER FUNCTIONS =====
+
+// prints "1 book" or "3 books"
+void printBooks(int n, bool withWord = true) {
+    print(n);
+    if (withWord) {
+        if (n == 1) {
+            print(" book");
+        } else {
+            print(" books");
+        }
+    }
+}
+
+// "is" or "are"
+string isAre(int n) {
+    return (n == 1) ? "is" : "are";
+}
+
+// how thick a book is
+string thickness(int pages) {
+    switch (pages) {
+        case < 1: return "empty";
+        case 1 to 50: return "thin";
+        case 51 to 300: return "normal";
+        case >= 301: return "thick";
+    }
+    return "odd";
+}
+
+// prints a state word
+void printState(BookState s) {
+    switch (s) {
+        case BookState.onShelf: print("on the shelf");
+        case BookState.lent: print("lent out");
+        case BookState.overdue: print("overdue");
+        case BookState.notForLoan: print("not for loan");
+    }
+}
+
+// adds up an array of ints
+int addUp(array<int> nums) {
+    int total = 0;
+    for (int i = 0; i < nums.length; i++) {
+        total += nums[i];
+    }
+    return total;
+}
+
+// ===== BOOKS =====
+
+// what is lent out right now
+array<Book> loans[MAX_LOANS];
+
+class Book : object {
+    // the title (used in messages)
+    string title = "Untitled";
+    // how many pages
+    int pages = 100;
+    // the turn it is due back (0 when it is not out)
+    int dueOn = 0;
+    // how many times it was lent
+    int timesLent = 0;
+    string description;
+
+    // how many turns it can be out
+    int loanLength() {
+        return LOAN_TURNS;
+    }
+
+    // can it be lent?
+    bool canLend() {
+        return true;
+    }
+
+    // works out its state
+    BookState state() {
+        if (!canLend()) {
+            return BookState.notForLoan;
+        }
+        if (!loans.contains(self)) {
+            return BookState.onShelf;
+        }
+        if (today > dueOn) {
+            return BookState.overdue;
+        }
+        return BookState.lent;
+    }
+
+    // how many turns late it is (0 when it is not late)
+    int turnsLate() {
+        if (state() != BookState.overdue) {
+            return 0;
+        }
+        return today - dueOn;
+    }
+
+    // says how it is doing
+    void sayState() {
+        print($"{title}: ");
+        printState(state());
+        if (state() == BookState.lent) {
+            print($", due on turn {dueOn}");
+        }
+        if (state() == BookState.overdue) {
+            print($", {turnsLate()} late");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"{title}. {pages} pages, a {thickness(pages)} book.^");
+            rtrue;
+        }
+        if (action == Take) {
+            if (!canLend()) {
+                rtrue($"{title} stays in the library.^");
+            }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        if (action == Drop) {
+            if (location == roomA && loans.contains(self)) {
+                print($"You drop {title}. Bring it to the desk to give it back.^");
+                rtrue;
+            }
+        }
+        rfalse;
+    }
+}
+
+// a magazine goes out for less time
+class Magazine : Book {
+    replace int loanLength() {
+        return 2;
+    }
+}
+
+// a reference book stays in the library
+class ReferenceBook : Book {
+    replace bool canLend() {
+        // a reference book is a book, but never for loan
+        bool asBook = ((Book)self).canLend();
+        return asBook && false;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The stacks. The desk is to the north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The front desk. The stacks are to the south.";
+    object s_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE SHELF AND THE BOOKS =====
+
+object shelf {
+    "shelf";
+    parent = roomA;
+    name = {.shelf};
+    string description = "A tall shelf.";
+    attributes = {static, supporter};
+}
+
+Book redBook {
+    "red book";
+    parent = shelf;
+    name = {.red, .book};
+    title = "Red Book";
+    pages = 240;
+    description = "A red book.";
+}
+
+Book blueBook {
+    "blue book";
+    parent = shelf;
+    name = {.blue, .book};
+    title = "Blue Book";
+    pages = 420;
+    description = "A blue book.";
+}
+
+Magazine greenMag {
+    "green magazine";
+    parent = shelf;
+    name = {.green, .magazine};
+    title = "Green Magazine";
+    pages = 30;
+    description = "A green magazine.";
+}
+
+ReferenceBook atlas {
+    "atlas";
+    parent = shelf;
+    name = {.atlas};
+    title = "Atlas";
+    pages = 600;
+    description = "A heavy atlas.";
+}
+
+// ===== THE DESK =====
+
+object desk {
+    "desk";
+    parent = roomB;
+    name = {.desk};
+    string description = "The lending desk.";
+    attributes = {static, supporter};
+}
+
+// ===== THE CALENDAR =====
+
+object calendar {
+    "calendar";
+    parent = roomB;
+    name = {.calendar};
+    string description = "A calendar on the wall.";
+    attributes = {static};
+    void daemon() {
+        today++;
+        for (Book b in loans) {
+            if (b.dueOn + 1 == today) {
+                print($"^{b.title} is now late.^");
+            }
+        }
+        if (today >= 40 && saidShut == false) {
+            deskOpen = false;
+            saidShut = true;
+            print("^The desk shuts for the day.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomB;
+    waitList += { "Ann", "Bob" };
+    StartDaemon(calendar);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the loans) =====
+
+// how many loans are late
+int countLate() {
+    return loans.filter((Book b) => b.state() == BookState.overdue).count();
+}
+
+// finds a book on loan by its title, or null
+Book findLoan(string t) {
+    for (int i = 0; i < loans.length; i++) {
+        if (loans[i].title == t) {
+            return loans[i];
+        }
+    }
+    return null;
+}
+
+// ===== VERBS =====
+
+// LEND - lends a book from the shelf
+verb LendBook {
+    grammar = {.lend, NOUN};
+    void handler() {
+        if (!deskOpen) {
+            print("The desk is shut.^");
+            return;
+        }
+        if (!(noun.is(Book))) {
+            print("You can only lend books.^");
+            return;
+        }
+        Book b = (Book)noun;
+        if (!b.canLend()) {
+            print($"{b.title} is not for loan.^");
+            return;
+        }
+        if (loans.contains(b)) {
+            print($"{b.title} is already out.^");
+            return;
+        }
+        if (location != roomB || b.parent != player) {
+            print("Bring the book to the desk first.^");
+            return;
+        }
+        if (loans.length == MAX_LOANS) {
+            print("That is too many loans.^");
+            return;
+        }
+        loans.append(b);
+        b.dueOn = today + b.loanLength();
+        b.timesLent++;
+        totalLent++;
+        print($"You lend {b.title}. It is due on turn {b.dueOn}.^");
+    }
+}
+
+// GIVEBACK - brings a book back to the desk
+verb GiveBackBook {
+    grammar = {.giveback, NOUN};
+    void handler() {
+        if (location != roomB) {
+            print("Books go back at the desk.^");
+            return;
+        }
+        if (!(noun.is(Book))) {
+            print("That is not a book.^");
+            return;
+        }
+        Book b = (Book)noun;
+        if (!loans.contains(b)) {
+            print($"{b.title} was not lent.^");
+            return;
+        }
+        int late = b.turnsLate();
+        loans.removeValue(b);
+        b.dueOn = 0;
+        b.parent = shelf;
+        stringObj msg = "Back: ";
+        msg += b.title;
+        if (late > 0) {
+            int fine = late * FINE_PER_TURN;
+            finesPaid.append(fine);
+            lateCount++;
+            msg += $", {late} late, fine {fine}";
+        }
+        msg += ".";
+        print(msg);
+        print("^");
+        if (waitList.length > 0) {
+            print($"{waitList.peek()} is waiting for a book.^");
+        }
+    }
+}
+
+// LOANS - lists what is lent out
+verb ShowLoans {
+    grammar = {.loans};
+    void handler() {
+        if (loans.length == 0) {
+            print("Nothing is lent out.^");
+            return;
+        }
+        for (Book b in loans) {
+            b.sayState();
+        }
+        int late = countLate();
+        if (late > 0) {
+            print($"{late} {isAre(late)} late.^");
+        }
+        if (loans.all((Book b) => b.state() == BookState.lent)) {
+            print("All on time.^");
+        }
+    }
+}
+
+// LATE - which loans are late, and which are due soon
+verb ShowLate {
+    grammar = {.late};
+    void handler() {
+        if (!loans.any((Book b) => b.state() == BookState.overdue)) {
+            print("Nothing is late.^");
+        } else {
+            print("Late:");
+            for (Book b in loans) {
+                if (b.state() != BookState.overdue) {
+                    continue;
+                }
+                print($" {b.title}");
+            }
+            print(".^");
+        }
+        // due within this many turns
+        int soon = 1;
+        int dueSoon = loans.filter((Book b) => b.dueOn - today <= soon && b.dueOn >= today).count();
+        if (dueSoon > 0) {
+            print("Due soon: ");
+            printBooks(dueSoon);
+            print(".^");
+        }
+    }
+}
+
+// WAIT LIST - who is waiting
+verb ShowWaitList {
+    grammar = {.waitlist};
+    void handler() {
+        if (waitList.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        stringObj line = "Waiting: ";
+        for (int i in 1 to waitList.length) {
+            line += $"{i}. {waitList[i - 1]}";
+            if (i < waitList.length) {
+                line += ", ";
+            }
+        }
+        print(line);
+        print("^");
+    }
+}
+
+// RESERVE - someone joins the wait list for a book
+verb ReserveBook {
+    grammar = {.reserve, NOUN};
+    void handler() {
+        if (!(noun.is(Book))) {
+            print("You can only reserve books.^");
+            return;
+        }
+        Book b = (Book)noun;
+        string who;
+        switch (b.title) {
+            case "Red Book": who = "Cal";
+            case "Blue Book": who = "Dee";
+            default: who = "Eve";
+        }
+        if (waitList.length == waitList.size) {
+            print("The wait list is full.^");
+            return;
+        }
+        waitList.enqueue(who);
+        print($"{who} wants {b.title}.^");
+    }
+}
+
+// NEXT - serves the first person on the wait list
+verb ServeNext {
+    grammar = {.next};
+    void handler() {
+        if (waitList.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        string who = waitList.dequeue();
+        stringObj name = who;
+        print($"Serving {name.toUpper()}.^");
+        if (waitList.length > 0) {
+            print($"Next is {waitList.peek()}.^");
+        }
+    }
+}
+
+// FINES - the fines paid, biggest first
+verb ShowFines {
+    meta = true;
+    grammar = {.fines};
+    void handler() {
+        if (finesPaid.length == 0) {
+            print("No fines yet.^");
+            return;
+        }
+        array<int> sorted = finesPaid;
+        sorted.sort();
+        sorted.reverse();
+        print("Fines:");
+        for (int f in sorted) {
+            print($" {f}");
+        }
+        print($". Total {addUp(finesPaid)}.^");
+        array<int> small = finesPaid.orderBy().skip(1);
+        if (small.length > 0) {
+            print($"Smallest but one: {small.first()}.^");
+        }
+    }
+}
+
+// SHELF - what is on the shelf, with how thick each is
+verb ShowShelf {
+    grammar = {.onshelf};
+    void handler() {
+        int count = 0;
+        for (object o in shelf.children) {
+            if (!(o.is(Book))) {
+                continue;
+            }
+            Book b = (Book)o;
+            count++;
+            stringObj kind = thickness(b.pages);
+            stringObj pageText = $"{b.pages}";
+            print($"{b.title} ({kind.format("$0, $1 pages", pageText)})^");
+        }
+        print("On the shelf: ");
+        printBooks(count);
+        print(".^");
+    }
+}
+
+// TITLES - every title, in order, the long way
+verb ShowTitles {
+    grammar = {.titles};
+    void handler() {
+        array<string> names[8];
+        names += { redBook.title, blueBook.title, greenMag.title, atlas.title };
+        names.sort((string a, string b) => a.compareTo(b));
+        stringObj line = "";
+        int i = 0;
+        do {
+            line += names[i];
+            line += " / ";
+            i++;
+        } until (i == names.length);
+        line = line.replaceAll(" / ", "; ");
+        print(line.trim());
+        print("^");
+        // which ones say "Book"
+        int withBook = 0;
+        for (int j = 0; j < names.length; j++) {
+            if (names[j].contains("Book")) {
+                withBook++;
+            }
+            if (names[j].startsWith("Red")) {
+                break;
+            }
+        }
+        print($"Titles with Book, up to Red: {withBook}.^");
+    }
+}
+
+// STATS - how the library is doing
+verb ShowStats {
+    meta = true;
+    grammar = {.stats};
+    void handler() {
+        print($"Turn {today}. Lent: ");
+        printBooks(totalLent);
+        print(". Late: ");
+        printBooks(lateCount, false);
+        print(".^");
+        Book most = redBook;
+        for (Book b in {blueBook, greenMag, atlas}) {
+            if (b.timesLent > most.timesLent) {
+                most = b;
+            }
+        }
+        print($"Most lent: {most.title} ({most.timesLent}).^");
+        Book red = findLoan("Red Book");
+        if (red != null) {
+            print("The Red Book is out.^");
+        } else {
+            print("The Red Book is in.^");
+        }
+        stringObj state = deskOpen ? "open" : "shut";
+        print($"The desk is {state}.^");
+    }
+}

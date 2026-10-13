@@ -1,0 +1,469 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a shutter worked by
+// a lever, parcels that are weighed, stamped and sealed, a scale, and a chute that takes parcels that
+// pass a list of checks. A parcel class with an enum color, a bnum of marks combined with `|` and
+// tested with `&`, a class-wide static counter and a method returning a `stringObj` code padded with
+// char literals; a shutter door whose `door_to`/`door_dir` are routines and whose `before` refuses
+// Open/Close; a lever whose `before` on Pull/Push toggles the shutter; a scale (supporter) read into a
+// value class returned from a routine; an `array<func<bool, Parcel>>` of named check routines walked
+// beside an `array<string>` of their names; a chute whose `before` on `Receive` ships or rejects; a log
+// of readings kept with `append()`/`dequeue()` and summarised with <linq> (`filter`, `count`, `orderBy`,
+// `last`, `any`); shipped parcels sorted with a comparator lambda and listed into a `stringObj`; a
+// switch with a range case and a string switch; `#define` with a value and a flag tested by `#if`; hex
+// and binary literals, a raw string; mixed-case keywords, Allman and K&R braces, comments between tokens
+// and inside argument lists, a routine with no spaces and a declaration split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include   <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define LOG_MAX 4
+#define SHOW_TOTALS
+
+//~~ Constants and kinds ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+const int HEAVY_LIMIT = $08 ;          // eight and over can't ship
+CONST INT STAMP_MAX   = 999 ;
+const int SHIP_MAX    = $$100 ;        // four
+
+enum eHue
+{
+    red ,
+    blue ,
+    green ,     // 3
+    gray        // 4
+}
+
+bnum eMark { stamped , sealed , /* 4 */ fragile }
+
+//~~ Rooms ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class Room : object
+{
+    attributeList attributes = { light } ;
+    string description ;
+}
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A shutter is east. A lever is set in the floor." ;
+    object e_to = shutter ;
+}
+
+Room roomB { "Room B" ; description = "Room B. A chute is here. A shutter is west." ; object w_to = shutter ; }
+
+object shutter
+{
+    "shutter" ;
+    name       = { .shutter } ;
+    attributes = { door , openable , static } ;
+    rawArray<object> found_in = { roomA , roomB } ;
+    string description = "A metal shutter." ;
+
+    object door_to ()
+    {
+        if (location == roomA) return roomB ;
+        return roomA ;
+    }
+    property door_dir () {
+        if (location == roomA) return e_to ;
+        return w_to ;
+    }
+    bool before ()
+    {
+        switch (action)
+        {
+            CASE Open , Close :
+                rtrue("The shutter is worked by the lever.^") ;
+        }
+        rfalse ;
+    }
+}
+
+int pulls = 0 ;
+
+object lever
+{
+    "lever" ;
+    parent     = roomA ;
+    name       = { .lever } ;
+    attributes = { static } ;
+    string description = @"A lever marked UP/DOWN." ;
+
+    bool before ()
+    {
+        Switch (action) {
+            case Pull ,
+                 Push :
+                pulls++ ;
+                if (shutter.has(open))
+                {
+                    shutter.ungive(open) ;
+                    rtrue("The shutter drops.^") ;
+                }
+                shutter.give(open) ;
+                rtrue("The shutter rises.^") ;
+        }
+        rfalse ;
+    }
+}
+
+//~~ Parcels ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class Parcel : object
+{
+    int    weight = 1 ;
+    eHue color  = eHue.red ;
+    eMark  marks  = 0 ;
+    int    stampNo ;
+    static int stampedCount = 0 ;
+    string description = "A parcel." ;
+
+    string colorName ()
+    {
+        switch (color)
+        {
+            case eHue.red   : return "red" ;
+            case eHue.blue  : return "blue" ;
+            case eHue.green : return "green" ;
+            Default           : return "gray" ;
+        }
+    }
+
+    bool hasMark ( eMark m ) { return (marks & m) != 0 ; }
+
+    stringObj code ()
+    {
+        stringObj s = "P-" ;
+        if (stampNo < 100) s += '0' ;
+        if (stampNo < 10)  s += '0' ;
+        s += $"{stampNo}" ;
+        return s ;
+    }
+}
+
+Parcel redParcel
+{
+    "red parcel" ; parent = roomA ; name = { .red , .parcel } ;
+    weight = 4 ;
+}
+Parcel blueParcel { "blue parcel" ; parent = roomA ; name = { .blue , .parcel } ; weight = 3 ; color = eHue.blue ; }
+Parcel greenParcel
+{
+    "green parcel" ;
+    parent = roomA ;
+    name   = { .green , .parcel } ;
+    weight = $0B ;                     // eleven
+    color  = eHue.green ;
+    marks  = eMark.fragile ;
+}
+
+//~~ The scale ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+object scale
+{
+    "scale" ;
+    parent     = roomA ;
+    name       = { .scale } ;
+    attributes = { supporter , static } ;
+    string description = "A flat scale." ;
+}
+
+Parcel grayParcel
+{
+    "gray parcel" ;
+    parent = scale ;
+    name   = { .gray , .grey , .parcel } ;
+    weight = 2 ;
+    color  = eHue.gray ;
+}
+
+value class Reading
+{
+    int count ;
+    int total ;
+    int heaviest ;
+    Reading operator = ( Reading o ) { count = o.count ; total = o.total ; heaviest = o.heaviest ; return self ; }
+}
+
+Reading readScale ()
+{
+    Reading r ;
+    for (object o in scale.children)
+    {
+        if (!(o.is(Parcel))) continue ;
+        Parcel p = (Parcel) o ;
+        r.count++ ;
+        r.total += p.weight ;
+        if (p.weight > r.heaviest) r.heaviest = p.weight ;
+    }
+    return r ;
+}
+
+array<int> readings[LOG_MAX] ;
+
+void logReading ( int w )
+{
+    if (readings.length == LOG_MAX) readings.dequeue() ;
+    readings.append(w) ;
+}
+
+//~~ Checks ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+bool isStamped ( Parcel p ) { return p.hasMark(eMark.stamped) ; }
+bool isSealed ( Parcel p )  { return p.hasMark(eMark.sealed) ; }
+bool isLight(Parcel p){return p.weight<HEAVY_LIMIT;}
+
+array<func<bool, Parcel>> checks     = { isStamped , isSealed , isLight } ;
+array<string>             checkNames = { "stamped" , "sealed" , "light" } ;
+
+int
+failedChecks
+    ( Parcel p )
+{
+    int n = 0 ;
+    for (func<bool, Parcel> c in checks)
+        if (!c(p)) n++ ;
+    return n ;
+}
+
+//~~ The chute ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+array<Parcel> shipped[SHIP_MAX] ;
+
+object chute
+{
+    "chute" ;
+    parent     = roomB ;
+    name       = { .chute } ;
+    attributes = { container , open , static } ;
+    string description = "A wide chute." ;
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Receive :
+                if (!(noun.is(Parcel))) rtrue("The chute takes only parcels.^") ;
+                Parcel p = (Parcel) noun ;
+                int bad = failedChecks(p) ;
+                if (bad > 0)
+                    rtrue($"The chute rejects {the(p)} ({bad} check{bad == 1 ? "" : "s"} failed).^") ;
+                p.parent = null ;
+                shipped.append(p) ;
+                rtrue($"The chute takes {the(p)}.^") ;
+        }
+        rfalse ;
+    }
+}
+
+//~~ Initialise ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+//~~ Commands ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+verb Weigh
+{
+    grammar = {
+        { .weigh , NOUN } ,
+        { ( .weigh | .read ) , .scale } ,
+    } ;
+    void handler ()
+    {
+        if (location != roomA) { printLine("There is no scale here.") ; return ; }
+        if (noun == scale || noun == null)        // `read scale` matches no NOUN
+        {
+            Reading r = readScale() ;
+            if (r.count == 0) { printLine("The scale reads 0.") ; return ; }
+            logReading(r.total) ;
+            printLine($"The scale reads {r.total} ({r.count} item{r.count == 1 ? "" : "s"}, heaviest {r.heaviest}).") ;
+            return ;
+        }
+        if (!(noun.is(Parcel))) { printLine($"{cThe(noun)} won't go on the scale.") ; return ; }
+        Parcel p = (Parcel) noun ;
+        logReading(p.weight) ;
+        Print($"{cThe(p)} weighs {p.weight}") ;
+        IF (p.weight >= HEAVY_LIMIT) printLine(", too heavy to ship.") ;
+        else                         printLine(".") ;
+    }
+}
+
+verb Stamp
+{
+    grammar = {
+        { .stamp , NOUN , .with , NUMBER } ,
+        { .stamp , NOUN , NUMBER } ,
+    } ;
+    void handler ()
+    {
+        if (!(noun.is(Parcel))) { printLine("Only parcels take a stamp.") ; return ; }
+        Parcel p = (Parcel) noun ;
+        int n = (int) second ;
+        if (p.hasMark(eMark.stamped))
+        {
+            stringObj old = p.code() ;
+            print($"{cThe(p)} is already stamped ") ;
+            old.print() ;
+            printLine(".") ;
+            return ;
+        }
+        switch (n)
+        {
+            case 0 :
+                printLine("The stamp has no zero.") ;
+                return ;
+            case 1 to STAMP_MAX :
+                p.stampNo = n ;
+                p.marks   = p.marks | eMark.stamped ;
+                Parcel.stampedCount++ ;
+            default :
+                printLine($"The stamp only goes to {STAMP_MAX}.") ;
+                return ;
+        }
+        stringObj c = p.code() ;
+        print($"You stamp {the(p)} ") ;
+        c.print() ;
+        printLine(".") ;
+    }
+}
+
+verb Seal
+{
+    grammar = { .seal , NOUN } ;
+    void handler ()
+    {
+        if (!(noun.is(Parcel))) { printLine("Only parcels can be sealed.") ; return ; }
+        Parcel p = (Parcel)noun ;
+        if (p.hasMark(eMark.sealed)) { printLine($"{cThe(p)} is already sealed.") ; return ; }
+        p.marks = p.marks | eMark.sealed ;
+        printLine($"You seal {the(p)}.") ;
+    }
+}
+
+verb Inspect
+{
+    grammar = { { ( .inspect | .check ) , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Parcel))) { printLine("Only parcels can be inspected.") ; return ; }
+        Parcel p = (Parcel) noun ;
+        print($"{p.colorName()}, weight {p.weight}") ;
+        if (p.hasMark(eMark.fragile)) print(", fragile") ;
+        print(":") ;
+        for (int i = 0 ; i < checks.length ; i++)
+        {
+            func<bool, Parcel> c = checks[i] ;
+            print($" {checkNames[i]} {c(p) ? "yes" : "no"}") ;
+            if (i < checks.length - 1) print(",") ;
+        }
+        int bad = failedChecks( /* the parcel */ p ) ;
+        printLine(bad == 0 ? " - ready." : " - not ready.") ;
+    }
+}
+
+verb Ledger
+{
+    meta = true ;
+    grammar = { { .ledger } , { .readings } } ;
+    void handler ()
+    {
+        if (readings.length == 0) { printLine("No readings.") ; return ; }
+        stringObj line ;
+        for (int w in readings)
+        {
+            if (!line.isEmpty()) line += ", " ;
+            line += $"{w}" ;
+        }
+        print($"{readings.length} reading{readings.length == 1 ? "" : "s"} (") ;
+        line.print() ;
+        int heavy = readings.filter( ( int w ) => w >= HEAVY_LIMIT ).count() ;
+        int top   = readings.orderBy().last() ;
+        print($"), top {top}, {heavy} heavy") ;
+        if (readings.any((int w) => w == 0)) print(", one empty") ;
+        printLine(".") ;
+    }
+}
+
+verb Manifest
+{
+    meta = true ;
+    grammar = { .manifest } ;
+    void handler ()
+    {
+        if (shipped.length == 0) { printLine("Nothing shipped.") ; return ; }
+        shipped.sort( ( Parcel a , Parcel b ) => a.weight - b.weight ) ;
+        stringObj list ;
+        int sum = 0 ;
+        for (Parcel p in shipped)
+        {
+            if (sum > 0) list += "; " ;
+            list += $"{p.colorName()} " ;
+            list += p.code() ;
+            list += $" ({p.weight})" ;
+            sum += p.weight ;
+        }
+        print($"Shipped {shipped.length}: ") ;
+        list.print() ;
+        printLine($". Total {sum}.") ;
+    }
+}
+
+verb Grade
+{
+    grammar = { .grade , NOUN } ;
+    void handler ()
+    {
+        if (!(noun.is(Parcel))) { printLine("Only parcels are graded.") ; return ; }
+        Parcel p = (Parcel) noun ;
+        string band ;
+        switch (p.weight)
+        {
+            case 1 to 2 : band = "light" ;
+            case 3 , 4  : band = "medium" ;
+            default     : band = "heavy" ;
+        }
+        stringObj tag = band ;
+        switch (tag)
+        {
+            case "light"  : printLine($"{cThe(p)} goes in tray 1.") ;
+            case "medium" : printLine($"{cThe(p)} goes in tray 2.") ;
+            default       : printLine($"{cThe(p)} goes on the floor.") ;
+        }
+    }
+}
+
+#if SHOW_TOTALS
+verb Totals
+{
+    meta = true ;
+    grammar = { .totals } ;
+    void handler ()
+    {
+        int left = 0 ;
+        for (object o in roomA.children) if (o.is(Parcel)) left++ ;
+        for (object o in player.children) if (o.is(Parcel)) left++ ;
+        left += readScale().count ;
+        printLine($"Stamped {Parcel.stampedCount}, shipped {shipped.length}/{SHIP_MAX}, left {left}, lever pulled {pulls}.") ;
+    }
+}
+#endif

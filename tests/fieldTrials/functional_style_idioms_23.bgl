@@ -1,0 +1,496 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small stack machine written in a functional style on z5. Programs are a global
+// array<array<int>> of packed instruction codes (an enum opcode times 100 plus an argument), decoded
+// by pure helpers with enum/int casts; binary operators held in an array<func<int, int, int>> of named
+// functions and a lambda, chosen by a switch over the enum and called straight off the call; the stack
+// a global array<int> used as a deque (enqueue, popEnd, peekEnd); faults thrown as enum values cast to
+// int and caught by the runner; a value class outcome with a copy operator and a string member,
+// returned by value and filled through a `ref` parameter; a step callback func<void, int, int> given
+// lambdas that capture a local counter and a stringObj; a peephole constant folder returning a local
+// array captured into a typed local, applied repeatedly until a fixed point; <linq> chains (filter,
+// map, distinct, orderBy with a comparator, take, skip, any, all, first, last, count) over program
+// codes and program indices; hand-written fold and countIf over func<> parameters; named and
+// defaulted parameters; a `const int` bound; `?:` inside interpolations.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXDEPTH = 6;
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+//-- Instructions ---------------------------------------------------------------------------------
+
+enum eOp { push, add, sub, mul, div, max, dup, swap, drop, neg }
+enum eFault { underflow, overflow, divZero, badOp }
+
+// code = op * 100 + arg; push is 1, so "push 7" is 107; add is 200, sub 300, mul 400, div 500,
+// max 600, dup 700, swap 800, drop 900, neg 1000.
+array<array<int>> programs = {
+    {103, 104, 200, 105, 400},                // (3 + 4) * 5
+    {120, 106, 300, 102, 500},                // (20 - 6) / 2
+    {109, 700, 400, 108, 800, 300},           // 8 - 9 * 9
+    {101, 200},                               // underflow
+    {107, 100, 500},                          // divide by zero
+    {102, 103, 600, 107, 600, 1000},          // -(max(max(2, 3), 7))
+    {101, 102, 103, 104, 105, 106, 107},      // too deep
+    {110, 900, 111, 112, 300, 105, 200, 104}  // two values left
+};
+
+eOp opOf(int code) { return (eOp)(code / 100); }
+int argOf(int code) { return code % 100; }
+int encode(eOp op, int arg = 0) { return (int)op * 100 + arg; }
+
+bool isPush(int code) { return opOf(code) == eOp.push; }
+bool isBinary(int code) {
+    eOp op = opOf(code);
+    return op == eOp.add || op == eOp.sub || op == eOp.mul || op == eOp.div || op == eOp.max;
+}
+
+string opName(eOp op) {
+    switch (op) {
+        case eOp.push: return "push";
+        case eOp.add:  return "add";
+        case eOp.sub:  return "sub";
+        case eOp.mul:  return "mul";
+        case eOp.div:  return "div";
+        case eOp.max:  return "max";
+        case eOp.dup:  return "dup";
+        case eOp.swap: return "swap";
+        case eOp.drop: return "drop";
+        default:       return "neg";
+    }
+}
+
+string faultName(int f) {
+    switch ((eFault)f) {
+        case eFault.underflow: return "underflow";
+        case eFault.overflow:  return "overflow";
+        case eFault.divZero:   return "divide by zero";
+        default:               return "bad op";
+    }
+}
+
+void showCode(int code) {
+    if (isPush(code)) print(argOf(code));
+    else print(opName(opOf(code)));
+}
+
+void showProgram(array<int> prog) {
+    if (prog.length == 0) {
+        print("(empty)");
+        return;
+    }
+    for (int i = 0; i < prog.length; i++) {
+        if (i > 0) print(" ");
+        showCode(prog[i]);
+    }
+}
+
+void showInts(array<int> xs, string sep = " ") {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(sep);
+        print(xs[i]);
+    }
+}
+
+bool validProgram(int k) { return k >= 0 && k < programs.length; }
+
+//-- Operators ------------------------------------------------------------------------------------
+
+int addOp(int a, int b) { return a + b; }
+int subOp(int a, int b) { return a - b; }
+int mulOp(int a, int b) { return a * b; }
+int divOp(int a, int b) {
+    if (b == 0) throw (int)eFault.divZero;
+    return a / b;
+}
+
+array<func<int, int, int>> binOps = {addOp, subOp, mulOp, divOp, (int a, int b) => a > b ? a : b};
+
+func<int, int, int> binary(eOp op) {
+    switch (op) {
+        case eOp.add: return binOps[0];
+        case eOp.sub: return binOps[1];
+        case eOp.mul: return binOps[2];
+        case eOp.div: return binOps[3];
+        case eOp.max: return binOps[4];
+    }
+    throw (int)eFault.badOp;
+}
+
+int fold(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int countIf(array<int> xs, func<bool, int> p) {
+    int n = 0;
+    for (int x in xs) {
+        if (p(x)) n++;
+    }
+    return n;
+}
+
+//-- The machine ----------------------------------------------------------------------------------
+
+value class Outcome {
+    int value = 0;
+    int depth = 0;
+    int steps = 0;
+    bool ok = true;
+    string why = "";
+
+    Outcome operator = (Outcome o) {
+        value = o.value;
+        depth = o.depth;
+        steps = o.steps;
+        ok = o.ok;
+        why = o.why;
+        return self;
+    }
+}
+
+array<int> stack[8];
+int deepest = 0;
+
+void need(int n) {
+    if (stack.length < n) throw (int)eFault.underflow;
+}
+
+void pushValue(int v) {
+    if (stack.length >= MAXDEPTH) throw (int)eFault.overflow;
+    stack.enqueue(v);
+    if (stack.length > deepest) deepest = stack.length;
+}
+
+void step(int code) {
+    eOp op = opOf(code);
+    switch (op) {
+        case eOp.push: pushValue(argOf(code));
+        case eOp.dup: {
+            need(1);
+            pushValue(stack.peekEnd());
+        }
+        case eOp.swap: {
+            need(2);
+            int b = stack.popEnd();
+            int a = stack.popEnd();
+            stack.enqueue(b);
+            stack.enqueue(a);
+        }
+        case eOp.drop: {
+            need(1);
+            stack.popEnd();
+        }
+        case eOp.neg: {
+            need(1);
+            stack.enqueue(-stack.popEnd());
+        }
+        default: {
+            need(2);
+            int b = stack.popEnd();
+            int a = stack.popEnd();
+            stack.enqueue(binary(op)(a, b));
+        }
+    }
+}
+
+void noStep(int i, int top) { }
+
+void runInto(array<int> prog, ref Outcome r, func<void, int, int> onStep = noStep) {
+    stack.clear();
+    deepest = 0;
+    try {
+        for (int i = 0; i < prog.length; i++) {
+            step(prog[i]);
+            r.steps++;
+            onStep(i, stack.length > 0 ? stack.peekEnd() : 0);
+        }
+        if (stack.length == 0) throw (int)eFault.underflow;
+        r.value = stack.peekEnd();
+    } catch (int f) {
+        r.ok = false;
+        r.why = faultName(f);
+    }
+    r.depth = deepest;
+}
+
+Outcome run(array<int> prog) {
+    Outcome r;
+    runInto(prog, r);
+    return r;
+}
+
+void showOutcome(Outcome r) {
+    if (r.ok) print($"= {r.value} (steps {r.steps}, depth {r.depth}{stack.length > 1 ? ", extra left" : ""})");
+    else print($"fault: {r.why} after {r.steps} step{r.steps == 1 ? "" : "s"}");
+}
+
+//-- Constant folding -----------------------------------------------------------------------------
+
+// One pass: "push a, push b, op" becomes "push (a op b)" when the result is a small non-negative value.
+array<int> foldOnce(array<int> prog) {
+    array<int> out[16];
+    int i = 0;
+    while (i < prog.length) {
+        if (i + 2 < prog.length && isPush(prog[i]) && isPush(prog[i + 1]) && isBinary(prog[i + 2])
+                && opOf(prog[i + 2]) != eOp.div) {
+            int v = binary(opOf(prog[i + 2]))(argOf(prog[i]), argOf(prog[i + 1]));
+            if (v >= 0 && v < 100) {
+                out += encode(eOp.push, v);
+                i += 3;
+                continue;
+            }
+        }
+        out += prog[i];
+        i++;
+    }
+    return out;
+}
+
+int foldFully(array<int> prog, ref array<int> result) {
+    int passes = 0;
+    result = prog;
+    array<int> next = foldOnce(result);
+    while (next.length < result.length) {
+        passes++;
+        result = next;
+        next = foldOnce(result);
+    }
+    return passes;
+}
+
+//-- Queries --------------------------------------------------------------------------------------
+
+array<int> allIds() {
+    array<int> ids[16];
+    for (int i = 0; i < programs.length; i++) ids += i;
+    return ids;
+}
+
+bool succeeds(int k) { return run(programs[k]).ok; }
+int resultOf(int k) { return run(programs[k]).value; }
+
+void showIds(array<int> ids) {
+    if (ids.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < ids.length; i++) {
+        if (i > 0) print(" ");
+        print($"#{ids[i]}");
+    }
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb ListVerb {
+    grammar = {{.list}};
+    void handler() {
+        for (int k = 0; k < programs.length; k++) {
+            print($"#{k} ({programs[k].length}): ");
+            showProgram(programs[k]);
+            print("^");
+        }
+    }
+}
+
+verb RunVerb {
+    grammar = {{.run, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validProgram(k)) {
+            print("No such program.^");
+            return;
+        }
+        Outcome r = run(programs[k]);
+        print($"#{k} ");
+        showOutcome(r);
+        print("^");
+    }
+}
+
+verb TraceVerb {
+    grammar = {{.trace, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validProgram(k)) {
+            print("No such program.^");
+            return;
+        }
+        stringObj tops;
+        int count = 0;
+        Outcome r;
+        runInto(programs[k], r, (int i, int top) => {
+            if (count > 0) tops += ",";
+            tops += $"{top}";
+            count++;
+        });
+        print($"#{k} tops: ");
+        print(tops);
+        print($" ({count} shown)^");
+        showOutcome(r);
+        print("^");
+    }
+}
+
+verb StepsVerb {
+    grammar = {{.steps, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validProgram(k)) {
+            print("No such program.^");
+            return;
+        }
+        Outcome r;
+        runInto(prog: programs[k], r: r, onStep: (int i, int top) => {
+            print($"  {i}: ");
+            showCode(programs[k][i]);
+            print($" -> [{stack.length}] {top}^");
+        });
+        showOutcome(r);
+        print("^");
+    }
+}
+
+verb ShapeVerb {
+    grammar = {{.shape, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validProgram(k)) {
+            print("No such program.^");
+            return;
+        }
+        array<int> prog = programs[k];
+        array<int> pushes = prog.filter(isPush).map((var c) => argOf((int)c));
+        int binaries = countIf(prog, isBinary);
+        print($"#{k} pushes: ");
+        showInts(pushes, sep: ",");
+        print($"^sum {fold(pushes, 0, addOp)}, largest {pushes.orderBy().last()}, binary ops {binaries}^");
+        array<int> ops = prog.filter((int c) => !isPush(c)).map((var c) => (int)opOf((int)c)).distinct();
+        print("ops used: ");
+        for (int i = 0; i < ops.length; i++) {
+            if (i > 0) print(" ");
+            print(opName((eOp)ops[i]));
+        }
+        if (ops.length == 0) print("(none)");
+        int balance = fold(prog.map((var c) => isPush((int)c) ? 1 : (isBinary((int)c) ? -1 : 0)), 0, addOp);
+        print($"^net pushes {balance}^");
+    }
+}
+
+verb FoldVerb {
+    grammar = {{.fold, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (!validProgram(k)) {
+            print("No such program.^");
+            return;
+        }
+        array<int> folded[16];
+        int passes = foldFully(programs[k], folded);
+        print($"#{k} folded in {passes} pass{passes == 1 ? "" : "es"}: ");
+        showProgram(folded);
+        Outcome before = run(programs[k]);
+        Outcome after = run(folded);
+        print($"^before {before.ok ? "ok" : before.why}, after {after.ok ? "ok" : after.why}");
+        if (before.ok && after.ok) print($", same {before.value == after.value}");
+        print($", saved {programs[k].length - folded.length}^");
+    }
+}
+
+verb RankVerb {
+    grammar = {{.rank}};
+    void handler() {
+        array<int> ids = allIds();
+        array<int> good = ids.filter(succeeds);
+        array<int> bad = ids.filter((int k) => !succeeds(k));
+        array<int> ranked = good.orderBy((int a, int b) => {
+            int d = resultOf(b) - resultOf(a);
+            if (d != 0) return d;
+            return a - b;
+        });
+        print("ok: ");
+        showIds(good);
+        print("^faults: ");
+        showIds(bad);
+        print("^by result: ");
+        for (int i = 0; i < ranked.length; i++) {
+            if (i > 0) print(" ");
+            print($"#{ranked[i]}={resultOf(ranked[i])}");
+        }
+        print("^top two: ");
+        showIds(ranked.take(2));
+        print("^rest: ");
+        showIds(ranked.skip(2));
+        print($"^highest #{ranked.first()}, lowest #{ranked.last()}^");
+    }
+}
+
+verb CheckVerb {
+    grammar = {{.check}};
+    void handler() {
+        array<int> ids = allIds();
+        bool anyNegative = ids.any((int k) => succeeds(k) && resultOf(k) < 0);
+        bool allShort = ids.all((int k) => programs[k].length <= 8);
+        bool allPushFirst = ids.all((int k) => isPush(programs[k].first()));
+        int foldable = ids.filter((int k) => foldOnce(programs[k]).length < programs[k].length).count();
+        print($"any negative {anyNegative}, all short {allShort}, all start with a push {allPushFirst}^");
+        print($"foldable {foldable} of {ids.count()}^");
+        array<int> depths = ids.map((var k) => run(programs[(int)k]).depth);
+        print($"deepest stack {depths.orderBy().last()}, depths summed {fold(depths, 0, addOp)}^");
+    }
+}
+
+verb SetVerb {
+    grammar = {.set, NUMBER, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        int v = (int)second;
+        if (!validProgram(k) || v < 0 || v > 99) {
+            print("Cannot set that.^");
+            return;
+        }
+        int at = -1;
+        for (int i = 0; i < programs[k].length && at < 0; i++) {
+            if (isPush(programs[k][i])) at = i;
+        }
+        if (at < 0) {
+            print($"#{k} has no push.^");
+            return;
+        }
+        int old = argOf(programs[k][at]);
+        programs[k][at] = encode(eOp.push, v);
+        print($"#{k} first push {old} -> {v}: ");
+        showOutcome(run(programs[k]));
+        print("^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

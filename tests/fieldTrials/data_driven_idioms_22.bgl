@@ -1,0 +1,379 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a lending desk kept in tables. An enum of shelves indexing parallel string, loan-length
+// and fine-rate tables; a bnum of marks listed by bit position into a stringObj; a table of title
+// records as an array of a value class written as bare { … } (string, dictionary word, enum, bnum,
+// int); a member table of words, names and limits read by general parsing routines in a grammar line
+// with a literal word between them; loans as an array of a value class appended as Loan{ … },
+// searched by a loop, removed by position and copied into a local array sorted by a comparator
+// lambda; a fine computed by a switch with guards and ranges; a returns cart used as a queue
+// (enqueue/dequeue/peek); <linq> filter/count/any/all over the loans and titles with lambdas capturing
+// parameters and locals, a filter result walked by for-in; stringObj rows padded to columns and built
+// with interpolated +=; and for-in over arrays and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int TITLE_COUNT = 6;
+const int MEMBERS = 3;
+const int LOAN_MAX = 6;
+const int CART_MAX = 6;
+const int MARK_KINDS = 3;
+const int NONE = -1;
+#define FINE_CAP_DAYS 10
+
+enum eShelf { fiction = 0, history, science, maps }
+bnum eMark { reference, damaged, oversize }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> shelfNames = { "fiction", "history", "science", "maps" };
+array<dictionaryWord> shelfWords = { .fiction, .history, .science, .maps };
+array<int> loanDays = { 21, 14, 14, 7 };
+array<int> dailyFine = { 5, 10, 10, 20 };
+
+array<string> markNames = { "ref", "dmg", "big" };
+
+value class Title {
+    inline string label;
+    inline dictionaryWord word;
+    inline eShelf shelf;
+    inline eMark marks;
+    inline int copies;
+    Title operator = (Title o) {
+        label = o.label; word = o.word; shelf = o.shelf; marks = o.marks; copies = o.copies;
+        return self;
+    }
+}
+
+array<Title> titles = {
+    { "short novel",     .novel,   fiction, 0,                  2 },
+    { "town history",    .town,    history, reference,          1 },
+    { "old letters",     .letters, history, damaged,            1 },
+    { "field guide",     .guide,   science, 0,                  2 },
+    { "star chart",      .chart,   maps,    oversize,           1 },
+    { "atlas of rivers", .atlas,   maps,    oversize | damaged, 1 },
+};
+
+array<int> onLoan[TITLE_COUNT];
+
+array<string> memberNames = { "alpha", "beta", "gamma" };
+array<dictionaryWord> memberWords = { .alpha, .beta, .gamma };
+array<int> memberLimit = { 3, 2, 1 };
+array<int> owed[MEMBERS] = { 0, 0, 0 };
+
+value class Loan {
+    inline int title;
+    inline int member;
+    inline int due;
+    Loan operator = (Loan o) { title = o.title; member = o.member; due = o.due; return self; }
+}
+
+array<Loan> loans[LOAN_MAX];
+array<int> cart[CART_MAX];
+
+int today = 1;
+int collected = 0;
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object desk {
+    "desk";
+    name = {.desk};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Lookups -------------------------------------------------------------------
+
+int titleByWord(dictionaryWord w) {
+    for (int i in 0 to TITLE_COUNT - 1) {
+        if (titles[i].word == w) return i;
+    }
+    return NONE;
+}
+
+// Reads one title word; the title's index goes to parsed_number.
+int parseTitle() {
+    int at = titleByWord(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseMember() {
+    int at = memberWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseShelf() {
+    int at = shelfWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+void marksInto(ref stringObj s, eMark m) {
+    if (m == 0) { s += "-"; return; }
+    bool first = true;
+    for (int i in 0 to MARK_KINDS - 1) {
+        if ((m & (eMark)(1 << i)) == 0) continue;
+        if (!first) s += ",";
+        s += markNames[i];
+        first = false;
+    }
+}
+
+int available(int t) {
+    return titles[t].copies - onLoan[t];
+}
+
+int loansHeld(int m) {
+    return loans.filter((Loan l) => l.member == m).count();
+}
+
+// The position in loans of member m's loan of title t, or NONE.
+int findLoan(int t, int m) {
+    for (int i = 0; i < loans.length; i++) {
+        if (loans[i].title == t && loans[i].member == m) return i;
+    }
+    return NONE;
+}
+
+// The fine for title t returned late days late. Days past the cap are not charged.
+int fineFor(int t, int late) {
+    int rate = dailyFine[(int)titles[t].shelf];
+    int f = 0;
+    switch (late) {
+        case <= 0:       f = 0;
+        case 1 to 3:     f = late * rate;
+        case 4 to FINE_CAP_DAYS:
+                         f = 3 * rate + (late - 3) * rate * 2;
+        default:         f = 3 * rate + (FINE_CAP_DAYS - 3) * rate * 2;
+    }
+    return f;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb CatalogTest {
+    grammar = {.catalog};
+    void handler() {
+        int i = 0;
+        for (Title t in titles) {
+            stringObj row = t.label;
+            padTo(row, 17);
+            row += shelfNames[(int)t.shelf];
+            padTo(row, 26);
+            marksInto(row, t.marks);
+            padTo(row, 35);
+            row += $"{available(i)}/{t.copies}";
+            row.print();
+            print("^");
+            i++;
+        }
+    }
+}
+
+verb MembersTest {
+    grammar = {.members};
+    void handler() {
+        for (int m in 0 to MEMBERS - 1) {
+            stringObj row = memberNames[m];
+            padTo(row, 7);
+            row += $"{loansHeld(m)} of {memberLimit[m]}";
+            if (owed[m] > 0) row += $", owes {owed[m]}";
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb LendTest {
+    grammar = {.lend, parseTitle, .to, parseMember};
+    void handler() {
+        int t = (int)noun;
+        int m = (int)second;
+        string name = titles[t].label;
+        if ((titles[t].marks & reference) != 0) { print($"The {name} is for reference only.^"); return; }
+        if (available(t) == 0) { print($"No copy of the {name} is in.^"); return; }
+        if (owed[m] > 0) { print($"{memberNames[m]} owes {owed[m]}.^"); return; }
+        if (loansHeld(m) >= memberLimit[m]) {
+            print($"{memberNames[m]} is at the limit of {memberLimit[m]}.^");
+            return;
+        }
+        int due = today + loanDays[(int)titles[t].shelf];
+        if (!loans.append(Loan{ t, m, due })) { print("The loan book is full.^"); return; }
+        onLoan[t]++;
+        print($"Lent the {name} to {memberNames[m]}, due day {due}.^");
+    }
+}
+
+verb CheckinTest {
+    grammar = {.checkin, parseTitle, .from, parseMember};
+    void handler() {
+        int t = (int)noun;
+        int m = (int)second;
+        int k = findLoan(t, m);
+        if (k == NONE) { print($"{memberNames[m]} has no {titles[t].label}.^"); return; }
+        int late = today - loans[k].due;
+        int fine = fineFor(t, late);
+        loans.remove(k);
+        onLoan[t]--;
+        owed[m] += fine;
+        print($"The {titles[t].label} is back from {memberNames[m]}");
+        if (late > 0) print($", {late} days late, fine {fine}");
+        else print(", on time");
+        print(".^");
+        if (cart.length == CART_MAX) { print("The cart is full; shelved at once.^"); return; }
+        cart.enqueue(t);
+    }
+}
+
+verb AdvanceTest {
+    grammar = {.advance, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 1) { print("No time passes.^"); return; }
+        today += n;
+        int day = today;
+        int late = loans.filter((Loan l) => l.due < day).count();
+        print($"Day {today}. {late} overdue.^");
+    }
+}
+
+verb DueTest {
+    grammar = {.due};
+    void handler() {
+        if (loans.length == 0) { print("Nothing is out.^"); return; }
+        array<Loan> byDue[LOAN_MAX] = loans;
+        byDue.sort((Loan a, Loan b) => {
+            if (a.due != b.due) return a.due - b.due;
+            return a.title - b.title;
+        });
+        for (Loan l in byDue) {
+            stringObj row = $"day {l.due}";
+            padTo(row, 8);
+            row += titles[l.title].label;
+            padTo(row, 25);
+            row += memberNames[l.member];
+            if (l.due < today) {
+                padTo(row, 32);
+                row += $"{today - l.due} late";
+            }
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb FinesTest {
+    grammar = {.fines};
+    void handler() {
+        int total = 0;
+        for (int f in owed) total += f;
+        if (total == 0) { print("No fines owed.^"); return; }
+        for (int m in 0 to MEMBERS - 1) {
+            if (owed[m] == 0) continue;
+            print($"{memberNames[m]}: {owed[m]}^");
+        }
+        print($"Owed {total}; collected {collected}.^");
+    }
+}
+
+verb PayTest {
+    grammar = {.pay, parseMember, NUMBER};
+    void handler() {
+        int m = (int)noun;
+        int amount = (int)second;
+        if (owed[m] == 0) { print($"{memberNames[m]} owes nothing.^"); return; }
+        if (amount > owed[m]) amount = owed[m];
+        owed[m] -= amount;
+        collected += amount;
+        print($"{memberNames[m]} pays {amount}; {owed[m]} still owed.^");
+    }
+}
+
+verb ShelveTest {
+    grammar = {.shelve};
+    void handler() {
+        if (cart.length == 0) { print("The cart is empty.^"); return; }
+        print($"Next on the cart: the {titles[cart.peek()].label}.^");
+        int n = 0;
+        while (cart.length > 0) {
+            int t = cart.dequeue();
+            print($"The {titles[t].label} goes to {shelfNames[(int)titles[t].shelf]}.^");
+            n++;
+        }
+        print($"{n} shelved.^");
+    }
+}
+
+verb ShelfTest {
+    grammar = {.shelf, parseShelf};
+    void handler() {
+        eShelf s = (eShelf)(int)noun;
+        int n = 0;
+        for (Title t in titles.filter((Title x) => x.shelf == s)) {
+            print($"  {t.label}^");
+            n++;
+        }
+        int out = 0;
+        for (int i in 0 to TITLE_COUNT - 1) {
+            if (titles[i].shelf == s) out += onLoan[i];
+        }
+        print($"{n} titles on {shelfNames[(int)s]}, {out} out.^");
+    }
+}
+
+verb StatsTest {
+    grammar = {.stats};
+    void handler() {
+        int copies = 0;
+        int out = 0;
+        for (int i in 0 to TITLE_COUNT - 1) {
+            copies += titles[i].copies;
+            out += onLoan[i];
+        }
+        int fragile = titles.filter((Title x) => (x.marks & damaged) != 0).count();
+        bool anyLate = loans.any((Loan l) => l.due < today);
+        bool allMaps = loans.all((Loan l) => titles[l.title].shelf == maps);
+        print($"{TITLE_COUNT} titles, {copies} copies, {out} out, {fragile} damaged.^");
+        print($"Any late: {anyLate}. All maps: {allMaps}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

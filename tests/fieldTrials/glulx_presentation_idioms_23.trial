@@ -1,0 +1,333 @@
+#grids
+Room A
+Room A. A panel of four dials is set into the wall.
+[win 1] Log
+[grid 1]
+|R [|--+------]          |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent none             |
+[grid 2]
+|Room A | marks 0/4 | moves 0 | bars               |
+> look
+Room A
+Room A. A panel of four dials is set into the wall.
+[grid 1]
+|R [|--+------]          |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent none             |
+[grid 2]
+|Room A | marks 0/4 | moves 0 | bars               |
+> examine red dial
+The red dial is set to 0. Its mark is at 3.
+[grid 1]
+|R [|--+------]          |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent none             |
+[grid 2]
+|Room A | marks 0/4 | moves 0 | bars               |
+> tune red dial to 3
+You turn the red dial to 3.
+[win 1] 1. R 0 to 3 (mark)
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent R                |
+[grid 2]
+|Room A | marks 1/4 | moves 1 | bars               |
+> tune red dial to 3
+The red dial is already at 3.
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent R                |
+[grid 2]
+|Room A | marks 1/4 | moves 1 | bars               |
+> tune green dial to 12
+Dials run from 0 to 9.
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent R                |
+[grid 2]
+|Room A | marks 1/4 | moves 1 | bars               |
+> tune panel to 2
+That has no setting.
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [|----+----]          |
+|W [|+--------]          |
+|recent R                |
+[grid 2]
+|Room A | marks 1/4 | moves 1 | bars               |
+> turn blue dial
+The blue dial clicks to 1.
+[win 1] 2. B 0 to 1
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [-|---+----]          |
+|W [|+--------]          |
+|recent RB               |
+[grid 2]
+|Room A | marks 1/4 | moves 2 | bars               |
+> push white dial
+The white dial will not turn further.
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [-|---+----]          |
+|W [|+--------]          |
+|recent RB               |
+[grid 2]
+|Room A | marks 1/4 | moves 2 | bars               |
+> push white dial
+The white dial will not turn further.
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [-|---+----]          |
+|W [|+--------]          |
+|recent RB               |
+[grid 2]
+|Room A | marks 1/4 | moves 2 | bars               |
+> readout
+Dial        set mark gap  turns
+red dial      3    3   0  1
+white dial    0    1   1  0
+blue dial     1    5   4  1
+green dial    0    7   7  0
+Settings: low 0, high 3, mean 1.0.
+Before: low 0, high 0, mean 0.0.
+Closest: the red dial. Recent: RB.
+[grid 1]
+|R [---#------] *        |
+|G [|------+--]          |
+|B [-|---+----]          |
+|W [|+--------]          |
+|recent RB               |
+[grid 2]
+|Room A | marks 1/4 | moves 2 | bars               |
+> display
+The board shows digits.
+[grid 1]
+|R 3 / 3 *               |
+|G 0 / 7                 |
+|B 1 / 5                 |
+|W 0 / 1                 |
+|recent RB               |
+[grid 2]
+|Room A | marks 1/4 | moves 2 | digits             |
+> knobs
+Red + -, green + -.
+Blue + -, white + -.
+[grid 1]
+|R 3 / 3 *               |
+|G 0 / 7                 |
+|B 1 / 5                 |
+|W 0 / 1                 |
+|recent RB               |
+[grid 2]
+|Room A | marks 1/4 | moves 2 | digits             |
+> @link 3
+The green dial clicks to 1.
+[win 1] 3. G 0 to 1
+[grid 1]
+|R 3 / 3 *               |
+|G 1 / 7                 |
+|B 1 / 5                 |
+|W 0 / 1                 |
+|recent RBG              |
+[grid 2]
+|Room A | marks 1/4 | moves 3 | digits             |
+> @link 3
+The green dial clicks to 2.
+[win 1] 4. G 1 to 2
+[grid 1]
+|R 3 / 3 *               |
+|G 2 / 7                 |
+|B 1 / 5                 |
+|W 0 / 1                 |
+|recent RBGG             |
+[grid 2]
+|Room A | marks 1/4 | moves 4 | digits             |
+> check
+All on mark: no; far off: 2; red recent: yes.
+Total gap: 10.
+Last touched: the green dial.
+Board 24 x 5.
+Log open: yes.
+[grid 1]
+|R 3 / 3 *               |
+|G 2 / 7                 |
+|B 1 / 5                 |
+|W 0 / 1                 |
+|recent RBGG             |
+[grid 2]
+|Room A | marks 1/4 | moves 4 | digits             |
+> display
+The board shows gaps.
+[grid 1]
+|R off by 0 *            |
+|G off by 5              |
+|B off by 4              |
+|W off by 1              |
+|recent RBGG             |
+[grid 2]
+|Room A | marks 1/4 | moves 4 | gaps               |
+> tune blue dial to 5
+You turn the blue dial to 5.
+[win 1] 5. B 1 to 5 (mark)
+[grid 1]
+|R off by 0 *            |
+|G off by 5              |
+|B off by 0 *            |
+|W off by 1              |
+|recent RBGGB            |
+[grid 2]
+|Room A | marks 2/4 | moves 5 | gaps               |
+> tune white dial to 1
+You turn the white dial to 1.
+[win 1] 6. W 0 to 1 (mark)
+[grid 1]
+|R off by 0 *            |
+|G off by 5              |
+|B off by 0 *            |
+|W off by 0 *            |
+|recent BGGBW            |
+[grid 2]
+|Room A | marks 3/4 | moves 6 | gaps               |
+> tune green dial to 7
+Every dial is on its mark.
+You turn the green dial to 7.
+[win 1] 7. G 2 to 7 (mark)
+[win 1] 8. solved in 7
+[grid 1]
+|R off by 0 *            |
+|G off by 0 *            |
+|B off by 0 *            |
+|W off by 0 *            |
+|recent GGBWG            |
+[grid 2]
+|Room A | marks 4/4 | moves 7 | gaps               |
+> readout
+Dial        set mark gap  turns
+blue dial     5    5   0  2
+green dial    7    7   0  3
+red dial      3    3   0  1
+white dial    1    1   0  1
+Settings: low 1, high 7, mean 4.0.
+Before: low 0, high 3, mean 1.0.
+Closest: the blue dial. Recent: GGBWG.
+[grid 1]
+|R off by 0 *            |
+|G off by 0 *            |
+|B off by 0 *            |
+|W off by 0 *            |
+|recent GGBWG            |
+[grid 2]
+|Room A | marks 4/4 | moves 7 | gaps               |
+> log
+Log closed.
+[grid 1]
+|R off by 0 *                                      |
+|G off by 0 *                                      |
+|B off by 0 *                                      |
+|W off by 0 *                                      |
+|recent GGBWG                                      |
+[grid 2]
+|Room A | marks 4/4 | moves 7 | gaps               |
+> zero
+4 dials set back to 0.
+[grid 1]
+|R off by 3                                        |
+|G off by 7                                        |
+|B off by 5                                        |
+|W off by 1                                        |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | gaps               |
+> log
+Log open (9 lines so far).
+[win 2] Log
+[grid 1]
+|R off by 3                                        |
+|G off by 7                                        |
+|B off by 5                                        |
+|W off by 1                                        |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | gaps               |
+> display
+The board shows bars.
+[grid 1]
+|R [|--+------]                                    |
+|G [|------+--]                                    |
+|B [|----+----]                                    |
+|W [|+--------]                                    |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | bars               |
+> check
+All on mark: no; far off: 3; red recent: no.
+Total gap: 16.
+Board 50 x 5.
+Log open: yes.
+[grid 1]
+|R [|--+------]                                    |
+|G [|------+--]                                    |
+|B [|----+----]                                    |
+|W [|+--------]                                    |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | bars               |
+> knobs
+Red + -, green + -.
+Blue + -, white + -.
+[grid 1]
+|R [|--+------]                                    |
+|G [|------+--]                                    |
+|B [|----+----]                                    |
+|W [|+--------]                                    |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | bars               |
+> @link 2
+The red dial will not turn further.
+[grid 1]
+|R [|--+------]                                    |
+|G [|------+--]                                    |
+|B [|----+----]                                    |
+|W [|+--------]                                    |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | bars               |
+> readout
+Dial        set mark gap  turns
+white dial    0    1   1  1
+red dial      0    3   3  1
+blue dial     0    5   5  2
+green dial    0    7   7  3
+Settings: low 0, high 0, mean 0.0.
+Before: low 1, high 7, mean 4.0.
+Closest: the white dial. Recent: none.
+[grid 1]
+|R [|--+------]                                    |
+|G [|------+--]                                    |
+|B [|----+----]                                    |
+|W [|+--------]                                    |
+|recent none                                       |
+[grid 2]
+|Room A | marks 0/4 | moves 7 | bars               |

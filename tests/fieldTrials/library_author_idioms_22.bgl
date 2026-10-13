@@ -1,0 +1,510 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a lock-and-key kit and its consumer. The kit declares an enum of grades; a value class
+// of key cuts with two copy operators, == and !=, + that files in a notch with <<, a counting method
+// and a show method; a keyed base class with an owned cut, a grade, a turn count and a default
+// metal(); a pooled blank class over it with name words in the class body, a short_name set in
+// create(), destroy() taking it out of the tree, static counters and an overridden metal(); a lock
+// class with an owned cut it needs, a grade, a required spot() routine, a default sound(), a static
+// count, a method comparing cast enums and masking bits, a before() that vets the key for the
+// library's Lock/Unlock and hands it over through with_key, and an after() that reports and logs.
+// The locksmith object is a namespace (alias … for the enum and the cut) holding an array of locks,
+// an array of blanks swept with remove/delete in a while loop, a stringObj log, an owned master cut
+// built with operator = (int), an inline accessor that clamps file wear and counts changes through
+// outer., new returning null when the pool is empty or the file is worn, a switch on aliased values
+// and a func<> walk. The consumer has two rooms joined by a lockable door (found_in, door_to and
+// door_dir routines), a lockable chest and box, keys of three grades; binds an I6 routine with
+// extern, extends the lock class with tests and the locksmith with a capturing <linq> count and a
+// ternary; overrides the library's LookRoutine entry point; and its verbs cut, harden and scrap keys,
+// hone the file, list carried keys through bgl.world.instances with a predicate, and report with
+// is(), casts, <linq> filter/any/first, ??, a copied and lambda-sorted local array, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA22_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// ==== The kit: locks that read the cut of a key. ====
+
+/// How hard a lock is; a key of a lower grade will not turn it.
+enum eLa22Grade { tin, brass, iron }
+
+/// The notches on a key, or the ones a lock needs: one bit each, copied on assignment.
+value class La22Cut {
+    int bits;
+    La22Cut operator = (La22Cut o) { bits = o.bits; return self; }
+    La22Cut operator = (int v) { bits = v; return self; }
+    /// True when both cuts have the same notches.
+    bool operator == (La22Cut o) { return bits == o.bits; }
+    /// True when the cuts differ.
+    bool operator != (La22Cut o) { return bits != o.bits; }
+    /// The cut with one more notch filed in.
+    La22Cut operator + (int notch) {
+        La22Cut r;
+        r.bits = bits | (1 << notch);
+        return r;
+    }
+    /// How many notches the cut has.
+    int count() {
+        int n = 0;
+        for (int i in 0 to 5) {
+            if ((bits & (1 << i)) != 0) n++;
+        }
+        return n;
+    }
+    /// Prints the cut as six marks, notch 0 first.
+    void show() {
+        for (int i in 0 to 5) {
+            if ((bits & (1 << i)) != 0) print("|");
+            else print(".");
+        }
+    }
+}
+
+/// Anything that can be put in a lock.
+class La22Keyed : object {
+    La22Cut cut;
+    eLa22Grade grade = eLa22Grade.tin;
+    /// Times this key has turned a lock.
+    int turned = 0;
+    /// What the key is made of.
+    default string metal() { return "tin"; }
+}
+
+/// A blank cut to order; made with new and handed back with delete.
+class La22Blank[3] : La22Keyed {
+    name = {.blank, .key};
+    string short_name;
+    string label;
+    /// Blanks cut so far.
+    static int made = 0;
+    /// Blanks handed back so far.
+    static int scrapped = 0;
+
+    void create(string l, int bits) {
+        label = l;
+        short_name = l;
+        cut = bits;
+        made++;
+    }
+
+    void destroy() {
+        parent = null;
+        scrapped++;
+    }
+
+    string metal() { return "steel"; }
+}
+
+/// A lock: it turns for a key of its grade or better whose cut has every notch it needs.
+class La22Lock : object {
+    La22Cut need;
+    object with_key;
+    eLa22Grade grade = eLa22Grade.tin;
+    int tries = 0;
+    /// Locks turned so far, either way.
+    static int turns = 0;
+
+    /// A short word for where the lock is.
+    required string spot();
+
+    /// The sound the lock makes turning.
+    default string sound() { return "click"; }
+
+    /// True when the key will turn this lock.
+    bool takes(La22Keyed k) {
+        if ((int)k.grade < (int)grade) return false;
+        return (k.cut.bits & need.bits) == need.bits;
+    }
+
+    bool before() {
+        if (action != Unlock && action != Lock) return false;
+        if (second == null || !second.is(La22Keyed)) {
+            print("That is not a key.^");
+            return true;
+        }
+        La22Keyed k = (La22Keyed)second;
+        tries++;
+        if (!takes(k)) {
+            print($"The {k} will not turn in the {self}.^");
+            return true;
+        }
+        with_key = k;
+        return false;
+    }
+
+    bool after() {
+        if (action != Unlock && action != Lock) return false;
+        La22Keyed k = (La22Keyed)second;
+        k.turned++;
+        La22Lock.turns++;
+        bool opening = action == Unlock;
+        la22Smith.note(self, opening);
+        string way = "locked";
+        if (opening) way = "unlocked";
+        print($"{sound()}: the {self} is {way} with the {k.metal()} key.^");
+        return true;
+    }
+}
+
+/// Report verbs: they take no time.
+class La22Info : verb {
+    meta = true;
+}
+
+// ==== The locksmith. ====
+
+/// The locksmith: knows the locks, cuts blanks on a file that wears, and keeps a log.
+object la22Smith {
+    "locksmith";
+    alias grade for eLa22Grade;
+    alias cut for La22Cut;
+    array<La22Lock> locks[4];
+    array<La22Blank> blanks[3];
+    stringObj log;
+    cut master;
+    int changes = 0;
+
+    /// How worn the file is, kept from 0 to 3; each change is counted.
+    auto wear = {
+        int _w = 0;
+        int operator () { return _w; }
+        void operator = (int v) {
+            int c = v;
+            if (c < 0) c = 0;
+            if (c > 3) c = 3;
+            if (c != _w) outer.changes++;
+            _w = c;
+        }
+    }
+
+    /// Adds a lock; false when it is there already or there is no room. The master cut gains its notches.
+    bool register(La22Lock l) {
+        if (locks.contains(l)) return false;
+        if (!locks.append(l)) return false;
+        master = master.bits | l.need.bits;
+        return true;
+    }
+
+    /// Cuts a blank; null when no blank is free or the file is worn out.
+    La22Blank cutKey(string label, int bits) {
+        if (wear >= 3) return null;
+        La22Blank b = new La22Blank(label, bits);
+        if (!(b?)) return null;
+        blanks.append(b);
+        wear = wear + 1;
+        log += $"+{label} ";
+        return b;
+    }
+
+    /// Hands back the blanks the player is not carrying. Returns how many went.
+    int scrap() {
+        int gone = 0;
+        int i = 0;
+        while (i < blanks.length) {
+            La22Blank b = blanks[i];
+            if (b.parent != player) {
+                log += $"-{b.label} ";
+                blanks.remove(i);
+                delete b;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        return gone;
+    }
+
+    /// Logs a lock turning.
+    void note(La22Lock l, bool opened) {
+        if (opened) log += $"u:{l.spot()} ";
+        else log += $"l:{l.spot()} ";
+    }
+
+    /// A word for a grade.
+    string word(grade g) {
+        switch (g) {
+            case grade.tin:   return "tin";
+            case grade.brass: return "brass";
+            default:          return "iron";
+        }
+    }
+
+    /// Raises a key one grade; false when it is iron already.
+    bool harden(La22Keyed k) {
+        if (k.grade == grade.iron) return false;
+        k.grade = (grade)((int)k.grade + 1);
+        return true;
+    }
+
+    /// Runs a step on each lock, in the order they were registered.
+    void each(func<void, La22Lock> step) {
+        for (La22Lock l in locks) step(l);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    e_to = oakDoor;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B.";
+    w_to = oakDoor;
+    attributes = {light};
+}
+
+La22Lock oakDoor {
+    "oak door";
+    name = {.oak, .door};
+    rawArray<object> found_in = {roomA, roomB};
+    need = La22Cut{ bits = 5; };
+    grade = eLa22Grade.brass;
+    attributes = {door, static, openable, lockable, locked};
+    string spot() { return "door"; }
+    object door_to() {
+        if (location == roomA) return roomB;
+        return roomA;
+    }
+    property door_dir() {
+        if (location == roomA) return (property)e_to;
+        return (property)w_to;
+    }
+}
+
+La22Lock ironChest {
+    "iron chest";
+    parent = roomB;
+    name = {.iron, .chest};
+    need = La22Cut{ bits = 12; };
+    grade = eLa22Grade.iron;
+    attributes = {container, static, openable, lockable, locked};
+    string spot() { return "chest"; }
+    string sound() { return "clank"; }
+}
+
+La22Lock tinBox {
+    "tin box";
+    parent = roomA;
+    name = {.tin, .box};
+    need = La22Cut{ bits = 2; };
+    attributes = {container, openable, lockable, locked};
+    string spot() { return "box"; }
+}
+
+La22Keyed brassKey {
+    "brass key";
+    parent = selfobj;
+    name = {.brass, .key};
+    cut = La22Cut{ bits = 7; };
+    grade = eLa22Grade.brass;
+    string metal() { return "brass"; }
+}
+
+La22Keyed bentKey {
+    "bent key";
+    parent = roomA;
+    name = {.bent, .key};
+    cut = La22Cut{ bits = 1; };
+}
+
+object ironCoin {
+    "iron coin";
+    parent = ironChest;
+    name = {.iron, .coin};
+}
+
+/// The labels the blanks are given, in the order they are cut.
+array<string> la22Labels = {"k1", "k2", "k3", "k4"};
+int la22Cuts = 0;
+
+#i6 {
+[ La22Code b g; return b * 10 + g; ];
+}
+
+/// Folds a cut and a grade into one figure; the consumer wrote it in I6.
+extern int La22Code(int b, int g);
+
+/// Every lock can be asked whether it is shut, and coded.
+extend class La22Lock {
+    /// True while the lock is locked.
+    bool shut() { return has(locked); }
+    /// The needed cut and the grade folded into one figure.
+    int code() { return La22Code(need.bits, (int)grade); }
+}
+
+/// The locksmith can count the locked locks in a place and sum up its state in a word.
+extend la22Smith {
+    /// How many registered locks in the place are locked.
+    int shutIn(object place) {
+        return locks.filter((La22Lock l) => l.parent == place && l.shut()).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return wear >= 3 ? "blunt" : "sharp";
+    }
+}
+
+/// After each room description: how many locks here are shut.
+void LookRoutine() {
+    int n = la22Smith.shutIn(location);
+    if (n > 0) print($"[shut here: {n}]^");
+}
+
+/// Prints a lock's line.
+void la22ShowLock(La22Lock l) {
+    print($"{l} {la22Smith.word(l.grade)} ");
+    l.need.show();
+    string state = "open";
+    if (l.shut()) state = "shut";
+    print($" {state} tries {l.tries} code {l.code()}^");
+}
+
+// ==== Verbs. ====
+
+verb La22CutKey {
+    grammar = {.cut, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        string label = la22Labels[la22Cuts % la22Labels.length];
+        La22Blank b = la22Smith.cutKey(label, n);
+        if (b == null) {
+            print($"No blank can be cut (wear {la22Smith.wear}, blanks {la22Smith.blanks.length}).^");
+            return;
+        }
+        la22Cuts++;
+        b.parent = player;
+        print($"{b} cut ");
+        b.cut.show();
+        print($"; wear {la22Smith.wear}, {la22Smith.mood()}.^");
+    }
+}
+
+verb La22Harden {
+    grammar = {.harden, HELD};
+    void handler() {
+        if (!noun.is(La22Keyed)) {
+            print("That is not a key.^");
+            return;
+        }
+        La22Keyed k = (La22Keyed)noun;
+        if (la22Smith.harden(k)) print($"The {k} is {la22Smith.word(k.grade)} now.^");
+        else print($"The {k} is as hard as it gets.^");
+    }
+}
+
+verb La22File {
+    grammar = {.file, HELD, NUMBER};
+    void handler() {
+        if (!noun.is(La22Blank)) {
+            print("Only a blank can be filed.^");
+            return;
+        }
+        La22Blank b = (La22Blank)noun;
+        La22Cut before = b.cut;
+        b.cut = b.cut + (int)second;
+        print($"{b}: {before.count()} to {b.cut.count()} notches");
+        if (b.cut == before) print(", no change");
+        if (b.cut != la22Smith.master) print(", not master");
+        print(".^");
+    }
+}
+
+verb La22Scrap {
+    grammar = {.scrap};
+    void handler() {
+        int gone = la22Smith.scrap();
+        print($"scrapped {gone}; blanks {la22Smith.blanks.length}.^");
+    }
+}
+
+verb La22Hone {
+    grammar = {.hone};
+    void handler() {
+        la22Smith.wear = -2;
+        print($"wear {la22Smith.wear}, changes {la22Smith.changes}.^");
+    }
+}
+
+La22Info La22Keys {
+    grammar = {.keys};
+    void handler() {
+        int n = 0;
+        for (object o in bgl.world.instances(La22Keyed, (object v) => v.parent == player)) {
+            La22Keyed k = (La22Keyed)o;
+            print($"{k} {k.metal()}/{la22Smith.word(k.grade)} ");
+            k.cut.show();
+            print($" t{k.turned}^");
+            n++;
+        }
+        print($"{n} keys.^");
+    }
+}
+
+La22Info La22Locks {
+    grammar = {.locks};
+    void handler() {
+        la22Smith.each((La22Lock l) => la22ShowLock(l));
+        print("master ");
+        la22Smith.master.show();
+        int shut = la22Smith.locks.filter((La22Lock l) => l.shut()).count();
+        print($"; shut {shut}");
+        bool anyOpen = la22Smith.locks.any((La22Lock l) => !l.shut());
+        if (anyOpen) print(", one open");
+        La22Lock firstOpen = la22Smith.locks.filter((La22Lock l) => !l.shut()).first();
+        object which = firstOpen ?? roomA;
+        print($"; first open {which}^");
+        print($"blanks {la22Smith.blanks.length} (made {La22Blank.made}, scrapped {La22Blank.scrapped}); log {la22Smith.log}^");
+#if LA22_TRACE
+        print($"turns {La22Lock.turns}^");
+#endif
+    }
+}
+
+La22Info La22Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La22Lock> order[4];
+        order = la22Smith.locks;
+        order.sort((La22Lock a, La22Lock b) => b.tries - a.tries);
+        for (La22Lock l in order) print($"{l}={l.tries} ");
+        La22Lock top = order.first();
+        if (top.tries == 0) print("none tried");
+        else if (top.tries != order[1].tries) print($"top {top}");
+        else print("tie");
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la22Smith.register(oakDoor);
+    la22Smith.register(ironChest);
+    la22Smith.register(tinBox);
+    la22Smith.register(oakDoor);
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,439 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a board of four dials shown in a text grid. A class Dial : object with a setting, a
+// target, a letter char and a change count, methods returning bool, int and stringObj, a describe
+// routine for EXAMINE and a before() that answers Turn and Push; a value class Stats (low, high, sum
+// and count, copy operator, += of an int, a float mean and a stringObj summary) built over the dials
+// and copied to keep the previous reading; an enum eView switched on to draw the board three ways and
+// cycled by a verb through a cast from int; a text grid split above the main window with a border
+// and a styleSheet, redrawn from a replaced DrawStatusLine; a text-buffer log split to the right,
+// closed and reopened, written through ?.; a ring of recent dials in an <array> (enqueue, dequeue,
+// peekEnd, contains, clear); <linq> filter, count, all, orderBy with a block-bodied comparator lambda,
+// first and map over an array<Dial>; a verb taking NOUN and NUMBER; hyperlinks whose block-bodied
+// lambda targets nudge each dial; a fixed-pitch table with padded columns and a float to one decimal.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define RECENT_SIZE 5
+#define BOARD_LINES 5
+#define LOG_WIDTH 28
+#define TOP 9
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eView { bars, digits, gaps }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet boardLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ reverse = true; };
+};
+styleSheet logLook = styleSheet{
+    normal = style{ italics = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz board = null;
+textBufferWindowVert logPanel = null;
+eView view = eView.bars;
+array<Dial> recent[RECENT_SIZE];
+int moves = 0;
+int logLines = 0;
+bool solvedOnce = false;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+stringObj oneDecimal(float f) {
+    bool negative = f < 0.0;
+    if (negative) f = -f;
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{negative ? "-" : ""}{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+string viewName(eView v) {
+    switch (v) {
+        case eView.bars:   return "bars";
+        case eView.digits: return "digits";
+        case eView.gaps:   return "gaps";
+    }
+    return "?";
+}
+
+void logEvent(stringObj text) {
+    logLines++;
+    logPanel?.printLine($"{logLines}. {text}");
+}
+
+// ---- stats ---------------------------------------------------------------------------------------
+
+value class Stats {
+    int lo = 0;
+    int hi = 0;
+    int sum = 0;
+    int n = 0;
+
+    Stats operator = (Stats o) {
+        lo = o.lo;
+        hi = o.hi;
+        sum = o.sum;
+        n = o.n;
+        return self;
+    }
+
+    Stats operator += (int v) {
+        if (n == 0 || v < lo) lo = v;
+        if (n == 0 || v > hi) hi = v;
+        sum += v;
+        n++;
+        return self;
+    }
+
+    float mean() {
+        if (n == 0) return 0.0;
+        return (float)sum / n;
+    }
+
+    stringObj summary() {
+        stringObj s = $"low {lo}, high {hi}, mean {oneDecimal(mean())}";
+        return s;
+    }
+}
+
+Stats lastStats;
+
+// ---- dials ---------------------------------------------------------------------------------------
+
+class Dial : object {
+    attributeList attributes = {scenery};
+    int setting = 0;
+    int target = 0;
+    char letter = '?';
+    int changes = 0;
+
+    bool onTarget() { return setting == target; }
+
+    int gap() {
+        int d = setting - target;
+        return d < 0 ? -d : d;
+    }
+
+    stringObj bar() {
+        stringObj s = "";
+        for (int i = 0; i <= TOP; i++) {
+            if (i == target && i == setting) s += '#';
+            else if (i == setting) s += '|';
+            else if (i == target) s += '+';
+            else s += '-';
+        }
+        return s;
+    }
+
+    void describe() {
+        printLine($"{cThe(self)} is set to {setting}. Its mark is at {target}.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                describe();
+                rtrue;
+            case Turn:
+                nudge(self, 1);
+                rtrue;
+            case Push:
+                nudge(self, -1);
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ---- the world -----------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. A panel of four dials is set into the wall.";
+    attributes = {light};
+}
+
+object panel {
+    "panel";
+    parent = roomA;
+    name = {.panel, .wall};
+    description = "A panel with a red, a green, a blue and a white dial.";
+    attributes = {scenery};
+}
+
+Dial redDial {
+    "red dial";
+    parent = roomA;
+    name = {.red, .dial};
+    target = 3;
+    letter = 'R';
+}
+
+Dial greenDial {
+    "green dial";
+    parent = roomA;
+    name = {.green, .dial};
+    target = 7;
+    letter = 'G';
+}
+
+Dial blueDial {
+    "blue dial";
+    parent = roomA;
+    name = {.blue, .dial};
+    target = 5;
+    letter = 'B';
+}
+
+Dial whiteDial {
+    "white dial";
+    parent = roomA;
+    name = {.white, .dial};
+    target = 1;
+    letter = 'W';
+}
+
+array<Dial> dials = { redDial, greenDial, blueDial, whiteDial };
+
+// ---- queries -------------------------------------------------------------------------------------
+
+int matched() { return dials.filter((Dial d) => d.onTarget()).count(); }
+
+Stats settingStats() {
+    Stats s;
+    for (Dial d in dials) s += d.setting;
+    return s;
+}
+
+stringObj recentLetters() {
+    stringObj s = "";
+    for (Dial d in recent) s += d.letter;
+    if (s.length == 0) s = "none";
+    return s;
+}
+
+void remember(Dial d) {
+    if (recent.length == recent.size) recent.dequeue();
+    recent.enqueue(d);
+}
+
+// ---- changing a dial -----------------------------------------------------------------------------
+
+void setDial(Dial d, int value) {
+    int was = d.setting;
+    d.setting = value;
+    d.changes++;
+    moves++;
+    remember(d);
+    stringObj t = $"{d.letter} {was} to {value}";
+    if (d.onTarget()) t += " (mark)";
+    logEvent(t);
+    if (!solvedOnce && dials.all((Dial x) => x.onTarget())) {
+        solvedOnce = true;
+        printLine("Every dial is on its mark.");
+        stringObj done = $"solved in {moves}";
+        logEvent(done);
+    }
+}
+
+void nudge(Dial d, int step) {
+    int v = d.setting + step;
+    if (v < 0 || v > TOP) {
+        printLine($"{cThe(d)} will not turn further.");
+        return;
+    }
+    setDial(d, v);
+    printLine($"{cThe(d)} clicks to {v}.");
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawBoard() {
+    if (board == null) return;
+    board.clear();
+    int row = 0;
+    for (Dial d in dials) {
+        if (row >= board.height) break;
+        board.moveCursor(0, row);
+        switch (view) {
+            case eView.bars:
+                board.print($"{d.letter} [{d.bar()}]");
+            case eView.digits:
+                board.print($"{d.letter} {d.setting} / {d.target}");
+            case eView.gaps:
+                board.print($"{d.letter} off by {d.gap()}");
+        }
+        if (d.onTarget()) board.print(" *");
+        row++;
+    }
+    if (row < board.height) {
+        board.moveCursor(0, row);
+        board.print($"recent {recentLetters()}");
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | marks {matched()}/{dials.length} | moves {moves} | {viewName(view)}");
+    drawBoard();
+}
+
+void openLog() {
+    logPanel = bgl.ui.mainWin.splitRightBuffer(LOG_WIDTH, fixed, styles: logLook);
+    logPanel?.printLine("Log");
+}
+
+bool Initialise() {
+    location = roomA;
+    openLog();
+    board = bgl.ui.mainWin.splitUpGrid(BOARD_LINES, fixed, border, styles: boardLook);
+    lastStats = settingStats();
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Tune {
+    grammar = {.tune, NOUN, .to, NUMBER};
+    void handler() {
+        if (!noun.is(Dial)) { printLine("That has no setting."); return; }
+        Dial d = (Dial)noun;
+        int value = (int)second;
+        if (value < 0 || value > TOP) { printLine($"Dials run from 0 to {TOP}."); return; }
+        if (value == d.setting) { printLine($"{cThe(d)} is already at {value}."); return; }
+        setDial(d, value);
+        printLine($"You turn {the(d)} to {value}.");
+    }
+}
+
+verb Readout {
+    grammar = {.readout};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{padRight("Dial", 11)} {padLeft("set", 3)} {padLeft("mark", 4)} {padLeft("gap", 3)}  turns{roman}");
+        array<Dial> order = dials.orderBy((Dial a, Dial b) => {
+            if (a.gap() != b.gap()) return a.gap() < b.gap() ? -1 : 1;
+            return a.letter < b.letter ? -1 : 1;
+        });
+        for (Dial d in order) {
+            stringObj name = $"{d}";
+            stringObj set = $"{d.setting}";
+            stringObj mark = $"{d.target}";
+            stringObj gap = $"{d.gap()}";
+            printLine($"{fixed}{padRight(name, 11)} {padLeft(set, 3)} {padLeft(mark, 4)} {padLeft(gap, 3)}  {d.changes}{roman}");
+        }
+        Stats now = settingStats();
+        printLine($"Settings: {now.summary()}.");
+        printLine($"Before: {lastStats.summary()}.");
+        lastStats = now;
+        printLine($"Closest: {the(order.first())}. Recent: {recentLetters()}.");
+    }
+}
+
+verb Display {
+    grammar = {.display};
+    meta = true;
+    void handler() {
+        int next = (int)view % 3 + 1;
+        view = (eView)next;
+        printLine($"The board shows {viewName(view)}.");
+        DrawStatusLine();
+    }
+}
+
+verb Knobs {
+    grammar = {.knobs};
+    meta = true;
+    void handler() {
+        printLine($"Red {link("+", => { nudge(redDial, 1); })} {link("-", => { nudge(redDial, -1); })}, green {link("+", => { nudge(greenDial, 1); })} {link("-", => { nudge(greenDial, -1); })}.");
+        printLine($"Blue {link("+", => { nudge(blueDial, 1); })} {link("-", => { nudge(blueDial, -1); })}, white {link("+", => { nudge(whiteDial, 1); })} {link("-", => { nudge(whiteDial, -1); })}.");
+    }
+}
+
+verb Zero {
+    grammar = {.zero};
+    void handler() {
+        int touched = 0;
+        for (Dial d in dials) {
+            if (d.setting != 0) {
+                d.setting = 0;
+                touched++;
+            }
+        }
+        recent.clear();
+        printLine($"{touched} dial{touched == 1 ? "" : "s"} set back to 0.");
+        stringObj t = $"zeroed {touched}";
+        logEvent(t);
+    }
+}
+
+verb ToggleLog {
+    grammar = {.log};
+    meta = true;
+    void handler() {
+        if (logPanel == null) {
+            openLog();
+            printLine($"Log open ({logLines} lines so far).");
+        } else {
+            logPanel.close();
+            logPanel = null;
+            printLine("Log closed.");
+        }
+    }
+}
+
+verb Check {
+    grammar = {.check};
+    meta = true;
+    void handler() {
+        bool allMarked = dials.all((Dial d) => d.onTarget());
+        int far = dials.filter((Dial d) => d.gap() > 2).count();
+        bool redRecent = recent.contains(redDial);
+        printLine($"All on mark: {yn(allMarked)}; far off: {far}; red recent: {yn(redRecent)}.");
+        int gapSum = 0;
+        for (var g in dials.map((Dial d) => d.gap())) gapSum += g;
+        printLine($"Total gap: {gapSum}.");
+        if (recent.length > 0) printLine($"Last touched: {the(recent.peekEnd())}.");
+        if (board != null) printLine($"Board {board.width} x {board.height}.");
+        printLine($"Log open: {yn(logPanel != null)}.");
+    }
+}
+
+#includeI6 "grammar"

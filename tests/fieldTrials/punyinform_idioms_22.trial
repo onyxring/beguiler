@@ -1,0 +1,162 @@
+Room A
+Room A. A fuse box and a wall switch are here. Room B is north. A steel door is east.
+You can see a steel door, a fuse box (which is closed), a small fuse, a wall switch and a robot here.
+> log
+The log is empty.
+> report
+Score 0 of 3, power off, 0 amps.
+Torch 3, used 0, robot asked 0.
+Codes tried 0.
+> codes
+No codes tried.
+> fuses
+small fuse: 5 amps, good, in Room A.
+old fuse: 10 amps, blown, in the fuse box.
+large fuse: 10 amps, good, in Room C.
+> examine fuse box
+A fuse box holding 1 of 2 fuses. Power is off.
+> ask robot about power
+The robot says: power is off.
+> north
+Darkness
+It is pitch dark here!
+> south
+Room A
+You can see a steel door, a fuse box (which is closed), a small fuse, a wall switch and a robot here.
+> type 123
+The keypad buzzes. 123 is wrong.
+> open fuse box
+You open the fuse box, revealing an old fuse.
+> examine fuse box
+A fuse box holding 1 of 2 fuses. Power is off.
+> take old fuse
+Taken.
+> give old fuse to robot
+The robot tests the old fuse: blown, 10 amps.
+> put old fuse in fuse box
+The old fuse is blown; it would do no good.
+> put robot in fuse box
+(first taking the robot)
+I don't suppose the robot would care for that.
+> take small fuse
+Taken.
+> examine small fuse
+A 5 amp fuse. It looks fine.
+> put small fuse in box
+You put the small fuse into the fuse box.
+> examine fuse box
+A fuse box holding 1 of 2 fuses. Power is low, 5 amps.
+> switch on switch
+You flip the switch on. Light spills from Room B.
+[The score has just gone up by 1 point.]
+> north
+Room B
+Room B. Ceiling lamps hang overhead. Room A is south.
+You can see a note here.
+> read note
+A note. It reads: door code 472.
+> examine note
+A note. It reads: door code 472.
+> south
+Room A
+You can see a steel door, a fuse box (which contains a small fuse), a wall switch and a robot here.
+> type 111
+The keypad buzzes. 111 is wrong.
+> type 472 on keypad
+The keypad beeps and the steel door unlocks.
+[The score has just gone up by 1 point.]
+> type 472
+The keypad beeps. The door is already unlocked.
+> codes
+Recent codes: 111 472 472.
+> ask robot about code
+The robot says: the code is written in Room B.
+> ask robot about weather
+The robot whirs.
+> robot, wait
+The robot waits.
+> robot, inventory
+The robot says: log has 6 entries.
+> robot, jump
+The robot beeps.
+> open door
+You open the steel door.
+> east
+Room C
+Room C. A charger is fixed to the wall. A steel door is west.
+You can see a steel door, a large fuse and a torch here.
+> take large fuse
+Taken.
+> take torch
+Taken.
+> examine torch
+A torch. Its charge is 3 of 10.
+> charge torch
+The charger needs full power. Power is low.
+> turn on torch
+You switch the torch on.
+> examine torch
+A torch. Its charge is 2 of 10, and it is on.
+> west
+Room A
+You can see a steel door, a fuse box (which contains a small fuse), a wall switch and a robot here.
+The torch flickers and goes out.
+> put large fuse in box
+You put the large fuse into the fuse box.
+> examine fuse box
+A fuse box holding 2 of 2 fuses. Power is full, 15 amps.
+> report
+Score 2 of 3, power full, 15 amps.
+Torch 0, used 3, robot asked 3.
+Codes tried 4, last 472.
+> east
+Room C
+You can see a steel door here.
+> charge door
+The steel door can't be charged.
+> charge torch
+You charge the torch. Its charge is 6 of 10.
+> charge torch
+You charge the torch. Its charge is 10 of 10.
+[The score has just gone up by 1 point.]
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> examine torch
+A torch. Its charge is 10 of 10.
+> west
+Room A
+You can see a steel door, a fuse box (which contains a large fuse and a small fuse), a wall switch and a robot here.
+> take small fuse
+Taken.
+> examine fuse box
+A fuse box holding 1 of 2 fuses. Power is full, 10 amps.
+> fuses
+small fuse: 5 amps, good, carried.
+old fuse: 10 amps, blown, carried.
+large fuse: 10 amps, good, in the fuse box.
+> report
+Score 3 of 3, power full, 10 amps.
+Torch 10, used 3, robot asked 3.
+Codes tried 4, last 472.
+> switch off switch
+You flip the switch off.
+> turn on torch
+You switch the torch on.
+> north
+Room B
+You can see a note here.
+> read note
+A note. It reads: door code 472.
+> take note
+Taken.
+> south
+Room A
+You can see a steel door, a fuse box (which contains a large fuse), a wall switch and a robot here.
+> turn off torch
+You switch the torch off.
+> examine torch
+A torch. Its charge is 5 of 10.
+> log
+Log (12): 1. bad code 123. 2. fuse out. 3. fuse in 5. 4. lights on. 5. bad code 111. 6. door unlocked. 7. torch flat. 8. fuse in 10. 9. charged 6. 10. charged 10. 11. fuse out. 12. lights off.

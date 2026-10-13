@@ -1,0 +1,169 @@
+Room A
+Room A, level 1. The lift is east.
+You can see a crate (which is empty), a small box, a sack and a porter here.
+> status
+Score 0 of 3. Lift at level 2, idle.
+Trips 0, levels travelled 0, porter asked 0.
+Lift load 0, empty.
+> queue
+No floors are waiting.
+> loads
+0 of 3 loads are in place.
+crate: weight 8, in Room A.
+small box: weight 2, in Room A.
+sack: weight 5, in Room A.
+> log
+The log is empty.
+> examine crate
+The crate, weight 8, for Room B.
+> examine sack
+The sack, weight 5, for Room B.
+> ask porter about lift
+The porter says: the lift takes 12 at most.
+> ask porter about card
+The porter says: the key card is in Room B.
+> ask porter about weather
+The porter shrugs.
+> porter, wait
+The porter leans on the wall.
+> porter, east
+The porter says: I stay on level 1.
+> porter, jump
+The porter ignores you.
+> east
+The lift doors are shut.
+> push call button
+The button lights. The lift is called to level 1.
+> push call button
+The button is already lit.
+Ding. The lift doors open at level 1.
+> queue
+No floors are waiting.
+> push call button
+The lift is already here. Its doors are open.
+> take box
+Taken.
+> give box to porter
+The porter says: carry the small box yourself.
+> put box in crate
+You put the small box into the crate.
+> take crate
+Taken.
+> take sack
+Taken.
+> east
+Lift
+A lift cabin. A panel has buttons 1 to 3. The display shows 1.
+> status
+Score 0 of 3. Lift at level 1, idle.
+Trips 1, levels travelled 1, porter asked 3.
+Lift load 15, over the limit.
+> press 2
+A buzzer sounds. The load is 15; the limit is 12.
+> west
+Room A
+You can see a porter here.
+> drop sack
+Dropped.
+> east
+Lift
+> status
+Score 0 of 3. Lift at level 1, idle.
+Trips 1, levels travelled 1, porter asked 3.
+Lift load 10, heavy.
+> press 7
+There is no button 7.
+> press 3
+Button 3 blinks red. It needs a key card.
+> press 1
+The lift is already at level 1.
+> press 2
+The lift doors close.
+Button 2 lights.
+> look
+Lift
+A lift cabin. A panel has buttons 1 to 3. The display shows 1, going up.
+Ding. The lift doors open at level 2.
+> examine panel
+A panel with buttons 1 2 3. Level 3 needs a key card.
+> press 2
+The lift is already at level 2.
+> queue
+No floors are waiting.
+> west
+Room B
+Room B, level 2. The lift is east.
+You can see a key card here.
+> drop crate
+Dropped.
+[The score has just gone up by 1 point.]
+> examine crate
+The crate, weight 8, for Room B. It is where it should be.
+> take box
+Taken.
+> take key card
+Taken.
+> east
+Lift
+> press 3
+The lift doors close.
+Button 3 lights.
+> press 1
+Button 1 lights.
+Ding. The lift doors open at level 3.
+[The score has just gone up by 1 point.]
+> press 1
+Button 1 is already lit.
+> queue
+Waiting: 1.
+> examine panel
+A panel with buttons [1] 2 3. Level 3 needs a key card.
+> west
+Room C
+Room C, level 3. The lift is east.
+The lift doors close.
+> drop box
+Dropped.
+[The score has just gone up by 1 point.]
+> push call button
+The button lights. The lift is called to level 3.
+> push call button
+The button is already lit.
+> queue
+Waiting: 3.
+> loads
+2 of 3 loads are in place.
+crate: weight 8, in Room B.
+small box: weight 2, in Room C.
+sack: weight 5, in Room A.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+Ding. The lift doors open at level 3.
+> wait
+Nothing happens.
+> east
+Lift
+> status
+Score 3 of 3. Lift at level 3, idle.
+Trips 5, levels travelled 7, porter asked 3.
+Lift load 0, empty.
+> look
+Lift
+A lift cabin. A panel has buttons 1 to 3. The display shows 3.
+> press 2
+The lift doors close.
+Button 2 lights.
+> west
+The doors are shut while the lift moves.
+Ding. The lift doors open at level 2.
+> look
+Lift
+A lift cabin. A panel has buttons 1 to 3. The display shows 2.
+> log
+Log (14): 1. arrived 1. 2. overload 15. 3. refused 3. 4. pressed 2. 5. arrived 2. 6. crate placed. 7. pressed 3. 8. pressed 1. 9. arrived 3. 10. box placed. 11. arrived 1. 12. arrived 3. 13. pressed 2. 14. arrived 2. 

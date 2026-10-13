@@ -1,0 +1,494 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-second PunyInform program, written plainly: three rooms (a lit Room A with a
+// fuse box and a wall switch, a dark Room B to the north lit by ceiling lamps, a Room C to the east
+// behind a simple door opened from a keypad) with OPTIONAL_SCORED and OPTIONAL_SIMPLE_DOORS; a `Fuse`
+// class with a rating and a blown flag; a fuse box whose `before` takes `Receive` (only good fuses,
+// two at most) and whose `after` takes `Receive` and `LetGo` to recompute the power; an enum power
+// level from a function summing the box's children, with a `switch` over it; a wall switch whose
+// `after` lights or darkens Room B by giving and taking `light`; a value class `Charge` with
+// `operator ()`, `=`, `+=`, `-=` and a method, owned by a torch whose daemon drains it; a `charge
+// NOUN` verb that needs full power; a `type NUMBER` verb checking a code and keeping recent attempts
+// in an `array<int>` used as a queue (`enqueue`, `dequeue`, `peekEnd`); a robot with `life` (Ask
+// through NextWord, Give testing a fuse) and `orders` (Wait, Inv, others); a `stringObj` log appended
+// with interpolated strings by a helper with a default argument; `bgl.world.instances` copied into an
+// `array<object>` and sorted with a comparator lambda; `for` and `for … in` loops; and meta verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+#defineI6 OPTIONAL_SIMPLE_DOORS
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum ePower { off, low, full }
+
+array<string> powerNames = {"off", "low", "full"};
+
+const int DOOR_CODE = 472;
+
+value class Charge {
+    int _units = 0;
+
+    int  operator ()          { return _units; }
+    void operator = (int v)   { _units = v < 0 ? 0 : (v > 10 ? 10 : v); }
+    void operator += (int v)  { _units = _units + v > 10 ? 10 : _units + v; }
+    void operator -= (int v) {
+        _units = _units - v;
+        if (_units < 0) _units = 0;
+    }
+
+    bool flat() {
+        return _units == 0;
+    }
+}
+
+stringObj logText;
+int  logCount   = 0;
+int  codeTries  = 0;
+bool lightsDone = false;
+bool doorDone   = false;
+bool torchDone  = false;
+
+array<int> recentCodes[3];
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string powerName(ePower p) {
+    return powerNames[(int)p - 1];
+}
+
+int boxAmps() {
+    int total = 0;
+    for (object o in fuseBox.children) {
+        if (o.is(Fuse)) {
+            Fuse f = (Fuse)o;
+            if (!f.blown) total += f.amps;
+        }
+    }
+    return total;
+}
+
+ePower powerLevel() {
+    int amps = boxAmps();
+    if (amps == 0) return ePower.off;
+    if (amps < 10) return ePower.low;
+    return ePower.full;
+}
+
+void refreshLights() {
+    bool lit = false;
+    if (wallSwitch.has(on)) {
+        switch (powerLevel()) {
+            case ePower.off:  lit = false;
+            case ePower.low:  lit = true;
+            case ePower.full: lit = true;
+        }
+    }
+    if (lit) {
+        if (roomB.hasnt(light)) {
+            roomB.give(light);
+            jot("lights on");
+            if (!lightsDone) {
+                lightsDone = true;
+                score++;
+            }
+        }
+    } else if (roomB.has(light)) {
+        roomB.ungive(light);
+        jot("lights off");
+    }
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A fuse box and a wall switch are here. Room B is north. A steel door is east.";
+    n_to = roomB;
+    e_to = steelDoor;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Ceiling lamps hang overhead. Room A is south.";
+    s_to = roomA;
+}
+
+Room roomC {
+    "Room C";
+    description = "Room C. A charger is fixed to the wall. A steel door is west.";
+    w_to = steelDoor;
+}
+
+// --- the door and the keypad ------------------------------------------------------------------------
+
+object steelDoor {
+    "steel door";
+    name = {.steel, .door};
+    description = "A steel door with a keypad beside it.";
+    rawArray<object>   found_in = {roomA, roomC};
+    rawArray<property> door_dir = {(property)e_to, (property)w_to};
+    attributes = {door, openable, lockable, locked, static};
+}
+
+object keypad {
+    "keypad";
+    parent = roomA;
+    name = {.keypad, .pad, .keys};
+    description = "A keypad with ten keys. Type a number on it.";
+    attributes = {static, scenery};
+}
+
+// --- fuses and the fuse box -------------------------------------------------------------------------
+
+class Fuse : object {
+    int  amps  = 5;
+    bool blown = false;
+    name = {.fuse};
+
+    bool before() {
+        if (action == Examine) {
+            if (blown) rtrue($"A {amps} amp fuse. It is blown.^");
+            rtrue($"A {amps} amp fuse. It looks fine.^");
+        }
+        rfalse;
+    }
+}
+
+Fuse oldFuse {
+    "old fuse";
+    parent = fuseBox;
+    name = {.old, .fuse};
+    string article = "an";
+    amps = 10;
+    blown = true;
+}
+
+Fuse smallFuse {
+    "small fuse";
+    parent = roomA;
+    name = {.small, .fuse};
+    amps = 5;
+}
+
+Fuse largeFuse {
+    "large fuse";
+    parent = roomC;
+    name = {.large, .fuse};
+    amps = 10;
+}
+
+object fuseBox {
+    "fuse box";
+    parent = roomA;
+    name = {.fuse, .box};
+    int capacity = 2;
+    attributes = {container, openable, static};
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                print($"A fuse box holding {children.length} of {capacity} fuses. Power is {powerName(powerLevel())}");
+                if (boxAmps() > 0) printLine($", {boxAmps()} amps.");
+                else printLine(".");
+                rtrue;
+            case Receive:
+                if (!noun.is(Fuse)) rtrue("Only fuses go in the fuse box.^");
+                if (((Fuse)noun).blown) rtrue($"{cThe(noun)} is blown; it would do no good.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                jot("fuse in", ((Fuse)noun).amps);
+                refreshLights();
+            case LetGo:
+                jot("fuse out");
+                refreshLights();
+        }
+        rfalse;
+    }
+}
+
+// --- the wall switch --------------------------------------------------------------------------------
+
+object wallSwitch {
+    "wall switch";
+    parent = roomA;
+    name = {.wall, .switch};
+    description = "A wall switch for the lamps in Room B.";
+    attributes = {switchable, static};
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                refreshLights();
+                if (roomB.has(light)) rtrue("You flip the switch on. Light spills from Room B.^");
+                rtrue("You flip the switch on. Nothing happens.^");
+            case SwitchOff:
+                refreshLights();
+                rtrue("You flip the switch off.^");
+        }
+        rfalse;
+    }
+}
+
+// --- the note in Room B -----------------------------------------------------------------------------
+
+object note {
+    "note";
+    parent = roomB;
+    name = {.note, .paper};
+    description = "A note. It reads: door code 472.";
+}
+
+// --- the torch and the charger ----------------------------------------------------------------------
+
+object torch {
+    "torch";
+    parent = roomC;
+    name = {.torch};
+    Charge cell;
+    int used = 0;
+    attributes = {switchable};
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                print($"A torch. Its charge is {(int)cell} of 10");
+                if (has(on)) printLine(", and it is on.");
+                else printLine(".");
+                rtrue;
+            case SwitchOn:
+                if (cell.flat()) rtrue("The torch is flat.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        used++;
+        cell -= 1;
+        if (cell.flat()) {
+            ungive(on);
+            ungive(light);
+            StopDaemon(self);
+            jot("torch flat");
+            if (parent == player) printLine("The torch flickers and goes out.");
+        }
+    }
+}
+
+object charger {
+    "charger";
+    parent = roomC;
+    name = {.charger};
+    description = "A wall charger. It needs full power.";
+    attributes = {static, scenery};
+}
+
+// --- the robot --------------------------------------------------------------------------------------
+
+object robot {
+    "robot";
+    parent = roomA;
+    name = {.robot};
+    description = "A small robot on wheels.";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .fuse || w == .fuses) rtrue("The robot says: the box takes two good fuses.^");
+                if (w == .door || w == .code) rtrue("The robot says: the code is written in Room B.^");
+                if (w == .power) rtrue($"The robot says: power is {powerName(powerLevel())}.^");
+                rtrue("The robot whirs.^");
+            case Give:
+                if (noun.is(Fuse)) {
+                    Fuse f = (Fuse)noun;
+                    string state = f.blown ? "blown" : "good";
+                    rtrue($"The robot tests {the(f)}: {state}, {f.amps} amps.^");
+                }
+                rtrue("The robot does not want that.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The robot waits.^");
+            case Inv:
+                rtrue($"The robot says: log has {logCount} entries.^");
+        }
+        rtrue("The robot beeps.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb TypeCode {
+    grammar = { {.type, NUMBER}, {.type, NUMBER, .on, NOUN} };
+    void handler() {
+        if (keypad.parent != location) {
+            printLine("There is no keypad here.");
+            return;
+        }
+        int code = parsed_number;
+        codeTries++;
+        if (recentCodes.length == recentCodes.size) recentCodes.dequeue();
+        recentCodes.enqueue(code);
+        if (code != DOOR_CODE) {
+            jot("bad code", code);
+            printLine($"The keypad buzzes. {code} is wrong.");
+            return;
+        }
+        if (steelDoor.hasnt(locked)) {
+            printLine("The keypad beeps. The door is already unlocked.");
+            return;
+        }
+        steelDoor.ungive(locked);
+        jot("door unlocked");
+        if (!doorDone) {
+            doorDone = true;
+            score++;
+        }
+        printLine("The keypad beeps and the steel door unlocks.");
+    }
+}
+
+verb ChargeIt {
+    grammar = {.charge, NOUN};
+    void handler() {
+        if (noun != torch) {
+            printLine($"{cThe(noun)} can't be charged.");
+            return;
+        }
+        if (charger.parent != location) {
+            printLine("There is no charger here.");
+            return;
+        }
+        ePower p = powerLevel();
+        if (p != ePower.full) {
+            printLine($"The charger needs full power. Power is {powerName(p)}.");
+            return;
+        }
+        torch.cell += 6;
+        jot("charged", (int)torch.cell);
+        printLine($"You charge the torch. Its charge is {(int)torch.cell} of 10.");
+        if (!torchDone && (int)torch.cell == 10) {
+            torchDone = true;
+            score++;
+        }
+    }
+}
+
+verb Report {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        printLine($"Score {score} of {MAX_SCORE}, power {powerName(powerLevel())}, {boxAmps()} amps.");
+        printLine($"Torch {(int)torch.cell}, used {torch.used}, robot asked {robot.asked}.");
+        if (recentCodes.length == 0) printLine($"Codes tried {codeTries}.");
+        else printLine($"Codes tried {codeTries}, last {recentCodes.peekEnd()}.");
+    }
+}
+
+verb Codes {
+    meta = true;
+    grammar = {.codes};
+    void handler() {
+        if (recentCodes.length == 0) {
+            printLine("No codes tried.");
+            return;
+        }
+        print("Recent codes:");
+        for (int i = 0; i < recentCodes.length; i++) print($" {recentCodes[i]}");
+        printLine(".");
+    }
+}
+
+verb Fuses {
+    meta = true;
+    grammar = {.fuses};
+    void handler() {
+        array<object> found[8];
+        found = bgl.world.instances(Fuse);
+        found.sort((object a, object b) => bgl.util.math.sign(((Fuse)a).amps - ((Fuse)b).amps));
+        for (object o in found) {
+            Fuse f = (Fuse)o;
+            string state = f.blown ? "blown" : "good";
+            print($"{f}: {f.amps} amps, {state}, ");
+            if (f.parent == null) printLine("nowhere.");
+            else if (f.parent == player) printLine("carried.");
+            else printLine($"in {the(f.parent)}.");
+        }
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logCount}): {logText}");
+    }
+}
+
+bool Initialise() {
+    torch.cell = 3;
+    rfalse;
+}

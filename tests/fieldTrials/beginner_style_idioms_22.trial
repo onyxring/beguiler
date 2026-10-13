@@ -1,0 +1,168 @@
+Room A
+Room A. The bakery. The shop is to the east.
+You can see a bench (on which are a white loaf, a rye loaf, a plain roll and a sweet roll) and an oven (which is empty) here.
+> oven
+The oven is empty.
+> takings
+Sold: 0 loaves. Burnt: 0. Takings: 0.
+Orders filled: 0. That was a quiet day.
+[]
+The bakery had a quiet day.
+Open orders: 3.
+> orders
+Orders: rye, sweet, white.
+First: white. Last: sweet.
+> price rye loaf
+The rye loaf is 4 coins.
+RYE is a special.
+> price sweet roll
+The sweet roll is 2 coins.
+Rolls sell in the morning.
+> price white loaf
+The white loaf is 3 coins.
+White sells best.
+> eat white loaf
+(first taking the white loaf)
+It is raw dough.
+> put white loaf in oven
+You put the white loaf in the oven.
+> take rye loaf
+Taken.
+> put rye loaf in oven
+You put the rye loaf in the oven.
+> take plain roll
+Taken.
+> put plain roll in oven
+You put the plain roll in the oven.
+> take sweet roll
+Taken.
+> put sweet roll in oven
+You put the sweet roll in the oven.
+> oven
+The white loaf (white) is raw, 0 of 3 turns.
+The rye loaf (rye) is raw, 0 of 3 turns.
+The plain roll (plain) is raw, 0 of 2 turns.
+The sweet roll (sweet) is raw, 0 of 3 turns.
+> tray
+1. white loaf
+2. rye loaf
+> done
+Still baking: white loaf (3) rye loaf (3) plain roll (2) sweet roll (3).
+> bake
+You light the oven.
+> bake
+The oven is already lit.
+The plain roll smells done.
+> oven
+The white loaf (white) is baking, 2 of 3 turns.
+The rye loaf (rye) is baking, 2 of 3 turns.
+The plain roll (plain) is done, 2 of 2 turns.
+The sweet roll (sweet) is baking, 2 of 3 turns.
+3 nearly done.
+Take it out soon.
+The white loaf smells done.
+The rye loaf smells done.
+The sweet roll smells done.
+> take plain roll
+You take the plain roll out of the oven. done.
+> done
+Everything is done.
+The white loaf is burning!
+The rye loaf is burning!
+The sweet roll is burning!
+> oven
+The white loaf (white) is burnt, 5 of 3 turns.
+The rye loaf (rye) is burnt, 5 of 3 turns.
+The sweet roll (sweet) is burnt, 5 of 3 turns.
+> take white loaf
+You take the white loaf out of the oven. burnt.
+> take sweet roll
+You take the sweet roll out of the oven. burnt.
+> wait
+Time passes.
+> take rye loaf
+You take the rye loaf out of the oven. burnt.
+> oven
+The oven is empty.
+> eat rye loaf
+It is for selling.
+> order rye loaf
+Order for rye written down.
+> order plain roll
+Order for plain written down.
+> order white loaf
+The order book is full.
+> orders
+Orders: plain, rye, rye, sweet, white.
+First: white. Last: plain.
+> e
+Room B
+Room B. The shop. The bakery is to the west.
+You can see a shelf and a clock here.
+> sell rye loaf for 4
+Put it on the shelf first.
+> put rye loaf on shelf
+You put the rye loaf on the shelf.
+> put white loaf on shelf
+You put the white loaf on the shelf.
+> put plain roll on shelf
+You put the plain roll on the shelf.
+> put sweet roll on shelf
+You put the sweet roll on the shelf.
+> total
+On the shelf: 4 loaves, worth 5 coins.
+> price rye loaf
+The rye loaf is 1 coins.
+RYE is a special.
+> sell rye loaf for 4
+Nobody will pay 4 for that.
+> sell rye loaf for 1
+Sold the rye loaf for 1.
+That fills an order.
+> sell white loaf for 3
+Nobody will pay 3 for that.
+> sell plain roll for 2
+Sold the plain roll for 2.
+That fills an order.
+> orders
+Orders: rye, sweet, white.
+First: white. Last: rye.
+> takings
+Sold: 2 loaves. Burnt: 3. Takings: 3.
+Orders filled: 2. That was a slow day.
+[ooo]
+The bakery had a slow day.
+Open orders: 3.
+> total
+On the shelf: 2 loaves, worth 2 coins.
+> wait
+Time passes.
+The clock strikes. The shop is shut.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> sell sweet roll for 2
+The shop is shut.
+> takings
+Sold: 2 loaves. Burnt: 3. Takings: 3.
+Orders filled: 2. That was a slow day.
+[ooo]
+The bakery had a slow day.
+Open orders: 3.

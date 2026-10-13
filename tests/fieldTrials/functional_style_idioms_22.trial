@@ -1,0 +1,80 @@
+Room A
+Room A.
+> graph
+A (road) deg 2 sum 5: B C
+B (track) deg 3 sum 11: A C D
+C (road) deg 3 sum 11: A B D
+D (ford) deg 3 sum 16: B C E
+E (track) deg 1 sum 3: D
+F (road) deg 0 sum 0: (none)
+> near 1
+B near: A C D weights: 4,2,5
+cheap links 1, nearest 2
+> near 9
+No such node.
+> reach 0
+from A: A B C D E (5 reached, 1 not)
+> reach 5
+from F: F (1 reached, 5 not)
+> hops 0
+A0 B1 C1 D2 E3 F-
+farthest 3 hops
+> hops 4
+A3 B2 C2 D1 E0 F-
+farthest 3 hops
+> route 0 4
+A to E: cost 11 hops 4 via A-C-B-D-E
+> route 4 2
+E to C: cost 10 hops 3 via E-D-B-C
+> route 0 5
+A to F: no route
+> costs 0
+from A: A0 B3 C1 D8 E11 F?
+known 5 total 23 max 11
+> costs 5
+from F: A? B? C? D? E? F0
+known 1 total 0 max 0
+> edges
+edges: AB:4 AC:1 BC:2 BD:5 CD:8 DE:3
+by weight: AC:1 BC:2 DE:3 AB:4 BD:5 CD:8
+cheapest two: AC:1 BC:2
+weights: 4 1 2 5 8 3
+all under ten true, any over six true
+> cheap 2
+at most 2: AC:1 BC:2 (2)
+> cheap 0
+at most 0: (none) (0)
+> tree
+tree: AC:1 BC:2 DE:3 BD:5
+tree cost 11, 4 edges
+parts 2
+> terrain
+road: A C F
+track: B E
+ford: D
+busy roads: C
+busy: B C D
+isolated F, busy ford none
+> rank
+by degree: B C D A E F
+top three: B C D
+top B bottom F
+all linked false, any ford true
+> link 4 5
+EF linked at 7
+> route 0 5
+A to F: cost 18 hops 5 via A-C-B-D-E-F
+> hops 0
+A0 B1 C1 D2 E3 F4
+farthest 4 hops
+> tree
+tree: AC:1 BC:2 DE:3 BD:5 EF:7
+tree cost 18, 5 edges
+parts 1
+> link 0 2
+AC cut
+> route 0 3
+A to D: cost 9 hops 2 via A-B-D
+> near 0
+A near: B weights: 4
+cheap links 0, nearest 1

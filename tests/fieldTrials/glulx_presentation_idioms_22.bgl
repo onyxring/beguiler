@@ -1,0 +1,488 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fuel dashboard for burning lamps. A class Lamp : object (switchable by default) with
+// fuel, capacity and burn rate, a daemon() that burns fuel, warns once when low and puts the lamp out
+// when empty, a before() that refuses SwitchOn without fuel, an after() that starts and stops the
+// daemon and gives and takes light, and an invent() that adds the fuel after the name; an enum eLevel
+// derived from a float fraction and switched on to pick a gauge character; a value class Reading
+// (fuel and capacity, copy operator, == operator, a float percentage and a stringObj label); a fuel
+// can with a refill verb taking two nouns; a text grid split above the main window held in a
+// textGridWindowHorz global and resized from a NUMBER token through height; a text-buffer notices
+// panel split to the right, closed and reopened, written through ?.; styleSheets passed to splits;
+// a replaced DrawStatusLine that draws gauges, a burn history sparkline from an <array> ring
+// (enqueue, dequeue, peekEnd) and a lit count; <linq> filter, count, any, all, orderBy with a
+// comparator, first and last over an array<Lamp>; hyperlinks with named-function targets that switch
+// lamps through perform(); padded fixed-pitch columns; float formatting to one decimal.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define HISTORY 8
+#define HUD_LINES 4
+#define NOTICE_WIDTH 30
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eLevel { empty, low, half, full }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet hudLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ reverse = true; };
+};
+styleSheet noticeLook = styleSheet{
+    normal = style{ italics = true; foreColor = color.darkGray; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz hud = null;
+textBufferWindowVert notices = null;
+array<int> burnHistory[HISTORY];
+int noticeCount = 0;
+int refills = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+stringObj oneDecimal(float f) {
+    bool negative = f < 0.0;
+    if (negative) f = -f;
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{negative ? "-" : ""}{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+eLevel levelOf(float fraction) {
+    if (fraction <= 0.0) return eLevel.empty;
+    if (fraction <= 0.25) return eLevel.low;
+    if (fraction < 0.75) return eLevel.half;
+    return eLevel.full;
+}
+
+string levelName(eLevel l) {
+    switch (l) {
+        case eLevel.empty: return "empty";
+        case eLevel.low:   return "low";
+        case eLevel.half:  return "half";
+        case eLevel.full:  return "full";
+    }
+    return "?";
+}
+
+char levelMark(eLevel l) {
+    switch (l) {
+        case eLevel.empty: return '_';
+        case eLevel.low:   return '.';
+        case eLevel.half:  return 'o';
+    }
+    return 'O';
+}
+
+stringObj gauge(int amount, int capacity, int cells) {
+    stringObj s = "";
+    int filled = 0;
+    if (capacity > 0) filled = (amount * cells + capacity / 2) / capacity;
+    for (int i = 0; i < cells; i++) s += i < filled ? '=' : ' ';
+    return s;
+}
+
+void notice(stringObj text) {
+    noticeCount++;
+    notices?.printLine($"{noticeCount}: {text}");
+}
+
+// ---- readings ------------------------------------------------------------------------------------
+
+value class Reading {
+    int fuel = 0;
+    int capacity = 0;
+
+    Reading operator = (Reading o) {
+        fuel = o.fuel;
+        capacity = o.capacity;
+        return self;
+    }
+
+    bool operator == (Reading o) {
+        return fuel == o.fuel && capacity == o.capacity;
+    }
+
+    bool operator != (Reading o) {
+        return !(self == o);
+    }
+
+    float percent() {
+        if (capacity == 0) return 0.0;
+        return (float)fuel * 100 / capacity;
+    }
+
+    stringObj label() {
+        stringObj s = $"{fuel}/{capacity} ({oneDecimal(percent())}%)";
+        return s;
+    }
+}
+
+// ---- lamps ---------------------------------------------------------------------------------------
+
+class Lamp : object {
+    attributeList attributes = {switchable};
+    int fuel = 4;
+    int capacity = 4;
+    int burnRate = 1;
+    int burned = 0;
+    bool warned = false;
+    string description;
+
+    float fraction() {
+        if (capacity == 0) return 0.0;
+        return (float)fuel / capacity;
+    }
+
+    eLevel level() { return levelOf(fraction()); }
+
+    Reading reading() {
+        Reading r;
+        r.fuel = fuel;
+        r.capacity = capacity;
+        return r;
+    }
+
+    void daemon() {
+        fuel -= burnRate;
+        burned += burnRate;
+        if (fuel <= 0) {
+            fuel = 0;
+            ungive(on);
+            ungive(light);
+            StopDaemon(self);
+            printLine($"{cThe(self)} goes out.");
+            stringObj t = $"{self} out after {burned}";
+            notice(t);
+            return;
+        }
+        if (level() == eLevel.low && !warned) {
+            warned = true;
+            printLine($"{cThe(self)} flickers.");
+            stringObj t = $"{self} low ({fuel} left)";
+            notice(t);
+        }
+    }
+
+    bool before() {
+        if (action == SwitchOn && fuel == 0) {
+            printLine($"{cThe(self)} has no fuel.");
+            rtrue;
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+                stringObj t = $"{self} lit at {fuel}";
+                notice(t);
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+                stringObj t = $"{self} off at {fuel}";
+                notice(t);
+        }
+        rfalse;
+    }
+
+    bool invent() {
+        if (inventory_stage == 2) {
+            print($" ({fuel}/{capacity}");
+            if (has(on)) print(", lit");
+            print(")");
+        }
+        rfalse;
+    }
+}
+
+// ---- the world -----------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. A shelf stands here. A doorway leads east.";
+    attributes = {light};
+    object e_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Bare walls.";
+    object w_to = roomA;
+}
+
+object shelf {
+    "shelf";
+    parent = roomA;
+    name = {.shelf};
+    description = "A shelf.";
+    attributes = {scenery, supporter};
+}
+
+Lamp oilLamp {
+    "oil lamp";
+    parent = shelf;
+    name = {.oil, .lamp};
+    description = "An oil lamp.";
+    fuel = 6;
+    capacity = 8;
+}
+
+Lamp candle {
+    "candle";
+    parent = shelf;
+    name = {.candle};
+    description = "A candle.";
+    fuel = 3;
+    capacity = 4;
+}
+
+Lamp torch {
+    "torch";
+    parent = roomB;
+    name = {.torch};
+    description = "A torch.";
+    fuel = 2;
+    capacity = 6;
+    burnRate = 2;
+}
+
+object fuelCan {
+    "fuel can";
+    parent = roomA;
+    name = {.fuel, .can};
+    description = "A fuel can.";
+    int oil = 10;
+}
+
+array<Lamp> allLamps = { oilLamp, candle, torch };
+
+// ---- queries -------------------------------------------------------------------------------------
+
+int litCount() { return allLamps.filter((Lamp l) => l.has(on)).count(); }
+
+int totalFuel() {
+    int total = 0;
+    for (Lamp l in allLamps) total += l.fuel;
+    return total;
+}
+
+int totalCapacity() {
+    int total = 0;
+    for (Lamp l in allLamps) total += l.capacity;
+    return total;
+}
+
+int byFuel(Lamp a, Lamp b) {
+    if (a.fuel < b.fuel) return -1;
+    if (a.fuel > b.fuel) return 1;
+    return 0;
+}
+
+void recordBurn() {
+    if (burnHistory.length == burnHistory.size) burnHistory.dequeue();
+    burnHistory.enqueue(totalFuel());
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawHud() {
+    if (hud == null) return;
+    hud.clear();
+    int row = 0;
+    for (Lamp l in allLamps) {
+        if (row >= hud.height) break;
+        hud.moveCursor(0, row);
+        stringObj name = $"{l}";
+        hud.print($"{padRight(name, 9)}[{gauge(l.fuel, l.capacity, 8)}] {levelMark(l.level())}{l.has(on) ? " *" : ""}");
+        row++;
+    }
+    if (row < hud.height) {
+        hud.moveCursor(0, row);
+        hud.print("trend ");
+        int most = totalCapacity();
+        for (int v in burnHistory) hud.print(levelMark(levelOf((float)v / most)));
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | lit {litCount()} | fuel {totalFuel()} | {turns}");
+    drawHud();
+}
+
+void openNotices() {
+    notices = bgl.ui.mainWin.splitRightBuffer(NOTICE_WIDTH, fixed, styles: noticeLook);
+    notices?.printLine("Notices");
+}
+
+bool Initialise() {
+    location = roomA;
+    openNotices();
+    hud = bgl.ui.mainWin.splitUpGrid(HUD_LINES, fixed, border, styles: hudLook);
+    recordBurn();
+    StartDaemon(burnRecorder);
+    rfalse;
+}
+
+object burnRecorder {
+    void daemon() { recordBurn(); }
+}
+
+// ---- link targets --------------------------------------------------------------------------------
+
+void toggle(Lamp l) {
+    if (l.has(on)) SwitchOff.perform(l);
+    else SwitchOn.perform(l);
+    DrawStatusLine();
+}
+
+void toggleOil()    { toggle(oilLamp); }
+void toggleCandle() { toggle(candle); }
+void toggleTorch()  { toggle(torch); }
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Fuel {
+    grammar = {.fuel};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{padRight("Lamp", 9)} {padLeft("fuel", 5)} {padLeft("%", 6)}  level  burned{roman}");
+        for (Lamp l in allLamps.orderBy(byFuel)) {
+            stringObj name = $"{l}";
+            Reading r = l.reading();
+            stringObj amount = $"{r.fuel}/{r.capacity}";
+            stringObj pct = oneDecimal(r.percent());
+            stringObj lvl = levelName(l.level());
+            printLine($"{fixed}{padRight(name, 9)} {padLeft(amount, 5)} {padLeft(pct, 6)}  {padRight(lvl, 5)}  {l.burned}{roman}");
+        }
+        Lamp most = allLamps.orderBy(byFuel).last();
+        Lamp least = allLamps.orderBy(byFuel).first();
+        printLine($"Most fuel: {the(most)}. Least: {the(least)}. Can holds {fuelCan.oil}.");
+    }
+}
+
+verb Refill {
+    grammar = {.refill, NOUN, .from, NOUN};
+    void handler() {
+        if (!noun.is(Lamp)) { printLine("That takes no fuel."); return; }
+        if (second != fuelCan) { printLine($"You can't refill anything from {the(second)}."); return; }
+        Lamp l = (Lamp)noun;
+        Reading before = l.reading();
+        int room = l.capacity - l.fuel;
+        if (room == 0) { printLine($"{cThe(l)} is already full."); return; }
+        if (fuelCan.oil == 0) { printLine("The fuel can is empty."); return; }
+        int poured = room < fuelCan.oil ? room : fuelCan.oil;
+        l.fuel += poured;
+        fuelCan.oil -= poured;
+        l.warned = false;
+        refills++;
+        Reading after = l.reading();
+        printLine($"You pour {poured} into {the(l)}: {before.label()} to {after.label()}.");
+        if (after != before) {
+            stringObj t = $"{l} refilled +{poured}";
+            notice(t);
+        }
+    }
+}
+
+verb HudSize {
+    grammar = {.hud, NUMBER};
+    meta = true;
+    void handler() {
+        int n = (int)noun;
+        if (hud == null) { printLine("No HUD."); return; }
+        if (n < 1 || n > 6) { printLine("The HUD takes 1 to 6 lines."); return; }
+        hud.height = n;
+        printLine($"HUD is {hud.height} lines.");
+        DrawStatusLine();
+    }
+}
+
+verb Lamps {
+    grammar = {.lamps};
+    meta = true;
+    void handler() {
+        printLine($"Switch {link("oil lamp", toggleOil)}, {link("candle", toggleCandle)} or {link("torch", toggleTorch)}.");
+        printLine($"Lit: {litCount()} of {allLamps.length}.");
+    }
+}
+
+verb NoticePanel {
+    grammar = {.notices};
+    meta = true;
+    void handler() {
+        if (notices == null) {
+            openNotices();
+            printLine($"Notices open ({noticeCount} so far).");
+        } else {
+            notices.close();
+            notices = null;
+            printLine("Notices closed.");
+        }
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        bool anyEmpty = allLamps.any((Lamp l) => l.fuel == 0);
+        bool allHeld = allLamps.all((Lamp l) => l.parent == player);
+        int low = allLamps.filter((Lamp l) => l.level() == eLevel.low).count();
+        printLine($"Any empty: {yn(anyEmpty)}; all held: {yn(allHeld)}; low: {low}; refills: {refills}.");
+        stringObj trend = "";
+        for (int v in burnHistory) trend += $"{v} ";
+        printLine($"History ({burnHistory.length}): {trend}");
+        if (burnHistory.length > 0) printLine($"Latest total: {burnHistory.peekEnd()}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        printLine($"HUD open: {yn(hud != null)}; notices open: {yn(notices != null)}.");
+        if (hud != null) printLine($"HUD {hud.width} x {hud.height}.");
+        if (notices != null) printLine($"Notices width {notices.width}.");
+    }
+}
+
+#includeI6 "grammar"

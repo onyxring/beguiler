@@ -1,0 +1,133 @@
+Room A
+Room A. A kiln stands here. Room B is north.
+You can see a kiln (which is closed) here.
+> readout
+Heat 000/200, off, closed, lit 0 turns.
+> log
+The log is empty.
+> tally
+4 tiles: 0 fired, 0 cracked, 4 raw.
+> platform
+Target z5.
+> switch kiln on
+The dial is at zero.
+> heat 50
+The dial is set to 50, too cool to fire.
+> north
+Room B
+Room B. A rack holds tiles. Room A is south.
+You can see a rack (on which are a small tile, a square tile, a blue tile and a green tile) here.
+> heat 120
+There is no kiln here.
+> inspect small tile
+T-007 plain raw, 0/3 turns.
+> check blue tile
+T-021 glazed raw, 0/5 turns.
+> tag square tile 5
+The square tile is tagged X-005.
+> take all from rack
+small tile: Removed.
+square tile: Removed.
+blue tile: Removed.
+green tile: Removed.
+> south
+Room A
+Room A. A kiln stands here. Room B is north.
+You can see a kiln (which is closed) here.
+> switch kiln on
+You switch the kiln on.
+> readout
+Heat 050/200, on, closed, lit 1 turn.
+> open kiln
+The kiln is too hot to open.
+> switch kiln off
+You switch the kiln off.
+> readout
+Heat 000/200, off, closed, lit 2 turns.
+> open kiln
+You open the kiln, revealing nothing.
+> switch kiln on
+Close the kiln first.
+> put small tile in kiln
+You put the small tile into the kiln.
+> put square tile in kiln
+You put the square tile into the kiln.
+> put blue tile in kiln
+You put the blue tile into the kiln.
+> dial kiln to 250
+The dial is set to 200, hot enough to crack glaze.
+> close kiln
+You close the kiln.
+> switch kiln on
+You switch the kiln on.
+The blue tile is now cracked.
+> inspect blue tile
+You can't see any such thing.
+> wait
+Time passes.
+> wait
+Time passes.
+The square tile is now fired.
+The small tile is now fired.
+> log
+50, 200, 200, 200 - lowest 50, 3 over 180, some firing.
+> tally
+4 tiles: 2 fired, 1 cracked, 1 raw.
+> switch kiln off
+You switch the kiln off.
+> open kiln
+You open the kiln, revealing a blue tile, a square tile and a small tile.
+> roster
+T-028 glazed raw; T-007 plain fired; T-005 plain fired; T-021 glazed cracked.
+> north
+Room B
+Room B. A rack holds tiles. Room A is south.
+You can see a rack here.
+> put green tile on rack
+You put the green tile on the rack.
+> take green tile
+Taken.
+> south
+Room A
+Room A. A kiln stands here. Room B is north.
+You can see a kiln (in which are a blue tile, a square tile and a small tile) here.
+> put green tile in kiln
+You put the green tile into the kiln.
+> close kiln
+You close the kiln.
+> heat kiln to 150
+The dial is set to 150.
+> switch kiln on
+You switch the kiln on.
+> wait
+Time passes.
+> wait
+Time passes.
+> north
+Room B
+Room B. A rack holds tiles. Room A is south.
+You can see a rack here.
+> wait
+Time passes.
+> south
+Room A
+Room A. A kiln stands here. Room B is north.
+You can see a kiln (which is closed) here.
+> wait
+Time passes.
+> readout
+Heat 150/200, on, closed, lit 12 turns.
+> log
+150, 150, 150, 150 - lowest 150, 0 over 180, all firing.
+> switch kiln off
+You switch the kiln off.
+> open kiln
+You open the kiln, revealing a green tile, a blue tile, a square tile and a small tile.
+> inspect green tile
+T-028 glazed fired, 5/5 turns.
+> tag green tile 3
+The green tile is tagged X-003.
+> roster
+T-007 plain fired; T-005 plain fired; T-003 glazed fired; T-021 glazed cracked.
+> tally
+4 tiles: 3 fired, 1 cracked, 0 raw.
