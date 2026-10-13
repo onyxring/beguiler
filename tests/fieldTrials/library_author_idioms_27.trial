@@ -1,0 +1,126 @@
+Room A
+Room A.
+You can see a clay pot, a tin pot and a stone pot here.
+> plants
+clay pot fern 100ml/300 seed 0
+tin pot basil 0ml/300 seed 0 parched
+stone pot ivy 200ml/500 sprout 25 span 1
+living 3, blooms 0, losses 0, one parched; first dry tin pot; poured 0ml
+cuttings 0 (taken 0, composted 0); log
+sun 10, past 50 0
+> cuttings
+No cuttings.
+> thirstiest
+The tin pot is thirstiest at 0ml; 3 have grown as far.
+> smell clay pot
+The clay pot smells of moss.
+> smell stone pot
+The stone pot smells of green sap.
+> water tin pot with 100
+The tin pot takes 100ml: 100ml.
+> water clay pot with 250
+The clay pot takes 250ml: 250ml.
+> cut tin pot
+The tin pot is too small to cut.
+> cut stone pot
+You take a cutting, ivy-1.
+> plants
+clay pot fern 130ml/300 leafy 60
+tin pot basil 0ml/300 sprout 20 parched
+stone pot ivy 0ml/500 leafy 55 parched span 2
+living 3, blooms 0, losses 0, one parched; first dry tin pot; poured 350ml
+cuttings 1 (taken 1, composted 0); log water:basil water:fern cut:ivy
+sun 10, past 50 2
+> sun 30
+sun 20, changes 1, sunny.
+> wait
+Time passes.
+The clay pot blooms.
+The tin pot wilts.
+The stone pot wilts.
+> plants
+clay pot fern 90ml/300 in bloom 80
+tin pot basil 0ml/300 wilted 20
+stone pot ivy 0ml/500 wilted 55 span 2
+living 1, blooms 1, losses 2; first dry tin pot; poured 350ml
+cuttings 1 (taken 1, composted 0); log water:basil water:fern cut:ivy bloom:fern wilt:basil wilt:ivy
+sun 20, past 50 1
+> cut clay pot
+You take a cutting, fern-2.
+> cut clay pot
+You take a cutting, fern-3.
+> cut clay pot
+You have no room for another cutting.
+> water clay pot with 320
+The clay pot overflows; 20ml spills.
+> rain
+Rain falls on 1 plants.
+> cuttings
+IVY-1 FERN-2 FERN-3 (19 chars), an ivy cutting.
+> pot slip
+You pot fern-3.
+> pot cutting
+fern-3 is potted already.
+> held
+ivy-1 fern-2 fern-3 - 3 held, 1 potted.
+> rank
+clay pot=100 stone pot=55 tin pot=20 top clay pot.
+clay pot stone pot drink least.
+> thirstiest
+The clay pot is thirstiest at 180ml; 1 have grown as far.
+> tank
+tank 2.6l, more than poured.
+> compost
+composted 1; cuttings 2.
+> cuttings
+IVY-1 FERN-2 (12 chars), an ivy cutting.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> plants
+clay pot fern 0ml/300 in bloom 100 parched
+tin pot basil 0ml/300 wilted 20
+stone pot ivy 0ml/500 wilted 55 span 2
+living 1, blooms 1, losses 2, one parched; first dry clay pot; poured 650ml
+cuttings 2 (taken 3, composted 1); log water:basil water:fern cut:ivy bloom:fern wilt:basil wilt:ivy cut:fern cut:fern spill20 rain1 compost1
+sun 20, past 50 1
+> thirstiest
+The clay pot is thirstiest at 0ml; 1 have grown as far.
+> sun 5
+sun 5, changes 2, shady.
+> water clay pot with 50
+The clay pot takes 50ml: 50ml.
+> plants
+clay pot fern 10ml/300 in bloom 100 parched
+tin pot basil 0ml/300 wilted 20
+stone pot ivy 0ml/500 wilted 55 span 2
+living 1, blooms 1, losses 2, one parched; first dry tin pot; poured 700ml
+cuttings 2 (taken 3, composted 1); log water:basil water:fern cut:ivy bloom:fern wilt:basil wilt:ivy cut:fern cut:fern spill20 rain1 compost1 water:fern
+sun 5, past 50 1
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+The clay pot wilts.
+> thirstiest
+Thirstiest: none.
+> water clay pot with 50
+The clay pot has wilted; the water runs off.
+> plants
+clay pot fern 0ml/300 wilted 100
+tin pot basil 0ml/300 wilted 20
+stone pot ivy 0ml/500 wilted 55 span 2
+living 0, blooms 1, losses 3; first dry clay pot; poured 700ml
+cuttings 2 (taken 3, composted 1); log water:basil water:fern cut:ivy bloom:fern wilt:basil wilt:ivy cut:fern cut:fern spill20 rain1 compost1 water:fern wilt:fern x
+sun 5, past 50 0

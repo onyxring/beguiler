@@ -1,0 +1,447 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: garden beds kept in tables. An enum of crops indexing parallel name, word, ripening,
+// thirst and yield tables; a companion table as jagged array<array<eCrop>> read with contains();
+// a bed table as an array of a value class written as bare { … } (bool, enum, int, int), changed
+// through [i].member; a bed layout as jagged array<array<int>> neighbour lists; a note table as an
+// array<string | func<void>> discriminated with typeof and narrowed with casts; a day pipeline as an
+// array<func<void, int>> of named routines grown with extend … inject; a bnum of bed flags built with
+// |= and listed by bit position; harvests as an array of a value class appended as Harvest{ … } and
+// read back through <linq> orderBy/filter/map/distinct/count/any/all/first/takeWhile with lambdas
+// capturing parameters and locals; a general parsing routine over the crop word table; a water word
+// picked by a switch with ranges and guards and a crop habit by a switch on the enum; stringObj rows
+// padded to columns and built with interpolated +=; for-in over arrays, rows and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int BED_COUNT = 6;
+const int CROP_COUNT = 4;
+const int FLAG_KINDS = 4;
+const int WATER_MAX = 5;
+const int WATER_GIVEN = 2;
+const int SPOIL_AFTER = 3;
+const int HARVEST_MAX = 8;
+const int NONE = -1;
+
+enum eCrop { bean = 0, carrot, leek, squash }
+bnum eFlag { dry, ripe, crowded, spoiled }
+
+//-- Crop tables ---------------------------------------------------------------
+
+//                                 bean      carrot     leek     squash
+array<string> cropNames         = { "bean",   "carrot",  "leek",  "squash" };
+array<dictionaryWord> cropWords = { .bean,    .carrot,   .leek,   .squash };
+array<int> ripeAfter            = { 3,        4,         5,       6 };
+array<int> thirst               = { 1,        2,         1,       3 };
+array<int> yieldOf              = { 4,        6,         3,       2 };
+
+array<eCrop> allCrops = { bean, carrot, leek, squash };
+
+array<array<eCrop>> goodWith = {
+    { carrot, squash },     // bean
+    { bean, leek },         // carrot
+    { carrot },             // leek
+    { bean }                // squash
+};
+
+array<string> flagNames = { "dry", "ripe", "crowded", "spoiled" };
+
+//-- Bed tables ----------------------------------------------------------------
+
+value class Bed {
+    inline bool sown;
+    inline eCrop crop;
+    inline int age;
+    inline int water;
+    Bed operator = (Bed o) {
+        sown = o.sown; crop = o.crop; age = o.age; water = o.water;
+        return self;
+    }
+}
+
+array<Bed> beds = {
+    { false, bean, 0, 0 },
+    { false, bean, 0, 0 },
+    { false, bean, 0, 0 },
+    { false, bean, 0, 0 },
+    { false, bean, 0, 0 },
+    { false, bean, 0, 0 },
+};
+
+// Beds 1 2 3 on the top row, 4 5 6 below; zero-based neighbour lists.
+array<array<int>> neighbours = {
+    { 1, 3 },
+    { 0, 2, 4 },
+    { 1, 5 },
+    { 0, 4 },
+    { 1, 3, 5 },
+    { 2, 4 }
+};
+
+value class Harvest {
+    inline int day;
+    inline eCrop crop;
+    inline int bed;
+    inline int amount;
+    Harvest operator = (Harvest o) {
+        day = o.day; crop = o.crop; bed = o.bed; amount = o.amount;
+        return self;
+    }
+}
+
+array<Harvest> harvests[HARVEST_MAX];
+
+int today = 1;
+
+//-- Notes ---------------------------------------------------------------------
+
+void carrotNote() {
+    int sown = beds.filter((Bed b) => b.sown && b.crop == carrot).count();
+    print($"Carrots in {sown} of {BED_COUNT} beds.");
+}
+
+void squashNote() {
+    print($"Needs {thirst[(int)squash]} water a day.");
+}
+
+array<string | func<void>> cropNotes = { "Climbs.", carrotNote, "Slow to ripen.", squashNote };
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object plotBoard {
+    "plot board";
+    name = {.plot, .board};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseCrop() {
+    int at = cropWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+bool validBed(int k) {
+    return k >= 0 && k < BED_COUNT;
+}
+
+bool crowdedAt(int k) {
+    if (!beds[k].sown) return false;
+    eCrop c = beds[k].crop;
+    for (int n in neighbours[k]) {
+        if (beds[n].sown && beds[n].crop == c) return true;
+    }
+    return false;
+}
+
+int companionsAt(int k) {
+    if (!beds[k].sown) return 0;
+    array<eCrop> liked = goodWith[(int)beds[k].crop];
+    int count = 0;
+    for (int n in neighbours[k]) {
+        if (beds[n].sown && liked.contains(beds[n].crop)) count++;
+    }
+    return count;
+}
+
+eFlag flagsFor(int k) {
+    eFlag f = 0;
+    if (!beds[k].sown) return f;
+    int c = (int)beds[k].crop;
+    if (beds[k].water < thirst[c]) f |= dry;
+    if (beds[k].age >= ripeAfter[c]) f |= ripe;
+    if (crowdedAt(k)) f |= crowded;
+    if (beds[k].age >= ripeAfter[c] + SPOIL_AFTER) f |= spoiled;
+    return f;
+}
+
+void flagsInto(ref stringObj s, eFlag f) {
+    bool first = true;
+    for (int b in 0 to FLAG_KINDS - 1) {
+        if ((f & (eFlag)(1 << b)) == 0) continue;
+        s += first ? " " : ",";
+        s += flagNames[b];
+        first = false;
+    }
+}
+
+string waterWord(int w) {
+    switch (w) {
+        case 0:          return "dry";
+        case 1 to 2:     return "damp";
+        case >= WATER_MAX: return "soaked";
+        default:         return "wet";
+    }
+}
+
+string habitOf(eCrop c) {
+    switch (c) {
+        case bean:           return "climber";
+        case carrot, leek:   return "root";
+        default:             return "trailer";
+    }
+}
+
+void bedLine(int k) {
+    stringObj line = $"{k + 1}";
+    padTo(line, 3);
+    if (!beds[k].sown) {
+        line += "empty";
+    } else {
+        Bed b = beds[k];
+        line += cropNames[(int)b.crop];
+        padTo(line, 10);
+        line += $"day {b.age}/{ripeAfter[(int)b.crop]}";
+        padTo(line, 19);
+        line += waterWord(b.water);
+        flagsInto(line, flagsFor(k));
+    }
+    line.print();
+    print("^");
+}
+
+//-- The day pipeline ----------------------------------------------------------
+
+// Each rule runs once per sown bed per day, in table order.
+void drink(int k) {
+    int need = thirst[(int)beds[k].crop];
+    if (beds[k].water >= need) {
+        beds[k].water -= need;
+        beds[k].age++;
+    } else {
+        beds[k].water = 0;
+    }
+}
+
+void report(int k) {
+    eFlag f = flagsFor(k);
+    if ((f & spoiled) != 0) print($"Bed {k + 1} has spoiled.^");
+    else if ((f & ripe) != 0 && beds[k].age == ripeAfter[(int)beds[k].crop]) print($"Bed {k + 1} is ripe.^");
+}
+
+array<func<void, int>> dayRules = { drink };
+
+extend dayRules {
+    inject report last;
+}
+
+void passDay() {
+    for (func<void, int> rule in dayRules) {
+        for (int k in 0 to BED_COUNT - 1) {
+            if (beds[k].sown) rule(k);
+        }
+    }
+    today++;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb BedsTest {
+    grammar = {.beds};
+    void handler() {
+        print($"Day {today}.^");
+        for (int k in 0 to BED_COUNT - 1) bedLine(k);
+    }
+}
+
+verb SowTest {
+    grammar = {.sow, parseCrop, NUMBER};
+    void handler() {
+        eCrop c = (eCrop)(int)noun;
+        int k = (int)second - 1;
+        if (!validBed(k)) { print($"No bed {k + 1}.^"); return; }
+        if (beds[k].sown) { print($"Bed {k + 1} already holds {cropNames[(int)beds[k].crop]}.^"); return; }
+        beds[k] = Bed{ true, c, 0, WATER_GIVEN };
+        print($"Sown {cropNames[(int)c]} in bed {k + 1}.^");
+        if (crowdedAt(k)) print("It shares a border with the same crop.^");
+    }
+}
+
+verb WaterTest {
+    grammar = {.water, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (!validBed(k) || !beds[k].sown) { print($"Bed {k + 1} has nothing to water.^"); return; }
+        beds[k].water += WATER_GIVEN;
+        if (beds[k].water > WATER_MAX) beds[k].water = WATER_MAX;
+        print($"Bed {k + 1} is {waterWord(beds[k].water)}.^");
+    }
+}
+
+verb SoakTest {
+    grammar = {.soak};
+    void handler() {
+        int done = 0;
+        for (int k in 0 to BED_COUNT - 1) {
+            if (!beds[k].sown) continue;
+            beds[k].water = WATER_MAX;
+            done++;
+        }
+        print($"Soaked {done} beds.^");
+    }
+}
+
+verb DaysTest {
+    grammar = {.days, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 1 || n > 9) { print("Between 1 and 9 days.^"); return; }
+        for (int d in 1 to n) passDay();
+        print($"Now day {today}.^");
+    }
+}
+
+verb HarvestTest {
+    grammar = {.harvest, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (!validBed(k) || !beds[k].sown) { print($"Bed {k + 1} is empty.^"); return; }
+        eFlag f = flagsFor(k);
+        eCrop c = beds[k].crop;
+        if ((f & ripe) == 0) {
+            print($"The {cropNames[(int)c]} in bed {k + 1} needs {ripeAfter[(int)c] - beds[k].age} more days.^");
+            return;
+        }
+        int amount = yieldOf[(int)c] + companionsAt(k);
+        if ((f & crowded) != 0) amount--;
+        if ((f & spoiled) != 0) amount = amount / 2;
+        if (!harvests.append(Harvest{ today, c, k, amount })) { print("The log is full.^"); return; }
+        beds[k].sown = false;
+        beds[k].age = 0;
+        beds[k].water = 0;
+        print($"Picked {amount} {cropNames[(int)c]} from bed {k + 1}.^");
+    }
+}
+
+verb LogTest {
+    grammar = {.log};
+    void handler() {
+        if (harvests.length == 0) { print("Nothing picked yet.^"); return; }
+        array<Harvest> byAmount[HARVEST_MAX] = harvests.orderBy((Harvest a, Harvest b) => b.amount - a.amount);
+        for (Harvest h in byAmount) {
+            stringObj line = $"day {h.day}";
+            padTo(line, 7);
+            line += $"bed {h.bed + 1}";
+            padTo(line, 14);
+            line += cropNames[(int)h.crop];
+            padTo(line, 21);
+            line += $"{h.amount}";
+            line.print();
+            print("^");
+        }
+        int kinds = harvests.map((Harvest h) => h.crop).distinct().count();
+        Harvest best = byAmount.first();
+        print($"{harvests.length} pickings, {kinds} crops, best {best.amount} {cropNames[(int)best.crop]}.^");
+    }
+}
+
+verb TotalsTest {
+    grammar = {.totals};
+    void handler() {
+        for (eCrop c in allCrops) {
+            int picks = harvests.filter((Harvest h) => h.crop == c).count();
+            if (picks == 0) continue;
+            int sum = 0;
+            for (Harvest h in harvests.filter((Harvest x) => x.crop == c)) sum += h.amount;
+            print($"{cropNames[(int)c]}: {sum} from {picks}.^");
+        }
+        int early = harvests.takeWhile((Harvest h) => h.day < today).count();
+        bool allFull = harvests.all((Harvest h) => h.amount >= yieldOf[(int)h.crop]);
+        print($"{early} before today; all at full yield {allFull}.^");
+    }
+}
+
+verb CompanionsTest {
+    grammar = {.companions, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (!validBed(k)) { print($"No bed {k + 1}.^"); return; }
+        stringObj line = $"Bed {k + 1} borders";
+        for (int n in neighbours[k]) {
+            line += $" {n + 1}";
+            if (beds[n].sown) line += $"({cropNames[(int)beds[n].crop]})";
+        }
+        line += ".";
+        line.print();
+        print("^");
+        if (beds[k].sown) print($"Companions: {companionsAt(k)}.^");
+    }
+}
+
+verb PlanTest {
+    grammar = {.plan, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (!validBed(k)) { print($"No bed {k + 1}.^"); return; }
+        if (beds[k].sown) { print($"Bed {k + 1} is in use.^"); return; }
+        array<int> around = neighbours[k];
+        stringObj line = $"Bed {k + 1}:";
+        int offered = 0;
+        for (eCrop c in allCrops) {
+            bool clash = beds.any((Bed b) => b.sown && b.crop == c) && around.any((int n) => beds[n].sown && beds[n].crop == c);
+            if (clash) continue;
+            array<eCrop> liked = goodWith[(int)c];
+            int helps = around.filter((int n) => beds[n].sown && liked.contains(beds[n].crop)).count();
+            line += $" {cropNames[(int)c]}+{helps}";
+            offered++;
+        }
+        if (offered == 0) line += " nothing fits";
+        line.print();
+        print("^");
+    }
+}
+
+verb NoteTest {
+    grammar = {.note, parseCrop};
+    void handler() {
+        eCrop c = (eCrop)(int)noun;
+        string | func<void> n = cropNotes[(int)c];
+        print($"{cropNames[(int)c]} ({habitOf(c)}): ");
+        if (typeof(n) == eType.routine) {
+            func<void> f = (func<void>)n;
+            f();
+        } else {
+            print((string)n);
+        }
+        print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,88 @@
+Room A
+You can see a shelf (on which is a crate B), a crate A, a crate C, a crate D and a tray (in which is a tag slip) here.
+
+> plates
+Plate: aL bL -S 1D 2D xL.
+Sum 459 vowels 1 hash 58770 high 229 big yes.
+Wrap 1 max 65535.
+Stamp AB-12X same 6.
+
+> grades
+none:middle B-7:fragile C-30:heavy D-150:special
+base heavy light.
+
+> weigh
+Order 7 12 30 150.
+A<C 1 B>=A 0 gap 23 cap 100 sq 49 sign -1 max 49.
+
+> count crate a
+The crate A: 2 marks, sum 6.
+
+> count crate b
+The crate B: 3 marks, sum 6.
+
+> count crate c
+The crate C: 3 marks, sum 14.
+
+> count crate d
+The crate D: 3 marks, sum 6.
+
+> count tray
+No marks.
+
+> peek
+A weight 12 pressed 0; shelf weight -1.
+Tray holds 4.
+
+> slips
+[2 nails][5 rope][1 ink][3 card][10 one][20 two][30 three][0 none][4 tags] total 75.
+
+> find 7
+Found B-7, fragile.
+
+> find 150
+Found D-150, special.
+
+> find 8
+Found nothing: no match.
+
+> press crate a
+none/1none/1 made 1.
+
+> press crate a
+none/2none/2 made 2.
+
+> press crate a
+The crate A is full (none).
+
+> press crate d
+The crate D is too heavy (150).
+
+> press shelf
+Only crates are pressed.
+
+> peek
+A weight 12 pressed 2; shelf weight -1.
+Tray holds 4.
+
+> stack
+D-150/0Moved 3; top D-150; floor 0; pick B-7.
+Shelf: crate D crate C crate A crate B.
+
+> uses
+Uses 21.
+
+> label crate c
+AB.12X/C.30/0 len 13 scrap 6 digit 3 letter 5 tagged yes.
+Back 0/0; crate C-30 x0 (13).
+
+> label crate b
+AB.12X/B.7/0 len 12 scrap 5 digit 3 letter 5 tagged yes.
+Back 0/7; crate B-7 x0 (12).
+
+> label crate a
+AB.12X/NONE/2 len 13 scrap 6 digit 3 letter 5 tagged yes.
+Back 2/e; crate none x2 (13).
+
+> label tray
+Only crates take labels.

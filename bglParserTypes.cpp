@@ -712,9 +712,13 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
         {
             bool hasNonFunction = false;
             for(auto& c : candidates) if(!c.isFunction){ hasNonFunction = true; break; }
+            // Where a func<> is expected, though, the name is the function.
+            bool funcExpected = currentExpectedType.rfind("func", 0) == 0 && !memberHint.size();
             if(hasNonFunction){
                 vector<TypeCandidate> filtered;
-                for(auto& c : candidates) if(!c.isFunction) filtered.push_back(c);
+                for(auto& c : candidates) if(c.isFunction == funcExpected) filtered.push_back(c);
+                if(filtered.empty())
+                    for(auto& c : candidates) if(!c.isFunction) filtered.push_back(c);
                 candidates = filtered;
             }
         }
@@ -1319,6 +1323,17 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
         }
     }
     for(size_t i = 0; i < maxP; i++) if(enumConflict[i]) h.positionalEnum[i] = "";
+    h.positionalRef.assign(maxP, !candidates.empty());
+    map<string, bool> namedRefSeen;
+    for(auto* fd : candidates){
+        for(size_t i = 0; i < maxP; i++)
+            if(i >= fd->params.size() || !fd->params[i]->isRef) h.positionalRef[i] = 0;
+        for(paramDef* p : fd->params){
+            auto it = namedRefSeen.find(p->name);
+            namedRefSeen[p->name] = (it == namedRefSeen.end() || it->second) && p->isRef;
+        }
+    }
+    for(auto& [k, v] : namedRefSeen) if(v) h.namedRef.insert(k);
     for(auto& [k, v] : namedEnumSeen) if(!v.empty() && !namedEnumConflict.count(k)) h.namedEnum[k] = v;
     return h;
 }
@@ -1407,7 +1422,14 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             } else {
                 currentExpectedType = posIdx < braceHints.positionalEnum.size() ? braceHints.positionalEnum[posIdx] : "";
             }
+            {
+                string nm = namedArgName;
+                transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+                readingForBind = namedArgName.empty() ? posIdx < braceHints.positionalRef.size() && braceHints.positionalRef[posIdx]
+                                                      : braceHints.namedRef.count(nm) > 0;
+            }
             expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
+            readingForBind = false;
             currentExpectedType = "";
             if(arg->resolvedType == "void")
                 parsingError(format("'{0}' has no value to pass; a print rule goes in interpolated text "
@@ -1983,7 +2005,11 @@ string bglParser::resolveI6Name(const string& spec){
         mangleOverloadSetForReceiver(headType, fd->name);
         // staticRoutineName reads i6name and adds the `_bgl_<class>_` prefix, so it is still the
         // right call — it just has to run AFTER the mangler has settled the overload's i6name.
-        if(fd->isStatic) return i6Emitter::staticRoutineName(getDispatchClass(headType), fd);
+        if(fd->isStatic){
+            classDef* hc = getDispatchClass(headType);
+            classDef* owner = hc ? hc->declaringClass(fd) : nullptr;
+            return i6Emitter::staticRoutineName(owner ? owner : hc, fd);
+        }
         return fd->i6name.empty() ? fd->name : fd->i6name;   // instance method → its property name
     }
     // Not a method — a data member, whose emitted property name `as` may have renamed.
@@ -2320,6 +2346,10 @@ string bglParser::clashRenamedMember(const string& name){
     static const std::set<string> i6SetupGlobals = {"sender", "self", "temp_global", "temp__global2",
         "temp__global3", "temp__global4", "sw__var", "sys__glob0", "sys__glob1", "sys__glob2", "sys_statusline_flag"};
     if(i6SetupGlobals.count(name)) return "_m_" + name;
+    // Inform 6's system functions can't be used as a property's name either.
+    static const std::set<string> i6SystemFunctions = {"child", "children", "elder", "eldest", "indirect",
+        "metaclass", "parent", "random", "sibling", "younger", "youngest"};
+    if(i6SystemFunctions.count(name)) return "_m_" + name;
     if(name == "main") return "_m_" + name;   // every I6 library defines a `Main` routine
     // Inform 6 keeps properties, globals, objects and routines in one namespace. A `property` global
     // names this very property; an emitter emits no symbol.
@@ -2549,6 +2579,17 @@ bool bglParser::memberArrayIsTracked(const std::string& ownerNameIn, const std::
                                         : (currentClass ? currentClass->name : string()))
                                       : ownerName;
     if(owner.empty()) return false;
+    // A computed owner (`(getBox()).items`, a cast's receiver) has no name to look up: the member is
+    // tracked when every member array of that name is.
+    if(owner[0] == '('){
+        int found = -1;
+        auto scan = [&](vector<typeMember*>& members){ int r = check(members); if(r >= 0) found = found == -1 ? r : min(found, r); };
+        for(typeDef* g : languageService.globals)
+            if(auto* c = dynamic_cast<classDef*>(g)) scan(c->members);
+        for(typeDef* t : languageService.objectInstances)
+            if(auto* od = dynamic_cast<objectDef*>(t)) scan(od->members);
+        return found == 1;
+    }
     // An object that has a base class resolves through resolveIdentifierType to its CLASS, whose
     // members do not include the ones declared on the instance — so `object w : Base { array<int>
     // t[4]; }` looked up `t` on Base, missed it, and fell through to the "not tracked" default.
@@ -2830,6 +2871,14 @@ optional<string> bglParser::qualifyFromCurrentObject(const string& name){
             if(auto* fd = dynamic_cast<functionDef*>(m); fd != nullptr && !fd->isStatic && !fd->isEmitter)
                 return "self." + (fd->i6name.empty() ? fd->dName() : fd->i6name);
         }
+    // An inherited value emitter (`child`, `sibling` on object): read like a member, so it is one here.
+    if(currentObject->objectClass != nullptr)
+        if(auto* ve = dynamic_cast<functionDef*>(findMemberInHierarchy(currentObject->objectClass, [&](typeMember* m){
+                auto* f = dynamic_cast<functionDef*>(m); return f && f->name == name && f->isValueEmitter && f->isEmitter; })))
+            if(auto* blk = dynamic_cast<i6Block*>(ve->body)){
+                emitterBindings vb; vb.self = "self"; vb.val = "self"; vb.trim = emitterTrim::wsSemi;
+                return expandEmitterBody(blk, vb);
+            }
     return nullopt;
 }
 
@@ -3205,9 +3254,13 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
         {
             bool hasNonFunction = false;
             for(auto& c : candidates) if(!c.isFunction){ hasNonFunction = true; break; }
+            // Where a func<> is expected, though, the name is the function.
+            bool funcExpected = currentExpectedType.rfind("func", 0) == 0 && !memberHint.size();
             if(hasNonFunction){
                 vector<QualifyCandidate> filtered;
-                for(auto& c : candidates) if(!c.isFunction) filtered.push_back(c);
+                for(auto& c : candidates) if(c.isFunction == funcExpected) filtered.push_back(c);
+                if(filtered.empty())
+                    for(auto& c : candidates) if(!c.isFunction) filtered.push_back(c);
                 candidates = filtered;
             }
         }
@@ -4477,6 +4530,8 @@ functionDef* bglParser::nativeGetterOf(const string& memberType){
     classDef* mcls = getDispatchClass(memberType);
     // Only an accessor (a value class) reads through its getter; a reference member is the instance itself.
     if(mcls != nullptr && !isValueClass(mcls)) return nullptr;
+    // The right operand of its class's own operator (`a.weight == b.weight`) is the accessor, not its reading.
+    if(mcls != nullptr && mcls == ownOperatorOperand && getDispatchClass(currentExpectedType) == mcls) return nullptr;
     auto* fn = mcls ? dynamic_cast<functionDef*>(findMemberInHierarchy(mcls, [&](typeMember* m){
         auto* f = dynamic_cast<functionDef*>(m);
         return f && f->name=="operator()" && f->params.empty() && !f->isEmitter && !f->isExplicit

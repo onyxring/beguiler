@@ -1,0 +1,62 @@
+Room A
+Room A.
+
+> setup
+Lanes 5, listeners 2, pricing service(weight(per-mile)).
+
+> route
+A to A: A 0mi
+A to B: A-B 40mi
+A to C: A-B-C 70mi
+A to D: A-B-C-D 90mi
+A to E: unreachable
+
+> book
+#100 accepted: A-B-C-D 90mi $2.70.
+#101 accepted: B-A 40mi $6.40.
+#102 accepted: A-B-C 70mi $9.30.
+Nobody: missing recipient (code 1).
+Dee: missing route (code 2).
+#103 refused: no route C>E.
+#104 accepted: D-C-B 50mi $5.10.
+Queued 4, live 4, errors 2.
+
+> queue
+#100 Ann 800g standard A>D $2.70
+#101 Bob 2600g express B>A $6.40
+#102 Cyd 1500g overnight A>C $9.30
+#104 Fay 3100g standard D>B $5.10
+
+> report
+Fast 2 of 4, any heavy true.
+First over $3.00: Bob.
+Cheapest first: Ann Fay Bob Cyd
+Total 8000g over 4; #102 is Cyd; #999 is nobody.
+
+> closelane
+Closed B-C (30mi).
+#100 rerouted A-B-D: 90mi to 110mi, $2.70 to $3.30.
+#102 rerouted A-C: 70mi to 90mi, $9.30 to $9.90.
+#104 rerouted D-B: 50mi to 70mi, $5.10 to $5.70.
+Searches 14.
+
+> queue
+#100 Ann 800g standard A>D $3.30
+#101 Bob 2600g express B>A $6.40
+#102 Cyd 1500g overnight A>C $9.90
+#104 Fay 3100g standard D>B $5.70
+
+> dispatch
+  out: #102 Cyd 1500g overnight A>C $9.90
+  out: #101 Bob 2600g express B>A $6.40
+  out: #104 Fay 3100g standard D>B $5.70
+  out: #100 Ann 800g standard A>D $3.30
+Dispatched 4, heavy 2, live 0, takings $25.30.
+Pricing layers 2 over per-mile.
+
+> queue
+
+> reopen
+Reopened 1 lane(s).
+#105 accepted: D-C-B-A 90mi $5.20.
+#105 Gus 1000g express D>A $5.20; delivered false, live 1.

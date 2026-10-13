@@ -1,0 +1,37 @@
+// run_measure9_forms — an accessor member passed to a `ref` parameter, an inherited static `<=>` on a
+// subclass operand, `stringObj` declared from `?.` and from `?? "literal"`, and a library object
+// (`selfobj`) in a member initializer.
+// EXPECT_OUTPUT: 10 1 0 box empty box none
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+value class Fine {
+    int _p = 0;
+    int  operator ()         { return _p; }
+    void operator = (int v)  { _p = v; }
+    Fine operator = (Fine o) { _p = o._p; return self; }
+    void operator += (int v) { _p = _p + v; }
+}
+object desk { Fine fines; }
+void charge(ref Fine f, int n) { f += n; }
+class Box : object {
+    inline int w;
+    string Label = "box";
+    static int operator <=> (Box a, Box b) { return a.w - b.w; }
+    stringObj Text() { stringObj t = Label; return t; }
+}
+class BigBox : Box { }
+Box small { w = 2; }
+BigBox big { w = 5; }
+void main() {
+    bglInit();
+    charge(desk.fines, 10);
+    print($"{(int)desk.fines} ");
+    bool ge = big >= small;
+    print($"{ge ? 1 : 0} {big < small ? 1 : 0} ");
+    Box b = small;
+    Box n = null;
+    stringObj one; one = b.Text() ?? "empty"; print(one); print(" ");
+    stringObj two = n?.Text() ?? "empty"; print(two); print(" ");
+    stringObj three = b?.Text(); print(three); print(" ");
+    print(n?.Text() ?? "none"); print("^");
+}

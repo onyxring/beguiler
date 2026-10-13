@@ -1,0 +1,587 @@
+/*  Field trial â exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a board of countdown timers. A class Timer : object with a label, a letter char, a
+// length in turns, a held count, a ring count, an enum state and the library's timer properties
+// (time_left, a time_out() that rings), methods returning int, float, bool and stringObj, and a
+// before() that answers Examine and Push; a value class Span (turns shown as m:ss, copy operator,
+// += of an int, == of another span, a stringObj clock) used for a running total and a longest ring;
+// StartTimer/StopTimer driven by verbs taking NOUN and NOUN with NUMBER (wind, start, halt, pause,
+// resume); a text grid split above the main window with a border, redrawn from a replaced
+// DrawStatusLine, one row per timer with a bar scaled from a float fraction; a text-buffer log
+// split to the right with a styleSheet, written by time_out(), cleared, closed and reopened; an
+// object with an inline auto { } accessor for the bar width that clamps and reaches outer; a ring
+// of recent log lines in an <array> of stringObj (enqueue, dequeue); <linq> filter, count, any, all,
+// orderBy with a named and a lambda comparator, first and last over an array<Timer>; links whose
+// targets are enum values handled in HandleGlkEvent, and a named-function link target; stringObj
+// padding, toUpper and left; a fixed-pitch table; a for over an enum list.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define TURN_SECONDS 30
+#define MAX_LOG 3
+#define BOARD_LINES 4
+#define LOG_WIDTH 30
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eState { idle, running, paused, rang }
+enum eLinks { haltRed = 31, haltBlue, haltGreen }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 1; };
+    emphasized = style{ italics = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz board = null;
+textBufferWindowVert logPane = null;
+array<stringObj> recentLog[MAX_LOG];
+int logCount = 0;
+int linkClicks = 0;
+char fillChar = '#';
+char emptyChar = '.';
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+string stateName(eState s) {
+    switch (s) {
+        case eState.idle:    return "idle";
+        case eState.running: return "running";
+        case eState.paused:  return "paused";
+        case eState.rang:    return "rang";
+    }
+    return "?";
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj percent(float f) {
+    int whole = (int)(f * 100 + 0.5);
+    stringObj out = $"{whole}%";
+    return out;
+}
+
+// ---- spans ---------------------------------------------------------------------------------------
+
+value class Span {
+    int turns;
+
+    Span operator = (Span o) {
+        turns = o.turns;
+        return self;
+    }
+
+    Span operator += (int n) {
+        turns += n;
+        return self;
+    }
+
+    bool operator == (Span o) {
+        return turns == o.turns;
+    }
+
+    bool operator != (Span o) {
+        return turns != o.turns;
+    }
+
+    int seconds() { return turns * TURN_SECONDS; }
+
+    stringObj clock() {
+        int s = seconds();
+        int rest = s % 60;
+        stringObj out = $"{s / 60}:";
+        if (rest < 10) out += '0';
+        out += $"{rest}";
+        return out;
+    }
+}
+
+Span totalRung;
+Span longestRing;
+
+// ---- the log -------------------------------------------------------------------------------------
+
+void openLog() {
+    logPane = bgl.ui.mainWin.splitRightBuffer(LOG_WIDTH, fixed, border, styles: logLook);
+}
+
+void logLine(stringObj text, bool loud = false) {
+    logCount++;
+    stringObj entry = $"[{turns}] {text}";
+    if (recentLog.length == recentLog.size) recentLog.dequeue();
+    recentLog.enqueue(entry);
+    if (loud) logPane?.printLine($"{italics}{entry}{roman}");
+    else logPane?.printLine(entry);
+}
+
+// ---- timers --------------------------------------------------------------------------------------
+
+class Timer : object {
+    string label = "timer";
+    char letter = '?';
+    int length = 0;
+    int held = 0;
+    int rings = 0;
+    eState state = eState.idle;
+    int time_left;
+
+    void time_out() {
+        state = eState.rang;
+        rings++;
+        totalRung += length;
+        Span ring;
+        ring.turns = length;
+        if (ring.turns > longestRing.turns) longestRing = ring;
+        printLine($"{cThe(self)} rings.");
+        stringObj note = $"{label} rang ({ring.clock()})";
+        logLine(note, true);
+    }
+
+    int remaining() {
+        switch (state) {
+            case eState.running: return time_left;
+            case eState.paused:  return held;
+        }
+        return 0;
+    }
+
+    float fraction() {
+        if (length == 0 || state == eState.idle) return 0.0;
+        if (state == eState.rang) return 1.0;
+        return (float)(length - remaining()) / length;
+    }
+
+    bool isLive() { return state == eState.running || state == eState.paused; }
+
+    stringObj bar(int cells) {
+        int filled = (int)(fraction() * cells + 0.5);
+        stringObj out = "";
+        for (int i = 0; i < cells; i++) {
+            if (i < filled) out += fillChar;
+            else out += emptyChar;
+        }
+        return out;
+    }
+
+    stringObj row(int cells) {
+        Span left;
+        left.turns = remaining();
+        stringObj tag = $"{label}";
+        stringObj time = left.clock();
+        stringObj out = $"{letter} {padRight(tag, 6)}{bar(cells)} {padLeft(time, 5)} {stateName(state)}";
+        return out;
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)}: {stateName(state)}, set to {length} turns, {remaining()} left, rings: {rings}.");
+                rtrue;
+            case Push:
+                if (state == eState.running) pauseTimer(self);
+                else if (state == eState.paused) resumeTimer(self);
+                else beginTimer(self);
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Three timers are on the shelf.";
+    attributes = {light};
+}
+
+Timer redTimer {
+    "red timer";
+    parent = roomA;
+    name = {.red, .timer};
+    label = "red";
+    letter = 'R';
+    length = 3;
+}
+
+Timer blueTimer {
+    "blue timer";
+    parent = roomA;
+    name = {.blue, .timer};
+    label = "blue";
+    letter = 'B';
+    length = 5;
+}
+
+Timer greenTimer {
+    "green timer";
+    parent = roomA;
+    name = {.green, .timer};
+    label = "green";
+    letter = 'G';
+    length = 2;
+}
+
+array<Timer> shelf = { redTimer, blueTimer, greenTimer };
+
+// ---- board settings ------------------------------------------------------------------------------
+
+object boardPrefs {
+    int narrowest = 4;
+    int widest = 12;
+    auto cells = {
+        int _w = 8;
+        int operator () { return _w; }
+        void operator = (int v) {
+            if (v < outer.narrowest) v = outer.narrowest;
+            if (v > outer.widest) v = outer.widest;
+            _w = v;
+        }
+    }
+}
+
+// ---- timer control -------------------------------------------------------------------------------
+
+void beginTimer(Timer t) {
+    if (t.isLive()) {
+        printLine($"{cThe(t)} is already {stateName(t.state)}.");
+        return;
+    }
+    t.state = eState.running;
+    StartTimer(t, t.length);
+    printLine($"{cThe(t)} starts: {t.length} turns.");
+    stringObj note = $"{t.label} started";
+    logLine(note);
+}
+
+void haltTimer(Timer t) {
+    if (!t.isLive()) {
+        printLine($"{cThe(t)} is not running.");
+        return;
+    }
+    if (t.state == eState.running) StopTimer(t);
+    t.state = eState.idle;
+    t.held = 0;
+    printLine($"{cThe(t)} stops.");
+    stringObj note = $"{t.label} halted";
+    logLine(note);
+}
+
+void pauseTimer(Timer t) {
+    if (t.state != eState.running) {
+        printLine($"{cThe(t)} is not running.");
+        return;
+    }
+    t.held = t.time_left;
+    StopTimer(t);
+    t.state = eState.paused;
+    printLine($"{cThe(t)} pauses with {t.held} turns left.");
+    stringObj note = $"{t.label} paused at {t.held}";
+    logLine(note);
+}
+
+void resumeTimer(Timer t) {
+    if (t.state != eState.paused) {
+        printLine($"{cThe(t)} is not paused.");
+        return;
+    }
+    t.state = eState.running;
+    StartTimer(t, t.held);
+    printLine($"{cThe(t)} runs again.");
+    stringObj note = $"{t.label} resumed";
+    logLine(note);
+}
+
+void haltAll() {
+    int n = 0;
+    for (Timer t in shelf) {
+        if (t.isLive()) {
+            if (t.state == eState.running) StopTimer(t);
+            t.state = eState.idle;
+            t.held = 0;
+            n++;
+        }
+    }
+    printLine($"Halted {n} timer{n == 1 ? "" : "s"}.");
+    drawBoard();
+}
+
+// ---- the board -----------------------------------------------------------------------------------
+
+int bySoonest(Timer a, Timer b) { return a.remaining() - b.remaining(); }
+
+void drawBoard() {
+    if (board == null) return;
+    board.clear();
+    int line = 0;
+    for (Timer t in shelf) {
+        board.moveCursor(0, line);
+        board.print(t.row(boardPrefs.cells));
+        line++;
+    }
+    board.moveCursor(0, line);
+    int live = shelf.filter((Timer t) => t.isLive()).count();
+    board.print($"live {live}  rung {totalRung.clock()}  log {logCount}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | links {linkClicks}");
+    drawBoard();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.haltRed:   haltTimer(redTimer);
+            case (int)eLinks.haltBlue:  haltTimer(blueTimer);
+            case (int)eLinks.haltGreen: haltTimer(greenTimer);
+            default: return 0;
+        }
+        linkClicks++;
+        drawBoard();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    board = bgl.ui.mainWin.splitUpGrid(BOARD_LINES, fixed, border);
+    openLog();
+    logLine("board ready");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Timer asTimer(object o) {
+    if (o == null || !o.is(Timer)) {
+        printLine("That is not a timer.");
+        return null;
+    }
+    return (Timer)o;
+}
+
+verb Wind {
+    grammar = {.wind, NOUN, .to, NUMBER};
+    void handler() {
+        Timer t = asTimer(noun);
+        if (t == null) return;
+        int asked = (int)second;
+        if (asked < 1) { printLine("A timer needs at least one turn."); return; }
+        if (t.isLive()) { printLine($"Halt {the(t)} first."); return; }
+        t.length = asked;
+        t.state = eState.idle;
+        Span s;
+        s.turns = asked;
+        printLine($"{cThe(t)} is wound to {asked} turns ({s.clock()}).");
+    }
+}
+
+verb Start {
+    grammar = {.start, NOUN};
+    void handler() {
+        Timer t = asTimer(noun);
+        if (t != null) beginTimer(t);
+    }
+}
+
+verb Halt {
+    grammar = {.halt, NOUN};
+    void handler() {
+        Timer t = asTimer(noun);
+        if (t != null) haltTimer(t);
+    }
+}
+
+verb Pause {
+    grammar = {.pause, NOUN};
+    void handler() {
+        Timer t = asTimer(noun);
+        if (t != null) pauseTimer(t);
+    }
+}
+
+verb Resume {
+    grammar = {.resume, NOUN};
+    void handler() {
+        Timer t = asTimer(noun);
+        if (t != null) resumeTimer(t);
+    }
+}
+
+verb Timers {
+    grammar = {.timers};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{bold}{padRight("Timer", 7)}{padLeft("Set", 4)}{padLeft("Left", 5)} {padRight("State", 8)}Done{roman}");
+        for (Timer t in shelf) {
+            stringObj n = $"{t.label}";
+            stringObj a = $"{t.length}";
+            stringObj b = $"{t.remaining()}";
+            stringObj st = $"{stateName(t.state)}";
+            printLine($"{fixed}{padRight(n, 7)}{padLeft(a, 4)}{padLeft(b, 5)} {padRight(st, 8)}{percent(t.fraction())}{roman}");
+        }
+    }
+}
+
+verb Soonest {
+    grammar = {.soonest};
+    meta = true;
+    void handler() {
+        if (!shelf.any((Timer t) => t.state == eState.running)) {
+            printLine("Nothing is running.");
+            return;
+        }
+        array<Timer> running[4];
+        running = shelf.filter((Timer t) => t.state == eState.running).orderBy(bySoonest);
+        Timer next = running.first();
+        Timer last = running.last();
+        printLine($"Next to ring: {the(next)} in {next.remaining()} turns.");
+        if (running.count() > 1) printLine($"Last to ring: {the(last)} in {last.remaining()} turns.");
+    }
+}
+
+verb Longest {
+    grammar = {.longest};
+    meta = true;
+    void handler() {
+        Timer big = shelf.orderBy((Timer a, Timer b) => b.length - a.length).first();
+        printLine($"Longest setting: {the(big)} at {big.length} turns.");
+        Span s;
+        s.turns = big.length;
+        if (s == longestRing) printLine("It matches the longest ring so far.");
+        else printLine($"Longest ring so far: {longestRing.clock()}.");
+        if (shelf.all((Timer t) => t.rings > 0)) printLine("Every timer has rung.");
+        else printLine($"Not yet rung: {shelf.filter((Timer t) => t.rings == 0).count()}.");
+    }
+}
+
+verb Cells {
+    grammar = {.cells, NUMBER};
+    meta = true;
+    void handler() {
+        int asked = (int)noun;
+        boardPrefs.cells = asked;
+        if (boardPrefs.cells != asked) printLine($"Bars take {boardPrefs.narrowest} to {boardPrefs.widest} cells; using {boardPrefs.cells}.");
+        else printLine($"Bars set to {boardPrefs.cells} cells.");
+        drawBoard();
+    }
+}
+
+verb Recent {
+    grammar = {.recent};
+    meta = true;
+    void handler() {
+        if (recentLog.length == 0) { printLine("The log is empty."); return; }
+        printLine($"Last {recentLog.length} of {logCount} log lines:");
+        for (stringObj r in recentLog) {
+            stringObj shown = r.left(24);
+            printLine($"  {shown.toUpper()}");
+        }
+    }
+}
+
+verb Blank {
+    grammar = {.blank};
+    meta = true;
+    void handler() {
+        if (logPane == null) { printLine("The log is closed."); return; }
+        logPane.clear();
+        printLine("The log is wiped.");
+    }
+}
+
+verb Collapse {
+    grammar = {.collapse};
+    meta = true;
+    void handler() {
+        if (logPane == null) { printLine("The log is already closed."); return; }
+        logPane.close();
+        logPane = null;
+        printLine("The log closes.");
+    }
+}
+
+verb Reopen {
+    grammar = {.reopen};
+    meta = true;
+    void handler() {
+        if (logPane != null) { printLine("The log is already open."); return; }
+        openLog();
+        for (stringObj r in recentLog) logPane?.printLine(r);
+        printLine($"The log reopens with {recentLog.length} lines.");
+    }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Halt: {link("red", eLinks.haltRed)} {link("blue", eLinks.haltBlue)} {link("green", eLinks.haltGreen)} {link("all", haltAll)}");
+    }
+}
+
+verb States {
+    grammar = {.states};
+    meta = true;
+    void handler() {
+        for (eState s in {eState.idle, eState.running, eState.paused, eState.rang}) {
+            int n = 0;
+            for (Timer t in shelf) if (t.state == s) n++;
+            printLine($"{stateName(s)}: {n}");
+        }
+        printLine($"Links: {yn(bgl.glulx.supports.hyperlinks)}. Log open: {yn(logPane != null)}.");
+    }
+}
+
+verb Blocks {
+    grammar = {.blocks};
+    meta = true;
+    void handler() {
+        if (fillChar == '#') {
+            fillChar = '=';
+            emptyChar = '·';
+            printLine($"Bars now use {fillChar} and {emptyChar}.");
+        } else {
+            fillChar = '#';
+            emptyChar = '.';
+            printLine("Bars now use # and .");
+        }
+        drawBoard();
+    }
+}
+
+#includeI6 "grammar"

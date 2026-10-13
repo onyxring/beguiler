@@ -1,0 +1,557 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a coins-and-machines kit and its consumer. The kit declares an enum of coins; a value
+// class of cents with two copy operators, + and - over ints, + over cents, <=> (giving < and >), ==
+// and != against an int and a show method that prints dollars; a routine giving a coin's value by a
+// switch on the enum; a machine class with a required positional price, an owned credit, a stock, a
+// required item() routine, a default noise(), static sale and refund counts, a pay() that starts a
+// timer, a time_out() that keeps the credit, a sell() that throws a reason code, and a before() that
+// takes over the library's Push. A pooled ticket class with name words in the class body, a
+// stringObj code built in create(), a machine member, a punched flag, static counters and a destroy()
+// that takes it out of the tree. The till object is a namespace (alias … for the enum and the cents)
+// holding an array of machines, an array of tickets swept with remove/delete in a while loop, a
+// stringObj log, an owned takings total, an inline accessor that clamps a discount and counts
+// changes through outer., a vend() that catches sell()'s throws, a change-making loop that walks the
+// coins by a switch with guards, a union-returning search and a func<> walk. The consumer has one
+// room with three machines (positional prices, one sold out), extends the machine class with tests
+// and the till with a capturing <linq> count and a ternary; its verbs pay, buy, refund, punch and
+// bin tickets, set the discount, find the richest machine through typeof and casts, and report with
+// <linq> filter/count/any/all/first/orderBy/take, ??, stringObj methods, a copied and lambda-sorted
+// local array, bgl.world.instances with a predicate, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA26_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: machines that take coins and sell tickets. ====
+
+/// The coins a machine gives back, largest first.
+enum eLa26Coin { quarter, dime, nickel, penny }
+
+/// An amount of money in cents, copied on assignment.
+value class La26Cents {
+    int c;
+    La26Cents operator = (La26Cents o) { c = o.c; return self; }
+    La26Cents operator = (int n) { c = n; return self; }
+    /// The amount with some cents more.
+    La26Cents operator + (int n) {
+        La26Cents r;
+        r.c = c + n;
+        return r;
+    }
+    /// The two amounts together.
+    La26Cents operator + (La26Cents o) {
+        La26Cents r;
+        r.c = c + o.c;
+        return r;
+    }
+    /// The amount with some cents less, never below nothing.
+    La26Cents operator - (int n) {
+        La26Cents r;
+        r.c = bgl.util.math.max(c - n, 0);
+        return r;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La26Cents o) { return c - o.c; }
+    /// True when it is exactly so many cents.
+    bool operator == (int n) { return c == n; }
+    /// True when it is not so many cents.
+    bool operator != (int n) { return c != n; }
+
+    /// Prints the amount as dollars and cents.
+    void show() {
+        print($"${c / 100}.");
+        if (c % 100 < 10) print("0");
+        print($"{c % 100}");
+    }
+}
+
+/// What a coin is worth, in cents.
+int la26Worth(eLa26Coin k) {
+    switch (k) {
+        case eLa26Coin.quarter: return 25;
+        case eLa26Coin.dime:    return 10;
+        case eLa26Coin.nickel:  return 5;
+        default:                return 1;
+    }
+}
+
+/// A machine that takes coins and sells one kind of ticket.
+class La26Machine : object {
+    /// What a ticket costs, in cents.
+    required inline int price;
+    La26Cents credit;
+    /// Tickets left to sell.
+    int stock = 3;
+    /// Tickets this machine has sold.
+    int sold = 0;
+    /// Tickets every machine has sold.
+    static int sales = 0;
+    /// Refunds every machine has given.
+    static int refunds = 0;
+    int time_left;
+
+    /// A word for what it sells.
+    required string item();
+    /// The sound it makes when it sells.
+    default string noise() { return "clunk"; }
+
+    /// The price after the till's discount.
+    int cost() { return price - price * la26Till.discount / 100; }
+
+    /// Takes coins; the credit is kept if nothing is bought in three turns.
+    void pay(int cents) {
+        credit = credit + cents;
+        StopTimer(self);
+        StartTimer(self, 3);
+    }
+
+    void time_out() {
+        if (credit == 0) return;
+        la26Till.takings = la26Till.takings + credit;
+        la26Till.log += $"kept:{item()} ";
+        credit = 0;
+        if (parent == location) print($"The {self} keeps your credit.^");
+    }
+
+    /// Sells a ticket. Throws -1 when it is sold out, or the cents still owed.
+    void sell() {
+        if (stock == 0) throw -1;
+        int owed = cost() - credit.c;
+        if (owed > 0) throw owed;
+        credit = credit - cost();
+        stock--;
+        sold++;
+        La26Machine.sales++;
+        if (credit == 0) StopTimer(self);
+    }
+
+    /// Gives back the credit; returns how many cents came out.
+    int refund() {
+        int had = credit.c;
+        credit = 0;
+        StopTimer(self);
+        if (had > 0) La26Machine.refunds++;
+        return had;
+    }
+
+    bool before() {
+        if (action != ::Push) return false;
+        la26Till.vend(self);
+        return true;
+    }
+}
+
+/// A ticket from a machine; made with new and handed back with delete.
+class La26Ticket[3] : object {
+    string short_name = "ticket";
+    name = {.ticket, .stub};
+    stringObj code;
+    La26Machine from;
+    bool punched = false;
+    /// Tickets printed so far.
+    static int printed = 0;
+    /// Tickets binned so far.
+    static int binned = 0;
+
+    void create(La26Machine m) {
+        from = m;
+        printed++;
+        code = $"{m.item()}-{printed}";
+        code = code.toUpper();
+        parent = player;
+    }
+
+    void destroy() {
+        from = null;
+        parent = null;
+        binned++;
+    }
+}
+
+/// Report verbs: they take no time.
+class La26Info : verb {
+    meta = true;
+}
+
+// ==== The till. ====
+
+/// The till: knows the machines and the tickets, sells and makes change, and keeps a log.
+object la26Till {
+    "till";
+    alias coin for eLa26Coin;
+    alias cents for La26Cents;
+    array<La26Machine> machines[4];
+    array<La26Ticket> tickets[3];
+    stringObj log;
+    /// Money the machines have kept.
+    cents takings;
+    int changes = 0;
+
+    /// Percent off every price, kept from 0 to 50; each change is counted.
+    auto discount = {
+        int _p = 0;
+        int operator () { return _p; }
+        void operator = (int v) {
+            int n = bgl.util.math.clamp(v, 0, 50);
+            if (n != _p) outer.changes++;
+            _p = n;
+        }
+    }
+
+    /// Adds a machine; false when it is there already or there is no room.
+    bool register(La26Machine m) {
+        if (machines.contains(m)) return false;
+        return machines.append(m);
+    }
+
+    /// A word for a coin.
+    string word(coin k) {
+        switch (k) {
+            case coin.quarter: return "quarter";
+            case coin.dime:    return "dime";
+            case coin.nickel:  return "nickel";
+            default:           return "penny";
+        }
+    }
+
+    /// The largest coin no bigger than an amount.
+    coin largest(int amount) {
+        switch (amount) {
+            case >= 25: return coin.quarter;
+            case >= 10: return coin.dime;
+            case >= 5:  return coin.nickel;
+            default:    return coin.penny;
+        }
+    }
+
+    /// Prints an amount as the coins that make it, largest first. Returns how many coins.
+    int change(int amount) {
+        int left = amount;
+        int count = 0;
+        coin last = coin.quarter;
+        int run = 0;
+        while (left > 0) {
+            coin k = largest(left);
+            if (run > 0 && k != last) {
+                print($"{run} {word(last)} ");
+                run = 0;
+            }
+            last = k;
+            run++;
+            left -= la26Worth(k);
+            count++;
+        }
+        if (run > 0) print($"{run} {word(last)}");
+        return count;
+    }
+
+    /// Sells a ticket from a machine into the player's hand.
+    void vend(La26Machine m) {
+        if (tickets.length == tickets.size) {
+            print("Your hands are full of tickets.^");
+            return;
+        }
+        try {
+            m.sell();
+        } catch (int code) {
+            if (code < 0) print($"The {m} is sold out.^");
+            else print($"The {m} wants {code} cents more.^");
+            log += "x ";
+            return;
+        }
+        La26Ticket t = new La26Ticket(m);
+        tickets.append(t);
+        log += $"sold:{m.item()} ";
+        print($"{m.noise()}. A ticket marked {t.code} drops out.^");
+    }
+
+    /// Bins the punched tickets. Returns how many went.
+    int sweep() {
+        int gone = 0;
+        int i = 0;
+        while (i < tickets.length) {
+            La26Ticket t = tickets[i];
+            if (t.punched) {
+                tickets.remove(i);
+                delete t;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        if (gone > 0) log += $"bin{gone} ";
+        return gone;
+    }
+
+    /// The machine holding the most credit, or a word when none holds any.
+    La26Machine | string richest() {
+        La26Machine best = null;
+        for (La26Machine m in machines) {
+            if (m.credit == 0) continue;
+            if (best == null || m.credit > best.credit) best = m;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Runs a step on each machine, in the order they were registered.
+    void each(func<void, La26Machine> step) {
+        for (La26Machine m in machines) step(m);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La26Machine busMachine {
+    150, "bus machine";
+    parent = roomA;
+    name = {.bus, .machine};
+    attributes = {static};
+    string item() { return "bus"; }
+}
+
+La26Machine filmMachine {
+    95, "film machine";
+    parent = roomA;
+    name = {.film, .machine};
+    attributes = {static};
+    string item() { return "film"; }
+    string noise() { return "whirr"; }
+}
+
+La26Machine fairMachine {
+    40, "fair machine";
+    parent = roomA;
+    name = {.fair, .machine};
+    attributes = {static};
+    stock = 0;
+    string item() { return "fair"; }
+    string noise() { return "ding"; }
+}
+
+/// Every machine can say whether it is ready to sell.
+extend class La26Machine {
+    /// True when the credit covers a ticket.
+    bool ready() { return stock > 0 && credit.c >= cost(); }
+    /// True when it has nothing left.
+    bool empty() { return stock == 0; }
+}
+
+/// The till can count the machines over an amount and sum itself up in a word.
+extend la26Till {
+    /// How many machines hold at least the credit.
+    int holding(int least) {
+        return machines.filter((La26Machine m) => m.credit.c >= least).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return discount > 0 ? "sale" : "full price";
+    }
+}
+
+/// Prints a machine's line.
+void la26ShowMachine(La26Machine m) {
+    print($"{m} {m.item()} {m.cost()}c credit ");
+    m.credit.show();
+    print($" stock {m.stock} sold {m.sold}");
+    if (m.ready()) print(" ready");
+    if (m.empty()) print(" empty");
+    print("^");
+}
+
+// ==== Verbs. ====
+
+verb La26Pay {
+    grammar = {.pay, NUMBER, .to, NOUN};
+    void handler() {
+        int amount = (int)noun;
+        if (!second.is(La26Machine)) {
+            print("Only machines take money.^");
+            return;
+        }
+        La26Machine m = (La26Machine)second;
+        if (amount <= 0) {
+            print("You pay nothing.^");
+            return;
+        }
+        m.pay(amount);
+        la26Till.log += $"pay{amount} ";
+        print($"The {m} shows ");
+        m.credit.show();
+        print(".^");
+    }
+}
+
+verb La26Refund {
+    grammar = {.refund, NOUN};
+    void handler() {
+        if (!noun.is(La26Machine)) {
+            print("Only machines give refunds.^");
+            return;
+        }
+        La26Machine m = (La26Machine)noun;
+        int back = m.refund();
+        if (back == 0) {
+            print($"The {m} holds no credit.^");
+            return;
+        }
+        print("Out come ");
+        int n = la26Till.change(back);
+        print($" ({n} coins).^");
+    }
+}
+
+verb La26Punch {
+    grammar = {.punch, NOUN};
+    void handler() {
+        if (!noun.is(La26Ticket)) {
+            print("Only tickets punch.^");
+            return;
+        }
+        La26Ticket t = (La26Ticket)noun;
+        if (t.punched) {
+            print($"{t.code} is punched already.^");
+            return;
+        }
+        t.punched = true;
+        t.short_name = "punched ticket";
+        print($"You punch {t.code}.^");
+    }
+}
+
+verb La26Bin {
+    grammar = {.bin};
+    void handler() {
+        int gone = la26Till.sweep();
+        print($"binned {gone}; tickets {la26Till.tickets.length}.^");
+    }
+}
+
+La26Info La26Discount {
+    grammar = {.discount, NUMBER};
+    void handler() {
+        la26Till.discount = (int)noun;
+        print($"discount {la26Till.discount}, changes {la26Till.changes}, {la26Till.mood()}.^");
+    }
+}
+
+La26Info La26Richest {
+    grammar = {.richest};
+    void handler() {
+        La26Machine | string r = la26Till.richest();
+        if (typeof(r) == eType.object) {
+            La26Machine m = (La26Machine)r;
+            print($"The {m} holds the most; {la26Till.holding(m.credit.c)} hold as much.^");
+        } else {
+            print($"Richest: {(string)r}.^");
+        }
+    }
+}
+
+La26Info La26Machines {
+    grammar = {.machines};
+    void handler() {
+        la26Till.each((La26Machine m) => la26ShowMachine(m));
+        int stocked = la26Till.machines.filter((La26Machine m) => !m.empty()).count();
+        print($"stocked {stocked}, sales {La26Machine.sales}, refunds {La26Machine.refunds}");
+        if (la26Till.machines.any((La26Machine m) => m.ready())) print(", one ready");
+        if (la26Till.machines.all((La26Machine m) => m.credit == 0)) print(", no credit");
+        La26Machine firstEmpty = la26Till.machines.filter((La26Machine m) => m.empty()).first();
+        object which = firstEmpty ?? roomA;
+        print($"; first empty {which}; takings ");
+        la26Till.takings.show();
+        print("^");
+        print($"tickets {la26Till.tickets.length} (printed {La26Ticket.printed}, binned {La26Ticket.binned}); log {la26Till.log}^");
+#if LA26_TRACE
+        print($"discount {la26Till.discount}, over 50c {la26Till.holding(50)}^");
+#endif
+    }
+}
+
+La26Info La26Tickets {
+    grammar = {.tickets};
+    void handler() {
+        if (la26Till.tickets.length == 0) {
+            print("No tickets.^");
+            return;
+        }
+        stringObj line;
+        for (La26Ticket t in la26Till.tickets) {
+            line += t.code.toLower();
+            if (t.punched) line += "*";
+            line += " ";
+        }
+        line = line.trim();
+        print($"{line} ({line.length} chars)");
+        if (line.contains("bus")) print(", a bus ticket");
+        print(".^");
+    }
+}
+
+La26Info La26Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La26Machine> order[4];
+        order = la26Till.machines;
+        order.sort((La26Machine a, La26Machine b) => b.sold - a.sold);
+        for (La26Machine m in order) print($"{m}={m.sold} ");
+        La26Machine top = order.first();
+        if (top.sold == 0) print("none sold");
+        else if (top.sold > order[1].sold) print($"top {top}");
+        else print("tie");
+        print(".^");
+        for (La26Machine m in la26Till.machines.orderBy((La26Machine a, La26Machine b) => a.price - b.price).take(2)) {
+            print($"{m} ");
+        }
+        print("cost least.^");
+    }
+}
+
+La26Info La26Held {
+    grammar = {.held};
+    void handler() {
+        int n = 0;
+        int punched = 0;
+        for (object o in bgl.world.instances(La26Ticket, (object t) => t.parent == player)) {
+            La26Ticket t = (La26Ticket)o;
+            print($"{t.code} ");
+            n++;
+            if (t.punched) punched++;
+        }
+        print($"- {n} held, {punched} punched.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la26Till.register(busMachine);
+    la26Till.register(filmMachine);
+    la26Till.register(fairMachine);
+    la26Till.register(filmMachine);
+    rfalse;
+}
+
+#includeI6 "grammar"

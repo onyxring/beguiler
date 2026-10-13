@@ -1,0 +1,508 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-seventh PunyInform program, written plainly: two rooms (Room A with a desk, a
+// returns bin, a date stamp and a coin, Room B to the north with three shelves and a clerk) and
+// OPTIONAL_SCORED; a `Book` class with an enum genre, a page count, a days-late count and a stamped
+// flag, its description a routine reading a genre name from an `array<string>`, and an `after` taking
+// `PutOn`; a `Shelf` class whose `before` takes `Receive` (books only, stamped, the right genre); a
+// returns bin whose daemon drops books from a queue (`array<object>` with `dequeue`) every few turns;
+// a value class `Fine` (`operator ()`, `=` from int and from itself, `+=`, `-=`, a method) owned by
+// the desk, and a global one changed through a `ref` parameter; a `stamp NOUN` verb charging fines; a `shelve NOUN`
+// verb finding a shelf by genre and running `PutOn.perform`; a clerk with `life` (Ask through
+// NextWord, Give of the coin) and `orders`; `<linq>` chains (`filter`, `count`, `orderBy` with a
+// comparator, `any`, `all`, `first`) over `bgl.world.instances`; a lambda capturing a parameter; an
+// `array<int>` of fines charged with `+=`, `sort` and `contains`; a `stringObj` log built with
+// interpolated strings and `toUpper`, `left` and `length`; `for`, `for … in`, `while` and `do`/`while`
+// loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eGenre { fiction, history, science }
+
+array<string> genreNames = {"fiction", "history", "science"};
+
+const int FINE_PER_DAY = 5;
+const int COIN_VALUE   = 20;
+
+value class Fine {
+    int _pence = 0;
+
+    int  operator ()          { return _pence; }
+    void operator = (int v)   { _pence = v < 0 ? 0 : v; }
+    Fine operator = (Fine o)  { _pence = o._pence; return self; }
+    void operator += (int v)  { _pence = _pence + v; }
+    void operator -= (int v) {
+        _pence = _pence - v;
+        if (_pence < 0) _pence = 0;
+    }
+
+    bool owing() {
+        return _pence > 0;
+    }
+}
+
+stringObj logText;
+Fine ledgerFine;
+int  logCount      = 0;
+int  stampedCount  = 0;
+int  shelvedCount  = 0;
+int  dropCount     = 0;
+bool firstStamp    = false;
+bool firstShelve   = false;
+
+array<int> charges[8];
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string genreName(eGenre g) {
+    return genreNames[(int)g - 1];
+}
+
+void charge(ref Fine f, int days) {
+    int amount = days * FINE_PER_DAY;
+    f += amount;
+    charges += amount;
+    jot("fine", amount);
+}
+
+// --- books ------------------------------------------------------------------------------------------
+
+class Book : object {
+    eGenre genre = eGenre.fiction;
+    int pages = 100;
+    int daysLate = 0;
+    bool stamped = false;
+
+    void description() {
+        print($"A {genreName(genre)} book of {pages} pages");
+        if (daysLate > 0) print($", {daysLate} days late");
+        if (stamped) print(", stamped");
+        printLine(".");
+    }
+
+    bool after() {
+        switch (action) {
+            case PutOn:
+                if (!second.is(Shelf)) rfalse;
+                shelvedCount++;
+                jot("shelved", shelvedCount);
+                if (!firstShelve) {
+                    firstShelve = true;
+                    score++;
+                }
+                if (shelvedCount == 5) score++;
+        }
+        rfalse;
+    }
+}
+
+bool isShelved(object o) {
+    return o.parent != null && o.parent.is(Shelf);
+}
+
+int pagesOrder(object a, object b) {
+    return bgl.util.math.sign(((Book)a).pages - ((Book)b).pages);
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A desk stands by a returns bin. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. Three shelves line the walls. Room A is south.";
+    s_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object desk {
+    "desk";
+    parent = roomA;
+    name = {.desk};
+    Fine fines;
+    attributes = {supporter, static};
+
+    void description() {
+        if (fines.owing()) printLine($"A desk. A note on it reads: fines owed {(int)fines}.");
+        else printLine("A desk. Nothing is owed.");
+    }
+}
+
+object dateStamp {
+    "date stamp";
+    parent = desk;
+    name = {.date, .stamp};
+    description = "A rubber date stamp.";
+}
+
+object coin {
+    "coin";
+    parent = desk;
+    name = {.coin};
+    description = "A coin.";
+}
+
+object returnsBin {
+    "returns bin";
+    parent = roomA;
+    name = {.returns, .bin};
+    description = "A metal returns bin.";
+    int turnsWaited = 0;
+    attributes = {container, open, static};
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                rtrue("The returns bin only takes books from the slot outside.^");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        if (queue.length == 0) {
+            StopDaemon(self);
+            return;
+        }
+        turnsWaited++;
+        if (turnsWaited < 3) return;
+        turnsWaited = 0;
+        object b = queue.dequeue();
+        b.parent = self;
+        dropCount++;
+        jot("dropped", dropCount);
+        if (location == roomA) printLine($"{cThe(b)} drops into the returns bin.");
+    }
+}
+
+array<object> queue[4];
+
+Book redBook {
+    "red book";
+    parent = returnsBin;
+    name = {.red, .book};
+    genre = eGenre.fiction;
+    pages = 120;
+}
+
+Book greenBook {
+    "green book";
+    parent = returnsBin;
+    name = {.green, .book};
+    genre = eGenre.history;
+    pages = 300;
+    daysLate = 2;
+}
+
+Book blueBook {
+    "blue book";
+    parent = returnsBin;
+    name = {.blue, .book};
+    genre = eGenre.science;
+    pages = 80;
+    daysLate = 5;
+}
+
+Book grayBook {
+    "gray book";
+    name = {.gray, .book};
+    genre = eGenre.fiction;
+    pages = 200;
+}
+
+Book brownBook {
+    "brown book";
+    name = {.brown, .book};
+    genre = eGenre.science;
+    pages = 150;
+    daysLate = 1;
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+class Shelf : object {
+    eGenre genre = eGenre.fiction;
+    attributes = {supporter, static};
+
+    void description() {
+        int n = children.length;
+        if (n == 0) printLine($"The {genreName(genre)} shelf is empty.");
+        else printLine($"The {genreName(genre)} shelf holds {n} books.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Book)) rtrue("Only books go on the shelves.^");
+                Book b = (Book)noun;
+                if (!b.stamped) rtrue($"{cThe(b)} has not been stamped.^");
+                if (b.genre != genre) rtrue($"{cThe(b)} belongs on the {genreName(b.genre)} shelf.^");
+        }
+        rfalse;
+    }
+}
+
+Shelf fictionShelf {
+    "fiction shelf";
+    parent = roomB;
+    name = {.fiction, .shelf};
+    genre = eGenre.fiction;
+}
+
+Shelf historyShelf {
+    "history shelf";
+    parent = roomB;
+    name = {.history, .shelf};
+    genre = eGenre.history;
+}
+
+Shelf scienceShelf {
+    "science shelf";
+    parent = roomB;
+    name = {.science, .shelf};
+    genre = eGenre.science;
+}
+
+array<object> shelves = {fictionShelf, historyShelf, scienceShelf};
+
+object shelfFor(eGenre g) {
+    for (object s in shelves) {
+        if (((Shelf)s).genre == g) return s;
+    }
+    return null;
+}
+
+int booksOf(eGenre g) {
+    return bgl.world.instances(Book, (object o) => ((Book)o).genre == g).length;
+}
+
+object clerk {
+    "clerk";
+    parent = roomB;
+    name = {.clerk};
+    description = "A clerk with a clipboard.";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .fines || w == .fine) rtrue($"The clerk says: {FINE_PER_DAY} a day, paid at the desk.^");
+                if (w == .stamp) rtrue("The clerk says: every book is stamped before it is shelved.^");
+                if (w == .shelf || w == .shelves) rtrue("The clerk says: fiction, history, science.^");
+                rtrue("The clerk has nothing to say about that.^");
+            case Give:
+                if (noun != coin) rtrue("The clerk says: keep it.^");
+                if (!desk.fines.owing()) rtrue("The clerk says: nothing is owed.^");
+                desk.fines -= COIN_VALUE;
+                coin.parent = null;
+                jot("paid", COIN_VALUE);
+                rtrue($"The clerk takes the coin. Fines owed: {(int)desk.fines}.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The clerk waits.^");
+        }
+        rtrue("The clerk says: I am busy.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb StampBook {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (dateStamp.parent != player) {
+            printLine("You are not holding the date stamp.");
+            return;
+        }
+        if (!noun.is(Book)) {
+            printLine("Only books get stamped.");
+            return;
+        }
+        Book b = (Book)noun;
+        if (b.parent != player) {
+            printLine($"You need to hold {the(b)}.");
+            return;
+        }
+        if (b.stamped) {
+            printLine($"{cThe(b)} is already stamped.");
+            return;
+        }
+        b.stamped = true;
+        stampedCount++;
+        jot("stamped", stampedCount);
+        if (!firstStamp) {
+            firstStamp = true;
+            score++;
+        }
+        if (b.daysLate > 0) {
+            charge(desk.fines, b.daysLate);
+            ledgerFine += b.daysLate * FINE_PER_DAY;
+            printLine($"You stamp {the(b)}. It is {b.daysLate} days late: a fine of {b.daysLate * FINE_PER_DAY}.");
+        } else {
+            printLine($"You stamp {the(b)}.");
+        }
+    }
+}
+
+verb Shelve {
+    grammar = {.shelve, NOUN};
+    void handler() {
+        if (!noun.is(Book)) {
+            printLine("Only books go on the shelves.");
+            return;
+        }
+        if (location != roomB) {
+            printLine("The shelves are in Room B.");
+            return;
+        }
+        object s = shelfFor(((Book)noun).genre);
+        PutOn.perform(noun, s);
+    }
+}
+
+verb Catalog {
+    meta = true;
+    grammar = {.catalog};
+    void handler() {
+        array<object> all[8];
+        all = bgl.world.instances(Book);
+        int out = all.filter((object o) => o.parent == null).count();
+        int shelvedNow = all.filter(isShelved).count();
+        printLine($"{all.length} books: {shelvedNow} shelved, {out} not yet returned.");
+        array<object> byPages[8];
+        byPages = all.filter((object o) => o.parent != null).orderBy(pagesOrder);
+        for (object o in byPages) {
+            Book b = (Book)o;
+            print($"{b}: {genreName(b.genre)}, {b.pages} pages, ");
+            if (isShelved(b)) print("shelved");
+            else if (b.stamped) print("stamped");
+            else print("not stamped");
+            printLine($", in {the(b.parent)}.");
+        }
+        if (all.any((object o) => ((Book)o).daysLate > 0 && !((Book)o).stamped))
+            printLine("Some late books are not stamped.");
+        if (byPages.length > 0) printLine($"Shortest: {byPages.first()}.");
+    }
+}
+
+verb Genres {
+    meta = true;
+    grammar = {.genres};
+    void handler() {
+        for (int g = 1; g <= 3; g++) {
+            printLine($"{genreName((eGenre)g)}: {booksOf((eGenre)g)}");
+        }
+    }
+}
+
+verb Fines {
+    meta = true;
+    grammar = {.fines};
+    void handler() {
+        if (charges.length == 0) {
+            printLine("No fines charged.");
+            return;
+        }
+        array<int> sorted[8];
+        sorted = charges;
+        sorted.sort();
+        print("Fines:");
+        int i = 0;
+        do {
+            print($" {sorted[i]}");
+            i++;
+        } while (i < sorted.length);
+        int total = 0;
+        i = 0;
+        while (i < charges.length) {
+            total += charges[i];
+            i++;
+        }
+        print($". Total {total}, ledger {(int)ledgerFine}, owed {(int)desk.fines}.");
+        if (charges.contains(25)) print(" One fine was 25.");
+        printLine("");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string owed = desk.fines.owing() ? "yes" : "no";
+        printLine($"Score {score} of {MAX_SCORE}. Stamped {stampedCount}, shelved {shelvedCount}, dropped {dropCount}.");
+        printLine($"Owed: {owed}. Clerk asked {clerk.asked}. Queue {queue.length}.");
+        array<object> found[8];
+        found = bgl.world.instances(Book);
+        if (found.all((object o) => ((Book)o).stamped)) printLine("Every book is stamped.");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        stringObj head;
+        head = logText.left(20);
+        printLine($"Log ({logCount}, {logText.length} chars): {logText}");
+        printLine($"Starts: {head.toUpper()}");
+    }
+}
+
+bool Initialise() {
+    desk.fines = 0;
+    queue.enqueue(grayBook);
+    queue.enqueue(brownBook);
+    StartDaemon(returnsBin);
+    rfalse;
+}

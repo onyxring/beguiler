@@ -485,6 +485,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
             currentFunc = savedFunc;
             if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
                 parsingError(missingReturnMessage(funcDef));
+            saveBackingsAcrossRecursion(funcDef);
         }
     }
     if(isExtend){
@@ -905,6 +906,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
         } else {
             expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
             if(!isMemberStatic) rejectRunTimeMemberRead(expr, varDef.dName());
+            if(!isMemberStatic) rejectValueClassInitializer(expr, (string)returnType, varDef.dName());
             if(initializerList* list = asSingleElementList(expr, (string)returnType))
                 varDef.declaredExpressionValue = list;
             else
@@ -1499,6 +1501,7 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
                 return;
             }
             applyImplicitConversion(expr, typeName);
+            rejectValueClassInitializer(expr, typeName, prop.dName());
             if(!typeName.empty() && typeName != "var" && !expr->resolvedType.empty()
                && !isTypeCompatible(expr->resolvedType, typeName))
                 applyAssignOperatorAsValue(expr, typeName);   // a primitive's `$target = $v` operator =
@@ -1520,6 +1523,19 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             prop.declaredExpressionValue = expr;
         }
     }
+}
+
+// A member that owns a value-class instance starts from that class's own aggregate (`Cents{ … }`):
+// its `operator =` is a routine, which can't run where the program is compiled.
+void bglParser::rejectValueClassInitializer(expression* e, const string& typeName, const string& memberName){
+    if(e == nullptr || e->resolvedType.empty() || typeName.empty()) return;
+    classDef* vc = languageService.findClass(typeName);
+    if(vc == nullptr || vc->isPrimitive || vc->isEmitterClass || !isValueClass(vc) || !classHasStoredFields(vc)) return;
+    if(classDef* ac = languageService.classOf(e->resolvedType); ac != nullptr && (ac == vc || ac->hasAncestor(vc))) return;
+    if(e->resolvedType == "nullliteral") return;
+    parsingError(format("member '{0}' owns a '{1}', so it can't start from a value of type '{2}': its operator = can't "
+        "run where the program is compiled. Write the value as `{1}{{ … }}` with its members.",
+        memberName, typeDisplayName(typeName), typeDisplayName(literalBaseType(e->resolvedType))));
 }
 
 // A member initializer is fixed when the program is compiled: reading another object's member
@@ -1555,8 +1571,8 @@ void bglParser::rejectRunTimeMemberRead(expression* e, const string& memberName)
             string w = (*it)[2].str(), lw = w;
             transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
             auto* g = languageService.findGlobalAs<variableDeclaration>(lw);
-            // A library name may be a constant the binding doesn't mark (`selfobj` reads like `player`).
-            if(g == nullptr || g->isConst || g->isExternal || g->isPrePassStub || dynamic_cast<arrayDeclaration*>(g) != nullptr) continue;
+            // A program's bodiless extern may name an Inform 6 object; the bindings mark theirs const.
+            if(g == nullptr || g->isConst || g->isPrePassStub || (g->isExternal && g->src.file.find("beguiLib") == string::npos) || dynamic_cast<arrayDeclaration*>(g) != nullptr) continue;
             if(classDef* tc = languageService.findClass(g->type.name); tc != nullptr && !tc->isPrimitive && isValueClass(tc))
                 continue;   // static data names the instance it holds
             const string& gt = g->type.name;
@@ -2634,6 +2650,7 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
         expression* val = parseExpression(vt, {",", token::endStatement, token::braceClose}, func, body);
         currentExpectedType = savedExpected;
         applyImplicitConversion(val, target->type.name);
+        if(func == nullptr) rejectValueClassInitializer(val, target->type.name, target->dName());
         // A primitive class holds its value directly, so a value its `operator =` takes is stored as is.
         auto primitiveAccepts = [&](const string& memberType, const string& valueType){
             classDef* mc = getDispatchClass(memberType);

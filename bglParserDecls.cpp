@@ -290,7 +290,7 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
         }
         // An enum element type picks its own member over a same-named global (`door`, an attribute).
         string savedExpected = currentExpectedType;
-        if(languageService.findEnum(elementType) != nullptr) currentExpectedType = elementType;
+        if(languageService.findEnum(elementType) != nullptr || elementType.rfind("func", 0) == 0) currentExpectedType = elementType;
         expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
         currentExpectedType = savedExpected;
         list->elements.push_back(elem);
@@ -1156,8 +1156,11 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
                     i6RawNode& initNode = *(new i6RawNode());
                     initNode.text = substituted;
                     initNode.cooked = true;   // names the local: it follows the local's rename
-                    // insert before varDecl (which is currently the last element)
-                    body->statements.insert(body->statements.end()-1, &initNode);
+                    // Before the initializer's own set-up too: a call it hoisted may hand back a pool slot
+                    // that a later allocation would take over.
+                    long at = (long)body->statements.size() - 1;
+                    if(declInjectionStart >= 0 && declInjectionStart < at) at = declInjectionStart;
+                    body->statements.insert(body->statements.begin() + at, &initNode);
                 } else if(fn->name == "deinit"){
                     // A local declared in a nested block dies with that block, so its deinit runs
                     // at the block's end rather than the routine's. It could not be registered on
@@ -1379,12 +1382,14 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     if(isRef && symbol.value == token::bindAssignment) rejectMemberArrayBind(varDecl.declaredExpressionValue, func, body);
 
     // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp
+    declInjectionStart = body != nullptr ? (long)body->statements.size() : -1;
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
 
     synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body);
 
     registerVariableDeclaration(varDecl, isConst, func, body);
+    declInjectionStart = -1;
 
     recordGlobalVariableInit(varDecl, isConst, func, body);
 
@@ -2126,15 +2131,30 @@ vector<grammarLine> bglParser::parseGrammarLines(){
 }
 
 // A routine that calls itself shares each parameter's and local's instance with every activation;
-// the emitter keeps the caller's field values across the inner call, but a returned instance would
-// come back holding them.
+// the emitter puts the caller's field values back as it leaves, so a returned value class is copied
+// out first, into an instance of the routine's own that nothing restores.
 void bglParser::saveBackingsAcrossRecursion(functionDef& fd){
     if(!fd.callsItself || fd.ownBackings.empty()) return;
-    if(classDef* rc = languageService.findClass(fd.returnType.name))
-        if(classHasStoredFields(rc) && !isReferenceBacked(rc))
-            parsingError(format("'{0}' calls itself and returns a '{1}' by value; its instances are shared "
-                "between calls, so return a field or take a `ref` parameter to fill instead.",
-                fd.dName(), typeDisplayName(fd.returnType.name)));
+    classDef* rc = languageService.findClass(fd.returnType.name);
+    if(rc == nullptr || rc->isEmitterClass || !isValueClass(rc) || !classHasStoredFields(rc) || isReferenceBacked(rc)) return;
+    functionDef* op = findAssignOperator(rc, fd.returnType.name, [](functionDef*){ return true; }, /*allowInherited*/true);
+    if(op == nullptr || op->isEmitter)
+        parsingError(format("'{0}' calls itself and returns a '{1}', which has no copy operator to return it with; "
+            "declare one, or take a `ref` parameter to fill instead.", fd.dName(), typeDisplayName(fd.returnType.name)));
+    if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
+    string context = currentClass != nullptr ? currentClass->name : currentObject != nullptr ? currentObject->name : string();
+    string name = "_bglRet_" + (context.empty() ? "" : context + "_") + fd.name;
+    int n = 1;
+    while(!paramBackingNames.insert(name + "_" + to_string(n)).second) n++;
+    name += "_" + to_string(n);
+    auto* backing = new variableDeclaration();
+    backing->name = name;
+    backing->displayName = name;
+    backing->type = languageService.getType(fd.returnType.name);
+    backing->src = fd.src;
+    backing->isInstanceBacking = true;
+    languageService.registerInstance(*backing);
+    fd.returnCopy = {name, op->i6name};
 }
 
 // Every `$word` in an emitter body is one of its parameters or a substitution token (§7.3); anything

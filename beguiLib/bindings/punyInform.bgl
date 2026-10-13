@@ -127,9 +127,9 @@ extern eColor   clr_fginput;                /// player input color (PUNY++)
 extern eColor   clr_fgstatus;               /// status line color
 extern int      things_score;               /// score from picking up scored objects
 extern int      places_score;               /// score from visiting scored rooms
-extern object   thedark;                    /// the darkness object (in-scope when no light)
-extern object   selfobj;                    /// the player self object
-extern object   Directions;                 /// shared placeholder bound to `noun` for direction commands
+extern const object thedark;                    /// the darkness object (in-scope when no light)
+extern const object selfobj;              /// the player self object
+extern const object Directions;                 /// shared placeholder bound to `noun` for direction commands
 
 #if DEBUG
     extern eDebugFlags debug_flag;  /// Which tracing is on.

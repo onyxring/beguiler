@@ -1,0 +1,114 @@
+Room A
+Room A. A bookcase and a stamp pad are here. Room B is east.
+You can see a stamp pad and a bookcase (on which are a tide book, a canal book, a star book, an atlas and an almanac) here.
+> catalogue
+H-ABBO. canal book
+R-ABBO. almanac
+S-MARS. tide book
+R-MERC. atlas
+F-QUIL. star book
+3 lendable, 5 on the case.
+Some are worn; all over fifty pages.
+Mercator: the atlas.
+> ledger
+The ledger is empty (day 1).
+Next due: nobody; lent so far: 0; fines: 0p.
+Room for 3 more.
+> inspect tide book
+The tide book: a book by Marsh, 240 pages, science, creased, mark S-MARS..
+Marsh has one book here.
+> inspect star book
+The star book: a book by Quill, 180 pages, fiction, marked and torn, mark F-QUIL..
+> inspect atlas
+The atlas: a reference book by mercator, 96 pages, reference, clean, mark R-MERC..
+> inspect almanac
+The almanac: a reference book by Abbot, 100 pages, reference, clean, mark R-ABBO..
+Abbot has two books here.
+> inspect canal book
+The canal book: a book by Abbot, 412 pages (long), history, clean, mark H-ABBO..
+Abbot has two books here.
+> borrow atlas
+That one stays in the room.
+> borrow stamp pad
+You can only borrow a book.
+> take tide book
+Taken.
+> east
+You are still holding the tide book. Borrow it first.
+> borrow tide book
+You stamp the tide book and take it. Due on day 13.
+> borrow tide book
+That book is already out.
+> borrow canal book for 1 days
+You stamp the canal book and take it. Due on day 13.
+(Day 13: the tide book is due back today.)
+(Day 13: the canal book is due back today.)
+> mend star book
+You tape up the star book. Now marked.
+> mend star book
+The star book is not torn.
+> inspect star book
+The star book: a book by Quill, 180 pages, fiction, marked, mark F-QUIL..
+> borrow star book
+You stamp the star book and take it. Due on day 19.
+> borrow almanac
+That one stays in the room.
+> ledger
+Day 18. tide book due 13 (late); canal book due 13 (late); star book due 19.
+Next due: Marsh; lent so far: 3; fines: 0p.
+Room for 0 more.
+> take atlas
+Taken.
+(Day 19: the star book is due back today.)
+> east
+You are still holding the atlas. Borrow it first.
+> drop atlas
+Dropped.
+> east
+Room B
+Room B. A returns box stands by the wall. Room A is west.
+You can see a returns box (which is empty) here.
+> catalogue
+H-ABBO. canal book (out, due 13)
+R-ABBO. almanac
+S-MARS. tide book (out, due 13)
+R-MERC. atlas
+F-QUIL. star book (out, due 19)
+3 lendable, 1 on the case.
+Some are worn; all over fifty pages.
+Mercator: the atlas.
+> wait
+Time passes.
+> wait
+Time passes.
+> ledger
+Day 24. tide book due 13 (late); canal book due 13 (late); star book due 19 (late).
+Next due: Marsh; lent so far: 3; fines: 0p.
+Room for 0 more.
+> put canal book in box
+The canal book drops into the box. Fine: 55p.
+> put tide book in box
+The tide book drops into the box. Fine: 60p.
+> put star book in box
+The star book drops into the box. Fine: 35p.
+> put stamp pad in box
+You can't see any such thing.
+> west
+Room A
+Room A. A bookcase and a stamp pad are here. Room B is east.
+You can see an atlas, a stamp pad and a bookcase (on which are a star book, a tide book, a canal book and an almanac) here.
+> put tide book in bookcase
+The tide book is already here.
+> ledger
+The ledger is empty (day 29).
+Next due: nobody; lent so far: 3; fines: 150p.
+Room for 3 more.
+> catalogue
+H-ABBO. canal book
+R-ABBO. almanac
+S-MARS. tide book
+R-MERC. atlas
+F-QUIL. star book
+3 lendable, 4 on the case.
+Some are worn; all over fifty pages.
+Mercator: the atlas.

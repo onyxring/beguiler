@@ -1,0 +1,434 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small ballot counter written in a functional style on z5. Candidates are scenery
+// objects of a class with an enum party and a withdrawn flag, held in a global array; ranked ballots
+// are a global array<array<int>> of candidate indices of differing lengths, plus a sized array of
+// single-choice ballots appended by a verb. A recursive first-live-choice search over a func<bool,
+// int> predicate (named function or lambda); first-choice tallies returned as a local array and
+// captured into typed locals; a value class standing with a copy operator, picked by a hand-written
+// scan taking a func<bool, int, int> comparison and returned by value; an instant runoff by recursion
+// that writes a `ref stringObj` log and restores the withdrawn flags from a snapshot made by map;
+// Borda scores ordered by <linq> orderBy with a two-key comparator over a returned local index
+// array; pairwise preferences and a Condorcet winner found by filter with an all() inside its
+// predicate (a chain in a chain), read through `?.` and `??`; hand-written folds over func<>
+// parameters; per-party totals over an array of the enum; named and defaulted parameters; a
+// stringObj summary returned by value; verbs reading noun, second and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int NCAND = 4;
+const int MAXEXTRA = 6;
+
+//-- Candidates and ballots -----------------------------------------------------------------------
+
+enum eParty { red, green, blue }
+
+class Candidate : object {
+    attributeList attributes = {scenery};
+    string label;
+    eParty party;
+    bool withdrawn = false;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object box { "ballot box"; name = {.ballot, .box}; attributes = {scenery}; parent = roomA; }
+
+Candidate ann { "Ann"; name = {.ann}; label = "Ann"; party = eParty.red;   parent = roomA; }
+Candidate bob { "Bob"; name = {.bob}; label = "Bob"; party = eParty.green; parent = roomA; }
+Candidate cy  { "Cy";  name = {.cy};  label = "Cy";  party = eParty.blue;  parent = roomA; }
+Candidate dee { "Dee"; name = {.dee}; label = "Dee"; party = eParty.red;   parent = roomA; }
+
+array<Candidate> cands = {ann, bob, cy, dee};
+array<eParty> parties = {eParty.red, eParty.green, eParty.blue};
+
+// Each ballot lists candidate indices, most preferred first; unlisted candidates rank last.
+array<array<int>> ballots = {
+    {0, 1, 2},
+    {0, 2, 1},
+    {1, 0},
+    {1, 2, 0, 3},
+    {2, 1, 0},
+    {2, 1},
+    {3, 2, 1},
+    {0, 3},
+    {1, 2},
+    {3, 1, 2, 0},
+    {2, 0, 1}
+};
+
+// Single-choice ballots cast with the vote verb.
+array<int> extra[MAXEXTRA];
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int foldInts(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int sumOf(array<int> xs) { return foldInts(xs, 0, (int a, int x) => a + x); }
+int maxOf(array<int> xs) { return foldInts(xs, 0, (int a, int x) => x > a ? x : a); }
+
+array<int> indices() {
+    array<int> xs[NCAND];
+    for (int i = 0; i < NCAND; i++) xs += i;
+    return xs;
+}
+
+int idx(Candidate c) { return cands.indexOf(c); }
+
+bool live(int c)     { return !cands[c].withdrawn; }
+bool anyone(int c)   { return true; }
+
+int liveCount() { return cands.filter((Candidate c) => !c.withdrawn).count(); }
+
+string partyName(eParty p) {
+    switch (p) {
+        case eParty.red:   return "red";
+        case eParty.green: return "green";
+        default:           return "blue";
+    }
+}
+
+string ending(int n, string one, string many = "s") {
+    return n == 1 ? one : many;
+}
+
+// The first choice at or after position i that ok accepts, or -1 when the ballot runs out.
+int topFrom(array<int> b, int i, func<bool, int> ok) {
+    if (i >= b.length) return -1;
+    if (ok(b[i])) return b[i];
+    return topFrom(b, i + 1, ok);
+}
+
+// Position of c on a ballot; an unlisted candidate ranks after every listed one.
+int rankOf(array<int> b, int c) {
+    int i = b.indexOf(c);
+    return i < 0 ? b.length : i;
+}
+
+//-- Tallies --------------------------------------------------------------------------------------
+
+array<int> tally(func<bool, int> ok = live) {
+    array<int> counts[NCAND];
+    counts.length = NCAND;
+    for (array<int> b in ballots) {
+        int t = topFrom(b, 0, ok);
+        if (t >= 0) counts[t] += 1;
+    }
+    for (int c in extra) {
+        if (ok(c)) counts[c] += 1;
+    }
+    return counts;
+}
+
+void showCounts(array<int> counts, func<bool, int> ok = anyone) {
+    bool first = true;
+    for (int c = 0; c < counts.length; c++) {
+        if (!ok(c)) continue;
+        if (!first) print(", ");
+        print($"{cands[c].label} {counts[c]}");
+        first = false;
+    }
+}
+
+value class Standing {
+    int who = -1;
+    int votes = 0;
+
+    Standing operator = (Standing o) {
+        who = o.who;
+        votes = o.votes;
+        return self;
+    }
+
+    bool found() { return who >= 0; }
+}
+
+// Scans the counts the ok predicate admits; keeps the earliest index on a tie.
+Standing pick(array<int> counts, func<bool, int, int> better, func<bool, int> ok = live) {
+    Standing s;
+    for (int c = 0; c < counts.length; c++) {
+        if (!ok(c)) continue;
+        if (!s.found() || better(counts[c], s.votes)) {
+            s.who = c;
+            s.votes = counts[c];
+        }
+    }
+    return s;
+}
+
+//-- Instant runoff -------------------------------------------------------------------------------
+
+void note(ref stringObj log, string what) {
+    if (!log.isEmpty()) log += ", ";
+    log += what;
+}
+
+Standing runoff(int round, ref stringObj log) {
+    array<int> counts = tally(live);
+    int total = sumOf(counts);
+    print($"round {round} ({total}): ");
+    showCounts(counts, live);
+    print("^");
+    Standing top = pick(counts, (int a, int b) => a > b);
+    if (top.votes * 2 > total || liveCount() <= 1) return top;
+    Standing low = pick(counts, (int a, int b) => a < b);
+    cands[low.who].withdrawn = true;
+    note(log, cands[low.who].label);
+    return runoff(round + 1, log);
+}
+
+array<int> snapshot() {
+    return cands.map((var c) => ((Candidate)c).withdrawn ? 1 : 0);
+}
+
+void restore(array<int> was) {
+    for (int i = 0; i < NCAND; i++) cands[i].withdrawn = was[i] != 0;
+}
+
+//-- Borda and pairwise ---------------------------------------------------------------------------
+
+int bordaOf(int c) {
+    int total = 0;
+    for (array<int> b in ballots) {
+        int i = b.indexOf(c);
+        if (i >= 0) total += NCAND - 1 - i;
+    }
+    for (int e in extra) {
+        if (e == c) total += NCAND - 1;
+    }
+    return total;
+}
+
+// Ballots that rank a above b.
+int prefer(int a, int b) {
+    int n = 0;
+    for (array<int> bl in ballots) {
+        if (rankOf(bl, a) < rankOf(bl, b)) n++;
+    }
+    for (int e in extra) {
+        if (e == a && a != b) n++;
+    }
+    return n;
+}
+
+bool beats(int a, int b) { return prefer(a, b) > prefer(b, a); }
+
+Candidate condorcet() {
+    return cands.filter((Candidate a) => cands.all((Candidate b) => a == b || beats(idx(a), idx(b)))).first();
+}
+
+int winsOf(int a) {
+    array<int> ids = indices();
+    return ids.filter((int b) => beats(a, b)).count();
+}
+
+//-- Summary --------------------------------------------------------------------------------------
+
+stringObj summary(string sep = "; ") {
+    stringObj s;
+    array<int> counts = tally(anyone);
+    Standing lead = pick(counts, (int a, int b) => a > b, ok: anyone);
+    s += $"{ballots.length + extra.length} ballots";
+    s += sep;
+    s += $"most first choices: {cands[lead.who].label} ({lead.votes})";
+    s += sep;
+    s += $"Condorcet: {condorcet()?.label ?? "none"}";
+    return s;
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+int candidateOf(object o) {
+    if (!o.is(Candidate)) {
+        print("That is not a candidate.^");
+        return -1;
+    }
+    return idx((Candidate)o);
+}
+
+verb TallyVerb {
+    grammar = {{.tally}};
+    void handler() {
+        array<int> counts = tally();
+        showCounts(counts, live);
+        int out = NCAND - liveCount();
+        print($"^{sumOf(counts)} counted, {out} withdrawn, highest {maxOf(counts)}^");
+    }
+}
+
+verb RunoffVerb {
+    grammar = {{.runoff}};
+    void handler() {
+        array<int> was = snapshot();
+        stringObj log;
+        Standing w = runoff(1, log);
+        restore(was);
+        if (!w.found()) {
+            print("No ballots count.^");
+            return;
+        }
+        print($"winner {cands[w.who].label} with {w.votes}; out in order: {log.isEmpty() ? "nobody" : log}^");
+    }
+}
+
+verb BordaVerb {
+    grammar = {{.borda}};
+    void handler() {
+        array<int> ids = indices();
+        array<int> ranked = ids.orderBy((int a, int b) => {
+            if (bordaOf(a) != bordaOf(b)) return bordaOf(b) - bordaOf(a);
+            return cands[a].label.compareTo(cands[b].label);
+        });
+        for (int c in ranked) print($"{cands[c].label} {bordaOf(c)}^");
+        print($"spread {bordaOf(ranked.first()) - bordaOf(ranked.last())}^");
+    }
+}
+
+verb PairsVerb {
+    grammar = {{.pairs}};
+    void handler() {
+        for (int a = 0; a < NCAND; a++) {
+            for (int b = a + 1; b < NCAND; b++) {
+                print($"{cands[a].label}-{cands[b].label} {prefer(a, b)}-{prefer(b, a)}^");
+            }
+        }
+        array<int> ids = indices();
+        array<int> order = ids.orderBy((int a, int b) => winsOf(b) - winsOf(a));
+        print("wins: ");
+        for (int c in order) print($"{cands[c].label} {winsOf(c)} ");
+        print("^");
+    }
+}
+
+verb CompareVerb {
+    grammar = {{.compare, NOUN, .with, NOUN}};
+    void handler() {
+        int a = candidateOf(noun);
+        if (a < 0) return;
+        int b = candidateOf(second);
+        if (b < 0) return;
+        if (a == b) {
+            print("Pick two different candidates.^");
+            return;
+        }
+        int pa = prefer(a, b);
+        int pb = prefer(b, a);
+        string verdict = pa > pb ? "wins" : pa < pb ? "loses" : "ties";
+        print($"{cands[a].label} {verdict} against {cands[b].label}, {pa} to {pb}^");
+    }
+}
+
+verb CondorcetVerb {
+    grammar = {{.condorcet}};
+    void handler() {
+        Candidate c = condorcet();
+        print($"Condorcet winner: {c?.label ?? "none"}^");
+    }
+}
+
+verb BallotVerb {
+    grammar = {{.ballot, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (k < 1 || k > ballots.length) {
+            print($"Ballots run from 1 to {ballots.length}.^");
+            return;
+        }
+        array<int> b = ballots[k - 1];
+        for (int i = 0; i < b.length; i++) {
+            if (i > 0) print(" > ");
+            print(cands[b[i]].label);
+        }
+        int t = topFrom(b, 0, live);
+        print($" (counts for {t < 0 ? "nobody" : cands[t].label})^");
+    }
+}
+
+verb PartiesVerb {
+    grammar = {{.parties}};
+    void handler() {
+        array<int> counts = tally(anyone);
+        for (eParty p in parties) {
+            array<Candidate> mine = cands.filter((Candidate c) => c.party == p);
+            int votes = 0;
+            for (Candidate c in mine) votes += counts[idx(c)];
+            print($"{partyName(p)}: {mine.count()} candidate{ending(mine.count(), "", "s")}, {votes} vote{ending(votes, "")}^");
+        }
+    }
+}
+
+verb WithdrawVerb {
+    grammar = {{.withdraw, NOUN}};
+    void handler() {
+        int c = candidateOf(noun);
+        if (c < 0) return;
+        if (cands[c].withdrawn) {
+            print($"{cands[c].label} is already withdrawn.^");
+            return;
+        }
+        if (liveCount() == 1) {
+            print("One candidate has to stay.^");
+            return;
+        }
+        cands[c].withdrawn = true;
+        print($"{cands[c].label} withdraws. {liveCount()} remain.^");
+    }
+}
+
+verb ReinstateVerb {
+    grammar = {{.reinstate}};
+    void handler() {
+        int n = NCAND - liveCount();
+        for (Candidate c in cands) c.withdrawn = false;
+        print($"{n} reinstated.^");
+    }
+}
+
+verb VoteVerb {
+    grammar = {{.vote, NOUN}};
+    void handler() {
+        int c = candidateOf(noun);
+        if (c < 0) return;
+        if (!extra.append(c)) {
+            print("The box is full.^");
+            return;
+        }
+        print($"One vote for {cands[c].label}. {extra.length} cast here.^");
+    }
+}
+
+verb SummaryVerb {
+    grammar = {{.summary}};
+    void handler() {
+        stringObj s = summary();
+        print($"{s}^");
+        stringObj t = summary(sep: " / ");
+        print($"{t.length} chars: {t}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

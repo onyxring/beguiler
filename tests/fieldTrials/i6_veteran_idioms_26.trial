@@ -1,0 +1,106 @@
+Yard
+Yard. The forge is to the north.
+You can see three fuel (two lumps of coal (burns for 3) and a log (burns for 2)) and a scrap iron here.
+> tally
+Rooms 1, score 0, fuel burnt 0.
+Furnace 0 (cold), burn 0.
+Last temperatures: none.
+Crucible scrap, timer 0.
+> take coals
+lump of coal: Taken.
+lump of coal: Taken.
+> take log
+Taken.
+> take scrap
+Taken.
+> i
+You're carrying:
+  a scrap iron
+  three fuel:
+    a log (burns for 2)
+    two lumps of coal (burns for 3)
+> n
+Forge
+Forge. A furnace stands against the back wall with a bellows beside it. The yard is south.
+The furnace stands cold.
+You can also see some bellows, a crucible (which is empty), some tongs, a mould (which is empty) and a water barrel (which is empty) here.
+> x furnace
+A brick furnace. The fire is cold and not burning.
+> x gauge
+The needle stands at 0, cold.
+> smell
+Coal smoke and hot iron.
+> pump
+A puff of air stirs the cold ash.
+> put log in crucible
+Only the scrap belongs in the crucible.
+> put scrap in crucible
+You put the scrap iron into the crucible.
+> x crucible
+A clay crucible, holding scrap iron.
+> take crucible
+Taken.
+> put crucible in furnace
+You put the crucible into the furnace.
+> take tongs
+Taken.
+> put coal in furnace
+You throw the lump of coal into the furnace. The fire takes it.
+> tally
+Rooms 2, score 0, fuel burnt 1.
+Furnace 2 (warm), burn 2.
+Last temperatures: 1 0 0 0 0.
+Crucible scrap, timer 0.
+> put coal in furnace
+You throw the lump of coal into the furnace. The fire takes it.
+> squeeze bellows
+The bellows wheeze. The fire burns orange.
+> take crucible
+You lift the crucible out of the heat.
+> x crucible
+A clay crucible, holding scrap iron.
+> tally
+Rooms 2, score 0, fuel burnt 2.
+Furnace 8 (white), burn 1.
+Last temperatures: 7 6 5 2 1.
+Crucible scrap, timer 0.
+> put crucible in furnace
+You put the crucible into the furnace.
+> put log in furnace
+You throw the log into the furnace. The fire takes it.
+> x gauge
+The needle stands at 9, white.
+The scrap in the crucible slumps and runs together.
+[The score has just gone up by one point.]
+> z
+Time passes.
+> z
+Time passes.
+> x crucible
+A clay crucible, full of glowing metal.
+> tally
+Rooms 2, score 1, fuel burnt 3.
+Furnace 6 (yellow), burn 0.
+Last temperatures: 7 8 9 9 9.
+Crucible molten, timer 0.
+> pour crucible
+(first taking the crucible)
+Pour it into what?
+> pour crucible into barrel
+Pouring molten iron into the water barrel would end badly.
+> pour crucible into mould
+You pour the glowing metal into the mould. It sets into an ingot.
+[The score has just gone up by one point.]
+> x mould
+A sand mould holding a hot iron ingot.
+> x ingot
+A hot iron ingot, still glowing.
+> take ingot
+The ingot is still too hot to pick up. Quench it first.
+> put ingot in barrel
+(first taking the iron ingot out of the mould)
+You drop the ingot into the barrel. It hisses and spits, and you fish it out again, cold.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 33 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

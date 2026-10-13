@@ -956,6 +956,7 @@ void i6Emitter::buildSpillMap(functionDef* fd){
     // A routine that returns a value and frees things on the way out (local arrays, deinit) holds
     // the value in a local of its own first: the return expression may read what the cleanups free.
     currentReturnSlot.clear();
+    currentReturnCopy = fd->returnCopy;
     if(auto* rb = dynamic_cast<statementBlock*>(fd->body);
        rb != nullptr && fd->returnType.name != "void" && !fd->returnType.name.empty()
        && (funcHasLocalArrays(fd) || !fd->cleanups.empty())){
@@ -3055,7 +3056,7 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
         out << indent << "return 1;\n";
         return;
     }
-    const string& rx = ret->returnExpression;
+    string rx = ret->returnExpression;
     // Only a whole literal is constant: `1 + f(x)` starts with a digit but runs a call.
     static const std::regex literalValue(R"re(^(-?\d+|\$\$?[0-9A-Fa-f]+|\$[+-][0-9.eE+-]+|"[^"]*"|'[^']*')$)re");
     bool constantValue = rx.empty() || rx == "rtrue" || rx == "rfalse" || rx == "true" || rx == "false"
@@ -3072,6 +3073,9 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
         }
         out << indent << "_bgl_catch_cookie = " << glulxTryStack.front().first << ";\n";
     }
+    // A returned value class leaves through the routine's own instance: the cleanups restore its locals'.
+    if(!currentReturnCopy.first.empty() && !constantValue)
+        rx = format("({0}.{1}({2}) * 0 + {0})", currentReturnCopy.first, currentReturnCopy.second, rx);
     // A value the cleanups could disturb is computed into the routine's return slot first.
     bool holdValue = !constantValue && (currentCleanups != nullptr || currentSpillCount > 0)
                   && (!currentReturnSlot.empty() || currentSpillCount > 0);
@@ -3097,8 +3101,8 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
     }
     if(ret->returnExpression == "rtrue" || ret->returnExpression == "rfalse")
         out << format("{0}{1};\n", indent, ret->returnExpression);
-    else if(ret->returnExpression != "")
-        out << format("{0}return {1};\n", indent, spillWord(ret->returnExpression));
+    else if(rx != "")
+        out << format("{0}return {1};\n", indent, spillWord(rx));
     else
         out << indent << "return;\n";
 }
@@ -3477,8 +3481,11 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
                 for(statement* s : tc->tryBody->statements)
                     emitStatement(s, "    ");
             // A body that ends in `return` has already left; a second return would be unreachable.
-            bool bodyReturns = tc->tryBody != nullptr && !tc->tryBody->statements.empty()
-                            && dynamic_cast<returnStatement*>(tc->tryBody->statements.back()) != nullptr;
+            // So has one that ends in `break`/`continue` (lifted to `return 2`/`3`) or a throw.
+            bool bodyReturns = tc->tryBody != nullptr && endsInReturn(tc->tryBody);
+            if(!bodyReturns && tc->tryBody != nullptr && !tc->tryBody->statements.empty())
+                if(auto* raw = dynamic_cast<i6RawNode*>(tc->tryBody->statements.back()))
+                    bodyReturns = liftedLoopDepth == 0 && (raw->text == "break;" || raw->text == "continue;");
             out << (bodyReturns ? "];\n" : "    return 0;\n];\n");
             inLiftedTry = prevLifted; liftedLoopDepth = prevDepth;
             sourceMapTarget = prevTarget;
@@ -4566,8 +4573,15 @@ void i6Emitter::synthesizeChildrenPlacement(){
     // as are the parsed child references, so a direct name match is exact).
     map<string, objectDef*> byName;
     for(typeDef* g : languageService.globals)
-        if(auto* od = dynamic_cast<objectDef*>(g))
+        if(auto* od = dynamic_cast<objectDef*>(g)){
             byName[od->name] = od;
+            // A child named like an Inform 6 word is referenced by its emitted name (`_box`).
+            if(!od->i6name.empty()){
+                string i6 = od->i6name;
+                transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
+                byName.emplace(i6, od);
+            }
+        }
 
     set<string> claimed;                              // child already placed (one parent per world-tree node)
     map<objectDef*, objectDef*> placedParent;         // placed child → its container (for reorder below)

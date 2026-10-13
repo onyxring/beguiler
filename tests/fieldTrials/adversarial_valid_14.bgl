@@ -1,0 +1,431 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small crate-stamping program, on the Z-machine.
+// A byte array initialized from text, sized by a `#define`, walked by for-in over its chars,
+// classified through a char switch of ranges and a value list, upper-cased into a second byte array
+// and handed by `&` to an I6 routine declared in an #i6 island and reached through `extern`; a uint
+// checksum that wraps, shifted right and compared unsigned; an `additive property` with rawArray
+// contributions from a class, a subclass and objects (a bare single value among them), read for its
+// accumulated length and elements; a property parameter dereferenced against an object and passed to
+// provides(); a crate class whose positional order lists instanceName first with a defaulted inline
+// string, a `const` member, a static `<=>` handed to sort() through an operator reference and giving
+// derived `<` and `>=`, and a static counter; a subclass with its own contributions and a `default`
+// method overridden by one object and reached again by an ancestor cast; a later `extend class`
+// adding a selfType method chained after a call; a slip class built only by inline objects:
+// constant and run-time inline arguments, a named inline argument, a bare inferred array of them and a
+// standalone inline object that links itself by its positional parent; an anonymous union of the
+// crate class and string returned by a search and narrowed after typeof; `?.` as a statement and in
+// an expression and `??` over a function that may return null; a children walk that moves the
+// current child; a string and an int thrown through a routine and told apart in one `var` catch;
+// bgl.util.math helpers; a verb class with a shared counter and per-verb grammar, one verb reading a
+// NUMBER; tracked byte buffers filled by bgl.util.buf set/append and a capture of a method's output,
+// searched with a named predicate and a lambda, replaced, upper-cased, reversed and printed in part;
+// a stringObj grown by `+=` with an interpolation; and do/while, while with continue and nested ternaries.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+#define PLATE_LEN 6
+
+additive property marks;
+
+// ---- an I6 helper over a byte buffer ----------------------------------------------------------------
+
+#i6 {
+    [ ByteSum addr n i t;
+        for (i = 0: i < n: i++) t = t + addr->(WORDSIZE + i);
+        return t;
+    ];
+}
+
+extern int ByteSum(int addr, int n);
+
+// ---- plates: byte arrays --------------------------------------------------------------------------
+
+array<char> plate = "ab-12x";
+array<char> stamp[PLATE_LEN];
+
+char kindOf(char c) {
+    switch (c) {
+        case 'a' to 'z':  return 'L';
+        case '0' to '9':  return 'D';
+        case '-', '/':    return 'S';
+        default:          return '?';
+    }
+}
+
+uint checksum() {
+    uint h = 7;
+    for (char c in plate) {
+        int code = c;
+        h = h * 31 + (uint)code;
+    }
+    return h;
+}
+
+int vowelCount() {
+    int n = 0;
+    int i = 0;
+    while (i < plate.length) {
+        char c = plate[i];
+        i++;
+        if (!c.isAlpha()) continue;
+        if (c.isVowel()) n++;
+    }
+    return n;
+}
+
+void pressPlate() {
+    for (int i in 0 to PLATE_LEN - 1) {
+        char c = plate[i];
+        stamp[i] = c.isLower() ? c.toUpper() : c;
+    }
+}
+
+// ---- crates ---------------------------------------------------------------------------------------
+
+class Crate : object {
+    inline instanceName;
+    inline int weight;
+    inline string code = "none";
+    const int slots = 2;
+    int pressed = 0;
+    rawArray<int> marks = {1};
+    static int made = 0;
+    description = "A crate.";
+
+    static int operator <=> (Crate a, Crate b) { return a.weight - b.weight; }
+
+    default string grade() {
+        return weight > 20 ? "heavy" : (weight > 9 ? "middle" : "light");
+    }
+
+    void press() {
+        if (pressed >= slots) throw code;
+        if (weight > 99) throw weight;
+        pressed++;
+        Crate.made++;
+    }
+}
+
+class FragileCrate : Crate {
+    marks = {2, 3};
+    string grade() { return "fragile"; }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object shelf {
+    "shelf";
+    parent = roomA;
+    attributes = {supporter, static};
+    name = {.shelf};
+    description = "A shelf.";
+}
+
+Crate crateA { "crate A", 12; parent = roomA; name = {.crate, .a}; marks = 5; }
+FragileCrate crateB { "crate B", 7, "B-7"; parent = shelf; name = {.crate, .b}; }
+Crate crateC { "crate C", 30, "C-30"; parent = roomA; name = {.crate, .c}; marks = {6, 7}; }
+FragileCrate crateD {
+    "crate D", 150, "D-150";
+    parent = roomA;
+    name = {.crate, .d};
+    string grade() { return "special"; }
+}
+
+array<Crate> stock = { crateA, crateB, crateC, crateD };
+
+extend class Crate {
+    selfType report() {
+        print($"{code}/{pressed}");
+        return self;
+    }
+}
+
+// ---- slips: inline objects ---------------------------------------------------------------------------
+
+class Slip : object {
+    inline parent;
+    inline int qty;
+    inline string what;
+    inline instanceName;
+}
+
+object tray { "tray"; parent = roomA; attributes = {container, open, static}; name = {.tray}; description = "A tray."; }
+
+Slip{ tray, 4, "tags", "tag slip" };
+
+array<Slip> pad = {
+    { null, 1, "ink" },
+    { null, 3, "card" },
+};
+
+int slipTotal = 0;
+
+void file(Slip s) {
+    slipTotal += s.qty;
+    print($"[{s.qty} {s.what}]");
+}
+
+// ---- lookups ------------------------------------------------------------------------------------------
+
+int readProp(object o, property p) {
+    if (!o.provides(p)) return -1;
+    return o.p;
+}
+
+Crate | string byWeight(int w) {
+    for (Crate c in stock) {
+        if (c.weight == w) return c;
+    }
+    return w < 0 ? "below zero" : "no match";
+}
+
+Crate heaviestOn(object holder) {
+    Crate best = null;
+    for (object o in holder.children) {
+        if (!o.is(Crate)) continue;
+        Crate c = (Crate)o;
+        if (best == null || c > best) best = c;
+    }
+    return best;
+}
+
+int markSum(Crate c) {
+    int t = 0;
+    for (int i = 0; i < c.marks.length; i++) t += c.marks[i];
+    return t;
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs ---------------------------------------------------------------------------------------------
+
+class deskVerb : verb {
+    static int uses = 0;
+}
+
+deskVerb Plates {
+    grammar = {.plates};
+    void handler() {
+        deskVerb.uses++;
+        print("Plate:");
+        for (char c in plate) print($" {c}{kindOf(c)}");
+        printLine(".");
+        uint h = checksum();
+        uint high = h >> 8;
+        bool big = h > (uint)40000;
+        printLine($"Sum {ByteSum(&plate, PLATE_LEN)} vowels {vowelCount()} hash {h} high {high} big {big ? "yes" : "no"}.");
+        uint wrap = (uint)-1;
+        wrap += 2;
+        printLine($"Wrap {wrap} max {(uint)-1}.");
+        pressPlate();
+        print("Stamp ");
+        for (int i in 0 to stamp.size - 1) print(stamp[i]);
+        int same = 0;
+        for (int i in 0 to PLATE_LEN - 1) {
+            if (stamp[i] =~ plate[i]) same++;
+        }
+        printLine($" same {same}.");
+    }
+}
+
+deskVerb Press {
+    grammar = {.press, NOUN};
+    void handler() {
+        deskVerb.uses++;
+        if (!noun.is(Crate)) {
+            printLine("Only crates are pressed.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        try {
+            c.press();
+            c.report().report();
+            printLine($" made {Crate.made}.");
+        } catch (var why) {
+            if (typeof(why) == eType.string) printLine($"{cThe(c)} is full ({(string)why}).");
+            else printLine($"{cThe(c)} is too heavy ({(int)why}).");
+        }
+    }
+}
+
+deskVerb Grades {
+    grammar = {.grades};
+    void handler() {
+        deskVerb.uses++;
+        for (Crate c in stock) print($"{c.code}:{c.grade()} ");
+        printLine();
+        print($"base {((Crate)crateD).grade()} {((Crate)crateB).grade()}");
+        printLine(".");
+    }
+}
+
+deskVerb Weigh {
+    grammar = {.weigh};
+    void handler() {
+        deskVerb.uses++;
+        array<Crate> order[4];
+        for (Crate c in stock) order.append(c);
+        order.sort(Crate::operator <=>);
+        print("Order");
+        for (Crate c in order) print($" {c.weight}");
+        printLine(".");
+        bool lighter = crateA < crateC;
+        bool notLess = crateB >= crateA;
+        int gap = bgl.util.math.abs(crateB.weight - crateC.weight);
+        int capped = bgl.util.math.clamp(crateD.weight, 0, 100);
+        int sq = bgl.util.math.pow(crateB.weight, 2);
+        int s = bgl.util.math.sign(crateA <=> crateC);
+        printLine($"A<C {lighter ? 1 : 0} B>=A {notLess ? 1 : 0} gap {gap} cap {capped} sq {sq} sign {s} max {bgl.util.math.max(gap, sq)}.");
+    }
+}
+
+deskVerb Count {
+    grammar = {.count, NOUN};
+    void handler() {
+        deskVerb.uses++;
+        if (!noun.is(Crate)) {
+            printLine("No marks.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        printLine($"{cThe(c)}: {c.marks.length} marks, sum {markSum(c)}.");
+    }
+}
+
+deskVerb Peek {
+    grammar = {.peek};
+    void handler() {
+        deskVerb.uses++;
+        printLine($"A weight {readProp(crateA, weight)} pressed {readProp(crateA, pressed)}; shelf weight {readProp(shelf, weight)}.");
+        printLine($"Tray holds {readProp(tray.child, qty)}.");
+    }
+}
+
+deskVerb Slips {
+    grammar = {.slips};
+    void handler() {
+        deskVerb.uses++;
+        file({null, 2, "nails"});
+        file(Slip{ null, 5, "rope" });
+        for (Slip p in pad) file(p);
+        int n = 1;
+        do {
+            string w = n == 1 ? "one" : (n == 2 ? "two" : "three");
+            file({null, n * 10, w});
+            n++;
+        } while (n <= 3);
+        file(s: { null, 0, "none" });
+        for (object o in tray.children) file((Slip)o);
+        printLine($" total {slipTotal}.");
+        slipTotal = 0;
+    }
+}
+
+deskVerb Find {
+    grammar = {.find, NUMBER};
+    void handler() {
+        deskVerb.uses++;
+        Crate | string hit = byWeight(parsed_number);
+        if (typeof(hit) == eType.object) {
+            Crate c = (Crate)hit;
+            printLine($"Found {c.code}, {c.grade()}.");
+        } else {
+            printLine($"Found nothing: {(string)hit}.");
+        }
+    }
+}
+
+deskVerb Stack {
+    grammar = {.stack};
+    void handler() {
+        deskVerb.uses++;
+        int moved = 0;
+        for (object o in roomA.children) {
+            if (o.is(Crate)) {
+                o.parent = shelf;
+                moved++;
+            }
+        }
+        Crate top = heaviestOn(shelf);
+        top?.report();
+        int w = heaviestOn(roomA)?.weight;
+        Crate pick = heaviestOn(roomA) ?? crateB;
+        printLine($"Moved {moved}; top {top.code}; floor {w}; pick {pick.code}.");
+        print("Shelf:");
+        for (object o in shelf.children) print($" {o}");
+        printLine(".");
+    }
+}
+
+deskVerb Uses {
+    grammar = {.uses};
+    void handler() {
+        deskVerb.uses++;
+        printLine($"Uses {deskVerb.uses}.");
+    }
+}
+
+// ---- labels: tracked buffers -------------------------------------------------------------------------
+
+array<char> line[24];
+array<char> scrap[12];
+array<char> dash = "-";
+array<char> dot = ".";
+array<char> prefixAB = "AB";
+
+bool isDigit(char c) { return c.isNumeric(); }
+
+deskVerb Label {
+    grammar = {.label, NOUN};
+    void handler() {
+        deskVerb.uses++;
+        if (!noun.is(Crate)) {
+            printLine("Only crates take labels.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        bgl.util.buf.set(line, plate);
+        bgl.util.buf.append(line, "/");
+        bgl.util.buf.capture(scrap);
+        c.report();
+        bgl.util.buf.release();
+        bgl.util.buf.append(line, scrap);
+        int firstDigit = bgl.util.buf.indexOfFirstTrue(line, isDigit);
+        int firstLetter = bgl.util.buf.indexOfFirstFalse(line, (char ch) => !ch.isAlpha(), 3);
+        bool tagged = bgl.util.buf.startsWith(line, prefixAB, true);
+        bgl.util.buf.replaceAll(line, dash, dot);
+        bgl.util.buf.toUpper(line);
+        bgl.util.buf.print(line);
+        printLine($" len {line.length} scrap {scrap.length} digit {firstDigit} letter {firstLetter} tagged {tagged ? "yes" : "no"}.");
+        bgl.util.buf.reverse(scrap);
+        print("Back ");
+        bgl.util.buf.print(scrap, 3);
+        stringObj s = "crate ";
+        s += c.code;
+        s += $" x{c.pressed}";
+        printLine($"; {s} ({s.length}).");
+    }
+}

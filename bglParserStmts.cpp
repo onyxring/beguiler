@@ -4344,6 +4344,21 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 return false;
             }
     }
+    // `((T)obj).member.more…;` — a path through a member of the retyped receiver, read off a local of type T.
+    if(tok.is(token::parenOpen) && sc.func != nullptr && file.peekToken(1).is(token::parenOpen) && file.peekToken(2).is(eTokenType::dataType)
+       && file.peekToken(3).is(token::parenClose) && file.peekToken(4).is(eTokenType::name)
+       && file.peekToken(5).is(token::parenClose) && file.peekToken(6).is(token::period)
+       && (file.peekToken(8).is(token::period) || file.peekToken(8).is(token::bracketOpen))){
+        file.getToken(token::parenOpen);
+        string castType = file.getToken(eTokenType::dataType).value;
+        file.getToken(token::parenClose);
+        token objTok = file.getToken();
+        file.getToken(token::parenClose);
+        file.getToken(token::period);
+        token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        string recv = qualifyIdentifier(objTok.value, sc.func, sc.body);
+        return dispatchWriteThroughReceiver(recv.empty() ? objTok.value : recv, castType, memberTok, sc);
+    }
     // `((T)obj).member…;` — the cast retypes the receiver (a strict ancestor's method runs its own version).
     if(tok.is(token::parenOpen) && file.peekToken(1).is(token::parenOpen) && file.peekToken(2).is(eTokenType::dataType)
        && file.peekToken(3).is(token::parenClose) && file.peekToken(4).is(eTokenType::name)

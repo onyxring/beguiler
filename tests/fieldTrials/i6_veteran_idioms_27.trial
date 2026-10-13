@@ -1,0 +1,124 @@
+Counter Room
+Counter Room. A hatch in the north wall leads to the sorting room.
+You can see a hatch and a clerk here.
+> tally
+Rooms 1, score 0, franked 0.
+Letters: 3 loose, 0 franked, 0 filed.
+Filed to boxes: none.
+> listen
+You hear nothing unexpected.
+> ask clerk about hatch
+"The key costs a coin."
+> ask clerk about clock
+"It's 9 o'clock or thereabouts."
+> tell clerk about letters
+"Frank them, then file them by box."
+> ask clerk about weather
+The clerk shrugs.
+> n
+You can't, since the hatch is in the way.
+> unlock hatch with coin
+The copper coin doesn't seem to fit the lock.
+> give coin to clerk
+The clerk pockets the coin and hands you a brass key.
+[The score has just gone up by one point.]
+> i
+You're carrying:
+  a brass key
+> unlock hatch with key
+You unlock the hatch.
+> open hatch
+You open the hatch.
+> x hatch
+A wooden hatch, standing open.
+> n
+Sorting Room
+Sorting Room. A rack of three pigeonholes covers one wall. The hatch is south.
+You can see a hatch, a mail sack (which is closed), a hole 1 (which is empty), a hole 2 (which is empty), a hole 3 (which is empty) and a franking machine (which is empty) here.
+> listen
+The wall clock ticks.
+> x clock
+The clock reads 10:10.
+> x sack
+A canvas mail sack.
+> open sack
+You open the sack. It holds 3 letters.
+> take letters
+red letter: Taken.
+blue letter: Taken.
+white letter: Taken.
+> i
+You're carrying:
+  three letters:
+    a white letter
+    a blue letter
+    a red letter
+  a brass key
+> x hole 2
+Pigeonhole 2 is empty.
+> put red letter in hole 2
+It has to be franked first.
+> sort key
+Only letters are sorted here.
+> put key in machine
+The machine only takes letters.
+> put red letter in machine
+The machine thumps. The red letter comes out franked.
+The clock strikes.
+> frank red letter
+The red letter is already franked.
+> i
+You're carrying:
+  three letters:
+    a white letter
+    a blue letter
+    a red letter (franked)
+  a brass key
+> put red letter in hole 3
+That one is addressed to box 2.
+> put red letter in hole 2
+You slip the red letter into hole 2.
+[The score has just gone up by one point.]
+> x pigeonhole 2
+Pigeonhole 2 holds a red letter.
+> x red letter
+An envelope addressed to box 2, franked and filed.
+> take red letter
+It's filed now; leave it.
+> frank blue letter
+The machine thumps. The blue letter comes out franked.
+> sort blue letter
+(hole 3)
+You slip the blue letter into hole 3.
+[The score has just gone up by one point.]
+> tally
+Rooms 2, score 3, franked 2.
+Letters: 1 loose, 0 franked, 2 filed.
+Filed to boxes: 2 3.
+> s
+Counter Room
+Counter Room. A hatch in the north wall leads to the sorting room.
+You can see a hatch and a clerk here.
+> sort white
+There is nowhere here to sort it.
+> frank white
+The franking machine is in the sorting room.
+> n
+Sorting Room
+Sorting Room. A rack of three pigeonholes covers one wall. The hatch is south.
+You can see a hatch, a mail sack (which is empty), a hole 1 (which is empty), a hole 2 (in which is a red letter), a hole 3 (in which is a blue letter) and a franking machine (which is empty) here.
+> frank white
+The machine thumps. The white letter comes out franked.
+> sort white into hole 3
+That one is addressed to box 1.
+> x white letter
+An envelope addressed to box 1, franked.
+> x clock
+The clock reads 12:20.
+> sort white
+(hole 1)
+You slip the white letter into hole 1.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 4 out of a possible 4, in 42 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

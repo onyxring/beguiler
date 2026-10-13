@@ -1,0 +1,476 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a forge. A Fuel class
+// (an int heat member, plural dictionary words, a plural string and list_together) with two lumps
+// of coal and a log; a furnace whose before rule on the Receive fake action burns fuel (remove())
+// and takes only the crucible otherwise, a describe rule, an int temperature and burn count driven
+// by a daemon started in Initialise, the temperature logged every turn in a sized ring array<int>;
+// a gauge reached through add_to_scope naming the heat from a global array<string> through a switch
+// with ranges; a bellows whose before rule on Push/Squeeze raises the heat; a crucible container
+// (capacity) whose before rule on Take wants the tongs held while it sits in the furnace, melting
+// its scrap through a timer (time_left, time_out) started from the daemon and cancelled by StopTimer
+// when it leaves the heat; an enum member tracking the metal's state; a for loop over the
+// crucible's children; a native Pour verb (HELD, .into, NOUN) and a native Pump verb; a barrel whose
+// before rule on Receive quenches the ingot; a react_before on the mould refusing Take while hot; an
+// invent rule with inventory_stage; a LibraryMessages override of Smell; NewRoom; a meta verb
+// printing a tally and the ring of temperatures read backwards; deadflag when the score reaches
+// MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int MAXHEAT = 9;
+const int MELTAT = 6;           // the crucible melts its scrap at this heat
+const int MELT_TURNS = 2;
+const int NLOG = 5;             // turns of temperature remembered
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Smell:
+                if (location == forge) rtrue("Coal smoke and hot iron.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum metal { scrap, molten, cast, quenched }
+
+array<string> heatNames = {"cold", "warm", "red", "orange", "yellow", "white"};
+array<int> tempLog[NLOG];
+int nLogged;                       // turns logged
+int g_rooms;
+int g_burnt;                    // fuel burnt so far
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// Name the furnace's heat in one word.
+string HeatName(int t) {
+    switch (t) {
+        case 0:
+            return heatNames[0];
+        case 1 to 2:
+            return heatNames[1];
+        case 3 to 4:
+            return heatNames[2];
+        case 5:
+            return heatNames[3];
+        case 6 to 7:
+            return heatNames[4];
+        default:
+            return heatNames[5];
+    }
+}
+
+// ---------------------------------------------------------------- fuel
+
+class Fuel : object {
+    int heat;
+    string list_together = "fuel";
+    bool invent() {
+        if (inventory_stage == 2) print($" (burns for {heat})");
+        rfalse;
+    }
+}
+
+Fuel coal1 {
+    short_name = "lump of coal";
+    string plural = "lumps of coal";
+    name = {.lump, .coal, ..lumps, ..coals};
+    parent = yard;
+    heat = 3;
+    description = "A black lump of coal.";
+}
+
+Fuel coal2 {
+    short_name = "lump of coal";
+    string plural = "lumps of coal";
+    name = {.lump, .coal, ..lumps, ..coals};
+    parent = yard;
+    heat = 3;
+    description = "A black lump of coal.";
+}
+
+Fuel woodLog {
+    short_name = "log";
+    name = {.log, .wood};
+    parent = yard;
+    heat = 2;
+    description = "A split log, dry.";
+}
+
+// ---------------------------------------------------------------- rooms
+
+object yard {
+    short_name = "Yard";
+    description = "Yard. The forge is to the north.";
+    object n_to = forge;
+    object in_to = forge;
+    attributes = {light};
+}
+
+object forge {
+    short_name = "Forge";
+    description = "Forge. A furnace stands against the back wall with a bellows beside it. The yard is south.";
+    object s_to = yard;
+    object out_to = yard;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- the furnace
+
+object furnace {
+    short_name = "furnace";
+    name = {.furnace, .fire, .hearth};
+    parent = forge;
+    int temp;
+    int burn;                   // turns of fuel left
+    rawArray<object> add_to_scope = {gauge};
+    void description() {
+        print($"A brick furnace. The fire is {HeatName(temp)}");
+        if (burn == 0) print(" and not burning");
+        print(".^");
+    }
+    bool describe() {
+        if (burn > 0) print($"^The furnace glows {HeatName(temp)}.^");
+        else print("^The furnace stands cold.^");
+        rtrue;
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun.is(Fuel)) {
+                    Fuel f = (Fuel)noun;
+                    burn = burn + f.heat;
+                    g_burnt++;
+                    f.remove();
+                    if (temp == 0) temp = 1;
+                    rtrue($"You throw {the(f)} into the furnace. The fire takes it.^");
+                }
+                if (noun != crucible) rtrue("That would only burn away.^");
+            case Take, Push, Pull:
+                rtrue("The furnace is built into the wall.^");
+        }
+        rfalse;
+    }
+    void daemon() {
+        tempLog[nLogged % NLOG] = temp;
+        nLogged++;
+        if (burn > 0) {
+            burn--;
+            if (temp < MAXHEAT) temp++;
+        }
+        else if (temp > 0) {
+            temp--;
+        }
+        CheckMelt();
+    }
+    attributes = {static, container, open};
+}
+
+object gauge {
+    short_name = "gauge";
+    name = {.gauge, .dial};
+    void description() {
+        print($"The needle stands at {furnace.temp}, {HeatName(furnace.temp)}.^");
+    }
+    attributes = {static, scenery};
+}
+
+object bellows {
+    short_name = "bellows";
+    name = {.bellows, .handle};
+    parent = forge;
+    description = "A leather bellows on a wooden frame.";
+    bool before() {
+        switch (action) {
+            case Push, Pull, Squeeze:
+                PumpBellows();
+                rtrue;
+            case Take:
+                rtrue("The bellows is fixed to its frame.^");
+        }
+        rfalse;
+    }
+    attributes = {static, pluralname};
+}
+
+void PumpBellows() {
+    if (furnace.burn == 0) {
+        print("A puff of air stirs the cold ash.^");
+        return;
+    }
+    furnace.temp = furnace.temp + 2;
+    if (furnace.temp > MAXHEAT) furnace.temp = MAXHEAT;
+    print($"The bellows wheeze. The fire burns {HeatName(furnace.temp)}.^");
+    CheckMelt();
+}
+
+// ---------------------------------------------------------------- the crucible
+
+object crucible {
+    short_name = "crucible";
+    name = {.crucible, .pot};
+    parent = forge;
+    metal state = scrap;
+    int capacity = 1;
+    int time_left;
+    void description() {
+        print("A clay crucible");
+        switch (state) {
+            case molten:
+                print(", full of glowing metal");
+            case scrap:
+                if (child != null) print(", holding scrap iron");
+                else print(", empty");
+            default:
+                print(", empty");
+        }
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Take, Remove:
+                if (parent == furnace && tongs.parent != player)
+                    rtrue("It is far too hot to touch. You need the tongs.^");
+            case Receive:
+                if (noun != scrapIron) rtrue("Only the scrap belongs in the crucible.^");
+        }
+        rfalse;
+    }
+    bool after() {
+        switch (action) {
+            case Take:
+                if (time_left > 0) {
+                    StopTimer(self);
+                    print("You lift the crucible out of the heat.^");
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+    void time_out() {
+        state = molten;
+        for (object o in children) o.remove();
+        if (location == forge) print("^The scrap in the crucible slumps and runs together.^");
+        Award();
+    }
+    bool invent() {
+        if (inventory_stage == 2 && state == molten) print(" (glowing)");
+        rfalse;
+    }
+    attributes = {container, open};
+}
+
+object scrapIron {
+    short_name = "scrap iron";
+    name = {.scrap, .iron};
+    parent = yard;
+    description = "A handful of rusty scrap iron.";
+}
+
+object tongs {
+    short_name = "tongs";
+    name = {.tongs, .pair};
+    parent = forge;
+    description = "A long pair of iron tongs.";
+    attributes = {pluralname};
+}
+
+void CheckMelt() {
+    if (crucible.parent != furnace) return;
+    if (crucible.state != scrap) return;
+    if (scrapIron.parent != crucible) return;
+    if (furnace.temp < MELTAT) return;
+    if (crucible.time_left > 0) return;
+    StartTimer(crucible, MELT_TURNS);
+}
+
+// ---------------------------------------------------------------- mould and barrel
+
+object mould {
+    short_name = "mould";
+    name = {.mould, .mold, .sand};
+    parent = forge;
+    metal state = scrap;        // scrap: still empty
+    void description() {
+        switch (state) {
+            case cast:
+                print("A sand mould holding a hot iron ingot.^");
+            case quenched:
+                print("A sand mould, broken open.^");
+            default:
+                print("A sand mould, empty.^");
+        }
+    }
+    bool react_before() {
+        switch (action) {
+            case Take:
+                if (noun == ingot && state == cast && ingot.parent == self)
+                    rtrue("The ingot is still too hot to pick up. Quench it first.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+object ingot {
+    short_name = "iron ingot";
+    name = {.iron, .ingot, .bar};
+    void description() {
+        if (mould.state == cast) print("A hot iron ingot, still glowing.^");
+        else print("A dull gray iron ingot.^");
+    }
+}
+
+object barrel {
+    short_name = "water barrel";
+    name = {.water, .barrel, .tub};
+    parent = forge;
+    description = "A barrel of water for quenching.";
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun == ingot) {
+                    QuenchIngot();
+                    rtrue;
+                }
+                rtrue("You'd only get it wet.^");
+            case Take, Push, Pull:
+                rtrue("It's far too heavy.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+void QuenchIngot() {
+    if (mould.state != cast) {
+        print("The ingot is already cold.^");
+        return;
+    }
+    mould.state = quenched;
+    ingot.parent = player;
+    print("You drop the ingot into the barrel. It hisses and spits, and you fish it out again, cold.^");
+    Award();
+}
+
+void PourCrucible(object into) {
+    if (crucible.parent != player) {
+        print("You need to be holding the crucible.^");
+        return;
+    }
+    if (crucible.state != molten) {
+        print("There is nothing molten to pour.^");
+        return;
+    }
+    if (into != mould) {
+        print($"Pouring molten iron into {the(into)} would end badly.^");
+        return;
+    }
+    if (mould.state != scrap) {
+        print("The mould has already been used.^");
+        return;
+    }
+    crucible.state = cast;
+    mould.state = cast;
+    ingot.parent = mould;
+    print("You pour the glowing metal into the mould. It sets into an ingot.^");
+    Award();
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Pour {
+    grammar = {
+        {.pour, HELD},
+        {.pour, HELD, .into | .in, NOUN},
+    };
+    void handler() {
+        if (noun != crucible) {
+            print("That isn't something you can pour.^");
+            return;
+        }
+        if (second == null) {
+            print("Pour it into what?^");
+            return;
+        }
+        PourCrucible(second);
+    }
+}
+
+verb Pump {
+    grammar = {
+        {.pump},
+        {.pump, NOUN},
+    };
+    void handler() {
+        if (location != forge) {
+            print("There is nothing here to pump.^");
+            return;
+        }
+        if (noun != null && noun != bellows) {
+            print("That can't be pumped.^");
+            return;
+        }
+        PumpBellows();
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print($"Rooms {g_rooms}, score {score}, fuel burnt {g_burnt}.^");
+        print($"Furnace {furnace.temp} ({HeatName(furnace.temp)}), burn {furnace.burn}.^");
+        print("Last temperatures:");
+        int n = nLogged;
+        if (n > NLOG) n = NLOG;
+        if (n == 0) print(" none");
+        for (int i = 1; i <= n; i++) print($" {tempLog[(nLogged - i) % NLOG]}");
+        print(".^Crucible ");
+        switch (crucible.state) {
+            case scrap:
+                print("scrap");
+            case molten:
+                print("molten");
+            case cast:
+                print("poured");
+            default:
+                print("?");
+        }
+        print($", timer {crucible.time_left}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = yard;
+    StartDaemon(furnace);
+    rfalse;
+}

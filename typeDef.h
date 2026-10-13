@@ -373,6 +373,7 @@ class functionDef:public typeMember, public typeDef{
         bool callsItself = false;
         vector<pair<string,string>> ownBackings;
         string entrySetUp;
+        pair<string,string> returnCopy;      // {instance, copy routine}: a returned value class leaves through its own instance
         // replace chaining: when this function replaces a previous definition,
         // replaced() calls in the body resolve to replacedTarget (the mangled name).
         string replacedTarget;               // mangled name of predecessor function (empty if not a replacement)

@@ -1,0 +1,159 @@
+Room A
+Room A. The bus stop. The ticket office is to the north.
+You can see a timetable here.
+> line
+The line is long:
+1. Ann with a bag
+2. Bob with nothing
+3. Cal with a bag (child)
+4. Dee [pass]
+5. Eve with a bag (child)
+Bags: 3.
+> buses
+Bus 7: coming, comes in 1.
+Bus 9: away, comes in 3.
+Buses that fit the whole line: 0.
+Every bus is empty.
+Bus 7 pulls in.
+> wallet
+Wallet: 10 coins.
+> fares
+No fares paid yet.
+> gone
+Nobody has gone yet.
+> timetable
+Bus 7 (3)- here
+Bus 9 (2)- 2
+> report
+Bus/Report
+Turn 2, gone 0.
+Ann is first.
+Red first. Blue too. red BUS, blue bus. blue bus. the blue bus.
+Paying grown-ups before the first child: 2.
+> n
+Room B
+Room B. The ticket office. The bus stop is to the south.
+You can see a ticket machine here.
+> ticket
+A ticket drops out. 2 left in the machine.
+Bus 7 leaves.
+Bus 9 pulls in.
+> ticket
+A ticket drops out. 1 left in the machine.
+Bus 9 leaves.
+> ticket
+A ticket drops out. 0 left in the machine.
+The machine shows SOLD OUT.
+> ticket
+The machine is sold out.
+> wallet
+Wallet: 4 coins, 3 tickets.
+> s
+Room A
+Room A. The bus stop. The ticket office is to the north.
+You can see a timetable here.
+> wait
+Time passes.
+Bus 7 pulls in.
+> enter red bus
+Use BOARD to put the line on the bus.
+Bus 9 pulls in.
+> board
+Ann gets on bus 9 for 1. Bob gets on bus 9 for 1. Bus 9 is full. 2 riders got on.
+Bus 7 leaves.
+Bus 9 leaves.
+> buses
+Bus 7: away, comes in 5.
+Bus 9: away, comes in 5.
+Buses that fit the whole line: 1.
+Every bus is empty.
+> line
+The line is long:
+1. Cal with a bag (child)
+2. Dee [pass]
+3. Eve with a bag (child)
+Bags: 2.
+> wallet
+Wallet: 2 coins, 1 ticket.
+> fares
+Fares: 1 1. Total 2.
+Cheapest 1, dearest 1.
+First two: 2.
+Doubled last: 2.
+> skip
+Cal lets Dee go first.
+> line
+The line is long:
+1. Dee [pass]
+2. Cal with a bag (child)
+3. Eve with a bag (child)
+Bags: 2.
+> wait
+Time passes.
+Bus 7 pulls in.
+Bus 9 pulls in.
+> wait
+Time passes.
+Bus 9 leaves.
+> wait
+Time passes.
+Bus 7 leaves.
+> board
+There is no bus here.
+> buses
+Bus 7: away, comes in 4.
+Bus 9: away, comes in 3.
+Buses that fit the whole line: 1.
+Every bus is empty.
+> gone
+bob, ann
+Riders gone: 2.
+> report
+Bus/Report
+Turn 20, gone 2.
+Dee is first.
+Red first. Blue too. red BUS, blue bus. blue bus. the blue bus.
+Paying grown-ups before the first child: 0.
+A bus has left full.
+> timetable
+Bus 7 (3)- 3
+Bus 9 (2)- 2
+> wait
+Time passes.
+> board
+There is no bus here.
+Bus 9 pulls in.
+> board
+Dee gets on bus 9 for 0. Cal gets on bus 9 for 1. Bus 9 is full. 2 riders got on.
+Bus 7 pulls in.
+Bus 9 leaves.
+> board
+Eve gets on bus 7 for 1. 1 rider got on.
+> x red bus
+Bus 7. It has 3 seats and waits 2 turns.
+Bus 7 leaves.
+> buses
+Bus 7: away, comes in 5.
+Bus 9: away, comes in 3.
+Buses that fit the whole line: 2.
+Every bus is empty.
+> gone
+eve, dee, cal, bob, ann
+Riders gone: 5.
+> fares
+Fares: 1 1 0 1 1. Total 4.
+Cheapest 0, dearest 1.
+First two: 2.
+Doubled last: 2.
+Free rides: 1.
+> wallet
+Wallet: 0 coins.
+> report
+Bus/Report
+Turn 26, gone 5.
+Nobody is first.
+Red first. Blue too. red BUS, blue bus. blue bus. the blue bus.
+Paying grown-ups before the first child: 0.
+A bus has left full.
+> line
+The line is empty.

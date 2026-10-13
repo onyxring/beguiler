@@ -1,0 +1,688 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-sixth first-time-programmer program, a small bus stop where riders wait in a
+// line, buses come on a timetable, wait a few turns and leave, riders get on and pay a fare from a
+// wallet, and a ticket machine sells cheap tickets, written the way a beginner writes it after
+// reading the spec once. Counts kept in int globals with consts for the fares and the wallet, bool
+// flags, a bnum of rider needs combined with | and tested with &, an enum for a bus's state returned
+// from a method and switched on, a value class for a rider (name and needs) with a copy operator kept
+// in an array of the value class used as a queue (enqueue / dequeue / peek / remove / insert), a
+// class of buses (number, seats, riders on board, turns until it comes, turns left at the stop,
+// methods for the state, the fare and the wait, a before() for Examine and Enter) with a subclass that
+// replaces the wait and the fare (one still calls the class's through a cast), buses moved in and
+// out of the stop by assigning parent (to null to take them away), a timetable object with a daemon,
+// a ticket machine object with an inline auto accessor for its stock that uses outer, helper
+// functions (one with a default argument, one called with a named argument, one with a ternary, one
+// returning a string from a switch with ranges), try / catch / throw for a full bus and for a short
+// wallet, C-style for loops with break and continue, a while loop, a do/while, <linq> filter / count
+// / any / all / map / take / orderBy / last with lambdas (one capturing a local), stringObj lines built
+// with + and += and interpolation and changed with left, right, insert, delete, replace, startsWith,
+// contains and toLower, a string switch, for-in over a range, an array, a literal list and children,
+// and verbs with no noun and one noun (board, line, buses, wallet, fares, ticket, gone, timetable,
+// report, skip) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== FARES AND COUNTS =====
+
+// what a ride costs
+const int FULL_FARE = 3;
+// what a ride costs for a child
+const int CHILD_FARE = 1;
+// how many coins the wallet starts with
+const int WALLET_START = 10;
+// how many coins are in the wallet
+int wallet = WALLET_START;
+// how many turns have gone by
+int turnCount = 0;
+// how many riders have gone off on a bus
+int ridersGone = 0;
+// has any bus left full?
+bool busLeftFull = false;
+// did someone use a ticket?
+bool usedTicket = false;
+// how many cheap tickets we hold
+int ticketsHeld = 0;
+
+// ===== RIDER NEEDS AND BUS STATE =====
+
+// what a rider has with them
+bnum Need { bag, child, pass }
+
+enum BusState { away, coming, atStop }
+
+// ===== RIDERS =====
+
+// one rider waiting in the line
+value class Rider {
+    string who;
+    int needs;
+    Rider operator = (Rider o) {
+        who = o.who;
+        needs = o.needs;
+        return self;
+    }
+}
+
+// ===== LISTS =====
+
+// riders waiting at the stop, first come first served
+array<Rider> waiting[8];
+
+// the names of riders who went off on a bus
+array<string> goneNames[8];
+
+// every fare paid, one number for each rider
+array<int> faresPaid[12];
+
+// ===== HELPER FUNCTIONS =====
+
+// prints "1 coin" or "3 coins"
+void printCoins(int n, bool withWord = true) {
+    print(n);
+    if (withWord) {
+        if (n == 1) {
+            print(" coin");
+        } else {
+            print(" coins");
+        }
+    }
+}
+
+// "rider" or "riders"
+string riderWord(int n) {
+    return (n == 1) ? "rider" : "riders";
+}
+
+// how long the line is, in words
+string lineWord(int n) {
+    switch (n) {
+        case 0: return "empty";
+        case 1 to 2: return "short";
+        case 3 to 5: return "long";
+    }
+    return "very long";
+}
+
+// prints a state word
+void printState(BusState s) {
+    switch (s) {
+        case BusState.away: print("away");
+        case BusState.coming: print("coming");
+        case BusState.atStop: print("at the stop");
+    }
+}
+
+// adds up an array of ints
+int addUp(array<int> nums) {
+    int total = 0;
+    for (int i = 0; i < nums.length; i++) {
+        total += nums[i];
+    }
+    return total;
+}
+
+// prints what a rider has with them
+void printNeeds(int needs) {
+    bool any = false;
+    if (needs & Need.bag) {
+        print(" with a bag");
+        any = true;
+    }
+    if (needs & Need.child) {
+        print(" (child)");
+        any = true;
+    }
+    if (needs & Need.pass) {
+        print(" [pass]");
+        any = true;
+    }
+    if (!any) {
+        print(" with nothing");
+    }
+}
+
+// takes coins out of the wallet; throws how many are missing
+void pay(int amount) {
+    if (wallet < amount) {
+        throw amount - wallet;
+    }
+    wallet -= amount;
+}
+
+// adds a rider to the back of the line
+void addRider(string who, int needs) {
+    Rider r;
+    r.who = who;
+    r.needs = needs;
+    waiting.enqueue(r);
+}
+
+// ===== BUSES =====
+
+class Bus : object {
+    // the number on the front
+    int number = 1;
+    // how many seats it has
+    int seats = 3;
+    // how many riders are on board
+    int aboard = 0;
+    // how many turns until it comes
+    int comesIn = 2;
+    // how many turns it waits at the stop
+    int waitLeft = 0;
+    string description;
+
+    // how long it waits at the stop
+    int waitTime() {
+        return 2;
+    }
+
+    // what a rider pays
+    int fare(int needs) {
+        if (needs & Need.pass) {
+            return 0;
+        }
+        if (needs & Need.child) {
+            return CHILD_FARE;
+        }
+        return FULL_FARE;
+    }
+
+    // works out the state
+    BusState state() {
+        if (parent == roomA) {
+            return BusState.atStop;
+        }
+        if (comesIn <= 1) {
+            return BusState.coming;
+        }
+        return BusState.away;
+    }
+
+    // seats still free
+    int freeSeats() {
+        return seats - aboard;
+    }
+
+    // puts one more rider on; throws when it is full
+    void takeRider() {
+        if (aboard >= seats) {
+            throw number;
+        }
+        aboard++;
+    }
+
+    // says how the bus is doing
+    void sayState() {
+        print($"Bus {number}: ");
+        printState(state());
+        if (state() == BusState.atStop) {
+            print($", {aboard} of {seats} seats taken, leaves in {waitLeft}");
+        } else {
+            print($", comes in {comesIn}");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"Bus {number}. It has {seats} seats and waits {waitTime()} turns.^");
+            rtrue;
+        }
+        if (action == Enter) {
+            rtrue("Use BOARD to put the line on the bus.^");
+        }
+        rfalse;
+    }
+}
+
+// a little bus waits less and is cheap for everyone with a bag
+class MiniBus : Bus {
+    replace int waitTime() {
+        return 1;
+    }
+    replace int fare(int needs) {
+        int usual = ((Bus)self).fare(needs);
+        if (needs & Need.bag) {
+            usual = usual + 1;
+        }
+        return usual;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The bus stop. The ticket office is to the north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The ticket office. The bus stop is to the south.";
+    object s_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE BUSES =====
+
+Bus bus7 {
+    "red bus";
+    name = {.red, .bus};
+    number = 7;
+    seats = 3;
+    comesIn = 2;
+    description = "A bus.";
+    attributes = {static, enterable};
+}
+
+MiniBus bus9 {
+    "blue minibus";
+    name = {.blue, .minibus, .bus};
+    number = 9;
+    seats = 2;
+    comesIn = 4;
+    description = "A minibus.";
+    attributes = {static, enterable};
+}
+
+// ===== THE TIMETABLE AND THE TICKET MACHINE =====
+
+object timetable {
+    "timetable";
+    parent = roomA;
+    name = {.timetable, .board, .sign};
+    string description = "A timetable on a pole.";
+    attributes = {static};
+    void daemon() {
+        turnCount++;
+        for (Bus b in {bus7, bus9}) {
+            if (b.parent == roomA) {
+                b.waitLeft--;
+                if (b.waitLeft <= 0) {
+                    if (b.freeSeats() == 0) {
+                        busLeftFull = true;
+                    }
+                    ridersGone += b.aboard;
+                    b.aboard = 0;
+                    b.parent = null;
+                    b.comesIn = 5;
+                    print($"^Bus {b.number} leaves.^");
+                }
+                continue;
+            }
+            b.comesIn--;
+            if (b.comesIn <= 0) {
+                b.parent = roomA;
+                b.waitLeft = b.waitTime();
+                print($"^Bus {b.number} pulls in.^");
+            }
+        }
+    }
+}
+
+object ticketMachine {
+    "ticket machine";
+    parent = roomB;
+    name = {.ticket, .machine};
+    string description = "A ticket machine.";
+    attributes = {static};
+    // how many coins one ticket costs
+    int price = 2;
+    // is it sold out?
+    bool soldOut = false;
+    auto stock = {
+        int _left = 3;
+        int operator () {
+            return _left;
+        }
+        void operator = (int v) {
+            if (v < 0) {
+                v = 0;
+            }
+            _left = v;
+            outer.soldOut = (v == 0);
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    addRider("Ann", Need.bag);
+    addRider("Bob", 0);
+    addRider("Cal", Need.child | Need.bag);
+    addRider("Dee", Need.pass);
+    addRider("Eve", Need.child | Need.bag);
+    StartDaemon(timetable);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the buses) =====
+
+// the bus at the stop, or null
+Bus busHere() {
+    for (object o in roomA.children) {
+        if (o.is(Bus)) {
+            return (Bus)o;
+        }
+    }
+    return null;
+}
+
+// how many riders have a bag
+int countBags() {
+    int n = 0;
+    for (int i = 0; i < waiting.length; i++) {
+        if (waiting[i].needs & Need.bag) {
+            n++;
+        }
+    }
+    return n;
+}
+
+// a name cut or padded to a width with dashes
+stringObj fitName(stringObj word, int width) {
+    stringObj s = word;
+    if (s.length > width) {
+        s = s.left(width);
+    }
+    while (s.length < width) {
+        s += "-";
+    }
+    return s;
+}
+
+// ===== VERBS =====
+
+// BOARD - puts the line on the bus at the stop, one by one
+verb Board {
+    grammar = {.board};
+    void handler() {
+        if (location != roomA) {
+            print("The bus stop is in Room A.^");
+            return;
+        }
+        Bus b = busHere();
+        if (b == null) {
+            print("There is no bus here.^");
+            return;
+        }
+        if (waiting.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        int got = 0;
+        while (waiting.length > 0) {
+            Rider r = waiting.peek();
+            int cost = b.fare(r.needs);
+            bool withTicket = false;
+            if (ticketsHeld > 0 && cost > 1) {
+                withTicket = true;
+                cost = 1;
+            }
+            try {
+                b.takeRider();
+            } catch (int full) {
+                print($"Bus {full} is full. ");
+                break;
+            }
+            try {
+                pay(cost);
+            } catch (int short) {
+                b.aboard--;
+                print($"{r.who} cannot pay ({short} short). ");
+                break;
+            }
+            if (withTicket) {
+                ticketsHeld--;
+                usedTicket = true;
+            }
+            waiting.dequeue();
+            goneNames.append(r.who);
+            faresPaid.append(cost);
+            got++;
+            print($"{r.who} gets on bus {b.number} for {cost}. ");
+        }
+        print($"{got} {riderWord(got)} got on.^");
+    }
+}
+
+// LINE - who is waiting
+verb ShowLine {
+    grammar = {.line};
+    void handler() {
+        if (waiting.length == 0) {
+            print("The line is empty.^");
+            return;
+        }
+        print($"The line is {lineWord(waiting.length)}:^");
+        for (int i in 1 to waiting.length) {
+            Rider r = waiting[i - 1];
+            print($"{i}. {r.who}");
+            printNeeds(r.needs);
+            print("^");
+        }
+        print($"Bags: {countBags()}.^");
+    }
+}
+
+// BUSES - every bus and how it is doing
+verb ShowBuses {
+    grammar = {.buses};
+    void handler() {
+        for (Bus b in {bus7, bus9}) {
+            b.sayState();
+        }
+        array<Bus> all = { bus7, bus9 };
+        int waitingCount = waiting.length;
+        int fits = all.filter((Bus b) => b.freeSeats() >= waitingCount).count();
+        print($"Buses that fit the whole line: {fits}.^");
+        if (all.any((Bus b) => b.state() == BusState.atStop)) {
+            print("A bus is at the stop.^");
+        }
+        if (all.all((Bus b) => b.aboard == 0)) {
+            print("Every bus is empty.^");
+        }
+    }
+}
+
+// WALLET - how many coins there are
+verb ShowWallet {
+    meta = true;
+    grammar = {.wallet};
+    void handler() {
+        print("Wallet: ");
+        printCoins(wallet);
+        if (ticketsHeld > 0) {
+            print($", {ticketsHeld} ");
+            print((ticketsHeld == 1) ? "ticket" : "tickets");
+        }
+        print(".^");
+    }
+}
+
+// FARES - every fare paid
+verb ShowFares {
+    meta = true;
+    grammar = {.fares};
+    void handler() {
+        if (faresPaid.length == 0) {
+            print("No fares paid yet.^");
+            return;
+        }
+        print("Fares:");
+        for (int f in faresPaid) {
+            print($" {f}");
+        }
+        print(". Total ");
+        printCoins(addUp(faresPaid), withWord: false);
+        print(".^");
+        array<int> sorted = faresPaid.orderBy();
+        print($"Cheapest {sorted.first()}, dearest {sorted.last()}.^");
+        array<int> firstTwo = faresPaid.take(2);
+        print($"First two: {addUp(firstTwo)}.^");
+        print($"Doubled last: {faresPaid.map((var x) => x * 2).last()}.^");
+        int free = faresPaid.filter((int x) => x == 0).count();
+        if (free > 0) {
+            print($"Free rides: {free}.^");
+        }
+    }
+}
+
+// TICKET - buys a cheap ticket from the machine
+verb BuyTicket {
+    grammar = {.ticket};
+    void handler() {
+        if (location != roomB) {
+            print("The ticket machine is in Room B.^");
+            return;
+        }
+        if (ticketMachine.soldOut) {
+            print("The machine is sold out.^");
+            return;
+        }
+        try {
+            pay(ticketMachine.price);
+        } catch (int short) {
+            print("Not enough coins: ");
+            printCoins(short);
+            print(" short.^");
+            return;
+        }
+        ticketMachine.stock = ticketMachine.stock - 1;
+        ticketsHeld++;
+        print($"A ticket drops out. {ticketMachine.stock} left in the machine.^");
+        if (ticketMachine.soldOut) {
+            print("The machine shows SOLD OUT.^");
+        }
+    }
+}
+
+// GONE - who went off on a bus, by name
+verb ShowGone {
+    meta = true;
+    grammar = {.gone};
+    void handler() {
+        if (goneNames.length == 0) {
+            print("Nobody has gone yet.^");
+            return;
+        }
+        array<string> names[8];
+        names = goneNames;
+        names.sort((string a, string b) => b.compareTo(a));
+        int i = 0;
+        do {
+            stringObj name = names[i];
+            print(name.toLower());
+            if (i < names.length - 1) {
+                print(", ");
+            }
+            i++;
+        } while (i < names.length);
+        print("^");
+        print($"Riders gone: {ridersGone}.^");
+    }
+}
+
+// TIMETABLE - when the buses come, as a table
+verb ShowTimetable {
+    meta = true;
+    grammar = {.timetable};
+    void handler() {
+        for (Bus b in {bus7, bus9}) {
+            stringObj label = $"Bus {b.number} ({b.seats})";
+            stringObj row = fitName(label, 10);
+            print(row);
+            if (b.state() == BusState.atStop) {
+                print(" here^");
+                continue;
+            }
+            print($" {b.comesIn}^");
+        }
+    }
+}
+
+// REPORT - how the stop is doing
+verb ShowReport {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        stringObj head = "Bus Stop Report";
+        print(head.left(3));
+        print("/");
+        print(head.right(6));
+        print("^");
+        stringObj turnText = $"{turnCount}";
+        stringObj line = "Turn " + turnText;
+        line += $", gone {ridersGone}";
+        print(line);
+        print(".^");
+        string who = waiting.length > 0 ? waiting.peek().who : "nobody";
+        switch (who) {
+            case "Ann": print("Ann is first.^");
+            case "nobody": print("Nobody is first.^");
+            default: print($"{who} is first.^");
+        }
+        stringObj note = "red bus, blue bus";
+        if (note.startsWith("red")) {
+            print("Red first. ");
+        }
+        if (note.contains("blue")) {
+            print("Blue too. ");
+        }
+        stringObj fixed = note.replace("bus", "BUS");
+        print(fixed);
+        print(". ");
+        stringObj cut = note.delete(0, 9);
+        print(cut);
+        print(". ");
+        stringObj added = cut.insert(0, "the ");
+        print(added);
+        print(".^");
+        // count riders up to the first child
+        int grownUps = 0;
+        for (int i = 0; i < waiting.length; i++) {
+            if (waiting[i].needs & Need.pass) {
+                continue;
+            }
+            if (waiting[i].needs & Need.child) {
+                break;
+            }
+            grownUps++;
+        }
+        print($"Paying grown-ups before the first child: {grownUps}.^");
+        if (busLeftFull) {
+            print("A bus has left full.^");
+        }
+    }
+}
+
+// SKIP - the first rider in line gives up a place to the next one
+verb SkipPlace {
+    grammar = {.skip};
+    void handler() {
+        if (waiting.length < 2) {
+            print("There is nobody to swap with.^");
+            return;
+        }
+        Rider first = waiting[0];
+        waiting.remove(0);
+        waiting.insert(1, first);
+        print($"{first.who} lets {waiting[0].who} go first.^");
+    }
+}

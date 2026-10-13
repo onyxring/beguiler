@@ -1,0 +1,137 @@
+Room A
+Room A.
+
+> tally
+Ann 3, Bob 3, Cy 3, Dee 2
+11 counted, 0 withdrawn, highest 3
+
+> runoff
+round 1 (11): Ann 3, Bob 3, Cy 3, Dee 2
+round 2 (11): Ann 3, Bob 4, Cy 4
+round 3 (10): Bob 5, Cy 5
+round 4 (9): Cy 9
+winner Cy with 9; out in order: Dee, Ann, Bob
+
+> borda
+Bob 20
+Cy 19
+Ann 15
+Dee 8
+spread 12
+
+> pairs
+Ann-Bob 4-7
+Ann-Cy 4-7
+Ann-Dee 7-2
+Bob-Cy 5-5
+Bob-Dee 8-3
+Cy-Dee 7-3
+wins: Bob 2 Cy 2 Ann 1 Dee 0
+
+> compare ann with bob
+Ann loses against Bob, 4 to 7
+
+> compare cy with cy
+Pick two different candidates.
+
+> compare dee with box
+That is not a candidate.
+
+> compare box with ann
+That is not a candidate.
+
+> vote box
+That is not a candidate.
+
+> condorcet
+Condorcet winner: none
+
+> ballot 4
+Bob > Cy > Ann > Dee (counts for Bob)
+
+> ballot 12
+Ballots run from 1 to 11.
+
+> parties
+red: 2 candidates, 5 votes
+green: 1 candidate, 3 votes
+blue: 1 candidate, 3 votes
+
+> summary
+11 ballots; most first choices: Ann (3); Condorcet: none
+58 chars: 11 ballots / most first choices: Ann (3) / Condorcet: none
+
+> withdraw cy
+Cy withdraws. 3 remain.
+
+> tally
+Ann 4, Bob 5, Dee 2
+11 counted, 1 withdrawn, highest 5
+
+> ballot 5
+Cy > Bob > Ann (counts for Bob)
+
+> runoff
+round 1 (11): Ann 4, Bob 5, Dee 2
+round 2 (11): Ann 4, Bob 7
+winner Bob with 7; out in order: Dee
+
+> tally
+Ann 4, Bob 5, Dee 2
+11 counted, 1 withdrawn, highest 5
+
+> withdraw cy
+Cy is already withdrawn.
+
+> reinstate
+1 reinstated.
+
+> vote dee
+One vote for Dee. 1 cast here.
+
+> vote dee
+One vote for Dee. 2 cast here.
+
+> vote dee
+One vote for Dee. 3 cast here.
+
+> tally
+Ann 3, Bob 3, Cy 3, Dee 5
+14 counted, 0 withdrawn, highest 5
+
+> runoff
+round 1 (14): Ann 3, Bob 3, Cy 3, Dee 5
+round 2 (14): Bob 4, Cy 4, Dee 6
+round 3 (13): Cy 7, Dee 6
+winner Cy with 7; out in order: Ann, Bob
+
+> borda
+Bob 20
+Cy 19
+Dee 17
+Ann 15
+spread 5
+
+> condorcet
+Condorcet winner: none
+
+> summary
+14 ballots; most first choices: Dee (5); Condorcet: none
+58 chars: 14 ballots / most first choices: Dee (5) / Condorcet: none
+
+> vote ann
+One vote for Ann. 4 cast here.
+
+> vote ann
+One vote for Ann. 5 cast here.
+
+> vote ann
+One vote for Ann. 6 cast here.
+
+> vote ann
+The box is full.
+
+> parties
+red: 2 candidates, 11 votes
+green: 1 candidate, 3 votes
+blue: 1 candidate, 3 votes

@@ -248,6 +248,11 @@ the turn and without triggering daemons or timers. `meta` is recognized only on 
 is not a run-time property. Extern verbs cannot be marked meta; the I6 declaration already carries
 the marking or does not.
 
+Inform 6 records meta-ness on the dictionary word, not on the action. A word the library's grammar
+already declares (`wipe`, `shut`) keeps the library's non-meta marking, so a meta verb that claims
+such a word still takes a turn when the player types it; the compiler warns. Give a meta verb words
+of its own.
+
 **Example**
 
 ```bgl
@@ -407,6 +412,10 @@ Each element of a pattern is one of the following.
 | *RoutineName* | a general parsing routine: a global function the parser calls to consume input words (`NextWord()`, `wn`); it returns -1 for no match, 0 when it matched words but no value, 1 when it put a number in `parsed_number`, or the object it matched |
 | `NOUN(Routine)` | a noun filter: the parser matches nouns normally, puts each candidate object in `noun`, and calls the global `bool` routine, which accepts or rejects it |
 | `SCOPE(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
+
+A `NUMBER`, `ANYNUMBER` or `SPECIAL` token fills a noun slot like an object token does: the number
+becomes `noun` (or `second`, for the line's second value), which a handler reads with a cast,
+`(int)second`. The library's `parsed_number` holds the last number matched.
 
 These are Inform 6's own routine tokens, so the parser calls each routine with no arguments: a filter reads
 the candidate from `noun`, and a general parsing routine reads the input itself. A routine named in a

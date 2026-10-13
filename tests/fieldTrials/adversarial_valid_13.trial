@@ -1,0 +1,104 @@
+Room A
+
+> seasons
+early/1 warm/1 autumn/1 cold/4
+3 packets; 3 seeds!.
+
+> survey
+Order pea pole bean melon.
+Cold 1 fewest pea rare yes sealed all.
+[pea:0][pole bean:1][melon:2]
+Plan 21 rows 3 widest 3.
+
+> label
+Label [1:BEAN: POLE BEAN X12;BEAN: PEA X0;2:SQUASH X5;MELON X3;] len 56.
+Lines:bean: pole bean x12 / pole bean x12.
+
+> weigh pole
+The pole bean packet weighs 40g, near the pole beans.
+
+> weigh squash
+The squash packet weighs 12g, far the pole beans.
+
+> weigh melon
+The melon packet weighs 0g, far the pole beans.
+
+> refill melon with 10
+The melon packet now holds 13 at 20g.
+
+> weigh melon
+The melon packet weighs 20g, far the pole beans.
+
+> mark pole
+bean: pole bean x12: sealed labeled damp.
+
+> mark squash
+squash x5: sealed labeled damp.
+
+> mark melon
+melon x13: sealed labeled damp rare.
+
+> survey
+Order pea pole bean melon.
+Cold 1 fewest pea rare yes sealed all.
+[pea:0][pole bean:1][melon:3]
+Plan 21 rows 3 widest 3.
+
+> sow pole
+(beans!) Sown: pole bean/7; tray 1.
+
+> sow pea
+The pea packet is empty.
+
+> sow melon
+(vines) Sown: melon/21; tray 2.
+
+> sow squash
+(quiet) Sown: squash/30; tray 3.
+
+> sow squash
+The tray is full.
+Code -1.
+
+> tray
+Tray pole bean/7 melon/21 squash/30; sown 3.
+
+> compost
+Composted 3; total 3; free 3.
+
+> tray
+Tray; sown 3.
+
+> sow drawer a
+Only packets can be sown.
+
+> compost
+Composted 0; total 3; free 3.
+
+> sow melon
+(vines) Sown: melon/21; tray 1.
+
+> label
+Label [1:BEAN: POLE BEAN X11;BEAN: PEA X0;2:SQUASH X4;MELON X11;] len 57.
+Lines:bean: pole bean x11 / pole bean x11.
+
+> weigh drawer a
+Only packets are weighed.
+
+> mark drawer b
+Only packets take marks.
+
+> tray
+Tray melon/21; sown 4.
+
+> shuffle plan
+[ 2 1 ][ 6 ][ 61 5 4 ] medium 79.
+
+> shuffle plan
+[ 1 2 ][ 12 ][ 61 42 5 ] large 123.
+
+> survey
+Order pea pole bean melon.
+Cold 1 fewest pea rare yes sealed all.
+[pea:0][pole bean:1][melon:3]
+Plan 123 rows 3 widest 3.

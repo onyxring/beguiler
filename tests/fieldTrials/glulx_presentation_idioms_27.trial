@@ -1,0 +1,312 @@
+#grids
+Room A
+Room A. Three bins stand along the bench.
+You can see a tin bin (which is empty), a wooden crate (which is empty), a glass jar (which is empty), an iron bolt, a small anvil, a pine block, an oak dowel, a green bottle and a glass marble here.
+[win 1] [0] bench ready
+[grid 1]
+|T tin   ........   0/9 metal                      |
+|C crate ........  0/12 wood                       |
+|J jar   ........   0/4 glass                      |
+|loose 6  sorted 0 items, 0 kg  log 1              |
+[grid 2]
+|Room A | turn 0 | links 0                         |
+> weigh
+Bin      Kg  Max   Avg  Full
+tin       0    9   0.0  0%
+crate     0   12   0.0  0%
+jar       0    4   0.0  0%
+[grid 1]
+|T tin   ........   0/9 metal                      |
+|C crate ........  0/12 wood                       |
+|J jar   ........   0/4 glass                      |
+|loose 6  sorted 0 items, 0 kg  log 1              |
+[grid 2]
+|Room A | turn 0 | links 0                         |
+> put bolt in tin bin
+(first taking the iron bolt)
+You put the iron bolt into the tin bin.
+[win 1] [0] bolt -> tin
+[grid 1]
+|T tin   ##......   2/9 metal                      |
+|C crate ........  0/12 wood                       |
+|J jar   ........   0/4 glass                      |
+|loose 5  sorted 1 item, 2 kg  log 2               |
+[grid 2]
+|Room A | turn 1 | links 0                         |
+> put anvil in tin bin
+(first taking the small anvil)
+You put the small anvil into the tin bin.
+[win 1] [1] anvil -> tin
+[grid 1]
+|T tin   #######.   8/9 metal                      |
+|C crate ........  0/12 wood                       |
+|J jar   ........   0/4 glass                      |
+|loose 4  sorted 2 items, 8 kg  log 3              |
+[grid 2]
+|Room A | turn 2 | links 0                         |
+> put marble in tin bin
+(first taking the glass marble)
+You put the glass marble into the tin bin.
+[win 1] [2] marble -> tin
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate ........  0/12 wood                       |
+|J jar   ........   0/4 glass                      |
+|loose 3  sorted 3 items, 9 kg  log 4              |
+[grid 2]
+|Room A | turn 3 | links 0                         |
+> put block in glass jar
+(first taking the pine block)
+You put the pine block into the glass jar.
+[win 1] [3] block -> jar
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate ........  0/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 2  sorted 4 items, 12 kg  log 5             |
+[grid 2]
+|Room A | turn 4 | links 0                         |
+> kinds
+metal: 2 of 2 in the tin bin
+wood: 0 of 2 in the wooden crate
+glass: 0 of 2 in the glass jar
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate ........  0/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 2  sorted 4 items, 12 kg  log 5             |
+[grid 2]
+|Room A | turn 4 | links 0                         |
+> autosort
+No room for the green bottle in the glass jar.
+Sorted 1 of 2; heaviest first was the green bottle.
+[win 1] [4] dowel -> crate
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 1  sorted 5 items, 13 kg  log 6             |
+[grid 2]
+|Room A | turn 5 | links 0                         |
+> weigh
+Bin      Kg  Max   Avg  Full
+tin       9    9   3.0  100%
+crate     1   12   1.0  8%
+jar       3    4   3.0  75%
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 1  sorted 5 items, 13 kg  log 6             |
+[grid 2]
+|Room A | turn 5 | links 0                         |
+> totals
+In bins now: 5 items, 13 kg.
+Ever sorted: 5 items, 13 kg, average 2.6 kg.
+Nothing has been tipped out.
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 1  sorted 5 items, 13 kg  log 6             |
+[grid 2]
+|Room A | turn 5 | links 0                         |
+> heaviest
+Heaviest: the small anvil at 6 kg, moved 1 time.
+Loose: 1.
+Something is in the wrong bin.
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 1  sorted 5 items, 13 kg  log 6             |
+[grid 2]
+|Room A | turn 5 | links 0                         |
+> recent
+Last 4 of 6 log lines:
+  [1] ANVIL -> TIN
+  [2] MARBLE -> TIN
+  [3] BLOCK -> JAR
+  [4] DOWEL -> CRATE
+[grid 1]
+|T tin   ########   9/9 metal !                    |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 1  sorted 5 items, 13 kg  log 6             |
+[grid 2]
+|Room A | turn 5 | links 0                         |
+> tip tin bin
+The tin bin is tipped out: 3 items.
+[win 1] [5] tin tipped (3)
+[grid 1]
+|T tin   ........   0/9 metal                      |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 6 | links 0                         |
+> tip tin bin
+The tin bin is already empty.
+[grid 1]
+|T tin   ........   0/9 metal                      |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> totals
+In bins now: 2 items, 4 kg.
+Ever sorted: 5 items, 13 kg, average 2.6 kg.
+Some sorted items were tipped out since.
+[grid 1]
+|T tin   ........   0/9 metal                      |
+|C crate #.......  1/12 wood                       |
+|J jar   ######..   3/4 glass !                    |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> cells 30
+Bars take 4 to 12 cells; using 12.
+[grid 1]
+|T tin   ............   0/9 metal                  |
+|C crate #...........  1/12 wood                   |
+|J jar   #########...   3/4 glass !                |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> cells 5
+Bars set to 5 cells.
+[grid 1]
+|T tin   .....   0/9 metal                         |
+|C crate .....  1/12 wood                          |
+|J jar   ####.   3/4 glass !                       |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> panel
+Tip: tin crate jar all
+[grid 1]
+|T tin   .....   0/9 metal                         |
+|C crate .....  1/12 wood                          |
+|J jar   ####.   3/4 glass !                       |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> tip anvil
+That is not a bin.
+[grid 1]
+|T tin   .....   0/9 metal                         |
+|C crate .....  1/12 wood                          |
+|J jar   ####.   3/4 glass !                       |
+|loose 4  sorted 5 items, 13 kg  log 7             |
+[grid 2]
+|Room A | turn 8 | links 0                         |
+> take bottle
+Taken.
+[win 1] [8] bottle taken
+[grid 1]
+|T tin   .....   0/9 metal                         |
+|C crate .....  1/12 wood                          |
+|J jar   ####.   3/4 glass !                       |
+|loose 3  sorted 5 items, 13 kg  log 8             |
+[grid 2]
+|Room A | turn 9 | links 0                         |
+> put bottle in wooden crate
+You put the green bottle into the wooden crate.
+[win 1] [9] bottle -> crate
+[grid 1]
+|T tin   .....   0/9 metal                         |
+|C crate #....  3/12 wood !                        |
+|J jar   ####.   3/4 glass !                       |
+|loose 3  sorted 6 items, 15 kg  log 9             |
+[grid 2]
+|Room A | turn 10 | links 0                        |
+> heaviest
+Heaviest: the small anvil at 6 kg, moved 1 time.
+Loose: 3.
+Something is in the wrong bin.
+[grid 1]
+|T tin   .....   0/9 metal                         |
+|C crate #....  3/12 wood !                        |
+|J jar   ####.   3/4 glass !                       |
+|loose 3  sorted 6 items, 15 kg  log 9             |
+[grid 2]
+|Room A | turn 10 | links 0                        |
+> autosort
+Sorted 3 of 3; heaviest first was the small anvil.
+[win 1] [10] anvil -> tin
+[win 1] [10] bolt -> tin
+[win 1] [10] marble -> jar
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  3/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 11 | links 0                        |
+> weigh
+Bin      Kg  Max   Avg  Full
+tin       8    9   4.0  89%
+crate     3   12   1.5  25%
+jar       4    4   2.0  100%
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  3/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 11 | links 0                        |
+> kinds
+metal: 2 of 2 in the tin bin
+wood: 1 of 2 in the wooden crate
+glass: 1 of 2 in the glass jar
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  3/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 11 | links 0                        |
+> put dowel in glass jar
+(first taking the oak dowel out of the wooden crate)
+The glass jar can't take the oak dowel: 5 of 4 kg.
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  2/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 12 | links 0                        |
+> autosort
+Nothing is loose.
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  2/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> totals
+In bins now: 5 items, 14 kg.
+Ever sorted: 9 items, 24 kg, average 2.7 kg.
+Some sorted items were tipped out since.
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  2/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> recent
+Last 4 of 12 log lines:
+  [9] BOTTLE -> CRATE
+  [10] ANVIL -> TIN
+  [10] BOLT -> TIN
+  [10] MARBLE -> JAR
+[grid 1]
+|T tin   ####.   8/9 metal                         |
+|C crate #....  2/12 wood !                        |
+|J jar   #####   4/4 glass !                       |
+|loose 0  sorted 9 items, 24 kg  log 12            |
+[grid 2]
+|Room A | turn 13 | links 0                        |

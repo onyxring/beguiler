@@ -13,6 +13,8 @@ i6_veteran_idioms_10 [-G]             40000 as a signed word
 layout_and_lexical_variety_5 [-G]     WORDSIZE
 library_author_idioms_7 [-G]          unsigned maximum and checksum
 oop_developer_idioms_9 [-G]           packed characters overflow differently
+adversarial_valid_12 [-G]             unsigned maximum
+adversarial_valid_14 [-G]             unsigned checksum and maximum
 runtime_utilities [-G]                unsignedDiv of -1
 
 # The program prints or chooses by its target.
@@ -23,6 +25,7 @@ library_author_idioms_2 [-G]          style chosen by target
 library_author_idioms_4 [-z5]         prints the target
 multi_file_and_namespaces [-G]        prints the target and version
 layout_and_lexical_variety [-G]       newline is 13 in ZSCII and 10 in Unicode
+i6_veteran_idioms_25 [-G]             parse_name reads a number past the end of the input, which differs by target
 
 # Code only one target has (deliberate #if TARGET_… sections, Glulx opcodes, float, Unicode literals).
 adversarial_valid_8 [-z5]             float
@@ -39,6 +42,7 @@ oop_developer_idioms_11 [-G]          accessor declared under #if TARGET_ZCODE
 score_and_status [-G]                 Z opcode set_cursor
 beginner_style_idioms_8 [-G]          #startup prints before the Glulx window opens
 beginner_style_idioms_2 [-G]          D1350: I6 library RunRoutines runs player.capacity as a routine on Glulx
+adversarial_valid_13 [-z5]            toUpper only under #if TARGET_GLULX
 
 # A debug build differs on purpose.
 glulx_presentation_idioms_3 [--debug] glulxWindow's debug-only size diagnostic

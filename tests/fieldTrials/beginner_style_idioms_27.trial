@@ -1,0 +1,201 @@
+Room A
+Room A. The pier. The shop is to the east.
+You can see a short rod and a long rod here.
+> rods
+Rod 1: idle.
+Rod 2: idle.
+Rods in the water: 0.
+> cooler
+The cooler is empty.
+> lost
+Nothing has got away.
+> report
+The pier: 3 bait, 7 coins.
+Pier report
+turns: 0
+pol
+No fish yet.
+Fish before a big one: 0.
+Carp is fish 4.
+> examine long rod
+Rod 2. It can pull in 6 pounds.
+> take short rod
+The rod is clamped to the rail.
+> cast long rod
+You cast rod 2. Bait left: 2.
+> cast short rod
+You cast rod 1. Bait left: 1.
+Rod 2 bobs.
+> cast short rod
+Rod 1 is already in the water.
+> rods
+Rod 1: waiting (2 of 3).
+Rod 2: a fish is biting!.
+Rods in the water: 2.
+> wait
+Time passes.
+Rod 1 bobs.
+> reel long rod
+You land a perch (2 pounds).
+> reel short rod
+You land a trout (3 pounds).
+> cooler
+1. perch... 2 small
+2. trout... 3 medium
+Total: 5 pounds.
+Heaviest: trout. Lightest: perch.
+None are tiny.
+Worth 2 sales.
+> cast long rod
+You cast rod 2. Bait left: 0.
+> wait
+Time passes.
+Rod 2 bobs.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+The pike on rod 2 gets away.
+> cast short rod
+You have no bait.
+> e
+Room B
+Room B. The shop. The pier is to the west.
+You can see a shopkeeper here.
+> bait
+You buy a bait. Bait: 1. Coins: 5.
+> bait
+You buy a bait. Bait: 2. Coins: 3.
+> sell
+perch: 1. trout: 2.
+The shopkeeper pays 3 coins.
+> sell
+You have nothing to sell.
+> bait
+You buy a bait. Bait: 3. Coins: 4.
+> w
+Room A
+Room A. The pier. The shop is to the east.
+You can see a short rod and a long rod here.
+> cast short rod
+You cast rod 1. Bait left: 2.
+> cast long rod
+You cast rod 2. Bait left: 1.
+> wait
+Time passes.
+Rod 1 bobs.
+Rod 2 bobs.
+> reel short rod
+The line snaps! That carp was 5 pounds.
+> reel long rod
+You land a bream (1 pound).
+> cast short rod
+You cast rod 1. Bait left: 0.
+> wait
+Time passes.
+> wait
+Time passes.
+Rod 1 bobs.
+> reel short rod
+You land a eel (4 pounds).
+> cast long rod
+You have no bait.
+> cooler
+1. bream... 1 small
+2. eel..... 4 medium
+Total: 5 pounds.
+Heaviest: eel. Lightest: bream.
+Worth 2 sales.
+> heavier 2
+1 heavier than 2.
+Not counting the first: 1.
+> heavier 0
+2 heavier than 0.
+Not counting the first: 1.
+> e
+Room B
+Room B. The shop. The pier is to the west.
+You can see a shopkeeper here.
+> bait
+You buy a bait. Bait: 1. Coins: 2.
+> bait
+You buy a bait. Bait: 2. Coins: 0.
+> bait
+Not enough coins: 2 coins short.
+> w
+Room A
+Room A. The pier. The shop is to the east.
+You can see a short rod and a long rod here.
+> cast long rod
+You cast rod 2. Bait left: 1.
+> cast short rod
+You cast rod 1. Bait left: 0.
+Rod 2 bobs.
+> rods
+Rod 1: waiting (1 of 3).
+Rod 2: a fish is biting!.
+Rods in the water: 2.
+> wait
+Time passes.
+> reel long rod
+You land a roach (2 pounds).
+Rod 1 bobs.
+> wait
+Time passes.
+> reel short rod
+You land a tench, but the cooler already has 3 fish. You let it go.
+> cooler
+1. bream... 1 small
+2. eel..... 4 medium
+3. roach... 2 small
+Total: 7 pounds.
+Heaviest: eel. Lightest: bream.
+Worth 3 sales.
+> lost
+PIKE
+The pike got away.
+Got away: 1. Lines broken: 1.
+> release
+You let the bream go. 2 left.
+> cooler
+1. eel..... 4 medium
+2. roach... 2 small
+Total: 6 pounds.
+Heaviest: eel. Lightest: roach.
+None are tiny.
+Worth 2 sales.
+> report
+The pier: 0 bait, 0 coins.
+Pier report
+turns: 43
+pol
+eel first.
+Sales: 1, total 3.
+Fish before a big one: 2.
+Carp is fish 4.
+You have sold fish.
+The cooler has been full.
+> e
+Room B
+Room B. The shop. The pier is to the west.
+You can see a shopkeeper here.
+> sell
+eel: 2. roach: 1.
+The shopkeeper pays 3 coins.
+> report
+The pier: 0 bait, 3 coins.
+Pier report
+turns: 45
+pol
+No fish yet.
+Sales: 2, total 6.
+Fish before a big one: 0.
+Carp is fish 4.
+You have sold fish.
+The cooler has been full.
+> lost
+PIKE
+The pike got away.
+Got away: 1. Lines broken: 1.

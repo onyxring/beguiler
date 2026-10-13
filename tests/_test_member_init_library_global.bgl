@@ -1,0 +1,5 @@
+// Negative test: a member initializer can't read a library global variable such as `player`.
+// EXPECT_ERROR: can't read the variable 'player'
+#beguilerSettings { target = z5; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+object coin { "coin"; parent = player; }

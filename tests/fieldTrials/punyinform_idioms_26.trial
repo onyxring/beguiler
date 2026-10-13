@@ -1,0 +1,223 @@
+Room A
+Room A. A washer and a dryer stand against the wall. Room B is north.
+You can see a basket (which contains a white shirt, a red sock, a blue towel and a white sheet), a soap bottle, a washer (which is closed) and a dryer (which is closed) here.
+> status
+Score 0 of 3. Washer idle, soap 0. Dryer idle, lint 0.
+Washes 0, folds 0, delivered 0, attendant asked 0.
+> laundry
+0 garments clean and dry.
+red sock: red, weight 1, dirty, in the basket.
+white shirt: white, weight 2, dirty, in the basket.
+blue towel: blue, weight 3, dirty, in the basket.
+white sheet: white, weight 4, dirty, in the basket.
+> sort
+white: 2
+red: 1
+blue: 1
+> loads
+No loads washed.
+> log
+The log is empty.
+> examine washer
+A washer with 0 soap in it.
+The washer is currently switched off.
+> examine dryer
+A dryer. Its lint trap holds 0.
+The dryer is currently switched off.
+> examine soap bottle
+A soap bottle with 2 doses left.
+> examine red sock
+A red garment, dirty.
+> weigh basket
+The basket weighs 11.
+> take all from basket
+white shirt: Removed.
+red sock: Removed.
+blue towel: Removed.
+white sheet: Removed.
+> put soap bottle in washer
+You can't, since the washer is closed.
+> open washer
+You open the washer, revealing nothing.
+> put soap bottle in washer
+(first taking the soap bottle)
+Only clothes go in the washer.
+> put white shirt in washer
+You put the white shirt into the washer.
+> put red sock in washer
+You put the red sock into the washer.
+> put blue towel in washer
+You put the blue towel into the washer.
+> put white sheet in washer
+The washer is too full for that.
+> close washer
+You close the washer.
+> switch washer on
+There is no soap in the washer.
+> take soap bottle
+You already have it.
+> add soap to washer
+You add a dose of soap to the washer. The bottle has 1 left.
+> switch washer on
+The washer starts to churn.
+> status
+Score 0 of 3. Washer running, soap 1. Dryer idle, lint 0.
+Washes 0, folds 0, delivered 0, attendant asked 0.
+Wash time left: 2.
+> open washer
+The washer is running. Wait for it to finish.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+The washer stops. Something red has run: 1 white things are now pink.
+[The score has just gone up by 1 point.]
+> wait
+Nothing happens.
+> sort
+The basket is empty.
+> open washer
+You open the washer, revealing a blue towel, a red sock and a white shirt.
+> take all from washer
+blue towel: Removed.
+red sock: Removed.
+white shirt: Removed.
+> examine white shirt
+A garment dyed pink, clean and wet.
+> laundry
+0 garments clean and dry.
+red sock: red, weight 1, wet 3, in yourself.
+white shirt: pink, weight 2, wet 3, in yourself.
+blue towel: blue, weight 3, wet 3, in yourself.
+white sheet: white, weight 4, dirty, in yourself.
+> fold white shirt
+The white shirt is still wet.
+> open dryer
+You open the dryer, revealing nothing.
+> put white shirt in dryer
+You put the white shirt into the dryer.
+> put red sock in dryer
+You put the red sock into the dryer.
+> put blue towel in dryer
+You put the blue towel into the dryer.
+> close dryer
+You close the dryer.
+> switch dryer on
+The dryer starts to tumble.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+The dryer stops.
+> status
+Score 1 of 3. Washer idle, soap 0. Dryer idle, lint 9.
+Washes 1, folds 0, delivered 0, attendant asked 0.
+> examine dryer
+A dryer. Its lint trap holds 9, full.
+The dryer is currently switched off.
+> open dryer
+You open the dryer, revealing a blue towel, a red sock and a white shirt.
+> take all from dryer
+blue towel: Removed.
+red sock: Removed.
+white shirt: Removed.
+> fold red sock
+You fold the red sock.
+[The score has just gone up by 1 point.]
+> fold blue towel
+You fold the blue towel.
+> fold white shirt
+You fold the white shirt.
+> fold white shirt
+The white shirt is already folded.
+> examine red sock
+A red garment, clean, neatly folded.
+> put white sheet in washer
+You put the white sheet into the washer.
+> close washer
+You close the washer.
+> add soap to washer
+You add a dose of soap to the washer. The bottle has 0 left.
+> switch washer on
+The washer starts to churn.
+> north
+Room B
+Room B. A long table fills the room. Room A is south.
+You can see a table and an attendant here.
+> ask attendant about sock
+The attendant says: wash red things on their own.
+> ask attendant about lint
+The attendant says: clean the lint trap now and then.
+> ask attendant about weather
+The attendant has nothing to say about that.
+> give soap bottle to attendant
+The attendant says: that is not laundry.
+> give red sock to attendant
+The attendant puts the red sock on the table.
+> give blue towel to attendant
+The attendant puts the blue towel on the table.
+> attendant, wait
+The attendant waits.
+> attendant, jump
+The attendant says: I am busy.
+> south
+Room A
+You can see a basket (which is empty), a washer (which is closed) and a dryer (which is open but empty) here.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> open washer
+You open the washer, revealing a white sheet.
+> take white sheet
+Taken.
+> put white sheet in dryer
+You put the white sheet into the dryer.
+> close dryer
+You close the dryer.
+> switch dryer on
+The lint trap is full. Clean it first.
+> clean trap
+You clean the lint trap.
+> switch dryer on
+The dryer starts to tumble.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+The dryer stops.
+> wait
+Nothing happens.
+> open dryer
+You open the dryer, revealing a white sheet.
+> take white sheet
+Taken.
+> fold white sheet
+You fold the white sheet.
+> add soap to washer
+The soap bottle is empty.
+> north
+Room B
+You can see a table (on which are a blue towel and a red sock) and an attendant here.
+> give white shirt to attendant
+The attendant puts the white shirt on the table.
+> give white sheet to attendant
+The attendant puts the white sheet on the table.
+[The score has just gone up by 1 point.]
+> examine table
+A long table.
+> clean trap
+There is no lint trap here.
+> loads
+Loads: 4 6. Total 10. The first load was load 2 by weight.
+> laundry
+4 garments clean and dry.
+red sock: red, weight 1, folded, in the table.
+white shirt: pink, weight 2, folded, in the table.
+blue towel: blue, weight 3, folded, in the table.
+white sheet: white, weight 4, folded, in the table.
+> status
+Score 3 of 3. Washer idle, soap 0. Dryer idle, lint 3.
+Washes 2, folds 4, delivered 4, attendant asked 3.
+> log
+Log (16): 1. soap 1. 2. wash 6. 3. dyed 1. 4. dry 1. 5. folded 1. 6. folded 2. 7. folded 3. 8. soap 1. 9. wash 4. 10. delivered 1. 11. delivered 2. 12. lint 9. 13. dry 2. 14. folded 4. 15. delivered 3. 16. delivered 4.

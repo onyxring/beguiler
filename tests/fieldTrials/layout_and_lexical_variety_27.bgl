@@ -1,0 +1,446 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a bookcase of five
+// books, a returns box, a stamp pad and a ledger of loans that fall due as the turns pass. A book class
+// with positional members (`inline instanceName` re-listed, an `inline string` author and an
+// `inline int` page count), an enum section, a bnum of wear marks set with `|` and toggled with `^`,
+// `default` methods overridden by a reference-book subclass, and a class-wide static counter; books
+// placed with `children = { … }` and walked with `for (object o in player.children)`; a value class
+// loan with a copy operator kept in a global `array<Loan>` that is appended to, searched, removed from
+// and counted; a lending routine with a default parameter that `throw`s a string caught in the verb
+// handler; a calendar daemon started in `Initialise`; a returns box whose `before` takes a book and
+// closes its loan with a fine; a room whose `before` stops `Go` while an unlent book is carried; a
+// `?.` chain on a loan lookup that can be null; a `stringObj` shelf mark padded in a `do … while`, with
+// `toUpper()`, `left()` and `+=` of chars; <linq> `orderBy` by `compareTo` on author strings, `filter`,
+// `count`, `any`, `all` and `first`; content comparison with `=~` and a `switch` on a string;
+// `#define` values tested by `#if`/`#else`; hex and binary literals; mixed-case keywords, Allman, K&R and
+// one-line braces, comments between tokens and in argument lists, and a declaration split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include   <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define LOAN_DAYS   3
+#define MAX_LOANS   3          // the ledger has three lines
+#define MARK_WIDTH  6
+
+// ---- constants -------------------------------------------------------------------------------------
+
+const int FINE_PER_DAY = $5 ;          // five pence a day
+CONST INT LONG_BOOK    = $$100101100 ;  // 300 pages
+Const int FIRST_DAY    = 1 ;
+
+/// Where a book belongs on the case.
+enum eSection
+{
+    fiction ,
+    history ,   // the middle shelf
+    science ,
+    reference
+}
+
+/// Marks of wear on a book.
+bnum eWear { creased , marked , /* 4 */ torn }
+
+string sectionName ( eSection s )
+{
+    switch (s)
+    {
+        case eSection.fiction  : return "fiction" ;
+        case eSection.history  : return "history" ;
+        case eSection.science  : return "science" ;
+        default                : return "reference" ;
+    }
+}
+
+char sectionLetter(eSection s){switch(s){case eSection.fiction:return 'F';case eSection.history:return 'H';case eSection.science:return 'S';default:return 'R';}}
+
+// ---- rooms -----------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A bookcase and a stamp pad are here. Room B is east." ;
+    object e_to = roomB ;
+
+    bool before ()
+    {
+        if (action != Go) rfalse ;
+        for (object o in player.children)
+        {
+            if (o.is(Book) && !((Book) o).onLoan)
+            {
+                print($"You are still holding {the(o)}. Borrow it first.^") ;
+                rtrue ;
+            }
+        }
+        rfalse ;
+    }
+}
+
+Room roomB {
+    "Room B" ;
+    description = @"Room B. A returns box stands by the wall. Room A is west." ;
+    object w_to = roomA ;
+}
+
+object stampPad { "stamp pad" ; parent = roomA ; name = { .stamp , .pad } ; attributes = { static } ; string description = "A pad of purple ink." ; }
+
+// ---- books -----------------------------------------------------------------------------------------
+
+class Book : object
+{
+    inline instanceName ;
+    inline string author ;
+    inline int    pages = 100 ;
+    eSection section = eSection.fiction ;
+    eWear    wear ;
+    bool     onLoan = false ;
+    string   description = "A cloth-bound book." ;
+
+    static int lent = 0 ;
+
+    /// Whether the book may leave the room.
+    default bool lendable () { return true ; }
+    default string kindWord () { return "book" ; }
+
+    bool isWorn () { return wear != 0 ; }
+}
+
+class RefBook : Book
+{
+    bool   lendable () { return false ; }
+    string kindWord () { return "reference book" ; }
+}
+
+object bookcase
+{
+    "bookcase" ;
+    parent     = roomA ;
+    name       = { .bookcase , .case } ;
+    attributes = { supporter , static } ;
+    string description = "A tall bookcase in four sections." ;
+    children   = { tideBook , canalBook , starBook , atlasBook , almanac } ;
+}
+
+Book tideBook
+{
+    "tide book" , "Marsh" , 240 ;
+    name    = { .tide , .book } ;
+    section = eSection.science ;
+    wear    = eWear.creased ;
+}
+Book canalBook { "canal book" , "Abbot" , 412 ; name = { .canal , .book } ; section = eSection.history ; }
+Book starBook
+{
+    "star book" ,
+    "Quill" ,                  // author by position
+    $B4 ;                      // 180 pages
+    name    = { .star , .book } ;
+    wear    = eWear.marked | eWear.torn ;
+}
+RefBook atlasBook { "atlas" , "mercator" , 96 ; name = { .atlas } ; section = eSection.reference ; }
+RefBook almanac
+{
+    "almanac" , "Abbot" ;
+    name    = { .almanac } ;
+    section = eSection.reference ;
+}
+
+array<Book> books = { tideBook , canalBook , starBook , atlasBook , almanac } ;
+
+// ---- the calendar ----------------------------------------------------------------------------------
+
+object calendar
+{
+    "calendar" ;
+    int day = FIRST_DAY ;
+
+    void daemon ()
+    {
+        day++ ;
+        for (int i = 0 ; i < loans.length ; i++)
+        {
+            if (loans[i].due == day)
+                print($"^(Day {day}: {the(loans[i].book)} is due back today.)^") ;
+        }
+    }
+}
+
+// ---- the ledger ------------------------------------------------------------------------------------
+
+/// One line of the ledger.
+value class Loan
+{
+    Book book ;
+    int  due ;
+    Loan operator = ( Loan o ) { book = o.book ; due = o.due ; return self ; }
+}
+
+array<Loan> loans[MAX_LOANS] ;
+
+int loanIndex ( Book b )
+{
+    int i = 0 ;
+    while (i < loans.length)
+    {
+        if (loans[i].book == b) return i ;
+        i++ ;
+    }
+    return -1 ;
+}
+
+/// The loan's due day, or 0 when the book is not out.
+int dueDay ( Book b )
+{
+    int at = loanIndex(b) ;
+    if (at < 0) return 0 ;
+    return loans[at].due ;
+}
+
+/// Writes a book into the ledger; throws the reason when it can't.
+int lend ( Book b , int days = LOAN_DAYS )
+{
+    if (!b.lendable())            throw "That one stays in the room." ;
+    if (b.onLoan)                 throw "That book is already out." ;
+    if (loans.length >= MAX_LOANS) throw "The ledger is full." ;
+    Loan l ;
+    l.book = b ;
+    l.due  = calendar.day + days ;
+    loans.append(l) ;
+    b.onLoan = true ;
+    Book.lent++ ;
+    b.parent = player ;
+    return l.due ;
+}
+
+/// Closes a loan; returns the fine in pence.
+int closeLoan ( Book b )
+{
+    int at = loanIndex(b) ;
+    if (at < 0) return 0 ;
+    int late = calendar.day - loans[at].due ;
+    loans.remove(at) ;
+    b.onLoan = false ;
+    if (late <= 0) return 0 ;
+    return late * FINE_PER_DAY ;
+}
+
+Book soonestDue ()
+{
+    if (loans.length == 0) return null ;
+    int best = 0 ;
+    for (int i = 1 ; i < loans.length ; i++)
+        if (loans[i].due < loans[best].due) best = i ;
+    return loans[best].book ;
+}
+
+// ---- the returns box -------------------------------------------------------------------------------
+
+object returnsBox
+{
+    "returns box" ;
+    parent     = roomB ;
+    name       = { .returns , .box } ;
+    attributes = { container , open , static } ;
+    string description = "A wooden box with a slot." ;
+    int fines = 0 ;
+
+    bool before ()
+    {
+        Switch (action)
+        {
+            CASE Receive :
+                if (!(noun.is(Book))) rtrue("Only books go in the returns box.^") ;
+                Book b = (Book) noun ;
+                if (!b.onLoan) rtrue("That book was never lent.^") ;
+                int fine = closeLoan(b) ;
+                b.parent = bookcase ;
+                if (fine == 0) print($"{cThe(b)} drops into the box. Returned on time.^") ;
+                else
+                {
+                    fines += fine ;
+                    print($"{cThe(b)} drops into the box. Fine: {fine}p.^") ;
+                }
+                rtrue ;
+        }
+        rfalse ;
+    }
+}
+
+// ---- shelf marks -----------------------------------------------------------------------------------
+
+/// `S-MARS..` style shelf mark: section letter, dash, author padded with dots to MARK_WIDTH.
+stringObj shelfMark ( Book b )
+{
+    stringObj s ;
+    s += sectionLetter(b.section) ;
+    s += '-' ;
+    stringObj who = b.author ;
+    stringObj cut = who.left(MARK_WIDTH - 2) ;
+    s += cut.toUpper() ;
+    do
+    {
+        s += '.' ;
+    } while (s.length < MARK_WIDTH) ;
+    return s ;
+}
+
+string wearWords ( eWear w )
+{
+    if (w == 0) return "clean" ;
+    switch ((int) w)
+    {
+        case 1 : return "creased" ;
+        case 2 : return "marked" ;
+        case 4 : return "torn" ;
+        case 6 : return "marked and torn" ;
+        default : return "worn" ;
+    }
+}
+
+/// A short note on an author, by name.
+string authorNote ( string who )
+{
+    switch (who)
+    {
+        case "Abbot" : return "two books" ;
+        case "Marsh" : return "one book" ;
+        default      : return "" ;
+    }
+}
+
+// ---- startup ---------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    StartDaemon(calendar) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands --------------------------------------------------------------------------------------
+
+verb Borrow
+{
+    grammar = {
+        { .borrow , NOUN } ,
+        { ( .borrow | .lend ) , NOUN , .for , NUMBER , .days } ,
+    } ;
+    void handler ()
+    {
+        if (!(noun.is(Book))) { printLine("You can only borrow a book.") ; return ; }
+        Book b = (Book) noun ;
+        int due ;
+        TRY
+        {
+            if (second == null) due = lend(b) ;
+            else                due = lend(b , days: /* asked */ (int) second) ;
+        }
+        catch (string why)
+        {
+            printLine(why) ;
+            return ;
+        }
+        printLine($"You stamp {the(b)} and take it. Due on day {due}.") ;
+    }
+}
+
+verb Inspect
+{
+    grammar = { { .inspect , NOUN } , { .check , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Book))) { printLine("Nothing to inspect.") ; return ; }
+        Book b = (Book) noun ;
+        stringObj mark = shelfMark(b) ;
+        print($"{cThe(b)}: a {b.kindWord()} by {b.author}, {b.pages} pages") ;
+        if (b.pages >= LONG_BOOK) print(" (long)") ;
+        print($", {sectionName(b.section)}, {wearWords(b.wear)}, mark ") ;
+        mark.print() ;
+        printLine(".") ;
+        string note = authorNote(b.author) ;
+        if (note != "") printLine($"{b.author} has {note} here.") ;
+    }
+}
+
+verb Mend
+{
+    grammar = { .mend , NOUN } ;
+    void handler ()
+    {
+        if (!(noun.is(Book))) { printLine("That needs no mending.") ; return ; }
+        Book b = (Book) noun ;
+        if ((b.wear & eWear.torn) == 0) { printLine($"{cThe(b)} is not torn.") ; return ; }
+        b.wear = b.wear ^ eWear.torn ;
+        printLine($"You tape up {the(b)}. Now {wearWords(b.wear)}.") ;
+    }
+}
+
+verb Ledger
+{
+    meta    = true ;
+    grammar = { { .ledger } , { .loans } } ;
+    void handler ()
+    {
+        if (loans.length == 0) print($"The ledger is empty (day {calendar.day})") ;
+        else
+        {
+            print($"Day {calendar.day}. ") ;
+            for (int i = 0 ; i < loans.length ; i++)
+            {
+                if (i > 0) print("; ") ;
+                print($"{loans[i].book} due {loans[i].due}") ;
+                if (loans[i].due < calendar.day) print(" (late)") ;
+            }
+        }
+        printLine(".") ;
+        Book next = soonestDue() ;
+        printLine($"Next due: {next?.author ?? "nobody"}; lent so far: {Book.lent}; fines: {returnsBox.fines}p.") ;
+#if MAX_LOANS > 2
+        printLine($"Room for {MAX_LOANS - loans.length} more.") ;
+#else
+        printLine("A short ledger.") ;
+#endif
+    }
+}
+
+verb Catalogue
+{
+    meta    = TRUE ;
+    grammar = { { .catalogue } , { .catalog } } ;
+    void handler ()
+    {
+        for (Book b in books.orderBy( (Book x , Book y) => x.author.compareTo(y.author , true) ))
+        {
+            stringObj m = shelfMark(b) ;
+            m.print() ;
+            print($" {b}") ;
+            if (b.onLoan) print($" (out, due {dueDay(b)})") ;
+            printLine() ;
+        }
+        int lendableCount = books.filter((Book b) => b.lendable()).count() ;
+        int inCase        = books.filter( (Book b) => b.parent == bookcase ).count() ;
+        printLine($"{lendableCount} lendable, {inCase} on the case.") ;
+        if (books.any((Book b) => b.isWorn())) print("Some are worn") ; else print("None are worn") ;
+        if (books.all((Book b) => b.pages > 50)) print("; all over fifty pages") ;
+        printLine(".") ;
+        Book first = books.filter((Book b) => b.author =~ "MERCATOR").first() ;
+        if (first != null) printLine($"Mercator: {the(first)}.") ;
+    }
+}

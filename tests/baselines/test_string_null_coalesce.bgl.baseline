@@ -28,10 +28,10 @@ object bgl
     c = _bgl_temp0;
     maybeName="";
     _bgl_temp1 = maybename; if (~~(_bgl_temp1 ~= 0)) _bgl_temp1 = "unnamed";
-    label=_bgl_temp1;
+    label = _bgl_temp1;
     _bgl_temp3 = label; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = "default";
     _bgl_temp2 = maybename; if (~~(_bgl_temp2 ~= 0)) _bgl_temp2 = _bgl_temp3;
-    first=_bgl_temp2;
+    first = _bgl_temp2;
     print (string)c;
     print (string)label;
     print (string)first;

@@ -401,6 +401,8 @@ A value class with no copy operator can't be assigned or passed; that is a compi
 - Each slot of an `array<⟨name⟩>` owns an instance too, and a store into a slot copies (§12.10).
 - `value` cannot be combined with `extern`, `emitter`, `alias` or `primitive`, and belongs on the
   original declaration, not on `extend`.
+- An instance is an Inform 6 object and its members are properties, so a member can't take the name of
+  an additive property such as `name` unless it is declared the way that property is (a `rawArray<T>`).
 
 **Example**
 

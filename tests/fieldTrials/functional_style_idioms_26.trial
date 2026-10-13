@@ -1,0 +1,130 @@
+Room A
+Room A.
+
+> stock
+raw (10): ore 5, wood 3, coal 2
+part (0): ingot 0, plank 0, nail 0, handle 0
+product (0): hammer 0, crate 0
+3 of 9 kinds on hand
+
+> recipes
+crate x1 <- 3 plank, 4 nail
+hammer x1 <- 1 ingot, 1 handle
+handle x1 <- 1 plank
+ingot x1 <- 2 ore, 1 coal (ready)
+nail x4 <- 1 ingot
+plank x2 <- 1 wood (ready)
+
+> cost hammer
+hammer, made by hammer in batches of 1: ore + wood + coal = 4 raw
+
+> cost crate
+crate, made by crate in batches of 1: ore + wood + coal = 5 raw
+
+> cost ore
+ore, made by nothing in batches of 1: ore = 1 raw
+
+> worth
+crate 5
+hammer 4
+ingot 3
+nail 3
+handle 1
+plank 1
+dearest 5, total 17
+
+> ready
+now: ingot plank
+with crafting: nail, handle, hammer, crate
+stuck: 0
+
+> most hammer
+at most 2 batches of hammer (2 units)
+
+> most crate
+at most 2 batches of crate (2 units)
+
+> make hammer
+Made: ingot x1, plank x1, handle x1, hammer x1.
+hammer now 1
+
+> stock
+raw (6): ore 3, wood 2, coal 1
+part (1): ingot 0, plank 1, nail 0, handle 0
+product (1): hammer 1, crate 0
+5 of 9 kinds on hand
+
+> make crate
+Made: plank x1, ingot x1, nail x1, crate x1.
+crate now 1
+
+> make hammer
+Not enough ore: 2 needed from nothing, 1 on hand.
+
+> ready
+now: plank
+with crafting: handle
+stuck: 4
+
+> gather ore
+You gather some ore. ore 2
+
+> gather ore
+You gather some ore. ore 3
+
+> gather coal
+You gather some coal. coal 1
+
+> gather plank
+The plank has to be made.
+
+> make hammer
+Made: ingot x1, plank x1, handle x1, hammer x1.
+hammer now 2
+
+> make nail
+Not enough ore: 2 needed from nothing, 1 on hand.
+
+> batch 2 plank
+Not enough wood: 2 needed from nothing, 0 on hand.
+
+> make handle
+Made: handle x1.
+handle now 1
+
+> make ore
+Nothing makes ore.
+
+> make room
+You can't see any such thing.
+
+> most plank
+at most 0 batches of plank (0 units)
+
+> reset
+Stock reset: 10 units.
+
+> stock
+raw (10): ore 5, wood 3, coal 2
+part (0): ingot 0, plank 0, nail 0, handle 0
+product (0): hammer 0, crate 0
+3 of 9 kinds on hand
+
+> batch 3 hammer
+Not enough ore: 6 needed from nothing, 5 on hand.
+
+> batch 2 hammer
+Made: ingot x2, plank x1, handle x2, hammer x2.
+hammer now 2
+
+> batch 10 ingot
+Between 1 and 9 batches.
+
+> stock
+raw (3): ore 1, wood 2, coal 0
+part (0): ingot 0, plank 0, nail 0, handle 0
+product (2): hammer 2, crate 0
+3 of 9 kinds on hand
+
+> take ore
+The ore is hardly portable.

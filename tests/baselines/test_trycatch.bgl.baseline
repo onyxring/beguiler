@@ -282,7 +282,6 @@ _bglClass_Risk g_risk
     _bgl_throwv = 42;
     _bgl_thrown = 1;
     @throw _bgl_throwv _bgl_catch_cookie;
-    return 0;
 ];
 [ _bgl_try4 _bglFrm _bgl_cv;
     @catch -> _bgl_cv;

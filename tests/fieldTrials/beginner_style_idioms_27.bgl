@@ -1,0 +1,658 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-seventh first-time-programmer program, a small fishing pier where rods are
+// cast with bait, fish bite after some turns and get away if nobody reels them in, caught fish go in
+// a cooler and are sold at a shop, written the way a beginner writes it after reading the spec once.
+// Counts kept in int globals with consts for the cooler size, the bait price and the coins, bool
+// flags, two enums (a rod's state kept in a class member, a fish's size returned from a function with
+// switch ranges) switched on, a value class for a fish (kind and weight) with a copy operator kept in
+// an array of the value class sized by a const, the next fish taken from two parallel arrays (kinds
+// and weights), a class of rods (number, strength, state, turns, methods for the bite and hold times,
+// a reel method that throws when the line breaks, a before() for Examine and Take) with a subclass
+// that replaces both times (one still calls the class's through a cast), a pier object with a daemon
+// that walks the rods with for-in over a literal list, helper functions (one with a default
+// argument, one called with a named argument, one with a ternary, one that throws when the cooler is
+// full), try / catch / throw, C-style for loops with break and continue, a while loop, a do/until,
+// <linq> filter / count / any / all / orderBy with a comparator / first / last / map / skip with
+// lambdas (one capturing a local), array remove / clear / indexOf / contains / sort with a
+// comparator, stringObj lines built with + and += and interpolation and changed with toUpper,
+// padRight-by-hand, format, indexOf, mid, endsWith, trim and reverse, a string switch, for-in over a
+// range, an array and children, and verbs with no noun, one noun and a number (cast, reel, cooler,
+// rods, bait, sell, lost, release, heavier, report) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how many fish fit in the cooler
+const int COOLER_SIZE = 3;
+// what one bait costs
+const int BAIT_PRICE = 2;
+// how many coins we start with
+const int START_COINS = 7;
+// how many coins we have
+int coins = START_COINS;
+// how much bait we have
+int bait = 3;
+// how many turns have gone by
+int turnCount = 0;
+// how many fish got away
+int fishLost = 0;
+// how many lines broke
+int linesBroken = 0;
+// which fish bites next
+int nextFish = 0;
+// have we sold anything?
+bool soldAny = false;
+// was the cooler ever full?
+bool coolerWasFull = false;
+
+// ===== ROD STATE AND FISH SIZE =====
+
+enum RodState { idle, waiting, bite }
+
+enum FishSize { small, medium, big }
+
+// ===== FISH =====
+
+// one fish in the cooler
+value class Fish {
+    string kind;
+    int weight;
+    Fish operator = (Fish o) {
+        kind = o.kind;
+        weight = o.weight;
+        return self;
+    }
+}
+
+// ===== LISTS =====
+
+// the fish in the pond, in the order they bite
+array<string> pondKinds = { "perch", "trout", "pike", "carp", "bream", "eel", "roach", "tench" };
+// how heavy each of them is
+array<int> pondWeights = { 2, 3, 7, 5, 1, 4, 2, 3 };
+
+// the fish we caught
+array<Fish> cooler[COOLER_SIZE];
+
+// the kinds of fish that got away
+array<string> lostKinds[8];
+
+// coins from each sale
+array<int> sales[8];
+
+// ===== HELPER FUNCTIONS =====
+
+// how big a fish is
+FishSize sizeOf(int weight) {
+    switch (weight) {
+        case 0 to 2: return FishSize.small;
+        case 3 to 4: return FishSize.medium;
+    }
+    return FishSize.big;
+}
+
+// prints a size word
+void printSize(FishSize s) {
+    switch (s) {
+        case FishSize.small: print("small");
+        case FishSize.medium: print("medium");
+        case FishSize.big: print("big");
+    }
+}
+
+// what the shop pays for a fish
+int priceOf(int weight) {
+    switch (sizeOf(weight)) {
+        case FishSize.small: return 1;
+        case FishSize.medium: return 2;
+        case FishSize.big: return 4;
+    }
+    return 0;
+}
+
+// prints "1 coin" or "3 coins"
+void printCoins(int n, bool withWord = true) {
+    print(n);
+    if (withWord) {
+        print((n == 1) ? " coin" : " coins");
+    }
+}
+
+// "fish" is the same for one or many, but "pound" is not
+string poundWord(int n) {
+    if (n == 1) {
+        return "pound";
+    }
+    return "pounds";
+}
+
+// adds up an array of ints
+int addUp(array<int> nums) {
+    int total = 0;
+    for (int n in nums) {
+        total += n;
+    }
+    return total;
+}
+
+// the total weight in the cooler
+int coolerWeight() {
+    int total = 0;
+    for (int i = 0; i < cooler.length; i++) {
+        total += cooler[i].weight;
+    }
+    return total;
+}
+
+// puts a fish in the cooler; throws how many are in it when it is full
+void keepFish(string kind, int weight) {
+    if (cooler.length >= COOLER_SIZE) {
+        coolerWasFull = true;
+        throw cooler.length;
+    }
+    Fish f;
+    f.kind = kind;
+    f.weight = weight;
+    cooler.append(f);
+}
+
+// takes coins away; throws how many are missing
+void pay(int amount) {
+    if (coins < amount) {
+        throw amount - coins;
+    }
+    coins -= amount;
+}
+
+// a word cut or padded to a width with dots
+stringObj padDots(stringObj word, int width) {
+    stringObj s = word;
+    if (s.length > width) {
+        s = s.left(width);
+    }
+    while (s.length < width) {
+        s += ".";
+    }
+    return s;
+}
+
+// ===== RODS =====
+
+class Rod : object {
+    // the number on the handle
+    int number = 1;
+    // the heaviest fish it can pull in
+    int strength = 4;
+    // what it is doing
+    RodState state = RodState.idle;
+    // turns since it was cast or since the bite
+    int turns = 0;
+    string description;
+
+    // how many turns until a fish bites
+    int biteTime() {
+        return 3;
+    }
+
+    // how many turns a fish stays on the hook
+    int holdTime() {
+        return 1;
+    }
+
+    // prints what it is doing
+    void sayState() {
+        print($"Rod {number}: ");
+        switch (state) {
+            case RodState.idle: print("idle");
+            case RodState.waiting: print($"waiting ({turns} of {biteTime()})");
+            case RodState.bite: print("a fish is biting!");
+        }
+        print(".^");
+    }
+
+    // pulls a fish in; throws its weight when the line breaks
+    void reel(int weight) {
+        state = RodState.idle;
+        turns = 0;
+        if (weight > strength) {
+            throw weight;
+        }
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"Rod {number}. It can pull in {strength} {poundWord(strength)}.^");
+            rtrue;
+        }
+        if (action == Take) {
+            rtrue("The rod is clamped to the rail.^");
+        }
+        rfalse;
+    }
+}
+
+// a long rod gets bites sooner and holds them longer
+class LongRod : Rod {
+    replace int biteTime() {
+        return 2;
+    }
+    replace int holdTime() {
+        return ((Rod)self).holdTime() + 1;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The pier. The shop is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The shop. The pier is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE RODS =====
+
+Rod rod1 {
+    "short rod";
+    parent = roomA;
+    name = {.short, .rod};
+    number = 1;
+    strength = 4;
+    description = "A rod.";
+    attributes = {static};
+}
+
+LongRod rod2 {
+    "long rod";
+    parent = roomA;
+    name = {.long, .rod};
+    number = 2;
+    strength = 6;
+    description = "A long rod.";
+    attributes = {static};
+}
+
+// ===== THE PIER AND THE SHOP =====
+
+object pond {
+    "pond";
+    parent = roomA;
+    name = {.pond, .water};
+    string description = "The pond.";
+    attributes = {static, scenery};
+    void daemon() {
+        turnCount++;
+        for (Rod r in {rod1, rod2}) {
+            if (r.state == RodState.idle) {
+                continue;
+            }
+            r.turns++;
+            if (r.state == RodState.waiting) {
+                if (r.turns >= r.biteTime()) {
+                    r.state = RodState.bite;
+                    r.turns = 0;
+                    print($"^Rod {r.number} bobs.^");
+                }
+                continue;
+            }
+            // a fish is on the hook
+            if (r.turns > r.holdTime()) {
+                lostKinds.append(pondKinds[nextFish]);
+                print($"^The {pondKinds[nextFish]} on rod {r.number} gets away.^");
+                nextFish++;
+                if (nextFish >= pondKinds.length) {
+                    nextFish = 0;
+                }
+                fishLost++;
+                r.state = RodState.idle;
+                r.turns = 0;
+            }
+        }
+    }
+}
+
+object shopkeeper {
+    "shopkeeper";
+    parent = roomB;
+    name = {.shopkeeper, .keeper};
+    string description = "The shopkeeper.";
+    attributes = {animate, static};
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(pond);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the rods) =====
+
+// how many rods are in the water
+int rodsOut() {
+    int n = 0;
+    for (object o in roomA.children) {
+        if (o.is(Rod)) {
+            Rod r = (Rod)o;
+            if (r.state != RodState.idle) {
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
+// prints one fish line
+void printFish(Fish f, int place) {
+    stringObj label = f.kind;
+    stringObj row = padDots(label, 8);
+    print($"{place}. ");
+    print(row);
+    print($" {f.weight} ");
+    printSize(sizeOf(f.weight));
+    print("^");
+}
+
+// ===== VERBS =====
+
+// CAST <rod> - puts a bait on and casts the rod
+verb CastRod {
+    grammar = {.cast, NOUN};
+    void handler() {
+        if (!(noun.is(Rod))) {
+            print("You can only cast a rod.^");
+            return;
+        }
+        Rod r = (Rod)noun;
+        if (r.state != RodState.idle) {
+            print($"Rod {r.number} is already in the water.^");
+            return;
+        }
+        if (bait <= 0) {
+            print("You have no bait.^");
+            return;
+        }
+        bait--;
+        r.state = RodState.waiting;
+        r.turns = 0;
+        print($"You cast rod {r.number}. Bait left: {bait}.^");
+    }
+}
+
+// REEL <rod> - pulls in the fish on a rod
+verb ReelRod {
+    grammar = {.reel, NOUN};
+    void handler() {
+        if (!(noun.is(Rod))) {
+            print("You can only reel a rod.^");
+            return;
+        }
+        Rod r = (Rod)noun;
+        if (r.state == RodState.idle) {
+            print($"Rod {r.number} is not in the water.^");
+            return;
+        }
+        if (r.state == RodState.waiting) {
+            print("Nothing has bitten yet. You pull the line in.^");
+            r.state = RodState.idle;
+            r.turns = 0;
+            return;
+        }
+        string kind = pondKinds[nextFish];
+        int weight = pondWeights[nextFish];
+        nextFish++;
+        if (nextFish >= pondKinds.length) {
+            nextFish = 0;
+        }
+        try {
+            r.reel(weight);
+        } catch (int heavy) {
+            linesBroken++;
+            print($"The line snaps! That {kind} was {heavy} {poundWord(heavy)}.^");
+            return;
+        }
+        try {
+            keepFish(kind, weight);
+        } catch (int full) {
+            print($"You land a {kind}, but the cooler already has {full} fish. You let it go.^");
+            return;
+        }
+        print($"You land a {kind} ({weight} {poundWord(weight)}).^");
+    }
+}
+
+// COOLER - what is in the cooler
+verb ShowCooler {
+    meta = true;
+    grammar = {.cooler};
+    void handler() {
+        if (cooler.length == 0) {
+            print("The cooler is empty.^");
+            return;
+        }
+        for (int i in 1 to cooler.length) {
+            printFish(cooler[i - 1], i);
+        }
+        int total = coolerWeight();
+        print($"Total: {total} {poundWord(total)}.^");
+        array<Fish> heavyFirst[COOLER_SIZE];
+        heavyFirst = cooler.orderBy((Fish a, Fish b) => b.weight - a.weight);
+        Fish top = heavyFirst.first();
+        Fish low = heavyFirst.last();
+        print($"Heaviest: {top.kind}. Lightest: {low.kind}.^");
+        if (cooler.any((Fish f) => sizeOf(f.weight) == FishSize.big)) {
+            print("There is a big one.^");
+        }
+        if (cooler.all((Fish f) => f.weight >= 2)) {
+            print("None are tiny.^");
+        }
+        print($"Worth {cooler.map((Fish f) => priceOf(f.weight)).count()} sales.^");
+    }
+}
+
+// RODS - every rod and what it is doing
+verb ShowRods {
+    meta = true;
+    grammar = {.rods};
+    void handler() {
+        for (Rod r in {rod1, rod2}) {
+            r.sayState();
+        }
+        print($"Rods in the water: {rodsOut()}.^");
+    }
+}
+
+// BAIT - buys a bait at the shop
+verb BuyBait {
+    grammar = {.bait};
+    void handler() {
+        if (location != roomB) {
+            print("Bait is sold in Room B.^");
+            return;
+        }
+        try {
+            pay(BAIT_PRICE);
+        } catch (int short) {
+            print("Not enough coins: ");
+            printCoins(short);
+            print(" short.^");
+            return;
+        }
+        bait++;
+        print($"You buy a bait. Bait: {bait}. Coins: ");
+        printCoins(coins, withWord: false);
+        print(".^");
+    }
+}
+
+// SELL - sells everything in the cooler to the shopkeeper
+verb SellFish {
+    grammar = {.sell};
+    void handler() {
+        if (location != roomB) {
+            print("The shop is in Room B.^");
+            return;
+        }
+        if (cooler.length == 0) {
+            print("You have nothing to sell.^");
+            return;
+        }
+        int got = 0;
+        for (int i = 0; i < cooler.length; i++) {
+            int p = priceOf(cooler[i].weight);
+            got += p;
+            print($"{cooler[i].kind}: {p}. ");
+        }
+        print("^");
+        sales.append(got);
+        coins += got;
+        soldAny = true;
+        cooler.clear();
+        print("The shopkeeper pays ");
+        printCoins(got);
+        print(".^");
+    }
+}
+
+// LOST - which fish got away, sorted by name
+verb ShowLost {
+    meta = true;
+    grammar = {.lost};
+    void handler() {
+        if (lostKinds.length == 0) {
+            print("Nothing has got away.^");
+            return;
+        }
+        array<string> names[8];
+        names = lostKinds;
+        names.sort((string a, string b) => a.compareTo(b));
+        stringObj line = "";
+        int i = 0;
+        do {
+            stringObj one = names[i];
+            line += one.toUpper();
+            i++;
+            if (i < names.length) {
+                line += ", ";
+            }
+        } until (i >= names.length);
+        print(line);
+        print("^");
+        if (lostKinds.contains("pike")) {
+            print("The pike got away.^");
+        }
+        print($"Got away: {fishLost}. Lines broken: {linesBroken}.^");
+    }
+}
+
+// RELEASE - lets the lightest fish in the cooler go
+verb ReleaseFish {
+    grammar = {.release};
+    void handler() {
+        if (cooler.length == 0) {
+            print("The cooler is empty.^");
+            return;
+        }
+        int at = 0;
+        for (int i = 1; i < cooler.length; i++) {
+            if (cooler[i].weight < cooler[at].weight) {
+                at = i;
+            }
+        }
+        string kind = cooler[at].kind;
+        cooler.remove(at);
+        print($"You let the {kind} go. {cooler.length} left.^");
+    }
+}
+
+// HEAVIER <number> - how many fish in the cooler weigh more than that
+verb Heavier {
+    meta = true;
+    grammar = {.heavier, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        int found = cooler.filter((Fish f) => f.weight > limit).count();
+        print($"{found} heavier than {limit}.^");
+        if (found > 0) {
+            array<Fish> rest[COOLER_SIZE];
+            rest = cooler.skip(1);
+            print($"Not counting the first: {rest.filter((Fish f) => f.weight > limit).count()}.^");
+        }
+    }
+}
+
+// REPORT - how the pier is doing
+verb ShowReport {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        stringObj word = "pier";
+        stringObj baitText = $"{bait}";
+        stringObj coinText = $"{coins}";
+        print(word.format("The $0: $1 bait, $2 coins.", baitText, coinText));
+        print("^");
+        stringObj head = "Fishing Pier Report";
+        int at = head.indexOf("Pier");
+        print(head.mid(at, 4));
+        if (head.endsWith("Report")) {
+            print(" report");
+        }
+        print("^");
+        stringObj padded = "  turns  ";
+        stringObj t = padded.trim();
+        print($"{t}: {turnCount}^");
+        stringObj back = "lop";
+        print(back.reverse());
+        print("^");
+        string first = cooler.length > 0 ? cooler[0].kind : "none";
+        switch (first) {
+            case "perch": print("Perch first.^");
+            case "none": print("No fish yet.^");
+            default: print($"{first} first.^");
+        }
+        if (sales.length > 0) {
+            print($"Sales: {sales.length}, total {addUp(sales)}.^");
+        }
+        // count fish until the first big one
+        int before = 0;
+        for (int i = 0; i < cooler.length; i++) {
+            if (sizeOf(cooler[i].weight) == FishSize.big) {
+                break;
+            }
+            before++;
+        }
+        print($"Fish before a big one: {before}.^");
+        int w = 0;
+        int at2 = pondKinds.indexOf("carp");
+        while (w < at2) {
+            w++;
+        }
+        print($"Carp is fish {w + 1}.^");
+        if (soldAny) {
+            print("You have sold fish.^");
+        }
+        if (coolerWasFull) {
+            print("The cooler has been full.^");
+        }
+    }
+}

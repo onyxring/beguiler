@@ -1,0 +1,539 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a sorting bench of three bins shown in a text grid. A class Bin : object (an open,
+// static container through a class attributeList) with a label, a letter char, a capacity, an enum
+// kind it accepts and a drop count, methods that walk its children and fill a ref value-class
+// argument, return float and stringObj, and a before()/after() on the Receive fake action that
+// refuses an overload and counts a drop; a class Item : object with a label, a weight, an enum kind
+// and a move count, whose after() logs Take and Insert; a value class Load (count and weight, copy
+// operator, += of an Item, ==, a float average and a stringObj summary) for a running total and per
+// bin tallies; a text grid split above the main window with a border, redrawn from a replaced
+// DrawStatusLine, one row per bin with a fill bar scaled from a float; a text-buffer log split to the
+// right with a styleSheet; a ring of recent log lines in an <array> of stringObj (enqueue, dequeue);
+// verbs that tip a bin (a for over children that moves each child), auto-sort the loose items
+// (<linq> filter, orderBy with a lambda comparator, first, count, any, all over an array<Item> built
+// from the room's children), weigh in a fixed-pitch table and list by kind with a for over an enum
+// list; links whose targets are enum values handled in HandleGlkEvent, and a named-function target;
+// an object with an inline auto { } accessor for the bar width that clamps and reaches outer.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define MAX_LOG 4
+#define BENCH_LINES 4
+#define LOG_WIDTH 30
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eKind { metal, wood, glass }
+enum eLinks { tipTin = 41, tipCrate, tipJar }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 1; };
+    emphasized = style{ italics = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz bench = null;
+textBufferWindowVert logPane = null;
+array<stringObj> recentLog[MAX_LOG];
+int logCount = 0;
+int linkClicks = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string kindName(eKind k) {
+    switch (k) {
+        case eKind.metal: return "metal";
+        case eKind.wood:  return "wood";
+        case eKind.glass: return "glass";
+    }
+    return "?";
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj oneDecimal(float f) {
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+// ---- loads ---------------------------------------------------------------------------------------
+
+value class Load {
+    int count;
+    int weight;
+
+    Load operator = (Load o) {
+        count = o.count;
+        weight = o.weight;
+        return self;
+    }
+
+    Load operator += (Item it) {
+        count++;
+        weight += it.weight;
+        return self;
+    }
+
+    bool operator == (Load o) {
+        return count == o.count && weight == o.weight;
+    }
+
+    bool operator != (Load o) {
+        return count != o.count || weight != o.weight;
+    }
+
+    float average() {
+        if (count == 0) return 0.0;
+        return (float)weight / count;
+    }
+
+    stringObj summary() {
+        stringObj out = $"{count} item{count == 1 ? "" : "s"}, {weight} kg";
+        return out;
+    }
+}
+
+Load sortedTotal;
+
+// ---- the log -------------------------------------------------------------------------------------
+
+void openLog() {
+    logPane = bgl.ui.mainWin.splitRightBuffer(LOG_WIDTH, fixed, border, styles: logLook);
+}
+
+void logLine(stringObj text, bool loud = false) {
+    logCount++;
+    stringObj entry = $"[{turns}] {text}";
+    if (recentLog.length == recentLog.size) recentLog.dequeue();
+    recentLog.enqueue(entry);
+    if (loud) logPane?.printLine($"{italics}{entry}{roman}");
+    else logPane?.printLine(entry);
+}
+
+// ---- items ---------------------------------------------------------------------------------------
+
+class Item : object {
+    string label = "item";
+    int weight = 1;
+    eKind kind = eKind.metal;
+    int moves = 0;
+
+    bool after() {
+        switch (action) {
+            case Take:
+                moves++;
+                stringObj took = $"{label} taken";
+                logLine(took);
+            case Insert:
+                moves++;
+                if (second != null && second.is(Bin)) {
+                    Bin b = (Bin)second;
+                    stringObj put = $"{label} -> {b.label}";
+                    logLine(put, kind != b.accepts);
+                }
+        }
+        rfalse;
+    }
+}
+
+// ---- bins ----------------------------------------------------------------------------------------
+
+class Bin : object {
+    attributeList attributes = {container, open, static};
+    string label = "bin";
+    char letter = '?';
+    int capacity = 10;
+    eKind accepts = eKind.metal;
+    int drops = 0;
+
+    void tally(ref Load into) {
+        into.count = 0;
+        into.weight = 0;
+        for (object o in children) {
+            if (o.is(Item)) into += (Item)o;
+        }
+    }
+
+    int held() {
+        Load l;
+        tally(l);
+        return l.weight;
+    }
+
+    float fraction() {
+        if (capacity == 0) return 0.0;
+        return (float)held() / capacity;
+    }
+
+    int strays() {
+        int n = 0;
+        for (object o in children) {
+            if (o.is(Item) && ((Item)o).kind != accepts) n++;
+        }
+        return n;
+    }
+
+    stringObj bar(int cells) {
+        int filled = (int)(fraction() * cells + 0.5);
+        stringObj out = "";
+        for (int i = 0; i < cells; i++) {
+            if (i < filled) out += '#';
+            else out += '.';
+        }
+        return out;
+    }
+
+    stringObj row(int cells) {
+        Load l;
+        tally(l);
+        stringObj tag = $"{label}";
+        stringObj kg = $"{l.weight}/{capacity}";
+        stringObj out = $"{letter} {padRight(tag, 6)}{bar(cells)} {padLeft(kg, 5)} {kindName(accepts)}";
+        if (strays() > 0) out += " !";
+        return out;
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun.is(Item) && held() + ((Item)noun).weight > capacity) {
+                    printLine($"{cThe(self)} can't take {the(noun)}: {held() + ((Item)noun).weight} of {capacity} kg.");
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                drops++;
+                if (noun.is(Item)) sortedTotal += (Item)noun;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Three bins stand along the bench.";
+    attributes = {light};
+}
+
+Bin tinBin {
+    "tin bin";
+    parent = roomA;
+    name = {.tin, .bin};
+    label = "tin";
+    letter = 'T';
+    capacity = 9;
+    accepts = eKind.metal;
+}
+
+Bin crateBin {
+    "wooden crate";
+    parent = roomA;
+    name = {.wooden, .crate};
+    label = "crate";
+    letter = 'C';
+    capacity = 12;
+    accepts = eKind.wood;
+}
+
+Bin jarBin {
+    "glass jar";
+    parent = roomA;
+    name = {.glass, .jar};
+    label = "jar";
+    letter = 'J';
+    capacity = 4;
+    accepts = eKind.glass;
+}
+
+Item bolt     { "iron bolt";   parent = roomA; name = {.iron, .bolt};     label = "bolt";   weight = 2; kind = eKind.metal; }
+Item anvil    { "small anvil"; parent = roomA; name = {.small, .anvil};   label = "anvil";  weight = 6; kind = eKind.metal; }
+Item block    { "pine block";  parent = roomA; name = {.pine, .block};    label = "block";  weight = 3; kind = eKind.wood; }
+Item dowel    { "oak dowel";   parent = roomA; name = {.oak, .dowel};     label = "dowel";  weight = 1; kind = eKind.wood; }
+Item bottle   { "green bottle"; parent = roomA; name = {.green, .bottle}; label = "bottle"; weight = 2; kind = eKind.glass; }
+Item marble   { "glass marble"; parent = roomA; name = {.marble};         label = "marble"; weight = 1; kind = eKind.glass; }
+
+array<Bin> bins = { tinBin, crateBin, jarBin };
+
+// ---- bench settings ------------------------------------------------------------------------------
+
+object benchPrefs {
+    int narrowest = 4;
+    int widest = 12;
+    auto cells = {
+        int _w = 8;
+        int operator () { return _w; }
+        void operator = (int v) {
+            if (v < outer.narrowest) v = outer.narrowest;
+            if (v > outer.widest) v = outer.widest;
+            _w = v;
+        }
+    }
+}
+
+// ---- the bench -----------------------------------------------------------------------------------
+
+Bin binFor(eKind k) {
+    for (Bin b in bins) if (b.accepts == k) return b;
+    return null;
+}
+
+int looseCount() {
+    int n = 0;
+    for (object o in roomA.children) if (o.is(Item)) n++;
+    return n;
+}
+
+void drawBench() {
+    if (bench == null) return;
+    bench.clear();
+    int line = 0;
+    for (Bin b in bins) {
+        bench.moveCursor(0, line);
+        bench.print(b.row(benchPrefs.cells));
+        line++;
+    }
+    bench.moveCursor(0, line);
+    bench.print($"loose {looseCount()}  sorted {sortedTotal.summary()}  log {logCount}");
+}
+
+int tipBin(Bin b) {
+    int n = 0;
+    for (object o in b.children) {
+        o.parent = roomA;
+        n++;
+    }
+    if (n > 0) {
+        stringObj note = $"{b.label} tipped ({n})";
+        logLine(note);
+    }
+    return n;
+}
+
+void tipAll() {
+    int n = 0;
+    for (Bin b in bins) n += tipBin(b);
+    printLine($"Tipped {n} item{n == 1 ? "" : "s"} onto the floor.");
+    drawBench();
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | links {linkClicks}");
+    drawBench();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        Bin b = null;
+        switch (value) {
+            case (int)eLinks.tipTin:   b = tinBin;
+            case (int)eLinks.tipCrate: b = crateBin;
+            case (int)eLinks.tipJar:   b = jarBin;
+            default: return 0;
+        }
+        int n = tipBin(b);
+        printLine($"{cThe(b)}: {n} tipped.");
+        linkClicks++;
+        drawBench();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    bench = bgl.ui.mainWin.splitUpGrid(BENCH_LINES, fixed, border);
+    openLog();
+    logLine("bench ready");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Bin asBin(object o) {
+    if (o == null || !o.is(Bin)) {
+        printLine("That is not a bin.");
+        return null;
+    }
+    return (Bin)o;
+}
+
+int byWeightDown(Item a, Item b) { return b.weight - a.weight; }
+
+verb Tip {
+    grammar = {.tip, NOUN};
+    void handler() {
+        Bin b = asBin(noun);
+        if (b == null) return;
+        int n = tipBin(b);
+        if (n == 0) printLine($"{cThe(b)} is already empty.");
+        else printLine($"{cThe(b)} is tipped out: {n} item{n == 1 ? "" : "s"}.");
+    }
+}
+
+verb Autosort {
+    grammar = {.autosort};
+    void handler() {
+        array<Item> loose[8];
+        for (object o in roomA.children) if (o.is(Item)) loose += (Item)o;
+        if (loose.count() == 0) { printLine("Nothing is loose."); return; }
+        array<Item> order[8];
+        order = loose.orderBy((Item a, Item b) => b.weight - a.weight);
+        int placed = 0;
+        for (Item it in order) {
+            Bin b = binFor(it.kind);
+            if (b == null) continue;
+            if (b.held() + it.weight > b.capacity) {
+                printLine($"No room for {the(it)} in {the(b)}.");
+                continue;
+            }
+            it.parent = b;
+            it.moves++;
+            sortedTotal += it;
+            b.drops++;
+            placed++;
+            stringObj note = $"{it.label} -> {b.label}";
+            logLine(note);
+        }
+        printLine($"Sorted {placed} of {order.count()}; heaviest first was {the(order.first())}.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{bold}{padRight("Bin", 7)}{padLeft("Kg", 4)}{padLeft("Max", 5)}{padLeft("Avg", 6)}  Full{roman}");
+        for (Bin b in bins) {
+            Load l;
+            b.tally(l);
+            stringObj n = $"{b.label}";
+            stringObj w = $"{l.weight}";
+            stringObj c = $"{b.capacity}";
+            stringObj a = oneDecimal(l.average());
+            int pct = (int)(b.fraction() * 100 + 0.5);
+            printLine($"{fixed}{padRight(n, 7)}{padLeft(w, 4)}{padLeft(c, 5)}{padLeft(a, 6)}  {pct}%{roman}");
+        }
+    }
+}
+
+verb Kinds {
+    grammar = {.kinds};
+    meta = true;
+    void handler() {
+        array<Item> stock[8] = { bolt, anvil, block, dowel, bottle, marble };
+        for (eKind k in {eKind.metal, eKind.wood, eKind.glass}) {
+            int total = stock.filter((Item it) => it.kind == k).count();
+            Bin home = binFor(k);
+            int inHome = 0;
+            for (object o in home.children) if (o.is(Item) && ((Item)o).kind == k) inHome++;
+            printLine($"{kindName(k)}: {inHome} of {total} in {the(home)}");
+        }
+    }
+}
+
+verb Heaviest {
+    grammar = {.heaviest};
+    meta = true;
+    void handler() {
+        array<Item> stock[8] = { bolt, anvil, block, dowel, bottle, marble };
+        Item big = stock.orderBy(byWeightDown).first();
+        printLine($"Heaviest: {the(big)} at {big.weight} kg, moved {big.moves} time{big.moves == 1 ? "" : "s"}.");
+        if (stock.all((Item it) => it.parent != roomA)) printLine("Nothing is loose.");
+        else printLine($"Loose: {stock.filter((Item it) => it.parent == roomA).count()}.");
+        if (stock.any((Item it) => it.parent.is(Bin) && ((Bin)it.parent).accepts != it.kind))
+            printLine("Something is in the wrong bin.");
+        else printLine("Every sorted item is in its own bin.");
+    }
+}
+
+verb Totals {
+    grammar = {.totals};
+    meta = true;
+    void handler() {
+        Load now;
+        Load part;
+        for (Bin b in bins) {
+            b.tally(part);
+            now.count += part.count;
+            now.weight += part.weight;
+        }
+        printLine($"In bins now: {now.summary()}.");
+        printLine($"Ever sorted: {sortedTotal.summary()}, average {oneDecimal(sortedTotal.average())} kg.");
+        if (now == sortedTotal) printLine("Nothing has been tipped out.");
+        else printLine("Some sorted items were tipped out since.");
+    }
+}
+
+verb Cells {
+    grammar = {.cells, NUMBER};
+    meta = true;
+    void handler() {
+        int asked = (int)noun;
+        benchPrefs.cells = asked;
+        if (benchPrefs.cells != asked) printLine($"Bars take {benchPrefs.narrowest} to {benchPrefs.widest} cells; using {benchPrefs.cells}.");
+        else printLine($"Bars set to {benchPrefs.cells} cells.");
+        drawBench();
+    }
+}
+
+verb Recent {
+    grammar = {.recent};
+    meta = true;
+    void handler() {
+        if (recentLog.length == 0) { printLine("The log is empty."); return; }
+        printLine($"Last {recentLog.length} of {logCount} log lines:");
+        for (stringObj r in recentLog) {
+            stringObj shown = r.left(20);
+            printLine($"  {shown.toUpper()}");
+        }
+    }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Tip: {link("tin", eLinks.tipTin)} {link("crate", eLinks.tipCrate)} {link("jar", eLinks.tipJar)} {link("all", tipAll)}");
+    }
+}
+
+#includeI6 "grammar"

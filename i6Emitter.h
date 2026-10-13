@@ -113,6 +113,7 @@ class i6Emitter{
         // access stays direct. Populated by buildLocalRenameMap, consulted by spillName.
         map<string,string> currentLocalRenames;
         int currentSpillCount = 0;
+        pair<string,string> currentReturnCopy;   // the routine's return instance and its copy routine, if any
         string currentReturnSlot;   // a local that holds a return value while the routine's cleanups run, or ""
         // Z-machine try/catch. @throw returns from the routine that ran @catch rather than resuming
         // after it, so each try body is lifted into its own routine `_bgl_tryN(_bglFrm)`. The

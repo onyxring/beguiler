@@ -1294,9 +1294,9 @@ class _bglString(bglstringpoolreserve)
 ];
 [exerciseNullable s1 s2 c present;
     s1 = "hi";
+    c = _bglStr.new();
     _bgl_temp4 = s2; if (~~(_bgl_temp4 ~= 0)) _bgl_temp4 = "fallback";
     _bgl_temp3 = s1; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = _bgl_temp4;
-    c = _bglStr.new();
     c.setFromLit(_bgl_temp3);
     present=s1 ~= 0;
     if (c) c.free();

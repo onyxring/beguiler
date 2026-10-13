@@ -1,0 +1,79 @@
+// run_measure8_forms — a case label with arithmetic on a #define, an alias-typed member and an inline
+// accessor read above their object, `==`/`?=` between accessor members, a recursive routine and a
+// dispatching override returning a value class, and member arrays reached through a cast.
+// EXPECT_OUTPUT: case5 5 2 80 near far near 6 35 1 7 has 1 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#define BASE 3
+enum eCoin { penny, dime }
+value class Cents { int c = 0; Cents operator = (Cents o) { c = o.c; return self; } }
+class Shop : object { int price = 100; int cost() { return price - price * till.discount / 100; } }
+void showTill() { print($"{till.takings.c} {(int)till.big(30)} "); }
+object till {
+    alias coin for eCoin;
+    alias cents for Cents;
+    cents takings;
+    coin big(int a) { if (a > 10) return coin.dime; return coin.penny; }
+    auto discount = {
+        int _p = 0;
+        int operator () { return _p; }
+        void operator = (int v) { _p = v; }
+    }
+}
+Shop stall { }
+value class Grams {
+    int _g = 0;
+    int operator () { return _g; }
+    void operator = (int v) { _g = v; }
+    Grams operator = (Grams o) { _g = o._g; return self; }
+    bool operator == (Grams o) { return _g / 10 == o._g / 10; }
+    bool operator != (Grams o) { return _g / 10 != o._g / 10; }
+    bool operator ?= (Grams o) { return _g / 10 == o._g / 10; }
+}
+class Pk : object { Grams weight; }
+Pk pa { }
+Pk pb { }
+Pk pc { }
+value class Dur { int S; Dur operator = (Dur o) { S = o.S; return self; } }
+Dur count(int n) { Dur d; d.S = n; if (n > 0) { Dur inner = count(n - 1); d.S = d.S + inner.S; } return d; }
+class Task : object {
+    int n;
+    Dur Est;
+    default Dur Cost() { return Est; }
+}
+class Group : Task {
+    array<Task> Kids[4];
+    Dur Cost() {
+        Dur total;
+        total.S = Est.S;
+        for (Task p in Kids) { Dur c = p.Cost(); total.S = total.S + c.S; }
+        return total;
+    }
+}
+Task ta { n = 7; }
+Task tb { n = 9; }
+Group grp { }
+void main(){
+    bglInit();
+    int five = 5;
+    switch (five) { case BASE + 2: print("case5 "); default: print("other "); }
+    till.takings.c = 5;
+    showTill();
+    till.discount = 20;
+    print($"{stall.cost()} ");
+    pa.weight = 41; pb.weight = 45; pc.weight = 37;
+    if (pa.weight == pb.weight) print("near "); else print("far ");
+    if (pa.weight ?= pc.weight) print("near "); else print("far ");
+    if (pa.weight ?= pb.weight) print("near "); else print("far ");
+    Dur c = count(3);
+    print($"{c.S} ");
+    ta.Est.S = 10; tb.Est.S = 20; grp.Est.S = 5;
+    grp.Kids.append(ta); grp.Kids.append(tb);
+    Dur g = grp.Cost();
+    print($"{g.S} ");
+    Task t = grp;
+    ((Group)t).Kids.removeValue(tb);
+    print($"{((Group)t).Kids.length} {((Group)t).Kids[0].n} ");
+    if (((Group)t).Kids.contains(ta)) print("has ");
+    print($"{((Group)t).Kids.length} {((Group)t).Kids.indexOf(ta)}^");
+}

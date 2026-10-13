@@ -1,0 +1,562 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-sixth pass: a build pipeline.
+// A value class for a duration in seconds with a copy operator, `+`, a `+=` taking seconds, `==`/`!=` and a
+// `<=>` that `>` comes from, a static factory and a formatter returning a `stringObj`; a "tagged" mixin
+// holding an `array<string>` searched with `contains`; a task base deriving from the mixin with an owned
+// `Duration`, an `array<Task>` of dependencies, fluent `selfType` methods, a `required` `Run` routine,
+// `default` `Kind`/`Cost` hooks and a static counter; four pooled subclasses whose `create()` takes up to
+// three arguments, one of them a Composite group whose `Cost` sums its children's; a pooled error class
+// thrown from a task's `Run` and caught in a typed `catch` inside a retry loop with `break`; a pipeline
+// service with an `operator +=` to add tasks, a string-keyed `operator []`, a recursive depth-first
+// topological plan, a recursive critical-path routine returning `int`, an observer list of
+// `func<void, Task, eStatus>` listeners (a named function and a lambda), a retry back-off held in a
+// `func<int, int>` member set from a lambda, and removal of a task that unlinks it before `delete`;
+// `<linq>` `filter` (a named predicate and a capturing lambda), `orderBy` with a lambda over `<=>`,
+// `count`/`any`/`all`/`first`/`map`; enum switches; `is` tests and downcasts; `?.`/`??`; named arguments;
+// interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eStatus { Pending, Running, Done, Failed, Skipped }
+
+string StatusName(eStatus s) {
+    switch (s) {
+        case eStatus.Pending: return "pending";
+        case eStatus.Running: return "running";
+        case eStatus.Done:    return "done";
+        case eStatus.Failed:  return "failed";
+        case eStatus.Skipped: return "skipped";
+    }
+    return "?";
+}
+
+//-- Duration: a value type ------------------------------------------------------------------------------------
+
+value class Duration {
+    int Seconds;
+
+    Duration operator = (Duration o) {
+        Seconds = o.Seconds;
+        return self;
+    }
+
+    Duration operator + (Duration o) {
+        Duration sum;
+        sum.Seconds = Seconds + o.Seconds;
+        return sum;
+    }
+
+    Duration operator += (int more) {
+        Seconds += more;
+        return self;
+    }
+
+    bool operator == (Duration o) { return Seconds == o.Seconds; }
+    bool operator != (Duration o) { return Seconds != o.Seconds; }
+    int operator <=> (Duration o) { return Seconds - o.Seconds; }
+
+    static Duration Of(int seconds) {
+        Duration d;
+        d.Seconds = seconds;
+        return d;
+    }
+
+    stringObj ToText() {
+        int rest = Seconds % 60;
+        stringObj text = $"{Seconds / 60}m";
+        if (rest < 10) text += "0";
+        text += $"{rest}s";
+        return text;
+    }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class BuildError[3] : object {
+    string TaskName;
+    string Reason;
+    int Code;
+    static int Raised;
+
+    void create(string job, string why, int errorCode) {
+        TaskName = job;
+        Reason = why;
+        Code = errorCode;
+        BuildError.Raised++;
+    }
+}
+
+//-- Tasks -----------------------------------------------------------------------------------------------------
+
+class Tagged : object {
+    array<string> Tags[3];
+
+    bool HasTag(string tagName) { return Tags.contains(tagName); }
+}
+
+class Task : Tagged {
+    string Label;
+    eStatus Status = eStatus.Pending;
+    Duration Estimate;
+    array<Task> DependsOn[4];
+    static int Created;
+    static int Removed;
+
+    selfType After(Task dependency) {
+        DependsOn.append(dependency);
+        return self;
+    }
+
+    selfType Tag(string tagName) {
+        Tags.append(tagName);
+        return self;
+    }
+
+    bool DependsOnAny(eStatus wanted) {
+        return DependsOn.any((Task d) => d.Status == wanted);
+    }
+
+    default string Kind() { return "task"; }
+    default Duration Cost() { return Estimate; }
+
+    required void Run(int attempt);
+
+    stringObj Summary() {
+        stringObj costText = Cost().ToText();
+        stringObj text = $"{Label} [{Kind()}] {StatusName(Status)} {costText}";
+        if (DependsOn.length > 0) {
+            text += " after";
+            for (Task d in DependsOn) text += $" {d.Label}";
+        }
+        return text;
+    }
+}
+
+class CompileTask[4] : Task {
+    int Files;
+
+    void create(string title, int fileCount) {
+        Label = title;
+        Files = fileCount;
+        Estimate = Duration.Of(fileCount * 5);
+        Task.Created++;
+    }
+
+    void destroy() { Task.Removed++; }
+
+    string Kind() { return "compile"; }
+
+    void Run(int attempt) {
+        printLine($"compile {Label}: {Files} files");
+    }
+}
+
+class TestTask[3] : Task {
+    int Cases;
+    int FailingRuns;
+
+    void create(string title, int caseCount, int failures) {
+        Label = title;
+        Cases = caseCount;
+        FailingRuns = failures;
+        Estimate = Duration.Of(caseCount * 2);
+        Task.Created++;
+    }
+
+    void destroy() { Task.Removed++; }
+
+    string Kind() { return "test"; }
+
+    void Run(int attempt) {
+        if (attempt <= FailingRuns) throw new BuildError(Label, "cases failed", Cases / 5);
+        printLine($"test {Label}: {Cases} cases passed");
+    }
+}
+
+class PackageTask[2] : Task {
+    string Format;
+
+    void create(string title, string extension, int seconds) {
+        Label = title;
+        Format = extension;
+        Estimate = Duration.Of(seconds);
+        Task.Created++;
+    }
+
+    void destroy() { Task.Removed++; }
+
+    string Kind() { return "package"; }
+
+    void Run(int attempt) {
+        printLine($"package {Label} as .{Format}");
+    }
+}
+
+// The Composite: a group runs after its children, and costs what they cost plus its own step.
+class TaskGroup[1] : Task {
+    array<Task> Children[4];
+
+    void create(string title) {
+        Label = title;
+        Estimate = Duration.Of(5);
+        Task.Created++;
+    }
+
+    void destroy() { Task.Removed++; }
+
+    selfType Add(Task part) {
+        Children.append(part);
+        After(part);
+        return self;
+    }
+
+    string Kind() { return "group"; }
+
+    Duration Cost() {
+        Duration total = Estimate;
+        for (Task part in Children) total = total + part.Cost();
+        return total;
+    }
+
+    void Run(int attempt) {
+        printLine($"group {Label}: {Children.length} parts");
+    }
+}
+
+//-- The pipe: a service -----------------------------------------------------------------------------------
+
+class Pipeline : object {
+    const int MaxAttempts = 2;
+    array<Task> Tasks[10];
+    array<Task> Plan[10];
+    array<func<void, Task, eStatus>> Listeners[2];
+    func<int, int> Backoff;
+    Duration Elapsed;
+    int Builds;
+
+    Pipeline operator += (Task job) {
+        Tasks.append(job);
+        return self;
+    }
+
+    Task operator [] (string label) {
+        for (Task t in Tasks) {
+            if (t.Label == label) return t;
+        }
+        return null;
+    }
+
+    void Subscribe(func<void, Task, eStatus> listener) { Listeners.append(listener); }
+
+    void Notify(Task job, eStatus status) {
+        job.Status = status;
+        for (func<void, Task, eStatus> listener in Listeners) listener(job, status);
+    }
+
+    // Depth-first: every dependency is planned before the task that needs it.
+    void Visit(Task job) {
+        if (Plan.contains(job)) return;
+        for (Task dependency in job.DependsOn) Visit(dependency);
+        Plan.append(job);
+    }
+
+    int BuildPlan() {
+        Plan.clear();
+        for (Task t in Tasks) Visit(t);
+        return Plan.length;
+    }
+
+    // The longest chain of own work ending at this task.
+    int CriticalSeconds(Task job) {
+        int longest = 0;
+        for (Task dependency in job.DependsOn) {
+            int chain = CriticalSeconds(dependency);
+            if (chain > longest) longest = chain;
+        }
+        return job.Estimate.Seconds + longest;
+    }
+
+    Task SlowestDependency(Task job) {
+        Task slowest = null;
+        int best = -1;
+        for (Task dependency in job.DependsOn) {
+            int chain = CriticalSeconds(dependency);
+            if (chain > best) {
+                best = chain;
+                slowest = dependency;
+            }
+        }
+        return slowest;
+    }
+
+    void Execute(Task job) {
+        if (job.DependsOnAny(eStatus.Failed) || job.DependsOnAny(eStatus.Skipped)) {
+            Notify(job, eStatus.Skipped);
+            return;
+        }
+        job.Status = eStatus.Running;
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++) {
+            try {
+                job.Run(attempt);
+                Elapsed += job.Cost().Seconds;
+                Notify(job, eStatus.Done);
+                break;
+            } catch (BuildError e) {
+                printLine($"  {e.TaskName} attempt {attempt} failed: {e.Reason} (code {e.Code})");
+                delete e;
+            }
+            if (attempt < MaxAttempts) {
+                int wait = Backoff(attempt);
+                printLine($"  retry in {wait}s");
+                Elapsed += wait;
+            }
+        }
+        if (job.Status == eStatus.Running) Notify(job, eStatus.Failed);
+    }
+
+    void Run() {
+        Builds++;
+        Elapsed = Duration.Of(0);
+        BuildPlan();
+        for (Task t in Plan) Execute(t);
+    }
+
+    void Reset() {
+        for (Task t in Tasks) t.Status = eStatus.Pending;
+    }
+
+    // Unlinks the task from everything that refers to it.
+    void Remove(Task job) {
+        Tasks.removeValue(job);
+        Plan.removeValue(job);
+        for (Task t in Tasks) {
+            t.DependsOn.removeValue(job);
+            if (t.is(TaskGroup)) {
+                ((TaskGroup)t).Children.removeValue(job);
+            }
+        }
+    }
+}
+
+Pipeline pipe { }
+
+//-- Predicates, listeners -------------------------------------------------------------------------------------
+
+bool IsCompile(Task t) { return t.is(CompileTask); }
+bool IsFinished(Task t) { return t.Status == eStatus.Done; }
+
+int Notices;
+
+void ReportProblem(Task job, eStatus status) {
+    if (status == eStatus.Failed || status == eStatus.Skipped) printLine($"  ! {job.Label} {StatusName(status)}");
+}
+
+int CountWith(eStatus status) {
+    return pipe.Tasks.filter((Task t) => t.Status == status).count();
+}
+
+void PrintSummary() {
+    stringObj elapsed = pipe.Elapsed.ToText();
+    printLine($"Build {pipe.Builds}: {CountWith(eStatus.Done)} done, {CountWith(eStatus.Failed)} failed, {CountWith(eStatus.Skipped)} skipped in {elapsed}.");
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        CompileTask core = new CompileTask("core", 12);
+        CompileTask util = new CompileTask("util", 4);
+        CompileTask app = new CompileTask("app", 8);
+        TestTask unit = new TestTask("unit", 30, 1);
+        TestTask integ = new TestTask(title: "integ", caseCount: 15, failures: 9);
+        PackageTask zip = new PackageTask("zip", "zip", 15);
+        PackageTask installer = new PackageTask("installer", "pkg", 50);
+        TaskGroup release = new TaskGroup("release");
+
+        app.After(core).After(util).Tag("app");
+        core.Tag("lib");
+        util.Tag("lib");
+        unit.After(app).Tag("quick");
+        integ.After(app);
+        zip.After(unit).Tag("release");
+        installer.After(integ).Tag("release");
+        release.Add(zip).Add(installer).Tag("release");
+
+        pipe += release;
+        pipe += zip;
+        pipe += installer;
+        pipe += unit;
+        pipe += integ;
+        pipe += app;
+        pipe += core;
+        pipe += util;
+
+        pipe.Subscribe(ReportProblem);
+        pipe.Subscribe((Task t, eStatus s) => { Notices++; });
+        pipe.Backoff = (int attempt) => attempt * 10;
+        printLine($"Tasks {Task.Created}, listeners {pipe.Listeners.length}, max attempts {pipe.MaxAttempts}.");
+    }
+}
+
+verb ShowPlan {
+    grammar = {.plan};
+    void handler() {
+        int steps = pipe.BuildPlan();
+        stringObj line = $"Plan of {steps}:";
+        for (Task t in pipe.Plan) line += $" {t.Label}";
+        printLine(line);
+    }
+}
+
+verb Tasks {
+    grammar = {.tasks};
+    void handler() {
+        for (Task t in pipe.Tasks) {
+            stringObj text = t.Summary();
+            printLine(text);
+        }
+    }
+}
+
+verb Build {
+    grammar = {.build};
+    void handler() {
+        pipe.Run();
+        PrintSummary();
+        printLine($"Notices {Notices}, errors raised {BuildError.Raised}.");
+    }
+}
+
+verb Critical {
+    grammar = {.critical};
+    void handler() {
+        Task release = pipe["release"];
+        int seconds = pipe.CriticalSeconds(release);
+        stringObj path = $"{release.Label}";
+        Task step = pipe.SlowestDependency(release);
+        while (step != null) {
+            path += $" <- {step.Label}";
+            step = pipe.SlowestDependency(step);
+        }
+        stringObj length = Duration.Of(seconds).ToText();
+        printLine($"Critical path {length}: {path}");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int compiles = pipe.Tasks.filter(IsCompile).count();
+        bool compiled = pipe.Tasks.filter(IsCompile).all(IsFinished);
+        bool anySkipped = pipe.Tasks.any((Task t) => t.Status == eStatus.Skipped);
+        printLine($"Compiles {compiles}, all compiled {compiled}, any skipped {anySkipped}.");
+
+        string firstFailed = pipe.Tasks.filter((Task t) => t.Status == eStatus.Failed).first()?.Label ?? "none";
+        printLine($"First failed: {firstFailed}.");
+
+        stringObj line = "Slowest first:";
+        for (Task t in pipe.Tasks.orderBy((Task a, Task b) => b.Cost() <=> a.Cost()).take(3)) line += $" {t.Label}";
+        printLine(line);
+
+        array<var> seconds = pipe.Tasks.map((Task t) => t.Estimate.Seconds);
+        int total = 0;
+        for (var s in seconds) total += s;
+        Duration own = Duration.Of(total);
+        stringObj ownText = own.ToText();
+        Task group = pipe["release"];
+        bool groupHeavier = group != null && group.Cost() > Duration.Of(60);
+        printLine($"Own work {ownText} over {seconds.length} task(s); release over 1m00s: {groupHeavier}.");
+    }
+}
+
+verb ShowTags {
+    grammar = {.tagged};
+    void handler() {
+        TagLine("lib");
+        TagLine("release");
+        TagLine(tagName: "nightly");
+    }
+}
+
+void TagLine(string tagName) {
+    stringObj line = $"{tagName}:";
+    int found = 0;
+    for (Task t in pipe.Tasks.filter((Task x) => x.HasTag(tagName))) {
+        line += $" {t.Label}";
+        found++;
+    }
+    if (found == 0) line += " (none)";
+    printLine(line);
+}
+
+verb Fix {
+    grammar = {.fix};
+    void handler() {
+        Task found = pipe["integ"];
+        if (found.is(TestTask)) {
+            TestTask integ = (TestTask)found;
+            integ.FailingRuns = 0;
+            printLine($"Fixed {integ.Label}: {integ.Cases} cases.");
+        }
+        pipe.Reset();
+        string missing = pipe["lint"]?.Label ?? "no lint task";
+        printLine($"Reset {pipe.Tasks.length} task(s); {missing}.");
+    }
+}
+
+verb DropTask {
+    grammar = {.unlink};
+    void handler() {
+        Task found = pipe["zip"];
+        if (found == null || !found.is(PackageTask)) {
+            printLine("Nothing to drop.");
+            return;
+        }
+        PackageTask zip = (PackageTask)found;
+        pipe.Remove(zip);
+        delete zip;
+        TaskGroup release = (TaskGroup)pipe["release"];
+        stringObj cost = release.Cost().ToText();
+        printLine($"Dropped zip: tasks {pipe.Tasks.length}, removed {Task.Removed}, release has {release.Children.length} part(s) costing {cost}.");
+        PackageTask docs = new PackageTask("docs", "tar", 20);
+        if (docs == null) {
+            printLine("No package slot.");
+            return;
+        }
+        docs.After(pipe["app"]).Tag("release");
+        release.Add(docs);
+        pipe += docs;
+        printLine($"Added {docs.Label} ({docs.Kind()}), created {Task.Created}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

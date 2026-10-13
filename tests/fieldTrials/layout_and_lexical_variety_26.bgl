@@ -1,0 +1,528 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, four jars on a
+// shelf, a scale, a mixing bowl and an oven. A jar class with a class-wide static counter, an
+// `inline instanceName` and an `inline` enum member given by position, a `default` method overridden
+// by a dish subclass; a value class portion kept in a global `array<Portion>` that is appended to,
+// searched, changed through `portions[i].grams +=` and cleared; a routine with a default parameter,
+// called positionally and by name, that `throw`s a string caught in the verb handler; recipe objects
+// in an `array<Recipe>` matched with <linq> `filter`/`first`; an enum and a namespace object of type
+// aliases; a bowl whose `before` refuses `Receive` and handles `Empty`; an oven whose `before` takes
+// only the mixed bowl and whose daemon warms up in steps and bakes through a switch with constant
+// expression cases; a value class tally filled through a `ref` parameter; a `stringObj` card built
+// with `capture()`/`release()`, `format()` and `+=` with char literals; <linq> `orderBy` with a
+// comparator, `filter`, `count`, `takeWhile`, `skipWhile`, `last`, `map` and `any` over an
+// `array<Jar>`; `#define` values tested by `#if`/`#else`; `NUMBER` grammar with alternation; hex and
+// binary literals, a raw string; mixed-case keywords, Allman, K&R and one-line braces, comments between
+// tokens and inside argument lists, a routine with no spaces and a declaration split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include   <linq>
+
+#using bgl.printRules ;
+
+#define BOWL_MAX    3
+#define SCOOP       25         // grams in a plain scoop
+#define OVEN_TURNS  3
+
+// ---- constants -------------------------------------------------------------------------------------
+
+const int HOT        = $B4 ;          // 180
+CONST INT WARM_STEP  = $$111100 ;     // 60
+const int JAR_TOP    = 500 ;
+Const int PAT        = 10 ;           // one pat of butter
+
+/// What a jar holds.
+enum eKind
+{
+    flour ,
+    sugar ,     // sweet
+    salt ,
+    butter
+}
+
+enum eBake { raw , baking , done , burnt }
+
+object kitchen
+{
+    alias kind for eKind ;
+    alias bake for eBake ;
+}
+
+string kindName ( kitchen.kind k )
+{
+    switch (k)
+    {
+        case eKind.flour  : return "flour" ;
+        case eKind.sugar  : return "sugar" ;
+        case eKind.salt   : return "salt" ;
+        default           : return "butter" ;
+    }
+}
+
+string bakeName(eBake b){switch(b){case eBake.raw:return "raw";case eBake.baking:return "baking";case eBake.done:return "baked";default:return "burnt";}}
+
+// ---- rooms -----------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A shelf of jars and a scale are here. Room B is east." ;
+    object e_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = @"Room B. An oven is here. Room A is west." ;
+    object w_to = roomA ;
+}
+
+object shelf
+{
+    "shelf" ;
+    parent     = roomA ;
+    name       = { .shelf } ;
+    attributes = { supporter , static } ;
+    string description = "A plank shelf." ;
+}
+
+object scale { "scale" ; parent = roomA ; name = { .scale } ; attributes = { static } ; string description = "A kitchen scale." ; }
+
+// ---- jars ------------------------------------------------------------------------------------------
+
+class Jar : object
+{
+    inline instanceName ;
+    inline eKind kind = eKind.flour ;
+    int grams = 0 ;
+    string description = "A glass jar." ;
+
+    static int scoops = 0 ;
+
+    /// Grams taken by a plain scoop.
+    default int perScoop () { return SCOOP ; }
+    default string unit () { return "g" ; }
+
+    bool isEmpty () { return grams <= 0 ; }
+}
+
+class Dish : Jar {
+    int perScoop () { return PAT ; }
+    string unit () { return "g (in pats)" ; }
+}
+
+Jar flourJar
+{
+    "flour jar" , eKind.flour ;
+    parent = shelf ;
+    name   = { .flour , .jar } ;
+    grams  = JAR_TOP ;
+}
+Jar sugarJar { "sugar jar" , eKind.sugar ; parent = shelf ; name = { .sugar , .jar } ; grams = $C8 ; }
+Jar saltJar
+{
+    "salt jar" ,
+    eKind.salt ;               // kind given by position
+    parent = shelf ;
+    name   = { .salt , .jar } ;
+    grams  = $$110010 ;        // fifty
+}
+Dish butterDish { "butter dish" , eKind.butter ; parent = shelf ; name = { .butter , .dish } ; grams = 40 ; }
+
+array<Jar> jars = { flourJar , sugarJar , saltJar , butterDish } ;
+
+// ---- the bowl --------------------------------------------------------------------------------------
+
+/// One kind of thing in the bowl and how much of it.
+value class Portion
+{
+    eKind kind ;
+    int   grams ;
+    Portion operator = ( Portion o ) { kind = o.kind ; grams = o.grams ; return self ; }
+}
+
+array<Portion> portions[BOWL_MAX] ;
+
+int findPortion ( eKind k )
+{
+    for (int i = 0 ; i < portions.length ; i++)
+        if (portions[i].kind == k) return i ;
+    return -1 ;
+}
+
+int amountOf ( eKind k )
+{
+    int at = findPortion(k) ;
+    if (at < 0) return 0 ;
+    return portions[at].grams ;
+}
+
+object bowl
+{
+    "mixing bowl" ;
+    parent     = roomA ;
+    name       = { .mixing , .bowl } ;
+    attributes = { container , open } ;
+    string description = "A wide mixing bowl." ;
+    eBake state     = eBake.raw ;
+    bool  mixed     = false ;
+    int   bakeTurns = 0 ;
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Receive :
+                rtrue("Scoop things into the bowl instead.^") ;
+            case Empty , EmptyT :
+                if (portions.length == 0) rtrue("The bowl is already empty.^") ;
+                clearBowl() ;
+                rtrue("You wipe the bowl clean.^") ;
+        }
+        rfalse ;
+    }
+}
+
+void clearBowl ()
+{
+    portions.clear() ;
+    bowl.mixed     = false ;
+    bowl.state     = eBake.raw ;
+    bowl.bakeTurns = 0 ;
+    batch          = null ;
+}
+
+/// Moves grams from a jar into the bowl; throws the reason when it can't.
+int scoopFrom ( Jar j , int amount = 0 )
+{
+    if (bowl.parent != player) throw "You need to hold the bowl." ;
+    if (bowl.mixed)            throw "The bowl is already mixed." ;
+    if (j.isEmpty())           throw "That jar is empty." ;
+    if (amount <= 0)          amount = j.perScoop() ;
+    if (amount > j.grams)     amount = j.grams ;
+    int at = findPortion(j.kind) ;
+    if (at < 0)
+    {
+        if (portions.length >= BOWL_MAX) throw "The bowl takes no more kinds." ;
+        Portion p ;
+        p.kind  = j.kind ;
+        p.grams = 0 ;
+        portions.append(p) ;
+        at = portions.length - 1 ;
+    }
+    portions[at].grams += amount ;
+    j.grams -= amount ;
+    Jar.scoops++ ;
+    return amount ;
+}
+
+// ---- recipes ---------------------------------------------------------------------------------------
+
+class Recipe : object
+{
+    int needFlour ;
+    int needSugar ;
+    int needSalt ;
+    int needButter ;
+    int made = 0 ;
+
+    static int baked = 0 ;
+
+    bool matches ()
+    {
+        return amountOf(eKind.flour)  == needFlour
+            && amountOf(eKind.sugar)  == needSugar
+            && amountOf(eKind.salt)   == needSalt
+            && amountOf(eKind.butter) == needButter ;
+    }
+}
+
+Recipe shortbread { "shortbread" ; needFlour = 50 ; needSugar = 25 ; needButter = 2 * PAT ; }
+Recipe crackers
+{
+    "crackers" ;
+    needFlour  = SCOOP * 2 ;
+    needSalt   = 5 ;
+    needButter = PAT ;
+}
+
+array<Recipe> recipes = { shortbread , crackers } ;
+Recipe batch = null ;
+
+/// `NAME: 50 flour, 25 sugar` for a recipe card.
+stringObj card ( Recipe r )
+{
+    stringObj nm ;
+    nm.capture() ;
+    print(r) ;
+    nm.release() ;
+    stringObj s = nm.toUpper() ;
+    s += ':' ;
+    s += ' ' ;
+    bool first = true ;
+    if (r.needFlour > 0)  { s += $"{r.needFlour} flour" ;  first = false ; }
+    if (r.needSugar > 0)  { if (!first) s += ", " ; s += $"{r.needSugar} sugar" ;  first = false ; }
+    if (r.needSalt > 0)   { if (!first) s += ", " ; s += $"{r.needSalt} salt" ;    first = false ; }
+    if (r.needButter > 0) { if (!first) s += ", " ; s += $"{r.needButter} butter" ; }
+    return s ;
+}
+
+// ---- the oven --------------------------------------------------------------------------------------
+
+object oven
+{
+    "oven" ;
+    parent     = roomB ;
+    name       = { .oven } ;
+    attributes = { container , open , switchable , static } ;
+    string description = "A small iron oven." ;
+    int heat = 0 ;
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Receive :
+                if (noun != bowl) rtrue("Only the bowl goes in the oven.^") ;
+                if (!bowl.mixed)  rtrue("Mix the bowl first.^") ;
+            case SwitchOff :
+                heat = 0 ;
+        }
+        rfalse ;
+    }
+
+    bool after ()
+    {
+        Switch (action) {
+            CASE SwitchOn  : StartDaemon(self) ; rtrue("The oven starts to warm.^") ;
+            case SwitchOff : StopDaemon(self) ;  rtrue("The oven goes cold.^") ;
+        }
+        rfalse ;
+    }
+
+    void daemon ()
+    {
+        bool here = (location == roomB) ;
+        if (heat < HOT)
+        {
+            heat += WARM_STEP ;
+            if (heat > HOT) heat = HOT ;
+            if (heat == HOT && here) print("^The oven is hot.^") ;
+            return ;
+        }
+        if (bowl.parent != self || !bowl.mixed) return ;
+        bowl.bakeTurns++ ;
+        switch (bowl.bakeTurns)
+        {
+            case 1 :
+                bowl.state = eBake.baking ;
+                if (here) print("^The dough starts to bake.^") ;
+            case OVEN_TURNS :
+                bowl.state = eBake.done ;
+                if (batch != null) { batch.made++ ; Recipe.baked++ ; }
+                if (here) print("^The bowl smells baked.^") ;
+            case OVEN_TURNS + 2 :
+                bowl.state = eBake.burnt ;
+                if (here) print("^Smoke comes from the oven.^") ;
+        }
+    }
+}
+
+// ---- tally -----------------------------------------------------------------------------------------
+
+value class Tally
+{
+    int kinds ;
+    int grams ;
+    eKind most ;
+    int mostGrams ;
+}
+
+void tallyBowl ( ref Tally t )
+{
+    t.kinds = portions.length ;
+    for (int i = 0 ; i < portions.length ; i++)
+    {
+        t.grams += portions[i].grams ;
+        if (portions[i].grams > t.mostGrams)
+        {
+            t.mostGrams = portions[i].grams ;
+            t.most      = portions[i].kind ;
+        }
+    }
+}
+
+// ---- startup ---------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands --------------------------------------------------------------------------------------
+
+verb Weigh
+{
+    grammar = { { .weigh , NOUN } } ;
+    void handler ()
+    {
+        if (location != roomA) { printLine("The scale is in Room A.") ; return ; }
+        if (noun.is(Jar))
+        {
+            Jar j = (Jar) noun ;
+            printLine($"{cThe(j)}: {j.grams}{j.unit()}.") ;
+            return ;
+        }
+        if (noun == bowl)
+        {
+            Tally t ;
+            tallyBowl(t) ;
+            if (t.kinds == 0) { printLine("The bowl is empty.") ; return ; }
+            printLine($"The bowl: {t.grams}g in {t.kinds} kind{t.kinds == 1 ? "" : "s"}, mostly {kindName(t.most)}.") ;
+            return ;
+        }
+        printLine("That does not need weighing.") ;
+    }
+}
+
+verb Scoop
+{
+    grammar = {
+        { .scoop , NOUN } ,
+        { ( .scoop | .take ) , NUMBER , .from , NOUN } ,
+    } ;
+    void handler ()
+    {
+        Jar j ;
+        int asked = 0 ;
+        if (second == null) j = (Jar) noun ;
+        else
+        {
+            asked = (int) noun ;
+            j = (Jar) second ;
+        }
+        if (!(j.is(Jar))) { printLine("You can only scoop from a jar.") ; return ; }
+        int got ;
+        TRY
+        {
+            if (asked == 0) got = scoopFrom(j) ;
+            else            got = scoopFrom(j , amount: /* grams */ asked) ;
+        }
+        catch (string why)
+        {
+            printLine(why) ;
+            return ;
+        }
+        printLine($"You scoop {got}g of {kindName(j.kind)} into the bowl.") ;
+    }
+}
+
+verb Mix
+{
+    grammar = { { .mix } , { ( .mix | .stir ) , .bowl } } ;
+    void handler ()
+    {
+        if (bowl.parent != player) { printLine("You need to hold the bowl.") ; return ; }
+        if (portions.length == 0)  { printLine("There is nothing to mix.") ; return ; }
+        if (bowl.mixed)            { printLine("It is already mixed.") ; return ; }
+        bowl.mixed = true ;
+        batch = recipes.filter( (Recipe r) => r.matches() ).first() ;
+        if (batch == null) printLine("You mix it into a lumpy paste.") ;
+        else               printLine($"You mix a {batch} dough.") ;
+    }
+}
+
+verb ReadCards
+{
+    meta    = true ;
+    grammar = { { .recipes } , { .cards } } ;
+    void handler ()
+    {
+        for (Recipe r in recipes)
+        {
+            stringObj c = card(r) ;
+            c.print() ;
+            if (r.made > 0) print($" (made {r.made})") ;
+            printLine(".") ;
+        }
+#if OVEN_TURNS > 2
+        printLine($"Bake for {OVEN_TURNS} turns; {Recipe.baked} baked so far.") ;
+#else
+        printLine("Bake briefly.") ;
+#endif
+    }
+}
+
+verb Pantry
+{
+    meta    = TRUE ;
+    grammar = { .pantry } ;
+    void handler ()
+    {
+        Jar most = jars.orderBy( (Jar a , Jar b) => b.grams - a.grams ).first() ;
+        Jar least = jars.orderBy((Jar a , Jar b) => a.grams - b.grams).first() ;
+        int low = jars.filter((Jar j) => j.grams < SCOOP).count() ;
+        print($"Fullest: {the(most)} ({most.grams}); emptiest: {the(least)} ({least.grams}); {low} low") ;
+        if (jars.any( (Jar j) => j.isEmpty() )) print("; one or more empty") ;
+        printLine(".") ;
+        print("Before the salt:") ;
+        for (Jar j in jars.takeWhile((Jar j) => j.kind != eKind.salt)) print($" {j}") ;
+        print(". From the salt:") ;
+        for (Jar j in jars.skipWhile((Jar j) => j.kind != eKind.salt)) print($" {j}") ;
+        printLine($". Last: {jars.last()}. Scoops: {Jar.scoops}.") ;
+        int total = 0 ;
+        for (var g in jars.map((Jar j) => j.grams)) total += (int) g ;
+        printLine($"Total on the shelf: {total}g.") ;
+    }
+}
+
+verb Contents
+{
+    meta    = true ;
+    grammar = { { .contents } , { .peek , .in , .bowl } } ;
+    void handler ()
+    {
+        if (portions.length == 0) { printLine("The bowl is empty.") ; return ; }
+        stringObj line ;
+        int i = 0 ;
+        while (i < portions.length)
+        {
+            if (i > 0) line += ", " ;
+            line += $"{portions[i].grams} {kindName(portions[i].kind)}" ;
+            i++ ;
+        }
+        line.print() ;
+        print($" ({bakeName(bowl.state)}") ;
+        if (bowl.mixed) print(", mixed") ;
+        printLine(").") ;
+    }
+}
+
+verb OvenHeat
+{
+    meta    = true ;
+    grammar = { .heat } ;
+    void handler ()
+    {
+        stringObj s = "Oven" ;
+        stringObj h = $"{oven.heat}" ;
+        stringObj o = s.format("$0 at $1." , h) ;
+        o.print() ;
+        if (oven.has(on)) printLine(" It is on.") ; else printLine(" It is off.") ;
+    }
+}

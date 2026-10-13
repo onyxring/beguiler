@@ -1,0 +1,370 @@
+#grids
+Room A
+Room A. Three timers are on the shelf.
+You can see a red timer, a blue timer and a green timer here.
+[win 1] [0] board ready
+[grid 1]
+|R red   ........  0:00 idle                       |
+|B blue  ........  0:00 idle                       |
+|G green ........  0:00 idle                       |
+|live 0  rung 0:00  log 1                          |
+[grid 2]
+|Room A | turn 0 | links 0                         |
+> timers
+Timer   Set Left State   Done
+red       3    0 idle    0%
+blue      5    0 idle    0%
+green     2    0 idle    0%
+[grid 1]
+|R red   ........  0:00 idle                       |
+|B blue  ........  0:00 idle                       |
+|G green ........  0:00 idle                       |
+|live 0  rung 0:00  log 1                          |
+[grid 2]
+|Room A | turn 0 | links 0                         |
+> wind red timer to 2
+The red timer is wound to 2 turns (1:00).
+[grid 1]
+|R red   ........  0:00 idle                       |
+|B blue  ........  0:00 idle                       |
+|G green ........  0:00 idle                       |
+|live 0  rung 0:00  log 1                          |
+[grid 2]
+|Room A | turn 1 | links 0                         |
+> start red timer
+The red timer starts: 2 turns.
+[win 1] [1] red started
+[grid 1]
+|R red   ####....  0:30 running                    |
+|B blue  ........  0:00 idle                       |
+|G green ........  0:00 idle                       |
+|live 1  rung 0:00  log 2                          |
+[grid 2]
+|Room A | turn 2 | links 0                         |
+> start blue timer
+The blue timer starts: 5 turns.
+[win 1] [2] blue started
+[grid 1]
+|R red   ########  0:00 running                    |
+|B blue  ##......  2:00 running                    |
+|G green ........  0:00 idle                       |
+|live 2  rung 0:00  log 3                          |
+[grid 2]
+|Room A | turn 3 | links 0                         |
+> soonest
+Next to ring: the red timer in 0 turns.
+Last to ring: the blue timer in 4 turns.
+[grid 1]
+|R red   ########  0:00 running                    |
+|B blue  ##......  2:00 running                    |
+|G green ........  0:00 idle                       |
+|live 2  rung 0:00  log 3                          |
+[grid 2]
+|Room A | turn 3 | links 0                         |
+> z
+Time passes.
+The red timer rings.
+[win 1] [4] red rang (1:00)
+[grid 1]
+|R red   ########  0:00 rang                       |
+|B blue  ###.....  1:30 running                    |
+|G green ........  0:00 idle                       |
+|live 1  rung 1:00  log 4                          |
+[grid 2]
+|Room A | turn 4 | links 0                         |
+> pause blue timer
+The blue timer pauses with 3 turns left.
+[win 1] [4] blue paused at 3
+[grid 1]
+|R red   ########  0:00 rang                       |
+|B blue  ###.....  1:30 paused                     |
+|G green ........  0:00 idle                       |
+|live 1  rung 1:00  log 5                          |
+[grid 2]
+|Room A | turn 5 | links 0                         |
+> z
+Time passes.
+[grid 1]
+|R red   ########  0:00 rang                       |
+|B blue  ###.....  1:30 paused                     |
+|G green ........  0:00 idle                       |
+|live 1  rung 1:00  log 5                          |
+[grid 2]
+|Room A | turn 6 | links 0                         |
+> z
+Time passes.
+[grid 1]
+|R red   ########  0:00 rang                       |
+|B blue  ###.....  1:30 paused                     |
+|G green ........  0:00 idle                       |
+|live 1  rung 1:00  log 5                          |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> timers
+Timer   Set Left State   Done
+red       2    0 rang    100%
+blue      5    3 paused  40%
+green     2    0 idle    0%
+[grid 1]
+|R red   ########  0:00 rang                       |
+|B blue  ###.....  1:30 paused                     |
+|G green ........  0:00 idle                       |
+|live 1  rung 1:00  log 5                          |
+[grid 2]
+|Room A | turn 7 | links 0                         |
+> resume blue timer
+The blue timer runs again.
+[win 1] [7] blue resumed
+[grid 1]
+|R red   ########  0:00 rang                       |
+|B blue  #####...  1:00 running                    |
+|G green ........  0:00 idle                       |
+|live 1  rung 1:00  log 6                          |
+[grid 2]
+|Room A | turn 8 | links 0                         |
+> cells 20
+Bars take 4 to 12 cells; using 12.
+[grid 1]
+|R red   ############  0:00 rang                   |
+|B blue  #######.....  1:00 running                |
+|G green ............  0:00 idle                   |
+|live 1  rung 1:00  log 6                          |
+[grid 2]
+|Room A | turn 8 | links 0                         |
+> cells 6
+Bars set to 6 cells.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ####..  1:00 running                      |
+|G green ......  0:00 idle                         |
+|live 1  rung 1:00  log 6                          |
+[grid 2]
+|Room A | turn 8 | links 0                         |
+> blocks
+Bars now use = and ·.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ====··  1:00 running                      |
+|G green ······  0:00 idle                         |
+|live 1  rung 1:00  log 6                          |
+[grid 2]
+|Room A | turn 8 | links 0                         |
+> examine green timer
+The green timer: idle, set to 2 turns, 0 left, rings: 0.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  =====·  0:30 running                      |
+|G green ······  0:00 idle                         |
+|live 1  rung 1:00  log 6                          |
+[grid 2]
+|Room A | turn 9 | links 0                         |
+> push green timer
+The green timer starts: 2 turns.
+[win 1] [9] green started
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 running                      |
+|G green ===···  0:30 running                      |
+|live 2  rung 1:00  log 7                          |
+[grid 2]
+|Room A | turn 10 | links 0                        |
+> z
+Time passes.
+The blue timer rings.
+[win 1] [11] blue rang (2:30)
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 running                      |
+|live 1  rung 3:30  log 8                          |
+[grid 2]
+|Room A | turn 11 | links 0                        |
+> z
+Time passes.
+The green timer rings.
+[win 1] [12] green rang (1:00)
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 12 | links 0                        |
+> z
+Time passes.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> longest
+Longest setting: the blue timer at 5 turns.
+It matches the longest ring so far.
+Every timer has rung.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> recent
+Last 3 of 9 log lines:
+  [9] GREEN STARTED
+  [11] BLUE RANG (2:30)
+  [12] GREEN RANG (1:00)
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> blank
+The log is wiped.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> collapse
+The log closes.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> reopen
+The log reopens with 3 lines.
+[win 2] [9] green started
+[win 2] [11] blue rang (2:30)
+[win 2] [12] green rang (1:00)
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> panel
+Halt: red blue green all
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 13 | links 0                        |
+> halt red timer
+The red timer is not running.
+[grid 1]
+|R red   ======  0:00 rang                         |
+|B blue  ======  0:00 rang                         |
+|G green ======  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 14 | links 0                        |
+> blocks
+Bars now use # and .
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ######  0:00 rang                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 14 | links 0                        |
+> states
+idle: 0
+running: 0
+paused: 0
+rang: 3
+Links: yes. Log open: yes.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ######  0:00 rang                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 14 | links 0                        |
+> wind green timer to 0
+A timer needs at least one turn.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ######  0:00 rang                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 15 | links 0                        |
+> wind blue timer to 4
+The blue timer is wound to 4 turns (2:00).
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ......  0:00 idle                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 9                          |
+[grid 2]
+|Room A | turn 16 | links 0                        |
+> start blue timer
+The blue timer starts: 4 turns.
+[win 2] [16] blue started
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ##....  1:30 running                      |
+|G green ######  0:00 rang                         |
+|live 1  rung 4:30  log 10                         |
+[grid 2]
+|Room A | turn 17 | links 0                        |
+> soonest
+Next to ring: the blue timer in 3 turns.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ##....  1:30 running                      |
+|G green ######  0:00 rang                         |
+|live 1  rung 4:30  log 10                         |
+[grid 2]
+|Room A | turn 17 | links 0                        |
+> halt blue timer
+The blue timer stops.
+[win 2] [17] blue halted
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ......  0:00 idle                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 11                         |
+[grid 2]
+|Room A | turn 18 | links 0                        |
+> soonest
+Nothing is running.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ......  0:00 idle                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 11                         |
+[grid 2]
+|Room A | turn 18 | links 0                        |
+> longest
+Longest setting: the blue timer at 4 turns.
+Longest ring so far: 2:30.
+Every timer has rung.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ......  0:00 idle                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 11                         |
+[grid 2]
+|Room A | turn 18 | links 0                        |
+> examine blue timer
+The blue timer: idle, set to 4 turns, 0 left, rings: 1.
+[grid 1]
+|R red   ######  0:00 rang                         |
+|B blue  ......  0:00 idle                         |
+|G green ######  0:00 rang                         |
+|live 0  rung 4:30  log 11                         |
+[grid 2]
+|Room A | turn 19 | links 0                        |

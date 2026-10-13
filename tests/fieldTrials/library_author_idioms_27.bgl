@@ -1,0 +1,586 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a pots-and-watering kit and its consumer. The kit declares an enum of growth stages; a
+// value class of water with two copy operators, + and - over ints, + over water, <=> (giving < and
+// >), == and != against an int, a static maker from litres and a show method that prints millilitres
+// or litres; a plant class with a required positional thirst, an owned water, a growth and a dry
+// count, static bloom and loss counts, a required kind() routine, a default scent() and cap(), a
+// stage() that maps growth through a switch with ranges, a soak() that throws the overflow or a
+// wilt code, a daemon() started with StartDaemon that drinks and grows each turn, and a before() that
+// takes over the library's Smell and Cut; a vine subclass that overrides cap() and scent() and adds a
+// reach. A pooled cutting class with name words and a short_name in the class body, an owned
+// stringObj label built in create(), a plant member, static counters and a destroy() that takes it
+// out of the tree. The garden object is a namespace (alias … for the enum and the water) holding an
+// array of plants, an array of cuttings swept with remove/delete in a while loop, a stringObj log, an
+// owned water total, an inline accessor that clamps the sun and counts changes through outer., a
+// pour() that catches soak()'s throws, a take() returning null when the pool is empty, a counted for
+// loop over the beds, a switch on aliased values, a union-returning search and a func<> walk. The
+// consumer has one room with three plants (positional thirsts, one a vine), extends the plant class
+// with tests and the garden with a capturing <linq> count and a ternary; its verbs water, rain, pot
+// and compost cuttings, set the sun, find the thirstiest plant through typeof and casts, and report
+// with <linq> filter/count/any/all/first/orderBy/take, ??, stringObj methods, a copied and
+// lambda-sorted local array, bgl.world.instances with a predicate, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA27_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: potted plants that drink and grow each turn. ====
+
+/// How far a plant has grown.
+enum eLa27Stage { seed, sprout, leafy, bloom, wilted }
+
+/// An amount of water in millilitres, copied on assignment.
+value class La27Water {
+    int ml;
+    La27Water operator = (La27Water o) { ml = o.ml; return self; }
+    La27Water operator = (int n) { ml = n; return self; }
+    /// The water with some millilitres more.
+    La27Water operator + (int n) {
+        La27Water r;
+        r.ml = ml + n;
+        return r;
+    }
+    /// The two amounts together.
+    La27Water operator + (La27Water o) {
+        La27Water r;
+        r.ml = ml + o.ml;
+        return r;
+    }
+    /// The water with some millilitres less, never below nothing.
+    La27Water operator - (int n) {
+        La27Water r;
+        r.ml = bgl.util.math.max(ml - n, 0);
+        return r;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La27Water o) { return ml - o.ml; }
+    /// True when it is exactly so many millilitres.
+    bool operator == (int n) { return ml == n; }
+    /// True when it is not so many millilitres.
+    bool operator != (int n) { return ml != n; }
+
+    /// So many whole litres of water.
+    static La27Water litres(int l) {
+        La27Water r;
+        r.ml = l * 1000;
+        return r;
+    }
+
+    /// Prints the water as millilitres, or litres from 1000 up.
+    void show() {
+        if (ml < 1000) {
+            print($"{ml}ml");
+            return;
+        }
+        print($"{ml / 1000}.{(ml % 1000) / 100}l");
+    }
+}
+
+/// A potted plant that drinks its thirst each turn and grows while it has water.
+class La27Plant : object {
+    /// Millilitres it drinks each turn.
+    required inline int thirst;
+    La27Water water;
+    /// Growth, from 0 to 100.
+    int growth = 0;
+    /// Turns in a row it has gone without water.
+    int dry = 0;
+    bool bloomed = false;
+    /// Plants that have bloomed.
+    static int blooms = 0;
+    /// Plants that have wilted.
+    static int losses = 0;
+
+    /// A word for what grows in the pot.
+    required string kind();
+    /// What it smells of.
+    default string scent() { return "earth"; }
+    /// The most water the pot holds.
+    default int cap() { return 300; }
+
+    /// True once it has gone three turns dry.
+    bool wilting() { return dry >= 3; }
+
+    /// How far it has grown.
+    eLa27Stage stage() {
+        if (wilting()) return eLa27Stage.wilted;
+        switch (growth) {
+            case 0:        return eLa27Stage.seed;
+            case 1 to 30:  return eLa27Stage.sprout;
+            case 31 to 79: return eLa27Stage.leafy;
+            default:       return eLa27Stage.bloom;
+        }
+    }
+
+    /// Takes in water. Throws -1 when it has wilted, or the millilitres that spilled over.
+    void soak(int ml) {
+        if (wilting()) throw -1;
+        int room = cap() - water.ml;
+        if (ml > room) {
+            water = cap();
+            throw ml - room;
+        }
+        water = water + ml;
+    }
+
+    void daemon() {
+        if (wilting()) return;
+        if (water == 0) {
+            dry++;
+            if (!wilting()) return;
+            La27Plant.losses++;
+            la27Garden.log += $"wilt:{kind()} ";
+            if (parent == location) print($"The {self} wilts.^");
+            return;
+        }
+        dry = 0;
+        water = water - thirst;
+        growth = bgl.util.math.min(growth + la27Garden.sun, 100);
+        if (growth < 80 || bloomed) return;
+        bloomed = true;
+        La27Plant.blooms++;
+        la27Garden.log += $"bloom:{kind()} ";
+        if (parent == location) print($"The {self} blooms.^");
+    }
+
+    bool before() {
+        switch (action) {
+            case ::Smell:
+                print($"The {self} smells of {scent()}.^");
+                return true;
+            case ::Cut:
+                la27Garden.take(self);
+                return true;
+        }
+        return false;
+    }
+}
+
+/// A climbing plant: a bigger pot, and it reaches further as it grows.
+class La27Vine : La27Plant {
+    int reach = 0;
+    int cap() { return 500; }
+    string scent() { return "green sap"; }
+    /// How far it has climbed, in hand-spans.
+    int span() { return growth / 20; }
+}
+
+/// A cutting taken from a plant; made with new and handed back with delete.
+class La27Cutting[3] : object {
+    string short_name = "cutting";
+    name = {.cutting, .slip};
+    stringObj label;
+    La27Plant from;
+    bool potted = false;
+    /// Cuttings taken so far.
+    static int taken = 0;
+    /// Cuttings composted so far.
+    static int composted = 0;
+
+    void create(La27Plant p) {
+        from = p;
+        taken++;
+        label = $"{p.kind()}-{taken}";
+        parent = player;
+    }
+
+    void destroy() {
+        from = null;
+        parent = null;
+        composted++;
+    }
+}
+
+/// Report verbs: they take no time.
+class La27Info : verb {
+    meta = true;
+}
+
+// ==== The garden. ====
+
+/// The garden: knows the plants and the cuttings, waters them, and keeps a log.
+object la27Garden {
+    "garden";
+    alias stage for eLa27Stage;
+    alias water for La27Water;
+    array<La27Plant> beds[4];
+    array<La27Cutting> cuttings[3];
+    stringObj log;
+    /// All the water poured so far.
+    water poured;
+    int changes = 0;
+
+    /// Growth each plant gains per turn it drinks, kept from 0 to 20; each change is counted.
+    auto sun = {
+        int _s = 10;
+        int operator () { return _s; }
+        void operator = (int v) {
+            int n = bgl.util.math.clamp(v, 0, 20);
+            if (n != _s) outer.changes++;
+            _s = n;
+        }
+    }
+
+    /// Adds a plant; false when it is there already or there is no room.
+    bool register(La27Plant p) {
+        if (beds.contains(p)) return false;
+        return beds.append(p);
+    }
+
+    /// A word for a stage.
+    string word(stage s) {
+        switch (s) {
+            case stage.seed:   return "seed";
+            case stage.sprout: return "sprout";
+            case stage.leafy:  return "leafy";
+            case stage.bloom:  return "in bloom";
+            default:           return "wilted";
+        }
+    }
+
+    /// Waters a plant. Returns how much it took in.
+    int pour(La27Plant p, int ml) {
+        try {
+            p.soak(ml);
+        } catch (int spill) {
+            if (spill < 0) {
+                print($"The {p} has wilted; the water runs off.^");
+                log += "x ";
+                return 0;
+            }
+            poured = poured + (ml - spill);
+            log += $"spill{spill} ";
+            print($"The {p} overflows; {spill}ml spills.^");
+            return ml - spill;
+        }
+        poured = poured + ml;
+        log += $"water:{p.kind()} ";
+        print($"The {p} takes {ml}ml: ");
+        p.water.show();
+        print(".^");
+        return ml;
+    }
+
+    /// Takes a cutting from a plant into the player's hand; null when none can be taken.
+    La27Cutting take(La27Plant p) {
+        if (p.stage() != stage.leafy && p.stage() != stage.bloom) {
+            print($"The {p} is too small to cut.^");
+            return null;
+        }
+        La27Cutting c = new La27Cutting(p);
+        if (c == null) {
+            print("You have no room for another cutting.^");
+            return null;
+        }
+        cuttings.append(c);
+        p.growth -= 10;
+        log += $"cut:{p.kind()} ";
+        print($"You take a cutting, {c.label}.^");
+        return c;
+    }
+
+    /// Rains on every plant in the room. Returns how many plants it reached.
+    int rain(int ml) {
+        int reached = 0;
+        for (int i = 0; i < beds.length; i++) {
+            La27Plant p = beds[i];
+            if (p.parent != location || p.wilting()) continue;
+            int room = p.cap() - p.water.ml;
+            p.water = p.water + bgl.util.math.min(ml, room);
+            reached++;
+        }
+        log += $"rain{reached} ";
+        return reached;
+    }
+
+    /// Composts the potted cuttings. Returns how many went.
+    int compost() {
+        int gone = 0;
+        int i = 0;
+        while (i < cuttings.length) {
+            La27Cutting c = cuttings[i];
+            if (c.potted) {
+                cuttings.remove(i);
+                delete c;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        if (gone > 0) log += $"compost{gone} ";
+        return gone;
+    }
+
+    /// The living plant with the least water, or a word when none lives.
+    La27Plant | string thirstiest() {
+        La27Plant best = null;
+        for (La27Plant p in beds) {
+            if (p.wilting()) continue;
+            if (best == null || p.water < best.water) best = p;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Runs a step on each plant, in the order they were registered.
+    void each(func<void, La27Plant> step) {
+        for (La27Plant p in beds) step(p);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La27Plant clayPot {
+    40, "clay pot";
+    parent = roomA;
+    name = {.clay, .pot};
+    attributes = {static};
+    water = La27Water{ ml = 100; };
+    string kind() { return "fern"; }
+    string scent() { return "moss"; }
+}
+
+La27Plant tinPot {
+    60, "tin pot";
+    parent = roomA;
+    name = {.tin, .pot};
+    attributes = {static};
+    string kind() { return "basil"; }
+}
+
+La27Vine stonePot {
+    50, "stone pot";
+    parent = roomA;
+    name = {.stone, .pot};
+    attributes = {static};
+    growth = 25;
+    water = La27Water{ ml = 200; };
+    string kind() { return "ivy"; }
+}
+
+/// Every plant can say whether it needs water.
+extend class La27Plant {
+    /// True when the water won't last another turn.
+    bool parched() { return !wilting() && water.ml < thirst; }
+    /// True when the pot is full.
+    bool full() { return water.ml == cap(); }
+}
+
+/// The garden can count the plants past a growth and sum itself up in a word.
+extend la27Garden {
+    /// How many living plants have grown at least so far.
+    int past(int least) {
+        return beds.filter((La27Plant p) => !p.wilting() && p.growth >= least).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return sun >= 15 ? "sunny" : "shady";
+    }
+}
+
+/// Prints a plant's line.
+void la27ShowPlant(La27Plant p) {
+    print($"{p} {p.kind()} ");
+    p.water.show();
+    print($"/{p.cap()} {la27Garden.word(p.stage())} {p.growth}");
+    if (p.full()) print(" full");
+    if (p.parched()) print(" parched");
+    if (p.is(La27Vine)) print($" span {((La27Vine)p).span()}");
+    print("^");
+}
+
+// ==== Verbs. ====
+
+verb La27WaterIt {
+    grammar = {.water, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(La27Plant)) {
+            print("Only plants take water.^");
+            return;
+        }
+        int ml = (int)second;
+        if (ml <= 0) {
+            print("You pour nothing.^");
+            return;
+        }
+        la27Garden.pour((La27Plant)noun, ml);
+    }
+}
+
+verb La27Rain {
+    grammar = {.rain};
+    void handler() {
+        int n = la27Garden.rain(100);
+        print($"Rain falls on {n} plants.^");
+    }
+}
+
+verb La27Pot {
+    grammar = {.pot, NOUN};
+    void handler() {
+        if (!noun.is(La27Cutting)) {
+            print("Only cuttings pot.^");
+            return;
+        }
+        La27Cutting c = (La27Cutting)noun;
+        if (c.potted) {
+            print($"{c.label} is potted already.^");
+            return;
+        }
+        c.potted = true;
+        c.short_name = "potted cutting";
+        print($"You pot {c.label}.^");
+    }
+}
+
+verb La27Compost {
+    grammar = {.compost};
+    void handler() {
+        int gone = la27Garden.compost();
+        print($"composted {gone}; cuttings {la27Garden.cuttings.length}.^");
+    }
+}
+
+La27Info La27Sun {
+    grammar = {.sun, NUMBER};
+    void handler() {
+        la27Garden.sun = (int)noun;
+        print($"sun {la27Garden.sun}, changes {la27Garden.changes}, {la27Garden.mood()}.^");
+    }
+}
+
+La27Info La27Thirstiest {
+    grammar = {.thirstiest};
+    void handler() {
+        La27Plant | string r = la27Garden.thirstiest();
+        if (typeof(r) == eType.object) {
+            La27Plant p = (La27Plant)r;
+            print($"The {p} is thirstiest at {p.water.ml}ml; {la27Garden.past(p.growth)} have grown as far.^");
+        } else {
+            print($"Thirstiest: {(string)r}.^");
+        }
+    }
+}
+
+La27Info La27Plants {
+    grammar = {.plants};
+    void handler() {
+        la27Garden.each((La27Plant p) => la27ShowPlant(p));
+        int living = la27Garden.beds.filter((La27Plant p) => !p.wilting()).count();
+        print($"living {living}, blooms {La27Plant.blooms}, losses {La27Plant.losses}");
+        if (la27Garden.beds.any((La27Plant p) => p.parched())) print(", one parched");
+        if (la27Garden.beds.all((La27Plant p) => p.water != 0)) print(", all watered");
+        La27Plant firstDry = la27Garden.beds.filter((La27Plant p) => p.water == 0).first();
+        object which = firstDry ?? roomA;
+        print($"; first dry {which}; poured ");
+        la27Garden.poured.show();
+        print("^");
+        print($"cuttings {la27Garden.cuttings.length} (taken {La27Cutting.taken}, composted {La27Cutting.composted}); log {la27Garden.log}^");
+#if LA27_TRACE
+        print($"sun {la27Garden.sun}, past 50 {la27Garden.past(50)}^");
+#endif
+    }
+}
+
+La27Info La27Cuttings {
+    grammar = {.cuttings};
+    void handler() {
+        if (la27Garden.cuttings.length == 0) {
+            print("No cuttings.^");
+            return;
+        }
+        stringObj line;
+        for (La27Cutting c in la27Garden.cuttings) {
+            line += c.label.toUpper();
+            if (c.potted) line += "*";
+            line += " ";
+        }
+        line = line.trim();
+        print($"{line} ({line.length} chars)");
+        if (line.contains("IVY")) print(", an ivy cutting");
+        print(".^");
+    }
+}
+
+La27Info La27Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La27Plant> order[4];
+        order = la27Garden.beds;
+        order.sort((La27Plant a, La27Plant b) => b.growth - a.growth);
+        for (La27Plant p in order) print($"{p}={p.growth} ");
+        La27Plant top = order.first();
+        if (top.growth == 0) print("none grown");
+        else if (top.growth > order[1].growth) print($"top {top}");
+        else print("tie");
+        print(".^");
+        for (La27Plant p in la27Garden.beds.orderBy((La27Plant a, La27Plant b) => a.thirst - b.thirst).take(2)) {
+            print($"{p} ");
+        }
+        print("drink least.^");
+    }
+}
+
+La27Info La27Held {
+    grammar = {.held};
+    void handler() {
+        int n = 0;
+        int potted = 0;
+        for (object o in bgl.world.instances(La27Cutting, (object c) => c.parent == player)) {
+            La27Cutting c = (La27Cutting)o;
+            print($"{c.label} ");
+            n++;
+            if (c.potted) potted++;
+        }
+        print($"- {n} held, {potted} potted.^");
+    }
+}
+
+La27Info La27Tank {
+    grammar = {.tank};
+    void handler() {
+        La27Water t = La27Water.litres(2);
+        t = t + la27Garden.poured;
+        print("tank ");
+        t.show();
+        if (t > la27Garden.poured) print(", more than poured");
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la27Garden.register(clayPot);
+    la27Garden.register(tinPot);
+    la27Garden.register(stonePot);
+    la27Garden.register(tinPot);
+    StartDaemon(clayPot);
+    StartDaemon(tinPot);
+    StartDaemon(stonePot);
+    rfalse;
+}
+
+#includeI6 "grammar"

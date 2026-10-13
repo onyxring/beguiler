@@ -1,0 +1,156 @@
+Room A
+> beds
+Day 1.
+1  empty
+2  empty
+3  empty
+4  empty
+5  empty
+6  empty
+> log
+Nothing picked yet.
+> note bean
+bean (climber): Climbs.
+> note carrot
+carrot (root): Carrots in 0 of 6 beds.
+> note squash
+squash (trailer): Needs 3 water a day.
+> sow bean 1
+Sown bean in bed 1.
+> sow carrot 2
+Sown carrot in bed 2.
+> sow bean 4
+Sown bean in bed 4.
+It shares a border with the same crop.
+> sow leek 2
+Bed 2 already holds carrot.
+> sow squash 7
+No bed 7.
+> sow leek 6
+Sown leek in bed 6.
+> beds
+Day 1.
+1  bean   day 0/3  damp crowded
+2  carrot day 0/4  damp
+3  empty
+4  bean   day 0/3  damp crowded
+5  empty
+6  leek   day 0/5  damp
+> companions 2
+Bed 2 borders 1(bean) 3 5.
+Companions: 1.
+> companions 5
+Bed 5 borders 2(carrot) 4(bean) 6(leek).
+> plan 5
+Bed 5: squash+1
+> plan 3
+Bed 3: bean+1 squash+0
+> harvest 1
+The bean in bed 1 needs 3 more days.
+> water 1
+Bed 1 is wet.
+> water 3
+Bed 3 has nothing to water.
+> days 1
+Now day 2.
+> beds
+Day 2.
+1  bean   day 1/3  wet crowded
+2  carrot day 1/4  dry dry
+3  empty
+4  bean   day 1/3  damp crowded
+5  empty
+6  leek   day 1/5  damp
+> soak
+Soaked 4 beds.
+> days 3
+Bed 1 is ripe.
+Bed 4 is ripe.
+Now day 5.
+> beds
+Day 5.
+1  bean   day 4/3  damp ripe,crowded
+2  carrot day 3/4  dry dry
+3  empty
+4  bean   day 4/3  damp ripe,crowded
+5  empty
+6  leek   day 4/5  damp
+> harvest 1
+Picked 4 bean from bed 1.
+> harvest 4
+Picked 4 bean from bed 4.
+> note carrot
+carrot (root): Carrots in 1 of 6 beds.
+> sow squash 1
+Sown squash in bed 1.
+> days 2
+Bed 6 is ripe.
+Now day 7.
+> beds
+Day 7.
+1  squash day 0/6  dry dry
+2  carrot day 3/4  dry dry
+3  empty
+4  empty
+5  empty
+6  leek   day 6/5  dry dry,ripe
+> harvest 2
+The carrot in bed 2 needs 1 more days.
+> days 4
+Now day 11.
+> beds
+Day 11.
+1  squash day 0/6  dry dry
+2  carrot day 3/4  dry dry
+3  empty
+4  empty
+5  empty
+6  leek   day 6/5  dry dry,ripe
+> harvest 6
+Picked 3 leek from bed 6.
+> soak
+Soaked 2 beds.
+> days 6
+Bed 2 is ripe.
+Now day 17.
+> harvest 1
+The squash in bed 1 needs 5 more days.
+> log
+day 5  bed 1  bean   4
+day 5  bed 4  bean   4
+day 11 bed 6  leek   3
+3 pickings, 2 crops, best 4 bean.
+> totals
+bean: 8 from 2.
+leek: 3 from 1.
+3 before today; all at full yield true.
+> plan 4
+Bed 4: bean+1 carrot+0 leek+0
+> soak
+Soaked 2 beds.
+> days 2
+Bed 2 has spoiled.
+Now day 19.
+> beds
+Day 19.
+1  squash day 2/6  dry dry
+2  carrot day 7/4  damp dry,ripe,spoiled
+3  empty
+4  empty
+5  empty
+6  empty
+> harvest 2
+Picked 3 carrot from bed 2.
+> log
+day 5  bed 1  bean   4
+day 5  bed 4  bean   4
+day 11 bed 6  leek   3
+day 19 bed 2  carrot 3
+4 pickings, 3 crops, best 4 bean.
+> totals
+bean: 8 from 2.
+carrot: 3 from 1.
+leek: 3 from 1.
+3 before today; all at full yield false.
+> days 0
+Between 1 and 9 days.

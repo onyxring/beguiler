@@ -1,0 +1,609 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-seventh pass: a parcel mainDepot.
+// A value class for money in cents with a copy operator, `+`, `*` by a count, `==`/`!=` and a `<=>` that
+// `>`/`<` come from, a static factory and a formatter returning a `stringObj`; hub objects of a `Hub` class
+// held in a file-scope `array<Hub>`, joined by pooled `Lane` instances; a network service running Dijkstra's
+// shortest path over static `array<int>` distance tables and rebuilding the route into a member
+// `array<Hub>` with `prepend`; the Decorator pattern: a pricing rule base with `default` methods and
+// pooled decorators holding an inner rule, priced and described recursively through the chain; the
+// Builder pattern: a fluent builder object (`selfType` methods) whose `Build()` throws a pooled error
+// for a missing field, caught by a typed `catch`; a pooled parcel with an owned `Money` member, a static
+// number counter and a `<=>` that `sort()` orders the queue by; an observer list of `func<void, Parcel>`
+// listeners (a named function and a capturing lambda); closing a lane and re-routing; `<linq>`
+// `filter`/`count`/`any`/`first`/`orderBy`/`map`; enum switches; `is` tests and downcasts; `?.`/`??`;
+// named arguments; interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eService { Standard, Express, Overnight }
+
+string ServiceName(eService s) {
+    switch (s) {
+        case eService.Standard:  return "standard";
+        case eService.Express:   return "express";
+        case eService.Overnight: return "overnight";
+    }
+    return "?";
+}
+
+//-- Money: a value type ---------------------------------------------------------------------------------------
+
+value class Money {
+    int Cents;
+
+    Money operator = (Money o) {
+        Cents = o.Cents;
+        return self;
+    }
+
+    Money operator + (Money o) {
+        Money sum;
+        sum.Cents = Cents + o.Cents;
+        return sum;
+    }
+
+    Money operator * (int count) {
+        Money product;
+        product.Cents = Cents * count;
+        return product;
+    }
+
+    bool operator == (Money o) { return Cents == o.Cents; }
+    bool operator != (Money o) { return Cents != o.Cents; }
+    int operator <=> (Money o) { return Cents - o.Cents; }
+
+    static Money Of(int cents) {
+        Money m;
+        m.Cents = cents;
+        return m;
+    }
+
+    stringObj ToText() {
+        int rest = Cents % 100;
+        stringObj text = $"${Cents / 100}.";
+        if (rest < 10) text += "0";
+        text += $"{rest}";
+        return text;
+    }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class DepotError[2] : object {
+    string Field;
+    int Code;
+    static int Raised;
+
+    void create(string missing, int errorCode) {
+        Field = missing;
+        Code = errorCode;
+        DepotError.Raised++;
+    }
+}
+
+//-- The network -----------------------------------------------------------------------------------------------
+
+const int HubCount = 5;
+
+class Hub : object {
+    int Id;
+    string Code;
+}
+
+Hub hubA { "Hub A"; Id = 0; Code = "A"; }
+Hub hubB { "Hub B"; Id = 1; Code = "B"; }
+Hub hubC { "Hub C"; Id = 2; Code = "C"; }
+Hub hubD { "Hub D"; Id = 3; Code = "D"; }
+Hub hubE { "Hub E"; Id = 4; Code = "E"; }
+
+array<Hub> AllHubs = { hubA, hubB, hubC, hubD, hubE };
+
+class Lane[8] : object {
+    Hub From;
+    Hub To;
+    int Miles;
+    bool Open = true;
+
+    void create(Hub start, Hub finish, int distance) {
+        From = start;
+        To = finish;
+        Miles = distance;
+    }
+
+    // Lanes run both ways.
+    Hub OtherEnd(Hub h) {
+        if (h == From) return To;
+        if (h == To) return From;
+        return null;
+    }
+}
+
+class Network : object {
+    array<Lane> Lanes[8];
+    array<Hub> Route[5];
+    static array<int> Dist[5];
+    static array<int> Prev[5];
+    static array<bool> Visited[5];
+    static int Searches;
+    const int Unreachable = 9999;
+
+    Lane Connect(Hub a, Hub b, int miles) {
+        Lane lane = new Lane(a, b, miles);
+        if (lane != null) Lanes.append(lane);
+        return lane;
+    }
+
+    Lane Find(Hub a, Hub b) {
+        for (Lane lane in Lanes) {
+            if (lane.OtherEnd(a) == b) return lane;
+        }
+        return null;
+    }
+
+    int Nearest() {
+        int best = -1;
+        for (int i = 0; i < HubCount; i++) {
+            if (Visited[i]) continue;
+            if (Dist[i] == Unreachable) continue;
+            if (best == -1 || Dist[i] < Dist[best]) best = i;
+        }
+        return best;
+    }
+
+    // Dijkstra; fills Route from start to finish and returns the miles, or Unreachable.
+    int ShortestPath(Hub start, Hub finish) {
+        Network.Searches++;
+        for (int i = 0; i < HubCount; i++) {
+            Dist[i] = Unreachable;
+            Prev[i] = -1;
+            Visited[i] = false;
+        }
+        Dist[start.Id] = 0;
+        int current = Nearest();
+        while (current != -1) {
+            Visited[current] = true;
+            Hub here = AllHubs[current];
+            for (Lane lane in Lanes) {
+                if (!lane.Open) continue;
+                Hub next = lane.OtherEnd(here);
+                if (next == null) continue;
+                int through = Dist[current] + lane.Miles;
+                if (through < Dist[next.Id]) {
+                    Dist[next.Id] = through;
+                    Prev[next.Id] = current;
+                }
+            }
+            current = Nearest();
+        }
+        Route.clear();
+        if (Dist[finish.Id] == Unreachable) return Unreachable;
+        int step = finish.Id;
+        while (step != -1) {
+            Route.prepend(AllHubs[step]);
+            step = Prev[step];
+        }
+        return Dist[finish.Id];
+    }
+
+    stringObj RouteText() {
+        stringObj text = "";
+        for (int i = 0; i < Route.length; i++) {
+            if (i > 0) text += "-";
+            text += Route[i].Code;
+        }
+        return text;
+    }
+}
+
+Network net { }
+
+//-- Parcels ---------------------------------------------------------------------------------------------------
+
+class Parcel[6] : object {
+    int Number;
+    string Recipient;
+    int Grams;
+    eService Service = eService.Standard;
+    Hub Origin;
+    Hub Destination;
+    int Miles;
+    Money Charge;
+    bool Delivered;
+    static int NextNumber = 100;
+    static int Live;
+
+    void create() {
+        Number = Parcel.NextNumber;
+        Parcel.NextNumber++;
+        Parcel.Live++;
+    }
+
+    void destroy() { Parcel.Live--; }
+
+    // Faster services first, then heavier parcels.
+    int operator <=> (Parcel o) {
+        if (Service != o.Service) return (int)o.Service - (int)Service;
+        return o.Grams - Grams;
+    }
+
+    stringObj Summary() {
+        stringObj charge = Charge.ToText();
+        stringObj text = $"#{Number} {Recipient} {Grams}g {ServiceName(Service)} {Origin.Code}>{Destination.Code} {charge}";
+        return text;
+    }
+}
+
+//-- Pricing: the Decorator pattern ----------------------------------------------------------------------------
+
+class PriceRule : object {
+    default Money Price(Parcel p) { return Money.Of(0); }
+    default string Name() { return "free"; }
+
+    stringObj Describe() {
+        stringObj text = Name();
+        return text;
+    }
+}
+
+class PerMileRate[1] : PriceRule {
+    int CentsPerMile;
+    int Minimum;
+
+    void create(int rate, int floor) {
+        CentsPerMile = rate;
+        Minimum = floor;
+    }
+
+    Money Price(Parcel p) {
+        Money byDistance = Money.Of(CentsPerMile) * p.Miles;
+        Money floor = Money.Of(Minimum);
+        if (byDistance < floor) return floor;
+        return byDistance;
+    }
+
+    string Name() { return "per-mile"; }
+}
+
+class RuleDecorator : PriceRule {
+    PriceRule Inner;
+
+    Money Price(Parcel p) { return Inner.Price(p) + Extra(p); }
+
+    default Money Extra(Parcel p) { return Money.Of(0); }
+
+    stringObj Describe() {
+        stringObj inner = Inner.Describe();
+        stringObj text = $"{Name()}({inner})";
+        return text;
+    }
+}
+
+class WeightSurcharge[2] : RuleDecorator {
+    int Threshold;
+    int CentsPerKilo;
+
+    void create(PriceRule wrapped, int overGrams, int rate) {
+        Inner = wrapped;
+        Threshold = overGrams;
+        CentsPerKilo = rate;
+    }
+
+    Money Extra(Parcel p) {
+        if (p.Grams <= Threshold) return Money.Of(0);
+        int kilos = (p.Grams - Threshold + 999) / 1000;
+        return Money.Of(CentsPerKilo) * kilos;
+    }
+
+    string Name() { return "weight"; }
+}
+
+class ServiceSurcharge[2] : RuleDecorator {
+    void create(PriceRule wrapped) { Inner = wrapped; }
+
+    Money Extra(Parcel p) {
+        switch (p.Service) {
+            case eService.Express:   return Money.Of(250);
+            case eService.Overnight: return Money.Of(600);
+        }
+        return Money.Of(0);
+    }
+
+    string Name() { return "service"; }
+}
+
+//-- Building parcels: the Builder pattern ---------------------------------------------------------------------
+
+class ParcelBuilder : object {
+    string Recipient;
+    int Grams;
+    eService Service;
+    Hub Origin;
+    Hub Destination;
+
+    selfType Reset() {
+        Recipient = null;
+        Grams = 0;
+        Service = eService.Standard;
+        Origin = null;
+        Destination = null;
+        return self;
+    }
+
+    selfType For(string name) { Recipient = name; return self; }
+    selfType From(Hub h) { Origin = h; return self; }
+    selfType To(Hub h) { Destination = h; return self; }
+    selfType Weighing(int g) { Grams = g; return self; }
+    selfType Using(eService s) { Service = s; return self; }
+
+    Parcel Build() {
+        if (Recipient == null) throw new DepotError("recipient", 1);
+        if (Origin == null || Destination == null) throw new DepotError("route", 2);
+        if (Grams <= 0) throw new DepotError("weight", 3);
+        Parcel p = new Parcel();
+        if (p == null) throw new DepotError("capacity", 4);
+        p.Recipient = Recipient;
+        p.Grams = Grams;
+        p.Service = Service;
+        p.Origin = Origin;
+        p.Destination = Destination;
+        return p;
+    }
+}
+
+ParcelBuilder builder { }
+
+//-- The mainDepot: a service --------------------------------------------------------------------------------------
+
+class Depot : object {
+    array<Parcel> Queue[6];
+    array<func<void, Parcel>> Listeners[2];
+    PriceRule Pricing;
+    Money Takings;
+    int Dispatched;
+
+    void Subscribe(func<void, Parcel> listener) { Listeners.append(listener); }
+
+    bool Accept(Parcel p) {
+        int miles = net.ShortestPath(p.Origin, p.Destination);
+        if (miles == net.Unreachable) {
+            printLine($"#{p.Number} refused: no route {p.Origin.Code}>{p.Destination.Code}.");
+            return false;
+        }
+        p.Miles = miles;
+        p.Charge = Pricing.Price(p);
+        Queue.append(p);
+        stringObj route = net.RouteText();
+        stringObj charge = p.Charge.ToText();
+        printLine($"#{p.Number} accepted: {route} {miles}mi {charge}.");
+        return true;
+    }
+
+    Parcel Lookup(int number) {
+        for (Parcel p in Queue) {
+            if (p.Number == number) return p;
+        }
+        return null;
+    }
+
+    void DispatchAll() {
+        Queue.sort();
+        while (Queue.length > 0) {
+            Parcel p = Queue.dequeue();
+            p.Delivered = true;
+            Takings = Takings + p.Charge;
+            Dispatched++;
+            for (func<void, Parcel> listener in Listeners) listener(p);
+            delete p;
+        }
+    }
+}
+
+Depot mainDepot { }
+
+//-- Listeners and predicates ----------------------------------------------------------------------------------
+
+int HeavyCount;
+
+void LogDelivery(Parcel p) {
+    stringObj line = p.Summary();
+    printLine($"  out: {line}");
+}
+
+bool IsExpress(Parcel p) { return p.Service != eService.Standard; }
+
+Parcel BuildOrReport(string tag) {
+    try {
+        Parcel p = builder.Build();
+        return p;
+    } catch (DepotError e) {
+        printLine($"{tag}: missing {e.Field} (code {e.Code}).");
+        delete e;
+    }
+    return null;
+}
+
+void Submit(string tag) {
+    Parcel p = BuildOrReport(tag);
+    if (p == null) return;
+    if (!mainDepot.Accept(p)) delete p;
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        net.Connect(hubA, hubB, 40);
+        net.Connect(hubB, hubC, 30);
+        net.Connect(hubA, hubC, 90);
+        net.Connect(hubC, hubD, 20);
+        net.Connect(hubB, hubD, 70);
+        PriceRule base = new PerMileRate(rate: 3, floor: 150);
+        PriceRule weighted = new WeightSurcharge(base, 1000, 120);
+        mainDepot.Pricing = new ServiceSurcharge(weighted);
+        mainDepot.Takings = Money.Of(0);
+        mainDepot.Subscribe(LogDelivery);
+        int heavyLimit = 2000;
+        mainDepot.Subscribe((Parcel p) => { if (p.Grams > heavyLimit) HeavyCount++; });
+        stringObj rules = mainDepot.Pricing.Describe();
+        printLine($"Lanes {net.Lanes.length}, listeners {mainDepot.Listeners.length}, pricing {rules}.");
+    }
+}
+
+verb Route {
+    grammar = {.route};
+    void handler() {
+        for (Hub target in AllHubs) {
+            int miles = net.ShortestPath(hubA, target);
+            if (miles == net.Unreachable) {
+                printLine($"A to {target.Code}: unreachable");
+                continue;
+            }
+            stringObj path = net.RouteText();
+            printLine($"A to {target.Code}: {path} {miles}mi");
+        }
+    }
+}
+
+verb Book {
+    grammar = {.book};
+    void handler() {
+        builder.Reset().For("Ann").From(hubA).To(hubD).Weighing(800);
+        Submit("Ann");
+        builder.Reset().For("Bob").From(hubB).To(hubA).Weighing(2600).Using(eService.Express);
+        Submit("Bob");
+        builder.Reset().For("Cyd").From(hubA).To(hubC).Weighing(1500).Using(eService.Overnight);
+        Submit("Cyd");
+        builder.Reset().From(hubA).To(hubB).Weighing(300);
+        Submit("Nobody");
+        builder.Reset().For("Dee").From(hubD).Weighing(300);
+        Submit("Dee");
+        builder.Reset().For("Eve").From(hubC).To(hubE).Weighing(500);
+        Submit("Eve");
+        builder.Reset().For("Fay").From(hubD).To(hubB).Weighing(3100);
+        Submit("Fay");
+        printLine($"Queued {mainDepot.Queue.length}, live {Parcel.Live}, errors {DepotError.Raised}.");
+    }
+}
+
+verb Queue {
+    grammar = {.queue};
+    void handler() {
+        for (Parcel p in mainDepot.Queue) {
+            stringObj line = p.Summary();
+            printLine(line);
+        }
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int fast = mainDepot.Queue.filter(IsExpress).count();
+        bool anyHeavy = mainDepot.Queue.any((Parcel p) => p.Grams > 2000);
+        printLine($"Fast {fast} of {mainDepot.Queue.length}, any heavy {anyHeavy}.");
+
+        Money threshold = Money.Of(300);
+        string firstDear = mainDepot.Queue.filter((Parcel p) => p.Charge > threshold).first()?.Recipient ?? "none";
+        printLine($"First over $3.00: {firstDear}.");
+
+        stringObj line = "Cheapest first:";
+        for (Parcel p in mainDepot.Queue.orderBy((Parcel a, Parcel b) => a.Charge <=> b.Charge)) line += $" {p.Recipient}";
+        printLine(line);
+
+        array<var> grams = mainDepot.Queue.map((Parcel p) => p.Grams);
+        int total = 0;
+        for (var g in grams) total += g;
+        Parcel found = mainDepot.Lookup(102);
+        string who = found?.Recipient ?? "nobody";
+        string lost = mainDepot.Lookup(999)?.Recipient ?? "nobody";
+        printLine($"Total {total}g over {grams.length}; #102 is {who}; #999 is {lost}.");
+    }
+}
+
+verb CloseLane {
+    grammar = {.closelane};
+    void handler() {
+        Lane lane = net.Find(hubC, hubB);
+        if (lane == null) {
+            printLine("No such lane.");
+            return;
+        }
+        lane.Open = false;
+        printLine($"Closed {lane.From.Code}-{lane.To.Code} ({lane.Miles}mi).");
+        for (Parcel p in mainDepot.Queue) {
+            int miles = net.ShortestPath(p.Origin, p.Destination);
+            int before = p.Miles;
+            p.Miles = miles;
+            Money old = p.Charge;
+            p.Charge = mainDepot.Pricing.Price(p);
+            if (p.Charge != old) {
+                stringObj route = net.RouteText();
+                stringObj was = old.ToText();
+                stringObj now = p.Charge.ToText();
+                printLine($"#{p.Number} rerouted {route}: {before}mi to {miles}mi, {was} to {now}.");
+            }
+        }
+        printLine($"Searches {Network.Searches}.");
+    }
+}
+
+verb Dispatch {
+    grammar = {.dispatch};
+    void handler() {
+        mainDepot.DispatchAll();
+        stringObj takings = mainDepot.Takings.ToText();
+        printLine($"Dispatched {mainDepot.Dispatched}, heavy {HeavyCount}, live {Parcel.Live}, takings {takings}.");
+        PriceRule rule = mainDepot.Pricing;
+        int layers = 0;
+        while (rule.is(RuleDecorator)) {
+            layers++;
+            rule = ((RuleDecorator)rule).Inner;
+        }
+        printLine($"Pricing layers {layers} over {rule.Name()}.");
+    }
+}
+
+verb Reopen {
+    grammar = {.reopen};
+    void handler() {
+        int closed = net.Lanes.filter((Lane l) => !l.Open).count();
+        for (Lane lane in net.Lanes) lane.Open = true;
+        printLine($"Reopened {closed} lane(s).");
+        builder.Reset().For("Gus").From(hubD).To(hubA).Weighing(1000).Using(eService.Express);
+        Submit("Gus");
+        Parcel gus = mainDepot.Queue.first();
+        stringObj line = gus?.Summary() ?? "empty";
+        printLine($"{line}; delivered {gus.Delivered}, live {Parcel.Live}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

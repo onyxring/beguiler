@@ -1,0 +1,112 @@
+Room A
+Room A.
+You can see a bus machine, a film machine and a fair machine here.
+> machines
+bus machine bus 150c credit $0.00 stock 3 sold 0
+film machine film 95c credit $0.00 stock 3 sold 0
+fair machine fair 40c credit $0.00 stock 0 sold 0 empty
+stocked 2, sales 0, refunds 0, no credit; first empty fair machine; takings $0.00
+tickets 0 (printed 0, binned 0); log
+discount 0, over 50c 0
+> tickets
+No tickets.
+> push bus machine
+The bus machine wants 150 cents more.
+> pay 100 to bus machine
+The bus machine shows $1.00.
+> pay 75 to bus machine
+The bus machine shows $1.75.
+> richest
+The bus machine holds the most; 1 hold as much.
+> push bus machine
+clunk. A ticket marked BUS-1 drops out.
+> refund bus machine
+Out come 1 quarter (1 coins).
+> refund bus machine
+The bus machine holds no credit.
+> pay 30 to film machine
+The film machine shows $0.30.
+> discount 80
+discount 50, changes 1, sale.
+> machines
+bus machine bus 75c credit $0.00 stock 2 sold 1
+film machine film 48c credit $0.30 stock 3 sold 0
+fair machine fair 20c credit $0.00 stock 0 sold 0 empty
+stocked 2, sales 1, refunds 1; first empty fair machine; takings $0.00
+tickets 1 (printed 1, binned 0); log x pay100 pay75 sold:bus pay30
+discount 50, over 50c 0
+> push film machine
+The film machine wants 18 cents more.
+> pay 25 to film machine
+The film machine shows $0.55.
+> richest
+The film machine holds the most; 1 hold as much.
+> push film machine
+whirr. A ticket marked FILM-2 drops out.
+> push fair machine
+The fair machine is sold out.
+> tickets
+bus-1 film-2 (12 chars), a bus ticket.
+> punch ticket
+You punch FILM-2.
+The film machine keeps your credit.
+> punch ticket
+FILM-2 is punched already.
+> tickets
+bus-1 film-2* (13 chars), a bus ticket.
+> held
+BUS-1 FILM-2 - 2 held, 1 punched.
+> refund film machine
+The film machine holds no credit.
+> pay 10 to bus machine
+The bus machine shows $0.10.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+The bus machine keeps your credit.
+> machines
+bus machine bus 75c credit $0.00 stock 2 sold 1
+film machine film 48c credit $0.00 stock 2 sold 1
+fair machine fair 20c credit $0.00 stock 0 sold 0 empty
+stocked 2, sales 2, refunds 1, no credit; first empty fair machine; takings $0.17
+tickets 2 (printed 2, binned 0); log x pay100 pay75 sold:bus pay30 x pay25 sold:film x kept:film pay10 kept:bus
+discount 50, over 50c 0
+> rank
+bus machine=1 film machine=1 fair machine=0 tie.
+fair machine film machine cost least.
+> bin
+binned 1; tickets 1.
+> discount 0
+discount 0, changes 2, full price.
+> pay 68 to film machine
+The film machine shows $0.68.
+> refund film machine
+Out come 2 quarter 1 dime 1 nickel 3 penny (7 coins).
+> pay 200 to bus machine
+The bus machine shows $2.00.
+> machines
+bus machine bus 150c credit $2.00 stock 2 sold 1 ready
+film machine film 95c credit $0.00 stock 2 sold 1
+fair machine fair 40c credit $0.00 stock 0 sold 0 empty
+stocked 2, sales 2, refunds 2, one ready; first empty fair machine; takings $0.17
+tickets 1 (printed 2, binned 1); log x pay100 pay75 sold:bus pay30 x pay25 sold:film x kept:film pay10 kept:bus bin1 pay68 pay200
+discount 0, over 50c 1
+> push bus machine
+clunk. A ticket marked BUS-3 drops out.
+> push bus machine
+The bus machine wants 100 cents more.
+> push bus machine
+The bus machine wants 100 cents more.
+The bus machine keeps your credit.
+> held
+BUS-1 BUS-3 - 2 held, 0 punched.
+> machines
+bus machine bus 150c credit $0.00 stock 1 sold 2
+film machine film 95c credit $0.00 stock 2 sold 1
+fair machine fair 40c credit $0.00 stock 0 sold 0 empty
+stocked 2, sales 3, refunds 2, no credit; first empty fair machine; takings $0.67
+tickets 2 (printed 3, binned 1); log x pay100 pay75 sold:bus pay30 x pay25 sold:film x kept:film pay10 kept:bus bin1 pay68 pay200 sold:bus x x kept:bus
+discount 0, over 50c 0

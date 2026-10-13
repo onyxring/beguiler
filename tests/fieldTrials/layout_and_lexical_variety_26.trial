@@ -1,0 +1,171 @@
+Room A
+Room A. A shelf of jars and a scale are here. Room B is east.
+You can see a shelf (on which are a flour jar, a sugar jar, a salt jar and a butter dish), a scale and a mixing bowl (which is empty) here.
+> pantry
+Fullest: the flour jar (500); emptiest: the butter dish (40); 0 low.
+Before the salt: flour jar sugar jar. From the salt: salt jar butter dish. Last: butter dish. Scoops: 0.
+Total on the shelf: 790g.
+> recipes
+SHORTBREAD: 50 flour, 25 sugar, 20 butter.
+CRACKERS: 50 flour, 5 salt, 10 butter.
+Bake for 3 turns; 0 baked so far.
+> contents
+The bowl is empty.
+> weigh flour jar
+The flour jar: 500g.
+> weigh butter dish
+The butter dish: 40g (in pats).
+> weigh shelf
+That does not need weighing.
+> scoop flour
+You need to hold the bowl.
+> take bowl
+Taken.
+> put sugar jar in bowl
+(first taking the sugar jar off the shelf)
+Scoop things into the bowl instead.
+> scoop scale
+You can only scoop from a jar.
+> scoop flour
+You scoop 25g of flour into the bowl.
+> scoop 25 from flour jar
+You scoop 25g of flour into the bowl.
+> take 25 from sugar jar
+You scoop 25g of sugar into the bowl.
+> scoop butter
+You scoop 10g of butter into the bowl.
+> weigh bowl
+The bowl: 85g in 3 kinds, mostly flour.
+> contents
+50 flour, 25 sugar, 10 butter (raw).
+> scoop 10 from butter dish
+You scoop 10g of butter into the bowl.
+> pantry
+Fullest: the flour jar (450); emptiest: the butter dish (20); 1 low.
+Before the salt: flour jar sugar jar. From the salt: salt jar butter dish. Last: butter dish. Scoops: 5.
+Total on the shelf: 695g.
+> mix
+You mix a shortbread dough.
+> scoop flour
+The bowl is already mixed.
+> mix
+It is already mixed.
+> east
+Room B
+Room B. An oven is here. Room A is west.
+You can see an oven (which is empty) here.
+> weigh bowl
+The scale is in Room A.
+> heat
+Oven at 0. It is off.
+> put bowl in oven
+You put the mixing bowl into the oven.
+> switch oven on
+The oven starts to warm.
+> heat
+Oven at 60. It is on.
+> wait
+Time passes.
+> wait
+Time passes.
+The oven is hot.
+> wait
+Time passes.
+The dough starts to bake.
+> wait
+Time passes.
+> contents
+50 flour, 25 sugar, 20 butter (baking, mixed).
+> wait
+Time passes.
+The bowl smells baked.
+> recipes
+SHORTBREAD: 50 flour, 25 sugar, 20 butter (made 1).
+CRACKERS: 50 flour, 5 salt, 10 butter.
+Bake for 3 turns; 1 baked so far.
+> take bowl
+Taken.
+> switch oven off
+The oven goes cold.
+> heat
+Oven at 0. It is off.
+> empty bowl
+You wipe the bowl clean.
+> empty bowl
+The bowl is already empty.
+> west
+Room A
+Room A. A shelf of jars and a scale are here. Room B is east.
+You can see a shelf (on which are a flour jar, a salt jar and a butter dish) and a scale here.
+> scoop flour
+You scoop 25g of flour into the bowl.
+> scoop flour
+You scoop 25g of flour into the bowl.
+> scoop 5 from salt jar
+You scoop 5g of salt into the bowl.
+> scoop butter
+You scoop 10g of butter into the bowl.
+> mix
+You mix a crackers dough.
+> weigh bowl
+The bowl: 65g in 3 kinds, mostly flour.
+> recipes
+SHORTBREAD: 50 flour, 25 sugar, 20 butter (made 1).
+CRACKERS: 50 flour, 5 salt, 10 butter.
+Bake for 3 turns; 1 baked so far.
+> empty bowl
+You wipe the bowl clean.
+> scoop flour
+You scoop 25g of flour into the bowl.
+> scoop sugar
+You scoop 25g of sugar into the bowl.
+> scoop salt
+You scoop 25g of salt into the bowl.
+> scoop butter
+The bowl takes no more kinds.
+> scoop 99 from salt jar
+You scoop 20g of salt into the bowl.
+> scoop salt
+That jar is empty.
+> contents
+25 flour, 25 sugar, 45 salt (raw).
+> pantry
+Fullest: the flour jar (375); emptiest: the salt jar (0); 2 low; one or more empty.
+Before the salt: flour jar sugar jar. From the salt: salt jar butter dish. Last: butter dish. Scoops: 13.
+Total on the shelf: 535g.
+> stir bowl
+You mix it into a lumpy paste.
+> east
+Room B
+Room B. An oven is here. Room A is west.
+You can see an oven (which is empty) here.
+> put bowl in oven
+You put the mixing bowl into the oven.
+> switch oven on
+The oven starts to warm.
+> wait
+Time passes.
+> wait
+Time passes.
+The oven is hot.
+> wait
+Time passes.
+The dough starts to bake.
+> wait
+Time passes.
+> wait
+Time passes.
+The bowl smells baked.
+> wait
+Time passes.
+> contents
+25 flour, 25 sugar, 45 salt (baked, mixed).
+> wait
+Time passes.
+Smoke comes from the oven.
+> contents
+25 flour, 25 sugar, 45 salt (burnt, mixed).
+> recipes
+SHORTBREAD: 50 flour, 25 sugar, 20 butter (made 1).
+CRACKERS: 50 flour, 5 salt, 10 butter.
+Bake for 3 turns; 1 baked so far.

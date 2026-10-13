@@ -1,0 +1,411 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small crafting planner written in a functional style on Glulx. Materials are scenery
+// objects of a class with an enum grade and a stock count, held in a global array; recipes are
+// objects of a class with an output material, a yield and parallel member arrays of inputs and
+// amounts given as lists in their definitions. A recipe lookup by <linq> filter/first, read through
+// `?.` and `??`; pure recursive raw-cost helpers; a planner that works on a local array of stock
+// counts (made by map from the materials), passed down a mutual recursion with a `ref stringObj` log
+// and applied back to the objects only when the whole plan succeeds; a largest-batch search by
+// takeWhile over a returned local range array whose predicate runs the planner (chains inside a
+// chain's predicate); a value class shortfall with a copy operator, returned by value; recipes
+// ordered by label with compareTo; materials ranked by raw worth with a two-key comparator; a
+// hand-written index-based `all` over a func<bool, int>; folds over func<> parameters; named and
+// defaulted func<> parameters; per-grade listings over an array of the enum; verbs reading noun
+// and second and parsed_number.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXRUN = 9;
+
+//-- Materials and recipes ------------------------------------------------------------------------
+
+enum eGrade { raw, part, product }
+
+class Material : object {
+    attributeList attributes = {scenery};
+    string label;
+    eGrade grade;
+    int stock = 0;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Material ore    { "ore";    name = {.ore};    label = "ore";    grade = eGrade.raw;     stock = 5; parent = roomA; }
+Material wood   { "wood";   name = {.wood};   label = "wood";   grade = eGrade.raw;     stock = 3; parent = roomA; }
+Material coal   { "coal";   name = {.coal};   label = "coal";   grade = eGrade.raw;     stock = 2; parent = roomA; }
+Material ingot  { "ingot";  name = {.ingot};  label = "ingot";  grade = eGrade.part;    parent = roomA; }
+Material plank  { "plank";  name = {.plank};  label = "plank";  grade = eGrade.part;    parent = roomA; }
+Material nail   { "nail";   name = {.nail};   label = "nail";   grade = eGrade.part;    parent = roomA; }
+Material handle { "handle"; name = {.handle}; label = "handle"; grade = eGrade.part;    parent = roomA; }
+Material hammer { "hammer"; name = {.hammer}; label = "hammer"; grade = eGrade.product; parent = roomA; }
+Material crate  { "crate";  name = {.crate};  label = "crate";  grade = eGrade.product; parent = roomA; }
+
+class Recipe : object {
+    string label;
+    Material output;
+    int yield = 1;
+    array<Material> inputs[3];
+    array<int> amounts[3];
+}
+
+Recipe rIngot  { label = "ingot";  output = ingot;  inputs = {ore, coal};   amounts = {2, 1}; }
+Recipe rPlank  { label = "plank";  output = plank;  yield = 2; inputs = {wood}; amounts = {1}; }
+Recipe rNail   { label = "nail";   output = nail;   yield = 4; inputs = {ingot}; amounts = {1}; }
+Recipe rHandle { label = "handle"; output = handle; inputs = {plank};       amounts = {1}; }
+Recipe rHammer { label = "hammer"; output = hammer; inputs = {ingot, handle}; amounts = {1, 1}; }
+Recipe rCrate  { label = "crate";  output = crate;  inputs = {plank, nail}; amounts = {3, 4}; }
+
+array<Material> materials = {ore, wood, coal, ingot, plank, nail, handle, hammer, crate};
+array<Recipe> recipes = {rIngot, rPlank, rNail, rHandle, rHammer, rCrate};
+array<eGrade> grades = {eGrade.raw, eGrade.part, eGrade.product};
+array<int> startStock = {5, 3, 2, 0, 0, 0, 0, 0, 0};
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int add(int a, int b)     { return a + b; }
+int minOf(int a, int b)   { return a < b ? a : b; }
+int maxOf(int a, int b)   { return a > b ? a : b; }
+int ceilDiv(int a, int b) { return (a + b - 1) / b; }
+
+string gradeName(eGrade g) {
+    switch (g) {
+        case eGrade.raw:  return "raw";
+        case eGrade.part: return "part";
+        default:          return "product";
+    }
+}
+
+int stockOf(Material m) { return m.stock; }
+int one(Material m)     { return 1; }
+
+int foldMats(array<Material> xs, int seed, func<int, int, Material> f) {
+    int acc = seed;
+    for (Material m in xs) acc = f(acc, m);
+    return acc;
+}
+
+int sumBy(array<Material> xs, func<int, Material> key = stockOf) {
+    return foldMats(xs, 0, (int acc, Material m) => acc + key(m));
+}
+
+// True when p holds for every index below n.
+bool allIndex(int n, func<bool, int> p) {
+    for (int i = 0; i < n; i++) {
+        if (!p(i)) return false;
+    }
+    return true;
+}
+
+array<int> upTo(int from, int to) {
+    array<int> xs[MAXRUN];
+    for (int n = from; n <= to; n++) xs += n;
+    return xs;
+}
+
+int indexOfMat(Material m) { return materials.indexOf(m); }
+
+string plainLabel(Material m) { return m.label; }
+
+void showMats(array<Material> xs, func<string, Material> labelOf = plainLabel, string sep = " ") {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(sep);
+        print(labelOf(xs[i]));
+    }
+}
+
+void showCounts(array<Material> xs) {
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(", ");
+        print($"{xs[i].label} {xs[i].stock}");
+    }
+}
+
+//-- Recipe arithmetic ----------------------------------------------------------------------------
+
+Recipe recipeFor(Material m) {
+    return recipes.filter((Recipe r) => r.output == m).first();
+}
+
+// Units of `base` needed to make `qty` of m from nothing, rounding each recipe up to whole batches.
+int rawNeed(Material m, int qty, Material base) {
+    if (m == base) return qty;
+    Recipe r = recipeFor(m);
+    if (r == null) return 0;
+    int batches = ceilDiv(qty, r.yield);
+    int total = 0;
+    for (int k = 0; k < r.inputs.length; k++) total += rawNeed(r.inputs[k], r.amounts[k] * batches, base);
+    return total;
+}
+
+array<Material> rawsOf() {
+    return materials.filter((Material m) => m.grade == eGrade.raw);
+}
+
+int worthOf(Material m) {
+    array<Material> raws = rawsOf();
+    return foldMats(raws, 0, (int acc, Material b) => acc + rawNeed(m, 1, b));
+}
+
+// True when one batch of r can be run from the stock on hand, without crafting any input first.
+bool direct(Recipe r) {
+    return allIndex(r.inputs.length, (int k) => r.inputs[k].stock >= r.amounts[k]);
+}
+
+//-- Planner --------------------------------------------------------------------------------------
+
+void note(ref stringObj log, string what, int times) {
+    if (!log.isEmpty()) log += ", ";
+    log += $"{what} x{times}";
+}
+
+// Runs `batches` batches of r against the counts in sim, crafting missing inputs first.
+bool runRecipe(Recipe r, int batches, array<int> sim, ref stringObj log) {
+    for (int k = 0; k < r.inputs.length; k++) {
+        if (!takeFrom(r.inputs[k], r.amounts[k] * batches, sim, log)) return false;
+    }
+    int out = indexOfMat(r.output);
+    sim[out] += batches * r.yield;
+    note(log, r.label, batches);
+    return true;
+}
+
+// Takes qty of m out of sim, crafting the difference when there is too little.
+bool takeFrom(Material m, int qty, array<int> sim, ref stringObj log) {
+    int i = indexOfMat(m);
+    if (sim[i] < qty) {
+        Recipe r = recipeFor(m);
+        if (r == null) return false;
+        if (!runRecipe(r, ceilDiv(qty - sim[i], r.yield), sim, log)) return false;
+    }
+    sim[i] -= qty;
+    return true;
+}
+
+array<int> snapshot() {
+    return materials.map((var x) => ((Material)x).stock);
+}
+
+bool feasible(Recipe r, int batches) {
+    array<int> sim = snapshot();
+    stringObj scratch;
+    return runRecipe(r, batches, sim, scratch);
+}
+
+int largestRun(Recipe r) {
+    array<int> sizes = upTo(1, MAXRUN);
+    return sizes.takeWhile((int n) => feasible(r, n)).count();
+}
+
+value class Shortfall {
+    Material what;
+    int need = 0;
+
+    Shortfall operator = (Shortfall o) {
+        what = o.what;
+        need = o.need;
+        return self;
+    }
+
+    bool any() { return what != null; }
+}
+
+// The first raw material that runs short when `batches` of r are made from nothing.
+Shortfall shortfallOf(Recipe r, int batches) {
+    Shortfall s;
+    array<Material> raws = rawsOf();
+    for (Material b in raws) {
+        int need = rawNeed(r.output, batches * r.yield, b);
+        if (need > b.stock) {
+            s.what = b;
+            s.need = need;
+            return s;
+        }
+    }
+    return s;
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+Recipe recipeOf(object o) {
+    if (!o.is(Material)) {
+        print("That is not a material.^");
+        return null;
+    }
+    Material m = (Material)o;
+    Recipe r = recipeFor(m);
+    if (r == null) print($"Nothing makes {m.label}.^");
+    return r;
+}
+
+void makeBatches(Recipe r, int batches) {
+    array<int> sim = snapshot();
+    stringObj log;
+    if (!runRecipe(r, batches, sim, log)) {
+        Shortfall s = shortfallOf(r, batches);
+        if (s.any()) print($"Not enough {s.what.label}: {s.need} needed from nothing, {s.what.stock} on hand.^");
+        else print("Not enough on hand.^");
+        return;
+    }
+    for (int i = 0; i < materials.length; i++) materials[i].stock = sim[i];
+    print($"Made: {log}.^");
+    print($"{r.output.label} now {r.output.stock}^");
+}
+
+verb StockVerb {
+    grammar = {{.stock}};
+    void handler() {
+        for (eGrade g in grades) {
+            array<Material> mine = materials.filter((Material m) => m.grade == g);
+            print($"{gradeName(g)} ({sumBy(mine)}): ");
+            showCounts(mine);
+            print("^");
+        }
+        array<Material> held = materials.filter((Material m) => m.stock > 0);
+        print($"{sumBy(held, one)} of {materials.count()} kinds on hand^");
+    }
+}
+
+verb RecipesVerb {
+    grammar = {{.recipes}};
+    void handler() {
+        array<Recipe> sorted = recipes.orderBy((Recipe a, Recipe b) => a.label.compareTo(b.label));
+        for (Recipe r in sorted) {
+            print($"{r.label} x{r.yield} <- ");
+            for (int k = 0; k < r.inputs.length; k++) {
+                if (k > 0) print(", ");
+                print($"{r.amounts[k]} {r.inputs[k].label}");
+            }
+            print(direct(r) ? " (ready)^" : "^");
+        }
+    }
+}
+
+verb CostVerb {
+    grammar = {{.cost, noun}};
+    void handler() {
+        if (!noun.is(Material)) {
+            print("That is not a material.^");
+            return;
+        }
+        Material m = (Material)noun;
+        int per = recipeFor(m)?.yield;
+        print($"{m.label}, made by {recipeFor(m)?.label ?? "nothing"} in batches of {maxOf(per, 1)}: ");
+        array<Material> raws = rawsOf();
+        array<Material> used = raws.filter((Material b) => rawNeed(m, 1, b) > 0);
+        showMats(used, sep: " + ");
+        print($" = {worthOf(m)} raw^");
+    }
+}
+
+verb WorthVerb {
+    grammar = {{.worth}};
+    void handler() {
+        array<Material> made = materials.filter((Material m) => m.grade != eGrade.raw);
+        array<Material> ranked = made.orderBy((Material a, Material b) => {
+            if (worthOf(a) != worthOf(b)) return worthOf(b) - worthOf(a);
+            return a.label.compareTo(b.label);
+        });
+        for (Material m in ranked) print($"{m.label} {worthOf(m)}^");
+        int dearest = foldMats(made, 0, (int acc, Material m) => maxOf(acc, worthOf(m)));
+        print($"dearest {dearest}, total {foldMats(made, 0, (int acc, Material m) => acc + worthOf(m))}^");
+    }
+}
+
+verb ReadyVerb {
+    grammar = {{.ready}};
+    void handler() {
+        array<Recipe> now = recipes.filter(direct);
+        array<Recipe> planned = recipes.filter((Recipe r) => !direct(r) && feasible(r, 1));
+        print("now: ");
+        array<Material> nowOut = now.map((var r) => ((Recipe)r).output);
+        showMats(nowOut);
+        print("^with crafting: ");
+        array<Material> laterOut = planned.map((var r) => ((Recipe)r).output);
+        showMats(laterOut, sep: ", ");
+        print($"^stuck: {recipes.filter((Recipe r) => !feasible(r, 1)).count()}^");
+    }
+}
+
+verb MakeVerb {
+    grammar = {{.make, noun}};
+    void handler() {
+        Recipe r = recipeOf(noun);
+        if (r != null) makeBatches(r, 1);
+    }
+}
+
+verb BatchVerb {
+    grammar = {{.batch, NUMBER, noun}};
+    void handler() {
+        Recipe r = recipeOf(second);
+        if (r == null) return;
+        if (parsed_number < 1 || parsed_number > MAXRUN) {
+            print($"Between 1 and {MAXRUN} batches.^");
+            return;
+        }
+        makeBatches(r, parsed_number);
+    }
+}
+
+verb MostVerb {
+    grammar = {{.most, noun}};
+    void handler() {
+        Recipe r = recipeOf(noun);
+        if (r == null) return;
+        int n = largestRun(r);
+        int units = n * r.yield;
+        print($"at most {n} batch{n == 1 ? "" : "es"} of {r.label} ({units} unit{units == 1 ? "" : "s"})^");
+    }
+}
+
+verb GatherVerb {
+    grammar = {{.gather, noun}};
+    void handler() {
+        if (!noun.is(Material)) {
+            print("That is not a material.^");
+            return;
+        }
+        Material m = (Material)noun;
+        if (m.grade != eGrade.raw) {
+            print($"The {m.label} has to be made.^");
+            return;
+        }
+        m.stock++;
+        print($"You gather some {m.label}. {m.label} {m.stock}^");
+    }
+}
+
+verb ResetVerb {
+    grammar = {{.reset}};
+    void handler() {
+        for (int i = 0; i < materials.length; i++) materials[i].stock = startStock[i];
+        print($"Stock reset: {foldMats(materials, 0, (int acc, Material m) => acc + m.stock)} units.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

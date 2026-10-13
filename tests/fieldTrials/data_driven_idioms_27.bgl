@@ -1,0 +1,489 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a parcel depot kept in tables. An enum of zones indexing parallel name, word and
+// delivery-day tables; a rate table as an array of arrays read [zone][band] beside a band-name
+// table, the band picked by a switch with ranges; a bnum of parcel marks set with |= from a mark word
+// table and listed by bit position; parcels as an array of a value class appended as Parcel{ … } and
+// changed through [i].member; a stage enum named by a switch and cast from an int; a waiting queue as
+// array<int> fed with enqueue, drained with dequeue, refilled by copy-assignment from a local array,
+// trimmed with -= and sorted by a named comparator reading the parcel table; vans as objects of
+// a reference class with an instanceName, a route, a capacity, a member array of held parcel numbers
+// and methods, kept in an array<Van> and walked with for-in; a surcharge table as an
+// array<func<int, Parcel>> of named routines beside a name table; general parsing routines over the
+// word tables; <linq> filter/map/distinct/orderBy/count/any/all/first/skip with lambdas capturing
+// parameters and locals; stringObj rows padded to columns, built with interpolated +=, cut with left()
+// and printed through trimRight().
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int ZONES = 4;
+const int BANDS = 3;
+const int MARK_KINDS = 3;
+const int MAX_PARCELS = 10;
+const int HOLD_MAX = 4;
+const int WEIGHT_MAX = 10;
+const int NONE = -1;
+
+enum eZone { north = 0, south, east, west }
+enum eStage { waiting = 0, loaded, delivered, cancelled }
+const int STAGES = 4;
+bnum eMark { fragile, urgent, signed }
+
+//-- Zone tables ---------------------------------------------------------------
+
+//                                 north     south     east     west
+array<string> zoneNames         = { "north", "south", "east", "west" };
+array<dictionaryWord> zoneWords = { .north,  .south,  .east,  .west };
+array<int> zoneDays             = { 1,       2,       1,      3 };
+
+// Price in pence by zone and weight band.
+array<string> bandNames = { "small", "medium", "large" };
+array<array<int>> rates = {
+    { 10, 15, 25 },   // north
+    { 12, 18, 30 },   // south
+    { 10, 14, 22 },   // east
+    { 20, 28, 40 }    // west
+};
+
+//-- Mark tables ---------------------------------------------------------------
+
+array<string> markNames = { "fragile", "urgent", "signed" };
+array<dictionaryWord> markWords = { .fragile, .urgent, .signed };
+
+//-- Parcel table --------------------------------------------------------------
+
+value class Parcel {
+    inline int no;
+    inline eZone zone;
+    inline int weight;
+    inline eMark marks;
+    inline eStage stage;
+    Parcel operator = (Parcel o) {
+        no = o.no; zone = o.zone; weight = o.weight; marks = o.marks; stage = o.stage;
+        return self;
+    }
+}
+
+array<Parcel> parcels[MAX_PARCELS];
+array<int> queue[MAX_PARCELS];
+
+int today = 1;
+int takings = 0;
+
+//-- Surcharges ----------------------------------------------------------------
+
+int fragileFee(Parcel p) {
+    if ((p.marks & fragile) == 0) return 0;
+    return 5;
+}
+
+int urgentFee(Parcel p) {
+    if ((p.marks & urgent) == 0) return 0;
+    return zoneDays[(int)p.zone] * 4;
+}
+
+int signedFee(Parcel p) {
+    return (p.marks & signed) != 0 ? 3 : 0;
+}
+
+array<func<int, Parcel>> surcharges = { fragileFee, urgentFee, signedFee };
+array<string> surchargeNames = { "fragile", "urgent", "signed" };
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object counter {
+    "counter";
+    name = {.counter};
+    parent = roomA;
+    attributes = {static};
+}
+
+class Van : object {
+    eZone route;
+    int capacity;
+    int load;
+    array<int> held[HOLD_MAX];
+
+    bool fits(int w) {
+        return load + w <= capacity && held.length < HOLD_MAX;
+    }
+
+    void take(int no, int w) {
+        held.append(no);
+        load += w;
+    }
+
+    void unload() {
+        held.clear();
+        load = 0;
+    }
+}
+
+Van vanA { "van A"; route = north; capacity = 12; }
+Van vanB { "van B"; route = south; capacity = 8; }
+Van vanC { "van C"; route = west; capacity = 15; }
+
+array<Van> vans = { vanA, vanB, vanC };
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseZone() {
+    int at = zoneWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseMark() {
+    int at = markWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+bool validParcel(int k) {
+    return k >= 0 && k < parcels.length;
+}
+
+int bandOf(int w) {
+    switch (w) {
+        case 1 to 2:  return 0;
+        case 3 to 5:  return 1;
+        case 6 to WEIGHT_MAX: return 2;
+        default:      return NONE;
+    }
+}
+
+string stageWord(eStage s) {
+    switch (s) {
+        case waiting:   return "waiting";
+        case loaded:    return "loaded";
+        case cancelled: return "cancelled";
+        default:        return "delivered";
+    }
+}
+
+int priceOf(int k) {
+    Parcel p = parcels[k];
+    int sum = rates[(int)p.zone][bandOf(p.weight)];
+    for (func<int, Parcel> fee in surcharges) sum += fee(p);
+    return sum;
+}
+
+void marksInto(ref stringObj s, eMark m) {
+    if (m == 0) return;
+    bool first = true;
+    for (int b in 0 to MARK_KINDS - 1) {
+        if ((m & (eMark)(1 << b)) == 0) continue;
+        s += first ? " " : ",";
+        s += markNames[b];
+        first = false;
+    }
+}
+
+Van vanFor(eZone z) {
+    for (Van v in vans) {
+        if (v.route == z) return v;
+    }
+    return null;
+}
+
+void parcelLine(int k) {
+    Parcel p = parcels[k];
+    stringObj line = $"#{p.no}";
+    padTo(line, 4);
+    line += zoneNames[(int)p.zone];
+    padTo(line, 10);
+    line += $"{p.weight}kg";
+    padTo(line, 15);
+    line += stageWord(p.stage);
+    marksInto(line, p.marks);
+    line.print();
+    print("^");
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb ParcelTest {
+    grammar = {.parcel, parseZone, NUMBER};
+    void handler() {
+        eZone z = (eZone)(int)noun;
+        int w = (int)second;
+        if (bandOf(w) == NONE) { print($"{w}kg is outside 1 to {WEIGHT_MAX}.^"); return; }
+        int no = parcels.length + 1;
+        if (!parcels.append(Parcel{ no, z, w, 0, waiting })) { print("The book is full.^"); return; }
+        queue.enqueue(no);
+        print($"Parcel {no}: {zoneNames[(int)z]}, {w}kg, {bandNames[bandOf(w)]}.^");
+    }
+}
+
+verb MarkTest {
+    grammar = {.mark, NUMBER, parseMark};
+    void handler() {
+        int k = (int)noun - 1;
+        int b = (int)second;
+        if (!validParcel(k)) { print($"No parcel {k + 1}.^"); return; }
+        eMark m = (eMark)(1 << b);
+        if ((parcels[k].marks & m) != 0) { print($"Parcel {k + 1} is already {markNames[b]}.^"); return; }
+        parcels[k].marks |= m;
+        print($"Parcel {k + 1} marked {markNames[b]}.^");
+    }
+}
+
+verb ListTest {
+    grammar = {.list};
+    void handler() {
+        if (parcels.length == 0) { print("No parcels.^"); return; }
+        for (int k in 0 to parcels.length - 1) parcelLine(k);
+    }
+}
+
+verb QuoteTest {
+    grammar = {.quote, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (!validParcel(k)) { print($"No parcel {k + 1}.^"); return; }
+        Parcel p = parcels[k];
+        int band = bandOf(p.weight);
+        stringObj line = $"Parcel {p.no}: {bandNames[band]} {zoneNames[(int)p.zone]} {rates[(int)p.zone][band]}";
+        for (int f in 0 to surcharges.length - 1) {
+            int fee = surcharges[f](p);
+            if (fee > 0) line += $" + {surchargeNames[f]} {fee}";
+        }
+        line += $" = {priceOf(k)}p.";
+        line.print();
+        print("^");
+    }
+}
+
+verb QueueTest {
+    grammar = {.queue};
+    void handler() {
+        if (queue.length == 0) { print("The queue is empty.^"); return; }
+        stringObj line = "Queue:";
+        for (int no in queue) line += $" {no}";
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb LoadTest {
+    grammar = {.load};
+    void handler() {
+        array<int> left[MAX_PARCELS];
+        int moved = 0;
+        while (queue.length > 0) {
+            int no = queue.dequeue();
+            int k = no - 1;
+            Van v = vanFor(parcels[k].zone);
+            if (v == null) {
+                print($"No van runs {zoneNames[(int)parcels[k].zone]} for parcel {no}.^");
+                left.append(no);
+                continue;
+            }
+            if (!v.fits(parcels[k].weight)) {
+                print($"Parcel {no} does not fit {v}.^");
+                left.append(no);
+                continue;
+            }
+            v.take(no, parcels[k].weight);
+            parcels[k].stage = loaded;
+            moved++;
+        }
+        queue = left;
+        print($"Loaded {moved}; {queue.length} left waiting.^");
+    }
+}
+
+verb VansTest {
+    grammar = {.vans};
+    void handler() {
+        for (Van v in vans) {
+            stringObj line = $"{v}";
+            padTo(line, 7);
+            line += zoneNames[(int)v.route];
+            padTo(line, 13);
+            line += $"{v.load}/{v.capacity}kg";
+            if (v.held.length > 0) {
+                line += " holds";
+                for (int no in v.held) line += $" {no}";
+            }
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb RoundTest {
+    grammar = {.round};
+    void handler() {
+        int done = 0;
+        for (Van v in vans) {
+            if (v.held.length == 0) continue;
+            for (int no in v.held) {
+                parcels[no - 1].stage = delivered;
+                takings += priceOf(no - 1);
+                done++;
+            }
+            print($"{v} delivered {v.held.length} to the {zoneNames[(int)v.route]}.^");
+            v.unload();
+        }
+        today++;
+        print($"Delivered {done}. Day {today}, takings {takings}p.^");
+    }
+}
+
+verb RerouteTest {
+    grammar = {.reroute, NUMBER, parseZone};
+    void handler() {
+        int k = (int)noun - 1;
+        eZone z = (eZone)(int)second;
+        if (!validParcel(k)) { print($"No parcel {k + 1}.^"); return; }
+        if (parcels[k].stage != waiting) { print($"Parcel {k + 1} is {stageWord(parcels[k].stage)}.^"); return; }
+        parcels[k].zone = z;
+        print($"Parcel {k + 1} now goes {zoneNames[(int)z]}, {priceOf(k)}p.^");
+    }
+}
+
+verb SummaryTest {
+    grammar = {.summary};
+    void handler() {
+        if (parcels.length == 0) { print("No parcels.^"); return; }
+        int out = parcels.filter((Parcel p) => p.stage == delivered).count();
+        int zones = parcels.map((Parcel p) => p.zone).distinct().count();
+        print($"{parcels.length} parcels, {out} delivered, {zones} zones.^");
+        array<Parcel> heavy[MAX_PARCELS] = parcels.orderBy((Parcel a, Parcel b) => b.weight - a.weight);
+        Parcel top = heavy.first();
+        print($"Heaviest: parcel {top.no}, {top.weight}kg.^");
+        stringObj rest = "Then:";
+        for (Parcel p in heavy.skip(1)) rest += $" {p.no}";
+        rest.print();
+        print("^");
+        bool urgentWaiting = parcels.any((Parcel p) => p.stage != delivered && (p.marks & urgent) != 0);
+        bool allOut = parcels.all((Parcel p) => p.stage == delivered);
+        print(urgentWaiting ? "Urgent parcels outstanding.^" : "No urgent parcels outstanding.^");
+        print(allOut ? "Everything is delivered.^" : "Some parcels remain.^");
+    }
+}
+
+verb ZoneTest {
+    grammar = {.zone, parseZone};
+    void handler() {
+        eZone z = (eZone)(int)noun;
+        int days = zoneDays[(int)z];
+        int count = parcels.filter((Parcel p) => p.zone == z).count();
+        int weight = 0;
+        for (Parcel p in parcels.filter((Parcel x) => x.zone == z)) weight += p.weight;
+        Van v = vanFor(z);
+        stringObj line = $"{zoneNames[(int)z]}: {days} day";
+        if (days != 1) line += "s";
+        line += $", {count} parcels, {weight}kg, ";
+        if (v == null) line += "no van";
+        else line += $"{v}";
+        line += ".";
+        line.print();
+        print("^");
+        stringObj row = "Rates:";
+        for (int b in 0 to BANDS - 1) row += $" {bandNames[b]} {rates[(int)z][b]}";
+        row.print();
+        print("^");
+    }
+}
+
+verb CancelTest {
+    grammar = {.cancel, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (!validParcel(k)) { print($"No parcel {k + 1}.^"); return; }
+        if (parcels[k].stage != waiting) { print($"Parcel {k + 1} is {stageWord(parcels[k].stage)}.^"); return; }
+        queue -= k + 1;
+        parcels[k].stage = cancelled;
+        print($"Parcel {k + 1} cancelled; {queue.length} in the queue.^");
+    }
+}
+
+// Urgent parcels first, then the further zones, then by number.
+int rushOrder(int a, int b) {
+    Parcel pa = parcels[a - 1];
+    Parcel pb = parcels[b - 1];
+    bool ua = (pa.marks & urgent) != 0;
+    bool ub = (pb.marks & urgent) != 0;
+    if (ua != ub) return ua ? -1 : 1;
+    int da = zoneDays[(int)pa.zone];
+    int db = zoneDays[(int)pb.zone];
+    if (da != db) return da > db ? -1 : 1;
+    return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+verb RushTest {
+    grammar = {.rush};
+    void handler() {
+        if (queue.length < 2) { print("Nothing to reorder.^"); return; }
+        queue.sort(rushOrder);
+        int head = queue.peek();
+        print($"Parcel {head} goes first, parcel {queue.peekEnd()} last.^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        stringObj head = "zone";
+        padTo(head, 7);
+        for (int s in 0 to STAGES - 1) {
+            string w = stageWord((eStage)s);
+            head += w.left(4);
+            head += " ";
+        }
+        head.trimRight().print();
+        print("^");
+        for (int z in 0 to ZONES - 1) {
+            stringObj row = zoneNames[z];
+            padTo(row, 7);
+            for (int s in 0 to STAGES - 1) {
+                int n = parcels.filter((Parcel p) => (int)p.zone == z && (int)p.stage == s).count();
+                row += $"{n}";
+                padTo(row, 7 + (s + 1) * 5);
+            }
+            row.trimRight().print();
+            print("^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

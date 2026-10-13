@@ -1,0 +1,588 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-sixth PunyInform program, written plainly: two rooms (Room A with a washer, a
+// dryer, a basket and a soap bottle, Room B to the north with a table and an attendant) and
+// OPTIONAL_SCORED; a `Garment` class with an enum color, dirty and wet flags, a damp count and a
+// weight, its description a routine with a `switch` over the color; a washer that is an openable,
+// switchable container whose `before` takes `Receive` (garments only, a weight limit), `SwitchOn` and
+// `Open`, run on a `StartTimer`/`time_out` cycle that washes its children and dyes whites pink when a
+// red garment is in the load, found from a `bnum` of colors built with `|` and tested with `&`; a
+// dryer whose daemon dries its children through a value class `Lint` (`operator ()`, `=`, `+=`, a
+// method); an `add soap to NOUN` verb counting doses down; a `fold NOUN` verb setting a folded flag; a
+// `sort` verb listing the basket by color with a `for` loop over the enum; an attendant with `life`
+// (Ask through NextWord, Give of folded garments) and `orders`; `bgl.world.instances` copied into an
+// `array<object>` and sorted with a comparator lambda, and counted with a lambda predicate; an
+// `array<int>` of load weights with `append`, `sort` and `indexOf`; a `stringObj` log appended with
+// interpolated strings by a helper with a default argument; `for`, `for … in`, `while` and `do`/`while`
+// loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+    int weight;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eHue { white, red, blue, pink }
+
+bnum eShade { hasWhite, hasRed, hasBlue, hasPink }
+
+array<string> colorNames = {"white", "red", "blue", "pink"};
+
+const int WASHER_LIMIT = 6;
+
+value class Lint {
+    int _count = 0;
+
+    int  operator ()         { return _count; }
+    void operator = (int v)  { _count = v < 0 ? 0 : v; }
+    void operator += (int v) {
+        _count = _count + v;
+        if (_count > 9) _count = 9;
+    }
+
+    bool full() {
+        return _count >= 9;
+    }
+}
+
+stringObj logText;
+int  logCount   = 0;
+int  washes     = 0;
+int  folds      = 0;
+int  delivered  = 0;
+bool firstWash  = false;
+bool firstFold  = false;
+
+array<int> loadWeights[8];
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string colorName(eHue c) {
+    return colorNames[(int)c - 1];
+}
+
+eShade shadeOf(eHue c) {
+    switch (c) {
+        case eHue.white: return eShade.hasWhite;
+        case eHue.red:   return eShade.hasRed;
+        case eHue.blue:  return eShade.hasBlue;
+        case eHue.pink:  return eShade.hasPink;
+    }
+    return 0;
+}
+
+int weightOf(object o) {
+    int w = 0;
+    if (o.provides(weight)) w = o.weight;
+    for (object c in o.children) w += weightOf(c);
+    return w;
+}
+
+// --- garments ---------------------------------------------------------------------------------------
+
+class Garment : object {
+    eHue color = eHue.white;
+    bool dirty = true;
+    bool wet = false;
+    bool folded = false;
+    int damp = 0;
+
+    void description() {
+        switch (color) {
+            case eHue.white: print("A white garment");
+            case eHue.red:   print("A red garment");
+            case eHue.blue:  print("A blue garment");
+            case eHue.pink:  print("A garment dyed pink");
+        }
+        if (dirty) print(", dirty");
+        else print(", clean");
+        if (wet) print(" and wet");
+        if (folded) print(", neatly folded");
+        printLine(".");
+    }
+
+    bool ready() {
+        return !dirty && !wet;
+    }
+}
+
+// Every color among an object's garments.
+eShade shadesIn(object box) {
+    eShade s = 0;
+    for (object o in box.children) {
+        if (o.is(Garment)) s = s | shadeOf(((Garment)o).color);
+    }
+    return s;
+}
+
+int garmentWeight(object box) {
+    int w = 0;
+    for (object o in box.children) {
+        if (o.is(Garment)) w += o.weight;
+    }
+    return w;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A washer and a dryer stand against the wall. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A long table fills the room. Room A is south.";
+    s_to = roomA;
+}
+
+object table {
+    "table";
+    parent = roomB;
+    name = {.table};
+    description = "A long table.";
+    attributes = {supporter, static};
+}
+
+object basket {
+    "basket";
+    parent = roomA;
+    name = {.basket};
+    description = "A wicker basket.";
+    weight = 1;
+    attributes = {container, open};
+}
+
+object soapBottle {
+    "soap bottle";
+    parent = roomA;
+    name = {.soap, .bottle};
+    int doses = 2;
+    weight = 1;
+
+    void description() {
+        if (doses == 0) printLine("An empty soap bottle.");
+        else printLine($"A soap bottle with {doses} doses left.");
+    }
+}
+
+Garment whiteShirt {
+    "white shirt";
+    parent = basket;
+    name = {.white, .shirt};
+    color = eHue.white;
+    weight = 2;
+}
+
+Garment redSock {
+    "red sock";
+    parent = basket;
+    name = {.red, .sock};
+    color = eHue.red;
+    weight = 1;
+}
+
+Garment blueTowel {
+    "blue towel";
+    parent = basket;
+    name = {.blue, .towel};
+    color = eHue.blue;
+    weight = 3;
+}
+
+Garment whiteSheet {
+    "white sheet";
+    parent = basket;
+    name = {.white, .sheet};
+    color = eHue.white;
+    weight = 4;
+}
+
+// --- the washer -------------------------------------------------------------------------------------
+
+object washer {
+    "washer";
+    parent = roomA;
+    name = {.washer, .machine};
+    int soap = 0;
+    int time_left;
+    attributes = {container, openable, switchable, static};
+
+    void description() {
+        print($"A washer with {soap} soap in it");
+        if (has(on)) printLine(". It is running.");
+        else printLine(".");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Garment)) rtrue("Only clothes go in the washer.^");
+                if (garmentWeight(self) + noun.weight > WASHER_LIMIT) rtrue("The washer is too full for that.^");
+            case SwitchOn:
+                if (has(open)) rtrue("Close the washer first.^");
+                if (children.length == 0) rtrue("The washer is empty.^");
+                if (soap == 0) rtrue("There is no soap in the washer.^");
+            case Open:
+                if (has(on)) rtrue("The washer is running. Wait for it to finish.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                int w = garmentWeight(self);
+                loadWeights.append(w);
+                jot("wash", w);
+                StartTimer(self, 3);
+                rtrue("The washer starts to churn.^");
+        }
+        rfalse;
+    }
+
+    void time_out() {
+        eShade s = shadesIn(self);
+        bool bleed = (s & eShade.hasRed) != 0;
+        int dyed = 0;
+        for (object o in children) {
+            Garment g = (Garment)o;
+            g.dirty = false;
+            g.wet = true;
+            g.damp = 3;
+            g.folded = false;
+            if (bleed && g.color == eHue.white) {
+                g.color = eHue.pink;
+                dyed++;
+            }
+        }
+        soap--;
+        washes++;
+        ungive(on);
+        if (!firstWash) {
+            firstWash = true;
+            score++;
+        }
+        if (dyed > 0) jot("dyed", dyed);
+        if (location != roomA) return;
+        if (dyed > 0) printLine($"The washer stops. Something red has run: {dyed} white things are now pink.");
+        else printLine("The washer stops.");
+    }
+}
+
+// --- the dryer --------------------------------------------------------------------------------------
+
+object dryer {
+    "dryer";
+    parent = roomA;
+    name = {.dryer};
+    Lint lint;
+    int runs = 0;
+    attributes = {container, openable, switchable, static};
+
+    void description() {
+        print($"A dryer. Its lint trap holds {(int)lint}");
+        if (lint.full()) print(", full");
+        if (has(on)) printLine(". It is running.");
+        else printLine(".");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Garment)) rtrue("Only clothes go in the dryer.^");
+                if (!((Garment)noun).dirty && !((Garment)noun).wet) rtrue("That is already dry.^");
+            case SwitchOn:
+                if (has(open)) rtrue("Close the dryer first.^");
+                if (lint.full()) rtrue("The lint trap is full. Clean it first.^");
+            case Open:
+                if (has(on)) rtrue("The dryer is running.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                runs++;
+                StartDaemon(self);
+                jot("dry", runs);
+                rtrue("The dryer starts to tumble.^");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        int still = 0;
+        for (object o in children) {
+            Garment g = (Garment)o;
+            if (!g.wet) continue;
+            g.damp--;
+            lint += 1;
+            if (g.damp <= 0) {
+                g.damp = 0;
+                g.wet = false;
+            } else {
+                still++;
+            }
+        }
+        if (still > 0) return;
+        StopDaemon(self);
+        ungive(on);
+        if (location == roomA) printLine("The dryer stops.");
+    }
+}
+
+// --- the attendant ----------------------------------------------------------------------------------
+
+object attendant {
+    "attendant";
+    parent = roomB;
+    name = {.attendant};
+    description = "An attendant behind the table.";
+    string article = "an";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .washer) rtrue("The attendant says: soap first, then close it and switch it on.^");
+                if (w == .red || w == .sock) rtrue("The attendant says: wash red things on their own.^");
+                if (w == .dryer || w == .lint) rtrue("The attendant says: clean the lint trap now and then.^");
+                rtrue("The attendant has nothing to say about that.^");
+            case Give:
+                if (!noun.is(Garment)) rtrue("The attendant says: that is not laundry.^");
+                Garment g = (Garment)noun;
+                if (!g.ready()) rtrue($"The attendant says: {the(g)} is not ready.^");
+                if (!g.folded) rtrue($"The attendant says: fold {the(g)} first.^");
+                g.parent = table;
+                delivered++;
+                jot("delivered", delivered);
+                if (delivered == 4) score++;
+                rtrue($"The attendant puts {the(g)} on the table.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The attendant waits.^");
+        }
+        rtrue("The attendant says: I am busy.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb AddSoap {
+    grammar = {.add, .soap, .to, NOUN};
+    void handler() {
+        if (noun != washer) {
+            printLine("Soap goes in the washer.");
+            return;
+        }
+        if (soapBottle.parent != player) {
+            printLine("You are not holding the soap bottle.");
+            return;
+        }
+        if (soapBottle.doses == 0) {
+            printLine("The soap bottle is empty.");
+            return;
+        }
+        soapBottle.doses--;
+        washer.soap++;
+        jot("soap", washer.soap);
+        printLine($"You add a dose of soap to the washer. The bottle has {soapBottle.doses} left.");
+    }
+}
+
+verb Fold {
+    grammar = {.fold, NOUN};
+    void handler() {
+        if (!noun.is(Garment)) {
+            printLine("You can't fold that.");
+            return;
+        }
+        Garment g = (Garment)noun;
+        if (g.parent != player) {
+            printLine($"You need to hold {the(g)}.");
+            return;
+        }
+        if (g.folded) {
+            printLine($"{cThe(g)} is already folded.");
+            return;
+        }
+        if (g.dirty) {
+            printLine($"{cThe(g)} is still dirty.");
+            return;
+        }
+        if (g.wet) {
+            printLine($"{cThe(g)} is still wet.");
+            return;
+        }
+        g.folded = true;
+        folds++;
+        jot("folded", folds);
+        if (!firstFold) {
+            firstFold = true;
+            score++;
+        }
+        printLine($"You fold {the(g)}.");
+    }
+}
+
+verb CleanTrap {
+    grammar = {.clean, .trap};
+    void handler() {
+        if (location != roomA) {
+            printLine("There is no lint trap here.");
+            return;
+        }
+        if ((int)dryer.lint == 0) {
+            printLine("The lint trap is already clean.");
+            return;
+        }
+        jot("lint", (int)dryer.lint);
+        dryer.lint = 0;
+        printLine("You clean the lint trap.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        printLine($"{cThe(noun)} weighs {weightOf(noun)}.");
+    }
+}
+
+verb SortBasket {
+    meta = true;
+    grammar = {.sort};
+    void handler() {
+        if (basket.children.length == 0) {
+            printLine("The basket is empty.");
+            return;
+        }
+        for (int c = 1; c <= 4; c++) {
+            int n = 0;
+            for (object o in basket.children) {
+                if (o.is(Garment) && (int)((Garment)o).color == c) n++;
+            }
+            if (n > 0) printLine($"{colorName((eHue)c)}: {n}");
+        }
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string w = washer.has(on) ? "running" : "idle";
+        string d = dryer.has(on) ? "running" : "idle";
+        printLine($"Score {score} of {MAX_SCORE}. Washer {w}, soap {washer.soap}. Dryer {d}, lint {(int)dryer.lint}.");
+        printLine($"Washes {washes}, folds {folds}, delivered {delivered}, attendant asked {attendant.asked}.");
+        if (washer.time_left > 0) printLine($"Wash time left: {washer.time_left}.");
+    }
+}
+
+verb Laundry {
+    meta = true;
+    grammar = {.laundry};
+    void handler() {
+        int clean = bgl.world.instances(Garment, (object o) => ((Garment)o).ready()).length;
+        printLine($"{clean} garments clean and dry.");
+        array<object> found[8];
+        found = bgl.world.instances(Garment);
+        found.sort((object a, object b) => bgl.util.math.sign(((Garment)a).weight - ((Garment)b).weight));
+        for (object o in found) {
+            Garment g = (Garment)o;
+            print($"{g}: {colorName(g.color)}, weight {g.weight}, ");
+            if (g.dirty) print("dirty");
+            else if (g.wet) print($"wet {g.damp}");
+            else if (g.folded) print("folded");
+            else print("dry");
+            printLine($", in {the(g.parent)}.");
+        }
+    }
+}
+
+verb Loads {
+    meta = true;
+    grammar = {.loads};
+    void handler() {
+        if (loadWeights.length == 0) {
+            printLine("No loads washed.");
+            return;
+        }
+        array<int> sorted[8];
+        sorted = loadWeights;
+        sorted.sort();
+        print("Loads:");
+        int i = 0;
+        do {
+            print($" {sorted[i]}");
+            i++;
+        } while (i < sorted.length);
+        int total = 0;
+        i = 0;
+        while (i < loadWeights.length) {
+            total += loadWeights[i];
+            i++;
+        }
+        printLine($". Total {total}. The first load was load {sorted.indexOf(loadWeights[0]) + 1} by weight.");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logCount}): {logText}");
+    }
+}
+
+bool Initialise() {
+    dryer.lint = 0;
+    rfalse;
+}

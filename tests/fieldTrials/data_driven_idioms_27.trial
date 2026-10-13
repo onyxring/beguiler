@@ -1,0 +1,149 @@
+Room A
+> list
+No parcels.
+> summary
+No parcels.
+> queue
+The queue is empty.
+> rush
+Nothing to reorder.
+> tally
+zone   wait load deli canc
+north  0    0    0    0
+south  0    0    0    0
+east   0    0    0    0
+west   0    0    0    0
+> parcel north 3
+Parcel 1: north, 3kg, medium.
+> parcel south 7
+Parcel 2: south, 7kg, large.
+> parcel west 12
+12kg is outside 1 to 10.
+> parcel east 2
+Parcel 3: east, 2kg, small.
+> parcel west 9
+Parcel 4: west, 9kg, large.
+> parcel north 10
+Parcel 5: north, 10kg, large.
+> parcel south 2
+Parcel 6: south, 2kg, small.
+> mark 1 fragile
+Parcel 1 marked fragile.
+> mark 1 fragile
+Parcel 1 is already fragile.
+> mark 2 urgent
+Parcel 2 marked urgent.
+> mark 2 signed
+Parcel 2 marked signed.
+> mark 5 urgent
+Parcel 5 marked urgent.
+> mark 9 signed
+No parcel 9.
+> list
+#1  north 3kg  waiting fragile
+#2  south 7kg  waiting urgent,signed
+#3  east  2kg  waiting
+#4  west  9kg  waiting
+#5  north 10kg waiting urgent
+#6  south 2kg  waiting
+> queue
+Queue: 1 2 3 4 5 6.
+> rush
+Parcel 2 goes first, parcel 3 last.
+> queue
+Queue: 2 5 4 6 1 3.
+> quote 1
+Parcel 1: medium north 15 + fragile 5 = 20p.
+> quote 2
+Parcel 2: large south 30 + urgent 8 + signed 3 = 41p.
+> quote 4
+Parcel 4: large west 40 = 40p.
+> quote 5
+Parcel 5: large north 25 + urgent 4 = 29p.
+> quote 8
+No parcel 8.
+> zone north
+north: 1 day, 2 parcels, 13kg, van A.
+Rates: small 10 medium 15 large 25
+> zone east
+east: 1 day, 1 parcels, 2kg, no van.
+Rates: small 10 medium 14 large 22
+> zone west
+west: 3 days, 1 parcels, 9kg, van C.
+Rates: small 20 medium 28 large 40
+> load
+Parcel 6 does not fit van B.
+Parcel 1 does not fit van A.
+No van runs east for parcel 3.
+Loaded 3; 3 left waiting.
+> vans
+van A  north 10/12kg holds 5
+van B  south 7/8kg holds 2
+van C  west  9/15kg holds 4
+> queue
+Queue: 6 1 3.
+> list
+#1  north 3kg  waiting fragile
+#2  south 7kg  loaded urgent,signed
+#3  east  2kg  waiting
+#4  west  9kg  loaded
+#5  north 10kg loaded urgent
+#6  south 2kg  waiting
+> reroute 4 south
+Parcel 4 is loaded.
+> reroute 1 west
+Parcel 1 now goes west, 33p.
+> cancel 1
+Parcel 1 cancelled; 2 in the queue.
+> cancel 3
+Parcel 3 cancelled; 1 in the queue.
+> cancel 3
+Parcel 3 is cancelled.
+> load
+Parcel 6 does not fit van B.
+Loaded 0; 1 left waiting.
+> vans
+van A  north 10/12kg holds 5
+van B  south 7/8kg holds 2
+van C  west  9/15kg holds 4
+> summary
+6 parcels, 0 delivered, 4 zones.
+Heaviest: parcel 5, 10kg.
+Then: 4 2 1 3 6
+Urgent parcels outstanding.
+Some parcels remain.
+> tally
+zone   wait load deli canc
+north  0    1    0    0
+south  1    1    0    0
+east   0    0    0    1
+west   0    1    0    1
+> round
+van A delivered 1 to the north.
+van B delivered 1 to the south.
+van C delivered 1 to the west.
+Delivered 3. Day 2, takings 110p.
+> vans
+van A  north 0/12kg
+van B  south 0/8kg
+van C  west  0/15kg
+> load
+Loaded 1; 0 left waiting.
+> round
+van B delivered 1 to the south.
+Delivered 1. Day 3, takings 122p.
+> summary
+6 parcels, 4 delivered, 4 zones.
+Heaviest: parcel 5, 10kg.
+Then: 4 2 1 3 6
+No urgent parcels outstanding.
+Some parcels remain.
+> zone south
+south: 2 days, 2 parcels, 9kg, van B.
+Rates: small 12 medium 18 large 30
+> tally
+zone   wait load deli canc
+north  0    0    1    0
+south  0    0    2    0
+east   0    0    0    1
+west   0    0    1    1

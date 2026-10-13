@@ -83,9 +83,18 @@ bool bglParser::nextOperatorIsOwn(ExprParseState& st, const string& memberType){
     // the member, ahead of the value its getter reads (§4.4). The root classes' operators don't count.
     static const set<string> ops = {"+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=", "<<=", ">>=", "++", "--",
                                     "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>",
-                                    "==", "!=", "<", ">", "<=", ">=", "<=>"};
+                                    "==", "!=", "?=", "=~", "<", ">", "<=", ">=", "<=>"};
     token next = st.prefetched ? *st.prefetched : file.peekToken();
     return ops.count(next.value) && declaresOwnOperator(memberType, next.value);
+}
+
+// True when a value class declares `op` taking an operand of its own class.
+bool bglParser::takesOwnOperand(classDef* cls, const string& op){
+    if(cls == nullptr || !isValueClass(cls)) return false;
+    return findMemberInHierarchy(cls, [&](typeMember* m){
+        auto* f = dynamic_cast<functionDef*>(m);
+        return f && f->name == op && !f->isStatic && f->params.size() == 1 && getDispatchClass(f->params[0]->type.name) == cls;
+    }) != nullptr;
 }
 
 bool bglParser::declaresOwnOperator(const string& type, const string& op){
@@ -669,7 +678,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         // so this is the right hint for disambiguating an enum-value reference like `fixed`.
         string savedExpectedOp = currentExpectedType;
         if(cls != nullptr) currentExpectedType = cls->name;
+        classDef* savedOwnOperand = ownOperatorOperand;
+        ownOperatorOperand = takesOwnOperand(cls, opName) ? cls : nullptr;
         expression* rhsExpr = parseExpression(rhs, rhsTerminators, func, body);
+        ownOperatorOperand = savedOwnOperand;
         if(rhsExpr->tokens.empty() && dynamic_cast<initializerList*>(rhsExpr) == nullptr)
             parsingError(format("'{0}' has nothing after it: an operand is missing.", opName));
         absorbPostfixQuery(rhsExpr);   // `x == a?` queries `a`
@@ -693,7 +705,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
         string savedExpectedOp2 = currentExpectedType;
         if(cls != nullptr) currentExpectedType = cls->name;
+        classDef* savedOwnOperand = ownOperatorOperand;
+        ownOperatorOperand = takesOwnOperand(cls, opName) ? cls : nullptr;
         expression* rhsExpr = parseExpression(rhs, rhsTerminators, func, body);
+        ownOperatorOperand = savedOwnOperand;
         currentExpectedType = savedExpectedOp2;
         token terminatorTok; terminatorTok.value = rhsExpr->terminator;
         prefetched = terminatorTok;
@@ -1029,7 +1044,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         HeldTemporaries heldTemps = holdCallTemporaries({{&heldLhs, cls->name}, {&heldRhs, rhsType}});
         string call;
         if(matchedOp->isStatic)
-            call = i6Emitter::staticRoutineName(cls, matchedOp) + "(" + heldLhs + ", " + heldRhs + ")";
+            call = i6Emitter::staticRoutineName(cls->declaringClass(matchedOp) ? cls->declaringClass(matchedOp) : cls, matchedOp) + "(" + heldLhs + ", " + heldRhs + ")";
         else {
             // A message send binds tighter than any I6 operator, so a receiver that is more than a
             // name (`boxes-->(0+1)`) must be grouped or the send lands on its last operand.
@@ -1100,7 +1115,11 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     expr->tokens.push_back(tempName);
-    if(!fallback->resolvedType.empty()) expr->resolvedType = fallback->resolvedType;
+    // The result is the left side's type when a literal fallback converts to it (`s ?? "none"` stays a stringObj).
+    bool literalFallback = fallback->resolvedType.size() > 7
+                        && fallback->resolvedType.compare(fallback->resolvedType.size() - 7, 7, "literal") == 0;
+    if(!fallback->resolvedType.empty() && !(literalFallback && lhsType.size() && isTypeCompatible(fallback->resolvedType, lhsType)))
+        expr->resolvedType = fallback->resolvedType;
     expr->terminator = fallback->terminator;
 }
 
@@ -1857,11 +1876,23 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
         bool matches = casts > 0 && file.peekToken(k).is(eTokenType::name);
         for(int g = 0; matches && g <= groups; g++) matches = file.peekToken(k + 1 + g).is(token::parenClose);
         if(matches && file.peekToken(k + 2 + groups).is(token::period)){
+            // A path that goes on past the member (`((T)obj).items.length`, `….items[0]`) chains off the
+            // retyped receiver, as off a call's result.
+            token after = file.peekToken(k + 4 + groups);
+            bool chainGoesOn = func != nullptr && (after.is(token::period) || after.is(token::bracketOpen));
             for(int i = 1; i < k; i++) file.getToken();
             st.chainCast = castType;   // a cast written before the group applies to what the member reads
             castType = outer;
             cur = file.getToken();
             for(int g = 0; g <= groups; g++) file.getToken(token::parenClose);
+            if(chainGoesOn){
+                // Parenthesized, it is a value: nothing re-resolves it by its name's declared type.
+                expr->tokens.push_back("(" + qualifyIdentifier(cur.value, func, body) + ")");
+                expr->resolvedType = outer;
+                castType = st.chainCast;
+                st.chainCast.clear();
+                return ExprStep::Advance;
+            }
             st.receiverCast = true;
             return ExprStep::Continue;
         }
@@ -4548,6 +4579,9 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             });
         }
         string mtype = pm ? dynamic_cast<variableDeclaration*>(pm)->type.name : "";
+        // A member array is typed with its element type, as a path to it is.
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(pm); ad && !ad->isByteArray && !ad->elementType.empty() && mtype.find('<') == string::npos)
+            mtype = (ad->isRaw ? "rawarray<" : "array<") + ad->elementType + ">";
         if(!mtype.empty() && isPropertyClassType(mtype)){
             string selfText = receiverText(expr);
             // A dotted path to an array is addressed as its emitters expect (see arrayReceiver);
@@ -5330,7 +5364,7 @@ void bglParser::foldOverflowingConstant(expression* expr, bool always){
 void bglParser::foldCaseConstant(expression* expr){
     if(expr == nullptr || expr->tokens.empty()) return;
     string text = expr->text(), out;
-    bool named = false, ops = false;
+    bool ops = false;   // a #define is already its value here (`3 + 2`), so arithmetic on literals folds too
     for(size_t i = 0; i < text.size();){
         if(isalpha((unsigned char)text[i]) || text[i] == '_'){
             size_t e = i;
@@ -5341,10 +5375,10 @@ void bglParser::foldCaseConstant(expression* expr){
             if(vd == nullptr || !vd->isConst || vd->declaredExpressionValue == nullptr) return;
             string v = vd->declaredExpressionValue->text();
             if(v.empty() || v.find_first_not_of("-0123456789() ") != string::npos) return;
-            out += "(" + v + ")"; named = true; i = e;
+            out += "(" + v + ")"; i = e;
         } else { if(strchr("+-*/%", text[i])) ops = true; out += text[i++]; }
     }
-    if(!named || !ops) return;
+    if(!ops) return;
     expression probe; probe.tokens = { out };
     foldOverflowingConstant(&probe, true);
     if(probe.tokens.size() == 1 && probe.tokens[0] != out) expr->tokens = probe.tokens;

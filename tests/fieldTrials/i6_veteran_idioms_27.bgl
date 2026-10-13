@@ -1,0 +1,434 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a sorting office. A
+// Letter class (an int box member, an enum post state, list_together, a class description and invent
+// rule) with three letters in a closed openable sack whose after rule on Open counts its children; a
+// Hole class (an int number member, a short_name routine, a parse_name reading NextWord and TryNumber,
+// a before rule on Receive that files a franked letter for its own box and refuses anything else); a
+// global array<object> of the holes searched by number; a franking machine whose before rule on
+// Receive franks a letter and counts it; a clerk whose life rule takes a coin (Give) and hands over a
+// brass key, and answers Ask/Tell by reading consult_from with NextWord; a locked hatch between two
+// rooms (door_to, door_dir, found_in, with_key); a wall clock with hour/minute members advanced by a
+// daemon started in Initialise and printed with a leading zero; a native Sort verb (HELD, .into,
+// NOUN) running Insert through perform(), a native Frank verb (HELD); every filing logged in a sized
+// array<int>; a LibraryMessages override of Listen; NewRoom; a meta verb counting the letters by
+// state through bgl.world.instances and printing the log; deadflag when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 4;
+const int NHOLES = 3;
+const int NLETTERS = 3;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Listen:
+                if (location == sortingRoom) rtrue("The wall clock ticks.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum post { loose, franked, filed }
+
+array<int> filedLog[NLETTERS];     // box number of each letter as it was filed
+int nFiled;
+int g_rooms;
+bool g_keyGiven;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- letters
+
+class Letter : object {
+    int box;
+    post state = loose;
+    string list_together = "letters";
+    void description() {
+        print($"An envelope addressed to box {box}");
+        switch (state) {
+            case franked:
+                print(", franked");
+            case filed:
+                print(", franked and filed");
+            default:
+                print(", not yet franked");
+        }
+        print(".^");
+    }
+    bool invent() {
+        if (inventory_stage == 2 && state == franked) print(" (franked)");
+        rfalse;
+    }
+    bool before() {
+        switch (action) {
+            case Take, Remove:
+                if (state == filed) rtrue("It's filed now; leave it.^");
+        }
+        rfalse;
+    }
+}
+
+Letter redLetter {
+    short_name = "red letter";
+    name = {.red, .letter, .envelope, ..letters};
+    parent = sack;
+    box = 2;
+}
+
+Letter blueLetter {
+    short_name = "blue letter";
+    name = {.blue, .letter, .envelope, ..letters};
+    parent = sack;
+    box = 3;
+}
+
+Letter whiteLetter {
+    short_name = "white letter";
+    name = {.white, .letter, .envelope, ..letters};
+    parent = sack;
+    box = 1;
+}
+
+// ---------------------------------------------------------------- pigeonholes
+
+class Hole : object {
+    int number;
+    bool short_name() {
+        print($"hole {number}");
+        return true;
+    }
+    int parse_name() {
+        if (parser_action == TheSame) return -2;
+        int n = 0;
+        bool named = false;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .hole || w == .pigeonhole || w == .box) {
+                named = true;
+                n++;
+                continue;
+            }
+            if (w == ..holes || w == ..pigeonholes) {
+                parser_action = PluralFound;
+                named = true;
+                n++;
+                continue;
+            }
+            if (w == null && TryNumber(wn - 1) == number) {
+                n++;
+                continue;
+            }
+            if (!named) return 0;
+            return n;
+        }
+    }
+    void description() {
+        print($"Pigeonhole {number}");
+        if (child == null) print(" is empty");
+        else print($" holds {a(child)}");
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Letter)) rtrue("Only letters go in the pigeonholes.^");
+                Letter l = (Letter)noun;
+                if (l.state == loose) rtrue("It has to be franked first.^");
+                if (l.box != number) rtrue($"That one is addressed to box {l.box}.^");
+                l.parent = self;
+                l.state = filed;
+                filedLog[nFiled] = number;
+                nFiled++;
+                print($"You slip {the(l)} into hole {number}.^");
+                Award();
+                rtrue;
+            case Take, Push, Pull:
+                rtrue("The pigeonholes are part of the rack.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+Hole hole1 { parent = sortingRoom; number = 1; }
+Hole hole2 { parent = sortingRoom; number = 2; }
+Hole hole3 { parent = sortingRoom; number = 3; }
+
+array<object> holes = {hole1, hole2, hole3};
+
+object HoleFor(int n) {
+    for (int i = 0; i < NHOLES; i++) {
+        Hole h = (Hole)holes[i];
+        if (h.number == n) return h;
+    }
+    return null;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object counterRoom {
+    short_name = "Counter Room";
+    description = "Counter Room. A hatch in the north wall leads to the sorting room.";
+    object n_to = hatch;
+    attributes = {light};
+}
+
+object sortingRoom {
+    short_name = "Sorting Room";
+    void description() {
+        print("Sorting Room. A rack of three pigeonholes covers one wall");
+        print(". The hatch is south.^");
+    }
+    object s_to = hatch;
+    attributes = {light};
+}
+
+object hatch {
+    short_name = "hatch";
+    name = {.hatch, .door};
+    rawArray<object> found_in = {counterRoom, sortingRoom};
+    object with_key = brassKey;
+    void description() {
+        print("A wooden hatch");
+        if (has(locked)) print(", locked");
+        else if (has(open)) print(", standing open");
+        else print(", shut");
+        print(".^");
+    }
+    object door_to() {
+        if (location == counterRoom) return sortingRoom;
+        return counterRoom;
+    }
+    property door_dir() {
+        if (location == counterRoom) return (property)n_to;
+        return (property)s_to;
+    }
+    attributes = {door, static, openable, lockable, locked};
+}
+
+object coin {
+    short_name = "copper coin";
+    name = {.copper, .coin};
+    parent = selfobj;
+    description = "A copper coin.";
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    description = "A small brass key.";
+}
+
+// ---------------------------------------------------------------- the clerk
+
+object clerk {
+    short_name = "clerk";
+    name = {.clerk, .man};
+    parent = counterRoom;
+    description = "A clerk behind the counter.";
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Give:
+                if (noun != coin) rtrue("The clerk shakes his head.^");
+                coin.parent = self;
+                if (!g_keyGiven) {
+                    g_keyGiven = true;
+                    brassKey.parent = player;
+                    print("The clerk pockets the coin and hands you a brass key.^");
+                    Award();
+                    rtrue;
+                }
+                rtrue("The clerk pockets the coin.^");
+            case Ask, Tell:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .hatch || w == .door) rtrue("~The key costs a coin.~^");
+                if (w == .letter || w == .letters || w == .sack) rtrue("~Frank them, then file them by box.~^");
+                if (w == .clock) rtrue($"~It's {wallClock.hour} o'clock or thereabouts.~^");
+                rtrue("The clerk shrugs.^");
+            case Attack:
+                rtrue("The clerk steps back.^");
+        }
+        rfalse;
+    }
+    attributes = {animate, male};
+}
+
+// ---------------------------------------------------------------- the sorting room
+
+object sack {
+    short_name = "mail sack";
+    name = {.mail, .sack, .bag};
+    parent = sortingRoom;
+    description = "A canvas mail sack.";
+    bool after() {
+        switch (action) {
+            case Open:
+                int n = 0;
+                for (object o in children) n++;
+                print($"You open the sack. It holds {n} letter");
+                if (n != 1) print("s");
+                rtrue(".^");
+        }
+        rfalse;
+    }
+    attributes = {container, openable};
+}
+
+object machine {
+    short_name = "franking machine";
+    name = {.franking, .machine, .franker};
+    parent = sortingRoom;
+    int count;
+    void description() {
+        print($"A franking machine. Its counter reads {count}.^");
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Letter)) rtrue("The machine only takes letters.^");
+                FrankLetter((Letter)noun);
+                rtrue;
+            case Take, Push, Pull:
+                rtrue("The machine is bolted down.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+void FrankLetter(Letter l) {
+    if (l.state != loose) {
+        print($"{cThe(l)} is already franked.^");
+        return;
+    }
+    l.state = franked;
+    machine.count++;
+    print($"The machine thumps. {cThe(l)} comes out franked.^");
+}
+
+object wallClock {
+    short_name = "wall clock";
+    name = {.wall, .clock};
+    parent = sortingRoom;
+    int hour = 9;
+    int minute;
+    void description() {
+        print($"The clock reads {hour}:");
+        if (minute < 10) print("0");
+        print($"{minute}.^");
+    }
+    void daemon() {
+        minute = minute + 5;
+        if (minute >= 60) {
+            minute = minute - 60;
+            hour++;
+            if (location == sortingRoom) print("^The clock strikes.^");
+        }
+    }
+    attributes = {static, scenery};
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Sort {
+    grammar = {
+        {.sort, HELD},
+        {.sort, HELD, .into | .in, NOUN},
+    };
+    void handler() {
+        if (!noun.is(Letter)) {
+            print("Only letters are sorted here.^");
+            return;
+        }
+        if (second == null) {
+            Letter l = (Letter)noun;
+            object h = HoleFor(l.box);
+            if (location != sortingRoom || h == null) {
+                print("There is nowhere here to sort it.^");
+                return;
+            }
+            print($"({h})^");
+            Insert.perform(noun, h);
+            return;
+        }
+        Insert.perform(noun, second);
+    }
+}
+
+verb Frank {
+    grammar = {.frank, HELD};
+    void handler() {
+        if (location != sortingRoom) {
+            print("The franking machine is in the sorting room.^");
+            return;
+        }
+        if (!noun.is(Letter)) {
+            print("The machine only takes letters.^");
+            return;
+        }
+        FrankLetter((Letter)noun);
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        int nLoose = 0;
+        int nFranked = 0;
+        int nFiledNow = 0;
+        for (object o in bgl.world.instances(Letter)) {
+            Letter l = (Letter)o;
+            switch (l.state) {
+                case loose:
+                    nLoose++;
+                case franked:
+                    nFranked++;
+                case filed:
+                    nFiledNow++;
+            }
+        }
+        print($"Rooms {g_rooms}, score {score}, franked {machine.count}.^");
+        print($"Letters: {nLoose} loose, {nFranked} franked, {nFiledNow} filed.^");
+        print("Filed to boxes:");
+        if (nFiled == 0) print(" none");
+        for (int i = 0; i < nFiled; i++) print($" {filedLog[i]}");
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = counterRoom;
+    StartDaemon(wallClock);
+    rfalse;
+}

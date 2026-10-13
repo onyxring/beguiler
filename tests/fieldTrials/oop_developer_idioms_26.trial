@@ -1,0 +1,107 @@
+Room A
+Room A.
+
+> setup
+Tasks 8, listeners 2, max attempts 2.
+
+> plan
+Plan of 8: core util app unit zip integ installer release
+
+> tasks
+release [group] pending 1m10s after zip installer
+zip [package] pending 0m15s after unit
+installer [package] pending 0m50s after integ
+unit [test] pending 1m00s after app
+integ [test] pending 0m30s after app
+app [compile] pending 0m40s after core util
+core [compile] pending 1m00s
+util [compile] pending 0m20s
+
+> critical
+Critical path 3m05s: release <- installer <- integ <- app <- core
+
+> build
+compile core: 12 files
+compile util: 4 files
+compile app: 8 files
+  unit attempt 1 failed: cases failed (code 6)
+  retry in 10s
+test unit: 30 cases passed
+package zip as .zip
+  integ attempt 1 failed: cases failed (code 3)
+  retry in 10s
+  integ attempt 2 failed: cases failed (code 3)
+  ! integ failed
+  ! installer skipped
+  ! release skipped
+Build 1: 5 done, 1 failed, 2 skipped in 3m35s.
+Notices 8, errors raised 3.
+
+> tasks
+release [group] skipped 1m10s after zip installer
+zip [package] done 0m15s after unit
+installer [package] skipped 0m50s after integ
+unit [test] done 1m00s after app
+integ [test] failed 0m30s after app
+app [compile] done 0m40s after core util
+core [compile] done 1m00s
+util [compile] done 0m20s
+
+> report
+Compiles 3, all compiled true, any skipped true.
+First failed: integ.
+Slowest first: release unit core
+Own work 4m40s over 8 task(s); release over 1m00s: true.
+
+> tagged
+lib: core util
+release: release zip installer
+nightly: (none)
+
+> fix
+Fixed integ: 15 cases.
+Reset 8 task(s); no lint task.
+
+> build
+compile core: 12 files
+compile util: 4 files
+compile app: 8 files
+  unit attempt 1 failed: cases failed (code 6)
+  retry in 10s
+test unit: 30 cases passed
+package zip as .zip
+test integ: 15 cases passed
+package installer as .pkg
+group release: 2 parts
+Build 2: 8 done, 0 failed, 0 skipped in 5m55s.
+Notices 16, errors raised 4.
+
+> report
+Compiles 3, all compiled true, any skipped false.
+First failed: none.
+Slowest first: release unit core
+Own work 4m40s over 8 task(s); release over 1m00s: true.
+
+> unlink
+Dropped zip: tasks 7, removed 1, release has 1 part(s) costing 0m55s.
+Added docs (package), created 9.
+
+> plan
+Plan of 8: core util app integ installer docs release unit
+
+> build
+compile core: 12 files
+compile util: 4 files
+compile app: 8 files
+test integ: 15 cases passed
+package installer as .pkg
+package docs as .tar
+group release: 2 parts
+  unit attempt 1 failed: cases failed (code 6)
+  retry in 10s
+test unit: 30 cases passed
+Build 3: 8 done, 0 failed, 0 skipped in 6m05s.
+Notices 24, errors raised 5.
+
+> critical
+Critical path 3m05s: release <- installer <- integ <- app <- core

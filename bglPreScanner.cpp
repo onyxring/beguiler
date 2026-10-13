@@ -1,3 +1,4 @@
+#include <regex>
 #include "platform.h"
 // bglPreScanner.cpp — Pre-scanner (Pass 1) for the Beguile compiler.
 // Registers type/object/function stubs so forward references resolve in Pass 2.
@@ -466,6 +467,27 @@ void bglParser::rejectValueWordName(const string& name){
 // resolution stub, so a dotted path through it resolves before the main pass reaches the object.
 // The stub is isExternal (no I6 emission) + isPrePassStub; the main pass reconciles it away once its
 // real member lands. Anything richer is left for the normal member handling.
+// An object's inline accessor is built only when the main pass reaches the object, so a read above
+// it is typed through a stand-in class holding just the getter, whose routine name is known now.
+void bglParser::preScanAccessorGetter(objectDef& obj, variableDeclaration& stub, const string& body){
+    static const std::regex getter(R"((\w+\s+)?\b([A-Za-z_]\w*)\s+operator\s*\(\s*\)\s*\{)");
+    std::smatch gm;
+    if(!std::regex_search(body, gm, getter)) return;
+    string q = gm[1].str(); q.erase(q.find_last_not_of(" \t\r\n") + 1);
+    string rt = gm[2].str(); transform(rt.begin(), rt.end(), rt.begin(), ::tolower);
+    if(q == "emitter" || q == "explicit" || rt == "void" || languageService.getType(rt).name.empty()) return;
+    classDef& cls = languageService.registerClass("_bglaccessorstub_" + obj.name + "_" + stub.name, /*isExternal=*/true);
+    cls.isValue = true;
+    functionDef& fn = *(new functionDef());
+    fn.name = "operator()";
+    fn.returnType = languageService.getType(rt);
+    for(char& ch : rt) if(!isalnum((unsigned char)ch)) ch = '_';
+    fn.i6name = "_opconv_" + rt;
+    fn.isPrePassStub = true;
+    cls.members.push_back(&fn);
+    stub.type = languageService.getType(cls.name);
+}
+
 bool bglParser::preScanNamespaceRedirect(token& t, objectDef* obj){
     if(!t.is("alias") && !t.is("auto")) return false;
     bool isAliasKw = t.is("alias");
@@ -1429,6 +1451,11 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                 if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
                 if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
                 if(preScanNamespaceRedirect(t, objStub)){ t = file.getToken(); continue; }
+                // A member typed by one of the object's own aliases (`alias cents for Cents; cents takings;`).
+                if(!t.isDataType())
+                    for(typeMember* m : objStub->members)
+                        if(auto* av = dynamic_cast<variableDeclaration*>(m); av && av->isAlias && av->isPrePassStub
+                           && av->declaredExpressionValue == nullptr && av->name == t.value){ t.value = av->type.name; break; }
                 // `name = v` where the member's name is also a class name: an assignment, not a declaration.
                 // ... and `eGrade.high` is a value (a positional one), not a declaration either.
                 if(t.isDataType() && (file.peekToken().is(token::assignment) || file.peekToken().is(token::bindAssignment)
@@ -1522,6 +1549,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                             t = file.getToken();
                             continue;
                         }
+                        variableDeclaration* stubVd = nullptr;
                         if(!memberIsEmitter){
                             // A member array stays an array (with its element type), so a use before
                             // the object's declaration is typed like one after.
@@ -1540,7 +1568,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                             bool exists = false;
                             for(typeMember* m : objStub->members)
                                 if(m->name == vd.name){ exists = true; break; }
-                            if(!exists) objStub->members.push_back(&vd);
+                            if(!exists){ objStub->members.push_back(&vd); stubVd = &vd; }
                         }
                         // Skip the rest of the declaration up to AND INCLUDING the
                         // terminating ';' (or until the object's closing '}'). If we
@@ -1552,7 +1580,9 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                         bool afterAssign = false;
                         while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
                             if(afterName.is(token::braceOpen)){
-                                file.getRawTextThroughClosingBrace();
+                                string body = file.getRawTextThroughClosingBrace();
+                                if(afterAssign && stubVd != nullptr && stubVd->type.name == "auto")
+                                    preScanAccessorGetter(*objStub, *stubVd, body);
                                 // An inline accessor (`auto x = { … }`) may end at its brace, with no ';'.
                                 if(afterAssign && !file.peekToken().is(token::endStatement)){ afterName = token(); break; }
                                 // After consuming the {...}, continue reading until ';'

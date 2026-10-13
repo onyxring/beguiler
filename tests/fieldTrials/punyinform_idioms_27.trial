@@ -1,0 +1,145 @@
+Room A
+Room A. A desk stands by a returns bin. Room B is north.
+You can see a desk (on which are a date stamp and a coin) and a returns bin (which contains a red book, a green book and a blue book) here.
+> status
+Score 0 of 3. Stamped 0, shelved 0, dropped 0.
+Owed: no. Clerk asked 0. Queue 2.
+> catalog
+5 books: 0 shelved, 2 not yet returned.
+blue book: science, 80 pages, not stamped, in the returns bin.
+red book: fiction, 120 pages, not stamped, in the returns bin.
+green book: history, 300 pages, not stamped, in the returns bin.
+Some late books are not stamped.
+Shortest: blue book.
+> genres
+fiction: 2
+history: 1
+science: 2
+> fines
+No fines charged.
+> log
+The log is empty.
+> examine desk
+A desk. Nothing is owed.
+> examine red book
+A fiction book of 120 pages.
+> take red book
+Taken.
+The gray book drops into the returns bin.
+> take date stamp
+Taken.
+> stamp red book
+You stamp the red book.
+[The score has just gone up by 1 point.]
+> take green book
+Taken.
+The brown book drops into the returns bin.
+> take blue book
+Taken.
+> stamp green book
+You stamp the green book. It is 2 days late: a fine of 10.
+> stamp blue book
+You stamp the blue book. It is 5 days late: a fine of 25.
+> stamp blue book
+The blue book is already stamped.
+> stamp desk
+Only books get stamped.
+> examine desk
+A desk. A note on it reads: fines owed 35.
+> fines
+Fines: 10 25. Total 35, ledger 35, owed 35. One fine was 25.
+> put red book in returns bin
+The returns bin only takes books from the slot outside.
+> north
+Room B
+Room B. Three shelves line the walls. Room A is south.
+You can see a fiction shelf, a history shelf, a science shelf and a clerk here.
+> examine fiction shelf
+The fiction shelf is empty.
+> put green book on fiction shelf
+The green book belongs on the history shelf.
+> put date stamp on fiction shelf
+Only books go on the shelves.
+> shelve red book
+You put the red book on the fiction shelf.
+[The score has just gone up by 1 point.]
+> shelve green book
+You put the green book on the history shelf.
+> shelve blue book
+You put the blue book on the science shelf.
+> examine science shelf
+The science shelf holds 1 books.
+> ask clerk about fines
+The clerk says: 5 a day, paid at the desk.
+> ask clerk about shelves
+The clerk says: fiction, history, science.
+> ask clerk about weather
+The clerk has nothing to say about that.
+> give date stamp to clerk
+The clerk says: keep it.
+> clerk, wait
+The clerk waits.
+> clerk, jump
+The clerk says: I am busy.
+> south
+Room A
+You can see a desk (on which is a coin) and a returns bin (which contains a brown book and a gray book) here.
+> wait
+Nothing happens.
+> take gray book
+Taken.
+> take brown book
+Taken.
+> stamp gray book
+You stamp the gray book.
+> stamp brown book
+You stamp the brown book. It is 1 days late: a fine of 5.
+> take coin
+Taken.
+> examine desk
+A desk. A note on it reads: fines owed 40.
+> catalog
+5 books: 3 shelved, 0 not yet returned.
+blue book: science, 80 pages, shelved, in the science shelf.
+red book: fiction, 120 pages, shelved, in the fiction shelf.
+brown book: science, 150 pages, stamped, in yourself.
+gray book: fiction, 200 pages, stamped, in yourself.
+green book: history, 300 pages, shelved, in the history shelf.
+Shortest: blue book.
+> shelve gray book
+The shelves are in Room B.
+> north
+Room B
+You can see a fiction shelf (on which is a red book), a history shelf (on which is a green book), a science shelf (on which is a blue book) and a clerk here.
+> give coin to clerk
+The clerk takes the coin. Fines owed: 20.
+> give coin to clerk
+You can't see any such thing.
+> shelve gray book
+You put the gray book on the fiction shelf.
+> shelve brown book
+You put the brown book on the science shelf.
+[The score has just gone up by 1 point.]
+> status
+Score 3 of 3. Stamped 5, shelved 5, dropped 2.
+Owed: yes. Clerk asked 3. Queue 0.
+Every book is stamped.
+> genres
+fiction: 2
+history: 1
+science: 2
+> fines
+Fines: 5 10 25. Total 40, ledger 40, owed 20. One fine was 25.
+> examine desk
+You can't see any such thing.
+> catalog
+5 books: 5 shelved, 0 not yet returned.
+blue book: science, 80 pages, shelved, in the science shelf.
+red book: fiction, 120 pages, shelved, in the fiction shelf.
+brown book: science, 150 pages, shelved, in the science shelf.
+gray book: fiction, 200 pages, shelved, in the fiction shelf.
+green book: history, 300 pages, shelved, in the history shelf.
+Shortest: blue book.
+> log
+Log (16, 222 chars): 1. dropped 1. 2. stamped 1. 3. dropped 2. 4. stamped 2. 5. fine 10. 6. stamped 3. 7. fine 25. 8. shelved 1. 9. shelved 2. 10. shelved 3. 11. stamped 4. 12. stamped 5. 13. fine 5. 14. paid 20. 15. shelved 4. 16. shelved 5.
+Starts: 1. DROPPED 1. 2. STA

@@ -1,0 +1,11 @@
+// run_measure8_stdlib — a routine named like a library verb, used as a function value, is the routine.
+// EXPECT_OUTPUT: 34
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { "Room A"; attributes = {light}; }
+void drink(int k) { print(k); }
+func<void, int> f = drink;
+bool Initialise() { location = roomA; drink(3); f(4); print("^"); rfalse; }
+#includeI6 "grammar"

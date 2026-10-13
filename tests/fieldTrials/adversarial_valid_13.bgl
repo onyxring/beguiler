@@ -1,0 +1,444 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small seed-packet drawer program, on Glulx.
+// An enum with gapped values and an emitter value in its body, given a second emitter value by an
+// `extend enum` at the end of the file, switched on with a range case and walked from an inline list;
+// a bnum of packet flags combined, tested and toggled inside `selfType` methods chained across a
+// subclass; a named accessor value class (int setter beside a copy operator, a getter, its own `+=`
+// and `?=`) as an owned member, read into locals and compared with `?=`; a packet class whose positional
+// order puts instanceName third, with a `required` routine met by a subclass and by single objects, a
+// `literal func<void>` member defaulting to a named function and overridden by objects, a static
+// counter reached through a subclass name, a `default` method overridden in a subclass and reached
+// again by an ancestor cast, and a `hide` in a third class; an object namespace of type aliases
+// imported with `#using` and used bare for locals, parameters and an array element type; a global
+// function replaced twice with `replaced()` chained through both; named arguments out of order with
+// defaults; a global array of objects edited by `extend` (inject/move/remove) and walked by <linq>
+// (filter/orderBy/any/all/count/first) and by a local array of lambdas mixed with a named function;
+// an array of arrays with ragged rows summed by nested for-in, its rows reversed, popped, prepended to
+// and sorted descending by a nested-ternary lambda, then switched on with a guard and a range; a pooled
+// class with bglAllocated, a two-argument create(), destroy() and its own print(); an object and an int
+// thrown through nested try blocks into `var` catches told apart by typeof, the inner one rethrowing; a
+// stringObj filled by capture()/release() across a children walk of two containers; do/until;
+// `#if TARGET_GLULX` around a statement; a NUMBER grammar token read through parsed_number.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+// ---- seasons and flags ----------------------------------------------------------------------------
+
+enum eSeason {
+    spring = 10, summer, autumn, winter = 40,
+    emitter bool isCold { ($self >= 12) }
+}
+
+bnum packetFlag { sealed, labeled, damp, rare }     // 1, 2, 4, 8
+
+// ---- grams: a named accessor ------------------------------------------------------------------------
+
+value class Grams {
+    int _g = 0;
+
+    int operator () { return _g; }
+    void operator = (int v) { _g = v < 0 ? 0 : v; }
+    Grams operator = (Grams o) { _g = o._g; return self; }
+    Grams operator += (int v) { _g = _g + v * 2; return self; }
+    bool operator ?= (Grams o) { return _g / 10 == o._g / 10; }
+}
+
+// ---- packets ------------------------------------------------------------------------------------------
+
+void quietSow() { print("(quiet)"); }
+void beanSow()  { print("(beans!)"); }
+void vineSow()  { print("(vines)"); }
+
+class Packet : object {
+    inline string kind;
+    inline int count;
+    inline instanceName;
+    Grams weight;
+    eSeason season = spring;
+    packetFlag flags = sealed;
+    literal func<void> onSow = quietSow;
+    static int sown = 0;
+
+    required int days();
+
+    selfType mark(packetFlag f) {
+        flags = flags | f;
+        return self;
+    }
+
+    selfType toggle(packetFlag f) {
+        flags = flags ^ f;
+        return self;
+    }
+
+    bool hasFlag(packetFlag f) { return ((int)(flags & f)) != 0; }
+
+    default void line() {
+        print($"{kind} x{count}");
+    }
+}
+
+class Bean : Packet {
+    int days() { return 7; }
+    void line() {
+        print("bean: ");
+        ((Packet)self).line();
+    }
+}
+
+class Gourd : Packet {
+    hide toggle();
+}
+
+object seeds {
+    alias Pack for Packet;
+    alias Time for eSeason;
+    alias Flag for packetFlag;
+}
+
+#using seeds
+#using bgl.printRules
+
+// ---- the room and drawers -------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+class Drawer : object {
+    inline int row;
+    inline instanceName;
+    attributes = {container, open, static};
+    description = "A drawer.";
+}
+
+Drawer drawerA { 1, "drawer A"; parent = roomA; name = {.drawer, .a}; }
+Drawer drawerB { 2, "drawer B"; parent = roomA; name = {.drawer, .b}; }
+
+Bean pole { "pole bean", 12, "pole bean packet"; parent = drawerA; onSow = beanSow; name = {.pole, .bean, .packet}; }
+Bean pea  { "pea", 0, "pea packet"; parent = drawerA; season = summer; name = {.pea, .packet}; }
+
+Gourd squash {
+    "squash", 5, "squash packet";
+    parent = drawerB;
+    season = autumn;
+    name = {.squash, .packet};
+    int days() { return 30; }
+}
+
+Gourd melon {
+    "melon", 3, "melon packet";
+    parent = drawerB;
+    season = winter;
+    onSow = vineSow;
+    flags = sealed | rare;
+    name = {.melon, .packet};
+    int days() { return 21; }
+}
+
+array<Pack> lineup = { pole, squash, pea };
+
+extend lineup {
+    inject melon after pole;
+    move pea first;
+    remove squash;
+}
+
+array<array<int>> plan = { {1, 2}, {3}, {4, 5, 6} };
+
+// ---- season words, replaced twice -----------------------------------------------------------------------
+
+string seasonWord(Time s) {
+    switch (s) {
+        case spring:          return "spring";
+        case summer to autumn: return "warm";
+        default:              return "cold";
+    }
+}
+
+replace string seasonWord(Time s) {
+    if (s == autumn) return "autumn";
+    return replaced(s);
+}
+
+replace string seasonWord(Time s) {
+    if (s == spring) return "early";
+    return replaced(s);
+}
+
+// ---- helpers -------------------------------------------------------------------------------------------
+
+void tally(int n, string unit = "seeds", bool loud = false) {
+    print(n);
+    print(" ");
+    print(unit);
+    if (loud) print("!");
+}
+
+bool isRare(Pack p) { return p.hasFlag(rare); }
+
+int planTotal() {
+    int total = 0;
+    for (array<int> rowList in plan) {
+        for (int v in rowList) total += v;
+    }
+    return total;
+}
+
+void flagWords(Pack p) {
+    for (Flag f in {sealed, labeled, damp, rare}) {
+        if (!p.hasFlag(f)) continue;
+        switch (f) {
+            case sealed:  print(" sealed");
+            case labeled: print(" labeled");
+            case damp:    print(" damp");
+            default:      print(" rare");
+        }
+    }
+}
+
+// ---- sprouts: a pooled class ------------------------------------------------------------------------------
+
+class Sprout[3] : object, bglAllocated {
+    Pack from;
+    int day = 0;
+    static int composted = 0;
+
+    void create(Pack p, int d) {
+        from = p;
+        day = d;
+    }
+
+    void destroy() { composted++; }
+
+    void print() { ::print($"{from.kind}/{day}"); }
+}
+
+array<Sprout> sproutTray[3];
+
+Sprout sowOne(Pack p) {
+    if (p.count <= 0) throw p;
+    Sprout s = new Sprout(p, p.days());
+    if (s == null) throw -1;
+    p.count--;
+    Packet.sown++;
+    p.onSow();
+    return s;
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    pole.weight = 40;
+    pea.weight = 45;
+    squash.weight = 12;
+    melon.weight = -5;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+verb Sow {
+    grammar = {.sow, NOUN};
+    void handler() {
+        if (!noun.is(Packet)) {
+            printLine("Only packets can be sown.");
+            return;
+        }
+        Pack p = (Pack)noun;
+        try {
+            try {
+                Sprout s = sowOne(p);
+                sproutTray.append(s);
+                printLine($" Sown: {s}; tray {sproutTray.length}.");
+            } catch (var code) {
+                if (typeof(code) == eType.int) printLine("The tray is full.");
+                throw code;
+            }
+        } catch (var why) {
+            if (typeof(why) == eType.object) printLine($"{cThe((Packet)why)} is empty.");
+            else printLine($"Code {(int)why}.");
+        }
+    }
+}
+
+verb Compost {
+    grammar = {.compost};
+    void handler() {
+        int n = 0;
+        do {
+            Sprout s = sproutTray.popEnd();
+            if (s == null) break;
+            delete s;
+            n++;
+        } until (sproutTray.length == 0);
+        printLine($"Composted {n}; total {Sprout.composted}; free {pole.days() > 0 ? 3 - sproutTray.length : 0}.");
+    }
+}
+
+verb Tray {
+    grammar = {.tray};
+    void handler() {
+        print("Tray");
+        for (Sprout s in sproutTray) print($" {s}");
+        printLine($"; sown {Bean.sown}.");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    void handler() {
+        print("Order");
+        for (Pack p in lineup) print($" {p.kind}");
+        printLine(".");
+        int cold = lineup.filter((Pack p) => p.season.isCold).count();
+        Pack fewest = lineup.orderBy((Pack a, Pack b) => a.count - b.count).first();
+        bool anyRare = lineup.any(isRare);
+        bool allSealed = lineup.all((Pack p) => p.hasFlag(sealed));
+        printLine($"Cold {cold} fewest {fewest.kind} rare {anyRare ? "yes" : "no"} sealed {allSealed ? "all" : "some"}.");
+        array<func<bool, Pack>> checks = { isRare, (Pack p) => p.count > 10, (Pack p) => p.season == winter };
+        for (Pack p in lineup) {
+            int hits = 0;
+            for (func<bool, Pack> c in checks) {
+                if (c(p)) hits++;
+            }
+            print($"[{p.kind}:{hits}]");
+        }
+        printLine();
+        printLine($"Plan {planTotal()} rows {plan.length} widest {plan[2].length}.");
+    }
+}
+
+verb Seasons {
+    grammar = {.seasons};
+    void handler() {
+        for (Time t in {spring, summer, autumn, winter}) {
+            print($"{seasonWord(t)}/{t.rank} ");
+        }
+        printLine();
+        tally(unit: "packets", n: lineup.length);
+        print("; ");
+        tally(3, loud: true);
+        printLine(".");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    void handler() {
+        if (!noun.is(Packet)) {
+            printLine("Only packets take marks.");
+            return;
+        }
+        if (noun.is(Bean)) {
+            Bean b = (Bean)noun;
+            b.mark(labeled).toggle(damp).line();
+        } else {
+            Gourd g = (Gourd)noun;
+            g.mark(labeled).mark(damp).line();
+        }
+        print(":");
+        flagWords((Pack)noun);
+        printLine(".");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(Packet)) {
+            printLine("Only packets are weighed.");
+            return;
+        }
+        Pack p = (Pack)noun;
+        int w = p.weight;
+        string near = p.weight ?= pole.weight ? "near" : "far";
+        printLine($"{cThe(p)} weighs {w}g, {near} the pole beans.");
+    }
+}
+
+verb Refill {
+    grammar = {.refill, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Packet)) {
+            printLine("Only packets are filled.");
+            return;
+        }
+        Pack p = (Pack)noun;
+        p.weight += parsed_number;
+        p.count = p.count + parsed_number;
+        int w = p.weight;
+        printLine($"{cThe(p)} now holds {p.count} at {w}g.");
+    }
+}
+
+verb Label {
+    grammar = {.label};
+    void handler() {
+        stringObj text;
+        text.capture();
+        for (object d in roomA.children) {
+            if (!d.is(Drawer)) continue;
+            print($"{((Drawer)d).row}:");
+            for (object o in d.children) {
+                Pack p = (Pack)o;
+                p.line();
+                print(";");
+            }
+        }
+        text.release();
+        #if TARGET_GLULX
+            text = text.toUpper();
+        #endif
+        printLine($"Label [{text}] len {text.length}.");
+        print("Lines:");
+        pole.line();
+        print(" / ");
+        ((Packet)pole).line();
+        printLine(".");
+    }
+}
+
+verb Shuffle {
+    grammar = {.shuffle, .plan};
+    void handler() {
+        array<int> head = plan[0];
+        plan[0].reverse();
+        plan[1][0] = plan[1][0] * 2;
+        int last = plan[2].popEnd();
+        plan[2].prepend(last * 10 + head[0]);
+        plan[2].sort((int a, int b) => a < b ? 1 : (a > b ? -1 : 0));
+        for (array<int> r in plan) {
+            print("[");
+            for (int v in r) print($" {v}");
+            print(" ]");
+        }
+        int total = planTotal();
+        switch (total) {
+            case < 25:      printLine($" small {total}.");
+            case 25 to 99:  printLine($" medium {total}.");
+            default:        printLine($" large {total}.");
+        }
+    }
+}
+
+// ---- late additions ------------------------------------------------------------------------------------
+
+extend enum eSeason {
+    emitter int rank { ($self / 10) }
+}

@@ -628,6 +628,9 @@ class bglParser {
         // before it. Reports nothing — the main pass owns the diagnostics.
         void preScanI6NameClause(string& nameStr, string* asI6Name = nullptr);
         bool preScanNamespaceRedirect(token& t, class objectDef* obj);
+        bool takesOwnOperand(class classDef* cls, const string& op);
+        void rejectValueClassInitializer(class expression* e, const string& typeName, const string& memberName);
+        void preScanAccessorGetter(class objectDef& obj, class variableDeclaration& stub, const string& body);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false, string docComment = "");
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
@@ -1260,6 +1263,9 @@ class bglParser {
             // (`fixed`) resolves to the parameter's. "" where the candidates disagree.
             vector<string> positionalEnum;
             map<string, string> namedEnum;
+            // Where every candidate's parameter is `ref`, the argument names an instance, not its getter's value.
+            vector<char> positionalRef;
+            set<string> namedRef;
         };
         // Gather candidate callees by name (globals) or by receiver type + name (methods), mirroring
         // the candidate-gathering in resolveGlobalCall / resolveMethod (collection only, no scoring).
@@ -1319,6 +1325,8 @@ class bglParser {
         // as a final tie-breaker when multiple candidates remain after memberHint filtering.
         // Always saved/restored at sub-context boundaries (function args, etc.) so it doesn't leak.
         string currentExpectedType;
+        class classDef* ownOperatorOperand = nullptr;
+        long declInjectionStart = -1;   // where the declaration being registered had its initializer's set-up flushed   // parsing the right operand of this class's own operator
         // True while parsing the operand of `return ...;` inside a void function. Permits a
         // void function call to appear as the return expression — the C/I6 idiom
         // `return f();` ≡ `f(); return;`. Cleared at every other expression-context boundary.

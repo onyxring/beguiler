@@ -188,18 +188,18 @@ extern int          lookmode;              /// verbosity: 1=brief, 2=verbose, 3=
 extern int          transcript_mode;       /// game scripting on/off
 extern int          pretty_flag;           /// use character graphics for room descriptions
 extern int          before_first_turn;     /// true before first LOOK
-extern object       thedark;               /// the darkness object (in-scope when no light)
-extern object       selfobj;               /// the player self object
-extern object       n_obj;                 /// north
-extern object       s_obj;                 /// south
-extern object       e_obj;                 /// east
-extern object       w_obj;                 /// west
-extern object       ne_obj;                /// northeast
-extern object       nw_obj;                /// northwest
-extern object       se_obj;                /// southeast
-extern object       sw_obj;                /// southwest
-extern object       u_obj;                 /// up
-extern object       d_obj;                 /// down
+extern const object thedark;               /// the darkness object (in-scope when no light)
+extern const object selfobj;               /// the player self object
+extern const object n_obj;                 /// north
+extern const object s_obj;                 /// south
+extern const object e_obj;                 /// east
+extern const object w_obj;                 /// west
+extern const object ne_obj;                /// northeast
+extern const object nw_obj;                /// northwest
+extern const object se_obj;                /// southeast
+extern const object sw_obj;                /// southwest
+extern const object u_obj;                 /// up
+extern const object d_obj;                 /// down
 extern int          gg_statuswin_cursize;  /// current status-window height, in lines
 extern int          gg_statuswin_size;     /// the height DrawStatusLine restores on every redraw
 extern eScopeReason scope_reason;          /// why the parser is searching scope now
@@ -215,7 +215,7 @@ extern eListStyle   inventory_style;       /// the style the current inventory l
 #endif
 
 //-- Global objects ------------------------------------------------------
-extern object informParser;  /// parser object
+extern const object informParser;  /// parser object
 extern object informLibrary {      /// the main loop of the standard library
     void      play();                                                                                 /// runs the game
     void      end_turn_sequence();                                                                    /// lets a turn pass
