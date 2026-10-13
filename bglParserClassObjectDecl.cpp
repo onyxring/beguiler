@@ -53,6 +53,11 @@ using namespace std;
 // already consumed by the caller). Appends one entry to cls.hiddenMembers. The operator token is
 // read with the same conventions as an operator declaration (§5.6.6 / §10.8.6): `=`, `<=>`, `[]`,
 // `[]=`, `()`, `?`, and identifier-qualified forms like `prefix++`.
+// Keeps the routine a `replace` overrides reachable from its replacement, so tools can still read it.
+static void keepReplaced(functionDef& replacement, typeMember* old) {
+    if(auto* o = dynamic_cast<functionDef*>(old); o && !o->isPrePassStub && !replacement.replacedFunc) replacement.replacedFunc = o;
+}
+
 void bglParser::parseHideDirective(classDef& cls){
     hiddenMember hm;
     token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
@@ -521,7 +526,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
             parsingWarning(format("extend class '{0}': 'replace' specified but no existing member '{1}' found; treating as new definition", newClass.dName(), funcDef.dName()));
         if(existing && !alreadyReplaced){
             for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
-                if(*it==existing){ *it = &funcDef; break; }
+                if(*it==existing){ keepReplaced(funcDef, existing); *it = &funcDef; break; }
             alreadyReplaced = true;
         }
         if(alreadyReplaced){ tok = file.getToken(); return true; }
@@ -615,6 +620,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                         match = false;
                     if(match){
                         if(isReplace){
+                            keepReplaced(funcDef, newClass.members[i]);
                             newClass.members[i] = &funcDef;
                             replacedExisting = true;
                             break;
@@ -763,6 +769,8 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
         // No I6 backing — resolved at compile time for dot-access
         variableDeclaration& aliasDef = *(new variableDeclaration());
         aliasDef.name = (string)name;
+        aliasDef.displayName = name.originalValue;
+        aliasDef.src = name.src.line > 0 ? name.src : file.currentLocation();
         aliasDef.type = languageService.getType(aliasTypeName);
         aliasDef.isExternal = true;  // no I6 emission
         aliasDef.isConst = isMemberConst;
@@ -2037,6 +2045,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
             for(size_t i = 0; i < obj.members.size(); i++)
                 if(auto* fd = dynamic_cast<functionDef*>(obj.members[i]))
                     if(sigEq(fd)){
+                        keepReplaced(funcDef, fd);
                         obj.members[i] = &funcDef;
                         replaced = true;
                         break;
@@ -2235,6 +2244,7 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
         file.getToken(token::assignment);
         grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
         gtd.name = propName.value;
+        gtd.src = propName.src;
         gtd.type = languageService.getType("grammarrulelist");
         gtd.verbName = inferredVerb;
 
@@ -2392,6 +2402,7 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
         file.getToken(token::assignment);
         grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
         gtd.name = nameTok.value;
+        gtd.src = nameTok.src;
         gtd.type = languageService.getType("grammarrulelist");
         gtd.verbName = inferredVerb;
 
@@ -2849,6 +2860,7 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
     variableDeclaration& aliasDef = *(new variableDeclaration());
     aliasDef.name = (string)aliasName;
     aliasDef.displayName = aliasName.originalValue;
+    aliasDef.src = aliasName.src;
     aliasDef.isExternal = true;  // no I6 emission — compile-time indirection only
     if(sep.is("for")){
         token typeTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
@@ -2966,6 +2978,8 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
         }
         functionDef& funcDef = *(new functionDef());
         funcDef.name = (string)propName;
+        funcDef.displayName = propName.originalValue;
+        funcDef.src = propName.src.line > 0 ? propName.src : file.currentLocation();
         funcDef.returnType = languageService.getType((string)retType);
         funcDef.isEmitter = true;
         funcDef.isExplicit = q.isExplicit;
@@ -2999,6 +3013,8 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
             // Method declaration — register as functionDef for type checking
             functionDef& funcDef = *(new functionDef());
             funcDef.name = propName.value;
+            funcDef.displayName = propName.originalValue;
+            funcDef.src = propName.src.line > 0 ? propName.src : file.currentLocation();
             funcDef.returnType = languageService.getType(tok.value);
             funcDef.isExternal = true;
             if(!tok.docComment.empty())           funcDef.docComment = tok.docComment;
@@ -3024,6 +3040,8 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
         // pre-scan stub (same name) so we don't leave a duplicate untyped member.
         variableDeclaration& prop = *(new variableDeclaration());
         prop.name = propName.value;
+        prop.displayName = propName.originalValue;
+        prop.src = propName.src;
         prop.type = languageService.getType(tok.value);
         prop.isExternal = true;
         if(!tok.docComment.empty())           prop.docComment = tok.docComment;
@@ -3185,6 +3203,8 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
             file.getToken(token::endStatement);
             variableDeclaration& aliasDef = *(new variableDeclaration());
             aliasDef.name = (string)aliasName;
+            aliasDef.displayName = aliasName.originalValue;
+            aliasDef.src = aliasName.src;
             aliasDef.type = languageService.getType(rhs.value);
             aliasDef.isExternal = true;  // no I6 emission
             aliasDef.isValueAlias = true;   // a namespace hook: a path through it redirects to the class
@@ -3211,6 +3231,8 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         }
         functionDef& funcDef = *(new functionDef());
         funcDef.name = (string)propName;
+        funcDef.displayName = propName.originalValue;
+        funcDef.src = propName.src.line > 0 ? propName.src : file.currentLocation();
         funcDef.returnType = languageService.getType((string)retType);
         funcDef.isEmitter = true;
         funcDef.isExplicit = q.isExplicit;
@@ -3616,6 +3638,8 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             file.getToken(token::endStatement);
             variableDeclaration& aliasDef = *(new variableDeclaration());
             aliasDef.name = (string)aliasName;
+            aliasDef.displayName = aliasName.originalValue;
+            aliasDef.src = aliasName.src;
             aliasDef.type = languageService.getType(rhs.value);
             aliasDef.isExternal = true;  // no I6 emission
             aliasDef.isValueAlias = true;   // a namespace hook: a path through it redirects to the class
@@ -3639,6 +3663,8 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
         }
         functionDef& funcDef = *(new functionDef());
         funcDef.name = (string)propName;
+        funcDef.displayName = propName.originalValue;
+        funcDef.src = propName.src.line > 0 ? propName.src : file.currentLocation();
         funcDef.returnType = languageService.getType((string)retType);
         funcDef.isEmitter = true;
         funcDef.isExplicit = q.isExplicit;
@@ -3655,7 +3681,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             if(memberIsReplace){
                 for(size_t i = 0; i < obj->members.size(); i++)
                     if(auto* fd = dynamic_cast<functionDef*>(obj->members[i]))
-                        if(fd->name == funcDef.name){ obj->members[i] = &funcDef; replaced = true; break; }
+                        if(fd->name == funcDef.name){ keepReplaced(funcDef, fd); obj->members[i] = &funcDef; replaced = true; break; }
             }
             if(!replaced) obj->members.push_back((typeMember*)&funcDef);
         }

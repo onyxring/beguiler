@@ -20,7 +20,9 @@ class bglLanguageService;
 
 // Scope-restricted symbol resolution result from findSymbolAtPosition()
 struct LspSymbolRef {
-    enum Kind { None, Local, Parameter, ClassMember, Global };
+    // Alias: a `#using`-imported type alias. Define: a `#define`/`#declare` symbol (valueText is its
+    // replacement text). TypeParameter: a type parameter of the enclosing generic class.
+    enum Kind { None, Local, Parameter, ClassMember, Global, EnumValue, TypeParameter, Define, Alias };
     Kind kind = None;
     functionDef* enclosingFunc = nullptr;  // set for Local/Parameter
     classDef*    enclosingClass = nullptr; // set for ClassMember (if applicable)
@@ -28,7 +30,16 @@ struct LspSymbolRef {
     std::string displayName;                // original-case name
     std::string docComment;                 // user-authored doc-comment, if any (rendered in hover)
     sourceLocation declSrc;                 // declaration location (if known)
+    variableDeclaration* decl = nullptr;    // the variable behind a Local/ClassMember/Alias/Global
+    typeDef* global = nullptr;              // the file-scope variable, routine or object behind a Global
+    bool isFunction = false;                // a ClassMember/Global that is a routine, not a value
+    enumDef* enumType = nullptr;            // set for EnumValue
+    std::string valueText;                  // Define: what the symbol stands for
 };
+
+// Text range of a routine in its source file: from the start of its first line (a lambda: its parameter list)
+// to the end of its body; bodyOpen is the offset of the body's '{' (npos for an expression body or no body).
+struct LspFunctionSpan { size_t begin = 0, end = 0, bodyOpen = std::string::npos; };
 
 class LspServer {
 public:
@@ -82,12 +93,11 @@ private:
     std::string hoverBeguilerSettingsMember(const std::string& uri, int line, int col,
                                             const std::string& lower, const std::string& ownerName);
     // Hover case: `owner.member` — resolve the owner chain, then the member on it.
-    std::string hoverDottedMember(const std::string& uri, int line, const std::string& lower,
+    std::string hoverDottedMember(const std::string& uri, int line, int col, const std::string& lower,
                                   const std::string& ownerName, std::string& docComment);
     // Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
-    std::string hoverIdentifier(const std::string& uri, int line, const std::string& word,
-                                const std::string& lower, const std::string& ownerName,
-                                std::string& docComment);
+    std::string hoverIdentifier(const std::string& uri, int line, int col, bool isCall, const std::string& lower,
+                                const std::string& ownerName, std::string& docComment);
     json handleCompletion(const json& params);
     // handleCompletion's cases, one method each, called in phase order. Convention: each sets
     // `handled` true and returns that case's completion result when the cursor belongs to it;
@@ -103,7 +113,7 @@ private:
     json completeEnumArgument(const std::string& uri, int line, int col, const std::string& lineText,
                               const std::string& docText, bool& handled);
     // Append the in-scope symbols `fits` accepts (see definition).
-    void appendScopeItems(json& items, std::set<std::string>& seen, const std::string& uri, int line,
+    void appendScopeItems(json& items, std::set<std::string>& seen, const std::string& uri, int line, int col,
                           const std::string& docText, const std::function<bool(const std::string&)>& fits, bool typed);
     // Completion case: a typed (non-enum) call argument -> in-scope symbols assignable to that type.
     json completeTypedArgument(const std::string& uri, int line, int col, const std::string& lineText,
@@ -127,7 +137,7 @@ private:
     // Completion case: a bare prefix of `enum` -> the keyword syntax snippet + doc popup.
     json completeKeywordSnippet(int col, const std::string& lineText, bool& handled);
     // Completion case: bare-identifier position -> members imported by active `#using` directives.
-    json completeUsingImports(const std::string& uri, int line, const std::string& docText, bool& handled);
+    json completeUsingImports(const std::string& uri, int line, int col, const std::string& docText, bool& handled);
     json handleDefinition(const json& params);
     json handleDocumentSymbol(const json& params);
     json handleSignatureHelp(const json& params);
@@ -173,22 +183,70 @@ private:
     // Position-to-symbol resolution helpers (shared across hover, definition, completion,
     // signatureHelp, references, rename). These walk enclosing scopes: locals → parameters →
     // class members → globals.
-    functionDef* findEnclosingFunction(const std::string& uri, int cursorLine);
-    LspSymbolRef resolveSymbol(const std::string& uri, int cursorLine, const std::string& loweredName);
+    using FunctionSpan = LspFunctionSpan;
+    bool functionSpan(functionDef* fd, const std::string& text, FunctionSpan& sp, std::set<size_t>* claimed = nullptr);
+    // The routines whose text holds a position, innermost first (lambdas, then the routine that
+    // declares them), and the class or object whose member the outermost one is.
+    struct FunctionContext {
+        std::vector<functionDef*> chain; std::vector<FunctionSpan> spans;   // parallel
+        classDef* ownerClass = nullptr; objectDef* ownerObject = nullptr;
+    };
+    FunctionContext functionContext(const std::string& uri, int line, int col);
+    // 1-based [first, last] lines of a routine's text; {-1,-1} when unknown.
+    std::pair<int,int> functionLines(const std::string& uri, int line, int col, functionDef* fn);
+    // `isCall`: the name is followed by `(`, so a routine wins over a variable of the same name.
+    LspSymbolRef resolveSymbol(const std::string& uri, int cursorLine, int cursorCol, const std::string& loweredName, bool isCall = false);
     // resolveSymbol's tiers, tried in this order. Each fills `out` and returns true when it
     // resolves the name; a false return leaves `out` for the next tier to try.
     // Tier: a class member whose declaration sits on the cursor line.
     bool resolveTierSourceLineClassMember(const std::string& curFile, int cursorLine1Based,
                                           const std::string& loweredName, LspSymbolRef& out);
-    // Tier: an object-instance member whose declaration sits on the cursor line.
+    // Tier: an object member (instance, extern object or verb) whose declaration sits on the cursor line.
     bool resolveTierSourceLineInstanceMember(const std::string& curFile, int cursorLine1Based,
                                              const std::string& loweredName, LspSymbolRef& out);
-    // Tier: the enclosing function's locals, parameters and containing class members. Sets
-    // out.enclosingFunc even when it resolves nothing.
-    bool resolveTierFunctionScope(const std::string& uri, int cursorLine,
+    // Tier: the enclosing routines' locals and parameters (lambdas first), then the members of the
+    // class or object that owns them. Sets out.enclosingFunc even when it resolves nothing.
+    bool resolveTierFunctionScope(const std::string& uri, int cursorLine, int cursorCol,
                                   const std::string& loweredName, LspSymbolRef& out);
+    // Tier: a member named inside the body of a class, object, verb or `Type{ … }` literal, outside any routine.
+    bool resolveTierTypeBody(const std::string& uri, int cursorLine, int cursorCol, const std::string& loweredName, LspSymbolRef& out);
     // Tier: file-scope names — classes, enums, globals.
-    bool resolveTierGlobal(const std::string& loweredName, LspSymbolRef& out);
+    bool resolveTierGlobal(const std::string& loweredName, bool isCall, LspSymbolRef& out);
+    // Tier: members brought in by an active `#using`.
+    bool resolveTierUsing(const std::string& uri, int cursorLine, int cursorCol, const std::string& loweredName, LspSymbolRef& out);
+    // Tier: an enum value named without its type.
+    bool resolveTierEnumValue(const std::string& loweredName, LspSymbolRef& out);
+    // Tier: `grammar` at the head of a standalone grammar object.
+    bool resolveTierGrammarKeyword(const std::string& loweredName, LspSymbolRef& out);
+    // Tier: a `#define`/`#declare` symbol declared in this or an included file.
+    bool resolveTierDefine(const std::string& uri, const std::string& loweredName, LspSymbolRef& out);
+
+    // What a name or dotted path stands for when something is accessed on it: the class whose members
+    // apply, the object whose own members apply, or the enum whose values are listed.
+    struct LspTarget {
+        classDef* cls = nullptr; objectDef* obj = nullptr; enumDef* enumType = nullptr;
+        bool isType = false;   // names the type itself, not a value of it
+        bool valid() const { return cls || obj || enumType; }
+    };
+    // A member found on a target.
+    struct LspMember {
+        typeMember* member = nullptr; classDef* owner = nullptr; objectDef* object = nullptr;
+        enumDef* enumType = nullptr; enumValueDef* enumValue = nullptr;
+    };
+    LspTarget targetOfType(const std::string& typeName, bool asValue);
+    LspTarget targetOfVariable(variableDeclaration* vd);
+    // Resolve the first name of an access path in scope at (line, col).
+    bool resolveTargetHead(const std::string& uri, int line, int col, const std::string& nameLower, LspTarget& out);
+    // Resolve a lowercased dotted path (`bgl.util`, `self`, `rack.marks`) to the target it names.
+    bool resolveTarget(const std::string& uri, int line, int col, const std::string& pathLower, LspTarget& out);
+    LspMember findMemberOn(const LspTarget& t, const std::string& nameLower);
+    LspTarget conversionTarget(classDef* c);
+    // The line of `value` within enum `ed`'s declaration.
+    sourceLocation enumValueSource(enumDef* ed, const std::string& valueLower);
+    // `src` moved to the nearby line that holds `nameLower`, when the recorded line does not.
+    sourceLocation settleDeclLine(const sourceLocation& src, const std::string& nameLower);
+    // Source text of a file: the open buffer when there is one, else the file on disk.
+    bool sourceTextOf(const std::string& path, std::string& text);
 
     // Resolve every active `#using <path>` directive above `line` to the namespace object
     // it names (if any). Used by completion to surface #using-imported members (e.g. the
@@ -197,7 +255,7 @@ private:
 
     // Every function a call site could name — all overloads. `objName` may be a dotted namespace
     // path (`bgl.ui` for `bgl.ui.waitForKey(`), walked via walkNamespacePath.
-    std::vector<functionDef*> resolveCallees(const std::string& uri, int line, const std::string& funcName,
+    std::vector<functionDef*> resolveCallees(const std::string& uri, int line, int col, const std::string& funcName,
                                              const std::string& objName, const std::string& docText);
     // Walk a lowercased dotted namespace path (`bgl.printrules`) to its objectDef; nullptr if unresolved.
     objectDef* walkNamespacePath(const std::string& path);
@@ -206,7 +264,7 @@ private:
     // for a bare call). Checks, in order: member methods (when objName is set), global functions,
     // then #using-imported namespace members. Returns the first candidate's params, or empty when
     // nothing resolves. Backs enum-argument completion (offer an enum param's members).
-    std::vector<paramDef*> resolveCalleeParams(const std::string& uri, int line,
+    std::vector<paramDef*> resolveCalleeParams(const std::string& uri, int line, int col,
                                                const std::string& funcName,
                                                const std::string& objName,
                                                const std::string& docText);

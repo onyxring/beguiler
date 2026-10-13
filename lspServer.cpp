@@ -121,30 +121,34 @@ void LspServer::handleMessage(const json& msg) {
         json id = msg["id"];
         json params = msg.value("params", json::object());
 
-        if(method == "initialize")
-            sendResponse(id, handleInitialize(params));
-        else if(method == "shutdown")
-            handleShutdown(id);
-        else if(method == "textDocument/hover")
-            sendResponse(id, handleHover(params));
-        else if(method == "textDocument/completion")
-            sendResponse(id, handleCompletion(params));
-        else if(method == "textDocument/definition")
-            sendResponse(id, handleDefinition(params));
-        else if(method == "textDocument/documentSymbol")
-            sendResponse(id, handleDocumentSymbol(params));
-        else if(method == "textDocument/signatureHelp")
-            sendResponse(id, handleSignatureHelp(params));
-        else if(method == "textDocument/references")
-            sendResponse(id, handleReferences(params));
-        else if(method == "textDocument/rename")
-            sendResponse(id, handleRename(params));
-        else if(method == "textDocument/semanticTokens/full")
-            sendResponse(id, handleSemanticTokensFull(params));
-        else if(method == "workspace/symbol")
-            sendResponse(id, handleWorkspaceSymbol(params));
-        else
-            sendError(id, -32601, "Method not found: " + method);
+        try {
+            if(method == "initialize")
+                sendResponse(id, handleInitialize(params));
+            else if(method == "shutdown")
+                handleShutdown(id);
+            else if(method == "textDocument/hover")
+                sendResponse(id, handleHover(params));
+            else if(method == "textDocument/completion")
+                sendResponse(id, handleCompletion(params));
+            else if(method == "textDocument/definition")
+                sendResponse(id, handleDefinition(params));
+            else if(method == "textDocument/documentSymbol")
+                sendResponse(id, handleDocumentSymbol(params));
+            else if(method == "textDocument/signatureHelp")
+                sendResponse(id, handleSignatureHelp(params));
+            else if(method == "textDocument/references")
+                sendResponse(id, handleReferences(params));
+            else if(method == "textDocument/rename")
+                sendResponse(id, handleRename(params));
+            else if(method == "textDocument/semanticTokens/full")
+                sendResponse(id, handleSemanticTokensFull(params));
+            else if(method == "workspace/symbol")
+                sendResponse(id, handleWorkspaceSymbol(params));
+            else
+                sendError(id, -32601, "Method not found: " + method);
+        } catch(const exception& e) {
+            sendError(id, -32603, string("Internal error: ") + e.what());
+        }
 
     } else if(!method.empty()) {
         // Notification (no id)
@@ -957,41 +961,232 @@ static string typeDisplay(const string& typeName) {
     return typeName;
 }
 
-// Find the function declared in the current file whose src.line is the largest value
-// <= cursorLine + 1. Returns nullptr if no function contains the cursor.
-// Walks global functions AND class/object member methods.
-functionDef* LspServer::findEnclosingFunction(const string& uri, int cursorLine) {
-    int cursorLine1Based = cursorLine + 1;
-    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
-    functionDef* best = nullptr;
-    int bestLine = 0;
+// Offset of the first character of 0-based `line0`; npos past the end of the text.
+static size_t lineStartOffset(const string& t, int line0) {
+    size_t i = 0;
+    for(int l = 0; l < line0; l++) {
+        i = t.find('\n', i);
+        if(i == string::npos) return string::npos;
+        i++;
+    }
+    return i;
+}
 
-    auto tryFn = [&](functionDef* fd) {
-        if(!fd || fd->src.line == 0) return;
-        if(fd->src.file != curFile) return;
-        if(fd->src.line <= cursorLine1Based && fd->src.line > bestLine) {
-            bestLine = fd->src.line;
-            best = fd;
+// Offset just past the comment, string or character literal that starts at `i`; `i` itself when none does.
+static size_t skipLiteral(const string& t, size_t i) {
+    size_t n = t.size();
+    if(i >= n) return i;
+    if(t.compare(i, 2, "//") == 0) { while(i < n && t[i] != '\n') i++; return i; }
+    if(t.compare(i, 2, "/*") == 0) { size_t e = t.find("*/", i + 2); return e == string::npos ? n : e + 2; }
+    if(t[i] == '"' || t[i] == '\'') {
+        char q = t[i++];
+        while(i < n && t[i] != q && !(q == '\'' && t[i] == '\n')) i += (t[i] == '\\' ? 2 : 1);
+        return std::min(i + 1, n);
+    }
+    return i;
+}
+
+// Offset just past the '}' that closes the '{' at `open`; the end of the text when it never closes.
+static size_t matchBrace(const string& t, size_t open) {
+    int depth = 0;
+    for(size_t i = open; i < t.size();) {
+        size_t j = skipLiteral(t, i);
+        if(j != i) { i = j; continue; }
+        if(t[i] == '{') depth++;
+        else if(t[i] == '}' && --depth == 0) return i + 1;
+        i++;
+    }
+    return t.size();
+}
+
+static bool isWordChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
+
+// The names of the parameters in a lambda's parameter list text (`int a, func<int,int> f`), lowercased.
+static vector<string> lambdaParamNames(const string& list) {
+    vector<string> names;
+    int depth = 0;
+    string seg;
+    auto flush = [&]() {
+        size_t e = seg.find_last_not_of(" \t\r\n");
+        if(e != string::npos) {
+            size_t b = e;
+            while(b > 0 && isWordChar(seg[b - 1])) b--;
+            string w = seg.substr(b, e - b + 1);
+            transform(w.begin(), w.end(), w.begin(), ::tolower);
+            names.push_back(w);
+        }
+        seg.clear();
+    };
+    for(char c : list) {
+        if(c == '<' || c == '(') depth++;
+        else if(c == '>' || c == ')') depth--;
+        if(c == ',' && depth == 0) flush();
+        else seg += c;
+    }
+    flush();
+    return names;
+}
+
+// A lambda records only a line near its text, and the lexer's lookahead can leave even that a line or two
+// off, so its text is found by its `=>`: the one nearby whose parameter names are the lambda's own (or, for
+// `=> body`, which follows no parameter list). Lambdas written alike take the occurrences in turn.
+static bool lambdaSpan(functionDef* fd, const string& text, LspFunctionSpan& sp, std::set<size_t>* claimed) {
+    size_t n = text.size();
+    size_t srcOff = lineStartOffset(text, fd->src.line - 1);
+    if(srcOff == string::npos) return false;
+    size_t from = lineStartOffset(text, std::max(fd->src.line - 4, 0));
+    size_t to = lineStartOffset(text, fd->src.line + 3);
+    if(to == string::npos) to = n;
+    vector<string> want;
+    for(paramDef* p : fd->params) { string w = p->name; transform(w.begin(), w.end(), w.begin(), ::tolower); want.push_back(w); }
+    size_t bestArrow = string::npos, bestBegin = 0, bestDist = string::npos;
+    bool bestClaimed = true;
+    for(size_t i = from; i < to;) {
+        size_t j = skipLiteral(text, i);
+        if(j != i) { i = j; continue; }
+        if(text.compare(i, 2, "=>") != 0) { i++; continue; }
+        size_t arrow = i;
+        i += 2;
+        size_t h = arrow;
+        while(h > 0 && isspace((unsigned char)text[h - 1])) h--;
+        size_t begin = arrow;
+        vector<string> names;
+        if(h > 0 && text[h - 1] == ')') {
+            int depth = 0;
+            size_t k = h - 1;
+            for(;; k--) {
+                if(text[k] == ')') depth++;
+                else if(text[k] == '(' && --depth == 0) break;
+                if(k == 0) break;
+            }
+            if(text[k] != '(') continue;
+            begin = k;
+            names = lambdaParamNames(text.substr(k + 1, h - 2 - k));
+        }
+        if(names != want) continue;
+        bool isClaimed = claimed && claimed->count(arrow);
+        size_t dist = begin > srcOff ? begin - srcOff : srcOff - begin;
+        if(bestArrow == string::npos || (bestClaimed && !isClaimed) || (bestClaimed == isClaimed && dist < bestDist)) {
+            bestArrow = arrow; bestBegin = begin; bestDist = dist; bestClaimed = isClaimed;
+        }
+    }
+    if(bestArrow == string::npos) return false;
+    if(claimed) claimed->insert(bestArrow);
+    sp.begin = bestBegin;
+    sp.bodyOpen = string::npos;
+    size_t body = bestArrow + 2;
+    while(body < n && isspace((unsigned char)text[body])) body++;
+    if(body < n && text[body] == '{') { sp.bodyOpen = body; sp.end = matchBrace(text, body); return true; }
+    // An expression body ends at the first `)`, `]`, `}`, `,` or `;` that is not inside brackets of its own.
+    int depth = 0;
+    size_t i = body;
+    while(i < n) {
+        size_t j = skipLiteral(text, i);
+        if(j != i) { i = j; continue; }
+        char c = text[i];
+        if(c == '(' || c == '[' || c == '{') depth++;
+        else if(c == ')' || c == ']' || c == '}') { if(depth == 0) break; depth--; }
+        else if(depth == 0 && (c == ',' || c == ';')) break;
+        i++;
+    }
+    sp.end = i;
+    return true;
+}
+
+// Where a routine's text sits. A routine records the line of its name.
+bool LspServer::functionSpan(functionDef* fd, const string& text, FunctionSpan& sp, std::set<size_t>* claimed) {
+    if(!fd || fd->src.line <= 0) return false;
+    size_t ls = lineStartOffset(text, fd->src.line - 1);
+    if(ls == string::npos) return false;
+    size_t n = text.size();
+    size_t at = std::min(ls + (size_t)std::max(fd->src.col - 1, 0), n);
+    sp.begin = ls;
+    sp.bodyOpen = string::npos;
+    // A signature may start on earlier lines (`emitter` and the return type above the name).
+    for(int up = 0; up < 8 && !fd->isLambda; up++) {
+        size_t q = sp.begin;
+        while(q > 0 && isspace((unsigned char)text[q - 1])) q--;
+        if(q == 0 || text[q - 1] == ';' || text[q - 1] == '{' || text[q - 1] == '}') break;
+        size_t prev = text.rfind('\n', q - 1);
+        sp.begin = prev == string::npos ? 0 : prev + 1;
+    }
+    if(fd->isLambda) return lambdaSpan(fd, text, sp, claimed);
+    int depth = 0;
+    size_t i = at;
+    sp.end = at;
+    while(i < n) {
+        size_t j = skipLiteral(text, i);
+        if(j != i) { i = j; continue; }
+        char c = text[i];
+        if(c == '(' || c == '[') depth++;
+        else if(c == ')' || c == ']') depth--;
+        else if(depth <= 0 && c == '{') { sp.bodyOpen = i; sp.end = matchBrace(text, i); return true; }
+        else if(depth <= 0 && (c == ';' || c == '}')) { sp.end = i; return true; }
+        i++;
+    }
+    sp.end = n;
+    return true;
+}
+
+// The routines in the current file whose text holds (line, col), innermost first.
+LspServer::FunctionContext LspServer::functionContext(const string& uri, int line, int col) {
+    FunctionContext ctx;
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return ctx;
+    const string& text = docIt->second;
+    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+    size_t cursor = std::min((size_t)std::max(positionToOffset(text, line, col), 0), text.size());
+    struct Hit { functionDef* fn; FunctionSpan span; classDef* cls; objectDef* obj; };
+    vector<Hit> hits;
+    std::set<functionDef*> seen;
+    std::set<size_t> claimed;
+    auto consider = [&](typeMember* m, classDef* cls, objectDef* obj) {
+        // A routine a later `replace` overrode is gone from its class but still holds the text it was written in.
+        for(auto* fd = dynamic_cast<functionDef*>(m); fd; fd = fd->replacedFunc) {
+            if(fd->src.line == 0 || fd->src.line > line + 1 + 8 || fd->src.file != curFile || !seen.insert(fd).second) continue;
+            FunctionSpan sp;
+            if(!functionSpan(fd, text, sp, &claimed) || cursor < sp.begin || cursor > sp.end) continue;
+            hits.push_back({fd, sp, cls, obj});
         }
     };
-
-    // Global functions
     for(typeDef* g : languageService.globals) {
-        if(auto* fd = dynamic_cast<functionDef*>(g)) tryFn(fd);
+        consider(dynamic_cast<functionDef*>(g), nullptr, nullptr);
+        if(auto* od = dynamic_cast<objectDef*>(g))
+            for(typeMember* m : od->members) consider(m, nullptr, od);
     }
-    // Class member methods
     for(typeDef* t : languageService.objectTypes) {
-        if(auto* cd = dynamic_cast<classDef*>(t))
-            for(typeMember* m : cd->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m)) tryFn(fd);
+        if(auto* cd = dynamic_cast<classDef*>(t)) {
+            for(typeMember* m : cd->members) consider(m, cd, nullptr);
+        } else if(auto* ed = dynamic_cast<enumDef*>(t)) {
+            if(ed->companion) for(typeMember* m : ed->companion->members) consider(m, ed->companion, nullptr);
+        }
     }
-    // Object instance member methods
-    for(typeDef* t : languageService.objectInstances) {
+    for(typeDef* t : languageService.objectInstances)
         if(auto* od = dynamic_cast<objectDef*>(t))
-            for(typeMember* m : od->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m)) tryFn(fd);
+            for(typeMember* m : od->members) consider(m, nullptr, od);
+    for(verbObjectDef* v : languageService.verbs)
+        for(typeMember* m : v->members) consider(m, nullptr, v);
+    std::stable_sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.span.begin > b.span.begin; });
+    for(const Hit& h : hits) {
+        ctx.chain.push_back(h.fn);
+        ctx.spans.push_back(h.span);
+        if(h.cls || h.obj) { ctx.ownerClass = h.cls; ctx.ownerObject = h.obj; }
     }
-    return best;
+    return ctx;
+}
+
+std::pair<int,int> LspServer::functionLines(const string& uri, int line, int col, functionDef* fn) {
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return {-1, -1};
+    FunctionContext ctx = functionContext(uri, line, col);
+    FunctionSpan sp;
+    bool found = false;
+    for(size_t i = 0; i < ctx.chain.size(); i++)
+        if(ctx.chain[i] == fn) { sp = ctx.spans[i]; found = true; }
+    if(!found && !functionSpan(fn, docIt->second, sp)) return {-1, -1};
+    const string& t = docIt->second;
+    auto lineOf = [&](size_t off) { return 1 + (int)std::count(t.begin(), t.begin() + std::min(off, t.size()), '\n'); };
+    return {lineOf(sp.begin), lineOf(sp.end)};
 }
 
 // Returns true if (line, col) is inside an open '#beguilerSettings { ... }' block.
@@ -1032,214 +1227,389 @@ bool LspServer::isInBeguilerSettingsBlock(const string& uri, int line, int col) 
     }
 }
 
-// Resolve a name at a cursor position to its declaration, walking enclosing scopes:
-// 1. local variables in the enclosing function's body
-// 2. parameters of the enclosing function
-// 3. members of the enclosing class (if the function is inside one)
-// 4. globals, classes, enum values, verbs
-// resolveSymbol tier: a class member whose declaration sits on the cursor line.
-    // Tier 0: direct source-line match on class/object members in the current file.
-    // Handles hover at a member declaration line (inside class body, not in a method).
+// Source text of a file: the open buffer when one holds it, else the file on disk.
+bool LspServer::sourceTextOf(const string& path, string& text) {
+    for(auto& [docUri, docText] : openDocuments) {
+        string docPath = documentParsePaths.count(docUri) ? documentParsePaths[docUri] : uriToPath(docUri);
+        if(docPath == path) { text = docText; return true; }
+    }
+    ifstream in(path, ios::binary);
+    if(!in) return false;
+    stringstream ss;
+    ss << in.rdbuf();
+    text = ss.str();
+    return true;
+}
+
+// Whether `lower` (lowercase) occurs in `line` as a whole word, ignoring case.
+static bool lineHasWord(const string& line, const string& lower) {
+    string l = line;
+    transform(l.begin(), l.end(), l.begin(), ::tolower);
+    for(size_t pos = l.find(lower); pos != string::npos; pos = l.find(lower, pos + 1))
+        if((pos == 0 || !isWordChar(l[pos - 1])) && (pos + lower.size() >= l.size() || !isWordChar(l[pos + lower.size()])))
+            return true;
+    return false;
+}
+
+// A declaration's recorded line can sit beside the one that names it (an object's `{` on its own line, a
+// parameter in a multi-line list); look a few lines up, then down, for the name.
+sourceLocation LspServer::settleDeclLine(const sourceLocation& src, const string& nameLower) {
+    string text;
+    if(src.line <= 0 || nameLower.empty() || !sourceTextOf(src.file, text)) return src;
+    vector<string> lines;
+    { istringstream in(text); string l; while(getline(in, l)) lines.push_back(l); }
+    auto has = [&](int l0) { return l0 >= 0 && l0 < (int)lines.size() && lineHasWord(lines[l0], nameLower); };
+    int at = src.line - 1;
+    if(has(at)) return src;
+    sourceLocation moved = src;
+    for(int d = 1; d <= 5; d++) if(has(at - d)) { moved.line = src.line - d; return moved; }
+    for(int d = 1; d <= 3; d++) if(has(at + d)) { moved.line = src.line + d; return moved; }
+    return src;
+}
+
+// 1-based line of the last declaration of `lower` in text[begin, end) that starts at or before `limit`
+// (the first one after it when none does); 0 when there is none. A declaration is the name written
+// after a type, as in `int k`, `array<int> a` or `catch (int e)`.
+static int declarationLine(const string& text, size_t begin, size_t end, const string& lower, size_t limit) {
+    static const std::set<string> notTypes = {"return", "new", "else", "case", "in", "print", "throw", "delete", "do", "is", "as", "to"};
+    end = std::min(end, text.size());
+    size_t foundAt = string::npos, firstAfter = string::npos;
+    for(size_t i = begin; i < end;) {
+        size_t j = skipLiteral(text, i);
+        if(j != i) { i = j; continue; }
+        if(!isWordChar(text[i]) || (i > begin && isWordChar(text[i - 1]))) { i++; continue; }
+        size_t e = i;
+        while(e < end && isWordChar(text[e])) e++;
+        string w = text.substr(i, e - i);
+        transform(w.begin(), w.end(), w.begin(), ::tolower);
+        size_t at = i;
+        i = e;
+        if(w != lower) continue;
+        size_t p = at;
+        while(p > begin && isspace((unsigned char)text[p - 1])) p--;
+        if(p == begin) continue;
+        char pc = text[p - 1];
+        if(!(isWordChar(pc) || pc == '>' || pc == ']')) continue;
+        if(isWordChar(pc)) {
+            size_t ws = p;
+            while(ws > begin && isWordChar(text[ws - 1])) ws--;
+            string pw = text.substr(ws, p - ws);
+            transform(pw.begin(), pw.end(), pw.begin(), ::tolower);
+            if(notTypes.count(pw)) continue;
+        }
+        size_t q = e;
+        while(q < end) {
+            if(isspace((unsigned char)text[q])) q++;
+            else if(text[q] == '/' && skipLiteral(text, q) != q) q = skipLiteral(text, q);
+            else break;
+        }
+        bool endsDecl = q < end && string("=;,):[").find(text[q]) != string::npos;
+        if(!endsDecl) {   // `in` of a for-in loop, or the `asI6`/`asBgl` clause of a declaration
+            size_t we = q;
+            while(we < end && isWordChar(text[we])) we++;
+            string next = text.substr(q, we - q);
+            transform(next.begin(), next.end(), next.begin(), ::tolower);
+            endsDecl = next == "in" || next == "asi6" || next == "asbgl";
+        }
+        if(!endsDecl) continue;
+        if(at <= limit) foundAt = at;
+        else if(firstAfter == string::npos) firstAfter = at;
+    }
+    size_t use = foundAt != string::npos ? foundAt : firstAfter;
+    if(use == string::npos) return 0;
+    return 1 + (int)std::count(text.begin(), text.begin() + use, '\n');
+}
+
+// Where `ed` declares `valueLower`.
+sourceLocation LspServer::enumValueSource(enumDef* ed, const string& valueLower) {
+    string text;
+    if(!ed || ed->src.line <= 0 || !sourceTextOf(ed->src.file, text)) return ed ? ed->src : sourceLocation();
+    size_t from = lineStartOffset(text, std::max(ed->src.line - 2, 0));
+    size_t open = from == string::npos ? string::npos : text.find('{', from);
+    if(open == string::npos) return ed->src;
+    size_t end = matchBrace(text, open);
+    int line = declarationLine(text, open, end, valueLower, string::npos);
+    if(line == 0) {
+        for(size_t i = open + 1; i < end;) {
+            size_t j = skipLiteral(text, i);
+            if(j != i) { i = j; continue; }
+            if(isWordChar(text[i]) && !isWordChar(text[i - 1])) {
+                size_t e = i;
+                while(e < end && isWordChar(text[e])) e++;
+                string w = text.substr(i, e - i);
+                transform(w.begin(), w.end(), w.begin(), ::tolower);
+                if(w == valueLower) { line = 1 + (int)std::count(text.begin(), text.begin() + i, '\n'); break; }
+                i = e;
+            } else i++;
+        }
+    }
+    sourceLocation out = ed->src;
+    if(line > 0) out.line = line;
+    return out;
+}
+
+static void fillFromMember(LspSymbolRef& out, typeMember* m, classDef* cls) {
+    out.kind = LspSymbolRef::ClassMember;
+    out.enclosingClass = cls;
+    if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
+        out.typeName = vd->type.name;
+        out.decl = vd;
+        out.declSrc = vd->src;
+        if(vd->isAlias) out.kind = LspSymbolRef::Alias;
+    } else if(auto* fd = dynamic_cast<functionDef*>(m)) {
+        out.typeName = fd->returnType.name;
+        out.isFunction = true;
+        out.declSrc = fd->src;
+    }
+    out.displayName = m->dName();
+    out.docComment = m->docComment;
+}
+
+static vector<string> activeUsingPaths(const string& docText, int line);
+
+// The member of `members` named `lower`, a pre-scan stub only when nothing else carries the name.
+static typeMember* findNamedMember(const vector<typeMember*>& members, const string& lower) {
+    typeMember* stub = nullptr;
+    for(typeMember* m : members) {
+        if(m->name != lower || !(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))) continue;
+        if(!m->isPrePassStub) return m;
+        if(!stub) stub = m;
+    }
+    return stub;
+}
+
+static bool isNamedValueOrRoutine(typeMember* m, const string& lower) {
+    return m->name == lower && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+}
+
+// resolveSymbol tier: a class member whose declaration sits on the cursor line. Handles hover at a
+// member declaration line (inside a class body, not in a method).
 bool LspServer::resolveTierSourceLineClassMember(const string& curFile, int cursorLine1Based,
                                                  const string& loweredName, LspSymbolRef& out) {
     for(typeDef* t : languageService.objectTypes) {
         auto* cd = dynamic_cast<classDef*>(t);
         if(!cd) continue;
         for(typeMember* m : cd->members) {
-            if(m->name != loweredName) continue;
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                if(vd->src.file == curFile && vd->src.line == cursorLine1Based) {
-                    out.kind = LspSymbolRef::ClassMember;
-                    out.enclosingClass = cd;
-                    out.typeName = vd->type.name;
-                    out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
-                    out.docComment = vd->docComment;
-                    out.declSrc = vd->src;
-                    return true;
-                }
-            } else if(auto* mfd = dynamic_cast<functionDef*>(m)) {
-                if(mfd->src.file == curFile && mfd->src.line == cursorLine1Based) {
-                    out.kind = LspSymbolRef::ClassMember;
-                    out.enclosingClass = cd;
-                    out.typeName = mfd->returnType.name;
-                    out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
-                    out.docComment = mfd->docComment;
-                    out.declSrc = mfd->src;
-                    return true;
-                }
-            }
+            if(!isNamedValueOrRoutine(m, loweredName)) continue;
+            sourceLocation src = dynamic_cast<variableDeclaration*>(m) ? static_cast<variableDeclaration*>(m)->src
+                                                                       : static_cast<functionDef*>(m)->src;
+            if(src.file == curFile && src.line == cursorLine1Based) { fillFromMember(out, m, cd); return true; }
         }
     }
     return false;
 }
 
-// resolveSymbol tier: an object-instance member whose declaration sits on the cursor line.
-    // Tier 0b: same match against object instance bodies. Handles hover inside a `room foyer {
-    // short_name = ...; }` initializer where the property assignment is stored as a member
-    // variableDeclaration on the object with its own src.line. For definition, prefer jumping
-    // to the owning class's member declaration rather than the instance override.
+// resolveSymbol tier: an object member whose declaration sits on the cursor line — the members of an
+// instance, an extern object or a verb. Handles hover inside a `room foyer { short_name = ...; }`
+// initializer, where the property assignment is stored as a member on the object with its own line. For
+// definition, prefer jumping to the owning class's member declaration rather than the instance override.
 bool LspServer::resolveTierSourceLineInstanceMember(const string& curFile, int cursorLine1Based,
                                                     const string& loweredName, LspSymbolRef& out) {
-    auto findClassMemberSrc = [&](classDef* startCls, const string& memberName) -> sourceLocation {
-        sourceLocation result;
-        if(startCls) {
-            typeMember* hit = startCls->findMember([&](typeMember* m){
-                return m->name == memberName
-                       && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
-            });
-            if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) result = vd->src;
-            else if(auto* fd = dynamic_cast<functionDef*>(hit)) result = fd->src;
-        }
-        return result;
-    };
-    for(typeDef* t : languageService.objectInstances) {
-        auto* od = dynamic_cast<objectDef*>(t);
-        if(!od) continue;
+    std::set<objectDef*> seen;
+    vector<objectDef*> objects;
+    auto add = [&](typeDef* t) { if(auto* od = dynamic_cast<objectDef*>(t)) if(seen.insert(od).second) objects.push_back(od); };
+    for(typeDef* t : languageService.objectInstances) add(t);
+    for(typeDef* t : languageService.globals) add(t);
+    for(verbObjectDef* v : languageService.verbs) add(v);
+    for(objectDef* od : objects) {
         for(typeMember* m : od->members) {
-            if(m->name != loweredName) continue;
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                if(vd->src.file == curFile && vd->src.line == cursorLine1Based) {
-                    out.kind = LspSymbolRef::ClassMember;
-                    out.enclosingClass = od->objectClass;
-                    out.typeName = vd->type.name;
-                    out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
-                    out.docComment = vd->docComment;
-                    sourceLocation clsSrc = findClassMemberSrc(od->objectClass, loweredName);
-                    out.declSrc = clsSrc.line > 0 ? clsSrc : vd->src;
-                    return true;
+            if(!isNamedValueOrRoutine(m, loweredName)) continue;
+            sourceLocation src = dynamic_cast<variableDeclaration*>(m) ? static_cast<variableDeclaration*>(m)->src
+                                                                       : static_cast<functionDef*>(m)->src;
+            if(src.file != curFile || src.line != cursorLine1Based) continue;
+            fillFromMember(out, m, od->objectClass);
+            if(od->objectClass)
+                if(typeMember* hit = od->objectClass->findMember([&](typeMember* c) { return isNamedValueOrRoutine(c, loweredName); })) {
+                    sourceLocation cs = dynamic_cast<variableDeclaration*>(hit) ? static_cast<variableDeclaration*>(hit)->src
+                                                                                : static_cast<functionDef*>(hit)->src;
+                    if(cs.line > 0) out.declSrc = cs;
                 }
-            } else if(auto* mfd = dynamic_cast<functionDef*>(m)) {
-                if(mfd->src.file == curFile && mfd->src.line == cursorLine1Based) {
-                    out.kind = LspSymbolRef::ClassMember;
-                    out.enclosingClass = od->objectClass;
-                    out.typeName = mfd->returnType.name;
-                    out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
-                    out.docComment = mfd->docComment;
-                    sourceLocation clsSrc = findClassMemberSrc(od->objectClass, loweredName);
-                    out.declSrc = clsSrc.line > 0 ? clsSrc : mfd->src;
-                    return true;
-                }
-            }
+            return true;
         }
     }
     return false;
 }
 
-// resolveSymbol tier: the enclosing function's scope. Sets out.enclosingFunc even when it
-// resolves nothing, so a later tier still reports the function the cursor sits in.
-    // Tier 1: enclosing function locals and parameters
-bool LspServer::resolveTierFunctionScope(const string& uri, int cursorLine,
-                                         const string& loweredName, LspSymbolRef& out) {
-    functionDef* fn = findEnclosingFunction(uri, cursorLine);
-    if(fn) {
-        out.enclosingFunc = fn;
-        // Locals first (they shadow parameters with the same name)
-        if(auto* blk = dynamic_cast<statementBlock*>(fn->body)) {
-            for(statement* s : blk->statements) {
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s)) {
-                    if(vd->name == loweredName) {
-                        out.kind = LspSymbolRef::Local;
-                        out.typeName = vd->type.name;
-                        out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
-                        out.docComment = vd->docComment;
-                        out.declSrc = vd->src;
-                        return true;
-                    }
-                }
-            }
+// The object whose member an inline accessor's class is (`outer` in its routines); nullptr for any other class.
+static objectDef* accessorHost(classDef* c) {
+    if(!c || c->name.rfind("_bglaccessor", 0) != 0) return nullptr;
+    auto holds = [&](objectDef* od) {
+        for(typeMember* m : od->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->type.name == c->name) return true;
+        return false;
+    };
+    for(typeDef* t : languageService.objectInstances)
+        if(auto* od = dynamic_cast<objectDef*>(t); od && holds(od)) return od;
+    for(typeDef* t : languageService.globals)
+        if(auto* od = dynamic_cast<objectDef*>(t); od && holds(od)) return od;
+    for(verbObjectDef* v : languageService.verbs)
+        if(holds(v)) return v;
+    return nullptr;
+}
+
+// A local named `name` declared in `blk` or a block nested in it.
+struct LocalCandidate { variableDeclaration* vd = nullptr; string catchType; };
+static void collectLocals(statementBlock* blk, const string& name, vector<LocalCandidate>& out) {
+    if(!blk) return;
+    for(statement* st : blk->statements) {
+        if(auto* vd = dynamic_cast<variableDeclaration*>(st)) {
+            if(vd->name == name && !vd->isSynthetic) out.push_back({vd, ""});
         }
-        // Parameters
-        for(paramDef* p : fn->params) {
-            if(p->name == loweredName) {
-                out.kind = LspSymbolRef::Parameter;
-                out.typeName = p->type.name;
-                out.displayName = p->displayName.empty() ? p->name : p->displayName;
-                out.docComment = p->docComment;
-                out.declSrc = fn->src;  // paramDef has no src; fall back to function signature
-                return true;
-            }
-        }
-        // Tier 2: if the function is a class/object member, check the containing class's members
-        // for a variable or method with the same name.
-        auto findEnclosingType = [&](functionDef* target) -> std::pair<classDef*, objectDef*> {
-            for(typeDef* t : languageService.objectTypes) {
-                if(auto* cd = dynamic_cast<classDef*>(t))
-                    for(typeMember* m : cd->members)
-                        if(m == target) return {cd, nullptr};
-            }
-            for(typeDef* t : languageService.objectInstances) {
-                if(auto* od = dynamic_cast<objectDef*>(t))
-                    for(typeMember* m : od->members)
-                        if(m == target) return {nullptr, od};
-            }
-            return {nullptr, nullptr};
-        };
-        auto [encCls, encObj] = findEnclosingType(fn);
-        vector<typeMember*>* members = encCls ? &encCls->members : (encObj ? &encObj->members : nullptr);
-        if(members) {
-            auto searchClass = [&](classDef* c) -> bool {
-                if(!c) return false;
-                typeMember* hit = c->findMember([&](typeMember* m){
-                    return m->name == loweredName
-                           && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
-                });
-                if(!hit) return false;
-                out.kind = LspSymbolRef::ClassMember;
-                out.enclosingClass = c->declaringClassOf(hit);
-                if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) {
-                    out.typeName = vd->type.name;
-                    out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
-                    out.docComment = vd->docComment;
-                    out.declSrc = vd->src;
-                } else {
-                    auto* mfd = dynamic_cast<functionDef*>(hit);
-                    out.typeName = mfd->returnType.name;
-                    out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
-                    out.docComment = mfd->docComment;
-                    out.declSrc = mfd->src;
-                }
-                return true;
-            };
-            for(typeMember* m : *members) {
-                if(m->name == loweredName) {
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                        out.kind = LspSymbolRef::ClassMember;
-                        out.enclosingClass = encCls;
-                        out.typeName = vd->type.name;
-                        out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
-                        out.docComment = vd->docComment;
-                        out.declSrc = vd->src;
-                        return true;
-                    }
-                    if(auto* mfd = dynamic_cast<functionDef*>(m)) {
-                        out.kind = LspSymbolRef::ClassMember;
-                        out.enclosingClass = encCls;
-                        out.typeName = mfd->returnType.name;
-                        out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
-                        out.docComment = mfd->docComment;
-                        out.declSrc = mfd->src;
-                        return true;
-                    }
-                }
-            }
-            // Walk base classes
-            if(encCls) {
-                for(classDef* base : encCls->baseClasses)
-                    if(searchClass(base)) return true;
-            }
+        else if(auto* is = dynamic_cast<ifStatement*>(st))      { collectLocals(is->thenBlock, name, out); collectLocals(is->elseBlock, name, out); }
+        else if(auto* ws = dynamic_cast<whileStatement*>(st))   collectLocals(ws->body, name, out);
+        else if(auto* ds = dynamic_cast<doStatement*>(st))      collectLocals(ds->body, name, out);
+        else if(auto* fs = dynamic_cast<forStatement*>(st))     collectLocals(fs->body, name, out);
+        else if(auto* fi = dynamic_cast<forInStatement*>(st))   collectLocals(fi->body, name, out);
+        else if(auto* ss = dynamic_cast<switchStatement*>(st))  { for(switchCase* c : ss->cases) collectLocals(c->body, name, out); }
+        else if(auto* tc = dynamic_cast<tryCatchStatement*>(st)) {
+            if(tc->catchVarName == name) out.push_back({nullptr, tc->catchVarType});
+            collectLocals(tc->tryBody, name, out);
+            collectLocals(tc->catchBody, name, out);
         }
     }
+}
+
+// resolveSymbol tier: the routines around the cursor. Each, innermost lambda first, offers its locals
+// (at any block depth, declared above the cursor) and parameters; then the members of the class or object
+// owning the outermost one. Sets out.enclosingFunc even when it resolves nothing.
+bool LspServer::resolveTierFunctionScope(const string& uri, int cursorLine, int cursorCol,
+                                         const string& loweredName, LspSymbolRef& out) {
+    FunctionContext ctx = functionContext(uri, cursorLine, cursorCol);
+    if(ctx.chain.empty()) return false;
+    out.enclosingFunc = ctx.chain.front();
+    const string& text = openDocuments[uri];
+    size_t cursorOff = std::min((size_t)std::max(positionToOffset(text, cursorLine, cursorCol), 0), text.size());
+    for(size_t fi = 0; fi < ctx.chain.size(); fi++) {
+        functionDef* fn = ctx.chain[fi];
+        const FunctionSpan& sp = ctx.spans[fi];
+        vector<LocalCandidate> cands;
+        collectLocals(dynamic_cast<statementBlock*>(fn->body), loweredName, cands);
+        const LocalCandidate* best = nullptr;
+        int bestLine = 0;
+        for(const LocalCandidate& c : cands) {
+            int line = c.vd ? c.vd->src.line : 0;
+            if(line == 0) line = declarationLine(text, sp.begin, sp.end, loweredName, cursorOff);
+            if(line == 0 || line > cursorLine + 1) continue;
+            if(!best || line > bestLine) { best = &c; bestLine = line; }
+        }
+        if(best) {
+            out.kind = LspSymbolRef::Local;
+            out.enclosingFunc = fn;
+            out.typeName = best->vd ? best->vd->type.name : best->catchType;
+            out.displayName = best->vd ? best->vd->dName() : loweredName;
+            if(best->vd) out.docComment = best->vd->docComment;
+            out.decl = best->vd;
+            out.declSrc = fn->src;
+            out.declSrc.line = bestLine;
+            return true;
+        }
+        for(paramDef* p : fn->params) {
+            if(p->name != loweredName) continue;
+            out.kind = LspSymbolRef::Parameter;
+            out.enclosingFunc = fn;
+            out.typeName = p->type.name;
+            out.displayName = p->dName();
+            out.docComment = p->docComment;
+            out.declSrc = fn->src;
+            size_t sigEnd = sp.bodyOpen != string::npos ? sp.bodyOpen : sp.end;
+            if(int pl = declarationLine(text, sp.begin, sigEnd, loweredName, string::npos)) out.declSrc.line = pl;
+            return true;
+        }
+    }
+    auto isMember = [&](typeMember* m) { return isNamedValueOrRoutine(m, loweredName); };
+    if(ctx.ownerObject) {
+        if(typeMember* m = findNamedMember(ctx.ownerObject->members, loweredName)) { fillFromMember(out, m, nullptr); return true; }
+        if(classDef* oc = ctx.ownerObject->objectClass)
+            if(typeMember* hit = oc->findMember(isMember)) { fillFromMember(out, hit, oc->declaringClassOf(hit)); return true; }
+    }
+    if(classDef* c = ctx.ownerClass) {
+        if(typeMember* hit = c->findMember(isMember)) { fillFromMember(out, hit, c->declaringClassOf(hit)); return true; }
+        if(objectDef* host = accessorHost(c))   // the host's type aliases are in scope in its accessors
+            if(auto* vd = dynamic_cast<variableDeclaration*>(findNamedMember(host->members, loweredName)); vd && vd->isNamespaceAlias()) {
+                fillFromMember(out, vd, nullptr);
+                return true;
+            }
+        for(const string& tp : c->typeParameters)
+            if(tp == loweredName) {
+                out.kind = LspSymbolRef::TypeParameter;
+                out.enclosingClass = c;
+                out.displayName = tp;
+                transform(out.displayName.begin(), out.displayName.end(), out.displayName.begin(), ::toupper);
+                out.declSrc = c->src;
+                return true;
+            }
+    }
     return false;
+}
+
+// resolveSymbol tier: the body of a class, object, verb or inline `Type{ … }` literal holding the cursor
+// outside any routine — the name is one of that type's members (`inline name;`, `y = 2` in `point{ y = 2; }`),
+// found from the text of the header before the nearest unclosed '{'.
+bool LspServer::resolveTierTypeBody(const string& uri, int cursorLine, int cursorCol, const string& loweredName, LspSymbolRef& out) {
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return false;
+    const string& text = docIt->second;
+    size_t cursor = std::min((size_t)std::max(positionToOffset(text, cursorLine, cursorCol), 0), text.size());
+    int depth = 0;
+    size_t open = string::npos;
+    for(size_t i = cursor; i-- > 0;) {
+        if(text[i] == '}') depth++;
+        else if(text[i] == '{') { if(depth == 0) { open = i; break; } depth--; }
+    }
+    if(open == string::npos) return false;
+    size_t b = open;
+    while(b > 0 && text[b - 1] != ';' && text[b - 1] != '{' && text[b - 1] != '}') b--;
+    string header;
+    for(size_t i = b; i < open;) {   // the header without its comments
+        size_t j = skipLiteral(text, i);
+        if(j != i && text[i] == '/') { i = j; header += ' '; }
+        else header += text[i++];
+    }
+    if(size_t c = header.find(':'); c != string::npos) header.erase(c);
+    for(char closer : {']', '>'}) {   // a pool size or type parameters after the name
+        size_t e = header.find_last_not_of(" \t\r\n");
+        if(e == string::npos || header[e] != closer) continue;
+        size_t opener = header.rfind(closer == ']' ? '[' : '<');
+        if(opener != string::npos) header.erase(opener);
+    }
+    size_t e = header.find_last_not_of(" \t\r\n");
+    if(e == string::npos || !isWordChar(header[e])) return false;
+    size_t st = e;
+    while(st > 0 && isWordChar(header[st - 1])) st--;
+    string typeName = header.substr(st, e - st + 1);
+    transform(typeName.begin(), typeName.end(), typeName.begin(), ::tolower);
+    classDef* cls = nullptr;
+    objectDef* obj = nullptr;
+    typeDef& td = languageService.getType(typeName);
+    if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
+    else if(auto* od = dynamic_cast<objectDef*>(&td)) { obj = od; cls = od->objectClass; }
+    for(verbObjectDef* v : languageService.verbs)
+        if(v->name == typeName) { obj = v; cls = v->objectClass; }
+    if(!cls && !obj) return false;
+    LspTarget target;
+    target.cls = cls;
+    target.obj = obj;
+    LspMember m = findMemberOn(target, loweredName);
+    if(!m.member) return false;
+    fillFromMember(out, m.member, m.owner);
+    // A declaration of the name on this very line is the declaration (a later `replace` may have superseded it)
+    size_t ls = lineStartOffset(text, cursorLine);
+    size_t le = text.find('\n', ls);
+    if(ls != string::npos && declarationLine(text, ls, le == string::npos ? text.size() : le, loweredName, string::npos) > 0) {
+        out.declSrc.file = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+        out.declSrc.line = cursorLine + 1;
+    }
+    return true;
 }
 
 // resolveSymbol tier: file-scope names.
-    // Tier 2: globals, classes, verbs, enum values
-bool LspServer::resolveTierGlobal(const string& loweredName, LspSymbolRef& out) {
+bool LspServer::resolveTierGlobal(const string& loweredName, bool isCall, LspSymbolRef& out) {
     typeDef& td = languageService.getType(loweredName);
     if(auto* cd = dynamic_cast<classDef*>(&td)) {
         out.kind = LspSymbolRef::Global;
         out.typeName = cd->name;
-        out.displayName = cd->displayName.empty() ? cd->name : cd->displayName;
+        out.displayName = cd->dName();
         out.docComment = cd->docComment;
         out.declSrc = cd->src;
         return true;
@@ -1247,26 +1617,35 @@ bool LspServer::resolveTierGlobal(const string& loweredName, LspSymbolRef& out) 
     if(auto* ed = dynamic_cast<enumDef*>(&td)) {
         out.kind = LspSymbolRef::Global;
         out.typeName = ed->name;
-        out.displayName = ed->displayName.empty() ? ed->name : ed->displayName;
+        out.displayName = ed->dName();
         out.docComment = ed->docComment;
         out.declSrc = ed->src;
         return true;
     }
-    if(typeDef* g = languageService.findGlobal(loweredName)) {
+    typeDef* g = nullptr;
+    for(typeDef* cand : languageService.globals) {
+        if(cand->name != loweredName) continue;
+        if(!g) g = cand;
+        if((dynamic_cast<functionDef*>(cand) != nullptr) == isCall) { g = cand; break; }
+    }
+    if(g) {
         out.kind = LspSymbolRef::Global;
+        out.global = g;
         if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
             out.typeName = vd->type.name;
-            out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+            out.displayName = vd->dName();
             out.docComment = vd->docComment;
             out.declSrc = vd->src;
+            out.decl = vd;
         } else if(auto* fd = dynamic_cast<functionDef*>(g)) {
             out.typeName = fd->returnType.name;
-            out.displayName = fd->displayName.empty() ? fd->name : fd->displayName;
+            out.displayName = fd->dName();
             out.docComment = fd->docComment;
             out.declSrc = fd->src;
+            out.isFunction = true;
         } else if(auto* od = dynamic_cast<objectDef*>(g)) {
             out.typeName = od->objectClass ? od->objectClass->name : "_bglobject";
-            out.displayName = od->displayName.empty() ? od->name : od->displayName;
+            out.displayName = od->dName();
             out.docComment = od->docComment;
             out.declSrc = od->src;
         }
@@ -1275,7 +1654,114 @@ bool LspServer::resolveTierGlobal(const string& loweredName, LspSymbolRef& out) 
     return false;
 }
 
-LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const string& loweredName) {
+bool LspServer::resolveTierUsing(const string& uri, int cursorLine, int cursorCol, const string& loweredName, LspSymbolRef& out) {
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return false;
+    for(const string& path : activeUsingPaths(docIt->second, cursorLine)) {
+        LspTarget target;
+        if(!resolveTarget(uri, cursorLine, cursorCol, path, target)) continue;
+        LspMember m = findMemberOn(target, loweredName);
+        if(m.member) { fillFromMember(out, m.member, nullptr); return true; }
+    }
+    return false;
+}
+
+bool LspServer::resolveTierEnumValue(const string& loweredName, LspSymbolRef& out) {
+    string enumType = languageService.getEnumType(loweredName);
+    if(enumType.empty()) return false;
+    enumDef* ed = languageService.findEnum(enumType);
+    if(!ed) return false;
+    for(enumValueDef* ev : ed->namedValues) {
+        if(ev->name != loweredName) continue;
+        out.kind = LspSymbolRef::EnumValue;
+        out.enumType = ed;
+        out.typeName = ed->name;
+        out.displayName = ev->dName();
+        out.docComment = ev->docComment;
+        out.declSrc = enumValueSource(ed, loweredName);
+        return true;
+    }
+    return false;
+}
+
+// Finds the `#define`/`#declare` of `lower` in `text`, filling out.
+static bool scanDefines(const string& text, const string& path, const string& lower, LspSymbolRef& out) {
+    istringstream in(text);
+    string line;
+    for(int n = 1; getline(in, line); n++) {
+        size_t i = line.find_first_not_of(" \t");
+        if(i == string::npos || line[i] != '#') continue;
+        size_t e = ++i;
+        while(e < line.size() && isalnum((unsigned char)line[e])) e++;
+        string directive = line.substr(i, e - i);
+        transform(directive.begin(), directive.end(), directive.begin(), ::tolower);
+        if(directive != "define" && directive != "declare" && directive != "redef" && directive != "definei6") continue;
+        i = line.find_first_not_of(" \t", e);
+        if(i == string::npos) continue;
+        e = i;
+        while(e < line.size() && isWordChar(line[e])) e++;
+        string sym = line.substr(i, e - i), symLower = sym;
+        transform(symLower.begin(), symLower.end(), symLower.begin(), ::tolower);
+        if(symLower != lower) continue;
+        string value = line.substr(e);
+        size_t c = value.find("//");
+        if(c != string::npos) value.erase(c);
+        size_t vs = value.find_first_not_of(" \t"), ve = value.find_last_not_of(" \t\r");
+        out.valueText = vs == string::npos ? "" : value.substr(vs, ve - vs + 1);
+        out.kind = LspSymbolRef::Define;
+        out.displayName = sym;
+        out.declSrc.file = path;
+        out.declSrc.line = n;
+        return true;
+    }
+    return false;
+}
+
+// The symbol is looked for in this document, then in the entry point and the files either includes by name.
+bool LspServer::resolveTierDefine(const string& uri, const string& loweredName, LspSymbolRef& out) {
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return false;
+    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+    if(scanDefines(docIt->second, curFile, loweredName, out)) return true;
+    vector<pair<string, string>> files;   // path, text
+    std::set<string> seenPaths{curFile};
+    auto add = [&](const string& path) {
+        string text;
+        if(seenPaths.insert(path).second && sourceTextOf(path, text)) files.push_back({path, text});
+    };
+    if(!entryPointPath.empty()) add(entryPointPath);
+    vector<pair<string, string>> roots = files;
+    roots.push_back({curFile, docIt->second});
+    for(const auto& [path, text] : roots) {
+        istringstream in(text);
+        string line;
+        while(getline(in, line)) {
+            size_t i = line.find_first_not_of(" \t");
+            if(i == string::npos || line.compare(i, 8, "#include") != 0) continue;
+            size_t q = line.find('"', i);
+            size_t e = q == string::npos ? string::npos : line.find('"', q + 1);
+            if(e == string::npos) continue;
+            filesystem::path inc = filesystem::path(path).parent_path() / line.substr(q + 1, e - q - 1);
+            if(inc.extension().empty()) inc += ".bgl";
+            add(inc.lexically_normal().string());
+        }
+    }
+    for(const auto& [path, text] : files)
+        if(scanDefines(text, path, loweredName, out)) return true;
+    return false;
+}
+
+// resolveSymbol tier: `grammar` opening a standalone grammar object stands for the verb class's member.
+bool LspServer::resolveTierGrammarKeyword(const string& loweredName, LspSymbolRef& out) {
+    if(loweredName != "grammar") return false;
+    classDef* verbClass = languageService.findClass("verb");
+    typeMember* m = verbClass ? verbClass->findMember([](typeMember* c) { return c->name == "grammar"; }) : nullptr;
+    if(!m) return false;
+    fillFromMember(out, m, verbClass->declaringClassOf(m));
+    return true;
+}
+
+LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, int cursorCol, const string& loweredName, bool isCall) {
     LspSymbolRef out;
     int cursorLine1Based = cursorLine + 1;
     string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
@@ -1283,9 +1769,150 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
     // Tiers in order; the first that resolves fills `out` and stops the walk.
     if(resolveTierSourceLineClassMember(curFile, cursorLine1Based, loweredName, out)) return out;
     if(resolveTierSourceLineInstanceMember(curFile, cursorLine1Based, loweredName, out)) return out;
-    if(resolveTierFunctionScope(uri, cursorLine, loweredName, out)) return out;
-    if(resolveTierGlobal(loweredName, out)) return out;
-    return out;
+    if(resolveTierFunctionScope(uri, cursorLine, cursorCol, loweredName, out)) return out;
+    if(resolveTierTypeBody(uri, cursorLine, cursorCol, loweredName, out)) return out;
+    // A variable no source declares (one the compiler made) yields to anything later tiers can name.
+    LspSymbolRef synthesized;
+    if(resolveTierGlobal(loweredName, isCall, out)) {
+        if(out.declSrc.line > 0 || !out.decl) return out;
+        synthesized = out;
+        out = LspSymbolRef();
+    }
+    if(resolveTierUsing(uri, cursorLine, cursorCol, loweredName, out)) return out;
+    if(resolveTierEnumValue(loweredName, out)) return out;
+    if(resolveTierDefine(uri, loweredName, out)) return out;
+    if(resolveTierGrammarKeyword(loweredName, out)) return out;
+    return synthesized.kind != LspSymbolRef::None ? synthesized : out;
+}
+
+//=============================================================================
+// Access targets — what `a.b.c` resolves to, shared by hover, definition and completion
+//=============================================================================
+
+// What a value of type `typeName` (or the type itself, when !asValue) gives access to. A value of an enum
+// type reaches the enum's emitter methods through its companion class; the enum type itself lists values.
+LspServer::LspTarget LspServer::targetOfType(const string& typeName, bool asValue) {
+    LspTarget t;
+    if(typeName.empty()) return t;
+    typeDef& td = languageService.getType(typeName.substr(0, typeName.find('<')));   // `array<int>` is the class `array`
+    if(auto* cd = dynamic_cast<classDef*>(&td)) t.cls = cd;
+    else if(auto* ed = dynamic_cast<enumDef*>(&td)) { if(asValue) t.cls = ed->companion; else t.enumType = ed; }
+    else if(auto* od = dynamic_cast<objectDef*>(&td)) { t.obj = od; t.cls = od->objectClass; }
+    t.isType = !asValue && t.valid();
+    return t;
+}
+
+// What a variable gives access to. A namespace hook (`alias x = obj;`, `auto asm = emitterClass;`) names
+// its target in the initializer; any other variable is reached through its declared type.
+LspServer::LspTarget LspServer::targetOfVariable(variableDeclaration* vd) {
+    if(!vd) return LspTarget();
+    if(vd->isAlias) return targetOfType(vd->type.name, false);
+    string init = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+    transform(init.begin(), init.end(), init.begin(), ::tolower);
+    const string& tn = vd->type.name;
+    bool untyped = tn.empty() || tn == "auto" || tn == "var" || tn == "_bglobject";
+    auto viaInitializer = [&]() {
+        LspTarget t;
+        if(init.empty()) return t;
+        if(auto* od = languageService.findGlobalAs<objectDef>(init)) { t.obj = od; t.cls = od->objectClass; return t; }
+        if(auto* cd = languageService.findClass(init)) { t.cls = cd; t.isType = true; }
+        return t;
+    };
+    if(vd->isNamespaceAlias() || untyped) {
+        LspTarget t = viaInitializer();
+        if(t.valid()) return t;
+    }
+    LspTarget t = targetOfType(tn, true);
+    if(!t.valid()) t = viaInitializer();
+    return t;
+}
+
+bool LspServer::resolveTargetHead(const string& uri, int line, int col, const string& nameLower, LspTarget& out) {
+    out = LspTarget();
+    bool shadowed = false;   // a local or parameter may be named `outer`
+    if(nameLower == "outer") {
+        LspSymbolRef::Kind k = resolveSymbol(uri, line, col, nameLower).kind;
+        shadowed = k == LspSymbolRef::Local || k == LspSymbolRef::Parameter;
+    }
+    if(!shadowed && (nameLower == "self" || nameLower == "outer")) {
+        FunctionContext ctx = functionContext(uri, line, col);
+        if(nameLower == "self") {
+            if(ctx.ownerObject) { out.obj = ctx.ownerObject; out.cls = ctx.ownerObject->objectClass; }
+            else out.cls = ctx.ownerClass;
+        } else if(objectDef* host = accessorHost(ctx.ownerClass)) {   // `outer` in an inline accessor is its host object
+            out.obj = host;
+            out.cls = host->objectClass;
+        }
+        return out.valid();
+    }
+    LspSymbolRef ref = resolveSymbol(uri, line, col, nameLower);
+    switch(ref.kind) {
+        case LspSymbolRef::Local:
+        case LspSymbolRef::Parameter:
+        case LspSymbolRef::ClassMember:
+        case LspSymbolRef::Alias:
+            if(ref.isFunction) return false;
+            out = ref.decl ? targetOfVariable(ref.decl) : targetOfType(ref.typeName, true);
+            return out.valid();
+        case LspSymbolRef::EnumValue:
+            out.cls = ref.enumType ? ref.enumType->companion : nullptr;
+            return out.valid();
+        case LspSymbolRef::Global: {
+            typeDef& td = languageService.getType(nameLower);
+            if(dynamic_cast<classDef*>(&td) || dynamic_cast<enumDef*>(&td)) { out = targetOfType(nameLower, false); return out.valid(); }
+            if(auto* od = languageService.findGlobalAs<objectDef>(nameLower)) { out.obj = od; out.cls = od->objectClass; return true; }
+            if(ref.decl) { out = targetOfVariable(ref.decl); return out.valid(); }
+            return false;
+        }
+        default: break;
+    }
+    for(verbObjectDef* v : languageService.verbs)
+        if(v->name == nameLower) { out.obj = v; out.cls = v->objectClass; return out.valid(); }
+    return false;
+}
+
+bool LspServer::resolveTarget(const string& uri, int line, int col, const string& pathLower, LspTarget& out) {
+    size_t dot = pathLower.find('.');
+    if(!resolveTargetHead(uri, line, col, pathLower.substr(0, dot), out)) return false;
+    while(dot != string::npos) {
+        size_t next = pathLower.find('.', dot + 1);
+        string seg = pathLower.substr(dot + 1, next == string::npos ? string::npos : next - dot - 1);
+        dot = next;
+        LspMember m = findMemberOn(out, seg);
+        LspTarget step;
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) step = targetOfVariable(vd);
+        else if(m.enumValue && m.enumType) step.cls = m.enumType->companion;
+        if(!step.valid()) return false;
+        out = step;
+    }
+    return true;
+}
+
+LspServer::LspMember LspServer::findMemberOn(const LspTarget& t, const string& nameLower) {
+    LspMember r;
+    if(t.enumType)
+        for(enumValueDef* ev : t.enumType->namedValues)
+            if(ev->name == nameLower) { r.enumType = t.enumType; r.enumValue = ev; return r; }
+    if(t.obj)
+        for(typeMember* m : t.obj->members)
+            if(isNamedValueOrRoutine(m, nameLower) && !m->isPrePassStub) { r.member = m; r.object = t.obj; return r; }
+    if(t.cls) {
+        typeMember* hit = t.cls->findMember([&](typeMember* m) { return isNamedValueOrRoutine(m, nameLower) && !m->isPrePassStub; });
+        if(!hit) hit = t.cls->findMember([&](typeMember* m) { return isNamedValueOrRoutine(m, nameLower); });
+        if(hit) { r.member = hit; r.owner = t.cls->declaringClassOf(hit); return r; }
+        // A value that converts (`operator ()`) to another type also offers that type's members
+        LspTarget converted = conversionTarget(t.cls);
+        if(converted.cls && converted.cls != t.cls) return findMemberOn(converted, nameLower);
+    }
+    return r;
+}
+
+// What a value of class `c` reads as: the type its `operator ()` returns.
+LspServer::LspTarget LspServer::conversionTarget(classDef* c) {
+    LspTarget t;
+    typeMember* conv = c->findMember([](typeMember* m) { auto* fd = dynamic_cast<functionDef*>(m); return fd && fd->name == "operator()" && fd->params.empty(); });
+    if(auto* fd = dynamic_cast<functionDef*>(conv)) t = targetOfType(fd->returnType.name, true);
+    return t;
 }
 
 //=============================================================================
@@ -1379,10 +2006,19 @@ static string paramDisplay(const paramDef* p){
 }
 
 // Hover case: `owner.member` — resolve the owner chain, then the member on it.
-string LspServer::hoverDottedMember(const string& uri, int line, const string& lower,
+string LspServer::hoverDottedMember(const string& uri, int line, int col, const string& lower,
                                     const string& ownerName, string& docComment) {
-    string typeInfo;
-    auto signatureOf = [&](functionDef* fd) {
+    if(ownerName.empty()) return "";
+    string ownerLower = ownerName;
+    transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
+    LspTarget target;
+    if(!resolveTarget(uri, line, col, ownerLower, target)) return "";
+    LspMember m = findMemberOn(target, lower);
+    if(m.enumValue) {
+        docComment = m.enumValue->docComment;
+        return typeDisplay(m.enumType->name) + "." + m.enumValue->dName();
+    }
+    if(auto* fd = dynamic_cast<functionDef*>(m.member)) {
         string sig = typeDisplay(fd->returnType.name) + " " + fd->dName();
         if(!fd->isValueEmitter) {
             sig += "(";
@@ -1395,204 +2031,83 @@ string LspServer::hoverDottedMember(const string& uri, int line, const string& l
         if(fd->isEmitter) sig = "emitter " + sig;
         docComment = fd->docComment;
         return sig;
-    };
-    if(typeInfo.empty() && !ownerName.empty()) {
-        string ownerLower = ownerName;
-        transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
-        classDef* cls = nullptr;
+    }
+    if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) {
+        docComment = vd->docComment;
+        if(vd->isAlias) return "type alias → " + typeDisplay(vd->type.name);
+        return typeDisplay(vd->type.name) + " " + vd->dName();
+    }
+    return "";
+}
 
-        // Resolve owner to a class. Check scopes in order: enclosing-function locals/params,
-        // then classes, then global objects, then global variables.
-        LspSymbolRef ownerRef = resolveSymbol(uri, line, ownerLower);
-        if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter) {
-            typeDef& td = languageService.getType(ownerRef.typeName);
-            cls = dynamic_cast<classDef*>(&td);
-            // An enum-typed value (local/param) dispatches its emitter methods through the enum's
-            // companion class — hover the method by treating the companion as the receiver class.
-            if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
-        }
-        if(!cls) {
-            typeDef& td = languageService.getType(ownerLower);
-            if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
-        }
-        if(!cls) {
-            if(auto* od = languageService.findGlobalAs<objectDef>(ownerLower)) cls = od->objectClass;
-        }
-        if(!cls) {
-            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(ownerLower)) {
-                typeDef& td = languageService.getType(vd->type.name);
-                cls = dynamic_cast<classDef*>(&td);
-                if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
-            }
-        }
-        // A bare enum VALUE receiver (e.g. `north.bump()`): resolve its enum, hover via the companion.
-        if(!cls) {
-            string et = languageService.getEnumType(ownerLower);
-            if(!et.empty())
-                if(auto* e = languageService.findEnum(et)) cls = e->companion;
-        }
-
-        // Search class hierarchy for the member
-        if(cls) {
-            if(typeMember* m = cls->findMember([&](typeMember* mm){ return mm->name == lower; })) {
-                if(auto* fd = dynamic_cast<functionDef*>(m)) {
-                    typeInfo = signatureOf(fd);
-                } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                    typeInfo = typeDisplay(vd->type.name) + " " +
-                               (vd->displayName.empty() ? vd->name : vd->displayName);
-                    docComment = vd->docComment;
+// Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
+string LspServer::hoverIdentifier(const string& uri, int line, int col, bool isCall, const string& lower,
+                                  const string& ownerName, string& docComment) {
+    string typeInfo;
+    if(!ownerName.empty()) return typeInfo;
+    LspSymbolRef ref = resolveSymbol(uri, line, col, lower, isCall);
+    if(!ref.docComment.empty()) docComment = ref.docComment;
+    if(ref.kind == LspSymbolRef::Local) {
+        typeInfo = "local: " + typeDisplay(ref.typeName) + " " + ref.displayName;
+    } else if(ref.kind == LspSymbolRef::Parameter) {
+        typeInfo = "param: " + typeDisplay(ref.typeName) + " " + ref.displayName;
+    } else if(ref.kind == LspSymbolRef::Alias) {
+        typeInfo = "type alias → " + typeDisplay(ref.typeName);
+    } else if(ref.kind == LspSymbolRef::ClassMember) {
+        string clsName = ref.enclosingClass ? ref.enclosingClass->dName() : "";
+        typeInfo = (clsName.empty() ? "member: " : clsName + "::") + typeDisplay(ref.typeName) + " " + ref.displayName;
+    } else if(ref.kind == LspSymbolRef::TypeParameter) {
+        typeInfo = "type parameter " + ref.displayName;
+    } else if(ref.kind == LspSymbolRef::Define) {
+        typeInfo = "#define " + ref.displayName + (ref.valueText.empty() ? "" : " " + ref.valueText);
+    } else if(ref.kind == LspSymbolRef::EnumValue) {
+        typeInfo = typeDisplay(ref.typeName) + "." + ref.displayName;
+    } else if(ref.kind == LspSymbolRef::Global) {
+        // resolveSymbol set enough info; enrich with type/class specifics
+        typeDef& td = languageService.getType(lower);
+        if(auto* cd = dynamic_cast<classDef*>(&td)) {
+            typeInfo = "class " + cd->dName();
+            if(cd->isEmitterClass) typeInfo = "emitter " + typeInfo;
+            if(cd->isExternal) typeInfo = "extern " + typeInfo;
+        } else if(auto* ed = dynamic_cast<enumDef*>(&td)) {
+            typeInfo = (ed->isBnum ? "bnum " : "enum ") + ed->dName();
+            if(ed->isExternal) typeInfo = "extern " + typeInfo;
+        } else if(typeDef* g = ref.global) {
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
+                typeInfo = typeDisplay(vd->type.name) + " " + vd->dName();
+            } else if(auto* fd = dynamic_cast<functionDef*>(g)) {
+                typeInfo = typeDisplay(fd->returnType.name) + " " + fd->dName() + "(";
+                for(size_t i = 0; i < fd->params.size(); i++) {
+                    if(i > 0) typeInfo += ", ";
+                    typeInfo += paramDisplay(fd->params[i]);
                 }
+                typeInfo += ")";
+                if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
+            } else if(auto* od = dynamic_cast<objectDef*>(g)) {
+                typeInfo = typeDisplay(od->objectClass ? od->objectClass->name : "_bglobject") + " " + od->dName();
             }
         }
-
-        // Also check object instance members (including namespace walking for dotted paths)
-        if(typeInfo.empty()) {
-            // Walk dotted owner path to find the target object
-            objectDef* nsObj = nullptr;
-            classDef*  nsCls = nullptr;
-            size_t ownerDot = ownerLower.find('.');
-            if(ownerDot != string::npos){
-                // Multi-level: walk the chain
-                string head = ownerLower.substr(0, ownerDot);
-                string rest = ownerLower.substr(ownerDot + 1);
-                if(auto* od = languageService.findGlobalAs<objectDef>(head)) nsObj = od;
-                while(nsObj && !rest.empty()){
-                    ownerDot = rest.find('.');
-                    string seg = (ownerDot == string::npos) ? rest : rest.substr(0, ownerDot);
-                    rest = (ownerDot == string::npos) ? "" : rest.substr(ownerDot + 1);
-                    objectDef* next = nullptr;
-                    classDef*  nextCls = nullptr;
-                    for(typeMember* m : nsObj->members){
-                        auto* vd = dynamic_cast<variableDeclaration*>(m);
-                        if(!vd || vd->name != seg) continue;
-                        string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
-                        if(!initName.empty())
-                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
-                        if(!next)
-                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
-                        // Alias may target a CLASS (e.g. `emitter auto asm = bglOpCodes`) — capture it.
-                        if(!next)
-                            for(string cand : { initName, vd->type.name }){
-                                if(cand.empty()) continue;
-                                transform(cand.begin(), cand.end(), cand.begin(), ::tolower);
-                                typeDef& td = languageService.getType(cand);
-                                if(auto* cd = dynamic_cast<classDef*>(&td)){ nextCls = cd; break; }
-                            }
-                        break;
-                    }
-                    if(nextCls){ nsCls = nextCls; nsObj = nullptr; break; }
-                    nsObj = next;
-                }
-            } else {
-                // Single-level: direct object lookup
-                if(auto* od = languageService.findGlobalAs<objectDef>(ownerLower)) nsObj = od;
+    }
+    if(typeInfo.empty()) {
+        for(auto* v : languageService.verbs)
+            if(v->name == lower) {
+                typeInfo = "verb " + v->dName();
+                docComment = v->docComment;
+                break;
             }
-            if(nsObj){
-                for(typeMember* m : nsObj->members){
-                    if(m->name == lower){
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                            if(vd->isAlias)
-                                typeInfo = "type alias → " + typeDisplay(vd->type.name);
-                            else
-                                typeInfo = typeDisplay(vd->type.name) + " " + (vd->displayName.empty() ? vd->name : vd->displayName);
-                            docComment = vd->docComment;
-                        } else if(auto* fd = dynamic_cast<functionDef*>(m)){
-                            typeInfo = signatureOf(fd);
-                        }
-                        break;
-                    }
-                }
-            }
-            // Owner resolved to a class (e.g. bgl.asm → bglOpCodes emitter class) — hover its member.
-            if(typeInfo.empty() && nsCls){
-                if(typeMember* m = nsCls->findMember([&](typeMember* mm){
-                        if(mm->name != lower) return false;
-                        auto* fd = dynamic_cast<functionDef*>(mm);
-                        if(fd != nullptr) return !fd->isPrePassStub;
-                        return dynamic_cast<variableDeclaration*>(mm) != nullptr;
-                   })){
-                    if(auto* fd = dynamic_cast<functionDef*>(m)){
-                        typeInfo = signatureOf(fd);
-                    } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                        typeInfo = typeDisplay(vd->type.name) + " " + (vd->displayName.empty() ? vd->name : vd->displayName);
-                        docComment = vd->docComment;
-                    }
-                }
-            }
-        }
     }
     return typeInfo;
 }
 
-// Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
-string LspServer::hoverIdentifier(const string& uri, int line, const string& word,
-                                  const string& lower, const string& ownerName,
-                                  string& docComment) {
-    string typeInfo;
-    if(typeInfo.empty() && ownerName.empty()) {
-        LspSymbolRef ref = resolveSymbol(uri, line, lower);
-        if(!ref.docComment.empty()) docComment = ref.docComment;
-        if(ref.kind == LspSymbolRef::Local) {
-            typeInfo = "local: " + typeDisplay(ref.typeName) + " " + ref.displayName;
-        } else if(ref.kind == LspSymbolRef::Parameter) {
-            typeInfo = "param: " + typeDisplay(ref.typeName) + " " + ref.displayName;
-        } else if(ref.kind == LspSymbolRef::ClassMember) {
-            string clsName = ref.enclosingClass ? (ref.enclosingClass->displayName.empty() ? ref.enclosingClass->name : ref.enclosingClass->displayName) : "";
-            typeInfo = (clsName.empty() ? "member: " : clsName + "::") + typeDisplay(ref.typeName) + " " + ref.displayName;
-        } else if(ref.kind == LspSymbolRef::Global) {
-            // resolveSymbol set enough info; enrich with type/class specifics
-            typeDef& td = languageService.getType(lower);
-            if(auto* cd = dynamic_cast<classDef*>(&td)) {
-                typeInfo = "class " + (cd->displayName.empty() ? cd->name : cd->displayName);
-                if(cd->isEmitterClass) typeInfo = "emitter " + typeInfo;
-                if(cd->isExternal) typeInfo = "extern " + typeInfo;
-            } else if(auto* ed = dynamic_cast<enumDef*>(&td)) {
-                typeInfo = (ed->isBnum ? "bnum " : "enum ") +
-                           (ed->displayName.empty() ? ed->name : ed->displayName);
-                if(ed->isExternal) typeInfo = "extern " + typeInfo;
-            } else {
-                if(typeDef* g = languageService.findGlobal(lower)) {
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
-                        typeInfo = typeDisplay(vd->type.name) + " " +
-                                   (vd->displayName.empty() ? vd->name : vd->displayName);
-                    } else if(auto* fd = dynamic_cast<functionDef*>(g)) {
-                        typeInfo = typeDisplay(fd->returnType.name) + " " +
-                                   (fd->displayName.empty() ? fd->name : fd->displayName) + "(";
-                        for(size_t i = 0; i < fd->params.size(); i++) {
-                            if(i > 0) typeInfo += ", ";
-                            typeInfo += paramDisplay(fd->params[i]);
-                        }
-                        typeInfo += ")";
-                        if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
-                    } else if(auto* od = dynamic_cast<objectDef*>(g)) {
-                        typeInfo = typeDisplay(od->objectClass ? od->objectClass->name : "_bglobject") + " " +
-                                   (od->displayName.empty() ? od->name : od->displayName);
-                    }
-                }
-            }
-        }
-        // Check verbs
-        if(typeInfo.empty()) {
-            for(auto* v : languageService.verbs)
-                if(v->name == lower) {
-                    typeInfo = "verb " + (v->displayName.empty() ? v->name : v->displayName);
-                    docComment = v->docComment;
-                    break;
-                }
-        }
-        // Check enum values
-        if(typeInfo.empty()) {
-            string enumType = languageService.getEnumType(lower);
-            if(!enumType.empty()) {
-                typeInfo = enumType + "." + word;
-                // Pull doc-comment from the specific value
-                if(auto* ed = languageService.findEnum(enumType))
-                    for(enumValueDef* ev : ed->namedValues)
-                        if(ev->name == lower){ docComment = ev->docComment; break; }
-            }
-        }
-    }
-    return typeInfo;
+// True when the word starting at `start` follows the `operator` keyword (`operator prefix++ ()`).
+static bool followsOperatorKeyword(const string& lineText, int start) {
+    int e = start;
+    while(e > 0 && isspace((unsigned char)lineText[e - 1])) e--;
+    int b = e;
+    while(b > 0 && isWordChar(lineText[b - 1])) b--;
+    string w = lineText.substr(b, e - b);
+    transform(w.begin(), w.end(), w.begin(), ::tolower);
+    return w == "operator";
 }
 
 json LspServer::handleHover(const json& params) {
@@ -1647,15 +2162,23 @@ json LspServer::handleHover(const json& params) {
     string lower = word;
     transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
+    size_t after = lineText.find_first_not_of(" \t", end);
+    bool isCall = after != string::npos && lineText[after] == '(';
+
     string typeInfo;
     // Doc-comment for the resolved symbol (if any). Populated alongside typeInfo at each
     // resolution branch. Rendered as Markdown below the signature in the hover response.
     string docComment;
 
     // Hover cases, tried in order; each returns the signature line it resolved, or empty.
-    typeInfo = hoverBeguilerSettingsMember(uri, line, col, lower, ownerName);
-    if(typeInfo.empty()) typeInfo = hoverDottedMember(uri, line, lower, ownerName, docComment);
-    if(typeInfo.empty()) typeInfo = hoverIdentifier(uri, line, word, lower, ownerName, docComment);
+    if((lower == "prefix" || lower == "postfix") && followsOperatorKeyword(lineText, start)) {
+        typeInfo = "operator " + lower;
+        docComment = lower == "prefix" ? "Declares the prefix form of `++` or `--`: `operator prefix++ ()`."
+                                       : "Declares the postfix form of `++` or `--`: `operator postfix++ ()`.";
+    }
+    if(typeInfo.empty()) typeInfo = hoverBeguilerSettingsMember(uri, line, col, lower, ownerName);
+    if(typeInfo.empty()) typeInfo = hoverDottedMember(uri, line, col, lower, ownerName, docComment);
+    if(typeInfo.empty()) typeInfo = hoverIdentifier(uri, line, col, isCall, lower, ownerName, docComment);
 
     if(typeInfo.empty()) return nullptr;
 
@@ -1712,38 +2235,40 @@ objectDef* LspServer::walkNamespacePath(const string& path) {
     return curObj;
 }
 
-vector<objectDef*> LspServer::activeUsingNamespaces(const string& docText, int line) {
+// The lowercased paths of the `#using` directives at or above `line`.
+static vector<string> activeUsingPaths(const string& docText, int line) {
     vector<string> usingPaths;
-    {
-        istringstream ds(docText);
-        string dl;
-        int lineIdx = 0;
-        while(getline(ds, dl)){
-            if(lineIdx > line) break;
-            size_t p = dl.find_first_not_of(" \t");
-            if(p != string::npos && dl.compare(p, 7, "#using ") == 0){
-                size_t s = p + 7;
-                while(s < dl.size() && (dl[s] == ' ' || dl[s] == '\t')) s++;
-                size_t e = s;
-                while(e < dl.size() && (isalnum((unsigned char)dl[e]) || dl[e] == '_' || dl[e] == '.')) e++;
-                if(e > s){
-                    string path = dl.substr(s, e - s);
-                    transform(path.begin(), path.end(), path.begin(), ::tolower);
-                    usingPaths.push_back(path);
-                }
+    istringstream ds(docText);
+    string dl;
+    int lineIdx = 0;
+    while(getline(ds, dl)){
+        if(lineIdx > line) break;
+        size_t p = dl.find_first_not_of(" \t");
+        if(p != string::npos && dl.compare(p, 7, "#using ") == 0){
+            size_t s = p + 7;
+            while(s < dl.size() && (dl[s] == ' ' || dl[s] == '\t')) s++;
+            size_t e = s;
+            while(e < dl.size() && (isalnum((unsigned char)dl[e]) || dl[e] == '_' || dl[e] == '.')) e++;
+            if(e > s){
+                string path = dl.substr(s, e - s);
+                transform(path.begin(), path.end(), path.begin(), ::tolower);
+                usingPaths.push_back(path);
             }
-            lineIdx++;
         }
+        lineIdx++;
     }
+    return usingPaths;
+}
 
+vector<objectDef*> LspServer::activeUsingNamespaces(const string& docText, int line) {
     vector<objectDef*> out;
-    for(const string& path : usingPaths)
+    for(const string& path : activeUsingPaths(docText, line))
         if(objectDef* ns = walkNamespacePath(path)) out.push_back(ns);
     return out;
 }
 
 // Resolve a call site to every matching callee (all overloads). See header.
-vector<functionDef*> LspServer::resolveCallees(const string& uri, int line,
+vector<functionDef*> LspServer::resolveCallees(const string& uri, int line, int col,
                                                  const string& funcName, const string& objName,
                                                  const string& docText) {
     string lower = funcName;
@@ -1758,35 +2283,15 @@ vector<functionDef*> LspServer::resolveCallees(const string& uri, int line,
                 candidates.push_back(fd);
     };
 
-    if(objName.find('.') != string::npos) {
-        // Namespace receiver `a.b.method(` — walk the path to its object, then its own members
-        // and its class's.
+    if(!objName.empty()) {
+        // Member call `recv.method(` — the receiver's own members and its class's.
         string objLower = objName;
         transform(objLower.begin(), objLower.end(), objLower.begin(), ::tolower);
-        if(objectDef* ns = walkNamespacePath(objLower)) {
-            for(typeMember* m : ns->members) addFrom(m);
-            if(ns->objectClass) ns->objectClass->forEachMember(addFrom);
+        LspTarget target;
+        if(resolveTarget(uri, line, col, objLower, target)) {
+            if(target.obj) for(typeMember* m : target.obj->members) addFrom(m);
+            if(target.cls) target.cls->forEachMember(addFrom);
         }
-    } else if(!objName.empty()) {
-        // Member call `recv.method(` — resolve the receiver's class (mirrors handleSignatureHelp).
-        string objLower = objName;
-        transform(objLower.begin(), objLower.end(), objLower.begin(), ::tolower);
-        classDef* cls = nullptr;
-        LspSymbolRef ownerRef = resolveSymbol(uri, line, objLower);
-        if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter)
-            cls = languageService.findClass(ownerRef.typeName);
-        if(!cls) {
-            typeDef& td = languageService.getType(objLower);
-            if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
-        }
-        if(!cls)
-            if(auto* od = languageService.findGlobalAs<objectDef>(objLower)) cls = od->objectClass;
-        if(!cls)
-            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(objLower)) cls = languageService.findClass(vd->type.name);
-
-        if(auto* od = languageService.findGlobalAs<objectDef>(objLower))
-            for(typeMember* m : od->members) addFrom(m);
-        if(cls) cls->forEachMember(addFrom);
     } else {
         // Bare call: global functions first, then #using-imported namespace members.
         for(typeDef* g : languageService.globals)
@@ -1802,10 +2307,10 @@ vector<functionDef*> LspServer::resolveCallees(const string& uri, int line,
     return candidates;
 }
 
-vector<paramDef*> LspServer::resolveCalleeParams(const string& uri, int line,
+vector<paramDef*> LspServer::resolveCalleeParams(const string& uri, int line, int col,
                                                  const string& funcName, const string& objName,
                                                  const string& docText) {
-    vector<functionDef*> c = resolveCallees(uri, line, funcName, objName, docText);
+    vector<functionDef*> c = resolveCallees(uri, line, col, funcName, objName, docText);
     return c.empty() ? vector<paramDef*>{} : c[0]->params;
 }
 
@@ -2133,8 +2638,9 @@ json LspServer::completeEnumArgument(const string& uri, int line, int col, const
     {
         string funcName, objName;
         int argIndex = 0, slotStart = 0;
-        if(findCallSlot(lineText, col, funcName, objName, argIndex, slotStart)) {
-            vector<paramDef*> params = resolveCalleeParams(uri, line, funcName, objName, docText);
+        if(findCallSlot(lineText, col, funcName, objName, argIndex, slotStart)
+           && lineText.substr(slotStart, std::max(0, std::min(col, (int)lineText.size()) - slotStart)).find('.') == string::npos) {   // `f(x.|` completes x's members
+            vector<paramDef*> params = resolveCalleeParams(uri, line, col, funcName, objName, docText);
             if(argIndex < (int)params.size()) {
                 string ptype = params[argIndex]->type.name;  // lowercased type name
                 for(typeDef* t : languageService.objectTypes) {
@@ -2160,7 +2666,7 @@ json LspServer::completeEnumArgument(const string& uri, int line, int col, const
 // Append the symbols in scope at `line` — locals declared above it, parameters, members of the enclosing
 // class or object, file-scope globals/functions/objects, #using-imported members — that `fits` accepts.
 // `typed` completes a typed slot, so values with no type (void, var) are left out as noise.
-void LspServer::appendScopeItems(json& items, std::set<string>& seen, const string& uri, int line,
+void LspServer::appendScopeItems(json& items, std::set<string>& seen, const string& uri, int line, int col,
                                  const string& docText, const std::function<bool(const string&)>& fits, bool typed) {
     auto accept = [&](const string& name, const string& type) {
         if(name.empty() || name[0] == '_' || !isalpha((unsigned char)name[0])) return false;
@@ -2195,47 +2701,39 @@ void LspServer::appendScopeItems(json& items, std::set<string>& seen, const stri
         else if(auto* fd = dynamic_cast<functionDef*>(m)) addFn(fd);
     };
 
-    // Locals (declared above the cursor) and parameters of the enclosing function, then the
-    // members of the class/object that owns it.
+    // Locals (declared above the cursor) and parameters of the enclosing routines, lambdas first, then
+    // the members of the class/object that owns them.
     int cursorLine1Based = line + 1;
-    if(functionDef* fn = findEnclosingFunction(uri, line)) {
-        // Nested-block locals are included once declared above the cursor, even from a sibling
-        // block that has closed — blocks carry no end line to scope them more tightly.
-        std::function<void(statementBlock*)> walk = [&](statementBlock* blk) {
-            if(!blk) return;
-            for(statement* st : blk->statements) {
-                if(auto* vd = dynamic_cast<variableDeclaration*>(st)) {
-                    if(vd->src.line == 0 || vd->src.line <= cursorLine1Based) addVar(vd, 6);
-                }
-                else if(auto* is = dynamic_cast<ifStatement*>(st))      { walk(is->thenBlock); walk(is->elseBlock); }
-                else if(auto* ws = dynamic_cast<whileStatement*>(st))   walk(ws->body);
-                else if(auto* ds = dynamic_cast<doStatement*>(st))      walk(ds->body);
-                else if(auto* fs = dynamic_cast<forStatement*>(st))     walk(fs->body);
-                else if(auto* fi = dynamic_cast<forInStatement*>(st))   walk(fi->body);
-                else if(auto* ss = dynamic_cast<switchStatement*>(st))  { for(switchCase* c : ss->cases) walk(c->body); }
-                else if(auto* tc = dynamic_cast<tryCatchStatement*>(st)){ walk(tc->tryBody); walk(tc->catchBody); }
+    FunctionContext ctx = functionContext(uri, line, col);
+    // Nested-block locals are included once declared above the cursor, even from a sibling
+    // block that has closed — blocks carry no end line to scope them more tightly.
+    std::function<void(statementBlock*)> walk = [&](statementBlock* blk) {
+        if(!blk) return;
+        for(statement* st : blk->statements) {
+            if(auto* vd = dynamic_cast<variableDeclaration*>(st)) {
+                if(vd->src.line == 0 || vd->src.line <= cursorLine1Based) addVar(vd, 6);
             }
-        };
-        if(auto* blk = dynamic_cast<statementBlock*>(fn->body)) walk(blk);
+            else if(auto* is = dynamic_cast<ifStatement*>(st))      { walk(is->thenBlock); walk(is->elseBlock); }
+            else if(auto* ws = dynamic_cast<whileStatement*>(st))   walk(ws->body);
+            else if(auto* ds = dynamic_cast<doStatement*>(st))      walk(ds->body);
+            else if(auto* fs = dynamic_cast<forStatement*>(st))     walk(fs->body);
+            else if(auto* fi = dynamic_cast<forInStatement*>(st))   walk(fi->body);
+            else if(auto* ss = dynamic_cast<switchStatement*>(st))  { for(switchCase* c : ss->cases) walk(c->body); }
+            else if(auto* tc = dynamic_cast<tryCatchStatement*>(st)){ walk(tc->tryBody); walk(tc->catchBody); }
+        }
+    };
+    for(functionDef* fn : ctx.chain) {
+        walk(dynamic_cast<statementBlock*>(fn->body));
         for(paramDef* p : fn->params)
             if(accept(p->name, p->type.name))
                 items.push_back({{"label", p->displayName.empty() ? p->name : p->displayName},
                                  {"kind", 6}, {"detail", p->type.dName()}});
-        bool found = false;
-        for(typeDef* t : languageService.objectTypes) {
-            auto* cd = dynamic_cast<classDef*>(t);
-            if(!cd || std::find(cd->members.begin(), cd->members.end(), fn) == cd->members.end()) continue;
-            cd->forEachMember(addMember);
-            found = true; break;
-        }
-        if(!found)
-            for(typeDef* t : languageService.objectInstances) {
-                auto* od = dynamic_cast<objectDef*>(t);
-                if(!od || std::find(od->members.begin(), od->members.end(), fn) == od->members.end()) continue;
-                for(typeMember* m : od->members) addMember(m);
-                if(od->objectClass) od->objectClass->forEachMember(addMember);
-                break;
-            }
+    }
+    if(ctx.ownerClass) {
+        ctx.ownerClass->forEachMember(addMember);
+    } else if(ctx.ownerObject) {
+        for(typeMember* m : ctx.ownerObject->members) addMember(m);
+        if(ctx.ownerObject->objectClass) ctx.ownerObject->objectClass->forEachMember(addMember);
     }
 
     // File scope: globals, functions and objects, then #using-imported namespace members.
@@ -2271,7 +2769,7 @@ json LspServer::completeTypedArgument(const string& uri, int line, int col, cons
     }
     // The slot's accepted types, across every overload that has this many parameters.
     vector<string> ptypes;
-    for(functionDef* fd : resolveCallees(uri, line, funcName, objName, docText)) {
+    for(functionDef* fd : resolveCallees(uri, line, col, funcName, objName, docText)) {
         if(argIndex >= (int)fd->params.size()) continue;
         const string& t = fd->params[argIndex]->type.name;
         if(t.empty() || t == "var") return json();   // an untyped overload accepts anything: nothing to narrow
@@ -2294,7 +2792,7 @@ json LspServer::completeTypedArgument(const string& uri, int line, int col, cons
             items.push_back({{"label", b}, {"kind", 14}, {"detail", "bool"}, {"sortText", "0"}});
 
     std::set<string> seen;
-    appendScopeItems(items, seen, uri, line, docText, fits, /*typed*/true);
+    appendScopeItems(items, seen, uri, line, col, docText, fits, /*typed*/true);
 
     handled = true;
     return json{{"isIncomplete", false}, {"items", items}};
@@ -2483,139 +2981,50 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
         string lower = dotPrefix;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
-        // Resolve the prefix to a type. Check in order: enclosing-function locals/params,
-        // classes (including enums), global objects, global variables.
-        classDef* cls = nullptr;
-        enumDef*  ed  = nullptr;
+        LspTarget target;
+        if(!resolveTarget(uri, line, col, lower, target)) { handled = true; return json::array(); }
 
-        LspSymbolRef ownerRef = resolveSymbol(uri, line, lower);
-        if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter) {
-            typeDef& td = languageService.getType(ownerRef.typeName);
-            cls = dynamic_cast<classDef*>(&td);
-            // An enum-typed local/param is a VALUE: complete its emitter methods (via the enum's
-            // companion class), NOT the enum's named values — those are reached through the enum
-            // TYPE name (`eDirection.`), handled by the `ed` path below.
-            if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
-        }
-        if(!cls && !ed) {
-            typeDef& td = languageService.getType(lower);
-            cls = dynamic_cast<classDef*>(&td);
-            if(!cls) ed = dynamic_cast<enumDef*>(&td);   // the enum TYPE name → list its values
-        }
-        if(!cls && !ed) {
-            if(auto* od = languageService.findGlobalAs<objectDef>(lower)) cls = od->objectClass;
-        }
-        if(!cls && !ed) {
-            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lower)) {
-                typeDef& td = languageService.getType(vd->type.name);
-                cls = dynamic_cast<classDef*>(&td);
-                if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;  // enum var → methods
-            }
-        }
-        // A bare enum VALUE (e.g. `north.`) completes the enum's emitter methods via its companion.
-        if(!cls && !ed) {
-            string et = languageService.getEnumType(lower);
-            if(!et.empty())
-                if(auto* e = languageService.findEnum(et)) cls = e->companion;
-        }
-
-        // Namespace object resolution: walk dotted path to find the target object
-        // and show its members (including alias type members).
-        if(!cls && !ed) {
-            // Walk the dotted path: bgl.glulx → find _bglGlulx object
-            objectDef* nsObj = nullptr;
-            size_t dot = lower.find('.');
-            if(dot != string::npos){
-                string head = lower.substr(0, dot);
-                string rest = lower.substr(dot + 1);
-                if(auto* od = languageService.findGlobalAs<objectDef>(head)) nsObj = od;
-                while(nsObj && !rest.empty()){
-                    dot = rest.find('.');
-                    string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
-                    rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
-                    objectDef* next = nullptr;
-                    classDef*  nextCls = nullptr;
-                    for(typeMember* m : nsObj->members){
-                        auto* vd = dynamic_cast<variableDeclaration*>(m);
-                        if(!vd || vd->name != seg) continue;
-                        string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
-                        if(!initName.empty())
-                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
-                        if(!next)
-                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
-                        // The alias may resolve to a CLASS rather than an object — e.g.
-                        // `extend bgl { emitter auto asm = bglOpCodes; }`, where bglOpCodes is an
-                        // emitter class. The object-only search above misses it, so completing
-                        // `bgl.asm.` would list nothing. Capture the class target and let the
-                        // terminal segment fall through to the class-member collector below.
-                        if(!next)
-                            for(string cand : { initName, vd->type.name }){
-                                if(cand.empty()) continue;
-                                transform(cand.begin(), cand.end(), cand.begin(), ::tolower);
-                                typeDef& td = languageService.getType(cand);
-                                if(auto* cd = dynamic_cast<classDef*>(&td)){ nextCls = cd; break; }
-                            }
-                        break;
-                    }
-                    if(nextCls){ cls = nextCls; nsObj = nullptr; break; }  // alias → class; complete its members
-                    nsObj = next;
-                }
-            } else {
-                // Single segment — check if it's a global object
-                if(auto* od = languageService.findGlobalAs<objectDef>(lower)) nsObj = od;
-            }
-            if(nsObj){
-                // Show namespace object's members: alias types, auto aliases, methods, properties
-                json items = json::array();
-                for(typeMember* m : nsObj->members){
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                        string label = vd->displayName.empty() ? vd->name : vd->displayName;
-                        if(vd->isAlias){
-                            // Type alias: show as Class kind with the target type
-                            string targetDisplay = vd->type.dName();
-                            items.push_back({{"label", label}, {"kind", 7}, {"detail", "type alias → " + targetDisplay}});
-                        } else {
-                            // Value alias or property
-                            string typeDisplay = vd->type.dName();
-                            items.push_back({{"label", label}, {"kind", 6}, {"detail", typeDisplay}});
-                        }
-                    } else if(auto* fd = dynamic_cast<functionDef*>(m)){
-                        string label = fd->displayName.empty() ? fd->name : fd->displayName;
-                        items.push_back({{"label", label}, {"kind", fd->isValueEmitter ? 6 : 2}, {"detail", fd->returnType.dName()}});
-                    }
-                }
-                handled = true; return items;
-            }
-        }
-
-        // Enum prefix: return its named values.
-        if(ed) {
-            json items = json::array();
-            string enumLabel = ed->displayName.empty() ? ed->name : ed->displayName;
-            for(enumValueDef* ev : ed->namedValues) {
-                items.push_back({
-                    {"label", ev->displayName.empty() ? ev->name : ev->displayName},
-                    {"kind", 20},  // EnumMember
-                    {"detail", enumLabel}
-                });
-            }
+        json items = json::array();
+        std::set<string> seenLabels;
+        auto push = [&](const string& label, json item) {
+            string key = label.substr(0, label.find('('));
+            transform(key.begin(), key.end(), key.begin(), ::tolower);
+            if(!seenLabels.insert(key).second) return;
+            item["label"] = label;
+            items.push_back(item);
+        };
+        // The enum type itself lists its values.
+        if(target.enumType) {
+            string enumLabel = target.enumType->dName();
+            for(enumValueDef* ev : target.enumType->namedValues)
+                push(ev->dName(), {{"kind", 20}, {"detail", enumLabel}});   // EnumMember
             handled = true; return items;
         }
-
-        if(!cls) { handled = true; return json::array(); }
-
-        // Collect class members walking the hierarchy.
-        json items = json::array();
-        auto collectMembers = [&](classDef* c) {
-            if(!c) return;
-            c->forEachMember([&](typeMember* m) {
+        // An object's own members: aliases, auto aliases, methods and properties.
+        if(target.obj) {
+            for(typeMember* m : target.obj->members) {
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
+                    if(vd->isAlias) push(vd->dName(), {{"kind", 7}, {"detail", "type alias → " + vd->type.dName()}});
+                    else push(vd->dName(), {{"kind", 6}, {"detail", vd->type.dName()}});
+                } else if(auto* fd = dynamic_cast<functionDef*>(m)) {
+                    if(!fd->isPrePassStub) push(fd->dName(), {{"kind", fd->isValueEmitter ? 6 : 2}, {"detail", fd->returnType.dName()}});
+                }
+            }
+        }
+        // Then the class hierarchy's members. An object declared directly on the root (`_bglObject bgl { … }`)
+        // is a namespace: its own members are the point, not the root's plumbing.
+        vector<classDef*> classes;
+        if(target.cls && !(target.obj && target.cls->name == "_bglobject")) {
+            classes.push_back(target.cls);
+            if(classDef* converted = conversionTarget(target.cls).cls) classes.push_back(converted);   // what the value reads as
+        }
+        for(classDef* listed : classes) {
+            listed->forEachMember([&](typeMember* m) {
                 if(auto* fd = dynamic_cast<functionDef*>(m)) {
                     if(fd->isPrePassStub) return;
                     // Operators (`==`, `()`, …) are not reached with '.'.
                     if(fd->name.empty() || !(isalpha((unsigned char)fd->name[0]) || fd->name[0] == '_')) return;
-                    int kind = fd->isValueEmitter ? 6 : 2;  // 6=Variable, 2=Method
-                    string detail = fd->returnType.name;
-                    string label = fd->displayName.empty() ? fd->name : fd->displayName;
+                    string label = fd->dName();
                     if(!fd->isValueEmitter) {
                         label += "(";
                         for(size_t i = 0; i < fd->params.size(); i++) {
@@ -2624,35 +3033,12 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
                         }
                         label += ")";
                     }
-                    items.push_back({{"label", label}, {"kind", kind}, {"detail", detail}});
+                    push(label, {{"kind", fd->isValueEmitter ? 6 : 2}, {"detail", fd->returnType.name}});
                 } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                    items.push_back({
-                        {"label", vd->displayName.empty() ? vd->name : vd->displayName},
-                        {"kind", 6},
-                        {"detail", vd->type.name}
-                    });
+                    push(vd->dName(), {{"kind", 6}, {"detail", vd->type.name}});
                 }
             });
-        };
-        // An object declared directly on the root (`_bglObject bgl { … }`) is a namespace: its own
-        // members are the point, not the root's plumbing.
-        objectDef* prefixObj = languageService.findGlobalAs<objectDef>(lower);
-        if(!(prefixObj && cls->name == "_bglobject")) collectMembers(cls);
-
-        // Also collect instance-specific members if the prefix is a global object.
-        if(auto* od = prefixObj) {
-            for(typeMember* m : od->members) {
-                if(auto* fd = dynamic_cast<functionDef*>(m)) {
-                    string label = fd->displayName.empty() ? fd->name : fd->displayName;
-                    if(!fd->isValueEmitter) label += "(...)";
-                    items.push_back({{"label", label}, {"kind", 2}, {"detail", fd->returnType.name}});
-                } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                    string label = vd->displayName.empty() ? vd->name : vd->displayName;
-                    items.push_back({{"label", label}, {"kind", 6}, {"detail", vd->type.name}});
-                }
-            }
         }
-
         handled = true; return items;
     }
     return json();
@@ -3106,7 +3492,7 @@ json LspServer::completeKeywordSnippet(int col, const string& lineText, bool& ha
 }
 
 // Completion case: bare-identifier position -> members imported by active `#using` directives.
-json LspServer::completeUsingImports(const string& uri, int line, const string& docText, bool& handled) {
+json LspServer::completeUsingImports(const string& uri, int line, int col, const string& docText, bool& handled) {
     handled = false;
     // ── Phase 4: bare-identifier position — offer #using-imported type aliases ──
     // Scan the doc above the cursor for active `#using <path>` directives and surface
@@ -3223,7 +3609,7 @@ json LspServer::completeUsingImports(const string& uri, int line, const string& 
                     transform(l.begin(), l.end(), l.begin(), ::tolower);
                     seen.insert(l);
                 }
-                appendScopeItems(items, seen, uri, line, docText, [](const string&){ return true; }, /*typed*/false);
+                appendScopeItems(items, seen, uri, line, col, docText, [](const string&){ return true; }, /*typed*/false);
                 static const char* kKeywords[] = {
                     "if", "else", "for", "in", "while", "do", "switch", "case", "default", "break",
                     "continue", "return", "new", "delete", "try", "catch", "throw", "true", "false",
@@ -3292,7 +3678,7 @@ json LspServer::handleCompletion(const json& params) {
     if(json r = completeMemberModifiers(line, col, docText, insideBsBlock, handled); handled) return r;
     if(json r = completeBeguilerSettingsBlock(col, lineText, insideBsBlock, handled); handled) return r;
     if(json r = completeKeywordSnippet(col, lineText, handled); handled) return r;
-    if(json r = completeUsingImports(uri, line, docText, handled); handled) return r;
+    if(json r = completeUsingImports(uri, line, col, docText, handled); handled) return r;
 
     return nullptr;
 }
@@ -3346,108 +3732,44 @@ json LspServer::handleDefinition(const json& params) {
     }
 
     sourceLocation src;
+    string settleName = lower;
 
-    if(!ownerName.empty()) {
-        // Dotted member: resolve owner's type, then look up member in class hierarchy
+    if((lower == "prefix" || lower == "postfix") && ownerName.empty() && followsOperatorKeyword(lineText, start)) {
+        src.file = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+        src.line = line + 1;
+    } else if(!ownerName.empty()) {
+        // Dotted member: resolve the owner chain to its target, then look the member up on it.
         string ownerLower = ownerName;
         transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
-        LspSymbolRef ownerRef = resolveSymbol(uri, line, ownerLower);
-        classDef* cls = languageService.findClass(ownerRef.typeName);
-        if(!cls) {
-            typeDef& td = languageService.getType(ownerLower);
-            cls = dynamic_cast<classDef*>(&td);
-        }
-        if(cls) {
-            typeMember* hit = cls->findMember([&](typeMember* m){
-                return m->name == lower
-                       && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
-            });
-            if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) src = vd->src;
-            else if(auto* fd = dynamic_cast<functionDef*>(hit)) src = fd->src;
-        }
-
-        // Namespace walk: if class lookup didn't find it, walk the dotted path through
-        // namespace objects to locate the target object, then search its members.
-        if(src.file.empty()) {
-            objectDef* nsObj = nullptr;
-            classDef*  nsCls = nullptr;
-            size_t dot = ownerLower.find('.');
-            if(dot != string::npos){
-                string head = ownerLower.substr(0, dot);
-                string rest = ownerLower.substr(dot + 1);
-                if(auto* od = languageService.findGlobalAs<objectDef>(head)) nsObj = od;
-                while(nsObj && !rest.empty()){
-                    dot = rest.find('.');
-                    string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
-                    rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
-                    objectDef* next = nullptr;
-                    classDef*  nextCls = nullptr;
-                    for(typeMember* m : nsObj->members){
-                        auto* vd = dynamic_cast<variableDeclaration*>(m);
-                        if(!vd || vd->name != seg) continue;
-                        string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
-                        if(!initName.empty())
-                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
-                        if(!next)
-                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
-                        // Alias may target a CLASS (e.g. `emitter auto asm = bglOpCodes`) — capture it.
-                        if(!next)
-                            for(string cand : { initName, vd->type.name }){
-                                if(cand.empty()) continue;
-                                transform(cand.begin(), cand.end(), cand.begin(), ::tolower);
-                                typeDef& td = languageService.getType(cand);
-                                if(auto* cd = dynamic_cast<classDef*>(&td)){ nextCls = cd; break; }
-                            }
-                        break;
-                    }
-                    if(nextCls){ nsCls = nextCls; nsObj = nullptr; break; }
-                    nsObj = next;
-                }
-            } else {
-                if(auto* od = languageService.findGlobalAs<objectDef>(ownerLower)) nsObj = od;
-            }
-            if(nsObj){
-                for(typeMember* m : nsObj->members){
-                    if(m->name != lower) continue;
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                        // For type aliases, prefer jumping to the resolved flat type's definition
-                        // (e.g. `class glulxWindow`) over the alias line itself. Fall back to the
-                        // alias declaration if the target class has no source location.
-                        if(vd->isAlias){
-                            if(auto* tc = languageService.findClass(vd->type.name))
-                                if(!tc->src.file.empty()){ src = tc->src; break; }
-                        }
-                        src = vd->src;
-                    } else if(auto* fd = dynamic_cast<functionDef*>(m)){
-                        src = fd->src;
-                    }
-                    break;
-                }
-            }
-            // Owner resolved to a class (e.g. bgl.asm → bglOpCodes emitter class) — jump to the
-            // member's definition in the class hierarchy.
-            if(src.file.empty() && nsCls){
-                typeMember* hit = nsCls->findMember([&](typeMember* m){
-                    return m->name == lower
-                           && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
-                });
-                if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) src = vd->src;
-                else if(auto* fd = dynamic_cast<functionDef*>(hit)) src = fd->src;
+        LspTarget target;
+        if(resolveTarget(uri, line, col, ownerLower, target)) {
+            LspMember m = findMemberOn(target, lower);
+            if(m.enumValue) {
+                src = enumValueSource(m.enumType, lower);
+            } else if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) {
+                src = vd->src;
+                // A type alias goes to the type it names; the alias line is the fallback.
+                if(vd->isAlias)
+                    if(auto* tc = languageService.findClass(vd->type.name))
+                        if(!tc->src.file.empty()) { src = tc->src; settleName = tc->name; }
+            } else if(auto* fd = dynamic_cast<functionDef*>(m.member)) {
+                src = fd->src;
             }
         }
     } else {
         // Non-dotted: use the scoped resolver
-        LspSymbolRef ref = resolveSymbol(uri, line, lower);
+        size_t after = lineText.find_first_not_of(" \t", end);
+        LspSymbolRef ref = resolveSymbol(uri, line, col, lower, after != string::npos && lineText[after] == '(');
         if(ref.declSrc.line > 0) src = ref.declSrc;
-    }
-
-    // Verbs fallback
-    if(src.file.empty()) {
-        for(auto* v : languageService.verbs)
-            if(v->name == lower) { src = v->src; break; }
+        // Verbs fallback
+        if(src.file.empty()) {
+            for(auto* v : languageService.verbs)
+                if(v->name == lower) { src = v->src; break; }
+        }
     }
 
     if(src.file.empty() || src.line == 0) return nullptr;
+    src = settleDeclLine(src, settleName);
 
     return {
         {"uri", pathToUri(src.file)},
@@ -3677,7 +3999,7 @@ json LspServer::handleSignatureHelp(const json& params) {
     if(!findCallSlot(lineText, col, funcName, objName, commaCount, slotStart)) return nullptr;
 
     vector<functionDef*> candidates;
-    for(functionDef* fd : resolveCallees(uri, line, funcName, objName, docIt->second))
+    for(functionDef* fd : resolveCallees(uri, line, col, funcName, objName, docIt->second))
         if(!fd->isValueEmitter) candidates.push_back(fd);
 
     if(candidates.empty()) return nullptr;
@@ -3733,22 +4055,6 @@ void LspServer::resetAndReparse(const string& uri) {
 // References (find all references to a symbol)
 //=============================================================================
 
-// Compute the [startLine, endLine) range of a function's body by finding the next same-file
-// function's start line. Returns {-1,-1} if unknown. Lines are 1-based to match src.line.
-static pair<int,int> functionLineRange(functionDef* fn) {
-    if(!fn || fn->src.line == 0) return {-1, -1};
-    int startLine = fn->src.line;
-    int endLine = INT_MAX;
-    for(typeDef* g : languageService.globals) {
-        auto* other = dynamic_cast<functionDef*>(g);
-        if(!other || other == fn || other->src.line == 0) continue;
-        if(other->src.file != fn->src.file) continue;
-        if(other->src.line > startLine && other->src.line < endLine)
-            endLine = other->src.line;
-    }
-    return {startLine, endLine};
-}
-
 json LspServer::handleReferences(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
@@ -3776,14 +4082,14 @@ json LspServer::handleReferences(const json& params) {
     // function's line range in the current file. Otherwise scan all open documents.
     string lowered = word;
     transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
-    LspSymbolRef ref = resolveSymbol(uri, line, lowered);
+    LspSymbolRef ref = resolveSymbol(uri, line, col, lowered);
     bool restrictToFunction = (ref.kind == LspSymbolRef::Local || ref.kind == LspSymbolRef::Parameter);
     int fnStart1 = -1, fnEnd1 = -1;
     string restrictFile;
     if(restrictToFunction) {
-        auto rng = functionLineRange(ref.enclosingFunc);
+        auto rng = functionLines(uri, line, col, ref.enclosingFunc);
         fnStart1 = rng.first;
-        fnEnd1   = rng.second;
+        fnEnd1   = rng.second + 1;
         restrictFile = ref.enclosingFunc->src.file;
     }
 
@@ -3859,14 +4165,14 @@ json LspServer::handleRename(const json& params) {
     // their enclosing function's line range.
     string lowered = oldName;
     transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
-    LspSymbolRef ref = resolveSymbol(uri, line, lowered);
+    LspSymbolRef ref = resolveSymbol(uri, line, col, lowered);
     bool restrictToFunction = (ref.kind == LspSymbolRef::Local || ref.kind == LspSymbolRef::Parameter);
     int fnStart1 = -1, fnEnd1 = -1;
     string restrictFile;
     if(restrictToFunction) {
-        auto rng = functionLineRange(ref.enclosingFunc);
+        auto rng = functionLines(uri, line, col, ref.enclosingFunc);
         fnStart1 = rng.first;
-        fnEnd1   = rng.second;
+        fnEnd1   = rng.second + 1;
         restrictFile = ref.enclosingFunc->src.file;
     }
 
