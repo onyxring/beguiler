@@ -1,0 +1,166 @@
+Room A
+> zones
+        inner   middle  outer
+inner   120     180     250
+middle  180     120     190
+outer   250     190     140
+> lines
+red   inner-outer  06:00 to 23:00 every 20, 52 runs
+blue  middle-outer 06:30 to 21:30 every 45, 21 runs
+green inner-middle 07:05 to 20:00 every 30, 26 runs
+gray  outer-outer  05:10 to 18:30 every 90, 9 runs
+108 runs in all.
+> fare inner outer
+inner to outer: 250 base, 375 at 08:00 (peak).
+> fare middle middle
+middle to middle: 120 base, 180 at 08:00 (peak).
+> fare north inner
+I didn't understand that sentence.
+> clock 25 0
+No such time.
+> clock 7 35
+Clock set to 07:35, peak (50%).
+> next
+After 07:35:
+  green 07:35 in 0 min
+  red 07:40 in 5 min
+  blue 08:00 in 25 min
+  gray 08:10 in 35 min
+> route inner outer
+red: 07:40
+> route middle inner
+green: 07:35
+> route outer outer
+gray: 08:10
+> route middle middle
+No line joins middle and middle.
+> tender 100
+No ticket pending.
+> ticket purple
+No such line.
+> ticket red
+red, adult: 375 to pay.
+> tender 100
+Short by 275.
+> tender 500
+Change 125: 1x1.00 1x0.20 1x0.05. Ticket issued.
+> ticket blue child
+blue, child: 142 to pay.
+> tender 200
+Cannot make change (3 short in the till).
+> ticket green senior
+green, senior: 230 to pay.
+> tender 200
+Short by 30.
+> tender 300
+Change 70: 1x0.50 1x0.20. Ticket issued.
+> ticket red dog
+No such card.
+> till
+2.00  1
+1.00  1
+0.50  2
+0.20  2
+0.10  5
+0.05  5
+Till holds 515; taken 605.
+> clock 12 10
+Clock set to 12:10, off-peak (0%).
+> fare inner outer
+inner to outer: 250 base, 250 at 12:10 (off-peak).
+> next
+After 12:10:
+  red 12:20 in 10 min
+  blue 12:30 in 20 min
+  green 12:35 in 25 min
+  gray 12:40 in 30 min
+> ticket gray staff
+gray, staff: 0 to pay.
+> tender 0
+Exact. Ticket issued.
+> ticket green
+green, adult: 180 to pay.
+> tender 120
+Short by 60.
+> tender 200
+Change 20: 1x0.20. Ticket issued.
+> ticket blue
+blue, adult: 190 to pay.
+> tender 190
+Exact. Ticket issued.
+> sales
+1.  red   adult   07:35  375
+2.  green senior  07:35  230
+3.  gray  staff   12:10  0
+4.  green adult   12:10  180
+5.  blue  adult   12:10  190
+5 sold, 4 at 150 or more, free: true, all peak: false.
+> rank
+By fare: 375 230 190 180 0.
+Top: red at 07:35.
+> sales
+1.  red   adult   07:35  375
+2.  green senior  07:35  230
+3.  blue  adult   12:10  190
+4.  green adult   12:10  180
+5.  gray  staff   12:10  0
+5 sold, 4 at 150 or more, free: true, all peak: false.
+> cancel 9
+No such sale.
+> cancel 2
+Cancelled sale 2 (230); 4 left.
+> sales
+1.  red   adult   07:35  375
+2.  blue  adult   12:10  190
+3.  green adult   12:10  180
+4.  gray  staff   12:10  0
+4 sold, 3 at 150 or more, free: true, all peak: false.
+> ticket red child
+red, child: 125 to pay.
+> tender 1000
+Cannot make change (380 short in the till).
+> ticket red
+red, adult: 250 to pay.
+> tender 400
+Change 150: 1x1.00 1x0.50. Ticket issued.
+> ticket blue senior
+blue, senior: 150 to pay.
+> tender 150
+Exact. Ticket issued.
+> ticket gray
+gray, adult: 140 to pay.
+> tender 140
+Ledger full.
+> sales
+1.  red   adult   07:35  375
+2.  blue  adult   12:10  190
+3.  green adult   12:10  180
+4.  gray  staff   12:10  0
+5.  red   adult   12:10  250
+6.  blue  senior  12:10  150
+6 sold, 5 at 150 or more, free: true, all peak: false.
+> clock 22 40
+Clock set to 22:40, night (-20%).
+> next
+After 22:40:
+  red 22:40 in 0 min
+3 finished for the day.
+> fare outer inner
+outer to inner: 250 base, 200 at 22:40 (night).
+> ticket green
+The green line has finished.
+> ticket red
+red, adult: 200 to pay.
+> tender 200
+Ledger full.
+> till
+2.00  1
+1.00  0
+0.50  1
+0.20  1
+0.10  5
+0.05  5
+Till holds 345; taken 1145.
+> rank
+By fare: 375 250 190 180 150 0.
+Top: red at 07:35.

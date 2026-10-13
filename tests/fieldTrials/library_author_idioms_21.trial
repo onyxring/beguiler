@@ -1,0 +1,89 @@
+Room A
+Room A.
+You can see a red fuse and a blue fuse here.
+> status
+red fuse i 0t
+blue fuse i 0t
+green fuse i 0t
+ticks 0, still, burning 0; first out Room A
+watches 0 (open 0, closed 0); log
+lit 0 spent 0
+> ignite red fuse
+The red fuse burns (2 turns).
+> take red fuse
+The red fuse is too hot.
+> timer 2
+w1 set for 2; open 1.
+The red fuse goes out (fizz).
+> z
+Time passes.
+[w1 at 2]
+Chime.
+(swept 1)
+> z
+Time passes.
+> status
+red fuse s 3t
+blue fuse i 0t
+green fuse i 0t
+ticks 5, still, burning 0, one spent; first out red fuse
+watches 0 (open 0, closed 1); log +w1 -w1
+lit 1 spent 1
+> rate 2
+rate 2, changes 1.
+> ignite blue fuse
+The blue fuse burns (3 turns).
+> ignite red fuse
+The red fuse is spent.
+> douse blue fuse
+The blue fuse is out.
+> timer 3
+w2 set for 3; open 1.
+> timer 1
+w3 set for 1; open 2.
+[w3 at 1]
+(swept 1)
+> timer 5
+w4 set for 5; open 2.
+[w2 at 3]
+(swept 1)
+> timer 1
+w1 set for 1; open 2.
+[w1 at 1]
+(swept 1)
+> z
+Time passes.
+> rank
+red fuse=32 blue fuse=23 green fuse=1 top red fuse.
+> ignite blue fuse
+The blue fuse burns (3 turns).
+> ignite green fuse
+The green fuse burns (1 turns).
+[w4 at 5]
+(swept 1)
+> douse red fuse
+The red fuse is not burning.
+The green fuse goes out (fizz).
+> z
+Time passes.
+The blue fuse goes out (pop).
+> z
+Time passes.
+> z
+Time passes.
+> status
+red fuse s 3t
+blue fuse s 6t
+green fuse s 2t
+ticks 33, still, burning 0, one spent; first out red fuse
+watches 0 (open 0, closed 5); log +w1 -w1 +w2 +w3 -w3 +w4 -w2 +w1 -w1 -w4
+lit 4 spent 3
+> rank
+blue fuse=63 red fuse=32 green fuse=21 top blue fuse.
+> rate 9
+rate 3, changes 2.
+> take red fuse
+Taken.
+Chime.
+> ignite chime
+That is not a fuse.

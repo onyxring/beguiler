@@ -1,0 +1,53 @@
+Room A
+
+> probevolume
+Vol 10.7500 11 11L 0L 0L float int tank.
+Cmp 1 0 true true true true.
+
+> probetanks
+tank A: 40.0000 of 40 (open)
+tank B: 13.0000 of 30 (sealed)
+  at 1.2500
+tank C: 4.5000 of 20 (open)
+tank B: 13.0000 of 30 (sealed)
+Flags 4 2 0 labels open sealed open.
+Notes none / flush on empty.
+Ref 24.5000 24.5000 0.6125.
+
+> probeplant
+Set 90.0000 10.0000 42.5000 clamps 2.
+tank A upper; tank B lower; tank C lower;
+Passes 2 4 moves 6.
+tank A: 19.5000 of 40 (open)
+tank B: 13.0000 of 30 (sealed)
+  at 1.2500
+tank C: 9.5000 of 20 (open)
+
+> probestages
+Stages 4.5000 7.5000 3 6.0000.
+Until 5 6.5938 6.0000 4.0000.
+
+> probesamples
+Live 3 true.
+sample 3 from tank B
+sample 1 from tank C live 3.
+Live 0.
+
+> probefaults
+Inner tank C.
+Outer tank C flags 0.
+Ok 2 faults 1 states 1 1 2.
+
+> probehistory
+Asc 6.0000 9.5000 13.0000 19.5000 at 0 len 4.
+Top 120L last 6L.
+[120,13,10,6] 13.
+
+> proberack
+open sealed open moved 3 2 Room A.
+
+> tap alpha
+tank A now 20.5000.
+
+> tap bravo
+Tapped tank B.

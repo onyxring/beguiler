@@ -1,0 +1,147 @@
+Room A
+Room A. Room B is east.
+A conveyor belt stands still.
+You can also see a coin and a token machine here.
+> tally
+Moves 1, score 0, credit 0, tokens 0, robot idle.
+Belt: nothing.
+> i
+You're carrying:
+  two coins
+> count
+2 coins carried.
+> take coin
+Taken.
+> count
+3 coins carried.
+> take machine
+It is bolted down.
+> put coin in machine
+The coin drops into the slot.
+> examine machine
+A token machine with a coin slot. Its counter shows 1 of 2.
+> put coin in tray
+You put the coin into the tray.
+> insert coin into machine
+The coin drops into the slot. A brass token clatters into the tray.
+[The score has just gone up by one point.]
+> look in tray
+In the tray are a brass token and a coin.
+> take token
+Taken.
+> x token
+A brass token stamped with the number 1.
+> count tray
+One coin in the tray.
+> put coin in machine
+(first taking the coin out of the tray)
+The coin drops into the slot.
+> count
+No coins carried.
+> turn on belt
+The belt starts to move.
+> put token on belt
+You put the brass token on the conveyor belt.
+The belt carries the brass token away east.
+> z
+Time passes.
+> tally
+Moves 1, score 1, credit 1, tokens 1, robot idle.
+Belt: brass token
+> turn off belt
+The belt stops.
+> e
+Room B
+Room B. Room A is west. A gate is to the north.
+The iron gate is shut.
+You can also see a bin (in which is a brass token (number 1)) and a robot here.
+> look in bin
+In the bin is a brass token.
+> take token
+Taken.
+> i
+You're carrying:
+  a brass token (number 1)
+> drop token
+Dropped.
+> take token
+Taken.
+> ask robot about gate
+"Status: idle."
+> robot, open gate
+"Payment first."
+> give token to robot
+The robot swallows the token. "Ready."
+> give token to robot
+You can't see any such thing.
+> ask robot about gate
+"Status: waiting."
+> robot, take bin
+"Cannot lift that."
+> robot, go west
+"Cannot leave this room."
+> robot, dance
+"Instruction not understood."
+> robot, give keycard to me
+The robot hands you the keycard.
+> robot, drop keycard
+"Not holding that."
+> robot, open gate
+"No keycard."
+> give keycard to robot
+The robot takes the keycard back.
+> robot, open gate
+The robot swipes its keycard. The gate swings open.
+[The score has just gone up by one point.]
+> robot, open gate
+"Already done."
+> n
+Room C
+Room C. The gate is to the south.
+The iron gate stands open.
+You can also see two coins and a steel box here.
+> take coins
+coin: Taken.
+coin: Taken.
+> count
+2 coins carried.
+> s
+Room B
+Room B. Room A is west. A gate is to the north.
+The iron gate stands open.
+You can also see a bin (which is empty) and a robot here.
+> drop coin
+The robot's eye follows the coin.
+Dropped.
+> take coin
+Taken.
+> w
+Room A
+Room A. Room B is east.
+A conveyor belt stands still.
+You can also see a token machine here.
+> put coin in machine
+The coin drops into the slot. A brass token clatters into the tray.
+> x token
+A brass token stamped with the number 2.
+> put coin in machine
+The coin drops into the slot.
+> tally
+Moves 5, score 2, credit 1, tokens 2, robot working.
+Belt: brass token
+> e
+Room B
+Room B. Room A is west. A gate is to the north.
+The iron gate stands open.
+You can also see a bin (which is empty) and a robot here.
+> n
+Room C
+Room C. The gate is to the south.
+The iron gate stands open.
+You can also see a steel box here.
+> take box
+Taken.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 51 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

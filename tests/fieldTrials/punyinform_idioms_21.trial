@@ -1,0 +1,149 @@
+Room A
+Room A. Three pigeonholes are on the wall. Room B is north. Room C is east.
+You can see a red letter, a blue letter, a north hole (which is empty), a south hole (which is empty), an east hole (which is empty) and a scale here.
+> tally
+Score 0 of 3, credit 0, stamped 0, sorted 0, collected 0.
+Unstamped 3, clock 0, clerk asked 0.
+No van due.
+> log
+The log is empty.
+> examine red letter
+The red letter, for the north hole, weight 1, not stamped.
+> weigh red letter
+The red letter weighs 1: a stamp costs 1.
+> put red letter in north hole
+(first taking the red letter)
+The red letter needs a stamp first.
+> put red letter on scale
+You put the red letter on the scale.
+> take red letter
+Taken.
+> take blue letter
+Taken.
+The clock in Room A chimes.
+> north
+Room B
+Room B. A stamp machine is here. Room A is south.
+You can see a green letter, a stamp machine (which is empty) and a clerk here.
+> stamp red letter
+The stamp costs 1. Credit 0.
+> ask clerk about coins
+The clerk says: the coins are in Room C.
+> ask clerk about stamps
+The clerk says: one coin per stamp, more for heavy letters.
+> ask clerk about weather
+The clerk shrugs.
+> clerk, wait
+The clerk waits.
+> clerk, jump
+The clerk ignores you.
+> give red letter to clerk
+The clerk says: sort it yourself.
+> take green letter
+Taken.
+> postage
+Postage still needed: 6.
+> south
+Room A
+You can see a north hole (which is empty), a south hole (which is empty), an east hole (which is empty) and a scale here.
+> east
+Room C
+Room C. Room A is west.
+You can see a copper coin, a silver coin and a gold coin here.
+> take copper coin
+Taken.
+> take silver coin
+Taken.
+> take gold coin
+Taken.
+> examine clock
+A clock. It reads 20.
+> west
+Room A
+You can see a north hole (which is empty), a south hole (which is empty), an east hole (which is empty) and a scale here.
+> weigh blue letter
+The blue letter weighs 3: a stamp costs 2.
+> put copper coin in north hole
+Only letters go in the pigeonholes.
+> north
+Room B
+You can see a stamp machine (which is empty) and a clerk here.
+> put copper coin in machine
+The machine takes the copper coin. Credit 1.
+> stamp blue letter
+The stamp costs 2. Credit 1.
+> stamp red letter
+You stamp the red letter for 1. Credit 0.
+> put silver coin in machine
+The machine takes the silver coin. Credit 2.
+> stamp blue letter
+You stamp the blue letter for 2. Credit 0.
+> stamp blue letter
+The blue letter already has a stamp.
+> put gold coin in machine
+The machine takes the gold coin. Credit 3.
+> stamp green letter
+You stamp the green letter for 3. Credit 0.
+> put clerk in machine
+(first taking the clerk)
+I don't suppose the clerk would care for that.
+> ask clerk about van
+The clerk says: the van comes after the first letter is sorted.
+> postage
+Postage still needed: 0.
+> south
+Room A
+You can see a north hole (which is empty), a south hole (which is empty), an east hole (which is empty) and a scale here.
+> put blue letter in north hole
+The blue letter is for the south hole.
+> put blue letter in south hole
+You put the blue letter into the south hole.
+[The score has just gone up by 1 point.]
+> tally
+Score 1 of 3, credit 0, stamped 3, sorted 1, collected 0.
+Unstamped 0, clock 38, clerk asked 4.
+Van due in 2.
+> letters
+red letter: carried.
+blue letter: in the south hole.
+green letter: carried.
+> put red letter in north hole
+You put the red letter into the north hole.
+[The score has just gone up by 1 point.]
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+A van driver empties the pigeonholes: 2 taken.
+> letters
+red letter: collected.
+blue letter: collected.
+green letter: carried.
+> put green letter in east hole
+You put the green letter into the east hole.
+[The score has just gone up by 1 point.]
+> tally
+Score 3 of 3, credit 0, stamped 3, sorted 3, collected 2.
+Unstamped 0, clock 42, clerk asked 4.
+Van due in 1.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+A van driver empties the pigeonholes: 1 taken.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> letters
+red letter: collected.
+blue letter: collected.
+green letter: collected.
+> tally
+Score 3 of 3, credit 0, stamped 3, sorted 3, collected 3.
+Unstamped 0, clock 46, clerk asked 4.
+No van due.
+> examine green letter
+You can't see any such thing.
+> log
+Log (8): 1. stamped 1. 2. stamped 2. 3. stamped 3. 4. sorted 1. 5. sorted 2. 6. van took 2. 7. sorted 3. 8. van took 1.

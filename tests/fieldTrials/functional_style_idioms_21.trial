@@ -1,0 +1,105 @@
+Room A
+Room A.
+
+> probes
+P (north): 4 7 7 12 9 3 peak 12 total 42
+Q (south): 10 10 11 9 8 peak 11 total 48
+R (core): 2 15 1 15 6 6 4 peak 15 total 49
+S (north): 5 peak 5 total 5
+
+> stats
+P: n 6 lo 3 hi 12 range 9 mean 7.0000
+Q: n 5 lo 8 hi 11 range 3 mean 9.6000
+R: n 7 lo 1 hi 15 range 14 mean 7.0000
+S: n 1 lo 5 hi 5 range 0 mean 5.0000
+all: n 19 sum 144 mean 7.5789
+
+> scan 0
+sums: 4 11 18 30 39 42
+peaks: 4 7 7 12 12 12
+lows: 4 4 4 4 4 3
+steps: 3,0,5,-3,-6
+
+> scan 2
+sums: 2 17 18 33 39 45 49
+peaks: 2 15 15 15 15 15 15
+lows: 2 2 1 1 1 1 1
+steps: 13,-14,14,-9,0,-2
+
+> scan 9
+No such probe.
+
+> smooth 3
+P w3: 18 26 28 24
+Q w3: 31 30 28
+R w3: 18 31 22 27 16
+S w3: (none)
+P pairs: 11 14 19 21 12
+
+> smooth 0
+Width must be positive.
+
+> alarms
+P: 1 12
+Q: 1 8
+R: 2 15 15
+S: 0 (none)
+alarmed: P Q R
+calm: S
+core alarm: R
+
+> rank
+by peak: R P Q S
+by total: S P Q R
+top two: R P
+rest: Q S
+top R bottom S
+
+> values 0
+distinct: 4 7 12 9 3
+sorted: 3 4 7 9 12
+desc: 12 9 7 7 4 3
+scaled: 40 70 70 120 90 30
+max at 3 = 12; gcd 1
+first even 4, last odd 3
+
+> values 2
+distinct: 2 15 1 6 4
+sorted: 1 2 4 6 15
+desc: 15 15 6 6 4 2 1
+scaled: 22 152 12 152 62 62 42
+max at 1 = 15; gcd 1
+first even 2, last odd 15
+
+> find 9
+set: 1 2 3 4 5 6 7 8 9 10 11 12 15
+9 at 8
+
+> find 13
+set: 1 2 3 4 5 6 7 8 9 10 11 12 15
+13 not found
+
+> pipe 5
+stages: 5
+last stage 10
+tagged fold 14
+2 to the 5 = 32; 3 to the 4 = 81
+
+> pipe 12
+stages: 5
+last stage 6
+tagged fold 18
+2 to the 1 = 2; 3 to the 4 = 81
+
+> zones
+north: P S total 47
+south: Q total 48
+core: R total 49
+weighted 290
+
+> hist
+P: ******** 42 (14)
+Q: ********* 48 (15)
+R: ********* 49 (15)
+S: * 5 (6)
+

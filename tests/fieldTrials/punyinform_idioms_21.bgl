@@ -1,0 +1,454 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-first PunyInform program, written plainly: three rooms (Room A with three
+// pigeonholes and a scale, Room B with a stamp machine and a clerk, Room C with coins) and
+// OPTIONAL_SCORED; a `Letter` class with an enum zone, a weight and a stamped flag, its description a
+// routine with a `switch` over the zone; a `Hole` class whose `before` takes `Receive`, refusing what
+// is not a stamped letter of its zone; a `Coin` class with a value read by the machine's `Receive`,
+// which moves the coin out of play with `parent = null`; a value class `Credit` with `operator ()`,
+// `+=` and a `spend` method; a price function using a `switch` with a range case and a guard case; a
+// van on a `StartTimer`/`time_out` that collects sorted letters from an `array<Hole>` while moving
+// them out of `children`; a clock with `found_in` as a list and a `daemon` counting turns, read by
+// `each_turn` on Room A; a clerk with `life` (Ask through NextWord, Give) and `orders` (Wait); a
+// `stamp NOUN` and a `weigh NOUN` verb; a `stringObj` log appended with `+=` and interpolated strings;
+// a helper with a default argument; `bgl.world.instances` with a lambda predicate casting to the
+// class; a `while` loop and a `do`/`until` loop over the letters; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eZone { north, south, east }
+
+array<string> zoneNames = {"north", "south", "east"};
+
+value class Credit {
+    int _coins = 0;
+
+    int  operator ()         { return _coins; }
+    void operator = (int v)  { _coins = v < 0 ? 0 : v; }
+    void operator += (int v) { _coins = _coins + v; }
+
+    bool spend(int n) {
+        if (_coins < n) return false;
+        _coins = _coins - n;
+        return true;
+    }
+}
+
+Credit purse;
+stringObj logText;
+int logCount  = 0;
+int sorted    = 0;
+int collected = 0;
+int stamped   = 0;
+bool vanDue   = false;
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string zoneName(eZone z) {
+    return zoneNames[(int)z - 1];
+}
+
+int priceFor(int weight) {
+    switch (weight) {
+        case 1 to 2: return 1;
+        case 3 to 4: return 2;
+        case >= 5:   return 3;
+    }
+    return 0;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Three pigeonholes are on the wall. Room B is north. Room C is east.";
+    n_to = roomB;
+    e_to = roomC;
+
+    void each_turn() {
+        if (clock.ticks == 6) printLine("The clock in Room A chimes.");
+    }
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A stamp machine is here. Room A is south.";
+    s_to = roomA;
+}
+
+Room roomC {
+    "Room C";
+    description = "Room C. Room A is west.";
+    w_to = roomA;
+}
+
+// --- the clock --------------------------------------------------------------------------------------
+
+object clock {
+    "clock";
+    name = {.clock};
+    rawArray<object> found_in = {roomA, roomB, roomC};
+    int ticks = 0;
+    attributes = {static, scenery};
+
+    bool before() {
+        if (action == Examine) rtrue($"A clock. It reads {ticks}.^");
+        rfalse;
+    }
+
+    void daemon() {
+        ticks++;
+    }
+}
+
+// --- letters ----------------------------------------------------------------------------------------
+
+class Letter : object {
+    eZone zone;
+    int   weight = 1;
+    bool  stamped = false;
+    name = {.letter};
+
+    bool before() {
+        if (action == Examine) {
+            print($"{cThe(self)}, for the {zoneName(zone)} hole, weight {weight}");
+            if (stamped) printLine(", stamped.");
+            else printLine(", not stamped.");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+Letter redLetter {
+    "red letter";
+    parent = roomA;
+    name = {.red, .letter};
+    zone = eZone.north;
+    weight = 1;
+}
+
+Letter blueLetter {
+    "blue letter";
+    parent = roomA;
+    name = {.blue, .letter};
+    zone = eZone.south;
+    weight = 3;
+}
+
+Letter greenLetter {
+    "green letter";
+    parent = roomB;
+    name = {.green, .letter};
+    zone = eZone.east;
+    weight = 5;
+}
+
+array<Letter> letters = {redLetter, blueLetter, greenLetter};
+
+// --- pigeonholes ------------------------------------------------------------------------------------
+
+class Hole : object {
+    eZone zone;
+    name = {.hole, .pigeonhole};
+    attributes = {container, open, static};
+
+    bool before() {
+        if (action == Receive) {
+            if (!noun.is(Letter)) rtrue("Only letters go in the pigeonholes.^");
+            Letter l = (Letter)noun;
+            if (!l.stamped) rtrue($"{cThe(l)} needs a stamp first.^");
+            if (l.zone != zone) rtrue($"{cThe(l)} is for the {zoneName(l.zone)} hole.^");
+            sorted++;
+            score++;
+            jot("sorted", sorted);
+            if (!vanDue) {
+                vanDue = true;
+                StartTimer(van, 3);
+            }
+        }
+        rfalse;
+    }
+}
+
+Hole northHole {
+    "north hole";
+    parent = roomA;
+    name = {.north};
+    zone = eZone.north;
+}
+
+Hole southHole {
+    "south hole";
+    parent = roomA;
+    name = {.south};
+    zone = eZone.south;
+}
+
+Hole eastHole {
+    "east hole";
+    parent = roomA;
+    string article = "an";
+    name = {.east};
+    zone = eZone.east;
+}
+
+array<Hole> holes = {northHole, southHole, eastHole};
+
+// --- the van ----------------------------------------------------------------------------------------
+
+object van {
+    "van";
+    int time_left;
+
+    void time_out() {
+        int taken = 0;
+        for (Hole h in holes) {
+            for (object o in h.children) {
+                o.parent = null;
+                taken++;
+            }
+        }
+        collected += taken;
+        vanDue = false;
+        jot("van took", taken);
+        if (location == roomA) printLine($"A van driver empties the pigeonholes: {taken} taken.");
+        if (sorted < 3) {
+            vanDue = true;
+            StartTimer(self, 3);
+        }
+    }
+}
+
+// --- coins and the machine --------------------------------------------------------------------------
+
+class Coin : object {
+    int value = 1;
+    name = {.coin};
+}
+
+Coin copperCoin {
+    "copper coin";
+    parent = roomC;
+    name = {.copper};
+    value = 1;
+}
+
+Coin silverCoin {
+    "silver coin";
+    parent = roomC;
+    name = {.silver};
+    value = 2;
+}
+
+Coin goldCoin {
+    "gold coin";
+    parent = roomC;
+    name = {.gold};
+    value = 3;
+}
+
+object machine {
+    "stamp machine";
+    parent = roomB;
+    name = {.stamp, .machine, .slot};
+    description = "A stamp machine with a coin slot.";
+    attributes = {container, open, static};
+
+    bool before() {
+        if (action == Receive) {
+            if (!noun.is(Coin)) rtrue($"{cThe(noun)} won't fit the slot.^");
+            Coin c = (Coin)noun;
+            purse += c.value;
+            c.parent = null;
+            rtrue($"The machine takes {the(c)}. Credit {(int)purse}.^");
+        }
+        rfalse;
+    }
+}
+
+// --- the scale --------------------------------------------------------------------------------------
+
+object scale {
+    "scale";
+    parent = roomA;
+    name = {.scale};
+    description = "A letter scale.";
+    attributes = {supporter, static};
+}
+
+// --- the clerk --------------------------------------------------------------------------------------
+
+object clerk {
+    "clerk";
+    parent = roomB;
+    name = {.clerk};
+    description = "A clerk.";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .stamp || w == .stamps) rtrue("The clerk says: one coin per stamp, more for heavy letters.^");
+                if (w == .coin || w == .coins) rtrue("The clerk says: the coins are in Room C.^");
+                if (w == .van) rtrue("The clerk says: the van comes after the first letter is sorted.^");
+                rtrue("The clerk shrugs.^");
+            case Give:
+                if (noun.is(Letter)) rtrue("The clerk says: sort it yourself.^");
+                rtrue("The clerk says: no thank you.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        if (action == Wait) rtrue("The clerk waits.^");
+        rtrue("The clerk ignores you.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Stamp {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (!noun.is(Letter)) {
+            printLine("You can only stamp letters.");
+            return;
+        }
+        if (machine.parent != location) {
+            printLine("There is no stamp machine here.");
+            return;
+        }
+        Letter l = (Letter)noun;
+        if (l.stamped) {
+            printLine($"{cThe(l)} already has a stamp.");
+            return;
+        }
+        int price = priceFor(l.weight);
+        if (!purse.spend(price)) {
+            printLine($"The stamp costs {price}. Credit {(int)purse}.");
+            return;
+        }
+        l.stamped = true;
+        stamped++;
+        jot("stamped", price);
+        printLine($"You stamp {the(l)} for {price}. Credit {(int)purse}.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (scale.parent != location) {
+            printLine("There is no scale here.");
+            return;
+        }
+        if (!noun.is(Letter)) {
+            printLine($"{cThe(noun)} won't go on the scale.");
+            return;
+        }
+        Letter l = (Letter)noun;
+        printLine($"{cThe(l)} weighs {l.weight}: a stamp costs {priceFor(l.weight)}.");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        printLine($"Score {score} of {MAX_SCORE}, credit {(int)purse}, stamped {stamped}, sorted {sorted}, collected {collected}.");
+        int unstamped = bgl.world.instances(Letter, (object o) => !((Letter)o).stamped).length;
+        printLine($"Unstamped {unstamped}, clock {clock.ticks}, clerk asked {clerk.asked}.");
+        if (vanDue) printLine($"Van due in {van.time_left}.");
+        else printLine("No van due.");
+    }
+}
+
+verb ListLetters {
+    meta = true;
+    grammar = {.letters};
+    void handler() {
+        int i = 0;
+        while (i < letters.length) {
+            Letter l = letters[i];
+            print($"{l}: ");
+            if (l.parent == null) printLine("collected.");
+            else if (l.parent.is(Hole)) printLine($"in {the(l.parent)}.");
+            else if (l.parent == player) printLine("carried.");
+            else printLine($"in {l.parent}.");
+            i++;
+        }
+    }
+}
+
+verb Postage {
+    meta = true;
+    grammar = {.postage};
+    void handler() {
+        int total = 0;
+        int i = 0;
+        do {
+            Letter l = letters[i];
+            if (!l.stamped) total += priceFor(l.weight);
+            i++;
+        } until (i == letters.length);
+        printLine($"Postage still needed: {total}.");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logCount}): {logText}");
+    }
+}
+
+bool Initialise() {
+    StartDaemon(clock);
+    rfalse;
+}

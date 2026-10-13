@@ -1,0 +1,394 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a token machine
+// whose before rule on the Receive fake action takes Coin objects (a class with plural dictionary
+// words, list_together and a value member) and keeps a credit count; tokens drawn from a pooled
+// class (new, a null test on an exhausted pool, delete when a token is spent) with a class
+// short_name, name, plural and an invent rule; a tray container the machine fills; a belt supporter switched on
+// and off whose daemon carries one object a turn into a bin in the next room (StartDaemon,
+// StopDaemon, a children loop, first child read from the object tree); a robot whose orders rule
+// answers Take, Drop, Go, Give and Open from the player, whose react_after notices a dropped coin,
+// whose life rule takes a token (deleting it) and the keycard, and whose state
+// is an enum held in a member, switched over and named through an array<string>; a locked gate
+// the robot unlocks (door_to, door_dir, found_in, with_key); a when_open / when_closed pair; a
+// native verb counting coins with an optional noun (two grammar lines) and a meta verb printing a
+// tally; a sized array<object> log of what the belt delivered; NewRoom; deadflag when the score
+// reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#defineI6 MAX_CARRIED 6
+
+const int MAX_SCORE = 3;
+const int PRICE = 2;            // coins per token
+const int LOGSIZE = 4;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+    object n_to;
+    object s_to;
+    object e_to;
+    object w_to;
+}
+
+enum eRobot { idle = 0, waiting, working }
+
+array<string> robotStateNames = {"idle", "waiting", "working"};
+array<object> beltLog[LOGSIZE];
+int nLogged;
+int nTokens;                    // tokens issued in all
+int g_moves;                    // room changes
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- classes
+
+class Fixture : object {
+    bool before() {
+        switch (action) {
+            case Take, Remove, Push, Pull:
+                rtrue("It is bolted down.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+class Coin : object {
+    short_name = "coin";
+    string plural = "coins";
+    name = {.coin, ..coins};
+    string list_together = "coins";
+    int value = 1;
+    description = "A small copper coin.";
+}
+
+class Token[2] : object {
+    short_name = "brass token";
+    string plural = "brass tokens";
+    name = {.brass, .token, ..tokens};
+    int serial;
+    void create(int n) { serial = n; }
+    void description() {
+        print($"A brass token stamped with the number {serial}.^");
+    }
+    bool invent() {
+        if (inventory_stage == 2) print($" (number {serial})");
+        rfalse;
+    }
+}
+
+// ---------------------------------------------------------------- rooms
+
+object workshop {
+    short_name = "Room A";
+    void description() {
+        print("Room A. Room B is east.");
+        if (belt.has(on)) print(" The belt is running.");
+        print("^");
+    }
+    e_to = storeRoom;
+    attributes = {light};
+}
+
+object storeRoom {
+    short_name = "Room B";
+    description = "Room B. Room A is west. A gate is to the north.";
+    w_to = workshop;
+    n_to = gate;
+    attributes = {light};
+}
+
+object vault {
+    short_name = "Room C";
+    description = "Room C. The gate is to the south.";
+    s_to = gate;
+    attributes = {light};
+}
+
+object gate {
+    short_name = "iron gate";
+    name = {.iron, .gate};
+    rawArray<object> found_in = {storeRoom, vault};
+    description = "An iron gate with a keyhole.";
+    string when_open = "The iron gate stands open.";
+    string when_closed = "The iron gate is shut.";
+    object with_key = keycard;
+    object door_to() {
+        if (location == storeRoom) return vault;
+        return storeRoom;
+    }
+    property door_dir() {
+        if (location == storeRoom) return (property)n_to;
+        return (property)s_to;
+    }
+    attributes = {door, openable, lockable, locked, static};
+}
+
+// ---------------------------------------------------------------- coins
+
+Coin coin1 { parent = selfobj; }
+Coin coin2 { parent = selfobj; }
+Coin coin3 { parent = workshop; }
+Coin coin4 { parent = vault; }
+Coin coin5 { parent = vault; }
+
+// ---------------------------------------------------------------- the machine
+
+Fixture machine {
+    short_name = "token machine";
+    name = {.machine, .slot};
+    parent = workshop;
+    int credit;
+    void description() {
+        print($"A token machine with a coin slot. Its counter shows {credit} of {PRICE}.^");
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Coin)) rtrue("Only coins fit the slot.^");
+                credit = credit + ((Coin)noun).value;
+                noun.parent = null;
+                print("The coin drops into the slot.");
+                if (credit >= PRICE) {
+                    Token t = new Token(nTokens + 1);
+                    if (t == null) {
+                        credit = PRICE;
+                        rtrue(" The machine whirrs, but nothing comes out.^");
+                    }
+                    credit = credit - PRICE;
+                    nTokens++;
+                    t.parent = tray;
+                    if (nTokens == 1) Award();
+                    rtrue(" A brass token clatters into the tray.^");
+                }
+                print("^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object tray {
+    short_name = "tray";
+    name = {.tray};
+    parent = workshop;
+    description = "A metal tray under the machine.";
+    attributes = {container, open, static, scenery};
+}
+
+// ---------------------------------------------------------------- the belt
+
+object belt {
+    short_name = "conveyor belt";
+    name = {.conveyor, .belt};
+    parent = workshop;
+    description = "A conveyor belt running east through the wall.";
+    string when_on = "A conveyor belt runs east through the wall.";
+    string when_off = "A conveyor belt stands still.";
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartDaemon(self);
+                rtrue("The belt starts to move.^");
+            case SwitchOff:
+                StopDaemon(self);
+                rtrue("The belt stops.^");
+        }
+        rfalse;
+    }
+    void daemon() {
+        object o = null;
+        for (object c in self.children) { o = c; break; }
+        if (o == null) return;
+        o.parent = bin;
+        if (nLogged < LOGSIZE) {
+            beltLog[nLogged] = o;
+            nLogged++;
+        }
+        if (location == workshop) print($"^The belt carries {the(o)} away east.^");
+        if (location == storeRoom) print("^Something drops into the bin.^");
+    }
+    attributes = {supporter, switchable, static};
+}
+
+object bin {
+    short_name = "bin";
+    name = {.bin};
+    parent = storeRoom;
+    description = "A bin at the end of the belt.";
+    attributes = {container, open, static};
+}
+
+object keycard {
+    short_name = "keycard";
+    name = {.key, .keycard, .card};
+    parent = robot;
+    description = "A plastic keycard.";
+}
+
+object box {
+    short_name = "steel box";
+    name = {.steel, .box};
+    parent = vault;
+    description = "A small steel box.";
+    bool after() {
+        switch (action) {
+            case Take:
+                if (!has(general)) {
+                    give(general);
+                    Award();
+                }
+        }
+        rfalse;
+    }
+}
+
+// ---------------------------------------------------------------- the robot
+
+object robot {
+    short_name = "robot";
+    name = {.robot};
+    parent = storeRoom;
+    description = "A squat robot.";
+    eRobot state = idle;
+    string stateName() { return robotStateNames[(int)state]; }
+    bool orders() {
+        switch (action) {
+            case Take:
+                if (noun.parent == self) rtrue("~Already holding it.~^");
+                if (noun.has(static) || noun.has(animate)) rtrue("~Cannot lift that.~^");
+                if (!TestScope(noun, self)) rtrue("~Cannot reach that.~^");
+                noun.parent = self;
+                print($"The robot picks up {the(noun)}.^");
+                rtrue;
+            case Drop:
+                if (noun.parent != self) rtrue("~Not holding that.~^");
+                noun.parent = parent;
+                print($"The robot puts down {the(noun)}.^");
+                rtrue;
+            case Give:
+                if (noun.parent != self) rtrue("~Not holding that.~^");
+                if (second != player) rtrue("~Only to you.~^");
+                noun.parent = player;
+                print($"The robot hands you {the(noun)}.^");
+                rtrue;
+            case Go:
+                rtrue("~Cannot leave this room.~^");
+            case Unlock, Open:
+                if (noun != gate) rfalse;
+                if (keycard.parent != self) rtrue("~No keycard.~^");
+                switch (state) {
+                    case idle:
+                        rtrue("~Payment first.~^");
+                    case waiting:
+                        state = working;
+                        gate.ungive(locked);
+                        gate.give(open);
+                        Award();
+                        rtrue("The robot swipes its keycard. The gate swings open.^");
+                    case working:
+                        rtrue("~Already done.~^");
+                }
+        }
+        rtrue("~Instruction not understood.~^");
+    }
+    bool react_after() {
+        switch (action) {
+            case Drop:
+                if (noun.is(Coin)) print("The robot's eye follows the coin.^");
+        }
+        rfalse;
+    }
+    bool life() {
+        switch (action) {
+            case Give:
+                if (noun == keycard) {
+                    noun.parent = self;
+                    rtrue("The robot takes the keycard back.^");
+                }
+                if (!noun.is(Token)) rtrue("The robot ignores it.^");
+                if (state != idle) rtrue("~Already paid.~^");
+                state = waiting;
+                Token t = (Token)noun;
+                delete t;
+                rtrue("The robot swallows the token. ~Ready.~^");
+            case Ask, Tell:
+                print($"~Status: {stateName()}.~^");
+                rtrue;
+            case Attack:
+                rtrue("Clang.^");
+        }
+        rfalse;
+    }
+    attributes = {animate, transparent};
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_moves++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+int CoinsIn(object where) {
+    int n = 0;
+    for (object o in where.children) {
+        if (o.is(Coin)) n++;
+    }
+    return n;
+}
+
+verb CountCoins {
+    grammar = {
+        {.count},
+        {.count, NOUN},
+    };
+    void handler() {
+        object where = noun;
+        if (where == null) where = player;
+        int n = CoinsIn(where);
+        switch (n) {
+            case 0:
+                print("No coins");
+            case 1:
+                print("One coin");
+            default:
+                print($"{n} coins");
+        }
+        if (where == player) print(" carried.^");
+        else print($" in {the(where)}.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print($"Moves {g_moves}, score {score}, credit {machine.credit}, tokens {nTokens}, robot {robot.stateName()}.^");
+        if (nLogged == 0) { printLine("Belt: nothing."); return; }
+        print("Belt:");
+        for (int i = 0; i < nLogged; i++) { print(" "); printName(beltLog[i]); }
+        print("^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = workshop;
+    rfalse;
+}

@@ -1,0 +1,447 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small reading log written in a functional style on Glulx. Probe objects of a class
+// with an enum zone, an index into a global array of arrays of readings and a literal func<bool, int>
+// alarm given by lambdas and a named function in their definitions; hand-written fold, scan, zipWith
+// and moving-window helpers over func<> parameters, returning local arrays captured into typed locals;
+// a value class of running statistics with a copy operator, a float mean and a fold into it returned
+// by value; an array of func<int, int> stages run as a pipeline by a recursive helper, with a stage
+// chosen by a ternary between named functions; <linq> chains (filter, map, orderBy with comparators,
+// take, skip, distinct, any, all, first, last, count) over array<Probe> and array<int>, including a
+// chain inside a filter's predicate; recursion (gcd, integer power, binary search, index of maximum)
+// with accumulators; a histogram built as stringObj lines with `+=` in a loop; `?.` and `??` on a
+// chain's first(); a switch on an enum inside a block lambda; named and defaulted parameters.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+//-- Readings -------------------------------------------------------------------------------------
+
+array<array<int>> series = {
+    {4, 7, 7, 12, 9, 3},
+    {10, 10, 11, 9, 8},
+    {2, 15, 1, 15, 6, 6, 4},
+    {5}
+};
+
+//-- Probes ---------------------------------------------------------------------------------------
+
+enum eZone { north, south, core }
+
+bool overTwelve(int v) { return v > 12; }
+
+class Probe : object {
+    string tag;
+    eZone zone;
+    int idx;
+    literal func<bool, int> alarm;
+    bool alarmed(int v) { return alarm(v); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Probe probeP { "probe P"; tag = "P"; zone = eZone.north; idx = 0; alarm = (int v) => v >= 10; }
+Probe probeQ { "probe Q"; tag = "Q"; zone = eZone.south; idx = 1; alarm = (int v) => v < 9; }
+Probe probeR { "probe R"; tag = "R"; zone = eZone.core;  idx = 2; alarm = overTwelve; }
+Probe probeS { "probe S"; tag = "S"; zone = eZone.north; idx = 3; alarm = (int v) => v == 0; }
+
+array<Probe> probeList = {probeP, probeQ, probeR, probeS};
+
+//-- Running statistics (a value class) -----------------------------------------------------------
+
+value class Stats {
+    int n = 0;
+    int sum = 0;
+    int lo = 0;
+    int hi = 0;
+
+    Stats operator = (Stats o) {
+        n = o.n;
+        sum = o.sum;
+        lo = o.lo;
+        hi = o.hi;
+        return self;
+    }
+
+    void add(int v) {
+        if (n == 0 || v < lo) lo = v;
+        if (n == 0 || v > hi) hi = v;
+        n++;
+        sum += v;
+    }
+
+    float mean() {
+        if (n == 0) return 0.0;
+        return (float)sum / n;
+    }
+
+    int range() { return hi - lo; }
+}
+
+//-- Pure helpers ---------------------------------------------------------------------------------
+
+int add(int a, int b)   { return a + b; }
+int maxOf(int a, int b) { return a > b ? a : b; }
+int minOf(int a, int b) { return a < b ? a : b; }
+int diff(int a, int b)  { return a - b; }
+
+int half(int n)   { return n / 2; }
+int twice(int n)  { return n * 2; }
+int inc(int n)    { return n + 1; }
+int clampTen(int n) { return n > 10 ? 10 : n; }
+
+int fold(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+// Running fold: element i is the fold of xs[0..i].
+array<int> scan(array<int> xs, func<int, int, int> f) {
+    array<int> out[16];
+    int acc = 0;
+    for (int i = 0; i < xs.length; i++) {
+        acc = i == 0 ? xs[0] : f(acc, xs[i]);
+        out += acc;
+    }
+    return out;
+}
+
+array<int> zipWith(array<int> a, array<int> b, func<int, int, int> f) {
+    array<int> out[16];
+    int n = minOf(a.length, b.length);
+    for (int i = 0; i < n; i++) out += f(a[i], b[i]);
+    return out;
+}
+
+// Sums of each run of `w` neighbours.
+array<int> window(array<int> xs, int w = 2) {
+    array<int> out[16];
+    for (int i = 0; i + w <= xs.length; i++) {
+        int s = 0;
+        for (int j = i; j < i + w; j++) s += xs[j];
+        out += s;
+    }
+    return out;
+}
+
+Stats statsOf(array<int> xs) {
+    Stats s;
+    for (int x in xs) s.add(x);
+    return s;
+}
+
+void showInts(array<int> xs, string sep = " ") {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(sep);
+        print(xs[i]);
+    }
+}
+
+void showProbes(array<Probe> ps) {
+    if (ps.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < ps.length; i++) {
+        if (i > 0) print(" ");
+        print(ps[i].tag);
+    }
+}
+
+string zoneName(eZone z) {
+    switch (z) {
+        case eZone.north: return "north";
+        case eZone.south: return "south";
+        default:          return "core";
+    }
+}
+
+int peakOf(Probe p) { return fold(series[p.idx], 0, maxOf); }
+int totalOf(Probe p) { return fold(series[p.idx], 0, add); }
+
+int byPeakDesc(Probe a, Probe b) {
+    int d = peakOf(b) - peakOf(a);
+    if (d != 0) return d;
+    return totalOf(a) - totalOf(b);
+}
+
+int byTotal(Probe a, Probe b) { return totalOf(a) - totalOf(b); }
+
+//-- Recursion ------------------------------------------------------------------------------------
+
+int gcd(int a, int b) {
+    if (b == 0) return a;
+    return gcd(b, a % b);
+}
+
+int power(int base, int e, int acc = 1) {
+    if (e == 0) return acc;
+    return power(base, e - 1, acc * base);
+}
+
+int gcdAll(array<int> xs, int i, int acc) {
+    if (i >= xs.length) return acc;
+    return gcdAll(xs, i + 1, gcd(acc, xs[i]));
+}
+
+// Index of the largest element at or after i, given the best index so far.
+int argMax(array<int> xs, int i, int best) {
+    if (i >= xs.length) return best;
+    return argMax(xs, i + 1, xs[i] > xs[best] ? i : best);
+}
+
+int search(array<int> xs, int target, int lo, int hi) {
+    if (lo > hi) return -1;
+    int mid = (lo + hi) / 2;
+    if (xs[mid] == target) return mid;
+    if (xs[mid] < target) return search(xs, target, mid + 1, hi);
+    return search(xs, target, lo, mid - 1);
+}
+
+//-- Pipeline -------------------------------------------------------------------------------------
+
+array<func<int, int>> stages = {inc, twice, clampTen, half};
+
+int runFrom(array<func<int, int>> fs, int i, int x) {
+    if (i >= fs.length) return x;
+    func<int, int> f = fs[i];
+    return runFrom(fs, i + 1, f(x));
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb ProbesVerb {
+    grammar = {{.probes}};
+    void handler() {
+        for (Probe p in probeList) {
+            print($"{p.tag} ({zoneName(p.zone)}): ");
+            showInts(series[p.idx]);
+            print($" peak {peakOf(p)} total {totalOf(p)}^");
+        }
+    }
+}
+
+verb StatsVerb {
+    grammar = {{.stats}};
+    void handler() {
+        for (Probe p in probeList) {
+            Stats s = statsOf(series[p.idx]);
+            print($"{p.tag}: n {s.n} lo {s.lo} hi {s.hi} range {s.range()} mean {s.mean()}^");
+        }
+        Stats all;
+        for (array<int> row in series) {
+            for (int v in row) all.add(v);
+        }
+        print($"all: n {all.n} sum {all.sum} mean {all.mean()}^");
+    }
+}
+
+verb ScanVerb {
+    grammar = {{.scan, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (k < 0 || k >= series.length) {
+            print("No such probe.^");
+            return;
+        }
+        array<int> xs = series[k];
+        array<int> sums = scan(xs, add);
+        array<int> peaks = scan(xs, maxOf);
+        array<int> lows = scan(xs, (int a, int b) => a < b ? a : b);
+        print("sums: ");
+        showInts(sums);
+        print("^peaks: ");
+        showInts(peaks);
+        print("^lows: ");
+        showInts(lows);
+        print("^steps: ");
+        array<int> steps = zipWith(xs.skip(1), xs, diff);
+        showInts(steps, sep: ",");
+        print("^");
+    }
+}
+
+verb SmoothVerb {
+    grammar = {{.smooth, NUMBER}};
+    void handler() {
+        int w = parsed_number;
+        if (w < 1) {
+            print("Width must be positive.^");
+            return;
+        }
+        for (Probe p in probeList) {
+            array<int> sums = window(series[p.idx], w);
+            print($"{p.tag} w{w}: ");
+            showInts(sums);
+            print("^");
+        }
+        array<int> pairs = window(series[0]);
+        print("P pairs: ");
+        showInts(pairs);
+        print("^");
+    }
+}
+
+verb AlarmsVerb {
+    grammar = {{.alarms}};
+    void handler() {
+        for (Probe p in probeList) {
+            array<int> hits = series[p.idx].filter((int v) => p.alarmed(v));
+            print($"{p.tag}: {hits.count()} ");
+            showInts(hits);
+            print("^");
+        }
+        array<Probe> loud = probeList.filter((Probe p) => series[p.idx].any((int v) => p.alarmed(v)));
+        print("alarmed: ");
+        showProbes(loud);
+        array<Probe> calm = probeList.filter((Probe p) => series[p.idx].all((int v) => !p.alarmed(v)));
+        print("^calm: ");
+        showProbes(calm);
+        Probe firstCore = probeList.filter((Probe p) => p.zone == eZone.core && p.alarmed(peakOf(p))).first();
+        print($"^core alarm: {firstCore?.tag ?? "none"}^");
+    }
+}
+
+verb RankVerb {
+    grammar = {{.rank}};
+    void handler() {
+        array<Probe> byPeak = probeList.orderBy(byPeakDesc);
+        print("by peak: ");
+        showProbes(byPeak);
+        print("^by total: ");
+        showProbes(probeList.orderBy(byTotal));
+        print("^top two: ");
+        showProbes(probeList.orderBy(byPeakDesc).take(2));
+        print("^rest: ");
+        showProbes(probeList.orderBy(byPeakDesc).skip(2));
+        Probe top = byPeak.first();
+        Probe bottom = byPeak.last();
+        print($"^top {top.tag} bottom {bottom.tag}^");
+    }
+}
+
+verb ValuesVerb {
+    grammar = {{.values, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        if (k < 0 || k >= series.length) {
+            print("No such probe.^");
+            return;
+        }
+        array<int> xs = series[k];
+        array<int> uniq = xs.distinct();
+        array<int> sorted = uniq.orderBy();
+        print("distinct: ");
+        showInts(uniq);
+        print("^sorted: ");
+        showInts(sorted);
+        array<int> desc = xs.orderBy((int a, int b) => b - a);
+        print("^desc: ");
+        showInts(desc);
+        array<int> scaled = xs.map((var v) => v * 10 + k);
+        print("^scaled: ");
+        showInts(scaled);
+        int at = argMax(xs, 1, 0);
+        print($"^max at {at} = {xs[at]}; gcd {gcdAll(xs, 1, xs[0])}^");
+        print($"first even {xs.filter((int v) => v % 2 == 0).first()}, last odd {xs.filter((int v) => v % 2 != 0).last()}^");
+    }
+}
+
+verb FindVerb {
+    grammar = {{.find, NUMBER}};
+    void handler() {
+        int target = parsed_number;
+        array<int> all[32];
+        for (array<int> row in series) {
+            for (int v in row) all += v;
+        }
+        array<int> sorted = all.distinct().orderBy();
+        print("set: ");
+        showInts(sorted);
+        int at = search(sorted, target, 0, sorted.length - 1);
+        if (at < 0) print($"^{target} not found^");
+        else print($"^{target} at {at}^");
+    }
+}
+
+verb PipeVerb {
+    grammar = {{.pipe, NUMBER}};
+    void handler() {
+        int x = parsed_number;
+        print($"stages: {runFrom(stages, 0, x)}^");
+        func<int, int> last = x % 2 == 0 ? half : twice;
+        print($"last stage {last(x)}^");
+        int tagged = fold(series[0], x, (int acc, int v) => {
+            if (v > acc) return v;
+            return acc + 1;
+        });
+        print($"tagged fold {tagged}^");
+        print($"2 to the {x % 11} = {power(2, x % 11)}; 3 to the 4 = {power(base: 3, e: 4)}^");
+    }
+}
+
+verb ZonesVerb {
+    grammar = {{.zones}};
+    void handler() {
+        array<eZone> zones = {eZone.north, eZone.south, eZone.core};
+        for (eZone z in zones) {
+            array<Probe> group = probeList.filter((Probe p) => p.zone == z);
+            int sum = 0;
+            for (Probe p in group) sum += totalOf(p);
+            print($"{zoneName(z)}: ");
+            showProbes(group);
+            print($" total {sum}^");
+        }
+        int weighted = fold(probeList.map((var p) => {
+            Probe q = (Probe)p;
+            switch (q.zone) {
+                case eZone.north: return totalOf(q);
+                case eZone.south: return totalOf(q) * 2;
+                default:          return totalOf(q) * 3;
+            }
+        }), 0, add);
+        print($"weighted {weighted}^");
+    }
+}
+
+verb HistVerb {
+    grammar = {{.hist}};
+    void handler() {
+        for (Probe p in probeList) {
+            stringObj line;
+            line = p.tag;
+            line += ": ";
+            int total = totalOf(p);
+            for (int i = 0; i < total / 5; i++) line += "*";
+            line += $" {total}";
+            print(line);
+            print($" ({line.length})^");
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

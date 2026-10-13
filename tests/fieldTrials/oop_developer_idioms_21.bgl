@@ -1,0 +1,459 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-first pass: a lending desk.
+// The Strategy pattern: a fee-policy base class with `default` methods for rate, loan length and loan limit,
+// two subclasses overriding some of them, and one singleton object per policy held by each member; a value
+// class for money with arithmetic, `<=>`, `==` and a static factory; a book entity with a member `array<Member>`
+// hold queue (`append`/`contains`/`dequeue`) and a subclass whose `default` `CanLend` override refuses; a member
+// entity whose strike count is a class-body `auto { … }` property that caps itself, and whose fines are an owned
+// value member; a pooled `Loan` class with `create`/`destroy` keeping counts on the books, plus a pooled error class
+// thrown from a guard method and caught in a typed `catch`; a catalog repository with an `operator []` lookup by
+// id that may return null (read through `?.`/`??`) and a sort by author with a `compareTo` comparator lambda;
+// a service class with a static clock; `<linq>` queries (`filter` with a capturing lambda, `count`, `any`,
+// `all`, `map`); `is` class tests; enum switches; `stringObj` built with interpolation; named and default
+// arguments.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eTier { Standard, Student, Staff }
+
+//-- Money: a value type -------------------------------------------------------------------------------------
+
+value class Money {
+    inline int Cents;
+
+    Money operator = (Money o) { Cents = o.Cents; return self; }
+    Money operator + (Money o) { return Money{ Cents + o.Cents }; }
+    Money operator * (int factor) { return Money{ Cents * factor }; }
+    int operator <=> (Money o) { return Cents - o.Cents; }
+    bool operator == (Money o) { return Cents == o.Cents; }
+    bool operator != (Money o) { return Cents != o.Cents; }
+
+    static Money Of(int dollars, int cents = 0) { return Money{ dollars * 100 + cents }; }
+
+    bool IsZero() { return Cents == 0; }
+
+    // The amount as "$d.cc".
+    stringObj Format() {
+        stringObj text = $"${Cents / 100}.";
+        int part = Cents % 100;
+        if (part < 10) text += "0";
+        text += $"{part}";
+        return text;
+    }
+}
+
+//-- The clock -----------------------------------------------------------------------------------------------
+
+class Clock : object {
+    static int Today = 1;
+
+    static void Advance(int days = 1) { Today += days; }
+}
+
+//-- Fee policies: the strategy ------------------------------------------------------------------------------
+
+class FeePolicy : object {
+    inline instanceName;
+
+    default int DailyCents() { return 25; }
+    default int LoanDays()   { return 7; }
+    default int MaxLoans()   { return 2; }
+
+    Money FineFor(int daysLate) {
+        if (daysLate <= 0) return Money{ 0 };
+        return Money{ DailyCents() } * daysLate;
+    }
+}
+
+class StudentPolicy : FeePolicy {
+    int DailyCents() { return 10; }
+    int LoanDays()   { return 14; }
+}
+
+class StaffPolicy : FeePolicy {
+    int DailyCents() { return 0; }
+    int MaxLoans()   { return 3; }
+}
+
+FeePolicy policyStandard    { "standard"; }
+StudentPolicy policyStudent { "student"; }
+StaffPolicy policyStaff     { "staff"; }
+
+//-- Books ---------------------------------------------------------------------------------------------------
+
+class Book : object {
+    inline instanceName;
+    inline int Id;
+    string Author;
+    int Copies = 1;
+    int OnLoan;
+    array<Member> Holds[3];
+
+    default bool CanLend() { return true; }
+
+    int Available() { return Copies - OnLoan; }
+
+    bool PlaceHold(Member m) {
+        if (Holds.contains(m)) return false;
+        return Holds.append(m);
+    }
+}
+
+class ReferenceBook : Book {
+    bool CanLend() { return false; }
+}
+
+Book bookA          { "book A", 11; Author = "Moss"; Copies = 2; }
+Book bookB          { "book B", 12; Author = "Abel"; }
+Book bookC          { "book C", 13; Author = "Kerr"; }
+ReferenceBook bookD { "book D", 14; Author = "Bell"; }
+
+//-- Members -------------------------------------------------------------------------------------------------
+
+class Member : object {
+    inline instanceName;
+    inline eTier Tier;
+    FeePolicy Policy;
+    array<Loan> Loans[3];
+    Money Fines;
+    auto Strikes = {
+        int _count;
+        int operator () { return _count; }
+        void operator = (int v) {
+            if (v > 3) v = 3;
+            _count = v;
+        }
+    }
+
+    bool IsSuspended() { return Strikes >= 3; }
+
+    bool CanBorrow() { return !IsSuspended() && Loans.length < Policy.MaxLoans(); }
+
+    string TierName() {
+        switch (Tier) {
+            case eTier.Standard: return "standard";
+            case eTier.Student:  return "student";
+            default:             return "staff";
+        }
+    }
+}
+
+Member memberA { "member A", Standard; Policy = policyStandard; }
+Member memberB { "member B", Student; Policy = policyStudent; }
+Member memberC { "member C", Staff; Policy = policyStaff; }
+
+array<Member> AllMembers = { memberA, memberB, memberC };
+
+//-- Loans and errors ----------------------------------------------------------------------------------------
+
+class Loan[4] : object {
+    Book Item;
+    Member Borrower;
+    int Due;
+    static int Opened;
+    static int Closed;
+
+    void create(Book b, Member m, int dueDay) {
+        Item = b;
+        Borrower = m;
+        Due = dueDay;
+        b.OnLoan++;
+        Loan.Opened++;
+    }
+
+    void destroy() {
+        Item.OnLoan--;
+        Loan.Closed++;
+    }
+
+    int DaysLate() { return Clock.Today - Due; }
+    bool IsOverdue() { return DaysLate() > 0; }
+}
+
+class LendingError[2] : object {
+    Book Item;
+    string Reason;
+    static int Raised;
+
+    void create(Book b, string why) {
+        Item = b;
+        Reason = why;
+        LendingError.Raised++;
+    }
+}
+
+//-- The catalog: a repository -------------------------------------------------------------------------------
+
+class Catalog : object {
+    array<Book> Shelf[6];
+
+    Book operator [] (int id) {
+        for (Book b in Shelf) {
+            if (b.Id == id) return b;
+        }
+        return null;
+    }
+
+    void Add(Book b) { Shelf.append(b); }
+
+    int Size() { return Shelf.length; }
+
+    void SortByAuthor(bool ascending = true) {
+        if (ascending) Shelf.sort((Book x, Book y) => x.Author.compareTo(y.Author));
+        else Shelf.sort((Book x, Book y) => y.Author.compareTo(x.Author));
+    }
+
+    int CountByAuthorPrefix(string prefix) {
+        return Shelf.filter((Book b) => b.Author.startsWith(prefix)).count();
+    }
+}
+
+Catalog theCatalog { }
+
+//-- The desk: a service -------------------------------------------------------------------------------------
+
+class LendingDesk : object {
+    array<Loan> Active[4];
+    Money Collected;
+    int Lent;
+    int Returned;
+
+    void Refuse(Book b, string why) {
+        LendingError err = new LendingError(b, why);
+        if (err == null) return;
+        throw err;
+    }
+
+    // Lends the book, or queues a hold when no copy is free; throws a LendingError when refused.
+    bool Checkout(Member m, Book b) {
+        if (!b.CanLend()) Refuse(b, "reference only");
+        if (m.IsSuspended()) Refuse(b, "member suspended");
+        if (!m.CanBorrow()) Refuse(b, "loan limit");
+        if (b.Available() == 0) {
+            if (!b.PlaceHold(m)) Refuse(b, "hold not placed");
+            return false;
+        }
+        Loan slip = new Loan(b, m, Clock.Today + m.Policy.LoanDays());
+        if (slip == null) {
+            Refuse(b, "no loan slips");
+            return false;
+        }
+        Active.append(slip);
+        m.Loans.append(slip);
+        Lent++;
+        return true;
+    }
+
+    Loan FindLoan(Member m, Book b) {
+        for (Loan l in m.Loans) {
+            if (l.Item == b) return l;
+        }
+        return null;
+    }
+
+    // Takes the book back and returns the fine charged; the next hold, if any, is lent the book.
+    Money CheckIn(Member m, Book b) {
+        Loan slip = FindLoan(m, b);
+        if (slip == null) return Money{ 0 };
+        Money fine = m.Policy.FineFor(slip.DaysLate());
+        if (slip.IsOverdue()) m.Strikes++;
+        m.Fines = m.Fines + fine;
+        Collected = Collected + fine;
+        Active.remove(Active.indexOf(slip));
+        m.Loans.removeValue(slip);
+        delete slip;
+        Returned++;
+        if (b.Holds.length > 0) {
+            Member next = b.Holds.dequeue();
+            Lend(next, b, quiet: true);
+            printLine($"{b} passes to {next}.");
+        }
+        return fine;
+    }
+
+    // Checkout with the error reported instead of thrown.
+    bool Lend(Member m, Book b, bool quiet = false) {
+        try {
+            bool ok = Checkout(m, b);
+            if (!quiet) {
+                if (ok) printLine($"{m} borrows {b}, due day {FindLoan(m, b).Due}.");
+                else printLine($"{m} waits for {b}.");
+            }
+            return ok;
+        } catch (LendingError e) {
+            printLine($"{m} cannot borrow {e.Item}: {e.Reason}.");
+            delete e;
+        }
+        return false;
+    }
+
+    void Return(Member m, Book b) {
+        Money fine = CheckIn(m, b);
+        stringObj fineText = fine.Format();
+        if (fine.IsZero()) printLine($"{m} returns {b}.");
+        else printLine($"{m} returns {b}, fined {fineText}.");
+    }
+}
+
+LendingDesk frontDesk { }
+
+//-- Helpers -------------------------------------------------------------------------------------------------
+
+void ShowMember(Member m) {
+    stringObj fines = m.Fines.Format();
+    stringObj line = $"{m} ({m.TierName()}, {m.Policy}): {m.Loans.length} loans, fines {fines}, strikes {m.Strikes}";
+    if (m.IsSuspended()) line += ", suspended";
+    line += ".";
+    printLine(line);
+}
+
+void ShowBook(Book b) {
+    string kind = b.is(ReferenceBook) ? "reference" : "lending";
+    stringObj line = $"#{b.Id} {b} by {b.Author}, {kind}, {b.Available()} of {b.Copies} free";
+    if (b.Holds.length > 0) line += $", {b.Holds.length} on hold";
+    line += ".";
+    printLine(line);
+}
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        theCatalog.Add(bookA);
+        theCatalog.Add(bookB);
+        theCatalog.Add(bookC);
+        theCatalog.Add(bookD);
+        printLine($"Catalog holds {theCatalog.Size()} books.");
+    }
+}
+
+verb Books {
+    grammar = {.books};
+    void handler() {
+        for (Book b in theCatalog.Shelf) ShowBook(b);
+    }
+}
+
+verb Members {
+    grammar = {.members};
+    void handler() {
+        printLine($"Day {Clock.Today}.");
+        for (Member m in AllMembers) ShowMember(m);
+    }
+}
+
+verb Lending {
+    grammar = {.lending};
+    void handler() {
+        frontDesk.Lend(memberA, bookA);
+        frontDesk.Lend(memberB, bookA);
+        frontDesk.Lend(memberC, bookA);
+        frontDesk.Lend(memberA, bookB);
+        frontDesk.Lend(memberA, bookC);
+        frontDesk.Lend(memberB, bookD);
+        frontDesk.Lend(memberC, bookA);
+        frontDesk.Lend(memberC, bookC);
+        printLine($"Lent {frontDesk.Lent}, loans open {frontDesk.Active.length}, slips used {Loan.Opened}, errors {LendingError.Raised}.");
+    }
+}
+
+verb Elapse {
+    grammar = {.elapse};
+    void handler() {
+        Clock.Advance(days: 10);
+        printLine($"Day {Clock.Today}.");
+        int overdue = frontDesk.Active.filter((Loan l) => l.IsOverdue()).count();
+        printLine($"Overdue loans {overdue}.");
+    }
+}
+
+verb Returns {
+    grammar = {.returns};
+    void handler() {
+        frontDesk.Return(memberA, bookA);
+        frontDesk.Return(memberB, bookA);
+        frontDesk.Return(memberA, bookB);
+        frontDesk.Return(memberA, bookB);
+        Clock.Advance();
+        frontDesk.Return(memberC, bookA);
+        stringObj total = frontDesk.Collected.Format();
+        printLine($"Returned {frontDesk.Returned}, loans open {frontDesk.Active.length}, slips closed {Loan.Closed}, collected {total}.");
+    }
+}
+
+verb Penalize {
+    grammar = {.penalize};
+    void handler() {
+        memberA.Strikes++;
+        memberA.Strikes = memberA.Strikes + 5;
+        printLine($"Strikes {memberA.Strikes}, suspended {memberA.IsSuspended()}.");
+        frontDesk.Lend(memberA, bookB);
+        memberA.Strikes = 0;
+        printLine($"Strikes {memberA.Strikes}, can borrow {memberA.CanBorrow()}.");
+    }
+}
+
+verb Query {
+    grammar = {.query};
+    void handler() {
+        Book found = theCatalog[13];
+        Book missing = theCatalog[99];
+        string foundAuthor = found?.Author ?? "none";
+        string missingAuthor = missing?.Author ?? "none";
+        printLine($"Book 13 by {foundAuthor}, book 99 by {missingAuthor}.");
+        int lendable = theCatalog.Shelf.filter((Book b) => b.CanLend()).count();
+        bool anyHeld = theCatalog.Shelf.any((Book b) => b.Holds.length > 0);
+        bool allStocked = theCatalog.Shelf.all((Book b) => b.Copies > 0);
+        printLine($"Lendable {lendable}, any held {anyHeld}, all stocked {allStocked}.");
+        array<var> ids = theCatalog.Shelf.map((Book b) => b.Id + 100);
+        printLine($"Ids {ids[0]} {ids[1]} {ids[2]} {ids[3]}.");
+        printLine($"Authors starting B {theCatalog.CountByAuthorPrefix("B")}, starting M {theCatalog.CountByAuthorPrefix("M")}.");
+        int fined = AllMembers.filter((Member m) => !m.Fines.IsZero()).count();
+        Money most = Money{ 0 };
+        for (Member m in AllMembers) {
+            if (m.Fines > most) most = m.Fines;
+        }
+        stringObj mostText = most.Format();
+        bool same = most == Money.Of(1, 50);
+        printLine($"Members fined {fined}, largest fine {mostText}, equals $1.50 {same}.");
+    }
+}
+
+verb Sorted {
+    grammar = {.sorted};
+    void handler() {
+        theCatalog.SortByAuthor();
+        for (Book b in theCatalog.Shelf) printLine($"{b.Author}: {b}");
+        theCatalog.SortByAuthor(ascending: false);
+        printLine($"First {theCatalog.Shelf[0].Author}, last {theCatalog.Shelf[3].Author}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

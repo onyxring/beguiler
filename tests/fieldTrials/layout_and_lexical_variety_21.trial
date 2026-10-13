@@ -1,0 +1,134 @@
+Room A
+Room A. Room B is north.
+You can see a torch, an oil lantern and a copper coin here.
+> lamps
+The torch (plain) is dark.
+The oil lantern (oil) is dark, 12 of 12 fuel left.
+> type 1234
+There is no keypad here.
+> turn on torch
+You switch the torch on.
+> lamps
+The torch (plain) is lit.
+The oil lantern (oil) is dark, 12 of 12 fuel left.
+> turn off torch
+You switch the torch off.
+> take lantern
+Taken.
+> turn on lantern
+You switch the oil lantern on.
+> lamps
+The torch (plain) is dark.
+The oil lantern (oil) is lit, 11 of 12 fuel left.
+> take copper coin
+Taken.
+> purse
+1 coin (copper), worth 1, best 1.
+> north
+Room B
+Room B. A keypad is set in the wall. Room A is south; Room C is east.
+You can see a keypad and a chest (which is closed) here.
+> padstat
+Keypad waiting, 0 tries.
+> type 12
+You key in 2 digits: **--.
+> padstat
+Keypad entering **--, 0 tries.
+> type 345
+The keypad ignores the 5 and anything after it. You key in 2 digits: ****.
+The keypad buzzes.
+> padstat
+Keypad waiting, 1 try (last: 1234).
+> type 99
+You key in 2 digits: **--.
+> clear keypad
+You clear the keypad (2 digits dropped).
+> type 1
+You key in 1 digit: *---.
+> type 7
+You key in 1 digit: **--.
+The oil lantern flickers.
+> key 7
+You key in 1 digit: ***-.
+> padstat
+Keypad entering ***-, 1 try (last: 1234).
+> tally
+Digits so far 3/4.
+> open chest
+The chest seems to be locked.
+> cancel
+You clear the keypad (3 digits dropped).
+The oil lantern goes out.
+> type 2017
+You key in 4 digits: ****.
+The keypad beeps twice. The chest clicks.
+> padstat
+Keypad open, 2 tries (last: 1234 2017).
+> tally
+Digits so far 0/4, code sum 10.
+> open chest
+You open the chest, revealing a silver coin.
+> take silver coin
+Taken.
+> count coins
+2 coins (silver, copper), worth 6, best 5.
+> lamps
+The torch (plain) is dark.
+The oil lantern (oil) is dark, 0 of 12 fuel left.
+> east
+Darkness
+It is pitch dark, and you can't see a thing.
+> wait
+Time passes.
+> wait
+Time passes.
+> lamps
+The torch (plain) is dark.
+The oil lantern (oil) is dark, 0 of 12 fuel left.
+> turn on lantern
+The oil lantern won't light.
+> refill lantern
+You refill the oil lantern with 12 units of oil.
+> refill lantern
+The oil lantern is already full.
+> turn on lantern
+You switch the oil lantern on.
+Room C
+Room C. Room B is west.
+You can see a gold coin here.
+> take gold coin
+Taken.
+> purse
+3 coins (gold, silver, copper), worth 16, best 10.
+> lamps
+The torch (plain) is dark.
+The oil lantern (oil) is lit, 10 of 12 fuel left.
+> west
+Room B
+Room B. A keypad is set in the wall. Room A is south; Room C is east.
+You can see a keypad and a chest (which is empty) here.
+> x keypad
+A keypad marked 0-9\#.
+> type 3
+You key in 1 digit: *---.
+> padstat
+Keypad entering *---, 2 tries (last: 1234 2017).
+> type 111
+You key in 3 digits: ****.
+The keypad buzzes.
+> type 5555
+You key in 4 digits: ****.
+The keypad buzzes.
+> padstat
+Keypad waiting, 4 tries (last: 2017 3111 5555).
+> south
+Room A
+Room A. Room B is north.
+You can see a torch here.
+> type 1
+There is no keypad here.
+The oil lantern flickers.
+> drop silver coin
+Dropped.
+> purse
+2 coins (gold, copper), worth 11, best 10.

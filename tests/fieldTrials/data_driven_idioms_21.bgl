@@ -1,0 +1,461 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a ticket office kept in tables. An enum of zones indexing a string table and a word
+// table read by a general parsing routine; a fare table as an array of arrays read [from][to]; a
+// table of line records written as bare { … } (string, dictionary word, times, enum zones); a
+// departure search computed from first/every/last; a clock band chosen by a switch with ranges and
+// guards; a table of concession rules as an array<func<int, int>> picked by a word table; parallel
+// coin, label and till tables walked for greedy change with a limited till; a value-class sale
+// record appended to an array of the class, sorted by a comparator lambda and removed by position;
+// <linq> filter/count/any/all over sales with lambdas capturing a local; a local index table sorted
+// by a lambda reading a global table; stringObj cells padded to columns and clock text built with
+// interpolated +=; and for-in over arrays, rows of the fare table and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int ZONES = 3;
+const int LINE_COUNT = 4;
+const int COIN_KINDS = 6;
+const int SALES_MAX = 6;
+const int NONE = -1;
+#define CELL_W 8
+
+enum eZone { inner = 0, middle, outer }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> zoneNames = { "inner", "middle", "outer" };
+array<dictionaryWord> zoneWords = { .inner, .middle, .outer };
+
+// Base fare, read fares[from][to].
+//                         inner middle outer
+array<array<int>> fares = {
+    {                       120,  180,  250 },   // inner
+    {                       180,  120,  190 },   // middle
+    {                       250,  190,  140 }    // outer
+};
+
+class Line : object {
+    inline string label;
+    inline dictionaryWord word;
+    inline int first;
+    inline int every;
+    inline int last;
+    inline eZone from;
+    inline eZone to;
+}
+
+array<Line> lines = {
+    { "red",   .red,   360, 20, 1380, inner,  outer },
+    { "blue",  .blue,  390, 45, 1290, middle, outer },
+    { "green", .green, 425, 30, 1200, inner,  middle },
+    { "gray",  .gray,  310, 90, 1110, outer,  outer },
+};
+
+int fullFare(int f)   { return f; }
+int childFare(int f)  { return f / 2; }
+int seniorFare(int f) { return f - 40; }
+int staffFare(int f)  { return 0; }
+
+array<dictionaryWord> cardWords = { .adult, .child, .senior, .staff };
+array<string> cardNames = { "adult", "child", "senior", "staff" };
+array<func<int, int>> cardRules = { fullFare, childFare, seniorFare, staffFare };
+
+array<int> coins = { 200, 100, 50, 20, 10, 5 };
+array<string> coinLabels = { "2.00", "1.00", "0.50", "0.20", "0.10", "0.05" };
+array<int> till = { 1, 2, 3, 4, 5, 6 };
+array<int> handed[COIN_KINDS];
+
+value class Sale {
+    inline int line;
+    inline int card;
+    inline int fare;
+    inline int at;
+    Sale operator = (Sale o) { line = o.line; card = o.card; fare = o.fare; at = o.at; return self; }
+}
+
+array<Sale> sales[SALES_MAX];
+array<int> nextAt[LINE_COUNT];
+
+int now = 480;
+int pendingLine = NONE;
+int pendingCard = 0;
+int takings = 0;
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object counter {
+    "counter";
+    name = {.counter};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Lookups -------------------------------------------------------------------
+
+// Reads one zone word; the zone's number goes to parsed_number.
+int parseZone() {
+    int at = zoneWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+void clockInto(ref stringObj s, int m) {
+    int h = m / 60;
+    int mm = m % 60;
+    if (h < 10) s += "0";
+    s += $"{h}:";
+    if (mm < 10) s += "0";
+    s += $"{mm}";
+}
+
+void printClock(int m) {
+    stringObj s = "";
+    clockInto(s, m);
+    s.print();
+}
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+// Percent added to a fare at a given time.
+int surcharge(int m) {
+    int h = m / 60;
+    switch (h) {
+        case 7 to 9:   return 50;
+        case 16 to 18: return 25;
+        case >= 22:    return -20;
+        case < 6:      return -20;
+        default:       return 0;
+    }
+}
+
+string bandName(int m) {
+    int pct = surcharge(m);
+    if (pct > 0) return "peak";
+    if (pct < 0) return "night";
+    return "off-peak";
+}
+
+int fareAt(int lineIndex, int m) {
+    Line l = lines[lineIndex];
+    int base = fares[(int)l.from][(int)l.to];
+    int f = base + base * surcharge(m) / 100;
+    return f - f % 5;
+}
+
+int runs(Line l) {
+    return (l.last - l.first) / l.every + 1;
+}
+
+// The first departure of l at or after m, or NONE.
+int departAfter(Line l, int m) {
+    if (m <= l.first) return l.first;
+    if (m > l.last) return NONE;
+    int k = (m - l.first + l.every - 1) / l.every;
+    int d = l.first + k * l.every;
+    if (d > l.last) return NONE;
+    return d;
+}
+
+int findLine(dictionaryWord w) {
+    for (int i in 0 to LINE_COUNT - 1) {
+        if (lines[i].word == w) return i;
+    }
+    return NONE;
+}
+
+// Greedy change from the till; fills handed and returns what could not be paid.
+int makeChange(int due) {
+    handed.clear();
+    handed.length = COIN_KINDS;
+    for (int i = 0; i < COIN_KINDS; i++) {
+        int n = 0;
+        while (due >= coins[i] && till[i] > n) {
+            due -= coins[i];
+            n++;
+        }
+        handed[i] = n;
+    }
+    return due;
+}
+
+void payOut() {
+    for (int i in 0 to COIN_KINDS - 1) till[i] -= handed[i];
+}
+
+int tillValue() {
+    int total = 0;
+    for (int i in 0 to COIN_KINDS - 1) total += coins[i] * till[i];
+    return total;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb ZonesTest {
+    grammar = {.zones};
+    void handler() {
+        stringObj head = "";
+        padTo(head, CELL_W);
+        head.print();
+        for (string z in zoneNames) {
+            stringObj cell = z;
+            padTo(cell, CELL_W);
+            cell.print();
+        }
+        print("^");
+        int row = 0;
+        for (array<int> r in fares) {
+            stringObj label = zoneNames[row];
+            padTo(label, CELL_W);
+            label.print();
+            for (int f in r) {
+                stringObj cell = "";
+                cell += $"{f}";
+                padTo(cell, CELL_W);
+                cell.print();
+            }
+            print("^");
+            row++;
+        }
+    }
+}
+
+verb FareTest {
+    grammar = {.fare, parseZone, parseZone};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        int base = fares[a][b];
+        int pct = surcharge(now);
+        int f = base + base * pct / 100;
+        f = f - f % 5;
+        print($"{zoneNames[a]} to {zoneNames[b]}: {base} base, {f} at ");
+        printClock(now);
+        print($" ({bandName(now)}).^");
+    }
+}
+
+verb ClockTest {
+    grammar = {.clock, NUMBER, NUMBER};
+    void handler() {
+        int h = (int)noun;
+        int m = (int)second;
+        if (h > 23 || m > 59) { print("No such time.^"); return; }
+        now = h * 60 + m;
+        print("Clock set to ");
+        printClock(now);
+        print($", {bandName(now)} ({surcharge(now)}%).^");
+    }
+}
+
+verb LinesTest {
+    grammar = {.lines};
+    void handler() {
+        int total = 0;
+        for (Line l in lines) {
+            stringObj row = l.label;
+            padTo(row, 6);
+            row += $"{zoneNames[(int)l.from]}-{zoneNames[(int)l.to]}";
+            padTo(row, 19);
+            clockInto(row, l.first);
+            row += " to ";
+            clockInto(row, l.last);
+            row += $" every {l.every}, {runs(l)} runs";
+            row.print();
+            print("^");
+            total += runs(l);
+        }
+        print($"{total} runs in all.^");
+    }
+}
+
+verb NextTest {
+    grammar = {.next};
+    void handler() {
+        array<int> order[LINE_COUNT];
+        for (int i in 0 to LINE_COUNT - 1) {
+            nextAt[i] = departAfter(lines[i], now);
+            if (nextAt[i] != NONE) order += i;
+        }
+        nextAt.length = LINE_COUNT;
+        print("After ");
+        printClock(now);
+        print(":^");
+        if (order.length == 0) { print("No more departures.^"); return; }
+        order.sort((int a, int b) => nextAt[a] - nextAt[b]);
+        for (int i in order) {
+            print($"  {lines[i].label} ");
+            printClock(nextAt[i]);
+            print($" in {nextAt[i] - now} min^");
+        }
+        int gone = LINE_COUNT - order.length;
+        if (gone > 0) print($"{gone} finished for the day.^");
+    }
+}
+
+verb TicketTest {
+    grammar = {.ticket, TOPIC};
+    void handler() {
+        wn = consult_from;
+        int at = findLine(NextWord());
+        if (at == NONE) { print("No such line.^"); return; }
+        int card = 0;
+        if (consult_words > 1) {
+            card = cardWords.indexOf(NextWord());
+            if (card == NONE) { print("No such card.^"); return; }
+        }
+        if (departAfter(lines[at], now) == NONE) {
+            print($"The {lines[at].label} line has finished.^");
+            return;
+        }
+        pendingLine = at;
+        pendingCard = card;
+        int f = cardRules[card](fareAt(at, now));
+        print($"{lines[at].label}, {cardNames[card]}: {f} to pay.^");
+    }
+}
+
+verb TenderTest {
+    grammar = {.tender, NUMBER};
+    void handler() {
+        if (pendingLine == NONE) { print("No ticket pending.^"); return; }
+        int paid = (int)noun;
+        int f = cardRules[pendingCard](fareAt(pendingLine, now));
+        if (paid < f) { print($"Short by {f - paid}.^"); return; }
+        if (sales.length == SALES_MAX) { print("Ledger full.^"); return; }
+        int owed = makeChange(paid - f);
+        if (owed > 0) { print($"Cannot make change ({owed} short in the till).^"); return; }
+        payOut();
+        sales.append(Sale{ pendingLine, pendingCard, f, now });
+        takings += f;
+        pendingLine = NONE;
+        if (paid == f) { print("Exact. Ticket issued.^"); return; }
+        print($"Change {paid - f}:");
+        for (int i in 0 to COIN_KINDS - 1) {
+            if (handed[i] > 0) print($" {handed[i]}x{coinLabels[i]}");
+        }
+        print(". Ticket issued.^");
+    }
+}
+
+verb TillTest {
+    grammar = {.till};
+    void handler() {
+        int i = 0;
+        for (int n in till) {
+            stringObj cell = coinLabels[i];
+            padTo(cell, 6);
+            cell.print();
+            print($"{n}^");
+            i++;
+        }
+        print($"Till holds {tillValue()}; taken {takings}.^");
+    }
+}
+
+verb SalesTest {
+    grammar = {.sales};
+    void handler() {
+        if (sales.length == 0) { print("No sales.^"); return; }
+        int n = 1;
+        for (Sale s in sales) {
+            stringObj row = $"{n}.";
+            padTo(row, 4);
+            row += lines[s.line].label;
+            padTo(row, 10);
+            row += cardNames[s.card];
+            padTo(row, 18);
+            clockInto(row, s.at);
+            row += $"  {s.fare}";
+            row.print();
+            print("^");
+            n++;
+        }
+        int floor = 150;
+        int dear = sales.filter((Sale s) => s.fare >= floor).count();
+        bool free = sales.any((Sale s) => s.fare == 0);
+        bool peak = sales.all((Sale s) => surcharge(s.at) > 0);
+        print($"{sales.length} sold, {dear} at {floor} or more, free: {free}, all peak: {peak}.^");
+    }
+}
+
+verb RankTest {
+    grammar = {.rank};
+    void handler() {
+        if (sales.length == 0) { print("No sales.^"); return; }
+        sales.sort((Sale a, Sale b) => b.fare - a.fare);
+        print("By fare:");
+        for (Sale s in sales) print($" {s.fare}");
+        print(".^");
+        Sale top = sales[0];
+        print($"Top: {lines[top.line].label} at ");
+        printClock(top.at);
+        print(".^");
+    }
+}
+
+verb CancelTest {
+    grammar = {.cancel, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        if (k < 1 || k > sales.length) { print("No such sale.^"); return; }
+        Sale s = sales[k - 1];
+        sales.remove(k - 1);
+        takings -= s.fare;
+        print($"Cancelled sale {k} ({s.fare}); {sales.length} left.^");
+    }
+}
+
+verb RouteTest {
+    grammar = {.route, parseZone, parseZone};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        int found = 0;
+        for (Line l in lines) {
+            bool fwd = (int)l.from == a && (int)l.to == b;
+            bool back = (int)l.from == b && (int)l.to == a;
+            if (!fwd && !back) continue;
+            int d = departAfter(l, now);
+            print($"{l.label}: ");
+            if (d == NONE) print("finished");
+            else printClock(d);
+            print("^");
+            found++;
+        }
+        if (found == 0) print($"No line joins {zoneNames[a]} and {zoneNames[b]}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

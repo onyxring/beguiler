@@ -1,0 +1,434 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with three rooms (one dark), two
+// lamps, a keypad that unlocks a chest, and coins counted by value. A lamp base class with `default`
+// methods and `before`/`after` rules, an oil lamp subclass that overrides them (calling the base `after`
+// through a cast) and burns fuel in a daemon; a keypad whose digits go into an `array<int>` through a
+// routine that `throw`s when the code is already full, caught in the verb handler; digits split from a
+// `NUMBER` with `do … until` and `push()`; a code compared slot by slot in a `for` loop; a log of tries
+// kept with `append()`/`dequeue()`; an enum state switched on with multi-value cases; a coin class with an
+// enum metal, a value class totalled in a routine and returned; `while` and `for … in` range loops;
+// `#using bgl.printRules` with `the()`/`cThe()` inside interpolated strings; a `stringObj` built with
+// `+=`; a raw string, character literals, hex and binary literals; keywords in odd case, comments
+// between tokens and inside argument lists, Allman and K&R braces mixed, a routine with no spaces, and a
+// declaration split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include   <array>
+#include <string>
+
+#using bgl.printRules ;
+
+//==== Constants ========================================================================================
+
+const int CODE_LEN  = 4 ;
+CONST INT FUEL_MAX  = $0C ;      // twelve turns of oil
+const int LOW_FUEL  = $$11 ;     // warn at three
+Const int LOG_MAX   = 3 ;
+
+enum ePad { idle , entering , accepted , rejected }
+
+enum eMetal
+{
+    copper = 1 ,
+    silver = $05 ,      // worth five
+    gold   = 10         // worth ten
+}
+
+//==== Rooms ============================================================================================
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. A keypad is set in the wall. Room A is south; Room C is east." ;
+    object s_to = roomA ;
+    object e_to = roomC ;
+}
+
+// Room C has no light of its own.
+object roomC
+{
+    "Room C" ;
+    string description = "Room C. Room B is west." ;
+    object w_to = roomB ;
+}
+
+//==== Lamps ============================================================================================
+
+class Lamp : object
+{
+    attributes = { switchable } ;
+    string description = "A lamp." ;
+
+    default string kind () { return "plain" ; }
+    default bool canLight () { return true ; }
+
+    void report ()
+    {
+        print($"{cThe(self)} ({kind()}) is {self.has(on) ? "lit" : "dark"}") ;
+    }
+
+    bool before ()
+    {
+        SWITCH (action)
+        {
+            Case SwitchOn :
+                if (!canLight()) rtrue($"{cThe(self)} won't light.^") ;
+        }
+        rfalse ;
+    }
+
+    default bool after () {
+        switch (action) {
+            case SwitchOn  : give(light) ;
+            case SwitchOff : ungive(light) ;
+        }
+        rfalse ;
+    }
+}
+
+class OilLamp : Lamp
+{
+    int fuel = FUEL_MAX ;
+
+    string kind () { return "oil" ; }
+    bool canLight () { return fuel > 0 ; }
+
+    bool after ()
+    {
+        ((Lamp) self).after() ;
+        switch (action)
+        {
+            case SwitchOn  : StartDaemon(self) ;
+            case SwitchOff : StopDaemon(self) ;
+        }
+        rfalse ;
+    }
+
+    void daemon ()
+    {
+        if (hasnt(on)) return ;
+        fuel-- ;
+        if (fuel == LOW_FUEL) print($"^{cThe(self)} flickers.^") ;
+        if (fuel <= 0)
+        {
+            fuel = 0 ;
+            ungive(on) ;
+            ungive(light) ;
+            StopDaemon(self) ;
+            print($"^{cThe(self)} goes out.^") ;
+        }
+    }
+}
+
+Lamp    torch   { "torch"    ; parent = roomA ; name = { .torch } ; }
+OilLamp lantern
+{
+    "oil lantern" ;
+    parent = roomA ;
+    name   = { .oil , .lantern } ;
+}
+
+//==== Coins ============================================================================================
+
+class Coin : object
+{
+    eMetal metal = eMetal.copper ;
+    string description = "A coin." ;
+
+    int worth () { return (int) metal ; }
+
+    string metalName ()
+    {
+        switch (metal)
+        {
+            case eMetal.copper : return "copper" ;
+            case eMetal.silver : return "silver" ;
+            DEFAULT            : return "gold" ;
+        }
+    }
+}
+
+value class Purse
+{
+    int count ;
+    int total ;
+    int best ;
+    Purse operator = ( Purse o ) { count = o.count ; total = o.total ; best = o.best ; return self ; }
+}
+
+//==== The keypad and the chest =========================================================================
+
+array<int> secret = { 2 , 0 , 1 , 7 } ;
+array<int> entered[CODE_LEN] ;
+array<int> tryLog[LOG_MAX] ;        // last few codes tried, as numbers
+ePad padState = ePad.idle ;
+int  tries    = 0 ;
+
+object keypad
+{
+    "keypad" ;
+    parent     = roomB ;
+    name       = { .keypad , .pad , .keys } ;
+    attributes = { static } ;
+    string description = @"A keypad marked 0-9\#." ;
+}
+
+object chest
+{
+    "chest" ;
+    parent     = roomB ;
+    name       = { .chest } ;
+    attributes = { container , openable , lockable , locked , static } ;
+    string description = "A wooden chest." ;
+}
+
+Coin copperCoin { "copper coin" ; parent = roomA ; name = { .copper , .coin } ; }
+Coin silverCoin { "silver coin" ; parent = chest ; name = { .silver , .coin } ; metal = eMetal.silver ; }
+Coin goldCoin
+{
+    "gold coin" ; parent = roomC ;
+    name = { .gold , .coin } ; metal = eMetal.gold ;
+}
+
+//==== Helpers ==========================================================================================
+
+void pressDigit ( int d )
+{
+    if (entered.length >= CODE_LEN) THROW d ;
+    entered.append(d) ;
+    padState = ePad.entering ;
+}
+
+bool codeMatches ()
+{
+    if (entered.length != secret.length) return false ;
+    for (int i = 0 ; i < CODE_LEN ; i++)
+        if (entered[i] != secret[i]) return false ;
+    return true ;
+}
+
+int codeAsNumber(){int n=0;for(int d in entered)n=n*10+d;return n;}
+
+void logTry ( int code )
+{
+    if (tryLog.length == LOG_MAX) tryLog.dequeue() ;
+    tryLog.append(code) ;
+}
+
+void showMasked ()
+{
+    int i = 0 ;
+    While (i < entered.length) { print('*') ; i++ ; }
+    while (i < CODE_LEN)       { print('-') ; i++ ; }
+}
+
+Purse countCoins ( object holder )
+{
+    Purse p ;
+    for (object o in holder.children)
+    {
+        if (!(o.is(Coin))) continue ;
+        Coin c = (Coin) o ;
+        p.count++ ;
+        p.total += c.worth() ;
+        if (c.worth() > p.best) p.best = c.worth() ;
+    }
+    return p ;
+}
+
+void finishCode ()
+{
+    tries++ ;
+    logTry(codeAsNumber()) ;
+    if (codeMatches())
+    {
+        padState = ePad.accepted ;
+        chest.ungive(locked) ;
+        printLine("The keypad beeps twice. The chest clicks.") ;
+    }
+    else
+    {
+        padState = ePad.rejected ;
+        printLine("The keypad buzzes.") ;
+    }
+    entered.clear() ;
+}
+
+//==== Initialise =======================================================================================
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+//==== Commands =========================================================================================
+
+verb Key
+{
+    grammar = {
+        { ( .type | .key ) , NUMBER } ,
+        { .type , NUMBER , .on , .keypad } ,
+    } ;
+    void handler ()
+    {
+        if (location != roomB) { printLine("There is no keypad here.") ; return ; }
+        int n = (int) noun ;
+        array<int> digits[8] ;
+        do
+        {
+            digits.push(n % 10) ;
+            n = n / 10 ;
+        } UNTIL (n == 0) ;
+
+        int pressed = 0 ;
+        TRY
+        {
+            for (int d in digits)
+            {
+                pressDigit(d) ;
+                pressed++ ;
+            }
+        }
+        Catch (int extra)
+        {
+            print($"The keypad ignores the {extra} and anything after it. ") ;
+        }
+        print($"You key in {pressed} digit{pressed == 1 ? "" : "s"}: ") ;
+        showMasked() ;
+        printLine(".") ;
+        if (entered.length == CODE_LEN) finishCode() ;
+    }
+}
+
+verb ClearPad
+{
+    grammar = { { .clear , ( .keypad | .pad ) } , { .cancel } } ;
+    void handler ()
+    {
+        if (location != roomB) { printLine("There is no keypad here.") ; return ; }
+        int had = entered.length ;
+        entered.clear() ;
+        padState = ePad.idle ;
+        printLine($"You clear the keypad ({had} digit{had == 1 ? "" : "s"} dropped).") ;
+    }
+}
+
+verb PadStatus
+{
+    meta = true ;
+    grammar = { { .pad , .status } , { .padstat } } ;
+    void handler ()
+    {
+        print("Keypad ") ;
+        switch (padState)
+        {
+            case ePad.idle , ePad.rejected :
+                print("waiting") ;
+            case ePad.entering :
+                print("entering ") ;
+                showMasked() ;
+            case ePad.accepted :
+                print("open") ;
+        }
+        print($", {tries} tr{tries == 1 ? "y" : "ies"}") ;
+        if (tryLog.length > 0)
+        {
+            stringObj line ;
+            for (int code in tryLog)
+            {
+                if (line.length > 0) line += " " ;
+                line += $"{code}" ;
+            }
+            print(" (last: ") ;
+            line.print() ;
+            print(")") ;
+        }
+        printLine(".") ;
+    }
+}
+
+verb Lamps
+{
+    meta = true ;
+    grammar = { .lamps } ;
+    void handler ()
+    {
+        torch.report() ; printLine(".") ;
+        lantern.report() ;
+        printLine($", {lantern.fuel} of {FUEL_MAX /* full */} fuel left.") ;
+    }
+}
+
+verb Refill
+{
+    grammar = { { .refill , NOUN } } ;
+    void handler ()
+    {
+        if (noun != lantern) { printLine($"{cThe(noun)} takes no oil.") ; return ; }
+        int added = FUEL_MAX - lantern.fuel ;
+        if (added == 0) { printLine($"{cThe(noun)} is already full.") ; return ; }
+        lantern.fuel = FUEL_MAX ;
+        printLine($"You refill {the(noun)} with {added} unit{added == 1 ? "" : "s"} of oil.") ;
+    }
+}
+
+verb CoinCount
+{
+    meta = true ;
+    grammar = { { .purse } , { .count , .coins } } ;
+    void handler ()
+    {
+        Purse p = countCoins(player) ;
+        if (p.count == 0) { printLine("You carry no coins.") ; return ; }
+        stringObj names ;
+        int listed = 0 ;
+        for (object o in player.children)
+            if (o.is(Coin))
+            {
+                Coin c = (Coin) o ;
+                if (listed > 0) names += ", " ;
+                names += c.metalName() ;
+                listed++ ;
+            }
+        print($"{p.count} coin{p.count == 1 ? "" : "s"} (") ;
+        names.print() ;
+        printLine($"), worth {p.total}, best {p.best}.") ;
+    }
+}
+
+verb Tally
+{
+    meta = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        int sum = 0 ;
+        for (int i in 1 to CODE_LEN) sum += secret[i - 1] ;
+        print($"Digits so far {entered.length}/{CODE_LEN}") ;
+        if (padState == ePad.accepted)
+            printLine($", code sum {sum}.") ;
+        else
+            printLine(".") ;
+    }
+}

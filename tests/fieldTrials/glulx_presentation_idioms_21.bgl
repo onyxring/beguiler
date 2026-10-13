@@ -1,0 +1,454 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a carried-load panel. A class Item : object with a float weight, an enum kind, a
+// turn stamp and a description, whose before() refuses a Take over the load limit, whose after()
+// logs Take and Drop into a text-buffer panel, and whose invent() adds the weight after the name in
+// the inventory listing; a value class Tally (count and float weight, copy operator, += of an Item,
+// a method returning stringObj); a text grid split to the right of the main window with a border
+// and a styleSheet, redrawn from a replaced DrawStatusLine with the carried items sorted three ways
+// (<linq> orderBy with comparators, one of them block-bodied comparing stringObj names with <=>);
+// a tracked array<Item> refilled from player.children; an enum sort order switched on, cycled and
+// set from hyperlinks with named-function targets; per-kind tallies in an array<Tally> indexed by an
+// enum cast; <linq> filter, count, any, all, sum-by-loop, first and last; a weight bar drawn from a
+// float fraction; a fixed-pitch table with padded columns; float formatting to one decimal.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LOAD_LIMIT 8.0
+#define PACK_WIDTH 26
+#define MAX_CARRIED 8
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eKind { tool, metal, cloth, glass, stone }
+enum eSort { byName, byWeight, byKind }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet packLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert  = style{ reverse = true; };
+};
+styleSheet logLook = styleSheet{
+    normal = style{ italics = true; foreColor = color.gray; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindow   packWin = null;
+textBufferWindow logWin = null;
+eSort sortOrder = eSort.byName;
+array<Item> carried[MAX_CARRIED];
+int logLines = 0;
+int refusals = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+stringObj oneDecimal(float f) {
+    bool negative = f < 0.0;
+    if (negative) f = -f;
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{negative ? "-" : ""}{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+string kindName(eKind k) {
+    switch (k) {
+        case eKind.tool:  return "tool";
+        case eKind.metal: return "metal";
+        case eKind.cloth: return "cloth";
+        case eKind.glass: return "glass";
+        case eKind.stone: return "stone";
+    }
+    return "?";
+}
+
+string sortName(eSort s) {
+    switch (s) {
+        case eSort.byName:   return "name";
+        case eSort.byWeight: return "weight";
+        case eSort.byKind:   return "kind";
+    }
+    return "?";
+}
+
+stringObj bar(float fraction, int cells) {
+    if (fraction < 0.0) fraction = 0.0;
+    int filled = (int)(fraction * cells + 0.5);
+    stringObj s = "";
+    for (int i = 0; i < cells; i++) s += i < filled ? '#' : '.';
+    if (fraction > 1.0) s += '!';
+    return s;
+}
+
+void note(stringObj text) {
+    logLines++;
+    logWin?.printLine($"{logLines}. {text}");
+}
+
+// ---- items ---------------------------------------------------------------------------------------
+
+class Item : object {
+    float  weight = 1.0;
+    eKind  kind = eKind.tool;
+    int    takenTurn = -1;
+    int    moves = 0;
+    string description;
+
+    bool before() {
+        if (action == Take && parent != player) {
+            float after = carriedWeight() + weight;
+            if (after > LOAD_LIMIT) {
+                refusals++;
+                printLine($"{cThe(self)} would bring the load to {oneDecimal(after)} kg; the limit is {oneDecimal(LOAD_LIMIT)} kg.");
+                stringObj t = $"refused {self} ({oneDecimal(weight)} kg)";
+                note(t);
+                rtrue;
+            }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Take:
+                moves++;
+                if (takenTurn < 0) takenTurn = turns;
+                stringObj t = $"took {self}, load {oneDecimal(carriedWeight())} kg";
+                note(t);
+            case Drop:
+                moves++;
+                stringObj d = $"dropped {self}, load {oneDecimal(carriedWeight())} kg";
+                note(d);
+        }
+        rfalse;
+    }
+
+    bool invent() {
+        if (inventory_stage == 2) print($" ({oneDecimal(weight)} kg, {kindName(kind)})");
+        rfalse;
+    }
+
+    bool isHeavy() { return weight >= 2.0; }
+}
+
+value class Tally {
+    int   count = 0;
+    float weight = 0.0;
+
+    Tally operator = (Tally o) {
+        count = o.count;
+        weight = o.weight;
+        return self;
+    }
+
+    Tally operator += (Item i) {
+        count++;
+        weight += i.weight;
+        return self;
+    }
+
+    stringObj summary() {
+        stringObj s = $"{count} x, {oneDecimal(weight)} kg";
+        return s;
+    }
+}
+
+array<Tally> byKind[5];
+
+// ---- the world -----------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. A bench stands here.";
+    attributes = {light};
+    object e_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Bare floor.";
+    attributes = {light};
+    object w_to = roomA;
+}
+
+object bench {
+    "bench";
+    parent = roomA;
+    name = {.bench};
+    description = "A bench.";
+    attributes = {scenery, supporter};
+}
+
+Item brassKey {
+    "brass key";
+    parent = bench;
+    name = {.brass, .key};
+    description = "A brass key.";
+    weight = 0.1;
+    kind = eKind.tool;
+}
+
+Item ironBar {
+    "iron bar";
+    parent = bench;
+    name = {.iron, .bar};
+    description = "An iron bar.";
+    weight = 4.0;
+    kind = eKind.metal;
+}
+
+Item woolBlanket {
+    "wool blanket";
+    parent = bench;
+    name = {.wool, .blanket};
+    description = "A wool blanket.";
+    weight = 1.5;
+    kind = eKind.cloth;
+}
+
+Item glassJar {
+    "glass jar";
+    parent = roomB;
+    name = {.glass, .jar};
+    description = "A glass jar.";
+    weight = 0.6;
+    kind = eKind.glass;
+}
+
+Item stoneBlock {
+    "stone block";
+    parent = roomB;
+    name = {.stone, .block};
+    description = "A stone block.";
+    weight = 3.5;
+    kind = eKind.stone;
+}
+
+Item copperWire {
+    "copper wire";
+    parent = roomB;
+    name = {.copper, .wire};
+    description = "A coil of copper wire.";
+    weight = 0.4;
+    kind = eKind.metal;
+}
+
+array<Item> allItems = { brassKey, ironBar, woolBlanket, glassJar, stoneBlock, copperWire };
+
+// ---- load ----------------------------------------------------------------------------------------
+
+void collectCarried() {
+    carried.clear();
+    for (object o in player.children) {
+        if (o.is(Item)) carried += (Item)o;
+    }
+}
+
+float carriedWeight() {
+    float total = 0.0;
+    for (object o in player.children) {
+        if (o.is(Item)) total += ((Item)o).weight;
+    }
+    return total;
+}
+
+int compareNames(Item a, Item b) {
+    stringObj sa = $"{a}";
+    stringObj sb = $"{b}";
+    return sa <=> sb;
+}
+
+array<Item> sortedCarried() {
+    collectCarried();
+    switch (sortOrder) {
+        case eSort.byWeight:
+            return carried.orderBy((Item a, Item b) => a.weight < b.weight ? 1 : (a.weight > b.weight ? -1 : 0));
+        case eSort.byKind:
+            return carried.orderBy((Item a, Item b) => {
+                int d = (int)a.kind - (int)b.kind;
+                if (d != 0) return d;
+                return compareNames(a, b);
+            });
+    }
+    return carried.orderBy(compareNames);
+}
+
+void tallyKinds() {
+    for (int k = 0; k < byKind.size; k++) {
+        byKind[k].count = 0;
+        byKind[k].weight = 0.0;
+    }
+    collectCarried();
+    for (Item i in carried) byKind[(int)i.kind - 1] += i;   // enum values start at 1
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawPack() {
+    if (packWin == null) return;
+    packWin.clear();
+    packWin.moveCursor(0, 0);
+    packWin.print($"Pack by {sortName(sortOrder)}");
+    array<Item> list = sortedCarried();
+    int row = 1;
+    for (Item i in list) {
+        packWin.moveCursor(0, row);
+        stringObj name = $"{i}";
+        stringObj kg = oneDecimal(i.weight);
+        packWin.print($"{padRight(name, 13)}{padLeft(kg, 4)}{i.isHeavy() ? " *" : ""}");
+        row++;
+    }
+    if (list.length == 0) {
+        packWin.moveCursor(0, row);
+        packWin.print("(empty)");
+        row++;
+    }
+    float load = carriedWeight();
+    packWin.moveCursor(0, row + 1);
+    packWin.print($"[{bar(load / LOAD_LIMIT, 10)}] {oneDecimal(load)}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    float load = carriedWeight();
+    float pct = load * 100 / LOAD_LIMIT;
+    bgl.ui.statusBar.print($"{location} | load {oneDecimal(load)}/{oneDecimal(LOAD_LIMIT)} kg ({oneDecimal(pct)}%) | {turns}");
+    drawPack();
+}
+
+bool Initialise() {
+    location = roomA;
+    logWin = bgl.ui.mainWin.splitDownBuffer(10, fixed, styles: logLook);
+    packWin = logWin?.splitRightGrid(PACK_WIDTH, fixed, border, styles: packLook);
+    logWin?.printLine("Log");
+    rfalse;
+}
+
+// ---- link targets --------------------------------------------------------------------------------
+
+void sortByName()   { sortOrder = eSort.byName;   printLine("Sorted by name.");   DrawStatusLine(); }
+void sortByWeight() { sortOrder = eSort.byWeight; printLine("Sorted by weight."); DrawStatusLine(); }
+void sortByKind()   { sortOrder = eSort.byKind;   printLine("Sorted by kind.");   DrawStatusLine(); }
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb SortPack {
+    grammar = {.sort};
+    meta = true;
+    void handler() {
+        switch (sortOrder) {
+            case eSort.byName:   sortOrder = eSort.byWeight;
+            case eSort.byWeight: sortOrder = eSort.byKind;
+            default:             sortOrder = eSort.byName;
+        }
+        printLine($"Pack sorted by {sortName(sortOrder)}.");
+    }
+}
+
+verb SortMenu {
+    grammar = {.sorts};
+    meta = true;
+    void handler() {
+        printLine($"Sort by {link("name", sortByName)}, {link("weight", sortByWeight)} or {link("kind", sortByKind)}.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh};
+    meta = true;
+    void handler() {
+        array<Item> list = sortedCarried();
+        if (list.length == 0) { printLine("You carry nothing."); return; }
+        printLine($"{fixed}{padRight("Item", 13)} {padLeft("kg", 4)}  kind   taken{roman}");
+        for (Item i in list) {
+            stringObj name = $"{i}";
+            stringObj kg = oneDecimal(i.weight);
+            stringObj kind = kindName(i.kind);
+            stringObj taken = $"{i.takenTurn}";
+            printLine($"{fixed}{padRight(name, 13)} {padLeft(kg, 4)}  {padRight(kind, 6)} {taken}{roman}");
+        }
+        float load = carriedWeight();
+        stringObj total = oneDecimal(load);
+        printLine($"{fixed}{padRight("total", 13)} {padLeft(total, 4)}  [{bar(load / LOAD_LIMIT, 8)}]{roman}");
+        Item heaviest = carried.orderBy((Item a, Item b) => a.weight < b.weight ? -1 : (a.weight > b.weight ? 1 : 0)).last();
+        Item lightest = carried.orderBy((Item a, Item b) => a.weight < b.weight ? -1 : (a.weight > b.weight ? 1 : 0)).first();
+        printLine($"Heaviest {the(heaviest)}; lightest {the(lightest)}; room left {oneDecimal(LOAD_LIMIT - load)} kg.");
+    }
+}
+
+verb Kinds {
+    grammar = {.kinds};
+    meta = true;
+    void handler() {
+        tallyKinds();
+        int shown = 0;
+        for (int k = 0; k < byKind.size; k++) {
+            if (byKind[k].count == 0) continue;
+            printLine($"{kindName((eKind)(k + 1))}: {byKind[k].summary()}");
+            shown++;
+        }
+        if (shown == 0) printLine("No kinds carried.");
+        Tally metal;
+        metal = byKind[(int)eKind.metal - 1];
+        printLine($"Metal share: {metal.count} of {carried.length}.");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        int held = allItems.filter((Item i) => i.parent == player).count();
+        int heavy = allItems.filter((Item i) => i.isHeavy()).count();
+        bool anyHeavyHeld = allItems.any((Item i) => i.parent == player && i.isHeavy());
+        bool allMoved = allItems.all((Item i) => i.moves > 0);
+        printLine($"{held} of {allItems.length} items held; {heavy} heavy; heavy one held: {yn(anyHeavyHeld)}; all moved: {yn(allMoved)}.");
+        int total = 0;
+        for (Item i in allItems) total += i.moves;
+        printLine($"Moves {total}; refusals {refusals}; log lines {logLines}.");
+    }
+}
+
+verb Panels {
+    grammar = {.panels};
+    meta = true;
+    void handler() {
+        printLine($"Pack open: {yn(packWin != null)}; log open: {yn(logWin != null)}.");
+        if (packWin != null) printLine($"Pack width {packWin.width}.");
+        printLine($"Links in the main window: {yn(bgl.ui.mainWin.supports.hyperlinks)}.");
+    }
+}
+
+#includeI6 "grammar"

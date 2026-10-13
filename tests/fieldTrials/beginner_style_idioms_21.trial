@@ -1,0 +1,134 @@
+Room A
+Room A. The post office. Room B is to the east.
+You can see a desk (on which are a red letter, a blue letter, a green letter, a small parcel and a big parcel), a bell and a postman here.
+> sack
+The sack is empty.
+> report
+Delivered: 0 letters. Wrong box: 0. Stamps left: 4 stamps.
+Postage spent: 0. That is nothing yet.
+[####]
+> address red letter
+To Ann, box 1 (no stamp).
+Ann lives in Room B.
+> address small parcel
+To Dee, box 2 (no stamp).
+DEE is on the list.
+> take red letter
+Taken.
+The postman taps his foot.
+> take blue letter
+Taken.
+> take green letter
+Taken.
+> take small parcel
+Taken.
+> take big parcel
+Taken.
+> sack
+red letter: To Ann, box 1 (no stamp)
+blue letter: To Bob, box 2 (no stamp)
+green letter: To Cy, box 3 (no stamp)
+small parcel: To Dee, box 2 (no stamp)
+big parcel: To Eve, box 3 (no stamp)
+5 are not stamped.
+> cost
+1. big parcel (5)
+2. small parcel (4)
+3. red letter (2)
+4. blue letter (2)
+5. green letter (2)
+The dearest is the big parcel.
+> sort
+Sorted: 1 2 2 3 3.
+> which 2
+2 in the sack for box 2.
+Some of them need a stamp.
+> which 3
+2 in the sack for box 3.
+Some of them need a stamp.
+> which 7
+There is no such box.
+> stamp red letter
+You stamp the red letter. To Ann, box 1 (second class).
+> stamp big parcel
+You stamp the big parcel. To Eve, box 3 (first class).
+> stamp big parcel
+It already has a stamp.
+> stamp small parcel
+You stamp the small parcel. To Dee, box 2 (first class).
+> stamp blue letter
+You stamp the blue letter. To Bob, box 2 (second class).
+> stamp green letter
+There are no stamps left.
+> eat green letter
+That is paper.
+> ring
+Ding! The round starts.
+> ring
+You already rang it.
+> drop blue letter
+Dropped.
+> sack
+red letter: To Ann, box 1 (second class)
+small parcel: To Dee, box 2 (first class)
+green letter: To Cy, box 3 (no stamp)
+big parcel: To Eve, box 3 (first class)
+1 is not stamped.
+> boxes
+Box 1: empty.
+Box 2: empty.
+Box 3: empty.
+> east
+Room B
+Room B. A street. Room A is to the west and Room C is to the east.
+You can see a box 1 (which is empty) and a box 2 (which is empty) here.
+> deliver
+You put the red letter in box 1.
+You put the small parcel in box 2.
+> post green letter in box two
+Posted, but that is box 2 and not box 3.
+> deliver
+There is nothing to deliver here.
+> east
+Room C
+Room C. The end of the street. Room B is to the west.
+You can see a box 3 (which is empty) here.
+> which 3
+1 in the sack for box 3.
+All of them go there.
+> deliver
+You put the big parcel in box 3.
+> x box three
+Mailbox number 3.
+The bell rings again. The round is over.
+> boxes
+Box 1: red letter.
+Box 2: green letter and small parcel.
+Box 3: big parcel.
+> take big parcel
+It is posted now.
+> report
+Delivered: 4 letters. Wrong box: 1. Stamps left: 0 stamps.
+Postage spent: 13. That is good work.
+[]
+> wait
+Time passes.
+> wait
+Time passes.
+> deliver
+The round is over.
+> west
+Room B
+Room B. A street. Room A is to the west and Room C is to the east.
+You can see a box 1 (in which is a red letter) and a box 2 (in which are a green letter and a small parcel) here.
+> west
+Room A
+Room A. The post office. Room B is to the east.
+You can see a blue letter, a desk, a bell and a postman here.
+> address green letter
+You can't see any such thing.
+> address blue letter
+To Bob, box 2 (second class).
+BOB is on the list.
+> i
+You're carrying nothing.

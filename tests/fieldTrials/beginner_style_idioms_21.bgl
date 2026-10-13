@@ -1,0 +1,605 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-first first-time-programmer program, a small round of letters to be stamped and
+// put in numbered mailboxes, written the way a beginner writes it after reading the spec once. Counts
+// kept in int globals with a const that sizes the sack, bool flags, an enum for a letter's postage
+// switched on and returned from a method, a class of letters (a box number, a name, a postage, methods
+// that say the address and work out the cost, a before() and an after() for Take and Drop), a subclass
+// for parcels with a weight (a replaced method that calls a helper), a class of mailboxes with a
+// number and a count, the sack kept in an <array> array of the class that after() appends to and
+// removeValue takes from, a postman with a daemon and a bell with a timer (time_left / time_out),
+// helper functions (one with a default argument, one with a ternary, one returning a string from a
+// switch with ranges), <linq> filter / count / any / all / orderBy / first with lambdas over the sack
+// (one lambda capturing a local), sort with a comparator, stringObj lines built with + and += and
+// interpolation, a string switch, for-in over a range, over the array and over children, a while loop
+// and a do/until, and verbs with no noun, one noun, two nouns and a number (stamp, sack, sort, deliver, post, address,
+// cost, which, ring, boxes, report) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how many letters the sack can hold
+const int SACK_SIZE = 6;
+// how many stamps are left in the book
+int stampsLeft = 4;
+// how many letters went in a box
+int delivered = 0;
+// how many letters went in the WRONG box
+int wrongBox = 0;
+// how much the stamps cost in total
+int postageSpent = 0;
+// has the bell been rung?
+bool bellRung = false;
+// is the round over?
+bool roundOver = false;
+// how many turns the postman has waited
+int postmanTurns = 0;
+
+// ===== POSTAGE =====
+
+enum Postage { none, second, first }
+
+// ===== HELPER FUNCTIONS =====
+
+// prints a number of things, like "3 letters" or "1 letter"
+void printCount(int n, string word, bool withWord = true) {
+    print(n);
+    if (withWord == true) {
+        print(" ");
+        print(word);
+        if (n != 1) {
+            print("s");
+        }
+    }
+}
+
+// "is" or "are"
+string isAre(int n) {
+    return (n == 1) ? "is" : "are";
+}
+
+// says how well the round went
+string ratingWord(int n) {
+    switch (n) {
+        case 0: return "nothing yet";
+        case 1 to 2: return "a slow start";
+        case 3 to 4: return "good work";
+        default: return "a full round";
+    }
+}
+
+// prints the name of a postage
+void printPostage(Postage p) {
+    switch (p) {
+        case Postage.none: print("no stamp");
+        case Postage.second: print("second class");
+        case Postage.first: print("first class");
+    }
+}
+
+// what a stamp costs for a weight (parcels cost more)
+int stampPrice(int weight) {
+    if (weight <= 1) {
+        return 2;
+    }
+    return 2 + weight;
+}
+
+// ===== LETTERS =====
+
+// all the letters the player is carrying
+array<Letter> sack[SACK_SIZE];
+
+class Letter : object {
+    // which mailbox it goes in
+    int boxNo = 1;
+    // who it is for
+    string toName;
+    // what stamp it has
+    Postage postage = Postage.none;
+    // is it in a box?
+    bool posted = false;
+    string description;
+
+    // how much it weighs
+    int weight() {
+        return 1;
+    }
+
+    // what the stamp cost
+    int cost() {
+        return stampPrice(weight());
+    }
+
+    // says who it is for
+    void sayAddress() {
+        stringObj line = "To ";
+        line = line + toName;
+        line += $", box {boxNo}";
+        print(line);
+        print(" (");
+        printPostage(postage);
+        print(")");
+    }
+
+    bool before() {
+        if (action == Eat) {
+            print("That is paper.^");
+            rtrue;
+        }
+        if (action == Take) {
+            if (posted == true) {
+                print("It is posted now.^");
+                rtrue;
+            }
+            if (sack.length == SACK_SIZE) {
+                print("The sack is full.^");
+                rtrue;
+            }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        if (action == Take) {
+            sack.append(self);
+        }
+        if (action == Drop) {
+            sack.removeValue(self);
+        }
+        rfalse;
+    }
+}
+
+// a parcel is a letter that weighs more
+class Parcel : Letter {
+    int heavy = 3;
+    replace int weight() {
+        return heavy;
+    }
+}
+
+// ===== MAILBOXES =====
+
+class Mailbox : object {
+    int number = 0;
+    // how many letters are inside
+    int count = 0;
+    string description;
+    attributes = {static, container, open};
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The post office. Room B is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. A street. Room A is to the west and Room C is to the east.";
+    object w_to = roomA;
+    object e_to = roomC;
+    attributes = {light};
+}
+
+object roomC {
+    "Room C";
+    string description = "Room C. The end of the street. Room B is to the west.";
+    object w_to = roomB;
+    attributes = {light};
+}
+
+// ===== THE DESK AND THE LETTERS =====
+
+object desk {
+    "desk";
+    parent = roomA;
+    name = {.desk};
+    string description = "A wooden desk.";
+    attributes = {static, supporter};
+}
+
+Letter redLetter {
+    "red letter";
+    parent = desk;
+    name = {.red, .letter};
+    boxNo = 1;
+    toName = "Ann";
+    description = "A red letter.";
+}
+
+Letter blueLetter {
+    "blue letter";
+    parent = desk;
+    name = {.blue, .letter};
+    boxNo = 2;
+    toName = "Bob";
+    description = "A blue letter.";
+}
+
+Letter greenLetter {
+    "green letter";
+    parent = desk;
+    name = {.green, .letter};
+    boxNo = 3;
+    toName = "Cy";
+    description = "A green letter.";
+}
+
+Parcel smallParcel {
+    "small parcel";
+    parent = desk;
+    name = {.small, .parcel};
+    boxNo = 2;
+    toName = "Dee";
+    heavy = 2;
+    description = "A small parcel.";
+}
+
+Parcel bigParcel {
+    "big parcel";
+    parent = desk;
+    name = {.big, .parcel};
+    boxNo = 3;
+    toName = "Eve";
+    description = "A big parcel.";
+}
+
+// ===== THE BOXES =====
+
+Mailbox box1 {
+    "box 1";
+    parent = roomB;
+    name = {.box, .one, .mailbox};
+    number = 1;
+    description = "Mailbox number 1.";
+}
+
+Mailbox box2 {
+    "box 2";
+    parent = roomB;
+    name = {.box, .two, .mailbox};
+    number = 2;
+    description = "Mailbox number 2.";
+}
+
+Mailbox box3 {
+    "box 3";
+    parent = roomC;
+    name = {.box, .three, .mailbox};
+    number = 3;
+    description = "Mailbox number 3.";
+}
+
+// ===== THE BELL =====
+
+object bell {
+    "bell";
+    parent = roomA;
+    name = {.bell};
+    string description = "A brass bell on the wall.";
+    attributes = {static};
+    int time_left;
+    void time_out() {
+        roundOver = true;
+        print("^The bell rings again. The round is over.^");
+    }
+}
+
+// ===== THE POSTMAN =====
+
+object postman {
+    "postman";
+    parent = roomA;
+    name = {.postman};
+    string description = "The postman, waiting by the desk.";
+    attributes = {animate};
+    void daemon() {
+        postmanTurns++;
+        if (postmanTurns == 4 && location == roomA) {
+            print("^The postman taps his foot.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(postman);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the sack) =====
+
+// how many letters in the sack still need a stamp
+int countUnstamped() {
+    return sack.filter((Letter l) => l.postage == Postage.none).count();
+}
+
+// finds the box with a number, or null
+Mailbox findBox(int n) {
+    if (n == 1) return box1;
+    if (n == 2) return box2;
+    if (n == 3) return box3;
+    return null;
+}
+
+// puts one letter in a box
+void postLetter(Letter l, Mailbox m) {
+    l.parent = m;
+    l.posted = true;
+    m.count++;
+    delivered++;
+    if (l.boxNo != m.number) {
+        wrongBox++;
+    }
+}
+
+// ===== VERBS =====
+
+// STAMP - puts a stamp on a letter
+verb StampLetter {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (!(noun.is(Letter))) {
+            print("You can only stamp letters.^");
+            return;
+        }
+        Letter l = (Letter)noun;
+        if (l.postage != Postage.none) {
+            print("It already has a stamp.^");
+            return;
+        }
+        if (stampsLeft == 0) {
+            print("There are no stamps left.^");
+            return;
+        }
+        stampsLeft--;
+        if (l.weight() > 1) {
+            l.postage = Postage.first;
+        } else {
+            l.postage = Postage.second;
+        }
+        postageSpent += l.cost();
+        print($"You stamp the {l}. ");
+        l.sayAddress();
+        print(".^");
+    }
+}
+
+// SACK - what is in the sack
+verb ShowSack {
+    grammar = {.sack};
+    void handler() {
+        if (sack.length == 0) {
+            print("The sack is empty.^");
+            return;
+        }
+        for (Letter l in sack) {
+            print($"{l}: ");
+            l.sayAddress();
+            print("^");
+        }
+        int left = countUnstamped();
+        print($"{left} {isAre(left)} not stamped.^");
+    }
+}
+
+// SORT - sorts the sack by box number
+verb SortSack {
+    grammar = {.sort};
+    void handler() {
+        sack.sort((Letter a, Letter b) => a.boxNo - b.boxNo);
+        print("Sorted:");
+        for (Letter l in sack) {
+            print($" {l.boxNo}");
+        }
+        print(".^");
+    }
+}
+
+// DELIVER - puts every stamped letter for a box here into that box
+verb Deliver {
+    grammar = {.deliver};
+    void handler() {
+        if (roundOver == true) {
+            print("The round is over.^");
+            return;
+        }
+        int done = 0;
+        for (object o in location.children) {
+            if (o.is(Mailbox)) {
+                Mailbox m = (Mailbox)o;
+                int n = m.number;
+                array<Letter> forThis = sack.filter((Letter l) => l.boxNo == n && l.postage != Postage.none);
+                int i = 0;
+                while (i < forThis.length) {
+                    Letter l = forThis[i];
+                    postLetter(l, m);
+                    sack.removeValue(l);
+                    print($"You put the {l} in {m}.^");
+                    done++;
+                    i++;
+                }
+            }
+        }
+        if (done == 0) {
+            print("There is nothing to deliver here.^");
+        }
+    }
+}
+
+// POST - puts one letter in a box, even the wrong one
+verb PostIn {
+    grammar = {.post, NOUN, .in, NOUN};
+    void handler() {
+        if (!(noun.is(Letter)) || !(second.is(Mailbox))) {
+            print("That doesn't work.^");
+            return;
+        }
+        Letter l = (Letter)noun;
+        if (sack.contains(l) == false) {
+            print("You aren't carrying that.^");
+            return;
+        }
+        Mailbox m = (Mailbox)second;
+        postLetter(l, m);
+        sack.removeValue(l);
+        if (l.boxNo == m.number) {
+            print("Posted.^");
+        } else {
+            print($"Posted, but that is box {m.number} and not box {l.boxNo}.^");
+        }
+    }
+}
+
+// ADDRESS - who a letter is for
+verb Address {
+    grammar = {.address, NOUN};
+    void handler() {
+        if (!(noun.is(Letter))) {
+            print("There is no address on that.^");
+            return;
+        }
+        Letter l = (Letter)noun;
+        l.sayAddress();
+        print(".^");
+        switch (l.toName) {
+            case "Ann": print("Ann lives in Room B.^");
+            case "Cy", "Eve": print("They live in Room C.^");
+            default:
+                stringObj who = l.toName;
+                print($"{who.toUpper()} is on the list.^");
+        }
+    }
+}
+
+// COST - what each letter in the sack costs, dearest first
+verb CostList {
+    grammar = {.cost};
+    void handler() {
+        if (sack.length == 0) {
+            print("The sack is empty.^");
+            return;
+        }
+        array<Letter> dear = sack.orderBy((Letter a, Letter b) => b.cost() - a.cost());
+        for (int i in 1 to dear.length) {
+            Letter l = dear[i - 1];
+            print($"{i}. {l} ({l.cost()})^");
+        }
+        Letter top = dear.first();
+        print($"The dearest is the {top}.^");
+    }
+}
+
+// WHICH - which letters in the sack go to a box number
+verb WhichBox {
+    grammar = {.which, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 1 || n > 3) {
+            print("There is no such box.^");
+            return;
+        }
+        int found = sack.filter((Letter l) => l.boxNo == n).count();
+        print($"{found} in the sack for box {n}.^");
+        if (found > 0 && sack.all((Letter l) => l.boxNo == n)) {
+            print("All of them go there.^");
+        }
+        if (sack.any((Letter l) => l.boxNo == n && l.postage == Postage.none)) {
+            print("Some of them need a stamp.^");
+        }
+    }
+}
+
+// RING - rings the bell to start the round (it rings again when the time is up)
+verb RingBell {
+    grammar = {.ring};
+    void handler() {
+        if (location != roomA) {
+            print("The bell is in Room A.^");
+            return;
+        }
+        if (bellRung == true) {
+            print("You already rang it.^");
+            return;
+        }
+        bellRung = true;
+        StartTimer(bell, 12);
+        print("Ding! The round starts.^");
+    }
+}
+
+// BOXES - what is in each box
+verb ShowBoxes {
+    grammar = {.boxes};
+    void handler() {
+        for (int n in 1 to 3) {
+            Mailbox m = findBox(n);
+            stringObj line = $"Box {n}: ";
+            if (m.count == 0) {
+                line += "empty";
+            } else {
+                int total = 0;
+                for (object o in m.children) {
+                    total++;
+                }
+                int done = 0;
+                for (object o in m.children) {
+                    line += $"{o}";
+                    done++;
+                    if (done == total - 1) {
+                        line += " and ";
+                    } else if (done < total) {
+                        line += ", ";
+                    }
+                }
+            }
+            line = line + ".";
+            print(line);
+            print("^");
+        }
+    }
+}
+
+// REPORT - how the round went
+verb Report {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        print("Delivered: ");
+        printCount(delivered, "letter");
+        print(". Wrong box: ");
+        printCount(wrongBox, "letter", false);
+        print(". Stamps left: ");
+        printCount(stampsLeft, "stamp");
+        print(".^");
+        print($"Postage spent: {postageSpent}. That is {ratingWord(delivered - wrongBox)}.^");
+        // a row of marks, one per stamp left
+        int left = stampsLeft;
+        stringObj marks = "";
+        do {
+            if (left > 0) {
+                marks += "#";
+                left--;
+            }
+        } until (left == 0);
+        print($"[{marks}]^");
+    }
+}

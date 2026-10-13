@@ -1,0 +1,435 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small tank-and-transfer program, on Glulx.
+// A value class over a float with a copy operator and a float setter, `+=` and `-=` that clamp, an
+// implicit float conversion beside an explicit int one, its own print() reaching the global one through
+// `::`, and static `<=>`, `==` and `!=`; it is an owned member of a tank class whose positional order
+// names instanceName first, read through its getter, compound-assigned and cast; a subclass whose own
+// `inline` member goes ahead of the inherited ones and whose override calls the base through an ancestor
+// cast; `selfType` returns chained across the subclass; a static method used as a func<> value, in a
+// file-scope array of func<float, float> beside a named function and a lambda; a pooled class with a
+// two-argument create(), destroy() and its own print(); an object with an inline float accessor clamped
+// by a nested ternary through `outer`, a member array of tanks sized by a constant, a method with a
+// defaulted argument called by name, and a switch on a float with guards; a named union member set to
+// text in one tank and to a routine in another; a thrown tank caught by its class and rethrown from an
+// inner catch; overloads by float, int and class; a local array of the value class sorted, searched,
+// sorted again through an operator reference, and an element bound by `ref`; a stringObj built from interpolations and trimmed; bnum flags; do/until; a range
+// for-in over a member array's length; a children walk that moves a child; and an `extend` adding a
+// `before` to one tank.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+// ---- flags, phases, a memo ------------------------------------------------------------------------
+
+bnum valveFlag { stuck, bypass, logged }             // 1, 2, 4
+
+enum phase { fill, hold, drain = 10, purge }         // 1, 2, 10, 11
+
+union memo = string | func<void>;
+
+void print(memo m) {
+    if (typeof(m) == eType.routine) ((func<void>)m)();
+    else print((string)m);
+}
+
+void flushNote() { print("flush on empty"); }
+
+const int MAX_TANKS = 4;
+
+// ---- a volume: a value class over one float --------------------------------------------------------
+
+value class Volume {
+    float litres;
+
+    Volume operator = (Volume o) { litres = o.litres; return self; }
+    Volume operator = (float f)  { litres = f < 0 ? 0.0 : f; return self; }
+    Volume operator += (float f) { litres = litres + f; return self; }
+    Volume operator -= (float f) {
+        litres = litres - f < 0 ? 0.0 : litres - f;
+        return self;
+    }
+    float operator () { return litres; }
+    explicit int operator () { return (int)(litres + 0.5); }
+
+    static int  operator <=> (Volume a, Volume b) { return a.litres < b.litres ? -1 : (a.litres > b.litres ? 1 : 0); }
+    static bool operator ==  (Volume a, Volume b) { return a.litres == b.litres; }
+    static bool operator !=  (Volume a, Volume b) { return a.litres != b.litres; }
+
+    void print() {
+        ::print((int)self);
+        ::print("L");
+    }
+}
+
+// ---- the world ------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object rack { "rack"; parent = roomA; name = .rack; attributes = {container, open, static}; }
+
+// ---- tanks --------------------------------------------------------------------------------------
+
+class Tank : object {
+    inline instanceName;
+    inline float capacity;
+    Volume level;
+    phase state = hold;
+    valveFlag flags;
+    memo note = "none";
+    static int moves = 0;
+
+    selfType pour(float amt) {
+        level += amt;
+        float now = level;
+        if (now > capacity) level = capacity;
+        return self;
+    }
+
+    selfType flag(valveFlag f) {
+        flags = flags | f;
+        return self;
+    }
+
+    float fraction() {
+        float l = level;
+        return l / capacity;
+    }
+
+    float drainTo(Tank other, float amt = 5.0) {
+        float have = level;
+        float moved = amt > have ? have : amt;
+        float room = other.capacity - (float)other.level;
+        if (moved > room) moved = room;
+        level -= moved;
+        other.level += moved;
+        moves++;
+        return moved;
+    }
+
+    static float halve(float x) { return x / 2; }
+
+    default string label() { return "open"; }
+
+    default void report() {
+        printLine($"{self}: {level} of {(int)capacity} ({label()})");
+    }
+}
+
+class SealedTank : Tank {
+    inline float pressure;
+
+    string label() { return "sealed"; }
+
+    void report() {
+        ((Tank)self).report();
+        printLine($"  at {pressure}");
+    }
+
+    selfType vent(float by) {
+        pressure = pressure - by;
+        return self;
+    }
+}
+
+Tank tankA { "tank A", 40.0; parent = rack; name = .alpha; }
+SealedTank tankB { 1.5, "tank B", 30.0; parent = rack; name = .bravo; note = flushNote; }
+Tank tankC { "tank C", 20.0; parent = rack; name = .charlie; }
+
+// ---- samples: a pooled class ----------------------------------------------------------------------
+
+class Sample[3] : object {
+    float amount;
+    Tank origin;
+    static int live = 0;
+
+    void create(Tank from, float amt) {
+        origin = from;
+        amount = amt;
+        live++;
+    }
+
+    void destroy() { live--; }
+
+    void print() {
+        ::print($"sample {(int)amount} from {origin}");
+    }
+}
+
+// ---- free functions ---------------------------------------------------------------------------------
+
+float addHalf(float x) { return x + 0.5; }
+
+array<func<float, float>> stages = { Tank.halve, addHalf, (float x) => x * 3 };
+
+string kind(float f) { return "float"; }
+string kind(int n)   { return "int"; }
+string kind(Tank t)  { return "tank"; }
+
+float runStages(float start) {
+    float v = start;
+    for (func<float, float> st in stages) v = st(v);
+    return v;
+}
+
+int faults = 0;
+
+void inspect(Tank t) {
+    if ((t.flags & stuck) != 0) {
+        faults++;
+        throw t;
+    }
+    t.state = t.fraction() > 0.5 ? drain : fill;
+}
+
+// ---- the plant ----------------------------------------------------------------------------------
+
+object plant {
+    "plant";
+    parent = roomA;
+    name = .plant;
+    float lo = 10.0;
+    float hi = 90.0;
+    int clamps = 0;
+
+    auto setpoint = {
+        float _sp = 50.0;
+        float operator () { return _sp; }
+        void operator = (float v) {
+            _sp = v < outer.lo ? outer.lo : v > outer.hi ? outer.hi : v;
+            if (_sp != v) outer.clamps++;
+        }
+    }
+
+    array<Tank> line[MAX_TANKS];
+
+    string grade(Tank t) {
+        switch (t.fraction()) {
+            case 0.0:    return "empty";
+            case >= 0.9: return "full";
+            case >= 0.5: return "upper";
+            default:     return "lower";
+        }
+    }
+
+    int balance(float step = 2.0, int rounds = 1) {
+        int passes = 0;
+        for (int r = 0; r < rounds; r++) {
+            for (int i in 0 to line.length - 2) {
+                Tank a = line[i];
+                Tank b = line[i + 1];
+                if (a.fraction() > b.fraction()) a.drainTo(b, step);
+                else b.drainTo(amt: step, other: a);
+                passes++;
+            }
+        }
+        return passes;
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- probe verbs -----------------------------------------------------------------------------------
+
+class probeVerb : verb {
+    meta = true;
+}
+
+probeVerb ProbeVolume {
+    grammar = {.probevolume};
+    void handler() {
+        Volume v;
+        v = 7.25;
+        v += 3.5;
+        float f = v;
+        int whole = (int)v;
+        Volume w = v;
+        w -= 20.0;
+        Volume u;
+        u = -4.0;
+        printLine($"Vol {f} {whole} {v} {w} {u} {kind(f)} {kind(whole)} {kind(tankA)}.");
+        bool same = w == u;
+        bool diff = v != w;
+        printLine($"Cmp {v <=> w} {w <=> u} {same} {diff} {v > w} {w >= u}.");
+    }
+}
+
+probeVerb ProbeTanks {
+    grammar = {.probetanks};
+    void handler() {
+        tankA.pour(25.0).pour(30.0).flag(logged);
+        tankB.pour(12.0).vent(0.25).flag(bypass).pour(1.0);
+        tankC.pour(4.5);
+        tankA.report();
+        tankB.report();
+        tankC.report();
+        ((Tank)tankB).report();
+        printLine($"Flags {(int)tankA.flags} {(int)tankB.flags} {(int)tankC.flags} labels {tankA.label()} {tankB.label()} {((Tank)tankB).label()}.");
+        print("Notes ");
+        print(tankA.note);
+        print(" / ");
+        print(tankB.note);
+        printLine(".");
+        ref Volume lv := tankA.level;
+        lv -= 15.5;
+        printLine($"Ref {tankA.level} {(float)tankA.level} {tankA.fraction()}.");
+    }
+}
+
+probeVerb ProbePlant {
+    grammar = {.probeplant};
+    void handler() {
+        plant.line += { tankA, tankB, tankC };
+        plant.setpoint = 120.0;
+        float a = plant.setpoint;
+        plant.setpoint = 5;
+        float b = plant.setpoint;
+        plant.setpoint = 42.5;
+        printLine($"Set {a} {b} {plant.setpoint} clamps {plant.clamps}.");
+        for (Tank t in plant.line) print($"{t} {plant.grade(t)}; ");
+        printLine();
+        int p = plant.balance();
+        int q = plant.balance(rounds: 2, step: 1.5);
+        printLine($"Passes {p} {q} moves {Tank.moves}.");
+        for (int i in 0 to plant.line.length - 1) plant.line[i].report();
+    }
+}
+
+probeVerb ProbeStages {
+    grammar = {.probestages};
+    void handler() {
+        func<float, float> h = Tank.halve;
+        float x = h(9.0);
+        printLine($"Stages {x} {runStages(4.0)} {stages.length} {stages[2](2.0)}.");
+        float acc = 0.0;
+        int n = 0;
+        do {
+            acc += Tank.halve(acc + 1.0);
+            n++;
+        } until (acc > 5.0);
+        printLine($"Until {n} {acc} {bgl.util.math.floor(acc)} {bgl.util.math.sqrt(16.0)}.");
+    }
+}
+
+probeVerb ProbeSamples {
+    grammar = {.probesamples};
+    void handler() {
+        Sample s1 = new Sample(tankA, 2.0);
+        Sample s2 = new Sample(tankB, 3.5);
+        Sample s3 = new Sample(tankC, 0.5);
+        Sample s4 = new Sample(tankA, 9.0);
+        printLine($"Live {Sample.live} {s4 == null}.");
+        printLine(s2);
+        delete s2;
+        Sample s5 = new Sample(tankC, 1.25);
+        print(s5 ?? s1);
+        printLine($" live {Sample.live}.");
+        delete s1;
+        delete s3;
+        delete s5;
+        printLine($"Live {Sample.live}.");
+    }
+}
+
+probeVerb ProbeFaults {
+    grammar = {.probefaults};
+    void handler() {
+        tankC.flag(stuck);
+        int ok = 0;
+        for (object o in {tankA, tankC, tankB}) {
+            try {
+                try {
+                    inspect((Tank)o);
+                    ok++;
+                } catch (Tank inner) {
+                    printLine($"Inner {inner}.");
+                    inner.flags = inner.flags ^ stuck;
+                    throw inner;
+                }
+            } catch (Tank outerT) {
+                printLine($"Outer {outerT} flags {(int)outerT.flags}.");
+            }
+        }
+        printLine($"Ok {ok} faults {faults} states {(int)tankA.state} {(int)tankB.state} {(int)tankC.state}.");
+    }
+}
+
+probeVerb ProbeHistory {
+    grammar = {.probehistory};
+    void handler() {
+        array<Volume> hist[5];
+        for (object o in rack.children) {
+            hist.append(((Tank)o).level);
+        }
+        hist += Volume{ litres = 6.0; };
+        hist.sort();
+        print("Asc");
+        for (Volume v in hist) print($" {(float)v}");
+        int at = hist.indexOf(Volume{ litres = 6.0; });
+        printLine($" at {at} len {hist.length}.");
+        ref Volume top := hist[hist.length - 1];
+        top += 100.0;
+        hist.sort((Volume a, Volume b) => (Volume::operator <=>)(b, a));
+        printLine($"Top {hist[0]} last {hist[hist.length - 1]}.");
+        stringObj log = "";
+        for (Volume v in hist) {
+            log += $"{(int)v},";
+        }
+        log = log.left(log.length - 1);
+        log += "  ";
+        printLine($"[{log.trim()}] {log.length}.");
+    }
+}
+
+probeVerb ProbeRack {
+    grammar = {.proberack};
+    void handler() {
+        stringObj names = "";
+        int before = rack.children.length;
+        for (object o in rack.children) {
+            Tank t = (Tank)o;
+            names += t.label();
+            names += " ";
+            if (t.fraction() < 0.45) o.parent = roomA;
+        }
+        print(names);
+        printLine($"moved {before} {rack.children.length} {tankB.parent}.");
+        tankB.parent = rack;
+    }
+}
+
+verb Tap {
+    grammar = {.tap, NOUN};
+    void handler() {
+        printLine($"Tapped {noun}.");
+    }
+}
+
+extend tankA {
+    bool before() {
+        if (action == Tap) {
+            pour(1.0);
+            printLine($"{self} now {level}.");
+            rtrue;
+        }
+        rfalse;
+    }
+}

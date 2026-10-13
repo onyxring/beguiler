@@ -1,0 +1,424 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a timers-and-daemons kit and its consumer. The kit declares an enum of fuse stages; a
+// value class of turn counts with two copy operators, + over ints, <=>, == and != against an int and a
+// show method; a fuse class with a required positional length, a time_left the library's timer runs
+// down, a time_out routine, a before() that stops Take while it burns, a default sound(), static
+// counters, an owned turn count and a switch giving a stage letter; it starts and stops its timer with
+// StartTimer/StopTimer. A pooled watch class whose create/destroy start and stop a library daemon, an
+// owned turn count compared with an int, and a daemon() that marks it done. The clock object is a
+// namespace (alias … for the enum and the turn count) running its own daemon: an array of fuses, an
+// array of watches swept with remove/delete in a while loop, a stringObj log, an owned turn count, an
+// inline accessor that clamps a rate and counts changes through outer., a switch on aliased values and
+// a func<> walk. A chime object prints from each_turn. A verb class sets meta for the report verbs.
+// The consumer binds an I6 routine with extern, extends the fuse class with tests, extends the clock
+// with a <linq> count and a ternary, overrides the library's TimePasses entry point to sweep, and its
+// verbs light, douse and take fuses, open watches from a string table, set the rate, and report with
+// is(), casts, <linq> filter/any/first, ??, a copied and lambda-sorted local array, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA21_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ==== The kit: fuses on the library's timers, watches on its daemons. ====
+
+/// Where a fuse is in its life.
+enum eLa21Phase { idle, burning, spent }
+
+/// A count of turns, copied on assignment.
+value class La21Turns {
+    int n;
+    La21Turns operator = (La21Turns o) { n = o.n; return self; }
+    La21Turns operator = (int v) { n = v; return self; }
+    /// The count with some turns added.
+    La21Turns operator + (int v) {
+        La21Turns r;
+        r.n = n + v;
+        return r;
+    }
+    /// Orders two counts.
+    int operator <=> (La21Turns o) { return n - o.n; }
+    /// True when the count is the number.
+    bool operator == (int v) { return n == v; }
+    /// True when the count is not the number.
+    bool operator != (int v) { return n != v; }
+    /// Prints the count with a t after it.
+    void show() { print($"{n}t"); }
+}
+
+/// A fuse: lit, it burns on the library's timer for its length, then goes out.
+class La21Fuse : object {
+    /// Turns the fuse burns once lit.
+    required inline int length;
+    int time_left;
+    eLa21Phase stage = eLa21Phase.idle;
+    /// Turns the fuse has spent burning, counted by the clock.
+    La21Turns burned;
+    /// Fuses lit so far.
+    static int lit = 0;
+    /// Fuses burned out so far.
+    static int spent = 0;
+
+    /// The sound the fuse makes going out.
+    default string sound() { return "fizz"; }
+
+    /// Lights the fuse; false when it is not idle.
+    bool ignite() {
+        if (stage != eLa21Phase.idle) return false;
+        stage = eLa21Phase.burning;
+        StartTimer(self, length);
+        lit++;
+        return true;
+    }
+
+    /// Puts a burning fuse out; it can be lit again. False when it was not burning.
+    bool douse() {
+        if (stage != eLa21Phase.burning) return false;
+        StopTimer(self);
+        stage = eLa21Phase.idle;
+        return true;
+    }
+
+    void time_out() {
+        stage = eLa21Phase.spent;
+        spent++;
+        print($"^The {self} goes out ({sound()}).^");
+    }
+
+    bool before() {
+        if (action == Take && stage == eLa21Phase.burning) {
+            print($"The {self} is too hot.^");
+            return true;
+        }
+        return false;
+    }
+
+    /// One letter for the stage.
+    string mark() {
+        switch (stage) {
+            case eLa21Phase.idle:    return "i";
+            case eLa21Phase.burning: return "b";
+            default:                 return "s";
+        }
+    }
+}
+
+/// A watch: counts the turns it runs on a library daemon, up to a limit; made with new.
+class La21Watch[3] : object {
+    string label;
+    La21Turns seen;
+    int limit = 0;
+    bool done = false;
+    /// Watches running now.
+    static int open = 0;
+    /// Watches handed back so far.
+    static int closed = 0;
+
+    void create(string l, int n) {
+        label = l;
+        limit = n;
+        open++;
+        StartDaemon(self);
+    }
+
+    void destroy() {
+        StopDaemon(self);
+        open--;
+        closed++;
+    }
+
+    void daemon() {
+        if (done) return;
+        seen = seen + 1;
+        if (seen == limit) {
+            done = true;
+            print($"^[{label} at {limit}]^");
+        }
+    }
+}
+
+// ==== The clock. ====
+
+/// The clock: counts turns on its own daemon, tracks the fuses and keeps the watches.
+object la21Clock {
+    "clock";
+    alias phase for eLa21Phase;
+    alias turns for La21Turns;
+    array<La21Fuse> fuses[4];
+    array<La21Watch> watches[3];
+    stringObj log;
+    turns ticks;
+    int changes = 0;
+
+    /// Turns the clock counts each turn, kept from 1 to 3; each change is counted.
+    auto rate = {
+        int _r = 1;
+        int operator () { return _r; }
+        void operator = (int v) {
+            int c = v;
+            if (c < 1) c = 1;
+            if (c > 3) c = 3;
+            if (c != _r) outer.changes++;
+            _r = c;
+        }
+    }
+
+    void daemon() {
+        ticks = ticks + rate;
+        for (La21Fuse f in fuses) {
+            if (f.stage == phase.burning) f.burned = f.burned + 1;
+        }
+    }
+
+    /// Adds a fuse to the ones the clock counts; false when it is there already or there is no room.
+    bool track(La21Fuse f) {
+        if (fuses.contains(f)) return false;
+        return fuses.append(f);
+    }
+
+    /// Opens a watch; null when none is free.
+    La21Watch open(string label, int n) {
+        La21Watch w = new La21Watch(label, n);
+        if (!(w?)) return null;
+        watches.append(w);
+        log += $"+{label} ";
+        return w;
+    }
+
+    /// Hands back the watches that are done. Returns how many went.
+    int sweep() {
+        int gone = 0;
+        int i = 0;
+        while (i < watches.length) {
+            La21Watch w = watches[i];
+            if (w.done) {
+                log += $"-{w.label} ";
+                watches.remove(i);
+                delete w;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        return gone;
+    }
+
+    /// A word for a stage.
+    string word(phase p) {
+        switch (p) {
+            case phase.idle:    return "idle";
+            case phase.burning: return "burning";
+            default:            return "spent";
+        }
+    }
+
+    /// Runs a step on each fuse, in the order they were tracked.
+    void each(func<void, La21Fuse> step) {
+        for (La21Fuse f in fuses) step(f);
+    }
+}
+
+/// Rings on every fourth tick of the clock.
+object la21Chime {
+    "chime";
+    parent = roomA;
+    name = .chime;
+    attributes = {scenery};
+    int rung = 0;
+    void each_turn() {
+        int t = la21Clock.ticks.n;
+        if (t > 0 && t % 4 == 0 && t != rung) {
+            rung = t;
+            print("^Chime.^");
+        }
+    }
+}
+
+/// Report verbs: they take no time.
+class La21Info : verb {
+    meta = true;
+}
+
+// ==== The consumer. ====
+
+La21Fuse redFuse {
+    2, "red fuse";
+    parent = roomA;
+    name = {.red, .fuse};
+}
+
+La21Fuse blueFuse {
+    3, "blue fuse";
+    parent = roomA;
+    name = {.blue, .fuse};
+    string sound() { return "pop"; }
+}
+
+La21Fuse greenFuse {
+    1, "green fuse";
+    parent = selfobj;
+    name = {.green, .fuse};
+}
+
+/// The watches' names, in the order they are handed out.
+array<string> la21Labels = {"w1", "w2", "w3", "w4"};
+int la21Opened = 0;
+
+#i6 {
+[ La21Score b n; return b * 10 + n; ];
+}
+
+/// Folds burned turns and a length into one figure; the consumer wrote it in I6.
+extern int La21Score(int b, int n);
+
+/// Every fuse can be asked whether it burns, and scored.
+extend class La21Fuse {
+    /// True while the fuse burns.
+    bool hot() { return stage == eLa21Phase.burning; }
+    /// Burned turns and length folded into one figure.
+    int score() { return La21Score(burned.n, length); }
+}
+
+/// The clock can count its burning fuses and sum up its state in a word.
+extend la21Clock {
+    /// How many tracked fuses are burning.
+    int burning() {
+        return fuses.filter((La21Fuse f) => f.hot()).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return burning() > 0 ? "busy" : "still";
+    }
+}
+
+/// Each turn, after the timers and daemons: hand back the finished watches.
+void TimePasses() {
+    int gone = la21Clock.sweep();
+#if LA21_TRACE
+    if (gone > 0) print($"(swept {gone})^");
+#endif
+}
+
+/// Prints a fuse's line.
+void la21ShowFuse(La21Fuse f) {
+    print($"{f} {f.mark()} ");
+    f.burned.show();
+    print("^");
+}
+
+// ==== Verbs. ====
+
+verb La21Ignite {
+    grammar = {.ignite, NOUN};
+    void handler() {
+        if (!noun.is(La21Fuse)) {
+            print("That is not a fuse.^");
+            return;
+        }
+        La21Fuse f = (La21Fuse)noun;
+        if (f.ignite()) print($"The {f} burns ({f.length} turns).^");
+        else print($"The {f} is {la21Clock.word(f.stage)}.^");
+    }
+}
+
+verb La21Douse {
+    grammar = {.douse, NOUN};
+    void handler() {
+        if (!noun.is(La21Fuse)) {
+            print("That is not a fuse.^");
+            return;
+        }
+        La21Fuse f = (La21Fuse)noun;
+        if (f.douse()) print($"The {f} is out.^");
+        else print($"The {f} is not burning.^");
+    }
+}
+
+verb La21Timer {
+    grammar = {.timer, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        string label = la21Labels[la21Opened % la21Labels.length];
+        La21Watch w = la21Clock.open(label, n);
+        if (w == null) {
+            print("No watch is free.^");
+            return;
+        }
+        la21Opened++;
+        print($"{w.label} set for {w.limit}; open {La21Watch.open}.^");
+    }
+}
+
+La21Info La21Rate {
+    grammar = {.rate, NUMBER};
+    void handler() {
+        la21Clock.rate = (int)noun;
+        print($"rate {la21Clock.rate}, changes {la21Clock.changes}.^");
+    }
+}
+
+La21Info La21Status {
+    grammar = {.status};
+    void handler() {
+        la21Clock.each((La21Fuse f) => la21ShowFuse(f));
+        print($"ticks {la21Clock.ticks.n}, {la21Clock.mood()}, burning {la21Clock.burning()}");
+        bool anySpent = la21Clock.fuses.any((La21Fuse f) => f.stage == eLa21Phase.spent);
+        if (anySpent) print(", one spent");
+        La21Fuse firstOut = la21Clock.fuses.filter((La21Fuse f) => f.stage == eLa21Phase.spent).first();
+        object who = firstOut ?? roomA;
+        print($"; first out {who}^");
+        print($"watches {la21Clock.watches.length} (open {La21Watch.open}, closed {La21Watch.closed}); log {la21Clock.log}^");
+#if LA21_TRACE
+        print($"lit {La21Fuse.lit} spent {La21Fuse.spent}^");
+#endif
+    }
+}
+
+La21Info La21Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La21Fuse> order[4];
+        order = la21Clock.fuses;
+        order.sort((La21Fuse a, La21Fuse b) => b.burned <=> a.burned);
+        for (La21Fuse f in order) print($"{f}={f.score()} ");
+        La21Fuse top = order.first();
+        if (top.burned == 0) print("none burned");
+        else if (top.burned != order[1].burned) print($"top {top}");
+        else print("tie");
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la21Clock.track(redFuse);
+    la21Clock.track(blueFuse);
+    la21Clock.track(greenFuse);
+    la21Clock.track(redFuse);
+    StartDaemon(la21Clock);
+    rfalse;
+}
+
+#includeI6 "grammar"

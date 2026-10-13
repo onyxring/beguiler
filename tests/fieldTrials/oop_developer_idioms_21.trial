@@ -1,0 +1,84 @@
+Room A
+Room A.
+
+> members
+Day 1.
+member A (standard, standard): 0 loans, fines $0.00, strikes 0.
+member B (student, student): 0 loans, fines $0.00, strikes 0.
+member C (staff, staff): 0 loans, fines $0.00, strikes 0.
+
+> stock
+Catalog holds 4 books.
+
+> books
+#11 book A by Moss, lending, 2 of 2 free.
+#12 book B by Abel, lending, 1 of 1 free.
+#13 book C by Kerr, lending, 1 of 1 free.
+#14 book D by Bell, reference, 1 of 1 free.
+
+> lending
+member A borrows book A, due day 8.
+member B borrows book A, due day 15.
+member C waits for book A.
+member A borrows book B, due day 8.
+member A cannot borrow book C: loan limit.
+member B cannot borrow book D: reference only.
+member C cannot borrow book A: hold not placed.
+member C borrows book C, due day 8.
+Lent 4, loans open 4, slips used 4, errors 3.
+
+> books
+#11 book A by Moss, lending, 0 of 2 free, 1 on hold.
+#12 book B by Abel, lending, 0 of 1 free.
+#13 book C by Kerr, lending, 0 of 1 free.
+#14 book D by Bell, reference, 1 of 1 free.
+
+> members
+Day 1.
+member A (standard, standard): 2 loans, fines $0.00, strikes 0.
+member B (student, student): 1 loans, fines $0.00, strikes 0.
+member C (staff, staff): 1 loans, fines $0.00, strikes 0.
+
+> elapse
+Day 11.
+Overdue loans 3.
+
+> returns
+book A passes to member C.
+member A returns book A, fined $0.75.
+member B returns book A.
+member A returns book B, fined $0.75.
+member A returns book B.
+member C returns book A.
+Returned 4, loans open 1, slips closed 4, collected $1.50.
+
+> books
+#11 book A by Moss, lending, 2 of 2 free.
+#12 book B by Abel, lending, 1 of 1 free.
+#13 book C by Kerr, lending, 0 of 1 free.
+#14 book D by Bell, reference, 1 of 1 free.
+
+> members
+Day 12.
+member A (standard, standard): 0 loans, fines $1.50, strikes 2.
+member B (student, student): 0 loans, fines $0.00, strikes 0.
+member C (staff, staff): 1 loans, fines $0.00, strikes 0.
+
+> penalize
+Strikes 3, suspended true.
+member A cannot borrow book B: member suspended.
+Strikes 0, can borrow true.
+
+> query
+Book 13 by Kerr, book 99 by none.
+Lendable 3, any held false, all stocked true.
+Ids 111 112 113 114.
+Authors starting B 1, starting M 1.
+Members fined 1, largest fine $1.50, equals $1.50 true.
+
+> sorted
+Abel: book B
+Bell: book D
+Kerr: book C
+Moss: book A
+First Moss, last Abel.
