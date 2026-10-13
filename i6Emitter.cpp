@@ -1070,7 +1070,6 @@ static void collectDottedAccessNames(statementBlock* body, set<string>& out){
             extractPropertyNamesFromText(fors->incrementText, out);
             collectDottedAccessNames(fors->body, out);
         } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
-            for(expression* e : fis->inlineElements) extractPropertyNamesFromExpr(e, out);
             collectDottedAccessNames(fis->body, out);
         } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
             collectDottedAccessNames(tc->tryBody, out);
@@ -2119,6 +2118,14 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     synthesizeChildrenPlacement();
     synthesizePooledOwnedMembers();
     synthesizeValueElementPools();
+    for(const string& prop : languageService.instanceOpRefs){
+        i6RawNode* raw = new i6RawNode();
+        raw->text = "[ _bglOpRef_" + prop + " a b;\n"
+                    "  if(metaclass(a) == Object && a provides " + prop + ") return a." + prop + "(b);\n"
+                    "  return 0;\n"
+                    "];\n";
+        languageService.globals.push_back(raw);
+    }
 
     // .inf-mode with zero #bgl/#bglDecl/#bglStmt islands: the file is pure I6. None of
     // the BLR-derived output (bglInit, _bglUtil, bgl, _glulx, __glkHook, etc.) is
@@ -2241,13 +2248,6 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     // that consume this constant are also gated on that include.
     if(languageService.linqInUse)
         out << "Constant _BGL_LINQ_SCRATCH_SIZE = " << (cfg->linqScratchSize > 0 ? cfg->linqScratchSize : 32) << ";\n";
-
-    // for-in literal-list scratch capacity (max elements per `for(x in {a,b,c})`) — referenced from
-    // _array.bgl's #storedEmitFirst scratchSupport block. Emitted only when that syntax is
-    // used (same gate as the block itself, but the flag is set at parse time so the constant lands
-    // in the header ahead of the block). Default 31 mirrors the schema's forInScratchSize.
-    if(languageService.forInScratchInUse)
-        out << "Constant _BGL_FORIN_SCRATCH_CAP = " << (cfg->forInScratchSize > 0 ? cfg->forInScratchSize : 31) << ";\n";
 
     // Treaty of Babel IFID: embed as a string so babel tools can find it in the story file
     if(!cfg->ifid.empty()){
@@ -2588,7 +2588,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
             out << ";\n";
             if(currentSpillCount > 0)
-                out << format("        _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+                out << format("        _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
             if(!fd->entrySetUp.empty())
                 out << "        " << spillWord(fd->entrySetUp) << "\n";
             emitTryParamCopyIns("        ");
@@ -2732,7 +2732,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(currentSpillCount > 0) out << " _bglFrm";
     out << ";\n";
     if(currentSpillCount > 0)
-        out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+        out << format("    _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
     if(!funcNode->entrySetUp.empty())
         out << "    " << spillWord(funcNode->entrySetUp) << "\n";
     emitTryParamCopyIns("    ");
@@ -2803,6 +2803,11 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
             if(arr->arraySize <= 0) continue;
             string name = spillName(arr->name);
             out << format("{0}{1} = _bglByteArrayLocalAlloc({2});\n", indent, name, arr->arraySize);
+            // With <buf> a sized buffer starts empty and is tracked, as a global one is, until the routine returns.
+            if(languageService.bufInUse){
+                out << format("{0}{1}-->0 = 0; _bglBuf._registerTracked({1});\n", indent, name);
+                fn->cleanups.push_back({arr->name, format("_bglBuf._unregisterTracked({0});", name)});
+            }
             fn->cleanups.push_back({arr->name, format("_bglByteArrayLocalFree({0});", arr->arraySize)});
             continue;
         }
@@ -3201,20 +3206,13 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
     if(fi->isChildrenForIn){
         string el   = spillName(fi->elementVar);
         string next = spillName(fi->counterVar);
-        out << indent << "for (" << el << " = child(" << fi->arrayVar << ") : " << el << " : " << el << " = " << next << ") {\n";
+        out << indent << "for (" << el << " = child(" << spillName(fi->arrayVar) << ") : " << el << " : " << el << " = " << next << ") {\n";
         out << indent << "    " << next << " = sibling(" << el << ");\n";
         if(fi->body != nullptr)
             for(statement* s : fi->body->statements)
                 emitStatement(s, indent + "    ");
         out << indent << "}\n";
         return;
-    }
-    // Inline initializer list: emit push/make templates before the loop
-    if(!fi->inlineElements.empty()){
-        for(auto* elem : fi->inlineElements)
-            applyTemplate("forInList.push", {{"element", exprText(elem)}}, indent);
-        applyTemplate("forInList.make",
-            {{"target", spillName(fi->arrayVar)}, {"count", to_string(fi->inlineElements.size())}}, indent);
     }
     string openTemplate  = fi->isByteArray ? "forIn.openByte"  : "forIn.open";
     string closeTemplate = fi->isByteArray ? "forIn.closeByte" : "forIn.close";
@@ -4344,7 +4342,7 @@ for(typeMember* m : obj->members){
         if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
         out << ";\n";
         if(currentSpillCount > 0)
-            out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+            out << format("    _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
         if(!fd->entrySetUp.empty())
             out << "    " << spillWord(fd->entrySetUp) << "\n";
         emitTryParamCopyIns("    ");
@@ -4615,6 +4613,7 @@ void i6Emitter::synthesizeChildrenPlacement(){
 void i6Emitter::synthesizePooledOwnedMembers(){
     bool needRowSets = false;    // a pool slot's array-of-arrays rows are its own, refilled at create()
     bool needByteFill = false;   // a pool slot's array<char> buffer is refilled from the class's at create()
+    bool needTableClear = false; // a pool slot's promoted member array is refilled at create()
     // An owned value-helper member: a non-`object`, non-initialized member whose class needs a live
     // instance — it has stored state, OR a non-emitter method/operator that dispatches on an instance
     // (e.g. a fieldless getter/setter accessor that reaches the host through `outer`).
@@ -4663,6 +4662,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
         vector<variableDeclaration*> owned;
         vector<arrayDeclaration*> bytes;   // array<char> members: a buffer per slot, not the class's one
         vector<arrayDeclaration*> nested;  // array-of-arrays members: a set of rows per slot, not the class's one
+        vector<arrayDeclaration*> promoted; // member arrays too large for a property: a table per slot
         set<string> seenName;
         cd->forEachMember([&](typeMember* m){
             auto* vd = dynamic_cast<variableDeclaration*>(m);
@@ -4670,6 +4670,9 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             auto* ad = dynamic_cast<arrayDeclaration*>(m);
             if(ad && ad->isByteArray && !ad->isRefLocal && !ad->isStatic && !seenName.count(ad->name)){
                 bytes.push_back(ad); seenName.insert(ad->name);
+            }
+            if(ad && ad->isPromoted && !ad->isByteArray && !ad->isStatic && ad->arraySize > 0 && !seenName.count(ad->name)){
+                promoted.push_back(ad); seenName.insert(ad->name);
             }
             if(ad && !ad->isByteArray && !ad->isRefLocal && !ad->isStatic && isArrayOfArraysElement(ad->elementType)
                && dynamic_cast<initializerList*>(ad->declaredExpressionValue) && !seenName.count(ad->name)){
@@ -4690,7 +4693,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             if(!lifecycleCreate.empty()) lifecycleCreate += "\n";
             if(!lifecycleDestroy.empty()) lifecycleDestroy += "\n";
         }
-        if(owned.empty() && bytes.empty() && nested.empty() && lifecycleCreate.empty()) continue;
+        if(owned.empty() && bytes.empty() && nested.empty() && promoted.empty() && lifecycleCreate.empty()) continue;
 
         // Insertion point: just before the pooled class in `globals`, so the backing instances and
         // free-list precede any create/destroy references. (Pass-3 lazy emission pulls the member's
@@ -4708,19 +4711,66 @@ void i6Emitter::synthesizePooledOwnedMembers(){
         if(classDef* alloc = languageService.findClass("bglallocated"); alloc != nullptr && cd->hasAncestor(alloc)){
             string routine = "_bglOwnedCopy_" + cd->dName();
             string locals, save, restore, fields;
-            for(size_t k = 0; k < owned.size(); k++){
-                variableDeclaration* vd = owned[k];
-                string memI6 = vd->i6name.empty() ? vd->dName() : vd->i6name;
-                string slot = "s" + to_string(k);
+            // A nested owned instance is copied field by field too, into dst's own backing.
+            function<void(classDef*, const string&, const string&)> copyFields = [&](classDef* fc, const string& to, const string& from){
+                fc->forEachMember([&](typeMember* cm){
+                    auto* fvd = dynamic_cast<variableDeclaration*>(cm);
+                    if(!fvd || fvd->isExternal || fvd->isStatic || dynamic_cast<arrayDeclaration*>(fvd)) return;
+                    string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                    if(classDef* nc = ownedClass(fvd)) copyFields(nc, "(" + to + "." + fi6 + ")", "(" + from + "." + fi6 + ")");
+                    else fields += format(" {0}.{1} = {2}.{1};", to, fi6, from);
+                });
+            };
+            int k = 0;
+            auto keep = [&](const string& memI6){
+                string slot = "s" + to_string(k++);
                 locals += " " + slot;
                 save += format(" {0} = dst.{1};", slot, memI6);
                 restore += format(" dst.{0} = {1};", memI6, slot);
-                ownedClass(vd)->forEachMember([&](typeMember* cm){
-                    auto* fvd = dynamic_cast<variableDeclaration*>(cm);
-                    if(!fvd || fvd->isExternal || fvd->isStatic || dynamic_cast<arrayDeclaration*>(fvd) || ownedClass(fvd)) return;
-                    string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
-                    fields += format(" {0}.{1} = (src.{2}).{1};", slot, fi6, memI6);
-                });
+                return slot;
+            };
+            for(variableDeclaration* vd : owned){
+                string memI6 = vd->i6name.empty() ? vd->dName() : vd->i6name;
+                copyFields(ownedClass(vd), keep(memI6), "(src." + memI6 + ")");
+            }
+            // A member whose type manages its own storage (stringObj) keeps dst's storage and copies the
+            // contents through the type's `operator =` for itself.
+            set<string> seenLife;
+            cd->forEachMember([&](typeMember* m){
+                auto* fvd = dynamic_cast<variableDeclaration*>(m);
+                if(fvd == nullptr || fvd->isStatic || fvd->isExternal || fvd->isRefLocal || fvd->isConst
+                   || !seenLife.insert(fvd->name).second || memberLifecycleText(fvd, "x", "init").empty()) return;
+                classDef* fc = languageService.findClass(fvd->type.name);
+                functionDef* assign = nullptr;
+                function<void(classDef*)> walk = [&](classDef* c){
+                    if(c == nullptr || assign != nullptr) return;
+                    for(typeMember* am : c->members)
+                        if(auto* f = dynamic_cast<functionDef*>(am); f && f->name == "=" && f->isEmitter && f->params.size() == 1
+                           && f->params[0]->type.name == fc->name && dynamic_cast<i6Block*>(f->body) != nullptr){ assign = f; return; }
+                    for(classDef* b : c->baseClasses) walk(b);
+                };
+                walk(fc);
+                if(assign == nullptr) return;
+                string memI6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                string slot = keep(memI6);
+                emitterBindings b; b.self = slot; b.val = slot; b.fn = assign; b.args = {"src." + memI6};
+                b.trim = emitterTrim::wsSemi;
+                string t = parser.expandEmitterBody(dynamic_cast<i6Block*>(assign->body), b);
+                while(!t.empty() && (t.back() == ';' || isspace((unsigned char)t.back()))) t.pop_back();
+                fields += " " + t + ";";
+            });
+            // A promoted member array keeps dst's table and takes src's contents.
+            for(arrayDeclaration* ad : promoted){
+                string memI6 = ad->i6name.empty() ? ad->dName() : ad->i6name;
+                fields += format(" _bglTableCopy({0}, src.{1});", keep(memI6), memI6);
+                needTableClear = true;
+            }
+            // The pool's own create/destroy stay dst's: a subclass instance's would return dst's backings to
+            // the subclass's pool.
+            for(const char* own : {"create", "destroy"}){
+                locals += string(" _o_") + own;
+                save += format(" _o_{0} = dst.{0};", own);
+                restore += format(" dst.{0} = _o_{0};", own);
             }
             i6RawNode* cp = new i6RawNode();
             cp->text = "[ " + routine + " dst src" + locals + ";\n " + save + "\n  (" + cd->i6Name() + ").copy(dst, src);\n "
@@ -4753,27 +4803,34 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             // create(): pop a free backing, wire it, reset its scalar fields to their defaults.
             createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top;\n", base, memI6);
             // The member's initializer (`coins price = coins{ cents = 3; };`) beats the type's defaults.
-            objectDef* init = vd->declaredExpressionValue ? languageService.findObjectType(vd->declaredExpressionValue->text()) : nullptr;
-            for(typeMember* cm : mc->members){
-                auto* fvd = dynamic_cast<variableDeclaration*>(cm);
-                if(!fvd || fvd->isExternal || fvd->isStatic) continue;
-                if(ownedClass(fvd)) continue;   // nested owned instance: keeps its baked backing
-                string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
-                // A word array member is emptied: its elements and the length in its last word.
-                if(auto* fad = dynamic_cast<arrayDeclaration*>(fvd)){
-                    if(!fad->isByteArray && !fad->isRefLocal && fad->arraySize > 0)
-                        for(int k = 0; k <= fad->arraySize; k++)
-                            createInject += format("self.{0}.&{1}-->{2} = 0;\n", memI6, fi6, k);
-                    continue;
+            // A nested owned instance keeps its baked backing; its own fields are reset in turn.
+            function<void(classDef*, const string&, objectDef*)> reset = [&](classDef* rc, const string& path, objectDef* init){
+                for(typeMember* cm : rc->members){
+                    auto* fvd = dynamic_cast<variableDeclaration*>(cm);
+                    if(!fvd || fvd->isExternal || fvd->isStatic) continue;
+                    string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                    if(classDef* nc = ownedClass(fvd)){
+                        objectDef* ninit = fvd->declaredExpressionValue ? languageService.findObjectType(fvd->declaredExpressionValue->text()) : nullptr;
+                        reset(nc, path + "." + fi6, ninit);
+                        continue;
+                    }
+                    // A word array member is emptied: its elements and the length in its last word.
+                    if(auto* fad = dynamic_cast<arrayDeclaration*>(fvd)){
+                        if(!fad->isByteArray && !fad->isRefLocal && fad->arraySize > 0)
+                            for(int k = 0; k <= fad->arraySize; k++)
+                                createInject += format("{0}.&{1}-->{2} = 0;\n", path, fi6, k);
+                        continue;
+                    }
+                    string def = fvd->declaredExpressionValue ? staticText(fvd->declaredExpressionValue) : "0";
+                    if(init != nullptr)
+                        for(typeMember* im : init->members)
+                            if(auto* iv = dynamic_cast<variableDeclaration*>(im); iv && iv->name == fvd->name && iv->declaredExpressionValue)
+                                def = staticText(iv->declaredExpressionValue);
+                    if(def.empty() || def.rfind("_bglanon", 0) == 0) def = "0";
+                    createInject += format("{0}.{1} = {2};\n", path, fi6, def);
                 }
-                string def = fvd->declaredExpressionValue ? staticText(fvd->declaredExpressionValue) : "0";
-                if(init != nullptr)
-                    for(typeMember* im : init->members)
-                        if(auto* iv = dynamic_cast<variableDeclaration*>(im); iv && iv->name == fvd->name && iv->declaredExpressionValue)
-                            def = staticText(iv->declaredExpressionValue);
-                if(def.empty()) def = "0";
-                createInject += format("self.{0}.{1} = {2};\n", memI6, fi6, def);
-            }
+            };
+            reset(mc, "self." + memI6, vd->declaredExpressionValue ? languageService.findObjectType(vd->declaredExpressionValue->text()) : nullptr);
             // destroy(): return the backing to the free-list.
             destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
         }
@@ -4799,6 +4856,31 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                                    " _bglByteFill(self.{1}, {0}, {2});\n", base, memI6, cap);
             destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
             needByteFill = true;
+        }
+
+        for(arrayDeclaration* ad : promoted){
+            string base  = "_" + cd->name + "_" + ad->name;
+            string memI6 = ad->i6name.empty() ? ad->dName() : ad->i6name;
+            // The class's initial elements and length, which new() copies into the slot's table.
+            vector<string> init;
+            if(auto* list = dynamic_cast<initializerList*>(ad->declaredExpressionValue))
+                for(expression* e : list->elements) init.push_back(staticText(e));
+            string proto;
+            for(int i = 0; i < ad->arraySize; i++) proto += " " + (i < (int)init.size() && !init[i].empty() ? init[i] : string("0"));
+            proto += format(" {0} $9084", init.size());   // length, tracked marker
+            i6RawNode* tabs = new i6RawNode();
+            tabs->text = format("Array {0}_proto table{1};\n", base, proto);
+            string elems;
+            for(int k = 0; k < N; k++){
+                tabs->text += format("Array {0}_{1} table{2};\n", base, k, proto);
+                elems += format(" {0}_{1}", base, k);
+            }
+            tabs->text += format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
+            insertBefore(tabs);
+            // create(): a free table holding the class's initial elements; destroy(): back to the free list.
+            createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top; _bglTableCopy(self.{1}, {0}_proto);\n", base, memI6);
+            destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
+            needTableClear = true;
         }
 
         for(arrayDeclaration* ad : nested){
@@ -4881,6 +4963,11 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                      "    for(i = 0: i < r: i++){ d = set-->(k*r + i); s = proto-->i; for(j = 0: j <= s-->0: j++) d-->j = s-->j; dst-->i = d; }\n];\n"
                      "[ _bglRowsSlot dst set r n k; for(k = 0: k < n: k++) if(set-->(k*r) == dst-->0) return k; return 0; ];\n";
         languageService.globals.push_back(rows);
+    }
+    if(needTableClear){
+        i6RawNode* clr = new i6RawNode();
+        clr->text = "[ _bglTableCopy d s i; for(i = 1: i < d-->0: i++) d-->i = s-->i; ];\n";   // data and length; the marker stays
+        languageService.globals.push_back(clr);
     }
     if(needByteFill){
         i6RawNode* fill = new i6RawNode();

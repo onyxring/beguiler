@@ -129,7 +129,10 @@ void Main() {
 
 **Notes**
 
-Requires `bglInit()`, which writes the length headers of sized tracked buffers (§21.2). `compare()` orders by character code, not by locale: on the Z-machine every uppercase letter sorts before every lowercase one; pass `caseInsensitive` for dictionary order.
+Requires `bglInit()`, which writes the length headers of sized tracked buffers (§21.2). A local sized
+buffer is tracked from its declaration until its routine returns. `<buf>` keeps a registry of tracked
+buffers with room for the `<string>` pool's buffers plus `bglTrackedBufferReserve` more (default `116`,
+an I6 constant set before the include, like `bglStringPoolReserve`). `compare()` orders by character code, not by locale: on the Z-machine every uppercase letter sorts before every lowercase one; pass `caseInsensitive` for dictionary order.
 
 > **[Glulx]** Capture uses a Glk memory stream. `<buf>` supplies the constants it needs (`filemode_Write`, `gg_arguments`) when no IF library defines them.
 

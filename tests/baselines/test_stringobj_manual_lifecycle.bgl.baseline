@@ -20,7 +20,6 @@ global _bglInitDone = 0;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
     _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
-    _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
     slots-->(slots-->0) = $9084;
 
     _bglInitializeStringBuffers();
@@ -41,7 +40,13 @@ object bgl
 ];
 array _bglbufstreamstack table 18;
 array _bglbufglulxstreams table 18;
-array _bgltrackedregistry table 130;
+
+    Default bglStringPoolReserve 10;
+    Default bglBufferPoolReserve (bglStringPoolReserve + 2);
+    Default bglTrackedBufferReserve 116;
+    Constant _BGL_TRACKED_CAP (bglBufferPoolReserve + bglTrackedBufferReserve);
+    Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
+
 object _bglBuf
   with _stacktop 0,
        _trackedcount 0,
@@ -51,19 +56,31 @@ object _bglBuf
         return false;
     }
     for (i = 0 : i < self._trackedcount : i++) {
-        if ( _bglAt(_bgltrackedregistry, i, 0)-->0  == p) {
-            return true;
-        }
+         if(_bglTrackedRegistry-->i == p) rtrue; 
     }
     return false;
   ],
        _registerTracked [buf;
-    if (self._trackedcount >= 128) {
-         print "^[Beguile runtime: tracked buffer registry full]^"; 
-        return;
-    }
-    _bglAt(_bgltrackedregistry, self._trackedcount, 1)-->0 = buf;
+    
+            if(self._trackedCount >= _BGL_TRACKED_CAP){
+                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
+                return;
+            }
+            _bglTrackedRegistry-->(self._trackedCount) = buf;
+        
     self._trackedcount++;
+  ],
+       _unregisterTracked [buf p i;
+    p=buf;
+    for (i = self._trackedcount - 1 : i >= 0 : i--) {
+        
+                if(_bglTrackedRegistry-->i == p){
+                    self._trackedCount--;
+                    _bglTrackedRegistry-->i = _bglTrackedRegistry-->(self._trackedCount);
+                    return;
+                }
+            
+    }
   ],
        size [buf;
     if (buf == 0) {
@@ -94,7 +111,7 @@ object _bglBuf
         buf->(pos + WORDSIZE) = val;
     }
   ],
-       set_2_bytearray_var [buf stringVal;
+       set_2_bytearray_string [buf stringVal;
     return self.setany(buf,stringval);
   ],
        setAny [buf stringVal;
@@ -162,6 +179,9 @@ object _bglBuf
     return self._stacktop;
   ],
        print [buf len i c;
+    if (buf == 0) {
+        return buf;
+    }
     if (len <= 0) {
         len=self.length(buf);
     }
@@ -477,7 +497,6 @@ object _bglBuf
   ]
 ;
 
-    Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
     Array _bglStringLockStackSlots --> bglStringLockStackSize;
     Global _bglStringLockStackTop = 0;
@@ -485,7 +504,6 @@ object _bglBuf
     Global _bglStringLockStackMarkTop = 0;
     Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
     Global _bglStrAppendTop = 0;
-    Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
     Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
@@ -870,6 +888,7 @@ object _bglStr
        print [buf _l_prop;
     
             if(_l_prop ~= 0) buf = buf._l_prop;
+            if(buf == 0) return;   ! null prints nothing
             if(buf provides print) {
                 buf.print();
                 return;
@@ -1357,10 +1376,7 @@ object _bglArray
             return t;
         }
         
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
+                if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) return t;
             
     }
     return -1;
@@ -1370,7 +1386,6 @@ object _bglArray
         self.set(obj, prop, n, v);
         return;
     }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
     self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ],
        clear [obj prop dtor sz t;
@@ -1424,7 +1439,7 @@ object _bglArray
     return self.insert(obj,prop,0,val,assign);
   ],
        destroyValue [dtor v;
-     if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
+     if(dtor ~= 0 && v ~= 0) dtor(v); 
   ],
        remove [obj prop pos dtor len i;
     len=self.length(obj,prop);

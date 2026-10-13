@@ -1,0 +1,22 @@
+/*  run_instance_opref_glulx — an array's search and sort reach an instance operator through a routine.  */
+// EXPECT_OUTPUT: 1 2 -1 [3 5 9]
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+class Entry : object {
+    int rank;
+    bool operator == (Entry o) { return rank == o.rank; }
+    int operator <=> (Entry o) { if(rank < o.rank) return -1; if(rank > o.rank) return 1; return 0; }
+}
+Entry ea { rank = 9; }
+Entry eb { rank = 3; }
+Entry ec { rank = 5; }
+Entry probe { rank = 5; }
+Entry other { rank = 7; }
+array<Entry> board = {ea, eb, ec};
+void main(){
+    glulxConsole(); bglInit();
+    print($"{board.indexOf(eb)} {board.indexOf(probe)} {board.indexOf(other)} ");
+    board.sort();
+    print($"[{board[0].rank} {board[1].rank} {board[2].rank}]^");
+}

@@ -19,6 +19,12 @@ global _bgl_temp2;
       _bglFrameTop = _bglFrameTop + size;
       return _bglFramePool + (r * WORDSIZE);
    ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
    [ _bglFrameFree size;
       _bglFrameTop = _bglFrameTop - size;
    ];
@@ -96,7 +102,6 @@ global _bglInitDone = 0;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
     _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
     _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
-    _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
 
     _bglInitializeStringBuffers();
 
@@ -109,7 +114,13 @@ object bgl
 ;
 array _bglbufstreamstack table 18;
 array _bglbufglulxstreams table 18;
-array _bgltrackedregistry table 130;
+
+    Default bglStringPoolReserve 10;
+    Default bglBufferPoolReserve (bglStringPoolReserve + 2);
+    Default bglTrackedBufferReserve 116;
+    Constant _BGL_TRACKED_CAP (bglBufferPoolReserve + bglTrackedBufferReserve);
+    Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
+
 object _bglBuf
   with _stacktop 0,
        _trackedcount 0,
@@ -119,19 +130,31 @@ object _bglBuf
         return false;
     }
     for (i = 0 : i < self._trackedcount : i++) {
-        if ( _bglAt(_bgltrackedregistry, i, 0)-->0  == p) {
-            return true;
-        }
+         if(_bglTrackedRegistry-->i == p) rtrue; 
     }
     return false;
   ],
        _registerTracked [buf;
-    if (self._trackedcount >= 128) {
-         print "^[Beguile runtime: tracked buffer registry full]^"; 
-        return;
-    }
-    _bglAt(_bgltrackedregistry, self._trackedcount, 1)-->0 = buf;
+    
+            if(self._trackedCount >= _BGL_TRACKED_CAP){
+                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
+                return;
+            }
+            _bglTrackedRegistry-->(self._trackedCount) = buf;
+        
     self._trackedcount++;
+  ],
+       _unregisterTracked [buf p i;
+    p=buf;
+    for (i = self._trackedcount - 1 : i >= 0 : i--) {
+        
+                if(_bglTrackedRegistry-->i == p){
+                    self._trackedCount--;
+                    _bglTrackedRegistry-->i = _bglTrackedRegistry-->(self._trackedCount);
+                    return;
+                }
+            
+    }
   ],
        size [buf;
     if (buf == 0) {
@@ -162,7 +185,7 @@ object _bglBuf
         buf->(pos + WORDSIZE) = val;
     }
   ],
-       set_2_bytearray_var [buf stringVal;
+       set_2_bytearray_string [buf stringVal;
     return self.setany(buf,stringval);
   ],
        setAny [buf stringVal;
@@ -230,6 +253,9 @@ object _bglBuf
     return self._stacktop;
   ],
        print [buf len i c;
+    if (buf == 0) {
+        return buf;
+    }
     if (len <= 0) {
         len=self.length(buf);
     }
@@ -545,7 +571,6 @@ object _bglBuf
   ]
 ;
 
-    Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
     Array _bglStringLockStackSlots --> bglStringLockStackSize;
     Global _bglStringLockStackTop = 0;
@@ -553,7 +578,6 @@ object _bglBuf
     Global _bglStringLockStackMarkTop = 0;
     Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
     Global _bglStrAppendTop = 0;
-    Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
     Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
@@ -938,6 +962,7 @@ object _bglStr
        print [buf _l_prop;
     
             if(_l_prop ~= 0) buf = buf._l_prop;
+            if(buf == 0) return;   ! null prints nothing
             if(buf provides print) {
                 buf.print();
                 return;
@@ -1370,7 +1395,7 @@ _bglClass_Inst inst1
     _bglArray.append(x, 0, ord1, 0);
     _bglArray.sortDefault(x, 0, _bgl_Ord__oplteqgt);
     _bglArray.append(y, 0, inst1, 0);
-    _bglArray.sortDefault(y, 0, _oplteqgt);
+    _bglArray.sortDefault(y, 0, _bglOpRef__oplteqgt);
     _bglArray.append(z, 0, bare1, 0);
     _bglArray.sort(z, 0, _bglLambda_0);
     _bglFrameFree(5);
@@ -1385,6 +1410,11 @@ _bglClass_Inst inst1
 [_bglLambda_0 p q;
     return 0;
 ];
+[ _bglOpRef__oplteqgt a b;
+  if(metaclass(a) == Object && a provides _oplteqgt) return a._oplteqgt(b);
+  return 0;
+];
+
 [_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
 ];
@@ -1488,10 +1518,7 @@ object _bglArray
             return t;
         }
         
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
+                if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) return t;
             
     }
     return -1;
@@ -1501,7 +1528,6 @@ object _bglArray
         self.set(obj, prop, n, _l_v);
         return;
     }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, _l_v); return; } 
     self.set(obj, prop, n, assign(self.get(obj,prop,n),_l_v));
   ],
        freeAll [obj prop dtor sz t;
@@ -1554,7 +1580,7 @@ object _bglArray
     return self.insert(obj,prop,0,val,assign);
   ],
        destroyValue [dtor _l_v;
-     if(dtor ~= 0 && _l_v ~= 0 && metaclass(dtor) == Routine) dtor(_l_v); 
+     if(dtor ~= 0 && _l_v ~= 0) dtor(_l_v); 
   ],
        sortDefault [obj prop cmp;
     if (cmp==0) {
@@ -1565,10 +1591,7 @@ object _bglArray
     }
   ],
        invokeCompare [cmp a b;
-    
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        
+     if(cmp ~= 0) return cmp(a, b); 
     return 0;
   ],
        sort [obj prop _l_compare len i key j;

@@ -122,12 +122,11 @@ substituted depends on how the operator was declared:
 | The operator is | `$opref` substitutes |
 |---|---|
 | `static` | The name of the free routine; call it as `op(a, b)` |
-| an instance member | The property name; call it as `a.(op)(b)` |
+| an instance member | A routine that sends the operator to its first argument; call it as `op(a, b)` |
 | an emitter, or absent | `0` — an emitter has no address and is never referenceable |
 
-The receiving routine must tell the two callable forms apart (`metaclass()` distinguishes a routine
-from a property). Publishing an operator is opt-in: a type that declares none yields `0` and the
-runtime uses its default.
+Either way the receiving routine calls the reference with both operands. Publishing an operator is
+opt-in: a type that declares none yields `0` and the runtime uses its default.
 
 When a type publishes more than one referenceable overload of the operator, the reference is
 ambiguous and is a compile-time error; name the operand type to select one:

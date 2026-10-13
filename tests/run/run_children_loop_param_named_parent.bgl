@@ -1,0 +1,10 @@
+// run_children_loop_param_named_parent — a parameter named like an I6 system function (`parent`)
+// is renamed in the routine; a `.children` loop over it uses the renamed local too.
+// EXPECT_OUTPUT: 2 1
+#beguilerSettings { target = z5; informName = "none"; }
+object box { }
+object a { parent = box; }
+object b { parent = box; }
+int countIn(object parent) { int n = 0; for (object c in parent.children) n++; return n; }
+int hasChild(object parent) { return parent.child == null ? 0 : 1; }
+void main(){ bglInit(); print($"{countIn(box)} {hasChild(box)}^"); }

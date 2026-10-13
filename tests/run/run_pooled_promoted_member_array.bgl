@@ -1,0 +1,17 @@
+// run_pooled_promoted_member_array — a pooled class's member array too large for a property gets a
+// table per slot: new() hands over an empty one, copy() copies its contents, delete returns it.
+// EXPECT_OUTPUT: 40 1 7 | 2 7 9 | 0 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Bin[2] : object, bglAllocated { array<int> big[40]; }
+void main(){
+    bglInit();
+    Bin a = new Bin();
+    a.big += 7;
+    print($"{a.big.size} {a.big.length} {a.big[0]} | ");
+    Bin b = new Bin();
+    b.copy(a); b.big += 9;
+    print($"{b.big.length} {b.big[0]} {b.big[1]} | ");
+    delete b; b = new Bin();
+    print($"{b.big.length} {b.big[0]}^");
+}

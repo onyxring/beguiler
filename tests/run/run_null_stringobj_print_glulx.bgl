@@ -1,0 +1,8 @@
+/*  run_null_stringobj_print_glulx — an empty stringObj slot prints nothing on Glulx (D1351).  */
+// EXPECT_OUTPUT: [a][]
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+#include <string>
+array<stringObj> h[3];
+void main(){ glulxConsole(); bglInit(); h += "a"; print($"[{h[0]}][{h[1]}]"); print("^"); }

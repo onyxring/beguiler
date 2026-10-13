@@ -11,7 +11,7 @@
 
 #if #beguilerSettings.economy
     const string wtStyle = "terse";
-#elif #beguilerSettings.target == "Z5" && #beguilerSettings.forInScratchSize == 31
+#elif #beguilerSettings.target == "Z5" && #beguilerSettings.worldBufSize == 128
     const string wtStyle = "full";
 #else
     const string wtStyle = "plain";

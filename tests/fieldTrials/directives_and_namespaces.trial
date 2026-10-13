@@ -15,7 +15,7 @@ Inline level: 3.
 Target setting is z5.
 Frame pool above 32.
 Economy off.
-Target: z5. Pool: 40. For-in scratch: 31.
+Target: z5. Pool: 40. World buffer: 128.
 Auto-initialize on.
 > spaces
 Gauge reads 4.

@@ -29,7 +29,6 @@
 // Beguile-native (see string.bgl's port note).
 //------------------------------------------------------------------------------
 #i6 {
-    Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
     Array _bglStringLockStackSlots --> bglStringLockStackSize;
     Global _bglStringLockStackTop = 0;
@@ -37,7 +36,6 @@
     Global _bglStringLockStackMarkTop = 0;
     Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
     Global _bglStrAppendTop = 0;
-    Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
     ! bglStringDefaultSize is declared in <buf>, already in scope.
 
     Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
@@ -546,6 +544,7 @@ object _bglStr {
     void print(var buf, var prop = 0) {
         #i6 {
             if(prop ~= 0) buf = buf.prop;
+            if(buf == 0) return;   ! null prints nothing
             if(buf provides print) {
                 buf.print();
                 return;

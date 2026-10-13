@@ -1,0 +1,17 @@
+// run_literal_list_forin_nested — `for (x in {…})` loops nest and recurse: each list is its own per call.
+// EXPECT_OUTPUT: 17 18 19 27 28 29 11
+#beguilerSettings { target = z5; informName = "none"; }
+int visit(int d) {
+    int s = 0;
+    for (int v in {d, d * 10}) {
+        if (d > 0) s += visit(d - 1);
+        s += v;
+    }
+    return s;
+}
+void Main() {
+    for (int a in {1, 2}) {
+        for (int b in {7, 8, 9}) print($"{a}{b} ");
+    }
+    print($"{visit(1)}^");
+}

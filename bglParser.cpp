@@ -168,12 +168,25 @@ void bglParser::unknownTypeError(const token& typeTok){
     sort(files.begin(), files.end());
     for(const auto& f : files){
         ifstream in(f);
-        for(string line; getline(in, line); )
+        // A target-only core file opens with `#if TARGET_X #else #error` (X only) or `#if TARGET_X #error` (the other).
+        string target, guard;
+        for(string line; getline(in, line); ){
+            string t = line.substr(min(line.size(), line.find_first_not_of(" \t")));
+            if(t.rfind("#if TARGET_", 0) == 0) guard = t.find("GLULX") != string::npos ? "glulx" : "z";
+            else if(!guard.empty() && !t.empty()){
+                bool glulx = (guard == "glulx") == (t.rfind("#else", 0) == 0);
+                if(t.rfind("#else", 0) == 0 || t.rfind("#error", 0) == 0) target = glulx ? "a Glulx" : "a Z-machine";
+                guard.clear();
+            }
             if(std::regex_search(line, decl)){
+                if(!target.empty() && f.parent_path().filename() == "core")
+                    parsingError(format("Unknown type '{0}': it exists only on {1} target. Set the target in "
+                                        "#beguilerSettings.", shown, target));
                 parsingError(format("Unknown type '{0}'. It is declared by the library extension <{1}>: add "
                                     "`#include <{1}>`.", shown, f.stem().string()));
                 return;
             }
+        }
     }
     parsingError(format("Unknown type '{0}': no class, enum or union of that name is declared.", shown));
 }
@@ -2664,6 +2677,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
         bool firstIsLiteral = false;
         if(tok.value == "literal" && isLiteralQualifierAhead()){ firstIsLiteral = true; tok = file.getToken(); }
         tok = consumeTypeToken(tok);
+        if(tok.is(eTokenType::identifier) && file.peekToken(1).is(eTokenType::identifier)) unknownTypeError(tok);
         if(!tok.is(eTokenType::dataType))
             tok.assertDataType(); // original error path for non-type tokens
         string paramTypeName = tok.value;

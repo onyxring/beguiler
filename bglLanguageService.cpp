@@ -97,10 +97,9 @@ eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& b
     else if(key == "release")      { iv = beguilerSettings.release;      return eSettingKind::integer; }
     else if(key == "seriesnumber") { iv = beguilerSettings.seriesNumber; return eSettingKind::integer; }
     else if(key == "framepoolsize" || key == "linqscratchsize"
-         || key == "worldbufsize"  || key == "forinscratchsize"){
+         || key == "worldbufsize"){
         iv = (key == "framepoolsize")    ? beguilerSettings.framePoolSize
            : (key == "linqscratchsize")  ? beguilerSettings.linqScratchSize
-           : (key == "forinscratchsize") ? beguilerSettings.forInScratchSize
            :                               beguilerSettings.worldBufSize;
         // applySchemaDefaults() runs after parsing, so mid-parse the value may still be the -1
         // "unset" sentinel. Fall back to the schema-declared default so a read during the parse

@@ -39,13 +39,13 @@ class bglLanguageService{
     bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
     bool arrayInUse = false;        // set true when `#include <array>` resolved; gates tracked-length array layout + magic stamping + for-in length-probe
     bool linqInUse = false;         // set true when `#include <array>` resolved; drives LINQ scratch buffer + constant emission
-    bool forInScratchInUse = false; // set true when `for(x in {literal,list})` is lowered; drives _BGL_FORIN_SCRATCH_CAP constant emission (paired with the #storedEmitFirst scratchSupport block)
     bool bufInUse = false;          // set true when `#include <buf>` resolved; gates tracked-length byteArray layout (length+magic suffix at end)
 
     // Arrays of a value class own an instance per slot, drawn from one pool per class. The emitter
     // sizes each pool from the arrays recorded here; the copy operator is the one each slot store calls.
     struct valueElementArray { class arrayDeclaration* decl; class classDef* hostClass; bool isLocal; };
     map<class classDef*, vector<valueElementArray>> valueElementArrays;
+    set<string> instanceOpRefs;   // instance operators $opref names: each gets a `_bglOpRef_<prop>(a, b)` routine
     map<class classDef*, string> valueElementCopyOps;   // class → its copy operator's I6 property name
     set<classDef*> valueSlotClasses;   // classes whose array slots a member access reaches (_bglValSlot_<C>)
 

@@ -273,11 +273,10 @@ superposed object _bglArray {
     // `eq` is the element type's comparison routine, or 0 when a raw word compare is
     // correct (the compiler fills it via $opref(==)). Consulted only after identity fails,
     // and never on an empty slot — unused capacity holds 0.
-    // `op` is the element type's `==`, supplied by the compiler via $opref(==), in
-    // whichever form the type has — a free ROUTINE (static; the only form that can serve a
-    // bare-word element) or a PROPERTY (instance; sent to the element itself). They are told
-    // apart by metaclass, the same obj-or-routine idiom orLibrary uses. 0 means the type
-    // publishes neither, so word comparison stands and int/char/object pay nothing.
+    // `op` is the element type's `==`, supplied by the compiler via $opref(==) as a routine
+    // taking both operands (an instance operator comes wrapped in one that sends it to the
+    // element). 0 means the type publishes none, so word comparison stands and
+    // int/char/object pay nothing.
     int indexOf(var obj, var prop, var val, var op = 0){
         // length(), not size(): a search covers the elements the array HOLDS, not its
         // capacity. Unused slots are 0 and are not findable. This matches every other
@@ -288,10 +287,7 @@ superposed object _bglArray {
             var e = get(obj, prop, t);
             if(e == val) return t;
             #i6 {
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
+                if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) return t;
             }
         }
         return -1;
@@ -304,11 +300,6 @@ superposed object _bglArray {
     // its own buffer thereafter, without _bglArray knowing anything about the type.
     void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0){
         if(assign == 0){ set(obj, prop, n, v); return; }
-        // Unlike == and <=>, assignment has no usable instance form: on a first write the
-        // slot holds 0, so there is no receiver to send it to. $opref hands back a property
-        // number for an instance operator, which would be disastrous to call as a routine —
-        // so anything that is not a routine falls back to the plain word store.
-        #i6 { if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } }
         set(obj, prop, n, assign(get(obj, prop, n), v));
     }
 
@@ -404,7 +395,7 @@ superposed object _bglArray {
     // own storage — so nothing is freed and plain element types pay nothing. A slot may
     // hold 0 (never written); the type's own deinit guards the rest.
     void destroyValue(var dtor, var v){
-        #i6 { if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); }
+        #i6 { if(dtor ~= 0 && v ~= 0) dtor(v); }
     }
 
     void remove(var obj, var prop, int pos, var dtor = 0){
@@ -427,16 +418,12 @@ superposed object _bglArray {
         int len = length(obj, prop);
         while(pos < len){
             var e = get(obj, prop, pos);
-            // Same two comparison channels as indexOf, in the same order: identity, then the
-            // element type's routine, then its property operator for object elements.
+            // Same comparison as indexOf: identity, then the element type's `==`.
             bool hit = false;
             if(e == val) hit = true;
             if(!hit){
                 #i6 {
-                    if(op ~= 0 && e ~= 0 && val ~= 0){
-                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
-                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
-                    }
+                    if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) hit = true;
                 }
             }
             if(hit){
@@ -514,17 +501,10 @@ superposed object _bglArray {
         else         self.sort(obj, prop, cmp);
     }
 
-    // Invoke a comparator in whichever form the element type published it — the same
-    // obj-or-routine idiom indexOf uses. A ROUTINE (a static `operator <=>`, a lambda, or
-    // _bglArrayCompareAsc) takes both operands; a PROPERTY (an instance `operator <=>`) is
-    // sent to the left operand, which becomes its receiver. Calling a property number as
-    // though it were a routine address would run garbage, so the metaclass test is what
-    // lets an instance `<=>` be declared at all.
+    // Invoke a comparator: a routine taking both operands (a static `operator <=>`, a lambda,
+    // _bglArrayCompareAsc, or the routine $opref wraps an instance `operator <=>` in).
     int invokeCompare(var cmp, var a, var b){
-        #i6 {
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        }
+        #i6 { if(cmp ~= 0) return cmp(a, b); }
         return 0;
     }
 

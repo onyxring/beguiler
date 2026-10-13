@@ -16,6 +16,12 @@ Constant _BGL_TRACKED_ARRAYS;
       _bglFrameTop = _bglFrameTop + size;
       return _bglFramePool + (r * WORDSIZE);
    ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
    [ _bglFrameFree size;
       _bglFrameTop = _bglFrameTop - size;
    ];
@@ -181,7 +187,6 @@ object _bglArray
         self.set(obj, prop, n, v);
         return;
     }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
     self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ]
 ;

@@ -1,0 +1,15 @@
+// run_buf_assign_from_row — `buf = rows[i]` for an array<array<char>> copies the row as a buffer
+// (bytes and length), not as a word array.
+// EXPECT_OUTPUT: 2 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <buf>
+array<array<char>> programs = { { 1, 3, 1 }, { 2, 2 } };
+array<char> g[8];
+void main(){
+    bglInit();
+    array<char> code[16];
+    code = programs[1];
+    g = programs[0];
+    print($"{code.length} {g.length}^");
+}

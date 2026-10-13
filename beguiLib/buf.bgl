@@ -93,10 +93,15 @@ array<int> _bglBufGlulxStreams[16];
 // happened to numerically equal a wrapper's user pointer (see bug investigation
 // 2026-05-25).
 //
-// Capacity sized for: bglStringPoolReserve (10) + bglBufferPoolReserve (12)
-// + headroom for user-declared bufs. If a real use case needs more, this
-// array-size literal can be bumped; Beguile array<T>[N] requires a literal.
-array<int> _bglTrackedRegistry[128];
+// Sized from the string pool (every pooled buffer registers), plus room for the program's own buffers;
+// the pool's defaults live here because <string> includes <buf> first.
+#i6 {
+    Default bglStringPoolReserve 10;
+    Default bglBufferPoolReserve (bglStringPoolReserve + 2);
+    Default bglTrackedBufferReserve 116;
+    Constant _BGL_TRACKED_CAP (bglBufferPoolReserve + bglTrackedBufferReserve);
+    Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
+}
 
 //=============================================================================
 // Extend byteArray to surface buf operations through the natural Beguile
@@ -155,7 +160,7 @@ object _bglBuf {
         int p = (int)buf;
         if(p == 0) return false;
         for(int i = 0; i < self._trackedCount; i++)
-            if(_bglTrackedRegistry[i] == p) return true;
+            #i6 { if(_bglTrackedRegistry-->i == p) rtrue; }
         return false;
     }
 
@@ -167,12 +172,27 @@ object _bglBuf {
     // isTracked even though it was meant to be tracked — surfaces as a
     // runtime symptom rather than memory corruption).
     void _registerTracked(array<char> buf){
-        if(self._trackedCount >= 128){
-            #i6 { print "^[Beguile runtime: tracked buffer registry full]^"; }
-            return;
+        #i6 {
+            if(self._trackedCount >= _BGL_TRACKED_CAP){
+                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
+                return;
+            }
+            _bglTrackedRegistry-->(self._trackedCount) = buf;
         }
-        _bglTrackedRegistry[self._trackedCount] = (int)buf;
         self._trackedCount++;
+    }
+
+    // A local buffer leaves the registry when its routine returns.
+    void _unregisterTracked(array<char> buf){
+        int p = (int)buf;
+        for(int i = self._trackedCount - 1; i >= 0; i--)
+            #i6 {
+                if(_bglTrackedRegistry-->i == p){
+                    self._trackedCount--;
+                    _bglTrackedRegistry-->i = _bglTrackedRegistry-->(self._trackedCount);
+                    return;
+                }
+            }
     }
 
     // size returns the data capacity in chars from the size WORD at buf-->(-1).
@@ -219,7 +239,7 @@ object _bglBuf {
     // ── Copy / write ──────────────────────────────────────────────────────────
     // set(buf, val) writes the contents of `val` into `buf`: a packed string literal, or another
     // buffer, tracked or not.
-    array<char> set(array<char> buf, var stringVal){ return setAny(buf, stringVal); }
+    array<char> set(array<char> buf, string stringVal){ return setAny(buf, stringVal); }
     array<char> set(array<char> buf, array<char> src){ return setFromBuffer(buf, src); }
 
     // setAny: a value only known at run time — a tracked buffer, else a packed string literal.
@@ -323,6 +343,7 @@ object _bglBuf {
     // len=-1 (default) means "all of buf"; explicit len truncates. Glulx uses
     // glk_put_buffer; Z walks the bytes and prints each as (char).
     array<char> print(array<char> buf, int len = -1){
+        if((int)buf == 0) return buf;   // a null buffer prints nothing
         if(len <= 0) len = length(buf);
         #if TARGET_GLULX
             bgl.asm.putBuffer((int)buf + bgl.wordsize, len);

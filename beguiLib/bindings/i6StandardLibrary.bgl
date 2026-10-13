@@ -551,8 +551,14 @@ extend extern class object {
     // The library's StatusLineHeight re-arranges the status window's own parent, which is wrong once
     // the status bar has been split: its parent is then the new pair. The height belongs to the first
     // pair above it that splits above or below.
+    // The library's gg_statuswin_cursize is reset by restore and undo, so the height is read from Glk.
+    superposed int _bglStatusGetHeight(){
+        if(gg_statuswin == 0) return 0;
+        bgl.asm.windowGetSize(gg_statuswin, 0, ((int)_bglArrangeBuf) + bgl.wordsize);
+        return _bglArrangeBuf[0];
+    }
     superposed void _bglStatusSetHeight(int lines){
-        if(gg_statuswin == 0 || lines == gg_statuswin_cursize) return;
+        if(gg_statuswin == 0 || lines == _bglStatusGetHeight()) return;
         int pair = bgl.asm.windowGetParent(gg_statuswin);
         while(pair != 0){
             bgl.asm.windowGetArrangement(pair, ((int)_bglArrangeBuf) + bgl.wordsize, 0, 0);
@@ -570,7 +576,7 @@ extend extern class object {
             void operator = (int v){ gg_statuswin=v; }
         }
         replace auto height = {
-            int operator()        { return gg_statuswin_cursize; }
+            int operator()        { return _bglStatusGetHeight(); }
             void operator = (int v){ gg_statuswin_size = v; _bglStatusSetHeight(v); }
         }
     }

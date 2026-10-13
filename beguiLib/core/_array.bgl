@@ -92,28 +92,3 @@ superposed int _bglMemberAt(var obj, var prop, int i, int f){
         return _bglOutOfRange(i, n, f & 1);
     }
 }
-// Scratch storage for `for(x in {a, b, c})` lists.
-#storedEmitFirst scratchSupport {
-    Array _bglScratchStack --> (_BGL_FORIN_SCRATCH_CAP + 3);   ! word 0 is set by _bglScratchMake
-    Global _bglScratchTop = 0;
-    [ _bglScratchPush v;
-        if(_bglScratchTop >= _BGL_FORIN_SCRATCH_CAP){
-            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
-            quit;
-        }
-        _bglScratchTop++;
-        _bglScratchStack-->_bglScratchTop = v;
-    ];
-    [ _bglScratchMake count a;
-        a = _bglScratchStack;
-        #Ifdef _BGL_TRACKED_ARRAYS;
-            a-->0 = _BGL_FORIN_SCRATCH_CAP + 2;              ! capacity, in a table's count word
-            a-->(_BGL_FORIN_SCRATCH_CAP + 2) = $9084;       ! magic marker
-            a-->(_BGL_FORIN_SCRATCH_CAP + 1) = count;       ! length
-        #Ifnot;
-            a-->0 = count;                                  ! the core reads length here
-        #Endif;
-        _bglScratchTop = 0;
-        return a;
-    ];
-}

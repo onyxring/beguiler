@@ -267,10 +267,7 @@ object _bglArray
             return t;
         }
         
-                if(op ~= 0 && e ~= 0 && val ~= 0){
-                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
-                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
-                }
+                if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) return t;
             
     }
     return -1;
@@ -280,7 +277,6 @@ object _bglArray
         self.set(obj, prop, n, v);
         return;
     }
-     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
     self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ],
        clear [obj prop dtor sz t;
@@ -334,7 +330,7 @@ object _bglArray
     return self.insert(obj,prop,0,val,assign);
   ],
        destroyValue [dtor v;
-     if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
+     if(dtor ~= 0 && v ~= 0) dtor(v); 
   ],
        remove [obj prop pos dtor len i;
     len=self.length(obj,prop);
@@ -359,10 +355,7 @@ object _bglArray
         }
         if (~~hit) {
             
-                    if(op ~= 0 && e ~= 0 && val ~= 0){
-                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
-                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
-                    }
+                    if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) hit = true;
                 
         }
         if (hit) {
@@ -422,10 +415,7 @@ object _bglArray
     }
   ],
        invokeCompare [cmp a b;
-    
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        
+     if(cmp ~= 0) return cmp(a, b); 
     return 0;
   ],
        sort [obj prop compare len i key j;

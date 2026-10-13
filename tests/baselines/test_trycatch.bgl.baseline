@@ -20,6 +20,12 @@ global _bgl_tryret;
       _bglFrameTop = _bglFrameTop + size;
       return _bglFramePool + (r * WORDSIZE);
    ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
    [ _bglFrameFree size;
       _bglFrameTop = _bglFrameTop - size;
    ];
@@ -111,7 +117,7 @@ object bgl
     }
 ];
 [doubleRisky x _bglFrm;
-    _bglFrm = _bglFrameAlloc(6);
+    _bglFrm = _bglFrameAllocZ(6);
     _bglFrm-->0 = x;
     _bglFrm-->2 = _bgl_catch_cookie;
     _bglFrm-->3 = _bglFrameTop;
@@ -164,7 +170,7 @@ class _bglClass_Risk
 _bglClass_Risk g_risk
 ;
 [main _bglFrm;
-    _bglFrm = _bglFrameAlloc(20);
+    _bglFrm = _bglFrameAllocZ(20);
     _bglFrm-->6 = _bgl_catch_cookie;
     _bglFrm-->7 = _bglFrameTop;
     _bglFrm-->8 = self; _bglFrm-->9 = sender;

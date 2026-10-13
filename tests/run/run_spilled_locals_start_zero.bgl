@@ -1,0 +1,29 @@
+// run_spilled_locals_start_zero — a routine with more than 14 locals keeps the rest in the frame pool;
+// they start at 0, so a local array copied from another frees only its own words.
+// EXPECT_OUTPUT: many 18, frame top 0 many 18, frame top 0 many 18, frame top 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+extern var _bglFrameTop;
+array<int> g = {1, 2, 3};
+
+// Leaves non-zero words in the frame pool after it returns.
+void dirty() {
+    array<int> junk = {500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600};
+}
+
+// More than 14 locals, so the later ones (and the copy's bookkeeping) spill into the frame pool.
+int many() {
+    int a1 = 1; int a2 = 2; int a3 = 3; int a4 = 4; int a5 = 5; int a6 = 6; int a7 = 7;
+    int a8 = 8; int a9 = 9; int a10 = 10; int a11 = 11; int a12 = 12; int a13 = 13; int a14 = 14;
+    array<int> cp = g;
+    return a1 + a14 + cp.length;
+}
+
+void Main() {
+    bglInit();
+    for (int i = 0; i < 3; i++) {
+        dirty();
+        int r = many();
+        print($"many {r}, frame top {_bglFrameTop} ");
+    }
+}

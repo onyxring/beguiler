@@ -477,11 +477,19 @@ bool bglParser::processForInLiteralList(const std::string& elemVarName, std::str
     }
     file.getToken(token::parenClose);
 
+    // The list is a hidden local `array<var> = {…}`: storage per call, like any local array, so loops
+    // over lists nest and recurse. Its elements are words, as a list's values are.
     string arrName = format("_bglfia{0}", forInCounter++);
-    variableDeclaration& tmpDecl = *(new variableDeclaration());
+    arrayDeclaration& tmpDecl = *(new arrayDeclaration());
     tmpDecl.name = arrName;
-    tmpDecl.type = languageService.getType("var");
+    tmpDecl.src = stmtLoc;
+    tmpDecl.type = languageService.getType("array");
+    tmpDecl.elementType = "var";
+    tmpDecl.inLoop = loopDepth > 0;
     tmpDecl.isSynthetic = true;   // for-in array temp — compiler-generated, hidden in the debugger
+    auto* listInit = new initializerList();
+    listInit->elements = elements;
+    tmpDecl.declaredExpressionValue = listInit;
     if(body != nullptr) body->statements.push_back(&tmpDecl);
 
     string counterName = format("_bglfi{0}", forInCounter++);
@@ -513,7 +521,6 @@ bool bglParser::processForInLiteralList(const std::string& elemVarName, std::str
         }
     }
 
-    languageService.forInScratchInUse = true;   // gates the _BGL_FORIN_SCRATCH_CAP constant + scratchSupport block
     forInStatement& fi = *(new forInStatement());
     fi.src = stmtLoc;
     fi.elementVar = elemVarName;
@@ -524,7 +531,6 @@ bool bglParser::processForInLiteralList(const std::string& elemVarName, std::str
     // and read as words there. So the word template is correct even for
     // `for(char c in {'a','b'})`; the byte template would misread the scratch.
     fi.isByteArray = false;
-    fi.inlineElements = elements;
     fi.body = new statementBlock();
     functionDef forCtx;
     if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
@@ -1408,6 +1414,7 @@ bool bglParser::processDelete(vector<token>& t, Qualifiers& q, abstractObject& c
     if(varTypeName.empty())
         parsingError(format("'delete {0}': unknown variable", nameTok.originalValue.empty() ? varName : nameTok.originalValue));
     classDef* cls = languageService.classOf(varTypeName);
+    while(cls != nullptr && cls->isAlias && !cls->baseClasses.empty()) cls = cls->baseClasses[0];   // the same type
     if(cls == nullptr || cls->poolSize == 0)
         parsingError(format("'delete {0}': '{1}' is not a pooled class. delete is only valid for instances of classes declared with `[N]` or `extern[]`.",
             nameTok.originalValue.empty() ? varName : nameTok.originalValue, varTypeName));
@@ -2976,6 +2983,11 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
             // A member imported by #using (`level = 5;` for `catalog.level`) is assigned by its full path.
             for(objectDef* imp : usingObjectImports)
                 if(q.compare(0, dot, imp->name) == 0 && q.substr(dot + 1) == lhsOriginal){ lhsOriginal = q; break; }
+    } else if(sc.func != nullptr){
+        // A path that starts at a bare member (`label.price.cents = c;`) starts at self.
+        string head = lhsOriginal.substr(0, lhsOriginal.find('.'));
+        if(head.find_first_of("([") == string::npos && qualifyIdentifier(head, sc.func, sc.body).rfind("self.", 0) == 0)
+            lhsOriginal = "self." + lhsOriginal;
     }
     AssignTarget target = resolveAssignmentTarget(lhsOriginal, sc);
     assignExpr.variableLeft = target.variableLeft;
@@ -3036,6 +3048,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     bool savedForBind = readingForBind;
     readingForBind = isBindAssign;
     expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
+    if(rhs != nullptr && rhs->resolvedType == "array<char>") rhs->resolvedType = "bytearray";   // a row of an array<array<char>>
     readingForBind = savedForBind;
     currentExpectedType = savedExpectedAssign;
     {
@@ -3218,6 +3231,12 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     const sourceLocation& stmtLoc = sc.src;
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
+    if(func != nullptr && tok.value.find('.') != string::npos){
+        // A path that starts at a bare member (`label.price.cents += 1;`) starts at self.
+        string head = tok.value.substr(0, tok.value.find('.'));
+        if(head.find_first_of("([") == string::npos && qualifyIdentifier(head, func, body).rfind("self.", 0) == 0)
+            tok.value = "self." + tok.value;
+    }
     string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
     if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
     // Honour a member's `as <i6name>` alias, as the plain-assignment and read paths do:
@@ -3407,6 +3426,12 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
                 pb.prop = cIsMember ? cProp : "0";
                 pb.elemType = resolveArrayElementType(lhs, func, body);
                 if(pb.elemType->empty() && cIsMember) pb.elemType = resolveArrayElementTypeDotted(cOwner, cProp, func, body);
+                // `+=`/`-=` take one element; another array is one only for an array of arrays.
+                if(rhs != nullptr && isWordArrayType(rhs->resolvedType) && !pb.elemType->empty()
+                   && *pb.elemType != "var" && !isWordArrayType(*pb.elemType))
+                    parsingError(format("'{0}' on an array takes one element ({1}); '{2}' is an array. Use a "
+                                        "loop to {3} each element.", symbol.value, typeDisplayName(*pb.elemType),
+                                        rhs->text(), symbol.value == "+=" ? "append" : "remove"));
             }
             a.emitterBody = expandEmitterBody(blk, pb);
             a.emitterParam = opFunc->params[0]->name;

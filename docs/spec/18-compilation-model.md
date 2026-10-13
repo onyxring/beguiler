@@ -186,8 +186,8 @@ template that needs it is applied. Each block is emitted at most once.
 program uses them: the frame pool is sized to the program, and the several `for … in` forms each expand
 to a different loop. The compiler holds these as built-in I6 templates, which are part of the system
 library but are not Beguile source and are never `#include`d; authors do not write or edit them. A
-template names the stored blocks it needs, so that a helper such as the literal-list `for … in`
-scratch buffer is emitted only in programs that use the construct.
+template names the stored blocks it needs, so that a helper is emitted only in programs that use the
+construct.
 
 ## 18.10 The Frame Pool
 

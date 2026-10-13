@@ -1,0 +1,14 @@
+// run_implicit_self_deep_member_write — a write through a path that starts at a bare member three
+// deep (`label.price.cents = c;`, `+= 1`) goes to self, as the read does.
+// EXPECT_OUTPUT: 5 5
+#beguilerSettings { target = z5; informName = "none"; }
+value class Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
+value class Label { Coins price; int code; Label operator = (Label o) { price = o.price; code = o.code; return self; } }
+class Crate : object {
+    Label label;
+    void set(int c) { label.price.cents = c; label.code = c; }
+    int get() { return label.price.cents; }
+    void bump() { label.price.cents += 1; }
+}
+Crate k { }
+void main(){ bglInit(); k.set(4); k.bump(); print($"{k.get()} {k.label.price.cents}^"); }

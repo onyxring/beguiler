@@ -500,7 +500,6 @@ class forInStatement : public statement {
                                       // child collection; lowers to I6 `objectloop(el in <container>)`.
                                       // `arrayVar` holds the container's emitted name.
         statementBlock* body = nullptr;
-        vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
         string memberBase;     // a member word array: its first element's address (`obj.&prop`)
         string memberLength;   // and its length, as the parser reads it (tracked or raw layout)
         bool viaPointer = false;   // a dotted path read as a value: a `ref` member's array, not property data
@@ -690,7 +689,6 @@ class beguilerSettingsDef : public typeDef {
         bool framePoolSizeSet = false; // the program gave framePoolSize; otherwise the pool is sized from the program
         int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
-        int forInScratchSize = -1;     // literal-list for-in scratch capacity, max elements (-1 = unset; default 31 from schema)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
         bool   autoInitialize = true;  // false → BLR does NOT wrap main (replace main / [main; bglInit; _oldmain]).
                                        // Set false when another extension (e.g. orLibrary) already replaces main;

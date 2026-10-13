@@ -1,0 +1,5 @@
+/* A Glulx-only type used in a Z-machine build names the target it needs. */
+// EXPECT_ERROR: Unknown type 'float': it exists only on a Glulx target.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Tank : object { float litres; }
+void main(){ }

@@ -113,7 +113,7 @@ extend extern class object {
 const int    levelValue   = TRIAL_LEVEL;
 const string labelValue   = LABEL;
 const int    poolSize     = #beguilerSettings.framePoolSize;
-const int    forInScratch = #beguilerSettings.forInScratchSize;
+const int    worldBuf     = #beguilerSettings.worldBufSize;
 const bool   autoInit     = #beguilerSettings.autoInitialize;
 const string targetName   = #beguilerSettings.target;
 
@@ -170,7 +170,7 @@ verb Settings {
         print(targetNote); print("^");
         print(poolNote); print("^");
         print(economyNote); print("^");
-        print($"Target: {targetName}. Pool: {poolSize}. For-in scratch: {forInScratch}.^");
+        print($"Target: {targetName}. Pool: {poolSize}. World buffer: {worldBuf}.^");
         if (autoInit) print("Auto-initialize on.^");
         else print("Auto-initialize off.^");
     }

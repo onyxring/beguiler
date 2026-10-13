@@ -1,0 +1,26 @@
+// run_pooled_copy_owned_members — copy() on a pooled class copies a nested owned member's fields and a
+// stringObj member's text into dst's own storage, keeps dst's own create/destroy when the source is a
+// subclass instance, and new() resets a nested owned member.
+// EXPECT_OUTPUT: 5 6 | 0 0 | A A b | 1 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+value class Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
+value class Label { Coins price; int code; Label operator = (Label o) { price = o.price; code = o.code; return self; } }
+class crate[3] : object, bglAllocated { Label label; stringObj mark; }
+class bigCrate[2] : crate { Label extra; }
+void main(){
+    bglInit();
+    crate a = new crate(); crate b = new crate();
+    b.label.price.cents = 5; b.label.code = 6;
+    a.copy(b);
+    print($"{a.label.price.cents} {a.label.code} | ");
+    a.label.price.cents = 9; delete a; a = new crate();
+    print($"{a.label.price.cents} {a.label.code} | ");
+    b.mark = "A"; a.copy(b);
+    print($"{a.mark} {b.mark} ");
+    a.mark = "b"; print($"{a.mark} | ");
+    bigCrate w = new bigCrate();
+    int before = b.remaining();
+    a.copy(w); delete a;
+    print($"{before} {b.remaining() - 1}^");
+}

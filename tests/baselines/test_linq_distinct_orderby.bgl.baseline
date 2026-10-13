@@ -180,10 +180,7 @@ object _bglArray
     }
   ],
        invokeCompare [cmp a b;
-    
-            if(metaclass(cmp) == Routine) return cmp(a, b);
-            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
-        
+     if(cmp ~= 0) return cmp(a, b); 
     return 0;
   ],
        sort [obj prop compare len i key j;

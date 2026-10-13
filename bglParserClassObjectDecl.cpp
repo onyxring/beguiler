@@ -1093,12 +1093,14 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
                 name = file.getToken({eTokenType::identifier, eTokenType::dataType});
             }
         } else {
+            if(tok.is(eTokenType::identifier) && file.peekToken(1).is(eTokenType::identifier)) unknownTypeError(tok);
             tok.assertDataType();
             returnType = tok;
             returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
             name = file.getToken({eTokenType::identifier, eTokenType::dataType});
         }
     } else {
+        if(tok.is(eTokenType::identifier) && file.peekToken(1).is(eTokenType::identifier)) unknownTypeError(tok);
         returnType=tok.assertDataType();
         if(returnType.value == "func") returnType.value = parseFuncType();  // func<...> member type: consume its own <...>
         returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type

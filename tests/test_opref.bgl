@@ -1,7 +1,7 @@
 /* test_opref.bgl — `$opref(<op>[, <operandType>])` operator references.
  *
  * $opref yields a callable reference to one of a type's operators: a free-routine
- * name for a `static` operator, a property name for an instance operator, and 0
+ * name for a `static` operator, a routine sending an instance operator, and 0
  * when the type publishes nothing referenceable (emitters inline and have no
  * address, so they never qualify). The BLR uses it to hand `_bglArray`'s shared
  * `var`-typed routines a type-aware comparison without the compiler hardcoding
@@ -30,8 +30,8 @@ value class Point {
     static int  operator <=> (Point a, Point b) { if(a.x < b.x) return -1; if(a.x > b.x) return 1; return 0; }
 }
 
-// instance operator → property name. `<=>` has the same freedom as any other
-// operator: _bglArray routes a property form to the element as its receiver.
+// instance operator → a routine that sends it to the left operand. `<=>` has the same
+// freedom as any other operator.
 value class Tagged {
     int v;
     Tagged operator = (Tagged o) { v = o.v; return self; }
@@ -70,7 +70,7 @@ void exerciseArrayIndexOf(){
     int viaNone     = ints.indexOf(20);        // int publishes nothing → word compare
     int viaUserStat = pts.indexOf(pc);
     int viaUserInst = tags.indexOf(tagc);
-    tags.sort();                               // instance <=> dispatched as a property
+    tags.sort();                               // instance <=> sent to the element
     pts.sort();                                // static <=> dispatched as a routine
 }
 

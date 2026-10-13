@@ -1,0 +1,13 @@
+// run_delete_through_alias_class — `delete` on a variable typed by an alias of a pooled class frees
+// the slot, as on the class itself.
+// EXPECT_OUTPUT: 3 4
+#beguilerSettings { target = z5; informName = "none"; }
+class Marble[4] : object, bglAllocated { int n = 0; }
+alias class BlueMarble for Marble { }
+void main(){
+    bglInit();
+    BlueMarble m = (BlueMarble)new Marble();
+    print($"{m.remaining()} ");
+    delete m;
+    Marble k = new Marble(); print($"{k.remaining() + 1}^");
+}

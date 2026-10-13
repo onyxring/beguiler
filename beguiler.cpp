@@ -193,9 +193,11 @@ void beguiler::extractBlorbSettings(const string& filename) {
                         // the library is lexed before the parser reaches this block.
                         if(beguilerSettings.target.empty() && (val == "glulx" || val == "z5" || val == "z8" || val == "z3"))
                             beguilerSettings.target = val;
-                        if(val == "glulx")
+                        // A target given on the command line wins over the source's.
+                        const string& t = beguilerSettings.target;
+                        if(t == "glulx")
                             parser.defineSymbol("target_glulx");
-                        else if(val == "z5" || val == "z8")
+                        else if(t == "z5" || t == "z8")
                             parser.defineSymbol("target_zcode");
                     }
                 }
@@ -399,7 +401,6 @@ void beguiler::runPostParseChecks() {
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
     if(beguilerSettings.linqScratchSize == -1) beguilerSettings.linqScratchSize = 32;
     if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
-    if(beguilerSettings.forInScratchSize == -1) beguilerSettings.forInScratchSize = 31;
 }
 
 // When blorb packaging is on and no IFID was supplied, derives one deterministically from the

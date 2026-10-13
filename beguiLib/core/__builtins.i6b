@@ -19,6 +19,12 @@ template framePool($size) {{{
       _bglFrameTop = _bglFrameTop + size;
       return _bglFramePool + (r * WORDSIZE);
    ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
    [ _bglFrameFree size;
       _bglFrameTop = _bglFrameTop - size;
    ];
@@ -116,14 +122,6 @@ template forIn.openByte($counter, $array, $element) {{{
 
 template forIn.closeByte() {{{
    }
-}}}
-
-template forInList.push($element) triggers scratchSupport {{{
-   _bglScratchPush($element);
-}}}
-
-template forInList.make($target, $count) triggers scratchSupport {{{
-   $target = _bglScratchMake($count);
 }}}
 
 // ---------------------------------------------------------------------------

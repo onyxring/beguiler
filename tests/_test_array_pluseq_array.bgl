@@ -1,0 +1,7 @@
+/* `+=` on an array appends one element of its type; another array is not one. */
+// EXPECT_ERROR: '+=' on an array takes one element (int); 'src' is an array.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+array<int> src = {1, 2};
+array<int> dst[8];
+void main(){ dst += src; }

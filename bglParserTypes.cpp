@@ -1754,6 +1754,15 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
             }
             languageService.valueElementArrays[vc];   // the emitter writes the routines for every class named here
             rep = (op == "=" ? "_bglValAssign_" : "_bglValFree_") + vc->dName();
+        } else if(!isStaticOp && !rep.empty()){
+            // A property id can't be told from a routine address at run time (on Glulx either can be a
+            // small number), so an instance operator is handed over as a routine that sends it. An
+            // instance `=` or `deinit` has no receiver in an empty slot, so the runtime gets none.
+            if(op == "=" || op == "deinit") rep = "0";
+            else {
+                languageService.instanceOpRefs.insert(rep);
+                rep = "_bglOpRef_" + rep;
+            }
         }
         if(rep.empty()){
             // Only a type Beguile actually emits is worth warning about. The bare-word
