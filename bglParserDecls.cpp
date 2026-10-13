@@ -381,7 +381,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     arrDecl.inLoop = loopDepth > 0;
     arrDecl.name = (string)name;
     if(!isExternal && getCurrentCompileContext() == eCompileContext::global && bglLanguageService::isI6StatementKeyword(arrDecl.name))
-        parsingError(format("Array '{0}' is named like an Inform 6 keyword or built-in function, which Inform 6 won't take "
+        parsingError(format("Array '{0}' is named like an Inform 6 keyword, built-in function or built-in property, which Inform 6 won't take "
                             "as an array's name; rename it.", name.originalValue.empty() ? (string)name : name.originalValue));
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;

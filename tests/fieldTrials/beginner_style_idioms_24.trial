@@ -1,0 +1,157 @@
+Room A
+Room A. The front desk. The lobby is to the south.
+You can see a key board (on which are a red key, a blue key, a green key and a gold key), a pigeonholes (which is empty) and a clock here.
+> rooms
+Room 101 (ground floor): free.
+Room 102 (ground floor): free.
+Room 301 (middle floor): free.
+Room 901 (top floor): free.
+> stats
+Till: $0. Check-ins: 0.
+Dearest room: 901.
+Ann is not staying.
+Ann is next.
+The day is quiet. The maid is resting.
+> lobby
+Waiting: 1. Ann, 2. Bob, 3. Cal, 4. Dee
+Next up: Ann.
+> register
+The register is empty.
+> bills
+No bills yet.
+> keys
+101 plain  10
+102 plain  10
+301 suite  30
+901 penth  35
+On the board: 4.
+> x gold key
+A key with the tag 901. A night costs 35.
+> checkin red key
+Ann takes the key to room 101.
+> checkin green key
+Bob takes the key to room 301.
+A night goes by.
+> checkin red key
+Room 101 is taken.
+> guests
+2 guests: Ann Bob.
+Everyone has stayed a night.
+Someone is in a suite.
+Owing over 20: 1.
+> rooms
+Room 101 (ground floor): taken, Ann, 1 night, owes $10.
+Room 102 (ground floor): free.
+Room 301 (middle floor): taken, Bob, 1 night, owes $30.
+Room 901 (top floor): free.
+A night goes by.
+> wait
+Time passes.
+> guests
+2 guests: Ann Bob.
+Everyone has stayed a night.
+Someone is in a suite.
+Owing over 20: 1.
+> take red key
+Ann has that key.
+A night goes by.
+> checkin gold key
+Cal takes the key to room 901.
+> checkin blue key
+The hotel is full. No more guests.
+> lobby
+Waiting: 1. Dee
+Next up: Dee.
+A night goes by.
+> night
+Nights so far: 5 nights. Turn 15.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+A night goes by.
+> guests
+3 guests: Ann Bob Cal.
+Everyone has stayed a night.
+Someone is in a suite.
+Owing over 20: 3.
+> rooms
+Room 101 (ground floor): taken, Ann, 5 nights, owes $50.
+Room 102 (ground floor): free.
+Room 301 (middle floor): taken, Bob, 5 nights, owes $150.
+Room 901 (top floor): taken, Cal, 2 nights, owes $70.
+> checkout blue key
+Room 102 is not out (code 1).
+A night goes by.
+> checkout green key
+Paid: Bob, room 301, 180.
+> rooms
+Room 101 (ground floor): taken, Ann, 6 nights, owes $60.
+Room 102 (ground floor): free.
+Room 301 (middle floor): dirty.
+Room 901 (top floor): taken, Cal, 3 nights, owes $105.
+1 to clean.
+> wait
+Time passes.
+A night goes by.
+The maid has cleaned 1 room.
+> rooms
+Room 101 (ground floor): taken, Ann, 7 nights, owes $70.
+Room 102 (ground floor): free.
+Room 301 (middle floor): free.
+Room 901 (top floor): taken, Cal, 4 nights, owes $140.
+> checkin green key
+Dee takes the key to room 301.
+> lobby
+The lobby is empty.
+A night goes by.
+> checkout gold key
+Paid: Cal, room 901, 175.
+> checkout red key
+Paid: Ann, room 101, 80.
+> checkout green key
+Paid: Dee, room 301, 30.
+The maid has cleaned 3 rooms.
+> bills
+Bills: 180 175 80 30. Total $465.
+Smallest 30, biggest 180.
+First two add up to 355.
+> register
+ANN, BOB, CAL, DEE
+Names ending in n: 1.
+> stats
+Till: $465. Check-ins: 4.
+Dearest room: 901.
+Ann is not staying.
+Nobody is next.
+The day is busy. The maid is resting.
+> keys
+301 suite  30
+101 plain  10
+901 penth  35
+102 plain  10
+On the board: 4.
+> take blue key
+Taken.
+> drop blue key
+The key to room 102 falls on the floor.
+> take blue key
+Taken.
+> s
+Room B
+Room B. The lobby. The front desk is to the north.
+You can see a maid here.
+> checkin blue key
+Keys are given out at the desk.
+> n
+Room A
+Room A. The front desk. The lobby is to the south.
+You can see a key board (on which are a green key, a red key and a gold key), a pigeonholes (which is empty) and a clock here.
+> stats
+Till: $465. Check-ins: 4.
+Dearest room: 901.
+Ann is not staying.
+Nobody is next.
+The day is busy. The maid is resting.

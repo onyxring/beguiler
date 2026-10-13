@@ -1,0 +1,6 @@
+/* A global can't be named like a standard-library property. */
+// EXPECT_ERROR: 'capacity' is already defined
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+array<int> capacity = { 60, 150 };
+void main(){ }

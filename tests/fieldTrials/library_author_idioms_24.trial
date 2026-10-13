@@ -1,0 +1,116 @@
+Room A
+Room A.
+You can see a brass tap, a glass jar, a tin cup, a stone basin, a clay jug and a steel flask here.
+> vessels
+glass jar glass 0ml/500 nothing 0% pours 0
+tin cup tin 0ml/250 nothing 0% pours 0
+stone basin stone 0ml/2000 nothing 0% pours 0
+clay jug clay 750ml/1000 wine 75% pours 0
+steel flask steel 300ml/300 oil 100% pours 0 full
+wet 2, one full; first dry glass jar; poured 0ml, spilled 0ml
+tags 0 (made 0, peeled 0); log
+warmth 10, water 0, oil 1, wine 1
+> measure jug
+The clay jug holds 750ml of wine (3 cups, 250ml free).
+> measure flask
+The steel flask holds 300ml of oil (1 cups, 0ml free).
+> pour flask into cup
+You pour 150ml of oil into the tin cup.
+> measure flask
+The steel flask holds 150ml of oil (0 cups, 150ml free).
+> warm 10
+warmth 20, changes 1, mild.
+> pour flask into cup
+You pour 100ml of oil into the tin cup and it is full.
+> fullest
+The clay jug is fullest at 75%; 1 hold wine.
+> fill jar
+You fill the glass jar with 2 cups: 500ml.
+> fill cup from jar
+There is no water here.
+> fill basin from tap
+You fill the stone basin with 8 cups: 2.00l.
+> pour jug into jar
+The glass jar already holds water.
+> empty cup
+You pour 250ml away.
+> pour jug into cup
+You pour 250ml of wine into the tin cup and it is full.
+> empty jug into basin
+The stone basin already holds water.
+> compare jug with cup
+The clay jug holds more than the tin cup.
+> compare basin with jar
+The stone basin holds more than the glass jar.
+> compare cup with flask
+The tin cup holds more than the steel flask.
+> pour flask into cup
+The tin cup already holds wine.
+> fullest
+The stone basin is fullest at 100%; 2 hold water.
+> rank
+stone basin=2000 glass jar=500 clay jug=500 tin cup=250 steel flask=50 top stone basin.
+> cool 50
+warmth 0, changes 2, cold.
+> warm 100
+warmth 40, changes 3, mild.
+> take jug
+(glug) Taken.
+> take cup
+(slosh) Taken.
+> take jar
+(clink) Taken.
+> carried
+glass jar tin cup clay jug - 3 carried, 1250ml.
+> label jar
+The glass jar is tagged A.
+> label jug
+The clay jug is tagged B.
+> label cup
+The tin cup is tagged C.
+> label basin
+No tag is left (3 in use).
+> vessels
+glass jar glass 500ml/500 water 100% pours 0 full tag A
+tin cup tin 250ml/250 wine 100% pours 0 full tag C
+stone basin stone 2.00l/2000 water 100% pours 0 full
+clay jug clay 500ml/1000 wine 50% pours 1 tag B
+steel flask steel 50ml/300 oil 16% pours 2
+wet 5, one full; first dry Room A; poured 500ml, spilled 250ml
+tags 3 (made 3, peeled 0); log steel>tin steel>tin tap>glass tap>stone x clay>tin x x +A +B +C
+warmth 40, water 2, oil 1, wine 2
+> untag jar
+untagged 1; tags 2.
+> label basin
+The stone basin is tagged D.
+> empty cup
+You pour 250ml away.
+> empty cup
+The tin cup is already empty.
+> fill jug
+The clay jug holds wine.
+> untag jug
+untagged 1; tags 2.
+> untag basin
+untagged 1; tags 1.
+> untag cup
+untagged 1; tags 0.
+> empty flask into tap
+The brass tap cannot hold liquid.
+> pour tap into jar
+Only vessels pour.
+> measure tap
+The brass tap holds nothing.
+> pour jar into jar
+That would pour it into itself.
+> pour cup into jar
+The tin cup is empty.
+> vessels
+glass jar glass 500ml/500 water 100% pours 0 full
+tin cup tin 0ml/250 nothing 0% pours 0
+stone basin stone 2.00l/2000 water 100% pours 0 full
+clay jug clay 500ml/1000 wine 50% pours 1
+steel flask steel 50ml/300 oil 16% pours 2
+wet 4, one full; first dry tin cup; poured 500ml, spilled 500ml
+tags 0 (made 4, peeled 4); log steel>tin steel>tin tap>glass tap>stone x clay>tin x x +A +B +C -A +D -B -D -C
+warmth 40, water 2, oil 1, wine 1

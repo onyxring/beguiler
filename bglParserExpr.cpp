@@ -504,6 +504,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         i6RawNode& load = *(new i6RawNode());
         load.text = cap.globalName + " = " + cap.outerName + ";";
         load.cooked = true;   // the local is renamed here as everywhere else in the routine
+        captureLoads.insert(&load);
         pendingInjections.push_back(&load);
         i6RawNode& unload = *(new i6RawNode());
         unload.text = cap.outerName + " = " + cap.globalName + ";";
@@ -1530,10 +1531,16 @@ string bglParser::takeBranchSetUp(size_t mark){
         auto* raw = dynamic_cast<i6RawNode*>(pendingInjections[i]);
         if(raw == nullptr || !raw->parts.empty() || raw->isI6Island) return "";
     }
+    // A lambda's capture load stays ahead of the whole ternary: its copy-back runs after the
+    // statement whichever branch was taken.
     string text;
-    for(size_t i = mark; i < pendingInjections.size(); i++)
+    vector<statement*> kept;
+    for(size_t i = mark; i < pendingInjections.size(); i++){
+        if(captureLoads.count(pendingInjections[i])){ kept.push_back(pendingInjections[i]); continue; }
         text += dynamic_cast<i6RawNode*>(pendingInjections[i])->text + " ";
+    }
     pendingInjections.resize(mark);
+    pendingInjections.insert(pendingInjections.end(), kept.begin(), kept.end());
     return text;
 }
 
@@ -1851,6 +1858,7 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
         for(int g = 0; matches && g <= groups; g++) matches = file.peekToken(k + 1 + g).is(token::parenClose);
         if(matches && file.peekToken(k + 2 + groups).is(token::period)){
             for(int i = 1; i < k; i++) file.getToken();
+            st.chainCast = castType;   // a cast written before the group applies to what the member reads
             castType = outer;
             cur = file.getToken();
             for(int g = 0; g <= groups; g++) file.getToken(token::parenClose);
@@ -1992,6 +2000,12 @@ bglParser::ExprStep bglParser::parseExprParenClose(ExprParseState& st){
     // Apply any cast that was queued for this paren depth. The inner expression
     // resolved against its natural type; we now convert it to the cast's target.
     string castFrom;   // the type a cast closed here converted from (an upcast dispatches statically)
+    if(!parenCastStack.empty() && parenCastStack.back().parenDepthAtPush == parenDepth
+       && file.peekToken().is(token::period) && st.castType.empty()){
+        // `(int)(group).member`: the member is read first; the cast is the whole chain's.
+        st.castType = parenCastStack.back().castType;
+        parenCastStack.pop_back();
+    }
     if(!parenCastStack.empty() && parenCastStack.back().parenDepthAtPush == parenDepth){
         PendingParenCast pc = parenCastStack.back();
         parenCastStack.pop_back();
@@ -2377,9 +2391,11 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
        && splitQualifiedMember(arrName, func, body, memberOwner, memberProp))
         arrName = memberOwner + "." + propertyI6Name(memberProp);
     // Inside a lambda, an outer variable (or `self`) as the receiver is read through its capture.
-    if(func != nullptr && func->isLambda && arrName.find('.') == string::npos){
+    // A block inside the lambda (an `if` body) parses with its own context; the lambda is still currentFunc.
+    if(functionDef* lam = func != nullptr && func->isLambda ? func : currentFunc != nullptr && currentFunc->isLambda ? currentFunc : nullptr;
+       lam != nullptr && arrName.find('.') == string::npos){
         string q = qualifyIdentifier(arrName, func, body);
-        for(auto& cap : func->captures) if(cap.bodyName() == q){ arrName = q; break; }
+        for(auto& cap : lam->captures) if(cap.bodyName() == q){ arrName = q; break; }
     }
     if(i6ExprMemberArrays.count(arrName)){
         isMemberWordArray = true;
@@ -2917,6 +2933,7 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     // `(T)obj.method()` casts the call's result; only `((T)obj).method()` retypes the receiver.
     string resultCast;
     if(!castType.empty() && !st.receiverCast){ resultCast = castType; castType = ""; }
+    if(st.receiverCast && !st.chainCast.empty()){ resultCast = st.chainCast; st.chainCast.clear(); }
     st.receiverCast = false;
     string explicitCast = castType;   // "" unless the receiver was written `((T)obj).method()`
     string objType = !castType.empty() ? castType : actualType;
@@ -3379,7 +3396,8 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     string receiverCastType;
     if(st.receiverCast){
         receiverCastType = castType;
-        castType = "";
+        castType = st.chainCast;   // `(int)((T)obj).member` casts the member's value
+        st.chainCast.clear();
         st.receiverCast = false;
         recvType = receiverCastType;
         propType.clear();
@@ -3553,6 +3571,13 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     // float casts it materializes a temp via the conversion emitter.
     // A path that goes on (`(int)o.part.width`) casts its end, so the cast waits for the last member.
     bool pathGoesOn = st.prefetched ? st.prefetched->is(token::period) : file.peekToken().is(token::period);
+    // A getter returning an enum or bnum is read first, and its value is cast.
+    if(!castType.empty() && !pathGoesOn && !readGoesOn && plainMember && !readingForBind)
+        if(functionDef* fn = nativeGetterOf(propType); fn != nullptr && fn->returnType.name != castType
+           && languageService.findEnum(fn->returnType.name) != nullptr){
+            accessText = accessText + "." + fn->i6name + "()";
+            propType = fn->returnType.name;
+        }
     if(!castType.empty() && !pathGoesOn){
         string newText = applyCastConversion(accessText, propType, castType);
         expr->tokens.push_back(newText);
@@ -3970,6 +3995,22 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
             next.value, cur.value));
     }
     prefetched = next;
+    // `action != Take` in a class with a `take()` method: the member wins (§3.8.2), but a method named
+    // bare, not called, isn't a value; the verb was meant.
+    if(func != nullptr && !next.is(token::parenOpen) && !next.is(token::period) && !looseIdentifierMode
+       && !qualifyFromParams(cur.value, func) && !qualifyFromBodyLocals(cur.value, body)){
+        classDef* cls = currentClass != nullptr ? currentClass : currentObject != nullptr ? currentObject->objectClass : nullptr;
+        auto isMethod = [&](typeMember* m){ auto* fd = dynamic_cast<functionDef*>(m);
+                                            return fd && fd->name == cur.value && !fd->isEmitter && !fd->isStatic; };
+        bool method = false;
+        if(currentObject != nullptr) for(typeMember* m : currentObject->members) if(isMethod(m)) method = true;
+        if(!method && cls != nullptr) method = cls->findMember(isMethod) != nullptr;
+        if(method)
+            for(verbObjectDef* v : languageService.verbs)
+                if(v->name == cur.value)
+                    parsingError(format("'{0}' here names this object's method, which isn't a value; for the verb, "
+                        "write `::{0}`.", cur.originalValue.empty() ? cur.value : cur.originalValue));
+    }
     // Resolve identifier: variables/params/globals take priority over verb action constants.
     // Only emit ##VerbName if the identifier doesn't resolve as a declared variable.
     // qualifyIdentifier handles: params/locals → name, object members → self.name,
@@ -5061,6 +5102,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 parsingError(format("'{0}' has nothing before it: an operand is missing.", cur.value));
             }
         }
+        // `int a = 1, b = 2;`: a comma outside any brackets separates nothing in an expression.
+        if(cur.value == "," && !cur.isString() && !cur.is(eTokenType::charLiteral) && st.parenDepth == 0
+           && find(terminators.begin(), terminators.end(), ",") == terminators.end())
+            parsingError("A ',' here separates nothing: declare or assign one variable per statement "
+                         "(`int a = 1; int b = 2;`).");
         // `..word` / `. .word`: a dictionary word has one dot, and a member access needs a left side.
         if(cur.value == "." && !cur.isString() && !cur.is(eTokenType::charLiteral)){
             const string back = expr->tokens.empty() ? string("(") : expr->tokens.back();

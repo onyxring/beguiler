@@ -310,7 +310,8 @@ class bglParser {
         void checkExpressionShape(expression* expr, bool whole = true);
         bool definesExternGlobal(const string& name);
         int exprParseDepth = 0;
-        bool allowEmptyExpr = false;   // a `for(;;)` header part is parsing
+        bool allowEmptyExpr = false;
+        set<statement*> captureLoads;   // a lambda's capture load: runs before its statement, never inside a ?: branch   // a `for(;;)` header part is parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
         bool isSymbolDefined(const string& name) const { return definedSymbols.count(name) > 0; }
@@ -823,6 +824,7 @@ class bglParser {
             optional<token> prefetched;         // a token a sub-parse produced that the loop must see next
             string castType;  // set when a (TypeName) cast prefix is detected
             bool receiverCast = false;  // `((T)obj).member`: castType retypes obj itself
+            string chainCast;           // `(int)((T)obj).member`: the cast on the whole chain, applied after the member
             string chainResultCast;     // `(T)a.f().g()`: the cast waits for the chain's last call
             // `<expr>?.member`: the receiver already parsed into expr, for parseExprOptionalChain.
             string chainRecvText, chainRecvType;

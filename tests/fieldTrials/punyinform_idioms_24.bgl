@@ -1,0 +1,504 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-fourth PunyInform program, written plainly: two rooms (Room A with a bench, a
+// drawer and a radio, Room B to the north with a shelf and a clerk) and OPTIONAL_SCORED; a radio that
+// is an openable, switchable container whose missing parts are a `bnum` of faults computed from its
+// children, tested with `&` and combined with `|`, its `before` taking `Receive` (one part of each
+// kind) and its `after` taking `SwitchOn`, `SwitchOff`, `Receive` and `LetGo`; a `Part` class with an
+// enum kind, a worn flag and a description routine with a `switch` over the kind; a daemon on the radio
+// cycling broadcast lines from an `array<string>` with `%`; a value class `Volume` with `operator ()`,
+// `=`, `+=` and `-=` that clamps; a `tune NUMBER` verb finding a station in an `array<int>` with a
+// `for` loop and a `switch` with a range and a guard case; a `scan` verb stepping the stations with
+// `do`/`while`; `louder` and `softer` verbs; a clerk with `life` (Ask through NextWord, Give swapping a
+// worn part) and `orders` (Wait, others); a `stringObj` log appended with interpolated strings by a
+// helper with a default argument; `bgl.world.instances` over the class with and without a lambda; the
+// ternary, `for … in` over `children`, `while`; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum ePartKind { valve, coil, dial }
+
+bnum eFault { noValve, noCoil, noDial }
+
+array<string> kindNames  = {"valve", "coil", "dial"};
+array<int>    stations   = {88, 94, 101};
+array<string> stationNames = {"Station One", "Station Two", "Station Three"};
+array<string> broadcasts = {"A voice reads the time.", "A tune plays.", "A voice reads the weather."};
+
+value class Volume {
+    int _level = 0;
+
+    int  operator ()          { return _level; }
+    void operator = (int v)   { _level = v < 0 ? 0 : (v > 5 ? 5 : v); }
+    void operator += (int v)  { _level = _level + v > 5 ? 5 : _level + v; }
+    void operator -= (int v) {
+        _level = _level - v;
+        if (_level < 0) _level = 0;
+    }
+}
+
+stringObj logText;
+int  logCount     = 0;
+int  tuneTries    = 0;
+bool radioFixed   = false;
+bool firstListen  = false;
+bool allStations  = false;
+
+array<int> heardList[3];
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string kindName(ePartKind k) {
+    return kindNames[(int)k - 1];
+}
+
+eFault faultFor(ePartKind k) {
+    switch (k) {
+        case ePartKind.valve: return eFault.noValve;
+        case ePartKind.coil:  return eFault.noCoil;
+        case ePartKind.dial:  return eFault.noDial;
+    }
+    return 0;
+}
+
+class Part : object {
+    ePartKind kind = ePartKind.valve;
+    bool worn = false;
+
+    void description() {
+        switch (kind) {
+            case ePartKind.valve: print("A glass valve");
+            case ePartKind.coil:  print("A copper coil");
+            case ePartKind.dial:  print("A tuning dial");
+        }
+        printLine(worn ? ". It is worn out." : ". It looks new.");
+    }
+}
+
+// Every kind the radio lacks a good part of.
+eFault radioFaults() {
+    eFault missing = eFault.noValve | eFault.noCoil | eFault.noDial;
+    for (object o in radio.children) {
+        if (o.is(Part)) {
+            Part p = (Part)o;
+            if (!p.worn) missing = missing ^ faultFor(p.kind);
+        }
+    }
+    return missing;
+}
+
+int faultCount() {
+    int n = 0;
+    eFault f = radioFaults();
+    if (f & eFault.noValve) n++;
+    if (f & eFault.noCoil) n++;
+    if (f & eFault.noDial) n++;
+    return n;
+}
+
+void printFaults() {
+    eFault f = radioFaults();
+    if (f == 0) {
+        printLine("Nothing is missing.");
+        return;
+    }
+    print("Missing:");
+    if (f & eFault.noValve) print(" a good valve");
+    if (f & eFault.noCoil) print(" a good coil");
+    if (f & eFault.noDial) print(" a good dial");
+    printLine(".");
+}
+
+int stationIndex(int freq) {
+    for (int i = 0; i < stations.length; i++) {
+        if (stations[i] == freq) return i;
+    }
+    return -1;
+}
+
+string bandName(int freq) {
+    switch (freq) {
+        case 87 to 99:  return "low band";
+        case 100 to 108: return "high band";
+        case > 108:     return "above the band";
+    }
+    return "below the band";
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A bench stands here. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A shelf runs along the wall. Room A is south.";
+    s_to = roomA;
+}
+
+object bench {
+    "bench";
+    parent = roomA;
+    name = {.bench};
+    description = "A plain bench.";
+    attributes = {supporter, static};
+}
+
+object drawer {
+    "drawer";
+    parent = roomA;
+    name = {.drawer};
+    description = "A drawer for parts.";
+    attributes = {container, openable, static};
+}
+
+object shelf {
+    "shelf";
+    parent = roomB;
+    name = {.shelf};
+    description = "A long shelf.";
+    attributes = {supporter, static, scenery};
+}
+
+// --- parts ------------------------------------------------------------------------------------------
+
+Part oldValve {
+    "old valve";
+    parent = radio;
+    name = {.old, .valve};
+    string article = "an";
+    kind = ePartKind.valve;
+    worn = true;
+}
+
+Part valveB {
+    "clear valve";
+    parent = drawer;
+    name = {.clear, .valve};
+    kind = ePartKind.valve;
+}
+
+Part coilA {
+    "copper coil";
+    parent = shelf;
+    name = {.copper, .coil};
+    kind = ePartKind.coil;
+}
+
+Part dialA {
+    "dial";
+    parent = radio;
+    name = {.tuning, .dial};
+    kind = ePartKind.dial;
+}
+
+Part bentDial {
+    "bent dial";
+    parent = drawer;
+    name = {.bent, .dial};
+    kind = ePartKind.dial;
+    worn = true;
+}
+
+// --- the radio --------------------------------------------------------------------------------------
+
+object radio {
+    "radio";
+    parent = bench;
+    name = {.radio, .set};
+    Volume volume;
+    int freq = 88;
+    int line = 0;
+    int played = 0;
+    attributes = {container, openable, switchable};
+
+    void description() {
+        print($"A radio set. It is tuned to {freq}, volume {(int)volume}");
+        if (has(on)) printLine(", and it is on.");
+        else printLine(".");
+        if (has(open)) printFaults();
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Part)) rtrue("Only radio parts fit in the radio.^");
+                Part p = (Part)noun;
+                for (object o in children) {
+                    if (o.is(Part) && ((Part)o).kind == p.kind) rtrue($"The radio already holds a {kindName(p.kind)}.^");
+                }
+            case SwitchOn:
+                if (has(open)) rtrue("You should close the radio first.^");
+            case Open:
+                if (has(on)) rtrue("You should switch the radio off first.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                jot("fitted", (int)((Part)noun).kind);
+                if (!radioFixed && radioFaults() == 0) {
+                    radioFixed = true;
+                    score++;
+                    rtrue($"You fit {the(noun)}. The radio is complete.^");
+                }
+            case LetGo:
+                jot("removed", (int)(((Part)noun).kind));
+            case SwitchOn:
+                if (radioFaults() != 0) {
+                    give(general);
+                    jot("dead", faultCount());
+                    rtrue("You switch the radio on. It stays silent.^");
+                }
+                ungive(general);
+                StartDaemon(self);
+                jot("on", freq);
+                int idx = stationIndex(freq);
+                if (idx < 0) rtrue("You switch the radio on. It hisses.^");
+                rtrue($"You switch the radio on. {stationNames[idx]} comes in.^");
+            case SwitchOff:
+                StopDaemon(self);
+                jot("off");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        if (stationIndex(freq) < 0) return;
+        line = (line + 1) % broadcasts.length;
+        played++;
+        if (radioNear() && (int)volume > 0) printLine($"From the radio: {broadcasts[line]}");
+    }
+}
+
+void noteStation(int idx) {
+    if (heardList.contains(idx)) return;
+    heardList.append(idx);
+    if (!firstListen) {
+        firstListen = true;
+        score++;
+    }
+    if (!allStations && heardList.length == stations.length) {
+        allStations = true;
+        score++;
+    }
+}
+
+bool radioNear() {
+    object p = radio.parent;
+    return p == player || p == location || (p != null && p.parent == location);
+}
+
+bool radioPlaying() {
+    return radio.has(on) && radio.hasnt(general);
+}
+
+// --- the clerk --------------------------------------------------------------------------------------
+
+object clerk {
+    "clerk";
+    parent = roomB;
+    name = {.clerk};
+    description = "A clerk behind the shelf.";
+    int asked = 0;
+    int swaps = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .radio) rtrue("The clerk says: a radio needs a valve, a coil and a dial.^");
+                if (w == .valve || w == .coil || w == .dial) rtrue("The clerk says: a worn part will not do.^");
+                if (w == .station || w == .stations) rtrue($"The clerk says: there are {stations.length} stations.^");
+                rtrue("The clerk shrugs.^");
+            case Give:
+                if (!noun.is(Part)) rtrue("The clerk says: I only swap parts.^");
+                Part p = (Part)noun;
+                if (!p.worn) rtrue($"The clerk says: {the(p)} is fine. Keep it.^");
+                p.worn = false;
+                swaps++;
+                jot("swapped", (int)p.kind);
+                rtrue($"The clerk swaps {the(p)} for a good one and hands it back.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The clerk waits.^");
+        }
+        rtrue("The clerk says: I am busy.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Tune {
+    grammar = { {.tune, NUMBER}, {.tune, NOUN, .to, NUMBER} };
+    void handler() {
+        if (!radioNear()) {
+            printLine("There is no radio here.");
+            return;
+        }
+        int f = parsed_number;
+        tuneTries++;
+        radio.freq = f;
+        jot("tuned", f);
+        int idx = stationIndex(f);
+        if (!radioPlaying()) {
+            printLine($"You set the dial to {f}, {bandName(f)}.");
+            return;
+        }
+        if (idx < 0) {
+            printLine($"You tune to {f}, {bandName(f)}. Static.");
+            return;
+        }
+        noteStation(idx);
+        printLine($"You tune to {f}. {stationNames[idx]} comes in clearly.");
+    }
+}
+
+verb Scan {
+    grammar = {.scan};
+    void handler() {
+        if (!radioPlaying()) {
+            printLine("The radio is not playing.");
+            return;
+        }
+        int idx = stationIndex(radio.freq);
+        int steps = 0;
+        do {
+            idx = (idx + 1) % stations.length;
+            steps++;
+        } while (stations[idx] == radio.freq && steps < stations.length);
+        radio.freq = stations[idx];
+        noteStation(idx);
+        jot("scanned", radio.freq);
+        printLine($"The radio scans to {radio.freq}. {stationNames[idx]} comes in.");
+    }
+}
+
+verb Louder {
+    grammar = {.louder};
+    void handler() {
+        int before = (int)radio.volume;
+        radio.volume += 2;
+        if ((int)radio.volume == before) printLine("The radio is as loud as it goes.");
+        else printLine($"Volume {(int)radio.volume}.");
+    }
+}
+
+verb Softer {
+    grammar = {.softer};
+    void handler() {
+        int before = (int)radio.volume;
+        radio.volume -= 2;
+        if ((int)radio.volume == before) printLine("The radio is already silent.");
+        else printLine($"Volume {(int)radio.volume}.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string state = radioPlaying() ? "playing" : (radio.has(on) ? "on but silent" : "off");
+        printLine($"Score {score} of {MAX_SCORE}. Radio {state} at {radio.freq}, volume {(int)radio.volume}.");
+        printLine($"Faults {faultCount()}, tunes {tuneTries}, lines played {radio.played}.");
+        printLine($"Clerk asked {clerk.asked}, swaps {clerk.swaps}, stations heard {heardList.length}.");
+    }
+}
+
+verb Parts {
+    meta = true;
+    grammar = {.parts};
+    void handler() {
+        int good = bgl.world.instances(Part, (object o) => !((Part)o).worn).length;
+        printLine($"{good} of {bgl.world.instances(Part).length} parts are good.");
+        for (object o in bgl.world.instances(Part)) {
+            Part p = (Part)o;
+            string state = p.worn ? "worn" : "good";
+            print($"{p}: {kindName(p.kind)}, {state}, ");
+            if (p.parent == player) printLine("carried.");
+            else printLine($"in {the(p.parent)}.");
+        }
+    }
+}
+
+verb Heard {
+    meta = true;
+    grammar = {.heard};
+    void handler() {
+        if (heardList.length == 0) {
+            printLine("No stations heard.");
+            return;
+        }
+        print("Heard:");
+        int i = 0;
+        while (i < heardList.length) {
+            print($" {stations[heardList[i]]}");
+            i++;
+        }
+        printLine(".");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logCount}): {logText}");
+    }
+}
+
+bool Initialise() {
+    radio.volume = 1;
+    rfalse;
+}

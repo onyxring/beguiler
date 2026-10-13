@@ -1,0 +1,83 @@
+Room A
+
+> probebits
+Bits 2 7 2 3 3.
+Door moving.
+Heading 1 -1 0 2 0 now 0.
+
+> probefloors
+Plates G[ground] 1 2 3 4 5[roof].
+Zones lobby_ mid mid mid high roof!.
+
+> call 3
+Queued #1@3+ (1 waiting, 3 free).
+
+> summon 1
+Queued #2@1+ (2 waiting, 2 free).
+
+> press top button
+The top button lights.
+
+> order 2
+Order #2@1+ #1@3+ #3@5=.
+
+> step
+[1]Arrived #2@1+ at 1.
+
+> cycle
+[2]Car at 2, going up.
+[3]Arrived #1@3+ at 3.
+[4]Car at 4, going up.
+[5]Arrived #3@5= at 5[roof].
+Cycled 4.
+
+> probelog
+Trip 12345 len 5 last 345.
+Odo 5 5 moves 5 trail 4 2-5.
+Visits 0 1 1 1 1 1; issued 3 served 3 next 0.
+
+> alarm
+Alarm on.
+
+> hail car to 2
+Queued #4@2- (1 waiting, 3 free).
+
+> step
+Alarm at 5.
+
+> alarm
+Alarm off.
+
+> beckon car to 0
+Queued #5@0- (2 waiting, 2 free).
+
+> summon car to 4
+I didn't understand that number.
+
+> order 3
+Order #5@0- #4@2-.
+
+> step
+[4]Car at 4, going down.
+
+> press car
+The lift car does not budge.
+
+> probebuttons
+Children (yourself) (lift car) (freight car) 0 3 5; high third button top button.
+
+> x car
+A lift car.
+
+> probefreight
+Aim 0 1 2 0.
+Sums 13 9 6 3.
+Freight 2 2 1 moves 7.
+
+> probering
+Rang #6@1- #7@2= waiting 4 first #5@0- last #7@2=.
+
+> probelog
+Trip 123454 len 6 last 454.
+Odo 6 6 moves 7 trail 4 3-4.
+Visits 0 1 1 1 2 1; issued 7 served 3 next 5.

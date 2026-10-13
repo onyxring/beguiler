@@ -1,0 +1,493 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small lift call-queue program, on the Z-machine.
+// A `#defineI6` value read by Beguile code, an emitter body and a switch case; two bnums sharing an
+// empty base as sub-fields of one packed word, written through an inline accessor whose bnum setter
+// masks the host's word through `outer` and switched on through its getter; an enum with an emitter
+// value and an emitter method; a primitive newtype over int with `=`, `()`, `+`, `-` and `==`/`!=`
+// overloads and emitter values, switched on with a range and a `#defineI6` case, thrown and caught by
+// its type; a global emitter called from a lambda; an `alias class` over object whose objects hold a
+// stringOrRoutine (one a routine) and a `literal func<void>` given by only some of them, tested with
+// provides() and called; a pooled class sized by a `const int` with bglAllocated, a two-argument
+// create(), destroy(), statics and its own print() reaching the global one through `::`; a named
+// accessor class with an `operator auto()` read by `auto`; a class with an `inline` capacity, a
+// `selfType` chain, a `default` method overridden in a subclass and reached through an ancestor cast
+// and through a base-typed variable, a shared static named through the subclass; a static func<>
+// member set to static methods and to a lambda and handed to sort(); a `static superposed` method;
+// queue/deque operations on an array of pooled instances, `?.` on peek() and postfix `?` on calls;
+// a defaulted parameter filled by name, all by name and out of order; member arrays copied into
+// locals and passed by `ref`; a stringObj global appended from interpolations; do/until around
+// perform(); `#if`/`#elif` inside a try; NUMBER grammar with first-word alternation, a grammar object
+// rule, `synonyms` and a line-level `grammar -=`; a NOUN(filter) line on a library word falling
+// through to the library's Push and an `extend` adding `before` to answer it; a children walk and
+// bgl.world.instances with a predicate.
+
+#defineI6 TOP_FLOOR 5
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#define TRACE_STEPS
+
+extend extern class object {
+    string description;
+}
+
+#using bgl.printRules
+
+#define FLOORS 6
+const int CALL_POOL = 4;
+
+// ---- one packed word, two sub-fields ------------------------------------------------------------
+
+bnum carWord { }
+bnum doorField : carWord { shut = 0, parting = 1, wide = 2, closing = 3 }
+bnum lampField : carWord { lampUp = 4, lampDown = 8, lampAlarm = 16 }
+
+// ---- travel direction ---------------------------------------------------------------------------
+
+enum heading {
+    idle = 0, upward, downward,
+    emitter int sign { (($self == 1) - ($self == 2)) }
+    emitter heading flip() { ((3 - $self) % 3) }
+}
+
+// ---- a floor number: a primitive newtype over int -----------------------------------------------
+
+primitive class floorNum {
+    emitter floorNum operator = (int n)       { $target = $n; }
+    emitter int      operator ()              { ($self) }
+    emitter floorNum operator + (int d)       { ($self + $d) }
+    emitter int      operator - (floorNum o)  { ($self - $o) }
+    emitter bool     operator == (floorNum o) { ($self == $o) }
+    emitter bool     operator != (floorNum o) { ($self ~= $o) }
+    emitter bool     operator == (int n)      { ($self == $n) }
+    emitter bool     operator != (int n)      { ($self ~= $n) }
+    emitter bool     atTop    { ($self == TOP_FLOOR) }
+    emitter bool     atGround { ($self == 0) }
+}
+
+emitter void chime() { print "[roof]"; }
+
+// ---- landings: an alias class over object --------------------------------------------------------
+
+alias class landing for object {
+    int level;
+    stringOrRoutine plate;
+    literal func<void> onArrive;
+}
+
+void groundPlate() { print("G"); }
+
+landing f0 { level = 0; plate = groundPlate; onArrive = => print("[ground]"); }
+landing f1 { level = 1; plate = "1"; }
+landing f2 { level = 2; plate = "2"; }
+landing f3 { level = 3; plate = "3"; }
+landing f4 { level = 4; plate = "4"; }
+landing f5 { level = 5; plate = "5"; onArrive = => chime(); }
+
+array<landing> landings = { f0, f1, f2, f3, f4, f5 };
+
+// ---- calls: a pooled class --------------------------------------------------------------------------
+
+class Call[CALL_POOL] : object, bglAllocated {
+    floorNum at;
+    heading want = idle;
+    int stamp = 0;
+    static int issued = 0;
+    static int served = 0;
+
+    void create(int f, heading h) {
+        at = f;
+        want = h;
+        issued++;
+        stamp = issued;
+    }
+
+    void destroy() { served++; }
+
+    void print() {
+        ::print($"#{stamp}@{(int)at}");
+        switch (want) {
+            case upward:   ::print("+");
+            case downward: ::print("-");
+            default:       ::print("=");
+        }
+    }
+}
+
+// ---- the car ----------------------------------------------------------------------------------------
+
+value class Odometer {
+    int _n = 0;
+    int  operator ()        { return _n; }
+    void operator = (int v) { _n = _n + v; }
+    int  operator auto();
+}
+
+class Lift : object {
+    inline int capacity;
+    floorNum level;
+    heading going = idle;
+    int bits = 0;
+    array<int> trail[4];
+    Odometer odo;
+    static int moves = 0;
+
+    selfType note(int f) {
+        if (!trail.append(f)) {
+            trail.remove(0);
+            trail.append(f);
+        }
+        return self;
+    }
+
+    default heading aim(floorNum target) {
+        if (target == level) return idle;
+        return target - level > 0 ? upward : downward;
+    }
+
+    bool stepToward(floorNum target) {
+        going = aim(target);
+        if (going == idle) rfalse;
+        if ((bits & lampAlarm) != 0) throw level;
+        level = level + going.sign;
+        odo = 1;
+        moves++;
+        note(level);
+        rtrue;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Lift car {
+    4, "lift car";
+    parent = roomA;
+    description = "A lift car.";
+    name = {.lift, .car};
+    attributes = {static};
+    auto door = {
+        int _d = 0;
+        doorField operator () { return (doorField)_d; }
+        void operator = (doorField v) {
+            _d = v;
+            outer.bits = (outer.bits & 28) | v;
+        }
+    }
+}
+
+class ServiceLift : Lift {
+    heading aim(floorNum target) {
+        if (target.atGround) return idle;
+        return ((Lift)self).aim(target);
+    }
+}
+
+ServiceLift freight {
+    8, "freight car";
+    parent = roomA;
+    description = "A freight car.";
+    name = .freight;
+    attributes = {static};
+}
+
+// ---- call buttons -----------------------------------------------------------------------------------
+
+class Button : object {
+    inline int target;
+    rawArray<dictionaryWord> name = {.button};
+    attributes = {static};
+}
+
+Button b0 { 0, "ground button"; parent = roomA; name = .ground; }
+Button b3 { 3, "third button";  parent = roomA; name = .third; }
+Button b5 { 5, "top button";    parent = roomA; name = {.top, .roof}; }
+
+bool isButton() { return noun.is(Button); }
+
+// ---- dispatch ---------------------------------------------------------------------------------------
+
+class Dispatch {
+    static func<int, Call, Call> order;
+
+    static superposed int gap(floorNum a, floorNum b) {
+        int d = a - b;
+        return d < 0 ? -d : d;
+    }
+
+    static int byAge(Call a, Call b) {
+        return a.stamp < b.stamp ? -1 : (a.stamp > b.stamp ? 1 : 0);
+    }
+
+    static int byReach(Call a, Call b) {
+        int da = gap(a.at, car.level);
+        int db = gap(b.at, car.level);
+        return da < db ? -1 : (da > db ? 1 : byAge(a, b));
+    }
+}
+
+// ---- state ------------------------------------------------------------------------------------------
+
+array<Call> queue[CALL_POOL];
+array<int>  visits[FLOORS];
+stringObj   trip;
+
+// ---- free functions ---------------------------------------------------------------------------------
+
+string zoneOf(floorNum f) {
+    switch (f) {
+        case 0:         return "lobby";
+        case 1 to 3:    return "mid";
+        case TOP_FLOOR: return "roof";
+        default:        return "high";
+    }
+}
+
+Call ring(int f, heading h = idle) {
+    Call c = new Call(f, h);
+    if (c == null) return null;
+    queue.enqueue(c);
+    return c;
+}
+
+int sumTrail(ref array<int> t, int from = 0) {
+    int total = 0;
+    for (int i = from; i < t.length; i++) total += t[i];
+    return total;
+}
+
+void arrive(Call c) {
+    landing l = landings[(int)c.at];
+    print($"Arrived {c} at ");
+    print(l.plate);
+    if (l.provides(onArrive)) l.onArrive();
+    printLine(".");
+    car.going = idle;
+    delete c;
+}
+
+void advance() {
+    Call next = queue.peek();
+    if (!next?) {
+        printLine("No calls.");
+        return;
+    }
+    try {
+        if (car.stepToward(next.at)) {
+            visits[(int)car.level]++;
+            trip += $"{(int)car.level}";
+            #if TRACE_STEPS
+                print($"[{(int)car.level}]");
+            #elif TRACE_ALL
+                print("[step]");
+            #endif
+        }
+        if (car.level == next.at) arrive(queue.dequeue());
+        else printLine($"Car at {(int)car.level}, going {car.going.sign > 0 ? "up" : "down"}.");
+    } catch (floorNum stuck) {
+        printLine($"Alarm at {(int)stuck}.");
+    }
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    Dispatch.order = Dispatch.byAge;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs ------------------------------------------------------------------------------------------
+
+class probeVerb : verb {
+    meta = true;
+}
+
+verb Summon {
+    grammar = {
+        {.call|.summon, NUMBER},
+        {.call|.summon, .car, .to, NUMBER},
+    };
+    void handler() {
+        int f = (int)noun;
+        if (f < 0 || f > TOP_FLOOR) {
+            printLine("No such floor.");
+            return;
+        }
+        Call c = ring(f, car.aim(f));
+        if (c?) printLine($"Queued {c} ({queue.length} waiting, {c.remaining()} free).");
+        else printLine("The queue is full.");
+    }
+}
+
+grammar liftLines {
+    grammarRule hailLine = {Summon, {.hail, .car, .to, NUMBER}};
+}
+
+extend Summon { synonyms = {.beckon}; }
+extend Summon { grammar -= { {.summon, .car, .to, NUMBER} }; }
+
+verb Press {
+    grammar = {.press, NOUN(isButton)};
+    void handler() {
+        Button b = (Button)noun;
+        if (ring(b.target)?) printLine($"{cThe(noun)} lights.");
+        else printLine($"{cThe(noun)} buzzes.");
+    }
+}
+
+verb Step {
+    grammar = {.step};
+    void handler() { advance(); }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        int n = 0;
+        do {
+            Step.perform();
+            n++;
+        } until (queue.length == 0 || n >= 12);
+        printLine($"Cycled {n}.");
+    }
+}
+
+verb Alarm {
+    grammar = {.alarm};
+    void handler() {
+        car.bits = car.bits ^ lampAlarm;
+        printLine((car.bits & lampAlarm) != 0 ? "Alarm on." : "Alarm off.");
+    }
+}
+
+probeVerb Reorder {
+    grammar = {.order, NUMBER};
+    void handler() {
+        switch ((int)noun) {
+            case 1:  Dispatch.order = Dispatch.byAge;
+            case 2:  Dispatch.order = Dispatch.byReach;
+            default: Dispatch.order = (Call a, Call b) => Dispatch.byAge(b, a);
+        }
+        queue.sort(Dispatch.order);
+        print("Order");
+        for (Call c in queue) print($" {c}");
+        printLine(".");
+    }
+}
+
+probeVerb ProbeBits {
+    grammar = {.probebits};
+    void handler() {
+        car.door = wide;
+        int b1 = car.bits;
+        car.bits = car.bits | lampUp;
+        doorField d = car.door;
+        car.door = closing;
+        printLine($"Bits {b1} {car.bits} {(int)d} {(int)car.door} {car.bits & 3}.");
+        switch (car.door) {
+            case shut, parting: printLine("Door in.");
+            case wide:          printLine("Door out.");
+            default:            printLine("Door moving.");
+        }
+        car.door = shut;
+        car.bits = car.bits ^ lampUp;
+        printLine($"Heading {upward.sign} {downward.sign} {idle.sign} {(int)upward.flip()} {(int)idle.flip()} now {car.bits}.");
+    }
+}
+
+probeVerb ProbeFloors {
+    grammar = {.probefloors};
+    void handler() {
+        print("Plates");
+        for (landing l in landings) {
+            print(" ");
+            print(l.plate);
+            if (l.provides(onArrive)) l.onArrive();
+        }
+        printLine(".");
+        print("Zones");
+        for (int i in 0 to TOP_FLOOR) {
+            floorNum f = i;
+            print($" {zoneOf(f)}{f.atTop ? "!" : ""}{f.atGround ? "_" : ""}");
+        }
+        printLine(".");
+    }
+}
+
+probeVerb ProbeLog {
+    grammar = {.probelog};
+    void handler() {
+        printLine($"Trip {trip} len {trip.length} last {trip.right(3)}.");
+        auto km = car.odo;
+        printLine($"Odo {km} {(int)car.odo} moves {Lift.moves} trail {car.trail.length} {car.trail[0]}-{car.trail[3]}.");
+        print("Visits");
+        for (int i in 0 to visits.size - 1) print($" {visits[i]}");
+        printLine($"; issued {Call.issued} served {Call.served} next {queue.peek()?.stamp}.");
+    }
+}
+
+probeVerb ProbeButtons {
+    grammar = {.probebuttons};
+    void handler() {
+        print("Children");
+        for (object o in roomA.children) {
+            if (o.is(Button)) print($" {((Button)o).target}");
+            else print($" ({o})");
+        }
+        print("; high");
+        for (object o in bgl.world.instances(Button, (object x) => ((Button)x).target >= 3)) print($" {o}");
+        printLine(".");
+    }
+}
+
+probeVerb ProbeRing {
+    grammar = {.probering};
+    void handler() {
+        Call c = ring(h: downward, f: 1);
+        Call d = ring(2);
+        printLine($"Rang {c} {d} waiting {queue.length} first {queue.peek()} last {queue.peekEnd()}.");
+    }
+}
+
+probeVerb ProbeFreight {
+    grammar = {.probefreight};
+    void handler() {
+        freight.level = 3;
+        heading h1 = freight.aim(0);
+        heading h2 = freight.aim(5);
+        heading h3 = ((Lift)freight).aim(0);
+        Lift any = freight;
+        heading h4 = any.aim(0);
+        printLine($"Aim {(int)h1} {(int)h2} {(int)h3} {(int)h4}.");
+        freight.note(3).note(4).note(6);
+        array<int> ft = freight.trail;
+        array<int> ct = car.trail;
+        printLine($"Sums {sumTrail(ft)} {sumTrail(ct, from: 2)} {sumTrail(t: ft, from: ft.length - 1)} {freight.trail.length}.");
+        freight.stepToward(1);
+        printLine($"Freight {(int)freight.level} {(int)freight.going} {freight.odo} moves {ServiceLift.moves}.");
+    }
+}
+
+// ---- late additions ---------------------------------------------------------------------------------
+
+extend car {
+    bool before() {
+        if (action == Push) {
+            printLine($"{cThe(self)} does not budge.");
+            rtrue;
+        }
+        rfalse;
+    }
+}

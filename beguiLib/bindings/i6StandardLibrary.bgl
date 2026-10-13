@@ -56,6 +56,30 @@ extern property          u_to;      /// the room or door up
 extern property          d_to;      /// the room or door down
 extern property          in_to;     /// the room or door inside
 extern property          out_to;    /// the room or door outside
+// The library's other common properties: an object declares the ones it provides (§23.3.11); these
+// declarations only keep their names from being taken by a program's own globals.
+extern property          add_to_scope;
+extern property          article;
+extern property          articles;
+extern property          cant_go;
+extern property          capacity;
+extern property          daemon;
+extern property          door_dir;
+extern property          door_to;
+extern property          found_in;
+extern property          initial;
+extern property          inside_description;
+extern property          invent;
+extern property          list_together;
+extern property          parse_name;
+extern property          react_after;
+extern property          react_before;
+extern property          short_name_indef;
+extern property          when_closed;
+extern property          when_off;
+extern property          when_on;
+extern property          when_open;
+extern property          with_key;
 extern additive property before;     /// runs before an action on this object; return true to stop the action
 extern additive property after;      /// runs after an action on this object; return true to replace the library's report
 extern additive property life;       /// handles actions aimed at an animate object (Attack, Kiss, Give, Show, Ask, Tell, Answer…); return true to stop them

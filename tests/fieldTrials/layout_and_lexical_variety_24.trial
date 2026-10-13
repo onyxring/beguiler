@@ -1,0 +1,140 @@
+Room A
+Room A. A clock hangs here. Room B is up.
+You can see a clock and a crank here.
+> time
+It is 9:00 (morning), spring 0/10.
+> platform
+Quarter steps.
+> alarms
+No alarms.
+> bells
+0 rings; none rung, 3 silent.
+> wind clock
+You need the crank.
+> take crank
+Taken.
+> wind clock
+You wind the clock a little (2).
+> time
+It is 9:15 (morning), spring 1/10.
+> alarm 930
+Alarm set for 9:30.
+Alarm: ting-dong-dong.
+The clock stops.
+> alarm 1015
+Alarm set for 10:15.
+> alarm 845
+Alarm set for 8:45, tomorrow.
+> alarm 960
+960 is not a time.
+> alarm 2500
+2500 is not a time.
+> alarm 930
+An alarm is already set for 9:30.
+> alarms
+8:45, 9:30*, 10:15* (3 of 4).
+> wait
+Time passes.
+> time
+It is 9:30 (morning), spring 0/10.
+> wait
+Time passes.
+> time
+It is 9:30 (morning), spring 0/10.
+> alarms
+8:45, 9:30*, 10:15* (3 of 4).
+> crank clock 3 times
+You wind the clock (6).
+> crank clock 5 times
+You wind the clock (10).
+The big bell strikes: dong dong dong dong dong dong dong dong dong dong.
+> time
+It is 10:00 (morning), spring 9/10.
+> up
+Room B
+Room B. A frame holds bells. Room A is down.
+You can see a frame (on which are a big bell, a middle bell and a small bell) here.
+Alarm: ting-dong-dong.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+The big bell strikes: dong dong dong dong dong dong dong dong dong dong dong.
+> down
+Room A
+Room A. A clock hangs here. Room B is up.
+You can see a clock here.
+> wind clock 1 times
+You wind the clock a little (6).
+> clear alarm 1015
+Alarm at 10:15 cleared.
+> clear alarm 1015
+No alarm at 10:15.
+The big bell strikes: dong dong dong dong dong dong dong dong dong dong dong dong.
+> clear alarm 77
+77 is not a time.
+> alarm 1200
+Alarm set for 12:00, tomorrow.
+> alarm 1130
+Alarm set for 11:30, tomorrow.
+The clock stops.
+> alarms
+8:45, 9:30, 11:30, 12:00 (4 of 4).
+> take clock
+The clock is fixed to the wall.
+> turn clock
+Use the crank.
+> up
+Room B
+Room B. A frame holds bells. Room A is down.
+You can see a frame (on which are a big bell, a middle bell and a small bell) here.
+> ring small bell
+The small bell: ting.
+> strike middle bell
+The middle bell: dong.
+> ring frame
+That does not ring.
+> bells
+41 rings; most rung is the big bell (35), 0 silent.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> time
+It is 12:45 (noon), spring 0/10.
+> down
+Room A
+Room A. A clock hangs here. Room B is up.
+You can see a clock here.
+> clear alarms
+Alarms cleared.
+> alarms
+No alarms.
+> bells
+41 rings; most rung is the big bell (35), 0 silent.
+> alarm 1330
+Alarm set for 13:30.
+> alarm 700
+Alarm set for 7:00, tomorrow.
+> wind clock 2 times
+You wind the clock (4).
+The big bell strikes: dong.
+> alarms
+7:00, 13:30* (2 of 4).
+> wait
+Time passes.
+> wait
+Time passes.
+Alarm: ting-dong-dong.
+> time
+It is 13:30 (afternoon), spring 1/10.
+> bells
+45 rings; most rung is the big bell (37), 0 silent.

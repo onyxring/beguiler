@@ -1,0 +1,127 @@
+Room A
+Room A.
+
+You can see a hammer, a rope, a bread, an apple, a cloak, a glove, a satchel (which is empty) and a crate (which is empty) here.
+
+> list
+0 hammer: tool w5 v10 r2.0000 in Room A
+1 rope: tool w3 v9 r3.0000 in Room A
+2 bread: food w2 v4 r2.0000 in Room A
+3 apple: food w1 v3 r3.0000 in Room A
+4 cloak: cloth w4 v6 r1.5000 in Room A
+5 glove: cloth w2 v5 r2.5000 in Room A
+by ratio: apple rope glove bread hammer cloak
+total weight 17 worth 37
+
+> best 8
+best: worth 21, weight 8, 4 items [rope bread apple glove]
+greedy: worth 21, weight 8, 4 items [rope bread apple glove]
+
+> best 0
+best: worth 0, weight 0, 0 items []
+greedy: worth 0, weight 0, 0 items []
+
+> best 13
+best: worth 31, weight 13, 5 items [hammer rope bread apple glove]
+greedy: worth 31, weight 13, 5 items [hammer rope bread apple glove]
+
+> best 20
+Too large.
+
+> gap
+best:   3 5 9 12 14 17 18 21 22 24 27 28 31 31 33 34
+greedy: 3 3 8 12 12 17 17 21 21 21 21 27 31 31 31 31
+greedy short at: 2 3 5 7 9 10 11 12 15 16
+widest gap 6, short 10 of 16
+greedy never over: yes; not all items fit within 16
+
+> fit 20
+worth 20: best needs 8, greedy needs 8
+
+> fit 34
+worth 34: best needs 16, greedy never gets there within 16
+
+> fit 35
+No load reaches 35.
+
+> plan satchel
+satchel holds 0 of 8; candidates hammer rope cloak glove
+satchel: worth 14, weight 5, 2 items [rope glove]
+
+> plan crate
+crate holds 0 of 12; candidates hammer rope bread apple cloak glove
+crate: worth 28, weight 12, 4 items [hammer rope bread glove]
+
+> plan hammer
+That is not a pack.
+
+> take apple
+Taken.
+
+> put apple in satchel
+The satchel refuses the apple.
+
+> put hammer in satchel
+(first taking the hammer)
+You put the hammer into the satchel.
+
+> put rope in satchel
+(first taking the rope)
+You put the rope into the satchel.
+
+> put cloak in satchel
+(first taking the cloak)
+The cloak would bring the satchel to 12 of 8.
+
+> put glove in crate
+(first taking the glove)
+You put the glove into the crate.
+
+> i
+You're carrying:
+  a cloak
+  an apple
+
+> loads
+satchel: 8 of 8, rope hammer
+crate: 2 of 12, glove
+carried 5: cloak apple
+on the floor 1, heaviest bread
+
+> pack satchel
+Nothing more fits in the satchel.
+
+> pack crate
+Packed into the crate: hammer rope bread (load 12 of 12).
+
+> loads
+satchel: 0 of 8, (none)
+crate: 12 of 12, bread rope hammer glove
+carried 5: cloak apple
+on the floor 0, heaviest (none)
+
+> pack crate
+Nothing more fits in the crate.
+
+> plan satchel
+satchel holds 0 of 8; candidates hammer rope cloak glove
+satchel: worth 14, weight 5, 2 items [rope glove]
+
+> kinds
+tool: 2 weight 8 worth 19 best ratio rope
+food: 2 weight 3 worth 7 best ratio apple
+cloth: 2 weight 6 worth 11 best ratio glove
+worth per kind: 19 7 11
+richest kind tool
+
+> reset
+All items are back on the floor.
+
+> pack satchel
+Packed into the satchel: hammer rope (load 8 of 8).
+
+> loads
+satchel: 8 of 8, rope hammer
+crate: 0 of 12, (none)
+carried 0: (none)
+on the floor 4, heaviest cloak

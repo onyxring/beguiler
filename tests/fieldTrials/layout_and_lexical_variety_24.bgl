@@ -1,0 +1,434 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, a clock wound by a
+// crank, three bells in a frame, and alarm times that are set, listed, sorted and cleared. A value class
+// of clock times with a copy operator, `operator +` returning a new time, `<=>` (with `<`/`>=` derived
+// from it), `==`/`!=`, and a method returning a `stringObj` that pads minutes with a char literal; a
+// global time and a global `array<ClockTime>` of alarms appended to, sorted, searched with `indexOf`
+// and `contains`, and cleared; a routine that `throw`s on a bad `hhmm` number, caught in the verb
+// handler; a clock object with an inline `auto { … }` spring accessor clamped by `outer.springMax`, a
+// daemon that advances time and fires alarms, and `before` rules; a bell class with an enum note, a
+// class-wide static counter and a `default` method overridden by a subclass; an `array<Bell>` read with
+// <linq> (`filter`, `count`, `orderBy` with a comparator, `first`, `any`); a switch with range cases and a
+// multi-value case; `#define` with a value tested by `#if`/`#else`; hex and binary literals, a raw
+// string; mixed-case keywords, Allman and K&R braces, comments between tokens and inside argument
+// lists, a routine with no spaces, a declaration split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include    <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define ALARM_MAX   4
+#define STEP_MIN    15         // minutes per turn while the spring runs
+
+//:: constants ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+const int DAY_MINUTES = 1440 ;
+CONST INT SPRING_TOP  = $0A ;          // ten turns of spring at most
+const int CRANK_STEP  = $$10 ;         // two turns per crank
+Const int START_HOUR  = 9 ;
+
+enum eNote
+{
+    low ,
+    middle = $05 ,      // gaps on purpose
+    high   = $0A
+}
+
+//:: clock times :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+/// A time of day, hours and minutes.
+value class ClockTime
+{
+    int h ;
+    int m ;
+
+    ClockTime operator = ( ClockTime o ) { h = o.h ; m = o.m ; return self ; }
+
+    int total () { return h * 60 + m ; }
+
+    void setTotal ( int t )
+    {
+        t = t % DAY_MINUTES ;
+        if (t < 0) t = t + DAY_MINUTES ;
+        h = t / 60 ;
+        m = t % 60 ;
+    }
+
+    ClockTime operator + ( int mins )
+    {
+        ClockTime r ;
+        r.setTotal(total() + mins) ;
+        return r ;
+    }
+
+    int  operator <=> ( ClockTime o ) { return total() - o.total() ; }
+    bool operator ==  ( ClockTime o ) { return total() == o.total() ; }
+    bool operator !=  ( ClockTime o ) { return total() != o.total() ; }
+
+    /// The time as `h:mm`.
+    stringObj text ()
+    {
+        stringObj s = $"{h}" ;
+        s += ':' ;
+        if (m < 10) s += '0' ;
+        s += $"{m}" ;
+        return s ;
+    }
+}
+
+ClockTime now ;
+array<ClockTime> alarms[ALARM_MAX] ;
+
+/// Reads `hhmm` (930 is 9:30) into a time; throws the number when it isn't one.
+ClockTime fromHhmm ( int n )
+{
+    if (n < 0) throw n ;
+    int hh = n / 100 ;
+    int mm = n % 100 ;
+    if (hh > 23 || mm > 59) throw n ;
+    ClockTime t ;
+    t.h = hh ;
+    t.m = mm ;
+    return t ;
+}
+
+string partOfDay ( ClockTime t )
+{
+    switch (t.h)
+    {
+        case 0 to 5           : return "night" ;
+        case 6 to 11          : return "morning" ;
+        case 12               : return "noon" ;
+        case 13 to 17         : return "afternoon" ;
+        DEFAULT               : return "evening" ;
+    }
+}
+
+//:: rooms :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A clock hangs here. Room B is up." ;
+    object u_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = @"Room B. A frame holds bells. Room A is down." ;
+    object d_to = roomA ;
+}
+
+//:: bells :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+class Bell : object
+{
+    eNote note = eNote.low ;
+    int   rung = 0 ;
+    attributeList attributes = { static } ;
+    string description = "A bronze bell." ;
+
+    static int allRings = 0 ;
+
+    default string sound () { return "dong" ; }
+
+    void ring ()
+    {
+        rung++ ;
+        Bell.allRings++ ;
+        print(sound()) ;
+    }
+}
+
+class LightBell : Bell
+{
+    string sound () { return "ting" ; }
+}
+
+object frame
+{
+    "frame" ;
+    parent     = roomB ;
+    name       = { .frame } ;
+    attributes = { supporter , static } ;
+    string description = "An oak frame." ;
+}
+
+Bell bigBell     { "big bell" ;    parent = frame ; name = { .big , .bell } ; }
+Bell middleBell
+{
+    "middle bell" ;
+    parent = frame ;
+    name   = { .middle , .bell } ;
+    note   = eNote.middle ;
+}
+LightBell smallBell { "small bell" ; parent = frame ; name = { .small , .bell } ; note = eNote.high ; }
+
+array<Bell> bells = { bigBell , middleBell , smallBell } ;
+
+/// Rings every bell from highest note to lowest.
+void peal ()
+{
+    bool first = true ;
+    for (Bell b in bells.orderBy( (Bell x , Bell y) => (int) y.note - (int) x.note ))
+    {
+        if (!first) print("-") ;
+        b.ring() ;
+        first = false ;
+    }
+}
+
+void strike(int n){for(int i=0;i<n;i++){if(i>0)print(" ");bigBell.ring();}}
+
+//:: the clock :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+object clock
+{
+    "clock" ;
+    parent     = roomA ;
+    name       = { .clock , .face } ;
+    attributes = { static } ;
+    string description = "A wall clock with a crank hole." ;
+    int springMax = SPRING_TOP ;
+    int ticks     = 0 ;
+
+    auto spring = {
+        int _left = 0 ;
+        int  operator () { return _left ; }
+        void operator = ( int v )
+        {
+            if (v < 0)                v = 0 ;
+            if (v > outer.springMax)  v = outer.springMax ;
+            _left = v ;
+        }
+    }
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case Take , Pull , Push :
+                rtrue("The clock is fixed to the wall.^") ;
+            case Turn :
+                rtrue("Use the crank.^") ;
+        }
+        rfalse ;
+    }
+
+    void daemon ()
+    {
+        if (spring == 0) return ;
+        spring = spring - 1 ;
+        ticks++ ;
+        ClockTime prev = now ;
+        now = now + STEP_MIN ;
+        bool here = (location == roomA || location == roomB) ;
+        if (now.h != prev.h && now.m == 0 && here)
+        {
+            int hours = now.h % 12 ;
+            if (hours == 0) hours = 12 ;
+            print("^The big bell strikes: ") ;
+            strike(hours) ;
+            print(".^") ;
+        }
+        if (alarms.contains(now) && here)
+        {
+            print("^Alarm: ") ;
+            peal() ;
+            print(".^") ;
+        }
+        if (spring == 0 && here) print("^The clock stops.^") ;
+    }
+}
+
+object crank
+{
+    "crank" ;
+    parent     = roomA ;
+    name       = { .crank , .handle } ;
+    string description = "A brass crank." ;
+}
+
+//:: startup :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+bool Initialise ()
+{
+    location = roomA ;
+    now.h = START_HOUR ;
+    StartDaemon(clock) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+//:: commands ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+verb Wind
+{
+    grammar = {
+        { .wind , .clock } ,
+        { ( .wind | .crank ) , .clock , NUMBER , .times } ,
+    } ;
+    void handler ()
+    {
+        if (location != roomA)      { printLine("There is no clock here.") ; return ; }
+        if (crank.parent != player) { printLine("You need the crank.") ; return ; }
+        int times = 1 ;
+        if (noun != null && (int) noun > 0) times = (int) noun ;
+        int was = clock.spring ;
+        clock.spring = was + times * CRANK_STEP ;
+        int got = clock.spring ;
+        switch (got - was)
+        {
+            case 0         : printLine("The spring is already tight.") ;
+            case 1 , 2     : printLine($"You wind the clock a little ({got}).") ;
+            default        : printLine($"You wind the clock ({got}).") ;
+        }
+    }
+}
+
+verb ReadClock
+{
+    meta    = TRUE ;
+    grammar = { { .time } , { .hour } } ;
+    void handler ()
+    {
+        stringObj t = now.text() ;
+        print("It is ") ;
+        t.print() ;
+        printLine($" ({partOfDay(now)}), spring {clock.spring}/{clock.springMax}.") ;
+    }
+}
+
+verb SetAlarm
+{
+    grammar = { .alarm , NUMBER } ;
+    void handler ()
+    {
+        ClockTime t ;
+        try
+        {
+            t = fromHhmm( /* hhmm */ (int) noun ) ;
+        }
+        catch (int bad)
+        {
+            printLine($"{bad} is not a time.") ;
+            return ;
+        }
+        stringObj s = t.text() ;
+        if (alarms.contains(t))
+        {
+            print("An alarm is already set for ") ; s.print() ; printLine(".") ;
+            return ;
+        }
+        if (alarms.length >= ALARM_MAX) { printLine("No more alarms fit.") ; return ; }
+        alarms.append(t) ;
+        print("Alarm set for ") ;
+        s.print() ;
+        if (t < now) print(", tomorrow") ;
+        printLine(".") ;
+    }
+}
+
+verb ListAlarms
+{
+    meta    = true ;
+    grammar = { { .alarms } , { .list , .alarms } } ;
+    void handler ()
+    {
+        if (alarms.length == 0) { printLine("No alarms.") ; return ; }
+        alarms.sort() ;
+        stringObj line ;
+        for (int i = 0 ; i < alarms.length ; i++)
+        {
+            if (i > 0) line += ", " ;
+            line += alarms[i].text() ;
+            if (alarms[i] >= now) line += "*" ;
+        }
+        line.print() ;
+        printLine($" ({alarms.length} of {ALARM_MAX}).") ;
+    }
+}
+
+verb ClearAlarm
+{
+    grammar = {
+        { .clear , .alarms } ,
+        { .clear , .alarm , NUMBER } ,
+    } ;
+    void handler ()
+    {
+        if (noun == null)
+        {
+            alarms.clear() ;
+            printLine("Alarms cleared.") ;
+            return ;
+        }
+        ClockTime t ;
+        try { t = fromHhmm((int) noun) ; }
+        catch (int bad) { printLine($"{bad} is not a time.") ; return ; }
+        int at = alarms.indexOf(t) ;
+        stringObj s = t.text() ;
+        if (at < 0) { print("No alarm at ") ; s.print() ; printLine(".") ; return ; }
+        alarms.remove(at) ;
+        print("Alarm at ") ; s.print() ; printLine(" cleared.") ;
+    }
+}
+
+verb RingBell
+{
+    grammar = { { .ring , NOUN } , { .strike , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Bell))) { printLine("That does not ring.") ; return ; }
+        Bell b = (Bell) noun ;
+        print($"{cThe(b)}: ") ;
+        b.ring() ;
+        printLine(".") ;
+    }
+}
+
+verb BellCount
+{
+    meta    = true ;
+    grammar = { .bells } ;
+    void handler ()
+    {
+        int quiet = bells.filter( ( Bell b ) => b.rung == 0 ).count() ;
+        Bell most = bells.orderBy((Bell a, Bell b) => b.rung - a.rung).first() ;
+        print($"{Bell.allRings} rings; ") ;
+        if (bells.any((Bell b) => b.rung > 0))
+            print($"most rung is {the(most)} ({most.rung})") ;
+        else
+            print("none rung") ;
+        printLine($", {quiet} silent.") ;
+    }
+}
+
+verb Platform
+{
+    meta    = true ;
+    grammar = { .platform } ;
+    void handler ()
+    {
+#if STEP_MIN == 15
+        printLine("Quarter steps.") ;
+#else
+        printLine("Other steps.") ;
+#endif
+    }
+}

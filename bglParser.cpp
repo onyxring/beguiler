@@ -2437,6 +2437,11 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
         return (this->*match.handler)(match.matchedTokens, q, contextObject);
     }
 
+    // `int a, b;`: one variable per declaration.
+    if(tok.isDataType() && (file.peekToken(1).is(eTokenType::identifier) || file.peekToken(1).is(eTokenType::dataType))
+       && file.peekToken(2).value == ",")
+        parsingError(format("A declaration names one variable: write `{0} {1}; {0} …;` rather than a list.",
+                            tok.originalValue.empty() ? tok.value : tok.originalValue, file.peekToken(1).value));
     // ── FALLTHROUGH: grammar match failed ──
     // All declaration, statement, and directive patterns are in the grammar table.
     // Anything reaching here is either an expression statement (code block) or an error (global).

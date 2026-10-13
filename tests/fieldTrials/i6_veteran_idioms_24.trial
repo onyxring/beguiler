@@ -1,0 +1,98 @@
+Floor 1
+Floor 1. Lift doors are set in the north wall. Stairs lead up.
+You can see a brown parcel here.
+> tally
+Rooms 1, score 0, trips 0.
+Car at 1, goal 0, doors shut.
+Calls: none.
+> x indicator
+The indicator shows 1 and no arrow.
+> x doors
+Brushed steel doors, shut.
+> n
+The lift doors are closed.
+> d
+You can't go that way.
+> u
+Floor 2
+Floor 2. Lift doors are set in the north wall. Stairs lead up and down.
+You can see a shelf (on which is a key card) here.
+> d
+Floor 1
+Floor 1. Lift doors are set in the north wall. Stairs lead up.
+You can see a brown parcel here.
+> take parcel
+Taken.
+> push button
+Ding. The lift doors slide open.
+> x doors
+Brushed steel doors, standing open.
+> n
+Lift
+Lift. A panel of three buttons, a card slot and a floor indicator. The doors to the south are open.
+The lift doors slide shut.
+> press 2
+The button lights up.
+The lift hums upward.
+Ding. The lift doors slide open.
+> push one button
+The button lights up.
+> push 2
+The doors stay open.
+> tally
+Rooms 4, score 0, trips 1.
+Car at 2, goal 0, doors open.
+Calls: 1.
+> push button
+Which do you mean, the button 1, the button 2 or the button 3?
+> x button 1
+A square button marked 1. It is lit.
+> out
+Floor 2
+Floor 2. Lift doors are set in the north wall, standing open. Stairs lead up and down.
+You can see a shelf (on which is a key card) here.
+The lift doors slide shut.
+> take card
+Taken.
+> u
+Floor 3
+Floor 3. Lift doors are set in the north wall. Stairs lead down.
+You can see a desk here.
+> u
+You can't go that way.
+> x doors
+Brushed steel doors, shut.
+> push call button
+The button lights up.
+> x indicator
+The indicator shows 2 with an arrow pointing up.
+Ding. The lift doors slide open.
+> push call button
+The doors stay open.
+> in
+Lift
+Lift. A panel of three buttons, a card slot and a floor indicator. The doors to the south are open.
+> put parcel in slot
+It won't fit in the slot.
+The lift doors slide shut.
+> put card in slot
+(the key card in the card slot)
+The slot reads the card and pushes it back out. Button 3 glows.
+[The score has just gone up by one point.]
+> put card in slot
+(the key card in the card slot)
+The slot has already read the card.
+> push 9
+The buttons run from 1 to 3.
+> push 3
+Ding. The lift doors slide open.
+> s
+Floor 3
+Floor 3. Lift doors are set in the north wall, standing open. Stairs lead down.
+You can see a desk here.
+> put parcel on desk
+You set the parcel on the desk.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 2 out of a possible 2, in 30 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

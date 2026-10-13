@@ -3516,6 +3516,9 @@ bool bglParser::processPostfixIncDec(token tok, token symbol, StatementContext& 
     if(string g = staticMemberGlobal(tok.value); !g.empty()) lhs = g;
     if(isConstName(tok.value, func, body))
         parsingError(format("Cannot assign to const variable '{0}'", tok.value));
+    // A `?.` on the path opened its guard as set-up; the step goes inside it.
+    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    pendingInjections.clear();
     emitIncDecStatement(tok, lhs, {symbol.value}, sc);
     for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
     postInjections.clear();

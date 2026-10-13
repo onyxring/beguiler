@@ -1540,9 +1540,16 @@ void bglParser::rejectRunTimeMemberRead(expression* e, const string& memberName)
             }
         }
     }
-    // A global variable is read at run time, so an initializer can't name one; a const can.
+    // A global variable is read at run time, so an initializer can't name one; a const can. A string's
+    // own words are text, not names.
     {
-        string t = e->text();
+        string t;
+        char q = 0;
+        for(char c : e->text()){
+            if(q){ if(c == q) q = 0; continue; }
+            if(c == '"'){ q = c; t += "0"; continue; }
+            t += c;
+        }
         static const regex word(R"((^|[^\w.$#'"])([A-Za-z_]\w*)(?=\s*($|[^\w.(])))");
         for(sregex_iterator it(t.begin(), t.end(), word), end; it != end; ++it){
             string w = (*it)[2].str(), lw = w;

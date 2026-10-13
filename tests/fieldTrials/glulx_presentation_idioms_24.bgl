@@ -1,0 +1,537 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a paged reader for notices. A class Notice : object with a title, a body, an enum topic,
+// a read count and a pinned flag, whose before() opens it in the reader on Examine and answers Take;
+// a word wrapper that fills a tracked array<stringObj> of lines to a width, character by character
+// over a string; a value class Pager (page, pages, copy operator, ==, next/prev returning bool, a
+// stringObj label) saved and restored around a reread; a text-buffer reader split to the right with
+// a styleSheet, cleared and redrawn page by page, resized through width and rewrapped, closed and
+// reopened, written through ?.; a text grid split above the main window drawn from a replaced
+// DrawStatusLine with a page bar; hyperlinks to named functions for the pages and block-bodied
+// lambdas that open each notice; a verb taking NOUN and one taking NUMBER; <linq> filter, count,
+// any, orderBy with a comparator using compareTo, first and map over an array<Notice>; switch over an
+// enum with multi-value cases; stringObj padding, toUpper, left, contains and replaceAll; checkStyle
+// and distinguishes on the reader; a word count and a fixed-pitch index table.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define MAX_LINES 24
+#define PAGE_LINES 4
+#define START_WIDTH 30
+#define HEAD_LINES 2
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eTopic { hours, rules, rooms, misc }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet readerLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    header = style{ fontWeight = 1; };
+};
+styleSheet headLook = styleSheet{
+    normal = style{ reverse = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textBufferWindowVert reader = null;
+textGridWindowHorz head = null;
+array<stringObj> lines[MAX_LINES];
+int wrapWidth = START_WIDTH - 2;
+int pagesTurned = 0;
+bool numbered = false;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+string topicName(eTopic t) {
+    switch (t) {
+        case eTopic.hours: return "hours";
+        case eTopic.rules: return "rules";
+        case eTopic.rooms: return "rooms";
+        case eTopic.misc:  return "misc";
+    }
+    return "?";
+}
+
+int countWords(string text) {
+    int words = 0;
+    bool inWord = false;
+    for (int i = 0; i < text.length; i++) {
+        if (text[i] == ' ') inWord = false;
+        else if (!inWord) {
+            inWord = true;
+            words++;
+        }
+    }
+    return words;
+}
+
+// Fill `lines` with the text broken at spaces into lines no longer than width.
+void wrapInto(string text, int width) {
+    lines.clear();
+    stringObj line = "";
+    stringObj word = "";
+    for (int i = 0; i <= text.length; i++) {
+        char c = ' ';
+        if (i < text.length) c = text[i];
+        if (c != ' ') {
+            word += c;
+            continue;
+        }
+        if (word.length == 0) continue;
+        if (line.length > 0 && line.length + 1 + word.length > width) {
+            if (lines.length < lines.size) lines += line;
+            line = "";
+        }
+        if (line.length > 0) line += ' ';
+        line += word;
+        word = "";
+    }
+    if (line.length > 0 && lines.length < lines.size) lines += line;
+}
+
+// ---- place ---------------------------------------------------------------------------------------
+
+value class Pager {
+    int page = 0;
+    int pages = 1;
+
+    Pager operator = (Pager o) {
+        page = o.page;
+        pages = o.pages;
+        return self;
+    }
+
+    bool operator == (Pager o) {
+        return page == o.page && pages == o.pages;
+    }
+
+    void reset(int lineCount) {
+        page = 0;
+        pages = (lineCount + PAGE_LINES - 1) / PAGE_LINES;
+        if (pages < 1) pages = 1;
+    }
+
+    bool next() {
+        if (page + 1 >= pages) return false;
+        page++;
+        return true;
+    }
+
+    bool prev() {
+        if (page == 0) return false;
+        page--;
+        return true;
+    }
+
+    bool atEnd() { return page + 1 == pages; }
+
+    stringObj label() {
+        stringObj s = $"page {page + 1} of {pages}";
+        return s;
+    }
+
+    stringObj bar() {
+        stringObj s = "[";
+        for (int i = 0; i < pages; i++) s += i <= page ? '#' : '-';
+        s += ']';
+        return s;
+    }
+}
+
+Pager place;
+Pager saved;
+
+// ---- notices -------------------------------------------------------------------------------------
+
+Notice current = null;
+
+class Notice : object {
+    attributeList attributes = {scenery};
+    string title = "untitled";
+    string body = "";
+    eTopic topic = eTopic.misc;
+    int reads = 0;
+    bool pinned = false;
+
+    int words() { return countWords(body); }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                openNotice(self);
+                rtrue;
+            case Take, Pull:
+                printLine($"{cThe(self)} is fixed to the wall.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Notices are fixed to the wall. Room B is to the east.";
+    attributes = {light};
+    object e_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. One notice hangs by the door. Room A is to the west.";
+    attributes = {light};
+    object w_to = roomA;
+}
+
+Notice whiteNotice {
+    "white notice";
+    parent = roomA;
+    name = {.white, .notice};
+    title = "Opening hours";
+    topic = eTopic.hours;
+    body = "The hall opens at nine and closes at five. On the first day of each month it opens at ten. The desk closes ten minutes before the hall does.";
+}
+
+Notice blueNotice {
+    "blue notice";
+    parent = roomA;
+    name = {.blue, .notice};
+    title = "Bags and coats";
+    topic = eTopic.rules;
+    body = "Bags stay in the rack by the door. Coats go on the hooks. Nothing may be left on the benches overnight.";
+}
+
+Notice greenNotice {
+    "green notice";
+    parent = roomA;
+    name = {.green, .notice};
+    title = "Quiet please";
+    topic = eTopic.rules;
+    body = "Please keep voices low in the hall.";
+}
+
+Notice greyNotice {
+    "grey notice";
+    parent = roomB;
+    name = {.grey, .gray, .notice};
+    title = "About Room B";
+    topic = eTopic.rooms;
+    body = "Room B is the reading room. The lamps are on a timer and go out at five. Ask at the desk for the key to the cabinet. Return the key before you leave. Pens are in the tray on the shelf.";
+}
+
+array<Notice> notices = { whiteNotice, blueNotice, greenNotice, greyNotice };
+
+// ---- the reader ----------------------------------------------------------------------------------
+
+void openReader() {
+    reader = bgl.ui.mainWin.splitRightBuffer(wrapWidth + 2, fixed, styles: readerLook);
+}
+
+void showPage() {
+    if (current == null) return;
+    if (reader == null) openReader();
+    reader?.clear();
+    reader?.printLine($"{current.title} ({place.label()})");
+    int first = place.page * PAGE_LINES;
+    for (int i = first; i < first + PAGE_LINES && i < lines.length; i++) {
+        if (numbered) {
+            stringObj n = $"{i + 1}";
+            reader?.printLine($"{padLeft(n, 2)} {lines[i]}");
+        } else {
+            reader?.printLine(lines[i]);
+        }
+    }
+    if (place.atEnd()) reader?.printLine("(end)");
+}
+
+void printPageLinks() {
+    if (place.pages > 1) printLine($"{link("prev", prevPage)} {link("next", nextPage)}");
+}
+
+void openNotice(Notice n) {
+    if (current == n) {
+        printLine($"{cThe(n)} is already open in the reader.");
+        return;
+    }
+    current = n;
+    n.reads++;
+    wrapInto(n.body, wrapWidth);
+    place.reset(lines.length);
+    showPage();
+    printLine($"You read {the(n)}: {n.title}, {lines.length} line{lines.length == 1 ? "" : "s"}.");
+    printPageLinks();
+}
+
+void nextPage() {
+    if (current == null) { printLine("Nothing is open."); return; }
+    if (place.next()) {
+        pagesTurned++;
+        showPage();
+        printLine($"Turned to {place.label()}.");
+    } else {
+        printLine("That is the last page.");
+    }
+}
+
+void prevPage() {
+    if (current == null) { printLine("Nothing is open."); return; }
+    if (place.prev()) {
+        pagesTurned++;
+        showPage();
+        printLine($"Turned back to {place.label()}.");
+    } else {
+        printLine("That is the first page.");
+    }
+}
+
+void closeReader() {
+    reader?.close();
+    reader = null;
+    current = null;
+}
+
+// ---- the head grid -------------------------------------------------------------------------------
+
+void drawHead() {
+    if (head == null) return;
+    head.clear();
+    head.moveCursor(0, 0);
+    if (current == null) {
+        head.print("(no notice open)");
+    } else {
+        stringObj t = $"{current.title}";
+        head.print($"{t.toUpper()} - {topicName(current.topic)}");
+    }
+    head.moveCursor(0, 1);
+    int pinnedCount = notices.filter((Notice n) => n.pinned).count();
+    if (current == null) head.print($"pinned {pinnedCount}");
+    else head.print($"{place.bar()} pinned {pinnedCount}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turned {pagesTurned} | width {wrapWidth}");
+    drawHead();
+}
+
+bool Initialise() {
+    location = roomA;
+    head = bgl.ui.mainWin.splitUpGrid(HEAD_LINES, fixed, styles: headLook);
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb PageOn {
+    grammar = {.next};
+    meta = true;
+    void handler() { nextPage(); }
+}
+
+verb PageBack {
+    grammar = {.prev};
+    meta = true;
+    void handler() { prevPage(); }
+}
+
+verb Done {
+    grammar = {.done};
+    meta = true;
+    void handler() {
+        if (current == null) { printLine("The reader is empty."); return; }
+        printLine($"You put {the(current)} out of mind.");
+        closeReader();
+    }
+}
+
+verb Pin {
+    grammar = {.pin, NOUN};
+    void handler() {
+        if (!noun.is(Notice)) { printLine("Only notices can be pinned."); return; }
+        Notice n = (Notice)noun;
+        n.pinned = !n.pinned;
+        printLine($"{cThe(n)} is {n.pinned ? "pinned" : "unpinned"}.");
+    }
+}
+
+verb Board {
+    grammar = {.board};
+    meta = true;
+    void handler() {
+        if (!notices.any((Notice n) => n.pinned)) {
+            printLine("Nothing is pinned.");
+            return;
+        }
+        array<Notice> list = notices.filter((Notice n) => n.pinned)
+                                    .orderBy((Notice a, Notice b) => {
+                                        stringObj ta = $"{a.title}";
+                                        return ta.compareTo(b.title);
+                                    });
+        printLine("Pinned:");
+        for (Notice n in list) printLine($"  {link(n.title, => { showPinned(); })} ({topicName(n.topic)})");
+        printLine($"First: {list.first().title}.");
+    }
+}
+
+void showPinned() {
+    int n = notices.filter((Notice x) => x.pinned).count();
+    printLine($"{n} pinned.");
+}
+
+verb Index {
+    grammar = {.index};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{padRight("Notice", 16)} {padRight("Topic", 6)} {padLeft("Words", 5)} {padLeft("Read", 4)}{roman}");
+        for (Notice n in notices) {
+            stringObj t = $"{n.title}";
+            stringObj tp = $"{topicName(n.topic)}";
+            stringObj w = $"{n.words()}";
+            stringObj r = $"{n.reads}";
+            printLine($"{fixed}{padRight(t, 16)} {padRight(tp, 6)} {padLeft(w, 5)} {padLeft(r, 4)}{roman}");
+        }
+        int total = 0;
+        for (var w in notices.map((Notice n) => n.words())) total += w;
+        printLine($"Total words: {total}.");
+    }
+}
+
+verb Rules {
+    grammar = {.rules};
+    meta = true;
+    void handler() {
+        int count = 0;
+        for (Notice n in notices) {
+            switch (n.topic) {
+                case eTopic.rules, eTopic.hours:
+                    count++;
+                    printLine($"{n.title}: {n.words()} words.");
+            }
+        }
+        printLine($"{count} notices about rules or hours.");
+    }
+}
+
+verb Menu {
+    grammar = {.menu};
+    meta = true;
+    void handler() {
+        printLine($"Read: {link("white", => { openNotice(whiteNotice); })}, {link("blue", => { openNotice(blueNotice); })}, {link("green", => { openNotice(greenNotice); })}.");
+    }
+}
+
+verb Columns {
+    grammar = {.columns, NUMBER};
+    meta = true;
+    void handler() {
+        int w = (int)noun;
+        if (w < 12 || w > 40) { printLine("Columns run from 12 to 40."); return; }
+        wrapWidth = w;
+        if (reader != null) reader.width = wrapWidth + 2;
+        if (current != null) {
+            saved = place;
+            wrapInto(current.body, wrapWidth);
+            place.reset(lines.length);
+            if (saved.page < place.pages) place.page = saved.page;
+            showPage();
+            printLine($"Rewrapped to {wrapWidth}: {lines.length} lines, {place.label()}.");
+        } else {
+            printLine($"Columns set to {wrapWidth}.");
+        }
+    }
+}
+
+verb Numbers {
+    grammar = {.numbers};
+    meta = true;
+    void handler() {
+        numbered = !numbered;
+        printLine($"Line numbers {numbered ? "on" : "off"}.");
+        showPage();
+    }
+}
+
+verb Scan {
+    grammar = {.scan};
+    meta = true;
+    void handler() {
+        if (current == null) { printLine("Nothing is open."); return; }
+        int hits = 0;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].contains("key")) {
+                hits++;
+                stringObj marked = lines[i].replaceAll("key", "KEY");
+                printLine($"{i + 1}: {marked}");
+            }
+        }
+        printLine($"{hits} line{hits == 1 ? "" : "s"} mention the key.");
+    }
+}
+
+verb Reread {
+    grammar = {.reread};
+    meta = true;
+    void handler() {
+        if (current == null) { printLine("Nothing is open."); return; }
+        saved = place;
+        place.page = 0;
+        showPage();
+        bool same = place == saved;
+        printLine($"Back to the start (same page: {yn(same)}).");
+        place = saved;
+        showPage();
+        printLine($"Returned to {place.label()}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    meta = true;
+    void handler() {
+        printLine($"Reader open: {yn(reader != null)}.");
+        if (reader == null) return;
+        printLine($"Reader {reader.width} columns, head {head?.height} lines.");
+        eStyleCheck r = reader.checkStyle(eGlulxStyleType.normal, style{ fixedWidth = true; });
+        printLine($"Style known: {yn(r.known)}.");
+        bool two = reader.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.header);
+        printLine($"Distinct header: {yn(two)}.");
+        stringObj firstLine = lines.length > 0 ? lines[0].left(10) : "";
+        printLine($"Starts: \"{firstLine}\".");
+    }
+}
+
+#includeI6 "grammar"

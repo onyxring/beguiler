@@ -1,0 +1,6 @@
+/* A method named like a verb, named bare and not called, isn't a value; `::Name` reaches the verb. */
+// EXPECT_ERROR: 'Ring' here names this object's method, which isn't a value; for the verb, write `::Ring`.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+verb Ring { grammar = {.ring}; void handler(){ } }
+class Bell : object { void ring(){ } bool check(verb v){ return v != Ring; } }
+void main(){ }

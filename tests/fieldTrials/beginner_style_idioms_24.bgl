@@ -1,0 +1,658 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-fourth first-time-programmer program, a small hotel front desk where room keys
+// are handed to guests who wait in the lobby, nights pass, guests check out and pay, and a maid
+// cleans the rooms they leave, written the way a beginner writes it after reading the spec once.
+// Counts kept in int globals with consts for the nightly rate and the number of guests, bool flags,
+// an enum for a room's status returned from a method and switched on, a class of keys (a room
+// number, a floor, the guest's name, nights stayed, a clean flag, methods that work out the rate,
+// the bill and the status, a before() for Examine and Take, an after() for Drop), a subclass for
+// suites with a higher rate (a replaced method) and a subclass of that for the penthouse (a replaced
+// method that still calls the suite's through a cast), the keys out kept in an <array> array of the
+// class, the lobby kept as a queue (enqueue / dequeue / peek), a register of names kept in a string
+// array sorted with a comparator, an array of ints for the bills paid sorted and reversed, a clock
+// with a daemon that moves the nights on, a maid with a timer (time_left / time_out), helper
+// functions (one with a default argument, one called with a named argument, one with a ternary, one
+// returning a string from a switch with ranges and a guard), try / catch / throw for a key that is
+// not out, C-style for loops with break and continue, a while loop, a do/while, <linq> filter /
+// count / any / all / orderBy / first / last / take with lambdas (one capturing a local), stringObj
+// lines built with + and += and interpolation and changed with toUpper, left, padding and
+// replace, string tests with startsWith and endsWith, a string switch, for-in over a range, an
+// array, a literal list and children, and verbs with no noun and one noun (checkin, checkout,
+// rooms, guests, lobby, register, bills, night, keys, stats) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// what one night in a plain room costs
+const int NIGHT_RATE = 10;
+// how many guests the hotel can have at once
+const int MAX_GUESTS = 3;
+// how many turns make a night
+const int TURNS_PER_NIGHT = 3;
+// how many turns have gone by
+int turnCount = 0;
+// how many nights have gone by
+int nightCount = 0;
+// how much money is in the till
+int till = 0;
+// how many times someone checked in
+int checkIns = 0;
+// is the maid cleaning right now?
+bool maidBusy = false;
+// did we already say the hotel is full?
+bool saidFull = false;
+
+// ===== ROOM STATUS =====
+
+enum RoomStatus { free, taken, dirty }
+
+// ===== LISTS =====
+
+// the bills that were paid, one each
+array<int> billsPaid[10];
+
+// people waiting in the lobby, first come first served
+array<string> lobby[6];
+
+// everyone who ever checked in
+array<string> register[10];
+
+// ===== HELPER FUNCTIONS =====
+
+// prints "1 night" or "3 nights"
+void printNights(int n, bool withWord = true) {
+    print(n);
+    if (withWord) {
+        if (n == 1) {
+            print(" night");
+        } else {
+            print(" nights");
+        }
+    }
+}
+
+// prints money like "$30"
+void printMoney(int amount, string sign = "$") {
+    print(sign);
+    print(amount);
+}
+
+// "guest" or "guests"
+string guestWord(int n) {
+    return (n == 1) ? "guest" : "guests";
+}
+
+// a name for a floor
+string floorName(int f) {
+    switch (f) {
+        case < 1: return "basement";
+        case 1: return "ground floor";
+        case 2 to 3: return "middle floor";
+        case 4 to 9: return "top floor";
+    }
+    return "roof";
+}
+
+// prints a status word
+void printStatus(RoomStatus s) {
+    switch (s) {
+        case RoomStatus.free: print("free");
+        case RoomStatus.taken: print("taken");
+        case RoomStatus.dirty: print("dirty");
+    }
+}
+
+// adds up an array of ints
+int addUp(array<int> nums) {
+    int total = 0;
+    for (int i = 0; i < nums.length; i++) {
+        total += nums[i];
+    }
+    return total;
+}
+
+// ===== KEYS =====
+
+// the keys that are out right now
+array<Key> keysOut[MAX_GUESTS];
+
+class Key : object {
+    // the room number on the tag
+    int roomNumber = 100;
+    // which floor the room is on
+    int floor = 1;
+    // who has the room
+    string guest = "nobody";
+    // how many nights they stayed so far
+    int nightsStayed = 0;
+    // is the room clean?
+    bool isClean = true;
+    string description;
+
+    // what a night costs
+    int rate() {
+        return NIGHT_RATE;
+    }
+
+    // what the guest owes
+    int bill() {
+        return rate() * nightsStayed;
+    }
+
+    // works out the status
+    RoomStatus status() {
+        if (keysOut.contains(self)) {
+            return RoomStatus.taken;
+        }
+        if (isClean == false) {
+            return RoomStatus.dirty;
+        }
+        return RoomStatus.free;
+    }
+
+    // says how the room is doing
+    void sayStatus() {
+        print($"Room {roomNumber} ({floorName(floor)}): ");
+        printStatus(status());
+        if (status() == RoomStatus.taken) {
+            print($", {guest}, ");
+            printNights(nightsStayed);
+            print(", owes ");
+            printMoney(bill());
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"A key with the tag {roomNumber}. A night costs {rate()}.^");
+            rtrue;
+        }
+        if (action == Take) {
+            if (keysOut.contains(self)) {
+                rtrue($"{guest} has that key.^");
+            }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        if (action == Drop) {
+            print($"The key to room {roomNumber} falls on the floor.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a suite costs more
+class SuiteKey : Key {
+    replace int rate() {
+        return NIGHT_RATE * 3;
+    }
+}
+
+// the penthouse costs a little more than a suite
+class PenthouseKey : SuiteKey {
+    replace int rate() {
+        int suiteRate = ((SuiteKey)self).rate();
+        return suiteRate + 5;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The front desk. The lobby is to the south.";
+    object s_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The lobby. The front desk is to the north.";
+    object n_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE BOARD AND THE KEYS =====
+
+object board {
+    "key board";
+    parent = roomA;
+    name = {.key, .board};
+    string description = "A board of hooks for keys.";
+    attributes = {static, supporter};
+}
+
+Key key101 {
+    "red key";
+    parent = board;
+    name = {.red, .key};
+    roomNumber = 101;
+    floor = 1;
+    description = "A key.";
+}
+
+Key key102 {
+    "blue key";
+    parent = board;
+    name = {.blue, .key};
+    roomNumber = 102;
+    floor = 1;
+    description = "A key.";
+}
+
+SuiteKey key301 {
+    "green key";
+    parent = board;
+    name = {.green, .key};
+    roomNumber = 301;
+    floor = 3;
+    description = "A suite key.";
+}
+
+PenthouseKey key901 {
+    "gold key";
+    parent = board;
+    name = {.gold, .key};
+    roomNumber = 901;
+    floor = 9;
+    description = "A gold key.";
+}
+
+// the keys that are out hang here
+object pigeonholes {
+    "pigeonholes";
+    parent = roomA;
+    name = {.pigeonholes, .holes};
+    string description = "Pigeonholes for the keys that are out.";
+    attributes = {static, container, open};
+}
+
+// ===== THE CLOCK AND THE MAID =====
+
+object clock {
+    "clock";
+    parent = roomA;
+    name = {.clock};
+    string description = "A clock behind the desk.";
+    attributes = {static};
+    void daemon() {
+        turnCount++;
+        if (turnCount % TURNS_PER_NIGHT == 0) {
+            nightCount++;
+            for (Key k in keysOut) {
+                k.nightsStayed++;
+            }
+            if (keysOut.length > 0) {
+                print("^A night goes by.^");
+            }
+        }
+    }
+}
+
+object maid {
+    "maid";
+    parent = roomB;
+    name = {.maid};
+    string description = "The maid.";
+    attributes = {animate, female};
+    int time_left;
+    void time_out() {
+        int cleaned = 0;
+        for (Key k in {key101, key102, key301, key901}) {
+            if (k.isClean == false) {
+                k.isClean = true;
+                cleaned++;
+            }
+        }
+        maidBusy = false;
+        if (cleaned > 0) {
+            print($"^The maid has cleaned {cleaned} {(cleaned == 1) ? "room" : "rooms"}.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    lobby += { "Ann", "Bob", "Cal" };
+    lobby.enqueue("Dee");
+    StartDaemon(clock);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the keys) =====
+
+// how many rooms are dirty
+int countDirty() {
+    array<Key> all = { key101, key102, key301, key901 };
+    return all.filter((Key k) => k.status() == RoomStatus.dirty).count();
+}
+
+// finds the key a guest has, or null
+Key findGuest(string who) {
+    for (int i = 0; i < keysOut.length; i++) {
+        if (keysOut[i].guest == who) {
+            return keysOut[i];
+        }
+    }
+    return null;
+}
+
+// takes the key back and returns the bill; throws 1 if the key is not out
+int settleUp(Key k) {
+    if (!keysOut.contains(k)) {
+        throw 1;
+    }
+    int owed = k.bill();
+    keysOut.removeValue(k);
+    k.isClean = false;
+    k.parent = board;
+    return owed;
+}
+
+// pads a number on the left with spaces to a width
+stringObj padLeft(int n, int width) {
+    stringObj s = $"{n}";
+    while (s.length < width) {
+        s = " " + s;
+    }
+    return s;
+}
+
+// ===== VERBS =====
+
+// CHECKIN - gives a key to the first person in the lobby
+verb CheckIn {
+    grammar = {.checkin, NOUN};
+    void handler() {
+        if (location != roomA) {
+            print("Keys are given out at the desk.^");
+            return;
+        }
+        if (!(noun.is(Key))) {
+            print("That is not a key.^");
+            return;
+        }
+        Key k = (Key)noun;
+        if (keysOut.contains(k)) {
+            print($"Room {k.roomNumber} is taken.^");
+            return;
+        }
+        if (k.isClean == false) {
+            print($"Room {k.roomNumber} is not clean yet.^");
+            return;
+        }
+        if (lobby.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        if (keysOut.length == MAX_GUESTS) {
+            if (saidFull == false) {
+                print("The hotel is full. ");
+                saidFull = true;
+            }
+            print("No more guests.^");
+            return;
+        }
+        string who = lobby.dequeue();
+        k.guest = who;
+        k.nightsStayed = 0;
+        keysOut.append(k);
+        register.append(who);
+        checkIns++;
+        k.parent = pigeonholes;
+        print($"{who} takes the key to room {k.roomNumber}.^");
+    }
+}
+
+// CHECKOUT - a guest gives a key back and pays
+verb CheckOut {
+    grammar = {.checkout, NOUN};
+    void handler() {
+        if (!(noun.is(Key))) {
+            print("That is not a key.^");
+            return;
+        }
+        Key k = (Key)noun;
+        string who = k.guest;
+        int owed = 0;
+        try {
+            owed = settleUp(k);
+        } catch (int code) {
+            print($"Room {k.roomNumber} is not out (code {code}).^");
+            return;
+        }
+        if (owed == 0) {
+            owed = k.rate();
+        }
+        till += owed;
+        billsPaid.append(owed);
+        stringObj msg = "Paid: ";
+        msg += who;
+        stringObj num = $"{k.roomNumber}";
+        msg = msg + ", room " + num;
+        msg += $", {owed}";
+        msg += ".";
+        print(msg);
+        print("^");
+        if (maidBusy == false) {
+            maidBusy = true;
+            maid.time_left = 2;
+            StartTimer(maid, 2);
+        }
+    }
+}
+
+// ROOMS - every room and how it is doing
+verb ShowRooms {
+    grammar = {.rooms};
+    void handler() {
+        for (Key k in {key101, key102, key301, key901}) {
+            k.sayStatus();
+        }
+        int dirty = countDirty();
+        if (dirty > 0) {
+            print($"{dirty} to clean.^");
+        }
+    }
+}
+
+// GUESTS - who is staying
+verb ShowGuests {
+    grammar = {.guests};
+    void handler() {
+        if (keysOut.length == 0) {
+            print("Nobody is staying.^");
+            return;
+        }
+        print($"{keysOut.length} {guestWord(keysOut.length)}:");
+        for (Key k in keysOut) {
+            print($" {k.guest}");
+        }
+        print(".^");
+        if (keysOut.all((Key k) => k.nightsStayed > 0)) {
+            print("Everyone has stayed a night.^");
+        }
+        if (keysOut.any((Key k) => k.rate() > NIGHT_RATE)) {
+            print("Someone is in a suite.^");
+        }
+        // owing more than this
+        int big = 20;
+        int bigOwers = keysOut.filter((Key k) => k.bill() > big).count();
+        if (bigOwers > 0) {
+            print($"Owing over {big}: {bigOwers}.^");
+        }
+    }
+}
+
+// LOBBY - who is waiting
+verb ShowLobby {
+    grammar = {.lobby};
+    void handler() {
+        if (lobby.length == 0) {
+            print("The lobby is empty.^");
+            return;
+        }
+        stringObj line = "Waiting: ";
+        for (int i in 1 to lobby.length) {
+            line += $"{i}. {lobby[i - 1]}";
+            if (i < lobby.length) {
+                line += ", ";
+            }
+        }
+        print(line);
+        print("^");
+        print($"Next up: {lobby.peek()}.^");
+    }
+}
+
+// REGISTER - everyone who checked in, by name
+verb ShowRegister {
+    meta = true;
+    grammar = {.register};
+    void handler() {
+        if (register.length == 0) {
+            print("The register is empty.^");
+            return;
+        }
+        array<string> names[10];
+        names = register;
+        names.sort((string a, string b) => a.compareTo(b));
+        int i = 0;
+        do {
+            stringObj name = names[i];
+            print(name.toUpper());
+            if (i < names.length - 1) {
+                print(", ");
+            }
+            i++;
+        } while (i < names.length);
+        print("^");
+        // count the names ending in a letter we like
+        int withN = 0;
+        for (int j = 0; j < register.length; j++) {
+            if (register[j].endsWith("n")) {
+                withN++;
+            }
+        }
+        print($"Names ending in n: {withN}.^");
+    }
+}
+
+// BILLS - the bills paid, biggest first
+verb ShowBills {
+    meta = true;
+    grammar = {.bills};
+    void handler() {
+        if (billsPaid.length == 0) {
+            print("No bills yet.^");
+            return;
+        }
+        array<int> sorted = billsPaid;
+        sorted.sort();
+        sorted.reverse();
+        print("Bills:");
+        for (int b in sorted) {
+            print($" {b}");
+        }
+        print(". Total ");
+        printMoney(addUp(billsPaid));
+        print(".^");
+        print($"Smallest {billsPaid.orderBy().first()}, biggest {billsPaid.orderBy().last()}.^");
+        array<int> firstTwo = billsPaid.take(2);
+        print($"First two add up to {addUp(firstTwo)}.^");
+    }
+}
+
+// NIGHT - what night it is
+verb ShowNight {
+    meta = true;
+    grammar = {.night};
+    void handler() {
+        print("Nights so far: ");
+        printNights(nightCount);
+        print($". Turn {turnCount}.^");
+    }
+}
+
+// KEYS - the keys on the board, as a table
+verb ShowKeys {
+    grammar = {.keys};
+    void handler() {
+        int count = 0;
+        for (object o in board.children) {
+            if (!(o.is(Key))) {
+                continue;
+            }
+            Key k = (Key)o;
+            count++;
+            stringObj kind = "plain";
+            if (k.rate() > NIGHT_RATE) {
+                kind = "suite";
+            }
+            stringObj tag = $"{k.roomNumber}";
+            if (tag.startsWith("9")) {
+                kind = kind.replace("suite", "penthouse");
+            }
+            print($"{tag} {kind.left(5)} {padLeft(k.rate(), 3)}^");
+        }
+        print("On the board: ");
+        print(count);
+        print(".^");
+    }
+}
+
+// STATS - how the hotel is doing
+verb ShowStats {
+    meta = true;
+    grammar = {.stats};
+    void handler() {
+        print("Till: ");
+        printMoney(till, sign: "$");
+        print($". Check-ins: {checkIns}.^");
+        Key priciest = key101;
+        for (Key k in {key102, key301, key901}) {
+            if (k.rate() > priciest.rate()) {
+                priciest = k;
+            }
+        }
+        print($"Dearest room: {priciest.roomNumber}.^");
+        Key ann = findGuest("Ann");
+        if (ann != null) {
+            print($"Ann is in room {ann.roomNumber}.^");
+        } else {
+            print("Ann is not staying.^");
+        }
+        string mood;
+        switch (till) {
+            case 0: mood = "quiet";
+            default: mood = "busy";
+        }
+        string who = lobby.length > 0 ? lobby.peek() : "nobody";
+        switch (who) {
+            case "Dee": print("Dee is next.^");
+            case "nobody": print("Nobody is next.^");
+            default: print($"{who} is next.^");
+        }
+        stringObj state = maidBusy ? "cleaning" : "resting";
+        print($"The day is {mood}. The maid is {state}.^");
+    }
+}
+

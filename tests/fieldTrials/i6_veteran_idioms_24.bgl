@@ -1,0 +1,477 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a lift serving three
+// floors. A Landing class (an int floor member, a class description, var u_to/d_to/n_to routines
+// that refuse with their own text or return a room from a global array<object> of floors); a lift
+// car whose int and enum members track its floor, goal and heading, with var s_to/out_to routines;
+// a call button and lift doors that float through bool found_in() routines (the button found by
+// casting location to Landing); a motor daemon started in Initialise that dequeues calls from a
+// hand-rolled array<int> queue (postfix ++ in a subscript, a shifting for loop, a duplicate check
+// with break) and moves the car a floor a turn; the doors held open by a timer (time_left,
+// time_out); a CarButton class with a parse_name reading NextWord and TryNumber against a per-object
+// dictionaryWord member; a native Press verb with a NUMBER line ahead of the library's Push; a card
+// slot whose before rule takes the Receive fake action; a parcel whose after rule on PutOn scores;
+// an indicator printing the floor through a switch and the heading through a switch on the enum;
+// NewRoom; a meta verb printing a tally; deadflag when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 2;
+const int TOP = 3;              // floors 1..TOP
+const int QMAX = 4;             // calls the lift can hold
+const int DOOR_TURNS = 2;       // the doors stay open this many turns
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum heading { idle, up, down }
+
+array<int> calls[QMAX];         // floors waiting for the lift, oldest first
+int nCalls;
+bool doorsOpen;
+int g_rooms;
+int g_trips;                    // floors the car has passed through
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- the call queue
+
+bool Queued(int f) {
+    bool found = false;
+    for (int i = 0; i < nCalls; i++) {
+        if (calls[i] == f) {
+            found = true;
+            break;
+        }
+    }
+    return found;
+}
+
+int NextCall() {
+    if (nCalls == 0) return 0;
+    int f = calls[0];
+    for (int i = 1; i < nCalls; i++) calls[i - 1] = calls[i];
+    nCalls--;
+    return f;
+}
+
+// Answer a press of any button for floor f.
+void CallLift(int f) {
+    if (f == liftCar.at && liftCar.goal == 0) {
+        if (doorsOpen) {
+            liftDoors.time_left = DOOR_TURNS;      // StartTimer leaves a running timer alone
+            print("The doors stay open.^");
+            return;
+        }
+        if (nCalls == 0) {
+            OpenDoors();
+            return;
+        }
+    }
+    if (f == liftCar.goal || Queued(f)) {
+        print("The button is already lit.^");
+        return;
+    }
+    if (nCalls == QMAX) {
+        print("Nothing happens.^");
+        return;
+    }
+    calls[nCalls++] = f;
+    print("The button lights up.^");
+}
+
+bool PlayerAtLift() {
+    if (location == liftCar) return true;
+    if (location == floors[liftCar.at - 1]) return true;
+    return false;
+}
+
+void OpenDoors() {
+    doorsOpen = true;
+    liftCar.dir = idle;
+    StartTimer(liftDoors, DOOR_TURNS);
+    if (PlayerAtLift()) print("Ding. The lift doors slide open.^");
+}
+
+// ---------------------------------------------------------------- landings
+
+class Landing : object {
+    int floor;
+    void description() {
+        print($"Floor {floor}. Lift doors are set in the north wall");
+        if (doorsOpen && liftCar.at == floor) print(", standing open");
+        print(". Stairs lead");
+        if (floor < TOP) print(" up");
+        if (floor > 1 && floor < TOP) print(" and");
+        if (floor > 1) print(" down");
+        print(".^");
+    }
+    var n_to() {
+        if (doorsOpen && liftCar.at == floor) return liftCar;
+        print("The lift doors are closed.^");
+        return true;
+    }
+    var in_to() {
+        return n_to();
+    }
+    var u_to() {
+        if (floor == TOP) return false;
+        return floors[floor];
+    }
+    var d_to() {
+        if (floor == 1) return false;
+        return floors[floor - 2];
+    }
+    attributes = {light};
+}
+
+Landing floor1 {
+    short_name = "Floor 1";
+    floor = 1;
+}
+
+Landing floor2 {
+    short_name = "Floor 2";
+    floor = 2;
+}
+
+Landing floor3 {
+    short_name = "Floor 3";
+    floor = 3;
+}
+
+array<object> floors = {floor1, floor2, floor3};
+
+// ---------------------------------------------------------------- the car
+
+object liftCar {
+    short_name = "Lift";
+    int at = 1;
+    int goal;                   // 0: no goal
+    heading dir = idle;
+    void description() {
+        print("Lift. A panel of three buttons, a card slot and a floor indicator. The doors to the south are ");
+        if (doorsOpen) print("open.^");
+        else print("closed.^");
+    }
+    var s_to() {
+        if (doorsOpen) return floors[at - 1];
+        print("The lift doors are closed.^");
+        return true;
+    }
+    var out_to() {
+        return s_to();
+    }
+    attributes = {light};
+}
+
+object liftDoors {
+    short_name = "lift doors";
+    name = {.lift, .door, .doors};
+    bool found_in() {
+        if (location == liftCar) return true;
+        if (location.is(Landing)) return true;
+        return false;
+    }
+    void description() {
+        if (location != liftCar && liftCar.at != ((Landing)location).floor) {
+            print("Brushed steel doors, shut.^");
+            return;
+        }
+        if (doorsOpen) print("Brushed steel doors, standing open.^");
+        else print("Brushed steel doors, shut.^");
+    }
+    bool before() {
+        switch (action) {
+            case Open, Close, Push, Pull:
+                rtrue("The doors open and close by themselves.^");
+            case Enter:
+                if (location == liftCar) Go.perform(s_obj);
+                else Go.perform(n_obj);
+                rtrue;
+        }
+        rfalse;
+    }
+    int time_left;
+    void time_out() {
+        doorsOpen = false;
+        if (PlayerAtLift()) print("^The lift doors slide shut.^");
+    }
+    attributes = {static, scenery, pluralname};
+}
+
+object indicator {
+    short_name = "floor indicator";
+    name = {.floor, .indicator, .display, .arrow};
+    bool found_in() {
+        if (location == liftCar) return true;
+        return location.is(Landing);
+    }
+    void description() {
+        print("The indicator shows ");
+        switch (liftCar.at) {
+            case 1:
+                print("1");
+            case 2 to TOP:
+                print(liftCar.at);
+            default:
+                print("--");
+        }
+        switch (liftCar.dir) {
+            case up:
+                print(" with an arrow pointing up");
+            case down:
+                print(" with an arrow pointing down");
+            default:
+                print(" and no arrow");
+        }
+        print(".^");
+    }
+    attributes = {static, scenery};
+}
+
+object callButton {
+    short_name = "call button";
+    name = {.call, .button};
+    bool found_in() {
+        return location.is(Landing);
+    }
+    description = "A round call button.";
+    bool before() {
+        switch (action) {
+            case Push, Touch:
+                Landing here = (Landing)location;
+                CallLift(here.floor);
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {static, scenery};
+}
+
+class CarButton : object {
+    int floor;
+    dictionaryWord word;
+    int parse_name() {
+        if (parser_action == TheSame) return -2;   // the buttons always differ
+        int n = 0;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .button) {
+                n++;
+                continue;
+            }
+            if (w != null && w == word) {
+                n++;
+                continue;
+            }
+            if (w == null && TryNumber(wn - 1) == floor) {
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+    void description() {
+        print($"A square button marked {floor}.");
+        if (floor == liftCar.goal || Queued(floor)) print(" It is lit.");
+        print("^");
+    }
+    bool before() {
+        switch (action) {
+            case Push, Touch:
+                PressFloor(floor);
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {static, scenery};
+}
+
+CarButton button1 {
+    short_name = "button 1";
+    parent = liftCar;
+    floor = 1;
+    word = .one;
+}
+
+CarButton button2 {
+    short_name = "button 2";
+    parent = liftCar;
+    floor = 2;
+    word = .two;
+}
+
+CarButton button3 {
+    short_name = "button 3";
+    parent = liftCar;
+    floor = 3;
+    word = .three;
+}
+
+void PressFloor(int f) {
+    if (f == TOP && cardSlot.hasnt(general)) {
+        print("The button stays dark. A notice reads: CARD REQUIRED.^");
+        return;
+    }
+    CallLift(f);
+}
+
+object cardSlot {
+    short_name = "card slot";
+    name = {.card, .slot};
+    parent = liftCar;
+    description = "A narrow slot beside the buttons.";
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun != keycard) rtrue("It won't fit in the slot.^");
+                if (has(general)) rtrue("The slot has already read the card.^");
+                give(general);
+                Award();
+                rtrue("The slot reads the card and pushes it back out. Button 3 glows.^");
+        }
+        rfalse;
+    }
+    attributes = {static, scenery, container, open};
+}
+
+// ---------------------------------------------------------------- things
+
+object parcel {
+    short_name = "brown parcel";
+    name = {.brown, .parcel, .package};
+    parent = floor1;
+    description = "A brown parcel addressed to Floor 3.";
+    bool after() {
+        switch (action) {
+            case PutOn:
+                if (second == desk && hasnt(general)) {
+                    give(general);
+                    print("You set the parcel on the desk.^");
+                    Award();
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+}
+
+object shelf {
+    short_name = "shelf";
+    name = {.shelf};
+    parent = floor2;
+    description = "A narrow shelf.";
+    attributes = {static, supporter};
+}
+
+object keycard {
+    short_name = "key card";
+    name = {.key, .card, .keycard};
+    parent = shelf;
+    description = "A plastic key card.";
+}
+
+object desk {
+    short_name = "desk";
+    name = {.desk};
+    parent = floor3;
+    description = "A bare desk.";
+    attributes = {static, supporter};
+}
+
+// ---------------------------------------------------------------- the motor
+
+object liftMotor {
+    short_name = "lift motor";
+    void daemon() {
+        if (doorsOpen) return;
+        if (liftCar.goal == 0) {
+            liftCar.goal = NextCall();
+            if (liftCar.goal == 0) return;
+            if (liftCar.goal == liftCar.at) {
+                liftCar.goal = 0;
+                if (PlayerAtLift()) print("^");
+                OpenDoors();
+                return;
+            }
+        }
+        if (liftCar.goal > liftCar.at) {
+            liftCar.at++;
+            liftCar.dir = up;
+        }
+        else {
+            liftCar.at--;
+            liftCar.dir = down;
+        }
+        g_trips++;
+        if (location == liftCar) {
+            if (liftCar.dir == up) print("^The lift hums upward.^");
+            else print("^The lift hums downward.^");
+        }
+        if (liftCar.at == liftCar.goal) {
+            liftCar.goal = 0;
+            if (PlayerAtLift()) print("^");
+            OpenDoors();
+        }
+    }
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Press {
+    grammar = {.press | .push, NUMBER};
+    void handler() {
+        if (location != liftCar) {
+            print("There are no numbered buttons here.^");
+            return;
+        }
+        int n = (int)noun;
+        if (n < 1 || n > TOP) {
+            print($"The buttons run from 1 to {TOP}.^");
+            return;
+        }
+        PressFloor(n);
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print($"Rooms {g_rooms}, score {score}, trips {g_trips}.^");
+        print($"Car at {liftCar.at}, goal {liftCar.goal}, doors ");
+        if (doorsOpen) print("open");
+        else print("shut");
+        print(".^Calls:");
+        if (nCalls == 0) print(" none");
+        for (int i = 0; i < nCalls; i++) print($" {calls[i]}");
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = floor1;
+    StartDaemon(liftMotor);
+    rfalse;
+}

@@ -1,0 +1,76 @@
+Room A
+Room A.
+
+> setup
+Desk open at 09:00, listeners 2, first ticket #101.
+
+> intake
+Event: #101 printer jam [low, assigned, due 13:00] with desk.
+Event: #102 no network [high, assigned, due 10:15] with specialist.
+Event: #103 password reset [normal, assigned, due 11:15] with desk.
+Event: #104 server down [urgent, assigned, due 09:55] with manager.
+Created 4, hand-offs 3, urgent seen 1.
+
+> handlers
+desk        desk A queue #101 #103, handled 0, next specialist
+specialist  specialist B queue #102, handled 0, skill printers, next manager
+manager     manager C queue #104, handled 0, pages 1, next end
+
+> tickets
+#101 printer jam [low, assigned, due 13:00] -> desk
+#102 no network [high, assigned, due 10:15] -> specialist
+#103 password reset [normal, assigned, due 11:15] -> desk
+#104 server down [urgent, assigned, due 09:55] -> manager
+
+> escalate
+Event: #101 printer jam [normal, assigned, due 11:25] with specialist.
+Refused #104: nowhere to escalate.
+Refused #999: no such ticket.
+Hand-offs 3, refused 2.
+
+> handlers
+desk        desk A queue #103, handled 0, next specialist
+specialist  specialist B queue #102 #101, handled 0, skill printers, next manager
+manager     manager C queue #104, handled 0, pages 1, next end
+
+> later
+Now 11:05, overdue 2.
+  #102 late by 50 min
+  #104 late by 70 min
+
+> worklist
+1. #104 server down [urgent, assigned, due 09:55]
+2. #102 no network [high, assigned, due 10:15]
+3. #103 password reset [normal, assigned, due 11:15]
+4. #101 printer jam [normal, assigned, due 11:25]
+Top #104, any urgent true, all owned true.
+Keys 1101 102 103 104
+
+> close
+Event: #103 password reset [normal, resolved, due 11:15] with nobody.
+Refused #103: already resolved.
+Event: #102 no network [high, resolved, due 10:15] with nobody.
+Resolved 2, archived 2, left 2, notified 14.
+
+> handlers
+desk        desk A queue -, handled 1, next specialist
+specialist  specialist B queue #101, handled 1, skill printers, next manager
+manager     manager C queue #104, handled 0, pages 1, next end
+
+> more
+Event: #105 monitor flicker [normal, assigned, due 13:05] with desk.
+Event: #106 lost file [high, assigned, due 12:05] with specialist.
+Event: #107 fire alarm [urgent, assigned, due 11:35] with manager.
+Opened #105 #106 #107, lowest open #101, created 7.
+Refused: no ticket slot free.
+
+> tickets
+#101 printer jam [normal, assigned, due 11:25] -> specialist
+#104 server down [urgent, assigned, due 09:55] -> manager
+#105 monitor flicker [normal, assigned, due 13:05] -> desk
+#106 lost file [high, assigned, due 12:05] -> specialist
+#107 fire alarm [urgent, assigned, due 11:35] -> manager
+
+> lookup
+#104 owner manager; #150 title none.
+First busy tier above desk: specialist B (1).

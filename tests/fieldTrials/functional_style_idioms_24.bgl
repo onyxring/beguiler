@@ -1,0 +1,442 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small packing planner written in a functional style on Glulx. Items are objects of a
+// class with an enum kind, a weight, a worth and a float ratio method, held in a global array and
+// moved about the object tree by the library's own take/drop/put; packs are objects of a container
+// class whose before() turns away a Receive through a literal func<bool, Pack, Item> admission rule
+// (a lambda in one pack's definition, null in another) and a load limit; a value class plan (a bit
+// mask of chosen indices with its weight and worth) with a copy operator, returned by value from a
+// recursive 0/1 best-subset search and from a greedy fill whose order is a <linq> orderBy over indices
+// with a float comparator capturing a parameter; plans compared across a range of capacities with
+// filter/any/all/count and hand-written folds; bgl.world.inParent queries narrowed by predicates and
+// mapped to weights; the best plan for a pack applied by moving objects; per-kind summaries over an
+// array of the enum; a stringObj summary returned by value and built with `+=` and interpolation;
+// named and defaulted func<> parameters; shifts and masks; ternaries choosing between functions.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXCAP = 16;
+
+//-- World ----------------------------------------------------------------------------------------
+
+enum eKind { tool, food, cloth }
+
+class Item : object {
+    string label;
+    eKind kind;
+    int weight;
+    int worth;
+
+    float ratio() { return (float)worth / weight; }
+}
+
+class Pack : object {
+    string label;
+    int limit;
+    literal func<bool, Pack, Item> admits;
+
+    int load() { return weightIn(self); }
+
+    bool before() {
+        if (action != Receive) rfalse;
+        if (!noun.is(Item)) {
+            print($"Only items go in the {label}.^");
+            rtrue;
+        }
+        Item it = (Item)noun;
+        if (admits != null && !admits(self, it)) {
+            print($"The {label} refuses the {it.label}.^");
+            rtrue;
+        }
+        int after = load() + it.weight;
+        if (after > limit) {
+            print($"The {it.label} would bring the {label} to {after} of {limit}.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Item hammer { "hammer"; name = {.hammer}; label = "hammer"; kind = eKind.tool;  weight = 5; worth = 10; parent = roomA; }
+Item rope   { "rope";   name = {.rope};   label = "rope";   kind = eKind.tool;  weight = 3; worth = 9;  parent = roomA; }
+Item bread  { "bread";  name = {.bread};  label = "bread";  kind = eKind.food;  weight = 2; worth = 4;  parent = roomA; }
+Item apple  { "apple";  name = {.apple};  label = "apple";  kind = eKind.food;  weight = 1; worth = 3;  parent = roomA; }
+Item cloak  { "cloak";  name = {.cloak};  label = "cloak";  kind = eKind.cloth; weight = 4; worth = 6;  parent = roomA; }
+Item glove  { "glove";  name = {.glove};  label = "glove";  kind = eKind.cloth; weight = 2; worth = 5;  parent = roomA; }
+
+Pack satchel {
+    "satchel";
+    name = {.satchel};
+    label = "satchel";
+    limit = 8;
+    admits = (Pack p, Item i) => i.kind != eKind.food;
+    parent = roomA;
+    attributes = {container, open};
+}
+
+Pack crate {
+    "crate";
+    name = {.crate};
+    label = "crate";
+    limit = 12;
+    parent = roomA;
+    attributes = {container, open};
+}
+
+array<Item> items = {hammer, rope, bread, apple, cloak, glove};
+array<eKind> kinds = {eKind.tool, eKind.food, eKind.cloth};
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int weightOf(Item i) { return i.weight; }
+int worthOf(Item i)  { return i.worth; }
+
+int add(int a, int b)   { return a + b; }
+int maxOf(int a, int b) { return a > b ? a : b; }
+
+string kindName(eKind k) {
+    switch (k) {
+        case eKind.tool: return "tool";
+        case eKind.food: return "food";
+        default:         return "cloth";
+    }
+}
+
+int foldInts(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int sumItems(array<Item> xs, func<int, Item> key = weightOf) {
+    int total = 0;
+    for (Item i in xs) total += key(i);
+    return total;
+}
+
+// The weight of the items directly inside an object.
+int weightIn(object o) {
+    array<int> ws = bgl.world.inParent(o, (object k) => k.is(Item)).map((var k) => ((Item)k).weight);
+    return foldInts(ws, 0, add);
+}
+
+array<Item> itemsIn(object o) {
+    array<Item> found[8];
+    for (object k in bgl.world.inParent(o, (object k) => k.is(Item))) found += (Item)k;
+    return found;
+}
+
+array<int> range(int from, int to) {
+    array<int> out[MAXCAP];
+    for (int i = from; i <= to; i++) out += i;
+    return out;
+}
+
+void showItems(array<Item> xs) {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(" ");
+        print(xs[i].label);
+    }
+}
+
+void showInts(array<int> xs) {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(" ");
+        print(xs[i]);
+    }
+}
+
+//-- Plans ----------------------------------------------------------------------------------------
+
+value class Plan {
+    int mask = 0;
+    int weight = 0;
+    int worth = 0;
+
+    Plan operator = (Plan o) {
+        mask = o.mask;
+        weight = o.weight;
+        worth = o.worth;
+        return self;
+    }
+
+    bool has(int i) { return (mask & (1 << i)) != 0; }
+
+    void take(int i, Item it) {
+        mask |= 1 << i;
+        weight += it.weight;
+        worth += it.worth;
+    }
+
+    int size() {
+        int n = 0;
+        for (int m = mask; m != 0; m = m >> 1) {
+            if ((m & 1) != 0) n++;
+        }
+        return n;
+    }
+}
+
+// Exhaustive 0/1 search: the mask of the best-worth choice from items i.. that fits in cap.
+int bestMask(array<Item> xs, int cap, int i = 0) {
+    if (i >= xs.length) return 0;
+    int without = bestMask(xs, cap, i + 1);
+    Item it = xs[i];
+    if (it.weight > cap) return without;
+    int with = bestMask(xs, cap - it.weight, i + 1) | (1 << i);
+    return worthOfMask(xs, with) > worthOfMask(xs, without) ? with : without;
+}
+
+int worthOfMask(array<Item> xs, int mask) {
+    int total = 0;
+    for (int i = 0; i < xs.length; i++) {
+        if ((mask & (1 << i)) != 0) total += xs[i].worth;
+    }
+    return total;
+}
+
+Plan best(array<Item> xs, int cap) {
+    Plan p;
+    int mask = bestMask(xs, cap);
+    for (int i = 0; i < xs.length; i++) {
+        if ((mask & (1 << i)) != 0) p.take(i, xs[i]);
+    }
+    return p;
+}
+
+// Highest worth per unit of weight first; lighter first on a tie, then by index.
+array<int> byRatio(array<Item> xs) {
+    return range(0, xs.length - 1).orderBy((int a, int b) => {
+        float d = xs[b].ratio() - xs[a].ratio();
+        if (d > 0.0) return 1;
+        if (d < 0.0) return -1;
+        if (xs[a].weight != xs[b].weight) return xs[a].weight - xs[b].weight;
+        return a - b;
+    });
+}
+
+Plan greedy(array<Item> xs, int cap) {
+    Plan p;
+    for (int i in byRatio(xs)) {
+        if (p.weight + xs[i].weight <= cap) p.take(i, xs[i]);
+    }
+    return p;
+}
+
+array<Item> chosen(array<Item> xs, Plan p) {
+    array<Item> out[8];
+    for (int i = 0; i < xs.length; i++) {
+        if (p.has(i)) out += xs[i];
+    }
+    return out;
+}
+
+stringObj summary(array<Item> xs, Plan p, string name = "plan") {
+    stringObj s;
+    s = $"{name}: worth {p.worth}, weight {p.weight}, {p.size()} item{p.size() == 1 ? "" : "s"} [";
+    bool first = true;
+    for (int i = 0; i < xs.length; i++) {
+        if (!p.has(i)) continue;
+        if (!first) s += " ";
+        s += xs[i].label;
+        first = false;
+    }
+    s += "]";
+    return s;
+}
+
+int worthAt(array<Item> xs, int cap, func<Plan, array<Item>, int> planner) {
+    return planner(xs, cap).worth;
+}
+
+Plan bestOf(array<Item> xs, int cap) { return best(xs, cap); }
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb ListVerb {
+    grammar = {{.list}};
+    void handler() {
+        for (int i = 0; i < items.length; i++) {
+            Item it = items[i];
+            print($"{i} {it.label}: {kindName(it.kind)} w{it.weight} v{it.worth} r{it.ratio()} in {it.parent}^");
+        }
+        print("by ratio: ");
+        for (int i in byRatio(items)) print($"{items[i].label} ");
+        print($"^total weight {sumItems(items)} worth {sumItems(items, worthOf)}^");
+    }
+}
+
+verb BestVerb {
+    grammar = {{.best, NUMBER}};
+    void handler() {
+        int cap = parsed_number;
+        if (cap > MAXCAP) {
+            print("Too large.^");
+            return;
+        }
+        print(summary(items, best(items, cap), "best"));
+        print("^");
+        print(summary(items, greedy(items, cap), name: "greedy"));
+        print("^");
+    }
+}
+
+verb GapVerb {
+    grammar = {{.gap}};
+    void handler() {
+        array<int> caps = range(1, MAXCAP);
+        array<int> bests = caps.map((var c) => worthAt(items, (int)c, bestOf));
+        array<int> greedies = caps.map((var c) => worthAt(items, (int)c, greedy));
+        array<int> short = caps.filter((int c) => greedies[c - 1] < bests[c - 1]);
+        print("best:   ");
+        showInts(bests);
+        print("^greedy: ");
+        showInts(greedies);
+        print("^greedy short at: ");
+        showInts(short);
+        int widest = foldInts(caps.map((var c) => bests[(int)c - 1] - greedies[(int)c - 1]), 0, maxOf);
+        print($"^widest gap {widest}, short {short.count()} of {caps.count()}^");
+        print($"greedy never over: {caps.all((int c) => greedies[c - 1] <= bests[c - 1]) ? "yes" : "no"}; ");
+        int allFit = caps.filter((int c) => best(items, c).size() == items.length).first();
+        if (allFit > 0) print($"all items fit by {allFit}^");
+        else print($"not all items fit within {MAXCAP}^");
+    }
+}
+
+verb FitVerb {
+    grammar = {{.fit, NUMBER}};
+    void handler() {
+        int want = parsed_number;
+        array<int> caps = range(1, MAXCAP);
+        bool reachable = caps.any((int c) => best(items, c).worth >= want);
+        if (!reachable) {
+            print($"No load reaches {want}.^");
+            return;
+        }
+        int least = caps.filter((int c) => best(items, c).worth >= want).first();
+        int leastGreedy = caps.filter((int c) => greedy(items, c).worth >= want).first();
+        print($"worth {want}: best needs {least}, greedy ");
+        if (leastGreedy > 0) print($"needs {leastGreedy}^");
+        else print($"never gets there within {MAXCAP}^");
+    }
+}
+
+verb PlanVerb {
+    grammar = {{.plan, noun}};
+    void handler() {
+        if (!noun.is(Pack)) {
+            print("That is not a pack.^");
+            return;
+        }
+        Pack p = (Pack)noun;
+        array<Item> loose = items.filter((Item i) => i.parent != p);
+        array<Item> fits = p.admits != null ? loose.filter((Item i) => p.admits(p, i)) : loose;
+        int room = p.limit - p.load();
+        func<Plan, array<Item>, int> planner = fits.length > 4 ? bestOf : greedy;
+        Plan pl = planner(fits, room);
+        print($"{p.label} holds {p.load()} of {p.limit}; candidates ");
+        showItems(fits);
+        print("^");
+        print(summary(fits, pl, p.label));
+        print("^");
+    }
+}
+
+verb PackVerb {
+    grammar = {{.pack, noun}};
+    void handler() {
+        if (!noun.is(Pack)) {
+            print("That is not a pack.^");
+            return;
+        }
+        Pack p = (Pack)noun;
+        array<Item> loose = items.filter((Item i) => i.parent != p);
+        array<Item> fits = p.admits != null ? loose.filter((Item i) => p.admits(p, i)) : loose;
+        Plan pl = best(fits, p.limit - p.load());
+        array<Item> moving = chosen(fits, pl);
+        if (moving.length == 0) {
+            print($"Nothing more fits in the {p.label}.^");
+            return;
+        }
+        for (Item i in moving) i.parent = p;
+        print($"Packed into the {p.label}: ");
+        showItems(moving);
+        print($" (load {p.load()} of {p.limit}).^");
+    }
+}
+
+verb LoadsVerb {
+    grammar = {{.loads}};
+    void handler() {
+        array<object> packs = bgl.world.instances(Pack);    // kept: load() and itemsIn() query too
+        for (object o in packs) {
+            Pack p = (Pack)o;
+            print($"{p.label}: {p.load()} of {p.limit}, ");
+            showItems(itemsIn(p));
+            print("^");
+        }
+        array<Item> carried = itemsIn(player);
+        print($"carried {sumItems(carried)}: ");
+        showItems(carried);
+        array<Item> floor = itemsIn(roomA);
+        print($"^on the floor {floor.count()}, heaviest ");
+        Item heavy = floor.orderBy((Item a, Item b) => b.weight - a.weight).first();
+        print(heavy?.label ?? "(none)");
+        print("^");
+    }
+}
+
+verb KindsVerb {
+    grammar = {{.kinds}};
+    void handler() {
+        for (eKind k in kinds) {
+            array<Item> ofKind = items.filter((Item i) => i.kind == k);
+            print($"{kindName(k)}: {ofKind.count()} weight {sumItems(ofKind)} worth {sumItems(ofKind, key: worthOf)}");
+            print($" best ratio {ofKind.orderBy((Item a, Item b) => b.worth * a.weight - a.worth * b.weight).first().label}^");
+        }
+        array<int> worths = kinds.map((var k) => sumItems(items.filter((Item i) => i.kind == (eKind)k), worthOf));
+        print("worth per kind: ");
+        showInts(worths);
+        print($"^richest kind {kindName(kinds[worths.indexOf(foldInts(worths, 0, maxOf))])}^");
+    }
+}
+
+verb ResetVerb {
+    grammar = {{.reset}};
+    void handler() {
+        for (Item i in items) i.parent = roomA;
+        print("All items are back on the floor.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

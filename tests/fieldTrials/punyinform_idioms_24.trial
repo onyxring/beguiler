@@ -1,0 +1,153 @@
+Room A
+Room A. A bench stands here. Room B is north.
+You can see a bench (on which is a radio (which is closed)) and a drawer (which is closed) here.
+> status
+Score 0 of 3. Radio off at 88, volume 1.
+Faults 2, tunes 0, lines played 0.
+Clerk asked 0, swaps 0, stations heard 0.
+> parts
+3 of 5 parts are good.
+old valve: valve, worn, in the radio.
+clear valve: valve, good, in the drawer.
+copper coil: coil, good, in the shelf.
+dial: dial, good, in the radio.
+bent dial: dial, worn, in the drawer.
+> heard
+No stations heard.
+> log
+The log is empty.
+> examine radio
+A radio set. It is tuned to 88, volume 1.
+The radio is currently switched off.
+> switch radio on
+You switch the radio on. It stays silent.
+> status
+Score 0 of 3. Radio on but silent at 88, volume 1.
+Faults 2, tunes 0, lines played 0.
+Clerk asked 0, swaps 0, stations heard 0.
+> switch radio off
+You switch the radio off.
+> open radio
+You open the radio, revealing an old valve and a dial.
+> examine radio
+A radio set. It is tuned to 88, volume 1.
+Missing: a good valve a good coil.
+The radio is currently switched off.
+> examine old valve
+A glass valve. It is worn out.
+> take old valve
+Taken.
+> put old valve in radio
+You put the old valve into the radio.
+> open drawer
+You open the drawer, revealing a clear valve and a bent dial.
+> take bent dial
+Taken.
+> put bent dial in radio
+The radio already holds a dial.
+> examine bent dial
+A tuning dial. It is worn out.
+> take clear valve
+Taken.
+> put clear valve in radio
+The radio already holds a valve.
+> take old valve
+Taken.
+> put clear valve in radio
+You put the clear valve into the radio.
+> examine radio
+A radio set. It is tuned to 88, volume 1.
+Missing: a good coil.
+The radio is currently switched off.
+> north
+Room B
+Room B. A shelf runs along the wall. Room A is south.
+You can see a clerk here.
+> examine copper coil
+A copper coil. It looks new.
+> take copper coil
+Taken.
+> ask clerk about radio
+The clerk says: a radio needs a valve, a coil and a dial.
+> ask clerk about stations
+The clerk says: there are 3 stations.
+> ask clerk about weather
+The clerk shrugs.
+> give copper coil to clerk
+The clerk says: the copper coil is fine. Keep it.
+> give old valve to clerk
+The clerk swaps the old valve for a good one and hands it back.
+> give bent dial to clerk
+The clerk swaps the bent dial for a good one and hands it back.
+> clerk, wait
+The clerk waits.
+> clerk, jump
+The clerk says: I am busy.
+> south
+Room A
+You can see a bench (on which is a radio (which contains a clear valve and a dial)) and a drawer (which is open but empty) here.
+> put copper coil in radio
+You fit the copper coil. The radio is complete.
+[The score has just gone up by 1 point.]
+> close radio
+You close the radio.
+> scan
+The radio is not playing.
+> tune 99
+You set the dial to 99, low band.
+> switch radio on
+You switch the radio on. It hisses.
+> status
+Score 1 of 3. Radio playing at 99, volume 1.
+Faults 0, tunes 1, lines played 0.
+Clerk asked 3, swaps 2, stations heard 0.
+> tune 120
+You tune to 120, above the band. Static.
+> tune 94
+You tune to 94. Station Two comes in clearly.
+From the radio: A tune plays.
+[The score has just gone up by 1 point.]
+> wait
+Nothing happens.
+From the radio: A voice reads the weather.
+> louder
+Volume 3.
+From the radio: A voice reads the time.
+> louder
+Volume 5.
+From the radio: A tune plays.
+> louder
+The radio is as loud as it goes.
+From the radio: A voice reads the weather.
+> softer
+Volume 3.
+From the radio: A voice reads the time.
+> scan
+The radio scans to 101. Station Three comes in.
+From the radio: A tune plays.
+> scan
+The radio scans to 88. Station One comes in.
+From the radio: A voice reads the weather.
+[The score has just gone up by 1 point.]
+> heard
+Heard: 94 101 88.
+> open radio
+You should switch the radio off first.
+From the radio: A voice reads the time.
+> switch radio off
+You switch the radio off.
+> tune radio to 70
+You set the dial to 70, below the band.
+> parts
+5 of 5 parts are good.
+old valve: valve, good, carried.
+clear valve: valve, good, in the radio.
+copper coil: coil, good, in the radio.
+dial: dial, good, in the radio.
+bent dial: dial, good, carried.
+> status
+Score 3 of 3. Radio off at 70, volume 3.
+Faults 0, tunes 4, lines played 9.
+Clerk asked 3, swaps 2, stations heard 3.
+> log
+Log (17): 1. dead 2. 2. off. 3. removed 1. 4. fitted 1. 5. removed 1. 6. fitted 1. 7. swapped 1. 8. swapped 3. 9. fitted 2. 10. tuned 99. 11. on 99. 12. tuned 120. 13. tuned 94. 14. scanned 101. 15. scanned 88. 16. off. 17. tuned 70.

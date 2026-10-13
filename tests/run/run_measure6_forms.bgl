@@ -1,0 +1,45 @@
+// run_measure6_forms — forms measurement round 6 found miscompiled: `x?.m++;`, a cast before a cast
+// receiver's member, a cast on an accessor whose getter returns a bnum, a member named like an
+// attribute read above its class, a member string mentioning a global's name, a captured array read in
+// a lambda's nested block, a lambda in one arm of ?:, and a recursive routine filling its own local by ref.
+// EXPECT_OUTPUT: 1 2 4 1 Room of reading 3 7 | 4 -1 | 10
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+attribute worn;
+enum eKind { a, b, c }
+bnum flags { f1, f2, f3 }
+int reading = 0;
+class Holder : object { int hits; }
+Holder h1 { }
+class Gadget : object { Holder owner; eKind kind; }
+Gadget g1 { owner = h1; kind = eKind.b; }
+bool isWorn(Part p) { return p.worn; }
+class Part : object { bool worn; string note = "Room of reading"; }
+Part p1 { worn = true; }
+object box { auto door = { int _d = 0; flags operator () { return (flags)_d; } void operator = (flags v) { _d = v; } } }
+array<int> ws = {5, 3, 2};
+int pick(array<int> xs, int i){
+    func<int, int> f = (int x) => { if (x > 0) return xs[x]; return 7; };
+    return f(i);
+}
+int count(int k){ int n = k > 0 ? ws.filter((int w) => w > k).count() : 0; return k; }
+value class Tot { int sum = 0; Tot operator = (Tot o) { sum = o.sum; return self; } }
+void sumFrom(int i, ref Tot out){
+    if (i >= ws.length) return;
+    Tot rest;
+    sumFrom(i + 1, rest);
+    out = rest;
+    out.sum += ws[i];
+}
+void main(){
+    bglInit();
+    object o = g1;
+    g1.owner?.hits++;
+    box.door = f3;
+    print($"{h1.hits} {(int)((Gadget)o).kind} {(int)box.door} {(int)isWorn(p1)} {p1.note} {pick(ws, 1)} {pick(ws, 0)} | ");
+    print($"{count(4)} {count(-1)} | ");
+    Tot t;
+    sumFrom(0, t);
+    print($"{t.sum}^");
+}

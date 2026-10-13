@@ -1,0 +1,144 @@
+Room A
+> stock
+bolts   20   +0    fair  ok
+nails   50   +0    fair  ok
+screws  30   +0    fair  ok
+hinges  6    +0    fair  ok
+> orders
+No open orders.
+> suppliers
+No supplier is busy.
+> check
+Late orders: false. All small: true. Low items: 0.
+> history bolts
+No movements of bolts.
+> issue bolts 12
+Issued 12 bolts; 8 left.
+bolts are low.
+> issue hinges 3
+Issued 3 hinges; 3 left.
+hinges are low.
+> issue nails 60
+Only 50 nails in stock.
+> issue nails 30
+Issued 30 nails; 20 left.
+nails are low.
+> stock
+bolts   8    +0    thin  low
+nails   20   +0    thin  low
+screws  30   +0    fair  ok
+hinges  3    +0    thin  low
+> reorder
+Order 1: 40 bolts from Depot A, due day 3, 160p.
+Order 2: 100 nails from Depot B, due day 4, 100p.
+Order 3: 12 hinges from Depot A, due day 3, 480p.
+> reorder
+Nothing to reorder.
+> orders
+#1  day 3  40 bolts    Depot A
+#3  day 3  12 hinges   Depot A
+#2  day 4  100 nails   Depot B
+Total 740p.
+> suppliers
+Depot A: 2 open.
+Depot B: 1 open.
+> check
+Late orders: false. All small: false. Low items: 3.
+Oldest open: #1. Newest open: #3.
+> cost bolts 10
+10 bolts at 5p each (tier 1): 50p.
+> cost bolts 20
+20 bolts at 4p each (tier 2): 80p.
+> cost nails 100
+100 nails at 1p each (tier 3): 100p.
+> cost hinges 49
+49 hinges at 36p each (tier 2): 1764p.
+> report bolts
+bolts: stock 8; on order 40; value 40; issued 12; room 12;
+> report nails
+nails: stock 20; on order 100; value 40; issued 30; room 30;
+> order hinges 5
+Order 4: 5 hinges from Depot A, due day 3, 200p.
+> order hinges 9
+Room for only 0 hinges.
+> order screws 30
+Order 5: 30 screws from Depot B, due day 4, 90p.
+> orders
+#1  day 3  40 bolts    Depot A
+#3  day 3  12 hinges   Depot A
+#4  day 3  5 hinges    Depot A
+#2  day 4  100 nails   Depot B
+#5  day 4  30 screws   Depot B
+Total 1030p.
+> cancel 5
+Cancelled order 5 (30 screws).
+> orders
+#1  day 3  40 bolts    Depot A
+#3  day 3  12 hinges   Depot A
+#4  day 3  5 hinges    Depot A
+#2  day 4  100 nails   Depot B
+Total 940p.
+> next
+Day 2.
+> next
+Day 3.
+Order 1 arrived: 40 bolts; 48 now.
+Order 3 arrived: 12 hinges; 15 now.
+Order 4 arrived: 5 hinges; 20 now.
+> stock
+bolts   48   +0    good  ok
+nails   20   +100  thin  low,ordered
+screws  30   +0    fair  ok
+hinges  20   +0    brim  full
+> orders
+#2  day 4  100 nails   Depot B
+Total 100p.
+> cancel 9
+No order 9.
+> cancel 4
+No order 4.
+> orders
+#2  day 4  100 nails   Depot B
+Total 100p.
+> next
+Day 4.
+Order 2 arrived: 100 nails; 120 now.
+> check
+Late orders: false. All small: true. Low items: 0.
+> stock
+bolts   48   +0    good  ok
+nails   120  +0    good  ok
+screws  30   +0    fair  ok
+hinges  20   +0    brim  full
+> history nails
+day 1: -30
+day 4: +100
+Net 70 over 2 of 2.
+> return screws 5
+Returned 5 screws; 35 now.
+> issue screws 40
+Only 35 screws in stock.
+> issue screws 2
+Issued 2 screws; 33 left.
+> issue screws 3
+Issued 3 screws; 30 left.
+> issue screws 1
+Issued 1 screws; 29 left.
+> issue screws 4
+Issued 4 screws; 25 left.
+> history screws
+day 4: -2
+day 4: -3
+day 4: -1
+day 4: -4
+Net -10 over 4 of 5.
+> history bolts
+No movements of bolts.
+> report screws
+screws: stock 25; on order 0; value 75; issued 10; room 65;
+> issue widgets 3
+I didn't understand that sentence.
+> orders
+No open orders.
+> suppliers
+No supplier is busy.

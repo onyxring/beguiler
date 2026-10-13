@@ -1,0 +1,600 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a liquids-and-vessels kit and its consumer. The kit declares an enum of liquids; a value
+// class of volumes with two copy operators, + over ints and over volumes, <=> (giving < and >), == and
+// != against an int, a cups() count and a show method that prints millilitres or litres; a vessel
+// class with a required positional capacity, an owned volume, a liquid, a required material()
+// routine, a default sound(), static spill counts, a take() that throws the overflow or a mixing
+// code, a drain(), and a before() that takes over the library's Fill, Empty and EmptyT; an after()
+// that sloshes on Take. A pooled tag class with create/destroy, static counters and a vessel member.
+// The cellar object is a namespace (alias … for the enum and the volume) holding an array of vessels,
+// an array of tags swept with remove/delete in a while loop, a stringObj log, an owned volume of all
+// that was poured, an inline accessor that clamps warmth and counts changes through outer., a pour
+// method that catches the vessel's throws and slows cold oil through an extern I6 routine, a switch on
+// aliased values, a do/until fill loop, a union-returning search and a func<> walk. The consumer has
+// one room with a tap and five vessels (positional capacities, one starting with wine), extends the
+// vessel class with tests and the cellar with a capturing <linq> count and a ternary; its verbs pour,
+// measure, tag and untag vessels, warm and cool the cellar, find the fullest vessel through typeof and
+// casts, and report with <linq> filter/count/any/first, ??, a copied and lambda-sorted local array,
+// bgl.world.instances with a predicate, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA24_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: vessels that hold one liquid each, up to a capacity. ====
+
+/// What a vessel holds.
+enum eLa24Liquid { dry, water, oil, wine }
+
+/// An amount of liquid in millilitres, copied on assignment.
+value class La24Volume {
+    int ml;
+    La24Volume operator = (La24Volume o) { ml = o.ml; return self; }
+    La24Volume operator = (int m) { ml = m; return self; }
+    /// The volume with some millilitres more.
+    La24Volume operator + (int m) {
+        La24Volume r;
+        r.ml = ml + m;
+        return r;
+    }
+    /// The two volumes together.
+    La24Volume operator + (La24Volume o) {
+        La24Volume r;
+        r.ml = ml + o.ml;
+        return r;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La24Volume o) { return ml - o.ml; }
+    /// True when it is exactly so many millilitres.
+    bool operator == (int m) { return ml == m; }
+    /// True when it is not so many millilitres.
+    bool operator != (int m) { return ml != m; }
+
+    /// Whole cups of 250ml.
+    int cups() { return ml / 250; }
+
+    /// Prints the volume as millilitres, or as litres to two places.
+    void show() {
+        if (ml < 1000) {
+            print($"{ml}ml");
+            return;
+        }
+        int hundredths = (ml % 1000) / 10;
+        print($"{ml / 1000}.");
+        if (hundredths < 10) print("0");
+        print($"{hundredths}l");
+    }
+}
+
+/// A thing that holds one liquid, up to its capacity.
+class La24Vessel : object {
+    /// The most it holds, in millilitres.
+    required inline int capacity;
+    La24Volume held;
+    eLa24Liquid liquid = eLa24Liquid.dry;
+    /// Times liquid has been poured out of it.
+    int pours = 0;
+    /// Millilitres spilled from every vessel.
+    static int spilled = 0;
+
+    /// A word for what it is made of.
+    required string material();
+    /// The noise it makes when moved with something in it.
+    default string sound() { return "slosh"; }
+
+    /// Millilitres of room left.
+    int space() { return capacity - held.ml; }
+
+    /// True when it holds nothing.
+    bool isEmpty() { return held == 0; }
+
+    /// Takes in liquid. Throws -1 when it holds another liquid, or the overflow when it fills.
+    void take(eLa24Liquid l, int amount) {
+        if (held != 0 && liquid != l) throw -1;
+        liquid = l;
+        int fit = bgl.util.math.min(amount, space());
+        held = held + fit;
+        if (fit < amount) throw amount - fit;
+    }
+
+    /// Empties it; returns what it held.
+    int drain() {
+        int had = held.ml;
+        held = 0;
+        liquid = eLa24Liquid.dry;
+        return had;
+    }
+
+    bool before() {
+        switch (action) {
+            case Fill:
+                la24Cellar.fillFromTap(self, second);
+                return true;
+            case Empty:
+                if (isEmpty()) {
+                    print($"The {self} is already empty.^");
+                    return true;
+                }
+                int had = drain();
+                La24Vessel.spilled += had;
+                print($"You pour {had}ml away.^");
+                return true;
+            case EmptyT:
+                if (!second.is(La24Vessel)) {
+                    print($"The {second} cannot hold liquid.^");
+                    return true;
+                }
+                la24Cellar.pour(self, (La24Vessel)second, held.ml);
+                return true;
+        }
+        return false;
+    }
+
+    bool after() {
+        if (action != ::Take || isEmpty()) return false;
+        print($"({sound()}) ");
+        return false;
+    }
+}
+
+/// A paper tag stuck to a vessel; made with new and handed back with delete.
+class La24Tag[3] : object {
+    string text;
+    La24Vessel on;
+    /// Tags written so far.
+    static int made = 0;
+    /// Tags peeled so far.
+    static int peeled = 0;
+
+    void create(string t, La24Vessel v) {
+        text = t;
+        on = v;
+        made++;
+    }
+
+    void destroy() {
+        on = null;
+        peeled++;
+    }
+}
+
+/// Report verbs: they take no time.
+class La24Info : verb {
+    meta = true;
+}
+
+// ==== The cellar. ====
+
+/// The cellar: knows the vessels and the tap, pours between them, and keeps a log.
+object la24Cellar {
+    "cellar";
+    alias liquid for eLa24Liquid;
+    alias volume for La24Volume;
+    array<La24Vessel> vessels[6];
+    array<La24Tag> tags[3];
+    stringObj log;
+    volume poured;
+    /// Where water comes from; null when there is no tap.
+    object tap = null;
+    int changes = 0;
+
+    /// Degrees, kept from 0 to 40; each change is counted.
+    auto warmth = {
+        int _w = 10;
+        int operator () { return _w; }
+        void operator = (int v) {
+            int c = bgl.util.math.clamp(v, 0, 40);
+            if (c != _w) outer.changes++;
+            _w = c;
+        }
+    }
+
+    /// Adds a vessel; false when it is there already or there is no room.
+    bool register(La24Vessel v) {
+        if (vessels.contains(v)) return false;
+        return vessels.append(v);
+    }
+
+    /// A word for a liquid.
+    string word(liquid l) {
+        switch (l) {
+            case liquid.water: return "water";
+            case liquid.oil:   return "oil";
+            case liquid.wine:  return "wine";
+            default:           return "nothing";
+        }
+    }
+
+    /// Fills a vessel from the tap a cup at a time until it is full.
+    void fillFromTap(La24Vessel v, object source) {
+        if (tap == null || tap.parent != location || (source != null && source != tap)) {
+            print("There is no water here.^");
+            return;
+        }
+        int cups = 0;
+        try {
+            do {
+                v.take(liquid.water, 250);
+                cups++;
+            } until (v.space() == 0);
+        } catch (int code) {
+            if (code < 0) {
+                print($"The {v} holds {word(v.liquid)}.^");
+                return;
+            }
+            cups++;
+        }
+        log += $"tap>{v.material()} ";
+        print($"You fill the {v} with {cups} cups: ");
+        v.held.show();
+        print(".^");
+    }
+
+    /// Pours up to an amount from one vessel into another. Returns what moved.
+    int pour(La24Vessel from, La24Vessel into, int amount) {
+        if (from == into) {
+            print("That would pour it into itself.^");
+            return 0;
+        }
+        if (from.isEmpty()) {
+            print($"The {from} is empty.^");
+            return 0;
+        }
+        liquid l = from.liquid;
+        int want = bgl.util.math.min(amount, from.held.ml);
+        if (l == liquid.oil && warmth < 15) want = La24Half(want);
+        int moved = want;
+        try {
+            into.take(l, want);
+        } catch (int over) {
+            if (over < 0) {
+                print($"The {into} already holds {word(into.liquid)}.^");
+                log += "x ";
+                return 0;
+            }
+            moved = want - over;
+        }
+        from.held = from.held.ml - moved;
+        if (from.isEmpty()) from.liquid = liquid.dry;
+        from.pours++;
+        poured = poured + moved;
+        log += $"{from.material()}>{into.material()} ";
+        print($"You pour {moved}ml of {word(l)} into the {into}");
+        if (moved < want) print(" and it is full");
+        print(".^");
+        return moved;
+    }
+
+    /// The vessel holding the most, or a word when all are empty.
+    La24Vessel | string fullest() {
+        La24Vessel best = null;
+        for (La24Vessel v in vessels) {
+            if (v.isEmpty()) continue;
+            if (best == null || v.held > best.held) best = v;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Writes a tag for a vessel; null when every tag is in use.
+    La24Tag tag(string text, La24Vessel v) {
+        La24Tag t = new La24Tag(text, v);
+        if (!(t?)) return null;
+        tags.append(t);
+        log += $"+{text} ";
+        return t;
+    }
+
+    /// Peels the tags off a vessel. Returns how many came off.
+    int untag(La24Vessel v) {
+        int gone = 0;
+        int i = 0;
+        while (i < tags.length) {
+            La24Tag t = tags[i];
+            if (t.on == v) {
+                log += $"-{t.text} ";
+                tags.remove(i);
+                delete t;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        return gone;
+    }
+
+    /// The tag on a vessel, or null.
+    La24Tag tagOn(La24Vessel v) {
+        for (La24Tag t in tags) {
+            if (t.on == v) return t;
+        }
+        return null;
+    }
+
+    /// Runs a step on each vessel, in the order they were registered.
+    void each(func<void, La24Vessel> step) {
+        for (La24Vessel v in vessels) step(v);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object brassTap {
+    "brass tap";
+    parent = roomA;
+    name = {.brass, .tap};
+    attributes = {static};
+}
+
+La24Vessel glassJar {
+    500, "glass jar";
+    parent = roomA;
+    name = {.glass, .jar};
+    string material() { return "glass"; }
+    string sound() { return "clink"; }
+}
+
+La24Vessel tinCup {
+    250, "tin cup";
+    parent = roomA;
+    name = {.tin, .cup};
+    string material() { return "tin"; }
+}
+
+La24Vessel stoneBasin {
+    2000, "stone basin";
+    parent = roomA;
+    name = {.stone, .basin};
+    attributes = {static};
+    string material() { return "stone"; }
+}
+
+La24Vessel clayJug {
+    1000, "clay jug";
+    parent = roomA;
+    name = {.clay, .jug};
+    held = La24Volume{ ml = 750; };
+    liquid = eLa24Liquid.wine;
+    string material() { return "clay"; }
+    string sound() { return "glug"; }
+}
+
+La24Vessel steelFlask {
+    300, "steel flask";
+    parent = roomA;
+    name = {.steel, .flask};
+    held = La24Volume{ ml = 300; };
+    liquid = eLa24Liquid.oil;
+    string material() { return "steel"; }
+}
+
+/// The words tags are written with, in the order they are used.
+array<string> la24Words = {"A", "B", "C", "D"};
+int la24Tagged = 0;
+
+#i6 {
+[ La24Half n; return (n + 1) / 2; ];
+}
+
+/// Half an amount, rounded up; the consumer wrote it in I6.
+extern int La24Half(int n);
+
+/// Every vessel can say how full it is.
+extend class La24Vessel {
+    /// How full, in percent.
+    int percent() { return held.ml * 10 / (capacity / 10); }
+    /// True when there is no room left.
+    bool full() { return space() == 0; }
+}
+
+/// The cellar can count the vessels holding a liquid and sum itself up in a word.
+extend la24Cellar {
+    /// How many vessels hold the liquid.
+    int holding(eLa24Liquid l) {
+        return vessels.filter((La24Vessel v) => v.liquid == l).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return warmth < 15 ? "cold" : "mild";
+    }
+}
+
+/// Prints a vessel's line.
+void la24ShowVessel(La24Vessel v) {
+    print($"{v} {v.material()} ");
+    v.held.show();
+    print($"/{v.capacity} {la24Cellar.word(v.liquid)} {v.percent()}% pours {v.pours}");
+    if (v.full()) print(" full");
+    La24Tag t = la24Cellar.tagOn(v);
+    if (t != null) print($" tag {t.text}");
+    print("^");
+}
+
+// ==== Verbs. ====
+
+verb La24Pour {
+    grammar = {.pour, NOUN, .into, NOUN};
+    void handler() {
+        if (!noun.is(La24Vessel) || !second.is(La24Vessel)) {
+            print("Only vessels pour.^");
+            return;
+        }
+        La24Vessel from = (La24Vessel)noun;
+        la24Cellar.pour(from, (La24Vessel)second, from.held.ml);
+    }
+}
+
+La24Info La24Measure {
+    grammar = {.measure, NOUN};
+    void handler() {
+        if (!noun.is(La24Vessel)) {
+            print($"The {noun} holds nothing.^");
+            return;
+        }
+        La24Vessel v = (La24Vessel)noun;
+        print($"The {v} holds ");
+        v.held.show();
+        print($" of {la24Cellar.word(v.liquid)} ({v.held.cups()} cups, {v.space()}ml free).^");
+    }
+}
+
+La24Info La24Compare {
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(La24Vessel) || !second.is(La24Vessel)) {
+            print("Only vessels compare.^");
+            return;
+        }
+        La24Volume a = ((La24Vessel)noun).held;
+        La24Volume b = ((La24Vessel)second).held;
+        if (a < b) print($"The {noun} holds less than the {second}.^");
+        else if (a > b) print($"The {noun} holds more than the {second}.^");
+        else print($"The {noun} and the {second} hold the same.^");
+    }
+}
+
+verb La24Label {
+    grammar = {.label, NOUN};
+    void handler() {
+        if (!noun.is(La24Vessel)) {
+            print("Only vessels take tags.^");
+            return;
+        }
+        string text = la24Words[la24Tagged % la24Words.length];
+        La24Tag t = la24Cellar.tag(text, (La24Vessel)noun);
+        if (t == null) {
+            print($"No tag is left ({la24Cellar.tags.length} in use).^");
+            return;
+        }
+        la24Tagged++;
+        print($"The {noun} is tagged {t.text}.^");
+    }
+}
+
+verb La24Untag {
+    grammar = {.untag, NOUN};
+    void handler() {
+        if (!noun.is(La24Vessel)) {
+            print("That has no tags.^");
+            return;
+        }
+        int gone = la24Cellar.untag((La24Vessel)noun);
+        print($"untagged {gone}; tags {la24Cellar.tags.length}.^");
+    }
+}
+
+verb La24Warm {
+    grammar = {.warm, NUMBER};
+    void handler() {
+        la24Cellar.warmth = la24Cellar.warmth + (int)noun;
+        print($"warmth {la24Cellar.warmth}, changes {la24Cellar.changes}, {la24Cellar.mood()}.^");
+    }
+}
+
+verb La24Cool {
+    grammar = {.cool, NUMBER};
+    void handler() {
+        la24Cellar.warmth = la24Cellar.warmth - (int)noun;
+        print($"warmth {la24Cellar.warmth}, changes {la24Cellar.changes}, {la24Cellar.mood()}.^");
+    }
+}
+
+La24Info La24Fullest {
+    grammar = {.fullest};
+    void handler() {
+        La24Vessel | string r = la24Cellar.fullest();
+        if (typeof(r) == eType.object) {
+            La24Vessel v = (La24Vessel)r;
+            print($"The {v} is fullest at {v.percent()}%; {la24Cellar.holding(v.liquid)} hold {la24Cellar.word(v.liquid)}.^");
+        } else {
+            print($"Fullest: {(string)r}.^");
+        }
+    }
+}
+
+La24Info La24Vessels {
+    grammar = {.vessels};
+    void handler() {
+        la24Cellar.each((La24Vessel v) => la24ShowVessel(v));
+        int wet = la24Cellar.vessels.filter((La24Vessel v) => !v.isEmpty()).count();
+        print($"wet {wet}");
+        bool anyFull = la24Cellar.vessels.any((La24Vessel v) => v.full());
+        if (anyFull) print(", one full");
+        La24Vessel firstDry = la24Cellar.vessels.filter((La24Vessel v) => v.isEmpty()).first();
+        object which = firstDry ?? roomA;
+        print($"; first dry {which}; poured ");
+        la24Cellar.poured.show();
+        print($", spilled {La24Vessel.spilled}ml^");
+        print($"tags {la24Cellar.tags.length} (made {La24Tag.made}, peeled {La24Tag.peeled}); log {la24Cellar.log}^");
+#if LA24_TRACE
+        print($"warmth {la24Cellar.warmth}, water {la24Cellar.holding(eLa24Liquid.water)}, oil {la24Cellar.holding(eLa24Liquid.oil)}, wine {la24Cellar.holding(eLa24Liquid.wine)}^");
+#endif
+    }
+}
+
+La24Info La24Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La24Vessel> order[6];
+        order = la24Cellar.vessels;
+        order.sort((La24Vessel a, La24Vessel b) => b.held.ml - a.held.ml);
+        for (La24Vessel v in order) print($"{v}={v.held.ml} ");
+        La24Vessel top = order.first();
+        if (top.isEmpty()) print("all dry");
+        else if (top.held.ml != order[1].held.ml) print($"top {top}");
+        else print("tie");
+        print(".^");
+    }
+}
+
+La24Info La24Carried {
+    grammar = {.carried};
+    void handler() {
+        int n = 0;
+        int ml = 0;
+        for (object o in bgl.world.instances(La24Vessel, (object v) => v.parent == player)) {
+            La24Vessel v = (La24Vessel)o;
+            print($"{v} ");
+            n++;
+            ml += v.held.ml;
+        }
+        print($"- {n} carried, {ml}ml.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la24Cellar.tap = brassTap;
+    la24Cellar.register(glassJar);
+    la24Cellar.register(tinCup);
+    la24Cellar.register(stoneBasin);
+    la24Cellar.register(clayJug);
+    la24Cellar.register(steelFlask);
+    la24Cellar.register(tinCup);
+    rfalse;
+}
+
+#includeI6 "grammar"

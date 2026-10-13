@@ -1,0 +1,437 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a stock room kept in tables. An enum of items indexing parallel string, word, stock,
+// reorder-level, reorder-quantity, capacity and supplier tables; an enum of suppliers indexing name
+// and lead-time tables; a price table as an array of arrays read [item][tier] beside a tier-floor
+// table searched from the top; a bnum of stock states built with |= and listed by bit position; open
+// orders as an array of a value class appended as Order{ … }, delivered and cancelled by position
+// and copied into a local array ordered by a comparator lambda; a movement log as an array of a
+// value class trimmed from the front when full; a table of measures as an array<func<int, eItem>> of
+// named routines beside a name table; a general parsing routine over the word table; <linq>
+// filter/map/distinct/orderBy/count/any/all/first/last/skip with lambdas capturing parameters and
+// locals; a fill level banded by a switch with guards and ranges; stringObj rows padded to columns
+// and built with interpolated +=; for-in over arrays, chain results and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int ITEMS = 4;
+const int TIERS = 3;
+const int MAX_ORDERS = 6;
+const int MAX_MOVES = 8;
+const int NONE = -1;
+#define HISTORY_SHOWN 4
+
+enum eItem { bolts = 0, nails, screws, hinges }
+enum eSupplier { depotA = 0, depotB }
+bnum eState { low, empty, ordered, full }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> itemNames = { "bolts", "nails", "screws", "hinges" };
+array<dictionaryWord> itemWords = { .bolts, .nails, .screws, .hinges };
+
+//                         bolts  nails  screws  hinges
+array<int> stock       = {    20,    50,     30,      6 };
+array<int> reorderAt   = {    10,    25,     15,      4 };
+array<int> reorderQty  = {    40,   100,     60,     12 };
+array<int> holdMax     = {    60,   150,     90,     20 };
+array<eSupplier> supplierOf = { depotA, depotB, depotB, depotA };
+
+array<string> supplierNames = { "Depot A", "Depot B" };
+array<int> leadDays = { 2, 3 };
+
+// Unit price in pence by quantity tier; a tier applies from its floor up.
+array<int> tierFloor = { 1, 20, 50 };
+array<array<int>> unitPrice = {
+    {  5,  4,  3 },   // bolts
+    {  2,  2,  1 },   // nails
+    {  3,  3,  2 },   // screws
+    { 40, 36, 30 }    // hinges
+};
+
+array<string> stateNames = { "low", "empty", "ordered", "full" };
+
+value class Order {
+    inline int no;
+    inline eItem item;
+    inline int qty;
+    inline int due;
+    inline eSupplier from;
+    Order operator = (Order o) {
+        no = o.no; item = o.item; qty = o.qty; due = o.due; from = o.from;
+        return self;
+    }
+}
+
+value class Move {
+    inline int day;
+    inline eItem item;
+    inline int delta;
+    Move operator = (Move o) { day = o.day; item = o.item; delta = o.delta; return self; }
+}
+
+array<Order> book[MAX_ORDERS];
+array<Move> moves[MAX_MOVES];
+
+int today = 1;
+int nextOrderNo = 1;
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelf {
+    "shelf";
+    name = {.shelf};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseItem() {
+    int at = itemWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+int onOrder(eItem i) {
+    int sum = 0;
+    for (Order o in book.filter((Order x) => x.item == i)) sum += o.qty;
+    return sum;
+}
+
+eState stateOf(eItem i) {
+    int row = (int)i;
+    eState st = 0;
+    if (stock[row] == 0) st |= empty;
+    if (stock[row] <= reorderAt[row]) st |= low;
+    if (onOrder(i) > 0) st |= ordered;
+    if (stock[row] >= holdMax[row]) st |= full;
+    return st;
+}
+
+void statesInto(ref stringObj s, eState st) {
+    if (st == 0) { s += "ok"; return; }
+    bool first = true;
+    for (int b in 0 to stateNames.length - 1) {
+        if ((st & (eState)(1 << b)) == 0) continue;
+        if (!first) s += ",";
+        s += stateNames[b];
+        first = false;
+    }
+}
+
+int tierOf(int qty) {
+    for (int t = TIERS - 1; t >= 0; t--) {
+        if (qty >= tierFloor[t]) return t;
+    }
+    return 0;
+}
+
+int priceOf(eItem i, int qty) {
+    return qty * unitPrice[(int)i][tierOf(qty)];
+}
+
+void logMove(eItem i, int delta) {
+    if (moves.length == MAX_MOVES) moves.remove(0);
+    moves.append(Move{ today, i, delta });
+}
+
+int indexOfOrder(int no) {
+    for (int k in 0 to book.length - 1) {
+        if (book[k].no == no) return k;
+    }
+    return NONE;
+}
+
+bool placeOrder(eItem i, int qty) {
+    int row = (int)i;
+    eSupplier s = supplierOf[row];
+    int due = today + leadDays[(int)s];
+    if (!book.append(Order{ nextOrderNo, i, qty, due, s })) return false;
+    print($"Order {nextOrderNo}: {qty} {itemNames[row]} from {supplierNames[(int)s]}, due day {due}, {priceOf(i, qty)}p.^");
+    nextOrderNo++;
+    return true;
+}
+
+string fillWord(eItem i) {
+    int row = (int)i;
+    int pct = stock[row] * 100 / holdMax[row];
+    switch (pct) {
+        case 0:        return "bare";
+        case 1 to 24:  return "thin";
+        case 25 to 74: return "fair";
+        case >= 100:   return "brim";
+        default:       return "good";
+    }
+    return "";
+}
+
+//-- Measures ------------------------------------------------------------------
+
+int stockOf(eItem i) { return stock[(int)i]; }
+
+int valueOf(eItem i) { return priceOf(i, stock[(int)i]); }
+
+int issuedOf(eItem i) {
+    int sum = 0;
+    for (Move m in moves.filter((Move x) => x.item == i && x.delta < 0)) sum -= m.delta;
+    return sum;
+}
+
+int roomFor(eItem i) {
+    int row = (int)i;
+    return holdMax[row] - stock[row] - onOrder(i);
+}
+
+array<func<int, eItem>> measures = { stockOf, onOrder, valueOf, issuedOf, roomFor };
+array<string> measureNames = { "stock", "on order", "value", "issued", "room" };
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        for (int r in 0 to ITEMS - 1) {
+            eItem i = (eItem)r;
+            stringObj row = itemNames[r];
+            padTo(row, 8);
+            row += $"{stock[r]}";
+            padTo(row, 13);
+            row += $"+{onOrder(i)}";
+            padTo(row, 19);
+            row += fillWord(i);
+            padTo(row, 25);
+            statesInto(row, stateOf(i));
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb IssueTest {
+    grammar = {.issue, parseItem, NUMBER};
+    void handler() {
+        eItem i = (eItem)(int)noun;
+        int row = (int)i;
+        int n = (int)second;
+        if (n <= 0) { print("Nothing issued.^"); return; }
+        if (n > stock[row]) { print($"Only {stock[row]} {itemNames[row]} in stock.^"); return; }
+        stock[row] -= n;
+        logMove(i, -n);
+        print($"Issued {n} {itemNames[row]}; {stock[row]} left.^");
+        if ((stateOf(i) & low) != 0 && onOrder(i) == 0) print($"{itemNames[row]} are low.^");
+    }
+}
+
+verb ReturnTest {
+    grammar = {.return, parseItem, NUMBER};
+    void handler() {
+        eItem i = (eItem)(int)noun;
+        int row = (int)i;
+        int n = (int)second;
+        int room = holdMax[row] - stock[row];
+        if (n > room) n = room;
+        if (n <= 0) { print($"No room for {itemNames[row]}.^"); return; }
+        stock[row] += n;
+        logMove(i, n);
+        print($"Returned {n} {itemNames[row]}; {stock[row]} now.^");
+    }
+}
+
+verb ReorderTest {
+    grammar = {.reorder};
+    void handler() {
+        int placed = 0;
+        for (int r in 0 to ITEMS - 1) {
+            eItem i = (eItem)r;
+            if (stock[r] + onOrder(i) > reorderAt[r]) continue;
+            int qty = reorderQty[r];
+            int room = roomFor(i);
+            if (qty > room) qty = room;
+            if (qty <= 0) continue;
+            if (!placeOrder(i, qty)) { print("The order book is full.^"); break; }
+            placed++;
+        }
+        if (placed == 0) print("Nothing to reorder.^");
+    }
+}
+
+verb OrderTest {
+    grammar = {.order, parseItem, NUMBER};
+    void handler() {
+        eItem i = (eItem)(int)noun;
+        int n = (int)second;
+        if (n <= 0) { print("Nothing ordered.^"); return; }
+        if (n > roomFor(i)) { print($"Room for only {roomFor(i)} {itemNames[(int)i]}.^"); return; }
+        if (!placeOrder(i, n)) print("The order book is full.^");
+    }
+}
+
+verb OrdersTest {
+    grammar = {.orders};
+    void handler() {
+        if (book.length == 0) { print("No open orders.^"); return; }
+        array<Order> byDue[MAX_ORDERS] = book.orderBy((Order a, Order b) => {
+            if (a.due != b.due) return a.due - b.due;
+            return a.no - b.no;
+        });
+        int total = 0;
+        for (Order o in byDue) {
+            stringObj row = $"#{o.no}";
+            padTo(row, 4);
+            row += $"day {o.due}";
+            padTo(row, 11);
+            row += $"{o.qty} {itemNames[(int)o.item]}";
+            padTo(row, 23);
+            row += supplierNames[(int)o.from];
+            row.print();
+            print("^");
+            total += priceOf(o.item, o.qty);
+        }
+        print($"Total {total}p.^");
+    }
+}
+
+verb CancelTest {
+    grammar = {.cancel, NUMBER};
+    void handler() {
+        int no = (int)noun;
+        int k = indexOfOrder(no);
+        if (k == NONE) { print($"No order {no}.^"); return; }
+        Order o = book[k];
+        book.remove(k);
+        print($"Cancelled order {no} ({o.qty} {itemNames[(int)o.item]}).^");
+    }
+}
+
+verb NextTest {
+    grammar = {.next};
+    void handler() {
+        today++;
+        print($"Day {today}.^");
+        int k = 0;
+        while (k < book.length) {
+            if (book[k].due > today) { k++; continue; }
+            Order o = book[k];
+            int row = (int)o.item;
+            int add = o.qty;
+            if (stock[row] + add > holdMax[row]) add = holdMax[row] - stock[row];
+            stock[row] += add;
+            logMove(o.item, add);
+            print($"Order {o.no} arrived: {add} {itemNames[row]}; {stock[row]} now.^");
+            book.remove(k);
+        }
+    }
+}
+
+verb CostTest {
+    grammar = {.cost, parseItem, NUMBER};
+    void handler() {
+        eItem i = (eItem)(int)noun;
+        int n = (int)second;
+        int t = tierOf(n);
+        print($"{n} {itemNames[(int)i]} at {unitPrice[(int)i][t]}p each (tier {t + 1}): {priceOf(i, n)}p.^");
+    }
+}
+
+verb ReportTest {
+    grammar = {.report, parseItem};
+    void handler() {
+        eItem i = (eItem)(int)noun;
+        stringObj row = itemNames[(int)i];
+        row += ":";
+        for (int k in 0 to measures.length - 1) {
+            func<int, eItem> f = measures[k];
+            row += $" {measureNames[k]} {f(i)};";
+        }
+        row.print();
+        print("^");
+    }
+}
+
+verb HistoryTest {
+    grammar = {.history, parseItem};
+    void handler() {
+        eItem i = (eItem)(int)noun;
+        array<Move> mine[MAX_MOVES] = moves.filter((Move m) => m.item == i);
+        if (mine.length == 0) { print($"No movements of {itemNames[(int)i]}.^"); return; }
+        int from = 0;
+        if (mine.length > HISTORY_SHOWN) from = mine.length - HISTORY_SHOWN;
+        int net = 0;
+        for (Move m in mine.skip(from)) {
+            if (m.delta > 0) print($"day {m.day}: +{m.delta}^");
+            else print($"day {m.day}: {m.delta}^");
+            net += m.delta;
+        }
+        print($"Net {net} over {mine.length - from} of {mine.length}.^");
+    }
+}
+
+verb SuppliersTest {
+    grammar = {.suppliers};
+    void handler() {
+        array<var> busy[MAX_ORDERS] = book.map((Order o) => (int)o.from).distinct();
+        if (busy.length == 0) { print("No supplier is busy.^"); return; }
+        for (var s in busy) {
+            int sup = s;
+            int n = book.filter((Order o) => (int)o.from == sup).count();
+            print($"{supplierNames[sup]}: {n} open.^");
+        }
+    }
+}
+
+verb CheckTest {
+    grammar = {.check};
+    void handler() {
+        int day = today;
+        bool late = book.any((Order o) => o.due <= day);
+        bool allSmall = book.all((Order o) => o.qty < 50);
+        int lows = 0;
+        for (int r in 0 to ITEMS - 1) {
+            if ((stateOf((eItem)r) & low) != 0) lows++;
+        }
+        print($"Late orders: {late}. All small: {allSmall}. Low items: {lows}.^");
+        if (book.length > 0) {
+            Order a = book.first();
+            Order b = book.last();
+            print($"Oldest open: #{a.no}. Newest open: #{b.no}.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

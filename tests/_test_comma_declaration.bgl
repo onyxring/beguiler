@@ -1,0 +1,4 @@
+/* A declaration names one variable; a comma list gets a message saying so. */
+// EXPECT_ERROR: A ',' here separates nothing: declare or assign one variable per statement
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int n = 930; int hh = n / 100, mm = n % 100; print(hh); }

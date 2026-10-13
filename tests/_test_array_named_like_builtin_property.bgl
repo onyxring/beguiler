@@ -1,0 +1,5 @@
+/* A global array can't be named like an Inform 6 built-in property. */
+// EXPECT_ERROR: Array 'call' is named like an Inform 6 keyword, built-in function or built-in property
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+array<int> call[3];
+void main(){ }

@@ -240,6 +240,8 @@ bool bglLanguageService::isI6StatementKeyword(const string& name){
         // system functions: a name I6 calls, so it can't be passed as a value
         "child", "children", "elder", "eldest", "indirect", "metaclass", "parent", "random", "sibling",
         "younger", "youngest",
+        // Inform 6's built-in properties, which every object answers
+        "call", "create", "recreate", "destroy", "remaining", "copy", "print_to_array",
         // grammar-token words: read as tokens in array data (`Array a --> held;`)
         "held", "multi", "multiheld", "multiexcept", "multiinside", "creature", "topic", "number", "scope", "special"
     };

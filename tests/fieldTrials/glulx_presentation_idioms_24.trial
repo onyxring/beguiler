@@ -1,0 +1,372 @@
+#grids
+Room A
+Room A. Notices are fixed to the wall. Room B is to the east.
+[grid 1]
+|(no notice open)                                  |
+|pinned 0                                          |
+[grid 2]
+|Room A | turned 0 | width 28                      |
+> look
+Room A
+Room A. Notices are fixed to the wall. Room B is to the east.
+[grid 1]
+|(no notice open)                                  |
+|pinned 0                                          |
+[grid 2]
+|Room A | turned 0 | width 28                      |
+> examine white notice
+You read the white notice: Opening hours, 6 lines.
+prev next
+[win 1] Opening hours (page 1 of 2)
+[win 1] The hall opens at nine and
+[win 1] closes at five. On the first
+[win 1] day of each month it opens
+[win 1] at ten. The desk closes ten
+[grid 1]
+|OPENING HOURS - hours                             |
+|[#-] pinned 0                                     |
+[grid 2]
+|Room A | turned 0 | width 28                      |
+> next
+Turned to page 2 of 2.
+[win 1] Opening hours (page 2 of 2)
+[win 1] minutes before the hall
+[win 1] does.
+[win 1] (end)
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 0                                     |
+[grid 2]
+|Room A | turned 1 | width 28                      |
+> next
+That is the last page.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 0                                     |
+[grid 2]
+|Room A | turned 1 | width 28                      |
+> prev
+Turned back to page 1 of 2.
+[win 1] Opening hours (page 1 of 2)
+[win 1] The hall opens at nine and
+[win 1] closes at five. On the first
+[win 1] day of each month it opens
+[win 1] at ten. The desk closes ten
+[grid 1]
+|OPENING HOURS - hours                             |
+|[#-] pinned 0                                     |
+[grid 2]
+|Room A | turned 2 | width 28                      |
+> @link 2
+Turned to page 2 of 2.
+[win 1] Opening hours (page 2 of 2)
+[win 1] minutes before the hall
+[win 1] does.
+[win 1] (end)
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 0                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> numbers
+Line numbers on.
+[win 1] Opening hours (page 2 of 2)
+[win 1]  5 minutes before the hall
+[win 1]  6 does.
+[win 1] (end)
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 0                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> index
+Notice           Topic  Words Read
+Opening hours    hours     29    1
+Bags and coats   rules     21    0
+Quiet please     rules      7    0
+About Room B     rooms     41    0
+Total words: 98.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 0                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> pin blue notice
+The blue notice is pinned.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 1                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> pin white notice
+The white notice is pinned.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> board
+Pinned:
+  Bags and coats (rules)
+  Opening hours (hours)
+First: Bags and coats.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> @link 3
+2 pinned.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> rules
+Opening hours: 29 words.
+Bags and coats: 21 words.
+Quiet please: 7 words.
+3 notices about rules or hours.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> examine white notice
+The white notice is already open in the reader.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> take green notice
+The green notice is fixed to the wall.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 28                      |
+> columns 20
+Rewrapped to 20: 8 lines, page 2 of 2.
+[win 1] Opening hours (page 2 of 2)
+[win 1]  5 opens at ten. The
+[win 1]  6 desk closes ten
+[win 1]  7 minutes before the
+[win 1]  8 hall does.
+[win 1] (end)
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> scan
+0 lines mention the key.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> reread
+Back to the start (same page: no).
+Returned to page 2 of 2.
+[win 1] Opening hours (page 2 of 2)
+[win 1]  5 opens at ten. The
+[win 1]  6 desk closes ten
+[win 1]  7 minutes before the
+[win 1]  8 hall does.
+[win 1] (end)
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> probe
+Reader open: yes.
+Reader 22 columns, head 2 lines.
+Style known: no.
+Distinct header: no.
+Starts: "The hall o".
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> done
+You put the white notice out of mind.
+[grid 1]
+|(no notice open)                                  |
+|pinned 2                                          |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> next
+Nothing is open.
+[grid 1]
+|(no notice open)                                  |
+|pinned 2                                          |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> menu
+Read: white, blue, green.
+[grid 1]
+|(no notice open)                                  |
+|pinned 2                                          |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> @link 5
+You read the white notice: Opening hours, 8 lines.
+prev next
+[win 2] Opening hours (page 1 of 2)
+[win 2]  1 The hall opens at
+[win 2]  2 nine and closes at
+[win 2]  3 five. On the first
+[win 2]  4 day of each month it
+[grid 1]
+|OPENING HOURS - hours                             |
+|[#-] pinned 2                                     |
+[grid 2]
+|Room A | turned 3 | width 20                      |
+> @link 9
+Turned to page 2 of 2.
+[win 2] Opening hours (page 2 of 2)
+[win 2]  5 opens at ten. The
+[win 2]  6 desk closes ten
+[win 2]  7 minutes before the
+[win 2]  8 hall does.
+[win 2] (end)
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room A | turned 4 | width 20                      |
+> e
+Room B
+Room B. One notice hangs by the door. Room A is to the west.
+[grid 1]
+|OPENING HOURS - hours                             |
+|[##] pinned 2                                     |
+[grid 2]
+|Room B | turned 4 | width 20                      |
+> examine grey notice
+You read the grey notice: About Room B, 11 lines.
+prev next
+[win 2] About Room B (page 1 of 3)
+[win 2]  1 Room B is the
+[win 2]  2 reading room. The
+[win 2]  3 lamps are on a timer
+[win 2]  4 and go out at five.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#--] pinned 2                                    |
+[grid 2]
+|Room B | turned 4 | width 20                      |
+> scan
+6: the KEY to the
+8: KEY before you
+2 lines mention the key.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#--] pinned 2                                    |
+[grid 2]
+|Room B | turned 4 | width 20                      |
+> columns 40
+Rewrapped to 40: 5 lines, page 1 of 2.
+[win 2] About Room B (page 1 of 2)
+[win 2]  1 Room B is the reading room. The lamps
+[win 2]  2 are on a timer and go out at five. Ask
+[win 2]  3 at the desk for the key to the cabinet.
+[win 2]  4 Return the key before you leave. Pens
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 2                                     |
+[grid 2]
+|Room B | turned 4 | width 40                      |
+> next
+Turned to page 2 of 2.
+[win 2] About Room B (page 2 of 2)
+[win 2]  5 are in the tray on the shelf.
+[win 2] (end)
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[##] pinned 2                                     |
+[grid 2]
+|Room B | turned 5 | width 40                      |
+> prev
+Turned back to page 1 of 2.
+[win 2] About Room B (page 1 of 2)
+[win 2]  1 Room B is the reading room. The lamps
+[win 2]  2 are on a timer and go out at five. Ask
+[win 2]  3 at the desk for the key to the cabinet.
+[win 2]  4 Return the key before you leave. Pens
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 2                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> board
+Pinned:
+  Bags and coats (rules)
+  Opening hours (hours)
+First: Bags and coats.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 2                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> @link 13
+2 pinned.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 2                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> pin grey notice
+The grey notice is pinned.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 3                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> board
+Pinned:
+  About Room B (rooms)
+  Bags and coats (rules)
+  Opening hours (hours)
+First: About Room B.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 3                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> columns 9
+Columns run from 12 to 40.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 3                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> index
+Notice           Topic  Words Read
+Opening hours    hours     29    2
+Bags and coats   rules     21    0
+Quiet please     rules      7    0
+About Room B     rooms     41    1
+Total words: 98.
+[grid 1]
+|ABOUT ROOM B - rooms                              |
+|[#-] pinned 3                                     |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> done
+You put the grey notice out of mind.
+[grid 1]
+|(no notice open)                                  |
+|pinned 3                                          |
+[grid 2]
+|Room B | turned 6 | width 40                      |
+> done
+The reader is empty.
+[grid 1]
+|(no notice open)                                  |
+|pinned 3                                          |
+[grid 2]
+|Room B | turned 6 | width 40                      |

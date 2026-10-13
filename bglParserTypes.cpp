@@ -982,11 +982,12 @@ string bglParser::resolveArrayElementType(const string& name, functionDef* func,
                 if(auto* ad = dynamic_cast<arrayDeclaration*>(s))
                     if(ad->name == name) return ad->elementType;
     // An array a lambda captures (from an enclosing routine), by its own name or its capture's.
-    if(func != nullptr && func->isLambda){
+    // A block inside the lambda (an `if` body) parses with its own context; the lambda is still currentFunc.
+    if(functionDef* lam = func != nullptr && func->isLambda ? func : currentFunc != nullptr && currentFunc->isLambda ? currentFunc : nullptr){
         bool known = false;
-        for(auto& cap : func->captures) known |= cap.outerName == name || cap.bodyName() == name;
-        if(!known && func == currentFunc) qualifyFromCaptures(name);
-        for(auto& cap : func->captures)
+        for(auto& cap : lam->captures) known |= cap.outerName == name || cap.bodyName() == name;
+        if(!known && lam == currentFunc) qualifyFromCaptures(name);
+        for(auto& cap : lam->captures)
             if(cap.outerName == name || cap.bodyName() == name){
                 if(cap.typeName == "bytearray") return "char";
                 if(string et = arrayElemType(cap.typeName); !et.empty()) return et;
@@ -2401,8 +2402,12 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
     typeDef& td = languageService.getType(recvTypeName);
     auto pick = [&](vector<typeMember*>& members) -> string {
         for(typeMember* m : members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->name == memberName && !vd->i6name.empty()) return vd->i6name;
+                // A member not yet declared (used above its class) gets the name its declaration will.
+                if(vd->name == memberName && vd->isPrePassStub && !vd->isExternal)
+                    if(string r = clashRenamedMember(memberName); !r.empty()) return r;
+            }
         return "";
     };
     if(auto* od = dynamic_cast<objectDef*>(&td)){

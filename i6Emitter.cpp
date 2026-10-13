@@ -753,6 +753,8 @@ void i6Emitter::prepareRecursionSave(functionDef* fd){
     auto* body = dynamic_cast<statementBlock*>(fd->body);
     if(body == nullptr) return;
     vector<string> slots;
+    vector<size_t> slotBacking;   // which of fd->ownBackings each slot belongs to
+    size_t current = 0;
     set<classDef*> visited;
     function<void(classDef*, const string&)> collect = [&](classDef* c, const string& inst){
         if(!c) return;
@@ -771,9 +773,15 @@ void i6Emitter::prepareRecursionSave(functionDef* fd){
                 continue;
             }
             slots.push_back(format("{0}.{1}", inst, fm->i6name.empty() ? fm->dName() : fm->i6name));
+            slotBacking.push_back(current);
         }
     };
-    for(auto& [backing, typeName] : fd->ownBackings) collect(languageService.findClass(typeName), backing);
+    vector<string> backings;
+    for(auto& [backing, typeName] : fd->ownBackings){
+        backings.push_back(backing);
+        collect(languageService.findClass(typeName), backing);
+        current++;
+    }
     if(slots.empty()) return;
     const string frame = "_bglsv";
     auto* vd = new variableDeclaration();
@@ -782,10 +790,19 @@ void i6Emitter::prepareRecursionSave(functionDef* fd){
     vd->isSynthetic = true;
     body->statements.insert(body->statements.begin(), vd);
     string save = format("{0} = _bglFrameAlloc({1});", frame, (int)slots.size());
+    for(size_t i = 0; i < slots.size(); i++) save += format(" {0}-->{1} = {2};", frame, (int)i, slots[i]);
+    // An instance the caller passed in by `ref` (its own local, to be filled) keeps what this call wrote.
+    vector<string> refParams;
+    for(paramDef* p : fd->params) if(p->isRef) refParams.push_back(p->name);
     string restore;
-    for(size_t i = 0; i < slots.size(); i++){
-        save += format(" {0}-->{1} = {2};", frame, (int)i, slots[i]);
-        restore += format("{0} = {1}-->{2}; ", slots[i], frame, (int)i);
+    for(size_t b = 0; b < backings.size(); b++){
+        string part;
+        for(size_t i = 0; i < slots.size(); i++)
+            if(slotBacking[i] == b) part += format("{0} = {1}-->{2}; ", slots[i], frame, (int)i);
+        if(part.empty()) continue;
+        string guard;
+        for(const string& rp : refParams) guard += (guard.empty() ? "" : " && ") + rp + " ~= " + backings[b];
+        restore += guard.empty() ? part : "if (" + guard + ") { " + part + "} ";
     }
     fd->entrySetUp = save;
     fd->cleanups.push_back({frame, restore + format("_bglFrameFree({0});", (int)slots.size())});

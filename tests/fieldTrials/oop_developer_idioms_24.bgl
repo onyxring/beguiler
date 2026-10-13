@@ -1,0 +1,547 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-fourth pass: a help desk.
+// A value class for a time of day with a copy operator, `+` taking minutes, `==`/`!=` and a `<=>` that
+// `<`/`>=` come from, a static factory and a formatter returning a `stringObj`; a pooled ticket class whose
+// `create()` takes a title, a priority and a `Clock`, numbering itself from a static counter, with an
+// owned `Clock` for when it opened and when it falls due; the Chain of Responsibility: a handler base
+// deriving from a "named" mixin with a `required` `CanTake` routine, `default` `Accept`/`Tier` hooks, a
+// reference to the next handler (objects declared in chain order, each naming the next) and an
+// `array<Ticket>` queue, three subclasses overriding the hooks, one calling the base `Accept` through a
+// cast; a pooled error class thrown from a guard and caught in a typed `catch`; a help-desk service with an
+// `operator []` lookup by id that may return null (`?.`/`??`), an observer list of `func<void, Ticket>`
+// listeners (a named function and a lambda), escalation that raises a priority through enum/int casts
+// and walks the chain, a clock advanced by `+=` with overdue tickets found by a `<linq>` `filter`, a
+// work list ordered by `orderBy` with a named comparator, `count`/`any`/`all`/`first`/`map`; enum switches
+// giving labels; `while`/`for`/`do` loops with `break`/`continue`; named and default arguments; ternaries;
+// `is` tests and downcasts; interpolation and `stringObj` padding.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum ePriority { Low, Normal, High, Urgent }
+enum eStatus { Open, Assigned, Resolved }
+enum eTier { Desk, Specialist, Manager }
+
+string PriorityName(ePriority p) {
+    switch (p) {
+        case ePriority.Low:    return "low";
+        case ePriority.Normal: return "normal";
+        case ePriority.High:   return "high";
+        case ePriority.Urgent: return "urgent";
+    }
+    return "?";
+}
+
+string StatusName(eStatus s) {
+    switch (s) {
+        case eStatus.Open:     return "open";
+        case eStatus.Assigned: return "assigned";
+        default:               return "resolved";
+    }
+}
+
+//-- Clock: a value type ---------------------------------------------------------------------------------------
+
+value class Clock {
+    int Minutes;
+
+    const int MinutesPerDay = 1440;
+
+    Clock operator = (Clock o) {
+        Minutes = o.Minutes;
+        return self;
+    }
+
+    Clock operator + (int delta) {
+        Clock later;
+        later.Minutes = (Minutes + delta) % MinutesPerDay;
+        return later;
+    }
+
+    bool operator == (Clock o) { return Minutes == o.Minutes; }
+    bool operator != (Clock o) { return Minutes != o.Minutes; }
+    int operator <=> (Clock o) { return Minutes - o.Minutes; }
+
+    static Clock At(int hours, int minutes = 0) {
+        Clock c;
+        c.Minutes = hours * 60 + minutes;
+        return c;
+    }
+
+    int MinutesUntil(Clock later) { return later.Minutes - Minutes; }
+
+    stringObj ToText() {
+        int hours = Minutes / 60;
+        int rest = Minutes % 60;
+        stringObj text;
+        if (hours < 10) text = "0";
+        text += $"{hours}:";
+        if (rest < 10) text += "0";
+        text += $"{rest}";
+        return text;
+    }
+}
+
+Clock Now;
+
+//-- Tickets ---------------------------------------------------------------------------------------------------
+
+class Ticket[5] : object {
+    int Id;
+    string Title;
+    ePriority Priority;
+    eStatus Status;
+    Clock Opened;
+    Clock Due;
+    SupportHandler Owner;
+    int Escalations;
+    static int NextId = 100;
+    static int Created;
+
+    void create(string text, ePriority level, Clock at) {
+        NextId++;
+        Id = NextId;
+        Title = text;
+        Priority = level;
+        Status = eStatus.Open;
+        Opened = at;
+        Due = at + ResponseMinutes(level);
+        Ticket.Created++;
+    }
+
+    static int ResponseMinutes(ePriority p) {
+        switch (p) {
+            case ePriority.Urgent: return 30;
+            case ePriority.High:   return 60;
+            case ePriority.Normal: return 120;
+            default:               return 240;
+        }
+    }
+
+    bool IsOpen() { return Status != eStatus.Resolved; }
+    bool IsOverdue(Clock at) { return IsOpen() && at > Due; }
+
+    stringObj Describe() {
+        stringObj dueText = Due.ToText();
+        stringObj text = $"#{Id} {Title} [{PriorityName(Priority)}, {StatusName(Status)}, due {dueText}]";
+        return text;
+    }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class DeskError[2] : object {
+    int TicketId;
+    string Reason;
+    static int Raised;
+
+    void create(int id, string why) {
+        TicketId = id;
+        Reason = why;
+        DeskError.Raised++;
+    }
+}
+
+void Reject(int id, string why) {
+    DeskError err = new DeskError(id, why);
+    if (err == null) {
+        printLine("[error pool exhausted]");
+        return;
+    }
+    throw err;
+}
+
+//-- Handlers: a chain of responsibility -----------------------------------------------------------------------
+
+class Named : object {
+    inline instanceName;
+    default string Label() { return "handler"; }
+}
+
+class SupportHandler : Named {
+    SupportHandler Next;
+    array<Ticket> Queue[2];
+    int Handled;
+    static int Handoffs;
+
+    required bool CanTake(Ticket t);
+    default eTier Tier() { return eTier.Desk; }
+
+    default void Accept(Ticket t) {
+        Queue.append(t);
+        t.Owner = self;
+        t.Status = eStatus.Assigned;
+    }
+
+    bool IsFull() { return Queue.length == Queue.size; }
+
+    // Gives the ticket to the first handler in the chain, from this one on, that can take it.
+    SupportHandler Handle(Ticket t) {
+        SupportHandler current = self;
+        while (current != null) {
+            if (current.CanTake(t)) {
+                current.Accept(t);
+                return current;
+            }
+            current = current.Next;
+            SupportHandler.Handoffs++;
+        }
+        return null;
+    }
+
+    void Release(Ticket t) {
+        Queue -= t;
+        t.Owner = null;
+    }
+
+    stringObj QueueText() {
+        stringObj text;
+        if (Queue.length == 0) {
+            text = "-";
+            return text;
+        }
+        for (Ticket t in Queue) {
+            if (!text.isEmpty()) text += " ";
+            text += $"#{t.Id}";
+        }
+        return text;
+    }
+}
+
+class DeskHandler : SupportHandler {
+    bool CanTake(Ticket t) { return !IsFull() && t.Priority <= ePriority.Normal; }
+    string Label() { return "desk"; }
+}
+
+class SpecialistHandler : SupportHandler {
+    string Skill = "none";
+
+    bool CanTake(Ticket t) { return !IsFull() && t.Priority != ePriority.Urgent; }
+    eTier Tier() { return eTier.Specialist; }
+    string Label() { return "specialist"; }
+}
+
+class ManagerHandler : SupportHandler {
+    int Pages;
+
+    bool CanTake(Ticket t) { return !IsFull(); }
+    eTier Tier() { return eTier.Manager; }
+    string Label() { return "manager"; }
+
+    void Accept(Ticket t) {
+        ((SupportHandler)self).Accept(t);
+        if (t.Priority == ePriority.Urgent) Pages++;
+    }
+}
+
+DeskHandler deskA { "desk A"; Next = specialistB; }
+SpecialistHandler specialistB { "specialist B"; Next = managerC; Skill = "printers"; }
+ManagerHandler managerC { "manager C"; }
+
+//-- The help desk: a service ----------------------------------------------------------------------------------
+
+class HelpDesk : object {
+    array<Ticket> Tickets[5];
+    array<func<void, Ticket>> Listeners[2];
+    SupportHandler Entry;
+    int Resolved;
+    static int Notifications;
+
+    void Subscribe(func<void, Ticket> listener) { Listeners.append(listener); }
+
+    void Notify(Ticket t) {
+        for (func<void, Ticket> listener in Listeners) {
+            listener(t);
+            HelpDesk.Notifications++;
+        }
+    }
+
+    Ticket operator [] (int id) {
+        for (Ticket t in Tickets) {
+            if (t.Id == id) return t;
+        }
+        return null;
+    }
+
+    Ticket Open(string title, ePriority priority) {
+        Ticket t = new Ticket(title, priority, Now);
+        if (t == null) Reject(0, "no ticket slot free");
+        Tickets.append(t);
+        SupportHandler taker = Entry.Handle(t);
+        if (taker == null) printLine($"#{t.Id} waits: no handler free.");
+        Notify(t);
+        return t;
+    }
+
+    // Moves a ticket one tier up, raising its priority by one step.
+    void Escalate(int id) {
+        Ticket t = self[id];
+        if (t == null) Reject(id, "no such ticket");
+        if (!t.IsOpen()) Reject(id, "already resolved");
+        SupportHandler from = t.Owner;
+        if (from == null) Reject(id, "not assigned");
+        if (from.Next == null) Reject(id, "nowhere to escalate");
+        if (t.Priority != ePriority.Urgent) t.Priority = (ePriority)((int)t.Priority + 1);
+        from.Release(t);
+        t.Escalations++;
+        t.Due = Now + Ticket.ResponseMinutes(t.Priority);
+        SupportHandler taker = from.Next.Handle(t);
+        if (taker == null) {
+            from.Accept(t);
+            Reject(id, "next tier full");
+        }
+        Notify(t);
+    }
+
+    void Resolve(int id) {
+        Ticket t = self[id];
+        if (t == null) Reject(id, "no such ticket");
+        if (!t.IsOpen()) Reject(id, "already resolved");
+        t.Owner?.Handled++;
+        t.Owner?.Release(t);
+        t.Status = eStatus.Resolved;
+        Resolved++;
+        Notify(t);
+    }
+
+    // Deletes the resolved tickets, freeing their slots; returns how many went.
+    int Archive() {
+        int removed = 0;
+        int slot = 0;
+        while (slot < Tickets.length) {
+            Ticket t = Tickets[slot];
+            if (t.IsOpen()) {
+                slot++;
+                continue;
+            }
+            Tickets.remove(slot);
+            delete t;
+            removed++;
+        }
+        return removed;
+    }
+
+    // Runs an action, reporting a DeskError instead of letting it escape.
+    bool Attempt(int id, bool raise) {
+        try {
+            if (raise) Escalate(id);
+            else Resolve(id);
+            return true;
+        } catch (DeskError e) {
+            printLine($"Refused #{e.TicketId}: {e.Reason}.");
+            delete e;
+        }
+        return false;
+    }
+}
+
+HelpDesk theDesk { Entry = deskA; }
+
+//-- Comparators, listeners and helpers ------------------------------------------------------------------------
+
+// Most urgent first; then the earliest due; then the lowest id.
+int ByUrgency(Ticket a, Ticket b) {
+    if (a.Priority != b.Priority) return a.Priority > b.Priority ? -1 : 1;
+    if (a.Due < b.Due) return -1;
+    if (a.Due > b.Due) return 1;
+    return a.Id < b.Id ? -1 : 1;
+}
+
+int UrgentSeen;
+
+void CountUrgent(Ticket t) {
+    if (t.Priority == ePriority.Urgent && t.IsOpen()) UrgentSeen++;
+}
+
+stringObj PadRight(stringObj text, int width = 12) {
+    while (text.length < width) text += " ";
+    return text;
+}
+
+void ShowHandler(SupportHandler h) {
+    stringObj name = PadRight(h.Label());
+    stringObj queue = h.QueueText();
+    stringObj line = $"{name}{h} queue {queue}, handled {h.Handled}";
+    if (h.is(SpecialistHandler)) line += $", skill {((SpecialistHandler)h).Skill}";
+    if (h.is(ManagerHandler)) line += $", pages {((ManagerHandler)h).Pages}";
+    string next = h.Next?.Label() ?? "end";
+    line += $", next {next}";
+    printLine(line);
+}
+
+void ShowHandlers() {
+    SupportHandler h = theDesk.Entry;
+    do {
+        ShowHandler(h);
+        h = h.Next;
+    } while (h != null);
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        Now = Clock.At(9);
+        theDesk.Subscribe(CountUrgent);
+        theDesk.Subscribe((Ticket t) => printLine($"Event: {t.Describe()} with {t.Owner?.Label() ?? "nobody"}."));
+        stringObj nowText = Now.ToText();
+        printLine($"Desk open at {nowText}, listeners {theDesk.Listeners.length}, first ticket #{Ticket.NextId + 1}.");
+    }
+}
+
+verb Intake {
+    grammar = {.intake};
+    void handler() {
+        theDesk.Open("printer jam", ePriority.Low);
+        Now += 15;
+        theDesk.Open("no network", ePriority.High);
+        theDesk.Open("password reset", ePriority.Normal);
+        Now += 10;
+        theDesk.Open("server down", ePriority.Urgent);
+        printLine($"Created {Ticket.Created}, hand-offs {SupportHandler.Handoffs}, urgent seen {UrgentSeen}.");
+    }
+}
+
+verb ListHandlers {
+    grammar = {.handlers};
+    void handler() { ShowHandlers(); }
+}
+
+verb ListTickets {
+    grammar = {.tickets};
+    void handler() {
+        for (Ticket t in theDesk.Tickets) {
+            stringObj text = t.Describe();
+            string owner = t.Owner?.Label() ?? "nobody";
+            printLine($"{text} -> {owner}");
+        }
+    }
+}
+
+verb EscalateSome {
+    grammar = {.escalate};
+    void handler() {
+        theDesk.Attempt(101, raise: true);
+        theDesk.Attempt(104, raise: true);
+        theDesk.Attempt(999, raise: true);
+        printLine($"Hand-offs {SupportHandler.Handoffs}, refused {DeskError.Raised}.");
+    }
+}
+
+verb PassTime {
+    grammar = {.later};
+    void handler() {
+        Now += 100;
+        stringObj nowText = Now.ToText();
+        int overdue = theDesk.Tickets.filter((Ticket t) => t.IsOverdue(Now)).count();
+        printLine($"Now {nowText}, overdue {overdue}.");
+        for (Ticket t in theDesk.Tickets.filter((Ticket t) => t.IsOverdue(Now))) {
+            int late = t.Due.MinutesUntil(Now);
+            printLine($"  #{t.Id} late by {late} min");
+        }
+    }
+}
+
+verb Worklist {
+    grammar = {.worklist};
+    void handler() {
+        array<Ticket> ordered[5];
+        ordered = theDesk.Tickets.filter((Ticket t) => t.IsOpen()).orderBy(ByUrgency);
+        int position = 1;
+        for (Ticket t in ordered) {
+            stringObj text = t.Describe();
+            printLine($"{position}. {text}");
+            position++;
+        }
+        Ticket top = ordered.first();
+        bool anyUrgent = theDesk.Tickets.any((Ticket t) => t.Priority == ePriority.Urgent);
+        bool allOwned = theDesk.Tickets.all((Ticket t) => t.Owner != null);
+        int topId = top == null ? 0 : top.Id;
+        printLine($"Top #{topId}, any urgent {anyUrgent}, all owned {allOwned}.");
+        array<var> ids = theDesk.Tickets.map((Ticket t) => t.Id + t.Escalations * 1000);
+        stringObj line = "Keys";
+        for (var v in ids) line += $" {v}";
+        printLine(line);
+    }
+}
+
+verb CloseOut {
+    grammar = {.close};
+    void handler() {
+        theDesk.Attempt(103, raise: false);
+        theDesk.Attempt(103, raise: false);
+        theDesk.Attempt(102, raise: false);
+        int removed = theDesk.Archive();
+        printLine($"Resolved {theDesk.Resolved}, archived {removed}, left {theDesk.Tickets.length}, notified {HelpDesk.Notifications}.");
+    }
+}
+
+verb Reopen {
+    grammar = {.more};
+    void handler() {
+        Ticket a = theDesk.Open("monitor flicker", ePriority.Normal);
+        Ticket b = theDesk.Open("lost file", ePriority.High);
+        Ticket c = theDesk.Open("fire alarm", ePriority.Urgent);
+        int lowest = 9999;
+        for (Ticket t in theDesk.Tickets) {
+            if (t.Id < lowest) lowest = t.Id;
+        }
+        printLine($"Opened #{a.Id} #{b.Id} #{c.Id}, lowest open #{lowest}, created {Ticket.Created}.");
+        try {
+            theDesk.Open("one too many", ePriority.Low);
+        } catch (DeskError e) {
+            printLine($"Refused: {e.Reason}.");
+            delete e;
+        }
+    }
+}
+
+verb Lookup {
+    grammar = {.lookup};
+    void handler() {
+        Ticket found = theDesk[104];
+        Ticket missing = theDesk[150];
+        string foundOwner = found?.Owner?.Label() ?? "none";
+        string missingTitle = missing?.Title ?? "none";
+        printLine($"#104 owner {foundOwner}; #150 title {missingTitle}.");
+        int slot = 0;
+        for (SupportHandler h = theDesk.Entry; h != null; h = h.Next) {
+            if (h.Tier() == eTier.Desk) continue;
+            slot++;
+            if (h.Queue.length > 0) {
+                printLine($"First busy tier above desk: {h} ({slot}).");
+                break;
+            }
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
