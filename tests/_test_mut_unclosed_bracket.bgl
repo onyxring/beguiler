@@ -1,0 +1,4 @@
+/* Mutation pass: an extra '[' is reported */
+// EXPECT_ERROR: never closed
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 5; int b = 3; array<int> g = {1, 2}; print(g[[0]); }

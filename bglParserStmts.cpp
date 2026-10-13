@@ -406,7 +406,9 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
         }
     }
     forStmt.initText = initText;
+    allowEmptyExpr = true;   // each part of `for(;;)` may be empty
     forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
+    allowEmptyExpr = false;
     vector<statement*> condSetup = pendingInjections;
     pendingInjections.clear();
     // The step is a statement, so it may be a plain assignment: `i = i * 3`.
@@ -423,7 +425,9 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
             if(isConstName(path, func, body)) parsingError(format("Cannot assign to const variable '{0}'", path));
         }
     }
+    allowEmptyExpr = true;   // each part of `for(;;)` may be empty
     expression* incrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
+    allowEmptyExpr = false;
     vector<statement*> incrInjections = pendingInjections;
     pendingInjections.clear();
     string incrText = incrExpr ? incrExpr->text() : "";
@@ -432,6 +436,14 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
        && (incrText.compare(incrText.size() - 3, 2, "++") == 0 || incrText.compare(incrText.size() - 3, 2, "--") == 0)
        && incrText.find_first_of("()", 1) == incrText.size() - 1)
         incrText = incrText.substr(1, incrText.size() - 2);
+    // The step runs only for its effect: an assignment, `++`/`--` or a call.
+    if((assignedTarget.empty() && incrInjections.empty() && !incrText.empty()
+        && incrText.find('=') == string::npos && incrText.find("++") == string::npos
+        && incrText.find("--") == string::npos && incrText.find('(') == string::npos)
+       || incrText == "++" || incrText == "--")
+        parsingError(incrText == "++" || incrText == "--"
+            ? format("The loop's step '{0}' has no variable.", incrText)
+            : format("The loop's step '{0}' does nothing: give it an assignment, `++`/`--` or a call.", incrText));
     if(!assignedTarget.empty()) incrText = assignedTarget + " = " + incrText;
     if(!incrInjections.empty()) forStmt.incrementText = "";
     else forStmt.incrementText = incrText;

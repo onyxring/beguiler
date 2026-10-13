@@ -1,0 +1,4 @@
+/* Mutation pass: an extra ')' is reported */
+// EXPECT_ERROR: Unmatched ')' in the expression.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 5; int b = 3; int c = (a + b)); print(c); }

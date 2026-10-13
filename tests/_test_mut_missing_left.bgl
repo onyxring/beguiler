@@ -1,0 +1,4 @@
+/* Mutation pass: a doubled comparison operator */
+// EXPECT_ERROR: '==' has nothing after it
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 5; int b = 3; if (a == == b) print(1); }

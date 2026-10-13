@@ -1,0 +1,4 @@
+/* Mutation pass: a unary plus is accepted (Inform 6 has none, so it is dropped). */
+// EXPECT_OUTPUT: 8 2
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int a = 5; int b = 3; print($"{a + +b} {+a - b}^"); }

@@ -1,0 +1,4 @@
+/* Mutation pass: a for loop's start value is missing */
+// EXPECT_ERROR: Expected a value before ';'.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 5; int b = 3; for (int i = ; i < 3; i++) print(i); }

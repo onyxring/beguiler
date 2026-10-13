@@ -634,6 +634,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     // Equal-level ops (e.g. `a + b + c`) terminate, giving left-associative evaluation.
     int myPrec = operatorPrecedence(opName);
     token rhs = getNext();
+    if(rhs.is(eTokenType::oper) && rhs.value == "+") rhs = getNext();   // a unary plus: Inform 6 has none
     string rhsType, rhsText;
 
     if(myPrec >= 0){
@@ -648,6 +649,8 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         string savedExpectedOp = currentExpectedType;
         if(cls != nullptr) currentExpectedType = cls->name;
         expression* rhsExpr = parseExpression(rhs, rhsTerminators, func, body);
+        if(rhsExpr->tokens.empty() && dynamic_cast<initializerList*>(rhsExpr) == nullptr)
+            parsingError(format("'{0}' has nothing after it: an operand is missing.", opName));
         absorbPostfixQuery(rhsExpr);   // `x == a?` queries `a`
         currentExpectedType = savedExpectedOp;
         token terminatorTok;
@@ -1449,6 +1452,17 @@ void bglParser::exprEmitRawBinaryOp(ExprParseState& st, const string& opTok){
     // don't open a fresh emitter dispatch context.
     // A comparison's right side is typed on its own too: `f == (g | x)` must not read `g` as the
     // left operand of `|` once the comparison has made the expression a bool.
+    // A binary operator needs a left operand: at the start, or after another operator, `+` is a unary
+    // plus (Inform 6 has none, so it is dropped) and anything else is missing its operand.
+    static const std::set<string> binaryOnly = {"+", "*", "/", "%", "<<", ">>", "<", ">", "<=", ">=", "==", "!=",
+        "~=", "&&", "||", "|", "^", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=", "=", "<=>"};
+    if(binaryOnly.count(opTok)){
+        const string prev = expr->tokens.empty() ? string("(") : expr->tokens.back();
+        if(prev == "(" || prev == "," || binaryOnly.count(prev) || prev == "-" || prev == "!" || prev == "~~"){
+            if(opTok == "+") return;
+            parsingError(format("Missing operand before '{0}'.", opTok));
+        }
+    }
     static const std::set<string> comparisons = {"==", "!=", "~=", "<", ">", "<=", ">="};
     bool comparison = comparisons.count(opTok) > 0;
     if(opTok != "&&" && opTok != "||" && !comparison){
@@ -1464,6 +1478,8 @@ void bglParser::exprEmitRawBinaryOp(ExprParseState& st, const string& opTok){
     if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
     rhsTerminators.push_back("?");
     expression* rhsExpr = parseExpression(exprNext(st), rhsTerminators, func, body);
+    if(rhsExpr->tokens.empty() && dynamic_cast<initializerList*>(rhsExpr) == nullptr)
+        parsingError(format("'{0}' has nothing after it: an operand is missing.", opTok));
     absorbPostfixQuery(rhsExpr);   // `x && a?` queries `a`
     // The LHS accumulated so far may be a bare `~~x`, and I6's `~~` binds looser than
     // && / || — so `~~x && y` would parse as `~~(x && y)`. Parenthesise both sides.
@@ -1512,6 +1528,14 @@ void bglParser::exprAssembleTernary(ExprParseState& st){
     pendingTernaries.pop_back();
     string falseText = expr->text();
     string falseType = expr->resolvedType;
+    // Prefix parens the condition left belong to the outer expression, not to this branch.
+    {
+        string branch = falseText;
+        for(size_t i = 0; i < pt.prefixParens.size() && !branch.empty(); i++)
+            if(branch.compare(0, pt.prefixParens[i].size(), pt.prefixParens[i]) == 0) branch = branch.substr(pt.prefixParens[i].size());
+        if(branch.find_first_not_of(" ") == string::npos) parsingError("The ?: has no value after its ':'.");
+        if(pt.trueText.find_first_not_of(" ") == string::npos) parsingError("The ?: has no value before its ':'.");
+    }
     string falseSetUp = takeBranchSetUp(pt.falseMark);
     string injText = "if (" + pt.condText + ") { " + pt.trueSetUp + pt.tempName + " = " + pt.trueText
                    + "; } else { " + falseSetUp + pt.tempName + " = " + falseText + "; }";
@@ -4937,6 +4961,8 @@ bglParser::ExprStep bglParser::parseExprDirective(ExprParseState& st){
 // one branch method per kind (declared together in bglParser.h).
 // ===============================================================================
 expression* bglParser::parseExpression(token firstToken, std::vector<std::string> terminators, functionDef* func, statementBlock* body, int startParenDepth){
+    // Only an outermost parse is whole: an operand's sub-parse may stop before the rest of its expression.
+    struct depthGuard { int& d; depthGuard(int& x) : d(x) { d++; } ~depthGuard(){ d--; } } guard(exprParseDepth);
     ExprParseState st;
     st.expr            = new expression();
     st.parenDepth      = startParenDepth;
@@ -4998,6 +5024,18 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             token nx = st.prefetched ? *st.prefetched : stashedToken ? *stashedToken : file.peekToken();
             if(nx.isOneOf({";", ")", "]", "}", ","}) && !(cur.value == ">" && nx.is(token::parenClose)))
                 parsingError(format("'{0}' has nothing after it: an operand is missing.", cur.value));
+        }
+        // `== 2`, `a == == b`: a binary operator with no operand before it. A `+` there is a unary plus,
+        // which Inform 6 doesn't have, so it is dropped.
+        {
+            static const set<string> binaryOnly = {"+", "*", "/", "%", "<<", ">>", "<", ">", "<=", ">=", "==",
+                "!=", "&&", "||", "|", "^", "=", ":=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<=>"};
+            const string back = expr->tokens.empty() ? string("(") : expr->tokens.back();
+            bool noLeft = back == "(" || back == "," || back == "-" || back == "~~" || binaryOnly.count(back);
+            if(cur.is(eTokenType::oper) && binaryOnly.count(cur.value) && noLeft){
+                if(cur.value == "+"){ cur = exprNext(st); continue; }
+                parsingError(format("'{0}' has nothing before it: an operand is missing.", cur.value));
+            }
         }
         prevTok = cur;
 
@@ -5066,7 +5104,76 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     // Assemble any remaining pending ternaries (e.g. top-level ternary without parens)
     while(!pendingTernaries.empty()) exprAssembleTernary(st);
     foldOverflowingConstant(expr);
+    if(exprParseDepth == 1) checkExpressionShape(expr, startParenDepth == 0);
     return expr;
+}
+
+// What the expression emits must be whole: brackets that pair up, and no operator left without its
+// right operand. Inform 6 would otherwise report it against the emitted code.
+void bglParser::checkExpressionShape(expression* expr, bool whole){
+    if(expr == nullptr) return;
+    if(expr->tokens.empty()){
+        if(!allowEmptyExpr && dynamic_cast<initializerList*>(expr) == nullptr)
+            parsingError(expr->terminator.empty() ? string("Expected a value.")
+                                                  : format("Expected a value before '{0}'.", expr->terminator));
+        return;
+    }
+    string code;
+    for(const string& t : expr->tokens){
+        if(t.size() >= 2 && (t.front() == '"' || t.front() == '\'') && t.back() == t.front()){ code += "0 "; continue; }   // a literal
+        code += t + " ";
+    }
+    // Brackets inside literals that are part of a larger token don't count either.
+    string bare;
+    char q = 0;
+    for(size_t i = 0; i < code.size(); i++){
+        char c = code[i];
+        if(q){ if(c == q) q = 0; continue; }
+        if(c == '"' || (c == '\'' && i + 2 < code.size() && code[i + 2] == '\'')){ q = c; bare += '0'; continue; }
+        bare += c;
+    }
+    int paren = 0, bracket = 0;
+    if(whole) for(char c : bare){
+        if(c == '(') paren++;
+        else if(c == ')' && --paren < 0) parsingError("Unmatched ')' in the expression.");
+        else if(c == '[') bracket++;
+        else if(c == ']' && --bracket < 0) parsingError("Unmatched ']' in the expression.");
+    }
+    if(whole && paren > 0) parsingError("A '(' in the expression is never closed.");
+    if(whole && bracket > 0) parsingError("A '[' in the expression is never closed.");
+    static const set<string> binary = {"+", "-", "*", "/", "%", "<", ">", "<=", ">=", "==", "!=", "~=", "&&", "||",
+                                       "|", "&", "^", "=", "<<", ">>", "-->", "->", ".", "~~", "!"};
+    // The emitted text ends in an operator (tokens may carry a folded `a > ` as one).
+    string tail = bare.substr(0, bare.find_last_not_of(" \t") + 1);
+    if(!tail.empty() && tail.size() >= 2 && (tail.compare(tail.size() - 2, 2, "++") == 0 || tail.compare(tail.size() - 2, 2, "--") == 0))
+        tail.clear();   // a postfix step
+    for(const char* op : {"-->", "&&", "||", "<=", ">=", "==", "~=", "<<", ">>", "->", "+", "-", "*", "/", "%", "<", ">", "|", "&", "^", "=", "."}){
+        size_t n = strlen(op);
+        if(tail.size() >= n && tail.compare(tail.size() - n, n, op) == 0)
+            parsingError(format("Missing operand after '{0}'.", op));
+        if(tail.size() >= n && tail.compare(tail.size() - n, n, op) == 0) break;
+    }
+    string last;
+    for(auto it = expr->tokens.rbegin(); it != expr->tokens.rend() && last.empty(); ++it) last = *it;
+    if(binary.count(last)) parsingError(format("Missing operand after '{0}'.", last == "~~" ? "!" : last));
+    // Two operands in a row: a value can only follow an operator, '(' or ','.
+    auto operandLike = [&](const string& t){
+        if(t.empty() || binary.count(t)) return false;
+        static const set<string> joiners = {"(", ",", "?", ":", "~", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=",
+                                            "<<=", ">>=", "<=>", "or", "ofclass", "provides", "in", "notin", "has", "hasnt"};
+        if(joiners.count(t)) return false;
+        char c = t.back();
+        return isalnum((unsigned char)c) || c == '_' || c == ')' || c == ']' || c == '"' || c == '\'';
+    };
+    for(size_t i = 0; i + 1 < expr->tokens.size(); i++){
+        const string& a = expr->tokens[i];
+        const string& b = expr->tokens[i + 1];
+        char b0 = b.empty() ? 0 : b.front();
+        bool bStartsOperand = isalnum((unsigned char)b0) || b0 == '_' || b0 == '"' || b0 == '\'' || b0 == '$' || b0 == '@';
+        if(a.front() == '\'' && b0 == '\'') continue;   // a property's dictionary words: `name = .a .b;`
+        if(operandLike(a) && bStartsOperand && operandLike(b) && b != "or" && a != "or")
+            parsingError(format("Missing an operator between '{0}' and '{1}'.", a, b));
+    }
 }
 
 // An integer expression of literals alone that overflows the target's word (`32767 + 1` on the

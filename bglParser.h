@@ -307,6 +307,9 @@ class bglParser {
         void parsingWarning(string); //like parsingError but continues parsing
         // `T name` where T is not a declared type: names the library include that declares T, if any.
         void unknownTypeError(const token& typeTok);
+        void checkExpressionShape(expression* expr, bool whole = true);
+        int exprParseDepth = 0;
+        bool allowEmptyExpr = false;   // a `for(;;)` header part is parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
         bool isSymbolDefined(const string& name) const { return definedSymbols.count(name) > 0; }

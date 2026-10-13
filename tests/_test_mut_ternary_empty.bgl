@@ -1,0 +1,4 @@
+/* Mutation pass: a ?: with no value after ':' */
+// EXPECT_ERROR: The ?: has no value after its ':'.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 5; int b = 3; int k = a > b ? 1 : ; print(k); }

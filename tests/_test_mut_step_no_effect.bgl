@@ -1,0 +1,4 @@
+/* Mutation pass: a for step that does nothing */
+// EXPECT_ERROR: The loop's step 'i' does nothing
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int a = 5; int b = 3; for (int i = 0; i < 3; i) print(i); }
