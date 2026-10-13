@@ -57,3 +57,8 @@ state_pools [-G]                      save prompt
 state_strings [-G]                    save prompt
 state_arrays_glulx [-z5]              save prompt
 state_strings_glulx [-z5]             save prompt; <buf>'s registry holds one fewer buffer on Z
+
+# The 6/10 standard library has no Glulx support, and the trial prints its build kind.
+stdlib610_1 [-G]                      6/10 library is Z-machine only
+stdlib610_2 [-G]                      6/10 library is Z-machine only
+stdlib610_1 [--debug]                 prints the build kind
