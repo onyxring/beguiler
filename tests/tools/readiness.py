@@ -5,7 +5,7 @@ Inputs (tests/defects/):
   ledger.csv   one row per defect: id, found_date, fixed_date (empty = open), area, found_by, kind,
                severity, summary, evidence, confidence
   probes.csv   one row per probe round: date, found_by, units, unit, match (an evidence tag that picks
-               the round's defects when several share a day), note
+               the round's defects when several share a day, or an ID range such as D1438-D1449), note
 
 found_by sorts each defect into how it surfaced:
   development                      found while building something (the code being written exposed it)
@@ -39,7 +39,7 @@ Rows without a found_date are counted in totals but not in the monthly table.
 
 Usage: readiness.py [--by area|severity|found_by] [--open] [--markdown]
 """
-import argparse, csv, datetime, os, subprocess
+import argparse, csv, datetime, os, re, subprocess
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -293,7 +293,12 @@ def report(rows, probes, by, md):
     out.append(h('Probe yield (falling on fresh probes is the strongest stability signal)'))
     prow = []
     for i, p in enumerate(probes):
-        if p.get('match'):   # rounds on one day are told apart by their evidence tag
+        rng = re.fullmatch(r'D(\d+)-D(\d+)', p.get('match') or '')
+        if rng:              # a round that names its defects by ledger ID range
+            lo, hi = int(rng.group(1)), int(rng.group(2))
+            n = sum(1 for r in rows if r['id'][1:].isdigit() and lo <= int(r['id'][1:]) <= hi
+                    and 'WITHDRAWN' not in r['summary'])
+        elif p.get('match'):   # rounds on one day are told apart by their evidence tag
             n = sum(1 for r in rows if r['found_by'] == p['found_by'] and p['match'] in r['evidence'])
         else:
             later = [q['date'] for q in probes[i + 1:] if q['found_by'] == p['found_by']]
