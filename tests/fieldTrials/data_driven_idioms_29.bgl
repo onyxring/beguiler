@@ -1,0 +1,485 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a weekly shift roster kept in tables. Enums of staff and days indexing parallel name,
+// word, limit and skill tables, read by two general parsing routines on one grammar line; a
+// roster grid as an array of arrays read [day][slot] with NONE for an empty slot, rows exchanged
+// with swap(); a slot table of a value class written as bare { … } (start, end, length) that
+// formats itself into a stringObj; a verb class carrying a slot member shared by two verbs; an
+// array<func<bool, int>> of day checks beside a check-name table; a Tally value class with a copy
+// operator, += and a three-way <=>, kept in a local array<Tally> and sorted with sort() and a
+// comparator; a bnum of skills OR-ed across a day and listed by bit position; a change log packed
+// into ints, fed with enqueue and trimmed with dequeue; switch with ranges and a multi-value case;
+// <linq> filter/orderBy/first/count/any/all/distinct/map with lambdas capturing parameters;
+// stringObj rows padded to columns with interpolated +=.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int STAFF = 5;
+const int DAYS = 5;
+const int SLOTS = 2;
+const int CELLS = 10;      // DAYS * SLOTS
+const int LOG_MAX = 5;
+const int NONE = -1;
+
+enum eStaff { ann = 0, ben, cal, dee, eve }
+enum eDay { mon = 0, tue, wed, thu, fri }
+bnum eSkill { firstAid, till, keys }
+const int SKILL_KINDS = 3;
+
+//-- Staff tables --------------------------------------------------------------
+
+//                                   ann         ben    cal          dee     eve
+array<string> staffNames         = { "ann",      "ben", "cal",       "dee",  "eve" };
+array<dictionaryWord> staffWords = { .ann,       .ben,  .cal,        .dee,   .eve };
+array<int> staffLimit            = { 4,          3,     4,           2,      3 };
+array<eSkill> staffSkills        = { keys | till, till, firstAid,    keys,   firstAid | till };
+
+array<string> skillNames = { "first aid", "till", "keys" };
+
+//-- Day and slot tables -------------------------------------------------------
+
+array<string> dayNames         = { "mon", "tue", "wed", "thu", "fri" };
+array<dictionaryWord> dayWords = { .mon,  .tue,  .wed,  .thu,  .fri };
+
+value class Span {
+    inline int start;     // hhmm
+    inline int end;       // hhmm
+    inline int length;    // hours
+    Span operator = (Span o) {
+        start = o.start; end = o.end; length = o.length;
+        return self;
+    }
+    void into(ref stringObj s) {
+        twoDigits(s, start / 100);
+        s += ":";
+        twoDigits(s, start % 100);
+        s += "-";
+        twoDigits(s, end / 100);
+        s += ":";
+        twoDigits(s, end % 100);
+    }
+}
+
+array<string> slotNames = { "early", "late" };
+array<Span> slotSpans = {
+    { 700, 1500, 8 },
+    { 1430, 2030, 6 }
+};
+
+// Who works each slot; NONE when nobody does.
+array<array<int>> roster = {
+    //  early  late
+    {   0,     1    },   // mon
+    {   2,     NONE },   // tue
+    {   NONE,  4    },   // wed
+    {   3,     0    },   // thu
+    {   NONE,  NONE }    // fri
+};
+
+array<int> changeLog[LOG_MAX];
+
+//-- Tally ---------------------------------------------------------------------
+
+value class Tally {
+    inline int who;
+    inline int shifts;
+    inline int hours;
+
+    Tally operator = (Tally o) {
+        who = o.who; shifts = o.shifts; hours = o.hours;
+        return self;
+    }
+
+    Tally operator += (int slot) {
+        shifts += 1;
+        hours += slotSpans[slot].length;
+        return self;
+    }
+
+    int operator <=> (Tally o) {
+        return hours - o.hours;
+    }
+}
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object rota {
+    "rota sheet";
+    name = {.rota, .sheet};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseStaff() {
+    int at = staffWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseDay() {
+    int at = dayWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void twoDigits(ref stringObj s, int n) {
+    if (n < 10) s += "0";
+    s += $"{n}";
+}
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+string nameOrDash(int who) {
+    if (who == NONE) return "-";
+    return staffNames[who];
+}
+
+int shiftsOf(int who) {
+    int n = 0;
+    for (int d in 0 to DAYS - 1) {
+        for (int s in 0 to SLOTS - 1) {
+            if (roster[d][s] == who) n++;
+        }
+    }
+    return n;
+}
+
+bool worksOn(int who, int day) {
+    return roster[day].contains(who);
+}
+
+eSkill skillsOn(int day) {
+    eSkill all = 0;
+    for (int s in 0 to SLOTS - 1) {
+        int who = roster[day][s];
+        if (who != NONE) all |= staffSkills[who];
+    }
+    return all;
+}
+
+void skillsInto(ref stringObj s, eSkill k) {
+    if (k == 0) { s += "none"; return; }
+    bool first = true;
+    for (int b in 0 to SKILL_KINDS - 1) {
+        if ((k & (eSkill)(1 << b)) == 0) continue;
+        if (!first) s += ", ";
+        s += skillNames[b];
+        first = false;
+    }
+}
+
+//-- Day checks ----------------------------------------------------------------
+
+bool hasKeys(int day) { return (skillsOn(day) & keys) != 0; }
+bool hasFirstAid(int day) { return (skillsOn(day) & firstAid) != 0; }
+bool isFull(int day) { return !roster[day].contains(NONE); }
+
+array<func<bool, int>> dayChecks = { hasKeys, hasFirstAid, isFull };
+array<string> checkNames = { "no keys", "no first aid", "open slot" };
+const int CHECKS = 3;
+
+int failuresOn(int day) {
+    int n = 0;
+    for (int c in 0 to CHECKS - 1) {
+        if (!dayChecks[c](day)) n++;
+    }
+    return n;
+}
+
+string loadWord(int shifts, int limit) {
+    switch (limit - shifts) {
+        case 0:          return "full";
+        case 1:          return "one left";
+        case 2 to 9:     return "free";
+        default:         return "over";
+    }
+}
+
+//-- Change log ----------------------------------------------------------------
+
+// Packed as who * 100 + day * 10 + slot.
+void logChange(int who, int day, int slot) {
+    if (changeLog.length == LOG_MAX) changeLog.dequeue();
+    changeLog.enqueue(who * 100 + day * 10 + slot);
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+class slotVerb : verb {
+    int slot = 0;
+    void handler() {
+        int who = (int)noun;
+        int day = (int)second;
+        int other = 1 - slot;
+        if (roster[day][slot] == who) {
+            print($"{staffNames[who]} already has {dayNames[day]} {slotNames[slot]}.^");
+            return;
+        }
+        if (roster[day][other] == who) {
+            print($"{staffNames[who]} already works {dayNames[day]} {slotNames[other]}.^");
+            return;
+        }
+        int n = shiftsOf(who);
+        if (n >= staffLimit[who]) {
+            print($"{staffNames[who]} is at the limit of {staffLimit[who]} shifts.^");
+            return;
+        }
+        int was = roster[day][slot];
+        roster[day][slot] = who;
+        logChange(who, day, slot);
+        if (was == NONE) print($"{staffNames[who]} takes {dayNames[day]} {slotNames[slot]}.^");
+        else print($"{staffNames[who]} replaces {staffNames[was]} on {dayNames[day]} {slotNames[slot]}.^");
+    }
+}
+
+slotVerb EarlyTest { grammar = {.early, parseStaff, parseDay}; slot = 0; }
+slotVerb LateTest  { grammar = {.late, parseStaff, parseDay}; slot = 1; }
+
+verb RosterTest {
+    grammar = {.roster};
+    void handler() {
+        stringObj head = "day";
+        padTo(head, 5);
+        for (int s in 0 to SLOTS - 1) {
+            head += slotNames[s];
+            padTo(head, 5 + (s + 1) * 7);
+        }
+        head += "skills";
+        head.print();
+        print("^");
+        for (int d in 0 to DAYS - 1) {
+            stringObj row = dayNames[d];
+            padTo(row, 5);
+            for (int s in 0 to SLOTS - 1) {
+                row += nameOrDash(roster[d][s]);
+                padTo(row, 5 + (s + 1) * 7);
+            }
+            skillsInto(row, skillsOn(d));
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb SlotsTest {
+    grammar = {.slots};
+    void handler() {
+        for (int s in 0 to SLOTS - 1) {
+            stringObj line = slotNames[s];
+            padTo(line, 7);
+            slotSpans[s].into(line);
+            line += $" ({slotSpans[s].length} hours)";
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb UnsetTest {
+    grammar = {.unset, parseStaff, parseDay};
+    void handler() {
+        int who = (int)noun;
+        int day = (int)second;
+        int at = roster[day].indexOf(who);
+        if (at == NONE) {
+            print($"{staffNames[who]} is not on {dayNames[day]}.^");
+            return;
+        }
+        roster[day][at] = NONE;
+        print($"{staffNames[who]} dropped from {dayNames[day]} {slotNames[at]}.^");
+    }
+}
+
+verb SwapTest {
+    grammar = {.swap, parseDay, parseDay};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        if (a == b) { print("That is the same day.^"); return; }
+        roster.swap(a, b);
+        print($"{dayNames[a]} and {dayNames[b]} exchanged.^");
+    }
+}
+
+verb WhoTest {
+    grammar = {.who, parseDay};
+    void handler() {
+        int day = (int)noun;
+        stringObj line = $"{dayNames[day]}:";
+        for (int s in 0 to SLOTS - 1) {
+            line += $" {slotNames[s]} {nameOrDash(roster[day][s])}";
+            if (s < SLOTS - 1) line += ",";
+        }
+        line += ".";
+        line.print();
+        print("^");
+        array<int> everyone[STAFF] = { 0, 1, 2, 3, 4 };
+        int off = everyone.filter((int w) => !worksOn(w, day)).count();
+        print($"{off} off.^");
+    }
+}
+
+verb SkillsTest {
+    grammar = {.skills, parseStaff};
+    void handler() {
+        int who = (int)noun;
+        stringObj line = $"{staffNames[who]}: ";
+        skillsInto(line, staffSkills[who]);
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb CheckTest {
+    grammar = {.check};
+    void handler() {
+        int bad = 0;
+        for (int d in 0 to DAYS - 1) {
+            if (failuresOn(d) == 0) continue;
+            bad++;
+            stringObj line = $"{dayNames[d]}:";
+            bool first = true;
+            for (int c in 0 to CHECKS - 1) {
+                if (dayChecks[c](d)) continue;
+                line += first ? " " : ", ";
+                line += checkNames[c];
+                first = false;
+            }
+            line += ".";
+            line.print();
+            print("^");
+        }
+        if (bad == 0) print("Every day passes.^");
+        else print($"{bad} of {DAYS} days need attention.^");
+    }
+}
+
+verb HoursTest {
+    grammar = {.hours};
+    void handler() {
+        array<Tally> totals[STAFF];
+        for (int w in 0 to STAFF - 1) {
+            Tally t;
+            t.who = w;
+            t.shifts = 0;
+            t.hours = 0;
+            for (int d in 0 to DAYS - 1) {
+                for (int s in 0 to SLOTS - 1) {
+                    if (roster[d][s] == w) t += s;
+                }
+            }
+            totals.append(t);
+        }
+        totals.sort();
+        totals.reverse();
+        for (Tally t in totals) {
+            stringObj row = staffNames[t.who];
+            padTo(row, 5);
+            row += $"{t.shifts} shifts, {t.hours} hours, ";
+            row += loadWord(t.shifts, staffLimit[t.who]);
+            row.print();
+            print("^");
+        }
+        totals.sort((Tally a, Tally b) => a.who - b.who);
+        Tally top = totals[0];
+        print($"First by name: {staffNames[top.who]}.^");
+    }
+}
+
+verb SuggestTest {
+    grammar = {.suggest, parseDay};
+    void handler() {
+        int day = (int)noun;
+        int slot = roster[day].indexOf(NONE);
+        if (slot == NONE) { print($"{dayNames[day]} is full.^"); return; }
+        array<int> everyone[STAFF] = { 0, 1, 2, 3, 4 };
+        array<int> free[STAFF] = everyone.filter((int w) => !worksOn(w, day) && shiftsOf(w) < staffLimit[w]);
+        if (free.length == 0) { print($"Nobody is free for {dayNames[day]}.^"); return; }
+        int pick = free.orderBy((int a, int b) => shiftsOf(a) - shiftsOf(b)).first();
+        print($"For {dayNames[day]} {slotNames[slot]}: {staffNames[pick]} ({free.count()} free).^");
+    }
+}
+
+verb WeekTest {
+    grammar = {.week};
+    void handler() {
+        array<int> dayList[DAYS] = { 0, 1, 2, 3, 4 };
+        bool anyEmpty = dayList.any((int d) => roster[d][0] == NONE && roster[d][1] == NONE);
+        bool allKeys = dayList.all((int d) => hasKeys(d));
+        int open = 0;
+        for (array<int> row in roster) {
+            for (int who in row) {
+                if (who == NONE) open++;
+            }
+        }
+        print($"{open} open slots.^");
+        print(allKeys ? "Keys every day.^" : "Keys missing on some days.^");
+        if (anyEmpty) print("Some day has nobody.^");
+        array<int> on[CELLS];
+        for (int d in 0 to DAYS - 1) {
+            for (int s in 0 to SLOTS - 1) {
+                if (roster[d][s] != NONE) on.append(roster[d][s]);
+            }
+        }
+        print($"{on.distinct().count()} people working.^");
+        int hours = 0;
+        for (var h in on.map((var w) => staffLimit[w])) hours += h;
+        print($"Their limits add to {hours} shifts.^");
+    }
+}
+
+verb LogTest {
+    grammar = {.log};
+    void handler() {
+        if (changeLog.length == 0) { print("No changes yet.^"); return; }
+        for (int e in changeLog) {
+            int who = e / 100;
+            int day = (e / 10) % 10;
+            int slot = e % 10;
+            switch ((eDay)day) {
+                case mon, fri: print("* "); break;
+                default:       print("  "); break;
+            }
+            print($"{staffNames[who]} {dayNames[day]} {slotNames[slot]}^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

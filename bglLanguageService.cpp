@@ -411,6 +411,10 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
             if(existing->needsEarlyGlobalDecl) varDef.needsEarlyGlobalDecl = true;
             return varDef;
         }
+        // The same extern declared again (a program binding what its library binding also binds) is that one.
+        if(existing->isExternal && varDef.isExternal && existing->type.name == varDef.type.name
+           && existing->isConst == varDef.isConst && dynamic_cast<arrayDeclaration*>(&varDef) == nullptr)
+            return *existing;
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", varDef.name, fmtSrc(existing->src)));
     }
     // Check for collision with a registered type (class/object/enum) of the same name

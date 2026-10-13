@@ -1,0 +1,457 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, three seed packets,
+// a seed tray of six cells, a watering can, a tap, a heater and a thermometer whose daemon warms or cools
+// the room each turn and grows what is sown. A packet class with positional members (`inline
+// instanceName` re-listed, an `inline` enum crop and an `inline int` seed count), a class-wide static
+// counter and a method that `throw`s a string caught in the verb handler; a tray object with member
+// `array<int>` cells read through its own `operator []`, and a method taking a `func<bool, int>`
+// predicate called with lambdas; a watering can with an inline `auto { … }` accessor clamped through
+// `outer`; a value class reading with a copy operator and a `static operator <=>`, kept in a global
+// `array<Reading>` that drops its oldest entry when full and is copied into a local array and sorted;
+// a value class tally filled through a `ref` parameter; overloaded `label` routines; a `stringObj` cell
+// label padded in a `while` loop, with `left()`, `toUpper()` and `+=`; a ternary chain; `continue` and
+// `break` in loops; a `NUMBER` grammar line; <linq> `filter`, `count`, `any` and `first` over a global
+// `array<Packet>`; `?.` and `??` on a lookup that can be null; `#define` values tested by `#if`/`#else`;
+// hex and binary literals; mixed-case keywords, Allman, K&R and one-line braces, comments between
+// tokens and in argument lists, and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6   "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define NCELLS      6
+#define CAN_FULL   10        // pints
+#define WARM       16
+#define LOG_MAX    5
+
+// ---- constants -----------------------------------------------------------------------------------
+
+const int START_HEAT = $0C ;             // 12 degrees
+CONST INT HEAT_STEP  = $$10 ;            // 2 degrees a turn
+Const int COOL_STEP  = 1 ;
+const int
+    SIP          = 2 ;                   // pints one cell drinks
+
+enum eCrop { bean , pea , /* the big one */ squash , herb }
+
+string cropName ( eCrop c )
+{
+    switch (c)
+    {
+        case eCrop.bean   : return "bean" ;
+        case eCrop.pea    : return "pea" ;
+        case eCrop.squash : return "squash" ;
+        default           : return "herb" ;
+    }
+}
+
+int sproutTurns(eCrop c){switch(c){case eCrop.bean:return 2;case eCrop.pea:return 3;case eCrop.squash:return 4;default:return 1;}}
+
+// ---- rooms ---------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A tap is fixed to the wall. Room B is east." ;
+    object e_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. A seed tray, a heater and a thermometer are here. Room A is west." ;
+    object w_to = roomA ;
+}
+
+object tap
+{
+    "tap" ;
+    parent     = roomA ;
+    name       = { .tap } ;
+    attributes = { static } ;
+    string description = "A brass tap." ;
+}
+
+// ---- packets -------------------------------------------------------------------------------------
+
+class Packet : object
+{
+    inline instanceName ;
+    inline eCrop crop  = eCrop.bean ;
+    inline int   seeds = 3 ;
+    string description = "A paper seed packet." ;
+
+    static int sownTotal = 0 ;
+
+    /// Takes one seed out; throws when there is none left.
+    int takeSeed ()
+    {
+        if (seeds <= 0) throw "empty" ;
+        seeds-- ;
+        Packet.sownTotal++ ;
+        return seeds ;
+    }
+}
+
+Packet beanPacket { "bean packet" , eCrop.bean , 2 ; name = { .bean , .packet } ; parent = roomA ; }
+Packet peaPacket
+{
+    "pea packet" ,
+    eCrop.pea ,          // crop by position
+    $03 ;
+    name   = { .pea , .packet } ;
+    parent = roomA ;
+}
+Packet herbPacket { "herb packet" , eCrop.herb , 1 ; name = { .herb , .packet } ; parent = roomB ; }
+
+array<Packet> packets = { beanPacket , peaPacket , herbPacket } ;
+
+// ---- the tray ------------------------------------------------------------------------------------
+
+object tray
+{
+    "seed tray" ;
+    parent     = roomB ;
+    name       = { .seed , .tray } ;
+    attributes = { static } ;
+    string description = "A plastic tray of six cells." ;
+
+    array<int> cells = { 0 , 0 , 0 , 0 , 0 , 0 } ;   // crop, 0 when empty
+    array<int> age   = { 0 , 0 , 0 , 0 , 0 , 0 } ;   // warm turns so far
+    array<int> damp  = { 0 , 0 , 0 , 0 , 0 , 0 } ;   // pints in the soil
+
+    eCrop operator [] ( int i ) { return (eCrop) cells[i] ; }
+
+    bool sprouted ( int i ) { return cells[i] != 0 && age[i] >= sproutTurns((eCrop) cells[i]) ; }
+
+    int count ( func<bool , int> pred )
+    {
+        int n = 0 ;
+        for (int i = 0 ; i < NCELLS ; i++)
+            if (pred(i)) n++ ;
+        return n ;
+    }
+
+    int firstEmpty ()
+    {
+        int i = 0 ;
+        while (i < NCELLS)
+        {
+            if (cells[i] == 0) break ;
+            i++ ;
+        }
+        return i < NCELLS ? i : -1 ;
+    }
+}
+
+// ---- watering can --------------------------------------------------------------------------------
+
+object can
+{
+    "watering can" ;
+    parent = roomA ;
+    name   = { .watering , .can } ;
+    string description = "A green watering can." ;
+    int holds = CAN_FULL ;
+
+    auto water = {
+        int _pints = 0 ;
+        int  operator () { return _pints ; }
+        void operator = ( int v )
+        {
+            if (v < 0)            v = 0 ;
+            if (v > outer.holds)  v = outer.holds ;
+            _pints = v ;
+        }
+    }
+}
+
+// ---- heat ----------------------------------------------------------------------------------------
+
+object heater
+{
+    "heater" ;
+    parent     = roomB ;
+    name       = { .heater } ;
+    attributes = { switchable , static } ;
+    string description = "A small electric heater." ;
+}
+
+/// One thermometer reading.
+value class Reading
+{
+    int turn ;
+    int heat ;
+    Reading operator = ( Reading o ) { turn = o.turn ; heat = o.heat ; return self ; }
+    static int operator <=> ( Reading a , Reading b )
+    {
+        return a.heat < b.heat ? -1 : (a.heat > b.heat ? 1 : 0) ;
+    }
+}
+
+array<Reading> readings[LOG_MAX] ;
+
+void logReading ( int t , int h )
+{
+    Reading r ;
+    r.turn = t ;
+    r.heat = h ;
+    if (readings.length == LOG_MAX) readings.remove(0) ;   // drop the oldest
+    readings.append(r) ;
+}
+
+object thermometer
+{
+    "thermometer" ;
+    parent     = roomB ;
+    name       = { .thermometer } ;
+    attributes = { static } ;
+    int heat   = START_HEAT ;
+
+    void description () { printLine($"The thermometer reads {heat} degrees.") ; }
+
+    void daemon ()
+    {
+        if (heater.has(on)) heat += HEAT_STEP ;
+        else                heat -= COOL_STEP ;
+        if (heat > 24) heat = 24 ;
+        if (heat < 10) heat = 10 ;
+        logReading(turns , heat) ;
+        if (heat < WARM) return ;
+        for (int i = 0 ; i < NCELLS ; i++)
+        {
+            if (tray.cells[i] == 0 || tray.damp[i] <= 0) continue ;
+            bool was = tray.sprouted(i) ;
+            tray.age[i]++ ;
+            tray.damp[i]-- ;
+            if (!was && tray.sprouted(i) && location == roomB)
+                printLine($"^A {cropName(tray[i])} shoot shows in cell {i + 1}.") ;
+        }
+    }
+}
+
+// ---- tally ---------------------------------------------------------------------------------------
+
+value class Tally
+{
+    int empty ; int sown ; int up ;
+    Tally operator = (Tally o) { empty = o.empty ; sown = o.sown ; up = o.up ; return self ; }
+}
+
+void tallyTray ( ref Tally t )
+{
+    t.empty = tray.count((int i) => tray.cells[i] == 0) ;
+    t.sown  = NCELLS - t.empty ;
+    t.up    = tray.count((int i) => tray.sprouted(i)) ;
+}
+
+// ---- labels --------------------------------------------------------------------------------------
+
+/// `B03` style: crop initial and a two-digit cell number.
+stringObj label ( eCrop c , int cell )
+{
+    stringObj n = $"{cell}" ;
+    while (n.length < 2) n = n.prepend('0') ;
+    stringObj s = cropName(c) ;
+    stringObj init = s.left(1) ;
+    stringObj out = init.toUpper() ;
+    out += n ;
+    return out ;
+}
+
+stringObj label ( Packet p )
+{
+    stringObj s = cropName(p.crop) ;
+    s += $" x{p.seeds}" ;
+    return s ;
+}
+
+string stage ( int i )
+{
+    return tray.cells[i] == 0 ? "empty"
+         : tray.sprouted(i)   ? "up"
+         : tray.damp[i] > 0   ? "damp"
+         :                      "dry" ;
+}
+
+Packet fullest ()
+{
+    Packet best = null ;
+    for (Packet p in packets)
+    {
+        if (p.seeds == 0) continue ;
+        if (best == null || p.seeds > best.seeds) best = p ;
+    }
+    return best ;
+}
+
+// ---- startup -------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    StartDaemon(thermometer) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands ------------------------------------------------------------------------------------
+
+verb Sow
+{
+    grammar = { { .sow , NOUN } , { .plant , NOUN } } ;
+    void handler ()
+    {
+        if (!(noun.is(Packet)))  { printLine("Only seeds can be sown.") ; return ; }
+        if (location != roomB)   { printLine("The tray is in Room B.") ; return ; }
+        Packet p = (Packet) noun ;
+        int cell = tray.firstEmpty() ;
+        if (cell < 0) { printLine("Every cell is full.") ; return ; }
+        int left ;
+        TRY
+        {
+            left = p.takeSeed() ;
+        }
+        CATCH (string why)
+        {
+            printLine($"{cThe(p)} is {why}.") ;
+            return ;
+        }
+        tray.cells[cell] = (int) p.crop ;
+        tray.age[cell]   = 0 ;
+        stringObj tag = label(p.crop , cell + 1) ;
+        printLine($"You sow a {cropName(p.crop)} seed in cell {cell + 1} ({tag}). {left} left.") ;
+    }
+}
+
+verb FillCan
+{
+    grammar = { .fill , NOUN } ;
+    void handler ()
+    {
+        if (noun != can)       { printLine("That holds no water.") ; return ; }
+        if (location != roomA) { printLine("The tap is in Room A.") ; return ; }
+        int was = can.water ;
+        can.water = was + /* more than it holds */ 99 ;
+        printLine($"You fill the can from {was} to {can.water} pints.") ;
+    }
+}
+
+verb Water
+{
+    grammar = { { .water , NOUN } } ;
+    void handler ()
+    {
+        if (noun != tray)        { printLine("Water the tray.") ; return ; }
+        if (can.parent != player){ printLine("You have no watering can.") ; return ; }
+        int wet = 0 ;
+        for (int i = 0 ; i < NCELLS ; i++)
+        {
+            if (tray.cells[i] == 0) continue ;
+            if (can.water < SIP) break ;
+            can.water -= SIP ;
+            tray.damp[i] += SIP ;
+            wet++ ;
+        }
+        if (wet == 0) printLine("Nothing gets watered.") ;
+        else          printLine($"You water {wet} cells. The can has {can.water} pints left.") ;
+    }
+}
+
+verb Thin
+{
+    grammar = { .thin , .cell , NUMBER } ;
+    void handler ()
+    {
+        int n = (int) noun ;
+        if (n < 1 || n > NCELLS)       { printLine($"Cells run 1 to {NCELLS}.") ; return ; }
+        if (tray.cells[n - 1] == 0)   { printLine($"Cell {n} is empty.") ; return ; }
+        eCrop c = tray[n - 1] ;
+        tray.cells[n - 1] = 0 ;
+        tray.age  [n - 1] = 0 ;
+        tray.damp [n - 1] = 0 ;
+        printLine($"You pull the {cropName(c)} out of cell {n}.") ;
+    }
+}
+
+verb Survey
+{
+    meta    = true ;
+    grammar = { { .survey } , { .cells } } ;
+    void handler ()
+    {
+        for (int i = 0 ; i < NCELLS ; i++)
+        {
+            if (i > 0) print(", ") ;
+            if (tray.cells[i] == 0) print($"{i + 1} empty") ;
+            else
+            {
+                stringObj tag = label(tray[i] , i + 1) ;
+                tag.print() ;
+                print($" {stage(i)}") ;
+            }
+        }
+        printLine(".") ;
+        Tally t ;
+        tallyTray(t) ;
+        printLine($"Sown {t.sown}, empty {t.empty}, up {t.up}; seeds used {Packet.sownTotal}.") ;
+    }
+}
+
+verb ReadLog
+{
+    meta    = TRUE ;
+    grammar = { { .readings } , { .log } } ;
+    void handler ()
+    {
+        if (readings.length == 0) { printLine("No readings yet.") ; return ; }
+        for (int i = 0 ; i < readings.length ; i++)
+            print($"{readings[i].turn}:{readings[i].heat} ") ;
+        printLine("") ;
+        array<Reading> sorted[LOG_MAX] ;
+        sorted = readings ;
+        sorted.sort() ;
+        printLine($"Low {sorted[0].heat}, high {sorted[sorted.length - 1].heat}.") ;
+    }
+}
+
+verb ListPackets
+{
+    meta    = true ;
+    grammar = { { .packets } , { .seeds } } ;
+    void handler ()
+    {
+        for (Packet p in packets)
+        {
+            stringObj l = label(p) ;
+            l.print() ;
+            print(" ") ;
+        }
+        printLine("") ;
+        int empties = packets.filter((Packet p) => p.seeds == 0).count() ;
+        print($"{empties} empty") ;
+        if (packets.any( (Packet p) => p.parent == player )) print(", some held") ;
+        printLine(".") ;
+        Packet e = packets.filter((Packet p) => p.seeds == 0).first() ;
+        printLine($"First empty: {e?.description ?? "none"}; fullest: {fullest()?.seeds}.") ;
+#if WARM > 20
+        printLine("A hot house.") ;
+#else
+        printLine($"Seeds sprout at {WARM} degrees.") ;
+#endif
+    }
+}

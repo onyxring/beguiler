@@ -1,0 +1,61 @@
+Room A
+Room A.
+
+> setup
+Seats A1 and B3; before true, equal false, index 8.
+Three at 2.05 is 6.15; listeners 2.
+
+> book
+  Booked #1 Ann: A2 A3 A4 for 32.40.
+  Booked #2 Bob: B1 D6 for 42.50.
+Refused Cy: taken at A4.
+Cy is waiting (1).
+Refused Di: no such seat at E1.
+Refused Ed: no seats at A0.
+  Booked #3 Fay: C2 C3 for 36.00.
+  Booked #4 Gus: D1 for 10.00.
+Refused Hal: sold out at A0.
+Hal is waiting (2).
+Live 4, errors 4, sold 8.
+
+> seats
+A .111.. free 3
+B 2..... free 5
+C .33... free 4
+D 4....2 free 4
+#1 Ann held A2 A3 A4 32.40
+#2 Bob held B1 D6 42.50
+#3 Fay held C2 C3 36.00
+#4 Gus held D1 10.00
+
+> confirm
+Confirm 1: true.
+Confirm 2: true.
+Confirm 9: false.
+Confirm 1: false.
+Turnover 7490.
+
+> cancel
+Cancelled #2 Bob, seats B1 D6.
+Next waiting: Cy, still 1.
+  Booked #5 Cy: B1 for 24.50.
+Live 4, turnover 3240.
+
+> seats
+A .111.. free 3
+B 5..... free 5
+C .33... free 4
+D 4..... free 5
+#1 Ann confirmed A2 A3 A4 32.40
+#3 Fay held C2 C3 36.00
+#4 Gus held D1 10.00
+#5 Cy held B1 24.50
+
+> report
+Bookings 4, confirmed 1, evening true.
+By total: Fay Ann Cy Gus
+Seats held 7 over 4.
+Front row Ann; party of four none.
+matinee: 10.80
+evening: 24.50 (front rows 2)
+Waiting 1, first Hal.

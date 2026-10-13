@@ -2411,13 +2411,17 @@ bool bglParser::namesLibraryGlobal(const string& name){
             return false;
     for(typeDef* g : languageService.globals){
         if(g->name != name) continue;
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ if(vd->isExternal && vd->type.name != "property") return true; }
+        // A variable or const (the binding's or the program's), as Inform 6 keeps it in the same namespace.
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+            if(vd->type.name == "property" || vd->isNamespaceAlias()) continue;
+            if(vd->isExternal || vd->src.file.find("beguiLib") == string::npos) return true;
+        }
         else if(auto* fd = dynamic_cast<functionDef*>(g)){
             // A routine the binding declares, or one of the program's own (not the library's Beguile code).
             if(!fd->isEmitter && (fd->isExternal || (!fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos)))
                 return true;
         }
-        else if(auto* od = dynamic_cast<objectDef*>(g)){ if(od->isExternal && dynamic_cast<verbObjectDef*>(od) == nullptr) return true; }
+        else if(auto* od = dynamic_cast<objectDef*>(g)){ if(dynamic_cast<verbObjectDef*>(od) == nullptr) return true; }
     }
     return false;
 }
@@ -2863,8 +2867,12 @@ optional<string> bglParser::qualifyFromCurrentObject(const string& name){
             // inside the object's own body must resolve to the same property.
             if(auto* avd = dynamic_cast<variableDeclaration*>(m))
                 return "self." + (avd->i6name.empty() ? avd->dName() : avd->i6name);
-            if(auto* afd = dynamic_cast<functionDef*>(m))
+            if(auto* afd = dynamic_cast<functionDef*>(m)){
+                // Named bare as a value, a method loses to a variable of the same name, as its type does.
+                if(auto* gv = languageService.findGlobalAs<variableDeclaration>(name); gv != nullptr && gv->type.name != "property")
+                    return nullopt;
                 return "self." + (afd->i6name.empty() ? afd->dName() : afd->i6name);
+            }
         }
     // Inherited from the object's class chain: a member, so it shadows a global of the same name.
     if(currentObject->objectClass != nullptr)
@@ -2873,8 +2881,12 @@ optional<string> bglParser::qualifyFromCurrentObject(const string& name){
                 if(vd->isStatic || vd->isExternal) return nullopt;
                 return "self." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
             }
-            if(auto* fd = dynamic_cast<functionDef*>(m); fd != nullptr && !fd->isStatic && !fd->isEmitter)
+            if(auto* fd = dynamic_cast<functionDef*>(m); fd != nullptr && !fd->isStatic && !fd->isEmitter){
+                // Named bare as a value, a method loses to a variable of the same name, as its type does.
+                if(auto* gv = languageService.findGlobalAs<variableDeclaration>(name); gv != nullptr && gv->type.name != "property")
+                    return nullopt;
                 return "self." + (fd->i6name.empty() ? fd->dName() : fd->i6name);
+            }
         }
     // An inherited value emitter (`child`, `sibling` on object): read like a member, so it is one here.
     if(currentObject->objectClass != nullptr)
@@ -2908,6 +2920,9 @@ optional<string> bglParser::qualifyFromCurrentClass(const string& name){
                         emitterBindings vb; vb.self = "self"; vb.val = "self"; vb.trim = emitterTrim::wsSemi;
                         return expandEmitterBody(blk, vb);
                     }
+                // Named bare as a value, a method loses to a variable of the same name, as its type does.
+                if(auto* gv = languageService.findGlobalAs<variableDeclaration>(name); gv != nullptr && gv->type.name != "property")
+                    return nullopt;
                 return "self." + m->dName();
             }
         }
@@ -3151,6 +3166,9 @@ void bglParser::collectQualifyCandidatesFromUsingObjectImports(const string& nam
                 // object (e.g. `#using bgl` + `ui` → `bgl.ui` → `_bglUi`), matching a fully-qualified
                 // `bgl.ui`. Plain value members are unaffected (they re-qualify to themselves).
                 qual = qualifyIdentifier(imp->name + "." + name, func, body);
+                // A type alias named as a value is its class (`o.is(crate)`).
+                if(vd->isAlias)
+                    if(classDef* ac = languageService.findClass(vd->type.name)) qual = ac->i6Name();
                 origin = format("#using-imported member '{0}.{1}'", imp->name, name);
                 matched = true;
             }

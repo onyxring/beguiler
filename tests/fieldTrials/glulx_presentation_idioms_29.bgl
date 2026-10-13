@@ -1,0 +1,572 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a rack of four bells shown as a roll in a text grid. A class Bell : object (static
+// through a class attributeList) with a label, a letter char, a pitch, an enum tone and a ring count,
+// methods returning string, char, bool and stringObj, a ring() that prints, marks the roll, records
+// and logs, and a before() that answers Examine and Attack; a striker object whose daemon() plays a
+// recorded tune back one bell per turn and stops itself; a value class Tally (count, low, high, sum,
+// copy operator, += of a Bell, a float mean and a stringObj range) over the tune and over the bells;
+// an <array> roll of recent bells (enqueue, dequeue, peekEnd) drawn in a text grid split above the
+// main window with a border and a styleSheet, redrawn from a replaced DrawStatusLine; a text-buffer
+// log split to the right with its own styleSheet, cleared, closed and reopened, written through ?.;
+// a tune in an <array> (append, remove, popEnd, clear, reverse into a copy); stringObj letters with
+// reverse, toUpper, contains, indexOf and replaceAll; a verb with two grammar lines (NOUN, and NOUN
+// NUMBER 'times') told apart by second; <linq> filter, count, map, distinct, orderBy with a lambda
+// comparator, first, last, any and all over an array<Bell>, a predicate capturing a loop variable;
+// a for over an enum list; links with block-bodied lambda targets, a named-function target and
+// enum-valued targets handled in HandleGlkEvent; a fixed-pitch table with padded columns; a float to
+// one decimal; a const int and #define sizes.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GRID_LINES 6
+#define LOG_WIDTH 26
+#define ROLL_LEN 12
+#define TUNE_MAX 8
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eTone { clear, dull, cracked }
+enum eLinks { linkTally = 81, linkClearLog }
+
+const int maxTimes = 4;
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet rollLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 1; };
+    emphasized = style{ italics = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz rollGrid = null;
+textBufferWindowVert logPane = null;
+array<Bell> roll[ROLL_LEN];
+array<Bell> tune[TUNE_MAX];
+bool recording = false;
+int playPos = 0;
+int totalRings = 0;
+int clicks = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+stringObj oneDecimal(float f) {
+    int tenths = (int)(f * 10 + 0.5);
+    stringObj out = $"{tenths / 10}.{tenths % 10}";
+    return out;
+}
+
+string noteName(int pitch) {
+    switch (pitch) {
+        case 1: return "do";
+        case 2: return "re";
+        case 3: return "mi";
+        case 4: return "fa";
+        case 5: return "sol";
+        case 6: return "la";
+        case 7: return "ti";
+        case 8: return "do'";
+    }
+    return "?";
+}
+
+string toneName(eTone t) {
+    switch (t) {
+        case eTone.clear:   return "clear";
+        case eTone.dull:    return "dull";
+        case eTone.cracked: return "cracked";
+    }
+    return "?";
+}
+
+// ---- the log -------------------------------------------------------------------------------------
+
+void openLog() {
+    logPane = bgl.ui.mainWin.splitRightBuffer(LOG_WIDTH, fixed, border, styles: logLook);
+}
+
+void logLine(stringObj text) {
+    logPane?.printLine($"T{turns}: {text}");
+}
+
+// ---- tallies -------------------------------------------------------------------------------------
+
+value class Tally {
+    int n;
+    int low;
+    int high;
+    int sum;
+
+    Tally operator = (Tally o) {
+        n = o.n;
+        low = o.low;
+        high = o.high;
+        sum = o.sum;
+        return self;
+    }
+
+    Tally operator += (Bell b) {
+        if (n == 0 || b.pitch < low) low = b.pitch;
+        if (n == 0 || b.pitch > high) high = b.pitch;
+        sum += b.pitch;
+        n++;
+        return self;
+    }
+
+    float mean() {
+        if (n == 0) return 0.0;
+        return (float)sum / n;
+    }
+
+    stringObj range() {
+        if (n == 0) {
+            stringObj none = "none";
+            return none;
+        }
+        stringObj out = $"{noteName(low)} to {noteName(high)}";
+        return out;
+    }
+}
+
+// ---- bells ---------------------------------------------------------------------------------------
+
+class Bell : object {
+    attributeList attributes = {static};
+    string label = "bell";
+    char letter = '?';
+    int pitch = 1;
+    eTone tone = eTone.clear;
+    int rings = 0;
+
+    string sound() {
+        switch (tone) {
+            case eTone.clear:   return noteName(pitch);
+            case eTone.dull:    return "thud";
+            case eTone.cracked: return "clunk";
+        }
+        return "?";
+    }
+
+    char mark() {
+        if (tone == eTone.cracked) return 'x';
+        if (tone == eTone.dull) return 'o';
+        return '*';
+    }
+
+    bool sounds() { return tone == eTone.clear; }
+
+    stringObj row() {
+        stringObj note = noteName(pitch);
+        stringObj cells = "";
+        for (int i = 0; i < ROLL_LEN; i++) {
+            if (i >= roll.length) cells += ' ';
+            else if (roll[i] == self) cells += mark();
+            else cells += '.';
+        }
+        stringObj count = $"{rings}";
+        stringObj out = $"{letter} {padRight(note, 4)}|{cells}| {padLeft(count, 2)}";
+        return out;
+    }
+
+    void ring() {
+        rings++;
+        totalRings++;
+        if (roll.length == roll.size) roll.dequeue();
+        roll.enqueue(self);
+        printLine($"{cThe(self)} rings: {sound()}.");
+        if (recording) {
+            if (!tune.append(self)) {
+                logLine("tune full");
+            } else {
+                stringObj note = $"rec {letter} ({tune.length})";
+                logLine(note);
+            }
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)}: {noteName(pitch)}, {toneName(tone)}, rung {rings} time{rings == 1 ? "" : "s"}.");
+                rtrue;
+            case Attack:
+                ring();
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Four bells hang from a rail.";
+    attributes = {light};
+}
+
+Bell bellA { "A bell"; parent = roomA; name = {.a, .bell}; label = "A"; letter = 'A'; pitch = 1; }
+Bell bellB { "B bell"; parent = roomA; name = {.b, .bell}; label = "B"; letter = 'B'; pitch = 3; }
+Bell bellC { "C bell"; parent = roomA; name = {.c, .bell}; label = "C"; letter = 'C'; pitch = 5; }
+Bell bellD { "D bell"; parent = roomA; name = {.d, .bell}; label = "D"; letter = 'D'; pitch = 8; tone = eTone.cracked; }
+
+array<Bell> bells = { bellA, bellB, bellC, bellD };
+
+object striker {
+    "striker";
+    parent = roomA;
+    name = {.striker, .mallet};
+    description = "A felt striker.";
+
+    void daemon() {
+        if (playPos >= tune.length) {
+            StopDaemon(self);
+            playPos = 0;
+            logLine("tune done");
+            return;
+        }
+        Bell b = tune[playPos];
+        playPos++;
+        b.ring();
+    }
+}
+
+// ---- the roll ------------------------------------------------------------------------------------
+
+stringObj tuneLetters() {
+    stringObj out = "";
+    for (Bell b in tune) out += b.letter;
+    return out;
+}
+
+void drawRoll() {
+    if (rollGrid == null) return;
+    rollGrid.clear();
+    rollGrid.moveCursor(0, 0);
+    rollGrid.print("  Note  Roll         Rung");
+    int line = 1;
+    for (Bell b in bells) {
+        rollGrid.moveCursor(0, line);
+        rollGrid.print(b.row());
+        line++;
+    }
+    rollGrid.moveCursor(0, line);
+    stringObj state = recording ? "REC" : "---";
+    rollGrid.print($"{state} tune {tune.length}/{TUNE_MAX} [{tuneLetters()}] rings {totalRings}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    stringObj last = "none";
+    if (roll.length > 0) last = $"{roll.peekEnd().letter}";
+    bgl.ui.statusBar.print($"{location} | turn {turns} | last {last}");
+    drawRoll();
+}
+
+// ---- reports -------------------------------------------------------------------------------------
+
+void showTable() {
+    printLine($"{fixed}{bold}{padRight("Bell", 6)}{padRight("Note", 6)}{padRight("Tone", 9)}{padLeft("Rung", 4)}{roman}");
+    for (Bell b in bells) {
+        stringObj l = $"{b.label}";
+        stringObj n = noteName(b.pitch);
+        stringObj t = toneName(b.tone);
+        stringObj r = $"{b.rings}";
+        printLine($"{fixed}{padRight(l, 6)}{padRight(n, 6)}{padRight(t, 9)}{padLeft(r, 4)}{roman}");
+    }
+    for (eTone t in {eTone.clear, eTone.dull, eTone.cracked}) {
+        int k = bells.filter((Bell b) => b.tone == t).count();
+        if (k > 0) printLine($"{toneName(t)}: {k}");
+    }
+}
+
+void showTally() {
+    Tally sung;
+    for (Bell b in tune) sung += b;
+    Tally all;
+    for (Bell b in bells) all += b;
+    Tally before = sung;
+    sung += bellD;
+    printLine($"Tune: {before.n} notes, {before.range()}, mean {oneDecimal(before.mean())}.");
+    printLine($"With D: {sung.n} notes, {sung.range()}. Rack: {all.range()}, mean {oneDecimal(all.mean())}.");
+    int kinds = tune.map((Bell b) => b.pitch).distinct().count();
+    printLine($"Different notes in the tune: {kinds}.");
+}
+
+void showOrder() {
+    array<Bell> sounding[4];
+    sounding = bells.filter((Bell b) => b.sounds());
+    if (sounding.count() == 0) {
+        printLine("No bell sounds.");
+        return;
+    }
+    array<Bell> order[4];
+    order = sounding.orderBy((Bell a, Bell b) => b.pitch - a.pitch);
+    Bell hi = order.first();
+    Bell lo = order.last();
+    printLine($"Highest sounding: {the(hi)} ({noteName(hi.pitch)}); lowest: {the(lo)} ({noteName(lo.pitch)}).");
+    if (bells.all((Bell b) => b.rings > 0)) printLine("Every bell has rung.");
+    else if (bells.any((Bell b) => b.rings > 0)) printLine("Some bells have rung.");
+    else printLine("No bell has rung.");
+}
+
+void showTune() {
+    if (tune.length == 0) {
+        printLine("No tune is recorded.");
+        return;
+    }
+    stringObj letters = tuneLetters();
+    stringObj back = letters.reverse();
+    printLine($"Tune: {letters}; backward: {back}; lowered A: {letters.replaceAll("A", "a")}.");
+    if (letters.contains("AB")) printLine($"A rises to B at {letters.indexOf("AB") + 1}.");
+    array<Bell> reversed[TUNE_MAX];
+    reversed = tune;
+    reversed.reverse();
+    printLine($"Last note first: {the(reversed.first())}.");
+}
+
+// A click at the prompt can't print to the main window (it is waiting for a line), so these log.
+void logTally() {
+    stringObj note = $"rung {bells.filter((Bell b) => b.rings > 0).count()}, total {totalRings}";
+    logLine(note);
+}
+
+void ringFromLink(Bell b) {
+    b.ring();
+    drawRoll();
+}
+
+void stopFromLink() {
+    clicks++;
+    recording = false;
+    logLine("rec off (link)");
+    drawRoll();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.linkTally:    logTally();
+            case (int)eLinks.linkClearLog: logPane?.clear();
+            default: return 0;
+        }
+        clicks++;
+        drawRoll();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    rollGrid = bgl.ui.mainWin.splitUpGrid(GRID_LINES, fixed, border, styles: rollLook);
+    openLog();
+    logLine("rack ready");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Bell asBell(object o) {
+    if (o == null || !o.is(Bell)) {
+        printLine("That is not a bell.");
+        return null;
+    }
+    return (Bell)o;
+}
+
+verb Ring {
+    grammar = { {.ring, NOUN}, {.ring, NOUN, NUMBER, .times} };
+    void handler() {
+        Bell b = asBell(noun);
+        if (b == null) return;
+        int times = 1;
+        if (second != null) times = (int)second;
+        if (times < 1 || times > maxTimes) {
+            printLine($"Ring it 1 to {maxTimes} times.");
+            return;
+        }
+        for (int i = 0; i < times; i++) b.ring();
+    }
+}
+
+verb Record {
+    grammar = {.record};
+    void handler() {
+        if (recording) {
+            printLine("Already recording.");
+            return;
+        }
+        tune.clear();
+        recording = true;
+        printLine("Recording.");
+        logLine("rec on");
+    }
+}
+
+verb Halt {
+    grammar = {.halt};
+    void handler() {
+        if (!recording) {
+            printLine("Not recording.");
+            return;
+        }
+        recording = false;
+        printLine($"Stopped with {tune.length} note{tune.length == 1 ? "" : "s"}.");
+        logLine("rec off");
+    }
+}
+
+verb Play {
+    grammar = {.play};
+    void handler() {
+        if (tune.length == 0) {
+            printLine("Nothing to play.");
+            return;
+        }
+        recording = false;
+        playPos = 0;
+        StartDaemon(striker);
+        printLine("The striker starts.");
+    }
+}
+
+verb Unring {
+    grammar = {.unring};
+    void handler() {
+        if (tune.length == 0) {
+            printLine("The tune is empty.");
+            return;
+        }
+        Bell gone = tune.popEnd();
+        printLine($"Dropped {the(gone)} from the tune.");
+    }
+}
+
+verb Snip {
+    grammar = {.snip, NUMBER};
+    void handler() {
+        int pos = (int)noun;
+        if (pos < 1 || pos > tune.length) {
+            printLine($"Pick a note from 1 to {tune.length}.");
+            return;
+        }
+        Bell gone = tune[pos - 1];
+        tune.remove(pos - 1);
+        printLine($"Cut note {pos} ({gone.letter}); {tune.length} left.");
+    }
+}
+
+verb Damp {
+    grammar = {.damp, NOUN};
+    void handler() {
+        Bell b = asBell(noun);
+        if (b == null) return;
+        if (b.tone != eTone.clear) {
+            printLine($"{cThe(b)} is already {toneName(b.tone)}.");
+            return;
+        }
+        b.tone = eTone.dull;
+        printLine($"You damp {the(b)}.");
+    }
+}
+
+verb Mend {
+    grammar = {.mend, NOUN};
+    void handler() {
+        Bell b = asBell(noun);
+        if (b == null) return;
+        if (b.tone == eTone.clear) {
+            printLine($"{cThe(b)} needs no mending.");
+            return;
+        }
+        b.tone = eTone.clear;
+        printLine($"{cThe(b)} rings clear again.");
+        stringObj note = $"{b.label} mended";
+        logLine(note.toUpper());
+    }
+}
+
+verb Rack {
+    grammar = {.rack};
+    meta = true;
+    void handler() { showTable(); }
+}
+
+verb Tallies {
+    grammar = {.tally};
+    meta = true;
+    void handler() { showTally(); }
+}
+
+verb Ranking {
+    grammar = {.order};
+    meta = true;
+    void handler() { showOrder(); }
+}
+
+verb TuneInfo {
+    grammar = {.tune};
+    meta = true;
+    void handler() { showTune(); }
+}
+
+verb ToggleLog {
+    grammar = {.log};
+    meta = true;
+    void handler() {
+        if (logPane != null) {
+            logPane.close();
+            logPane = null;
+            printLine("Log closed.");
+        } else {
+            openLog();
+            logLine("log reopened");
+            printLine("Log open.");
+        }
+    }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Ring: {link("A", => { ringFromLink(bellA); })} {link("B", => { ringFromLink(bellB); })} {link("C", => { ringFromLink(bellC); })} {link("D", => { ringFromLink(bellD); })}");
+        printLine($"Also: {link("stop", stopFromLink)} {link("tally", eLinks.linkTally)} {link("wipe", eLinks.linkClearLog)}");
+    }
+}
+
+#includeI6 "grammar"

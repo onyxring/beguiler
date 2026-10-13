@@ -1,0 +1,348 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small ticket-queue program, on the Z-machine.
+// A pooled class sized by a `const int` with create/destroy and static counters, a `default` method,
+// a `selfType` method with a defaulted parameter called with a named argument and chained, its own
+// print() reaching the global one through `::`, and a static `<=>` handed to orderBy() as an operator
+// reference; a pooled subclass with its own pool that inherits create(), overrides the default method
+// without `replace`, replaces print() and calls the base one through a cast on `self`, and hides an
+// inherited method that is then reached by an upcast; an object namespace holding type aliases (class,
+// subclass and enum) and, through a later `extend`, a value alias to a superposed helper object, all
+// imported with `#using` so `new` takes an aliased class, a cast and a declaration take an aliased enum,
+// an enum value is read through the alias path and the helper is called by its partial path; a mixed
+// pool of base and subclass instances in one array<T> queue used through prepend/append/peek/dequeue/
+// popEnd, read with `?.` on a call result (as an expression and as a statement) and `!x?`, deleted
+// through a base-typed variable; <linq> filter/count/any/all/map/orderBy/first/last over the queue with
+// lambdas that call through the namespace; a throw of a class instance out of a for-in loop caught by
+// a class-typed catch; a union array of strings and functions walked by do/until and narrowed by
+// typeof; a stringObj built by `+=` with an interpolation, upper-cased, filled by capture() of the
+// tickets' print() methods, formatted, searched and cut up; NUMBER grammar cast to an enum; an aliased
+// enum as a parameter type, in a multi-value switch case and in an inline for-in list captured by a
+// lambda; and the hidden method reached through a base-typed parameter.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+const int POOL = 5;
+
+enum eDesk { billing, repairs, returns }
+
+// ---- tickets ------------------------------------------------------------------------------------------
+
+char deskCode(eDesk d) {
+    switch (d) {
+        case eDesk.billing:  return 'B';
+        case eDesk.repairs:  return 'R';
+        default:             return 'X';
+    }
+}
+
+class Ticket[POOL] : object {
+    int number;
+    eDesk desk;
+    int pri = 1;
+    static int issued = 0;
+    static int retired = 0;
+
+    void create(int n, eDesk d, int p) {
+        number = n;
+        desk = d;
+        pri = p;
+        issued++;
+    }
+
+    void destroy() { Ticket.retired++; }
+
+    default int weight() { return pri * 10 + (int)desk; }
+
+    selfType bump(int by = 1) {
+        pri += by;
+        return self;
+    }
+
+    void print() { ::print($"#{number}{deskCode(desk)}"); }
+
+    static int operator <=> (Ticket a, Ticket b) {
+        int d = a.weight() - b.weight();
+        return d < 0 ? -1 : (d > 0 ? 1 : 0);
+    }
+}
+
+class RushTicket[2] : Ticket {
+    hide bump;
+
+    int weight() { return 50 + number % 10; }
+
+    replace void print() {
+        ::print("!");
+        ((Ticket)self).print();
+    }
+}
+
+// ---- the counter namespace ------------------------------------------------------------------------------
+
+superposed object _deskRules {
+    bool urgent(Ticket t) { return t.weight() >= 30; }
+
+    string label(eDesk d) {
+        switch (d) {
+            case eDesk.billing: return "billing";
+            case eDesk.repairs: return "repairs";
+        }
+        return "returns";
+    }
+
+    int score(array<Ticket> a) {
+        int s = 0;
+        for (Ticket t in a) s += t.weight();
+        return s;
+    }
+}
+
+object counter {
+    alias ticket for Ticket;
+    alias rush for RushTicket;
+    alias desk for eDesk;
+    int nextNo = 100;
+    int served = 0;
+
+    int draw() {
+        nextNo++;
+        return nextNo;
+    }
+}
+
+extend counter { alias rules = _deskRules; }
+
+#using counter
+
+// ---- queue and notices ----------------------------------------------------------------------------------
+
+array<Ticket> waiting[6];
+
+void ringBell() { print("[ding]"); }
+
+array<string | func<void>> notices = { "Desks open.", ringBell, " Take a number." };
+
+Ticket findRush() {
+    for (Ticket t in waiting) {
+        if (t.is(RushTicket)) throw t;
+    }
+    return null;
+}
+
+// ---- world ----------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object machine {
+    "number machine";
+    parent = roomA;
+    attributes = {static};
+    name = {.number, .machine};
+    description = "A number machine.";
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs ----------------------------------------------------------------------------------------------
+
+verb Issue {
+    grammar = {.issue, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        switch (n) {
+            case < 1:   printLine("No such desk."); return;
+            case > 3:   printLine("No such desk."); return;
+        }
+        ticket t = new ticket(draw(), (desk)n, n == 3 ? 2 : 1);
+        if (t == null) {
+            printLine("The pool is empty.");
+            return;
+        }
+        if (!waiting.append(t)) {
+            printLine("The line is full.");
+            delete t;
+            return;
+        }
+        printLine($"Issued {t} at {rules.label(t.desk)}, weight {t.weight()}.");
+    }
+}
+
+verb Express {
+    grammar = {.express, NUMBER};
+    void handler() {
+        rush r = new rush(draw(), (eDesk)parsed_number, 3);
+        if (!r?) {
+            printLine("No rush slots.");
+            return;
+        }
+        waiting.prepend(r);
+        printLine($"Rush {r} first, weight {r.weight()}.");
+    }
+}
+
+verb Serve {
+    grammar = {.serve};
+    void handler() {
+        int front = waiting.peek()?.number;
+        if (front == 0) {
+            printLine("Nobody waits.");
+            return;
+        }
+        Ticket t = waiting.dequeue();
+        counter.served++;
+        printLine($"{cThe(machine)} calls {t} ({front}).");
+        delete t;
+    }
+}
+
+verb Board {
+    grammar = {.board};
+    void handler() {
+        if (waiting.length == 0) {
+            printLine("Board empty.");
+            return;
+        }
+        print("Board:");
+        for (Ticket t in waiting) print($" {t}");
+        print("; numbers");
+        for (int i in 0 to waiting.length - 1) print($" {waiting[i].number}");
+        printLine(".");
+        int urgentCount = waiting.filter((Ticket x) => rules.urgent(x)).count();
+        bool anyReturns = waiting.any((Ticket x) => x.desk == desk.returns);
+        bool allLow = waiting.all((Ticket x) => x.pri < 3);
+        printLine($"Urgent {urgentCount}, returns {anyReturns ? "yes" : "no"}, all low {allLow ? "yes" : "no"}, score {rules.score(waiting)}.");
+        array<Ticket> ranked[6];
+        ranked = waiting.orderBy(Ticket::operator <=>);
+        print("Ranked:");
+        for (Ticket t in ranked) print($" {t}={t.weight()}");
+        printLine($"; low {ranked.first()}, top {ranked.last()}.");
+        int twice = waiting.map((Ticket x) => x.number * 2).first();
+        printLine($"Map {twice}.");
+    }
+}
+
+verb Bump {
+    grammar = {.bump};
+    void handler() {
+        for (Ticket t in waiting) {
+            if (t.is(RushTicket)) {
+                RushTicket r = (RushTicket)t;
+                ((Ticket)r).bump(by: 5);
+                continue;
+            }
+            t.bump().bump(by: 2);
+        }
+        waiting.peek()?.bump();
+        print("Weights");
+        for (Ticket t in waiting) print($" {t.pri}/{t.weight()}");
+        printLine(".");
+    }
+}
+
+verb Receipt {
+    grammar = {.receipt};
+    void handler() {
+        stringObj s;
+        s = "served ";
+        s += $"{counter.served} of {Ticket.issued}";
+        stringObj tag = s.toUpper();
+        printLine(tag);
+        stringObj snap;
+        snap.capture();
+        for (Ticket t in waiting) print(t);
+        snap.release();
+        printLine($"Captured [{snap}] len {snap.length}.");
+        stringObj framed = snap.format("<$0|$1>", rules.label(desk.billing));
+        printLine(framed.replaceAll("#", "No."));
+        printLine($"{snap.left(4)}..{snap.right(2)} rev {snap.reverse()} has B {snap.contains("B") ? 1 : 0}.");
+    }
+}
+
+verb Audit {
+    grammar = {.audit};
+    void handler() {
+        try {
+            Ticket got = findRush();
+            printLine($"No rush; issued {Ticket.issued}, retired {RushTicket.retired}.");
+        } catch (Ticket found) {
+            printLine($"Rush found: {found} weight {found.weight()}; issued {RushTicket.issued}.");
+        }
+        int i = 0;
+        do {
+            string | func<void> n = notices[i];
+            if (typeof(n) == eType.routine) ((func<void>)n)();
+            else print((string)n);
+            i++;
+        } until (i >= notices.length);
+        printLine();
+    }
+}
+
+verb Flush {
+    grammar = {.flush};
+    void handler() {
+        if (waiting.length == 0) {
+            printLine("Nothing to flush.");
+            return;
+        }
+        int gone = 0;
+        do {
+            Ticket t = waiting.popEnd();
+            gone++;
+            delete t;
+        } until (waiting.length == 0);
+        printLine($"Flushed {gone}; retired {Ticket.retired}, issued {Ticket.issued}.");
+    }
+}
+
+void nudge(Ticket t, int times) {
+    for (int k in 1 to times) t.bump();
+}
+
+string deskWord(desk d) {
+    switch (d) {
+        case desk.billing, desk.returns:  return "front";
+        default:                          return "back";
+    }
+}
+
+verb Desks {
+    grammar = {.desks};
+    void handler() {
+        for (desk d in {desk.billing, desk.repairs, desk.returns}) {
+            int here = waiting.filter((Ticket x) => x.desk == d).count();
+            print($"{rules.label(d)}/{deskWord(d)}:{here} ");
+        }
+        printLine();
+        for (Ticket t in waiting) {
+            if (t.is(rush)) nudge(t, 2);
+        }
+        Ticket hi = waiting.orderBy(Ticket::operator <=>).last();
+        if (!hi?) print("Highest none");
+        else print($"Highest {hi}");
+        printLine($" pri {hi?.pri}; next number {counter.nextNo + 1}.");
+    }
+}

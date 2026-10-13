@@ -1,0 +1,29 @@
+// run_measure11_forms — objects and consts named like methods (the methods are renamed), a bare name
+// that is both a method and a const (the const), `?.` as a statement off an array method call with a
+// defaulted argument, and `is()` with a type alias imported by #using.
+// EXPECT_OUTPUT: 1 2 6 9 yes
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+const int RATE = 2;
+object sorter { int lookup(){ return 1; } }
+object lookup { }
+class Box : object {
+    int n;
+    int rate() { return RATE; }
+    selfType bump(int by = 1) { n = n + by; return self; }
+}
+Box b1 { n = 5; }
+array<Box> boxes[3];
+object ns { alias crate for Box; }
+#using ns
+void main() {
+    bglInit();
+    print($"{sorter.lookup()} {b1.rate()} ");
+    boxes.append(b1);
+    boxes.peek()?.bump();
+    print($"{b1.n} ");
+    boxes.peek()?.bump(3);
+    print($"{b1.n} ");
+    object o = b1;
+    if (o.is(crate)) print("yes^"); else print("no^");
+}

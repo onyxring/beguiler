@@ -1,0 +1,119 @@
+Room A
+Room A.
+
+You can see a number machine here.
+
+> board
+Board empty.
+
+> serve
+Nobody waits.
+
+> issue 1
+Issued #101B at billing, weight 11.
+
+> issue 3
+Issued #102X at returns, weight 23.
+
+> issue 2
+Issued #103R at repairs, weight 12.
+
+> express 2
+Rush !#104R first, weight 54.
+
+> board
+Board: !#104R #101B #102X #103R; numbers 104 101 102 103.
+Urgent 1, returns yes, all low no, score 100.
+Ranked: #101B=11 #103R=12 #102X=23 !#104R=54; low #101B, top !#104R.
+Map 208.
+
+> bump
+Weights 9/54 4/41 5/53 4/42.
+
+> board
+Board: !#104R #101B #102X #103R; numbers 104 101 102 103.
+Urgent 4, returns yes, all low no, score 190.
+Ranked: #101B=41 #103R=42 #102X=53 !#104R=54; low #101B, top !#104R.
+Map 208.
+
+> receipt
+SERVED 0 OF 4
+Captured [!#104R#101B#102X#103R] len 21.
+<!No.104RNo.101BNo.102XNo.103R|billing>
+!#10..3R rev R301#X201#B101#R401#! has B 1.
+
+> audit
+Rush found: !#104R weight 54; issued 4.
+Desks open.[ding] Take a number.
+
+> serve
+The number machine calls !#104R (104).
+
+> audit
+No rush; issued 4, retired 1.
+Desks open.[ding] Take a number.
+
+> issue 1
+Issued #105B at billing, weight 11.
+
+> issue 1
+Issued #106B at billing, weight 11.
+
+> issue 2
+The pool is empty.
+
+> issue 4
+No such desk.
+
+> board
+Board: #101B #102X #103R #105B #106B; numbers 101 102 103 105 106.
+Urgent 3, returns yes, all low no, score 158.
+Ranked: #105B=11 #106B=11 #101B=41 #103R=42 #102X=53; low #105B, top #102X.
+Map 202.
+
+> flush
+Flushed 5; retired 6, issued 6.
+
+> receipt
+SERVED 1 OF 6
+Captured [] len 0.
+<|billing>
+.. rev  has B 0.
+
+> express 1
+Rush !#108B first, weight 58.
+
+> express 3
+Rush !#109X first, weight 59.
+
+> express 2
+No rush slots.
+
+> board
+Board: !#109X !#108B; numbers 109 108.
+Urgent 2, returns yes, all low no, score 117.
+Ranked: !#108B=58 !#109X=59; low !#108B, top !#109X.
+Map 218.
+
+> serve
+The number machine calls !#109X (109).
+
+> serve
+The number machine calls !#108B (108).
+
+> serve
+Nobody waits.
+
+> desks
+billing/front:0 repairs/back:0 returns/front:0
+Highest none pri 0; next number 111.
+
+> issue 2
+Issued #111R at repairs, weight 12.
+
+> express 3
+Rush !#112X first, weight 52.
+
+> desks
+billing/front:0 repairs/back:1 returns/front:1
+Highest !#112X pri 5; next number 113.

@@ -956,6 +956,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
                 if(*it==existing){ newClass.members.erase(it); break; }
     } else {
+        warnMemberHidesDefine(varDef.name, varDef.dName());
         // Check for an existing stub from pre-scan (static member variables) and replace it.
         bool replacedStub = false;
         for(size_t i = 0; i < newClass.members.size(); i++){
@@ -1539,6 +1540,12 @@ void bglParser::rejectValueClassInitializer(expression* e, const string& typeNam
         memberName, typeDisplayName(typeName), typeDisplayName(literalBaseType(e->resolvedType))));
 }
 
+// A member named like a #define takes the name over in its class's or object's methods.
+void bglParser::warnMemberHidesDefine(const string& name, const string& shown){
+    if(definedSymbols.count(name))
+        parsingWarning(format("Member '{0}' has the name of a #define symbol; in its methods the name means the member.", shown));
+}
+
 // A member initializer is fixed when the program is compiled: reading another object's member
 // (`holder.v`) happens at run time, so it can't be one.
 void bglParser::rejectRunTimeMemberRead(expression* e, const string& memberName){
@@ -1913,6 +1920,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         noteValueElementArray(*g, nullptr, false);
     } else
     if(!arrDecl.isRefLocal) noteValueElementArray(arrDecl, dynamic_cast<classDef*>(ctx), false);
+    warnMemberHidesDefine(arrDecl.name, arrDecl.dName());
     // Replace pre-pass stub if present (pre-scan registers a variableDeclaration stub for
     // every property/array declaration so forward references resolve in sibling methods).
     bool replacedStub = false;
@@ -2079,11 +2087,15 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
                 parsingWarning(format("object '{0}': 'replace' specified but no existing method '{1}' to replace", obj.dName(), funcDef.dName()));
         }
         if(!replaced){
-            for(typeMember* m : obj.members)
+            for(typeMember* m : obj.members){
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(sigEq(fd))
                         parsingError(format("object '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
                             obj.dName(), funcDef.dName(), fd->src.file, fd->src.line));
+                // A value given to the same member: one property can't be both.
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == funcDef.name && !vd->isPrePassStub && !vd->isAlias)
+                    parsingError(format("object '{0}': member '{1}' is already defined", obj.dName(), funcDef.dName()));
+            }
         }
         if(!replaced)
             obj.members.push_back((typeMember*)&funcDef);
@@ -2095,6 +2107,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
     prop.docComment = docComment;
+    if(!typeName.empty()) warnMemberHidesDefine(name, name);
     // An inherited member keeps the I6 name its class gave it (an `asI6` name, or a clash rename).
     if(i6alias.empty() && obj.objectClass != nullptr)
         if(string inherited = memberI6Name(obj.objectClass->name, name); inherited != name) i6alias = inherited;

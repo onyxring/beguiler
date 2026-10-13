@@ -409,6 +409,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    if(func != nullptr && !isExternal) checkLocalVariableShadowing(arrDecl, func, body);
 
     // `[N]` fixes the capacity; an `=` initializer may follow it to seed the
     // leading slots (`array<T> name[N] = { v1, v2 }` — capacity N, length 2, the
@@ -423,6 +424,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         if(targetIsZcode() && arrDecl.arraySize > 32767 - 3)
             parsingError(format("Array '{0}' holds {1} elements; a Z-machine array holds at most 32764 (Glulx has "
                                 "no such limit).", arrDecl.dName(), arrDecl.arraySize));
+        if(!file.peekToken().is(token::bracketClose))
+            parsingError(format("Array '{0}''s capacity is one compile-time integer: a literal, a #define, a const int or a "
+                                "setting, not an expression; give it a const of its own.", arrDecl.dName()));
         file.getToken(token::bracketClose);
         hasInitializer = file.getToken({token::endStatement, token::assignment}).is(token::assignment);
     }

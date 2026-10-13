@@ -1,0 +1,136 @@
+Room A
+Room A. A tap is fixed to the wall. Room B is east.
+You can see a tap, a bean packet, a pea packet and a watering can here.
+> readings
+No readings yet.
+> packets
+bean x2 pea x3 herb x1
+0 empty.
+First empty: none; fullest: 3.
+Seeds sprout at 16 degrees.
+> survey
+1 empty, 2 empty, 3 empty, 4 empty, 5 empty, 6 empty.
+Sown 0, empty 6, up 0; seeds used 0.
+> water tray
+You can't see any such thing.
+> take can
+Taken.
+> fill can
+You fill the can from 0 to 10 pints.
+> water tray
+You can't see any such thing.
+> take bean packet
+Taken.
+> take pea packet
+Taken.
+> east
+Room B
+Room B. A seed tray, a heater and a thermometer are here. Room A is west.
+You can see a herb packet, a seed tray, a heater and a thermometer here.
+> sow bean packet
+You sow a bean seed in cell 1 (B01). 1 left.
+> sow bean packet
+You sow a bean seed in cell 2 (B02). 0 left.
+> sow bean packet
+The bean packet is empty.
+> sow pea packet
+You sow a pea seed in cell 3 (P03). 2 left.
+> take herb packet
+Taken.
+> sow herb packet
+You sow a herb seed in cell 4 (H04). 0 left.
+> sow herb packet
+The herb packet is empty.
+> fill can
+The tap is in Room A.
+> water tray
+You water 4 cells. The can has 2 pints left.
+> examine thermometer
+The thermometer reads 10 degrees.
+> switch heater on
+You switch the heater on.
+> wait
+Time passes.
+> wait
+Time passes.
+A herb shoot shows in cell 4.
+> wait
+Time passes.
+A bean shoot shows in cell 1.
+A bean shoot shows in cell 2.
+> survey
+B01 up, B02 up, P03 dry, H04 up, 5 empty, 6 empty.
+Sown 4, empty 2, up 3; seeds used 4.
+> readings
+15:10 16:12 17:14 18:16 19:18
+Low 10, high 18.
+> wait
+Time passes.
+> wait
+Time passes.
+> survey
+B01 up, B02 up, P03 dry, H04 up, 5 empty, 6 empty.
+Sown 4, empty 2, up 3; seeds used 4.
+> thin cell 2
+You pull the bean out of cell 2.
+> thin cell 9
+Cells run 1 to 6.
+> thin cell 2
+Cell 2 is empty.
+> sow pea packet
+You sow a pea seed in cell 2 (P02). 1 left.
+> packets
+bean x0 pea x1 herb x0
+2 empty, some held.
+First empty: A paper seed packet.; fullest: 1.
+Seeds sprout at 16 degrees.
+> west
+Room A
+Room A. A tap is fixed to the wall. Room B is east.
+You can see a tap here.
+> fill can
+You fill the can from 2 to 10 pints.
+> drop can
+Dropped.
+> sow pea packet
+The tray is in Room B.
+> water tray
+You can't see any such thing.
+> east
+Room B
+Room B. A seed tray, a heater and a thermometer are here. Room A is west.
+You can see a seed tray, a heater and a thermometer here.
+> water tray
+You have no watering can.
+> examine thermometer
+The thermometer reads 24 degrees.
+> west
+Room A
+Room A. A tap is fixed to the wall. Room B is east.
+You can see a watering can and a tap here.
+> take can
+Taken.
+> east
+Room B
+Room B. A seed tray, a heater and a thermometer are here. Room A is west.
+You can see a seed tray, a heater and a thermometer here.
+> water tray
+You water 4 cells. The can has 2 pints left.
+A pea shoot shows in cell 3.
+> wait
+Time passes.
+> wait
+Time passes.
+> survey
+B01 up, P02 dry, P03 up, H04 up, 5 empty, 6 empty.
+Sown 4, empty 2, up 3; seeds used 5.
+> log
+34:24 35:24 36:24 37:24 38:24
+Low 24, high 24.
+> switch heater off
+You switch the heater off.
+> wait
+Time passes.
+> log
+36:24 37:24 38:24 39:23 40:22
+Low 22, high 24.

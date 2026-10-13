@@ -1,0 +1,589 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-ninth PunyInform program, written plainly: two rooms (Room A with a coin jar
+// and a bin, Room B to the north with a vending machine, a cash box, a tray and a janitor) and
+// OPTIONAL_SCORED; a `Coin` class with an enum denomination and its value read from an `array<int>`
+// indexed by an enum cast; a `Snack` class with a slot, a price, a flavor string and an eaten flag,
+// its description a routine with a `switch` over the flavor string, and an `after` taking `Eat`; a
+// vending machine whose `before` takes `Receive` (coins only) and adds to a value class `Credit`
+// (`operator ()`, `=` from int, `+=`, `-=`, two methods) changed through a `ref` parameter; a `press
+// NUMBER` verb with a `switch` holding a range and a guard case that drops a snack from an
+// `array<object>` of slots into the tray; a `refund` verb paying change greedily from the cash box
+// with a `<linq>` `filter`/`orderBy` chain and a comparator; a restock timer on `StartTimer` and
+// `time_out`; a bin whose `before` takes `Receive`; a janitor with `life` (Ask through NextWord,
+// Give of a snack) and `orders`; an `array<int>` of prices paid with `+=`, `sort`, `contains` and a
+// `distinct`/`count` chain; a `stringObj` receipt built with interpolated strings, read with
+// `toUpper`, `contains` and `length`; `for`, `for … in` over a range and over children, `while` and
+// `do`/`while` loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object n_to;
+    object s_to;
+}
+
+extern bool scope_modified;
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eCoin { penny, nickel, dime, quarter }
+
+array<int>    coinValues = {1, 5, 10, 25};
+array<string> coinNames  = {"penny", "nickel", "dime", "quarter"};
+
+const int SLOT_COUNT   = 4;
+const int RESTOCK_WAIT = 3;
+const int CREDIT_MAX   = 50;
+
+value class Credit {
+    int _cents = 0;
+
+    int  operator ()        { return _cents; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > CREDIT_MAX) v = CREDIT_MAX;
+        _cents = v;
+    }
+    void operator += (int v) {
+        _cents = _cents + v;
+        if (_cents > CREDIT_MAX) _cents = CREDIT_MAX;
+    }
+    void operator -= (int v) {
+        _cents = _cents - v;
+        if (_cents < 0) _cents = 0;
+    }
+
+    bool covers(int price) {
+        return _cents >= price;
+    }
+
+    int shortBy(int price) {
+        if (_cents >= price) return 0;
+        return price - _cents;
+    }
+}
+
+Credit balance;
+stringObj receipt;
+int  receiptLines  = 0;
+int  coinsIn       = 0;
+int  bought        = 0;
+int  eaten         = 0;
+int  refunded      = 0;
+bool firstSale     = false;
+
+array<int> paid[8];
+
+void note(string what, int cents = -1) {
+    receiptLines++;
+    if (cents < 0) receipt += $"{what}; ";
+    else receipt += $"{what} {cents}; ";
+}
+
+int coinValue(eCoin d) {
+    return coinValues[(int)d - 1];
+}
+
+string coinName(eCoin d) {
+    return coinNames[(int)d - 1];
+}
+
+// Takes `price` from a credit when it covers it.
+bool charge(ref Credit c, int price) {
+    if (!c.covers(price)) return false;
+    c -= price;
+    return true;
+}
+
+// --- coins ------------------------------------------------------------------------------------------
+
+class Coin : object {
+    eCoin denom = eCoin.penny;
+    name = {.coin};
+
+    void description() {
+        printLine($"A {coinName(denom)}, worth {coinValue(denom)}.");
+    }
+}
+
+int valueOrder(object a, object b) {
+    return bgl.util.math.sign(coinValue(((Coin)b).denom) - coinValue(((Coin)a).denom));
+}
+
+// --- snacks -----------------------------------------------------------------------------------------
+
+class Snack : object {
+    int slot = 0;
+    int price = 10;
+    string flavor = "plain";
+    bool eatenUp = false;
+    attributes = {edible};
+
+    void description() {
+        switch (flavor) {
+            case "salt":  print("A bag of salted crisps");
+            case "mint":  print("A tin of mints");
+            case "fruit": print("A box of raisins");
+            default:      print($"A packet of {flavor} gum");
+        }
+        printLine($", from slot {slot}, price {price}.");
+    }
+
+    bool after() {
+        switch (action) {
+            case Eat:
+                eatenUp = true;
+                eaten++;
+                note("ate", slot);
+                rtrue($"You eat {the(self)}.^");
+        }
+        rfalse;
+    }
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A coin jar stands by a bin. Room B is north.";
+    n_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A vending machine stands over a tray, beside a cash box. Room A is south.";
+    s_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object jar {
+    "coin jar";
+    parent = roomA;
+    name = {.coin, .jar};
+    description = "A glass coin jar.";
+    attributes = {container, open, static};
+}
+
+Coin quarter1 {
+    "quarter";
+    parent = jar;
+    name = {.quarter};
+    denom = eCoin.quarter;
+}
+
+Coin dime1 {
+    "dime";
+    parent = jar;
+    name = {.dime};
+    denom = eCoin.dime;
+}
+
+Coin nickel1 {
+    "nickel";
+    parent = jar;
+    name = {.nickel};
+    denom = eCoin.nickel;
+}
+
+Coin penny1 {
+    "penny";
+    parent = jar;
+    name = {.penny};
+    denom = eCoin.penny;
+}
+
+object bin {
+    "bin";
+    parent = roomA;
+    name = {.bin};
+    description = "A metal bin.";
+    int dropped = 0;
+    attributes = {container, open, static};
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun.is(Coin)) rtrue("You keep your coins out of the bin.^");
+                if (!noun.is(Snack)) rfalse;
+                Snack s = (Snack)noun;
+                s.parent = null;
+                dropped++;
+                note("binned", s.slot);
+                rtrue($"You throw {the(s)} away.^");
+        }
+        rfalse;
+    }
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+object cashBox {
+    "cash box";
+    parent = roomB;
+    name = {.cash, .box};
+    description = "A locked cash box. Coins put in the machine fall into it.";
+    attributes = {static};
+}
+
+Coin brightDime {
+    "bright dime";
+    parent = cashBox;
+    name = {.bright, .dime};
+    denom = eCoin.dime;
+}
+
+Coin brightNickel {
+    "bright nickel";
+    parent = cashBox;
+    name = {.bright, .nickel};
+    denom = eCoin.nickel;
+}
+
+Coin brightPenny {
+    "bright penny";
+    parent = cashBox;
+    name = {.bright, .penny};
+    denom = eCoin.penny;
+}
+
+object tray {
+    "tray";
+    parent = roomB;
+    name = {.tray};
+    description = "A tray at the foot of the machine.";
+    attributes = {container, open, static};
+}
+
+Snack crisps {
+    "bag of crisps";
+    name = {.bag, .crisps};
+    slot = 1;
+    price = 20;
+    flavor = "salt";
+}
+
+Snack mints {
+    "tin of mints";
+    name = {.tin, .mints};
+    slot = 2;
+    price = 15;
+    flavor = "mint";
+}
+
+Snack gum {
+    "packet of gum";
+    name = {.packet, .gum};
+    slot = 3;
+    price = 5;
+    flavor = "cherry";
+}
+
+Snack raisins {
+    "box of raisins";
+    name = {.box, .raisins};
+    slot = 4;
+    price = 30;
+    flavor = "fruit";
+}
+
+array<object> slots = {crisps, mints, gum, null};
+
+object machine {
+    "vending machine";
+    parent = roomB;
+    name = {.vending, .machine, .slot};
+    attributes = {container, open, static};
+
+    void description() {
+        print("A vending machine. Slots:");
+        for (int i in 1 to SLOT_COUNT) {
+            object s = slots[i - 1];
+            if (s == null) print($" {i} empty");
+            else print($" {i} {((Snack)s).price}");
+            if (i < SLOT_COUNT) print(",");
+        }
+        printLine($". Credit {(int)balance}.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Coin)) rtrue($"{cThe(noun)} won't fit the coin slot.^");
+                Coin c = (Coin)noun;
+                balance += coinValue(c.denom);
+                c.parent = cashBox;
+                coinsIn++;
+                note(coinName(c.denom), coinValue(c.denom));
+                rtrue($"The machine takes {the(c)}. Credit {(int)balance}.^");
+        }
+        rfalse;
+    }
+}
+
+object restocker {
+    "restocker";
+    int time_left;
+    bool due = false;
+
+    void time_out() {
+        due = false;
+        slots[3] = raisins;
+        note("restocked", 4);
+        score++;
+        if (location == roomB) printLine("A man fills slot 4 and leaves.");
+    }
+}
+
+object janitor {
+    "janitor";
+    parent = roomB;
+    name = {.janitor};
+    description = "A janitor with a mop.";
+    int asked = 0;
+    int fed = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .machine || w == .vending) rtrue("The janitor says: it gives change if you ask for a refund.^");
+                if (w == .raisins) {
+                    if (slots[3] == null && !restocker.due) {
+                        restocker.due = true;
+                        StartTimer(restocker, RESTOCK_WAIT);
+                        rtrue("The janitor says: I will call for more.^");
+                    }
+                    rtrue("The janitor says: they come soon enough.^");
+                }
+                if (w == .bin) rtrue("The janitor says: wrappers go in the bin.^");
+                rtrue("The janitor shrugs.^");
+            case Give:
+                if (!noun.is(Snack)) rtrue("The janitor says: keep it.^");
+                Snack s = (Snack)noun;
+                s.parent = null;
+                fed++;
+                note("gave", s.slot);
+                if (fed == 1) score++;
+                rtrue($"The janitor takes {the(s)}.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The janitor leans on the mop.^");
+        }
+        rtrue("The janitor says: not my job.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb PressSlot {
+    grammar = {.press, NUMBER};
+    void handler() {
+        if (location != roomB) {
+            printLine("There are no buttons here.");
+            return;
+        }
+        int n = parsed_number;
+        switch (n) {
+            case 1 to SLOT_COUNT:
+                vend(n);
+            case > SLOT_COUNT:
+                printLine($"There are only {SLOT_COUNT} buttons.");
+            default:
+                printLine("The buttons start at 1.");
+        }
+    }
+
+    void vend(int n) {
+        object s = slots[n - 1];
+        if (s == null) {
+            printLine($"Slot {n} is empty.");
+            return;
+        }
+        Snack sn = (Snack)s;
+        if (!charge(balance, sn.price)) {
+            printLine($"Slot {n} costs {sn.price}. Insert {balance.shortBy(sn.price)} more.");
+            return;
+        }
+        slots[n - 1] = null;
+        sn.parent = tray;
+        scope_modified = true;
+        bought++;
+        paid += sn.price;
+        note("bought", sn.price);
+        if (!firstSale) {
+            firstSale = true;
+            score++;
+        }
+        printLine($"{cThe(sn)} drops into the tray. Credit {(int)balance}.");
+    }
+}
+
+verb Refund {
+    grammar = {.refund};
+    void handler() {
+        if (location != roomB) {
+            printLine("The machine is in Room B.");
+            return;
+        }
+        if ((int)balance == 0) {
+            printLine("There is no credit to refund.");
+            return;
+        }
+        int owed = (int)balance;
+        int given = 0;
+        array<object> coins[8];
+        coins = bgl.world.instances(Coin).filter((object o) => o.parent == cashBox).orderBy(valueOrder);
+        for (object o in coins) {
+            int v = coinValue(((Coin)o).denom);
+            if (v > owed) continue;
+            o.parent = tray;
+            owed -= v;
+            given += v;
+            if (owed == 0) break;
+        }
+        balance = owed;
+        scope_modified = true;
+        refunded += given;
+        note("refund", given);
+        if (given == 0) printLine("The machine has no change.");
+        else if (owed == 0) printLine($"{given} in change drops into the tray.");
+        else printLine($"{given} in change drops into the tray. The machine keeps {owed}.");
+    }
+}
+
+verb Purse {
+    meta = true;
+    grammar = {.purse};
+    void handler() {
+        int total = 0;
+        int n = 0;
+        for (object o in player.children) {
+            if (!o.is(Coin)) continue;
+            total += coinValue(((Coin)o).denom);
+            n++;
+        }
+        printLine($"{n} coins held, worth {total}. Credit {(int)balance}.");
+    }
+}
+
+verb Box {
+    meta = true;
+    grammar = {.box};
+    void handler() {
+        array<object> inBox[8];
+        inBox = bgl.world.instances(Coin).filter((object o) => o.parent == cashBox).orderBy(valueOrder);
+        if (inBox.length == 0) {
+            printLine("The cash box is empty.");
+            return;
+        }
+        print("Cash box:");
+        int i = 0;
+        while (i < inBox.length) {
+            Coin c = (Coin)inBox[i];
+            print($" {coinName(c.denom)}");
+            i++;
+        }
+        int big = inBox.filter((object o) => coinValue(((Coin)o).denom) >= 10).count();
+        printLine($". {big} worth 10 or more.");
+    }
+}
+
+verb ListSlots {
+    meta = true;
+    grammar = {.slots};
+    void handler() {
+        int i = 0;
+        do {
+            object s = slots[i];
+            if (s == null) printLine($"Slot {i + 1}: empty");
+            else printLine($"Slot {i + 1}: {s}, {((Snack)s).price}");
+            i++;
+        } while (i < slots.length);
+        array<object> snacks[8];
+        snacks = bgl.world.instances(Snack);
+        if (snacks.all((object o) => ((Snack)o).slot > 0)) printLine("Every snack has a slot.");
+        if (snacks.any((object o) => ((Snack)o).eatenUp)) printLine("Something has been eaten.");
+    }
+}
+
+verb ListPaid {
+    meta = true;
+    grammar = {.paid};
+    void handler() {
+        if (paid.length == 0) {
+            printLine("Nothing bought.");
+            return;
+        }
+        array<int> sorted[8];
+        sorted = paid;
+        sorted.sort();
+        print("Paid:");
+        for (int p in sorted) print($" {p}");
+        int total = 0;
+        for (int i = 0; i < paid.length; i++) total += paid[i];
+        int prices = paid.distinct().count();
+        printLine($". Total {total}, {prices} different prices.");
+        if (paid.contains(20)) printLine("The crisps were bought.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string t = restocker.due ? "due" : "not due";
+        printLine($"Score {score} of {MAX_SCORE}. Credit {(int)balance}. Restock {t}.");
+        printLine($"Coins in {coinsIn}, bought {bought}, eaten {eaten}, refunded {refunded}, janitor fed {janitor.fed}, asked {janitor.asked}, bin {bin.dropped}.");
+    }
+}
+
+verb ReadReceipt {
+    meta = true;
+    grammar = {.receipt};
+    void handler() {
+        if (receipt.length == 0) {
+            printLine("The receipt is blank.");
+            return;
+        }
+        printLine($"Receipt ({receiptLines}): {receipt.toUpper()}");
+        if (receipt.contains("refund")) printLine("A refund was given.");
+    }
+}
+
+bool Initialise() {
+    balance = 0;
+    rfalse;
+}

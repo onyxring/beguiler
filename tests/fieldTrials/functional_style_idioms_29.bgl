@@ -1,0 +1,406 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small kitchen ticket rail written in a functional style on z5. Dishes are scenery
+// objects of a class with an enum station, a cooking time and a price in cents, held in a global
+// array; tickets are a value class (with a copy operator and a dish reference) held in a sized global
+// array<Ticket>, appended from a named inline value, removed by index and walked by <linq> chains
+// (filter/count/any/all/orderBy with two-key comparators/first/take) and hand-written indexWhere and
+// fold helpers over func<> parameters; a value class load with `operator +` folded per station; a bill
+// priced by a pipeline held in an array<func<int, int>> of named functions and lambdas; parallel
+// served logs filtered by index and zipped with a func<int, int, int>; money formatted into a stringObj
+// returned by value; a `ref stringObj` notes line; verbs reading noun and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXRAIL = 6;
+const int MAXLOG = 16;
+const int LATE = 10;
+
+//-- Dishes ---------------------------------------------------------------------------------------
+
+enum eStation { grill, fryer, cold }
+
+class Dish : object {
+    attributeList attributes = {scenery};
+    string label;
+    eStation station;
+    int minutes;
+    int price;
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Dish burger { "burger"; name = {.burger}; label = "burger"; station = eStation.grill; minutes = 8;  price = 950;  parent = roomA; }
+Dish steak  { "steak";  name = {.steak};  label = "steak";  station = eStation.grill; minutes = 14; price = 1800; parent = roomA; }
+Dish fries  { "fries";  name = {.fries};  label = "fries";  station = eStation.fryer; minutes = 5;  price = 400;  parent = roomA; }
+Dish rings  { "rings";  name = {.rings};  label = "rings";  station = eStation.fryer; minutes = 6;  price = 450;  parent = roomA; }
+Dish salad  { "salad";  name = {.salad};  label = "salad";  station = eStation.cold;  minutes = 3;  price = 700;  parent = roomA; }
+Dish soup   { "soup";   name = {.soup};   label = "soup";   station = eStation.cold;  minutes = 2;  price = 550;  parent = roomA; }
+
+array<Dish> menu = {burger, steak, fries, rings, salad, soup};
+array<eStation> stations = {eStation.grill, eStation.fryer, eStation.cold};
+
+//-- Tickets --------------------------------------------------------------------------------------
+
+value class Ticket {
+    int id = 0;
+    int table = 0;
+    Dish item = null;
+    int placed = 0;
+
+    Ticket operator = (Ticket o) {
+        id = o.id;
+        table = o.table;
+        item = o.item;
+        placed = o.placed;
+        return self;
+    }
+}
+
+array<Ticket> rail[MAXRAIL];
+
+int minute = 0;
+int nextId = 1;
+
+// Served items, in the order they left the pass: the table and the price.
+array<int> servedTable[MAXLOG];
+array<int> servedCents[MAXLOG];
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int plus(int a, int b) { return a + b; }
+int larger(int a, int b) { return a > b ? a : b; }
+
+int foldInts(array<int> xs, func<int, int, int> f, int seed = 0) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+// Pairs elements up by position, up to the shorter length.
+array<int> zipWith(array<int> a, array<int> b, func<int, int, int> f) {
+    array<int> out[MAXLOG];
+    int n = a.length < b.length ? a.length : b.length;
+    for (int i = 0; i < n; i++) out += f(a[i], b[i]);
+    return out;
+}
+
+// Indices of xs whose element passes p.
+array<int> indicesWhere(array<int> xs, func<bool, int> p) {
+    array<int> out[MAXLOG];
+    for (int i = 0; i < xs.length; i++) {
+        if (p(xs[i])) out += i;
+    }
+    return out;
+}
+
+array<int> pick(array<int> xs, array<int> at) {
+    array<int> out[MAXLOG];
+    for (int i in at) out += xs[i];
+    return out;
+}
+
+int indexWhere(array<Ticket> xs, func<bool, Ticket> p) {
+    for (int i = 0; i < xs.length; i++) {
+        if (p(xs[i])) return i;
+    }
+    return -1;
+}
+
+string stationName(eStation s) {
+    switch (s) {
+        case eStation.grill: return "grill";
+        case eStation.fryer: return "fryer";
+        default:             return "cold";
+    }
+}
+
+string countWord(int n, string one, string many) { return n == 1 ? one : many; }
+
+stringObj money(int cents) {
+    stringObj s = "$";
+    int c = cents % 100;
+    s += $"{cents / 100}.";
+    if (c < 10) s += "0";
+    s += $"{c}";
+    return s;
+}
+
+int waitOf(Ticket t) { return minute - t.placed; }
+bool isLate(Ticket t) { return waitOf(t) > LATE; }
+
+//-- Ordering -------------------------------------------------------------------------------------
+
+int byStationThenId(Ticket a, Ticket b) {
+    if (a.item.station != b.item.station) return (int)a.item.station - (int)b.item.station;
+    return a.id - b.id;
+}
+
+// Longest wait first; equal waits by ticket number.
+int byWait(Ticket a, Ticket b) {
+    int d = waitOf(b) - waitOf(a);
+    if (d != 0) return d;
+    return a.id - b.id;
+}
+
+int byPrice(Dish a, Dish b) {
+    if (a.price != b.price) return a.price - b.price;
+    return a.label.compareTo(b.label);
+}
+
+//-- Station load ---------------------------------------------------------------------------------
+
+value class Load {
+    int count = 0;
+    int minutes = 0;
+
+    Load operator = (Load o) {
+        count = o.count;
+        minutes = o.minutes;
+        return self;
+    }
+
+    Load operator + (Load o) {
+        Load r;
+        r.count = count + o.count;
+        r.minutes = minutes + o.minutes;
+        return r;
+    }
+}
+
+Load loadOf(Ticket t) {
+    Load l;
+    l.count = 1;
+    l.minutes = t.item.minutes;
+    return l;
+}
+
+Load foldLoad(array<Ticket> xs, func<bool, Ticket> ok) {
+    Load acc;
+    for (Ticket t in xs) {
+        if (ok(t)) acc = acc + loadOf(t);
+    }
+    return acc;
+}
+
+//-- Billing --------------------------------------------------------------------------------------
+
+int happyHour(int cents) { return minute < 30 ? cents - cents / 10 : cents; }
+int roundToFive(int cents) { return (cents + 2) / 5 * 5; }
+
+array<func<int, int>> billing = {
+    happyHour,
+    (int c) => c + c * 12 / 100,
+    roundToFive
+};
+
+int runPipeline(array<func<int, int>> stages, int x, int from = 0) {
+    if (from >= stages.length) return x;
+    return runPipeline(stages, stages[from](x), from + 1);
+}
+
+void note(ref stringObj line, stringObj text) {
+    if (!line.isEmpty()) line += ", ";
+    line += text;
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+Dish dishOf(object o) {
+    if (!o.is(Dish)) {
+        print("That is not on the menu.^");
+        return null;
+    }
+    return (Dish)o;
+}
+
+bool tableOk(int t) {
+    if (t < 1 || t > 6) {
+        print("Tables are 1 to 6.^");
+        return false;
+    }
+    return true;
+}
+
+verb OrderVerb {
+    grammar = {{.order, NOUN, .for, NUMBER}};
+    void handler() {
+        Dish d = dishOf(noun);
+        if (d == null) return;
+        int t = parsed_number;
+        if (!tableOk(t)) return;
+        if (!rail.append(Ticket{ id = nextId; table = t; item = d; placed = minute; })) {
+            print("The rail is full.^");
+            return;
+        }
+        print($"Ticket #{nextId}: {d.label} for table {t} ({stationName(d.station)}).^");
+        nextId++;
+    }
+}
+
+verb RailVerb {
+    grammar = {{.rail}};
+    void handler() {
+        if (rail.length == 0) {
+            print("The rail is empty.^");
+            return;
+        }
+        for (Ticket t in rail.orderBy(byStationThenId)) {
+            print($"#{t.id} {stationName(t.item.station)} {t.item.label} table {t.table}, waiting {waitOf(t)}^");
+        }
+    }
+}
+
+verb WaitVerb {
+    grammar = {{.wait, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n < 1 || n > 60) {
+            print("Wait 1 to 60 minutes.^");
+            return;
+        }
+        minute += n;
+        int late = rail.filter(isLate).count();
+        print($"Minute {minute}. {late} late.^");
+    }
+}
+
+verb CookVerb {
+    grammar = {{.cook}};
+    void handler() {
+        stringObj done;
+        int longest = 0;
+        for (eStation s in stations) {
+            int at = indexWhere(rail, (Ticket t) => t.item.station == s);
+            if (at < 0) continue;
+            Ticket t = rail[at];
+            rail.remove(at);
+            longest = larger(longest, t.item.minutes);
+            servedTable += t.table;
+            servedCents += t.item.price;
+            stringObj what = $"{t.item.label} #{t.id}";
+            note(done, what);
+        }
+        if (done.isEmpty()) {
+            print("Nothing to cook.^");
+            return;
+        }
+        minute += longest;
+        print($"Cooked {done} in {longest} minutes. Minute {minute}.^");
+    }
+}
+
+verb LateVerb {
+    grammar = {{.late}};
+    void handler() {
+        array<Ticket> late[MAXRAIL] = rail.filter(isLate);
+        if (late.length == 0) {
+            print("Nothing is late.^");
+            return;
+        }
+        for (Ticket t in late.orderBy(byWait)) print($"#{t.id} {t.item.label}: {waitOf(t)} minutes^");
+        bool allLate = rail.all(isLate);
+        bool grillLate = late.any((Ticket t) => t.item.station == eStation.grill);
+        print($"{late.count()} of {rail.length} late; {allLate ? "all" : "not all"}; grill {grillLate ? "behind" : "clear"}^");
+    }
+}
+
+verb LoadVerb {
+    grammar = {{.load}};
+    void handler() {
+        Load all;
+        for (eStation s in stations) {
+            Load l = foldLoad(rail, (Ticket t) => t.item.station == s);
+            print($"{stationName(s)}: {l.count} {countWord(l.count, "ticket", "tickets")}, {l.minutes} minutes^");
+            all = all + l;
+        }
+        print($"all: {all.count}, {all.minutes} minutes^");
+    }
+}
+
+verb CancelVerb {
+    grammar = {{.cancel, NUMBER}};
+    void handler() {
+        int id = parsed_number;
+        int at = indexWhere(rail, (Ticket t) => t.id == id);
+        if (at < 0) {
+            print($"No ticket #{id} on the rail.^");
+            return;
+        }
+        string what = rail[at].item.label;
+        rail.remove(at);
+        print($"Ticket #{id} ({what}) cancelled.^");
+    }
+}
+
+verb BillVerb {
+    grammar = {{.bill, NUMBER}};
+    void handler() {
+        int t = parsed_number;
+        if (!tableOk(t)) return;
+        array<int> mine = indicesWhere(servedTable, (int x) => x == t);
+        if (mine.length == 0) {
+            print($"Table {t} has had nothing.^");
+            return;
+        }
+        if (rail.any((Ticket k) => k.table == t)) print($"(Table {t} still has food coming.)^");
+        array<int> prices = pick(servedCents, mine);
+        int subtotal = foldInts(prices, plus);
+        int total = runPipeline(billing, subtotal);
+        print($"Table {t}: {prices.length} {countWord(prices.length, "item", "items")}, {money(subtotal)}, due {money(total)}^");
+        for (int k = mine.length - 1; k >= 0; k--) {
+            servedTable.remove(mine[k]);
+            servedCents.remove(mine[k]);
+        }
+    }
+}
+
+verb MenuVerb {
+    grammar = {{.menu}};
+    void handler() {
+        for (Dish d in menu.orderBy(byPrice)) print($"{d.label} {money(d.price)} ({d.minutes} min)^");
+        array<Dish> quick = menu.filter((Dish d) => d.minutes <= 5).orderBy(byPrice);
+        stringObj names;
+        for (Dish d in quick) note(names, d.label);
+        print($"quick: {names}^");
+        for (eStation s in stations) {
+            Dish top = menu.filter((Dish d) => d.station == s).orderBy(byPrice).last();
+            print($"{stationName(s)} top: {top.label}^");
+        }
+    }
+}
+
+verb TakingsVerb {
+    grammar = {{.takings}};
+    void handler() {
+        if (servedCents.length == 0) {
+            print("Nothing served.^");
+            return;
+        }
+        array<int> weights = {1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+        array<int> weighted = zipWith(servedCents, weights, (int c, int w) => c * w / 100);
+        print($"{servedCents.length} unpaid, {money(foldInts(servedCents, plus))}, largest {money(foldInts(servedCents, larger))}, weight {foldInts(weighted, plus)}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

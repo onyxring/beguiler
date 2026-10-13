@@ -2778,6 +2778,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
             MethodMatch mm = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
             functionDef* method = mm.method;
             if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
+            finalizeCallArgs(callArgs, opal.namedArgNames, opal.interpSegmentsPerArg, method);   // defaulted arguments
             mangleOverloadSetForReceiver(currentType, methName);
             if(method->isEmitter){
                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
@@ -2831,6 +2832,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 MethodMatch mm2 = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
                 functionDef* method = mm2.method;
                 if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
+                finalizeCallArgs(callArgs, opal.namedArgNames, opal.interpSegmentsPerArg, method);   // defaulted arguments
                 mangleOverloadSetForReceiver(currentType, methName);
                 if(method->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){

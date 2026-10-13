@@ -1,0 +1,127 @@
+Room A
+> roster
+day  early  late   skills
+mon  ann    ben    till, keys
+tue  cal    -      first aid
+wed  -      eve    first aid, till
+thu  dee    ann    till, keys
+fri  -      -      none
+> slots
+early  07:00-15:00 (8 hours)
+late   14:30-20:30 (6 hours)
+> check
+mon: no first aid.
+tue: no keys, open slot.
+wed: no keys, open slot.
+thu: no first aid.
+fri: no keys, no first aid, open slot.
+5 of 5 days need attention.
+> hours
+ann  2 shifts, 14 hours, free
+dee  1 shifts, 8 hours, one left
+cal  1 shifts, 8 hours, free
+eve  1 shifts, 6 hours, free
+ben  1 shifts, 6 hours, free
+First by name: ann.
+> week
+4 open slots.
+Keys missing on some days.
+Some day has nobody.
+5 people working.
+Their limits add to 20 shifts.
+> log
+No changes yet.
+> who mon
+mon: early ann, late ben.
+3 off.
+> who fri
+fri: early -, late -.
+5 off.
+> skills ann
+ann: till, keys.
+> skills cal
+cal: first aid.
+> skills ben
+ben: till.
+> early ben fri
+ben takes fri early.
+> early ann mon
+ann already has mon early.
+> late ann mon
+ann already works mon early.
+> late eve fri
+eve takes fri late.
+> early dee tue
+dee replaces cal on tue early.
+> early dee fri
+dee is at the limit of 2 shifts.
+> roster
+day  early  late   skills
+mon  ann    ben    till, keys
+tue  dee    -      keys
+wed  -      eve    first aid, till
+thu  dee    ann    till, keys
+fri  ben    eve    first aid, till
+> check
+mon: no first aid.
+tue: no first aid, open slot.
+wed: no keys, open slot.
+thu: no first aid.
+fri: no keys.
+5 of 5 days need attention.
+> suggest wed
+For wed early: cal (3 free).
+> suggest fri
+fri is full.
+> early cal wed
+cal takes wed early.
+> suggest wed
+wed is full.
+> hours
+dee  2 shifts, 16 hours, full
+ben  2 shifts, 14 hours, one left
+ann  2 shifts, 14 hours, free
+eve  2 shifts, 12 hours, one left
+cal  1 shifts, 8 hours, free
+First by name: ann.
+> unset ann thu
+ann dropped from thu late.
+> unset ann thu
+ann is not on thu.
+> late ben thu
+ben takes thu late.
+> late ben tue
+ben is at the limit of 3 shifts.
+> log
+* ben fri early
+* eve fri late
+  dee tue early
+  cal wed early
+  ben thu late
+> swap mon fri
+mon and fri exchanged.
+> roster
+day  early  late   skills
+mon  ben    eve    first aid, till
+tue  dee    -      keys
+wed  cal    eve    first aid, till
+thu  dee    ben    till, keys
+fri  ann    ben    till, keys
+> swap tue tue
+That is the same day.
+> week
+1 open slots.
+Keys missing on some days.
+5 people working.
+Their limits add to 27 shifts.
+> who thu
+thu: early dee, late ben.
+3 off.
+> early eve thu
+eve replaces dee on thu early.
+> log
+* eve fri late
+  dee tue early
+  cal wed early
+  ben thu late
+  eve thu early

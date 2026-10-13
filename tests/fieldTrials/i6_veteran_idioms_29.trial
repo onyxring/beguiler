@@ -1,0 +1,147 @@
+Store Room
+Store Room. Shelves and a flour bin. The bakehouse is east.
+You can see a flour bin (which is closed), two ingredients (a packet of yeast and a pinch of salt) and some scales here.
+> tally
+Bowl: empty, 0 grams. Dough: none. Oven: cold. Score 0.
+Weighed: nothing.
+> x yeast
+The packet of yeast, about 7 grams.
+> weigh yeast
+The packet of yeast weighs 7 grams.
+> put yeast on scales
+(first taking the packet of yeast)
+The packet of yeast settles on the scales. The needle reads 7 grams.
+> put salt on scales
+(first taking the pinch of salt)
+The pinch of salt settles on the scales. The needle reads 17 grams.
+> weigh scales
+You can't weigh the scales.
+> take yeast
+Taken.
+> take salt
+Taken.
+> open bin
+The flour bin seems to be locked.
+> e
+Bakehouse
+Bakehouse. A brick oven fills one wall. The store room is west.
+You can see a jug of water, a mixing bowl (which is empty), an oven (which is closed) and a baker here.
+> wait
+Time passes.
+> x bowl
+A wide earthenware bowl, empty.
+> knead bowl
+The bowl still needs flour, water, yeast, salt.
+> ask baker about key
+"Here," says the baker, handing you a brass key.
+> ask baker about key
+"You have the key already."
+> ask baker about weather
+The baker shrugs.
+> put yeast in bowl
+You add the yeast to the bowl.
+> put salt in bowl
+You add the salt to the bowl.
+> put yeast in bowl
+You can't see any such thing.
+> put key in bowl
+Only ingredients go in the bowl.
+> knead bowl
+The bowl still needs flour, water.
+> w
+Store Room
+Store Room. Shelves and a flour bin. The bakehouse is east.
+You can see a flour bin (which is closed) and some scales here.
+> unlock bin with key
+You unlock the flour bin.
+[The score has just gone up by one point.]
+> open bin
+You open the flour bin, revealing a bag of flour.
+> take bag
+Taken.
+> weigh bag
+The bag of flour weighs 500 grams.
+> put bag on scales
+The bag of flour settles on the scales. The needle reads 500 grams.
+> take bag
+Taken.
+> e
+Bakehouse
+Bakehouse. A brick oven fills one wall. The store room is west.
+You can see a jug of water, a mixing bowl (which is empty), an oven (which is closed) and a baker here.
+> put bag in bowl
+You add the flour to the bowl.
+> put water in bowl
+(first taking the jug of water)
+You add the water to the bowl. That is everything.
+> x bowl
+A wide earthenware bowl holding flour, water, yeast, salt.
+> tally
+Bowl: flour, water, yeast, salt, 817 grams. Dough: none. Oven: cold. Score 1.
+Weighed: 7 7 17 500 500.
+> knead bowl
+You knead the dough.
+> i
+You're carrying:
+  a brass key
+> x dough
+The dough has been kneaded 1 times.
+> knead dough
+You knead the dough.
+> baker, knead dough
+The baker kneads the dough until it is smooth. You set it aside to prove.
+> baker, take bowl
+"Fetch it yourself," says the baker.
+> knead dough
+The dough needs no more kneading.
+The dough has risen.
+> x dough
+The dough has doubled in size.
+> tally
+Bowl: empty, 817 grams. Dough: risen. Oven: cold. Score 1.
+Weighed: 7 7 17 500 500.
+> take dough
+Taken.
+> put dough in oven
+(first opening the oven)
+You put the risen dough into the oven.
+> wait
+Time passes.
+> x dough
+The dough has doubled in size.
+> turn on oven
+Close the door first.
+> open oven
+The oven is already open.
+> put dough in oven
+The risen dough is already here.
+> close oven
+You close the oven.
+> turn on oven
+The oven roars into life.
+> open oven
+Not while the oven is lit.
+> wait
+The oven ticks as it heats.
+> tally
+Bowl: empty, 817 grams. Dough: risen. Oven: lit, 0 left. Score 1.
+Weighed: 7 7 17 500 500.
+> wait
+The oven ticks as it heats.
+The oven dies down.
+[The score has just gone up by one point.]
+> open oven
+You open the oven, revealing a loaf.
+> take loaf
+Taken.
+> weigh loaf
+The loaf weighs 767 grams.
+> give bowl to baker
+(first taking the mixing bowl)
+The bowl is too heavy to lift.
+> give loaf to baker
+The baker taps the crust and nods.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 55 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

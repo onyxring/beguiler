@@ -4532,9 +4532,18 @@ bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext&
         token afterCall;
         if(closed && ahead.size() >= 2 && ahead[ahead.size() - 2].is(token::parenClose)){ scanned = true; afterCall = ahead.back(); }
         if(scanned && afterCall.is("?.") && !file.hasPendingToken){
-            file.pendingToken = symbol;
-            file.hasPendingToken = true;
-            parseExpression(tok, {token::endStatement}, sc.func, sc.body);
+            bool path = tok.value.find('.') != string::npos;
+            if(path){
+                // `boxes.peek()?.bump();`: the path is one token here; read the statement again as an expression.
+                string text = (tok.originalValue.empty() ? tok.value : tok.originalValue) + "(" + file.getRawTextToStatementEnd(1) + ";";
+                file.openText(text, sc.src.file, sc.src.line);
+                try { parseExpression(file.getToken(), {token::endStatement}, sc.func, sc.body); } catch(...) { file.close(); throw; }
+                file.close();
+            } else {
+                file.pendingToken = symbol;
+                file.hasPendingToken = true;
+                parseExpression(tok, {token::endStatement}, sc.func, sc.body);
+            }
             for(statement* inj : pendingInjections) if(sc.body != nullptr) sc.body->statements.push_back(inj);
             pendingInjections.clear();
             for(statement* inj : postInjections) if(sc.body != nullptr) sc.body->statements.push_back(inj);

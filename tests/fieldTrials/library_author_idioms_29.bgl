@@ -1,0 +1,608 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a books-and-shelves lending kit and its consumer. The kit declares an enum of book
+// kinds; a value class of days with two copy operators, + and - over ints, + over days, <=> (giving <
+// and >), == against an int, a static maker from weeks and a show method that prints weeks and days;
+// a book class with a required positional page count, a kind with an initializer, a const shelf
+// mark given per object, a required author() routine, a default blurb() and lendable(), static lent
+// and returned counts, and a before() that takes over the library's Examine; an atlas subclass that
+// can't be lent and overrides blurb(). A shelf class with a required positional room, an operator []
+// that walks its children for the i-th book, a count() and a take() that throws when it is full. A
+// pooled slip class with name words and a short_name in the class body, an owned stringObj code built
+// in create(), a book member, an owned days member, a time_left and a time_out() run by StartTimer,
+// static counters and a destroy() that stops the timer and takes it out of the tree. The desk object
+// is a namespace (alias … for the enum and the days) holding an array of shelves, an array of slips
+// swept with remove/delete in a while loop, a stringObj log, an owned days total, an inline accessor
+// that clamps the loan length and counts changes through outer., a lend() returning null when the pool
+// is empty, a give() that finds a slip with <linq> filter().first(), a shelve() that catches take()'s
+// throws and walks the shelves with do/until, a renew() through a ref parameter, a union-returning
+// search and a func<> walk. The consumer has one room with two shelves and three books (positional
+// pages, one an atlas), extends the book class with tests and the desk with a capturing <linq> count
+// and a ternary; its verbs borrow, hand in, renew and shelve books, set the loan length, find the
+// thickest book on loan through typeof and casts, and report with <linq> filter/count/any/all/first/
+// orderBy/take, ??, stringObj methods, a copied and lambda-sorted local array, bgl.world.instances
+// with a predicate, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA29_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: books lent from shelves, with a slip for each loan. ====
+
+/// What sort of book it is.
+enum eLa29Kind { novel, manual, atlas }
+
+/// A span of days, copied on assignment.
+value class La29Days {
+    int d;
+    La29Days operator = (La29Days o) { d = o.d; return self; }
+    La29Days operator = (int n) { d = n; return self; }
+    /// The span with some days more.
+    La29Days operator + (int n) {
+        La29Days r;
+        r.d = d + n;
+        return r;
+    }
+    /// The two spans together.
+    La29Days operator + (La29Days o) {
+        La29Days r;
+        r.d = d + o.d;
+        return r;
+    }
+    /// The span with some days less, never below nothing.
+    La29Days operator - (int n) {
+        La29Days r;
+        r.d = bgl.util.math.max(d - n, 0);
+        return r;
+    }
+    /// Negative when this is shorter, 0 when the same, positive when longer.
+    int operator <=> (La29Days o) { return d - o.d; }
+    /// True when it is exactly so many days.
+    bool operator == (int n) { return d == n; }
+
+    /// So many whole weeks.
+    static La29Days weeks(int w) {
+        La29Days r;
+        r.d = w * 7;
+        return r;
+    }
+
+    /// Prints the span as weeks and days.
+    void show() {
+        if (d < 7) {
+            print($"{d}d");
+            return;
+        }
+        print($"{d / 7}w");
+        if (d % 7 != 0) print($"{d % 7}d");
+    }
+}
+
+/// A book that sits on a shelf until it is lent.
+class La29Book : object {
+    /// How many pages it has.
+    required inline int pages;
+    eLa29Kind kind = eLa29Kind.novel;
+    /// Where it goes back to; each book is given its own.
+    const string mark = "?";
+    La29Shelf home;
+    bool out = false;
+    /// Loans made of any book.
+    static int lent = 0;
+    /// Loans handed back.
+    static int returned = 0;
+
+    /// Who wrote it.
+    required string author();
+    /// A line about it.
+    default string blurb() { return "plain"; }
+    /// True when it may leave the room.
+    default bool lendable() { return true; }
+
+    bool before() {
+        switch (action) {
+            case ::Examine:
+                print($"The {self}, {pages} pages, by {author()}, {blurb()}, mark {mark}");
+                if (out) print(", on loan");
+                print(".^");
+                return true;
+        }
+        return false;
+    }
+}
+
+/// A book of maps: kept in the room.
+class La29Atlas : La29Book {
+    int maps = 0;
+    bool lendable() { return false; }
+    string blurb() { return "maps"; }
+}
+
+/// A shelf that holds a few books.
+class La29Shelf : object {
+    attributes = {supporter, static};
+    /// How many books fit on it.
+    required inline int room;
+
+    /// How many books are on it.
+    int count() {
+        int n = 0;
+        for (object o in children) {
+            if (o.is(La29Book)) n++;
+        }
+        return n;
+    }
+
+    /// The i-th book on it, from 0, or null.
+    La29Book operator [] (int i) {
+        int n = 0;
+        for (object o in children) {
+            if (!o.is(La29Book)) continue;
+            if (n == i) return (La29Book)o;
+            n++;
+        }
+        return null;
+    }
+
+    /// Puts a book on it. Throws the room it has when it is full.
+    void take(La29Book b) {
+        if (count() >= room) throw room;
+        b.parent = self;
+    }
+}
+
+/// A loan slip for a book; made with new and handed back with delete.
+class La29Slip[3] : object {
+    string short_name = "slip";
+    name = {.slip, .ticket};
+    stringObj code;
+    La29Book book;
+    La29Days due;
+    bool late = false;
+    int time_left;
+    /// Slips written so far.
+    static int issued = 0;
+    /// Slips torn up so far.
+    static int torn = 0;
+
+    void create(La29Book b, int days) {
+        book = b;
+        issued++;
+        code = $"{b.mark}/{issued}";
+        due = days;
+        parent = player;
+        StartTimer(self, days);
+    }
+
+    void time_out() {
+        late = true;
+        la29Desk.log += $"late:{code} ";
+        print($"Slip {code} is overdue.^");
+    }
+
+    void destroy() {
+        StopTimer(self);
+        book = null;
+        parent = null;
+        torn++;
+    }
+}
+
+/// Report verbs: they take no time.
+class La29Info : verb {
+    meta = true;
+}
+
+// ==== The desk. ====
+
+/// The desk: knows the shelves and the slips, lends books, and keeps a log.
+object la29Desk {
+    "desk";
+    alias kind for eLa29Kind;
+    alias days for La29Days;
+    array<La29Shelf> shelves[2];
+    array<La29Slip> slips[3];
+    stringObj log;
+    /// All the days lent so far.
+    days total;
+    int changes = 0;
+
+    /// Days a loan runs, kept from 1 to 9; each change is counted.
+    auto limit = {
+        int _n = 3;
+        int operator () { return _n; }
+        void operator = (int v) {
+            int n = bgl.util.math.clamp(v, 1, 9);
+            if (n != _n) outer.changes++;
+            _n = n;
+        }
+    }
+
+    /// Adds a shelf; false when it is there already or there is no room.
+    bool register(La29Shelf s) {
+        if (shelves.contains(s)) return false;
+        return shelves.append(s);
+    }
+
+    /// A word for a kind.
+    string word(kind k) {
+        switch (k) {
+            case kind.novel:  return "novel";
+            case kind.manual: return "manual";
+            default:          return "atlas";
+        }
+    }
+
+    /// Lends a book: a slip goes into the player's hand. Null when it can't be lent.
+    La29Slip lend(La29Book b) {
+        if (b.out) {
+            print($"The {b} is already out.^");
+            return null;
+        }
+        if (!b.lendable()) {
+            print($"The {b} stays in the room.^");
+            return null;
+        }
+        La29Slip s = new La29Slip(b, limit);
+        if (s == null) {
+            print("The desk has no slips left.^");
+            return null;
+        }
+        slips.append(s);
+        b.out = true;
+        b.parent = player;
+        La29Book.lent++;
+        total = total + limit;
+        log += $"lend:{s.code} ";
+        print($"You borrow the {b}; slip {s.code}, due in ");
+        s.due.show();
+        print(".^");
+        return s;
+    }
+
+    /// Hands a book back: its slip is torn up. False when it isn't on loan.
+    bool give(La29Book b) {
+        if (!b.out) return false;
+        La29Slip s = slips.filter((La29Slip x) => x.book == b).first();
+        if (s == null) return false;
+        slips.remove(slips.indexOf(s));
+        if (s.late) log += $"back-late:{s.code} ";
+        else log += $"back:{s.code} ";
+        delete s;
+        b.out = false;
+        La29Book.returned++;
+        shelve(b, b.home);
+        return true;
+    }
+
+    /// Puts a book on a shelf, or on the next one with room. Returns the shelf, or null.
+    La29Shelf shelve(La29Book b, La29Shelf first) {
+        int at = shelves.indexOf(first);
+        int tried = 0;
+        do {
+            La29Shelf s = shelves[at];
+            try {
+                s.take(b);
+            } catch (int room) {
+                print($"The {s} is full ({room} books).^");
+                log += "full ";
+                at = (at + 1) % shelves.length;
+                tried++;
+                continue;
+            }
+            print($"The {b} goes on the {s}.^");
+            return s;
+        } until (tried >= shelves.length);
+        b.parent = location;
+        print($"The {b} goes on the floor.^");
+        return null;
+    }
+
+    /// Adds days to a loan's due span.
+    void renew(ref La29Days due, int more) {
+        due = due + more;
+    }
+
+    /// Tears up the slips of books no longer out. Returns how many went.
+    int sweep() {
+        int gone = 0;
+        int i = 0;
+        while (i < slips.length) {
+            La29Slip s = slips[i];
+            if (s.book.out) {
+                i++;
+                continue;
+            }
+            slips.remove(i);
+            delete s;
+            gone++;
+        }
+        if (gone > 0) log += $"sweep{gone} ";
+        return gone;
+    }
+
+    /// The thickest book on loan, or a word when none is out.
+    La29Book | string thickest() {
+        La29Book best = null;
+        for (La29Slip s in slips) {
+            if (best == null || s.book.pages > best.pages) best = s.book;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Runs a step on each shelf, in the order they were registered.
+    void each(func<void, La29Shelf> step) {
+        for (La29Shelf s in shelves) step(s);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La29Shelf lowShelf {
+    2, "low shelf";
+    parent = roomA;
+    name = {.low, .shelf};
+}
+
+La29Shelf highShelf {
+    3, "high shelf";
+    parent = roomA;
+    name = {.high, .shelf};
+}
+
+La29Book redBook {
+    120, "red book";
+    parent = lowShelf;
+    home = lowShelf;
+    mark = "R1";
+    name = {.red, .book};
+    string author() { return "Ann"; }
+}
+
+La29Book grayBook {
+    300, "gray book";
+    parent = lowShelf;
+    home = lowShelf;
+    mark = "G2";
+    kind = eLa29Kind.manual;
+    name = {.gray, .book};
+    string author() { return "Bo"; }
+    string blurb() { return "how-to"; }
+}
+
+La29Atlas bigAtlas {
+    80, "big atlas";
+    parent = highShelf;
+    home = highShelf;
+    mark = "A3";
+    kind = eLa29Kind.atlas;
+    maps = 12;
+    name = {.big, .atlas};
+    string author() { return "Cy"; }
+}
+
+/// Every book can say how long it takes to read.
+extend class La29Book {
+    /// Days to read it, at a hundred pages a day.
+    int readDays() { return (pages + 99) / 100; }
+    /// True when it sits on a shelf.
+    bool shelved() { return parent != null && parent.is(La29Shelf); }
+}
+
+/// The desk can count the late loans and sum itself up in a word.
+extend la29Desk {
+    /// How many slips are late and for a book longer than so many pages.
+    int lateOver(int least) {
+        return slips.filter((La29Slip s) => s.late && s.book.pages > least).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return limit >= 5 ? "lenient" : "strict";
+    }
+}
+
+/// True when the noun is a book.
+bool la29IsBook() { return noun.is(La29Book); }
+
+/// Prints a shelf's line.
+void la29ShowShelf(La29Shelf s) {
+    print($"{s} {s.count()}/{s.room}:");
+    for (int i = 0; i < s.count(); i++) {
+        La29Book b = s[i];
+        print($" {b.mark}");
+    }
+    print("^");
+}
+
+// ==== Verbs. ====
+
+verb La29Borrow {
+    grammar = {.borrow, NOUN(la29IsBook)};
+    void handler() {
+        la29Desk.lend((La29Book)noun);
+    }
+}
+
+verb La29HandIn {
+    grammar = {.hand, .in, NOUN(la29IsBook)};
+    void handler() {
+        La29Book b = (La29Book)noun;
+        if (!la29Desk.give(b)) print($"The {b} isn't on loan.^");
+    }
+}
+
+verb La29Renew {
+    grammar = {.renew, NOUN};
+    void handler() {
+        if (!noun.is(La29Slip)) {
+            print("Only slips renew.^");
+            return;
+        }
+        La29Slip s = (La29Slip)noun;
+        la29Desk.renew(s.due, 2);
+        s.time_left += 2;
+        s.late = false;
+        print($"Slip {s.code} now runs ");
+        s.due.show();
+        print(".^");
+    }
+}
+
+verb La29Shelve {
+    grammar = {.shelve, HELD, .on, NOUN};
+    void handler() {
+        if (!noun.is(La29Book)) {
+            print("Only books shelve.^");
+            return;
+        }
+        if (!second.is(La29Shelf)) {
+            print("That is not a shelf.^");
+            return;
+        }
+        La29Book b = (La29Book)noun;
+        if (b.out) {
+            print($"Hand the {b} in first.^");
+            return;
+        }
+        la29Desk.shelve(b, (La29Shelf)second);
+    }
+}
+
+verb La29Sweep {
+    grammar = {.sweep};
+    void handler() {
+        int n = la29Desk.sweep();
+        print($"swept {n}; slips {la29Desk.slips.length}.^");
+    }
+}
+
+La29Info La29Limit {
+    grammar = {.limit, NUMBER};
+    void handler() {
+        la29Desk.limit = (int)noun;
+        print($"limit {la29Desk.limit}, changes {la29Desk.changes}, {la29Desk.mood()}.^");
+    }
+}
+
+La29Info La29Thickest {
+    grammar = {.thickest};
+    void handler() {
+        La29Book | string r = la29Desk.thickest();
+        if (typeof(r) == eType.object) {
+            La29Book b = (La29Book)r;
+            print($"The {b} is thickest on loan: {b.pages} pages, {b.readDays()} days to read, a {la29Desk.word(b.kind)}.^");
+        } else {
+            print($"Thickest: {(string)r}.^");
+        }
+    }
+}
+
+La29Info La29Shelves {
+    grammar = {.shelves};
+    void handler() {
+        la29Desk.each((La29Shelf s) => la29ShowShelf(s));
+        int out = bgl.world.instances(La29Book, (object o) => ((La29Book)o).out).count();
+        print($"out {out}, lent {La29Book.lent}, returned {La29Book.returned}");
+        if (la29Desk.shelves.any((La29Shelf s) => s.count() >= s.room)) print(", one full");
+        if (la29Desk.shelves.all((La29Shelf s) => s.count() > 0)) print(", none empty");
+        La29Shelf firstEmpty = la29Desk.shelves.filter((La29Shelf s) => s.count() == 0).first();
+        object which = firstEmpty ?? roomA;
+        print($"; first empty {which}; lent for ");
+        la29Desk.total.show();
+        print("^");
+        print($"slips {la29Desk.slips.length} (issued {La29Slip.issued}, torn {La29Slip.torn}); log {la29Desk.log}^");
+#if LA29_TRACE
+        print($"limit {la29Desk.limit}, late over 100 {la29Desk.lateOver(100)}^");
+#endif
+    }
+}
+
+La29Info La29Slips {
+    grammar = {.slips};
+    void handler() {
+        if (la29Desk.slips.length == 0) {
+            print("No slips.^");
+            return;
+        }
+        stringObj line;
+        for (La29Slip s in la29Desk.slips) {
+            line += s.code.toLower();
+            if (s.late) line += "!";
+            line += " ";
+        }
+        line = line.trim();
+        print($"{line} ({line.length} chars)");
+        if (line.contains("g2")) print(", the gray book out");
+        print(".^");
+    }
+}
+
+La29Info La29Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La29Slip> order[3];
+        order = la29Desk.slips;
+        order.sort((La29Slip a, La29Slip b) => b.due.d - a.due.d);
+        for (La29Slip s in order) print($"{s.code}={s.due.d} ");
+        if (order.length == 0) print("none");
+        else if (order.length == 1 || order.first().due > order[1].due) print($"longest {order.first().code}");
+        else print("tie");
+        print(".^");
+        for (La29Slip s in la29Desk.slips.orderBy((La29Slip a, La29Slip b) => a.book.pages - b.book.pages).take(2)) {
+            print($"{s.book} ");
+        }
+        print("thinnest.^");
+    }
+}
+
+La29Info La29Pocket {
+    grammar = {.pocket};
+    void handler() {
+        int n = 0;
+        La29Days sum;
+        for (object o in bgl.world.instances(La29Slip, (object x) => x.parent == player)) {
+            La29Slip s = (La29Slip)o;
+            print($"{s.code} ");
+            sum = sum + s.due;
+            n++;
+        }
+        print($"- {n} held, due ");
+        sum.show();
+        La29Days fortnight = La29Days.weeks(2);
+        if (sum > fortnight) print(", over a fortnight");
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la29Desk.register(lowShelf);
+    la29Desk.register(highShelf);
+    la29Desk.register(lowShelf);
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,665 @@
+#grids
+Room A
+Room A. Four bells hang from a rail.
+You can see an A bell, a B bell, a C bell, a D bell and a striker here.
+[win 1] T0: rack ready
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |            |  0                           |
+|B mi  |            |  0                           |
+|C sol |            |  0                           |
+|D do' |            |  0                           |
+|--- tune 0/8 [] rings 0                           |
+[grid 2]
+|Room A | turn 0 | last none                       |
+> rack
+Bell  Note  Tone     Rung
+A     do    clear       0
+B     mi    clear       0
+C     sol   clear       0
+D     do'   cracked     0
+clear: 3
+cracked: 1
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |            |  0                           |
+|B mi  |            |  0                           |
+|C sol |            |  0                           |
+|D do' |            |  0                           |
+|--- tune 0/8 [] rings 0                           |
+[grid 2]
+|Room A | turn 0 | last none                       |
+> ring a bell
+(the A bell)
+The A bell rings: do.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |*           |  1                           |
+|B mi  |.           |  0                           |
+|C sol |.           |  0                           |
+|D do' |.           |  0                           |
+|--- tune 0/8 [] rings 1                           |
+[grid 2]
+|Room A | turn 1 | last A                          |
+> record
+Recording.
+[win 1] T1: rec on
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |*           |  1                           |
+|B mi  |.           |  0                           |
+|C sol |.           |  0                           |
+|D do' |.           |  0                           |
+|REC tune 0/8 [] rings 1                           |
+[grid 2]
+|Room A | turn 2 | last A                          |
+> ring a bell
+(the A bell)
+The A bell rings: do.
+[win 1] T2: rec A (1)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**          |  2                           |
+|B mi  |..          |  0                           |
+|C sol |..          |  0                           |
+|D do' |..          |  0                           |
+|REC tune 1/8 [A] rings 2                          |
+[grid 2]
+|Room A | turn 3 | last A                          |
+> ring b bell
+The B bell rings: mi.
+[win 1] T3: rec B (2)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.         |  2                           |
+|B mi  |..*         |  1                           |
+|C sol |...         |  0                           |
+|D do' |...         |  0                           |
+|REC tune 2/8 [AB] rings 3                         |
+[grid 2]
+|Room A | turn 4 | last B                          |
+> ring c bell 2 times
+The C bell rings: sol.
+The C bell rings: sol.
+[win 1] T4: rec C (3)
+[win 1] T4: rec C (4)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**...       |  2                           |
+|B mi  |..*..       |  1                           |
+|C sol |...**       |  2                           |
+|D do' |.....       |  0                           |
+|REC tune 4/8 [ABCC] rings 5                       |
+[grid 2]
+|Room A | turn 5 | last C                          |
+> ring d bell
+The D bell rings: clunk.
+[win 1] T5: rec D (5)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|REC tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 6 | last D                          |
+> halt
+Stopped with 5 notes.
+[win 1] T6: rec off
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|--- tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 7 | last D                          |
+> tune
+Tune: ABCCD; backward: DCCBA; lowered A: aBCCD.
+A rises to B at 1.
+Last note first: the D bell.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|--- tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 7 | last D                          |
+> tally
+Tune: 5 notes, do to do', mean 4.4.
+With D: 6 notes, do to do'. Rack: do to do', mean 4.3.
+Different notes in the tune: 4.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|--- tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 7 | last D                          |
+> order
+Highest sounding: the C bell (sol); lowest: the A bell (do).
+Every bell has rung.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|--- tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 7 | last D                          |
+> ring b bell 9 times
+Ring it 1 to 4 times.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|--- tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 8 | last D                          |
+> examine c bell
+The C bell: sol, clear, rung 2 times.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**....      |  2                           |
+|B mi  |..*...      |  1                           |
+|C sol |...**.      |  2                           |
+|D do' |.....x      |  1                           |
+|--- tune 5/8 [ABCCD] rings 6                      |
+[grid 2]
+|Room A | turn 9 | last D                          |
+> hit b bell
+The B bell rings: mi.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...**..     |  2                           |
+|D do' |.....x.     |  1                           |
+|--- tune 5/8 [ABCCD] rings 7                      |
+[grid 2]
+|Room A | turn 10 | last B                         |
+> damp c bell
+You damp the C bell.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....x.     |  1                           |
+|--- tune 5/8 [ABCCD] rings 7                      |
+[grid 2]
+|Room A | turn 11 | last B                         |
+> mend d bell
+The D bell rings clear again.
+[win 1] T11: D MENDED
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 5/8 [ABCCD] rings 7                      |
+[grid 2]
+|Room A | turn 12 | last B                         |
+> rack
+Bell  Note  Tone     Rung
+A     do    clear       2
+B     mi    clear       2
+C     sol   dull        2
+D     do'   clear       1
+clear: 3
+dull: 1
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 5/8 [ABCCD] rings 7                      |
+[grid 2]
+|Room A | turn 12 | last B                         |
+> order
+Highest sounding: the D bell (do'); lowest: the A bell (do).
+Every bell has rung.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 5/8 [ABCCD] rings 7                      |
+[grid 2]
+|Room A | turn 12 | last B                         |
+> unring
+Dropped the D bell from the tune.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 4/8 [ABCC] rings 7                       |
+[grid 2]
+|Room A | turn 13 | last B                         |
+> snip 2
+Cut note 2 (B); 3 left.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 3/8 [ACC] rings 7                        |
+[grid 2]
+|Room A | turn 14 | last B                         |
+> snip 7
+Pick a note from 1 to 3.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 3/8 [ACC] rings 7                        |
+[grid 2]
+|Room A | turn 15 | last B                         |
+> tune
+Tune: ACC; backward: CCA; lowered A: aCC.
+Last note first: the C bell.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....     |  2                           |
+|B mi  |..*...*     |  2                           |
+|C sol |...oo..     |  2                           |
+|D do' |.....*.     |  1                           |
+|--- tune 3/8 [ACC] rings 7                        |
+[grid 2]
+|Room A | turn 15 | last B                         |
+> play
+The striker starts.
+The A bell rings: do.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*    |  3                           |
+|B mi  |..*...*.    |  2                           |
+|C sol |...oo...    |  2                           |
+|D do' |.....*..    |  1                           |
+|--- tune 3/8 [ACC] rings 8                        |
+[grid 2]
+|Room A | turn 16 | last A                         |
+> wait
+Time passes.
+The C bell rings: thud.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*.   |  3                           |
+|B mi  |..*...*..   |  2                           |
+|C sol |...oo...o   |  3                           |
+|D do' |.....*...   |  1                           |
+|--- tune 3/8 [ACC] rings 9                        |
+[grid 2]
+|Room A | turn 17 | last C                         |
+> wait
+Time passes.
+The C bell rings: thud.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*..  |  3                           |
+|B mi  |..*...*...  |  2                           |
+|C sol |...oo...oo  |  4                           |
+|D do' |.....*....  |  1                           |
+|--- tune 3/8 [ACC] rings 10                       |
+[grid 2]
+|Room A | turn 18 | last C                         |
+> wait
+Time passes.
+[win 1] T19: tune done
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*..  |  3                           |
+|B mi  |..*...*...  |  2                           |
+|C sol |...oo...oo  |  4                           |
+|D do' |.....*....  |  1                           |
+|--- tune 3/8 [ACC] rings 10                       |
+[grid 2]
+|Room A | turn 19 | last C                         |
+> wait
+Time passes.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*..  |  3                           |
+|B mi  |..*...*...  |  2                           |
+|C sol |...oo...oo  |  4                           |
+|D do' |.....*....  |  1                           |
+|--- tune 3/8 [ACC] rings 10                       |
+[grid 2]
+|Room A | turn 20 | last C                         |
+> panel
+Ring: A B C D
+Also: stop tally wipe
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*..  |  3                           |
+|B mi  |..*...*...  |  2                           |
+|C sol |...oo...oo  |  4                           |
+|D do' |.....*....  |  1                           |
+|--- tune 3/8 [ACC] rings 10                       |
+[grid 2]
+|Room A | turn 20 | last C                         |
+> @link 2
+The B bell rings: mi.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*... |  3                           |
+|B mi  |..*...*...* |  3                           |
+|C sol |...oo...oo. |  4                           |
+|D do' |.....*..... |  1                           |
+|--- tune 3/8 [ACC] rings 11                       |
+[grid 2]
+|Room A | turn 20 | last B                         |
+> @link 6
+[win 1] T20: rung 4, total 11
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*... |  3                           |
+|B mi  |..*...*...* |  3                           |
+|C sol |...oo...oo. |  4                           |
+|D do' |.....*..... |  1                           |
+|--- tune 3/8 [ACC] rings 11                       |
+[grid 2]
+|Room A | turn 20 | last B                         |
+>> @link 5
+[win 1] T20: rec off (link)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*... |  3                           |
+|B mi  |..*...*...* |  3                           |
+|C sol |...oo...oo. |  4                           |
+|D do' |.....*..... |  1                           |
+|--- tune 3/8 [ACC] rings 11                       |
+[grid 2]
+|Room A | turn 20 | last B                         |
+> halt
+Not recording.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*... |  3                           |
+|B mi  |..*...*...* |  3                           |
+|C sol |...oo...oo. |  4                           |
+|D do' |.....*..... |  1                           |
+|--- tune 3/8 [ACC] rings 11                       |
+[grid 2]
+|Room A | turn 21 | last B                         |
+> log
+Log closed.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*... |  3                           |
+|B mi  |..*...*...* |  3                           |
+|C sol |...oo...oo. |  4                           |
+|D do' |.....*..... |  1                           |
+|--- tune 3/8 [ACC] rings 11                       |
+[grid 2]
+|Room A | turn 21 | last B                         |
+> ring a bell
+(the A bell)
+The A bell rings: do.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*...*|  4                           |
+|B mi  |..*...*...*.|  3                           |
+|C sol |...oo...oo..|  4                           |
+|D do' |.....*......|  1                           |
+|--- tune 3/8 [ACC] rings 12                       |
+[grid 2]
+|Room A | turn 22 | last A                         |
+> log
+Log open.
+[win 2] T22: log reopened
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*...*|  4                           |
+|B mi  |..*...*...*.|  3                           |
+|C sol |...oo...oo..|  4                           |
+|D do' |.....*......|  1                           |
+|--- tune 3/8 [ACC] rings 12                       |
+[grid 2]
+|Room A | turn 22 | last A                         |
+> ring striker
+That is not a bell.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*...*|  4                           |
+|B mi  |..*...*...*.|  3                           |
+|C sol |...oo...oo..|  4                           |
+|D do' |.....*......|  1                           |
+|--- tune 3/8 [ACC] rings 12                       |
+[grid 2]
+|Room A | turn 23 | last A                         |
+> tally
+Tune: 3 notes, do to sol, mean 3.7.
+With D: 4 notes, do to do'. Rack: do to do', mean 4.3.
+Different notes in the tune: 2.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*...*|  4                           |
+|B mi  |..*...*...*.|  3                           |
+|C sol |...oo...oo..|  4                           |
+|D do' |.....*......|  1                           |
+|--- tune 3/8 [ACC] rings 12                       |
+[grid 2]
+|Room A | turn 23 | last A                         |
+> record
+Recording.
+[win 2] T23: rec on
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |**.....*...*|  4                           |
+|B mi  |..*...*...*.|  3                           |
+|C sol |...oo...oo..|  4                           |
+|D do' |.....*......|  1                           |
+|REC tune 0/8 [] rings 12                          |
+[grid 2]
+|Room A | turn 24 | last A                         |
+> ring a bell 4 times
+(the A bell that times)
+The A bell rings: do.
+The A bell rings: do.
+The A bell rings: do.
+The A bell rings: do.
+[win 2] T24: rec A (1)
+[win 2] T24: rec A (2)
+[win 2] T24: rec A (3)
+[win 2] T24: rec A (4)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |...*...*****|  8                           |
+|B mi  |..*...*.....|  3                           |
+|C sol |o...oo......|  4                           |
+|D do' |.*..........|  1                           |
+|REC tune 4/8 [AAAA] rings 16                      |
+[grid 2]
+|Room A | turn 25 | last A                         |
+> ring b bell 4 times
+The B bell rings: mi.
+The B bell rings: mi.
+The B bell rings: mi.
+The B bell rings: mi.
+[win 2] T25: rec B (5)
+[win 2] T25: rec B (6)
+[win 2] T25: rec B (7)
+[win 2] T25: rec B (8)
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |...*****....|  8                           |
+|B mi  |..*.....****|  7                           |
+|C sol |oo..........|  4                           |
+|D do' |............|  1                           |
+|REC tune 8/8 [AAAABBBB] rings 20                  |
+[grid 2]
+|Room A | turn 26 | last B                         |
+> ring c bell
+The C bell rings: thud.
+[win 2] T26: tune full
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.*.....****.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|REC tune 8/8 [AAAABBBB] rings 21                  |
+[grid 2]
+|Room A | turn 27 | last C                         |
+> halt
+Stopped with 8 notes.
+[win 2] T27: rec off
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.*.....****.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 8/8 [AAAABBBB] rings 21                  |
+[grid 2]
+|Room A | turn 28 | last C                         |
+> tune
+Tune: AAAABBBB; backward: BBBBAAAA; lowered A: aaaaBBBB.
+A rises to B at 4.
+Last note first: the B bell.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.*.....****.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 8/8 [AAAABBBB] rings 21                  |
+[grid 2]
+|Room A | turn 28 | last C                         |
+> damp b bell
+You damp the B bell.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 8/8 [AAAABBBB] rings 21                  |
+[grid 2]
+|Room A | turn 29 | last C                         |
+> damp b bell
+The B bell is already dull.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 8/8 [AAAABBBB] rings 21                  |
+[grid 2]
+|Room A | turn 30 | last C                         |
+> order
+Highest sounding: the D bell (do'); lowest: the A bell (do).
+Every bell has rung.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 8/8 [AAAABBBB] rings 21                  |
+[grid 2]
+|Room A | turn 30 | last C                         |
+> unring
+Dropped the B bell from the tune.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 7/8 [AAAABBB] rings 21                   |
+[grid 2]
+|Room A | turn 31 | last C                         |
+> snip 1
+Cut note 1 (A); 6 left.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |o..........o|  5                           |
+|D do' |............|  1                           |
+|--- tune 6/8 [AAABBB] rings 21                    |
+[grid 2]
+|Room A | turn 32 | last C                         |
+> mend c bell
+The C bell rings clear again.
+[win 2] T32: C MENDED
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |*..........*|  5                           |
+|D do' |............|  1                           |
+|--- tune 6/8 [AAABBB] rings 21                    |
+[grid 2]
+|Room A | turn 33 | last C                         |
+> panel
+Ring: A B C D
+Also: stop tally wipe
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |..*****.....|  8                           |
+|B mi  |.o.....oooo.|  7                           |
+|C sol |*..........*|  5                           |
+|D do' |............|  1                           |
+|--- tune 6/8 [AAABBB] rings 21                    |
+[grid 2]
+|Room A | turn 33 | last C                         |
+> @link 1
+The A bell rings: do.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |.*****.....*|  9                           |
+|B mi  |o.....oooo..|  7                           |
+|C sol |..........*.|  5                           |
+|D do' |............|  1                           |
+|--- tune 6/8 [AAABBB] rings 22                    |
+[grid 2]
+|Room A | turn 33 | last A                         |
+> @link 4
+The D bell rings: do'.
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |*****.....*.|  9                           |
+|B mi  |.....oooo...|  7                           |
+|C sol |.........*..|  5                           |
+|D do' |...........*|  2                           |
+|--- tune 6/8 [AAABBB] rings 23                    |
+[grid 2]
+|Room A | turn 33 | last D                         |
+> rack
+Bell  Note  Tone     Rung
+A     do    clear       9
+B     mi    dull        7
+C     sol   clear       5
+D     do'   clear       2
+clear: 3
+dull: 1
+[grid 1]
+|  Note  Roll         Rung                         |
+|A do  |*****.....*.|  9                           |
+|B mi  |.....oooo...|  7                           |
+|C sol |.........*..|  5                           |
+|D do' |...........*|  2                           |
+|--- tune 6/8 [AAABBB] rings 23                    |
+[grid 2]
+|Room A | turn 33 | last D                         |

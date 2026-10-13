@@ -629,6 +629,7 @@ class bglParser {
         void preScanI6NameClause(string& nameStr, string* asI6Name = nullptr);
         bool preScanNamespaceRedirect(token& t, class objectDef* obj);
         bool takesOwnOperand(class classDef* cls, const string& op);
+        void warnMemberHidesDefine(const string& name, const string& shown);
         bool foldIntLiteralToFloat(class expression* e, const string& targetType);
         void rejectValueClassInitializer(class expression* e, const string& typeName, const string& memberName);
         void preScanAccessorGetter(class objectDef& obj, class variableDeclaration& stub, const string& body);

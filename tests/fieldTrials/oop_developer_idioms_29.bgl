@@ -1,0 +1,499 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-ninth pass: a seat reservation desk.
+// A value class for a seat (row and number) with a copy operator, `==`/`!=`, a `<=>` that `sort()` and
+// `<` use, a static factory and its own `print()` (a ToString override) used inside interpolation, with a
+// char row letter from a cast; a value class for money with `+`, `*` by a count and a formatter returning a
+// `stringObj`; the Template Method pattern: a pricing policy base whose non-virtual `PriceFor()` calls
+// `default` steps that two subclasses override; a pooled booking class with `create()`/`destroy()`, a
+// static id counter, an owned `array<Seat>` member sorted in place and a `print()` override; the Builder
+// pattern with fluent `selfType` methods, `Build()` throwing a pooled error caught by a typed `catch`; a
+// seat map with an `operator []` indexer over a member array; a box office keeping bookings in an
+// `array<Booking>`, a waiting list as a queue (`enqueue`/`dequeue`/`peek`) of names, and listeners as
+// `func<void, Booking>` (a named function and a capturing lambda); `<linq>` `filter`/`first`/`count`/`any`/
+// `map`/`orderBy`; enum switches; `is` tests and downcasts; `?.`/`??`; named arguments; interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+const int RowCount = 4;
+const int SeatsPerRow = 6;
+
+enum eStatus { Held, Confirmed, Cancelled }
+enum eShow { Matinee, Evening }
+
+string StatusName(eStatus s) {
+    switch (s) {
+        case eStatus.Held:      return "held";
+        case eStatus.Confirmed: return "confirmed";
+        case eStatus.Cancelled: return "cancelled";
+    }
+    return "?";
+}
+
+//-- Seat: a value type ----------------------------------------------------------------------------------------
+
+value class Seat {
+    int Row;
+    int Number;
+
+    Seat operator = (Seat o) {
+        Row = o.Row;
+        Number = o.Number;
+        return self;
+    }
+
+    bool operator == (Seat o) { return Row == o.Row && Number == o.Number; }
+    bool operator != (Seat o) { return !(self == o); }
+
+    int operator <=> (Seat o) {
+        if (Row != o.Row) return Row - o.Row;
+        return Number - o.Number;
+    }
+
+    static Seat At(int row, int number) {
+        Seat s;
+        s.Row = row;
+        s.Number = number;
+        return s;
+    }
+
+    int Index() { return Row * SeatsPerRow + Number - 1; }
+
+    bool IsValid() { return Row >= 0 && Row < RowCount && Number >= 1 && Number <= SeatsPerRow; }
+
+    char RowLetter() { return (char)('A' + Row); }
+
+    void print() {
+        print(RowLetter());
+        print(Number);
+    }
+}
+
+//-- Money: a value type ---------------------------------------------------------------------------------------
+
+value class Money {
+    int Cents;
+
+    Money operator = (Money o) {
+        Cents = o.Cents;
+        return self;
+    }
+
+    Money operator + (Money o) {
+        Money sum;
+        sum.Cents = Cents + o.Cents;
+        return sum;
+    }
+
+    Money operator * (int count) {
+        Money product;
+        product.Cents = Cents * count;
+        return product;
+    }
+
+    bool operator == (Money o) { return Cents == o.Cents; }
+    bool operator != (Money o) { return Cents != o.Cents; }
+
+    static Money Of(int dollars, int cents = 0) {
+        Money m;
+        m.Cents = dollars * 100 + cents;
+        return m;
+    }
+
+    stringObj ToText() {
+        int rest = Cents % 100;
+        stringObj text = $"{Cents / 100}.";
+        if (rest < 10) text += "0";
+        text += $"{rest}";
+        return text;
+    }
+}
+
+//-- Pricing: the Template Method pattern ----------------------------------------------------------------------
+
+class PricingPolicy : object {
+    string Title = "standard";
+
+    default Money BasePrice(Seat s) { return Money.Of(15); }
+    default int DiscountPercent(int partySize) { return 0; }
+
+    // The template: fixed steps, overridable parts.
+    Money PriceFor(Seat s, int partySize) {
+        Money price = BasePrice(s);
+        int percent = DiscountPercent(partySize);
+        if (percent > 0) price.Cents -= price.Cents * percent / 100;
+        return price;
+    }
+}
+
+class MatineePolicy : PricingPolicy {
+    Money BasePrice(Seat s) {
+        if (s.Row == 0) return Money.Of(12);
+        return Money.Of(10);
+    }
+
+    int DiscountPercent(int partySize) {
+        if (partySize >= 3) return 10;
+        return 0;
+    }
+}
+
+class EveningPolicy : PricingPolicy {
+    int FrontRows = 2;
+
+    Money BasePrice(Seat s) {
+        if (s.Row < FrontRows) return Money.Of(24, 50);
+        return Money.Of(18);
+    }
+}
+
+MatineePolicy matineePricing { Title = "matinee"; }
+EveningPolicy eveningPricing { Title = "evening"; }
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class BookingError[2] : object {
+    string Reason;
+    Seat Where;
+    static int Raised;
+
+    void create(string why, Seat at) {
+        Reason = why;
+        Where = at;
+        BookingError.Raised++;
+    }
+}
+
+//-- Bookings --------------------------------------------------------------------------------------------------
+
+class Booking[4] : object {
+    int Id;
+    string Customer;
+    eStatus Status = eStatus.Held;
+    eShow Show = eShow.Matinee;
+    array<Seat> Seats[4];
+    Money Total;
+    static int NextId;
+    static int Live;
+
+    void create(string who, eShow when) {
+        Booking.NextId++;
+        Id = Booking.NextId;
+        Customer = who;
+        Show = when;
+        Booking.Live++;
+    }
+
+    void destroy() { Booking.Live--; }
+
+    int SeatCount() { return Seats.length; }
+
+    stringObj SeatList() {
+        stringObj text = "";
+        for (int i = 0; i < Seats.length; i++) {
+            if (i > 0) text += " ";
+            text += $"{Seats[i]}";
+        }
+        return text;
+    }
+
+    void print() { print($"#{Id} {Customer}"); }
+}
+
+//-- The seat map: an indexer over a member array --------------------------------------------------------------
+
+class SeatMap : object {
+    array<int> Owner[24];
+
+    int operator [] (int index) { return Owner[index]; }
+
+    bool IsFree(Seat s) { return Owner[s.Index()] == 0; }
+
+    void Assign(Seat s, int bookingId) { Owner[s.Index()] = bookingId; }
+
+    void Release(Seat s) { Owner[s.Index()] = 0; }
+
+    int FreeInRow(int row) {
+        int free = 0;
+        for (int n = 1; n <= SeatsPerRow; n++) {
+            if (IsFree(Seat.At(row, n))) free++;
+        }
+        return free;
+    }
+
+    stringObj RowText(int row) {
+        stringObj text = "";
+        for (int n = 1; n <= SeatsPerRow; n++) {
+            int id = self[row * SeatsPerRow + n - 1];
+            if (id == 0) text += ".";
+            else text += $"{id}";
+        }
+        return text;
+    }
+}
+
+SeatMap house { }
+
+//-- The Builder pattern ---------------------------------------------------------------------------------------
+
+class BookingBuilder : object {
+    string _customer;
+    eShow _show = eShow.Matinee;
+    array<Seat> _seats[4];
+
+    selfType For(string customer) {
+        _customer = customer;
+        return self;
+    }
+
+    selfType At(eShow show) {
+        _show = show;
+        return self;
+    }
+
+    selfType Add(int row, int number) {
+        _seats.append(Seat.At(row, number));
+        return self;
+    }
+
+    void Reset() {
+        _customer = null;
+        _show = eShow.Matinee;
+        _seats.clear();
+    }
+
+    PricingPolicy PolicyFor(eShow show) {
+        switch (show) {
+            case eShow.Evening: return eveningPricing;
+        }
+        return matineePricing;
+    }
+
+    Booking Build() {
+        Seat none;
+        if (_seats.length == 0) throw new BookingError("no seats", none);
+        for (Seat s in _seats) {
+            if (!s.IsValid()) throw new BookingError("no such seat", s);
+            if (!house.IsFree(s)) throw new BookingError("taken", s);
+        }
+        Booking b = new Booking(_customer, _show);
+        if (b == null) throw new BookingError("sold out", none);
+        PricingPolicy policy = PolicyFor(_show);
+        for (Seat s in _seats) {
+            b.Seats.append(s);
+            b.Total = b.Total + policy.PriceFor(s, _seats.length);
+            house.Assign(s, b.Id);
+        }
+        b.Seats.sort();
+        return b;
+    }
+}
+
+BookingBuilder builder { }
+
+//-- The box office --------------------------------------------------------------------------------------------
+
+class BoxOffice : object {
+    array<Booking> Bookings[4];
+    array<string> Waiting[4];
+    array<func<void, Booking>> Listeners[2];
+    int Turnover;
+
+    void Subscribe(func<void, Booking> listener) { Listeners.append(listener); }
+
+    Booking Reserve(BookingBuilder b) {
+        Booking made = null;
+        try {
+            made = b.Build();
+            Bookings.append(made);
+            for (func<void, Booking> listener in Listeners) listener(made);
+        } catch (BookingError e) {
+            printLine($"Refused {b._customer ?? "nobody"}: {e.Reason} at {e.Where}.");
+            if (e.Reason == "taken" || e.Reason == "sold out") {
+                Waiting.enqueue(b._customer);
+                printLine($"{b._customer} is waiting ({Waiting.length}).");
+            }
+            delete e;
+        }
+        b.Reset();
+        return made;
+    }
+
+    Booking Find(int id) {
+        return Bookings.filter((Booking k) => k.Id == id).first();
+    }
+
+    bool Confirm(int id) {
+        Booking b = Find(id);
+        if (b == null || b.Status != eStatus.Held) return false;
+        b.Status = eStatus.Confirmed;
+        Turnover += b.Total.Cents;
+        return true;
+    }
+
+    bool Cancel(int id) {
+        Booking b = Find(id);
+        if (b == null) return false;
+        for (Seat s in b.Seats) house.Release(s);
+        if (b.Status == eStatus.Confirmed) Turnover -= b.Total.Cents;
+        b.Status = eStatus.Cancelled;
+        printLine($"Cancelled {b}, seats {b.SeatList()}.");
+        Bookings.removeValue(b);
+        delete b;
+        return true;
+    }
+
+    string NextWaiting() {
+        if (Waiting.length == 0) return null;
+        return Waiting.dequeue();
+    }
+}
+
+BoxOffice office { }
+
+//-- Listeners and helpers -------------------------------------------------------------------------------------
+
+int SeatsSold;
+
+void Announce(Booking b) {
+    stringObj total = b.Total.ToText();
+    printLine($"  Booked {b}: {b.SeatList()} for {total}.");
+}
+
+bool IsConfirmed(Booking b) { return b.Status == eStatus.Confirmed; }
+
+int ByTotalDescending(Booking a, Booking b) { return b.Total.Cents - a.Total.Cents; }
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        office.Subscribe(Announce);
+        int perSeat = 1;
+        office.Subscribe((Booking b) => { SeatsSold += b.SeatCount() * perSeat; });
+        Seat a1 = Seat.At(0, 1);
+        Seat b3 = Seat.At(row: 1, number: 3);
+        printLine($"Seats {a1} and {b3}; before {a1 < b3}, equal {a1 == b3}, index {b3.Index()}.");
+        Money m = Money.Of(2, 5) * 3;
+        stringObj text = m.ToText();
+        printLine($"Three at 2.05 is {text}; listeners {office.Listeners.length}.");
+    }
+}
+
+verb Book {
+    grammar = {.book};
+    void handler() {
+        office.Reserve(builder.For("Ann").Add(0, 3).Add(0, 2).Add(0, 4));
+        office.Reserve(builder.For("Bob").At(eShow.Evening).Add(1, 1).Add(3, 6));
+        office.Reserve(builder.For("Cy").Add(0, 4));
+        office.Reserve(builder.For("Di").Add(4, 1));
+        office.Reserve(builder.For("Ed"));
+        office.Reserve(builder.For("Fay").At(eShow.Evening).Add(2, 2).Add(2, 3));
+        office.Reserve(builder.For("Gus").Add(3, 1));
+        office.Reserve(builder.For("Hal").Add(3, 2));
+        printLine($"Live {Booking.Live}, errors {BookingError.Raised}, sold {SeatsSold}.");
+    }
+}
+
+verb SeatPlan {
+    grammar = {.seats};
+    void handler() {
+        for (int row = 0; row < RowCount; row++) {
+            stringObj line = house.RowText(row);
+            char letter = Seat.At(row, 1).RowLetter();
+            printLine($"{letter} {line} free {house.FreeInRow(row)}");
+        }
+        for (Booking b in office.Bookings) {
+            stringObj total = b.Total.ToText();
+            printLine($"{b} {StatusName(b.Status)} {b.SeatList()} {total}");
+        }
+    }
+}
+
+verb Confirm {
+    grammar = {.confirm};
+    void handler() {
+        for (int id in { 1, 2, 9, 1 }) {
+            bool ok = office.Confirm(id);
+            printLine($"Confirm {id}: {ok}.");
+        }
+        printLine($"Turnover {office.Turnover}.");
+    }
+}
+
+verb Cancel {
+    grammar = {.cancel};
+    void handler() {
+        office.Cancel(2);
+        office.Cancel(7);
+        string next = office.NextWaiting();
+        printLine($"Next waiting: {next ?? "none"}, still {office.Waiting.length}.");
+        if (next != null) office.Reserve(builder.For(next).At(eShow.Evening).Add(1, 1));
+        printLine($"Live {Booking.Live}, turnover {office.Turnover}.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int confirmed = office.Bookings.filter(IsConfirmed).count();
+        bool anyEvening = office.Bookings.any((Booking b) => b.Show == eShow.Evening);
+        printLine($"Bookings {office.Bookings.length}, confirmed {confirmed}, evening {anyEvening}.");
+
+        stringObj line = "By total:";
+        for (Booking b in office.Bookings.orderBy(ByTotalDescending)) line += $" {b.Customer}";
+        printLine(line);
+
+        array<var> counts = office.Bookings.map((Booking b) => b.SeatCount());
+        int seats = 0;
+        for (var c in counts) seats += c;
+        printLine($"Seats held {seats} over {counts.length}.");
+
+        Booking front = office.Bookings.filter((Booking b) => b.Seats.any((Seat s) => s.Row == 0)).first();
+        string frontName = front?.Customer ?? "none";
+        string bigName = office.Bookings.filter((Booking b) => b.SeatCount() > 3).first()?.Customer ?? "none";
+        printLine($"Front row {frontName}; party of four {bigName}.");
+
+        for (PricingPolicy p in { matineePricing, eveningPricing }) {
+            Money price = p.PriceFor(Seat.At(0, 1), partySize: 3);
+            stringObj text = price.ToText();
+            if (p.is(EveningPolicy)) {
+                EveningPolicy e = (EveningPolicy)p;
+                printLine($"{p.Title}: {text} (front rows {e.FrontRows})");
+            } else {
+                printLine($"{p.Title}: {text}");
+            }
+        }
+        printLine($"Waiting {office.Waiting.length}, first {office.Waiting.peek() ?? "none"}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

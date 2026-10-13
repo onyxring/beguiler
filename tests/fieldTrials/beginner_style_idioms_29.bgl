@@ -1,0 +1,752 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-ninth first-time-programmer program, a small bike shed where riders wait in a
+// line, hire bikes that go out for some turns, the tires lose air each turn, a bike that runs flat is
+// walked back and must be patched, and the hire money is kept in a log book, written the way a
+// beginner writes it after reading the spec once. Counts kept in int globals with consts for the air
+// top, the line size, the rate, the log size and the patches, bool flags, an enum for a bike's state
+// kept in a class member and switched on, a bnum of bike extras combined with | and tested with &, a
+// named getter/setter accessor class (the air, clamped by its setter) used as a class member, given
+// its starting value with an inline object in each bike's body, read, written, bumped with += and --
+// and read inside interpolation, a value class for a hire (rider, bike, turns, paid) with a copy
+// operator kept in an array of the value class sized by a const, riders waiting in an array used as
+// a queue with enqueue / dequeue / peek / remove, arrivals taken from two parallel arrays, a class of
+// bikes (label, number, state, air, extras, rider, turns, a method for the rate, a pump method that
+// throws when the tires are hard, a before() for Examine and Take) with a subclass that replaces the
+// rate (still calling the class's through a cast), bikes taken out of the shed by setting parent to
+// null and put back by setting it to the room, a pump object with an inline auto accessor for its
+// strokes that uses outer, a mechanic object with a daemon that walks the bikes with for-in over a
+// literal list, helper functions (one with a default argument, one called with named arguments in
+// the other order, one with a ternary, one that throws when the log is full, one overloaded for a
+// string and a hire), try / catch / throw, C-style for loops with break and continue, a while loop, a
+// do/until, <linq> filter / count / any / all / orderBy with a comparator / first / last / map / skip /
+// takeWhile / distinct with lambdas (one capturing a local), array append / indexOf / contains / sort
+// with a comparator, stringObj lines built with + and += and interpolation and changed with toUpper,
+// reverse, insert, mid, left, format and trim, =~ and <=> on strings, endsWith and isEmpty, a string
+// switch, for-in over a range, an array and children, and verbs with no noun, one noun and a number
+// (rent, pump, fix, bikes, line, log, report, rider, send) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// the most air a tire can hold
+const int AIR_MAX = 8;
+// a bike needs at least this much air to go out
+const int LOW_AIR = 3;
+// how many riders can wait in the line
+const int LINE_SIZE = 3;
+// what one turn on a bike costs
+const int RATE = 2;
+// how many hires fit in the log book
+const int LOG_SIZE = 4;
+// how many patches we have
+const int PATCHES = 1;
+// coins taken for hires
+int takings = 0;
+// how many turns have gone by
+int turnCount = 0;
+// how many bikes have gone out
+int hiredCount = 0;
+// how many riders walked away because the line was full
+int walkedAway = 0;
+// which rider comes next
+int nextRider = 0;
+// how many patches are used
+int patchesUsed = 0;
+// has a bike ever gone flat?
+bool everFlat = false;
+// was the log book ever full?
+bool logWasFull = false;
+
+// ===== KINDS OF THINGS =====
+
+enum BikeState { inShed, out, flat }
+
+bnum Extra { bell, basket, lamp }
+
+// ===== THE AIR IN A TIRE =====
+
+// air that never goes below 0 or above AIR_MAX
+value class Air {
+    int _amount = 0;
+    int operator () {
+        return _amount;
+    }
+    void operator = (int v) {
+        if (v < 0) {
+            v = 0;
+        }
+        if (v > AIR_MAX) {
+            v = AIR_MAX;
+        }
+        _amount = v;
+    }
+}
+
+// ===== HIRES =====
+
+// one line in the log book
+value class Hire {
+    string rider;
+    int bike;
+    int turns;
+    int paid;
+    Hire operator = (Hire o) {
+        rider = o.rider;
+        bike = o.bike;
+        turns = o.turns;
+        paid = o.paid;
+        return self;
+    }
+}
+
+// ===== LISTS =====
+
+// the riders who come, in order
+array<string> riderNames = { "Ann", "Bob", "Cyd", "Dot", "Eli", "Fay" };
+// how many turns each of them wants to ride
+array<int> riderWants = { 3, 5, 2, 6, 4, 3 };
+
+// the riders waiting for a bike
+array<string> waiting[LINE_SIZE];
+// how long each waiting rider wants (kept in step with waiting)
+array<int> waitingWants[LINE_SIZE];
+
+// the log book
+array<Hire> hireLog[LOG_SIZE];
+
+// the riders who have brought a bike back
+array<string> backNames[10];
+
+// ===== HELPER FUNCTIONS =====
+
+// prints "1 coin" or "3 coins"
+void printCoins(int n, bool withWord = true) {
+    print(n);
+    if (withWord) {
+        print((n == 1) ? " coin" : " coins");
+    }
+}
+
+// "turn" or "turns"
+string turnWord(int n) {
+    if (n == 1) {
+        return "turn";
+    }
+    return "turns";
+}
+
+// what a ride costs
+int costFor(int turns, int rate = RATE) {
+    return turns * rate;
+}
+
+// prints a rider in angle brackets
+void showRider(string who) {
+    print($"<{who}>");
+}
+
+// prints a hire's rider, with a star when it was a long ride
+void showRider(Hire h) {
+    showRider(h.rider);
+    if (h.turns >= 4) {
+        print("*");
+    }
+}
+
+// adds up what the log book says was paid
+int logTotal() {
+    int total = 0;
+    for (int i = 0; i < hireLog.length; i++) {
+        if (hireLog[i].paid == 0) {
+            continue;
+        }
+        total += hireLog[i].paid;
+    }
+    return total;
+}
+
+// writes a hire in the log; throws how many lines are in it when it is full
+void logHire(string who, int bike, int turns, int paid) {
+    if (hireLog.length >= LOG_SIZE) {
+        logWasFull = true;
+        throw hireLog.length;
+    }
+    Hire h;
+    h.rider = who;
+    h.bike = bike;
+    h.turns = turns;
+    h.paid = paid;
+    hireLog.append(h);
+}
+
+// uses a patch; throws how many were used when there are none left
+void usePatch() {
+    if (patchesUsed >= PATCHES) {
+        throw patchesUsed;
+    }
+    patchesUsed++;
+}
+
+// a rider comes; they wait in the line or walk away
+void riderComes(bool quiet = false) {
+    string who = riderNames[nextRider];
+    int wants = riderWants[nextRider];
+    nextRider++;
+    if (nextRider >= riderNames.length) {
+        nextRider = 0;
+    }
+    if (waiting.length >= LINE_SIZE) {
+        walkedAway++;
+        if (!quiet) {
+            print($"^{who} sees the line and walks away.^");
+        }
+        return;
+    }
+    waiting.enqueue(who);
+    waitingWants.enqueue(wants);
+    if (!quiet) {
+        print($"^{who} joins the line.^");
+    }
+}
+
+// ===== BIKES =====
+
+class Bike : object {
+    // the word on the frame
+    string label;
+    // the number on the frame
+    int number = 1;
+    // where it is
+    BikeState state = BikeState.inShed;
+    // the air in the tires
+    Air air;
+    // what is fitted to it
+    int extras = 0;
+    // who has it
+    string rider;
+    // how long they want it
+    int wants = 0;
+    // how long they have had it
+    int ridden = 0;
+    string description;
+
+    // what one turn costs
+    int rate() {
+        return RATE;
+    }
+
+    // pumps the tires; throws the air when they are already hard
+    void pump() {
+        if (air >= AIR_MAX) {
+            throw air;
+        }
+        air += 3;
+    }
+
+    // prints what is fitted
+    void sayExtras() {
+        if (extras == 0) {
+            print("nothing fitted");
+            return;
+        }
+        bool first = true;
+        if (extras & Extra.bell) {
+            print("a bell");
+            first = false;
+        }
+        if (extras & Extra.basket) {
+            if (!first) {
+                print(", ");
+            }
+            print("a basket");
+            first = false;
+        }
+        if (extras & Extra.lamp) {
+            if (!first) {
+                print(", ");
+            }
+            print("a lamp");
+        }
+    }
+
+    // prints where it is
+    void sayState() {
+        print($"Bike {number} ({label}): ");
+        switch (state) {
+            case BikeState.inShed: print($"in the shed, air {air}");
+            case BikeState.out: print($"out with {rider}, {wants - ridden} {turnWord(wants - ridden)} to go");
+            case BikeState.flat: print("flat");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"Bike {number}. It costs {rate()} a turn. It has ");
+            sayExtras();
+            print(".^");
+            sayState();
+            rtrue;
+        }
+        if (action == Take) {
+            rtrue("It is too big to carry.^");
+        }
+        rfalse;
+    }
+}
+
+// a tandem costs a bit more than one bike, but less than two
+class Tandem : Bike {
+    replace int rate() {
+        return ((Bike)self).rate() * 2 - 1;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The bike shed. The path is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The path. The shed is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE BIKES =====
+
+Bike bikeRed {
+    "red bike";
+    parent = roomA;
+    name = {.red, .bike};
+    label = "red";
+    number = 1;
+    air = Air{ _amount = 6; };
+    extras = Extra.bell;
+    description = "A bike.";
+    attributes = {static};
+}
+
+Bike bikeBlue {
+    "blue bike";
+    parent = roomA;
+    name = {.blue, .bike};
+    label = "blue";
+    number = 2;
+    air = Air{ _amount = 2; };
+    extras = Extra.basket | Extra.lamp;
+    description = "A bike.";
+    attributes = {static};
+}
+
+Tandem bikeTandem {
+    "tandem";
+    parent = roomA;
+    name = {.tandem, .bike};
+    label = "tandem";
+    number = 3;
+    air = Air{ _amount = 8; };
+    description = "A tandem.";
+    attributes = {static};
+}
+
+// ===== THE PUMP AND THE MECHANIC =====
+
+object pump {
+    "pump";
+    parent = roomA;
+    name = {.pump};
+    string description = "A floor pump.";
+    attributes = {static};
+    // has it been used a lot?
+    bool worn = false;
+    auto strokes = {
+        int _n = 0;
+        int operator () {
+            return _n;
+        }
+        void operator = (int v) {
+            _n = v;
+            outer.worn = (v >= 3);
+        }
+    }
+}
+
+// puts a bike back in the shed and takes the money
+void bringBack(Bike b, int owed) {
+    b.parent = roomA;
+    b.state = BikeState.inShed;
+    takings += owed;
+    backNames.append(b.rider);
+    try {
+        logHire(b.rider, b.number, b.ridden, owed);
+    } catch (int lines) {
+        print($"(The log book is full: {lines} lines.)^");
+    }
+}
+
+object mechanic {
+    "mechanic";
+    parent = roomA;
+    name = {.mechanic};
+    string description = "The mechanic.";
+    attributes = {animate, static};
+    void daemon() {
+        turnCount++;
+        for (Bike b in {bikeRed, bikeBlue, bikeTandem}) {
+            if (b.state != BikeState.out) {
+                continue;
+            }
+            b.ridden++;
+            b.air--;
+            if (b.air == 0) {
+                everFlat = true;
+                int flatOwed = costFor(b.ridden, b.rate());
+                print($"^{b.rider} walks the {b.label} bike back with a flat tire and pays {flatOwed}.^");
+                bringBack(b, flatOwed);
+                b.state = BikeState.flat;
+                continue;
+            }
+            if (b.ridden >= b.wants) {
+                int owed = costFor(rate: b.rate(), turns: b.ridden);
+                print($"^{b.rider} brings the {b.label} bike back and pays {owed}.^");
+                bringBack(b, owed);
+            }
+        }
+        if (turnCount % 4 == 0) {
+            riderComes();
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    riderComes(quiet: true);
+    riderComes(quiet: true);
+    StartDaemon(mechanic);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the bikes) =====
+
+// how many bikes are in the shed
+int bikesInShed() {
+    int n = 0;
+    for (object o in roomA.children) {
+        if (o.is(Bike)) {
+            n++;
+        }
+    }
+    return n;
+}
+
+// is this thing a bike that is here and ready?
+bool readyToGo(Bike b) {
+    if (b.state != BikeState.inShed) {
+        return false;
+    }
+    return b.air >= LOW_AIR;
+}
+
+// ===== VERBS =====
+
+// RENT <bike> - the first rider in the line takes a bike out
+verb RentBike {
+    grammar = {.rent, NOUN};
+    void handler() {
+        if (!(noun.is(Bike))) {
+            print("You can only rent out a bike.^");
+            return;
+        }
+        Bike b = (Bike)noun;
+        if (waiting.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        if (b.state == BikeState.flat) {
+            print($"The {b.label} bike has a flat tire.^");
+            return;
+        }
+        if (!readyToGo(b)) {
+            print($"The {b.label} bike's tires are too soft ({b.air}).^");
+            return;
+        }
+        b.rider = waiting.dequeue();
+        b.wants = waitingWants.dequeue();
+        b.ridden = 0;
+        b.state = BikeState.out;
+        b.parent = null;
+        hiredCount++;
+        print($"{b.rider} rides off on the {b.label} bike for {b.wants} {turnWord(b.wants)}.^");
+    }
+}
+
+// PUMP <bike> - puts air in a bike's tires
+verb PumpBike {
+    grammar = {.pump, NOUN};
+    void handler() {
+        if (!(noun.is(Bike))) {
+            print("You can only pump a bike's tires.^");
+            return;
+        }
+        Bike b = (Bike)noun;
+        if (b.state == BikeState.flat) {
+            print("The air goes straight out again.^");
+            return;
+        }
+        try {
+            b.pump();
+        } catch (int already) {
+            print($"The tires are hard already ({already}).^");
+            return;
+        }
+        pump.strokes++;
+        print($"The {b.label} bike's tires now have {b.air}.^");
+        if (pump.worn) {
+            print("The pump is getting warm.^");
+        }
+    }
+}
+
+// FIX <bike> - patches a flat tire
+verb FixBike {
+    grammar = {.fix, NOUN};
+    void handler() {
+        if (!(noun.is(Bike))) {
+            print("You can only fix a bike.^");
+            return;
+        }
+        Bike b = (Bike)noun;
+        if (b.state != BikeState.flat) {
+            print($"The {b.label} bike is not flat.^");
+            return;
+        }
+        try {
+            usePatch();
+        } catch (int used) {
+            print($"There are no patches left ({used} used).^");
+            return;
+        }
+        b.state = BikeState.inShed;
+        b.air = 0;
+        print($"You patch the {b.label} bike. It needs air.^");
+    }
+}
+
+// BIKES - every bike and where it is
+verb ShowBikes {
+    meta = true;
+    grammar = {.bikes};
+    void handler() {
+        for (Bike b in {bikeRed, bikeBlue, bikeTandem}) {
+            b.sayState();
+        }
+        print($"Bikes in the shed: {bikesInShed()}.^");
+    }
+}
+
+// LINE - the riders waiting
+verb ShowLine {
+    meta = true;
+    grammar = {.line};
+    void handler() {
+        if (waiting.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        for (int i in 1 to waiting.length) {
+            stringObj row = $"{i}. ";
+            row += waiting[i - 1];
+            row = row + " wants ";
+            row += $"{waitingWants[i - 1]}";
+            print(row);
+            print("^");
+        }
+        print("Next: ");
+        showRider(waiting.peek());
+        print("^");
+        if (waiting.contains("Eli")) {
+            print("Eli is waiting.^");
+        }
+    }
+}
+
+// LOG - the log book, sorted by rider
+verb ShowLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (hireLog.length == 0) {
+            print("The log book is empty.^");
+            return;
+        }
+        array<Hire> sorted[LOG_SIZE];
+        sorted = hireLog.orderBy((Hire a, Hire b) => a.rider.compareTo(b.rider));
+        for (Hire h in sorted) {
+            showRider(h);
+            print($" bike {h.bike}, {h.turns} {turnWord(h.turns)}, paid {h.paid}^");
+        }
+        Hire a = sorted.first();
+        Hire z = sorted.last();
+        print($"First: {a.rider}. Last: {z.rider}.^");
+        int onTandem = hireLog.filter((Hire h) => h.bike == 3).count();
+        print($"On the tandem: {onTandem}. Total: {logTotal()}.^");
+        int big = 6;
+        if (hireLog.any((Hire h) => h.paid > big)) {
+            print("Someone paid more than 6.^");
+        }
+        if (hireLog.all((Hire h) => h.turns > 1)) {
+            print("Every ride was longer than one turn.^");
+        }
+        int after = hireLog.skip(1).count();
+        print($"After the first: {after}.^");
+    }
+}
+
+// REPORT - how the shed is doing
+verb ShowReport {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        stringObj word = "shed";
+        stringObj coinText = $"{takings}";
+        stringObj turnText = $"{turnCount}";
+        print(word.format("The $0 took $1 coins in $2 turns.", coinText, turnText));
+        print("^");
+        stringObj padded = "  hires  ";
+        stringObj t = padded.trim();
+        print($"{t}: {hiredCount}. Walked away: {walkedAway}.^");
+        print($"Pump strokes: {pump.strokes}. Patches used: {patchesUsed}.^");
+        if (backNames.length > 0) {
+            array<string> names[10];
+            names = backNames.distinct();
+            names.sort((string a, string b) => a.compareTo(b));
+            stringObj row = "Back: ";
+            int i = 0;
+            do {
+                row += names[i];
+                i++;
+                if (i < names.length) {
+                    row += ", ";
+                }
+            } until (i >= names.length);
+            print(row);
+            print("^");
+        }
+        // count bikes until the first one that is out
+        int still = 0;
+        for (Bike b in {bikeRed, bikeBlue, bikeTandem}) {
+            if (b.state == BikeState.out) {
+                break;
+            }
+            still++;
+        }
+        print($"Bikes before one that is out: {still}.^");
+        int w = 0;
+        int at = riderNames.indexOf("Dot");
+        while (w < at) {
+            w++;
+        }
+        print($"Dot is rider {w + 1}.^");
+        int longRides = riderWants.map((int n) => n > 3 ? 1 : 0).filter((var x) => x == 1).count();
+        print($"Long rides wanted: {longRides}.^");
+        int beforeSix = riderWants.takeWhile((int n) => n < 6).count();
+        print($"Riders before a six: {beforeSix}.^");
+        if (everFlat) {
+            print("A bike has gone flat.^");
+        }
+        if (logWasFull) {
+            print("The log book has been full.^");
+        }
+    }
+}
+
+// RIDER <number> - a rider's name, cut up
+verb RiderInfo {
+    meta = true;
+    grammar = {.rider, NUMBER};
+    void handler() {
+        int at = (int)noun;
+        if (at < 1 || at > riderNames.length) {
+            print($"There are {riderNames.length} riders.^");
+            return;
+        }
+        string who = riderNames[at - 1];
+        stringObj s = who;
+        print(s.toUpper());
+        print(" / ");
+        print(s.reverse());
+        print(" / ");
+        print(s.mid(1, 1));
+        print("^");
+        stringObj tag = s.insert(0, "Rider ");
+        print(tag);
+        print("^");
+        if (s.endsWith("y")) {
+            print("It ends in y.^");
+        }
+        if (s =~ "ANN") {
+            print("That is Ann.^");
+        }
+        int cmp = s <=> "Dot";
+        if (cmp < 0) {
+            print("Before Dot.^");
+        } else if (cmp > 0) {
+            print("After Dot.^");
+        } else {
+            print("That is Dot.^");
+        }
+        stringObj dots = s.left(2);
+        while (dots.length < 5) {
+            dots += ".";
+        }
+        print(dots);
+        print("^");
+        stringObj none = "";
+        if (none.isEmpty()) {
+            none = $"wants {riderWants[at - 1]}";
+        }
+        print(none);
+        print("^");
+        switch (who) {
+            case "Ann": print("The first rider.^");
+            case "Fay": print("The last rider.^");
+            default: print($"Rider {at} of {riderNames.length}.^");
+        }
+    }
+}
+
+// SEND - sends the first rider in the line away
+verb SendAway {
+    grammar = {.send};
+    void handler() {
+        if (waiting.length == 0) {
+            print("Nobody is waiting.^");
+            return;
+        }
+        string who = waiting[0];
+        waiting.remove(0);
+        waitingWants.remove(0);
+        walkedAway++;
+        print($"{who} goes home. {waiting.length} still waiting.^");
+    }
+}

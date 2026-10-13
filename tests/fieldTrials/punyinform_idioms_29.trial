@@ -1,0 +1,169 @@
+Room A
+Room A. A coin jar stands by a bin. Room B is north.
+You can see a coin jar (which contains a quarter, a dime, a nickel and a penny) and a bin (which is empty) here.
+> status
+Score 0 of 3. Credit 0. Restock not due.
+Coins in 0, bought 0, eaten 0, refunded 0, janitor fed 0, asked 0, bin 0.
+> slots
+Slot 1: bag of crisps, 20
+Slot 2: tin of mints, 15
+Slot 3: packet of gum, 5
+Slot 4: empty
+Every snack has a slot.
+> paid
+Nothing bought.
+> receipt
+The receipt is blank.
+> purse
+0 coins held, worth 0. Credit 0.
+> box
+Cash box: dime nickel penny. 1 worth 10 or more.
+> examine jar
+A glass coin jar.
+> take quarter
+Taken.
+> take dime
+Taken.
+> take nickel
+Taken.
+> take penny
+Taken.
+> purse
+4 coins held, worth 41. Credit 0.
+> examine quarter
+A quarter, worth 25.
+> put penny in bin
+You keep your coins out of the bin.
+> press 1
+There are no buttons here.
+> north
+Room B
+Room B. A vending machine stands over a tray, beside a cash box. Room A is south.
+You can see a cash box, a tray (which is empty), a vending machine (which is empty) and a janitor here.
+> examine machine
+A vending machine. Slots: 1 20, 2 15, 3 5, 4 empty. Credit 0.
+> press 1
+Slot 1 costs 20. Insert 20 more.
+> put dime in machine
+The machine takes the dime. Credit 10.
+> press 1
+Slot 1 costs 20. Insert 10 more.
+> put penny in machine
+The machine takes the penny. Credit 11.
+> press 0
+The buttons start at 1.
+> press 7
+There are only 4 buttons.
+> press 4
+Slot 4 is empty.
+> put quarter in machine
+The machine takes the quarter. Credit 36.
+> press 2
+The tin of mints drops into the tray. Credit 21.
+[The score has just gone up by 1 point.]
+> refund
+21 in change drops into the tray.
+> refund
+There is no credit to refund.
+> box
+Cash box: quarter nickel penny. 1 worth 10 or more.
+> take mints
+Taken.
+> put mints in machine
+The tin of mints won't fit the coin slot.
+> examine mints
+A tin of mints, from slot 2, price 15.
+> take bright dime
+Taken.
+> take dime
+Taken.
+> purse
+3 coins held, worth 25. Credit 0.
+> give mints to janitor
+The janitor takes the tin of mints.
+[The score has just gone up by 1 point.]
+> slots
+Slot 1: bag of crisps, 20
+Slot 2: empty
+Slot 3: packet of gum, 5
+Slot 4: empty
+Every snack has a slot.
+> ask janitor about raisins
+The janitor says: I will call for more.
+> ask janitor about raisins
+The janitor says: they come soon enough.
+> ask janitor about bin
+The janitor says: wrappers go in the bin.
+> ask janitor about machine
+The janitor says: it gives change if you ask for a refund.
+A man fills slot 4 and leaves.
+[The score has just gone up by 1 point.]
+> janitor, wait
+The janitor leans on the mop.
+> janitor, jump
+The janitor says: not my job.
+> slots
+Slot 1: bag of crisps, 20
+Slot 2: empty
+Slot 3: packet of gum, 5
+Slot 4: box of raisins, 30
+Every snack has a slot.
+> put bright dime in machine
+The machine takes the bright dime. Credit 10.
+> put nickel in machine
+The machine takes the nickel. Credit 15.
+> press 3
+The packet of gum drops into the tray. Credit 10.
+> take gum
+Taken.
+> examine gum
+A packet of cherry gum, from slot 3, price 5.
+> press 4
+Slot 4 costs 30. Insert 20 more.
+> put dime in machine
+The machine takes the dime. Credit 20.
+> purse
+0 coins held, worth 0. Credit 20.
+> press 1
+The bag of crisps drops into the tray. Credit 0.
+> examine machine
+A vending machine. Slots: 1 empty, 2 empty, 3 empty, 4 30. Credit 0.
+> take crisps
+Taken.
+> examine crisps
+A bag of salted crisps, from slot 1, price 20.
+> eat crisps
+You eat the bag of crisps.
+> slots
+Slot 1: empty
+Slot 2: empty
+Slot 3: empty
+Slot 4: box of raisins, 30
+Every snack has a slot.
+Something has been eaten.
+> refund
+There is no credit to refund.
+> status
+Score 3 of 3. Credit 0. Restock not due.
+Coins in 6, bought 3, eaten 1, refunded 21, janitor fed 1, asked 4, bin 0.
+> paid
+Paid: 5 15 20. Total 40, 3 different prices.
+The crisps were bought.
+> receipt
+Receipt (13): DIME 10; PENNY 1; QUARTER 25; BOUGHT 15; REFUND 21; GAVE 2; RESTOCKED 4; DIME 10; NICKEL 5; BOUGHT 5; DIME 10; BOUGHT 20; ATE 1;
+A refund was given.
+> south
+Room A
+You can see a coin jar (which is empty) and a bin (which is empty) here.
+> put gum in bin
+You throw the packet of gum away.
+> put jar in bin
+(first taking the coin jar)
+That's fixed in place.
+> purse
+0 coins held, worth 0. Credit 0.
+> status
+Score 3 of 3. Credit 0. Restock not due.
+Coins in 6, bought 3, eaten 1, refunded 21, janitor fed 1, asked 4, bin 1.
+> box
+Cash box: quarter dime dime nickel nickel penny. 3 worth 10 or more.

@@ -1,0 +1,211 @@
+Room A
+Room A. The bike shed. The path is to the east.
+You can see a red bike, a blue bike, a tandem, a pump and a mechanic here.
+> bikes
+Bike 1 (red): in the shed, air 6.
+Bike 2 (blue): in the shed, air 2.
+Bike 3 (tandem): in the shed, air 8.
+Bikes in the shed: 3.
+> line
+1. Ann wants 3
+2. Bob wants 5
+Next: <Ann>
+> log
+The log book is empty.
+> report
+The shed took 0 coins in 0 turns.
+hires: 0. Walked away: 0.
+Pump strokes: 0. Patches used: 0.
+Bikes before one that is out: 3.
+Dot is rider 4.
+Long rides wanted: 3.
+Riders before a six: 3.
+> rider 1
+ANN / nnA / n
+Rider Ann
+That is Ann.
+Before Dot.
+An...
+wants 3
+The first rider.
+> rider 6
+FAY / yaF / a
+Rider Fay
+It ends in y.
+After Dot.
+Fa...
+wants 3
+The last rider.
+> rider 4
+DOT / toD / o
+Rider Dot
+That is Dot.
+Do...
+wants 6
+Rider 4 of 6.
+> rider 2
+BOB / boB / o
+Rider Bob
+Before Dot.
+Bo...
+wants 5
+Rider 2 of 6.
+> rider 9
+There are 6 riders.
+> examine blue bike
+Bike 2. It costs 2 a turn. It has a basket, a lamp.
+Bike 2 (blue): in the shed, air 2.
+> examine tandem
+Bike 3. It costs 3 a turn. It has nothing fitted.
+Bike 3 (tandem): in the shed, air 8.
+> examine red bike
+Bike 1. It costs 2 a turn. It has a bell.
+Bike 1 (red): in the shed, air 6.
+> take red bike
+It is too big to carry.
+Cyd joins the line.
+> fix red bike
+The red bike is not flat.
+> rent blue bike
+The blue bike's tires are too soft (2).
+> pump blue bike
+The blue bike's tires now have 5.
+> pump tandem
+The tires are hard already (8).
+Dot sees the line and walks away.
+> rent red bike
+Ann rides off on the red bike for 3 turns.
+> line
+1. Bob wants 5
+2. Cyd wants 2
+Next: <Bob>
+> rent tandem
+Bob rides off on the tandem bike for 5 turns.
+> rent blue bike
+Cyd rides off on the blue bike for 2 turns.
+Ann brings the red bike back and pays 6.
+> bikes
+Bike 1 (red): in the shed, air 3.
+Bike 2 (blue): out with Cyd, 1 turn to go.
+Bike 3 (tandem): out with Bob, 3 turns to go.
+Bikes in the shed: 1.
+> wait
+Time passes.
+Cyd brings the blue bike back and pays 4.
+Eli joins the line.
+> bikes
+Bike 1 (red): in the shed, air 3.
+Bike 2 (blue): in the shed, air 3.
+Bike 3 (tandem): out with Bob, 2 turns to go.
+Bikes in the shed: 2.
+> line
+1. Eli wants 4
+Next: <Eli>
+Eli is waiting.
+> wait
+Time passes.
+> wait
+Time passes.
+Bob brings the tandem bike back and pays 15.
+> wait
+Time passes.
+> line
+1. Eli wants 4
+Next: <Eli>
+Eli is waiting.
+> log
+<Ann> bike 1, 3 turns, paid 6
+<Bob>* bike 3, 5 turns, paid 15
+<Cyd> bike 2, 2 turns, paid 4
+First: Ann. Last: Cyd.
+On the tandem: 1. Total: 25.
+Someone paid more than 6.
+Every ride was longer than one turn.
+After the first: 2.
+> rent red bike
+Eli rides off on the red bike for 4 turns.
+Fay joins the line.
+> pump blue bike
+The blue bike's tires now have 6.
+> rent blue bike
+Fay rides off on the blue bike for 3 turns.
+Eli walks the red bike back with a flat tire and pays 6.
+> wait
+Time passes.
+> wait
+Time passes.
+Fay brings the blue bike back and pays 6.
+(The log book is full: 4 lines.)
+Ann joins the line.
+> wait
+Time passes.
+> bikes
+Bike 1 (red): flat.
+Bike 2 (blue): in the shed, air 3.
+Bike 3 (tandem): in the shed, air 3.
+Bikes in the shed: 3.
+> pump blue bike
+The blue bike's tires now have 6.
+The pump is getting warm.
+> fix blue bike
+The blue bike is not flat.
+> fix blue bike
+The blue bike is not flat.
+Bob joins the line.
+> pump blue bike
+The blue bike's tires now have 8.
+The pump is getting warm.
+> line
+1. Ann wants 3
+2. Bob wants 5
+Next: <Ann>
+> send
+Ann goes home. 1 still waiting.
+> line
+1. Bob wants 5
+Next: <Bob>
+> wait
+Time passes.
+> wait
+Time passes.
+Cyd joins the line.
+> wait
+Time passes.
+> wait
+Time passes.
+> log
+<Ann> bike 1, 3 turns, paid 6
+<Bob>* bike 3, 5 turns, paid 15
+<Cyd> bike 2, 2 turns, paid 4
+<Eli> bike 1, 3 turns, paid 6
+First: Ann. Last: Eli.
+On the tandem: 1. Total: 31.
+Someone paid more than 6.
+Every ride was longer than one turn.
+After the first: 3.
+> report
+The shed took 37 coins in 30 turns.
+hires: 5. Walked away: 2.
+Pump strokes: 4. Patches used: 0.
+Back: Ann, Bob, Cyd, Eli, Fay
+Bikes before one that is out: 3.
+Dot is rider 4.
+Long rides wanted: 3.
+Riders before a six: 3.
+A bike has gone flat.
+The log book has been full.
+> rent red bike
+The red bike has a flat tire.
+> pump red bike
+The air goes straight out again.
+Dot joins the line.
+> fix red bike
+You patch the red bike. It needs air.
+> pump red bike
+The red bike's tires now have 3.
+The pump is getting warm.
+> rent red bike
+Bob rides off on the red bike for 5 turns.
+> pump pump
+You can only pump a bike's tires.
+Eli joins the line.

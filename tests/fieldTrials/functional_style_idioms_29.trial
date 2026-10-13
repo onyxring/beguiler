@@ -1,0 +1,165 @@
+Room A
+Room A.
+
+> menu
+fries $4.00 (5 min)
+rings $4.50 (6 min)
+soup $5.50 (2 min)
+salad $7.00 (3 min)
+burger $9.50 (8 min)
+steak $18.00 (14 min)
+quick: fries, soup, salad
+grill top: steak
+fryer top: rings
+cold top: salad
+
+> rail
+The rail is empty.
+
+> cook
+Nothing to cook.
+
+> order burger for 2
+Ticket #1: burger for table 2 (grill).
+
+> order fries for 2
+Ticket #2: fries for table 2 (fryer).
+
+> order steak for 3
+Ticket #3: steak for table 3 (grill).
+
+> order salad for 3
+Ticket #4: salad for table 3 (cold).
+
+> order soup for 2
+Ticket #5: soup for table 2 (cold).
+
+> order rings for 4
+Ticket #6: rings for table 4 (fryer).
+
+> order salad for 5
+The rail is full.
+
+> order fries for 9
+Tables are 1 to 6.
+
+> rail
+#1 grill burger table 2, waiting 0
+#3 grill steak table 3, waiting 0
+#2 fryer fries table 2, waiting 0
+#6 fryer rings table 4, waiting 0
+#4 cold salad table 3, waiting 0
+#5 cold soup table 2, waiting 0
+
+> load
+grill: 2 tickets, 22 minutes
+fryer: 2 tickets, 11 minutes
+cold: 2 tickets, 5 minutes
+all: 6, 38 minutes
+
+> wait 12
+Minute 12. 6 late.
+
+> late
+#1 burger: 12 minutes
+#2 fries: 12 minutes
+#3 steak: 12 minutes
+#4 salad: 12 minutes
+#5 soup: 12 minutes
+#6 rings: 12 minutes
+6 of 6 late; all; grill behind
+
+> cook
+Cooked burger #1, fries #2, salad #4 in 8 minutes. Minute 20.
+
+> rail
+#3 grill steak table 3, waiting 20
+#6 fryer rings table 4, waiting 20
+#5 cold soup table 2, waiting 20
+
+> cancel 6
+Ticket #6 (rings) cancelled.
+
+> cancel 6
+No ticket #6 on the rail.
+
+> cancel 99
+No ticket #99 on the rail.
+
+> bill 2
+(Table 2 still has food coming.)
+Table 2: 2 items, $13.50, due $13.60
+
+> wait 20
+Minute 40. 2 late.
+
+> late
+#3 steak: 40 minutes
+#5 soup: 40 minutes
+2 of 2 late; all; grill behind
+
+> load
+grill: 1 ticket, 14 minutes
+fryer: 0 tickets, 0 minutes
+cold: 1 ticket, 2 minutes
+all: 2, 16 minutes
+
+> cook
+Cooked steak #3, soup #5 in 14 minutes. Minute 54.
+
+> cook
+Nothing to cook.
+
+> takings
+3 unpaid, $30.50, largest $18.00, weight 36
+
+> bill 3
+Table 3: 2 items, $25.00, due $28.00
+
+> bill 2
+Table 2: 1 item, $5.50, due $6.15
+
+> bill 4
+Table 4 has had nothing.
+
+> bill 1
+Table 1 has had nothing.
+
+> takings
+Nothing served.
+
+> wait 0
+Wait 1 to 60 minutes.
+
+> late
+Nothing is late.
+
+> rail
+The rail is empty.
+
+> order steak for 1
+Ticket #7: steak for table 1 (grill).
+
+> order fries for 1
+Ticket #8: fries for table 1 (fryer).
+
+> rail
+#7 grill steak table 1, waiting 0
+#8 fryer fries table 1, waiting 0
+
+> wait 11
+Minute 65. 2 late.
+
+> late
+#7 steak: 11 minutes
+#8 fries: 11 minutes
+2 of 2 late; all; grill behind
+
+> cook
+Cooked steak #7, fries #8 in 14 minutes. Minute 79.
+
+> bill 1
+Table 1: 2 items, $22.00, due $24.65
+
+> rail
+The rail is empty.

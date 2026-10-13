@@ -1,0 +1,100 @@
+Room A
+Room A.
+You can see a low shelf (on which are a red book and a gray book) and a high shelf (on which is a big atlas) here.
+> shelves
+low shelf 2/2: R1 G2
+high shelf 1/3: A3
+out 0, lent 0, returned 0, one full, none empty; first empty Room A; lent for 0d
+slips 0 (issued 0, torn 0); log 
+limit 3, late over 100 0
+> slips
+No slips.
+> thickest
+Thickest: none.
+> examine red book
+The red book, 120 pages, by Ann, plain, mark R1.
+> examine big atlas
+The big atlas, 80 pages, by Cy, maps, mark A3.
+> borrow red book
+You borrow the red book; slip R1/1, due in 3d.
+> borrow red book
+The red book is already out.
+> borrow big atlas
+The big atlas stays in the room.
+> limit 5
+limit 5, changes 1, lenient.
+> borrow gray book
+You borrow the gray book; slip G2/2, due in 5d.
+Slip R1/1 is overdue.
+> shelves
+low shelf 0/2:
+high shelf 1/3: A3
+out 2, lent 2, returned 0; first empty low shelf; lent for 1w1d
+slips 2 (issued 2, torn 0); log lend:R1/1 lend:G2/2 late:R1/1 
+limit 5, late over 100 1
+> slips
+r1/1! g2/2 (10 chars), the gray book out.
+> thickest
+The gray book is thickest on loan: 300 pages, 3 days to read, a manual.
+> pocket
+R1/1 G2/2 - 2 held, due 1w1d.
+> rank
+G2/2=5 R1/1=3 longest G2/2.
+red book gray book thinnest.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> slips
+r1/1! g2/2 (10 chars), the gray book out.
+> renew slip
+Slip G2/2 now runs 1w.
+> hand in red book
+The red book goes on the low shelf.
+> hand in big atlas
+The big atlas isn't on loan.
+> borrow red book
+You borrow the red book; slip R1/3, due in 5d.
+Slip G2/2 is overdue.
+> limit 20
+limit 9, changes 2, lenient.
+> shelve atlas on low shelf
+(first taking the big atlas)
+The big atlas goes on the low shelf.
+> shelves
+low shelf 1/2: A3
+high shelf 0/3:
+out 2, lent 3, returned 1; first empty high shelf; lent for 1w6d
+slips 2 (issued 3, torn 1); log lend:R1/1 lend:G2/2 late:R1/1 back-late:R1/1 lend:R1/3 late:G2/2 
+limit 9, late over 100 1
+> rank
+G2/2=7 R1/3=5 longest G2/2.
+red book gray book thinnest.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+Slip R1/3 is overdue.
+> wait
+Time passes.
+> hand in gray book
+The gray book goes on the low shelf.
+> hand in red book
+The low shelf is full (2 books).
+The red book goes on the high shelf.
+> shelves
+low shelf 2/2: G2 A3
+high shelf 1/3: R1
+out 0, lent 3, returned 3, one full, none empty; first empty Room A; lent for 1w6d
+slips 0 (issued 3, torn 3); log lend:R1/1 lend:G2/2 late:R1/1 back-late:R1/1 lend:R1/3 late:G2/2 late:R1/3 back-late:G2/2 back-late:R1/3 full 
+limit 9, late over 100 0
+> slips
+No slips.
+> sweep
+swept 0; slips 0.

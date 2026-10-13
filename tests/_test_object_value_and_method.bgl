@@ -1,0 +1,5 @@
+// Negative test: one object member can't be both a value and a method.
+// EXPECT_ERROR: object 'roomA': member 'label' is already defined
+#beguilerSettings { target = z5; informName = "none"; }
+object roomA { string label = "Room A"; bool label() { return true; } }
+void main() { }

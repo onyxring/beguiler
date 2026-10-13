@@ -127,6 +127,7 @@ extern eColor   clr_fginput;                /// player input color (PUNY++)
 extern eColor   clr_fgstatus;               /// status line color
 extern int      things_score;               /// score from picking up scored objects
 extern int      places_score;               /// score from visiting scored rooms
+extern bool     scope_modified;             /// Set true after moving objects from code the library didn't call (a verb handler), so the next command sees them.
 extern const object thedark;                    /// the darkness object (in-scope when no light)
 extern const object selfobj;              /// the player self object
 extern const object Directions;                 /// shared placeholder bound to `noun` for direction commands

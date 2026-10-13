@@ -1,0 +1,450 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a bakehouse and a
+// store room. A Weighable class (an int grams member) and an Ingredient subclass (an int flag bit,
+// list_together, a class description) with flour, water, yeast and salt; a mixing bowl whose before
+// rule on the Receive fake action ORs each ingredient's flag into an int mix with |=, tests it with &,
+// totals the grams and remove()s the ingredient; ingredient names in a global array<string> walked
+// bit by bit with << in a do/while; a lump of dough with a short_name routine switching on its knead
+// count, and a timer (time_left, time_out) proving it; an oven (container, openable, switchable)
+// whose before rule on Receive takes only risen dough and refuses Open while lit, and whose after
+// rule on SwitchOn starts a timer that turns the dough into a loaf; a locked flour bin (lockable,
+// with_key) whose after rule on Unlock awards a point; scales (a supporter) whose after rule on
+// Receive weighs what is on them through a children loop, is() and a cast; a baker with orders (Knead
+// through a shared routine, Take refused), life on Ask/Tell (consult_from and NextWord) handing over
+// a key once, and Give of the loaf; a LibraryMessages override of Wait; native Knead (NOUN) and Weigh
+// (NOUN) verbs, every weighing logged in a sized array<int>; a meta Tally verb; deadflag when the
+// score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int NING = 4;
+const int F_FLOUR = 1;
+const int F_WATER = 2;
+const int F_YEAST = 4;
+const int F_SALT = 8;
+const int F_ALL = 15;
+const int KNEADS = 3;
+const int PROVE_TURNS = 2;
+const int BAKE_TURNS = 3;
+const int NLOG = 6;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Wait:
+                if (location == bakehouse && oven.has(on)) rtrue("The oven ticks as it heats.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+array<string> ingNames = {"flour", "water", "yeast", "salt"};
+array<int> weighLog[NLOG];      // grams read off the scales or by Weigh, in order
+int nWeighs;
+bool g_keyGiven;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+void LogWeight(int g) {
+    if (nWeighs < NLOG) {
+        weighLog[nWeighs] = g;
+        nWeighs++;
+    }
+}
+
+// Prints the names of the flags in mask that are set (want true) or clear (want false).
+int ListFlags(int mask, bool want) {
+    int b = 1;
+    int i = 0;
+    int n = 0;
+    do {
+        bool set = (mask & b) != 0;
+        if (set == want) {
+            if (n > 0) print(", ");
+            print(ingNames[i]);
+            n++;
+        }
+        b = b << 1;
+        i++;
+    } while (i < NING);
+    return n;
+}
+
+// ---------------------------------------------------------------- weighable things
+
+class Weighable : object {
+    int grams;
+}
+
+class Ingredient : Weighable {
+    int flag;
+    string list_together = "ingredients";
+    void description() {
+        print($"{cThe(self)}, about {grams} grams.^");
+    }
+}
+
+Ingredient flour {
+    short_name = "bag of flour";
+    name = {.bag, .flour};
+    parent = flourBin;
+    flag = F_FLOUR;
+    grams = 500;
+}
+
+Ingredient water {
+    short_name = "jug of water";
+    name = {.jug, .water};
+    parent = bakehouse;
+    flag = F_WATER;
+    grams = 300;
+}
+
+Ingredient yeast {
+    short_name = "packet of yeast";
+    name = {.packet, .yeast};
+    parent = storeRoom;
+    flag = F_YEAST;
+    grams = 7;
+}
+
+Ingredient salt {
+    short_name = "pinch of salt";
+    name = {.pinch, .salt};
+    parent = storeRoom;
+    flag = F_SALT;
+    grams = 10;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object storeRoom {
+    short_name = "Store Room";
+    description = "Store Room. Shelves and a flour bin. The bakehouse is east.";
+    object e_to = bakehouse;
+    attributes = {light};
+}
+
+object bakehouse {
+    short_name = "Bakehouse";
+    void description() {
+        print("Bakehouse. A brick oven fills one wall");
+        if (oven.has(on)) print(", glowing");
+        print(". The store room is west.^");
+    }
+    object w_to = storeRoom;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- the store room
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    description = "A small brass key.";
+}
+
+object flourBin {
+    short_name = "flour bin";
+    name = {.flour, .bin};
+    parent = storeRoom;
+    description = "A tin bin with a hasp.";
+    object with_key = brassKey;
+    bool after() {
+        switch (action) {
+            case Unlock:
+                Award();
+        }
+        rfalse;
+    }
+    attributes = {static, container, openable, lockable, locked};
+}
+
+object scales {
+    short_name = "scales";
+    name = {.scales, .scale, .pan};
+    parent = storeRoom;
+    description = "A pair of kitchen scales.";
+    int Total() {
+        int g = 0;
+        for (object o in self.children) {
+            if (o.is(Weighable)) g = g + ((Weighable)o).grams;
+        }
+        return g;
+    }
+    bool after() {
+        switch (action) {
+            case Receive:
+                int g = Total();
+                LogWeight(g);
+                rtrue($"{cThe(noun)} settles on the scales. The needle reads {g} grams.^");
+        }
+        rfalse;
+    }
+    attributes = {static, supporter, pluralname};
+}
+
+// ---------------------------------------------------------------- the bakehouse
+
+object bowl {
+    short_name = "mixing bowl";
+    name = {.mixing, .bowl};
+    parent = bakehouse;
+    int mix;
+    int weight;
+    void description() {
+        print("A wide earthenware bowl");
+        if (mix == 0) print(", empty");
+        else {
+            print(" holding ");
+            ListFlags(mix, true);
+        }
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Ingredient)) rtrue("Only ingredients go in the bowl.^");
+                Ingredient ing = (Ingredient)noun;
+                if (dough.parent != null || loaf.parent != null) rtrue("The bowl has done its work.^");
+                if ((mix & ing.flag) != 0) rtrue($"There is already {ingNames[FlagIndex(ing.flag)]} in the bowl.^");
+                mix |= ing.flag;
+                weight = weight + ing.grams;
+                ing.remove();
+                print($"You add the {ingNames[FlagIndex(ing.flag)]} to the bowl.");
+                if (mix == F_ALL) print(" That is everything.");
+                rtrue("^");
+            case Take:
+                rtrue("The bowl is too heavy to lift.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+int FlagIndex(int f) {
+    int i = 0;
+    while (f > 1) {
+        f = f >> 1;
+        i++;
+    }
+    return i;
+}
+
+object dough {
+    name = {.dough, .lump};
+    int kneads;
+    bool risen;
+    int time_left;
+    bool short_name() {
+        if (risen) print("risen dough");
+        else switch (kneads) {
+            case 0:        print("lump of dough");
+            case 1 to 2:   print("half-kneaded dough");
+            default:       print("smooth dough");
+        }
+        return true;
+    }
+    void description() {
+        if (risen) print("The dough has doubled in size.^");
+        else print($"The dough has been kneaded {kneads} times.^");
+    }
+    void time_out() {
+        risen = true;
+        if (TestScope(self)) print("^The dough has risen.^");
+    }
+}
+
+Weighable loaf {
+    short_name = "loaf";
+    name = {.loaf, .bread};
+    description = "A brown loaf with a split crust.";
+}
+
+// Shared by the Knead verb and the baker's orders; by is who does the work.
+void KneadOnce(object by) {
+    if (loaf.parent != null) {
+        print("There is nothing left to knead.^");
+        return;
+    }
+    if (dough.parent == null) {
+        if (bowl.mix != F_ALL) {
+            print("The bowl still needs ");
+            ListFlags(bowl.mix, false);
+            print(".^");
+            return;
+        }
+        dough.parent = bowl;
+        bowl.mix = 0;
+    }
+    if (dough.risen || dough.kneads >= KNEADS) {
+        print("The dough needs no more kneading.^");
+        return;
+    }
+    dough.kneads++;
+    if (by == player) print("You knead the dough");
+    else print($"{cThe(by)} kneads the dough");
+    if (dough.kneads == KNEADS) {
+        print(" until it is smooth. You set it aside to prove.^");
+        StartTimer(dough, PROVE_TURNS);
+    } else {
+        print(".^");
+    }
+}
+
+object oven {
+    short_name = "oven";
+    name = {.brick, .oven};
+    parent = bakehouse;
+    description = "A brick oven with an iron door.";
+    int time_left;
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun != dough) rtrue("Only dough goes in the oven.^");
+                if (!dough.risen) rtrue("The dough has not proved yet.^");
+            case Open:
+                if (has(on)) rtrue("Not while the oven is lit.^");
+        }
+        rfalse;
+    }
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                if (has(open)) {
+                    ungive(on);
+                    rtrue("Close the door first.^");
+                }
+                StartTimer(self, BAKE_TURNS);
+                rtrue("The oven roars into life.^");
+        }
+        rfalse;
+    }
+    void time_out() {
+        ungive(on);
+        if (dough.parent == self) {
+            dough.remove();
+            loaf.parent = self;
+            loaf.grams = bowl.weight - 50;
+            Award();
+        }
+        if (location == bakehouse) print("^The oven dies down.^");
+    }
+    attributes = {static, container, openable, switchable};
+}
+
+object baker {
+    short_name = "baker";
+    name = {.baker, .woman};
+    parent = bakehouse;
+    description = "A baker with floury arms.";
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Give:
+                if (noun != loaf) rtrue("The baker has no use for that.^");
+                loaf.parent = self;
+                print("The baker taps the crust and nods.^");
+                Award();
+                rtrue;
+            case Ask, Tell:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .key || w == .bin || w == .flour) {
+                    if (g_keyGiven) rtrue("~You have the key already.~^");
+                    g_keyGiven = true;
+                    brassKey.parent = player;
+                    rtrue("~Here,~ says the baker, handing you a brass key.^");
+                }
+                if (w == .oven) rtrue("~Prove it first, then bake it.~^");
+                rtrue("The baker shrugs.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        switch (action) {
+            case Knead:
+                if (noun != bowl && noun != dough) rtrue("~That doesn't want kneading.~^");
+                KneadOnce(self);
+                rtrue;
+            case Take:
+                rtrue("~Fetch it yourself,~ says the baker.^");
+        }
+        rfalse;
+    }
+    attributes = {animate, female};
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Knead {
+    grammar = {.knead, NOUN};
+    void handler() {
+        if (noun != bowl && noun != dough) {
+            print("That doesn't want kneading.^");
+            return;
+        }
+        KneadOnce(player);
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (!noun.is(Weighable)) {
+            print($"You can't weigh {the(noun)}.^");
+            return;
+        }
+        int g = ((Weighable)noun).grams;
+        LogWeight(g);
+        print($"{cThe(noun)} weighs {g} grams.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print("Bowl: ");
+        if (ListFlags(bowl.mix, true) == 0) print("empty");
+        print($", {bowl.weight} grams. Dough: ");
+        if (dough.parent == null) print("none");
+        else if (dough.risen) print("risen");
+        else print($"{dough.kneads} kneads");
+        print(". Oven: ");
+        if (oven.has(on)) print($"lit, {oven.time_left} left");
+        else print("cold");
+        print($". Score {score}.^");
+        print("Weighed:");
+        if (nWeighs == 0) print(" nothing");
+        for (int i = 0; i < nWeighs; i++) print($" {weighLog[i]}");
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = storeRoom;
+    rfalse;
+}
