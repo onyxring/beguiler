@@ -1,0 +1,125 @@
+Room A
+Room A.
+
+> tasks
+footing: mason 2d, days 0-2, needs (none), slack 0
+frame: joiner 3d, days 2-5, needs footing, slack 1
+wall: mason 4d, days 2-6, needs footing, slack 0
+hinge: smith 1d, days 0-1, needs (none), slack 4
+latch: smith 2d, days 1-3, needs hinge, slack 4
+gate: joiner 2d, days 5-7, needs frame,latch, slack 2
+roof: joiner 3d, days 6-9, needs wall,frame, slack 0
+paint: joiner 1d, days 9-10, needs gate,roof, slack 0
+end day 10, total work 18 days in 8 tasks
+
+> order
+order: footing hinge latch frame wall gate roof paint
+starts: 0 0 1 2 2 5 6 9
+first footing, last paint
+
+> path
+critical: footing > wall > roof > paint
+no slack: footing wall roof paint (10 days)
+
+> overlap frame
+frame (2-5, 3d) overlaps wall latch
+
+> overlap hinge
+hinge (0-1, 1d) overlaps footing
+
+> overlap room
+You can't see any such thing.
+
+> ready
+ready: footing hinge
+done: (none)
+
+> finish gate
+The gate needs frame and latch first.
+
+> finish hinge
+The hinge is done. 7 tasks left.
+
+> finish hinge
+The hinge is already done.
+
+> finish footing
+The footing is done. 6 tasks left.
+
+> ready
+ready: frame wall latch
+done: footing hinge
+
+> board
+done, done, latch, frame, wall, gate, roof, paint
+xxoooooo
+
+> plan 1
+day 1: footing hinge
+day 2: footing latch
+day 3: frame wall latch
+day 4: frame wall
+day 5: frame wall
+day 6: wall gate
+day 7: gate
+day 8: roof
+day 9: roof
+day 10: roof
+day 11: paint
+1 crew each: 11 days (end day 10 with no crew limit)
+
+> plan 2
+day 1: footing hinge
+day 2: footing latch
+day 3: frame wall latch
+day 4: frame wall
+day 5: frame wall
+day 6: wall gate
+day 7: gate roof
+day 8: roof
+day 9: roof
+day 10: paint
+2 crews each: 10 days (end day 10 with no crew limit)
+
+> plan 4
+Between 1 and 3 crews.
+
+> compare
+by tail:  11 10 10
+short first: 11 10 10
+tail wins 0, best 10
+one crew, chosen rule: 11 days
+
+> crews
+mason: 6 days, footing wall
+smith: 3 days, hinge latch
+joiner: 9 days, frame gate roof paint
+busiest joiner, total 18
+
+> finish latch
+The latch is done. 5 tasks left.
+
+> finish frame
+The frame is done. 4 tasks left.
+
+> finish gate
+The gate is done. 3 tasks left.
+
+> ready
+ready: wall
+done: footing frame hinge latch gate
+
+> board
+done, done, done, done, wall, done, roof, paint
+xxxxoxoo
+
+> reset
+All tasks are open again.
+
+> ready
+ready: footing hinge
+done: (none)
+
+> take wall
+The wall is hardly portable.
+

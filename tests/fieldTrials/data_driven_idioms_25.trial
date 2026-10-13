@@ -1,0 +1,133 @@
+Room A
+> table
+   team   P W D L  F  A  Pts
+1  Reds   0 0 0 0 0  0  0
+2  Blues  0 0 0 0 0  0  0
+3  Greens 0 0 0 0 0  0  0
+4  Golds  0 0 0 0 0  0  0
+> fixtures
+1  r1 Reds   v   Blues
+2  r1 Greens v   Golds
+3  r2 Blues  v   Greens
+4  r2 Golds  v   Reds
+5  r3 Reds   v   Greens
+6  r3 Blues  v   Golds
+> rules
+Order by points, difference, scored, order.
+> form reds
+Reds have not played.
+> streak reds
+Reds: 0 played, 0 after the first; scored every game true; lost false.
+> report reds
+Reds: played 0; points 0; scored 0; home wins 0; to play 3;
+> round 1
+1  r1 Reds   v   Blues
+2  r1 Greens v   Golds
+Round 1: 2 to play.
+> round 4
+No round 4.
+> result 1 2 1
+1  r1 Reds   2-1 Blues  home win
+> result 2 1 1
+2  r1 Greens 1-1 Golds  level
+> round 1
+1  r1 Reds   2-1 Blues  home win
+2  r1 Greens 1-1 Golds  level
+Round 1 complete.
+> result 1 0 0
+Fixture 1 already has a result.
+> table
+   team   P W D L  F  A  Pts
+1  Reds   1 1 0 0 2  1  3 leader,unbeaten
+2  Greens 1 0 1 0 1  1  1 unbeaten,winless
+3  Golds  1 0 1 0 1  1  1 unbeaten,winless
+4  Blues  1 0 0 1 1  2  0 winless,bottom
+> result 3 0 3
+3  r2 Blues  0-3 Greens away rout
+> result 4 2 2
+4  r2 Golds  2-2 Reds   level
+> table
+   team   P W D L  F  A  Pts
+1  Greens 2 1 1 0 4  1  4 leader,unbeaten
+2  Reds   2 1 1 0 4  3  4 unbeaten
+3  Golds  2 0 2 0 3  3  2 unbeaten,winless
+4  Blues  2 0 0 2 1  5  0 winless,bottom
+> form reds
+Reds form: D W
+Latest round 2, earliest round 1.
+> form golds
+Golds form: D D
+Latest round 2, earliest round 1.
+> streak golds
+Golds: 2 played, 1 after the first; scored every game true; lost false.
+> report blues
+Blues: played 2; points 0; scored 1; home wins 0; to play 1;
+> fixtures
+1  r1 Reds   2-1 Blues  home win
+2  r1 Greens 1-1 Golds  level
+3  r2 Blues  0-3 Greens away rout
+4  r2 Golds  2-2 Reds   level
+5  r3 Reds   v   Greens
+6  r3 Blues  v   Golds
+> void 3
+Result of fixture 3 removed.
+> void 3
+Fixture 3 has no result.
+> table
+   team   P W D L  F  A  Pts
+1  Reds   2 1 1 0 4  3  4 leader,unbeaten
+2  Golds  2 0 2 0 3  3  2 unbeaten,winless
+3  Greens 1 0 1 0 1  1  1 unbeaten,winless
+4  Blues  1 0 0 1 1  2  0 winless,bottom
+> result 3 0 4
+3  r2 Blues  0-4 Greens away rout
+> result 5 0 0
+5  r3 Reds   0-0 Greens goalless
+> result 6 1 4
+6  r3 Blues  1-4 Golds  away rout
+All fixtures played.
+> table
+   team   P W D L  F  A  Pts
+1  Greens 3 1 2 0 5  1  5 leader,unbeaten
+2  Golds  3 1 2 0 7  4  5 unbeaten
+3  Reds   3 1 2 0 4  3  5 unbeaten
+4  Blues  3 0 0 3 2  10 0 winless,bottom
+> form reds
+Reds form: D D (+1 older)
+Latest round 3, earliest round 1.
+> streak reds
+Reds: 3 played, 2 after the first; scored every game false; lost false.
+> streak blues
+Blues: 3 played, 2 after the first; scored every game false; lost true.
+> report golds
+Golds: played 3; points 5; scored 7; home wins 0; to play 0;
+> prefer 3
+scored now comes before difference.
+> rules
+Order by points, scored, difference, order.
+> table
+   team   P W D L  F  A  Pts
+1  Golds  3 1 2 0 7  4  5 leader,unbeaten
+2  Greens 3 1 2 0 5  1  5 unbeaten
+3  Reds   3 1 2 0 4  3  5 unbeaten
+4  Blues  3 0 0 3 2  10 0 winless,bottom
+> prefer 2
+scored now comes before points.
+> rules
+Order by scored, points, difference, order.
+> table
+   team   P W D L  F  A  Pts
+1  Golds  3 1 2 0 7  4  5 leader,unbeaten
+2  Greens 3 1 2 0 5  1  5 unbeaten
+3  Reds   3 1 2 0 4  3  5 unbeaten
+4  Blues  3 0 0 3 2  10 0 winless,bottom
+> prefer 1
+That rule can't be moved.
+> prefer 4
+That rule can't be moved.
+> result 7 1 1
+No fixture 7.
+> result 2 x
+I didn't understand that sentence.
+> form purples
+I didn't understand that sentence.

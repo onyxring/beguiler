@@ -1846,7 +1846,7 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
                 if(m->isEmitter && anc != nullptr)
                     parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method.",
                                         outer, recvText, member.value));
-                string callName = m->i6name.empty() ? member.value : m->i6name;
+                string callName = methodCallName(m, member.value);
                 string call = parenthesizeReceiver(recvText) + "." + (anc != nullptr ? anc->i6Name() + "::" + callName : callName) + "(";
                 for(size_t i = 0; i < pal.args.size(); i++) call += (i ? ", " : "") + pal.args[i]->text();
                 expr->tokens.push_back(call + ")");
@@ -2485,7 +2485,7 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
                 }
             } else {
                 // Non-emitter method: emit as subscriptText.method(args)
-                const string& callName = method->i6name.empty() ? member.value : method->i6name;
+                const string callName = methodCallName(method, member.value);
                 string call = recv + "." + callName + "(";
                 for(size_t pi = 0; pi < pal.args.size(); pi++){
                     if(pi > 0) call += ", ";
@@ -2592,6 +2592,7 @@ bglParser::ExprStep bglParser::parseExprCall(ExprParseState& st, token& next){
     // A local or parameter of the name (a func<> value) is nearer than any member (§3.8.1).
     bool isLocalName = func != nullptr && (qualifyFromParams(callName, func) || qualifyFromBodyLocals(callName, body)
                                            || qualifyFromAncestorBlocks(callName, body));
+    if(!forceGlobal) rejectCallOfPlainLocal(callName, cur.originalValue, func, body);
     if(func != nullptr && !forceGlobal && !isLocalName && callName.find('.') == string::npos){
         // Recursive self-call: the function being parsed isn't yet in
         // currentObject->members (registered post-body), so match by name
@@ -2739,7 +2740,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                         : " " + optTemp + " = " + expandEmitterBody(blk, mb) + ";";
                 }
             } else {
-                const string& callName = method->i6name.empty() ? methName : method->i6name;
+                const string callName = methodCallName(method, methName);
                 string call = optTemp + "." + callName + "(";
                 for(size_t i = 0; i < callArgs.size(); i++){
                     if(i > 0) call += ", ";
@@ -2792,7 +2793,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                         : " " + optTemp + " = " + expandEmitterBody(blk, mb) + ";";
                     }
                 } else {
-                    const string& callName = method->i6name.empty() ? methName : method->i6name;
+                    const string callName = methodCallName(method, methName);
                     string call = optTemp + "." + callName + "(";
                     for(size_t i = 0; i < callArgs.size(); i++){ if(i > 0) call += ", "; call += callArgs[i]->text(); }
                     call += ")";
@@ -2908,6 +2909,17 @@ bglParser::ExprStep bglParser::parseExprSelfMember(ExprParseState& st, token& me
     // (mirrors the non-self property-access path).
     expr->emitterSelf = selfText;
     return ExprStep::Advance;
+}
+
+// A method's I6 name. One not yet declared (called above its class or object) gets the name its
+// declaration will: a member named like a global (an attribute such as `light`) is renamed.
+string bglParser::methodCallName(functionDef* fd, const string& written){
+    if(fd == nullptr || !fd->i6name.empty()) return fd ? fd->i6name : written;
+    // The same rule the declaration applies (parseClassMethodMember / processMemberMethod).
+    if(fd->isPrePassStub && !fd->isEmitter && !fd->isExternal && !fd->isStatic
+       && (isI6OperatorWord(fd->name) || (fd->src.file.find("beguiLib") == string::npos && namesLibraryGlobal(fd->name))))
+        return "_m_" + fd->dName();
+    return written;
 }
 
 // `obj.method(args)` — bind the call on the receiver's type and emit it.

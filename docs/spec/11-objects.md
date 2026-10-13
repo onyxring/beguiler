@@ -412,6 +412,10 @@ o.parent = bowl;` moves every child. A body that moves *other* children of `obj`
 changes what the remaining iterations see; to visit exactly the children present at the start, iterate
 the snapshot `bgl.world.inParent(obj)` instead.
 
+**First child and next sibling.** `obj.child` is the object's first child, or `null`; `obj.sibling` is
+the next object with the same parent, or `null`. They walk the tree one step at a time, as Inform 6's
+`child()` and `sibling()` do; `for … in obj.children` is the usual way to visit every child.
+
 **Run-time placement.** `obj.children += { … }` moves each listed object into `obj`. `=` on
 `children` is permitted only in an object body, and `-=` is not permitted; to remove an object, move
 it by assigning its `parent`.

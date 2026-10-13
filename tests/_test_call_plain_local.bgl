@@ -1,0 +1,6 @@
+/* A parameter that hides a function (case doesn't count) can't be called. */
+// EXPECT_ERROR: 'Chime' here is a local of type bool, which can't be called, and it hides the function 'Chime'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void Chime(int h) { print(h); }
+void Advance(bool chime) { if (chime) Chime(3); }
+void main(){ Advance(true); }

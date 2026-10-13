@@ -1,0 +1,13 @@
+// run_measure7_forms — a member named like Inform 6's own `sender` global, a method named like an
+// attribute called above its object, and `::name(…)` past a parameter that hides the function.
+// EXPECT_OUTPUT: 7 lit chimed
+#beguilerSettings { target = z5; informName = "none"; }
+extern attribute light;
+class Letter : object { int sender; }
+Letter l1 { sender = 7; }
+class Lamp : object { void use() { shed.light(self); } }
+Lamp lamp1 { }
+object shed { void light(object v) { print("lit "); } }
+void Chime() { print("chimed"); }
+void Advance(bool chime) { if (chime) ::Chime(); }
+void main(){ bglInit(); print($"{l1.sender} "); lamp1.use(); Advance(true); print("^"); }

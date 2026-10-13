@@ -227,7 +227,7 @@ void Main() {
 
 **Settings**
 
-The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Exhausting the pool is a runtime error. Each buffer holds `bglStringDefaultSize` characters (default `500`, §22.2). Both are I6 constants, set before the include:
+The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). Each buffer holds `bglStringDefaultSize` characters (default `500`, §22.2). Both are I6 constants, set before the include:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }

@@ -1,0 +1,553 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a lights-and-fuel kit and its consumer. The kit declares an enum of flame sizes; a value
+// class of fuel with two copy operators, + and - over ints, <=> (giving < and >), == and != against
+// an int, and a show method; a light class with a required positional tank, an owned fuel, a burn
+// rate, static lit and burnt-out counts, a required kind() routine, a default smell() and refillable(),
+// a flame() that maps a percentage through a switch with ranges, an ignite() that throws a reason
+// code, a snuff(), a daemon() started with StartDaemon that burns fuel each turn and puts the light out
+// when it runs dry, and a before() that takes over the library's Burn. A pooled match class with
+// name words and a short_name in the class body, a time_left and a time_out() run by StartTimer, a
+// create() that moves it to the player and a destroy() that takes it out of the tree. The shed object
+// is a namespace (alias … for the enum and the fuel) holding an array of lights, an array of matches
+// swept with remove/delete in a while loop, a stringObj log, an owned reserve of fuel, an inline
+// accessor that clamps the draft and counts changes through outer., a kindle() method that finds a
+// flame and catches ignite()'s throws, a refill with a do/while loop, a switch on aliased values, a
+// union-returning search and a func<> walk. The consumer has a lit room and a dark room, three lights
+// (positional tanks, one partly full), extends the light class with tests and the shed with a
+// capturing <linq> count and a ternary; its verbs strike matches, snuff and refill lights, set the
+// draft, sweep burnt matches, find the brightest light through typeof and casts, and report with
+// <linq> filter/count/any/all/first/orderBy/take, ??, a copied and lambda-sorted local array,
+// bgl.world.instances with a predicate, and an #if line.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LA25_TRACE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: lights that burn fuel each turn, and matches to light them with. ====
+
+/// How big a light's flame is.
+enum eLa25Flame { none, low, steady, bright }
+
+/// An amount of fuel in units, copied on assignment.
+value class La25Fuel {
+    int units;
+    La25Fuel operator = (La25Fuel o) { units = o.units; return self; }
+    La25Fuel operator = (int u) { units = u; return self; }
+    /// The fuel with some units more.
+    La25Fuel operator + (int u) {
+        La25Fuel r;
+        r.units = units + u;
+        return r;
+    }
+    /// The fuel with some units less, never below nothing.
+    La25Fuel operator - (int u) {
+        La25Fuel r;
+        r.units = bgl.util.math.max(units - u, 0);
+        return r;
+    }
+    /// Negative when this is less, 0 when the same, positive when more.
+    int operator <=> (La25Fuel o) { return units - o.units; }
+    /// True when it is exactly so many units.
+    bool operator == (int u) { return units == u; }
+    /// True when it is not so many units.
+    bool operator != (int u) { return units != u; }
+
+    /// Prints the fuel as units, or "dry".
+    void show() {
+        if (units == 0) print("dry");
+        else print($"{units}u");
+    }
+}
+
+/// A thing that gives light while it burns fuel.
+class La25Light : object {
+    /// The most fuel it holds, in units.
+    required inline int tank;
+    La25Fuel fuel;
+    /// Units burned each turn while lit.
+    int rate = 1;
+    /// Units this light has burned.
+    int burned = 0;
+    /// Lights burning now.
+    static int lit = 0;
+    /// Times a light has burned dry.
+    static int outs = 0;
+
+    /// A word for what it burns.
+    required string kind();
+    /// What it leaves in the air when it goes out.
+    default string smell() { return "smoke"; }
+    /// False for a light that can't take more fuel.
+    default bool refillable() { return true; }
+
+    /// How full, in percent.
+    int percent() { return fuel.units * 100 / tank; }
+
+    /// True while it burns.
+    bool isLit() { return has(light); }
+
+    /// The size of its flame.
+    eLa25Flame flame() {
+        if (!isLit()) return eLa25Flame.none;
+        switch (percent()) {
+            case 0:        return eLa25Flame.none;
+            case 1 to 25:  return eLa25Flame.low;
+            case 26 to 75: return eLa25Flame.steady;
+            default:       return eLa25Flame.bright;
+        }
+    }
+
+    /// Lights it. Throws 1 when it already burns, 2 when it has no fuel.
+    void ignite() {
+        if (isLit()) throw 1;
+        if (fuel == 0) throw 2;
+        give(light);
+        La25Light.lit++;
+        StartDaemon(self);
+    }
+
+    /// Puts it out; false when it was not burning.
+    bool snuff() {
+        if (!isLit()) return false;
+        ungive(light);
+        La25Light.lit--;
+        StopDaemon(self);
+        return true;
+    }
+
+    /// Takes in fuel up to the tank; returns how much fitted.
+    int refill(int amount) {
+        int fit = bgl.util.math.min(amount, tank - fuel.units);
+        fuel = fuel + fit;
+        return fit;
+    }
+
+    void daemon() {
+        int use = bgl.util.math.min(rate + la25Shed.extra(), fuel.units);
+        fuel = fuel - use;
+        burned += use;
+        if (fuel != 0) return;
+        snuff();
+        La25Light.outs++;
+        la25Shed.log += $"out:{kind()} ";
+        if (parent == player || parent == location) print($"The {self} goes out, leaving {smell()}.^");
+    }
+
+    bool before() {
+        if (action != ::Burn) return false;
+        la25Shed.kindle(self, second);
+        return true;
+    }
+}
+
+/// A struck match; made with new and handed back with delete.
+class La25Match[3] : object {
+    string short_name = "lit match";
+    name = {.match, .lit, .burnt};
+    attributeList attributes = {light};
+    int time_left;
+    bool spent = false;
+    /// Matches struck so far.
+    static int struck = 0;
+    /// Matches swept away so far.
+    static int swept = 0;
+
+    void create() {
+        parent = player;
+        struck++;
+        StartTimer(self, 2);
+    }
+
+    void destroy() {
+        StopTimer(self);
+        parent = null;
+        swept++;
+    }
+
+    void time_out() {
+        ungive(light);
+        spent = true;
+        short_name = "burnt match";
+        if (parent == player) print("Your match burns out.^");
+    }
+}
+
+/// Report verbs: they take no time.
+class La25Info : verb {
+    meta = true;
+}
+
+// ==== The shed. ====
+
+/// The shed: knows the lights and the matches, lights and fills them, and keeps a log.
+object la25Shed {
+    "shed";
+    alias flame for eLa25Flame;
+    alias fuel for La25Fuel;
+    array<La25Light> lights[4];
+    array<La25Match> matches[3];
+    stringObj log;
+    /// Oil left in the can.
+    fuel reserve;
+    int changes = 0;
+
+    /// How strong the draft is, kept from 0 to 3; each change is counted.
+    auto draft = {
+        int _d = 0;
+        int operator () { return _d; }
+        void operator = (int v) {
+            int c = bgl.util.math.clamp(v, 0, 3);
+            if (c != _d) outer.changes++;
+            _d = c;
+        }
+    }
+
+    /// Extra units each light burns in a strong draft.
+    int extra() { return draft >= 2 ? 1 : 0; }
+
+    /// Adds a light; false when it is there already or there is no room.
+    bool register(La25Light v) {
+        if (lights.contains(v)) return false;
+        return lights.append(v);
+    }
+
+    /// A word for a flame.
+    string word(flame f) {
+        switch (f) {
+            case flame.low:    return "low";
+            case flame.steady: return "steady";
+            case flame.bright: return "bright";
+            default:           return "dark";
+        }
+    }
+
+    /// A lit match the player holds, or null.
+    La25Match heldFlame() {
+        return matches.filter((La25Match m) => m.parent == player && m.has(light)).first();
+    }
+
+    /// Strikes a new match into the player's hand; null when none is left.
+    La25Match strike() {
+        La25Match m = new La25Match();
+        if (!(m?)) return null;
+        matches.append(m);
+        log += "strike ";
+        return m;
+    }
+
+    /// Lights a light from a flame: the one given, or a lit match the player holds.
+    void kindle(La25Light v, object with) {
+        object source = with;
+        if (source == null) source = heldFlame();
+        if (source == null || source.hasnt(light)) {
+            print("You have no flame.^");
+            return;
+        }
+        if (source == v) {
+            print("It can't light itself.^");
+            return;
+        }
+        try {
+            v.ignite();
+        } catch (int code) {
+            switch (code) {
+                case 1: print($"The {v} is already burning.^");
+                case 2: print($"The {v} has no {v.kind()}.^");
+            }
+            log += "x ";
+            return;
+        }
+        log += $"lit:{v.kind()} ";
+        print($"The {v} lights with a {word(v.flame())} flame.^");
+    }
+
+    /// Fills a light from the can five units at a time. Returns how much went in.
+    int refill(La25Light v) {
+        if (!v.refillable()) {
+            print($"The {v} can't take {v.kind()}.^");
+            return 0;
+        }
+        if (reserve == 0) {
+            print("The can is empty.^");
+            return 0;
+        }
+        int total = 0;
+        do {
+            int fit = v.refill(bgl.util.math.min(5, reserve.units));
+            if (fit == 0) break;
+            reserve = reserve - fit;
+            total += fit;
+        } while (reserve != 0 && v.fuel.units < v.tank);
+        if (total == 0) {
+            print($"The {v} is full.^");
+            return 0;
+        }
+        log += $"fill:{v.kind()} ";
+        print($"You pour {total}u into the {v}: ");
+        v.fuel.show();
+        print(", can ");
+        reserve.show();
+        print(".^");
+        return total;
+    }
+
+    /// Sweeps away burnt matches. Returns how many went.
+    int sweep() {
+        int gone = 0;
+        int i = 0;
+        while (i < matches.length) {
+            La25Match m = matches[i];
+            if (m.spent) {
+                matches.remove(i);
+                delete m;
+                gone++;
+            } else {
+                i++;
+            }
+        }
+        if (gone > 0) log += $"sweep{gone} ";
+        return gone;
+    }
+
+    /// The lit light with the fullest tank, or a word when none burns.
+    La25Light | string brightest() {
+        La25Light best = null;
+        for (La25Light v in lights) {
+            if (!v.isLit()) continue;
+            if (best == null || v.percent() > best.percent()) best = v;
+        }
+        if (best == null) return "none";
+        return best;
+    }
+
+    /// Runs a step on each light, in the order they were registered.
+    void each(func<void, La25Light> step) {
+        for (La25Light v in lights) step(v);
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    attributes = {light};
+    object n_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    object s_to = roomA;
+}
+
+La25Light brassLantern {
+    20, "brass lantern";
+    parent = roomA;
+    name = {.brass, .lantern};
+    rate = 2;
+    string kind() { return "oil"; }
+}
+
+La25Light waxCandle {
+    4, "wax candle";
+    parent = roomA;
+    name = {.wax, .candle};
+    fuel = La25Fuel{ units = 4; };
+    string kind() { return "wax"; }
+    string smell() { return "a curl of smoke"; }
+    bool refillable() { return false; }
+}
+
+La25Light tinLamp {
+    10, "tin lamp";
+    parent = roomA;
+    name = {.tin, .lamp};
+    fuel = La25Fuel{ units = 3; };
+    string kind() { return "oil"; }
+    string smell() { return "a sharp smell"; }
+}
+
+/// Every light can say whether it is nearly out.
+extend class La25Light {
+    /// True when lit with a low flame.
+    bool dim() { return flame() == eLa25Flame.low; }
+    /// True when the tank is full.
+    bool full() { return fuel.units == tank; }
+}
+
+/// The shed can count the lights burning a fuel and sum itself up in a word.
+extend la25Shed {
+    /// How many burning lights use the fuel.
+    int burning(string k) {
+        return lights.filter((La25Light v) => v.isLit() && v.kind() == k).count();
+    }
+
+    /// A one-word state.
+    string mood() {
+        return draft >= 2 ? "gusty" : "still";
+    }
+}
+
+/// Prints a light's line.
+void la25ShowLight(La25Light v) {
+    print($"{v} {v.kind()} ");
+    v.fuel.show();
+    print($"/{v.tank} {la25Shed.word(v.flame())} burned {v.burned}");
+    if (v.full()) print(" full");
+    if (v.dim()) print(" dim");
+    print("^");
+}
+
+// ==== Verbs. ====
+
+verb La25Strike {
+    grammar = {.strike};
+    void handler() {
+        La25Match m = la25Shed.strike();
+        if (m == null) {
+            print($"No match is left ({la25Shed.matches.length} in hand).^");
+            return;
+        }
+        print($"You strike a match ({La25Match.struck} so far).^");
+    }
+}
+
+verb La25Snuff {
+    grammar = {.snuff, NOUN};
+    void handler() {
+        if (!noun.is(La25Light)) {
+            print("Only lights snuff.^");
+            return;
+        }
+        La25Light v = (La25Light)noun;
+        if (!v.snuff()) {
+            print($"The {v} is not burning.^");
+            return;
+        }
+        la25Shed.log += $"snuff:{v.kind()} ";
+        print($"You snuff the {v}.^");
+    }
+}
+
+verb La25Refill {
+    grammar = {.refill, NOUN};
+    void handler() {
+        if (!noun.is(La25Light)) {
+            print("Only lights take fuel.^");
+            return;
+        }
+        la25Shed.refill((La25Light)noun);
+    }
+}
+
+verb La25Sweep {
+    grammar = {.sweep};
+    void handler() {
+        int gone = la25Shed.sweep();
+        print($"swept {gone}; matches {la25Shed.matches.length}.^");
+    }
+}
+
+La25Info La25Draft {
+    grammar = {.draft, NUMBER};
+    void handler() {
+        la25Shed.draft = (int)noun;
+        print($"draft {la25Shed.draft}, changes {la25Shed.changes}, {la25Shed.mood()}.^");
+    }
+}
+
+La25Info La25Brightest {
+    grammar = {.brightest};
+    void handler() {
+        La25Light | string r = la25Shed.brightest();
+        if (typeof(r) == eType.object) {
+            La25Light v = (La25Light)r;
+            print($"The {v} is brightest at {v.percent()}%; {la25Shed.burning(v.kind())} burn {v.kind()}.^");
+        } else {
+            print($"Brightest: {(string)r}.^");
+        }
+    }
+}
+
+La25Info La25Lights {
+    grammar = {.lights};
+    void handler() {
+        la25Shed.each((La25Light v) => la25ShowLight(v));
+        int burning = la25Shed.lights.filter((La25Light v) => v.isLit()).count();
+        print($"lit {burning}/{La25Light.lit}");
+        if (la25Shed.lights.any((La25Light v) => v.dim())) print(", one dim");
+        if (la25Shed.lights.all((La25Light v) => v.fuel != 0)) print(", all fuelled");
+        La25Light firstDark = la25Shed.lights.filter((La25Light v) => !v.isLit()).first();
+        object which = firstDark ?? roomA;
+        print($"; first dark {which}; can ");
+        la25Shed.reserve.show();
+        print($", outs {La25Light.outs}^");
+        print($"matches {la25Shed.matches.length} (struck {La25Match.struck}, swept {La25Match.swept}); log {la25Shed.log}^");
+#if LA25_TRACE
+        print($"draft {la25Shed.draft}, oil {la25Shed.burning("oil")}, wax {la25Shed.burning("wax")}^");
+#endif
+    }
+}
+
+La25Info La25Rank {
+    grammar = {.rank};
+    void handler() {
+        array<La25Light> order[4];
+        order = la25Shed.lights;
+        order.sort((La25Light a, La25Light b) => b.fuel.units - a.fuel.units);
+        for (La25Light v in order) print($"{v}={v.fuel.units} ");
+        La25Light top = order.first();
+        if (top.fuel == 0) print("all dry");
+        else if (top.fuel > order[1].fuel) print($"top {top}");
+        else print("tie");
+        print(".^");
+        for (La25Light v in la25Shed.lights.orderBy((La25Light a, La25Light b) => a.burned - b.burned).take(2)) {
+            print($"{v} ");
+        }
+        print("burned least.^");
+    }
+}
+
+La25Info La25Carried {
+    grammar = {.carried};
+    void handler() {
+        int n = 0;
+        int units = 0;
+        for (object o in bgl.world.instances(La25Light, (object v) => v.parent == player)) {
+            La25Light v = (La25Light)o;
+            print($"{v} ");
+            n++;
+            units += v.fuel.units;
+        }
+        print($"- {n} carried, {units}u.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la25Shed.reserve = 22;
+    la25Shed.register(brassLantern);
+    la25Shed.register(waxCandle);
+    la25Shed.register(tinLamp);
+    la25Shed.register(waxCandle);
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,568 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a letter tray sorted into folders. A class Letter : object with a sender, a subject,
+// a body, a day, an enum folder and a seen flag, whose before() opens it in a reader on Examine and
+// answers Burn, and a method returning a stringObj built with format(); a value class FolderCounts
+// (one int per folder, copy operator, add() switching on the enum, total and a per-folder lookup)
+// copied as a snapshot before each move; a text grid split above the main window with a border, and
+// a second grid split to the left of it with a styleSheet, both redrawn from a replaced
+// DrawStatusLine, the sidebar marking the folder being viewed; a text-buffer reader split below the
+// main window with its own styleSheet, cleared and redrawn, resized through height from an object's
+// inline auto { } accessor that clamps the value and reaches outer, closed and reopened; links with
+// block-bodied lambda targets and named-function targets, and links whose targets are enum values
+// handled in a program-defined HandleGlkEvent that redraws the sidebar; a ring of recent moves in an
+// <array> of stringObj (enqueue, dequeue, length); <linq> filter, count, any, all, orderBy with named
+// comparator functions using compareTo and <=> on strings, first and last over an array<Letter>; a
+// for over an enum list and over a string list; verbs taking NOUN and NUMBER; stringObj padding,
+// left, trim, toUpper, contains and startsWith; bgl.ui.screen.setStyle with a user style;
+// checkStyle, styleHonored and distinguishes on the reader; supports.hyperlinks; a fixed-pitch table.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define MAX_RECENT 3
+#define SIDE_WIDTH 16
+#define READER_LINES 5
+#define BAND_LINES 5
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eFolder { inbox, keep, bin }
+enum eOrder { byDay, bySender, bySubject }
+enum eLinks { showInbox = 11, showKeep, showBin }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet sideLook = styleSheet{
+    normal = style{ reverse = true; };
+};
+styleSheet readLook = styleSheet{
+    normal = style{ indentation = 2; };
+    header = style{ fontWeight = 1; foreColor = $0000A0; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz band = null;
+textGridWindowVert side = null;
+textBufferWindowHorz reader = null;
+Letter current = null;
+eFolder viewing = eFolder.inbox;
+eOrder sortOrder = eOrder.byDay;
+array<stringObj> recent[MAX_RECENT];
+int moves = 0;
+int clicks = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string yn(bool b) { return b ? "yes" : "no"; }
+
+string folderName(eFolder f) {
+    switch (f) {
+        case eFolder.inbox: return "inbox";
+        case eFolder.keep:  return "keep";
+        case eFolder.bin:   return "bin";
+    }
+    return "?";
+}
+
+string orderName(eOrder o) {
+    switch (o) {
+        case eOrder.byDay:     return "day";
+        case eOrder.bySender:  return "sender";
+        case eOrder.bySubject: return "subject";
+    }
+    return "?";
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+stringObj padLeft(stringObj s, int width) {
+    while (s.length < width) s = " " + s;
+    return s;
+}
+
+void remember(stringObj what) {
+    if (recent.length == recent.size) recent.dequeue();
+    recent.enqueue(what);
+}
+
+// ---- counts --------------------------------------------------------------------------------------
+
+value class FolderCounts {
+    int inbox;
+    int keep;
+    int bin;
+
+    FolderCounts operator = (FolderCounts o) {
+        inbox = o.inbox;
+        keep = o.keep;
+        bin = o.bin;
+        return self;
+    }
+
+    void zero() {
+        inbox = 0;
+        keep = 0;
+        bin = 0;
+    }
+
+    void add(eFolder f) {
+        switch (f) {
+            case eFolder.inbox: inbox++;
+            case eFolder.keep:  keep++;
+            case eFolder.bin:   bin++;
+        }
+    }
+
+    int total() { return inbox + keep + bin; }
+
+    int inFolder(eFolder f) {
+        switch (f) {
+            case eFolder.inbox: return inbox;
+            case eFolder.keep:  return keep;
+            case eFolder.bin:   return bin;
+        }
+        return 0;
+    }
+}
+
+FolderCounts counts;
+FolderCounts previous;
+
+// ---- letters -------------------------------------------------------------------------------------
+
+class Letter : object {
+    string sender = "nobody";
+    string subject = "";
+    string body = "";
+    int day = 1;
+    eFolder folder = eFolder.inbox;
+    bool seen = false;
+
+    stringObj summary() {
+        stringObj s = sender;
+        return s.format("$0 - $1", subject);
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                openLetter(self);
+                rtrue;
+            case Burn:
+                printLine($"Put {the(self)} in the bin instead.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A tray of letters is on the desk.";
+    attributes = {light};
+}
+
+Letter redLetter {
+    "red letter";
+    parent = roomA;
+    name = {.red, .letter};
+    sender = "Hall office";
+    subject = "Key return";
+    day = 3;
+    body = "Please return the cabinet key to the desk by Friday.";
+}
+
+Letter blueLetter {
+    "blue letter";
+    parent = roomA;
+    name = {.blue, .letter};
+    sender = "Archive";
+    subject = "Boxes";
+    day = 1;
+    body = "The boxes from Room B are now in the archive.";
+}
+
+Letter whiteLetter {
+    "white letter";
+    parent = roomA;
+    name = {.white, .letter};
+    sender = "Desk";
+    subject = "Lamps";
+    day = 2;
+    body = "The lamps in Room B go out at five.";
+}
+
+Letter greenLetter {
+    "green letter";
+    parent = roomA;
+    name = {.green, .letter};
+    sender = "Archive";
+    subject = "Audit";
+    day = 4;
+    body = "An audit of the shelves starts on Monday.";
+}
+
+array<Letter> letters = { redLetter, blueLetter, whiteLetter, greenLetter };
+
+void recount() {
+    counts.zero();
+    for (Letter l in letters) counts.add(l.folder);
+}
+
+// ---- reader settings -----------------------------------------------------------------------------
+
+object readerPrefs {
+    int low = 3;
+    int high = 8;
+    auto lines = {
+        int _n = READER_LINES;
+        int operator () { return _n; }
+        void operator = (int v) {
+            if (v < outer.low) v = outer.low;
+            if (v > outer.high) v = outer.high;
+            _n = v;
+        }
+    }
+}
+
+// ---- the reader ----------------------------------------------------------------------------------
+
+void openReader() {
+    reader = bgl.ui.mainWin.splitDownBuffer(readerPrefs.lines, fixed, styles: readLook);
+}
+
+void showLetter() {
+    if (current == null) return;
+    if (reader == null) openReader();
+    reader?.clear();
+    reader?.printLine($"{current.summary()} (day {current.day})");
+    reader?.printLine(current.body);
+    reader?.printLine($"Filed in: {folderName(current.folder)}");
+}
+
+void openLetter(Letter l) {
+    current = l;
+    bool first = !l.seen;
+    l.seen = true;
+    showLetter();
+    if (first) printLine($"You open {the(l)} from {l.sender}.");
+    else printLine($"You look at {the(l)} again.");
+}
+
+void closeReader() {
+    reader?.close();
+    reader = null;
+}
+
+// ---- moving letters ------------------------------------------------------------------------------
+
+void moveTo(Letter l, eFolder f) {
+    if (l.folder == f) {
+        printLine($"{cThe(l)} is already in {folderName(f)}.");
+        return;
+    }
+    previous = counts;
+    stringObj note = $"{printName(l)}: {folderName(l.folder)} to {folderName(f)}";
+    l.folder = f;
+    moves++;
+    recount();
+    remember(note);
+    printLine($"{cThe(l)} goes to {folderName(f)} ({previous.inFolder(f)} -> {counts.inFolder(f)}).");
+    if (current == l) showLetter();
+}
+
+// ---- listing -------------------------------------------------------------------------------------
+
+int byDay(Letter a, Letter b) { return a.day - b.day; }
+
+int bySender(Letter a, Letter b) {
+    stringObj sa = $"{a.sender}";
+    int c = sa.compareTo(b.sender);
+    if (c == 0) return a.day - b.day;
+    return c;
+}
+
+int bySubject(Letter a, Letter b) { return a.subject <=> b.subject; }
+
+void listFolder(eFolder f) {
+    viewing = f;
+    if (!letters.any((Letter l) => l.folder == viewing)) {
+        printLine($"The {folderName(f)} is empty.");
+        return;
+    }
+    array<Letter> shown[8];
+    switch (sortOrder) {
+        case eOrder.byDay:     shown = letters.filter((Letter l) => l.folder == viewing).orderBy(byDay);
+        case eOrder.bySender:  shown = letters.filter((Letter l) => l.folder == viewing).orderBy(bySender);
+        case eOrder.bySubject: shown = letters.filter((Letter l) => l.folder == viewing).orderBy(bySubject);
+    }
+    stringObj head = $"{folderName(f)}";
+    printLine($"{head.toUpper()} by {orderName(sortOrder)}:");
+    for (Letter l in shown) {
+        stringObj mark = l.seen ? " " : "*";
+        printLine($"{mark} {l.day} {l.summary()}");
+    }
+    printLine($"{shown.count()} letter{shown.count() == 1 ? "" : "s"}; oldest {shown.first().subject}, last {shown.last().subject}.");
+}
+
+void view(eFolder f) {
+    viewing = f;
+    drawSide();
+    printLine($"Viewing {folderName(f)}.");
+}
+
+void folderLinks() {
+    printLine($"Folders: {link("inbox", => { view(eFolder.inbox); })} {link("keep", => { view(eFolder.keep); })} {link("bin", => { view(eFolder.bin); })}");
+}
+
+void nextOrder() {
+    switch (sortOrder) {
+        case eOrder.byDay:     sortOrder = eOrder.bySender;
+        case eOrder.bySender:  sortOrder = eOrder.bySubject;
+        case eOrder.bySubject: sortOrder = eOrder.byDay;
+    }
+    printLine($"Sorted by {orderName(sortOrder)}.");
+}
+
+// ---- the sidebar ---------------------------------------------------------------------------------
+
+void drawSide() {
+    if (side == null) return;
+    side.clear();
+    int row = 0;
+    for (eFolder f in {eFolder.inbox, eFolder.keep, eFolder.bin}) {
+        side.moveCursor(0, row);
+        stringObj label = $"{f == viewing ? ">" : " "}{folderName(f)}";
+        stringObj n = $"{counts.inFolder(f)}";
+        side.print($"{padRight(label, 8)}{padLeft(n, 3)}");
+        row++;
+    }
+    side.moveCursor(0, row);
+    side.print($"links {clicks}");
+    side.moveCursor(0, row + 1);
+    int unseen = letters.filter((Letter l) => !l.seen).count();
+    side.print($"unread {unseen}");
+}
+
+void drawBand() {
+    if (band == null) return;
+    band.clear();
+    band.moveCursor(0, 0);
+    if (current == null) {
+        band.print("(no letter open)");
+        return;
+    }
+    stringObj subj = $"{current.subject}";
+    band.print(subj.toUpper());
+    band.moveCursor(0, 1);
+    band.print($"from {current.sender}, day {current.day}");
+    band.moveCursor(0, 2);
+    band.print($"in {folderName(current.folder)}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | moves {moves} | {orderName(sortOrder)}");
+    drawBand();
+    drawSide();
+}
+
+int HandleGlkEvent(var event, var context, var buffer) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.showInbox: viewing = eFolder.inbox;
+            case (int)eLinks.showKeep:  viewing = eFolder.keep;
+            case (int)eLinks.showBin:   viewing = eFolder.bin;
+            default: return 0;
+        }
+        clicks++;
+        drawSide();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    bgl.ui.screen.setStyle(eGlulxStyleType.user1, style{ italics = true; });
+    band = bgl.ui.mainWin.splitUpGrid(BAND_LINES, fixed, border);
+    side = band?.splitLeftGrid(SIDE_WIDTH, fixed, border, styles: sideLook);
+    recount();
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Keep {
+    grammar = {.keep, NOUN};
+    void handler() {
+        if (!noun.is(Letter)) { printLine("Only letters go in folders."); return; }
+        moveTo((Letter)noun, eFolder.keep);
+    }
+}
+
+verb Bin {
+    grammar = {.bin, NOUN};
+    void handler() {
+        if (!noun.is(Letter)) { printLine("Only letters go in folders."); return; }
+        moveTo((Letter)noun, eFolder.bin);
+    }
+}
+
+verb Unfile {
+    grammar = {.unfile, NOUN};
+    void handler() {
+        if (!noun.is(Letter)) { printLine("Only letters go in folders."); return; }
+        moveTo((Letter)noun, eFolder.inbox);
+    }
+}
+
+verb Tray {
+    grammar = {.tray};
+    meta = true;
+    void handler() {
+        listFolder(viewing);
+        folderLinks();
+    }
+}
+
+verb Reorder {
+    grammar = {.reorder};
+    meta = true;
+    void handler() { nextOrder(); }
+}
+
+verb Lines {
+    grammar = {.lines, NUMBER};
+    meta = true;
+    void handler() {
+        int asked = (int)noun;
+        readerPrefs.lines = asked;
+        if (reader != null) reader.height = readerPrefs.lines;
+        if (readerPrefs.lines != asked) printLine($"The reader takes {readerPrefs.low} to {readerPrefs.high} lines; using {readerPrefs.lines}.");
+        else printLine($"Reader set to {readerPrefs.lines} lines.");
+    }
+}
+
+verb Fold {
+    grammar = {.fold};
+    meta = true;
+    void handler() {
+        if (reader == null) { printLine("The reader is not open."); return; }
+        closeReader();
+        printLine("The reader closes.");
+    }
+}
+
+verb History {
+    grammar = {.history};
+    meta = true;
+    void handler() {
+        if (recent.length == 0) { printLine("No moves yet."); return; }
+        printLine($"Last {recent.length} of {moves} moves:");
+        for (stringObj r in recent) printLine($"  {r}");
+    }
+}
+
+verb Senders {
+    grammar = {.senders};
+    meta = true;
+    void handler() {
+        printLine($"{fixed}{padRight("Sender", 12)} {padLeft("In", 3)} {padLeft("Kept", 4)}{roman}");
+        for (string who in {"Archive", "Desk", "Hall office"}) {
+            int inTray = letters.filter((Letter l) => l.folder == eFolder.inbox && l.sender == who).count();
+            int kept = letters.filter((Letter l) => l.folder == eFolder.keep && l.sender == who).count();
+            stringObj w = $"{who}";
+            stringObj a = $"{inTray}";
+            stringObj b = $"{kept}";
+            printLine($"{fixed}{padRight(w.left(12), 12)} {padLeft(a, 3)} {padLeft(b, 4)}{roman}");
+        }
+    }
+}
+
+verb Mentions {
+    grammar = {.mentions};
+    meta = true;
+    void handler() {
+        int hits = 0;
+        for (Letter l in letters) {
+            stringObj b = $"{l.body}";
+            if (b.contains("Room B")) {
+                hits++;
+                printLine($"{l.subject}: {b.left(20).trim()}...");
+            }
+        }
+        printLine($"{hits} letters mention Room B.");
+    }
+}
+
+verb Folders {
+    grammar = {.folders};
+    meta = true;
+    void handler() {
+        printLine($"Go to: {link("inbox", eLinks.showInbox)} {link("keep", eLinks.showKeep)} {link("bin", eLinks.showBin)}");
+    }
+}
+
+verb Menu {
+    grammar = {.menu};
+    meta = true;
+    void handler() {
+        printLine($"Order: {link("next order", nextOrder)}. Reader: {link("close", closeReader)}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    meta = true;
+    void handler() {
+        printLine($"Links: {yn(bgl.glulx.supports.hyperlinks)}. Clicks: {clicks}.");
+        printLine($"Reader open: {yn(reader != null)}.");
+        if (reader == null) return;
+        printLine($"Reader {reader.height} lines, sidebar {side?.width} columns.");
+        eStyleCheck r = reader.checkStyle(eGlulxStyleType.header, style{ fontWeight = 1; });
+        printLine($"Header known: {yn(r.known)}.");
+        printLine($"Bold honored: {yn(reader.styleHonored(eGlulxStyleType.header, eGlulxStyleHint.fontWeight))}.");
+        printLine($"User1 distinct: {yn(reader.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.user1))}.");
+        stringObj s = $"{current?.subject}";
+        printLine($"Subject starts with K: {yn(s.startsWith("K"))}.");
+    }
+}
+
+verb Totals {
+    grammar = {.totals};
+    meta = true;
+    void handler() {
+        printLine($"{counts.total()} letters: {counts.inbox} in the inbox, {counts.keep} kept, {counts.bin} binned.");
+        Letter newest = letters.orderBy(byDay).last();
+        printLine($"Newest: {newest.subject} (day {newest.day}).");
+        if (letters.all((Letter l) => l.seen)) printLine("All read.");
+        else printLine($"Unread: {letters.filter((Letter l) => !l.seen).count()}.");
+    }
+}
+
+#includeI6 "grammar"

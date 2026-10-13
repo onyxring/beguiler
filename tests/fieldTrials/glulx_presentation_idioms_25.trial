@@ -1,0 +1,755 @@
+#grids
+Room A
+Room A. A tray of letters is on the desk.
+You can see a red letter, a blue letter, a white letter and a green letter here.
+[grid 1]
+|>inbox    4     |
+| keep     0     |
+| bin      0     |
+|links 0         |
+|unread 4        |
+[grid 2]
+|(no letter open)               |
+|                               |
+|                               |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 0 | day                            |
+> tray
+INBOX by day:
+* 1 Archive - Boxes
+* 2 Desk - Lamps
+* 3 Hall office - Key return
+* 4 Archive - Audit
+4 letters; oldest Boxes, last Audit.
+Folders: inbox keep bin
+[grid 1]
+|>inbox    4     |
+| keep     0     |
+| bin      0     |
+|links 0         |
+|unread 4        |
+[grid 2]
+|(no letter open)               |
+|                               |
+|                               |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 0 | day                            |
+> examine red letter
+You open the red letter from Hall office.
+[win 1] Hall office - Key return (day 3)
+[win 1] Please return the cabinet key to the desk by Friday.
+[win 1] Filed in: inbox
+[grid 1]
+|>inbox    4     |
+| keep     0     |
+| bin      0     |
+|links 0         |
+|unread 3        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 0 | day                            |
+> keep red letter
+The red letter goes to keep (0 -> 1).
+[win 1] Hall office - Key return (day 3)
+[win 1] Please return the cabinet key to the desk by Friday.
+[win 1] Filed in: keep
+[grid 1]
+|>inbox    3     |
+| keep     1     |
+| bin      0     |
+|links 0         |
+|unread 3        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 1 | day                            |
+> keep red letter
+The red letter is already in keep.
+[grid 1]
+|>inbox    3     |
+| keep     1     |
+| bin      0     |
+|links 0         |
+|unread 3        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 1 | day                            |
+> examine blue letter
+You open the blue letter from Archive.
+[win 1] Archive - Boxes (day 1)
+[win 1] The boxes from Room B are now in the archive.
+[win 1] Filed in: inbox
+[grid 1]
+|>inbox    3     |
+| keep     1     |
+| bin      0     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 1 | day                            |
+> bin blue letter
+The blue letter goes to bin (0 -> 1).
+[win 1] Archive - Boxes (day 1)
+[win 1] The boxes from Room B are now in the archive.
+[win 1] Filed in: bin
+[grid 1]
+|>inbox    2     |
+| keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 2 | day                            |
+> unfile red letter
+The red letter goes to inbox (2 -> 3).
+[grid 1]
+|>inbox    3     |
+| keep     0     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 3 | day                            |
+> keep green letter
+The green letter goes to keep (0 -> 1).
+[grid 1]
+|>inbox    2     |
+| keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | day                            |
+> reorder
+Sorted by sender.
+[grid 1]
+|>inbox    2     |
+| keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> tray
+INBOX by sender:
+* 2 Desk - Lamps
+  3 Hall office - Key return
+2 letters; oldest Lamps, last Key return.
+Folders: inbox keep bin
+[grid 1]
+|>inbox    2     |
+| keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> @link 6
+Viewing bin.
+[grid 1]
+| inbox    2     |
+| keep     1     |
+|>bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> @link 5
+Viewing keep.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> tray
+KEEP by sender:
+* 4 Archive - Audit
+1 letter; oldest Audit, last Audit.
+Folders: inbox keep bin
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> history
+Last 3 of 4 moves:
+  blue letter: inbox to bin
+  red letter: keep to inbox
+  green letter: inbox to keep
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> totals
+4 letters: 2 in the inbox, 1 kept, 1 binned.
+Newest: Audit (day 4).
+Unread: 2.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> senders
+Sender        In Kept
+Archive        0    1
+Desk           1    0
+Hall office    1    0
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> mentions
+Boxes: The boxes from Room...
+Lamps: The lamps in Room B...
+2 letters mention Room B.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> lines 9
+The reader takes 3 to 8 lines; using 8.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> lines 4
+Reader set to 4 lines.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> probe
+Links: yes. Clicks: 0.
+Reader open: yes.
+Reader 4 lines, sidebar 16 columns.
+Header known: no.
+Bold honored: no.
+User1 distinct: no.
+Subject starts with K: no.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> burn white letter
+Put the white letter in the bin instead.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|BOXES                          |
+|from Archive, day 1            |
+|in bin                         |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> examine red letter
+You look at the red letter again.
+[win 1] Hall office - Key return (day 3)
+[win 1] Please return the cabinet key to the desk by Friday.
+[win 1] Filed in: inbox
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> menu
+Order: next order. Reader: close.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | sender                         |
+> @link 10
+Sorted by subject.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | subject                        |
+> @link 11
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | subject                        |
+> fold
+The reader is not open.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | subject                        |
+> probe
+Links: yes. Clicks: 0.
+Reader open: no.
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 2        |
+[grid 2]
+|KEY RETURN                     |
+|from Hall office, day 3        |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | subject                        |
+> examine white letter
+You open the white letter from Desk.
+[win 2] Desk - Lamps (day 2)
+[win 2] The lamps in Room B go out at five.
+[win 2] Filed in: inbox
+[grid 1]
+| inbox    2     |
+|>keep     1     |
+| bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in inbox                       |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 4 | subject                        |
+> keep white letter
+The white letter goes to keep (1 -> 2).
+[win 2] Desk - Lamps (day 2)
+[win 2] The lamps in Room B go out at five.
+[win 2] Filed in: keep
+[grid 1]
+| inbox    1     |
+|>keep     2     |
+| bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | subject                        |
+> history
+Last 3 of 5 moves:
+  red letter: keep to inbox
+  green letter: inbox to keep
+  white letter: inbox to keep
+[grid 1]
+| inbox    1     |
+|>keep     2     |
+| bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | subject                        |
+> reorder
+Sorted by day.
+[grid 1]
+| inbox    1     |
+|>keep     2     |
+| bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | day                            |
+> tray
+KEEP by day:
+  2 Desk - Lamps
+* 4 Archive - Audit
+2 letters; oldest Lamps, last Audit.
+Folders: inbox keep bin
+[grid 1]
+| inbox    1     |
+|>keep     2     |
+| bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | day                            |
+> @link 14
+Viewing bin.
+[grid 1]
+| inbox    1     |
+| keep     2     |
+|>bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | day                            |
+> totals
+4 letters: 1 in the inbox, 2 kept, 1 binned.
+Newest: Audit (day 4).
+Unread: 1.
+[grid 1]
+| inbox    1     |
+| keep     2     |
+|>bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | day                            |
+> bin me
+Only letters go in folders.
+[grid 1]
+| inbox    1     |
+| keep     2     |
+|>bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | day                            |
+> lines 2
+The reader takes 3 to 8 lines; using 3.
+[grid 1]
+| inbox    1     |
+| keep     2     |
+|>bin      1     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 5 | day                            |
+> unfile blue letter
+The blue letter goes to inbox (1 -> 2).
+[grid 1]
+| inbox    2     |
+| keep     2     |
+|>bin      0     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 6 | day                            |
+> @link 14
+Viewing bin.
+[grid 1]
+| inbox    2     |
+| keep     2     |
+|>bin      0     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 6 | day                            |
+> tray
+The bin is empty.
+Folders: inbox keep bin
+[grid 1]
+| inbox    2     |
+| keep     2     |
+|>bin      0     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 6 | day                            |
+> probe
+Links: yes. Clicks: 0.
+Reader open: yes.
+Reader 3 lines, sidebar 16 columns.
+Header known: no.
+Bold honored: no.
+User1 distinct: no.
+Subject starts with K: no.
+[grid 1]
+| inbox    2     |
+| keep     2     |
+|>bin      0     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 6 | day                            |
+> folders
+Go to: inbox keep bin
+[grid 1]
+| inbox    2     |
+| keep     2     |
+|>bin      0     |
+|links 0         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 6 | day                            |
+> @link 18
+[grid 1]
+|>inbox    2     |
+| keep     2     |
+| bin      0     |
+|links 1         |
+|unread 1        |
+[grid 2]
+|LAMPS                          |
+|from Desk, day 2               |
+|in keep                        |
+|                               |
+|                               |
+[grid 3]
+|Room A | moves 6 | day                            |

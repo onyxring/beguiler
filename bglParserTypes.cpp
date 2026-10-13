@@ -2316,6 +2316,10 @@ bool bglParser::isI6OperatorWord(const string& name){
 
 string bglParser::clashRenamedMember(const string& name){
     if(isI6OperatorWord(name)) return "_m_" + name;
+    // Globals Inform 6 declares for itself before any source is read.
+    static const std::set<string> i6SetupGlobals = {"sender", "self", "temp_global", "temp__global2",
+        "temp__global3", "temp__global4", "sw__var", "sys__glob0", "sys__glob1", "sys__glob2", "sys_statusline_flag"};
+    if(i6SetupGlobals.count(name)) return "_m_" + name;
     if(name == "main") return "_m_" + name;   // every I6 library defines a `Main` routine
     // Inform 6 keeps properties, globals, objects and routines in one namespace. A `property` global
     // names this very property; an emitter emits no symbol.

@@ -152,6 +152,7 @@ class i6Emitter{
         // True when bglInit() has work to do — a length header to stamp, a `#startup` block, or a
         // deferred global initializer. Drives the unreachable-init warning in resolvedOutput().
         bool bglInitHasWork = false;
+        void noteRoutineParam(const string& routine, const string& param);
         map<string, set<string>> routineParams;   // routine (lowercase) → its parameters' I6 names, for the unused-parameter filter
         vector<string> trackedArraysNeedingMagicInit;
         // Byte-array analog of trackedArraysNeedingMagicInit. When `<buf>` is included, sized-

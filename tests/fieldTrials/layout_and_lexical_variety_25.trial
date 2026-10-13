@@ -1,0 +1,135 @@
+Room A
+Room A. A bench and a lamp are here. Room B is north.
+You can see a bench (on which are a basil, a mint and a fern) and a lamp here.
+> survey
+3 seeds, 0 growing, 0 in bloom, 0 wilted; 0 bloomed so far.
+Tallest: the basil (0); 0 thirsty.
+> rows
+First two: basil mint. Rest: fern.
+> log
+Nothing logged.
+> hours
+Lamp turns: 0 (0 dozen), long log.
+> measure basil
+HERB/BASI: seed, height 0, moist. Tip: pinch the tips.
+> measure fern
+FERN/FERN: seed, height 0, wet. Tip: keep it damp.
+> water basil
+You have no can.
+> north
+Room B
+Room B. A tap is set in the wall. Room A is south.
+You can see a watering can, a tap and some shears here.
+> fill can
+You fill the can (12).
+> fill can
+The can is already full.
+> water mint
+You can't see any such thing.
+> take can
+Taken.
+> take shears
+Taken.
+> prune can
+That needs no pruning.
+> south
+Room A
+Room A. A bench and a lamp are here. Room B is north.
+You can see a bench (on which are a basil, a mint and a fern) and a lamp here.
+> water mint with 3
+You water the mint (3); it is wet.
+> soak fern with 1
+You water the fern (1); it is wet.
+> water basil
+You water the basil (2); it is wet.
+> switch lamp on
+The lamp hums on.
+The basil is now a sprout.
+The mint is now a sprout.
+The fern is now a sprout.
+> wait
+Time passes.
+The mint is now in bud.
+> survey
+0 seeds, 3 growing, 0 in bloom, 0 wilted; 0 bloomed so far.
+Tallest: the mint (6); 0 thirsty; all up.
+> measure mint
+HERB/MINT: bud, height 6, moist. Tip: pinch the tips.
+The basil is now in bud.
+The fern is now in bud.
+> wait
+Time passes.
+The mint is now in bloom.
+> wait
+Time passes.
+The basil is now wilted.
+The mint is now wilted.
+> log
+7 14 21 28 30 (5 turns, 5 different).
+> prune basil
+You prune the basil to 5 (wilted).
+The fern is now wilted.
+> measure basil
+HERB/BASI: wilted, height 5, dry. Tip: pinch the tips.
+> survey
+0 seeds, 0 growing, 0 in bloom, 3 wilted; 1 bloomed so far.
+Tallest: the mint (12); 0 thirsty; all up; one or more lost.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> survey
+0 seeds, 0 growing, 0 in bloom, 3 wilted; 1 bloomed so far.
+Tallest: the mint (12); 0 thirsty; all up; one or more lost.
+> log
+27 27 27 27 27 (5 turns, 1 different).
+> hours
+Lamp turns: 10 (0 dozen), long log.
+> water basil with 20
+You water the basil (6); it is wet, and the can is empty.
+> water mint
+The can is empty.
+> water fern
+The can is empty.
+> empty can
+You tip the can out.
+> water fern
+The can is empty.
+> switch lamp off
+The lamp goes dark.
+> wait
+Time passes.
+> log
+27 27 27 27 27 (5 turns, 1 different).
+> turn tap
+You can't see any such thing.
+> measure fern
+FERN/FERN: wilted, height 10, dry. Tip: keep it damp.
+> rows
+First two: basil mint. Rest: fern.
+> fill can
+There is no tap here.
+> north
+Room B
+Room B. A tap is set in the wall. Room A is south.
+You can see a tap here.
+> turn tap
+Fill the can at the tap instead.
+> fill can
+You fill the can (12).
+> south
+Room A
+Room A. A bench and a lamp are here. Room B is north.
+You can see a bench (on which are a basil, a mint and a fern) and a lamp here.
+> water basil with 5
+You water the basil (5); it is soaked.
+> measure basil
+HERB/BASI: wilted, height 5, soaked. Tip: pinch the tips.
+> hours
+Lamp turns: 15 (1 dozen), long log.
+> drop shears
+Dropped.
+> prune mint
+You need the shears.

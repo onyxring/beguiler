@@ -2612,8 +2612,10 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             out << format("    {0}[", fd->i6name.empty() ? fd->dName() : fd->i6name);
             string sp;
             for(paramDef* p : fd->params) if(!isRequiredStub(fd))
-                if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
-                    { out << sp << spillName(p->name); sp=" "; }
+                if(currentSpillAliases.find(p->name) == currentSpillAliases.end()){
+                    out << sp << spillName(p->name); sp=" ";
+                    noteRoutineParam(fd->i6name.empty() ? fd->dName() : fd->i6name, spillName(p->name));
+                }
                 else if(currentTryParamRaw.count(p->name))
                     { out << sp << currentTryParamRaw[p->name]; sp=" "; }
             statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
@@ -2697,6 +2699,12 @@ void i6Emitter::emitClass(classDef* classNode){
     // emit attributeList members as I6 'has' line (same as emitObject)
     emitClassAttributes(classNode);
     out << ";\n";
+}
+void i6Emitter::noteRoutineParam(const string& routine, const string& param){
+    string r = routine, p = param;
+    transform(r.begin(), r.end(), r.begin(), ::tolower);
+    transform(p.begin(), p.end(), p.begin(), ::tolower);
+    routineParams[r].insert(p);
 }
 void i6Emitter::emitMember(typeMember* member){
     out<< member->name<<" ";
@@ -4366,8 +4374,10 @@ for(typeMember* m : obj->members){
         // undeclared → "'=' applied to undeclared variable". Mirrors emitFunction/emitClass.
         // (spillName == dName when there's no collision.)
         for(paramDef* p : fd->params)
-            if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
-                { out << sp << spillName(p->name); sp=" "; }
+            if(currentSpillAliases.find(p->name) == currentSpillAliases.end()){
+                out << sp << spillName(p->name); sp=" ";
+                noteRoutineParam(fd->i6name.empty() ? fd->dName() : fd->i6name, spillName(p->name));
+            }
             else if(currentTryParamRaw.count(p->name))
                 { out << sp << currentTryParamRaw[p->name]; sp=" "; }
         statementBlock* body = dynamic_cast<statementBlock*>(fd->body);

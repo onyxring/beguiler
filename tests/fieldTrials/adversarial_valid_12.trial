@@ -1,0 +1,118 @@
+Room A
+
+> probe
+Before: live 0 opened 0 closed 0.
+Vowels 2: live 0 opened 5 closed 5.
+[2][2]
+Loop: live 0 opened 8 closed 8.
+Caught -1: live 0 opened 11 closed 11.
+Lambda 20: live 0 opened 13 closed 13.
+[a:1]
+Announce: live 0 opened 14 closed 14.
+Uint big 65534 255 65 1.
+Math 12 -4 4 0 48.
+Char E same 2 5 2 3.
+
+> spell
+Nothing to spell.
+
+> peek
+First 0 on Room A none text.
+
+> place green tile on rack
+The green tile goes on the rack (1 of 5).
+
+> load rack with blue tile
+The blue tile goes on the rack (2 of 5).
+
+> place red tile on rack
+The red tile goes on the rack (3 of 5).
+
+> spell
+Word cat upper CAT back tac len 3.
+Vowels 1 sum 29804 first c last t.
+Framed <cat|tac> swapped <c4t|t4c>.
+Bands low vowel high.
+
+> points
+Points high 3 cheap 2 lead 3 distinct 2 doubled 10.
+Rare no low all.
+Score base 5 rules 1 total 15.
+
+> sort tiles
+Up A1 T1 C3; down C3 T1 A1; again A1 at 0 has no.
+Top C4 copy C0 same no differ yes.
+
+> rotate rack
+Rotated: tca.
+
+> place gold tile on rack
+The gold tile goes on the rack (4 of 5).
+
+> spell
+Word ztca upper ZTCA back actz len 4.
+Vowels 0 sum 49936 first z last a.
+Framed <ztca|actz> swapped <ztc4|4ctz>.
+Bands high high low vowel.
+
+> points
+Points high 10 cheap 2 lead 0 distinct 3 doubled 30.
+Rare yes low none.
+Score base 15 rules 6 total 44.
+
+> history
+History t@1 a@2 c@3 z@4; head t tail end last 4 dropped 0.
+
+> place gray tile on rack
+The gray tile goes on the rack (5 of 5).
+
+> history
+History a@2 c@3 z@4 e@5; head a tail end last 5 dropped 1.
+
+> back
+Took back e@5; 0 free before release.
+
+> back
+Took back z@4; 1 free before release.
+
+> spell
+Word tca upper TCA back act len 3.
+Vowels 1 sum 46193 first t last a.
+Framed <tca|act> swapped <tc4|4ct>.
+Bands high low vowel.
+
+> place red tile on rack
+The red tile is already on the rack.
+
+> history
+History a@2 c@3; head a tail end last 3 dropped 3.
+
+> load rack with gray tile
+The gray tile goes on the rack (4 of 5).
+
+> place rack on rack
+That is not a tile.
+
+> place red tile on blue tile
+Only the rack takes tiles.
+
+> peek
+First 1 on rack [e:1] text.
+
+> load rack with gray tile
+The gray tile is already on the rack.
+
+> history
+History a@2 c@3 e@4; head a tail end last 4 dropped 3.
+
+> push rack
+The rack holds 4.
+
+> clear rack
+Cleared 4; tiles.
+
+> clear rack
+Cleared 0; nothing.
+
+> back
+Took back e@4; 1 free before release.

@@ -1,0 +1,168 @@
+Room A
+Room A. Room B is north.
+You can see a brass lantern, a wax candle and a tin lamp here.
+> lights
+brass lantern oil dry/20 dark burned 0
+wax candle wax 4u/4 dark burned 0 full
+tin lamp oil 3u/10 dark burned 0
+lit 0/0; first dark brass lantern; can 22u, outs 0
+matches 0 (struck 0, swept 0); log
+draft 0, oil 0, wax 0
+> light lantern
+You have no flame.
+> refill lantern
+You pour 20u into the brass lantern: 20u, can 2u.
+> refill candle
+The wax candle can't take wax.
+> strike
+You strike a match (1 so far).
+> light lantern
+The brass lantern lights with a bright flame.
+> light lantern
+The brass lantern is already burning.
+Your match burns out.
+> brightest
+The brass lantern is brightest at 80%; 1 burn oil.
+> take lantern
+Taken.
+> light candle with lantern
+The wax candle lights with a bright flame.
+> light lamp
+You have no flame.
+> lights
+brass lantern oil 10u/20 steady burned 10
+wax candle wax 2u/4 steady burned 2
+tin lamp oil 3u/10 dark burned 0
+lit 2/2, all fuelled; first dark tin lamp; can 2u, outs 0
+matches 1 (struck 1, swept 0); log fill:oil strike lit:oil x lit:wax
+draft 0, oil 1, wax 1
+> wait
+Time passes.
+> lights
+brass lantern oil 8u/20 steady burned 12
+wax candle wax 1u/4 low burned 3 dim
+tin lamp oil 3u/10 dark burned 0
+lit 2/2, one dim, all fuelled; first dark tin lamp; can 2u, outs 0
+matches 1 (struck 1, swept 0); log fill:oil strike lit:oil x lit:wax
+draft 0, oil 1, wax 1
+> draft 2
+draft 2, changes 1, gusty.
+> draft 9
+draft 3, changes 2, gusty.
+> wait
+Time passes.
+The wax candle goes out, leaving a curl of smoke.
+> lights
+brass lantern oil 5u/20 low burned 15 dim
+wax candle wax dry/4 dark burned 4
+tin lamp oil 3u/10 dark burned 0
+lit 1/1, one dim; first dark wax candle; can 2u, outs 1
+matches 1 (struck 1, swept 0); log fill:oil strike lit:oil x lit:wax out:wax
+draft 3, oil 1, wax 0
+> rank
+brass lantern=5 tin lamp=3 wax candle=0 top brass lantern.
+tin lamp wax candle burned least.
+> sweep
+swept 1; matches 0.
+> strike
+You strike a match (2 so far).
+The brass lantern goes out, leaving smoke.
+> strike
+You strike a match (3 so far).
+> strike
+You strike a match (4 so far).
+Your match burns out.
+> strike
+No match is left (3 in hand).
+Your match burns out.
+> snuff lantern
+The brass lantern is not burning.
+Your match burns out.
+> snuff lantern
+The brass lantern is not burning.
+> light lamp with match
+You have no flame.
+> take lamp
+Taken.
+> carried
+brass lantern tin lamp - 2 carried, 3u.
+> north
+Darkness
+It is pitch dark, and you can't see a thing.
+> lights
+brass lantern oil dry/20 dark burned 20
+wax candle wax dry/4 dark burned 4
+tin lamp oil 3u/10 dark burned 0
+lit 0/0; first dark brass lantern; can 2u, outs 2
+matches 3 (struck 4, swept 1); log fill:oil strike lit:oil x lit:wax out:wax sweep1 strike out:oil strike strike
+draft 3, oil 0, wax 0
+> wait
+Time passes.
+> wait
+Time passes.
+> brightest
+Brightest: none.
+> south
+Room A
+Room A. Room B is north.
+You can see a wax candle here.
+> sweep
+swept 3; matches 0.
+> lights
+brass lantern oil dry/20 dark burned 20
+wax candle wax dry/4 dark burned 4
+tin lamp oil 3u/10 dark burned 0
+lit 0/0; first dark brass lantern; can 2u, outs 2
+matches 0 (struck 4, swept 4); log fill:oil strike lit:oil x lit:wax out:wax sweep1 strike out:oil strike strike sweep3
+draft 3, oil 0, wax 0
+> refill lamp
+You pour 2u into the tin lamp: 5u, can dry.
+> refill lamp
+The can is empty.
+> draft 0
+draft 0, changes 3, still.
+> strike
+You strike a match (5 so far).
+> light lamp
+The tin lamp lights with a steady flame.
+> north
+Room B
+Room B. Room A is south.
+Your match burns out.
+> snuff match
+Only lights snuff.
+> wait
+Time passes.
+> lights
+brass lantern oil dry/20 dark burned 20
+wax candle wax dry/4 dark burned 4
+tin lamp oil 1u/10 low burned 4 dim
+lit 1/1, one dim; first dark brass lantern; can dry, outs 2
+matches 1 (struck 5, swept 4); log fill:oil strike lit:oil x lit:wax out:wax sweep1 strike out:oil strike strike sweep3 fill:oil strike lit:oil
+draft 0, oil 1, wax 0
+> wait
+Time passes.
+The tin lamp goes out, leaving a sharp smell.
+It is now pitch dark in here.
+> wait
+Time passes.
+> wait
+Time passes.
+> snuff candle
+You can't see any such thing.
+> south
+Room A
+Room A. Room B is north.
+You can see a wax candle here.
+> snuff candle
+The wax candle is not burning.
+> rank
+brass lantern=0 wax candle=0 tin lamp=0 all dry.
+wax candle tin lamp burned least.
+> lights
+brass lantern oil dry/20 dark burned 20
+wax candle wax dry/4 dark burned 4
+tin lamp oil dry/10 dark burned 5
+lit 0/0; first dark brass lantern; can dry, outs 3
+matches 1 (struck 5, swept 4); log fill:oil strike lit:oil x lit:wax out:wax sweep1 strike out:oil strike strike sweep3 fill:oil strike lit:oil out:oil
+draft 0, oil 0, wax 0

@@ -1,0 +1,165 @@
+Room A
+Room A. A table and an oven stand here. Room B is east.
+You can see a table (on which are a scale, an old egg, a bowl (which is empty) and a kitchen timer) and an oven (which is closed) here.
+> status
+Score 0 of 3. Oven off at 20, target 180.
+Bowl empty, mixes 0, cook asked 0, given 0.
+> pantry
+3 fresh ingredients in play.
+old egg: egg, weight 1, in the table.
+brown egg: egg, weight 1, in the cupboard.
+sugar: sugar, weight 3, in the cupboard.
+flour: flour, weight 5, in the cupboard.
+> settings
+No settings made.
+> log
+The log is empty.
+> examine oven
+An oven, set to 180. Inside it is 20 degrees, cool.
+The oven is currently switched off.
+> examine bowl
+A mixing bowl. It is empty.
+Still needed: flour sugar an egg.
+> examine old egg
+An egg. It is stale.
+> weigh table
+The table weighs 5.
+> take old egg
+Taken.
+> put old egg in bowl
+The old egg is not fresh enough.
+> mix
+Still needed: flour sugar an egg.
+> east
+Room B
+Room B. A cupboard is set into the wall. Room A is west.
+You can see a cupboard (which is closed) and a cook here.
+> ask cook about cake
+The cook says: flour, sugar and an egg, mixed, then baked.
+> ask cook about eggs
+The cook says: there is a fresh egg in the cupboard.
+> ask cook about weather
+The cook shrugs.
+> give old egg to cook
+The cook throws the old egg away.
+> open cupboard
+You open the cupboard, revealing some flour, some sugar and a brown egg.
+> take all from cupboard
+flour: Removed.
+sugar: Removed.
+brown egg: Removed.
+> give flour to cook
+The cook says: the flour is fine. Keep it.
+> cook, wait
+The cook waits.
+> cook, jump
+The cook says: I am busy.
+> pantry
+3 fresh ingredients in play.
+old egg: egg, weight 1, gone.
+brown egg: egg, weight 1, carried.
+sugar: sugar, weight 3, carried.
+flour: flour, weight 5, carried.
+> west
+Room A
+You can see a table (on which are a scale, a bowl (which is empty) and a kitchen timer) and an oven (which is closed) here.
+> put flour in bowl
+You put the flour into the bowl.
+> put brown egg in bowl
+You put the brown egg into the bowl.
+> put sugar in bowl
+You put the sugar into the bowl.
+> put flour in bowl
+Already there.
+> examine bowl
+A mixing bowl. It is filling.
+The bowl holds everything it needs.
+> take sugar from bowl
+Removed.
+> examine bowl
+A mixing bowl. It is filling.
+Still needed: sugar.
+> put sugar in bowl
+You put the sugar into the bowl.
+> weigh bowl
+The bowl weighs 11.
+> mix
+You mix the 3 ingredients into a batter.
+[The score has just gone up by 1 point.]
+> mix
+The batter is already mixed.
+> set oven to 300
+The dial runs from 20 to 250.
+> set oven to 220
+You set the oven to 220, too hot.
+> set oven to 180
+You set the oven to 180, baking heat.
+> set table to 100
+Only the oven can be set.
+> settings
+Settings: 180 220. 180 was setting 2.
+> put bowl in oven
+You can't, since the oven is closed.
+> open oven
+You open the oven, revealing nothing.
+> put bowl in oven
+(first taking the bowl)
+You put the bowl into the oven.
+> switch oven on
+You should close the oven first.
+> close oven
+You close the oven.
+> switch oven on
+You switch the oven on.
+> status
+Score 1 of 3. Oven on at 80, target 180.
+Bowl batter, mixes 1, cook asked 3, given 1.
+Timer: 2.
+> wait
+Nothing happens.
+> examine oven
+An oven, set to 180. Inside it is 140 degrees, warm. It is on.
+The oven is currently switched on.
+> wait
+Nothing happens.
+The kitchen timer rings. The cake is baked.
+[The score has just gone up by 1 point.]
+> status
+Score 2 of 3. Oven on at 170, target 180.
+Bowl baked, mixes 1, cook asked 3, given 1.
+> open oven
+The oven is too hot to open. Switch it off and wait.
+> switch oven off
+You switch the oven off.
+> wait
+Nothing happens.
+> examine oven
+An oven, set to 180. Inside it is 150 degrees, warm.
+The oven is currently switched off.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> open oven
+You open the oven, revealing a bowl (which is empty).
+> take bowl
+Taken.
+> examine bowl
+A mixing bowl. It is baked.
+> east
+Room B
+You can see a cupboard (which is open but empty) and a cook here.
+> give bowl to cook
+The cook takes the cake out of the bowl and hands the bowl back.
+[The score has just gone up by 1 point.]
+> status
+Score 3 of 3. Oven off at 20, target 180.
+Bowl empty, mixes 1, cook asked 3, given 2.
+> pantry
+0 fresh ingredients in play.
+old egg: egg, weight 1, gone.
+brown egg: egg, weight 1, gone.
+sugar: sugar, weight 3, gone.
+flour: flour, weight 5, gone.
+> log
+Log (13): 1. discarded 3. 2. added 1. 3. added 3. 4. added 2. 5. took 2. 6. added 2. 7. mixed 3. 8. set 220. 9. set 180. 10. oven on 180. 11. baked 170. 12. oven off 230. 13. served.

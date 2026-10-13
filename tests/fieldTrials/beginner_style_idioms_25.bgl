@@ -1,0 +1,667 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-fifth first-time-programmer program, a small laundry room where bags of
+// washing wait in a line, are put in washers and then dryers that run for some turns, coins are
+// paid from a purse and topped up at a change machine, written the way a beginner writes it after
+// reading the spec once. Counts kept in int globals with consts for the prices and the purse size,
+// bool flags, an enum for a machine's state returned from a method and switched on, a class of
+// machines (a number, a price, turns left, the owner of the load in it, methods that work out the
+// state and the cost, a before() for Examine and Open, an after() for Close), a subclass for washers
+// and one for dryers that replace the price and the run time (one still calls the class's through a
+// cast), a value class for a ticket (owner, machine number, cost) with a copy operator, kept in an
+// array of the value class, the bags kept as a queue (enqueue / dequeue / peek / peekEnd), a list of
+// names done sorted with a comparator, an array of ints for the coins paid sorted with orderBy, a
+// wall clock with a daemon that runs the machines down, a change machine with a timer, helper
+// functions (one with a default argument, one called with a named argument, one with a ternary, one
+// returning a string from a switch with ranges and a guard), try / catch / throw for not enough
+// coins, C-style for loops with break and continue, a while loop, a do/until, <linq> filter / count
+// / any / all / map / skip / distinct / first with lambdas (one capturing a local), stringObj lines
+// built with + and += and interpolation and changed with trim, mid, indexOf, format, reverse and
+// replaceAll, a string switch, for-in over a range, an array, a literal list and children, and verbs
+// with no noun and one noun (wash, dry, bags, machines, purse, tickets, done, change, coins, report)
+// that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+// A routine below holds eight stringObjs and calls format(), which borrows working copies from the pool.
+#i6 { Constant bglStringPoolReserve 16; }
+#include <string>
+#include <linq>
+
+// ===== PRICES AND COUNTS =====
+
+// what a wash costs
+const int WASH_PRICE = 3;
+// what a dry costs
+const int DRY_PRICE = 2;
+// how many coins the purse holds
+const int PURSE_SIZE = 12;
+// how many coins are in the purse
+int purse = 8;
+// how many turns have gone by
+int turnCount = 0;
+// how many loads are all done
+int loadsDone = 0;
+// is the change machine working on some change?
+bool changeBusy = false;
+// did we already say the purse is full?
+bool saidFull = false;
+
+// ===== MACHINE STATE =====
+
+enum MachineState { empty, running, finished }
+
+// ===== TICKETS =====
+
+// a ticket for one load put in a machine
+value class Ticket {
+    string owner;
+    int machineNumber;
+    int cost;
+    Ticket operator = (Ticket o) {
+        owner = o.owner;
+        machineNumber = o.machineNumber;
+        cost = o.cost;
+        return self;
+    }
+}
+
+// ===== LISTS =====
+
+// the tickets handed out
+array<Ticket> tickets[8];
+
+// the coins paid, one number for each time
+array<int> coinsPaid[10];
+
+// bags of washing waiting, first come first served
+array<string> bags[6];
+
+// the names whose washing is all done
+array<string> doneNames[6];
+
+// ===== HELPER FUNCTIONS =====
+
+// prints "1 coin" or "3 coins"
+void printCoins(int n, bool withWord = true) {
+    print(n);
+    if (withWord) {
+        if (n == 1) {
+            print(" coin");
+        } else {
+            print(" coins");
+        }
+    }
+}
+
+// "bag" or "bags"
+string bagWord(int n) {
+    return (n == 1) ? "bag" : "bags";
+}
+
+// how full the purse is, in words
+string purseWord(int n) {
+    switch (n) {
+        case < 1: return "empty";
+        case 1 to 3: return "nearly empty";
+        case 4 to 8: return "half full";
+        case 9 to 11: return "nearly full";
+    }
+    return "full";
+}
+
+// prints a state word
+void printState(MachineState s) {
+    switch (s) {
+        case MachineState.empty: print("empty");
+        case MachineState.running: print("running");
+        case MachineState.finished: print("finished");
+    }
+}
+
+// adds up an array of ints
+int addUp(array<int> nums) {
+    int total = 0;
+    for (int i = 0; i < nums.length; i++) {
+        total += nums[i];
+    }
+    return total;
+}
+
+// takes coins out of the purse; throws how many are missing
+void pay(int amount) {
+    if (purse < amount) {
+        throw amount - purse;
+    }
+    purse -= amount;
+    coinsPaid.append(amount);
+}
+
+// ===== MACHINES =====
+
+class Machine : object {
+    // the number painted on the front
+    int number = 1;
+    // how many turns are left to run
+    int turnsLeft = 0;
+    // whose washing is in it
+    string owner = "nobody";
+    // has it been used at all?
+    bool used = false;
+    string description;
+
+    // what one go costs
+    int price() {
+        return 1;
+    }
+
+    // how many turns one go takes
+    int runTime() {
+        return 2;
+    }
+
+    // works out the state
+    MachineState state() {
+        if (owner == "nobody") {
+            return MachineState.empty;
+        }
+        if (turnsLeft > 0) {
+            return MachineState.running;
+        }
+        return MachineState.finished;
+    }
+
+    // starts the machine with someone's washing in it
+    void start(string who) {
+        owner = who;
+        turnsLeft = runTime();
+        used = true;
+    }
+
+    // says how the machine is doing
+    void sayState() {
+        print($"Machine {number}: ");
+        printState(state());
+        if (state() == MachineState.running) {
+            print($", {owner}, {turnsLeft} to go");
+        }
+        if (state() == MachineState.finished) {
+            print($", {owner}'s washing");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"Machine {number}. One go costs {price()} and takes {runTime()} turns.^");
+            rtrue;
+        }
+        if (action == Open) {
+            if (state() == MachineState.running) {
+                rtrue("It is locked while it runs.^");
+            }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        if (action == Close) {
+            print($"The door of machine {number} clicks shut.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a washer costs more and takes longer
+class Washer : Machine {
+    replace int price() {
+        return WASH_PRICE;
+    }
+    replace int runTime() {
+        return 3;
+    }
+}
+
+// a dryer is a bit quicker than a washer
+class Dryer : Machine {
+    replace int price() {
+        return DRY_PRICE;
+    }
+    replace int runTime() {
+        int base = ((Machine)self).runTime();
+        return base;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The laundry room. The back room is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The back room. The laundry room is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE MACHINES =====
+
+Washer washer1 {
+    "white washer";
+    parent = roomA;
+    name = {.white, .washer};
+    number = 1;
+    description = "A washer.";
+    attributes = {static, container, openable};
+}
+
+Washer washer2 {
+    "grey washer";
+    parent = roomA;
+    name = {.grey, .washer};
+    number = 2;
+    description = "A washer.";
+    attributes = {static, container, openable};
+}
+
+Dryer dryer3 {
+    "black dryer";
+    parent = roomA;
+    name = {.black, .dryer};
+    number = 3;
+    description = "A dryer.";
+    attributes = {static, container, openable};
+}
+
+// ===== THE CLOCK AND THE CHANGE MACHINE =====
+
+object wallClock {
+    "wall clock";
+    parent = roomA;
+    name = {.wall, .clock};
+    string description = "A clock on the wall.";
+    attributes = {static};
+    void daemon() {
+        turnCount++;
+        for (Machine m in {washer1, washer2, dryer3}) {
+            if (m.turnsLeft > 0) {
+                m.turnsLeft--;
+                if (m.turnsLeft == 0) {
+                    print($"^Machine {m.number} stops.^");
+                }
+            }
+        }
+    }
+}
+
+object changer {
+    "change machine";
+    parent = roomB;
+    name = {.change, .machine, .changer};
+    string description = "A change machine.";
+    attributes = {static};
+    int time_left;
+    void time_out() {
+        int gave = 0;
+        while (purse < PURSE_SIZE && gave < 5) {
+            purse++;
+            gave++;
+        }
+        changeBusy = false;
+        print($"^The change machine drops {gave} {(gave == 1) ? "coin" : "coins"}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    bags += { "Ann", "Bob", "Cal" };
+    bags.enqueue("Dee");
+    StartDaemon(wallClock);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the machines) =====
+
+// how many machines are running
+int countRunning() {
+    array<Machine> all = { washer1, washer2, dryer3 };
+    return all.filter((Machine m) => m.state() == MachineState.running).count();
+}
+
+// finds the machine someone's washing is in, or null
+Machine findOwner(string who) {
+    for (Machine m in {washer1, washer2, dryer3}) {
+        if (m.owner == who) {
+            return m;
+        }
+    }
+    return null;
+}
+
+// hands out a ticket for a load
+void addTicket(string who, int machineNumber, int cost) {
+    Ticket t;
+    t.owner = who;
+    t.machineNumber = machineNumber;
+    t.cost = cost;
+    tickets.append(t);
+}
+
+// pads a word on the right with dots to a width
+stringObj padDots(string word, int width) {
+    stringObj s = word;
+    while (s.length < width) {
+        s += ".";
+    }
+    return s;
+}
+
+// ===== VERBS =====
+
+// WASH - puts the first bag in the line into a washer
+verb Wash {
+    grammar = {.wash, NOUN};
+    void handler() {
+        if (location != roomA) {
+            print("The washers are in Room A.^");
+            return;
+        }
+        if (!(noun.is(Washer))) {
+            print("That is not a washer.^");
+            return;
+        }
+        Washer w = (Washer)noun;
+        if (w.state() != MachineState.empty) {
+            print($"Machine {w.number} is in use.^");
+            return;
+        }
+        if (bags.length == 0) {
+            print("No bags are waiting.^");
+            return;
+        }
+        try {
+            pay(w.price());
+        } catch (int short) {
+            print("Not enough coins: ");
+            printCoins(short);
+            print(" short.^");
+            return;
+        }
+        string who = bags.dequeue();
+        w.start(who);
+        addTicket(who, w.number, w.price());
+        print($"{who}'s bag goes in machine {w.number}.^");
+    }
+}
+
+// DRY - moves finished washing from a washer into the dryer
+verb Dry {
+    grammar = {.dry, NOUN};
+    void handler() {
+        if (!(noun.is(Washer))) {
+            print("Dry what is in which washer?^");
+            return;
+        }
+        Washer w = (Washer)noun;
+        if (w.state() != MachineState.finished) {
+            print($"Machine {w.number} has nothing ready.^");
+            return;
+        }
+        if (dryer3.state() == MachineState.running) {
+            print("The dryer is busy.^");
+            return;
+        }
+        if (dryer3.state() == MachineState.finished) {
+            // take the old load out first
+            string oldOwner = dryer3.owner;
+            doneNames.append(oldOwner);
+            loadsDone++;
+            dryer3.owner = "nobody";
+            print($"{oldOwner}'s washing is done. ");
+        }
+        try {
+            pay(dryer3.price());
+        } catch (int short) {
+            print($"Not enough coins for the dryer ({short} short).^");
+            return;
+        }
+        string who = w.owner;
+        w.owner = "nobody";
+        dryer3.start(who);
+        addTicket(who, dryer3.number, dryer3.price());
+        print($"{who}'s washing goes in the dryer.^");
+    }
+}
+
+// BAGS - who is waiting
+verb ShowBags {
+    grammar = {.bags};
+    void handler() {
+        if (bags.length == 0) {
+            print("No bags are waiting.^");
+            return;
+        }
+        stringObj line = $"{bags.length} {bagWord(bags.length)}: ";
+        for (int i in 1 to bags.length) {
+            line += $"{i}. {bags[i - 1]}";
+            if (i < bags.length) {
+                line += ", ";
+            }
+        }
+        print(line);
+        print("^");
+        print($"First {bags.peek()}, last {bags.peekEnd()}.^");
+    }
+}
+
+// MACHINES - every machine and how it is doing
+verb ShowMachines {
+    grammar = {.machines};
+    void handler() {
+        for (Machine m in {washer1, washer2, dryer3}) {
+            m.sayState();
+        }
+        int busy = countRunning();
+        if (busy > 0) {
+            print($"{busy} running.^");
+        }
+        array<Machine> all = { washer1, washer2, dryer3 };
+        if (all.all((Machine m) => m.used)) {
+            print("Every machine has been used.^");
+        }
+        // anything costing at least this much
+        int dear = 3;
+        int dearOnes = all.filter((Machine m) => m.price() >= dear).count();
+        print($"Machines costing {dear} or more: {dearOnes}.^");
+    }
+}
+
+// PURSE - how many coins there are
+verb ShowPurse {
+    meta = true;
+    grammar = {.purse};
+    void handler() {
+        print("Purse: ");
+        printCoins(purse);
+        print($" ({purseWord(purse)}).^");
+    }
+}
+
+// TICKETS - the tickets handed out
+verb ShowTickets {
+    meta = true;
+    grammar = {.tickets};
+    void handler() {
+        if (tickets.length == 0) {
+            print("No tickets yet.^");
+            return;
+        }
+        int total = 0;
+        for (int i = 0; i < tickets.length; i++) {
+            Ticket t = tickets[i];
+            print($"{padDots(t.owner, 6)}{t.machineNumber} ({t.cost})^");
+            total += t.cost;
+        }
+        print($"Tickets: {tickets.length}, coins {total}.^");
+    }
+}
+
+// DONE - whose washing is all done, by name
+verb ShowDone {
+    meta = true;
+    grammar = {.done};
+    void handler() {
+        if (doneNames.length == 0) {
+            print("Nothing is done yet.^");
+            return;
+        }
+        array<string> names[6];
+        names = doneNames;
+        names.sort((string a, string b) => a.compareTo(b));
+        int i = 0;
+        do {
+            stringObj name = names[i];
+            print(name.reverse());
+            if (i < names.length - 1) {
+                print(" ");
+            }
+            i++;
+        } until (i >= names.length);
+        print("^");
+        print($"Loads done: {loadsDone}.^");
+    }
+}
+
+// CHANGE - asks the change machine for coins
+verb GetChange {
+    grammar = {.change};
+    void handler() {
+        if (location != roomB) {
+            print("The change machine is in Room B.^");
+            return;
+        }
+        if (purse >= PURSE_SIZE) {
+            if (saidFull == false) {
+                print("The purse is full. ");
+                saidFull = true;
+            }
+            print("No change needed.^");
+            return;
+        }
+        if (changeBusy) {
+            print("The change machine is already counting.^");
+            return;
+        }
+        changeBusy = true;
+        changer.time_left = 1;
+        StartTimer(changer, 1);
+        print("The change machine starts counting.^");
+    }
+}
+
+// COINS - the coins paid so far
+verb ShowCoins {
+    meta = true;
+    grammar = {.coins};
+    void handler() {
+        if (coinsPaid.length == 0) {
+            print("No coins paid yet.^");
+            return;
+        }
+        print("Paid:");
+        for (int c in coinsPaid) {
+            print($" {c}");
+        }
+        print(". Total ");
+        printCoins(addUp(coinsPaid), withWord: false);
+        print(".^");
+        array<int> kinds = coinsPaid.orderBy().distinct();
+        print("Kinds:");
+        for (int k in kinds) {
+            print($" {k}");
+        }
+        print(".^");
+        array<int> later = coinsPaid.skip(2);
+        print($"After the first two: {addUp(later)}.^");
+        print($"Doubled first: {coinsPaid.map((var x) => x * 2).first()}.^");
+        if (coinsPaid.any((int x) => x == DRY_PRICE)) {
+            print("Someone used the dryer.^");
+        }
+    }
+}
+
+// REPORT - how the laundry is doing
+verb ShowReport {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        stringObj head = "  laundry report  ";
+        head = head.trim();
+        print(head.toUpper());
+        print("^");
+        stringObj turnText = $"{turnCount}";
+        stringObj doneText = $"{loadsDone}";
+        stringObj line = "Turn " + turnText;
+        line = line + ", done " + doneText;
+        print(line);
+        print(".^");
+        Machine ann = findOwner("Ann");
+        if (ann != null) {
+            print($"Ann is in machine {ann.number}.^");
+        } else {
+            print("Ann is not in a machine.^");
+        }
+        string who = bags.length > 0 ? bags.peek() : "nobody";
+        switch (who) {
+            case "Dee": print("Dee is next.^");
+            case "nobody": print("Nobody is next.^");
+            default: print($"{who} is next.^");
+        }
+        stringObj note = "wash, dry, wash";
+        int at = note.indexOf("dry");
+        print($"Dry is at {at}. ");
+        stringObj middle = note.mid(at, 3);
+        print(middle);
+        print(". ");
+        print(note.replaceAll("wash", "WASH"));
+        print(".^");
+        stringObj fmt = "coins";
+        stringObj purseText = $"{purse}";
+        print(fmt.format("$1 $0 left", purseText));
+        print(".^");
+        // count the machines that are free, but stop at the first running one
+        int free = 0;
+        for (int i = 0; i < 3; i++) {
+            Machine m = washer1;
+            if (i == 1) {
+                m = washer2;
+            }
+            if (i == 2) {
+                m = dryer3;
+            }
+            if (m.state() == MachineState.finished) {
+                continue;
+            }
+            if (m.state() == MachineState.running) {
+                break;
+            }
+            free++;
+        }
+        print($"Free before the first running one: {free}.^");
+    }
+}

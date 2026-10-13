@@ -309,6 +309,8 @@ class bglParser {
         void unknownTypeError(const token& typeTok);
         void checkExpressionShape(expression* expr, bool whole = true);
         bool definesExternGlobal(const string& name);
+        string methodCallName(functionDef* fd, const string& written);
+        void rejectCallOfPlainLocal(const string& name, const string& shown, functionDef* func, statementBlock* body);
         int exprParseDepth = 0;
         bool allowEmptyExpr = false;
         set<statement*> captureLoads;   // a lambda's capture load: runs before its statement, never inside a ?: branch   // a `for(;;)` header part is parsing

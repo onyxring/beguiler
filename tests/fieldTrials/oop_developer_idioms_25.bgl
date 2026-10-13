@@ -1,0 +1,574 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, twenty-fifth pass: a stock room.
+// A value class for a price in cents with a copy operator, `+`, `*` by a count, `==`/`!=` and a `<=>` that
+// `>` comes from, a static factory and a formatter returning a `stringObj`; a named property accessor
+// (a value class whose setter clamps at zero) owned by a pooled item class, read, assigned and changed
+// with `+=`/`-=`; the pooled item class with `create()`/`destroy()` keeping a static count, a `default`
+// `Kind`/`Summary` pair, and a pooled subclass overriding them and calling the base `Summary` through a
+// cast; a fluent builder object whose methods return `self`, building either class; a value class for a
+// stock movement kept in a member `array<Movement>` used as a bounded history; a warehouse service with
+// a string-keyed `operator []` lookup and an `operator []=` adjustment, an observer list of
+// `func<void, Item, int>` listeners (a named function and a lambda), a remove-where taking a predicate
+// and deleting what it removes, and an inline `auto` accessor on the warehouse object; the Template
+// Method: a report base with `default` hooks and a `required` line routine, two subclasses; a pooled
+// error class thrown from a free function and caught in a typed `catch`; `<linq>` `filter`, `orderBy`
+// with a named comparator and with a lambda, `count`/`any`/`all`/`first`/`map`; enum switches;
+// `is` tests and downcasts; `?.`/`??`; named arguments; interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eCategory { Tools, Parts, Supplies }
+enum eMove { Receive, Ship, Adjust }
+
+string CategoryName(eCategory c) {
+    switch (c) {
+        case eCategory.Tools: return "tools";
+        case eCategory.Parts: return "parts";
+        default:              return "supplies";
+    }
+}
+
+string MoveName(eMove m) {
+    switch (m) {
+        case eMove.Receive: return "receive";
+        case eMove.Ship:    return "ship";
+        case eMove.Adjust:  return "adjust";
+    }
+    return "?";
+}
+
+//-- Price: a value type ---------------------------------------------------------------------------------------
+
+value class Price {
+    int Cents;
+
+    Price operator = (Price o) {
+        Cents = o.Cents;
+        return self;
+    }
+
+    Price operator + (Price o) {
+        Price sum;
+        sum.Cents = Cents + o.Cents;
+        return sum;
+    }
+
+    Price operator * (int count) {
+        Price total;
+        total.Cents = Cents * count;
+        return total;
+    }
+
+    bool operator == (Price o) { return Cents == o.Cents; }
+    bool operator != (Price o) { return Cents != o.Cents; }
+    int operator <=> (Price o) { return Cents - o.Cents; }
+
+    static Price FromCents(int cents) {
+        Price p;
+        p.Cents = cents;
+        return p;
+    }
+
+    stringObj ToText() {
+        stringObj text = $"{Cents / 100}.";
+        int rest = Cents % 100;
+        if (rest < 10) text += "0";
+        text += $"{rest}";
+        return text;
+    }
+}
+
+//-- A property that never goes below zero ----------------------------------------------------------------------
+
+value class NonNegative {
+    int _value;
+
+    int operator () { return _value; }
+    void operator = (int v) { _value = v < 0 ? 0 : v; }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class InventoryError[2] : object {
+    string Sku;
+    string Reason;
+    static int Raised;
+
+    void create(string code, string why) {
+        Sku = code;
+        Reason = why;
+        InventoryError.Raised++;
+    }
+}
+
+void Fail(string sku, string why) {
+    throw new InventoryError(sku, why);
+}
+
+//-- Items -----------------------------------------------------------------------------------------------------
+
+class Item[6] : object {
+    string Sku;
+    string Label;
+    eCategory Category;
+    Price UnitPrice;
+    NonNegative OnHand;
+    int ReorderPoint;
+    int ReorderQty;
+    static int Count;
+
+    void create(string code, string title, eCategory group) {
+        Sku = code;
+        Label = title;
+        Category = group;
+        Item.Count++;
+    }
+
+    void destroy() { Item.Count--; }
+
+    bool NeedsReorder() { return OnHand <= ReorderPoint; }
+    Price Value() { return UnitPrice * OnHand; }
+
+    default string Kind() { return "item"; }
+
+    default stringObj Summary() {
+        stringObj priceText = UnitPrice.ToText();
+        stringObj text = $"{Sku} {Label} x{OnHand} @ {priceText}";
+        return text;
+    }
+}
+
+class PerishableItem[2] : Item {
+    int ExpiresOn;
+
+    string Kind() { return "perishable"; }
+
+    stringObj Summary() {
+        stringObj text = ((Item)self).Summary();
+        text += $", expires day {ExpiresOn}";
+        return text;
+    }
+
+    bool IsExpired(int today) { return today >= ExpiresOn; }
+}
+
+//-- A fluent builder ------------------------------------------------------------------------------------------
+
+class ItemBuilder : object {
+    string _sku;
+    string _name;
+    eCategory _category;
+    int _cents;
+    int _stock;
+    int _reorderAt;
+    int _reorderQty;
+    int _expires;
+
+    ItemBuilder Sku(string code) { _sku = code; return self; }
+    ItemBuilder Named(string label) { _name = label; return self; }
+    ItemBuilder InCategory(eCategory category) { _category = category; return self; }
+    ItemBuilder Costing(int cents) { _cents = cents; return self; }
+    ItemBuilder Stocked(int count) { _stock = count; return self; }
+    ItemBuilder Expires(int day) { _expires = day; return self; }
+
+    ItemBuilder ReorderAt(int point, int quantity) {
+        _reorderAt = point;
+        _reorderQty = quantity;
+        return self;
+    }
+
+    void Reset() {
+        _cents = 0;
+        _stock = 0;
+        _reorderAt = 0;
+        _reorderQty = 0;
+        _expires = 0;
+    }
+
+    Item Build() {
+        Item it = null;
+        if (_expires > 0) {
+            PerishableItem p = new PerishableItem(_sku, _name, _category);
+            if (p != null) p.ExpiresOn = _expires;
+            it = p;
+        } else {
+            it = new Item(_sku, _name, _category);
+        }
+        if (it == null) {
+            Reset();
+            Fail(_sku, "no slot free");
+        }
+        it.UnitPrice = Price.FromCents(_cents);
+        it.OnHand = _stock;
+        it.ReorderPoint = _reorderAt;
+        it.ReorderQty = _reorderQty;
+        Reset();
+        return it;
+    }
+}
+
+ItemBuilder builder { }
+
+//-- Stock movements -------------------------------------------------------------------------------------------
+
+value class Movement {
+    string Sku;
+    eMove Kind;
+    int Quantity;
+
+    Movement operator = (Movement o) {
+        Sku = o.Sku;
+        Kind = o.Kind;
+        Quantity = o.Quantity;
+        return self;
+    }
+
+    int NetChange() { return Kind == eMove.Ship ? -Quantity : Quantity; }
+}
+
+//-- The warehouse: a service ----------------------------------------------------------------------------------
+
+class Warehouse : object {
+    array<Item> Items[6];
+    array<Movement> History[5];
+    array<func<void, Item, int>> Listeners[2];
+    int Shipments;
+
+    void Subscribe(func<void, Item, int> listener) { Listeners.append(listener); }
+    void Add(Item it) { Items.append(it); }
+
+    Item operator [] (string sku) {
+        for (Item it in Items) {
+            if (it.Sku == sku) return it;
+        }
+        return null;
+    }
+
+    // Sets the count on hand, recording the difference as an adjustment.
+    void operator []= (string sku, int count) {
+        Item it = Require(sku);
+        int delta = count - it.OnHand;
+        it.OnHand = count;
+        Record(sku, eMove.Adjust, delta);
+    }
+
+    Item Require(string sku) {
+        Item it = self[sku];
+        if (it == null) Fail(sku, "unknown item");
+        return it;
+    }
+
+    void Record(string sku, eMove kind, int quantity) {
+        Movement entry;
+        entry.Sku = sku;
+        entry.Kind = kind;
+        entry.Quantity = quantity;
+        if (History.length == History.size) History.remove(0);
+        History.append(entry);
+    }
+
+    void Receive(string sku, int quantity) {
+        Item it = Require(sku);
+        it.OnHand += quantity;
+        Record(sku, eMove.Receive, quantity);
+    }
+
+    void Ship(string sku, int quantity) {
+        Item it = Require(sku);
+        if (quantity > it.OnHand) Fail(sku, "not enough stock");
+        it.OnHand -= quantity;
+        Shipments++;
+        Record(sku, eMove.Ship, quantity);
+        if (it.NeedsReorder()) {
+            for (func<void, Item, int> listener in Listeners) listener(it, it.OnHand);
+        }
+    }
+
+    Price TotalValue() {
+        Price total;
+        for (Item it in Items) total = total + it.Value();
+        return total;
+    }
+
+    // Removes every item the predicate accepts, returning its slot to the pool.
+    int RemoveWhere(func<bool, Item> spec) {
+        int removed = 0;
+        int slot = 0;
+        while (slot < Items.length) {
+            Item it = Items[slot];
+            if (!spec(it)) {
+                slot++;
+                continue;
+            }
+            Items.remove(slot);
+            delete it;
+            removed++;
+        }
+        return removed;
+    }
+}
+
+Warehouse depot {
+    auto Today = {
+        int _day = 1;
+        int operator () { return _day; }
+        void operator = (int day) { if (day > _day) _day = day; }
+    };
+}
+
+//-- Reports: a template method --------------------------------------------------------------------------------
+
+class Report : object {
+    inline instanceName;
+    int Lines;
+
+    void Run(Warehouse w) {
+        Lines = 0;
+        printLine($"-- {self} --");
+        for (Item it in w.Items) {
+            if (!Include(it)) continue;
+            Line(it);
+            Lines++;
+        }
+        Footer(w);
+    }
+
+    default bool Include(Item it) { return true; }
+    required void Line(Item it);
+    default void Footer(Warehouse w) { printLine($"{Lines} line(s)."); }
+}
+
+class ValuationReport : Report {
+    void Line(Item it) {
+        stringObj value = it.Value().ToText();
+        printLine($"{it.Sku} {value}");
+    }
+
+    void Footer(Warehouse w) {
+        stringObj total = w.TotalValue().ToText();
+        printLine($"Total {total} over {Lines} line(s).");
+    }
+}
+
+class ReorderReport : Report {
+    bool Include(Item it) { return it.NeedsReorder(); }
+
+    void Line(Item it) {
+        printLine($"{it.Sku} {it.Label}: order {it.ReorderQty} (on hand {it.OnHand})");
+    }
+}
+
+ValuationReport valuation { "valuation"; }
+ReorderReport reorders { "reorder list"; }
+
+//-- Specifications, comparators, listeners --------------------------------------------------------------------
+
+bool IsTool(Item it) { return it.Category == eCategory.Tools; }
+bool IsLow(Item it) { return it.NeedsReorder(); }
+
+// Biggest shortfall below the reorder point first; then by SKU.
+int ByShortfall(Item a, Item b) {
+    int gapA = a.ReorderPoint - a.OnHand;
+    int gapB = b.ReorderPoint - b.OnHand;
+    if (gapA != gapB) return gapA > gapB ? -1 : 1;
+    return a.Sku.compareTo(b.Sku);
+}
+
+int AlertCount;
+
+void LowStockAlert(Item it, int left) {
+    printLine($"Alert: {it.Label} down to {left}.");
+}
+
+bool TryShip(string sku, int quantity) {
+    try {
+        depot.Ship(sku, quantity);
+        return true;
+    } catch (InventoryError e) {
+        printLine($"Refused {e.Sku}: {e.Reason}.");
+        delete e;
+    }
+    return false;
+}
+
+void ShowStock() {
+    for (Item it in depot.Items) {
+        stringObj text = it.Summary();
+        printLine($"{text} [{CategoryName(it.Category)}, {it.Kind()}]");
+    }
+    int tools = depot.Items.filter(IsTool).count();
+    int low = depot.Items.filter(IsLow).count();
+    bool anyEmpty = depot.Items.any((Item it) => it.OnHand == 0);
+    stringObj total = depot.TotalValue().ToText();
+    printLine($"Tools {tools}, low {low}, any empty {anyEmpty}, value {total}.");
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        try {
+            Item hammer = builder.Sku("T-100").Named("hammer").InCategory(eCategory.Tools)
+                .Costing(1250).Stocked(5).ReorderAt(3, 10).Build();
+            depot.Add(hammer);
+            depot.Add(builder.Sku("T-200").Named("wrench").InCategory(eCategory.Tools)
+                .Costing(875).Stocked(2).ReorderAt(3, 6).Build());
+            depot.Add(builder.Sku("P-300").Named("bolt").InCategory(eCategory.Parts)
+                .Costing(15).Stocked(40).ReorderAt(25, 100).Build());
+            depot.Add(builder.Sku("S-400").Named("glue").InCategory(eCategory.Supplies)
+                .Costing(320).Stocked(4).ReorderAt(2, 5).Expires(12).Build());
+            depot.Add(builder.Sku("P-500").Named("washer").InCategory(eCategory.Parts)
+                .Costing(5).ReorderAt(10, 50).Build());
+        } catch (InventoryError e) {
+            printLine($"Setup failed at {e.Sku}: {e.Reason}.");
+            delete e;
+        }
+        depot.Subscribe(LowStockAlert);
+        depot.Subscribe((Item it, int left) => { AlertCount++; });
+        printLine($"Items {Item.Count}, listeners {depot.Listeners.length}, day {depot.Today}.");
+    }
+}
+
+verb Stock {
+    grammar = {.stock};
+    void handler() { ShowStock(); }
+}
+
+verb ShipGoods {
+    grammar = {.ship};
+    void handler() {
+        TryShip("T-100", 2);
+        TryShip(quantity: 20, sku: "P-300");
+        TryShip("T-200", 5);
+        TryShip("X-999", 1);
+        printLine($"Shipments {depot.Shipments}, alerts {AlertCount}, errors {InventoryError.Raised}.");
+    }
+}
+
+verb Adjust {
+    grammar = {.adjust};
+    void handler() {
+        depot["T-200"] = 7;
+        depot["P-500"] = -4;
+        Item wrench = depot["T-200"];
+        Item washer = depot["P-500"];
+        printLine($"Wrench now {wrench.OnHand}, washer now {washer.OnHand}.");
+    }
+}
+
+verb Reports {
+    grammar = {.report};
+    void handler() {
+        valuation.Run(depot);
+        reorders.Run(depot);
+    }
+}
+
+verb Restock {
+    grammar = {.restock};
+    void handler() {
+        array<Item> due[6];
+        due = depot.Items.filter(IsLow).orderBy(ByShortfall);
+        for (Item it in due) {
+            depot.Receive(it.Sku, it.ReorderQty);
+            printLine($"Received {it.ReorderQty} {it.Label}, now {it.OnHand}.");
+        }
+    }
+}
+
+verb ShowHistory {
+    grammar = {.history};
+    void handler() {
+        int net = 0;
+        for (Movement m in depot.History) {
+            printLine($"{MoveName(m.Kind)} {m.Sku} {m.Quantity}");
+            net += m.NetChange();
+        }
+        printLine($"{depot.History.length} movement(s), net {net}.");
+    }
+}
+
+verb Expire {
+    grammar = {.expire};
+    void handler() {
+        depot.Today = 12;
+        depot.Today = 5;
+        int today = depot.Today;
+        int removed = depot.RemoveWhere((Item it) => it.is(PerishableItem) && ((PerishableItem)it).IsExpired(today));
+        printLine($"Day {today}: expired {removed} item(s); items left {Item.Count}, tracked {depot.Items.length}.");
+        try {
+            Item paint = builder.Sku("S-410").Named("paint").InCategory(eCategory.Supplies)
+                .Costing(450).Stocked(3).ReorderAt(1, 4).Expires(20).Build();
+            depot.Add(paint);
+            printLine($"Added {paint.Sku} {paint.Label} ({paint.Kind()}), items {Item.Count}.");
+        } catch (InventoryError e) {
+            printLine($"Refused {e.Sku}: {e.Reason}.");
+            delete e;
+        }
+    }
+}
+
+verb Audit {
+    grammar = {.audit};
+    void handler() {
+        Item top = null;
+        for (Item it in depot.Items) {
+            if (top == null || it.Value() > top.Value()) top = it;
+        }
+        stringObj topValue = top.Value().ToText();
+        printLine($"Top value: {top.Label} at {topValue}.");
+
+        Item hammer = depot["T-100"];
+        bool matches = hammer.UnitPrice == Price.FromCents(1250);
+        bool differs = hammer.UnitPrice != depot["T-200"].UnitPrice;
+        printLine($"Hammer price matches: {matches}, differs from wrench: {differs}.");
+
+        array<var> counts = depot.Items.map((Item it) => it.OnHand);
+        int onHand = 0;
+        for (var c in counts) onHand += c;
+        printLine($"On hand {onHand} across {counts.length} item(s).");
+
+        bool allPriced = depot.Items.all((Item it) => it.UnitPrice.Cents > 0);
+        bool anyPerishable = depot.Items.any((Item it) => it.is(PerishableItem));
+        printLine($"All priced {allPriced}, any perishable {anyPerishable}.");
+
+        Item firstPart = depot.Items.filter((Item it) => it.Category == eCategory.Parts).first();
+        string missing = depot["Z-1"]?.Label ?? "none";
+        printLine($"First part {firstPart.Label}; Z-1 {missing}.");
+
+        stringObj line = "By name:";
+        for (Item it in depot.Items.orderBy((Item a, Item b) => a.Label.compareTo(b.Label))) line += $" {it.Label}";
+        printLine(line);
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

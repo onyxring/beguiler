@@ -776,18 +776,21 @@ bool beguiler::runInform6() {
             // An unused parameter isn't worth a warning: a func<> type or an override fixes the signature.
             static const regex unusedLocal(R"re(^Local variable "([^"]+)" declared but not used)re");
             if(smatch um; severity == "Warning" && regex_search(message, um, unusedLocal)){
+                // The routine's header (`[name …` or a method's `name [ …`) is on the reported line or
+                // a few lines below it.
                 ifstream in(infFile);
-                string text;
-                for(int n = 1; n <= infLine && getline(in, text); n++){}
-                size_t b = text.find('[');
-                if(b != string::npos){
-                    size_t e = text.find_first_of(" \t;", b + 1);
-                    string routine = text.substr(b + 1, e == string::npos ? string::npos : e - b - 1), var = um[1];
-                    transform(routine.begin(), routine.end(), routine.begin(), ::tolower);
-                    transform(var.begin(), var.end(), var.begin(), ::tolower);
-                    auto it = emitter.routineParams.find(routine);
-                    if(it != emitter.routineParams.end() && it->second.count(var)){ i6WarnHidden++; continue; }
+                string text, routine;
+                static const regex routineHead(R"re(^\s*\[\s*(\w+))re"), methodHead(R"re(^\s*(\w+)\s*\[)re");
+                for(int n = 1; getline(in, text) && n <= infLine + 6; n++){
+                    if(n < infLine) continue;
+                    smatch hm;
+                    if(regex_search(text, hm, routineHead) || regex_search(text, hm, methodHead)){ routine = hm[1]; break; }
                 }
+                string var = um[1];
+                transform(routine.begin(), routine.end(), routine.begin(), ::tolower);
+                transform(var.begin(), var.end(), var.begin(), ::tolower);
+                auto it = emitter.routineParams.find(routine);
+                if(it != emitter.routineParams.end() && it->second.count(var)){ i6WarnHidden++; continue; }
             }
             bool isError = (severity == "Error" || severity == "Fatal error");
             string bglFile; int bglLine = 0;

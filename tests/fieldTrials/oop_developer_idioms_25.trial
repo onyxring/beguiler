@@ -1,0 +1,81 @@
+Room A
+Room A.
+
+> setup
+Items 5, listeners 2, day 1.
+
+> stock
+T-100 hammer x5 @ 12.50 [tools, item]
+T-200 wrench x2 @ 8.75 [tools, item]
+P-300 bolt x40 @ 0.15 [parts, item]
+S-400 glue x4 @ 3.20, expires day 12 [supplies, perishable]
+P-500 washer x0 @ 0.05 [parts, item]
+Tools 2, low 2, any empty true, value 98.80.
+
+> ship
+Alert: hammer down to 3.
+Alert: bolt down to 20.
+Refused T-200: not enough stock.
+Refused X-999: unknown item.
+Shipments 2, alerts 2, errors 2.
+
+> adjust
+Wrench now 7, washer now 0.
+
+> report
+-- valuation --
+T-100 37.50
+T-200 61.25
+P-300 3.00
+S-400 12.80
+P-500 0.00
+Total 114.55 over 5 line(s).
+-- reorder list --
+T-100 hammer: order 10 (on hand 3)
+P-300 bolt: order 100 (on hand 20)
+P-500 washer: order 50 (on hand 0)
+3 line(s).
+
+> restock
+Received 50 washer, now 50.
+Received 100 bolt, now 120.
+Received 10 hammer, now 13.
+
+> history
+adjust T-200 5
+adjust P-500 -4
+receive P-500 50
+receive P-300 100
+receive T-100 10
+5 movement(s), net 161.
+
+> report
+-- valuation --
+T-100 162.50
+T-200 61.25
+P-300 18.00
+S-400 12.80
+P-500 2.50
+Total 257.05 over 5 line(s).
+-- reorder list --
+0 line(s).
+
+> expire
+Day 12: expired 1 item(s); items left 4, tracked 4.
+Added S-410 paint (perishable), items 5.
+
+> audit
+Top value: hammer at 162.50.
+Hammer price matches: true, differs from wrench: true.
+On hand 193 across 5 item(s).
+All priced true, any perishable true.
+First part bolt; Z-1 none.
+By name: bolt hammer paint washer wrench
+
+> stock
+T-100 hammer x13 @ 12.50 [tools, item]
+T-200 wrench x7 @ 8.75 [tools, item]
+P-300 bolt x120 @ 0.15 [parts, item]
+P-500 washer x50 @ 0.05 [parts, item]
+S-410 paint x3 @ 4.50, expires day 20 [supplies, perishable]
+Tools 2, low 0, any empty false, value 257.75.

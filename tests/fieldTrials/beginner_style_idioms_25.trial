@@ -1,0 +1,245 @@
+Room A
+Room A. The laundry room. The back room is to the east.
+You can see a white washer (which is closed), a grey washer (which is closed), a black dryer (which is closed) and a wall clock here.
+> machines
+Machine 1: empty.
+Machine 2: empty.
+Machine 3: empty.
+Machines costing 3 or more: 2.
+> bags
+4 bags: 1. Ann, 2. Bob, 3. Cal, 4. Dee
+First Ann, last Dee.
+> purse
+Purse: 8 coins (half full).
+> tickets
+No tickets yet.
+> done
+Nothing is done yet.
+> coins
+No coins paid yet.
+> report
+LAUNDRY REPORT
+Turn 2, done 0.
+Ann is not in a machine.
+Ann is next.
+Dry is at 6. dry. WASH, dry, WASH.
+8 coins left.
+Free before the first running one: 3.
+> x white washer
+Machine 1. One go costs 3 and takes 3 turns.
+> wash white washer
+Ann's bag goes in machine 1.
+> wash grey washer
+Bob's bag goes in machine 2.
+> wash black dryer
+That is not a washer.
+Machine 1 stops.
+> machines
+Machine 1: finished, Ann's washing.
+Machine 2: running, Bob, 1 to go.
+Machine 3: empty.
+1 running.
+Machines costing 3 or more: 2.
+Machine 2 stops.
+> wash white washer
+Machine 1 is in use.
+> wait
+Time passes.
+> open white washer
+You open the white washer, revealing nothing.
+> wait
+Time passes.
+> dry white washer
+Ann's washing goes in the dryer.
+> dry grey washer
+The dryer is busy.
+Machine 3 stops.
+> wash white washer
+Not enough coins: 3 coins short.
+> tickets
+Ann...1 (3)
+Bob...2 (3)
+Ann...3 (2)
+Tickets: 3, coins 8.
+> purse
+Purse: 0 coins (empty).
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> machines
+Machine 1: empty.
+Machine 2: finished, Bob's washing.
+Machine 3: finished, Ann's washing.
+Every machine has been used.
+Machines costing 3 or more: 2.
+> dry grey washer
+Ann's washing is done. Not enough coins for the dryer (2 short).
+> dry white washer
+Machine 1 has nothing ready.
+> e
+Room B
+Room B. The back room. The laundry room is to the west.
+You can see a change machine here.
+> change
+The change machine starts counting.
+> change
+The change machine is already counting.
+The change machine drops 5 coins.
+> wait
+Time passes.
+> purse
+Purse: 5 coins (half full).
+> w
+Room A
+Room A. The laundry room. The back room is to the east.
+You can see a white washer (which is empty), a grey washer (which is closed), a black dryer (which is closed) and a wall clock here.
+> wait
+Time passes.
+> dry white washer
+Machine 1 has nothing ready.
+> done
+nnA
+Loads done: 1.
+> coins
+Paid: 3 3 2. Total 8.
+Kinds: 2 3.
+After the first two: 2.
+Doubled first: 6.
+Someone used the dryer.
+> report
+LAUNDRY REPORT
+Turn 27, done 1.
+Ann is not in a machine.
+Cal is next.
+Dry is at 6. dry. WASH, dry, WASH.
+5 coins left.
+Free before the first running one: 2.
+> close grey washer
+The grey washer is already closed.
+> bags
+2 bags: 1. Cal, 2. Dee
+First Cal, last Dee.
+> wash grey washer
+Machine 2 is in use.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> dry grey washer
+Bob's washing goes in the dryer.
+> done
+nnA
+Loads done: 1.
+> tickets
+Ann...1 (3)
+Bob...2 (3)
+Ann...3 (2)
+Bob...3 (2)
+Tickets: 4, coins 10.
+> machines
+Machine 1: empty.
+Machine 2: empty.
+Machine 3: running, Bob, 1 to go.
+1 running.
+Every machine has been used.
+Machines costing 3 or more: 2.
+Machine 3 stops.
+> report
+LAUNDRY REPORT
+Turn 36, done 1.
+Ann is not in a machine.
+Cal is next.
+Dry is at 6. dry. WASH, dry, WASH.
+3 coins left.
+Free before the first running one: 2.
+> wash white washer
+Cal's bag goes in machine 1.
+> wash grey washer
+Not enough coins: 3 coins short.
+> e
+Room B
+Room B. The back room. The laundry room is to the west.
+You can see a change machine here.
+Machine 1 stops.
+> change
+The change machine starts counting.
+> wait
+Time passes.
+The change machine drops 5 coins.
+> wait
+Time passes.
+> change
+The change machine starts counting.
+> wait
+Time passes.
+The change machine drops 5 coins.
+> wait
+Time passes.
+> purse
+Purse: 10 coins (nearly full).
+> change
+The change machine starts counting.
+> wait
+Time passes.
+The change machine drops 2 coins.
+> wait
+Time passes.
+> change
+The purse is full. No change needed.
+> change
+No change needed.
+> purse
+Purse: 12 coins (full).
+> w
+Room A
+Room A. The laundry room. The back room is to the east.
+You can see a white washer (which is empty), a grey washer (which is closed), a black dryer (which is closed) and a wall clock here.
+> machines
+Machine 1: finished, Cal's washing.
+Machine 2: empty.
+Machine 3: finished, Bob's washing.
+Every machine has been used.
+Machines costing 3 or more: 2.
+> dry white washer
+Bob's washing is done. Cal's washing goes in the dryer.
+> wash grey washer
+Dee's bag goes in machine 2.
+Machine 3 stops.
+> bags
+No bags are waiting.
+> wash white washer
+No bags are waiting.
+Machine 2 stops.
+> done
+nnA boB
+Loads done: 2.
+> coins
+Paid: 3 3 2 2 3 2 3. Total 18.
+Kinds: 2 3.
+After the first two: 12.
+Doubled first: 6.
+Someone used the dryer.
+> tickets
+Ann...1 (3)
+Bob...2 (3)
+Ann...3 (2)
+Bob...3 (2)
+Cal...1 (3)
+Cal...3 (2)
+Dee...2 (3)
+Tickets: 7, coins 18.
+> report
+LAUNDRY REPORT
+Turn 56, done 2.
+Ann is not in a machine.
+Nobody is next.
+Dry is at 6. dry. WASH, dry, WASH.
+7 coins left.
+Free before the first running one: 1.

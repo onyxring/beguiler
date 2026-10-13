@@ -1,0 +1,437 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a league table kept in tables. An enum of teams indexing parallel name and word tables;
+// an enum of outcomes indexing points and letter tables; a fixture list as an array of a value class
+// written as bare { … } (int, enum, enum, int, int, bool), results written into its slots through
+// [i].member; standing rows as a local array of a value class appended as Row{ … } and sorted by
+// sort() through the class's instance operator <=>, which walks a table of tie-breakers held as an
+// array<func<int, Row, Row>> beside a name table, reordered at run time with swap(); a bnum of marks
+// (leader, unbeaten, winless, bottom) built with |= and listed by bit position; a general parsing
+// routine over the team table and one reading a score as two numbers packed into parsed_number;
+// <linq> filter/orderBy/skip/count/any/all/first/last/take with lambdas capturing parameters and
+// locals; a table of team measures as an array<func<int, eTeam>> of named routines; a goal-margin
+// word picked by a switch with ranges and guards; stringObj rows padded to columns and built with
+// interpolated +=; for-in over arrays, chain results and ranges.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int TEAM_COUNT = 4;
+const int FIXTURE_MAX = 6;
+const int BREAKER_COUNT = 4;
+const int MARK_KINDS = 4;
+const int FORM_SHOWN = 2;
+const int NONE = -1;
+
+enum eTeam { reds = 0, blues, greens, golds }
+enum eOutcome { win = 0, draw, loss }
+bnum eMark { leader, unbeaten, winless, bottom }
+
+//-- Tables --------------------------------------------------------------------
+
+array<string> teamNames = { "Reds", "Blues", "Greens", "Golds" };
+array<dictionaryWord> teamWords = { .reds, .blues, .greens, .golds };
+
+//                        win  draw  loss
+array<int> pointsFor   = {  3,    1,    0 };
+array<string> outcomeLetters = { "W", "D", "L" };
+
+array<string> markNames = { "leader", "unbeaten", "winless", "bottom" };
+
+value class Fixture {
+    inline int round;
+    inline eTeam home;
+    inline eTeam away;
+    inline int hg;
+    inline int ag;
+    inline bool played;
+    Fixture operator = (Fixture o) {
+        round = o.round; home = o.home; away = o.away; hg = o.hg; ag = o.ag; played = o.played;
+        return self;
+    }
+}
+
+array<Fixture> fixtures = {
+    { 1, reds,   blues,  0, 0, false },
+    { 1, greens, golds,  0, 0, false },
+    { 2, blues,  greens, 0, 0, false },
+    { 2, golds,  reds,   0, 0, false },
+    { 3, reds,   greens, 0, 0, false },
+    { 3, blues,  golds,  0, 0, false },
+};
+
+value class Row {
+    inline eTeam team;
+    inline int played;
+    inline int won;
+    inline int drawn;
+    inline int lost;
+    inline int scored;
+    inline int conceded;
+    inline int points;
+    Row operator = (Row o) {
+        team = o.team; played = o.played; won = o.won; drawn = o.drawn; lost = o.lost;
+        scored = o.scored; conceded = o.conceded; points = o.points;
+        return self;
+    }
+    // Negative when this row ranks above o.
+    int operator <=> (Row o) {
+        for (int k in 0 to BREAKER_COUNT - 1) {
+            func<int, Row, Row> f = breakers[k];
+            int c = f(self, o);
+            if (c != 0) return c;
+        }
+        return 0;
+    }
+}
+
+//-- Tie-breakers --------------------------------------------------------------
+
+int sign(int n) {
+    if (n < 0) return -1;
+    if (n > 0) return 1;
+    return 0;
+}
+
+int byPoints(Row a, Row b) { return sign(b.points - a.points); }
+int byDifference(Row a, Row b) { return sign((b.scored - b.conceded) - (a.scored - a.conceded)); }
+int byScored(Row a, Row b) { return sign(b.scored - a.scored); }
+int byTable(Row a, Row b) { return sign((int)a.team - (int)b.team); }
+
+array<func<int, Row, Row>> breakers = { byPoints, byDifference, byScored, byTable };
+array<string> breakerNames = { "points", "difference", "scored", "order" };
+
+//-- Objects -------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object board {
+    "board";
+    name = {.board};
+    parent = roomA;
+    attributes = {static};
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+int parseTeam() {
+    int at = teamWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+// Reads "H A"; the score goes to parsed_number as H * 100 + A.
+int parseScore() {
+    int h = TryNumber(wn);
+    if (h < 0 || h > 99) return -1;
+    wn++;
+    int a = TryNumber(wn);
+    if (a < 0 || a > 99) return -1;
+    wn++;
+    parsed_number = h * 100 + a;
+    return 1;
+}
+
+//-- Helpers -------------------------------------------------------------------
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+bool involves(Fixture f, eTeam t) {
+    return f.home == t || f.away == t;
+}
+
+// The outcome of a played fixture for team t.
+eOutcome outcomeFor(Fixture f, eTeam t) {
+    int mine = f.hg;
+    int theirs = f.ag;
+    if (f.away == t) { mine = f.ag; theirs = f.hg; }
+    if (mine > theirs) return win;
+    if (mine == theirs) return draw;
+    return loss;
+}
+
+// Fills r from scratch: a Row local is zeroed only at routine entry, not per loop pass.
+void rowFor(eTeam t, ref Row r) {
+    r = Row{ t, 0, 0, 0, 0, 0, 0, 0 };
+    for (Fixture f in fixtures.filter((Fixture x) => x.played && involves(x, t))) {
+        eOutcome o = outcomeFor(f, t);
+        r.played++;
+        if (o == win) r.won++;
+        else if (o == draw) r.drawn++;
+        else r.lost++;
+        r.points += pointsFor[(int)o];
+        if (f.home == t) { r.scored += f.hg; r.conceded += f.ag; }
+        else { r.scored += f.ag; r.conceded += f.hg; }
+    }
+}
+
+eMark marksFor(Row r, int place) {
+    eMark m = 0;
+    if (r.played > 0 && place == 0) m |= leader;
+    if (r.played > 0 && r.lost == 0) m |= unbeaten;
+    if (r.played > 0 && r.won == 0) m |= winless;
+    if (r.played > 0 && place == TEAM_COUNT - 1) m |= bottom;
+    return m;
+}
+
+void marksInto(ref stringObj s, eMark m) {
+    if (m == 0) return;
+    bool first = true;
+    for (int b in 0 to MARK_KINDS - 1) {
+        if ((m & (eMark)(1 << b)) == 0) continue;
+        if (first) s += " ";
+        else s += ",";
+        s += markNames[b];
+        first = false;
+    }
+}
+
+string marginWord(Fixture f) {
+    int d = f.hg - f.ag;
+    switch (d) {
+        case 0:
+            if (f.hg == 0) return "goalless";
+            return "level";
+        case 1 to 2:   return "home win";
+        case >= 3:     return "home rout";
+        case -2 to -1: return "away win";
+        default:       return "away rout";
+    }
+}
+
+void fixtureLine(int k) {
+    Fixture f = fixtures[k];
+    stringObj line = $"{k + 1}";
+    padTo(line, 3);
+    line += $"r{f.round}";
+    padTo(line, 6);
+    line += teamNames[(int)f.home];
+    padTo(line, 13);
+    if (f.played) line += $"{f.hg}-{f.ag}";
+    else line += "v";
+    padTo(line, 17);
+    line += teamNames[(int)f.away];
+    if (f.played) {
+        padTo(line, 24);
+        line += marginWord(f);
+    }
+    line.print();
+    print("^");
+}
+
+//-- Measures ------------------------------------------------------------------
+
+int playedBy(eTeam t) {
+    return fixtures.filter((Fixture f) => f.played && involves(f, t)).count();
+}
+
+int pointsOf(eTeam t) {
+    Row r;
+    rowFor(t, r);
+    return r.points;
+}
+
+int scoredBy(eTeam t) {
+    Row r;
+    rowFor(t, r);
+    return r.scored;
+}
+
+int homeWins(eTeam t) {
+    return fixtures.filter((Fixture f) => f.played && f.home == t && f.hg > f.ag).count();
+}
+
+int toPlay(eTeam t) {
+    return fixtures.filter((Fixture f) => !f.played && involves(f, t)).count();
+}
+
+array<func<int, eTeam>> measures = { playedBy, pointsOf, scoredBy, homeWins, toPlay };
+array<string> measureNames = { "played", "points", "scored", "home wins", "to play" };
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb TableTest {
+    grammar = {.table};
+    void handler() {
+        array<Row> rows[TEAM_COUNT];
+        for (int t in 0 to TEAM_COUNT - 1) {
+            Row r;
+            rowFor((eTeam)t, r);
+            rows.append(r);
+        }
+        rows.sort();
+        print("   team   P W D L  F  A  Pts^");
+        for (int k in 0 to rows.length - 1) {
+            Row r = rows[k];
+            stringObj line = $"{k + 1}";
+            padTo(line, 3);
+            line += teamNames[(int)r.team];
+            padTo(line, 10);
+            line += $"{r.played} {r.won} {r.drawn} {r.lost}";
+            padTo(line, 18);
+            line += $"{r.scored}";
+            padTo(line, 21);
+            line += $"{r.conceded}";
+            padTo(line, 24);
+            line += $"{r.points}";
+            marksInto(line, marksFor(r, k));
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb FixturesTest {
+    grammar = {.fixtures};
+    void handler() {
+        for (int k in 0 to fixtures.length - 1) fixtureLine(k);
+    }
+}
+
+verb RoundTest {
+    grammar = {.round, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (!fixtures.any((Fixture f) => f.round == n)) { print($"No round {n}.^"); return; }
+        for (int k in 0 to fixtures.length - 1) {
+            if (fixtures[k].round == n) fixtureLine(k);
+        }
+        int left = fixtures.filter((Fixture f) => f.round == n && !f.played).count();
+        if (left == 0) print($"Round {n} complete.^");
+        else print($"Round {n}: {left} to play.^");
+    }
+}
+
+verb ResultTest {
+    grammar = {.result, NUMBER, parseScore};
+    void handler() {
+        int k = (int)noun - 1;
+        int packed = (int)second;
+        if (k < 0 || k >= fixtures.length) { print($"No fixture {k + 1}.^"); return; }
+        if (fixtures[k].played) { print($"Fixture {k + 1} already has a result.^"); return; }
+        fixtures[k].hg = packed / 100;
+        fixtures[k].ag = packed % 100;
+        fixtures[k].played = true;
+        fixtureLine(k);
+        if (fixtures.all((Fixture f) => f.played)) print("All fixtures played.^");
+    }
+}
+
+verb VoidTest {
+    grammar = {.void, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (k < 0 || k >= fixtures.length || !fixtures[k].played) {
+            print($"Fixture {k + 1} has no result.^");
+            return;
+        }
+        fixtures[k].played = false;
+        fixtures[k].hg = 0;
+        fixtures[k].ag = 0;
+        print($"Result of fixture {k + 1} removed.^");
+    }
+}
+
+verb FormTest {
+    grammar = {.form, parseTeam};
+    void handler() {
+        eTeam t = (eTeam)(int)noun;
+        array<Fixture> mine[FIXTURE_MAX] = fixtures.filter((Fixture f) => f.played && involves(f, t))
+            .orderBy((Fixture a, Fixture b) => b.round - a.round);
+        if (mine.length == 0) { print($"{teamNames[(int)t]} have not played.^"); return; }
+        stringObj line = $"{teamNames[(int)t]} form:";
+        for (Fixture f in mine.take(FORM_SHOWN)) {
+            line += " ";
+            line += outcomeLetters[(int)outcomeFor(f, t)];
+        }
+        if (mine.length > FORM_SHOWN) line += $" (+{mine.length - FORM_SHOWN} older)";
+        line.print();
+        print("^");
+        Fixture latest = mine.first();
+        Fixture earliest = mine.last();
+        print($"Latest round {latest.round}, earliest round {earliest.round}.^");
+    }
+}
+
+verb ReportTest {
+    grammar = {.report, parseTeam};
+    void handler() {
+        eTeam t = (eTeam)(int)noun;
+        stringObj line = teamNames[(int)t];
+        line += ":";
+        for (int k in 0 to measures.length - 1) {
+            func<int, eTeam> f = measures[k];
+            line += $" {measureNames[k]} {f(t)};";
+        }
+        line.print();
+        print("^");
+    }
+}
+
+verb RulesTest {
+    grammar = {.rules};
+    void handler() {
+        stringObj line = "Order by";
+        for (int k in 0 to breakerNames.length - 1) {
+            if (k > 0) line += ",";
+            line += $" {breakerNames[k]}";
+        }
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb PreferTest {
+    grammar = {.prefer, NUMBER};
+    void handler() {
+        int k = (int)noun - 1;
+        if (k <= 0 || k >= BREAKER_COUNT - 1) { print("That rule can't be moved.^"); return; }
+        breakers.swap(k - 1, k);
+        breakerNames.swap(k - 1, k);
+        print($"{breakerNames[k - 1]} now comes before {breakerNames[k]}.^");
+    }
+}
+
+verb StreakTest {
+    grammar = {.streak, parseTeam};
+    void handler() {
+        eTeam t = (eTeam)(int)noun;
+        array<Fixture> mine[FIXTURE_MAX] = fixtures.filter((Fixture f) => f.played && involves(f, t))
+            .orderBy((Fixture a, Fixture b) => a.round - b.round);
+        int skipped = mine.skip(1).count();
+        bool scoredEvery = mine.all((Fixture f) => (f.home == t && f.hg > 0) || (f.away == t && f.ag > 0));
+        bool everLost = mine.any((Fixture f) => outcomeFor(f, t) == loss);
+        print($"{teamNames[(int)t]}: {mine.length} played, {skipped} after the first; scored every game {scoredEvery}; lost {everLost}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

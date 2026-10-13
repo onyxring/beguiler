@@ -1,0 +1,460 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a bell tower. A Bell
+// class (int number and strike count members, a description naming its tone from a global
+// array<string>, a before rule refusing Take/Push/Pull/Turn and turning Attack into a strike); a
+// Rope class with a Bell-typed member, a short_name routine, a parse_name that reads NextWord and
+// TryNumber against the bell's number and a per-object dictionaryWord tone member, and a before rule
+// on Pull; every strike logged in a ring array<int> (modulo index) and compared against a call
+// change in a sized array<int>, unlocking a trapdoor (door_to, door_dir, found_in over two rooms);
+// a clock with int hour/minute members, a description formatting the time with a switch over hour
+// ranges, a daemon running while wound (a tension count), striking the hour through a for loop on
+// the tenor bell, set through the library's SetTo (special token, number in second) and Turn; a
+// native Wind verb (NOUN, .with, HELD) and a native Ring verb with a NOUN(filter) token; a dark
+// belfry lit by a switchable lantern whose after rule gives and takes light; a ladder whose Climb
+// performs Go; a LibraryMessages override of Pull; ChooseObjects preferring a rope; NewRoom; a meta
+// verb printing a tally, reading the ring backwards; deadflag when the score reaches MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int NBELLS = 4;
+const int PEAL = 6;             // strikes remembered
+const int TENSION = 6;          // turns one winding lasts
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Pull:
+                if (lm_n == 4) rtrue("It doesn't move.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+array<string> tones = {"high", "bright", "mellow", "deep"};
+array<int> change[NBELLS] = {2, 4, 1, 3};
+array<int> rung[PEAL];
+int nRung;                      // every strike ever made
+int g_rooms;
+bool g_noon;                    // the clock has struck twelve
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// ---------------------------------------------------------------- bells
+
+class Bell : object {
+    int number;
+    int strikes;
+    void description() {
+        print($"Bell {number}, the {tones[number - 1]} one. It has sounded {strikes} time");
+        if (strikes != 1) print("s");
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Take, Push, Pull, Turn:
+                rtrue("The bell hangs from a heavy beam.^");
+            case Attack:
+                Strike(self);
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+Bell bell1 { short_name = "bell 1"; name = {.bell, .treble}; number = 1; }
+Bell bell2 { short_name = "bell 2"; name = {.bell, .second}; number = 2; }
+Bell bell3 { short_name = "bell 3"; name = {.bell, .third}; number = 3; }
+Bell bell4 { short_name = "bell 4"; name = {.bell, .tenor}; number = 4; }
+
+array<object> bells = {bell1, bell2, bell3, bell4};
+
+bool HearsBells() {
+    return location == belfry || location == clockRoom;
+}
+
+void Strike(Bell b) {
+    b.strikes++;
+    rung[nRung % PEAL] = b.number;
+    nRung++;
+    if (location == belfry) print($"Bell {b.number} swings over with a {tones[b.number - 1]} clang.^");
+    else print($"Overhead, bell {b.number} sounds a {tones[b.number - 1]} note.^");
+    CheckChange();
+}
+
+void CheckChange() {
+    if (trapdoor.hasnt(locked)) return;
+    if (nRung < NBELLS) return;
+    for (int i = 0; i < NBELLS; i++) {
+        int k = (nRung - NBELLS + i) % PEAL;
+        if (rung[k] != change[i]) return;
+    }
+    trapdoor.ungive(locked);
+    print("A bolt in the ceiling clicks back.^");
+    Award();
+}
+
+// ---------------------------------------------------------------- ropes
+
+class Rope : object {
+    Bell bell;
+    dictionaryWord tone;
+    bool short_name() {
+        print($"rope {bell.number}");
+        return true;
+    }
+    int parse_name() {
+        if (parser_action == TheSame) return -2;   // each rope is its own
+        int n = 0;
+        bool named = false;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .rope || w == .sally) {
+                named = true;
+                n++;
+                continue;
+            }
+            if (w != null && w == tone) {
+                n++;
+                continue;
+            }
+            if (w == null && TryNumber(wn - 1) == bell.number) {
+                n++;
+                continue;
+            }
+            if (w == ..ropes) {
+                parser_action = PluralFound;
+                n++;
+                continue;
+            }
+            if (!named && n > 0 && w != null) return 0;
+            return n;
+        }
+    }
+    void description() {
+        print($"A striped sally on the rope for bell {bell.number}.^");
+    }
+    bool before() {
+        switch (action) {
+            case Pull, Push:
+                Strike(bell);
+                rtrue;
+            case Take:
+                rtrue("You take hold of it, then let it go again.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+Rope rope1 { parent = ringingRoom; bell = bell1; tone = .treble; }
+Rope rope2 { parent = ringingRoom; bell = bell2; tone = .second; }
+Rope rope3 { parent = ringingRoom; bell = bell3; tone = .third; }
+Rope rope4 { parent = ringingRoom; bell = bell4; tone = .tenor; }
+
+// ---------------------------------------------------------------- rooms
+
+object ringingRoom {
+    short_name = "Ringing Room";
+    description = "Ringing Room. Four ropes hang through holes in the ceiling. A trapdoor is set in the ceiling and a board hangs on the wall.";
+    object u_to = trapdoor;
+    attributes = {light};
+}
+
+object board {
+    short_name = "board";
+    name = {.board, .notice};
+    parent = ringingRoom;
+    void description() {
+        print("The board reads: CALL CHANGE");
+        for (int i = 0; i < NBELLS; i++) print($" {change[i]}");
+        print(".^");
+    }
+    attributes = {static, scenery};
+}
+
+object trapdoor {
+    short_name = "trapdoor";
+    name = {.trapdoor, .trap, .door, .hatch};
+    rawArray<object> found_in = {ringingRoom, clockRoom};
+    object door_to() {
+        if (location == ringingRoom) return clockRoom;
+        return ringingRoom;
+    }
+    property door_dir() {
+        if (location == ringingRoom) return u_to;
+        return d_to;
+    }
+    void description() {
+        print("A wooden trapdoor");
+        if (has(locked)) print(", bolted from above");
+        else if (has(open)) print(", standing open");
+        print(".^");
+    }
+    attributes = {door, openable, locked, static, scenery};
+}
+
+object clockRoom {
+    short_name = "Clock Room";
+    description = "Clock Room. The clock mechanism fills the middle of the room. A ladder leads up.";
+    object d_to = trapdoor;
+    object u_to = belfry;
+    attributes = {light};
+}
+
+object ladder {
+    short_name = "ladder";
+    name = {.ladder};
+    parent = clockRoom;
+    description = "A wooden ladder fixed to the wall.";
+    bool before() {
+        switch (action) {
+            case Climb:
+                Go.perform(u_obj);
+                rtrue;
+        }
+        rfalse;
+    }
+    attributes = {static, scenery};
+}
+
+object belfry {
+    short_name = "Belfry";
+    description = "Belfry. Four bells hang from a frame. A ladder leads down.";
+    object d_to = clockRoom;
+    children = {bell1, bell2, bell3, bell4};
+}
+
+// ---------------------------------------------------------------- the clock
+
+enum clockState { stopped, running }
+
+object towerClock {
+    short_name = "clock";
+    name = {.clock, .mechanism, .face, .hands};
+    parent = clockRoom;
+    int hour = 11;
+    int minute = 40;
+    int tension;
+    clockState state = stopped;
+    void description() {
+        print($"The clock reads {hour}:");
+        if (minute < 10) print("0");
+        print(minute);
+        switch (hour) {
+            case 1 to 5:
+                print(", early");
+            case 6 to 10:
+                print(", middling");
+            default:
+                print(", late");
+        }
+        if (state == running) print(". It is ticking.^");
+        else print(". It is silent.^");
+    }
+    bool before() {
+        switch (action) {
+            case SetTo:
+                int n = (int)second;
+                if (n < 1 || n > 12) rtrue("The hour hand only reaches 1 to 12.^");
+                hour = n;
+                minute = 0;
+                rtrue($"You set the clock to {n}:00.^");
+            case Turn:
+                Advance(15, false);
+                print("You push the hands on a quarter hour. ");
+                Examine.perform(self);
+                rtrue;
+            case Take, Push, Pull:
+                rtrue("The clock is fixed to the floor.^");
+        }
+        rfalse;
+    }
+    void daemon() {
+        if (tension == 0) return;
+        tension--;
+        Advance(5, true);
+        if (tension == 0) {
+            state = stopped;
+            StopDaemon(self);
+            if (location == clockRoom) print("^The clock ticks to a stop.^");
+        }
+    }
+    attributes = {static};
+}
+
+void Advance(int mins, bool sounding) {
+    towerClock.minute = towerClock.minute + mins;
+    while (towerClock.minute >= 60) {
+        towerClock.minute = towerClock.minute - 60;
+        towerClock.hour = towerClock.hour % 12 + 1;
+        if (sounding) Chime(towerClock.hour);
+    }
+}
+
+void Chime(int h) {
+    if (HearsBells()) print($"^The clock strikes {h}:");
+    else print($"^Overhead, the clock strikes {h}.^");
+    for (int i = 1; i <= h; i++) {
+        bell4.strikes++;
+        if (HearsBells()) print(" bong");
+    }
+    if (HearsBells()) print(".^");
+    if (h == 12 && !g_noon) {
+        g_noon = true;
+        Award();
+    }
+}
+
+object crank {
+    short_name = "winding crank";
+    name = {.winding, .crank, .handle};
+    parent = clockRoom;
+    description = "An iron crank with a square socket.";
+}
+
+void WindClock() {
+    if (towerClock.state == running) {
+        towerClock.tension = TENSION;
+        print("You top up the spring.^");
+        return;
+    }
+    towerClock.tension = TENSION;
+    towerClock.state = running;
+    StartDaemon(towerClock);
+    print("You wind the clock. It begins to tick.^");
+    if (crank.hasnt(general)) {
+        crank.give(general);
+        Award();
+    }
+}
+
+// ---------------------------------------------------------------- the lantern
+
+object lantern {
+    short_name = "lantern";
+    name = {.lantern, .lamp};
+    parent = ringingRoom;
+    description = "A tin lantern.";
+    string when_on = "A lantern burns here.";
+    string when_off = "A lantern sits here, unlit.";
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+            case SwitchOff:
+                ungive(light);
+        }
+        rfalse;
+    }
+    bool invent() {
+        if (inventory_stage == 2 && has(on)) print(" (lit)");
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+// ---------------------------------------------------------------- entry points
+
+void NewRoom() {
+    g_rooms++;
+}
+
+int ChooseObjects(object obj, int code) {
+    if (code < 2) return 0;
+    if (action_to_be == Pull && obj.is(Rope)) return 3;
+    return 0;
+}
+
+// ---------------------------------------------------------------- verbs
+
+bool IsBell() {
+    return noun.is(Bell) || noun.is(Rope);
+}
+
+verb Ring {
+    grammar = {.ring | .toll, NOUN(IsBell)};
+    void handler() {
+        if (noun.is(Rope)) {
+            Pull.perform(noun);
+            return;
+        }
+        if (location != belfry) {
+            print("You can't reach the bells from here.^");
+            return;
+        }
+        Strike((Bell)noun);
+    }
+}
+
+verb Wind {
+    grammar = {
+        {.wind, NOUN},
+        {.wind, NOUN, .with, HELD},
+    };
+    void handler() {
+        if (noun != towerClock) {
+            print("That can't be wound.^");
+            return;
+        }
+        if (second == null) {
+            if (crank.parent != player) {
+                print("You need something to wind it with.^");
+                return;
+            }
+        }
+        else if (second != crank) {
+            print($"{cThe(second)} doesn't fit the socket.^");
+            return;
+        }
+        WindClock();
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print($"Rooms {g_rooms}, score {score}, strikes {nRung}.^");
+        print("Bells:");
+        for (object o in bells) {
+            Bell b = (Bell)o;
+            print($" {b.number}={b.strikes}");
+        }
+        print(".^Last strikes:");
+        int n = nRung;
+        if (n > PEAL) n = PEAL;
+        if (n == 0) print(" none");
+        for (int i = 1; i <= n; i++) print($" {rung[(nRung - i) % PEAL]}");
+        print($".^Clock {towerClock.hour}:");
+        if (towerClock.minute < 10) print("0");
+        print($"{towerClock.minute}, tension {towerClock.tension}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = ringingRoom;
+    rfalse;
+}

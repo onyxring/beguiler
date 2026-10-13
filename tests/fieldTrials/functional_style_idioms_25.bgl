@@ -1,0 +1,429 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small task scheduler written in a functional style on z5. Tasks are scenery objects of
+// a class with an enum crew, a length in days, a finished flag and a member array of the tasks they
+// need, given as object lists in their definitions; held in a global array. Pure recursive helpers
+// for earliest finish (forward over needs) and latest finish (backward over dependents found by a
+// <linq> filter whose predicate runs contains() on a member array), a value class span returned by
+// value and copied; a topological order built by repeatedly filtering for tasks whose needs are all
+// placed (a chain inside a chain's predicate) and ordered with a two-key comparator; the critical path
+// written into a `ref stringObj` parameter by recursion; a day-by-day crew simulation over local int
+// arrays captured by lambdas, with a func<int, Task> priority chosen by a ternary; hand-written folds
+// over func<> parameters; per-crew totals over an array of the enum with map; named and defaulted
+// func<> parameters; `?.` and `??` on a chain's first(); verbs reading a noun and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXDAYS = 40;
+
+//-- Tasks ----------------------------------------------------------------------------------------
+
+enum eCrew { mason, smith, joiner }
+
+class Task : object {
+    attributeList attributes = {scenery};
+    string label;
+    eCrew crew;
+    int days;
+    bool finished = false;
+    array<Task> needs[3];
+
+    bool needsMet() { return needs.all((Task n) => n.finished); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Task footing { "footing"; name = {.footing}; label = "footing"; crew = eCrew.mason;  days = 2; parent = roomA; }
+Task frame   { "frame";   name = {.frame};   label = "frame";   crew = eCrew.joiner; days = 3; needs = {footing}; parent = roomA; }
+Task wall    { "wall";    name = {.wall};    label = "wall";    crew = eCrew.mason;  days = 4; needs = {footing}; parent = roomA; }
+Task hinge   { "hinge";   name = {.hinge};   label = "hinge";   crew = eCrew.smith;  days = 1; parent = roomA; }
+Task latch   { "latch";   name = {.latch};   label = "latch";   crew = eCrew.smith;  days = 2; needs = {hinge}; parent = roomA; }
+Task gate    { "gate";    name = {.gate};    label = "gate";    crew = eCrew.joiner; days = 2; needs = {frame, latch}; parent = roomA; }
+Task roof    { "roof";    name = {.roof};    label = "roof";    crew = eCrew.joiner; days = 3; needs = {wall, frame}; parent = roomA; }
+Task paint   { "paint";   name = {.paint};   label = "paint";   crew = eCrew.joiner; days = 1; needs = {gate, roof}; parent = roomA; }
+
+array<Task> tasks = {footing, frame, wall, hinge, latch, gate, roof, paint};
+array<eCrew> crews = {eCrew.mason, eCrew.smith, eCrew.joiner};
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int add(int a, int b)   { return a + b; }
+int maxOf(int a, int b) { return a > b ? a : b; }
+int minOf(int a, int b) { return a < b ? a : b; }
+
+string crewName(eCrew c) {
+    switch (c) {
+        case eCrew.mason: return "mason";
+        case eCrew.smith: return "smith";
+        default:          return "joiner";
+    }
+}
+
+int daysOf(Task t) { return t.days; }
+int one(Task t)    { return 1; }
+
+int foldTasks(array<Task> xs, int seed, func<int, int, Task> f) {
+    int acc = seed;
+    for (Task t in xs) acc = f(acc, t);
+    return acc;
+}
+
+int sumBy(array<Task> xs, func<int, Task> key = daysOf) {
+    return foldTasks(xs, 0, (int acc, Task t) => acc + key(t));
+}
+
+int foldInts(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+int indexOfTask(Task t) { return tasks.indexOf(t); }
+
+string plainLabel(Task t) { return t.label; }
+string markedLabel(Task t) { return t.finished ? "done" : t.label; }
+
+void showTasks(array<Task> xs, func<string, Task> labelOf = plainLabel, string sep = " ") {
+    if (xs.length == 0) {
+        print("(none)");
+        return;
+    }
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(sep);
+        print(labelOf(xs[i]));
+    }
+}
+
+void showInts(array<int> xs) {
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) print(" ");
+        print(xs[i]);
+    }
+}
+
+//-- Schedule arithmetic --------------------------------------------------------------------------
+
+// Earliest day a task can be finished, starting from day 0 with every need before it.
+int finishOf(Task t) {
+    int longest = 0;
+    for (Task n in t.needs) longest = maxOf(longest, finishOf(n));
+    return t.days + longest;
+}
+
+int startOf(Task t) { return finishOf(t) - t.days; }
+
+int projectEnd() {
+    return foldTasks(tasks, 0, (int acc, Task t) => maxOf(acc, finishOf(t)));
+}
+
+array<Task> dependentsOf(Task t) {
+    return tasks.filter((Task d) => d.needs.contains(t));
+}
+
+// Latest day a task can be finished without delaying the end.
+int latestFinish(Task t, int end) {
+    array<Task> deps = dependentsOf(t);
+    if (deps.length == 0) return end;
+    int least = end;
+    for (Task d in deps) least = minOf(least, latestFinish(d, end) - d.days);
+    return least;
+}
+
+int slackOf(Task t) { return latestFinish(t, projectEnd()) - finishOf(t); }
+
+// Days from a task's start to the end of the longest chain of work that follows it.
+int tailOf(Task t) {
+    array<Task> deps = dependentsOf(t);
+    int longest = 0;
+    for (Task d in deps) longest = maxOf(longest, tailOf(d));
+    return t.days + longest;
+}
+
+value class Span {
+    int start = 0;
+    int finish = 0;
+
+    Span operator = (Span o) {
+        start = o.start;
+        finish = o.finish;
+        return self;
+    }
+
+    int width() { return finish - start; }
+    bool overlaps(Span o) { return start < o.finish && o.start < finish; }
+}
+
+Span spanOf(Task t) {
+    Span s;
+    s.finish = finishOf(t);
+    s.start = s.finish - t.days;
+    return s;
+}
+
+//-- Order and path -------------------------------------------------------------------------------
+
+// Tasks in an order where each comes after everything it needs: earliest start first, then by
+// position in the task list.
+array<Task> topoOrder() {
+    array<Task> placed[8];
+    while (placed.length < tasks.length) {
+        array<Task> next = tasks.filter((Task t) => !placed.contains(t) && t.needs.all((Task n) => placed.contains(n)));
+        if (next.length == 0) break;
+        array<Task> sorted = next.orderBy((Task a, Task b) => {
+            if (startOf(a) != startOf(b)) return startOf(a) - startOf(b);
+            return indexOfTask(a) - indexOfTask(b);
+        });
+        for (Task t in sorted) placed += t;
+    }
+    return placed;
+}
+
+// Writes the critical chain that ends with t, earliest first.
+void pathTo(Task t, ref stringObj out) {
+    int s = startOf(t);
+    Task prev = t.needs.filter((Task n) => finishOf(n) == s).first();
+    if (prev != null) {
+        pathTo(prev, out);
+        out += " > ";
+    }
+    out += t.label;
+}
+
+Task lastTask() {
+    int end = projectEnd();
+    return tasks.filter((Task t) => finishOf(t) == end).first();
+}
+
+//-- Crew simulation ------------------------------------------------------------------------------
+
+// Runs the work day by day with `each` crews of every kind. A crew takes the waiting task whose
+// needs are done with the best priority. Returns the number of days, or 0 when it stalls.
+int simulate(int each, func<int, Task> priority, bool show = true) {
+    array<int> left[8];
+    array<int> state[8];        // 0 waiting, 1 running, 2 finished
+    for (Task t in tasks) {
+        left += t.days;
+        state += 0;
+    }
+    int day = 0;
+    while (state.any((int s) => s != 2)) {
+        day++;
+        if (day > MAXDAYS) return 0;
+        for (eCrew k in crews) {
+            int busy = tasks.filter((Task t) => t.crew == k && state[indexOfTask(t)] == 1).count();
+            array<Task> waiting = tasks.filter((Task t) => {
+                int i = indexOfTask(t);
+                return t.crew == k && state[i] == 0 && t.needs.all((Task n) => state[indexOfTask(n)] == 2);
+            });
+            array<Task> ranked = waiting.orderBy((Task a, Task b) => priority(b) - priority(a));
+            for (Task t in ranked) {
+                if (busy >= each) break;
+                state[indexOfTask(t)] = 1;
+                busy++;
+            }
+        }
+        array<Task> running = tasks.filter((Task t) => state[indexOfTask(t)] == 1);
+        if (running.length == 0) return 0;
+        if (show) {
+            print($"day {day}: ");
+            showTasks(running);
+            print("^");
+        }
+        for (Task t in running) {
+            int i = indexOfTask(t);
+            left[i] = left[i] - 1;
+            if (left[i] == 0) state[i] = 2;
+        }
+    }
+    return day;
+}
+
+int byTail(Task t)  { return tailOf(t); }
+int byShort(Task t) { return 0 - t.days; }
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb TasksVerb {
+    grammar = {{.tasks}};
+    void handler() {
+        for (Task t in tasks) {
+            Span s = spanOf(t);
+            print($"{t.label}: {crewName(t.crew)} {t.days}d, days {s.start}-{s.finish}, needs ");
+            array<Task> ns = t.needs;
+            showTasks(ns, sep: ",");
+            print($", slack {slackOf(t)}^");
+        }
+        print($"end day {projectEnd()}, total work {sumBy(tasks)} days in {sumBy(tasks, one)} tasks^");
+    }
+}
+
+verb OrderVerb {
+    grammar = {{.order}};
+    void handler() {
+        array<Task> order = topoOrder();
+        print("order: ");
+        showTasks(order);
+        print("^");
+        array<int> starts = order.map((var t) => startOf((Task)t));
+        print("starts: ");
+        showInts(starts);
+        print($"^first {order.first()?.label ?? "-"}, last {order.last()?.label ?? "-"}^");
+    }
+}
+
+verb PathVerb {
+    grammar = {{.path}};
+    void handler() {
+        stringObj chain;
+        pathTo(lastTask(), chain);
+        print($"critical: {chain}^");
+        array<Task> tight = tasks.filter((Task t) => slackOf(t) == 0);
+        print($"no slack: ");
+        showTasks(tight);
+        print($" ({sumBy(tight)} days)^");
+    }
+}
+
+verb OverlapVerb {
+    grammar = {{.overlap, noun}};
+    void handler() {
+        if (!noun.is(Task)) {
+            print("That is not a task.^");
+            return;
+        }
+        Task t = (Task)noun;
+        Span mine = spanOf(t);
+        array<Task> alongside = tasks.filter((Task o) => o != t && spanOf(o).overlaps(mine));
+        print($"{t.label} ({mine.start}-{mine.finish}, {mine.width()}d) overlaps ");
+        showTasks(alongside);
+        print("^");
+    }
+}
+
+verb ReadyVerb {
+    grammar = {{.ready}};
+    void handler() {
+        array<Task> open = tasks.filter((Task t) => !t.finished && t.needsMet());
+        print("ready: ");
+        showTasks(open);
+        print("^done: ");
+        showTasks(tasks.filter((Task t) => t.finished));
+        print("^");
+    }
+}
+
+verb FinishVerb {
+    grammar = {{.finish, noun}};
+    void handler() {
+        if (!noun.is(Task)) {
+            print("That is not a task.^");
+            return;
+        }
+        Task t = (Task)noun;
+        if (t.finished) {
+            print($"The {t.label} is already done.^");
+            return;
+        }
+        if (!t.needsMet()) {
+            array<Task> missing = t.needs.filter((Task n) => !n.finished);
+            print($"The {t.label} needs ");
+            showTasks(missing, sep: " and ");
+            print(" first.^");
+            return;
+        }
+        t.finished = true;
+        int left = tasks.filter((Task x) => !x.finished).count();
+        print($"The {t.label} is done. {left} task{left == 1 ? "" : "s"} left.^");
+    }
+}
+
+verb BoardVerb {
+    grammar = {{.board}};
+    void handler() {
+        array<Task> order = topoOrder();
+        showTasks(order, markedLabel, ", ");
+        print("^");
+        showTasks(order, labelOf: (Task t) => t.finished ? "x" : "o", sep: "");
+        print("^");
+    }
+}
+
+verb PlanVerb {
+    grammar = {{.plan, NUMBER}};
+    void handler() {
+        int each = parsed_number;
+        if (each < 1 || each > 3) {
+            print("Between 1 and 3 crews.^");
+            return;
+        }
+        int days = simulate(each, byTail);
+        print($"{each} crew{each == 1 ? "" : "s"} each: {days} days (end day {projectEnd()} with no crew limit)^");
+    }
+}
+
+verb CompareVerb {
+    grammar = {{.compare}};
+    void handler() {
+        array<int> sizes = {1, 2, 3};
+        array<int> tails[3];
+        array<int> shorts[3];
+        for (int n in sizes) {
+            tails += simulate(n, byTail, false);
+            shorts += simulate(n, byShort, show: false);
+        }
+        print("by tail:  ");
+        showInts(tails);
+        print("^short first: ");
+        showInts(shorts);
+        int better = sizes.filter((int n) => tails[n - 1] < shorts[n - 1]).count();
+        print($"^tail wins {better}, best {foldInts(tails, MAXDAYS, minOf)}^");
+        func<int, Task> pick = better > 0 ? byTail : byShort;
+        print($"one crew, chosen rule: {simulate(1, pick, false)} days^");
+    }
+}
+
+verb CrewsVerb {
+    grammar = {{.crews}};
+    void handler() {
+        array<int> loads = crews.map((var c) => sumBy(tasks.filter((Task t) => t.crew == (eCrew)c)));
+        for (int i = 0; i < crews.length; i++) {
+            eCrew k = crews[i];
+            array<Task> mine = tasks.filter((Task t) => t.crew == k);
+            print($"{crewName(k)}: {loads[i]} days, ");
+            showTasks(mine);
+            print("^");
+        }
+        int busiest = loads.indexOf(foldInts(loads, 0, maxOf));
+        print($"busiest {crewName(crews[busiest])}, total {foldInts(loads, 0, add)}^");
+    }
+}
+
+verb ResetVerb {
+    grammar = {{.reset}};
+    void handler() {
+        for (Task t in tasks) t.finished = false;
+        print("All tasks are open again.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

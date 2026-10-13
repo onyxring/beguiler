@@ -1758,7 +1758,7 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
             pal.args, namedArgNames, interpSegs);
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
-        callStmt.functionName = parenthesizeReceiver(subscriptText) + "." + (method->i6name.empty() ? memberName : method->i6name);
+        callStmt.functionName = parenthesizeReceiver(subscriptText) + "." + methodCallName(method, memberName);
         callStmt.args = pal.args;
         callStmt.namedArgNames = namedArgNames;
         callStmt.interpSegmentsPerArg = interpSegs;
@@ -1888,7 +1888,7 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPathIn, expression
                     pal.args, pal.namedArgNames, pal.interpSegmentsPerArg);
                 functionCallStatement& cs = *(new functionCallStatement());
                 cs.src = stmtLoc;
-                cs.functionName = recv + "." + (method->i6name.empty() ? memberName : method->i6name);
+                cs.functionName = recv + "." + methodCallName(method, memberName);
                 cs.args = pal.args; cs.namedArgNames = pal.namedArgNames; cs.interpSegmentsPerArg = pal.interpSegmentsPerArg;
                 if(method->isEmitter && !method->isPrePassStub)
                     if(auto* mblk = dynamic_cast<i6Block*>(method->body)){
@@ -3941,7 +3941,7 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
                 if(classDef* owner = stCls->declaringClass(method)) stCls = owner;
             callStmt.functionName = i6Emitter::staticRoutineName(stCls, method);
         } else if(!method->isEmitter){
-            string callName = method->i6name.empty() ? methodName : method->i6name;
+            string callName = methodCallName(method, methodName);
             // Explicit ancestor cast → qualify the send with the ancestor's I6 class
             // (`obj.Base::method`) so I6 selects that class's routine statically.
             if(ancestorDispatchClass != nullptr)
@@ -4018,9 +4018,13 @@ void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token t
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
     // global function call: bind (resolve + validate + finalize) then stage emitter body
-    GlobalCallBinding gcb = bindGlobalCall(callStmt.functionName, callStmt.args,
+    // `::name(…)` past a local of the name binds the global; the marker stays on the emitted name.
+    string bindName = callStmt.functionName;
+    bool escaped = bindName.rfind(kGlobalEscapeMarker, 0) == 0;
+    if(escaped) bindName = bindName.substr(strlen(kGlobalEscapeMarker));
+    GlobalCallBinding gcb = bindGlobalCall(bindName, callStmt.args,
                                             callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
-                                            func, body);
+                                            escaped ? nullptr : func, escaped ? nullptr : body);
     if(!gcb.funcVarReturnType.empty())  chainReturnType = gcb.funcVarReturnType;
     else if(gcb.method != nullptr)      chainReturnType = gcb.method->returnType.name;
     else                                chainReturnType = "var"; // loose mode: unresolved → opaque
@@ -4151,7 +4155,7 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         if(!chainMethod->isEmitter && !chainMethod->isStatic){
             // A routine method: send it to the prior result.
             string call = parenthesizeReceiver(selfText) + "."
-                        + (chainMethod->i6name.empty() ? chainMethod->name : chainMethod->i6name) + "(";
+                        + methodCallName(chainMethod, chainMethod->name) + "(";
             for(size_t i = 0; i < chainArgs.size(); i++) call += (i ? ", " : "") + chainArgs[i]->text();
             callStmt.emitterBody = call + ")";
             callStmt.emitterParams.clear();
@@ -4185,6 +4189,20 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
 }
 
 // `name(args);` / `recv.method(args);` — a call used as a statement, with method chaining.
+// `Chime(3)` where a parameter `bool chime` hides the function `Chime` (case doesn't count): the call
+// reaches the parameter, which isn't a routine.
+void bglParser::rejectCallOfPlainLocal(const string& name, const string& shown, functionDef* func, statementBlock* body){
+    if(func == nullptr) return;
+    if(!qualifyFromParams(name, func) && !qualifyFromBodyLocals(name, body) && !qualifyFromAncestorBlocks(name, body)) return;
+    string t = resolveIdentifierType(name, func, body);
+    static const set<string> plain = {"int", "uint", "bool", "char", "float", "dictionaryword", "attribute", "property"};
+    if(!plain.count(t) && languageService.findEnum(t) == nullptr) return;
+    string fn = languageService.findGlobalAs<functionDef>(name) != nullptr ? format(", and it hides the function '{0}' (case "
+        "doesn't count): rename one, or call `::{0}(…)`", shown.empty() ? name : shown) : "";
+    parsingError(format("'{0}' here is a local of type {1}, which can't be called{2}.", shown.empty() ? name : shown,
+                        typeDisplayName(t), fn));
+}
+
 bool bglParser::processCallStatement(token tok, StatementContext& sc){
     const sourceLocation& stmtLoc = sc.src;
     functionDef* func = sc.func;
@@ -4201,6 +4219,7 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
                 "`func<void> f = (func<void>){0}; f();`", (string)tok, calleeType));
     }
 
+    rejectCallOfPlainLocal((string)tok, tok.originalValue, func, body);
     // A #using-imported emitter value (`italics` from bgl.printRules) is read, not called — unless a
     // function of that name is declared too, which the call then means.
     if(isUsingImportedValueEmitter((string)tok) && languageService.findGlobalAs<functionDef>((string)tok) == nullptr)

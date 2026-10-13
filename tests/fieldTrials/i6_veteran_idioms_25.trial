@@ -1,0 +1,169 @@
+Ringing Room
+Ringing Room. Four ropes hang through holes in the ceiling. A trapdoor is set in the ceiling and a board hangs on the wall.
+A lantern sits here, unlit.
+You can also see a rope 1, a rope 2, a rope 3 and a rope 4 here.
+> tally
+Rooms 1, score 0, strikes 0.
+Bells: 1=0 2=0 3=0 4=0.
+Last strikes: none.
+Clock 11:40, tension 0.
+> x board
+The board reads: CALL CHANGE 2 4 1 3.
+> pull rope
+Which do you mean, the rope 1, the rope 2, the rope 3 or the rope 4?
+> pull rope 2
+Overhead, bell 2 sounds a bright note.
+> pull tenor rope
+Overhead, bell 4 sounds a deep note.
+> pull 4
+Overhead, bell 4 sounds a deep note.
+> pull rope 1
+Overhead, bell 1 sounds a high note.
+> pull third
+Overhead, bell 3 sounds a mellow note.
+> tally
+Rooms 1, score 0, strikes 5.
+Bells: 1=1 2=1 3=1 4=2.
+Last strikes: 3 1 4 4 2.
+Clock 11:40, tension 0.
+> x trapdoor
+A wooden trapdoor, bolted from above.
+> pull rope 2
+Overhead, bell 2 sounds a bright note.
+> pull rope 4
+Overhead, bell 4 sounds a deep note.
+> pull 1
+Overhead, bell 1 sounds a high note.
+> pull 3
+Overhead, bell 3 sounds a mellow note.
+A bolt in the ceiling clicks back.
+[The score has just gone up by one point.]
+> x trapdoor
+A wooden trapdoor.
+> tally
+Rooms 1, score 1, strikes 9.
+Bells: 1=2 2=2 3=2 4=3.
+Last strikes: 3 1 4 2 3 1.
+Clock 11:40, tension 0.
+> pull ropes
+You can't use multiple objects with that verb.
+> pull lantern
+It doesn't move.
+> pull board
+The board is fixed in place.
+> take lantern
+Taken.
+> turn lantern on
+You switch the lantern on.
+> i
+You're carrying:
+  a lantern (lit) (providing light)
+> u
+(first opening the trapdoor)
+Clock Room
+Clock Room. The clock mechanism fills the middle of the room. A ladder leads up.
+You can see a clock and a winding crank here.
+> x trapdoor
+A wooden trapdoor, standing open.
+> x clock
+The clock reads 11:40, late. It is silent.
+> wind clock
+You need something to wind it with.
+> wind clock with lantern
+The lantern doesn't fit the socket.
+> set clock to 13
+The hour hand only reaches 1 to 12.
+> set clock to 12
+You set the clock to 12:00.
+> turn clock
+You push the hands on a quarter hour. The clock reads 12:15, late. It is silent.
+> turn hands
+You push the hands on a quarter hour. The clock reads 12:30, late. It is silent.
+> x clock
+The clock reads 12:30, late. It is silent.
+> wind ladder
+That can't be wound.
+> climb ladder
+Belfry
+Belfry. Four bells hang from a frame. A ladder leads down.
+You can see a bell 1, a bell 2, a bell 3 and a bell 4 here.
+> x tenor bell
+Bell 4, the deep one. It has sounded 3 times.
+> ring tenor
+Bell 4 swings over with a deep clang.
+> hit treble
+Bell 1 swings over with a high clang.
+> ring rope
+You can't see any such thing.
+> take bell
+Which do you mean, the bell 1, the bell 2, the bell 3 or the bell 4?
+> second
+The bell hangs from a heavy beam.
+> d
+Clock Room
+Clock Room. The clock mechanism fills the middle of the room. A ladder leads up.
+You can see a clock and a winding crank here.
+> take crank
+Taken.
+> wind clock with crank
+You wind the clock. It begins to tick.
+[The score has just gone up by one point.]
+> turn clock
+You push the hands on a quarter hour. The clock reads 12:50, late. It is ticking.
+> d
+Ringing Room
+Ringing Room. Four ropes hang through holes in the ceiling. A trapdoor is set in the ceiling and a board hangs on the wall.
+You can see a rope 1, a rope 2, a rope 3 and a rope 4 here.
+Overhead, the clock strikes 1.
+> pull rope 3
+Overhead, bell 3 sounds a mellow note.
+> z
+Time passes.
+> wind clock
+You can't see any such thing.
+> u
+Clock Room
+Clock Room. The clock mechanism fills the middle of the room. A ladder leads up.
+You can see a clock here.
+The clock ticks to a stop.
+> tally
+Rooms 6, score 2, strikes 12.
+Bells: 1=3 2=2 3=3 4=5.
+Last strikes: 3 1 4 3 1 4.
+Clock 1:15, tension 0.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> tally
+Rooms 6, score 2, strikes 12.
+Bells: 1=3 2=2 3=3 4=5.
+Last strikes: 3 1 4 3 1 4.
+Clock 1:15, tension 0.
+> set clock to 11
+You set the clock to 11:00.
+> turn clock
+You push the hands on a quarter hour. The clock reads 11:15, late. It is silent.
+> turn clock
+You push the hands on a quarter hour. The clock reads 11:30, late. It is silent.
+> turn clock
+You push the hands on a quarter hour. The clock reads 11:45, late. It is silent.
+> wind clock
+You wind the clock. It begins to tick.
+> z
+Time passes.
+> wind clock
+You top up the spring.
+The clock strikes 12: bong bong bong bong bong bong bong bong bong bong bong bong.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 54 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

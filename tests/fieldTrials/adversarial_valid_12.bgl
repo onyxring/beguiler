@@ -1,0 +1,509 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small letter-tile rack program, on the Z-machine.
+// An emitter class with init/deinit that keeps scope counters in Beguile globals, used as locals
+// inside loop bodies left by `continue`, `break` and `return`, inside a switch case block, in a
+// catch block and in a lambda body, and incremented through its own `operator ++`; a value class
+// of tiles with a copy operator, static `<=>`, `==` and `!=`, its own print() reaching the global
+// one through `::`, filled through a `ref` parameter, held in a local array sorted bare, by an
+// operator reference and by a reversing lambda, then searched; a tile class whose two `inline`
+// members come before instanceName, placed through a REVERSE grammar line and walked as children
+// of a supporter; a stringObj built from chars and read back by subscript, reversed, upper-cased,
+// formatted and replaced; a uint checksum with an unsigned shift, an unsigned comparison and a
+// wrap-around; a char switch mixing a value list, a char range and a guard; an anonymous union of
+// a class and a string discriminated by typeof; `?.` and `??` over a function that may return
+// null; <linq> filter/orderBy/takeWhile/map/any/all/distinct chains on a local array<int>;
+// a file-scope array of func<int, char> holding named functions and a lambda; a static func<>
+// member reassigned from a ternary of two static methods; `#define`/`#redef`/`#undef` steering
+// `#if` around statements; `rtrue(expr)`, do/while and nested ternaries; bgl.util.math helpers;
+// an int thrown from a routine holding a Tally and caught by a catch block that opens another; a
+// pooled history class with bglAllocated, a static counter, create(), destroy() and its own print(),
+// queued in a sized array that drops its oldest entry when full and read with popEnd() and `?.` on
+// peekEnd(); a named union of string and the tile class given an emitter member by `extend` and a
+// global print() overload, assigned from a ternary of the two; and a late `extend` adding `before`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#using bgl.printRules
+
+#define RACK_SIZE 5
+#define BONUS_LEVEL 1
+#redef BONUS_LEVEL 3
+#define SHOW_BANDS
+#undef SHOW_BANDS
+
+extend extern class object {
+    string description;
+}
+
+// ---- scope tally: an emitter class with init and deinit ----------------------------------------
+
+int tallyLive = 0;
+int tallyOpened = 0;
+int tallyClosed = 0;
+
+emitter class Tally {
+    void init()   { $self = 0; tallyLive++; tallyOpened++; }
+    void deinit() { tallyLive--; tallyClosed++; }
+    Tally operator = (int n) { $self = $n; }
+    int operator () { ($self) }
+    Tally operator ++ () { $self++; }
+}
+
+void tallyReport(stringObj label) {
+    printLine($"{label}: live {tallyLive} opened {tallyOpened} closed {tallyClosed}.");
+}
+
+// ---- a tile value: a value class ---------------------------------------------------------------
+
+value class Tile {
+    char letter;
+    int points;
+
+    Tile operator = (Tile o) {
+        letter = o.letter;
+        points = o.points;
+        return self;
+    }
+
+    static int operator <=> (Tile a, Tile b) {
+        int d = a.points - b.points;
+        return d != 0 ? bgl.util.math.sign(d) : bgl.util.math.sign(a.letter - b.letter);
+    }
+    static bool operator == (Tile a, Tile b) { return a.letter == b.letter && a.points == b.points; }
+    static bool operator != (Tile a, Tile b) { return !(a == b); }
+
+    void print() {
+        ::print(letter.toUpper());
+        ::print(points);
+    }
+}
+
+// ---- tiles in the world -------------------------------------------------------------------------
+
+class TileObj : object {
+    inline char glyph;
+    inline int worth;
+    description = "A letter tile.";
+
+    void fill(ref Tile t) {
+        t.letter = glyph;
+        t.points = worth;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object rack {
+    "rack";
+    parent = roomA;
+    description = "A rack.";
+    name = .rack;
+    attributes = {supporter, static};
+}
+
+TileObj redTile   { 'c', 3, "red tile";   parent = roomA; name = {.red, .tile}; }
+TileObj blueTile  { 'a', 1, "blue tile";  parent = roomA; name = {.blue, .tile}; }
+TileObj greenTile { 't', 1, "green tile"; parent = roomA; name = {.green, .tile}; }
+TileObj goldTile  { 'z', 10, "gold tile"; parent = roomA; name = {.gold, .tile}; }
+TileObj grayTile  { 'e', 1, "gray tile";  parent = roomA; name = {.gray, .tile}; }
+
+// ---- scoring rules -------------------------------------------------------------------------------
+
+int vowelRule(char c) { return c.isVowel() ? 1 : 0; }
+
+int rareRule(char c) {
+    switch (c) {
+        case 'q', 'z': return 5;
+        case 'j' to 'k': return 3;
+        case >= 'v': return 2;
+        default: return 0;
+    }
+}
+
+array<func<int, char>> rules = { vowelRule, rareRule, (char c) => c == 'e' ? 1 : 0 };
+
+class Scorer {
+    static func<int, int> boost;
+    static int flat(int n) { return n; }
+    static int doubled(int n) { return n * 2; }
+}
+
+// ---- placement history: a pooled class ------------------------------------------------------------
+
+class Move[4] : object, bglAllocated {
+    TileObj piece;
+    int slot = 0;
+    static int dropped = 0;
+
+    void create(TileObj p, int n) {
+        piece = p;
+        slot = n;
+    }
+
+    void destroy() { dropped++; }
+
+    void print() { ::print($"{piece.glyph}@{slot}"); }
+}
+
+array<Move> history[4];
+
+void remember(TileObj p) {
+    if (history.length == history.size) {
+        Move old = history.dequeue();
+        delete old;
+    }
+    Move m = new Move(p, rackCount());
+    if (m?) history.enqueue(m);
+}
+
+// ---- a named union of text and tiles -------------------------------------------------------------
+
+union cellText = string | TileObj;
+
+extend cellText {
+    emitter bool isTile { (metaclass($self) == Object) }
+}
+
+void print(cellText c) {
+    if (c.isTile) print(((TileObj)c).glyph);
+    else print((string)c);
+}
+
+// ---- free functions ------------------------------------------------------------------------------
+
+int rackCount() {
+    int n = 0;
+    for (object o in rack.children) n++;
+    return n;
+}
+
+TileObj firstTile() {
+    for (object o in rack.children) {
+        if (o.is(TileObj)) return (TileObj)o;
+    }
+    return null;
+}
+
+stringObj rackWord() {
+    stringObj w;
+    for (object o in rack.children) {
+        Tally visit;
+        if (!o.is(TileObj)) continue;
+        w += ((TileObj)o).glyph;
+    }
+    return w;
+}
+
+string band(char c) {
+    switch (c.toLower()) {
+        case 'a', 'e', 'i', 'o', 'u': return "vowel";
+        case 'b' to 'm':              return "low";
+        case >= 'n':                  return "high";
+        default:                      return "other";
+    }
+}
+
+int countVowels(ref stringObj s) {
+    Tally seen;
+    for (int i = 0; i < s.length; i++) {
+        Tally step;
+        step = i;
+        if (!s[i].isAlpha()) continue;
+        if (s[i] == 'z') break;
+        if (s[i].isVowel()) seen++;
+    }
+    return (int)seen;
+}
+
+uint checksum(ref stringObj s) {
+    uint h = 7;
+    for (int i = 0; i < s.length; i++) {
+        h = h * 31 + (uint)(int)s[i];
+        h = h ^ (h >> 5);
+    }
+    return h;
+}
+
+int ruleScore(char c) {
+    int total = 0;
+    for (func<int, char> r in rules) total += r(c);
+    return total;
+}
+
+void announce(TileObj | string what) {
+    switch (typeof(what)) {
+        case eType.object: {
+            Tally inner;
+            TileObj t = (TileObj)what;
+            print($"[{t.glyph}:{t.worth}]");
+        }
+        case eType.string: print((string)what);
+        default:           print("?");
+    }
+}
+
+bool placeTile(object piece, object onto) {
+    if (onto != rack) rtrue("Only the rack takes tiles.^");
+    if (!piece.is(TileObj)) rtrue("That is not a tile.^");
+    if (piece.parent == rack) rtrue($"{cThe(piece)} is already on the rack.^");
+    if (rackCount() >= RACK_SIZE) rtrue("The rack is full.^");
+    piece.parent = rack;
+    rfalse;
+}
+
+int guardedWorth(object o) {
+    Tally g;
+    if (o == null) throw -1;
+    if (!o.is(TileObj)) throw 0;
+    return ((TileObj)o).worth;
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    Scorer.boost = Scorer.flat;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb Place {
+    grammar = {
+        {.place, NOUN, .on, NOUN},
+        {.load, NOUN, .with, NOUN, REVERSE},
+    };
+    void handler() {
+        if (placeTile(noun, second)) return;
+        remember((TileObj)noun);
+        printLine($"{cThe(noun)} goes on the rack ({rackCount()} of {RACK_SIZE}).");
+    }
+}
+
+verb Rotate {
+    grammar = {.rotate, .rack};
+    void handler() {
+        object last = null;
+        for (object o in rack.children) last = o;
+        if (last == null) {
+            printLine("The rack is empty.");
+            return;
+        }
+        last.parent = rack;
+        stringObj w = rackWord();
+        printLine($"Rotated: {w}.");
+    }
+}
+
+verb Spell {
+    grammar = {.spell};
+    void handler() {
+        stringObj w = rackWord();
+        if (w.isEmpty()) {
+            printLine("Nothing to spell.");
+            return;
+        }
+        stringObj up = w.toUpper();
+        stringObj back = w.reverse();
+        printLine($"Word {w} upper {up} back {back} len {w.length}.");
+        printLine($"Vowels {countVowels(w)} sum {checksum(w)} first {w[0]} last {w[w.length - 1]}.");
+        stringObj framed = w.format("<$0|$1>", back);
+        stringObj swapped = framed.replaceAll("a", "4");
+        printLine($"Framed {framed} swapped {swapped}.");
+        print("Bands");
+        for (int i = 0; i < w.length; i++) {
+            #if SHOW_BANDS
+                print($" {i}");
+            #endif
+            print($" {band(w[i])}");
+        }
+        printLine(".");
+    }
+}
+
+verb Points {
+    grammar = {.points};
+    void handler() {
+        array<int> pts[RACK_SIZE];
+        for (object o in rack.children) pts.append(((TileObj)o).worth);
+        if (pts.length == 0) {
+            printLine("Score 0.");
+            return;
+        }
+        int high = pts.orderBy((int a, int b) => b - a).first();
+        int cheap = pts.filter((int p) => p == 1).count();
+        int lead = pts.takeWhile((int p) => p < 5).count();
+        int distinctCount = pts.distinct().count();
+        int doubledSum = 0;
+        for (var v in pts.map((var y) => y * 2)) doubledSum += v;
+        bool anyRare = pts.any((int p) => p >= 10);
+        bool allLow = pts.all((int p) => p <= 3);
+        printLine($"Points high {high} cheap {cheap} lead {lead} distinct {distinctCount} doubled {doubledSum}.");
+        printLine($"Rare {anyRare ? "yes" : "no"} low {allLow ? "all" : (anyRare ? "none" : "some")}.");
+        int ruleTotal = 0;
+        for (object o in rack.children) ruleTotal += ruleScore(((TileObj)o).glyph);
+        Scorer.boost = rackCount() >= 3 ? Scorer.doubled : Scorer.flat;
+        int base = 0;
+        for (int p in pts) base += p;
+        int total = Scorer.boost(base) + ruleTotal;
+        #if BONUS_LEVEL > 2
+            total += bgl.util.math.pow(2, rackCount() - 1);
+        #elif BONUS_LEVEL > 1
+            total += 1;
+        #endif
+        printLine($"Score base {base} rules {ruleTotal} total {bgl.util.math.clamp(total, 0, 99)}.");
+    }
+}
+
+verb Sort {
+    grammar = {.sort, .tiles};
+    void handler() {
+        array<Tile> hand[RACK_SIZE];
+        for (object o in rack.children) {
+            Tile t;
+            ((TileObj)o).fill(t);
+            hand.append(t);
+        }
+        hand.sort();
+        print("Up");
+        for (Tile t in hand) print($" {t}");
+        hand.sort((Tile a, Tile b) => b <=> a);
+        print("; down");
+        for (Tile t in hand) print($" {t}");
+        hand.sort(Tile::operator <=>);
+        Tile needle;
+        needle.letter = 'a';
+        needle.points = 1;
+        Tile wrong;
+        wrong.letter = 'a';
+        wrong.points = 2;
+        printLine($"; again {hand[0]} at {hand.indexOf(needle)} has {hand.contains(wrong) ? "yes" : "no"}.");
+        ref Tile top := hand[hand.length - 1];
+        top.points = top.points + 1;
+        Tile copy = top;
+        copy.points = 0;
+        printLine($"Top {top} copy {copy} same {copy == top ? "yes" : "no"} differ {copy != top ? "yes" : "no"}.");
+    }
+}
+
+verb Peek {
+    grammar = {.peek};
+    void handler() {
+        TileObj t = firstTile();
+        int w = t?.worth;
+        object holder = t?.parent ?? roomA;
+        print($"First {w} on {printName(holder)} ");
+        announce(t ?? "none");
+        print(" ");
+        announce("text");
+        printLine(".");
+    }
+}
+
+verb Back {
+    grammar = {.back};
+    void handler() {
+        Move m = history.popEnd();
+        if (m == null) {
+            printLine("No history.");
+            return;
+        }
+        m.piece.parent = roomA;
+        printLine($"Took back {m}; {m.remaining()} free before release.");
+        delete m;
+    }
+}
+
+verb ShowLog {
+    grammar = {.history};
+    void handler() {
+        print("History");
+        for (Move m in history) print($" {m}");
+        cellText head = history.length > 0 ? history.peek().piece : "none";
+        cellText tail = "end";
+        printLine($"; head {head} tail {tail} last {history.peekEnd()?.slot} dropped {Move.dropped}.");
+    }
+}
+
+verb Clear {
+    grammar = {.clear, .rack};
+    void handler() {
+        int moved = 0;
+        do {
+            TileObj t = firstTile();
+            if (t == null) break;
+            t.parent = roomA;
+            moved++;
+        } while (moved < RACK_SIZE);
+        printLine($"Cleared {moved}; {moved == 0 ? "nothing" : (moved == 1 ? "one tile" : "tiles")}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        tallyReport("Before");
+        stringObj s;
+        s = "quiz tea";
+        int v = countVowels(s);
+        stringObj lab = $"Vowels {v}";
+        tallyReport(lab);
+        for (int i in 0 to 2) {
+            Tally loop;
+            loop++;
+            loop++;
+            if (i == 1) continue;
+            print($"[{(int)loop}]");
+        }
+        printLine();
+        tallyReport("Loop");
+        int caught = 0;
+        try {
+            caught = guardedWorth(redTile);
+            caught += guardedWorth(roomA);
+        } catch (int e) {
+            Tally inCatch;
+            caught = e - 1;
+        }
+        lab = $"Caught {caught}";
+        tallyReport(lab);
+        int worth = guardedWorth(goldTile);
+        func<int, int> twice = (int n) => {
+            Tally inLambda;
+            return n * 2;
+        };
+        lab = $"Lambda {twice(worth)}";
+        tallyReport(lab);
+        announce(blueTile);
+        printLine();
+        tallyReport("Announce");
+        uint big = 65000;
+        uint small = 3;
+        uint wrap = small - 5;
+        printLine($"Uint {big > small ? "big" : "small"} {wrap} {wrap >> 8} {big / 1000} {bgl.util.math.unsignedCompare(-1, 1)}.");
+        printLine($"Math {bgl.util.math.abs(-12)} {bgl.util.math.min(4, -4)} {bgl.util.math.max(4, -4)} {bgl.util.math.sign(0)} {bgl.util.math.shiftLeft(3, 4)}.");
+        char c = 'e';
+        printLine($"Char {c.toUpper()} {c =~ 'E' ? "same" : "diff"} {ruleScore('e')} {ruleScore('z')} {ruleScore('w')} {ruleScore('k')}.");
+    }
+}
+
+// ---- late additions ------------------------------------------------------------------------------
+
+extend rack {
+    bool before() {
+        if (action == Push) rtrue($"{cThe(self)} holds {rackCount()}.^");
+        rfalse;
+    }
+}

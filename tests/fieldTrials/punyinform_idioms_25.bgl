@@ -1,0 +1,545 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a twenty-fifth PunyInform program, written plainly: two rooms (Room A with a table, a
+// bowl, an oven and a scale, Room B to the east with a cupboard and a cook) and OPTIONAL_SCORED; an
+// `Ingredient` class with an enum kind, a weight and a fresh flag, its description a routine with a
+// `switch` over the kind; a bowl whose `before` takes `Receive` (one fresh ingredient of each kind)
+// and whose state is an enum, with the missing kinds a `bnum` built with `|` and cleared with `^`; a
+// `mix` verb that takes the ingredients out of play with `parent = null`; an oven that is an openable,
+// switchable container, its `before` taking `Receive`, `SwitchOn` and `Open`, its daemon warming a
+// value class `Heat` (`operator ()`, `=`, `+=`, `-=`, a method) toward a target and baking the bowl on
+// a `StartTimer`/`time_out` kitchen timer; a `set oven to NUMBER` verb with a `switch` holding a range
+// and a guard case; a `weigh NOUN` verb summing weights recursively over `children`; a cook with `life`
+// (Ask through NextWord, Give of an ingredient) and `orders` (Wait, others); an `array<int>` of the
+// temperatures set, sorted and searched with `indexOf`; `bgl.world.instances` copied into an
+// `array<object>` and sorted with a comparator lambda, and counted with a lambda predicate; a
+// `stringObj` log appended with interpolated strings by a helper with a default argument; `for`,
+// `for … in` and `while` loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 3;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+    int weight;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eFood { flour, sugar, egg }
+enum eBowl { empty, filling, batter, baked, burnt }
+
+bnum eNeed { needFlour, needSugar, needEgg }
+
+array<string> foodNames  = {"flour", "sugar", "egg"};
+array<string> bowlStates = {"empty", "filling", "batter", "baked", "burnt"};
+
+value class Heat {
+    int _degrees = 20;
+
+    int  operator ()          { return _degrees; }
+    void operator = (int v)   { _degrees = v < 20 ? 20 : (v > 250 ? 250 : v); }
+    void operator += (int v) {
+        _degrees = _degrees + v;
+        if (_degrees > 250) _degrees = 250;
+    }
+    void operator -= (int v) {
+        _degrees = _degrees - v;
+        if (_degrees < 20) _degrees = 20;
+    }
+
+    bool hot() {
+        return _degrees >= 160;
+    }
+}
+
+stringObj logText;
+int  logCount   = 0;
+int  mixes      = 0;
+bool firstMix   = false;
+bool cakeBaked  = false;
+bool cakeServed = false;
+
+array<int> setList[6];
+
+void jot(string what, int n = -1) {
+    logCount++;
+    if (n < 0) logText += $"{logCount}. {what}. ";
+    else logText += $"{logCount}. {what} {n}. ";
+}
+
+string foodName(eFood k) {
+    return foodNames[(int)k - 1];
+}
+
+string bowlName(eBowl s) {
+    return bowlStates[(int)s - 1];
+}
+
+eNeed needFor(eFood k) {
+    switch (k) {
+        case eFood.flour: return eNeed.needFlour;
+        case eFood.sugar: return eNeed.needSugar;
+        case eFood.egg:   return eNeed.needEgg;
+    }
+    return 0;
+}
+
+int weightOf(object o) {
+    int w = 0;
+    if (o.provides(weight)) w = o.weight;
+    for (object c in o.children) w += weightOf(c);
+    return w;
+}
+
+class Ingredient : object {
+    eFood kind = eFood.flour;
+    bool fresh = true;
+
+    void description() {
+        switch (kind) {
+            case eFood.flour: print("A bag of flour");
+            case eFood.sugar: print("A bag of sugar");
+            case eFood.egg:   print("An egg");
+        }
+        printLine(fresh ? ". It is fresh." : ". It is stale.");
+    }
+}
+
+// Every kind the bowl still lacks.
+eNeed bowlNeeds() {
+    eNeed missing = eNeed.needFlour | eNeed.needSugar | eNeed.needEgg;
+    for (object o in bowl.children) {
+        if (o.is(Ingredient)) missing = missing ^ needFor(((Ingredient)o).kind);
+    }
+    return missing;
+}
+
+void printNeeds() {
+    eNeed n = bowlNeeds();
+    if (n == 0) {
+        printLine("The bowl holds everything it needs.");
+        return;
+    }
+    print("Still needed:");
+    if (n & eNeed.needFlour) print(" flour");
+    if (n & eNeed.needSugar) print(" sugar");
+    if (n & eNeed.needEgg) print(" an egg");
+    printLine(".");
+}
+
+string heatWord(int t) {
+    switch (t) {
+        case 20 to 99:    return "cool";
+        case 100 to 159:  return "warm";
+        case 160 to 200:  return "baking heat";
+        case > 200:       return "too hot";
+    }
+    return "off the scale";
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A table and an oven stand here. Room B is east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A cupboard is set into the wall. Room A is west.";
+    w_to = roomA;
+}
+
+object table {
+    "table";
+    parent = roomA;
+    name = {.table};
+    description = "A plain table.";
+    attributes = {supporter, static};
+}
+
+object scale {
+    "scale";
+    parent = table;
+    name = {.scale};
+    description = "A kitchen scale.";
+    weight = 2;
+    attributes = {supporter, static};
+}
+
+object cupboard {
+    "cupboard";
+    parent = roomB;
+    name = {.cupboard};
+    description = "A cupboard for food.";
+    attributes = {container, openable, static};
+}
+
+// --- ingredients ------------------------------------------------------------------------------------
+
+Ingredient flourBag {
+    "flour";
+    parent = cupboard;
+    name = {.flour, .bag};
+    string article = "some";
+    kind = eFood.flour;
+    weight = 5;
+}
+
+Ingredient sugarBag {
+    "sugar";
+    parent = cupboard;
+    name = {.sugar, .bag};
+    string article = "some";
+    kind = eFood.sugar;
+    weight = 3;
+}
+
+Ingredient oldEgg {
+    "old egg";
+    parent = table;
+    name = {.old, .egg};
+    string article = "an";
+    kind = eFood.egg;
+    fresh = false;
+    weight = 1;
+}
+
+Ingredient newEgg {
+    "brown egg";
+    parent = cupboard;
+    name = {.brown, .egg};
+    kind = eFood.egg;
+    weight = 1;
+}
+
+// --- the bowl ---------------------------------------------------------------------------------------
+
+object bowl {
+    "bowl";
+    parent = table;
+    name = {.bowl, .mixing};
+    eBowl state = eBowl.empty;
+    weight = 2;
+    attributes = {container, open};
+
+    void description() {
+        printLine($"A mixing bowl. It is {bowlName(state)}.");
+        if (state == eBowl.empty || state == eBowl.filling) printNeeds();
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (state != eBowl.empty && state != eBowl.filling) rtrue("The bowl is already in use.^");
+                if (!noun.is(Ingredient)) rtrue("Only food goes in the bowl.^");
+                Ingredient g = (Ingredient)noun;
+                if (!g.fresh) rtrue($"{cThe(g)} is not fresh enough.^");
+                for (object o in children) {
+                    if (o.is(Ingredient) && ((Ingredient)o).kind == g.kind) rtrue($"The bowl already holds {foodName(g.kind)}.^");
+                }
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                state = eBowl.filling;
+                jot("added", (int)((Ingredient)noun).kind);
+            case LetGo:
+                jot("took", (int)((Ingredient)noun).kind);
+                if (children.length == 0) state = eBowl.empty;
+        }
+        rfalse;
+    }
+}
+
+// --- the oven ---------------------------------------------------------------------------------------
+
+object oven {
+    "oven";
+    parent = roomA;
+    name = {.oven};
+    string article = "an";
+    Heat heat;
+    int target = 180;
+    int turnsOn = 0;
+    attributes = {container, openable, switchable, static};
+
+    void description() {
+        print($"An oven, set to {target}. Inside it is {(int)heat} degrees, {heatWord((int)heat)}");
+        if (has(on)) printLine(". It is on.");
+        else printLine(".");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun != bowl) rtrue("Only the bowl goes in the oven.^");
+                if (bowl.state != eBowl.batter) rtrue("There is nothing to bake in the bowl.^");
+            case SwitchOn:
+                if (has(open)) rtrue("You should close the oven first.^");
+            case Open:
+                if (heat.hot()) rtrue("The oven is too hot to open. Switch it off and wait.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartDaemon(self);
+                jot("oven on", target);
+                if (bowl.parent == self && bowl.state == eBowl.batter) StartTimer(kitchenTimer, 3);
+            case SwitchOff:
+                StopTimer(kitchenTimer);
+                jot("oven off", (int)heat);
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        if (has(on)) {
+            turnsOn++;
+            if ((int)heat < target) heat += 60;
+            else if ((int)heat > target) heat -= 30;
+            return;
+        }
+        heat -= 40;
+        if ((int)heat == 20) StopDaemon(self);
+    }
+}
+
+object kitchenTimer {
+    "kitchen timer";
+    parent = table;
+    name = {.kitchen, .timer};
+    description = "A kitchen timer.";
+    int time_left;
+
+    void time_out() {
+        if (bowl.parent != oven) return;
+        if (heat() > 200) {
+            bowl.state = eBowl.burnt;
+            jot("burnt");
+            if (location == roomA) printLine("The kitchen timer rings. Smoke comes from the oven.");
+            return;
+        }
+        bowl.state = eBowl.baked;
+        jot("baked", (int)oven.heat);
+        if (!cakeBaked) {
+            cakeBaked = true;
+            score++;
+        }
+        if (location == roomA) printLine("The kitchen timer rings. The cake is baked.");
+    }
+
+    int heat() {
+        return (int)oven.heat;
+    }
+}
+
+// --- the cook ---------------------------------------------------------------------------------------
+
+object cook {
+    "cook";
+    parent = roomB;
+    name = {.cook};
+    description = "A cook in an apron.";
+    int asked = 0;
+    int given = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .cake) rtrue("The cook says: flour, sugar and an egg, mixed, then baked.^");
+                if (w == .oven) rtrue("The cook says: set it to 180 and wait for the timer.^");
+                if (w == .egg || w == .eggs) rtrue("The cook says: there is a fresh egg in the cupboard.^");
+                rtrue("The cook shrugs.^");
+            case Give:
+                if (noun == bowl && bowl.state == eBowl.baked) {
+                    given++;
+                    bowl.state = eBowl.empty;
+                    jot("served");
+                    if (!cakeServed) {
+                        cakeServed = true;
+                        score++;
+                    }
+                    rtrue("The cook takes the cake out of the bowl and hands the bowl back.^");
+                }
+                if (!noun.is(Ingredient)) rtrue("The cook says: I have no use for that.^");
+                Ingredient g = (Ingredient)noun;
+                if (g.fresh) rtrue($"The cook says: {the(g)} is fine. Keep it.^");
+                given++;
+                g.parent = null;
+                jot("discarded", (int)g.kind);
+                rtrue($"The cook throws {the(g)} away.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The cook waits.^");
+        }
+        rtrue("The cook says: I am busy.^");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Mix {
+    grammar = { {.mix}, {.mix, NOUN} };
+    void handler() {
+        if (bowl.parent != player && bowl.parent != table) {
+            printLine("The bowl is not to hand.");
+            return;
+        }
+        if (bowl.state == eBowl.batter) {
+            printLine("The batter is already mixed.");
+            return;
+        }
+        if (bowlNeeds() != 0) {
+            printNeeds();
+            return;
+        }
+        int n = 0;
+        for (object o in bowl.children) {
+            o.parent = null;
+            n++;
+        }
+        bowl.state = eBowl.batter;
+        mixes++;
+        jot("mixed", n);
+        if (!firstMix) {
+            firstMix = true;
+            score++;
+        }
+        printLine($"You mix the {n} ingredients into a batter.");
+    }
+}
+
+verb SetOven {
+    grammar = { {.set, NOUN, .to, NUMBER} };
+    void handler() {
+        if (noun != oven) {
+            printLine("Only the oven can be set.");
+            return;
+        }
+        int t = parsed_number;
+        if (t < 20 || t > 250) {
+            printLine("The dial runs from 20 to 250.");
+            return;
+        }
+        oven.target = t;
+        if (!setList.contains(t)) setList.append(t);
+        jot("set", t);
+        printLine($"You set the oven to {t}, {heatWord(t)}.");
+    }
+}
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        printLine($"{cThe(noun)} weighs {weightOf(noun)}.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string ovenState = oven.has(on) ? "on" : "off";
+        printLine($"Score {score} of {MAX_SCORE}. Oven {ovenState} at {(int)oven.heat}, target {oven.target}.");
+        printLine($"Bowl {bowlName(bowl.state)}, mixes {mixes}, cook asked {cook.asked}, given {cook.given}.");
+        if (kitchenTimer.time_left > 0) printLine($"Timer: {kitchenTimer.time_left}.");
+    }
+}
+
+verb Pantry {
+    meta = true;
+    grammar = {.pantry};
+    void handler() {
+        int fresh = bgl.world.instances(Ingredient, (object o) => ((Ingredient)o).fresh && o.parent != null).length;
+        printLine($"{fresh} fresh ingredients in play.");
+        array<object> found[8];
+        found = bgl.world.instances(Ingredient);
+        found.sort((object a, object b) => bgl.util.math.sign(((Ingredient)a).weight - ((Ingredient)b).weight));
+        for (object o in found) {
+            Ingredient g = (Ingredient)o;
+            print($"{g}: {foodName(g.kind)}, weight {g.weight}, ");
+            if (g.parent == null) printLine("gone.");
+            else if (g.parent == player) printLine("carried.");
+            else printLine($"in {the(g.parent)}.");
+        }
+    }
+}
+
+verb Settings {
+    meta = true;
+    grammar = {.settings};
+    void handler() {
+        if (setList.length == 0) {
+            printLine("No settings made.");
+            return;
+        }
+        array<int> sorted[6];
+        sorted = setList;
+        sorted.sort();
+        print("Settings:");
+        int i = 0;
+        while (i < sorted.length) {
+            print($" {sorted[i]}");
+            i++;
+        }
+        printLine($". 180 was setting {setList.indexOf(180) + 1}.");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (logText.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logCount}): {logText}");
+    }
+}
+
+bool Initialise() {
+    oven.heat = 20;
+    rfalse;
+}
