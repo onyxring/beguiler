@@ -898,7 +898,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             if(currentClass != nullptr){
                 for(typeMember* m : currentClass->members)
                     if(m->name == name)
-                        parsingWarning("Loop variable '" + name + "' shadows a member of class '" + currentClass->name + "'.");
+                        parsingWarning("Loop variable '" + name + "' shadows a member of class '" + currentClass->dName() + "'.");
                 // Walk base class hierarchy for inherited members (vars and functions) — warning only
                 function<void(classDef*)> checkBases = [&](classDef* c){
                     for(typeMember* m : c->members)
@@ -2474,10 +2474,13 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
             string mem      = qualified.substr(d + 1);
             string recvType = resolveIdentifierType(recvPath, func, body, mem);
             if(recvType.empty()) recvType = resolvePathType(recvPath, func, body);   // through namespace aliases
+            // `((T)o).m = v`: the cast names the member's class.
+            if(!stmtCastType.empty() && recvPath.find('.') == string::npos) recvType = stmtCastType;
             string aliased  = memberI6Name(recvType, mem);
             if(aliased != mem) qualified = qualified.substr(0, d + 1) + aliased;
         }
-        qualified = withMemberI6Name(lhsOriginal, qualified, func, body);   // the members along the path too
+        if(stmtCastType.empty() || lhsOriginal.find('.') != lhsOriginal.rfind('.'))
+            qualified = withMemberI6Name(lhsOriginal, qualified, func, body);   // the members along the path too
         t.variableLeft = qualified;
     } else {
         t.variableLeft = lhsOriginal;
@@ -3028,7 +3031,10 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     // Set expected type from the LHS so name resolution can disambiguate the RHS.
     string savedExpectedAssign = currentExpectedType;
     if(leftType != nullptr) currentExpectedType = leftType->name;
+    bool savedForBind = readingForBind;
+    readingForBind = isBindAssign;
     expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
+    readingForBind = savedForBind;
     currentExpectedType = savedExpectedAssign;
     {
         string head = lhsOriginal.substr(0, lhsOriginal.find('.'));
@@ -3062,11 +3068,15 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
         // The condition's set-up runs first; each branch's own set-up runs inside that branch only.
         for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
         pendingInjections.clear();
+        // The branches are the assigned value: they take the target's type, as the plain assignment does.
+        string savedExpectedBranch = currentExpectedType;
+        if(leftType != nullptr) currentExpectedType = leftType->name;
         expression* trueVal  = parseExpression(file.getToken(), {":"}, func, body);
         ifStmt.thenBlock = new statementBlock();
         for(statement* inj : pendingInjections) ifStmt.thenBlock->statements.push_back(inj);
         pendingInjections.clear();
         expression* falseVal = parseExpression(file.getToken(), {token::endStatement}, func, body);
+        currentExpectedType = savedExpectedBranch;
         ifStmt.elseBlock = new statementBlock();
         for(statement* inj : pendingInjections) ifStmt.elseBlock->statements.push_back(inj);
         pendingInjections.clear();

@@ -121,7 +121,7 @@ def check(path, keep, show):
         code, out = run([ZVM, story], work, stdin)
     if show:
         print(f'===== {name}\n{out}')
-    if 'Programming error' in out or 'fatal error' in out.lower() or code == -1:
+    if 'Programming error' in out or 'Inform error:' in out or 'fatal error' in out.lower() or code == -1:
         bad = next((l for l in out.split('\n') if 'error' in l.lower() or 'TIMEOUT' in l), '')
         return name, 'RUN-FAIL', bad.strip()[:300], out
     got_opening, got_steps = split_transcript(out)

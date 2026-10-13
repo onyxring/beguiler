@@ -1080,11 +1080,15 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
                 string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
                 bool rootOnly = true;
                 for(classDef* b : newClass.baseClasses) if(b->name != "_bglobject") rootOnly = false;
+                token value = file.peekToken(2);   // after the `=`
+                string suggested = value.isString() ? "string" : value.is(eTokenType::floatLiteral) ? "float"
+                                 : value.is(eTokenType::charLiteral) ? "char"
+                                 : (value.is("true") || value.is("false")) ? "bool" : "int";
                 parsingError(format("class '{0}': '{1}' is set here but isn't a member of '{0}'{2}. {3}To declare "
-                    "a new member, give it a type: `int {1} = …;`.", newClass.dName(), shown,
+                    "a new member, give it a type: `{4} {1} = …;`.", newClass.dName(), shown,
                     rootOnly ? "" : " or its bases",
                     rootOnly ? format("A class has no base unless it names one: `class {0} : object {{ … }}` "
-                                      "inherits object's members, such as `name`. ", newClass.dName()) : ""));
+                                      "inherits object's members, such as `name`. ", newClass.dName()) : "", suggested));
                 returnType = tok;
                 name = file.getToken({eTokenType::identifier, eTokenType::dataType});
             }

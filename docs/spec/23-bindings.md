@@ -201,7 +201,7 @@ returns what the library expects of it, which the table gives as the method's re
 | `inside_description` | describe the inside of an enterable object | `string` or a `void` method |
 | `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, or `bool short_name()`: true when it printed the whole name |
 | `article`, `short_name_indef` | print the indefinite article / indefinite name | `string` or a `void` method |
-| `plural` | name several identical objects | `string plural` (declared by the binding) |
+| `plural` | name several identical objects | `string plural` or a `void` method |
 | `parse_name` | match the player's words against the object | `int parse_name()`: the number of words matched, 0 for none, -1 to use `name` |
 | `n_to` … `d_to`, `in_to`, `out_to` | the room or door in that direction | `object n_to`, or `var n_to()` returning a room or door, `false` for "can't go", or `true` after printing its own refusal |
 | `cant_go` | refuse movement in a direction with no exit | `string cant_go` or `void cant_go()` |

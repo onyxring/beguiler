@@ -440,6 +440,12 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             // array<T> name = { v1, v2, ... };  (nested `{...}` elements bake as inline objects or,
             // for an array-of-arrays element type, anonymous inner arrays — see parseArrayInitializerList)
             file.getToken(token::braceOpen);
+            // Said before the list is read: there, the object's name would already mean the array.
+            if(func == nullptr)
+                if(auto* od = languageService.findGlobalAs<objectDef>((string)name); od != nullptr && !od->isPrePassStub)
+                    parsingError(format("array '{0}' has the same name as object '{1}' ({2}); Inform 6 keeps these in one "
+                        "namespace, ignoring case, so rename one of them or give one an `asI6` name.",
+                        name.originalValue.empty() ? (string)name : name.originalValue, od->dName(), languageService.declaredAt(od->name)));
             initializerList* list = parseArrayInitializerList(elementType, func, body);
             file.getToken(token::endStatement);
             // type-check each element against the declared element type
@@ -699,10 +705,13 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                     parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; '::" + varDecl.name + "' reaches the global.");
                 break;   // one warning, however many overloads the name has
             }
+        if(definedSymbols.count(varDecl.name))
+            parsingWarning("Local variable '" + varDecl.dName() + "' has the name of a #define symbol; in this "
+                           "routine the name means the variable.");
         if(currentClass != nullptr){
             for(typeMember* m : currentClass->members)
                 if(m->name == varDecl.name)
-                    parsingWarning("Local variable '" + varDecl.name + "' shadows a member of class '" + currentClass->name + "'.");
+                    parsingWarning("Local variable '" + varDecl.dName() + "' shadows a member of class '" + currentClass->dName() + "'.");
             // Walk base class hierarchy for inherited members (vars and functions) — warning only
             function<void(classDef*)> checkBases = [&](classDef* c){
                 for(typeMember* m : c->members)
@@ -1016,7 +1025,10 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
             // For `auto`, no expected type is known until we see the RHS — leave it empty.
             string savedExpected = currentExpectedType;
             if(!isAuto) currentExpectedType = (string)dataType;
+            bool savedForBind = readingForBind;
+            readingForBind = symbol.value == token::bindAssignment;
             expression* rhs = parseExpression(first, {token::endStatement}, func, body);
+            readingForBind = savedForBind;
             currentExpectedType = savedExpected;
             varDecl.declaredExpressionValue = rhs;
 

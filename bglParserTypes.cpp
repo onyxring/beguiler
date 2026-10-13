@@ -1334,6 +1334,8 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
     // the parameter type (the 4th inference slot; see §6.2.1).
     string savedExpectedArgs = currentExpectedType;
     currentExpectedType = "";
+    struct BindReset { bool& f; bool saved; ~BindReset(){ f = saved; } } bindReset{readingForBind, readingForBind};
+    readingForBind = false;   // an argument is an ordinary read
     size_t posIdx = 0;   // count of POSITIONAL args seen so far (named args don't advance it)
     token firstArgTok = file.getToken();
     while(firstArgTok.isNot(token::parenClose)){
@@ -4289,6 +4291,10 @@ void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& name
         args.push_back(defExpr);
         if(interpSegmentsPerArg.size() < args.size()) interpSegmentsPerArg.push_back({});
     }
+    // A value-class parameter given another type its class's `operator =` takes (`show(7.5)`) gets
+    // an instance made from the value, as a declaration `Volume a = 2.5;` does.
+    for(size_t i = 0; i < args.size() && i < fd->params.size(); i++)
+        if(args[i] != nullptr) convertIntoValueClass(args[i], fd->params[i]->type.name);
     // One argument a call returns may be the same instance another returns into; Inform 6
     // evaluates arguments right to left.
     for(size_t i = 0; args.size() > 1 && i < args.size(); i++){
@@ -4742,9 +4748,14 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                && !fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos){
                 size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
                 if(args.size() < req || args.size() > fd->params.size()) continue;
+                // A union or `var` parameter is meant to lose to a more specific overload (§2.8).
                 bool fits = true;
-                for(size_t i = 0; i < args.size() && fits; i++)
-                    if(args[i] && !args[i]->resolvedType.empty() && !isTypeCompatible(args[i]->resolvedType, fd->params[i]->type.name)) fits = false;
+                for(size_t i = 0; i < args.size() && fits; i++){
+                    const string& pt = fd->params[i]->type.name;
+                    classDef* pc = languageService.findClass(pt);
+                    if(pt == "var" || isUnionType(pt) || (pc != nullptr && !pc->unionMembers.empty())) fits = false;
+                    else if(args[i] && !args[i]->resolvedType.empty() && !isTypeCompatible(args[i]->resolvedType, pt)) fits = false;
+                }
                 if(fits){
                     parsingWarning(format("this call goes to the library's '{0}', which fits it better than the program's own "
                         "'{0}' (line {1}); give the program's function another name, or pass all its arguments.",
@@ -5232,7 +5243,7 @@ string bglParser::keepValueResult(const string& text, const string& typeName){
         size_t b = i;
         while(b > 0 && (isalnum((unsigned char)text[b - 1]) || text[b - 1] == '_')) b--;
         string word = text.substr(b, i - b);
-        isCall = word != "_bglAt" && word != "_bglMemberAt" && word != "_bglByteAt";
+        isCall = word != "_bglAt" && word != "_bglMemberAt" && word != "_bglByteAt" && word.rfind("_bglValSlot_", 0) != 0;
     }
     if(!isCall) return text;
     classDef* cls = languageService.findClass(typeName);
@@ -5257,4 +5268,34 @@ string bglParser::keepValueResult(const string& text, const string& typeName){
     languageService.registerInstance(*backing);
     func->ownBackings.push_back({name, typeName});
     return format("({0}.{1}({2}) * 0 + {0})", name, op->i6name, text);
+}
+
+// A value of another type given where a value class is wanted: an instance of the class, set from the
+// value through the class's own `operator =` for that type, held in a temporary of the routine's.
+void bglParser::convertIntoValueClass(expression* arg, const string& typeName){
+    functionDef* func = currentFunc;
+    const string& at = arg->resolvedType;
+    if(func == nullptr || at.empty() || at == typeName || at == "nullliteral") return;
+    classDef* cls = languageService.findClass(typeName);
+    if(cls == nullptr || cls->isEmitterClass || !isValueClass(cls) || !classHasStoredFields(cls)) return;
+    if(classDef* ac = languageService.classOf(at); ac != nullptr && (ac == cls || ac->hasAncestor(cls))) return;
+    functionDef* op = findAssignOperator(cls, at, [&](functionDef* f){
+        return f->params.size() == 1 && f->params[0]->type.name != cls->name && isTypeCompatible(at, f->params[0]->type.name); },
+        /*allowInherited*/true);
+    if(op == nullptr || op->isEmitter) return;
+    if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
+    mangleOverloadSetForReceiver(cls->name, op->name);
+    string name = format("_bglConv_{0}_{1}", func->name, paramBackingNames.size());
+    while(!paramBackingNames.insert(name).second) name += "_";
+    auto* backing = new variableDeclaration();
+    backing->name = name; backing->displayName = name;
+    backing->type = languageService.getType(typeName);
+    backing->src = func->src;
+    backing->isInstanceBacking = true;
+    languageService.registerInstance(*backing);
+    func->ownBackings.push_back({name, typeName});
+    string text = arg->text();
+    if(op->params[0]->type.name == "float" && at != "float") text = applyCastConversion(text, at, "float");
+    arg->tokens.assign(1, format("({0}.{1}({2}) * 0 + {0})", name, op->i6name, text));
+    arg->resolvedType = typeName;
 }

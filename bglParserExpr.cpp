@@ -1692,7 +1692,8 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
         token p1 = file.peekToken(1);
         if(p1.is(")") && file.peekToken(2).is("=>"))
             isLambda = true;
-        else if((p1.is(eTokenType::dataType) || p1.is(eTokenType::identifier)) && file.peekToken(2).is(eTokenType::identifier))
+        else if((p1.is(eTokenType::dataType) || p1.is(eTokenType::identifier)) && file.peekToken(2).is(eTokenType::identifier)
+                && file.peekToken(2).value.rfind("::", 0) != 0)   // `(Box::operator <=>)` is an operator reference
             isLambda = true;
         else if(p1.is(eTokenType::identifier) && file.peekToken(2).is(token::period)){
             // A dotted parameter type, `(kinds.pack q) =>`: the path, then a name, then `,` or `)`.
@@ -2340,6 +2341,8 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
             sb.prop = (isWordArrayType(arrType) || arrType == "bytearray") ? "0" : "<$prop undefined>";
             sb.fn = getMethod; sb.args.push_back(indexExpr->text());
             subscriptText = expandEmitterBody(blk, sb);
+            // An element of an array of a value class is its slot's instance, drawn on first use.
+            if(isWordArrayType(arrType)) subscriptText = valueSlotText(subscriptText, elemType);
             expr->tokens.push_back(subscriptText);
         }
     if(subscriptText.empty() && !isMemberWordArray && !getMethod->isEmitter){
@@ -2646,7 +2649,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
             // ?.method(args) — find method, inline emitter or call
             string methName = member.value;
             classDef* cls = getDispatchClass(currentType);
-            ParsedArgList opal = parseCallArgList(func, body);
+            ParsedArgList opal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(currentType, methName)));
             vector<expression*> callArgs = opal.args;
             MethodMatch mm = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
             functionDef* method = mm.method;
@@ -2699,7 +2702,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 // .method(args) — build as non-guarded call
                 string methName = nextMember.value;
                 classDef* cls = getDispatchClass(currentType);
-                ParsedArgList opal = parseCallArgList(func, body);
+                ParsedArgList opal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(currentType, methName)));
                 vector<expression*> callArgs = opal.args;
                 MethodMatch mm2 = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
                 functionDef* method = mm2.method;
@@ -3444,8 +3447,9 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
                              : resolveIdentifierType(cur.value, func, body);
         enforceHidden(getDispatchClass(hideRecvType), member.value, "", {}, cur.value);
     }
+    string memberOwnerType = !receiverCastType.empty() ? receiverCastType : resolveIdentifierType(cur.value, func, body);
     string accessText = computedProp.empty()
-        ? objText + "." + memberI6Name(resolveIdentifierType(cur.value, func, body), member.value)
+        ? objText + "." + memberI6Name(memberOwnerType, member.value)
         : objText + ".(" + computedProp + ")";
     // Property-class read: if the member's declared type is a property-class
     // (owner-based operator() read emitter, e.g. parentProp → parent($self)),
@@ -3479,8 +3483,8 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     bool readGoesOn = pathGoesOnToOwnMember(st, propType);
     // The member as I6 names it (`_m_cap` for a member that shares a library routine's name).
     bool plainMember = computedProp.empty()
-        && accessText == objText + "." + memberI6Name(resolveIdentifierType(cur.value, func, body), member.value);
-    if(castType.empty() && !readGoesOn && plainMember && !nextOperatorIsOwn(st, propType))
+        && accessText == objText + "." + memberI6Name(memberOwnerType, member.value);
+    if(castType.empty() && !readGoesOn && plainMember && !readingForBind && !nextOperatorIsOwn(st, propType))
         if(functionDef* fn = nativeGetterOf(propType)){
             accessText = accessText + "." + fn->i6name + "()";
             propType = fn->returnType.name;
@@ -4298,8 +4302,23 @@ bool bglParser::parseExprUnaryOperand(ExprParseState& st, const string& op, toke
     // `-(int)k`: the `(` opens a cast, whose operand follows it; the cast and operand are the unit.
     bool castOperand = operand.is(token::parenOpen) && file.peekToken(1).is(eTokenType::dataType)
                     && (file.peekToken(2).is(token::parenClose) || file.peekToken(2).value == "<");
-    // A bracketed operand is everything up to its own `)`; the outer terminators don't reach inside it.
+    // A bracketed operand is everything up to its own `)`; the outer terminators don't reach inside it —
+    // unless a member, subscript or call follows the group (`!((T)o).m`), which binds tighter than the operator.
     bool bracketed = !path && !castOperand;
+    if(bracketed){
+        int depth = 1;
+        vector<token> ahead = file.peekTokens(100000, [&](token& t){
+            if(t.is(token::parenOpen)) depth++;
+            else if(t.is(token::parenClose) && --depth == 0) return false;
+            if(depth == 0) return true;
+            return t.is(eTokenType::eof) || t.is(token::endStatement);
+        });
+        if(depth == 0 && !ahead.empty()){
+            token& after = ahead.back();
+            if(after.is(token::period) || after.is(token::bracketOpen) || after.is(token::parenOpen) || after.value == "?.")
+                bracketed = false;
+        }
+    }
     vector<string> terms = *st.terminators;
     for(const string& o : kPrecedenceOps) terms.push_back(o);
     for(const char* t : {"?", ":", ",", "]"}) terms.push_back(t);

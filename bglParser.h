@@ -1361,6 +1361,8 @@ class bglParser {
         void unknownBaseError(token& base);
         void rejectAccessModifier(token& tok);
         void rejectStrayOuter(class functionDef* func, class statementBlock* body);
+        void convertIntoValueClass(class expression* arg, const string& typeName);
+        bool readingForBind = false;   // parsing the right side of `:=`: a member read names the instance, not its getter's value
         string checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked);
         bool memberArrayDeclTracked(class arrayDeclaration* ad);
         void rejectConstantIndexOutside(const string& path, class expression* index, class functionDef* func, class statementBlock* body);

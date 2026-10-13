@@ -1,0 +1,46 @@
+/*  run_measure3_forms — forms measurement round 3 found broken (D1324, D1325, D1327, D1330–D1332).  */
+// EXPECT_OUTPUT: true false 3 | 9 | 3 | 1 0 | 24.5000 | 7.5000 9.0000
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+
+int stamped = 13;
+class Letter : object { bool stamped = false; int n = 0; }
+Letter red { n = 4; }
+
+class Box : object { int n; static int operator <=> (Box a, Box b) { return a.n - b.n; } }
+Box b1 { n = 5; }
+Box b2 { n = 2; }
+
+value class Tally { int count; Tally operator = (Tally o) { count = o.count; return self; } Tally operator += (int v) { count += v; return self; } }
+array<Tally> tallies[2];
+
+value class Volume {
+    float litres;
+    Volume operator = (Volume o) { litres = o.litres; return self; }
+    Volume operator = (float f) { litres = f; return self; }
+    Volume operator -= (float f) { litres = litres - f; return self; }
+    float operator () { return litres; }
+}
+class Tank : object { Volume level; }
+Tank tankA { level = Volume{ litres = 40.0; }; }
+float show(Volume v) { return v.litres; }
+
+void main() {
+    glulxConsole();
+    object o = red;
+    bool a = !((Letter)o).stamped;
+    ((Letter)o).stamped = true;
+    print($"{a} {!((Letter)o).stamped} {-((Letter)o).n + 7} | ");
+    print($"{((Letter)o).stamped ? 9 : 0} | ");
+    print($"{(Box::operator <=>)(b1, b2)} | ");
+    tallies[0] += 1;
+    print($"{tallies[0].count} {tallies[1].count} | ");
+    ref Volume lv := tankA.level;
+    lv -= 15.5;
+    print($"{(float)tankA.level} | ");
+    array<Volume> hist[2];
+    hist.append(9.0);
+    print($"{show(7.5)} {hist[0].litres}");
+    print("^");
+}

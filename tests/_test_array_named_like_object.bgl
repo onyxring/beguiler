@@ -1,0 +1,7 @@
+/* An array named like an object (ignoring case) is reported as a name clash, even when its own list names the object. */
+// EXPECT_ERROR: array 'probes' has the same name as object 'probeS'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object roomA { }
+object probeS { }
+array<object> probes = {roomA, probeS};
+void main(){ print(probes.length); }
