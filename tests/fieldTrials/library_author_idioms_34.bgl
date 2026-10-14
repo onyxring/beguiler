@@ -1,0 +1,564 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a gauge-panel kit that ships its accessors as classes, laid out header-first so the
+// consumers come before the kit. A named accessor class of dial readings with a clamping setter
+// shared through a helper, overloaded setters (int, enum, copy), an implicit int getter beside an
+// explicit string one, its own + and += and ++ (and no - or -- or -=, so those fall back to
+// getter-then-setter), == and != against an int and against another dial, a static <=> that gives
+// the orderings, and overloaded nudge() methods; a subclass accessor that replaces the int setter
+// and inherits everything else. A caption accessor with a string getter, string and int setters and
+// an `operator ?` so it takes `?.` and `??`; a link accessor whose getter returns a panel, reached
+// with `?.` and `??` on the panel it reads. A panel class owning a dial, a caption, a link, an inline
+// accessor with its own static count, and an array of dials; a meter subclass that hides the dial's
+// setter; a pooled probe class owning a dial and an inline accessor, set from create(); `extend
+// class` adding a stepped accessor member later. A board object, used from the top of the file,
+// whose inline accessors reach members declared after them through `outer`, one with a string
+// getter and overloaded setters. Accessors are read above their objects, passed to overloaded
+// routines (exact accessor type, its getter type, an explicit cast), passed to `ref` parameters with
+// default and named arguments, bound to `ref` locals, compared with their class's operators and with
+// ints, used in while/for/if/switch/?: conditions, in compound assignment with and without the
+// class's own operator, in interpolation, in lambdas and <linq> chains, through casts and through
+// `self`, and copied between members and into globals and locals of the accessor class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== Public surface: routines that take and return accessors. ====
+
+/// Shows a plain reading.
+void la34Show(int v) { print($"#{v}"); }
+/// Shows a dial with how often it was set.
+void la34Show(La34Dial d) { print($"d{(int)d}/{d.countSets()}"); }
+/// Shows a caption's text.
+void la34Show(string s) { print($"'{s}'"); }
+
+/// Sets a dial to zero through its own setter.
+void la34Zero(ref La34Dial d) { d = 0; }
+
+/// Turns a dial by the standard step, or back.
+void la34Twist(ref La34Dial d, int by = LA34_STEP, bool back = false) {
+    if (back) d -= by;
+    else d += by;
+}
+
+/// Orders two dials by the kit's ordering.
+int la34Order(La34Dial a, La34Dial b) { return a <=> b; }
+
+/// How much the board can still take.
+int la34Headroom() { return la34Board.cap - la34Board.load; }
+
+/// The dial reading of a panel, or of anything else.
+int la34Read(La34Panel p) { return p.dial; }
+int la34Read(object o) { return o.is(La34Panel) ? ((La34Panel)o).dial + 100 : -1; }
+
+/// A copy of the higher of two dials.
+La34Dial la34Higher(La34Panel a, La34Panel b) {
+    if (a.dial >= b.dial) return a.dial;
+    return b.dial;
+}
+
+/// Panels in reading order.
+array<La34Panel> la34Panels[4];
+/// A dial kept aside.
+La34Dial la34Spare;
+/// Everything on a panel's taps.
+int la34TapSum(La34Panel p) {
+    int n = 0;
+    for (int i = 0; i < 3; i++) n += p.taps[i];
+    return n;
+}
+
+bool Initialise() {
+    location = roomA;
+    panelA.dial = 4;
+    panelB.dial = eLa34Notch.mid;
+    ((La34Panel)meterC).dial = 25;
+    panelA.caption = "main";
+    panelB.caption = 1;
+    panelA.next = panelB;
+    panelB.next = meterC;
+    la34Board.load = 3;
+    la34Board.mode = eLa34Notch.low;
+    la34Panels.append(panelA);
+    la34Panels.append(panelB);
+    la34Panels.append(meterC);
+    rfalse;
+}
+
+// ==== Verbs. ====
+
+La34Info La34Dials {
+    grammar = {.dials};
+    void handler() {
+        print($"A {panelA.dial} B {panelB.dial} C {meterC.dial}; ");
+        print($"words {(string)panelA.dial} {(string)panelB.dial} {(string)meterC.dial}; ");
+        la34Show(panelA.dial);
+        print(" ");
+        la34Show((int)panelB.dial);
+        print(" ");
+        la34Show(panelA.caption);
+        print("^");
+        panelA.dial++;
+        panelA.dial += 2;
+        panelB.dial--;
+        panelB.dial -= 3;
+        panelA.dial.nudge();
+        panelB.dial.nudge(eLa34Notch.high);
+        meterC.dial.nudge(-30);
+        print($"now A {panelA.dial} B {panelB.dial} C {meterC.dial}, sets {panelA.dial.countSets()} {panelB.dial.countSets()}^");
+        print($"A==8 {panelA.dial == 8}, A!=8 {panelA.dial != 8}, A==B {panelA.dial == panelB.dial}, A!=B {panelA.dial != panelB.dial}");
+        print($", A<B {panelA.dial < panelB.dial}, A>=B {panelA.dial >= panelB.dial}, A<=>B {panelA.dial <=> panelB.dial}, order {la34Order(panelB.dial, panelA.dial)}");
+        print($", A+5 {panelA.dial + 5}, A*2 {panelA.dial * 2}, A>7 {panelA.dial > 7}^");
+        while (panelB.dial < panelA.dial) panelB.dial++;
+        int steps = 0;
+        for (int i = 0; i < panelA.dial; i += 3) steps++;
+        print($"B caught up {panelB.dial}, steps {steps}, same {panelA.dial == panelB.dial}; ");
+        switch (panelA.dial) {
+            case 0:      print("off");
+            case 1 to 5: print("low band");
+            case 6 to 9: print("mid band");
+            default:     print("high band");
+        }
+        string band = panelA.dial > 10 ? "over" : "under";
+        print($", {band}, pick {panelA.dial > 5 ? panelA.dial : panelB.dial}, reading {panelA.reading()}^");
+    }
+}
+
+La34Info La34Refs {
+    grammar = {.refs};
+    void handler() {
+        la34Zero(panelB.dial);
+        print($"zeroed {panelB.dial}; ");
+        la34Twist(panelB.dial);
+        la34Twist(panelB.dial, 5);
+        la34Twist(panelB.dial, back: true);
+        la34Twist(back: false, d: panelA.dial, by: 1);
+        print($"twisted B {panelB.dial} A {panelA.dial}; ");
+        ref La34Dial r := panelB.dial;
+        r = 12;
+        r += 1;
+        r.nudge(2);
+        print($"through ref {panelB.dial} {r} sets {r.countSets()}; ");
+        r := panelA.dial;
+        r -= 4;
+        print($"rebound A {panelA.dial} B {panelB.dial}^");
+        la34Spare = panelA.dial;
+        La34Dial copy = panelB.dial;
+        copy += 3;
+        la34Spare.nudge();
+        print($"spare {la34Spare} copy {copy}, A still {panelA.dial} B still {panelB.dial}; ");
+        La34Dial hi = la34Higher(panelA, panelB);
+        print($"higher {hi}, read {la34Read(panelA)} {la34Read(meterC)} {la34Read(rope)}; ");
+        panelA.dial = panelB.dial;
+        print($"copied A {panelA.dial} sets {panelA.dial.countSets()}, spare>copy {la34Spare > copy}^");
+    }
+}
+
+La34Info La34Captions {
+    grammar = {.captions};
+    void handler() {
+        print($"A {panelA.caption} B {panelB.caption} C {meterC.caption}; ");
+        string a = panelA.caption ?? "none";
+        string c = meterC.caption ?? "none";
+        print($"coalesced {a} {c}; ");
+        print($"shout {panelA.caption?.shout() ?? "quiet"} {meterC.caption?.shout() ?? "quiet"}; ");
+        panelA.caption?.mark();
+        meterC.caption?.mark();
+        print($"marks {panelA.caption.markCount()} {meterC.caption.markCount()}; ");
+        meterC.caption = panelA.caption;
+        panelB.caption = 0;
+        print($"after A {panelA.caption} B {panelB.caption} C {meterC.caption}");
+        if (panelB.caption?) print(", B present");
+        else print(", B absent");
+        if (meterC.caption?) print(", C present^");
+        else print(", C absent^");
+    }
+}
+
+La34Info La34Links {
+    grammar = {.links};
+    void handler() {
+        print($"A->{panelA.next?.label() ?? "end"} B->{panelB.next?.label() ?? "end"} C->{meterC.next?.label() ?? "end"}; ");
+        La34Panel far = panelA.next ?? panelA;
+        La34Panel none = meterC.next ?? panelA;
+        print($"far {far.label()} none {none.label()}; ");
+        print($"two hops {panelA.next?.next?.label() ?? "end"}, dial of next {((La34Panel)panelA.next).dial}; ");
+        panelA.next?.dial.nudge(4);
+        print($"nudged B {panelB.dial}, hops {panelA.next.hopCount()} {meterC.next.hopCount()}^");
+        int hops = 0;
+        La34Panel at = panelA;
+        while (at != null) {
+            hops++;
+            at = at.next;
+        }
+        meterC.next = panelA;
+        print($"walked {hops}, loop {meterC.next?.label() ?? "end"}; ");
+        meterC.next = null;
+        print($"cut {meterC.next?.label() ?? "end"}^");
+    }
+}
+
+La34Info La34BoardInfo {
+    grammar = {.board};
+    void handler() {
+        print($"load {la34Board.load} cap {la34Board.cap} room {la34Headroom()} mode {la34Board.mode}; ");
+        la34Board.load += 4;
+        la34Board.load++;
+        print($"up {la34Board.load} room {la34Headroom()}; ");
+        la34Board.load = 15;
+        print($"over {la34Board.load} spills {la34Board.spills}; ");
+        la34Board.cap = 20;
+        la34Board.load += panelA.dial;
+        print($"recapped {la34Board.load} spills {la34Board.spills}, ==20 {la34Board.load == 20}, !=20 {la34Board.load != 20}^");
+        la34Board.mode = 2;
+        print($"mode {la34Board.mode}; ");
+        la34Board.mode = eLa34Notch.high;
+        print($"mode {la34Board.mode}; ");
+        if (la34Board.load > la34Board.cap / 2 && la34Board.mode != "idle") print("busy");
+        else print("calm");
+        print($", trail {la34Board.trail}^");
+    }
+}
+
+La34Info La34Trims {
+    grammar = {.trims};
+    void handler() {
+        panelA.trim = 2;
+        panelB.trim = panelA.trim + 1;
+        meterC.trim += 5;
+        print($"trims {panelA.trim} {panelB.trim} {meterC.trim}, writes {panelA.trimWrites()}; ");
+        panelA.taps[0] = 3;
+        panelA.taps[1] = 50;
+        panelA.taps[2] = panelA.dial;
+        panelA.taps[0] += 2;
+        panelA.taps[1].nudge(-5);
+        print($"taps {panelA.taps[0]} {panelA.taps[1]} {panelA.taps[2]} sum {la34TapSum(panelA)}; ");
+        panelB.settle();
+        print($"settled B {panelB.dial} trim {panelB.trim}^");
+        la34Panels.sort((La34Panel x, La34Panel y) => x.dial <=> y.dial);
+        stringObj line = "by dial";
+        for (La34Panel p in la34Panels) line += $" {p.label()}={p.dial}";
+        print(line);
+        print($"; over 5: {la34Panels.filter((La34Panel p) => p.dial > 5).count()}, top {la34Panels.orderBy((La34Panel x, La34Panel y) => x.dial <=> y.dial).last().label()}");
+        print($", any zero {la34Panels.any((La34Panel p) => p.dial == 0)}, first trimmed {la34Panels.filter((La34Panel p) => p.trim > 0).first()?.label() ?? "none"}^");
+    }
+}
+
+La34Info La34Meters {
+    grammar = {.meters};
+    void handler() {
+        print($"meter {meterC.dial} {meterC.label()}; ");
+        meterC.zeroOut();
+        print($"zeroed {meterC.dial}; ");
+        ((La34Panel)meterC).dial = 7;
+        ((La34Panel)meterC).dial += 1;
+        print($"cast-set {meterC.dial} {((La34Panel)meterC).dial}, ==A {meterC.dial == panelA.dial}; ");
+        panelA.align();
+        meterC.align();
+        print($"coarse A {panelA.coarse} C {meterC.coarse}; ");
+        panelA.coarse = 9;
+        panelA.coarse += 4;
+        print($"set {panelA.coarse}, show ");
+        la34Show(panelA.coarse);
+        print("^");
+    }
+}
+
+La34Info La34Probes {
+    grammar = {.probes};
+    void handler() {
+        La34Probe p = new La34Probe(4);
+        La34Probe q = new La34Probe();
+        print($"p {p.depth} tag {p.tag}, q {q.depth} tag {q.tag}; ");
+        p.depth += q.depth;
+        q.tag = p.depth;
+        print($"p {p.depth} q tag {q.tag}, p>q {p.depth > q.depth}, live {La34Probe.live}; ");
+        delete q;
+        La34Probe r = new La34Probe(9);
+        print($"r {r?.depth} tag {r.tag}, live {La34Probe.live}; ");
+        delete p;
+        delete r;
+        print($"live {La34Probe.live}^");
+    }
+}
+
+/// Turns a panel up by a step, or tells what else the noun is.
+verb La34Turn {
+    grammar = {.turn, NOUN};
+    void handler() {
+        if (noun.is(La34Panel)) {
+            La34Panel p = (La34Panel)noun;
+            la34Twist(p.dial);
+            print($"The {p} reads {p.dial} ({(string)p.dial}), {p.caption}, sets {p.dial.countSets()}.^");
+        } else {
+            print($"The {noun} has no dial ({la34Read(noun)}).^");
+        }
+    }
+}
+
+// ==== The kit's implementation. ====
+
+/// The top of a dial, and the standard turn.
+const int LA34_MAX = 20;
+const int LA34_STEP = 3;
+
+/// Preset notches.
+enum eLa34Notch { low, mid, high }
+
+/// A dial reading kept between zero and the top, counting how often it was set.
+value class La34Dial {
+    int _raw;
+    int _sets;
+
+    /// Stores a reading, clamped.
+    void put(int v) {
+        _raw = v < 0 ? 0 : (v > LA34_MAX ? LA34_MAX : v);
+        _sets++;
+    }
+
+    int operator () { return _raw; }
+    explicit string operator () {
+        if (_raw == 0) return "off";
+        if (_raw < 10) return "low";
+        return "high";
+    }
+
+    default void operator = (int v) { put(v); }
+    void operator = (eLa34Notch n) { put((int)n * 5); }
+    La34Dial operator = (La34Dial o) {
+        _raw = o._raw;
+        _sets = o._sets;
+        return self;
+    }
+
+    int operator + (int n) { return _raw + n; }
+    void operator += (int n) { put(_raw + n); }
+    int operator ++ () {
+        put(_raw + 1);
+        return _raw;
+    }
+
+    bool operator == (int v) { return _raw == v; }
+    bool operator != (int v) { return _raw != v; }
+    bool operator == (ref La34Dial o) { return _raw == o._raw; }
+    bool operator != (ref La34Dial o) { return _raw != o._raw; }
+    static int operator <=> (La34Dial a, La34Dial b) { return a._raw - b._raw; }
+
+    /// How often the dial was set.
+    int countSets() { return _sets; }
+    /// Moves the dial up one.
+    void nudge() { put(_raw + 1); }
+    /// Moves the dial by an amount.
+    void nudge(int by) { put(_raw + by); }
+    /// Moves the dial by a notch's number.
+    void nudge(eLa34Notch n) { put(_raw + (int)n); }
+}
+
+/// A dial that stops only on even readings.
+value class La34Step : La34Dial {
+    replace void operator = (int v) { put(v - v % 2); }
+}
+
+/// A panel's caption: text, or absent.
+value class La34Caption {
+    string _s;
+    int _marks;
+
+    string operator () { return _s ?? "blank"; }
+    void operator = (string s) { _s = s; }
+    void operator = (int n) { _s = n > 0 ? "set" : null; }
+    La34Caption operator = (La34Caption o) {
+        _s = o._s;
+        return self;
+    }
+    emitter eBool operator ? () { ($self._s ~= 0) }
+
+    /// The caption with a mark after it.
+    stringObj shout() {
+        stringObj o = _s ?? "blank";
+        o += '!';
+        return o;
+    }
+    /// Counts a mark.
+    void mark() { _marks++; }
+    /// How many marks it has.
+    int markCount() { return _marks; }
+}
+
+/// The panel a panel leads to, counting how often it was changed.
+value class La34Link {
+    La34Panel _to;
+    int _hops;
+
+    La34Panel operator () { return _to; }
+    void operator = (La34Panel p) {
+        _to = p;
+        _hops++;
+    }
+    La34Link operator = (La34Link o) {
+        _to = o._to;
+        _hops = o._hops;
+        return self;
+    }
+    /// How often the link was changed.
+    int hopCount() { return _hops; }
+}
+
+/// A panel: a dial, a caption, a link onward, and a trim.
+class La34Panel : object {
+    La34Dial dial;
+    La34Caption caption;
+    La34Link next;
+    array<La34Dial> taps[3];
+    auto trim = {
+        int _t;
+        static int writes = 0;
+        int operator () { return _t; }
+        void operator = (int v) {
+            _t = v;
+            writes++;
+        }
+        int writeCount() { return writes; }
+    }
+
+    default string label() { return "panel"; }
+    /// The dial and the trim together.
+    int reading() { return dial + trim; }
+    /// How many trim writes every panel has had.
+    int trimWrites() { return trim.writeCount(); }
+    /// Brings the dial down to half the top and sets the trim to match.
+    void settle() {
+        while (dial > LA34_MAX / 2) dial--;
+        self.trim = dial;
+    }
+}
+
+/// A read-only panel: its dial is set only through the base.
+class La34Meter : La34Panel {
+    hide dial.operator =;
+    replace string label() { return "meter"; }
+    /// Zeroes the dial through the base surface.
+    void zeroOut() { ((La34Panel)self).dial = 0; }
+}
+
+/// Panels get a stepped dial, set from their own.
+extend class La34Panel {
+    La34Step coarse;
+    void align() { coarse = dial; }
+}
+
+/// A probe made with new: a depth and a tag ten times what it is told.
+class La34Probe[2] : object {
+    La34Dial depth;
+    auto tag = {
+        int _n;
+        int operator () { return _n; }
+        void operator = (int v) { _n = v * 10; }
+    }
+    static int live = 0;
+
+    void create(int d = 1) {
+        depth = d;
+        tag = d;
+        live++;
+    }
+    void destroy() { live--; }
+}
+
+/// Report verbs: they take no time.
+class La34Info : verb {
+    meta = true;
+}
+
+// ==== The world. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La34Panel panelA {
+    "panel A";
+    parent = roomA;
+    name = {.panel, .a};
+    replace string label() { return "A"; }
+}
+
+La34Panel panelB {
+    "panel B";
+    parent = roomA;
+    name = {.panel, .b};
+    replace string label() { return "B"; }
+}
+
+La34Meter meterC {
+    "meter C";
+    parent = roomA;
+    name = {.meter, .c};
+}
+
+object rope {
+    "rope";
+    parent = roomA;
+    name = {.rope};
+}
+
+/// The board: a load held under a cap (spilling the rest) and a mode; both log through the board.
+object la34Board {
+    auto load = {
+        int _l;
+        int operator () { return _l; }
+        void operator = (int v) {
+            if (v > outer.cap) {
+                outer.spills += v - outer.cap;
+                _l = outer.cap;
+                outer.log("s");
+            } else {
+                _l = v < 0 ? 0 : v;
+                outer.log("l");
+            }
+        }
+        bool operator == (int v) { return _l == v; }
+        bool operator != (int v) { return _l != v; }
+    }
+    auto mode = {
+        int _m;
+        string operator () {
+            switch (_m) {
+                case 1:  return "low";
+                case 2:  return "mid";
+                case 3:  return "high";
+                default: return "idle";
+            }
+        }
+        void operator = (int m) {
+            _m = m;
+            outer.log("m");
+        }
+        void operator = (eLa34Notch n) {
+            _m = (int)n;
+            outer.log("n");
+        }
+    }
+    int cap = 10;
+    int spills = 0;
+    stringObj trail;
+    void log(string s) { trail += s; }
+}
+
+#includeI6 "grammar"

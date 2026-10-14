@@ -1,0 +1,32 @@
+Room A
+Room A.
+You can see a panel A, a panel B, a meter C and a rope here.
+> dials
+A 4 B 10 C 20; words low high high; #4 #10 'main'
+now A 8 B 9 C 0, sets 4 4
+A==8 true, A!=8 false, A==B false, A!=B true, A<B true, A>=B false, A<=>B -1, order 1, A+5 13, A*2 16, A>7 true
+B caught up 9, steps 3, same false; mid band, under, pick 8, reading 8
+> refs
+zeroed 0; twisted B 5 A 9; through ref 15 15 sets 11; rebound A 5 B 15
+spare 6 copy 18, A still 5 B still 15; higher 15, read 5 0 -1; copied A 15 sets 7, spare>copy false
+> captions
+A main B set C blank; coalesced main none; shout main! quiet; marks 1 0; after A main B blank C main, B absent, C present
+> links
+A->B B->meter C->end; far B none A; two hops meter, dial of next 15; nudged B 19, hops 1 0
+walked 3, loop A; cut end
+> board
+load 3 cap 10 room 7 mode low; up 8 room 2; over 10 spills 5; recapped 20 spills 10, ==20 true, !=20 false
+mode mid; mode high; busy, trail lnllssmn
+> trims
+trims 2 3 5, writes 3; taps 5 15 15 sum 35; settled B 10 trim 10
+by dial meter=0 B=10 A=15; over 5: 2, top A, any zero true, first trimmed meter
+> meters
+meter 0 meter; zeroed 0; cast-set 8 8, ==A false; coarse A 14 C 8; set 12, show #12
+> probes
+p 4 tag 40, q 1 tag 10; p 5 q tag 50, p>q true, live 2; r 9 tag 90, live 2; live 0
+> turn panel a
+The panel A reads 18 (high), main, sets 8.
+> turn meter
+The meter C reads 11 (high), main, sets 6.
+> turn rope
+The rope has no dial (-1).

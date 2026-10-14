@@ -767,6 +767,10 @@ class bglParser {
         }
         bool callPastLocal = false;   // parsing `::name(…)` with a local of the name in scope
         bool libraryPropertyNamed(const string& name);
+        string propertyNameAsEmitted(const string& name);
+        void preScanClassBody(classDef* cls);
+        bool processCallSubscriptStatement(token head, StatementContext& sc);
+        string typeAliasTarget(const string& name);
         void rejectMethodBesideField(class classDef& cls, const string& name, const string& shown, bool addingMethod);
         bool rewriteComputedReceiverStatement(const string& head, int depth, StatementContext& sc, const string& prefixOp = "");
         string chainedSubscriptRead(functionDef* gm, const string& readText, const string& idxText, const string& curType);
@@ -1119,7 +1123,7 @@ class bglParser {
         // is reached through its owner and property (`$self`/`$prop` = owner, prop); anything else is
         // the array itself with a 0 sentinel. A `ref` member holds a pointer, so it is a value too.
         // `objName` is the receiver's emitted text and may be rewritten (a ref member's read).
-        struct ArrayReceiver { bool isMember = false; string owner, prop, staticElemType; };   // staticElemType: set when the path named a static array
+        struct ArrayReceiver { bool isMember = false; string owner, prop, staticElemType; arrayDeclaration* decl = nullptr; };   // decl: known when the owner is computed   // staticElemType: set when the path named a static array
         ArrayReceiver arrayReceiver(string& objName, const string& rawObjName, const string& objType,
                                     functionDef* func, statementBlock* body);
         // `size`/`length` of a member word array, read straight from its property layout: core
@@ -1210,7 +1214,7 @@ class bglParser {
         // expanded with the receiver bound, as for an emitter method. "" when it isn't one.
         string expandMemberValueEmitter(string objText, const string& rawRecv, const string& recvType,
                                         const string& memberName, functionDef* func, statementBlock* body,
-                                        string& outRetType);
+                                        string& outRetType, arrayDeclaration* memberDecl = nullptr);
         // Fluent property-class read chain: IDENT.m1.m2… (head + >=2 members, ALL property-classes of
         // the running type) → nested reads, e.g. `obj.parent.parent` → `parent(parent(obj))`. Peek-only
         // until it commits; returns false (consuming nothing) if the path isn't a pure property-class
@@ -1302,7 +1306,11 @@ class bglParser {
             // Where every candidate's parameter is `ref`, the argument names an instance, not its getter's value.
             vector<char> positionalRef;
             set<string> namedRef;
+            string receiverType;   // a method's receiver: a `property` argument names its member
         };
+        string lastCandidatesReceiver;   // set by collectMethodCandidates, cleared by collectGlobalCandidates
+        string propertyArgOwner;         // while parsing a `property` argument: the receiver's type
+        string defaultArgReceiver;       // while filling a method call's defaults: the receiver's text
         // Gather candidate callees by name (globals) or by receiver type + name (methods), mirroring
         // the candidate-gathering in resolveGlobalCall / resolveMethod (collection only, no scoring).
         vector<functionDef*> collectGlobalCandidates(const string& name);
@@ -1497,6 +1505,7 @@ class bglParser {
         void drainDeferredClassBases();
         // Pre-scan steps that need a name declared further down; run once the whole include tree is scanned.
         std::vector<std::function<void()>> preScanFixups;
+        map<string, string> preScanObjectClass;   // a bodied object's declared class, by name
         void drainPreScanFixups(){ auto f = std::move(preScanFixups); preScanFixups.clear(); for(auto& fn : f) fn(); }
         // True when `#using` brings in a value emitter (no parameter list) of this name. A call never
         // targets one, so a call of the name belongs to a same-named function.

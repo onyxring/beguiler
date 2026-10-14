@@ -230,6 +230,9 @@ class expression {
         // text, the property, and the declaration, so a for-in can walk it in place.
         string memberArrayOwner, memberArrayProp;
         class arrayDeclaration* memberArrayDecl = nullptr;
+        // A name cast to one of its ancestors (`(Coin)t`): the text, and the type it was, so an operator
+        // applied to it runs the ancestor's own.
+        string upcastText, upcastFrom;
 
         string text() const {
             string result;

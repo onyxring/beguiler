@@ -1,0 +1,139 @@
+Room A
+Room A.
+
+You can see a car A, a car B, a tank C, a car D and a hub here.
+
+> walk 0
+From 1: 1 2 3; span 3, last 3.
+
+> walk 3
+From 4: 4; span 1, last 4.
+
+> walk 4
+From -1:; span 0, last 0.
+
+> walk 9
+From -1:; span 0, last 0.
+
+> reach 1
+After 1: 2 2; tag plain; load 103, 10.
+
+> reach 2
+After 2: 3 3; tag plain; load 100, 10.
+
+> reach 3
+After 3: -1 -1; tag gone; load 0, 0.
+
+> reach 5
+After 5: -1 -1; tag gone; load 0, 0.
+
+> loads
+Loads 2 6 4 0 9 3; heaviest 2, its next 3.
+
+> fuel
+Fuel 8/9 text 8/9 8:9 none '' gone ''; tank yes/no.
+
+> tags
+Tags plain mid end none[mid][plain][plain]; sets 1 1.
+
+> gauges 3
+Gauges 3 6 0; A set; C clear.
+
+> sort
+Sort lo 1; hi tag end; next fuel 8; gauges 15; copy 6, set yes.
+
+> hubs 0
+Hub 2 3 0 front 2 end 2 deep 3 0 3 now 2, its weight 9.
+
+> hubs 1
+Hub 4 0 0 front 2 end 2 deep 4 0 3 now 4, its weight 4.
+
+> hubs 2
+Hub 0 0 0 front 4 - 4 deep 0 0 4 now 5, its weight 0.
+
+> pick 2
+none; w 9; k 0; first 1.
+
+> pick 1
+three; w 0; k 2; first 1.
+
+> pick 3
+none; w 9; k 0; first 1.
+
+> count
+Linked 2; tanks 1; big 2 then 3; tw 9 0.
+
+> probe car a
+1: next 2, two on 3, skip 3 or 3, text @2, next gauged.
+
+> probe tank
+3: next 0, two on 0, skip 0 or 5, text @3.
+
+> probe hub
+The hub: not a car; in room.
+
+> chain 0
+Chain 0: 2 2 0 17 9 3 2; len 2.
+
+> chain 2
+Chain 2: 0 2 0 17 -1 3 2; len 2.
+
+> chain 4
+Chain 4: 0 2 0 17 -1 -1 2; len 2.
+
+> text 0
+Text 0: 5 8+9 '#1!' 'next 2' 5 mid .
+
+> text 3
+Text 3: 5 8+9 '#4!' 'x' 5 plain c3.
+
+> text 4
+Text 4: 0 8+9 '' 'x' 3 nothing c4.
+
+> steps
+Laps 2, at 3; sum 5; ends 11.
+
+> report
+1:3->2 2:9->3 3:7->-1 4:4->-1 | 17 0 none.
+
+> hitch 0
+D next 1; D span 4; tail of D 2; tag hitched.
+
+> walk 3
+From 4: 4 1 2 3; span 4, last 3.
+
+> report
+1:3->2 2:9->3 3:7->-1 4:4->1 | 17 0 plain.
+
+> steps
+Laps 2, at 3; sum 5; ends 12.
+
+> hubs 1
+Hub 4 1 2 front 5 - 5 deep 4 0 0 now 4, its weight 4.
+
+> count
+Linked 3; tanks 1; big 2 then 3; tw 9 0.
+
+> unhitch
+D next -1; tail of A 3, of C 3.
+
+> tags
+Tags plain mid end none[mid][hitched][hitched]; sets 2 2.
+
+> gauges 0
+Gauges 0 0 0; A clear; C clear.
+
+> report
+1:3->2 2:9->3 3:7->-1 4:4->-1 | 17 0 none.
+
+> probe car d
+4: next 0, two on 0, skip 0 or 5, text @4.
+
+> chain 3
+Chain 3: 0 2 0 17 -1 4 2; len 2.
+
+> text 1
+Text 1: 3 8+9 '#2!' 'next 3' 5 end c1.
+
+> sort
+Sort lo 1; hi tag end; next fuel 8; gauges 0; copy 0, set no.

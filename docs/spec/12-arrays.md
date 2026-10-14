@@ -498,6 +498,8 @@ when the class has no copy operator.
 - A member array of a value class declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance without returning it to the pool.
+- An element store into a member array of a class that manages its own storage (`stringObj`) reads
+  the slot twice, so its index is a variable or a constant; a computed index is a compile-time error.
 
 **Example**
 

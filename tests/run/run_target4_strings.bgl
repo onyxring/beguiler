@@ -1,0 +1,53 @@
+// run_target4_strings — a stringObj call result passed to a `string | stringObj` parameter that outlives
+// the callee's next append, `captureOutput` on a routine property, a char as the replacement text of
+// replace/replaceAll, for-in over member, global and local stringObjs, and a subscript of a stringObj
+// member reached through a cast.
+// EXPECT_OUTPUT: J abcd|[10] Runs 1 abc|a-b+ a b- a-b+ a-b+|2 2 2|bb
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Constant bglStringPoolReserve 24; }
+#include <string>
+stringObj journal;
+void jot(string | stringObj detail) {
+    journal += ' ';
+    journal += (stringObj)detail;
+}
+stringObj label = "abc";
+object box {
+    int runs = 1;
+    stringObj text = "box-x";
+    void description() { print($"Runs {runs} {label}"); }
+}
+stringObj g = "box-x";
+class Card : object { stringObj text; }
+Card cardA { text = "abc"; }
+int countX(int which) {
+    int n = 0;
+    stringObj l = "box-x";
+    if (which == 0) { for (char ch in box.text) if (ch == 'x') n++; }
+    else if (which == 1) { for (char ch in g) if (ch == 'x') n++; }
+    else { for (char ch in l) if (ch == 'x') n++; }
+    return n;
+}
+void main() {
+    bglInit();
+    stringObj a = "ab";
+    stringObj b = "cd";
+    journal = "J";
+    jot(a + b);
+    print(journal); print("|");
+    stringObj d;
+    d.captureOutput(box, description);
+    print($"[{d.length}] {d}|");
+    stringObj t = "a b+";
+    char m = '+';
+    stringObj s1 = t.replaceAll(' ', '-');
+    stringObj s2 = t.replaceAll(m, '-');
+    stringObj s3 = t.replaceAll(' ', "-");
+    stringObj s4 = t.replace(' ', '-');
+    print($"{s1} {s2} {s3} {s4}|");
+    print(countX(0)); print(" "); print(countX(1)); print(" "); print(countX(2)); print("|");
+    object o = cardA;
+    char x = cardA.text[1];
+    char y = ((Card)o).text[1];
+    print(x); print(y);
+}

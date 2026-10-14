@@ -340,7 +340,8 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     // property name (invalid I6).
     if(!isEmitter && !funcDef.name.empty()
        && (funcDef.name == "operator()"
-           || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')))
+           || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')
+           || funcDef.name.rfind("prefix", 0) == 0 && funcDef.name.size() > 6 && !isalnum((unsigned char)funcDef.name[6])))
         funcDef.i6name = mangleOperatorName(funcDef.name);
     // A class may convert to several types (`int operator ()`, `explicit string operator ()`): each
     // is its own routine, named for its result type, so one doesn't overwrite the other.
@@ -2681,6 +2682,15 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
     // takes its shape from the target member's type: an `array<T>` member → a braced array literal
     // (baked as an array property), an object-backed member → a nested inline object (§6.2.1).
     string terminator;
+    // A value class with positional members takes a bare `{ … }` as its own `Type{ … }`.
+    if(vt.is(token::braceOpen) && dynamic_cast<arrayDeclaration*>(target) == nullptr)
+        if(classDef* vc = getDispatchClass(target->type.name); vc != nullptr && !isObjectBackedClass(vc) && isInlineConstructible(vc)){
+            file.pendingToken = vt;
+            file.hasPendingToken = true;
+            vt.value = vc->name;
+            vt.originalValue = vc->dName();
+            vt.tokenType = eTokenType::dataType;
+        }
     if(vt.is(token::braceOpen)){
         if(arrayDeclaration* arrTarget = dynamic_cast<arrayDeclaration*>(target)){
             // array-typed member: parse `{ v1, v2, … }` as an array literal → array property.
@@ -2708,7 +2718,7 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
             bakeInlineObjectAggregate(fcls, target->type.name, anonName, func, body);
             variableDeclaration& mem = *(new variableDeclaration());
             mem.name = target->name;
-            mem.i6name = target->i6name;
+            mem.i6name = target->i6name.empty() && target->isPrePassStub ? clashRenamedMember(target->name) : target->i6name;   // a class below renames it
             mem.type = target->type;
             expression* ref = new expression();
             ref->tokens.push_back(anonName);
@@ -2748,7 +2758,7 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
         if(func == nullptr) rejectRunTimeMemberRead(val, target->dName());
         variableDeclaration& mem = *(new variableDeclaration());
         mem.name = target->name;
-        mem.i6name = target->i6name;
+        mem.i6name = target->i6name.empty() && target->isPrePassStub ? clashRenamedMember(target->name) : target->i6name;   // a class below renames it
         mem.type = target->type;
         mem.isConst = target->isConst;
         mem.declaredExpressionValue = val;

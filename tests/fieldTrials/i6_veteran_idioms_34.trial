@@ -1,0 +1,70 @@
+Room A
+> tally
+Purse: coin 11 coin 12 coin 13 coin 14. Sorted: coin 11 coin 12 coin 14 coin 13. Down: coin 13 coin 12 coin 14 coin 11. Up: coin 11 coin 12 coin 14 coin 13. Heavy first: coin 11 coin 13 coin 12 coin 14. Sixpence at 2, token in purse false, 2 worth sixpence, sovereign twice 246. Marks: amount 4, label four, AMOUNT 5, LABEL five, label six. Labels: lit:bag obj:bag!(4). Logs: pence 0 word 3. Notes: <n 3><s x><c 11><c 12>.
+> ledger
+Till [0d], last [0d], drawer empty. Sixpence at -1, first is six false, till is the last coin, balance till/240 -1, ints -1, used 2, plus a penny [1d], plus a shilling [13d], adjusted [9d], paid 0, score 0.
+> assay penny
+coin 11: 145 grains, 435 for three, 430 rounded, 290 for two, metal copper, worth 1.
+> assay first sixpence
+coin 12: 43 grains, 129 for three, 120 rounded, 86 for two, metal silver, worth 6 (sixpence) (not a penny).
+> assay worn sixpence
+coin 14: 40 grains, 120 for three, 120 rounded, 80 for two, metal silver, worth 6 (sixpence) (not a penny).
+> assay token
+token 15, as coin coin 15, value 0 or 0 for three, as coin 6, tag brass, metal brass, as coin equals six, differs from six, plus one 7, pick coin 11.
+> assay ingot
+The lead ingot costs 18 at 0 for the word.
+> assay scales
+thing pair of scales is not money.
+> compare penny with sovereign
+11 vs 13: less, <=> -1, static -1, same false, sum 241, plus one 2, together 268 grains, balance 1, differ, note <c 11><c* 13 240d><c* 13>.
+> compare first sixpence with worn sixpence
+12 vs 14: equal, <=> 0, static 0, same true, sum 12, plus one 7, together 83 grains, balance 1, note <c 12><c* 14 6d><c* 14>.
+> compare token with worn sixpence
+15 vs 14: unequal, <=> 0, static 0, same false, sum 12, plus one 7, together 100 grains, balance 1, differ, note <c 15><c* 14 6d><c* 14>.
+> compare sovereign with penny
+13 vs 11: more, <=> 1, static 1, same false, sum 241, plus one 241, together 268 grains, balance -1, differ, note <c 13><c* 11 1d><c* 11>.
+> strike penny with 1
+Struck 11: dated.
+> strike penny with 2
+Struck 11: dated and signed.
+> strike first sixpence with 3
+Struck 12: dated.
+> strike sovereign with 4
+Struck 13: dated.
+> strike worn sixpence with 5
+Struck 14: signed.
+> seek 12
+Seek 12: coin 12, value 6, twice 12, as coin 6, marks 11 to 15 worth 253, heavier than the penny false, note <c* 12 6d><c* 12><c* 12><c* 13>.
+> seek 13
+Seek 13: coin 13, value 240, twice 480, as coin 240, marks 11 to 15 worth 253, heavier than the penny false, note <c* 13 240d><c* 13><c* 13><c* 13>.
+> seek 2
+Seek 2: coin 14, value 6, twice 12, as coin 6, marks 11 to 15 worth 253, heavier than the penny false, note <c* 14 6d><c* 14><c* 14><c* 14>.
+> seek 6
+Seek 6: coin 14, value 6, twice 12, as coin 6, marks 11 to 15 worth 253, heavier than the penny false, note <c* 14 6d><c* 14><c* 14><c* 14>.
+> seek 99
+Seek 99: nothing.
+> pay token
+The till refuses the token.
+> pay first sixpence
+Paid in: [6d], till [6d].
+[The score has just gone up by one point.]
+> pay first sixpence
+That coin is already in the till.
+> pay penny
+Paid in: [1d], till [7d].
+[The score has just gone up by one point.]
+> ledger
+Till [7d], last [1d], drawer [6d] [1d]. Sixpence at 0, first is six true, till not empty, balance till/240 -1, ints -1, used 12, plus a penny [8d], plus a shilling [20d], adjusted [16d], paid 2, score 2.
+> spend 3
+Spent 3d; [4d] left, doubled [8d].
+> spend 99
+The till holds only 4d.
+> tally
+Purse: coin 11 coin 13 coin 12 coin 14. Sorted: coin 11 coin 12 coin 14 coin 13. Down: coin 13 coin 12 coin 14 coin 11. Up: coin 11 coin 12 coin 14 coin 13. Heavy first: coin 11 coin 13 coin 12 coin 14. Sixpence at 3, token in purse false, 2 worth sixpence, sovereign twice 246. Marks: amount 4, label four, AMOUNT 5, LABEL five, label six. Labels: lit:bag obj:bag!(4). Logs: pence 4 word 3. Notes: <n 3><s x><c 11><c 12>.
+> pay sovereign
+Paid in: [240d], till [244d].
+The till is near a pound.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 27 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

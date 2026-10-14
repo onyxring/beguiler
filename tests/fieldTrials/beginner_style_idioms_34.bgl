@@ -1,0 +1,860 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-fourth first-time-programmer program, a cart yard where carts are hooked into a
+// line, unhooked, loaded, tagged, weighed and ridden on tickets, written by a beginner who has just
+// found `?.` and `??` and puts them on everything, "just in case". `?.` as a statement on members,
+// calls, elements and call results (`a?.next?.prev = null`, `pick()?.tell()`,
+// `line[i]?.tell()`, `new Ticket(n)?.punch()`); compound assignment and ++/-- through a chain
+// (`cartA?.next?.weight++`, `cartA?.last()?.weight -= 1`, `k?.label += '*'`, `c?.label += "!"`);
+// `?.` reads in declarations, returns, arguments, interpolation spans, print() and ?: branches; `?.`
+// calls with default and named arguments in any order (`ahead(wrap: true, steps: 4)`,
+// `path(sep: ">")`, `isHeavy(over: 2)`); recursion through `?.` and `??` (`last()`, `first()`,
+// `ahead()`, `count()`, `path()`, `totalWeight()`, `depth()`); `??` with class, object, string and
+// value-class operands, three deep, as a receiver in parentheses, in returns, default-argument
+// bodies, arguments, `for` initializers and interpolation; a value class with `operator ?` reached
+// through `?.` (`k?.tag?.text(sep: ":")`, `k?.tagOr(blankTag)?.number`) and coalesced
+// (`k?.tag ?? blankTag`); stringObj results through `?.` (`?.path()?.toUpper()`, `?.path()?.length`);
+// postfix `?` on chains and its negation in `if`, `while`, `do`/`while`, `for` headers, `&&`/`||` and
+// `?:`; `switch` on a chain result; library properties and attributes through `?.`
+// (`k?.load?.parent`, `k?.load?.has(general)`, `k?.load?.give(general)`); an emitter method, an
+// `extend class` method and an overridden `default` method through `?.`; a cast receiver
+// (`((BigCart)c)?.extra`); a pooled class whose `new` may give null; an object's member array, plain
+// member and inline accessor through `?.`; <linq> lambdas using `?.` (filter / count / any / all /
+// map / first); and verbs (line, hook, unhook, ahead, tags, load, loads, notes, yard, ticket, weigh,
+// bump) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== NUMBERS =====
+
+// how many carts the line list holds
+const int LINE_SIZE = 5;
+// how many times carts were hooked together
+int hookups = 0;
+// how many tickets were punched
+int punches = 0;
+
+// ===== A TAG: A VALUE CLASS THAT CAN BE BLANK =====
+
+value class Tag {
+    int number;
+    stringObj word;
+
+    Tag operator = (Tag o) {
+        number = o.number;
+        word = o.word;
+        return self;
+    }
+
+    // a tag with number 0 counts as no tag
+    emitter eBool operator ? () { ($self.number ~= 0) }
+
+    // the tag written out, like "red#1"
+    stringObj text(string sep = "#") {
+        stringObj s = $"{word}{sep}{number}";
+        return s;
+    }
+
+    // twice the number
+    int doubled() {
+        return number * 2;
+    }
+}
+
+// the tag to use when a cart has none
+Tag blankTag;
+// the last tag looked at
+Tag lastTag;
+
+// ===== CARTS =====
+
+class Cart : object {
+    Cart next;
+    Cart prev;
+    object load;
+    Tag tag;
+    stringObj label;
+    string note;
+    int weight = 1;
+    // the cart hooked on most lately
+    static Cart lastHooked;
+    string description = "A cart.";
+
+    // the cart at the end of the line (recursive)
+    Cart last() {
+        return next?.last() ?? self;
+    }
+
+    // the cart at the front of the line (recursive)
+    Cart first() {
+        return prev?.first() ?? self;
+    }
+
+    // the cart some steps ahead, or null when the line runs out
+    Cart ahead(int steps = 1, bool wrap = false) {
+        if (steps <= 0) {
+            return self;
+        }
+        if (!next?) {
+            if (wrap) {
+                return first()?.ahead(steps - 1, wrap);
+            }
+            return null;
+        }
+        return next?.ahead(wrap: wrap, steps: steps - 1);
+    }
+
+    // how many carts from here to the end (recursive)
+    int count() {
+        if (next?) {
+            return 1 + next?.count();
+        }
+        return 1;
+    }
+
+    // the labels from here to the end, joined (recursive)
+    stringObj path(string sep = "-") {
+        stringObj s = label;
+        if (next?) {
+            s += sep;
+            s += next?.path(sep);
+        }
+        return s;
+    }
+
+    // the weight from here to the end (recursive)
+    int totalWeight() {
+        int w = weight;
+        if (next?) {
+            w += next?.totalWeight();
+        }
+        return w;
+    }
+
+    // the heaviest cart there is
+    static Cart heaviest() {
+        Cart best = null;
+        for (Cart c in all) {
+            if (c?.weight > best?.weight) {
+                best = c;
+            }
+        }
+        return best;
+    }
+
+    // the cart two along, looked at from itself
+    Cart twoOn() {
+        return self?.next?.next;
+    }
+
+    // the cart's tag, or the fallback when it has none
+    Tag tagOr(Tag fallback) {
+        return tag ?? fallback;
+    }
+
+    // says what the cart is
+    default void tell() {
+        print($"{label} cart ({weight})");
+    }
+
+    // the weight plus some more
+    emitter int heavier(int by) { ($self.weight + $by) }
+}
+
+// a big cart carries extra weight
+class BigCart : Cart {
+    int extra = 3;
+
+    void tell() {
+        print($"big {label} cart ({weight}+{extra})");
+    }
+}
+
+// some more things a cart can say
+extend class Cart {
+    // true when the cart weighs more than over
+    bool isHeavy(int over = 3) {
+        return weight > over;
+    }
+
+    // the note, or a word for no note
+    string noteOr(string blank = "-") {
+        return note ?? blank;
+    }
+
+    // adds some weight
+    void add(int n) {
+        weight += n;
+    }
+
+    // adds another cart's weight
+    void add(Cart c) {
+        weight += c?.weight;
+    }
+
+    // the label between two marks
+    stringObj say(string pre = "<", string post = ">") {
+        stringObj s = pre;
+        s += label;
+        s += post;
+        return s;
+    }
+}
+
+// ===== TICKETS (only three of them) =====
+
+class Ticket[3] : object {
+    int number;
+    Cart cart;
+
+    void create(int n) {
+        number = n;
+        punches++;
+    }
+
+    // punches the ticket for a cart (the red cart if none)
+    void punch(Cart c = null) {
+        cart = c ?? cartA;
+        print($"Ticket {number} punched for the {cart?.label} cart.^");
+    }
+
+    // the cart the ticket rides on
+    Cart rides() {
+        return cart;
+    }
+}
+
+// ===== LISTS OF CARTS =====
+
+// every cart there is
+array<Cart> all = {cartA, cartB, cartC, cartD};
+// the carts put in a line by LINE (some slots stay empty)
+array<Cart> line[LINE_SIZE];
+
+// the tags copied off the carts by WALK
+array<Tag> tagCopies[4];
+
+// ===== LITTLE HELPERS =====
+
+// the object as a cart, or null when it is not one
+Cart asCart(object o) {
+    if (o == null || !o.is(Cart)) {
+        return null;
+    }
+    return (Cart)o;
+}
+
+// the cart some steps ahead of from (the red cart if from is not given)
+Cart pick(Cart from = null, int steps = 1) {
+    return (from ?? cartA)?.ahead(steps);
+}
+
+// the note of a cart, or "no note"
+string noteOf(Cart c) {
+    return c?.note ?? "no note";
+}
+
+// how many carts from c to the end (recursive, with no method)
+int depth(Cart c) {
+    if (!c?) {
+        return 0;
+    }
+    return 1 + depth(c?.next);
+}
+
+// how many times picked() ran
+int pickCalls = 0;
+
+// gives back the cart it was given, counting the call
+Cart picked(Cart c) {
+    pickCalls++;
+    return c;
+}
+
+// a yes or a no
+string yesNo(bool b) {
+    return b ? "yes" : "no";
+}
+
+// hooks b on behind a
+void hook(Cart a, Cart b) {
+    if (!a? || !b?) {
+        return;
+    }
+    a?.next?.prev = null;
+    b?.prev?.next = null;
+    a?.next = b;
+    b?.prev = a;
+    hookups++;
+    Cart.lastHooked = b;
+}
+
+// takes c out of its line
+void unhook(Cart c) {
+    c?.prev?.next = c?.next;
+    c?.next?.prev = c?.prev;
+    c?.next = null;
+    c?.prev = null;
+}
+
+// shows a line of carts from the front
+void showLine(Cart start = null, string sep = ", ") {
+    for (Cart k = start?.first() ?? cartA?.first(); k?; k = k?.next) {
+        k?.tell();
+        if (k?.next?) {
+            print(sep);
+        }
+    }
+    print(".^");
+}
+
+// the name of what is in a cart
+string loadName(Cart c) {
+    switch (c?.load) {
+        case box: return "the box";
+        case crate: return "the crate";
+    }
+    return "nothing";
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The cart yard.";
+    attributes = {light};
+}
+
+// ===== THINGS =====
+
+object box {
+    "box";
+    parent = roomA;
+    name = {.box};
+    string description = "A box.";
+}
+
+object crate {
+    "crate";
+    parent = roomA;
+    name = {.crate};
+    string description = "A crate.";
+}
+
+Cart cartA {
+    "red cart";
+    parent = roomA;
+    name = {.red, .cart};
+    label = "red";
+    weight = 2;
+    attributes = {static};
+}
+
+Cart cartB {
+    "blue cart";
+    parent = roomA;
+    name = {.blue, .cart};
+    label = "blue";
+    attributes = {static};
+}
+
+Cart cartC {
+    "green cart";
+    parent = roomA;
+    name = {.green, .cart};
+    label = "green";
+    weight = 3;
+    attributes = {static};
+}
+
+BigCart cartD {
+    "gray cart";
+    parent = roomA;
+    name = {.gray, .cart};
+    label = "gray";
+    weight = 4;
+    attributes = {static};
+}
+
+// ===== THE YARD =====
+
+object yard {
+    "yard";
+    parent = roomA;
+    name = {.yard};
+    string description = "The yard.";
+    attributes = {static};
+    // how many times the front cart was changed
+    int moves = 0;
+    // a cart kept to one side
+    Cart spare;
+    // the carts parked in the yard's bays
+    array<Cart> bays[4];
+    // the cart at the front of the yard
+    auto front = {
+        Cart _c;
+        Cart operator () { return _c; }
+        void operator = (Cart c) {
+            _c = c;
+            outer.moves++;
+            outer.spare = c?.next ?? outer.spare;
+        }
+    }
+
+    // the cart in bay i, or null when there is no bay i
+    Cart bayAt(int i) {
+        if (i < 0 || i >= 4) {
+            return null;
+        }
+        return bays[i];
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    bglInit();
+    cartA.tag.number = 1;
+    cartA.tag.word = "red";
+    cartC.tag.number = 3;
+    cartC.tag.word = "green";
+    blankTag.word = "none";
+    hook(cartA, cartB);
+    hook(cartB, cartC);
+    cartA?.load = box;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// LINE - shows the line every way there is
+verb LineVerb {
+    meta = true;
+    grammar = {.line};
+    void handler() {
+        print("Line: ");
+        showLine();
+        print($"Front: {cartC?.first()?.label}. Back: {cartA?.last()?.label}.^");
+        print($"Carts: {cartA?.first()?.count()}, by depth {depth(cartA?.first())}. Weight: {cartB?.first()?.totalWeight()}.^");
+        stringObj p = cartA?.first()?.path(sep: ">")?.toUpper();
+        print($"Path: {p} ({cartA?.first()?.path()?.length} letters).^");
+        printLine(cartD?.path());
+        line.clear();
+        for (Cart k = cartA?.first(); k?; k = k?.next) {
+            line += k;
+        }
+        print($"In the list: {line.length}. ");
+        for (int i = 0; i < line.length; i++) {
+            line[i]?.tell();
+            print($" then {line[i]?.next?.label ?? "end"}; ");
+        }
+        print("^");
+    }
+}
+
+// HOOK - hooks one cart behind another
+verb HookCart {
+    grammar = {.hook, NOUN, .to, NOUN};
+    void handler() {
+        Cart a = asCart(second);
+        Cart b = asCart(noun);
+        if (!a? || !b?) {
+            print("Only carts can be hooked.^");
+            return;
+        }
+        if (a == b || a?.first() == b?.first()) {
+            print("They are in one line already.^");
+            return;
+        }
+        hook(a?.last(), b?.first());
+        print($"Hooked. Line: {a?.first()?.path()}.^");
+    }
+}
+
+// UNHOOK - takes a cart out of its line
+verb UnhookCart {
+    grammar = {.unhook, NOUN};
+    void handler() {
+        Cart c = asCart(noun);
+        if (!c?.next? && !c?.prev?) {
+            print("That is not in a line.^");
+            return;
+        }
+        Cart was = c?.prev ?? c?.next;
+        unhook(c);
+        print($"The {c?.label} cart comes out. Left: {was?.first()?.path() ?? "nothing"}.^");
+    }
+}
+
+// AHEAD - looks ahead along the line
+verb LookAhead {
+    meta = true;
+    grammar = {.ahead};
+    void handler() {
+        print($"Two ahead of red: {cartA?.ahead(2)?.label}.^");
+        print($"Four ahead of red, wrapping: {cartA?.ahead(wrap: true, steps: 4)?.label}.^");
+        Cart far = pick(steps: 9);
+        print($"Nine ahead: {(far?) ? "a cart" : "no cart"}.^");
+        print($"One ahead of blue: {pick(cartB)?.label}. Default pick: {pick()?.label}.^");
+        Cart which = pick(steps: 7) ?? pick(cartB, 5) ?? cartD;
+        print($"Fallback: {which?.label}.^");
+        pick(steps: 0)?.tell();
+        print(" / ");
+        pick(steps: 8)?.tell();
+        print("(nothing) / ");
+        (pick(steps: 8) ?? cartC)?.tell();
+        print(".^");
+        print($"Gray alone ahead 3 wrapping: {cartD?.ahead(3, true)?.label}.^");
+    }
+}
+
+// TAGS - reads the carts' tags
+verb ShowTags {
+    meta = true;
+    grammar = {.tags};
+    void handler() {
+        for (Cart k in all) {
+            print($"{k?.label}: ");
+            if (k?.tag?) {
+                print($"{k?.tag?.text(sep: ":")} doubled {k?.tag?.doubled()}");
+            } else {
+                print($"no tag, so {(k?.tag ?? blankTag).text()}");
+            }
+            print($", number {k?.tagOr(blankTag)?.number}.^");
+        }
+        lastTag = cartB?.tagOr(cartC?.tag ?? blankTag);
+        print($"Last tag: {lastTag.text()}.^");
+        lastTag = cartC?.tag ?? blankTag;
+        lastTag.number++;
+        print($"Copy: {lastTag.text()}, green still {cartC?.tag?.text()}.^");
+        Tag t = cartB?.tag ?? cartA?.tag ?? blankTag;
+        print($"Picked: {t.text(sep: "/")}.^");
+    }
+}
+
+// LOAD - puts something in the first empty cart
+verb LoadCart {
+    grammar = {.load, NOUN};
+    void handler() {
+        if (asCart(noun)?) {
+            print("A cart cannot go in a cart.^");
+            return;
+        }
+        Cart k = all.filter((Cart c) => !c?.load?).first();
+        if (!k?) {
+            print("Every cart is full.^");
+            return;
+        }
+        k?.load = noun;
+        k?.weight += 2;
+        k?.label += '*';
+        k?.load?.give(general);
+        print($"The {noun} goes in the {k?.label} cart, now {k?.weight}.^");
+    }
+}
+
+// LOADS - says what each cart holds
+verb ShowLoads {
+    meta = true;
+    grammar = {.loads};
+    void handler() {
+        int i = 0;
+        do {
+            Cart k = all[i];
+            print($"{k?.label} holds {loadName(k)}");
+            if (k?.load?.has(general)) {
+                print(" (loaded)");
+            }
+            if (k?.load?.parent == roomA) {
+                print(" from Room A");
+            }
+            print(".^");
+            i++;
+        } while (i < all.length);
+        print($"Full carts: {all.filter((Cart c) => c?.load?).count()}. ");
+        print($"Any heavy: {yesNo(all.any((Cart c) => c?.isHeavy(over: 4)))}. ");
+        print($"All labeled: {yesNo(all.all((Cart c) => c?.label?.length > 0))}.^");
+    }
+}
+
+// NOTES - writes and reads notes
+verb Notes {
+    meta = true;
+    grammar = {.notes};
+    void handler() {
+        print($"Red: {noteOf(cartA)}. Blue: {cartB?.noteOr()}. Green: {cartC?.noteOr(blank: "none")}.^");
+        cartB?.note = "fragile";
+        cartA?.next?.next?.note = "last";
+        print($"Blue: {noteOf(cartA?.next)}. Green: {cartB?.next?.note ?? "?"}.^");
+        string n = cartA?.note ?? cartD?.note ?? cartB?.note ?? "none at all";
+        print($"First set note: {n}.^");
+        print($"Gray's: {noteOf(pick(cartD))}.^");
+        if (cartA?.note? || cartA?.next?.note?) {
+            print("Some cart near the front has a note.^");
+        }
+    }
+}
+
+// YARD - parks carts in the yard
+verb ParkCarts {
+    meta = true;
+    grammar = {.yard};
+    void handler() {
+        print($"Spare: {yard?.spare?.label ?? "none"}. ");
+        yard.spare = cartD;
+        print($"Now: {yard?.spare?.label}.^");
+        yard.bays.length = 4;
+        yard.bays[0] = cartB;
+        yard.bays[2] = cartD;
+        for (int i = 0; i < 4; i++) {
+            print($"Bay {i}: ");
+            if (yard.bays[i]?) {
+                yard.bays[i]?.tell();
+            } else {
+                print("empty");
+            }
+            print(". ");
+        }
+        print("^");
+        print($"Bay 5: {yard.bayAt(5)? ? "there" : "no bay"}. Bay 2 then: {yard.bayAt(2)?.next?.label ?? "nothing"}.^");
+        yard.front = cartC;
+        Cart f = yard.front;
+        print($"Front: {f?.label}, front's front: {f?.first()?.label}, moves {yard.moves}.^");
+        yard.bayAt(0)?.weight++;
+        yard.bays[2]?.weight--;
+        print($"Blue now {cartB.weight}, gray now {cartD.weight}.^");
+        print($"Bays: {yard?.bays.length}, bay 1 through the yard: {yard?.bayAt(1)?.label ?? "empty"}, spare {yard.spare?.label}.^");
+    }
+}
+
+// TICKET - punches a ticket, while there are tickets
+verb PunchTicket {
+    meta = true;
+    grammar = {.ticket};
+    void handler() {
+        Ticket t = new Ticket(punches + 1);
+        t?.punch(pick(steps: punches));
+        if (!t?) {
+            print("No tickets left.^");
+            return;
+        }
+        print($"It rides on the {t?.rides()?.label} cart, which weighs {t?.rides()?.weight}.^");
+    }
+}
+
+// WEIGH - adds up the weights every way there is
+verb WeighCarts {
+    meta = true;
+    grammar = {.weigh};
+    void handler() {
+        int sum = 0;
+        Cart k = cartC?.first();
+        while (k?) {
+            sum += k?.weight;
+            k = k?.next;
+        }
+        print($"Line weight: {sum}, by method {cartA?.first()?.totalWeight()}.^");
+        print($"Heavier by 5: red {cartA?.heavier(5)}, gray {cartD?.heavier(by: 1)}.^");
+        print($"Gray extra: {((BigCart)cartD)?.extra}. ");
+        asCart(cartD)?.tell();
+        print(" / ");
+        asCart(box)?.tell();
+        print("(box is no cart).^");
+        array<var> plus = all.map((Cart c) => c?.heavier(1));
+        print($"Plus one: {plus[0]} {plus[1]} {plus[2]} {plus[3]}.^");
+        print($"Heads: {all.filter((Cart c) => !c?.prev?).count()}, tails: {all.filter((Cart c) => !c?.next?).count()}.^");
+        print($"Heavy: ");
+        for (Cart h in all.filter((Cart c) => c?.isHeavy())) {
+            print($"{h?.label} ");
+        }
+        print("^");
+        switch (cartA?.ahead(1)?.weight) {
+            case 1: print("Second cart is light.^");
+            case 2, 3: print("Second cart is middling.^");
+            default: print("Second cart is heavy.^");
+        }
+    }
+}
+
+// BUMP - changes weights and labels through chains
+verb BumpCarts {
+    meta = true;
+    grammar = {.bump};
+    void handler() {
+        cartA?.next?.weight++;
+        cartA?.next?.next?.weight += 2;
+        cartA?.last()?.weight -= 1;
+        pick(cartA, 2)?.label += "!";
+        all[3]?.weight *= 2;
+        cartA?.ahead(9)?.weight++;
+        print($"Weights: {cartA.weight} {cartB.weight} {cartC.weight} {cartD.weight}.^");
+        print($"Labels: {cartA?.path(sep: " ")}.^");
+        int n = cartA?.next?.weight > 2 ? cartA?.next?.weight : 0;
+        print($"Blue over two: {n}.^");
+    }
+}
+
+// moves c one cart along (it stays put at the end)
+Cart stepOn(Cart c) {
+    return c?.next ?? c;
+}
+
+// true when the cart after c is heavier than over
+bool nextIsHeavy(Cart c, int over = 2) {
+    return c?.next?.isHeavy(over: over);
+}
+
+// the thing in the cart, or else the thing in the cart after it, or else the box
+object loadNear(Cart c) {
+    return c?.load? ? c?.load : (c?.next?.load ?? box);
+}
+
+// WALK - walks along the line every way there is
+verb WalkLine {
+    meta = true;
+    grammar = {.walk};
+    void handler() {
+        Cart k = cartA;
+        k = stepOn(k);
+        k = stepOn(stepOn(k));
+        print($"Walked to: {k?.label}. ");
+        k = cartA;
+        while (k?.next?) {
+            k = k?.next;
+        }
+        print($"End: {k?.label}. ");
+        print($"Long way: {cartA?.first()?.ahead(1)?.ahead(steps: 1)?.label ?? "off the end"}.^");
+        print($"Last hooked: {Cart.lastHooked?.label}, its front {Cart.lastHooked?.first()?.label}.^");
+        print($"Front of the yard: {yard?.front?.label}, {yard?.front?.weight}. Its first: {yard?.front?.first()?.label}.^");
+        print($"Red next heavy: {yesNo(nextIsHeavy(cartA))}. Gray next heavy over 9: {yesNo(nextIsHeavy(cartD, over: 9))}. Box: {yesNo(nextIsHeavy(asCart(box)))}.^");
+        print($"Near red: {loadNear(cartA)}. Near gray: {loadNear(cartD)}. Near nothing: {loadNear(null)}.^");
+        print($"In red, or crate: {cartA?.load ?? crate}. In gray, or crate: {cartD?.load ?? crate}.^");
+        print($"Red tag shouted: {cartA?.tag?.word?.toUpper()}. Blue note size: {cartB?.note?.length}.^");
+        tagCopies.clear();
+        for (int i = 0; i < 4; i++) {
+            tagCopies += all[i]?.tag ?? blankTag;
+        }
+        for (int i = 0; i < 4; i++) {
+            print($"{tagCopies[i]?.text() ?? "?"} ");
+        }
+        print($"/ set: {tagCopies.filter((Tag t) => t?).count()}.^");
+        print($"Room's first thing: {roomA?.child}, then {roomA?.child?.sibling}. ");
+        print($"Is the yard a cart? {yesNo(yard?.is(Cart))}. Is gray? {yesNo(cartD?.is(Cart))}.^");
+        ++cartA?.weight;
+        --cartA?.next?.weight;
+        print($"Red {cartA.weight}, after red {cartA?.next?.weight}.^");
+        new Ticket(9)?.punch(cartD);
+        print("(no more tickets)^");
+    }
+}
+
+// SELFCHECK - carts that look at themselves
+verb SelfCheck {
+    meta = true;
+    grammar = {.selfcheck};
+    void handler() {
+        for (Cart c in all) {
+            int n = all.filter((Cart o) => {
+                if (o?.first() == c?.first()) {
+                    return true;
+                }
+                return false;
+            }).count();
+            print($"{c?.label}: {n} in its line, ");
+            print($"{c?.load? ? "full" : "empty"}, ");
+            switch (c?.next?.weight) {
+                case 0: print("last");
+                case 1, 2, 3: print("light one next");
+                default: print("heavy one next");
+            }
+            print(".^");
+        }
+    }
+}
+
+// MORE - more chains in more places
+verb MoreChains {
+    meta = true;
+    grammar = {.more};
+    void handler() {
+        print($"Heaviest: {Cart.heaviest()?.label}, {Cart.heaviest()?.weight}. Two on from red: {cartA?.twoOn()?.label ?? "none"}.^");
+        cartB?.tag?.number = 7;
+        cartA?.tag?.number += 10;
+        print($"Tags after: red {cartA.tag.number}, blue {cartB.tag.number}.^");
+        BigCart big = cartD;
+        big?.extra++;
+        big?.tell();
+        print($", next is {big?.next?.label ?? "nobody"}.^");
+        stringObj log = "Log:";
+        for (Cart b in yard.bays) {
+            log += $" {b?.label ?? "-"}";
+        }
+        for (Cart c in all) {
+            if (c?.next == cartB) {
+                log += " (before blue: ";
+                log += c?.label;
+                log += ")";
+            }
+        }
+        printLine(log);
+        print($"Gray note or label: {cartD?.note ?? "no note"}, {cartD?.noteOr(blank: "unnamed")}.^");
+        print($"Red heavier by blue: {cartA?.heavier(cartB?.weight)}.^");
+        print($"Fallback tag: {cartB?.tagOr(fallback: cartC?.tag ?? blankTag)?.text(sep: "+")}.^");
+        object where = (cartD?.load ?? cartD)?.parent;
+        print($"Gray's thing is in {where}. Red's is in {(cartA?.load ?? cartA)?.parent}.^");
+        if (!cartA?.load?.has(general)) {
+            print("Red's load is not marked.^");
+        }
+        cartA?.load?.give(general);
+        print($"Marked now: {yesNo(cartA?.load?.has(general))}.^");
+        switch (cartA?.next) {
+            case cartB: print("Blue is after red.^");
+            case cartC: print("Green is after red.^");
+            default: print("Something else is after red.^");
+        }
+        Cart k = cartA?.first();
+        int steps = 0;
+        do {
+            steps++;
+            k = k?.next;
+        } while (k?.next?);
+        print($"Steps: {steps}, stopped at {k?.label ?? "nothing"}.^");
+        print($"Same line as red: ");
+        Cart target = cartA?.last();
+        for (Cart h in all.filter((Cart c) => (c?.last() ?? c) == target)) {
+            print($"{h?.label} ");
+        }
+        print("^");
+    }
+}
+
+// TALLY - counts how often the left and right of ?? and ?. run
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        pickCalls = 0;
+        Cart x = picked(null) ?? picked(cartC);
+        print($"Picked {x?.label} with {pickCalls} calls. ");
+        pickCalls = 0;
+        x = picked(cartA) ?? picked(cartB);
+        print($"Then {x?.label} with {pickCalls} call.^");
+        pickCalls = 0;
+        picked(cartA)?.next?.add(1);
+        picked(cartD)?.add(picked(null) ?? cartA);
+        print($"Weights {cartA.weight} {cartD.weight}, after {pickCalls} calls.^");
+        print($"Shouted: {cartA?.label.toUpper()}, {cartA?.label.length} letters, says {cartA?.say(post: "]")} and {cartD?.next?.say(post: ")", pre: "(")}.^");
+    }
+}

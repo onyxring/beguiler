@@ -1,0 +1,48 @@
+// run_target4_forward — a named union's static methods and emitters (in its body or an `extend`) used
+// above the union, `func<>` members (static, object, lambda) used above their declarations, positional
+// values in objects declared above their class (slots named like a library global and a program
+// routine), and reads of never-stored slots of a value-class member array.
+// EXPECT_OUTPUT: obj text obj text obj text 5 5 5 5 5 10 12 14 7 0 0
+#beguilerSettings { target = z5; informName = "none"; }
+object box { "box"; }
+void showA(tagA x) { if (tagA.isObj(x)) print("obj "); else { print((string)x); print(" "); } }
+void showB(tagB x) { if (tagB.isObj(x)) print("obj "); else { print((string)x); print(" "); } }
+void showC(tagC x) { if (x.isObj()) print("obj "); else { print((string)x); print(" "); } }
+Jar jarA { 10; }
+Jug jugA { 12; }
+Pot potA { 14; }
+void main() {
+    bglInit();
+    showA(box); showA("text");
+    showB(box); showB("text");
+    showC(box); showC("text");
+    print(Policy.step(10)); print(" ");
+    func<int, int> f = Policy.step;
+    print(f(10)); print(" ");
+    print(Rule.step(10)); print(" ");
+    print(holder.step(10)); print(" ");
+    print(lam.step(10)); print(" ");
+    print(jarA.cap); print(" ");
+    print(jugA.turns); print(" ");
+    print(potA.halve); print(" ");
+    crate.cur.g = 7;
+    crate.past[1] = crate.cur;
+    print(crate.past[1].g); print(" ");
+    print(crate.past[0].g); print(" ");
+    print(crate.past[2].g);
+}
+union tagA = string | object;
+extend tagA { static bool isObj(tagA v) { return typeof(v) == eType.object; } }
+union tagB = string | object { static bool isObj(tagB v) { return typeof(v) == eType.object; } }
+union tagC = string | object { emitter bool isObj() { (metaclass($self) == Object) } }
+class Policy { static func<int, int> step = halve; }
+class Rule { static func<int, int> step = halve; }
+object holder { func<int, int> step = halve; }
+object lam { func<int, int> step = (int n) => n / 2; }
+int halve(int n) { return n / 2; }
+class Jar : object { inline int cap; }
+class Jug : object { inline int turns; }
+class Pot : object { inline int halve; }
+value class W { int g; W operator = (W o) { g = o.g; return self; } }
+class Bin : object { array<W> past[3]; W cur; }
+Bin crate { }

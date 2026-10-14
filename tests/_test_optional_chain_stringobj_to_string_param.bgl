@@ -1,0 +1,7 @@
+/* a stringObj passed to a string parameter through `?.` reports the overload mismatch */
+// EXPECT_ERROR: No overload of method 'noteor' on type 'Box' accepts these argument types
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+class Box : object { stringObj label; string noteOr(string s) { return s; } }
+Box bx { }
+void main(){ bglInit(); Box b = bx; b?.noteOr(b.label); }

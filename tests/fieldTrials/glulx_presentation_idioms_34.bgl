@@ -1,0 +1,663 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a panel of three counting dials drawn in a text grid split above the main window, with a
+// text-buffer log split to the right, where names meet. A class Dial whose members are named like the
+// program's globals (count, total as a static, label as a method), like #define symbols (limit, rows;
+// their initializers read the symbols, the methods read the members and `::` reaches the symbols),
+// like library globals (turns, score as a method, location), like a library attribute (open), like a
+// library property (number, capacity beside a #define capacity) and like the class itself (a Dial
+// member `dial` on the panel object); methods named like global functions (twice, show) with `::`
+// reaching the globals; parameters, locals, loop variables and lambda parameters named like globals,
+// objects, enum values, attributes, classes and members, differing only in case (`COUNT`, `Dial DIAL`),
+// reached around with `self.` and `::`; a global variable named like a library property (number) read
+// beside the property; a global emitter function sharing its name with a variable (tick); a member
+// with `asI6`; a value class Mark beside a verb Mark (and a local mark); an object imported with
+// #using whose member names meet a parameter and a global; `obj.provides(capacity)` beside the
+// #define and `provides()` of members named like globals and classes; global functions named like
+// library methods (first, any, append, clear) used beside those methods; a method named like a
+// library routine (offersLight) beside `::OffersLight`; `case ::Open:` and `case ::LIMIT:` where a
+// member hides the name; `is(::Dial)` where a member `dial` hides the class; a per-instance method
+// override; default and named arguments whose parameters are named like #defines; a `ref` local named
+// like a global function; a global `height` written to a window's height; links handled in
+// HandleGlkEvent; a replaced DrawStatusLine.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define ROWS 6
+#define LIMIT 9
+#define capacity 3
+#define LOGW 30
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eMode { idle = 1, counting, held }
+enum eLinks { linkReset = 71, linkFill }
+
+// ---- globals named like members ------------------------------------------------------------------
+
+int count = 0;             // presses on every dial
+int total = 100;           // a global the Dial static of the same name hides
+int number = 40;           // named like the library property `number`
+stringObj label = "panel";
+int tick = 0;
+
+emitter void tick(int n) { tick = tick + $n; }
+
+styleSheet gridLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    alert = style{ reverse = true; };
+};
+
+textGridWindowHorz grid = null;
+textBufferWindowVert pane = null;
+int height = ROWS;         // the grid's height; named like a window member
+
+int twice(int n) { return n * 2; }
+
+char yn(bool b) { return b ? 'y' : 'n'; }
+
+Dial first(eMode mode) {           // named like <linq>'s first
+    for (Dial d in dials) {
+        if (d.mode == mode) return d;
+    }
+    return null;
+}
+
+bool any(eMode mode) {             // named like <linq>'s any
+    return dials.any((Dial d) => d.mode == mode);
+}
+
+void append(stringObj what) {      // named like the array and stringObj methods
+    stringObj line = "+ ";
+    show(line.append(what));
+}
+
+void clear() {                     // named like the window method and the Dial method
+    for (Dial d in dials) d.clear();
+    height = initials.height;
+    if (grid != null) grid.height = height;
+    pane?.clear();
+    append("clicks cleared");
+}
+
+void show(stringObj what) {
+    pane?.printLine($"[{tick}] {what}");
+}
+
+// ---- an imported helper object -------------------------------------------------------------------
+
+object fmt {
+    int width = 6;
+    stringObj pad(stringObj s, int width) {
+        while (s.length < width) s += ' ';
+        return s;
+    }
+    stringObj padTo(stringObj s) { return pad(s, width); }
+    int number = 7;                // a global `number` outranks this import
+}
+
+#using fmt;
+
+// ---- the mark ------------------------------------------------------------------------------------
+
+value class Mark {
+    char letter;
+    int count;
+    int turn;
+
+    Mark operator = (Mark o) {
+        letter = o.letter;
+        count = o.count;
+        turn = o.turn;
+        return self;
+    }
+
+    stringObj text() {
+        stringObj out = $"{letter}{count}@{turn}";
+        return out;
+    }
+
+    static int total(Mark a, Mark b) { return a.count + b.count; }   // named like the global total
+}
+
+array<Mark> marks[4];
+
+// ---- dials ---------------------------------------------------------------------------------------
+
+class Dial : object {
+    attributeList attributes = {static};
+    static int total = 0;          // presses on every dial, kept by the class
+    char letter = '?';
+    int count = 0;                 // this dial's presses
+    int limit = LIMIT;             // the #define's value
+    int rows = ROWS;               // the #define's value
+    int turns = 0;                 // turns this dial spent counting
+    int location = 0;              // the grid row this dial is drawn on
+    bool open = false;             // whether the dial's cover is up
+    int number = 0;                // named like the global number
+    eMode mode = eMode.idle;
+    int tick = 0;                  // this dial's own clicks; named like the global and the emitter
+    Dial dial = null;              // the dial this one is paired with; named like the class
+
+    int twice(int n) { return n + n + 1; }        // not the global twice
+
+    int score() { return ::twice(count) + twice(0); }
+
+    stringObj label() {
+        stringObj out = $"{letter}{number}";
+        return out;
+    }
+
+    void show() asI6 showDial {
+        stringObj what = $"dial {letter}: {count}/{limit}";
+        ::show(what);
+    }
+
+    void bump(int count) {
+        self.count += count;
+        ::count += count;
+        total += count;
+        if (self.count > limit) self.count = limit;
+        tick(1);                   // the global emitter: the member is not callable
+        tick++;                    // the member
+    }
+
+    bool full() { return count >= limit; }
+
+    static int grand() { return total * 1000 + ::total; }      // the static, then the global
+
+    string fill() {
+        switch (count) {
+            case 0:        return "empty";
+            case ::LIMIT:  return "brim";
+        }
+        if (count >= limit) return "full";
+        return "part";
+    }
+
+    bool pairedWith(object o) {
+        if (!o.is(::Dial)) return false;            // the type, which the member `dial` hides
+        Dial other = (Dial)o;
+        return dial == other || other.dial == self;
+    }
+
+    stringObj pairing() {
+        if (dial == null) return "unpaired";
+        Dial back = dial.dial;
+        stringObj out = $"paired with {dial.letter}";
+        if (back == self) out += " both ways";
+        return out;
+    }
+
+    bool held() { return mode == eMode.held; }      // named like the enum value
+
+    bool offersLight() { return open; }             // named like a library routine
+
+    Mark mark() {                                   // named like the class and the verb
+        Mark m;
+        m.letter = letter;
+        m.count = count;
+        m.turn = ::turns;
+        return m;
+    }
+
+    stringObj stamp() {
+        stringObj out = $"{letter} row {location} at {::location}: {turns} of {::turns} turns, score {score()} vs {::score}, clicks {tick} of {::tick}; light {offersLight() ? "yes" : "no"}/{::OffersLight(::location) ? "yes" : "no"}";
+        return out;
+    }
+
+    void setLimit(int limit = ::LIMIT) {
+        if (limit > ::LIMIT) limit = ::LIMIT;
+        self.limit = limit;
+    }
+
+    string modeName(eMode mode) {
+        switch (mode) {
+            case eMode.idle:     return "idle";
+            case eMode.counting: return "counting";
+            case eMode.held:     return "held";
+        }
+        return "?";
+    }
+
+    stringObj row() {
+        stringObj bar = "";
+        for (int i = 0; i < limit; i++) {
+            if (i < count) bar += '#';
+            else bar += '.';
+        }
+        stringObj out = $"{fmt.pad(label(), 4)}{open ? 'o' : '-'} {fmt.pad(modeName(mode), 9)}[{bar}] t{turns}";
+        return out;
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"Dial {letter} reads {count} of {limit} ({modeName(mode)}); cover {open ? "up" : "down"} ({has(::open) ? "open" : "shut"}); number {number}; score {score()}.");
+                rtrue;
+            case Push:
+                if (held()) {
+                    printLine($"Dial {letter} is held.");
+                    rtrue;
+                }
+                bump(1);
+                mode = eMode.counting;
+                printLine($"Dial {letter} clicks to {count}.");
+                show();
+                rtrue;
+            case ::Open:
+                if (open) { printLine($"Dial {letter}'s cover is already up."); rtrue; }
+                open = true;
+                give(::open);
+                printLine($"You lift dial {letter}'s cover.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A panel of three dials.";
+    attributes = {light};
+}
+
+Dial dialA { "A dial"; parent = roomA; name = {.a, .dial}; letter = 'A'; number = 11; location = 1; }
+Dial dialB { "B dial"; parent = roomA; name = {.b, .dial}; letter = 'B'; number = 12; location = 2; limit = 5; }
+Dial dialC {
+    "C dial"; parent = roomA; name = {.c, .dial}; letter = 'C'; number = 13; location = 3; mode = eMode.held;
+    replace stringObj label() {                    // per-instance; still named like the global
+        stringObj out = $"{letter}{number}";
+        if (count > 0) out += '*';
+        out += $"{::label.length}";
+        return out;
+    }
+}
+
+array<Dial> dials = { dialA, dialB, dialC };
+
+object panel {
+    "panel";
+    parent = roomA;
+    name = {.panel};
+    description = "A panel holding the dials.";
+    attributes = {static};
+    Dial dial = dialA;             // the selected dial; named like its class
+    int count asI6 panelPresses = 0;
+    int capacity = capacity;       // the library property, from the #define
+    int grid = 4;                  // the grid row the summary goes on; named like the window
+
+    void summary() {
+        if (::grid == null) return;
+        ::grid.moveCursor(0, grid);
+        ::grid.print($"count {::count} total {::total} class {Dial.total} p{count}");
+    }
+
+    void select(Dial dial) {
+        self.dial = dial;
+        count++;
+        stringObj what = $"select {dial.letter}";
+        ::show(what);
+    }
+
+    int twice(int n) { return ::twice(n) + count; }
+
+    int spare() { return capacity * 10 + ::capacity; }  // the member, then the #define
+
+    void daemon() {
+        for (Dial dial in dials) {
+            if (dial.mode == eMode.counting) dial.turns++;
+        }
+        tick(1);
+    }
+}
+
+object initials {
+    int limit = LIMIT;             // the #define's value
+    int height = ROWS;             // named like the global height
+    int tick = 0;                  // named like the global and the emitter
+}
+
+extend class Dial {
+    void clear() {                 // named like the global clear
+        count = initials.tick;
+        tick = initials.tick;
+        limit = initials.limit;
+    }
+}
+
+string fullness(Dial d) {
+    switch (d.count) {
+        case 0:     return "empty";
+        case LIMIT: return "brim";
+    }
+    if (d.full()) return "full";
+    return "part";
+}
+
+int meter(int count, int limit = LIMIT) {
+    return count * 100 + limit;
+}
+
+// ---- drawing -------------------------------------------------------------------------------------
+
+void drawGrid() {
+    if (grid == null) return;
+    grid.clear();
+    for (int rows = 1; rows < ::ROWS - 1; rows++) {     // blank the dial rows first
+        grid.moveCursor(0, rows);
+        grid.print("-");
+    }
+    grid.moveCursor(0, 0);
+    grid.print($"dials (sel {panel.dial.letter}) n{number}");
+    for (Dial d in dials) {
+        if (d.location >= ROWS - 1) continue;
+        grid.moveCursor(0, d.location);
+        grid.print(d.row());
+    }
+    panel.summary();
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | {label}");
+    drawGrid();
+}
+
+// ---- functions whose names meet ------------------------------------------------------------------
+
+// parameter named like an object, a global and an attribute
+void report(Dial dialA, int count, bool light) {
+    stringObj line = $"{dialA.letter}: {count} vs {::count}";
+    if (light) line += " (lit)";
+    if (::dialA == dialA) line += " [first]";
+    if (light && !::dialA.has(::light)) line += $" ({::dialA} unlit)";
+    printLine(line);
+}
+
+int sumOf(eMode idle) {
+    int total = 0;
+    for (Dial d in dials) {
+        if (d.mode == idle) total += d.count;
+    }
+    return total + ::total - ::total;
+}
+
+int countWhere(eMode mode) {
+    return dials.filter((Dial count) => count.mode == mode).count();
+}
+
+stringObj names() {
+    stringObj label = "";
+    for (Dial dial in dials) {
+        if (label.length > 0) label += ',';
+        label += dial.letter;
+    }
+    label += $" of {::label}";
+    return label;
+}
+
+int COUNTER(int COUNT) {
+    return COUNT + count;
+}
+
+void showMarks() {
+    if (marks.length == 0) {
+        printLine("No marks.");
+        return;
+    }
+    ref Mark first := marks[0];
+    ref Mark last := marks[marks.length - 1];
+    stringObj out = "";
+    for (Mark mark in marks) {
+        if (out.length > 0) out += ' ';
+        out += mark.text();
+    }
+    printLine($"Marks: {out}; first {first.text()}, last {last.text()}, together {Mark.total(first, last)}.");
+}
+
+stringObj stamp(int turns) {
+    stringObj out = $"{turns}/{::turns}";
+    return out;
+}
+
+void resize(int by) {
+    if (grid == null) return;
+    if (height + by < 5 || height + by > ROWS + 2) {
+        printLine($"The grid stays at {height}.");
+        return;
+    }
+    height += by;
+    grid.height = height;
+    printLine($"Grid height {grid.height} (rows {ROWS}, global {::height}).");
+    drawGrid();
+}
+
+void showTable() {
+    printLine($"{fixed}{pad("Dial", 6)}{pad("Cnt", 5)}{pad("Lim", 5)}{pad("Mode", 9)}Score{roman}");
+    for (Dial dial in dials) {
+        stringObj c = $"{dial.count}";
+        stringObj l = $"{dial.limit}";
+        printLine($"{fixed}{padTo(dial.label())}{pad(c, 5)}{pad(l, 5)}{pad(dial.modeName(dial.mode), 9)}{dial.score()}{roman}");
+    }
+    printLine($"held {sumOf(held)}, idle {sumOf(idle)}, counting {sumOf(eMode.counting)}; {countWhere(counting)} counting, {countWhere(eMode.held)} held.");
+    int atLimit = dials.filter((Dial limit) => limit.count >= limit.limit).count();
+    int openOnes = dials.filter((Dial panel) => panel.open && panel != ::panel.dial).count();
+    printLine($"At limit {atLimit}; open and not selected {openOnes}; selected {PANEL.Dial.LETTER}.");
+    Dial f = first(counting);
+    Dial g = dials.first();
+    Dial h = dials.filter((Dial d) => d.held()).first();
+    stringObj fl = "none";
+    if (f != null) fl = $"{f.letter}";
+    stringObj hl = "none";
+    if (h != null) hl = $"{h.letter}";
+    stringObj fills = "";
+    for (Dial dial in dials) fills += $"{dial.letter}={dial.fill()}/{fullness(dial)} ";
+    printLine($"Fill {fills.trim()}; grand {Dial.grand()}.");
+    printLine($"Any held {yn(any(held))}, any idle {yn(any(eMode.idle))}, any counting {yn(dials.any((Dial any) => any.mode == counting))}.");
+    printLine($"First counting {fl}; first dial {g.letter}; first held {hl}.");
+    stringObj w = "w";
+    printLine($"[{pad(w, width: 3)}] [{pad(w, width)}] [{padTo(w)}] number {number} vs {fmt.number}.");
+    printLine($"Presses {count} (panel {panel.count}); class total {DIAL.Total}; global total {total}; number {number}; capacity {capacity}.");
+}
+
+// ---- links ---------------------------------------------------------------------------------------
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.linkReset:
+                for (Dial dial in dials) dial.count = 0;
+                show("reset");
+            case (int)eLinks.linkFill:
+                for (Dial dial in dials) dial.count = dial.limit;
+                show("fill");
+            default:
+                return 0;
+        }
+        drawGrid();
+    }
+    return 0;
+}
+
+bool Initialise() {
+    location = roomA;
+    grid = bgl.ui.mainWin.splitUpGrid(ROWS, fixed, border, styles: gridLook);
+    pane = bgl.ui.mainWin.splitRightBuffer(LOGW, fixed, border);
+    show("panel ready");
+    panel.capacity = 4;
+    StartDaemon(panel);
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Dial asDial(object o) {
+    if (o == null || !o.is(DIAL)) {
+        printLine("That is not a dial.");
+        return null;
+    }
+    return (dial)o;
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    void handler() {
+        Dial DIAL = asDial(noun);
+        if (DIAL == null) return;
+        Mark mark = DIAL.mark();
+        Mark copy = mark;                      // the type, though the local `mark` hides it as a value
+        copy.count += 0;
+        if (!marks.append(mark)) {
+            marks.remove(0);
+            marks.append(mark);
+        }
+        printLine($"Marked {mark.text()} (copy {copy.text()}); {marks.length} mark{marks.length == 1 ? "" : "s"}.");
+    }
+}
+
+verb StampDial {
+    grammar = {.stamp, NOUN};
+    meta = true;
+    void handler() {
+        Dial dial = asDial(noun);
+        if (dial == null) return;
+        printLine(dial.stamp());
+        printLine($"Stamp {stamp(dial.turns)}; {stamp(turns)}.");
+    }
+}
+
+verb Taller {
+    grammar = {.taller};
+    meta = true;
+    void handler() { resize(1); }
+}
+
+verb Shorter {
+    grammar = {.shorter};
+    meta = true;
+    void handler() { resize(-1); }
+}
+
+verb Wipe {
+    grammar = {.unclick};
+    meta = true;
+    void handler() {
+        clear();
+        printLine($"Cleared: {dialA.count}/{dialA.limit} {dialB.count}/{dialB.limit} {dialC.count}/{dialC.limit}; clicks {dialA.tick} {dialB.tick} {dialC.tick}; ticks {tick}; height {height}.");
+    }
+}
+
+verb Select {
+    grammar = {.select, NOUN};
+    void handler() {
+        Dial dial = asDial(noun);
+        if (dial == null) return;
+        PANEL.Select(dial);
+        printLine($"Selected {the(dial)}.");
+    }
+}
+
+verb SetLimit {
+    grammar = {.limit, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        panel.dial.setLimit(limit);
+        printLine($"Dial {panel.dial.letter} limit {panel.dial.limit} (asked {limit}, cap {::LIMIT}, local {LIMIT}).");
+    }
+}
+
+verb Unlimit {
+    grammar = {.unlimit};
+    void handler() {
+        panel.dial.setLimit();
+        printLine($"Dial {panel.dial.letter} limit {panel.dial.limit}.");
+    }
+}
+
+verb Pair {
+    grammar = {.pair, NOUN};
+    void handler() {
+        Dial dial = asDial(noun);
+        if (dial == null) return;
+        Dial sel = panel.dial;
+        if (sel == dial) {
+            printLine("A dial can't pair with itself.");
+            return;
+        }
+        sel.dial = dial;
+        printLine($"Dial {sel.letter} is {sel.pairing()}.");
+    }
+}
+
+verb Release {
+    grammar = {.release, NOUN};
+    void handler() {
+        Dial dial = asDial(noun);
+        if (dial == null) return;
+        if (dial.mode != eMode.held) {
+            printLine($"Dial {dial.letter} is not held.");
+            return;
+        }
+        dial.mode = eMode.idle;
+        printLine($"Dial {dial.letter} is free.");
+    }
+}
+
+verb Table {
+    grammar = {.table};
+    meta = true;
+    void handler() { showTable(); }
+}
+
+verb Who {
+    grammar = {.who, NOUN};
+    meta = true;
+    void handler() {
+        Dial d = asDial(noun);
+        if (d == null) return;
+        report(d, d.count, d.has(light));
+        report(DIALA, COUNTER(1), RoomA.has(LIGHT));
+        printLine($"Names {names()}; twice {twice(3)}, panel twice {panel.twice(3)}, dial twice {d.twice(3)}.");
+        printLine($"Meter {meter(3)} {meter(2, limit: 4)} {meter(count: 1)}.");
+        printLine($"Provides count: {yn(d.provides(count))}{yn(fmt.provides(count))}{yn(panel.provides(count))}; dial: {yn(panel.provides(dial))}{yn(d.provides(dial))}; number: {yn(d.provides(number))}{yn(fmt.provides(number))}{yn(initials.provides(number))}; tick: {yn(d.provides(tick))}{yn(initials.provides(tick))}{yn(panel.provides(tick))}.");
+        printLine($"Provides capacity: panel {panel.provides(capacity) ? "yes" : "no"}, dial {d.provides(capacity) ? "yes" : "no"}; panel capacity {panel.capacity}, spare {panel.spare()}, #define {capacity}.");
+        printLine($"{d.letter} is {d.pairing()}; paired with the panel's dial: {yn(d.pairedWith(panel.dial))}; with the panel: {yn(d.pairedWith(panel))}.");
+    }
+}
+
+verb ListMarks {
+    grammar = {.marks};
+    meta = true;
+    void handler() { showMarks(); }
+}
+
+verb Links {
+    grammar = {.links};
+    meta = true;
+    void handler() {
+        printLine($"Links: {link("reset", eLinks.linkReset)} {link("fill", eLinks.linkFill)}");
+    }
+}
+
+#includeI6 "grammar"

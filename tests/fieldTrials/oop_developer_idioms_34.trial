@@ -1,0 +1,54 @@
+Room A
+Room A.
+
+> stock
+Stocked 4, again false.
+part bolt common at (1,1) in A, price 10, allow
+gem ruby rare at (4,-2) in -, price 200, deny
+part nut fine at (0,3) in A, price 20, allow
+gem jade fine at (0,0) in B, price 50, allow
+Fine 2, rare 1, many fine false.
+Cheapest bolt, find nut part, find axle none.
+
+> move
+Bolt at (2,5), fine, best fine.
+Nut at (0,3), copy (7,0), same false.
+Jade at (2,2), near bolt false, near ruby true.
+Origin (6,8), size 14, sum (8,8).
+
+> marks
+Marks: (2,5) (-5,1) (1,0) (5,-1)
+Farthest (2,5), contains (1,0) true.
+Smallest (1,0), largest (2,5), any big true.
+Sorted first (1,0), ruby through the func (4,-2), compare true.
+
+> tools
+Made wrench, file, saw; fourth none; made 3, calls true.
+tool wrench common at (0,0) in -, price 13, allow
+tool file rare at (0,0) in -, price 41, hold
+Weights ruby 2, wrench 3, bolt 0.
+Special file is tool true.
+Special jade is gem true, nothing true.
+Add direct true, stocked 7, last drill.
+Base price of file 40, own price 41.
+
+> review
+Review: allow deny allow deny allow deny allow
+Held 0, bolt deny, nut allow.
+Upgraded nut to rare, bolt rare.
+Order: rare=many common=few fine=few
+Top common, ruby verdict hold.
+
+> calc
+Twice 4 8, abs -7 7, dbl 5 10, clamp 99 0 5.
+Calls 3, through the path 3.
+Budget clamped 500, set 120, afford ruby false.
+|width 4|
+----
+
+> inline
+Path 3, total (4,7), far (3,4).
+Distance 7, named 4.
+Rare 4, gems 2, all binned false.
+Diag (2,-2), geo is the branch true, words deny allow.
+First gem ruby, bin -, tools 3.

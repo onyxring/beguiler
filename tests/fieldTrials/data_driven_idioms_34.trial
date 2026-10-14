@@ -1,0 +1,161 @@
+Room A
+> lots
+0: wheat 120kg @0.12  medium 14.40
+1: oats 40kg @0.07    small  2.80
+2: barley 200kg @0.09 large  18.00
+3: wheat 75kg @0.12   medium 9.00
+4: rye 40kg @0.12     small  4.80
+By weight: 40 40 75 120 200.
+Heaviest barley 200; lightest 40; total 475.
+> bands
+small   0-49 (50): 2
+medium  50-149 (100): 2
+large   150-999 (850): 1
+Medium lots: 2, weighing 195.
+All banded: yes.
+> prices
+Rates: 0.07 0.09 0.12; barley's at 1; wheat and rye match; barley and oats differ; dearer 0.12; worth of all lots 49.00.
+> same
+2 at 40kg, first oats; any 200: yes; all under cap: yes.
+> audit
+Snap 1 loads, sum 9, copy; depot 0 loads, sum 0, depot.
+Walked 5, 475kg before a big lot: no.
+3 steps of 30, 10 left; first and third alike: no; next half 0.
+Depot tally now 1, last 30.
+> grades
+Graded: C40 C40 C75 A120 A200.
+First now 41 @0.09; 2 grade A, top barley 200kg @0.09; top in table: yes.
+> trim 0
+wheat 40kg @0.12 / oats 115kg @0.07; first of its weight at 0; sum 155; tally[0] 30, moves[0] 0.
+> crates
+Crate a 40, b 25 paid 300.
+Crate c 6, paid 0; b still 25.
+Made so far 46; pair 7 46 14, ordered max 46.
+> crates
+Crate a 40, b 25 paid 300.
+Crate c 6, paid 0; b still 25.
+Made so far 92; pair 7 92 14, ordered max 92.
+> stock
+The depot is empty.
+Moves:; tally sum 30.
+> match 40
+Wheat at 40: lot 0; within 5: 0; a common size; the first lot is common.
+> match 120
+Wheat at 120: none; within 5: 1; a full sack; the first lot is common.
+> match 77
+Wheat at 77: none; within 5: 3; the first lot is common.
+> grade 0
+Grade B: wheat 45kg @0.12; same no, near yes, copy grade B.
+> grade 1
+Grade A: oats 120kg @0.07; same no, near yes, copy grade A.
+> mix 1 0
+(over 3) sum of 40 and 115: 155 (large).
+> mix 2 0
+(over 3) difference of 40 and 115: 75 (medium).
+> mix 3 1
+(over 3) heavier of 115 and 200: 200 (large).
+> mix 4 3
+(over 3) mean of 75 and 40: 57 (medium).
+> mix 9 0
+No such mix.
+> split 100 30
+Pieces: 25 25 25 25 (4)
+> split 75 20
+Pieces: 18 19* 19 19* (4)
+> shuffle
+Weights: 1 600 115 75 200; had 200: yes; index of 75: 3.
+Head 4, tail 2 from 75, first big 600.
+> chain
+Chain: 40 155 355 430 470 (5 links).
+> load oats 60
+Loaded oats 60kg @0.07; stock 60, takings 4.20.
+> load rye 500
+Loaded rye 500kg @0.12; stock 560, takings 64.20.
+> lots
+0: wheat 40kg @0.12   small  4.80
+1: oats 115kg @0.07   medium 8.05
+2: barley 200kg @0.09 large  18.00
+3: wheat 75kg @0.12   medium 9.00
+4: rye 40kg @0.12     small  4.80
+5: oats 60kg @0.07    medium 4.20
+6: rye 500kg @0.12    large  60.00
+By weight: 40 40 60 75 115 200 500.
+Heaviest rye 500; lightest 40; total 1030.
+> stock
+Stock 560 of 600, room 40, 3 loads.
+Moves: 60 500; tally sum 590.
+> topup 4
+Stock now 584.
+> stock
+Stock 584 of 600, room 16, 3 loads.
+Moves: 60 500; tally sum 590.
+> pick 2
+Picked barley 211kg @0.09; local copy -789.
+> lots
+0: wheat 40kg @0.12   small  4.80
+1: oats 115kg @0.07   medium 8.05
+2: barley 211kg @0.09 large  18.99
+3: wheat 75kg @0.12   medium 9.00
+4: rye 40kg @0.12     small  4.80
+5: oats 60kg @0.07    medium 4.20
+6: rye 500kg @0.12    large  60.00
+By weight: 40 40 60 75 115 211 500.
+Heaviest rye 500; lightest 40; total 1041.
+> bins
+bin A: 0/150, room 150.
+bin B: 0/250, room 250.
+bin C: 0/100, room 100.
+> fill
+Bins: 1 2 0 1 2 2 0.
+Unbinned: 711kg.
+> bins
+bin A: 115/150, room 35.
+bin B: 215/250, room 35.
+bin C: 0/100, room 100.
+> ship 1
+Shipped oats 115kg @0.07; 6 left.
+> ship 9
+No such lot.
+> lots
+0: wheat 40kg @0.12   small  4.80
+1: barley 211kg @0.09 large  18.99
+2: wheat 75kg @0.12   medium 9.00
+3: rye 40kg @0.12     small  4.80
+4: oats 60kg @0.07    medium 4.20
+5: rye 500kg @0.12    large  60.00
+By weight: 40 40 60 75 211 500.
+Heaviest rye 500; lightest 40; total 926.
+> bands
+small   0-49 (50): 2
+medium  50-149 (100): 2
+large   150-999 (850): 2
+Medium lots: 2, weighing 135.
+All banded: yes.
+> same
+1 at 211kg, first barley; any 200: no; all under cap: yes.
+> shuffle
+Weights: 1 1500 211 75 60 500; had 200: no; index of 75: 3.
+Head 5, tail 2 from 75, first big 1500.
+> chain
+Chain: 40 251 326 366 426 926 (6 links).
+> audit
+Snap 4 loads, sum 599, copy; depot 3 loads, sum 590, depot.
+Walked 6, 926kg before a big lot: yes.
+10 steps of 10, 0 left; first and third alike: no; next half 250.
+Depot tally now 4, last 10.
+> grades
+Graded: C40 C40 C60 C75 A211 A500.
+First now 41 @0.09; 2 grade A, top rye 500kg @0.12; top in table: yes.
+> trim 2
+wheat 40kg @0.12 / rye 70kg @0.12; first of its weight at 0; sum 110; tally[0] 30, moves[0] 63.
+> trim 5
+No such lot.
+> lots
+0: wheat 40kg @0.12   small  4.80
+1: barley 211kg @0.09 large  18.99
+2: wheat 40kg @0.12   small  4.80
+3: rye 70kg @0.12     medium 8.40
+4: oats 60kg @0.07    medium 4.20
+5: rye 500kg @0.12    large  60.00
+By weight: 40 40 60 70 211 500.
+Heaviest rye 500; lightest 40; total 921.

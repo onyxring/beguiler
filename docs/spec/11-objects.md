@@ -181,12 +181,14 @@ array<point> pts = {
 **Description**
 
 Where the target type is already known, the leading `Type` may be omitted and a bare `{ … }` takes the
-target's type. Inference applies in four positions:
+target's type. Inference applies in five positions:
 
 - an `array<T>` element;
 - an object-backed variable initializer (`Type name = { … }`);
 - the element of a declarative `inject` (§12.11);
-- a call argument whose parameter is an object-backed class.
+- a call argument whose parameter is an object-backed class;
+- a member's value inside an aggregate or object body, when the member's type is a value class with
+  `inline` members (`Pair{ { 1 }, { 2 } }`).
 
 A bare `{ … }` produces an object only when the target type is an object-backed class. If the target
 is an `array<…>`, or a value class or collection type with an `operator =(initializerList)`, a bare

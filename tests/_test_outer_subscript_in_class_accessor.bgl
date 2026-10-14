@@ -1,0 +1,10 @@
+/* a subscript through `outer` in an inline accessor declared in a class body */
+// EXPECT_ERROR: 'outer' exists only in an inline accessor declared in an object
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Hub : object {
+    array<int> x[2];
+    auto front = {
+        int operator () { return outer.x[0]; }
+    };
+}
+void main(){ }

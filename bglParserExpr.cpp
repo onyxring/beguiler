@@ -83,7 +83,7 @@ bool bglParser::nextOperatorIsOwn(ExprParseState& st, const string& memberType){
     // the member, ahead of the value its getter reads (§4.4). The root classes' operators don't count.
     static const set<string> ops = {"+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=", "<<=", ">>=", "++", "--",
                                     "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>",
-                                    "==", "!=", "?=", "=~", "<", ">", "<=", ">=", "<=>", "?", "?."};
+                                    "==", "!=", "?=", "=~", "<", ">", "<=", ">=", "<=>", "?", "?.", "??"};
     token next = st.prefetched ? *st.prefetched : file.peekToken();
     if(next.value == "?" && !queryIsPostfix(st.prefetched ? file.peekToken() : file.peekToken(2))) return false;
     return ops.count(next.value) && declaresOwnOperator(memberType, next.value);
@@ -98,16 +98,19 @@ bool bglParser::queryIsPostfix(token after){
 // True when a value class declares `op` taking an operand of its own class.
 bool bglParser::takesOwnOperand(classDef* cls, const string& op){
     if(cls == nullptr || !isValueClass(cls)) return false;
+    bool ordering = op == "<" || op == ">" || op == "<=" || op == ">=";
     return findMemberInHierarchy(cls, [&](typeMember* m){
         auto* f = dynamic_cast<functionDef*>(m);
-        return f && f->name == op && !f->isStatic && f->params.size() == 1 && getDispatchClass(f->params[0]->type.name) == cls;
+        if(f == nullptr || (f->name != op && !(ordering && f->name == "<=>"))) return false;
+        if(!f->isStatic) return f->params.size() == 1 && getDispatchClass(f->params[0]->type.name) == cls;
+        return f->params.size() == 2 && getDispatchClass(f->params[1]->type.name) == cls;   // `static operator <=>(T a, T b)`
     }) != nullptr;
 }
 
 bool bglParser::declaresOwnOperator(const string& type, const string& opIn){
     classDef* mcls = getDispatchClass(type);
     if(mcls == nullptr) return false;
-    const string op = opIn == "?." ? "?" : opIn;   // `?.` tests with the class's `operator ?`
+    const string op = opIn == "?." || opIn == "??" ? "?" : opIn;   // `?.` and `??` test with the class's `operator ?`
     auto declares = [&](const string& name){
         return findMemberInHierarchy(mcls, [&](typeMember* m){
             if(dynamic_cast<functionDef*>(m) == nullptr || m->name != name) return false;
@@ -216,14 +219,14 @@ string bglParser::memberArraySizeText(const ArrayReceiver& r, const string& whic
                                       functionDef* func, statementBlock* body){
     string owner = objectI6Name(r.owner);
     string words = "((" + owner + ".#" + propertyI6Name(r.prop) + ")/WORDSIZE)";
-    if(!memberArrayIsTracked(r.owner, r.prop, func, body)) return words;
+    if(r.decl ? !memberArrayDeclTracked(r.decl) : !memberArrayIsTracked(r.owner, r.prop, func, body)) return words;
     return which == "size" ? "(" + words + " - 1)"
                            : "(" + owner + ".&" + propertyI6Name(r.prop) + "-->(" + words + " - 1))";
 }
 
 string bglParser::expandMemberValueEmitter(string objText, const string& rawRecv, const string& recvType,
                                            const string& memberName, functionDef* func, statementBlock* body,
-                                           string& outRetType){
+                                           string& outRetType, arrayDeclaration* memberDecl){
     auto isValueEmitterNamed = [&](typeMember* m){
         auto* fd = dynamic_cast<functionDef*>(m);
         return fd && fd->name == memberName && fd->isEmitter && fd->isValueEmitter;
@@ -242,6 +245,7 @@ string bglParser::expandMemberValueEmitter(string objText, const string& rawRecv
     if(i6ExprMemberArrays.count(rawRecv) && (memberName == "size" || memberName == "length"))
         return i6ExprMemberSizeText(objText, memberName, recvType);
     ArrayReceiver arr = arrayReceiver(objText, rawRecv, recvType, func, body);
+    if(arr.isMember) arr.decl = memberDecl;
     if(arr.isMember && (memberName == "size" || memberName == "length"))
         return memberArraySizeText(arr, memberName, func, body);
     emitterBindings vb;
@@ -1101,7 +1105,15 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
             // A message send binds tighter than any I6 operator, so a receiver that is more than a
             // name (`boxes-->(0+1)`) must be grouped or the send lands on its last operand.
             bool bare = all_of(heldLhs.begin(), heldLhs.end(), [](char c){ return isalnum((unsigned char)c) || c == '_' || c == '.'; });
-            call = (bare ? heldLhs : "(" + heldLhs + ")") + "." + matchedOp->i6name + "(" + heldRhs + ")";
+            // `((Coin)t) == 6`: the ancestor's own operator, as `((Coin)t).m()` runs the ancestor's method.
+            string op = matchedOp->i6name;
+            string unwrapped = lhsText;
+            while(unwrapped.size() >= 2 && unwrapped.front() == '(' && unwrapped.back() == ')') unwrapped = unwrapped.substr(1, unwrapped.size() - 2);
+            if(!expr->upcastText.empty() && unwrapped == expr->upcastText)
+                if(classDef* owner = cls->declaringClass(matchedOp); owner != nullptr && !matchedOp->isEmitter)
+                    op = owner->i6Name() + "::" + op;
+            expr->upcastText.clear();
+            call = (bare ? heldLhs : "(" + heldLhs + ")") + "." + op + "(" + heldRhs + ")";
         }
         expr->tokens.push_back(heldTemps.any() ? wrapHeldCall(heldTemps, call) : call);
     } else {
@@ -1161,6 +1173,18 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
     string nullTest = expandEmitterBody(blk, nb);
     expression* fallback = parseExpression(file.getToken(), terminators, func, body);
     string injText = tempName + " = " + lhsText + "; if (~~(" + nullTest + ")) " + tempName + " = " + fallback->text() + ";";
+    // An accessor tested by its own `operator ?` gives its getter's value when the fallback isn't one (`cap ?? "none"`).
+    auto isOfLhsClass = [&](const string& t){
+        for(classDef* c = getDispatchClass(t); c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
+            if(c == lhsCls) return true;
+        return false;
+    };
+    if(isValueClass(lhsCls) && !fallback->resolvedType.empty() && !isOfLhsClass(fallback->resolvedType))
+        if(functionDef* g = nativeGetterOf(lhsType)){
+            injText = tempName + " = " + lhsText + "; if (" + nullTest + ") " + tempName + " = " + tempName + "." + g->i6name
+                    + "(); else " + tempName + " = " + fallback->text() + ";";
+            lhsType = expr->resolvedType = g->returnType.name;
+        }
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
     inj->cooked = true;   // built from Beguile expressions: locals take their renames
@@ -1955,7 +1979,22 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
         int k = 1, groups = 0, casts = 0;
         string outer, inner;
         while(true){
-            if(file.peekToken(k).is(token::parenOpen) && file.peekToken(k + 1).is(eTokenType::dataType)
+            // A type alias, by path or bare (`(Ns.Part)`, `(Part)`), casts as its type does.
+            int aliasEnd = 0; string aliasType;
+            if(file.peekToken(k).is(token::parenOpen) && file.peekToken(k + 1).is(eTokenType::name) && func != nullptr){
+                string path = file.peekToken(k + 1).value;
+                int e = k + 2;
+                while(file.peekToken(e).is(token::period) && file.peekToken(e + 1).is(eTokenType::name)){ path += "." + file.peekToken(e + 1).value; e += 2; }
+                if(file.peekToken(e).is(token::parenClose) && !qualifyFromParams(path, func) && !qualifyFromBodyLocals(path, body)){
+                    aliasType = typeAliasTarget(path);
+                    if(!aliasType.empty()) aliasEnd = e;
+                }
+            }
+            if(aliasEnd > 0){
+                if(outer.empty()) outer = aliasType;
+                inner = aliasType;
+                casts++; k = aliasEnd + 1;
+            } else if(file.peekToken(k).is(token::parenOpen) && file.peekToken(k + 1).is(eTokenType::dataType)
                && file.peekToken(k + 2).is(token::parenClose)){
                 if(outer.empty()) outer = file.peekToken(k + 1).value;
                 inner = file.peekToken(k + 1).value;
@@ -2615,6 +2654,7 @@ bglParser::ExprStep bglParser::parseExprSubscriptInner(ExprParseState& st, token
     else if(isMemberWordArray){
         subscriptText = checkedMemberSlot(memberOwner, propertyI6Name(memberProp), indexExpr->text(), false,
                                           memberArrayIsTracked(memberOwner, memberProp, func, body));
+        subscriptText = valueSlotText(subscriptText, elemType);   // a value class's element: its slot's own instance
         expr->tokens.push_back(subscriptText);
         if(isArrayOfArraysElement(elemType) && expr->tokens.size() == 1) expr->resolvedType = elemType;   // a row, subscripted on
     }
@@ -2705,6 +2745,7 @@ bglParser::ExprStep bglParser::parseExprSubscriptInner(ExprParseState& st, token
                 expr->tokens.push_back(call);
             }
             if(!method->returnType.name.empty()) expr->resolvedType = method->returnType.name;
+            subscriptCallResult(expr, expr->tokens.size() - 1, func, body);   // `arr[0].tray()[1]`
         } else {
             // Property access: arr[0].field
             classDef* elemCls = getDispatchClass(elemType);
@@ -2909,6 +2950,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     // A receiver already parsed (`owner.dog?.parent`) arrives as text + type; leading `(` tokens
     // belong to an enclosing group and stay in place ahead of the chain's result.
     vector<string> chainPrefix;
+    string resultCast;
     if(!st.chainRecvText.empty()){
         lhsName = st.chainRecvText;
         lhsType = st.chainRecvType;
@@ -2923,7 +2965,10 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
         lhsName.clear(); for(const auto& t : expr->tokens) lhsName += t;
         st.chainRecvText.clear(); st.chainRecvType.clear();
     } else {
-        lhsType = !castType.empty() ? castType : resolveIdentifierType(lhsName, func, body);
+        // A cast before the chain applies to its result, as before a `.` path (§4.11).
+        resultCast = castType;
+        chainPrefix = expr->tokens;   // an enclosing group's open parentheses
+        lhsType = resolveIdentifierType(lhsName, func, body);
         // As this routine reaches it: a member through self, an outer local through a lambda's capture.
         if(!lhsType.empty() && func != nullptr)
             if(string q = qualifyIdentifier(lhsName, func, body); !q.empty()) lhsName = q;
@@ -2947,6 +2992,15 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     // One property step off optTemp. A property-class member (e.g. `parent`) reads through its
     // operator() emitter, exactly as a plain `.` read does; propType becomes the read's type.
     // `after` is the token that follows the member: the accessor's own member or operator takes the accessor itself.
+    // A member word array the chain stopped at (`car?.loads`): the temporary still holds its owner, and
+    // the array is its property — `$prop` for the next step's emitters.
+    string chainArrProp;
+    arrayDeclaration* chainArr = nullptr;
+    auto arraySizeRead = [&](const string& which) -> string {
+        string words = "((" + optTemp + ".#" + chainArrProp + ")/WORDSIZE)";
+        if(!memberArrayDeclTracked(chainArr)) return words;
+        return which == "size" ? "(" + words + " - 1)" : "(" + optTemp + ".&" + chainArrProp + "-->(" + words + " - 1))";
+    };
     // A member's declared type: an object's own member first, then its class's.
     auto memberDeclType = [&](const string& owner, const string& name) -> string {
         typeMember* pm = nullptr;
@@ -2962,6 +3016,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
             if(auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(cls, [&](typeMember* m){
                     auto* v = dynamic_cast<variableDeclaration*>(m); return v && v->name == memberName; })))
                 propType = vd->type.name;
+        if(propType.empty()) propType = memberDeclType(currentType, memberName);   // an object's own member
         string readRet;
         string read = expandMemberValueEmitter(optTemp, "", currentType, memberName, func, body, readRet);
         if(read.empty()) read = applyPropertyClassRead(optTemp, propType, readRet);
@@ -2990,16 +3045,23 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
             classDef* cls = getDispatchClass(currentType);
             ParsedArgList opal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(currentType, methName)));
             vector<expression*> callArgs = opal.args;
-            MethodMatch mm = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
+            // An array's methods are resolved with its element type bound (`indexOf(T)`).
+            MethodMatch mm = !arrayElemType(currentType).empty() && opal.namedArgNames.end() == find_if(opal.namedArgNames.begin(), opal.namedArgNames.end(), [](const string& n){ return !n.empty(); })
+                ? resolveMethod(currentType, optTemp, methName, callArgs, arrayElemType(currentType))
+                : resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
             functionDef* method = mm.method;
             if(!method) method = synthesizeFuncPropertyCall(currentType, methName);   // a func<> member is called through it
+            if(!method && !collectMethodCandidates(currentType, methName).empty()) reportMethodOverloadMismatch(currentType, methName, callArgs);
             if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName,
                 cls != nullptr ? cls->dName() : typeDisplayName(currentType)));
-            finalizeCallArgs(callArgs, opal.namedArgNames, opal.interpSegmentsPerArg, method);   // defaulted arguments
+            { string savedRecv = defaultArgReceiver; defaultArgReceiver = optTemp;
+              finalizeCallArgs(callArgs, opal.namedArgNames, opal.interpSegmentsPerArg, method);   // defaulted arguments
+              defaultArgReceiver = savedRecv; }
             mangleOverloadSetForReceiver(currentType, methName);
             if(method->isEmitter){
                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                     emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
+                    if(!chainArrProp.empty()){ mb.prop = chainArrProp; mb.elemType = arrayElemType(currentType); mb.elemContext = methName; }
                     mb.fn = method;
                     for(expression* a : callArgs) mb.args.push_back(a->text());
                     for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
@@ -3031,7 +3093,17 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 if(classDef* cc = getDispatchClass(currentType))
                     memberArr = dynamic_cast<arrayDeclaration*>(findMemberInHierarchy(cc, [&](typeMember* m){
                         return dynamic_cast<arrayDeclaration*>(m) != nullptr && m->name == member.value; }));
-            if(memberArr != nullptr && afterMember.is(token::bracketOpen)){
+            if(!chainArrProp.empty() && (member.value == "length" || member.value == "size")){
+                // `car?.loads?.length`: read from the owner the temporary still holds.
+                injText += " " + optTemp + " = " + arraySizeRead(member.value) + ";";
+                chainArrProp.clear(); chainArr = nullptr;
+                currentType = "int";
+            } else if(memberArr != nullptr && !memberArr->isRefLocal && (afterMember.is(token::period) || afterMember.is("?."))){
+                // Stop at the array: its owner stays in the temporary for the next step.
+                chainArrProp = memberI6Name(currentType, member.value);
+                chainArr = memberArr;
+                currentType = "array<" + memberArr->elementType + ">";
+            } else if(memberArr != nullptr && afterMember.is(token::bracketOpen)){
                 // `x?.history[1]`: an element of the member array, read once the receiver is known.
                 expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                 string prop = memberI6Name(currentType, member.value);
@@ -3039,12 +3111,12 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                     ? chainedSubscriptRead(dynamic_cast<functionDef*>(findMemberInHierarchy(getDispatchClass("array<" + memberArr->elementType + ">"),
                           [](typeMember* m){ auto* f = dynamic_cast<functionDef*>(m); return f && f->name == "[]" && f->params.size() == 1; })),
                           optTemp + "." + prop, idx->text(), "array<" + memberArr->elementType + ">")
-                    : checkedMemberSlot(optTemp, prop, idx->text(), false, memberArrayDeclTracked(memberArr));
+                    : valueSlotText(checkedMemberSlot(optTemp, prop, idx->text(), false, memberArrayDeclTracked(memberArr)), memberArr->elementType);
                 injText += " " + optTemp + " = " + read + ";";
                 currentType = memberArr->elementType;
                 afterMember = exprNext(st);
             } else if(classDef* pc = getDispatchClass(propType.empty() ? memberDeclType(currentType, member.value) : propType);
-                      pc != nullptr && pc->isEmitterClass && !pc->isPrimitive && afterMember.is(token::period)
+                      pc != nullptr && pc->isEmitterClass && pc->isExternal && !pc->isPrimitive && afterMember.is(token::period)
                       && languageService.findEnum(propType.empty() ? memberDeclType(currentType, member.value) : propType) == nullptr
                       && findMemberInHierarchy(pc, [this](typeMember* m){ return isPropertyClassReadEmitter(m); }) == nullptr){
                 // A property-class member (`children`) followed by its own member: the owner stays the receiver,
@@ -3075,6 +3147,17 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 currentType = propType;
             }
         }
+        // `x?.me()[0]`, `x?.next[0]`: a class's own operator [] on what the step gave.
+        while(afterMember.is(token::bracketOpen) && chainArrProp.empty() && !isWordArrayType(currentType) && currentType != "bytearray"){
+            classDef* sc = getDispatchClass(currentType);
+            auto* gm = sc ? dynamic_cast<functionDef*>(findMemberInHierarchy(sc, [](typeMember* m){
+                auto* f = dynamic_cast<functionDef*>(m); return f && f->name == "[]" && f->params.size() == 1; })) : nullptr;
+            if(gm == nullptr) break;
+            expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+            injText += " " + optTemp + " = " + chainedSubscriptRead(gm, optTemp, idx->text(), currentType) + ";";
+            currentType = gm->returnType.name;
+            afterMember = exprNext(st);
+        }
         // Check for continuation: another ?. or regular .
         if(afterMember.is("?.")){
             // Another optional step: look up operator?() on the current type
@@ -3096,16 +3179,22 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 classDef* cls = getDispatchClass(currentType);
                 ParsedArgList opal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(currentType, methName)));
                 vector<expression*> callArgs = opal.args;
-                MethodMatch mm2 = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
+                MethodMatch mm2 = !arrayElemType(currentType).empty() && opal.namedArgNames.end() == find_if(opal.namedArgNames.begin(), opal.namedArgNames.end(), [](const string& n){ return !n.empty(); })
+                    ? resolveMethod(currentType, optTemp, methName, callArgs, arrayElemType(currentType))
+                    : resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
                 functionDef* method = mm2.method;
                 if(!method) method = synthesizeFuncPropertyCall(currentType, methName);   // a func<> member is called through it
+                if(!method && !collectMethodCandidates(currentType, methName).empty()) reportMethodOverloadMismatch(currentType, methName, callArgs);
                 if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName,
                     cls != nullptr ? cls->dName() : typeDisplayName(currentType)));
-                finalizeCallArgs(callArgs, opal.namedArgNames, opal.interpSegmentsPerArg, method);   // defaulted arguments
+                { string savedRecv = defaultArgReceiver; defaultArgReceiver = optTemp;
+                  finalizeCallArgs(callArgs, opal.namedArgNames, opal.interpSegmentsPerArg, method);   // defaulted arguments
+                  defaultArgReceiver = savedRecv; }
                 mangleOverloadSetForReceiver(currentType, methName);
                 if(method->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                         emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
+                        if(!chainArrProp.empty()){ mb.prop = chainArrProp; mb.elemType = arrayElemType(currentType); mb.elemContext = methName; }
                         mb.fn = method;
                         for(expression* a : callArgs) mb.args.push_back(a->text());
                         for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
@@ -3125,6 +3214,12 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 // Could chain further — check again
                 if(afterMember.is("?.") || afterMember.is(token::period)) { prefetched = afterMember; /* TODO: loop */ }
                 else prefetched = afterMember;
+            } else if(!chainArrProp.empty() && (nextMember.value == "length" || nextMember.value == "size")){
+                // `car?.loads.length`: read from the owner the temporary still holds.
+                injText += " " + optTemp + " = " + arraySizeRead(nextMember.value) + ";";
+                chainArrProp.clear(); chainArr = nullptr;
+                currentType = "int";
+                prefetched = afterNext;
             } else {
                 // .property
                 string propType;
@@ -3159,6 +3254,11 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     for(const auto& p : chainPrefix) expr->tokens.push_back(p);
+    if(!resultCast.empty()){
+        expr->tokens.push_back(applyCastConversion(optTemp, currentType, resultCast));
+        expr->resolvedType = resultCast;
+        return ExprStep::Advance;
+    }
     expr->tokens.push_back(optTemp);
     if(!currentType.empty()) expr->resolvedType = currentType;
     return ExprStep::Advance;
@@ -3655,8 +3755,8 @@ bglParser::ExprStep bglParser::parseExprMemberSubscript(ExprParseState& st, toke
         if(owner.empty()) owner = objName;
         rejectConstantIndexOutside(dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(objName + "." + propName, func, body)),
                                    indexExpr, member.originalValue);
-        expr->tokens.push_back(checkedMemberSlot(owner, propertyI6Name(propName), indexExpr->text(), false,
-                                                 memberArrayIsTracked(objName, propName, func, body)));
+        expr->tokens.push_back(valueSlotText(checkedMemberSlot(owner, propertyI6Name(propName), indexExpr->text(), false,
+                                                               memberArrayIsTracked(objName, propName, func, body)), elemType));
         if(file.peekToken().is(token::bracketOpen) && expr->tokens.size() == 1){   // a row, or an element with `[]`
             expr->resolvedType = elemType;
             string text = expr->tokens.back();
@@ -4427,6 +4527,7 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
             }
             string newText = applyCastConversion(srcText, srcType, castType);
             expr->tokens.push_back(newText);
+            if(castType != srcType && isUpcast(castType, srcType)){ expr->upcastText = newText; expr->upcastFrom = srcType; }
             expr->resolvedType = castType;
             castType = "";
         } else {
@@ -4560,6 +4661,9 @@ bglParser::ExprStep bglParser::parseExprIdentifier(ExprParseState& st){
     // `outer.m` names the host object, so its path is the host's (`outer.cells[0]`, `outer.log.clear()`).
     if(cur.value == "outer" && accessorOuter != nullptr && (next.is(token::period) || next.is(token::bracketOpen)))
         cur.value = accessorOuter->name;
+    if(accessorOuter == nullptr && (cur.value == "outer" || cur.value.rfind("outer.", 0) == 0)
+       && currentClass != nullptr && currentClass->name.rfind("_bglaccessor", 0) == 0 && resolveIdentifierType("outer", func, body).empty())
+        parsingError("'outer' exists only in an inline accessor declared in an object; a class's accessor has no single host.");
     // ── name[i]: subscript access ──
     if(next.is(token::bracketOpen)){
         // An array imported by #using (`notes[1]` for `catalog.notes`) is subscripted by its full path.
@@ -4580,7 +4684,7 @@ bglParser::ExprStep bglParser::parseExprIdentifier(ExprParseState& st){
         return parseExprCall(st, next);
     }
     // ── name?.: optional chaining (expression-level) ──
-    else if(parenDepth == 0 && next.is("?.")){
+    else if((parenDepth == 0 || !castType.empty()) && next.is("?.")){
         string readText, readType;
         if(bareAccessorRead(cur.value, func, body, readText, readType)){
             // `Target?.parent` chains off what the accessor's getter reads.
@@ -4901,7 +5005,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         string selfText = receiverText(expr);
         string veRet;
         string veText = expandMemberValueEmitter(selfText, selfText.find('(') == string::npos ? selfText : "",
-                                                 expr->resolvedType, member.value, func, st.body, veRet);
+                                                 expr->resolvedType, member.value, func, st.body, veRet, expr->memberArrayDecl);
         if(!veText.empty()){
             replaceReceiver(expr, veText);
             expr->resolvedType = veRet;
@@ -4946,6 +5050,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             bool callOwner = lastParen != string::npos;
             if(isArr && (!callOwner || (lastDot != string::npos && lastDot > lastParen)))
                 arr = arrayReceiver(selfText, selfText, expr->resolvedType, func, st.body);
+            if(arr.isMember) arr.decl = expr->memberArrayDecl;
             string ret, read;
             // The inline form names the owner twice; a call owner must run once, so it goes through the routine.
             if(arr.isMember && !callOwner && (member.value == "size" || member.value == "length")){
@@ -4994,8 +5099,8 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             string owner = parenthesizeReceiver(receiverText(expr));
             expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
             rejectConstantIndexOutside(ad, indexExpr, member.originalValue);
-            replaceReceiver(expr, checkedMemberSlot(owner, memberI6Name(expr->resolvedType, member.value), indexExpr->text(),
-                                                    false, memberArrayDeclTracked(ad)));
+            replaceReceiver(expr, valueSlotText(checkedMemberSlot(owner, memberI6Name(expr->resolvedType, member.value), indexExpr->text(),
+                                                                  false, memberArrayDeclTracked(ad)), ad->elementType));
             expr->resolvedType = ad->elementType;
             cur = exprNext(st);
             return ExprStep::Continue;
@@ -5035,6 +5140,17 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
                 expr->resolvedType = st.castType;
                 st.castType = "";
             }
+            // `f().next[0]`: a field whose class has its own operator [].
+            if(afterMember.is(token::bracketOpen) && !isWordArrayType(mtype) && mtype != "bytearray")
+                if(classDef* fc = getDispatchClass(mtype))
+                    if(auto* gm = dynamic_cast<functionDef*>(findMemberInHierarchy(fc, [](typeMember* m){
+                           auto* f = dynamic_cast<functionDef*>(m); return f && f->name == "[]" && f->params.size() == 1; }))){
+                        expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
+                        replaceReceiver(expr, chainedSubscriptRead(gm, receiverText(expr), idx->text(), mtype));
+                        expr->resolvedType = gm->returnType.name;
+                        cur = exprNext(st);
+                        return ExprStep::Continue;
+                    }
             prefetched = afterMember;   // keep chaining (.field.field, or a following .method())
             cur = exprNext(st);
             return ExprStep::Continue;
@@ -5145,11 +5261,14 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
     // own size, so both methods answer `obj.#prop/WORDSIZE`. I6 computes `#prop` after
     // an additive property has accumulated, so this is also correct across inheritance
     // layers. Mirrors the non-chained fast path above.
+    // A computed owner (`(a ?? b).items`) can't be looked up by its text; the field step kept its declaration.
+    bool declTracked = chainIsMember && expr->memberArrayDecl != nullptr && memberArrayDeclTracked(expr->memberArrayDecl);
+    if(declTracked && chainElem.empty()) chainElem = expr->memberArrayDecl->elementType;
     string rawExtent;
-    if(chainIsMember && (methName == "size" || methName == "length")
+    if(chainIsMember && !declTracked && (methName == "size" || methName == "length")
        && !memberArrayIsTracked(chainSelf, chainProp, func, body))
         rawExtent = "((" + chainSelf + ".#" + propertyI6Name(chainProp) + ")/WORDSIZE)";
-    if(chainIsMember) rejectRawMemberLengthOp(chainSelf, chainProp, methName, func, body);
+    if(chainIsMember && !declTracked) rejectRawMemberLengthOp(chainSelf, chainProp, methName, func, body);
 
     functionDef* method = bindMethodCall(chainTypeName, selfText, methName,
                                            callArgs, emptyNamed, emptyInterp, chainElem);

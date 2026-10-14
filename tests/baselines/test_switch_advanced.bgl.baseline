@@ -887,7 +887,10 @@ object _bglStr
   ],
        print [buf _l_prop;
     
-            if(_l_prop ~= 0) buf = buf._l_prop;
+            if(_l_prop ~= 0){
+                if(metaclass(buf._l_prop) == Routine){ buf._l_prop(); return; }   ! run as the object's own method
+                buf = buf._l_prop;
+            }
             if(buf == 0) return;   ! null prints nothing
             if(buf provides print) {
                 buf.print();

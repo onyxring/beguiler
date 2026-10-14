@@ -1,0 +1,169 @@
+Room A
+> journal
+The journal is empty.
+> slots
+Slots:.
+Heads:.
+Sorted:.
+Cards with runs: 0; blank cards: 2; renders 0.
+> lines
+No lines.
+> examine card a
+The card A reads [(blank)]: blank, 0 char(s), 0 vowel(s), initials -; note none.
+> examine card c
+The card C reads [three word line]: word, 15 char(s), 5 vowel(s), initials TWL; note none.
+> spell card a as 105
+The card A now reads "one-zero-five".
+> spell b as 0
+The card B now reads "zero".
+> ink card a
+You ink first: one-zero-five# (1 ink(s)).
+> mark card a
+You mark first again: #one-zero-five#.
+> mark card a
+You mark first again: ##one-zero-five#.
+> examine card a
+The card A reads [##one-zero-five#]: long run, 16 char(s), 6 vowel(s), initials #ZF; note none.
+> flip card a
+The card A flips from ##one-zero-five# to five#-zero-##one.
+> flip c
+The card C flips from three word line to line word three.
+> swap c
+The card C now reads LINE WORD THREE; loud.
+> swap b
+The card B now reads ZERO; loud nought.
+> pad b to 9
+Padded: ZERO***** (9).
+> pad b to 40
+Refused: too wide.
+> merge card a with c
+Merged: Card first: five#-zero-##one + L third: LINE WORD THREE; mixed five#-zeD THREE; unnoted.
+> merge c with b
+Merged: Card third: LINE WORD THREE + Z second: ZERO*****; mixed LINE WO****; kept.
+> compare card a with c
+first sorts after third; same no; alike no.
+Three-way 1, compareTo 1, folded -1; matches no.
+> compare c with c
+third sorts level with third; same yes; alike yes.
+Three-way 0, compareTo 0, folded 0; matches yes.
+> pin card a
+You pin (five#-zero-##one) at 1; pinned: yes.
+> pin card a
+five#-zero-##one is already pinned at 1.
+> pin c
+You pin (LINE WORD THREE) at 2; pinned: yes.
+> pin b
+You pin (ZERO*****) at 3; pinned: yes.
+> shape c
+Shape upper: LINE WORD THREE.
+> shape c
+Shape reverse: EERHT DROW ENIL.
+> shape c
+Shape pad: LINE WORD .
+> shape card a
+Shape angle: <five#-zero-##one>.
+> note card a
+Note on first: unnoted -> long run.
+> note b
+Note on second: kept -> cleared.
+> note c
+Note on third: unnoted -> cleared.
+> push press
+The press runs: five#-zero-##one | ZERO***** | LINE WORD THREE.
+> churn 25
+At 20: ONE-FOUR-ZER...
+Churned 25: 549 char(s); longest ONE-THREE-THREE/eerht-eerht-eno.
+> nest 4
+Nested: (4(3(2(1)))) (12 chars, deepest 4, head (4(, tail ))).
+> nest 12
+Nested: (12(11(10(9(8(7(6(5(4(3(2(1)))))))))))) (39 chars, deepest 12, head (12, tail ))).
+> nest 13
+Nest from 1 to 12.
+> wipe b
+The card B is blank: [(blank)].
+> examine b
+The card B reads [(blank)]: blank, 0 char(s), 0 vowel(s), initials -; note none.
+> examine press
+The press has run 1 time(s); last run: five#-zero-##one | ZERO***** | LINE WORD THREE.
+> slots
+Slots: [five#-zero-##one] [LINE WORD THREE] [ZERO*****].
+Heads: <16:five> <15:LINE> <9:ZERO>.
+Sorted: five#-zero-##one line word three zero*****.
+Longest pinned: five#-zero-##one at 1.
+Cards with runs: 1; blank cards: 1; renders 10.
+> lines
+Line 1: five (width 4, FZ#).
+Line 2: LINE W (width 6, LWT).
+Line 3: ZERO**** (width 8, Z).
+Heads: fiv/LIN/ZER/
+> journal
+Journal (209): spell one-zero-five; spell zero; flip ##one-zero-five# > five#-zero-##one; flip three word line > line word three; merge five#-zeD THREE; merge LINE WO****; press five#-zero-##one | ZERO***** | LINE WORD THREE.
+Head SPELL ONE-ZERO-FIVE;; dashes 9; last press; churned 549.
+Press says 87 char(s): The press has run 1 time(s); last run: five#-zero-##one | ZERO***** | LINE WORD THREE.
+> e
+Room B
+Room B. A board hangs here. A doorway leads west.
+You can see a board here.
+> examine board
+The board holds 3 pinned text(s); the last merge was Card third: LINE WORD THREE + Z second: ZERO*****.
+> w
+Room A
+You can see a press, a card A, a card B and a card C here.
+> pad c to 20
+Padded: LINE WORD THREE+++++ (20).
+> dash c
+The card C dashes to +LINE-WORD-THREE; 1 cut(s); ends E!; framed <+LINE-WORD-THREE>.
+> dash card a
+The card A dashes to #five-zero-one; 0 cut(s); ends e!; framed <#five-zero-one>.
+> wipe c
+The card C is blank: [(blank)].
+> dash c
+The card C dashes to +; 0 cut(s); ends marked; framed <+>.
+> slots
+Slots: [five#-zero-##one] [LINE WORD THREE] [ZERO*****].
+Heads: <16:five> <15:LINE> <9:ZERO>.
+Sorted: five#-zero-##one line word three zero*****.
+Longest pinned: five#-zero-##one at 1.
+Cards with runs: 1; blank cards: 1; renders 11.
+> journal
+Journal (209): spell one-zero-five; spell zero; flip ##one-zero-five# > five#-zero-##one; flip three word line > line word three; merge five#-zeD THREE; merge LINE WO****; press five#-zero-##one | ZERO***** | LINE WORD THREE.
+Head SPELL ONE-ZERO-FIVE;; dashes 9; last press; churned 549.
+Press says 87 char(s): The press has run 1 time(s); last run: five#-zero-##one | ZERO***** | LINE WORD THREE.
+#repeat 3
+> churn 99
+At 20: ONE-FOUR-ZER...
+At 40: TWO-EIGHT-ZE...
+At 60: FOUR-TWO-ZER...
+Churned 60: 1560 char(s); longest THREE-SEVEN-EIGHT/thgie-neves-eerht.
+> nest 12
+Nested: (12(11(10(9(8(7(6(5(4(3(2(1)))))))))))) (39 chars, deepest 12, head (12, tail ))).
+> spell b as 9876
+The card B now reads "nine-eight-seven-six".
+> flip b
+The card B flips from nine-eight-seven-six to six-seven-eight-nine.
+> journal
+Journal (287): spell one-zero-five; spell zero; flip ##one-zero-five# > five#-zero-##one; flip three word line > line word three; merge five#-zeD THREE; merge LINE WO****; press five#-zero-##one | ZERO***** | LINE WORD THREE; spell nine-eight-seven-six; flip nine-eight-seven-six > six-seven-eight-nine.
+Head SPELL ONE-ZERO-FIVE;; dashes 18; last flip; churned 5229.
+Press says 87 char(s): The press has run 1 time(s); last run: five#-zero-##one | ZERO***** | LINE WORD THREE.
+> cap card a
+Capped: #five-zero-one..
+> cap b
+Capped: Six-seven-eight-nine..
+> cap c
+Capped: +..
+> cap press
+No cap: not a card.
+> bounce 4
+Bounce 4: oi.oi.! (7); ping 7.
+> bounce 20
+Bounce 8: oi.oi.oi.oi.! (13); ping 13.
+> examine card a
+The card A reads [#five-zero-one.]: long run, 15 char(s), 6 vowel(s), initials #ZO; note long run.
+> wipe c
+The card C is blank: [(blank)].
+> cap c
+No cap: blank third.
+> journal
+Journal (287): spell one-zero-five; spell zero; flip ##one-zero-five# > five#-zero-##one; flip three word line > line word three; merge five#-zeD THREE; merge LINE WO****; press five#-zero-##one | ZERO***** | LINE WORD THREE; spell nine-eight-seven-six; flip nine-eight-seven-six > six-seven-eight-nine.
+Head SPELL ONE-ZERO-FIVE;; dashes 18; last flip; churned 5229.
+Press says 87 char(s): The press has run 1 time(s); last run: five#-zero-##one | ZERO***** | LINE WORD THREE.

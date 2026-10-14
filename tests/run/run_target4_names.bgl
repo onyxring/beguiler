@@ -1,0 +1,30 @@
+// run_target4_names — a method's default argument naming a #define that a member hides reads the
+// receiver's member, and `provides()` for members declared with asI6 and for members named like a global
+// and a library emitter.
+// EXPECT_OUTPUT: 309 204 107 6 2 yn yyn yn yn
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#define LIMIT 9
+int meter(int count, int limit = LIMIT) { return count * 100 + limit; }
+class Knob : object {
+    int limit = 5;
+    int cap(int limit = LIMIT) { return limit; }
+}
+Knob k1 { limit = 6; }
+int count = 100;
+int number = 40;
+int tick = 0;
+class Dial : object { int count = 0; int number = 0; int tick = 0; }
+Dial d1 { count = 3; }
+object panel { int presses asI6 panelPresses = 0; int count asI6 panelCount = 0; }
+object other { int size = 1; }
+void yn(bool b) { if (b) print("y"); else print("n"); }
+void main() {
+    glulxConsole();
+    print(meter(3)); print(" "); print(meter(2, limit: 4)); print(" "); print(meter(1, 7)); print(" ");
+    print(k1.cap()); print(" "); print(k1.cap(2)); print(" ");
+    yn(panel.provides(presses)); yn(other.provides(presses)); print(" ");
+    yn(d1.provides(count)); yn(panel.provides(count)); yn(other.provides(count)); print(" ");
+    yn(d1.provides(number)); yn(other.provides(number)); print(" ");
+    yn(d1.provides(tick)); yn(other.provides(tick));
+}

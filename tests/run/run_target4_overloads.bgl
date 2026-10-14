@@ -1,0 +1,51 @@
+// run_target4_overloads — prefix `++`/`--` on value-class and object-class locals whose operators are
+// declared below the use, an overload a subclass adds called above the subclass, and operators applied
+// through a cast receiver that dispatch to the ancestor's operator.
+// EXPECT_OUTPUT: 12 -12 12 brass 15 1 7
+#beguilerSettings { target = z5; informName = "none"; }
+void main() {
+    bglInit();
+    Pence p;
+    ++p;
+    print(p.d); print(" ");
+    Shilling s;
+    --s;
+    print(s.d); print(" ");
+    Groat g = gr;
+    ++g;
+    print(g.d); print(" ");
+    Token t = tok;
+    print(t.Value("tag")); print(" ");
+    print(t.Value(3)); print(" ");
+    print(((Coin)t) == 6 ? 1 : 0); print(" ");
+    print(((Coin)t) + 1);
+}
+value class Pence {
+    int d;
+    Pence operator = (Pence o) { d = o.d; return self; }
+    Pence operator prefix++ () { d = d + 12; return self; }
+}
+value class Shilling {
+    int d;
+    Shilling operator = (Shilling o) { d = o.d; return self; }
+    Shilling operator prefix-- () { d = d - 12; return self; }
+}
+class Groat {
+    int d;
+    Groat operator prefix++ () { d = d + 12; return self; }
+}
+Groat gr { }
+Token tok { }
+class Coin {
+    int worth = 5;
+    default int Value() { return worth; }
+    int Value(int count) { return worth * count; }
+    bool operator == (int n) { return worth + 1 == n; }
+    int operator + (int n) { return worth + 1 + n; }
+}
+class Token : Coin {
+    replace int Value() { return 0; }
+    string Value(string what) { return "brass"; }
+    replace bool operator == (int n) { return false; }
+    replace int operator + (int n) { return 0; }
+}

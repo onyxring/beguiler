@@ -1,0 +1,69 @@
+// run_target4_accessors — `<=>` and the ordering operators between two accessor members using the accessor
+// class's static `<=>` (above and below the class), returning an accessor member as its class, `??` and
+// postfix `?` on an accessor member with its own `operator ?`, a member array of an accessor class, and a
+// store into a member whose subclass replaces `operator =(int)`, written above the classes.
+// EXPECT_OUTPUT: 2 0 1 2 0 1 15 main none 1 0 3 4 7 8
+#beguilerSettings { target = z5; informName = "none"; }
+void main() {
+    bglInit();
+    pa.dial = 3;
+    pb.dial = 5;
+    print(pa.dial <=> pb.dial); print(" ");
+    print(pa.dial < pb.dial ? 1 : 0); print(" ");
+    print(pa.dial >= pb.dial ? 1 : 0); print(" ");
+    below();
+    pa.dial = 15;
+    Dial h = higher(pa);
+    int hv = h;
+    print(hv); print(" ");
+    pa.caption = "main";
+    string a = pa.caption ?? "none";
+    string b = pb.caption ?? "none";
+    print(a); print(" "); print(b); print(" ");
+    print(pa.caption? ? 1 : 0); print(" ");
+    print(pb.caption? ? 1 : 0); print(" ");
+    pa.taps[0] = 3;
+    pa.taps[1] = 4;
+    int m = pa.taps[0];
+    int m1 = pa.taps[1];
+    print(m); print(" "); print(m1); print(" "); print(pa.tapSum()); print(" ");
+    pa.coarse = 9;
+    int c = pa.coarse;
+    print(c);
+}
+value class Dial {
+    int _raw;
+    void put(int v) { _raw = v; }
+    int operator () { return _raw; }
+    default void operator = (int v) { put(v); }
+    Dial operator = (Dial o) { _raw = o._raw; return self; }
+    static int operator <=> (Dial a, Dial b) { return b._raw - a._raw; }
+}
+value class Step : Dial {
+    replace void operator = (int v) { put(v - v % 2); }
+}
+value class Caption {
+    string _s;
+    string operator () { return _s ?? "blank"; }
+    void operator = (string s) { _s = s; }
+    emitter eBool operator ? () { ($self._s ~= 0) }
+}
+class Panel : object {
+    Dial dial;
+    Caption caption;
+    Step coarse;
+    array<Dial> taps[3];
+    int tapSum() {
+        int n = 0;
+        for (int i = 0; i < 3; i++) n += taps[i];
+        return n;
+    }
+}
+Panel pa { }
+Panel pb { }
+Dial higher(Panel p) { return p.dial; }
+void below() {
+    print(pa.dial <=> pb.dial); print(" ");
+    print(pa.dial <= pb.dial ? 1 : 0); print(" ");
+    print(pa.dial > pb.dial ? 1 : 0); print(" ");
+}

@@ -1,0 +1,7 @@
+/* a verb and an object of one name clash even when the verb's class is declared below the verb */
+// EXPECT_ERROR: object 'board' has the same name as verb 'board'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+Info Board { grammar = {.board}; void handler() { print(board.load); } }
+class Info : verb { meta = true; }
+object board { int load = 3; }
+void main(){ }

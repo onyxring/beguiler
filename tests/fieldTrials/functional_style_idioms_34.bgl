@@ -1,0 +1,581 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a tray rack written in a functional style on Glulx, leaning on members reached through
+// computed receivers. A rack object holds a member array of trays and an `operator []` returning a
+// tray; a tray class has an `operator []` returning an item and an `operator []=` storing one, a
+// member array of items, a named accessor class, an inline `auto` accessor, a value class footprint,
+// a next link, a func<bool, Item> member, methods returning self, an item, an int and a stringObj, a
+// static method and an instance member on one object (reached with an instance cast). Items are a
+// class with a member array of marks, an owned value class size, self-returning and stringObj methods
+// and a `default` score overridden by a subclass. A pooled slip class made with `new` returns self.
+// Members, member arrays, accessors, value members and methods are reached through chained class
+// subscripts `rackA[i][j].label`, subscripts on call results and member results `trayAt(n)[0]`,
+// `next[0]`, `self[0]`, subscript stores through computed receivers `trayAt(n)[0] = x`, casts of
+// `noun`, `noun.parent` and elements, array-of-array elements `grid[i][j].tray().label`, func-variable
+// call results `pick(n)[0]`, ternary and `??` results `(a.weight > b.weight ? a : b).label`,
+// operator results `(a.size + b.size).grown(1).text()`, <linq> chain results and subscripts on them
+// (`trays.orderBy(f).first()[0]`), static method results, `new` results, value-class array elements
+// and a member array of a value class; accessors are assigned, compound-assigned and incremented
+// through those receivers (`trays[i][0].wear += n`, `self[0].wear += n`); receivers appear in for-in collections, `while`, `do` and
+// `switch` heads, returns, lambdas, <linq> predicates, `?.`/`??` and interpolation; verbs read
+// noun, second and parsed_number.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int CELLS = 5;
+
+enum Kind { loose, boxed, fragile }
+
+//-- Values ---------------------------------------------------------------------------------------
+
+value class Dim {
+    inline int w;
+    inline int h;
+
+    Dim operator = (Dim o) {
+        w = o.w;
+        h = o.h;
+        return self;
+    }
+
+    Dim operator + (Dim o) {
+        Dim d;
+        d.w = w + o.w;
+        d.h = h + o.h;
+        return d;
+    }
+
+    int area() { return w * h; }
+
+    Dim grown(int n) {
+        Dim d;
+        d.w = w + n;
+        d.h = h + n;
+        return d;
+    }
+
+    stringObj text() {
+        stringObj s = $"{w}x{h}";
+        return s;
+    }
+}
+
+// Read as an int; writes are kept within 0..99.
+value class Clamp {
+    int _v = 0;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v < 0 ? 0 : (v > 99 ? 99 : v); }
+}
+
+//-- Items, trays and the rack --------------------------------------------------------------------
+
+class Item : object {
+    attributeList attributes = {scenery};
+    string label;
+    int weight;
+    Kind kind = Kind.loose;
+    array<int> marks[4];
+    Dim size;
+    Clamp wear;
+
+    Item mark(int m) {
+        if (marks.length < marks.size) marks += m;
+        return self;
+    }
+
+    stringObj tag() {
+        stringObj s = $"{label}/{weight}";
+        return s;
+    }
+
+    Tray tray() { return (Tray)parent; }
+
+    default int score() { return weight * 2; }
+}
+
+class Tool : Item {
+    int edge;
+    int score() { return weight + edge * 3; }
+}
+
+class Tray : object {
+    attributeList attributes = {scenery, container, open};
+    string label;
+    array<Item> cells[CELLS];
+    Clamp load;
+    auto uses = {
+        int _n = 0;
+        int  operator ()        { return _n; }
+        void operator = (int v) { _n = v < 0 ? 0 : v; }
+    };
+    Tray next;
+    Dim footprint;
+    array<Dim> history[3];
+    func<bool, Item> fits;
+
+    Item operator [] (int i) { return i >= 0 && i < cells.length ? cells[i] : null; }
+
+    Item operator []= (int i, Item v) {
+        if (i >= 0 && i < cells.length) cells[i] = v;
+        return v;
+    }
+
+    Tray put(Item it) {
+        cells += it;
+        it.parent = self;
+        return self;
+    }
+
+    Item heaviest() { return cells.orderBy(byWeightDesc).first(); }
+
+    int total() {
+        int t = 0;
+        for (Item i in cells) t += i.weight;
+        return t;
+    }
+
+    string firstNext() { return next[0]?.label ?? "none"; }
+
+    int firstMarks() { return self[0] == null ? 0 : self[0].marks.length; }
+
+    void wearFront(int n) {
+        if (self[0] == null) return;
+        self[0].wear += n;
+        self.cells[0].wear++;
+    }
+
+    Dim widest() { return history.orderBy((Dim a, Dim b) => b.area() - a.area()).first(); }
+
+    static Tray lightest() { return trays.orderBy(byTotal).first(); }
+}
+
+class Rack : object {
+    string label;
+    array<Tray> shelves[3];
+
+    Tray operator [] (int i) { return i >= 0 && i < shelves.length ? shelves[i] : null; }
+
+    Item find(string l) {
+        for (Tray t in shelves) {
+            for (Item it in t.cells) {
+                if (it.label == l) return it;
+            }
+        }
+        return null;
+    }
+}
+
+class Slip[4] : object {
+    Item item;
+    int qty;
+
+    void create(Item it, int q) {
+        item = it;
+        qty = q;
+    }
+
+    Slip bump(int n = 1) {
+        qty += n;
+        return self;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Rack rackA { "rack"; name = {.rack}; label = "rack"; parent = roomA; }
+
+Tray trayL { "left tray";   name = {.left, .tray};   label = "left";   parent = roomA; fits = anyItem;   footprint = Dim{ 3, 2 }; }
+Tray trayM { "middle tray"; name = {.middle, .tray}; label = "middle"; parent = roomA; fits = anyItem;   footprint = Dim{ 4, 2 }; }
+Tray trayR {
+    "right tray"; name = {.right, .tray}; label = "right"; parent = roomA; fits = lightOnly; footprint = Dim{ 2, 2 };
+    int reserve = 2;
+}
+
+Tool steelFile { "steel file"; name = {.steel, .file}; label = "steel file"; weight = 8;  edge = 2; size = Dim{ 1, 6 }; parent = trayL; }
+Item ironNut   { "iron nut";   name = {.iron, .nut};   label = "iron nut";   weight = 2;  kind = Kind.boxed;   size = Dim{ 1, 1 }; parent = trayL; }
+Item glassJar  { "glass jar";  name = {.glass, .jar};  label = "glass jar";  weight = 9;  kind = Kind.fragile; size = Dim{ 3, 3 }; parent = trayL; }
+Tool brassSaw  { "brass saw";  name = {.brass, .saw};  label = "brass saw";  weight = 12; edge = 4; size = Dim{ 2, 9 }; parent = trayM; }
+Item tinCup    { "tin cup";    name = {.tin, .cup};    label = "tin cup";    weight = 4;  kind = Kind.fragile; size = Dim{ 2, 2 }; parent = trayM; }
+Item oakPeg    { "oak peg";    name = {.oak, .peg};    label = "oak peg";    weight = 1;  size = Dim{ 1, 3 }; parent = trayR; }
+Tool zincAwl   { "zinc awl";   name = {.zinc, .awl};   label = "zinc awl";   weight = 3;  edge = 1; kind = Kind.boxed; size = Dim{ 1, 5 }; parent = trayR; }
+
+array<Tray> trays = {trayL, trayM, trayR};
+array<Item> items = {steelFile, ironNut, glassJar, brassSaw, tinCup, oakPeg, zincAwl};
+array<array<Item>> grid = { {steelFile, brassSaw, zincAwl}, {ironNut, oakPeg}, {glassJar, tinCup} };
+array<Dim> plans[3];
+
+//-- Pure helpers ---------------------------------------------------------------------------------
+
+bool anyItem(Item i) { return true; }
+bool lightOnly(Item i) { return i.weight <= 5; }
+bool isTool(Item i) { return i.is(Tool); }
+
+// Heavier first; equal weights by label.
+int byWeightDesc(Item a, Item b) {
+    if (a.weight != b.weight) return b.weight - a.weight;
+    return a.label.compareTo(b.label);
+}
+
+// Lighter tray first; equal totals by label.
+int byTotal(Tray a, Tray b) {
+    int d = a.total() - b.total();
+    if (d != 0) return d;
+    return a.label.compareTo(b.label);
+}
+
+Tray trayAt(int i) { return rackA[i]; }
+
+Item asItem(object o) {
+    if (!o.is(Item)) {
+        print("That is not an item.^");
+        return null;
+    }
+    return (Item)o;
+}
+
+Tray asTray(object o) {
+    if (!o.is(Tray)) {
+        print("That is not a tray.^");
+        return null;
+    }
+    return (Tray)o;
+}
+
+string kindName(Kind k) {
+    switch (k) {
+        case Kind.boxed:   return "boxed";
+        case Kind.fragile: return "fragile";
+        default:           return "loose";
+    }
+}
+
+int heaviestWeightIn(int i) {
+    Item h = trayAt(i)?.heaviest();
+    return h == null ? 0 : trayAt(i).heaviest().weight;
+}
+
+stringObj labelsOf(Tray t, int i = 0) {
+    stringObj s;
+    if (t[i] == null) return s;
+    s = t[i].label;
+    if (t[i + 1] != null) {
+        s += ", ";
+        s += labelsOf(t, i + 1);
+    }
+    return s;
+}
+
+// Fills each tray's cells from the items sitting in it, and resets its gauges.
+void restock() {
+    for (int i = 0; i < trays.length; i++) {
+        rackA.shelves[i].cells = items.filter((Item it) => it.parent == trays[i]);
+        rackA[i].load = rackA[i].total() * 5;
+        trayAt(i).uses = rackA.shelves[i].cells.length;
+    }
+}
+
+void showTray(int i) {
+    print($"{rackA[i].label}: {labelsOf(rackA[i])}; total {trayAt(i).total()}, load {rackA[i].load}, uses {rackA.shelves[i].uses}^");
+    print($"  first {rackA[i][0]?.label ?? "none"}, heaviest {rackA[i].heaviest()?.tag() ?? "none"}, footprint {rackA[i].footprint.text()} ({trayAt(i).footprint.area()}), next first {rackA[i].firstNext()}^");
+}
+
+//-- Verbs ----------------------------------------------------------------------------------------
+
+verb TraysVerb {
+    grammar = {{.trays}};
+    void handler() {
+        for (int i = 0; i < rackA.shelves.length; i++) showTray(i);
+    }
+}
+
+verb InspectVerb {
+    grammar = {{.inspect, NOUN}};
+    void handler() {
+        Item it = asItem(noun);
+        if (it == null) return;
+        print($"{((Item)noun).tag()} in {((Item)noun).tray().label} ({((Tray)noun.parent).label}), {kindName(((Item)noun).kind)}, score {((Item)noun).score()}^");
+        print($"upper {((Item)noun).tag().toUpper()}, {((Item)noun).tag().length} chars; size {((Item)noun).size.text()}, grown {((Item)noun).size.grown(1).area()}^");
+        print($"first in its tray {((Item)noun).tray()[0].label}, its tray's heaviest {((Tray)noun.parent).heaviest().label} ({((Tray)noun.parent).heaviest().size.area()})^");
+        if (noun.is(Tool)) print($"edge {((Tool)noun).edge}, base score {((Item)(Tool)noun).score()}^");
+        print($"marks {((Item)noun).marks.length}");
+        for (int m in ((Item)noun).marks) print($" {m}");
+        print("^");
+    }
+}
+
+verb MarkVerb {
+    grammar = {{.mark, NOUN, NUMBER}};
+    void handler() {
+        Item it = asItem(noun);
+        if (it == null) return;
+        int n = ((Item)noun).mark(parsed_number).mark(parsed_number + 1).marks.length;
+        ((Item)noun).marks[0] += 100;
+        it.tray()[0].mark(7).marks[0] += 1;
+        print($"{it.label} has {n} marks, first {((Item)noun).marks[0]}, last {it.mark(0).marks.last()}; its tray's first has {it.tray().firstMarks()}^");
+    }
+}
+
+verb SwapVerb {
+    grammar = {{.swap, NUMBER}};
+    void handler() {
+        Tray t = trayAt(parsed_number - 1);
+        if (t == null) {
+            print("No such tray.^");
+            return;
+        }
+        if (trayAt(parsed_number - 1)[1] == null) {
+            print($"The {t.label} tray holds too little.^");
+            return;
+        }
+        Item a = trayAt(parsed_number - 1)[0];
+        trayAt(parsed_number - 1)[0] = trayAt(parsed_number - 1)[1];
+        rackA[parsed_number - 1][1] = a;
+        print($"{t.label} now starts {rackA[parsed_number - 1][0].label}, then {t[1].label}: {labelsOf(t)}^");
+    }
+}
+
+verb LoadVerb {
+    grammar = {{.load, NOUN, NUMBER}};
+    void handler() {
+        Tray t = asTray(noun);
+        if (t == null) return;
+        ((Tray)noun).load = parsed_number;
+        ((Tray)noun).next.load -= 3;
+        rackA[0].load += 1;
+        trayAt(2).uses++;
+        ((Tray)noun).put(trayAt(0)[0]).uses += 0;
+        print($"{t.label} load {((Tray)noun).load}, next {((Tray)noun).next.label} load {t.next.load}; left load {rackA[0].load}; right uses {rackA[2].uses}^");
+        (t.load > 50 ? t : t.next).uses = 7;
+        print($"uses {t.uses} and {t.next.uses}; heavier load: {(t.load >= t.next.load ? t : t.next).label}^");
+        restock();
+    }
+}
+
+verb GridVerb {
+    grammar = {{.grid}};
+    void handler() {
+        for (int i = 0; i < grid.length; i++) {
+            print($"row {i}: {grid[i].length} items, first {grid[i].first().tag()}, in {grid[i][0].tray().label}");
+            for (int j = 1; j < grid[i].length; j++) {
+                print($"; {grid[i][j].label} {grid[i][j].size.area()} in {grid[i][j].tray()[0].label}'s tray");
+            }
+            print("^");
+        }
+        print($"best tool: {grid[0].orderBy(byWeightDesc).first().label}, edge {((Tool)grid[0][1]).edge}, next tray {grid[0][2].tray().next.label}^");
+    }
+}
+
+verb SlipVerb {
+    grammar = {{.slip, NOUN, NUMBER}};
+    void handler() {
+        Item it = asItem(noun);
+        if (it == null) return;
+        Slip s = new Slip(it, parsed_number);
+        if (s == null) {
+            print("No slips left.^");
+            return;
+        }
+        print($"slip: {s.bump().bump(2).qty} of {s.item.label} from {s.item.tray().label}, tray first {s.item.tray()[0].label}, tag {s.item.tag()}^");
+        Slip t = new Slip(s.item.tray().heaviest(), s.qty * 2);
+        print($"second slip: {t?.bump(3)?.item?.label ?? "none"} x {t == null ? 0 : t.qty}, size {t.item.size.text()}^");
+        delete t;
+        delete s;
+    }
+}
+
+verb PairVerb {
+    grammar = {{.pair, NOUN, NOUN}};
+    void handler() {
+        Item a = asItem(noun);
+        if (a == null) return;
+        Item b = asItem(second);
+        if (b == null) return;
+        print($"heavier: {(a.weight >= b.weight ? a : b).label}; lighter tray: {(a.tray().total() <= b.tray().total() ? a.tray() : b.tray()).label}^");
+        print($"sizes {(a.size + b.size).text()}, area {(a.size + b.size).area()}, grown {(a.size + b.size).grown(1).text()}^");
+        print($"fifth in a's tray: {(a.tray()[4] ?? b).label}; same tray: {a.tray() == b.tray() ? "yes" : "no"}; a's next tray first {(a.tray().next[0] ?? a).label}^");
+        print($"scores {((Item)noun).score() + ((Item)second).score()}, marks {((Item)noun).marks.length + ((Item)second).marks.length}^");
+    }
+}
+
+verb AuditVerb {
+    grammar = {{.audit}};
+    void handler() {
+        print($"lightest tray: {trays.orderBy(byTotal).first().label}, its heaviest {trays.orderBy(byTotal).first().heaviest().tag()}^");
+        print($"first tool's tray starts {items.filter(isTool).first().tray()[0].label}; last tool edge {((Tool)items.filter(isTool).last()).edge}^");
+        print($"Tray.lightest: {Tray.lightest().label}, {Tray.lightest().cells.length} items, first {Tray.lightest()[0]?.label ?? "none"}, next area {Tray.lightest().next.footprint.area()}^");
+        array<var> totals = trays.map((var t) => ((Tray)t).total());
+        print($"totals {totals[0]} {totals[1]} {totals[2]}; heaviest per tray {heaviestWeightIn(0)} {heaviestWeightIn(1)} {heaviestWeightIn(2)} {heaviestWeightIn(5)}^");
+        for (Item it in items.orderBy(byWeightDesc).take(3)) print($"  {it.tag()} in {it.tray().label}, tray total {it.tray().total()}^");
+        int fragile = trays.filter((Tray t) => t.cells.any((Item i) => i.kind == Kind.fragile)).count();
+        print($"trays with fragile items: {fragile}; tools heavier than their tray's first: {items.filter((Item i) => i.is(Tool) && i.weight > i.tray()[0].weight).count()}^");
+    }
+}
+
+verb WalkVerb {
+    grammar = {{.walk, NUMBER}};
+    void handler() {
+        Tray t = trayAt(parsed_number - 1);
+        if (t == null) {
+            print("No such tray.^");
+            return;
+        }
+        int hops = 0;
+        while (t.next.total() > trayAt(parsed_number - 1).total() && hops < 3) {
+            t = t.next;
+            hops++;
+        }
+        print($"from {trayAt(parsed_number - 1).label}: {hops} hops to {t.label}^");
+        int laps = 0;
+        Tray u = rackA[parsed_number - 1];
+        do {
+            u = u.next;
+            laps++;
+        } while (u != rackA[parsed_number - 1].next.next.next);
+        print($"loop of {laps}; ");
+        switch (trayAt(parsed_number - 1)[0].kind) {
+            case Kind.fragile: print("starts fragile");
+            case Kind.boxed:   print("starts boxed");
+            default:           print($"starts loose ({trayAt(parsed_number - 1)[0].label})");
+        }
+        print("^");
+    }
+}
+
+verb FitsVerb {
+    grammar = {{.fits, NOUN}};
+    void handler() {
+        Item it = asItem(noun);
+        if (it == null) return;
+        for (int i = 0; i < rackA.shelves.length; i++) {
+            print($"{rackA[i].label}: {rackA[i].fits(it) ? "takes" : "refuses"}, {trays[i].fits((Item)noun) ? "yes" : "no"}, {trayAt(i).cells.length < trayAt(i).cells.size ? "room" : "full"}^");
+        }
+        array<Tray> takers[3] = trays.filter((Tray t) => t.fits(it) && t != it.tray());
+        print($"other takers {takers.length}, first {takers.first()?.label ?? "none"}, its first {takers.first()?.firstNext() ?? "none"}^");
+    }
+}
+
+verb ReserveVerb {
+    grammar = {{.reserve}};
+    void handler() {
+        ((trayR)trays[2]).reserve += 1;
+        ((trayR)rackA[2]).reserve++;
+        print($"reserve {((trayR)trayAt(2)).reserve}, read through the object {trayR.reserve}, label {((trayR)rackA.shelves[2]).label}^");
+    }
+}
+
+verb MoveVerb {
+    grammar = {{.move, NOUN, .to, NOUN}};
+    void handler() {
+        Item it = asItem(noun);
+        if (it == null) return;
+        Tray to = asTray(second);
+        if (to == null) return;
+        if (((Item)noun).tray() == second) {
+            print($"The {it.label} is already in the {to.label} tray.^");
+            return;
+        }
+        if (!((Tray)second).fits(it)) {
+            print($"The {to.label} tray does not take the {it.label}.^");
+            return;
+        }
+        if (((Tray)second).cells.length >= ((Tray)second).cells.size) {
+            print($"The {to.label} tray is full.^");
+            return;
+        }
+        ((Item)noun).tray().cells.removeValue(it);
+        ((Item)noun).tray().uses--;
+        ((Item)noun).tray().load -= it.weight * 5;
+        ((Tray)second).put(it).uses++;
+        it.tray().load += it.weight * 5;
+        print($"The {it.label} goes to the {it.tray().label} tray (load {((Tray)second).load}, uses {it.tray().uses}); {it.tray().label} holds {labelsOf(it.tray())}^");
+    }
+}
+
+verb PickVerb {
+    grammar = {{.pick, NUMBER, NUMBER}};
+    void handler() {
+        func<Tray, int> pick = trayAt;
+        int j = parsed_number;
+        if (pick(0) == null) return;
+        Item it = pick(1)[0];
+        print($"pick(1)[0] {it.label}; pick(2)[0] {pick(2)[0]?.label ?? "none"}; pick(0) heaviest's tray {pick(0).heaviest().tray().label}^");
+        print($"pick(2).next.next first {pick(2).next.next[0].label}, footprint {pick(2).next.footprint.text()}^");
+    }
+}
+
+verb PlanVerb {
+    grammar = {{.plan}};
+    void handler() {
+        plans.clear();
+        for (Tray t in rackA.shelves) plans += t.footprint.grown(plans.length);
+        print($"plans {plans[0].text()} {plans[1].text()} {plans[2].text()}; sum area {(plans[0] + plans[1]).area()}; grown {plans[2].grown(2).text()}^");
+        trayAt(0).footprint = plans[2];
+        rackA[1].footprint.w += 1;
+        trayAt(2).footprint.h = trayAt(1).footprint.w;
+        print($"footprints {rackA[0].footprint.text()} {trayAt(1).footprint.text()} {rackA.shelves[2].footprint.text()}; widest {trays.orderBy((Tray a, Tray b) => b.footprint.w - a.footprint.w).first().label}^");
+        for (int i = 0; i < trays.length; i++) {
+            if (trayAt(i).history.length < trayAt(i).history.size) trayAt(i).history += trayAt(i).footprint;
+        }
+        rackA[0].history += plans[1];
+        trays[0].history += Dim{ 1, 1 };
+        trayAt(1).wearFront(5);
+        print($"history {trayAt(0).history.length}, last {rackA[0].history.last().text()}, widest {rackA[0].widest().text()} ({trays[0].widest().area()}), middle {trays[1].history[0].text()}; middle front wear {rackA[1][0].wear}^");
+        for (Tray t in rackA.shelves) print($"  {t.label}: area {t.footprint.area()}, items area {t.cells.map((var x) => ((Item)x).size.area()).first()}^");
+    }
+}
+
+verb WearVerb {
+    grammar = {{.wear, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        for (int i = 0; i < trays.length; i++) {
+            if (trays[i][0] == null) continue;
+            trays[i][0].wear += n;
+            trays[i][0].wear++;
+            trayAt(i).cells[0].wear -= 1;
+            rackA.shelves[i].cells[0].wear *= 2;
+            trays[0][0].wear += i;
+        }
+        func<int, Tray> frontWear = (Tray t) => {
+            if (t[0] == null) return 0;
+            return t[0].wear;
+        };
+        for (int i = 0; i < rackA.shelves.length; i++) {
+            string role = trays[i][0].is(Tool) ? "tool" : "part";
+            print($"{trays[i][0].label}: wear {trays[i][0].wear} ({frontWear(rackA[i])}), {role}, edge {trays[i][0].is(Tool) ? ((Tool)trays[i][0]).edge : -1}, prefix {trays[i][0].tag().left(3)}, {rackA[i][0].tag().contains('/') ? "tagged" : "plain"}^");
+        }
+        print($"worn over {n}: {items.filter((Item it) => it.wear > n).count()}, first {(items.filter((Item it) => it.wear > n * 2 + 20).first() ?? oakPeg).label}^");
+        print($"most worn front: {trays.orderBy((Tray a, Tray b) => frontWear(b) - frontWear(a)).first()[0].label}, its size {trays.orderBy(byTotal).first()[0].size.grown(n).text()}^");
+        if (rackA[0][0].wear > trayAt(1)[0].wear && ((Tool)rackA[0][0])?.edge > 0) print("The left front is the most worn tool.^");
+        else print($"The left front has wear {rackA[0][0]?.wear}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    trayL.next = trayM;
+    trayM.next = trayR;
+    trayR.next = trayL;
+    rackA.shelves = trays;
+    restock();
+    location = roomA;
+    rfalse;
+}

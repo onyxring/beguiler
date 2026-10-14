@@ -1,0 +1,529 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-fourth pass: a parts catalog whose
+// types are reached only through namespaces declared further down the file. A value class for a 2-D
+// offset whose operators, copy and `<=>` are typed through the path to its own alias; a primitive newtype
+// for a count and an `alias class` for a bin, both aliased; a part hierarchy (part, tool, gem) whose
+// owned value-class member, static fields, default parameters and chained returns are typed through
+// paths; a root object `Catalog` holding a geometry branch (`auto`), an items branch (value alias) that
+// holds a rules branch (value alias, three steps deep, with its own enum alias), a static-only math class
+// (value alias) whose static methods are taken as `func<>` values through the path and through `#using`,
+// an emitter class with an alias member, an owned value-class member and an inline `auto` accessor;
+// a later `extend` of the items branch adds a type alias and methods that use names declared above and
+// below it; an `extend class` of an aliased class. Paths appear in inline objects (`Path.Type{ … }`
+// as array elements, arguments and initializers), `new` as a direct argument, unions of two path types,
+// `ref` value-class parameters and locals, casts of call results, `is()` with full, partial and bare
+// names, generic arguments (`func<>` with path types on both sides, `array<>` of a path enum), lambdas,
+// `<linq>` chains, switch cases written four ways, ternaries, compound assignment on a member reached
+// through a path, interpolation and returns; the consumer imports the root, a branch reached by value
+// alias, a branch three steps down and the math class.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Types, written against paths that are declared further down ------------------------------------------------
+
+enum eCtGrade { Common, Fine, Rare }
+enum eCtVerdict { Allow, Hold, Deny }
+
+value class CtOffset {
+    inline int X;
+    inline int Y;
+
+    Catalog.Geo.Offset operator = (Catalog.Geo.Offset o) {
+        X = o.X;
+        Y = o.Y;
+        return self;
+    }
+    Catalog.Geo.Offset operator + (Catalog.Geo.Offset o) {
+        Catalog.Geo.Offset t;
+        t.X = X + o.X;
+        t.Y = Y + o.Y;
+        return t;
+    }
+    Catalog.Geo.Offset operator * (int k) {
+        Catalog.Geo.Offset t = Catalog.Geo.Offset{ X * k, Y * k };
+        return t;
+    }
+    bool operator == (Catalog.Geo.Offset o) { return X == o.X && Y == o.Y; }
+    bool operator != (Catalog.Geo.Offset o) { return X != o.X || Y != o.Y; }
+    int operator <=> (Catalog.Geo.Offset o) { return Size() - o.Size(); }
+
+    int Size() { return Catalog.Calc.Abs(X) + Catalog.Calc.Abs(Y); }
+
+    void print() { print($"({X},{Y})"); }
+}
+
+primitive class CtCount {
+    emitter void operator = (int v) { $target = $v; }
+    emitter int operator () { ($val) }
+    emitter bool Many { ($val >= 3) }
+}
+
+alias class CtBin for object {
+    string Tag;
+    int Slots;
+}
+
+class CtPart : object {
+    string Label;
+    Catalog.Items.Grade Quality = Catalog.Items.Grade.Common;
+    Catalog.Geo.Offset Pos;
+    Catalog.Items.Bin Home;
+
+    static int Made = 0;
+    static Catalog.Items.Grade Best = Catalog.Items.Grade.Common;
+
+    default string Kind() { return "part"; }
+    default int Price() { return Catalog.Items.Factor(Quality) * 10; }
+
+    Catalog.Items.Part MoveBy(Catalog.Geo.Offset by, int times = 1) {
+        Pos += by * times;
+        return self;
+    }
+    Catalog.Items.Part Rate(Catalog.Items.Grade g = Catalog.Items.Grade.Fine) {
+        Quality = g;
+        if (g > Best) Best = g;
+        return self;
+    }
+    bool Near(Catalog.Geo.Offset at, int within = 2) { return Catalog.Geo.Distance(Pos, at) <= within; }
+
+    void print() { print(Label); }
+}
+
+class CtTool[3] : Catalog.Items.Part {
+    int Uses;
+
+    void create(string what, int n = 1, Catalog.Items.Grade g = Catalog.Items.Grade.Common) {
+        Label = what;
+        Uses = n;
+        Quality = g;
+        Catalog.Calc.Calls++;
+        CtPart.Made++;
+    }
+    void destroy() { Catalog.Calc.Calls += 10; }
+
+    string Kind() { return "tool"; }
+    int Price() { return ((Catalog.Items.Part)self).Price() + Uses; }
+}
+
+class CtGem : Catalog.Items.Part {
+    int Carats = 1;
+
+    string Kind() { return "gem"; }
+    int Price() { return Catalog.Items.Factor(Quality) * Carats * 25; }
+}
+
+class CtMath {
+    static int Calls = 0;
+    static int Abs(int n) { Calls++; return n < 0 ? -n : n; }
+    static int Twice(int n) { return n * 2; }
+    static int Clamp(int n, int lo = 0, int hi = 99) {
+        if (n < lo) return lo;
+        if (n > hi) return hi;
+        return n;
+    }
+}
+
+emitter class CtRule {
+    void Dash() { print "----"; new_line; }
+}
+
+emitter class CtFmt {
+    CtRule rule;
+    void Pipe() { print "|"; }
+    int Width { 4 }
+}
+
+//-- The namespaces ---------------------------------------------------------------------------------------------
+
+object _ctGeo {
+    alias Offset for CtOffset;
+
+    Offset Make(int x, int y) {
+        Offset o = Offset{ x, y };
+        return o;
+    }
+
+    int Distance(Offset a, Offset b) {
+        return Catalog.Calc.Abs(a.X - b.X) + Catalog.Calc.Abs(a.Y - b.Y);
+    }
+
+    void Flip(ref Offset o) {
+        int t = o.X;
+        o.X = o.Y;
+        o.Y = t;
+    }
+
+    Offset Farthest(array<Offset> list) {
+        Offset best = list[0];
+        for (Offset o in list) if (o > best) best = o;
+        return best;
+    }
+}
+
+object _ctRules {
+    alias Verdict for eCtVerdict;
+    alias Part    for CtPart;
+
+    Verdict Check(Part p, int budget = 50) {
+        if (p.Price() > budget) return Verdict.Deny;
+        if (p.Quality == Catalog.Items.Grade.Rare) return Verdict.Hold;
+        return Verdict.Allow;
+    }
+
+    string Word(Verdict v) {
+        switch (v) {
+            case Verdict.Allow:                          return "allow";
+            case Catalog.Items.Rules.Verdict.Hold:       return "hold";
+            case eCtVerdict.Deny:                        return "deny";
+        }
+        return "?";
+    }
+}
+
+object _ctItems {
+    alias Part  for CtPart;
+    alias Tool  for CtTool;
+    alias Gem   for CtGem;
+    alias Grade for eCtGrade;
+    alias Bin   for CtBin;
+    alias Count for CtCount;
+    alias Rules = _ctRules;
+
+    ref array<Part> Stock;
+
+    int Factor(Grade g) {
+        switch (g) {
+            case Grade.Rare: return 4;
+            case Grade.Fine: return 2;
+        }
+        return 1;
+    }
+
+    bool Add(Part p) {
+        if (Stock.contains(p)) return false;
+        return Stock.append(p);
+    }
+
+    Part Find(string label) {
+        for (Part p in Stock) if (p.Label == label) return p;
+        return null;
+    }
+
+    Count Tally(Grade g) {
+        Count c = Stock.filter((Part p) => p.Quality == g).count();
+        return c;
+    }
+
+    Tool | Gem Special(string label) {
+        Part p = Find(label);
+        if (p == null) return null;
+        if (p.is(Tool)) return (Tool)p;
+        if (p.is(Gem)) return (Gem)p;
+        return null;
+    }
+}
+
+object Catalog {
+    auto  Geo   = _ctGeo;
+    alias Items = _ctItems;
+    alias Calc  = CtMath;
+    alias Fmt   = CtFmt;
+
+    Catalog.Geo.Offset Origin;
+
+    auto Budget = {
+        int _cents = 0;
+        int  operator ()        { return _cents; }
+        void operator = (int v) { _cents = Catalog.Calc.Clamp(v, 0, 500); }
+    }
+
+    Items.Part Cheapest() {
+        Items.Part best = null;
+        for (Items.Part p in Items.Stock) if (best == null || p.Price() < best.Price()) best = p;
+        return best;
+    }
+}
+
+extend _ctItems {
+    alias Verdict for Rules.Verdict;
+
+    array<Verdict> Review(int budget) {
+        array<Verdict> out[8];
+        for (Part p in Stock) out.append(Rules.Check(p, budget));
+        return out;
+    }
+
+    Part Upgrade(Part p) {
+        Grade g = p.Quality == Grade.Common ? Grade.Fine : Grade.Rare;
+        return p.Rate(g);
+    }
+}
+
+extend class Catalog.Items.Part {
+    Catalog.Items.Rules.Verdict Verdict(int budget = 50) { return Catalog.Items.Rules.Check(self, budget); }
+    bool IsTool() { return self.is(Catalog.Items.Tool); }
+}
+
+//-- Instances, declared through the paths ------------------------------------------------------------------------
+
+Catalog.Items.Bin binA {
+    "bin A";
+    Tag = "A";
+    Slots = 4;
+}
+
+Catalog.Items.Part partBolt {
+    Label = "bolt";
+    Pos = Catalog.Geo.Offset{ 1, 1 };
+    Home = binA;
+}
+
+Catalog.Items.Gem gemRuby {
+    Label = "ruby";
+    Quality = Catalog.Items.Grade.Rare;
+    Carats = 2;
+    Pos = Catalog.Geo.Offset{ X = 4; Y = -2; };
+}
+
+array<Catalog.Items.Part> ctShelf[8];
+array<Catalog.Geo.Offset> Marks[4];
+array<Catalog.Items.Grade> GradeOrder = { Catalog.Items.Grade.Rare, eCtGrade.Common, Catalog.Items.Grade.Fine };
+
+#using Catalog
+
+Items.Bin binB {
+    "bin B";
+    Tag = "B";
+    Slots = 2;
+}
+
+Items.Gem gemJade {
+    Label = "jade";
+    Quality = Items.Grade.Fine;
+    Home = binB;
+}
+
+#using Catalog.Items
+
+Part partNut {
+    Label = "nut";
+    Quality = Grade.Fine;
+    Pos = Geo.Offset{ 0, 3 };
+    Home = binA;
+}
+
+#using Catalog.Items.Rules
+#using CtMath
+
+//-- Helpers written against the imports -------------------------------------------------------------------------
+
+string BinOf(Part p) { return p.Home?.Tag ?? "-"; }
+
+string GradeWord(Grade g) {
+    switch (g) {
+        case Grade.Rare:                  return "rare";
+        case Items.Grade.Fine:            return "fine";
+        case Catalog.Items.Grade.Common:  return "common";
+    }
+    return "?";
+}
+
+void ShowPart(Catalog.Items.Part p) {
+    printLine($"{p.Kind()} {p} {GradeWord(p.Quality)} at {p.Pos} in {BinOf(p)}, price {p.Price()}, {Word(p.Verdict())}");
+}
+
+Geo.Offset Sum(array<Part> list) {
+    Geo.Offset total = Geo.Make(0, 0);
+    for (Part p in list) total = total + p.Pos;
+    return total;
+}
+
+void Nudge(ref Catalog.Geo.Offset o, int dx = 1) {
+    o.X = o.X + dx;
+}
+
+int Weight(Part p) {
+    if (p.is(Gem)) return ((Gem)p).Carats;
+    if (p.is(Items.Tool)) return ((Catalog.Items.Tool)p).Uses;
+    return 0;
+}
+
+//-- Verbs --------------------------------------------------------------------------------------------------------
+
+verb StockCmd {
+    grammar = {.stock};
+    void handler() {
+        Add(partBolt);
+        Items.Add(gemRuby);
+        Catalog.Items.Add(partNut);
+        Add(gemJade);
+        bool again = Add(partBolt);
+        printLine($"Stocked {Stock.length}, again {again}.");
+        for (Part p in Catalog.Items.Stock) ShowPart(p);
+        Count fine = Tally(Grade.Fine);
+        Items.Count rare = Catalog.Items.Tally(Items.Grade.Rare);
+        printLine($"Fine {(int)fine}, rare {(int)rare}, many fine {fine.Many}.");
+        printLine($"Cheapest {Catalog.Cheapest()}, find nut {Find("nut")?.Kind() ?? "none"}, find axle {Find("axle")?.Kind() ?? "none"}.");
+    }
+}
+
+verb MoveCmd {
+    grammar = {.move};
+    void handler() {
+        Geo.Offset step = Geo.Make(1, 0);
+        partBolt.MoveBy(step).MoveBy(Catalog.Geo.Offset{ 0, 2 }, 2).Rate();
+        printLine($"Bolt at {partBolt.Pos}, {GradeWord(partBolt.Quality)}, best {GradeWord(CtPart.Best)}.");
+        Catalog.Geo.Offset p = partNut.Pos;
+        Catalog.Geo.Flip(p);
+        Nudge(p);
+        Nudge(dx: 3, o: p);
+        printLine($"Nut at {partNut.Pos}, copy {p}, same {p == partNut.Pos}.");
+        ref Geo.Offset r := gemJade.Pos;
+        r = Geo.Make(2, 2);
+        Geo.Flip(r);
+        printLine($"Jade at {gemJade.Pos}, near bolt {gemJade.Near(partBolt.Pos)}, near ruby {gemJade.Near(gemRuby.Pos, within: 6)}.");
+        Origin = Geo.Make(1, 1);
+        Catalog.Origin += Catalog.Geo.Offset{ 2, 3 };
+        Origin = Origin * 2;
+        printLine($"Origin {Catalog.Origin}, size {Origin.Size()}, sum {Sum(Stock)}.");
+    }
+}
+
+verb MarksCmd {
+    grammar = {.marks};
+    void handler() {
+        Marks.append(partBolt.Pos);
+        Marks.append(Geo.Make(-5, 1));
+        Marks.append(Catalog.Geo.Offset{ 1, 0 });
+        Marks.append(gemRuby.Pos + Geo.Make(1, 1));
+        stringObj line = "Marks:";
+        for (Catalog.Geo.Offset m in Marks) line += $" {m}";
+        printLine(line);
+        printLine($"Farthest {Catalog.Geo.Farthest(Marks)}, contains (1,0) {Marks.contains(Geo.Make(1, 0))}.");
+        array<Geo.Offset> sorted[4];
+        sorted = Marks.orderBy();
+        printLine($"Smallest {sorted[0]}, largest {sorted.last()}, any big {Marks.any((Geo.Offset o) => o.Size() > 5)}.");
+        func<Catalog.Geo.Offset, Catalog.Items.Part> posOf = (Part p) => p.Pos;
+        func<int, Geo.Offset, Geo.Offset> bySize = (Geo.Offset a, Geo.Offset b) => a <=> b;
+        Marks.sort(bySize);
+        printLine($"Sorted first {Marks[0]}, ruby through the func {posOf(gemRuby)}, compare {bySize(Marks[0], Marks[1]) < 0}.");
+    }
+}
+
+verb ToolsCmd {
+    grammar = {.tools};
+    void handler() {
+        Catalog.Items.Tool a = new Catalog.Items.Tool("wrench", 3);
+        Tool b = new Tool("file", g: Grade.Rare);
+        Items.Tool c = new Items.Tool(n: 2, what: "saw");
+        Tool d = new Tool("spare");
+        printLine($"Made {a}, {b}, {c}; fourth {d?.Label ?? "none"}; made {CtPart.Made}, calls {Catalog.Calc.Calls > 0}.");
+        Add(a);
+        Add(b);
+        for (Part p in Stock) if (p.IsTool()) ShowPart(p);
+        printLine($"Weights ruby {Weight(gemRuby)}, wrench {Weight(a)}, bolt {Weight(partBolt)}.");
+        Tool | Gem s = Special("file");
+        if (s != null && typeof(s) == eType.object) printLine($"Special file is tool {((Part)s).is(Tool)}.");
+        Tool | Gem g = Catalog.Items.Special("jade");
+        printLine($"Special jade is gem {((Catalog.Items.Part)g).is(Items.Gem)}, nothing {Special("bolt") == null}.");
+        Stock.removeValue(c);
+        delete c;
+        bool added = Items.Add(new Catalog.Items.Tool("drill"));
+        printLine($"Add direct {added}, stocked {Stock.length}, last {Stock[Stock.length - 1]}.");
+        printLine($"Base price of file {((Part)b).Price()}, own price {b.Price()}.");
+    }
+}
+
+verb ReviewCmd {
+    grammar = {.review};
+    void handler() {
+        array<Verdict> v = Review(40);
+        stringObj line = "Review:";
+        for (Catalog.Items.Rules.Verdict x in v) line += $" {Word(x)}";
+        printLine(line);
+        int held = 0;
+        for (Items.Verdict x in v) if (x == Rules.Verdict.Hold) held++;
+        printLine($"Held {held}, bolt {Word(partBolt.Verdict(5))}, nut {Catalog.Items.Rules.Word(Check(partNut))}.");
+        Part up = Upgrade(partNut);
+        Upgrade(Catalog.Items.Find("bolt"));
+        printLine($"Upgraded {up} to {GradeWord(up.Quality)}, bolt {GradeWord(partBolt.Quality)}.");
+        stringObj order = "Order:";
+        for (Grade g in GradeOrder) order += $" {GradeWord(g)}={Tally(g).Many ? "many" : "few"}";
+        printLine(order);
+        Grade top = gemJade.Quality > partBolt.Quality ? gemJade.Quality : Catalog.Items.Grade.Common;
+        printLine($"Top {GradeWord(top)}, ruby verdict {Word(gemRuby.Verdict(budget: 500))}.");
+    }
+}
+
+verb CalcCmd {
+    grammar = {.calc};
+    void handler() {
+        func<int, int> twice = Catalog.Calc.Twice;
+        func<int, int> magnitude = Abs;
+        func<int, int> dbl = CtMath.Twice;
+        printLine($"Twice 4 {twice(4)}, abs -7 {magnitude(-7)}, dbl 5 {dbl(5)}, clamp {Clamp(120)} {Calc.Clamp(-3)} {Catalog.Calc.Clamp(7, hi: 5)}.");
+        Catalog.Calc.Calls = 0;
+        Calc.Calls += 2;
+        Calls++;
+        printLine($"Calls {Calls}, through the path {Catalog.Calc.Calls}.");
+        Catalog.Budget = 900;
+        int b1 = Catalog.Budget;
+        Budget = 120;
+        printLine($"Budget clamped {b1}, set {Budget}, afford ruby {gemRuby.Price() <= Catalog.Budget}.");
+        Catalog.Fmt.Pipe();
+        print($"width {Fmt.Width}");
+        Fmt.Pipe();
+        print("^");
+        Catalog.Fmt.rule.Dash();
+    }
+}
+
+verb InlineCmd {
+    grammar = {.inline};
+    void handler() {
+        array<Catalog.Geo.Offset> path = { Geo.Offset{ 1, 2 }, Catalog.Geo.Offset{ 3, 4 }, { 0, 1 } };
+        Geo.Offset total = Geo.Make(0, 0);
+        for (Geo.Offset o in path) total = total + o;
+        printLine($"Path {path.length}, total {total}, far {Geo.Farthest(path)}.");
+        printLine($"Distance {Geo.Distance(Geo.Offset{ 0, 0 }, { 3, 4 })}, named {Catalog.Geo.Distance(b: path[1], a: path[0])}.");
+        func<bool, Part> rare = (Part p) => p.Quality == Grade.Rare;
+        printLine($"Rare {Stock.filter(rare).count()}, gems {Stock.filter((Catalog.Items.Part p) => p.is(Gem)).count()}, all binned {Stock.all((Part p) => p.Home != null)}.");
+        Part first = Stock.filter((Items.Part p) => p.is(Catalog.Items.Gem)).first();
+        func<Catalog.Geo.Offset, int> diag = (int n) => Geo.Make(n, -n);
+        Geo.Offset d = first.Quality == Grade.Rare ? diag(2) : Catalog.Geo.Offset{ 9, 9 };
+        object geo = Catalog.Geo;
+        printLine($"Diag {d}, geo is the branch {geo == _ctGeo}, words {Items.Rules.Word(Items.Rules.Verdict.Deny)} {Rules.Word(Catalog.Items.Rules.Verdict.Allow)}.");
+        printLine($"First gem {first}, bin {BinOf(first)}, tools {Stock.filter((Part p) => p.IsTool()).count()}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    Catalog.Items.Stock := ctShelf;
+    location = roomA;
+    rfalse;
+}

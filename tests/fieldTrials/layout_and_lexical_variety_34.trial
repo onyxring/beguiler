@@ -1,0 +1,119 @@
+Room A
+Room A. A shelf and a scale. Room B is north.
+You can see a shelf (on which are a small jar and a tall jar), a scale and a clay crock here.
+> probe
+sizes small medium large small
+emit 12 3 3 2 3 2 6
+jars 4 4, order 10 30 15 20
+heavier false true true true
+compare -5 -5 true
+span 2..40 true false
+material glass glass clay glass
+labels jar 10 / vessel 10 / jar 15
+policy 5 3 2
+marks 2 0
+describe [nothing picked][tall jar 30][loose]
+shelf 0 small jar 2 keeper 3
+sealed 0 20 last 20
+sum 8 diff 3 same false false
+> check
+by load 10 15 20 30
+index -1 has false over false
+chain 4 0 0 0
+token 4 30 0 0
+pick 30 clay none
+full false false past 0/0/0 dust 5 1
+ref 3 3 c 3 first 0 tare 0 1 slots 3/0/0 needle 3
+> tally
+small jar: size small brim 10 shelf 1 load 0 level 0 marks 0 sealed false glass [0 0 0] empty
+tall jar: size large brim 30 shelf 2 load 5 level 0 marks 0 sealed false glass [0 0 0] empty
+clay crock: size small brim 15 shelf 3 load 3 level 0 marks 1 sealed false clay [0 0 0] empty
+blue jar: size medium brim 20 shelf 0 load 0 level 3 marks 1 sealed false glass [0 0 0] low
+Total 0, sum 8, filled 1, issued 1, back 1.
+Sum and total differ.
+weights
+on the shelf: small jar tall jar
+Heaviest the tall jar; sealed the blue jar; last the blue jar.
+Picks 0, first the small jar; picked [nothing picked]
+> load small jar
+The small jar takes 6; level 6, load 6, tokens 2.
+> load small jar
+The small jar takes 6; level 12, load 12, tokens 3.
+> load tall jar
+The tall jar takes 6; level 11, load 11, tokens 4.
+> weigh small jar
+The scale reads 16; the needle stops at 12.
+In span.
+> weigh tall jar
+The scale reads 18; the needle stops at 12.
+In span.
+> weigh clay crock
+The scale reads 9; needle 9.
+In span.
+> touch clay crock
+The clay crock holds 3 at level 0; bumped 1.
+> seal clay crock
+The clay crock is sealed; level 0, marks 1.
+> seal tall jar
+The tall jar is sealed; level 12, marks 1.
+> tidy
+The shelf is tidied (1); front small jar, small jar level 12.
+> load clay crock
+The clay crock takes 6; level 9, load 9, tokens 5.
+> n
+Room B
+Room B. Bare boards. Room A is south.
+You can see a blue jar here.
+> load blue jar
+The blue jar takes 6; level 6, load 6, tokens 6.
+> weigh blue jar
+The scale reads 14; the needle stops at 12.
+In span.
+> s
+Room A
+Room A. A shelf and a scale. Room B is north.
+You can see a shelf (on which are a small jar and a tall jar), a scale and a clay crock here.
+> check
+by load 20 15 30 10
+index -1 has false over false
+chain 16 11 6 30
+token 4 30 7 7
+pick 10 clay 20 false
+full true false past 0/0/6 dust 10 4
+ref 12 12 c 9 first 16 tare 8 2 slots 3/12/0 needle 12
+> tally
+small jar: size small brim 10 shelf 1 load 12 level 12 marks 2 sealed false glass [0 6 6] high!
+tall jar: size large brim 30 shelf 2 load 11 level 11 marks 2 sealed true glass [0 0 0] high
+clay crock: size small brim 15 shelf 3 load 12 level 9 marks 2 sealed false clay [0 0 0] high
+blue jar: size medium brim 20 shelf 0 load 6 level 9 marks 3 sealed false glass [0 0 6] high
+Total 44, sum 41, filled 8, issued 7, back 7.
+Sum and total differ.
+weights 9 14 16 18
+on the shelf: small jar tall jar
+Heaviest the small jar; sealed the tall jar; last the blue jar.
+Picks 4, first the small jar; picked [blue jar 20]
+One jar is full.
+Every jar is dusted.
+> probe
+sizes small medium large small
+emit 12 3 3 2 3 2 6
+jars 4 4, order 10 30 15 20
+heavier true false false false
+compare 1 1 true
+span 2..40 true true
+material glass glass clay glass
+labels jar 10 / vessel 10 / jar 15
+policy 5 3 4
+marks 2 2
+describe [blue jar 20][tall jar 30][loose]
+shelf 4 small jar 2 keeper 12
+sealed 30 30 last 20
+sum 44 diff 33 same false false
+> check
+by load 20 30 10 15
+index -1 has false over false
+chain 18 11 9 30
+token 4 30 9 9
+pick 10 clay 20 false
+full true true past 0/0/6 dust 15 5
+ref 15 15 c 12 first 9 tare 8 3 slots 3/15/0 needle 12

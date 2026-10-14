@@ -1,0 +1,469 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small rail-car coupling program, on the Z-machine, leaning on
+// computed receivers inside `?.` and `??` chains.
+// A class `Car` whose reference member `next` links objects into chains, with a member array, an owned
+// value-class member whose type declares an emitter `operator ?()`, an inline `auto` accessor with a
+// string getter, methods with defaulted parameters (called through `?.` with named arguments), a
+// `selfType` method, a value-class return and static methods returning cars; an `extend class` adding
+// methods with defaults (one returning a stringObj, one a `??` of a call); a subclass with its own member
+// array and a stringObj method; an object hub with a member array of cars, a method and an inline accessor
+// whose getter returns a car. Members, member arrays, methods and accessors reached through casts of
+// chains (`((Tank)(c?.after(2)))?.fuel[0]`), call results, static-call results, global and member array
+// elements, <linq> first()/last() results, a ternary receiver, a parenthesized `??` receiver and the
+// accessor; `?.` chains three and four steps long mixing `?.` and `.`, a chain inside a subscript, chains
+// ending in postfix `?`, `?.` statements on cast, element and call receivers (and one assigning the
+// accessor), chains in `if`, `while`, `for` conditions and increments, `do/until`, `switch` heads,
+// ternary conditions, returns, arguments, interpolation and lambdas; `??` chained (`a ?? b ?? c`) with
+// call and cast operands, string and value-class results, and nested inside `?.` operands; a null chain
+// read into a stringObj; `is()` through `?.`.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+// ---- types --------------------------------------------------------------------------------------------
+
+value class Gauge {
+    int _v = 0;
+    Gauge operator = (Gauge o) { _v = o._v; return self; }
+    int read() { return _v; }
+    void set(int v) { _v = v; }
+    emitter eBool operator ? () { ($self._v ~= 0) }
+}
+
+class Car : object {
+    inline instanceName;
+    inline int code;
+    Car next;
+    array<int> loads[4];
+    Gauge g;
+    auto tag = {
+        string _t = "plain";
+        int _n = 0;
+        string operator () { return _t; }
+        void operator = (string v) {
+            _t = v;
+            _n++;
+        }
+        int sets() { return _n; }
+    };
+
+    Car after(int n = 1) {
+        Car c = self;
+        while (n > 0 && c != null) {
+            c = c.next;
+            n--;
+        }
+        return c;
+    }
+
+    selfType hitch(Car c) {
+        next = c;
+        return self;
+    }
+
+    int loadAt(int i = 0, int bias = 0) { return loads[i] + bias; }
+
+    int weight() {
+        int w = 0;
+        for (int i = 0; i < loads.size; i++) w += loads[i];
+        return w;
+    }
+
+    Car last() {
+        Car c = self;
+        while (c?.next?) c = c.next;
+        return c;
+    }
+
+    int span() {
+        int n = 1;
+        for (Car c = next; c?; c = c?.next) n++;
+        return n;
+    }
+
+    static Car byCode(int want) {
+        for (Car c in yard) {
+            if (c?.code == want) return c;
+        }
+        return null;
+    }
+
+    static Car heaviest() {
+        return yard.orderBy((Car a, Car b) => b.weight() - a.weight()).first();
+    }
+}
+
+class Tank : Car {
+    array<int> fuel[2];
+    stringObj fuelText(string sep = "/") {
+        stringObj s = "";
+        s += $"{fuel[0]}{sep}{fuel[1]}";
+        return s;
+    }
+    int total() { return fuel[0] + fuel[1]; }
+}
+
+extend class Car {
+    Car skip(int k = 2, Car orElse = null) { return after(k) ?? orElse; }
+    Gauge gauge() { return g; }
+    stringObj codeText(string pre = "#") {
+        stringObj s = pre;
+        s += $"{code}";
+        return s;
+    }
+}
+
+// ---- helpers ------------------------------------------------------------------------------------------
+
+array<Car> yard[5];
+
+Car slot(int i) {
+    if (i < 0 || i >= yard.size) return null;
+    return yard[i];
+}
+
+Car tail(Car c) { return c?.next?.next ?? c?.next ?? c; }
+
+string tagOf(Car c) { return c?.tag ?? "none"; }
+
+int codeOr(Car c, int none = -1) {
+    if (c?) return c.code;
+    return none;
+}
+
+void say(string s) { print($"[{s}]"); }
+void say(int n)    { print($"<{n}>"); }
+
+// ---- verbs --------------------------------------------------------------------------------------------
+
+#includeI6 "grammar"
+
+verb Walk {
+    grammar = {.walk, NUMBER};
+    void handler() {
+        Car c = slot((int)noun);
+        print($"From {codeOr(c)}:");
+        while (c?) {
+            print($" {c.code}");
+            c = c?.next;
+        }
+        printLine($"; span {slot((int)noun)?.span()}, last {slot((int)noun)?.last()?.code}.");
+    }
+}
+
+verb Reach {
+    grammar = {.reach, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        Car far = carA?.after(n);
+        Car farNamed = carA?.after(n: n)?.after(n: 0);
+        print($"After {n}: {codeOr(far)} {codeOr(farNamed)}");
+        printLine($"; tag {carA?.after(n)?.tag ?? "gone"}; load {carA?.after(n)?.loadAt(bias: 100)}, {carA?.after(n)?.loadAt(1, bias: 10)}.");
+    }
+}
+
+verb Loads {
+    grammar = {.loads};
+    void handler() {
+        int a = slot(0)?.loads[1];
+        int b = slot(0)?.next?.loads[2];
+        int c = (slot(9) ?? carD).loads[0];
+        int d = Car.byCode(3)?.next?.loads[3];
+        int e = Car.heaviest()?.weight();
+        int f = ((Car)yard[1]).loads[0] + yard[2]?.loads[0];
+        printLine($"Loads {a} {b} {c} {d} {e} {f}; heaviest {Car.heaviest()?.code}, its next {Car.heaviest()?.next?.code}.");
+    }
+}
+
+verb Fuel {
+    grammar = {.fuel};
+    void handler() {
+        int f0 = ((Tank)carA?.after(2))?.fuel[0];
+        int f1 = ((Tank)slot(2))?.fuel[1];
+        stringObj t = ((Tank)carA.after(2))?.fuelText();
+        stringObj u = ((Tank)carA.after(2)).fuelText(sep: ":");
+        stringObj none = slot(4)?.after()?.tag;
+        stringObj gone = ((Tank)carD?.next)?.fuelText();
+        bool isTank = carA?.after(2)?.is(Tank);
+        bool notTank = carA?.next?.is(Tank);
+        printLine($"Fuel {f0}/{f1} text {t} {u} none '{none}' gone '{gone}'; tank {isTank ? "yes" : "no"}/{notTank ? "yes" : "no"}.");
+    }
+}
+
+verb Tags {
+    grammar = {.tags};
+    void handler() {
+        carB.tag = "mid";
+        slot(2)?.after(0)?.tag = "end";
+        print($"Tags {tagOf(carA)} {tagOf(carA.next)} {tagOf(carA?.next?.next)} {tagOf(carD?.next)}");
+        say(carA?.next?.tag ?? "x");
+        say(carD?.next?.tag ?? carD?.tag ?? "y");
+        say(slot(4)?.tag ?? slot(3)?.tag ?? "z");
+        printLine($"; sets {carB?.tag.sets()} {carA?.after(2)?.tag.sets()}.");
+    }
+}
+
+verb Gauges {
+    grammar = {.gauges, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        slot(0)?.g.set(n);
+        slot(0)?.next?.g.set(n * 2);
+        int r0 = slot(0)?.g.read();
+        int r1 = carA.after()?.g.read();
+        int r2 = carA?.after(2)?.g.read();
+        print($"Gauges {r0} {r1} {r2}");
+        if (slot(0).g?) print("; A set");
+        else print("; A clear");
+        if (carA.after(2).g?) print("; C set");
+        else print("; C clear");
+        printLine(".");
+    }
+}
+
+verb Hitch {
+    grammar = {.hitch, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        slot(3)?.hitch(slot(n));
+        yard[3]?.hitch(slot(n))?.tag = "hitched";
+        ((Car)yard[4])?.hitch(null);
+        printLine($"D next {codeOr(carD.next)}; D span {carD?.span()}; tail of D {codeOr(tail(carD))}; tag {carD.tag}.");
+    }
+}
+
+verb Unhitch {
+    grammar = {.unhitch};
+    void handler() {
+        carD?.hitch(null);
+        printLine($"D next {codeOr(carD?.next)}; tail of A {codeOr(tail(carA))}, of C {codeOr(tail(carA?.after(2)))}.");
+    }
+}
+
+verb Hubs {
+    grammar = {.hubs, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        print($"Hub {hub.pick(n)?.code} {hub.links[n]?.next?.code} {((Car)hub.links[n])?.after(2)?.code}");
+        print($" front {hub.front?.code} {hub.front?.next?.tag ?? "-"} {(hub.front ?? carE).code}");
+        print($" deep {hub?.links[n]?.loads[0]} {hub?.pick(n)?.next?.loads[2]} {hub?.front?.loads[0] + hub?.front?.after()?.loads[0]}");
+        hub.front = hub.pick(n) ?? carE;
+        printLine($" now {hub.front.code}, its weight {hub.front?.weight()}.");
+    }
+}
+
+verb Pick {
+    grammar = {.pick, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        bool deep = n > 1;
+        int w = (deep ? carA : carD).next?.weight();
+        int k = (deep ? slot(n) : slot(0))?.after()?.code;
+        switch (slot(n)?.next?.code) {
+            case 0:  print("none");
+            case 2:  print("two");
+            case 3:  print("three");
+            default: print("other");
+        }
+        printLine($"; w {w}; k {k}; first {yard.filter((Car c) => c?.next?).first()?.code}.");
+    }
+}
+
+verb Count {
+    grammar = {.count};
+    void handler() {
+        int linked = yard.filter((Car c) => c?.next?).count();
+        int tanks = yard.filter((Car c) => c?.is(Tank)).count();
+        Car big = yard.filter((Car c) => c?.weight() > 5).first();
+        int bigNext = yard.filter((Car c) => c?.weight() > 5).first()?.next?.code;
+        func<int, Car> tw = (Car c) => (c?.next ?? c).weight();
+        printLine($"Linked {linked}; tanks {tanks}; big {big?.code} then {bigNext}; tw {tw(carA)} {tw(carE)}.");
+    }
+}
+
+verb Steps {
+    grammar = {.steps};
+    void handler() {
+        int laps = 0;
+        Car c = carA;
+        do {
+            laps++;
+            c = c?.next;
+        } until (c?.next == null);
+        int s = 0;
+        for (Car d = slot(0); d?.next?; d = d.next) s += d.next?.code;
+        int ends = 0;
+        for (int i = 0; i < yard.size; i++) {
+            if (yard[i]?.next?.next?) ends++;
+            if (!yard[i]?) ends += 10;
+        }
+        printLine($"Laps {laps}, at {c?.code}; sum {s}; ends {ends}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NOUN};
+    void handler() {
+        if (!noun.is(Car)) {
+            printLine($"{cThe(noun)}: not a car; in {(noun?.parent ?? noun) == roomA ? "room" : "other"}.");
+            return;
+        }
+        print($"{((Car)noun).code}: next {((Car)noun)?.next?.code}, two on {((Car)noun).after(2)?.code}");
+        print($", skip {((Car)noun).skip()?.code} or {((Car)noun).skip(orElse: carE).code}");
+        print($", text {((Car)noun)?.skip(k: 1, orElse: (Car)noun)?.codeText(pre: "@")}");
+        if ((((Car)noun)?.next?) && ((Car)noun).next.g?) print(", next gauged");
+        printLine(".");
+    }
+}
+
+verb Chain {
+    grammar = {.chain, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        int a = (slot(n) ?? carE)?.next?.code;
+        int b = slot(0)?.loads[slot(1)?.code - 1];
+        int c = Car.byCode(n)?.after(n: 1)?.after()?.code;
+        int d = ((Tank)hub.pick(2) ?? (Tank)slot(2)).total();
+        int e = slot(n)?.next? ? slot(n).next.weight() : -1;
+        Car f = slot(n)?.skip(1)?.skip(1) ?? slot(n)?.skip(1) ?? slot(n);
+        int g = carA?.hitch(carB)?.hitch(carB)?.next?.code;
+        int len = slot(0)?.loads.length;
+        printLine($"Chain {n}: {a} {b} {c} {d} {e} {codeOr(f)} {g}; len {len}.");
+    }
+}
+
+verb Text {
+    grammar = {.text, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        int tl = slot(n)?.tag.length;
+        stringObj s = ((Tank)slot(2))?.fuelText(sep: "+").toUpper();
+        stringObj d = slot(n)?.codeText()?.append('!');
+        stringObj e = slot(n)?.next?.codeText(pre: "next ") ?? "x";
+        int el = ((Tank)slot(2)).fuelText().length + slot(n)?.codeText().length;
+        string pick = slot(n)?.next?.tag ?? slot(n)?.tag ?? "nothing";
+        printLine($"Text {n}: {tl} {s} '{d}' '{e}' {el} {pick} {Car.byCode(n)?.codeText(pre: "c")}.");
+    }
+}
+
+verb Sort {
+    grammar = {.sort};
+    void handler() {
+        int lo = yard.orderBy((Car a, Car b) => a?.weight() - b?.weight()).first()?.loads[0];
+        string hiTag = yard.orderBy((Car a, Car b) => a.weight() - b.weight()).last()?.next?.tag ?? "-";
+        int nextFuel = ((Tank)(yard.filter((Car c) => c?.next?.is(Tank)).first()?.next))?.fuel[0];
+        int gsum = 0;
+        for (Car c in yard) gsum += c?.gauge().read() + c?.next?.gauge().read();
+        Gauge copy = slot(1)?.gauge() ?? carE.g;
+        printLine($"Sort lo {lo}; hi tag {hiTag}; next fuel {nextFuel}; gauges {gsum}; copy {copy.read()}, set {copy? ? "yes" : "no"}.");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        for (Car c in yard) {
+            if (!c?) continue;
+            print($"{c.code}:{c.weight()}->{codeOr(c?.next)} ");
+        }
+        printLine($"| {((Tank)Car.byCode(3))?.total()} {Car.byCode(9)?.code} {tagOf(Car.byCode(4)?.next)}.");
+    }
+}
+
+// ---- world --------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Car carA {
+    "car A", 1;
+    parent = roomA;
+    next = carB;
+    attributes = {static};
+    name = {.car, .a};
+    description = "Car A.";
+}
+
+Car carB {
+    "car B", 2;
+    parent = roomA;
+    next = carC;
+    attributes = {static};
+    name = {.car, .b};
+    description = "Car B.";
+}
+
+Tank carC {
+    "tank C", 3;
+    parent = roomA;
+    attributes = {static};
+    name = {.tank, .c};
+    description = "Tank C.";
+}
+
+Car carD {
+    "car D", 4;
+    parent = roomA;
+    attributes = {static};
+    name = {.car, .d};
+    description = "Car D.";
+}
+
+Car carE {
+    "car E", 5;
+    attributes = {static};
+    name = {.car, .e};
+    description = "Car E.";
+}
+
+object hub {
+    "hub";
+    parent = roomA;
+    attributes = {static};
+    name = {.hub};
+    description = "Hub.";
+    array<Car> links[3];
+    Car pick(int i = 0) { return links[i]; }
+    auto front = {
+        int _i = 0;
+        Car operator () { return outer.links[_i]; }
+        void operator = (Car c) { outer.links[_i] = c; }
+    };
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    yard[0] = carA;
+    yard[1] = carB;
+    yard[2] = carC;
+    yard[3] = carD;
+    yard.length = 4;
+    carA.loads.length = 2;
+    carA.loads[0] = 1;
+    carA.loads[1] = 2;
+    carB.loads[2] = 6;
+    carB.loads[0] = 3;
+    carC.loads[3] = 7;
+    carD.loads[0] = 4;
+    ((Tank)carC).fuel[0] = 8;
+    ((Tank)carC).fuel[1] = 9;
+    hub.links[0] = carB;
+    hub.links[1] = carD;
+    rtrue;
+}

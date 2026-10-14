@@ -1,0 +1,189 @@
+Room A
+Room A. The cart yard.
+You can see a box, a crate, a red cart, a blue cart, a green cart, a gray cart and a yard here.
+> line
+Line: red cart (2), blue cart (1), green cart (3).
+Front: red. Back: green.
+Carts: 3, by depth 3. Weight: 6.
+Path: RED>BLUE>GREEN (14 letters).
+gray
+In the list: 3. red cart (2) then blue; blue cart (1) then green; green cart (3) then end;
+> walk
+Walked to: green. End: green. Long way: green.
+Last hooked: green, its front red.
+Front of the yard: , 0. Its first: .
+Red next heavy: no. Gray next heavy over 9: no. Box: no.
+Near red: box. Near gray: box. Near nothing: box.
+In red, or crate: box. In gray, or crate: crate.
+Red tag shouted: RED. Blue note size: 0.
+red#1 ? green#3 ? / set: 2.
+Room's first thing: yourself, then box. Is the yard a cart? no. Is gray? yes.
+Red 3, after red 0.
+Ticket 9 punched for the gray cart.
+(no more tickets)
+> selfcheck
+red: 3 in its line, full, last.
+blue: 3 in its line, empty, light one next.
+green: 3 in its line, empty, last.
+gray: 1 in its line, empty, last.
+> more
+Heaviest: gray, 4. Two on from red: green.
+Tags after: red 11, blue 0.
+big gray cart (4+4), next is nobody.
+Log: (before blue: red)
+Gray note or label: no note, unnamed.
+Red heavier by blue: 3.
+Fallback tag: green+3.
+Gray's thing is in Room A. Red's is in Room A.
+Red's load is not marked.
+Marked now: yes.
+Blue is after red.
+Steps: 2, stopped at green.
+Same line as red: red blue green
+> tags
+red: red:11 doubled 22, number 11.
+blue: no tag, so none#0, number 0.
+green: green:3 doubled 6, number 3.
+gray: no tag, so none#0, number 0.
+Last tag: green#3.
+Copy: green#4, green still green#3.
+Picked: red/11.
+> ahead
+Two ahead of red: green.
+Four ahead of red, wrapping: blue.
+Nine ahead: no cart.
+One ahead of blue: green. Default pick: blue.
+Fallback: gray.
+red cart (3) / (nothing) / green cart (3).
+Gray alone ahead 3 wrapping: gray.
+> notes
+Red: no note. Blue: -. Green: none.
+Blue: fragile. Green: last.
+First set note: fragile.
+Gray's: no note.
+Some cart near the front has a note.
+> loads
+red holds the box (loaded) from Room A.
+blue holds nothing.
+green holds nothing.
+gray holds nothing.
+Full carts: 1. Any heavy: no. All labeled: yes.
+> load crate
+The crate goes in the blue* cart, now 2.
+> loads
+red holds the box (loaded) from Room A.
+blue* holds the crate (loaded) from Room A.
+green holds nothing.
+gray holds nothing.
+Full carts: 2. Any heavy: no. All labeled: yes.
+> yard
+Spare: none. Now: gray.
+Bay 0: blue* cart (2). Bay 1: empty. Bay 2: big gray cart (4+4). Bay 3: empty.
+Bay 5: no bay. Bay 2 then: nothing.
+Front: green, front's front: red, moves 1.
+Blue now 3, gray now 3.
+Bays: 4, bay 1 through the yard: empty, spare gray.
+> weigh
+Line weight: 9, by method 9.
+Heavier by 5: red 8, gray 4.
+Gray extra: 4. big gray cart (3+4) / (box is no cart).
+Plus one: 4 4 4 4.
+Heads: 2, tails: 2.
+Heavy:
+Second cart is middling.
+> bump
+Weights: 3 4 4 6.
+Labels: red blue* green!.
+Blue over two: 4.
+> unhook blue cart
+The blue* cart comes out. Left: red-green!.
+> line
+Line: red cart (3), green! cart (4).
+Front: red. Back: green!.
+Carts: 2, by depth 2. Weight: 4.
+Path: RED>GREEN! (10 letters).
+gray
+In the list: 2. red cart (3) then green!; green! cart (4) then end;
+> hook blue cart to gray cart
+Hooked. Line: gray-blue*.
+> line
+Line: red cart (3), green! cart (4).
+Front: red. Back: green!.
+Carts: 2, by depth 2. Weight: 10.
+Path: RED>GREEN! (10 letters).
+gray-blue*
+In the list: 2. red cart (3) then green!; green! cart (4) then end;
+> ahead
+Two ahead of red: .
+Four ahead of red, wrapping: red.
+Nine ahead: no cart.
+One ahead of blue: . Default pick: green!.
+Fallback: gray.
+red cart (3) / (nothing) / green! cart (4).
+Gray alone ahead 3 wrapping: blue*.
+> walk
+Walked to: green!. End: green!. Long way: off the end.
+Last hooked: blue*, its front gray.
+Front of the yard: green!, 4. Its first: red.
+Red next heavy: yes. Gray next heavy over 9: no. Box: no.
+Near red: box. Near gray: crate. Near nothing: box.
+In red, or crate: box. In gray, or crate: crate.
+Red tag shouted: RED. Blue note size: 7.
+red#11 ? green#3 ? / set: 2.
+Room's first thing: yourself, then box. Is the yard a cart? no. Is gray? yes.
+Red 4, after red 3.
+Ticket 9 punched for the gray cart.
+(no more tickets)
+> selfcheck
+red: 2 in its line, full, light one next.
+blue*: 2 in its line, full, last.
+green!: 2 in its line, empty, last.
+gray: 2 in its line, empty, heavy one next.
+> more
+Heaviest: gray, 6. Two on from red: none.
+Tags after: red 21, blue 0.
+big gray cart (6+5), next is blue*.
+Log: blue* - gray - (before blue: gray)
+Gray note or label: no note, unnamed.
+Red heavier by blue: 8.
+Fallback tag: green+3.
+Gray's thing is in Room A. Red's is in Room A.
+Marked now: yes.
+Green is after red.
+Steps: 1, stopped at green!.
+Same line as red: red green!
+> ticket
+Ticket 3 punched for the red cart.
+It rides on the red cart, which weighs 4.
+> ticket
+No tickets left.
+> ticket
+No tickets left.
+> load box
+The box goes in the green!* cart, now 5.
+> selfcheck
+red: 2 in its line, full, heavy one next.
+blue*: 2 in its line, full, last.
+green!*: 2 in its line, full, last.
+gray: 2 in its line, empty, heavy one next.
+> unhook red cart
+The red cart comes out. Left: green!*.
+> unhook red cart
+That is not in a line.
+> more
+Heaviest: gray, 6. Two on from red: none.
+Tags after: red 31, blue 0.
+big gray cart (6+6), next is blue*.
+Log: blue* - gray - (before blue: gray)
+Gray note or label: no note, unnamed.
+Red heavier by blue: 8.
+Fallback tag: green+3.
+Gray's thing is in Room A. Red's is in Room A.
+Marked now: yes.
+Something else is after red.
+Steps: 1, stopped at nothing.
+Same line as red: red
+> tally
+Picked green!* with 2 calls. Then red with 1 call.
+Weights 4 10, after 3 calls.
+Shouted: RED, 3 letters, says <red] and (blue*).

@@ -1,0 +1,534 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program written top-down, two rooms, four jars, a
+// scale, a shelf and a store, so that almost every name is used above its declaration. Globals typed
+// by a value class with nested value-class members (a nested inline-object initializer), by a named
+// union, a bnum and an enum through an alias path, by `func<>` types whose parameters are classes from
+// below, one holding an operator reference `Weight::operator <=>` and one a static method `Jar.heavier`
+// of a class declared further down; a global initialized from an emitter value declared at the foot;
+// a global array of jars that an `extend` injects a crock into, the crock declared later; positional
+// object bodies above their classes whose order takes an alias-path enum slot, a base's slot and a slot
+// an `extend class` at the foot appends; a `selfType` method on a base declared below chained into a
+// subclass method; instance `<=>` on a reference-class base deriving `<` and `>` for subclass objects,
+// read from above; a named accessor class with its own `<=>` as a base member, read, `+=`d, `++`d,
+// compared and switched on, and hidden for writes (`hide level.operator =`) on a subclass declared
+// below, written through an upcast; a `default` method overridden in a subclass and called through a
+// cast to the base; a `required` routine met by a subclass and `replace`d by its own subclass; a
+// static `func<>` member initialized with a global function declared below and called through a class
+// value alias (`alias pol = Policy`) on a namespace object that a forward `extend` adds an `auto`
+// value member to; a pooled class sized by a const below whose `create` takes a class from below; a
+// named union with a static member an `extend` adds, called through the union's name; `+=`, `-` and a
+// static `operator ==` that an `extend class` adds to the value class at the foot, used above it;
+// a forward `extend` of the shelf adding members, a member array, an inline accessor reaching `outer`,
+// a method and a `replace`d member value, all used from above; a member array of the value class on a
+// base declared below, stored and read through objects; an owned member bound to a `ref` local; a
+// global `func<>` lambda over a class from below; `children` placement from a container declared after its contents; `?.` and `??` on lookups
+// of classes below; <linq> `filter`, `orderBy`, `first`, `count`, `any` and `all` with lambdas typed
+// by classes and alias paths from below; mixed-case keywords, Allman, K&R and one-line braces, tab
+// indentation in one routine, comments between tokens and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+#using bgl.printRules ;
+
+// ---- globals: typed and filled from below --------------------------------------------------------
+
+func<int , Weight , Weight> gCompare = Weight::operator <=> ;
+func<bool , Jar , Jar>      gHeavier = Jar.heavier ;
+store.size                  gDefault = store.size.medium ;
+eMark                       gMarks   = eMark.seen ;
+Pair                        gSpan    = Pair{ lo = Weight{ grams = 2 ; } ; hi = Weight{ grams = 40 ; } ; } ;
+Weight                      gTotal ;
+Jar                         gLast    = jarC ;
+labelOrJar                  gPick    = "nothing picked" ;
+int                         gSteps   = Limit / 4 ;
+array<Jar>                  jars     = { jarA , jarB , jarC } ;      // the crock joins below
+array<Weight>
+                            weights[ SLOTS ] ;
+array<store.jar>            picks[ SLOTS ] ;
+func<bool , Jar>            isFull   = ( Jar j ) => j.level >= Limit ;
+
+// ---- routines ------------------------------------------------------------------------------------
+
+/// Every jar's load, added up.
+Weight sumLoads ()
+{
+    Weight t ;
+    for ( Jar j in jars ) t += j.load ;
+    return t ;
+}
+
+store.jar heaviest () { return jars.orderBy( ( Jar a , Jar b ) => b <=> a ).first() ; }
+
+Jar firstSealed () {
+    return jars.filter( ( store.jar j ) => j.sealed ).first() ;
+}
+
+/// A word for a size, with a default from below.
+stringObj sizeWord ( store.size s = store.size.large )
+{
+    stringObj w ;
+    SWITCH ( s )
+    {
+        case eSize.small         : w = "small" ;
+        case store.size.medium   : w = "medium" ;
+        default                  : w = "large" ;
+    }
+    return w ;
+}
+
+void showPick ( labelOrJar x )
+{
+    if ( labelOrJar.isJar( x ) ) { Jar j = ( Jar ) x ; print( $"[{j} {j.cap}]" ) ; }
+    else                          print( $"[{( string ) x}]" ) ;
+}
+
+int markCount ( eMark m ) {
+    int n = 0 ;
+    if ( m & eMark.seen )   n++ ;
+    if ( m & eMark.dusted ) n++ ;
+    if ( m & eMark.sealed ) n++ ;
+    return n ;
+}
+
+void bumpRef ( ref Weight w , int by = STEP ) { w += by ; }
+
+stringObj band ( Vessel v )
+{
+    stringObj b ;
+    switch ( v.level )
+    {
+        case 0 :          b = "empty" ;
+        case 1 , 2 , 3 :  b = "low" ;
+        default :         b = "high" ;
+    }
+    if ( v.level >= Limit ) b += "!" ;
+    return b ;
+}
+
+/// Prints one jar's line for the ledger.
+void showJar ( Jar j )
+{
+	print( $"{j}: size {sizeWord( j.size )} brim {j.cap} shelf {j.shelfNo} load {j.load.grams} level {j.level} " ) ;
+	print( $"marks {markCount( j.marks )} sealed {j.sealed} {j.material()} [" ) ;
+	for ( int i = 0 ; i < HIST ; i++ )
+	{
+		if ( i > 0 ) print( " " ) ;
+		print( j.history[ i ] ) ;
+	}
+	printLine( $"] {band( j )}" ) ;
+}
+
+Weight weighed ( store.jar j ) { return scale.weigh( j ) + j.load ; }
+
+void nudge ( Vessel v , int by = Jar.Spare ) { v.level += by ; v.marks |= store.mark.seen ; }
+
+bool Initialise ()
+{
+    location = roomA ;
+    gMarks   = gMarks | eMark.dusted ;
+    store.keeper.needle = gSteps ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands ------------------------------------------------------------------------------------
+
+verb Load
+{
+    grammar = { .load , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( store.jar ) ) { printLine( "That is not a jar." ) ; return ; }
+        Jar   j = ( Jar ) noun ;
+        Token t = new Token( j , gSteps * 2 ) ;
+        IF ( t == null ) { printLine( "No token is left." ) ; RETURN ; }
+        int lv = j.fill( t.grams ).seal().level ;
+        j.sealed = false ;
+        gTotal += j.load ;
+        gLast = j ;
+        printLine( $"{cThe(j)} takes {t.grams}; level {lv}, load {j.load.grams}, tokens {Token.issued}." ) ;
+        delete t ;
+    }
+}
+
+verb Seal {
+    grammar = { .seal , NOUN } ;
+    void handler () {
+        if ( !noun.is( Jar ) ) { printLine( "That is not a jar." ) ; return ; }
+        Jar j = ( Jar ) noun ;
+        j.seal() ;
+        if ( j.is( Crock ) ) ( ( Vessel ) j ).level = 0 ;
+        else                 j.level += 1 ;
+        printLine( $"{cThe(j)} is sealed; level {j.level}, marks {markCount( j.marks )}." ) ;
+    }
+}
+
+verb Weigh
+{
+    grammar = { .weigh , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( store.jar ) ) { printLine( "Only jars go on the scale." ) ; return ; }
+        Weight w = weighed( ( Jar ) noun ) ;
+        scale.needle = w.grams ;
+        weights += w ;
+        picks += ( Jar ) noun ;
+        gPick = ( Jar ) noun ;
+        if ( scale.needle > 9 ) printLine( $"The scale reads {w.grams}; the needle stops at {scale.needle}." ) ;
+        else                    printLine( $"The scale reads {w.grams}; needle {scale.needle}." ) ;
+        if ( gSpan.holds( w ) ) printLine( "In span." ) ;
+    }
+}
+
+verb Tidy
+{
+    grammar = { .tidy } ;
+    void handler ()
+    {
+        int n = shelf.wipe() ;
+        for ( Jar j in jars ) j.marks = j.marks | eMark.dusted ;
+        jarA.level++ ;
+        printLine( $"The shelf is tidied ({n}); front {shelf.front}, small jar level {jarA.level}." ) ;
+    }
+}
+
+verb Tally
+{
+    meta    = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        for ( Jar j in jars ) showJar( j ) ;
+        Weight all = sumLoads() ;
+        printLine( $"Total {gTotal.grams}, sum {all.grams}, filled {Vessel.filled}, issued {Token.issued}, back {Token.returned}." ) ;
+        if ( all == gTotal ) printLine( "Sum and total agree." ) ;
+        else                 printLine( "Sum and total differ." ) ;
+        weights.sort( ( Weight a , Weight b ) => gCompare( a , b ) ) ;
+        print( "weights" ) ;
+        for ( Weight w in weights ) print( $" {w.grams}" ) ;
+        printLine( "" ) ;
+        print( "on the shelf:" ) ;
+        for ( object o in shelf.children ) print( $" {o}" ) ;
+        printLine( "" ) ;
+        printLine( $"Heaviest {the(heaviest())}; sealed {the(firstSealed() ?? gLast)}; last {the(gLast)}." ) ;
+        print( $"Picks {picks.length}, first {the(picks.first() ?? jarA)}; picked " ) ;
+        showPick( gPick ) ;
+        printLine( "" ) ;
+        if ( jars.any( ( store.jar j ) => j.level >= Limit ) ) printLine( "One jar is full." ) ;
+        if ( jars.all( ( Jar j ) => ( j.marks & eMark.dusted ) == store.mark.dusted ) ) printLine( "Every jar is dusted." ) ;
+    }
+}
+
+verb Probe
+{
+    meta = TRUE ;
+    grammar = { .probe } ;
+    void handler ()
+    {
+        printLine( $"sizes {sizeWord( jarA.size )} {sizeWord( gDefault )} {sizeWord()} {sizeWord( s: eSize.small )}" ) ;
+        printLine( $"emit {Limit} {gSteps} {Jar.Spare} {STEP} {HIST} {POOL} {SLOTS}" ) ;
+        printLine( $"jars {jars.length} {jars.count()}, order {jars[ 0 ].cap} {jars[ 1 ].cap} {jars[ 2 ].cap} {jars[ 3 ].cap}" ) ;
+        printLine( $"heavier {gHeavier( jarA , jarB )} {Jar.heavier( jarB , jarA )} {jarA < jarB} {jarB > jarD}" ) ;
+        printLine( $"compare {gCompare( jarA.load , jarB.load )} {jarA.load <=> jarB.load} {jarA.load == jarD.load}" ) ;
+        printLine( $"span {gSpan.lo.grams}..{gSpan.hi.grams} {gSpan.holds( jarB.load )} {gSpan.holds( jarA.load )}" ) ;
+        print( "material " ) ;
+        for ( Jar j in jars ) print( $"{j.material()} " ) ;
+        printLine( "" ) ;
+        print( "labels " ) ; jarA.label() ; print( " / " ) ; ( ( Vessel ) jarA ).label() ; print( " / " ) ; jarD.label() ; printLine( "" ) ;
+        printLine( $"policy {store.pol.step( 10 )} {Policy.step( 7 )} {store.pol.calls}" ) ;
+        printLine( $"marks {markCount( gMarks )} {markCount( jarB.marks )}" ) ;
+        print( "describe " ) ; showPick( gPick ) ; showPick( jarB ) ; showPick( "loose" ) ; printLine( "" ) ;
+        printLine( $"shelf {shelf.dusted} {shelf.front} {shelf.children.length} keeper {store.keeper.needle}" ) ;
+        printLine( $"sealed {firstSealed()?.cap} {( firstSealed() ?? jarC ).cap} last {gLast?.cap}" ) ;
+        Weight sum = sumLoads() ;
+        bumpRef( sum ) ;
+        bumpRef( by: 1 , w: sum ) ;
+        Weight diff = sum - jarB.load ;
+        func<bool , Weight , Weight> same = Weight::operator == ;
+        printLine( $"sum {sum.grams} diff {diff.grams} same {same( sum , diff )} {same( diff , jarA.load )}" ) ;
+    }
+}
+
+verb Check
+{
+    meta = true ; grammar = { .check } ;
+    void handler ()
+    {
+        array<Jar> byLoad[ 4 ] ;
+        byLoad = jars ;
+        byLoad.sort() ;                                     // Vessel's <=>, from below
+        print( "by load" ) ; for ( store.jar j in byLoad ) print( $" {j.cap}" ) ; printLine( "" ) ;
+        Weight probeW = weighed( jarB ) ;
+        printLine( $"index {weights.indexOf( probeW )} has {weights.contains( jarA.load )} over {weights.any( ( Weight w ) => w > gSpan.hi )}" ) ;
+        printLine( $"chain {weighed( jarC ).grams} {firstSealed()?.load.grams} {gLast?.level} {firstSealed()?.fill( 0 )?.cap}" ) ;
+        Token t = new Token( g: 4 , j: jarB ) ;
+        printLine( $"token {t?.grams} {t?.owner.cap} {Crock.filled} {Jar.filled}" ) ;
+        delete t ;
+        Jar pickJ = jarA.load > jarB.load ? jarA : jarB ;
+        print( $"pick {pickJ.cap} {jarD.fill( 0 ).seal().material()} " ) ;
+        if ( labelOrJar.isJar( gPick ) ) print( $"{( ( Jar ) gPick ).cap} {( ( store.jar ) gPick ).is( Crock )}" ) ;
+        else                             print( "none" ) ;
+        printLine( "" ) ;
+        jarD.sealed = false ;
+        ref Weight r := jarD.load ;
+        r += Jar.Spare ;
+        nudge( jarC ) ;
+        nudge( jarC , 0 ) ;
+        store.keeper.tare = weights.length ;
+        shelf.slots[ shelf.wipes % 3 ] = jarD.load.grams ;
+        shelf.dust += 5 ;
+        printLine( $"full {isFull( jarA )} {isFull( jarC )} past {jarA.past[ 0 ].grams}/{jarA.past[ 1 ].grams}/{jarA.past[ 2 ].grams} dust {shelf.dust} {shelf.dusted}" ) ;
+        printLine( $"ref {jarD.load.grams} {r.grams} c {jarC.level} first {weights[ 0 ].grams} tare {store.keeper?.tare} {scale.tared} slots {shelf.slots[ 0 ]}/{shelf.slots[ 1 ]}/{shelf.slots[ 2 ]} needle {store.keeper?.needle}" ) ;
+    }
+}
+
+// ---- rooms ---------------------------------------------------------------------------------------
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A shelf and a scale. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB { "Room B" ; description = "Room B. Bare boards. Room A is south." ;
+    object s_to = roomA ; }
+
+// ---- jars: positional size, cap, shelf (from the extend at the foot), name ---------------------
+
+Jar jarA { store.size.small , 10 , 1 , "small jar" ; name = { .small , .jar } ; }
+Jar jarB
+{
+    eSize.large ,
+    30 ,            // cap
+    2 ,
+    "tall jar" ;
+    name = { .tall , .jar } ;
+    load = Weight{ grams = 5 ; } ;
+}
+Jar jarC { store.size.medium , /* cap */ 20 , 0 , "blue jar" ;
+    name = { .blue , .jar } ; parent = roomB ; }
+
+// ---- the shelf, extended before it is declared ---------------------------------------------------
+
+extend shelf
+{
+    int wipes = 0 ;
+    array<int> slots[ 3 ] ;
+    int wipe () { wipes++ ; dusted += 2 ; return wipes ; }
+    replace Jar front = jarA ;
+    auto dust = {
+        int _d = 0 ;
+        int  operator () { return _d ; }
+        void operator = ( int v ) { _d = v ; outer.dusted++ ; }
+    }
+}
+
+object shelf
+{
+    "shelf" ;
+    parent     = roomA ;
+    name       = { .shelf } ;
+    attributes = { static , supporter } ;
+    children   = { jarA , jarB } ;
+    string description = "A plain shelf." ;
+    int dusted = 0 ;
+    Jar front  = jarB ;
+}
+
+// ---- the store and the scale ---------------------------------------------------------------------
+
+extend store { auto keeper = scale ; }
+
+object store
+{
+    alias jar  for Jar ;
+    alias size for eSize ;
+    alias mark for eMark ;
+    alias pol  = Policy ;
+}
+
+object scale
+{
+    "scale" ;
+    parent     = roomA ;
+    name       = { .scale } ;
+    attributes = { static } ;
+    string description = "A spring scale." ;
+    Reading needle ;
+    int uses = 0 ;
+    int tared = 0 ;
+    auto tare = {
+        int _t = 0 ;
+        int  operator () { return _t ; }
+        void operator = ( int v ) { _t = v * 2 ; outer.tared++ ; }
+    }
+    Weight weigh ( Jar j )
+    {
+        uses++ ;
+        Weight w ;
+        w.grams = j.cap / 10 + uses ;
+        return w ;
+    }
+}
+
+// ---- classes -------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+CLASS Jar : Vessel
+{
+    inline store.size size ;
+    bool sealed = false ;
+    string description = "A jar." ;
+    string material () { return "glass" ; }
+    void label () { print( $"jar {cap}" ) ; }
+    selfType seal () { sealed = true ; marks = marks | eMark.sealed ; return self ; }
+    static bool heavier ( Jar a , Jar b ) { return a.load > b.load ; }
+}
+
+class Crock : Jar
+{
+    hide level.operator = ;
+    replace string material () { return "clay" ; }
+}
+
+class Vessel : Fixture
+{
+    inline int cap ;
+    Reading    level ;
+    Weight     load ;
+    array<Weight> past[ HIST ] ;
+    eMark      marks ;
+    array<int> history[ HIST ] ;
+    static int filled = 0 ;
+    required string material () ;
+    default void label () { print( $"vessel {cap}" ) ; }
+    selfType fill ( int g )
+    {
+        past[ filled % HIST ] = load ;
+        load += g ;
+        level = load.grams ;
+        history[ filled % HIST ] = g ;
+        filled++ ;
+        return self ;
+    }
+    int operator <=> ( Vessel o ) { return load.grams - o.load.grams ; }
+}
+
+class Fixture : object { int bumps = 0 ; }
+
+value class Weight
+{
+    int grams ;
+    Weight operator =   ( Weight o ) { grams = o.grams ; return self ; }
+    Weight operator +   ( Weight o ) { Weight r ; r.grams = grams + o.grams ; return r ; }
+    Weight operator +=  ( int g )    { grams += g ; return self ; }
+    bool   operator ==  ( Weight o ) { return grams == o.grams ; }
+    bool   operator !=  ( Weight o ) { return grams != o.grams ; }
+    int    operator <=> ( Weight o ) { return grams - o.grams ; }
+    static int operator <=> ( Weight a , Weight b ) { return a.grams - b.grams ; }
+}
+
+value class Pair
+{
+    Weight lo ;
+    Weight hi ;
+    Pair operator = ( Pair o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    bool holds ( Weight w ) { return w >= lo && w <= hi ; }
+}
+
+/// A reading held between 0 and Limit.
+value class Reading
+{
+    int _r = 0 ;
+    int  operator ()          { return _r ; }
+    void operator = ( int v )
+    {
+        if      ( v > Limit ) _r = Limit ;
+        else if ( v < 0 )     _r = 0 ;
+        else                  _r = v ;
+    }
+    int  operator <=> ( int n ) { return _r - n ; }
+}
+
+class Token[ POOL ] : object
+{
+    Jar owner ;
+    int grams = 0 ;
+    static int issued   = 0 ;
+    static int returned = 0 ;
+    void create ( Jar j , int g ) { owner = j ; grams = g ; issued++ ; }
+    void destroy () { returned++ ; }
+}
+
+int halve ( int n ) { Policy.calls++ ; return n / 2 ; }
+
+class Policy
+{
+    static func<int , int> step = halve ;
+    static int calls = 0 ;
+}
+
+union labelOrJar = string | Jar ;
+
+extend labelOrJar
+{
+    static bool isJar ( labelOrJar v ) { return typeof( v ) == eType.object ; }
+}
+
+enum eSize { small , medium , large }
+bnum eMark { seen , dusted , sealed }
+
+const int SLOTS = 6 ;
+CONST INT HIST  = 3 ;
+const int POOL  = 2 ;
+const int
+    STEP = 2 ;
+
+emitter int Limit { 12 }
+
+// ---- additions at the foot -----------------------------------------------------------------------
+
+extend class Vessel
+{
+    inline int shelfNo ;
+    bool before ()
+    {
+        switch ( action )
+        {
+            case Touch :
+                bumps++ ;
+                printLine( $"{cThe(self)} holds {load.grams} at level {level}; bumped {bumps}." ) ;
+                rtrue ;
+        }
+        rfalse ;
+    }
+}
+
+extend class Jar { emitter int Spare { 3 } }
+
+extend class Weight
+{
+    Weight operator += ( Weight o ) { grams += o.grams ; return self ; }
+    Weight operator -  ( Weight o ) { Weight r ; r.grams = grams - o.grams ; return r ; }
+    static bool operator == ( Weight a , Weight b ) { return a.grams == b.grams ; }
+}
+
+extend jars { inject jarD after jarB ; }
+
+Crock jarD { eSize.small , 15 , 3 , "clay crock" ; name = { .clay , .crock } ; parent = roomA ; }

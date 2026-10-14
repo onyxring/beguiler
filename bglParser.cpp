@@ -600,7 +600,7 @@ void bglParser::validateGlobalNameClashes(){
     // A library routine is left out: a program defines the library's entry points under their names.
     map<string, typeDef*> library;
     for(typeDef* g : languageService.globals){
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal && vd->type.name != "property")
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal)
             library.emplace(lower(vd->i6name.empty() ? vd->dName() : vd->i6name), g);
         else if(auto* od = dynamic_cast<objectDef*>(g); od && od->isExternal && !dynamic_cast<verbObjectDef*>(od))
             library.emplace(lower(od->i6name.empty() ? od->dName() : od->i6name), g);
@@ -622,7 +622,10 @@ void bglParser::validateGlobalNameClashes(){
         auto lib = library.find(name);
         if(lib == library.end() || sym.src.file.find("beguiLib") != string::npos) continue;
         auto* lv = dynamic_cast<variableDeclaration*>(lib->second);
-        string what = lv != nullptr && lv->type.name == "attribute" ? "attribute" : lv != nullptr ? "global" : "object";
+        bool libProperty = lv != nullptr && lv->type.name == "property";
+        if(libProperty)   // the program's own `property` of the name is that property
+            if(auto* sv = dynamic_cast<variableDeclaration*>(sym.def); sv != nullptr && sv->type.name == "property") continue;
+        string what = libProperty ? "property" : lv != nullptr && lv->type.name == "attribute" ? "attribute" : lv != nullptr ? "global" : "object";
         parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library's {4} '{5}'; Inform 6 keeps these "
             "in one namespace, ignoring case, so rename the {2} or give it an `asI6` name.",
             sym.src.file, sym.src.line, sym.kind, sym.def->dName(), what, lib->second->dName()));
@@ -2536,6 +2539,34 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
             }
             tok.value = maybeParseUnionTail(first);
         }
+    }
+
+    // `extend class Ns.Part { … }`: a type alias reached through an object names its class.
+    if(q.isExtend && tok.is(token::classDeclaration) && file.peekToken(2).is(token::period)){
+        token head = file.getToken();
+        string path = head.originalValue.empty() ? head.value : head.originalValue;
+        objectDef* od = languageService.findGlobalAs<objectDef>(head.value);
+        string cls;
+        while(od != nullptr && file.peekToken().is(token::period)){
+            file.getToken();
+            token part = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            path += "." + (part.originalValue.empty() ? part.value : part.originalValue);
+            variableDeclaration* alias = nullptr;
+            for(typeMember* m : od->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == part.value && vd->isNamespaceAlias()) alias = vd;
+            od = nullptr;
+            if(alias == nullptr) break;
+            if(alias->isAlias){ cls = alias->type.name; break; }
+            od = languageService.findGlobalAs<objectDef>(alias->type.name);
+        }
+        classDef* target = cls.empty() ? nullptr : languageService.findClass(cls);
+        if(target == nullptr || file.peekToken().is(token::period))
+            parsingError(format("extend class '{0}': the path doesn't name a class.", path));
+        head.value = target->name;
+        head.originalValue = target->dName();
+        head.tokenType = eTokenType::dataType;
+        file.pendingToken = head;
+        file.hasPendingToken = true;
     }
 
     // Try grammar-driven matching

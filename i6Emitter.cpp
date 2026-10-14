@@ -1872,7 +1872,7 @@ if(languageService.arrayInUse){
         // Sized-uninit only — list-init arrays bake the magic inline.
         if(arr->arraySize > 0 && arr->stringInitializer.empty()
            && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
-            trackedArraysNeedingMagicInit.push_back(arr->dName());
+            trackedArraysNeedingMagicInit.push_back(arr->i6name.empty() ? arr->dName() : arr->i6name);
         }
     }
 }
@@ -1953,6 +1953,10 @@ for(typeDef* g : languageService.globals){
             if(!known.count(lower(it->str()))) return false;
         return true;
     };
+    // A routine's address is back-patched, so a value may name one declared further down.
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g); fd && !fd->isEmitter && !fd->isExternal && !fd->isPrePassStub)
+            known.insert(lower(fd->i6name.empty() ? fd->dName() : fd->i6name));
     for(typeDef* g : languageService.globals){
         auto* vd = dynamic_cast<variableDeclaration*>(g);
         if(vd == nullptr || !vd->isConst || vd->isExternal || dynamic_cast<arrayDeclaration*>(vd) != nullptr
@@ -3966,17 +3970,18 @@ void i6Emitter::emitGlobalWordArray(arrayDeclaration* arr){
 // word 0. It emits with I6's `--> N` (N zero words) / `--> v...` (literal values) form
 // rather than `table` (which prefixes a count word). (Members are unaffected — they use the
 // property `.&prop-->n` mechanism.)
+const string arrName = arr->i6name.empty() ? arr->dName() : arr->i6name;
 bool tracked = languageService.arrayInUse && !arr->isRaw;
 auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
 if(arr->arraySize > 0 && list == nullptr) {
     if(arr->isRaw){
-        out << format("array {0} --> {1};\n", arr->dName(), arr->arraySize);  // N flat zero words
+        out << format("array {0} --> {1};\n", arrName, arr->arraySize);  // N flat zero words
         return;
     }
     // Sized, uninitialized. Magic+length get stamped at startup by bglInit when
     // tracked (pre-pass collected the name into trackedArraysNeedingMagicInit).
     int slots = tracked ? arr->arraySize + 2 : arr->arraySize;
-    out << format("array {0} table {1};\n", arr->dName(), slots);
+    out << format("array {0} table {1};\n", arrName, slots);
     return;
 }
 
@@ -4004,7 +4009,7 @@ if(list != nullptr){
         entries.push_back(to_string(len));   // length = seeded count, not capacity
         entries.push_back("$9084");          // magic
     }
-    out << format("array {0} {1}", arr->dName(), arr->isRaw ? "-->" : "table");
+    out << format("array {0} {1}", arrName, arr->isRaw ? "-->" : "table");
     // A lone entry would be read by I6 as the array's size; the bracket form makes it an entry.
     if(entries.size() == 1) out << " [ " << entries[0] << " ]";
     else for(const string& e : entries) out << " " << e;

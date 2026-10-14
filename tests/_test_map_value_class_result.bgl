@@ -1,0 +1,7 @@
+/* map() can't produce value-class values: every element would share one instance */
+// EXPECT_ERROR: map() can't produce 'Price' values
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <linq>
+value class Price { int cents; Price operator = (Price o) { cents = o.cents; return self; } }
+array<Price> ps[2];
+void main(){ bglInit(); array<Price> a[2] = ps.map((Price p) => p); }

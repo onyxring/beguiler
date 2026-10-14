@@ -1,0 +1,48 @@
+// run_target4_receivers — statements that open with a subscript on a call result, stores through a chain
+// of class `operator []`s, and a class `operator []` applied after a receiver chain that contains a call,
+// a member step after a call, and a `?.` call.
+// EXPECT_OUTPUT: 3 5 4 3 3 2 7 4 7 4
+#beguilerSettings { target = z5; informName = "none"; }
+class Item : object { int n; Tray tray() { return t1; } }
+class Tray : object {
+    Item a;
+    Tray next;
+    Item operator [] (int i) { return a; }
+    Item operator []= (int i, Item v) { a = v; return v; }
+    Tray me() { return self; }
+}
+class Rack : object {
+    Tray t;
+    Tray operator [] (int i) { return t; }
+}
+Item it1 { n = 1; }
+Item it2 { n = 2; }
+Item it3 { n = 3; }
+Tray t1 { a = it1; }
+Tray t2 { a = it2; }
+Rack r1 { t = t1; }
+array<Item> arr = {it1};
+Tray trayOf() { return t1; }
+array<Item> items() { return arr; }
+void main() {
+    bglInit();
+    trayOf()[0].n += 2;
+    print(t1.me()[0].n); print(" ");
+    t1.me()[0].n = 5;
+    print(it1.n); print(" ");
+    items()[0].n = 4;
+    print(it1.n); print(" ");
+    trayOf()[0] = it3;
+    print(t1[0].n); print(" ");
+    print(r1[0][0].n); print(" ");
+    r1[0][0] = it2;
+    print(r1[0][0].n); print(" ");
+    r1[0][0].n = 7;
+    print(it2.n); print(" ");
+    t1.a = it1;
+    t1.next = t2;
+    print(arr[0].tray()[0].n); print(" ");
+    print(trayOf().next[0].n); print(" ");
+    Tray q = t1;
+    print(q?.me()[1].n);
+}

@@ -1,0 +1,193 @@
+Room A
+Room A.
+
+You can see a rack here.
+
+> trays
+left: steel file, iron nut, glass jar; total 19, load 95, uses 3
+  first steel file, heaviest glass jar/9, footprint 3x2 (6), next first brass saw
+middle: brass saw, tin cup; total 16, load 80, uses 2
+  first brass saw, heaviest brass saw/12, footprint 4x2 (8), next first oak peg
+right: oak peg, zinc awl; total 4, load 20, uses 2
+  first oak peg, heaviest zinc awl/3, footprint 2x2 (4), next first steel file
+
+> inspect steel file
+steel file/8 in left (left), loose, score 14
+upper STEEL FILE/8, 12 chars; size 1x6, grown 14
+first in its tray steel file, its tray's heaviest glass jar (9)
+edge 2, base score 16
+marks 0
+
+> inspect tin cup
+tin cup/4 in middle (middle), fragile, score 8
+upper TIN CUP/4, 9 chars; size 2x2, grown 9
+first in its tray brass saw, its tray's heaviest brass saw (18)
+marks 0
+
+> inspect left tray
+That is not an item.
+
+> mark iron nut 5
+iron nut has 2 marks, first 105, last 0; its tray's first has 1
+
+> mark glass jar 2
+glass jar has 2 marks, first 102, last 0; its tray's first has 2
+
+> inspect steel file
+steel file/8 in left (left), loose, score 14
+upper STEEL FILE/8, 12 chars; size 1x6, grown 14
+first in its tray steel file, its tray's heaviest glass jar (9)
+edge 2, base score 16
+marks 2 9 7
+
+> swap 1
+left now starts iron nut, then steel file: iron nut, steel file, glass jar
+
+> swap 3
+right now starts zinc awl, then oak peg: zinc awl, oak peg
+
+> swap 4
+No such tray.
+
+> trays
+left: iron nut, steel file, glass jar; total 19, load 95, uses 3
+  first iron nut, heaviest glass jar/9, footprint 3x2 (6), next first brass saw
+middle: brass saw, tin cup; total 16, load 80, uses 2
+  first brass saw, heaviest brass saw/12, footprint 4x2 (8), next first zinc awl
+right: zinc awl, oak peg; total 4, load 20, uses 2
+  first zinc awl, heaviest zinc awl/3, footprint 2x2 (4), next first iron nut
+
+> grid
+row 0: 3 items, first steel file/8, in left; brass saw 18 in brass saw's tray; zinc awl 5 in zinc awl's tray
+row 1: 2 items, first iron nut/2, in left; oak peg 3 in zinc awl's tray
+row 2: 2 items, first glass jar/9, in left; tin cup 4 in brass saw's tray
+best tool: brass saw, edge 4, next tray left
+
+> slip oak peg 3
+slip: 6 of oak peg from right, tray first zinc awl, tag oak peg/1
+second slip: zinc awl x 15, size 1x5
+
+> slip brass saw 1
+slip: 4 of brass saw from middle, tray first brass saw, tag brass saw/12
+second slip: brass saw x 11, size 2x9
+
+> pair steel file tin cup
+heavier: steel file; lighter tray: middle
+sizes 3x8, area 24, grown 4x9
+fifth in a's tray: tin cup; same tray: no; a's next tray first brass saw
+scores 22, marks 2
+
+> pair oak peg zinc awl
+heavier: zinc awl; lighter tray: right
+sizes 2x8, area 16, grown 3x9
+fifth in a's tray: zinc awl; same tray: yes; a's next tray first iron nut
+scores 8, marks 0
+
+> audit
+lightest tray: right, its heaviest zinc awl/3
+first tool's tray starts iron nut; last tool edge 1
+Tray.lightest: right, 2 items, first zinc awl, next area 6
+totals 19 16 4; heaviest per tray 9 12 3 0
+  brass saw/12 in middle, tray total 16
+  glass jar/9 in left, tray total 19
+  steel file/8 in left, tray total 19
+trays with fragile items: 2; tools heavier than their tray's first: 1
+
+> walk 1
+from left: 0 hops to left
+loop of 3; starts boxed
+
+> walk 3
+from right: 2 hops to middle
+loop of 3; starts boxed
+
+> walk 7
+No such tray.
+
+> fits tin cup
+left: takes, yes, room
+middle: takes, yes, room
+right: takes, yes, room
+other takers 2, first left, its first brass saw
+
+> fits brass saw
+left: takes, yes, room
+middle: takes, yes, room
+right: refuses, no, room
+other takers 1, first left, its first brass saw
+
+> reserve
+reserve 4, read through the object 4, label right
+
+> reserve
+reserve 6, read through the object 6, label right
+
+> move tin cup to right tray
+The tin cup goes to the right tray (load 40, uses 3); right holds zinc awl, oak peg, tin cup
+
+> move glass jar to right tray
+The right tray does not take the glass jar.
+
+> move tin cup to right tray
+The tin cup is already in the right tray.
+
+> move iron nut to iron nut
+That is not a tray.
+
+> trays
+left: iron nut, steel file, glass jar; total 19, load 95, uses 3
+  first iron nut, heaviest glass jar/9, footprint 3x2 (6), next first brass saw
+middle: brass saw; total 12, load 60, uses 1
+  first brass saw, heaviest brass saw/12, footprint 4x2 (8), next first zinc awl
+right: zinc awl, oak peg, tin cup; total 8, load 40, uses 3
+  first zinc awl, heaviest tin cup/4, footprint 2x2 (4), next first iron nut
+
+> pick 1 1
+pick(1)[0] brass saw; pick(2)[0] zinc awl; pick(0) heaviest's tray left
+pick(2).next.next first brass saw, footprint 3x2
+
+> plan
+plans 3x2 5x3 4x4; sum area 40; grown 6x6
+footprints 4x4 5x2 2x5; widest middle
+history 3, last 1x1, widest 4x4 (16), middle 5x2; middle front wear 6
+  left: area 16, items area 1
+  middle: area 10, items area 18
+  right: area 10, items area 5
+
+> load middle tray 40
+middle load 40, next right load 37; left load 96; right uses 4
+uses 1 and 7; heavier load: middle
+
+> trays
+left: steel file, glass jar; total 17, load 85, uses 2
+  first steel file, heaviest glass jar/9, footprint 4x4 (16), next first iron nut
+middle: iron nut, brass saw; total 14, load 70, uses 2
+  first iron nut, heaviest brass saw/12, footprint 5x2 (10), next first tin cup
+right: tin cup, oak peg, zinc awl; total 8, load 40, uses 3
+  first tin cup, heaviest tin cup/4, footprint 2x5 (10), next first steel file
+
+> audit
+lightest tray: right, its heaviest tin cup/4
+first tool's tray starts steel file; last tool edge 1
+Tray.lightest: right, 3 items, first tin cup, next area 16
+totals 17 14 8; heaviest per tray 9 12 4 0
+  brass saw/12 in middle, tray total 14
+  glass jar/9 in left, tray total 17
+  steel file/8 in left, tray total 17
+trays with fragile items: 2; tools heavier than their tray's first: 1
+
+> wear 4
+steel file: wear 11 (11), tool, edge 2, prefix ste, tagged
+iron nut: wear 8 (8), part, edge -1, prefix iro, tagged
+tin cup: wear 8 (8), part, edge -1, prefix tin, tagged
+worn over 4: 4, first oak peg
+most worn front: steel file, its size 6x6
+The left front is the most worn tool.
+
+> wear 30
+steel file: wear 85 (85), tool, edge 2, prefix ste, tagged
+iron nut: wear 76 (76), part, edge -1, prefix iro, tagged
+tin cup: wear 76 (76), part, edge -1, prefix tin, tagged
+worn over 30: 3, first steel file
+most worn front: steel file, its size 32x32
+The left front is the most worn tool.

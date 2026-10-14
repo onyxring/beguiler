@@ -1,0 +1,61 @@
+// run_target4_namespaces — a partial path through an object's own alias member used as a type in its body,
+// a type alias of an alias declared in an `extend` of the object, a `#using`-imported static method named
+// bare as a function value, `is()` with a type alias named bare in its object's method, casts through type
+// aliases that call the ancestor's method, and `extend class` named by an alias path.
+// EXPECT_OUTPUT: 1 1 1 1 5 1 12 11 10 10 10 14
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class CPart : object {
+    int N = 7;
+    default int Price() { return 10; }
+}
+class CTool : Ns.Part {
+    int Price() { return ((Ns.Part)self).Price() + 1; }
+}
+class CGem : CPart {
+    int Price() { return ((CPart)self).Price() + 2; }
+}
+object Ns {
+    alias Part for CPart;
+    alias Tool for CTool;
+    bool IsTool(Part p) { return p.is(Tool); }
+}
+CTool hammer { }
+CGem ruby { }
+object _items { alias Part for CPart; }
+object Root {
+    alias Items = _items;
+    Items.Part Pick() { return null; }
+    int Local() { Items.Part p = null; return 1; }
+}
+enum eV { Allow, Hold }
+object _rules {
+    alias Verdict for eV;
+    Verdict Check(int n) { if (n > 2) return Verdict.Hold; return Verdict.Allow; }
+}
+object Rt { alias Rules = _rules; }
+extend Rt {
+    alias Verdict for Rt.Rules.Verdict;
+    int Count() { array<Verdict> out[4]; out.append(Rules.Check(5)); return out.length; }
+    int Held() { Verdict v = Rules.Check(5); if (v == Verdict.Hold) return 1; return 0; }
+}
+class CMath { static int Abs(int n) { return n < 0 ? -n : n; } }
+extend class Ns.Part { int Twice() { return N * 2; } }
+#using CMath
+#using Ns
+void main() {
+    bglInit();
+    print(Root.Pick() == null ? 1 : 0); print(" ");
+    print(Root.Local()); print(" ");
+    print(Rt.Count()); print(" ");
+    print(Rt.Held()); print(" ");
+    func<int, int> g = Abs;
+    print(g(-5)); print(" ");
+    print(Ns.IsTool(hammer) ? 1 : 0); print(" ");
+    print(ruby.Price()); print(" ");
+    print(hammer.Price()); print(" ");
+    print(((CPart)ruby).Price()); print(" ");
+    print(((Ns.Part)ruby).Price()); print(" ");
+    print(((Part)ruby).Price()); print(" ");
+    print(ruby.Twice());
+}

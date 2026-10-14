@@ -1,0 +1,690 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-fourth PunyInform program that leans on `string` and `stringObj` together: two rooms
+// (Room A with a press and three cards, Room B with a board); a `Card` class owning a `stringObj` text,
+// a `string` tag and a nullable `string` note, with methods returning `stringObj` (with default and
+// named `string` arguments, a `string | stringObj` argument passed on to `format()`), a method returning
+// `string` through `??`, a static counter, and a description routine that interpolates call results,
+// ternaries over a literal and a `stringObj`, and `??` on strings; global routines that build text
+// recursively (`repeatChar`, `spellNum`, `reverseParts`, `nestText` with nested `capture`/`release`),
+// take `stringObj` copies, `ref stringObj` and `string | stringObj` (narrowed with `typeof`), with
+// `char` defaults; `append`/`prepend`/`+`/`+=` with chars, literals, strings and results on both sides;
+// subscript reads and writes with `char` methods; `switch` on a `stringObj` with string cases; content
+// comparisons (`==`, `<`, `=~`, `<=>`, `compareTo`); a value class `Line` holding a `stringObj`, kept in
+// an `array<Line>`; an `array<stringObj>` of pinned texts sorted and searched; an `array<string>`
+// table; a table of lambdas taking and returning `stringObj`; <linq> over `bgl.world.instances` with
+// lambdas reading card text; capture of a description routine; a thrown string caught as a string and
+// a thrown `stringObj` caught as one; mutually recursive text builders (`ping`/`pong`); a subscript write
+// through a cast and `+=` with a char through `?.`; interpolated strings assigned and `+=`d to a
+// `stringObj`, and in a lambda body; `replace`/`replaceAll`/`insert`/`delete`/`endsWith`; pool pressure from `stringObj` locals in loop bodies and recursion; `while`, `do`/`while`,
+// `for` and `for … in` loops over text; and verbs spell, ink, mark, flip, swap, pad, merge, pin, shape,
+// churn, nest, note, dash, cap, bounce, wipe and the meta verbs slots, journal, compare and lines.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#emitfirst { Constant bglStringDefaultSize 300; }
+#i6 { Constant bglStringPoolReserve 40; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// --- shared text ------------------------------------------------------------------------------------
+
+const int SLOT_COUNT = 5;
+const int CHURN_MAX  = 60;
+const int NEST_MAX   = 12;
+const int PAD_MAX    = 30;
+
+array<string> digitWords = {"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"};
+array<stringObj> slots[SLOT_COUNT];
+stringObj journal;
+stringObj lastMerge = "nothing yet";
+string lastWord = "none";
+int churnTotal = 0;
+int deepest = 0;
+
+void jot(string what, string | stringObj detail = "-") {
+    if (!journal.isEmpty()) journal += "; ";
+    journal += what;
+    journal += ' ';
+    if (typeof(detail) == eType.object) journal += (stringObj)detail;
+    else journal += (string)detail;
+    lastWord = what;
+}
+
+stringObj repeatChar(char c, int n) {
+    if (n <= 0) return "";
+    return repeatChar(c, n - 1) + c;
+}
+
+stringObj spellNum(int n) {
+    if (n < 0) return spellNum(-n).prepend("minus ");
+    if (n < 10) return digitWords[n];
+    return spellNum(n / 10) + "-" + digitWords[n % 10];
+}
+
+stringObj padTo(stringObj s, int width, char fill = '.') {
+    if (width > PAD_MAX) throw "too wide";
+    if (s.length >= width) return s.left(width);
+    return s + repeatChar(fill, width - s.length);
+}
+
+stringObj reverseParts(stringObj s, char sep = ' ') {
+    int at = s.indexOf(sep);
+    if (at < 0) return s;
+    return reverseParts(s.mid(at + 1, s.length), sep) + sep + s.left(at);
+}
+
+stringObj initialsOf(string | stringObj text) {
+    stringObj src = "";
+    if (typeof(text) == eType.object) src = (stringObj)text;
+    else src = (string)text;
+    stringObj out;
+    bool start = true;
+    for (int i = 0; i < src.length; i++) {
+        char c = src[i];
+        if (c == ' ' || c == '-') {
+            start = true;
+            continue;
+        }
+        if (start) out += c.toUpper();
+        start = false;
+    }
+    return out;
+}
+
+int vowelCount(stringObj s) {
+    int n = 0;
+    for (char c in s) {
+        if (c.isVowel()) n++;
+    }
+    return n;
+}
+
+void swapCase(ref stringObj s) {
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        if (c.isUpper()) s[i] = c.toLower();
+        else if (c.isLower()) s[i] = c.toUpper();
+    }
+}
+
+string kindOf(stringObj s) {
+    switch (s) {
+        case "": return "blank";
+        case "zero": return "nought";
+        case "ZERO": return "loud nought";
+    }
+    if (s.startsWith("minus")) return "negative";
+    if (s.contains('-')) return s.length > 12 ? "long run" : "run";
+    return s.toUpper() == s ? "loud" : "word";
+}
+
+stringObj nestText(int depth) {
+    stringObj here;
+    if (depth > deepest) deepest = depth;
+    here.capture();
+    print($"({depth}");
+    if (depth > 1) print(nestText(depth - 1));
+    print(")");
+    here.release();
+    return here;
+}
+
+stringObj pong(int n) {
+    if (n <= 0) return "!";
+    return "o" + ping(n - 1);
+}
+
+stringObj ping(int n) {
+    if (n <= 0) return ".";
+    return ping(0).prepend('i') + pong(n - 1);
+}
+
+// --- lines: a value class holding text ---------------------------------------------------------------
+
+value class Line {
+    stringObj text;
+    int width;
+
+    Line operator = (Line o) {
+        text = o.text;
+        width = o.width;
+        return self;
+    }
+
+    stringObj shown() {
+        return padTo(text, width, fill: '_');
+    }
+}
+
+array<Line> lines[3];
+
+Line lineOf(stringObj s, int w = 8) {
+    Line l;
+    l.text = s;
+    l.width = w;
+    return l;
+}
+
+// --- cards ------------------------------------------------------------------------------------------
+
+class Card : object {
+    stringObj text;
+    string tag = "plain";
+    string note;
+    char mark = '*';
+    int inks = 0;
+    static int rendered = 0;
+    name = {.card};
+
+    void description() {
+        printLine($"{cThe(self)} reads {render()}: {kindOf(text)}, {text.length} char(s), {vowelCount(text)} vowel(s), initials {initialsOf(text).isEmpty() ? "-" : initialsOf(text)}; note {note ?? "none"}.");
+    }
+
+    stringObj render(string open = "[", string close = "]") {
+        Card.rendered++;
+        stringObj body = text.isEmpty() ? "(blank)" : text;
+        return open + body + close;
+    }
+
+    string noteOr(string fallback = "unnoted") {
+        return note ?? fallback;
+    }
+
+    void ink(bool front = false) {
+        inks++;
+        if (front) text = text.prepend(mark);
+        else text += mark;
+    }
+
+    stringObj labelled(string | stringObj prefix = "Card") {
+        return text.format("$1 $2: $0", prefix, tag);
+    }
+
+    bool matches(stringObj other) {
+        return text =~ other || text.contains(other);
+    }
+}
+
+Card asCard(object o) {
+    if (o.is(Card)) return (Card)o;
+    return null;
+}
+
+// --- shapes: a table of lambdas -----------------------------------------------------------------------
+
+array<func<stringObj, stringObj>> shapers = {
+    (stringObj s) => s.toUpper(),
+    (stringObj s) => s.reverse(),
+    (stringObj s) => padTo(s, 10, '_'),
+    (stringObj s) => s.trim().prepend('<').append('>')
+};
+array<string> shapeNames = {"upper", "reverse", "pad", "angle"};
+int shapeTurn = 0;
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A press stands here with three cards. A doorway leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A board hangs here. A doorway leads west.";
+    w_to = roomA;
+}
+
+object press {
+    "press";
+    parent = roomA;
+    name = {.press};
+    attributes = {static};
+    int runs = 0;
+    stringObj lastRun;
+
+    void description() {
+        if (runs == 0) printLine("The press has not run.");
+        else printLine($"The press has run {runs} time(s); last run: {lastRun}.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Push:
+                runs++;
+                lastRun = "";
+                for (object o in roomA.children) {
+                    Card c = asCard(o);
+                    if (!c?) continue;
+                    if (!lastRun.isEmpty()) lastRun += " | ";
+                    lastRun += c.text.isEmpty() ? c.tag : c.text;
+                }
+                jot("press", lastRun);
+                rtrue($"The press runs: {lastRun.isEmpty() ? "nothing" : lastRun}.^");
+        }
+        rfalse;
+    }
+}
+
+Card cardA {
+    "card A";
+    parent = roomA;
+    name = {.a};
+    tag = "first";
+    mark = '#';
+}
+
+Card cardB {
+    "card B";
+    parent = roomA;
+    name = {.b};
+    tag = "second";
+    note = "kept";
+}
+
+Card cardC {
+    "card C";
+    parent = roomA;
+    name = {.c};
+    tag = "third";
+    mark = '+';
+}
+
+object board {
+    "board";
+    parent = roomB;
+    name = {.board};
+    attributes = {static};
+
+    void description() {
+        int used = 0;
+        for (stringObj s in slots) {
+            if (!s.isEmpty()) used++;
+        }
+        printLine($"The board holds {used} pinned text(s); the last merge was {lastMerge}.");
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb SpellOut {
+    grammar = {.spell, NOUN, .as, NUMBER};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine($"{cThe(noun)} takes no text.");
+            return;
+        }
+        c.text = spellNum(parsed_number);
+        jot("spell", c.text);
+        printLine($"{cThe(c)} now reads {c.render(open: "~", close: "~")}.");
+    }
+}
+
+verb Ink {
+    grammar = {.ink, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards take ink.");
+            return;
+        }
+        c.ink();
+        printLine($"You ink {c.tag}: {c.text} ({c.inks} ink(s)).");
+    }
+}
+
+verb MarkFront {
+    grammar = {.mark, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards take a mark.");
+            return;
+        }
+        c.ink(front: true);
+        string side = c.inks > 1 ? "again" : "once";
+        printLine($"You mark {c.tag} {side}: {c.text}.");
+    }
+}
+
+verb Flip {
+    grammar = {.flip, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards flip.");
+            return;
+        }
+        stringObj was = c.text;
+        c.text = c.text.contains('-') ? reverseParts(c.text, '-') : reverseParts(c.text);
+        jot("flip", was + " > " + c.text);
+        printLine($"{cThe(c)} flips from {was} to {c.text}.");
+    }
+}
+
+verb Swap {
+    grammar = {.swap, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards swap.");
+            return;
+        }
+        swapCase(c.text);
+        printLine($"{cThe(c)} now reads {c.text}; {kindOf(c.text)}.");
+    }
+}
+
+verb PadIt {
+    grammar = {.pad, NOUN, .to, NUMBER};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards pad.");
+            return;
+        }
+        try {
+            stringObj padded = padTo(c.text, parsed_number, c.mark);
+            printLine($"Padded: {padded} ({padded.length}).");
+            c.text = padded;
+        } catch (string why) {
+            printLine($"Refused: {why}.");
+        }
+    }
+}
+
+verb Merge {
+    grammar = {.merge, NOUN, .with, NOUN};
+    void handler() {
+        Card a = asCard(noun);
+        Card b = asCard(second);
+        if (!a? || !b?) {
+            printLine("Only two cards merge.");
+            return;
+        }
+        string tagNote = b.note ?? a.note ?? "unnoted";
+        lastMerge = a.labelled() + " + " + b.labelled(prefix: b.text.left(1));
+        stringObj mixed = a.text.left(a.text.length / 2) + b.text.right(b.text.length / 2);
+        printLine($"Merged: {lastMerge}; mixed {mixed}; {tagNote}.");
+        jot("merge", mixed);
+    }
+}
+
+verb PinIt {
+    grammar = {.pin, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards pin.");
+            return;
+        }
+        int at = slots.indexOf(c.text);
+        if (at >= 0) {
+            printLine($"{c.text} is already pinned at {at + 1}.");
+            return;
+        }
+        if (slots.length >= SLOT_COUNT) {
+            printLine("The board is full.");
+            return;
+        }
+        slots += c.text;
+        if (lines.length < lines.size) lines += lineOf(c.text, w: 4 + lines.length * 2);
+        printLine($"You pin {c.render("(", ")")} at {slots.length}; pinned: {slots.contains(c.text) ? "yes" : "no"}.");
+    }
+}
+
+verb ShapeIt {
+    grammar = {.shape, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards shape.");
+            return;
+        }
+        func<stringObj, stringObj> f = shapers[shapeTurn % 4];
+        stringObj out = f(c.text);
+        printLine($"Shape {shapeNames[shapeTurn % 4]}: {out}.");
+        shapeTurn++;
+    }
+}
+
+verb Churn {
+    grammar = {.churn, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        if (n > CHURN_MAX) n = CHURN_MAX;
+        int total = 0;
+        stringObj longest = "";
+        for (int i = 1; i <= n; i++) {
+            stringObj t = spellNum(i * 7);
+            stringObj u = t.toUpper() + "/" + t.reverse();
+            total += u.length;
+            if (u.length > longest.length) longest = u;
+            if (i % 20 == 0) printLine($"At {i}: {u.left(12)}...");
+        }
+        churnTotal += total;
+        stringObj said = $"Churned {n}: {total} char(s); longest {longest}";
+        said += longest.contains('/') ? "." : "!";
+        printLine(said);
+    }
+}
+
+verb Nest {
+    grammar = {.nest, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        if (n < 1 || n > NEST_MAX) {
+            printLine($"Nest from 1 to {NEST_MAX}.");
+            return;
+        }
+        stringObj s = nestText(n);
+        stringObj report = $"Nested: {s} ({s.length} chars";
+        report += $", deepest {deepest}, head {s.left(3)}, tail {s.right(2).length > 1 ? s.right(2) : "-"})";
+        report += '.';
+        printLine(report);
+    }
+}
+
+verb NoteIt {
+    grammar = {.note, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards take a note.");
+            return;
+        }
+        string was = c.noteOr();
+        switch (kindOf(c.text)) {
+            case "blank":    c.note = "empty";
+            case "run":      c.note = "short run";
+            case "long run": c.note = "long run";
+            default:         c.note = null;
+        }
+        printLine($"Note on {c.tag}: {was} -> {c.noteOr(fallback: "cleared")}.");
+    }
+}
+
+verb Dash {
+    grammar = {.dash, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards dash.");
+            return;
+        }
+        stringObj s = c.text.replaceAll(c.mark, '-').replaceAll(' ', '-');
+        while (s.contains("--")) s = s.replace("--", "-");
+        int cuts = 0;
+        do {
+            if (s.endsWith('-')) {
+                s = s.delete(s.length - 1, 1);
+                cuts++;
+            }
+        } while (s.endsWith('-'));
+        c.text = s.insert(0, c.mark);
+        printLine($"{cThe(c)} dashes to {c.text}; {cuts} cut(s); ends {c.text.endsWith(c.mark) ? "marked" : c.text.right(1) + "!"}; framed {c.text.prepend('<') + '>'}.");
+    }
+}
+
+verb CapIt {
+    grammar = {.cap, NOUN};
+    void handler() {
+        try {
+            if (!noun.is(Card)) throw "not a card";
+            if (((Card)noun).text.isEmpty()) {
+                stringObj why = "blank " + ((Card)noun).tag;
+                throw why;
+            }
+            ((Card)noun).text[0] = ((Card)noun).text[0].toUpper();
+            asCard(noun)?.text += '.';
+            printLine($"Capped: {((Card)noun).text}.");
+        } catch (stringObj e) {
+            printLine($"No cap: {e}.");
+        }
+    }
+}
+
+verb Bounce {
+    grammar = {.bounce, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        if (n > 8) n = 8;
+        stringObj trail = pong(n);
+        printLine($"Bounce {n}: {trail} ({trail.length}); ping {ping(n).length}.");
+    }
+}
+
+verb Wipe {
+    grammar = {.wipe, NOUN};
+    void handler() {
+        Card c = asCard(noun);
+        if (!c?) {
+            printLine("Only cards wipe.");
+            return;
+        }
+        c.text = "";
+        c.inks = 0;
+        printLine($"{cThe(c)} is blank: {c.render()}.");
+    }
+}
+
+verb ShowSlots {
+    meta = true;
+    grammar = {.slots};
+    void handler() {
+        print("Slots:");
+        for (stringObj s in slots) print($" [{s}]");
+        printLine(".");
+        func<void, stringObj> say = (stringObj s) => print($" <{s.length}:{s.left(4)}>");
+        print("Heads:");
+        for (stringObj s in slots) say(s);
+        printLine(".");
+        array<stringObj> sorted[SLOT_COUNT];
+        for (stringObj s in slots) sorted += s.toLower();
+        sorted.sort();
+        print("Sorted:");
+        for (int i = 0; i < sorted.length; i++) print($" {sorted[i]}");
+        printLine(".");
+        int j = 0;
+        int longest = -1;
+        while (j < slots.length) {
+            if (longest < 0 || slots[j].length > slots[longest].length) longest = j;
+            j++;
+        }
+        if (longest >= 0) printLine($"Longest pinned: {slots[longest]} at {longest + 1}.");
+        int dashed = bgl.world.instances(Card).filter((object o) => ((Card)o).text.contains('-')).count();
+        int blank = bgl.world.instances(Card, (object o) => ((Card)o).text.isEmpty()).count();
+        printLine($"Cards with runs: {dashed}; blank cards: {blank}; renders {Card.rendered}.");
+    }
+}
+
+verb ShowJournal {
+    meta = true;
+    grammar = {.journal};
+    void handler() {
+        if (journal.isEmpty()) {
+            printLine("The journal is empty.");
+            return;
+        }
+        printLine($"Journal ({journal.length}): {journal}.");
+        stringObj up = journal.left(20).toUpper();
+        int dashes = 0;
+        int i = 0;
+        do {
+            if (journal[i] == '-') dashes++;
+            i++;
+        } while (i < journal.length);
+        printLine($"Head {up}; dashes {dashes}; last {lastWord}; churned {churnTotal}.");
+        stringObj desc;
+        desc.captureOutput(press, description);
+        printLine($"Press says {desc.length} char(s): {desc.trim()}");
+    }
+}
+
+verb CompareCards {
+    meta = true;
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        Card a = asCard(noun);
+        Card b = asCard(second);
+        if (!a? || !b?) {
+            printLine("Only cards compare.");
+            return;
+        }
+        string order = a.text < b.text ? "before" : (a.text > b.text ? "after" : "level with");
+        printLine($"{a.tag} sorts {order} {b.tag}; same {a.text == b.text ? "yes" : "no"}; alike {a.text =~ b.text ? "yes" : "no"}.");
+        printLine($"Three-way {a.text <=> b.text}, compareTo {a.text.compareTo(b.text)}, folded {a.text.compareTo(b.text, true)}; matches {a.matches(b.text) ? "yes" : "no"}.");
+    }
+}
+
+verb ShowLines {
+    meta = true;
+    grammar = {.lines};
+    void handler() {
+        if (lines.length == 0) {
+            printLine("No lines.");
+            return;
+        }
+        for (int i = 0; i < lines.length; i++) {
+            Line l = lines[i];
+            printLine($"Line {i + 1}: {l.shown()} (width {l.width}, {initialsOf(l.text)}).");
+        }
+        stringObj all;
+        for (Line l in lines) {
+            if (l.text.isEmpty()) continue;
+            all += l.text.left(3);
+            all += '/';
+        }
+        printLine($"Heads: {all}");
+    }
+}
+
+bool Initialise() {
+    cardC.text = "three word line";
+    rfalse;
+}

@@ -555,7 +555,10 @@ object _bglStr {
     // through that property (dynamic property access — hence the #i6 block).
     void print(var buf, var prop = 0) {
         #i6 {
-            if(prop ~= 0) buf = buf.prop;
+            if(prop ~= 0){
+                if(metaclass(buf.prop) == Routine){ buf.prop(); return; }   ! run as the object's own method
+                buf = buf.prop;
+            }
             if(buf == 0) return;   ! null prints nothing
             if(buf provides print) {
                 buf.print();
@@ -1248,6 +1251,10 @@ extend class string {
     /// Return a copy with the FIRST `searchText` swapped for `replaceText`.
     emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
     emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replace(char c, char r)               { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replaceAll(char c, char r)            { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replace(var searchText, char r)       { _bglStringLockStack.stackDrain(_bglStr.replace($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replaceAll(var searchText, char r)    { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     /// Return a copy with EVERY `searchText` swapped for `replaceText`.
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
@@ -1461,6 +1468,10 @@ emitter class stringObj {
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
     emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
     emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replace(char c, char r)               { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replaceAll(char c, char r)            { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replace(var searchText, char r)       { _bglStringLockStack.stackDrain(_bglStr.replace($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replaceAll(var searchText, char r)    { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
     emitter stringObj  format(var pattern)                                               { _bglStr.format($val, $pattern) }

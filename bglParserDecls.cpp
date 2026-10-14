@@ -384,6 +384,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     if(!isExternal && getCurrentCompileContext() == eCompileContext::global && bglLanguageService::isI6StatementKeyword(arrDecl.name))
         parsingError(format("Array '{0}' is named like an Inform 6 keyword, built-in function or built-in property, which Inform 6 won't take "
                             "as an array's name; rename it.", name.originalValue.empty() ? (string)name : name.originalValue));
+    // Named like a property an included library emits (<linq>'s `all`): one I6 namespace, so another name.
+    if(!isExternal && getCurrentCompileContext() == eCompileContext::global && libraryPropertyNamed(arrDecl.name))
+        arrDecl.i6name = "_" + arrDecl.dName();
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
     arrDecl.isExternal = isExternal;
@@ -1596,11 +1599,18 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         for(typeDef* g : languageService.globals){
             auto* ex = dynamic_cast<functionDef*>(g);
             if(!ex || ex == &funcDef || ex->name != funcDef.name) continue;
-            if(ex->isPrePassStub || ex->isExternal || ex->isEmitter) continue;
+            if(ex->isPrePassStub || ex->isExternal) continue;
             if(ex->params.size() != funcDef.params.size()) continue;
             bool same = true;
             for(size_t i = 0; i < ex->params.size(); i++)
                 if(ex->params[i]->type.name != funcDef.params[i]->type.name){ same = false; break; }
+            if(ex->isEmitter){
+                if(same)
+                    parsingError(format("'{0}' has the parameter types of the emitter '{1}', so no call can reach it; "
+                        "write `replace` to replace the emitter, or give the function another name.",
+                        funcDef.dName(), ex->dName()));
+                continue;
+            }
             if(same && ex->replaceFoundNothing)
                 parsingError(format("the replace of '{0}' above comes before '{0}' itself. A replace follows what "
                     "it replaces; move it below this declaration (or below the include that declares it).",

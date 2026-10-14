@@ -1,0 +1,760 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a grain depot ledger kept as value-class tables. A Qty value class (inline kg) with a
+// copy operator, == / != / <=> (instance, plus a static <=> passed as an operator reference to sort),
+// ?= (within a tolerance), + - * / returning inline values, += -= ++ prefix++ and !, an emitter
+// operator switch, an explicit int conversion read through casts, a static factory and a method
+// returning an inline value; a Price value class whose == != <=> are static only (used by indexOf,
+// distinct, orderBy() and at ordinary sites) and whose * takes a Qty; a Lot value class owning Qty and
+// Price members positionally, a ref Lot link bound with := into a chain walked by rebinding a ref
+// local; a Graded subclass that puts its grade first and chains the copy operator by cast, copied
+// into and compared with plain Lots; a Span value class owning two Qty members and a string, kept in a
+// table written as nested bare { { … }, { … } } rows; a Tally value class holding a member array of
+// Qty and a stringObj; an object owning Qty / Lot / Price / Tally members, a ref Lot and a member
+// array of Qty; a Bin class owning a positional Qty given in each object's body; parallel tables
+// indexed by an enum; functions taking and returning value classes (by value, ref, with inline-value
+// defaults and named arguments), returning array elements and ?: choices; ref locals bound to table
+// elements, object members and members of members; a table of lambdas taking and returning Qty;
+// <linq> filter / any / all / count / first / last / take / skip / takeWhile / skipWhile / distinct /
+// orderBy / map over value-class arrays with captured value-class locals, a chain nested inside a
+// predicate, chain results captured into local arrays; <array> indexOf / contains / -= / insert /
+// prepend / swap / reverse / sort() / sort(opref) / remove / peekEnd on value-class arrays; a
+// recursive splitter keeping its Qty parameters per call, called with bare { … } and named arguments;
+// a Tally operator [] returning a member-array element; a pooled Crate class owning a Qty with a
+// starting value and a static Qty, reset by new; a static method returning Qty used as a func value;
+// a captured value-class local changed inside a lambda passed to any(); value-class operands inside
+// interpolation, conditions, C-style for and while loops, and switch on a member.
+
+#beguilerSettings {
+    // Glulx: the value-class instances outgrow the Z-machine's readable memory.
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+    // split() recurses with Qty parameters and locals, each call taking frame-pool words.
+    framePoolSize = 160;
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+//-- Constants -------------------------------------------------------------------
+
+const int LOT_MAX = 8;
+const int LOG_MAX = 4;
+const int NONE = -1;
+
+enum grain { wheat, barley, oats, rye }
+
+//-- Value classes ---------------------------------------------------------------
+
+value class Qty {
+    inline int kg;
+    Qty operator = (Qty o) { kg = o.kg; return self; }
+    bool operator == (Qty o) { return kg == o.kg; }
+    bool operator != (Qty o) { return kg != o.kg; }
+    int operator <=> (Qty o) { return kg - o.kg; }
+    static int operator <=> (Qty a, Qty b) { return a.kg - b.kg; }
+    bool operator ?= (Qty o) { return gap(kg, o.kg) <= 5; }
+    Qty operator + (Qty o) { return Qty{ kg + o.kg }; }
+    Qty operator - (Qty o) { return Qty{ kg - o.kg }; }
+    Qty operator * (int n) { return Qty{ kg * n }; }
+    Qty operator / (int n) { return Qty{ kg / n }; }
+    Qty operator += (Qty o) { kg += o.kg; return self; }
+    Qty operator -= (Qty o) { kg -= o.kg; return self; }
+    Qty operator ++ () { kg++; return self; }
+    Qty operator prefix++ () { kg += 10; return self; }
+    bool operator ! () { return kg == 0; }
+    emitter eBool operator switch (int v) { $self.kg == $v }
+    explicit int operator () { return kg; }
+    static Qty of(int n) { return Qty{ n }; }
+    Qty half() { return Qty{ kg / 2 }; }
+}
+
+value class Price {
+    inline int cents;
+    Price operator = (Price o) { cents = o.cents; return self; }
+    static bool operator == (Price a, Price b) { return a.cents == b.cents; }
+    static bool operator != (Price a, Price b) { return a.cents != b.cents; }
+    static int operator <=> (Price a, Price b) { return a.cents - b.cents; }
+    Price operator * (Qty q) { return Price{ cents * (int)q }; }
+    Price operator + (Price o) { return Price{ cents + o.cents }; }
+    void into(ref stringObj s) { s += $"{cents / 100}.{cents % 100 / 10}{cents % 10}"; }
+}
+
+value class Lot {
+    inline grain kind;
+    inline Qty weight;
+    inline Price rate;
+    int bin;
+    ref Lot next;
+    Lot operator = (Lot o) {
+        kind = o.kind;
+        weight = o.weight;
+        rate = o.rate;
+        bin = o.bin;
+        return self;
+    }
+    bool operator == (Lot o) { return kind == o.kind && weight == o.weight; }
+    bool operator != (Lot o) { return !(self == o); }
+    int operator <=> (Lot o) { return weight <=> o.weight; }
+    Price worth() { return rate * weight; }
+    void into(ref stringObj s) {
+        s += grainNames[(int)kind - 1];
+        s += $" {weight.kg}kg @";
+        rate.into(s);
+    }
+}
+
+// A graded lot puts its grade ahead of the inherited positional members.
+value class Graded : Lot {
+    inline char grade;
+    Graded operator = (Graded o) {
+        (Lot)self = o;
+        grade = o.grade;
+        return self;
+    }
+}
+
+value class Span {
+    inline Qty lo;
+    inline Qty hi;
+    inline string label;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; label = o.label; return self; }
+    bool holds(Qty q) { return q >= lo && q <= hi; }
+    Qty width() { return hi - lo + Qty{ 1 }; }
+}
+
+value class Tally {
+    array<Qty> recent[LOG_MAX];
+    stringObj note;
+    int hits;
+    Tally operator = (Tally o) { recent = o.recent; note = o.note; hits = o.hits; return self; }
+    void log(Qty q) {
+        if (recent.length == LOG_MAX) recent.remove(0);
+        recent += q;
+        hits++;
+    }
+    Qty operator [] (int i) { return recent[i]; }
+    Qty sum() {
+        Qty t;
+        for (Qty q in recent) t += q;
+        return t;
+    }
+}
+
+//-- Tables ----------------------------------------------------------------------
+
+array<string> grainNames = { "wheat", "barley", "oats", "rye" };
+array<dictionaryWord> grainWords = { .wheat, .barley, .oats, .rye };
+
+// Price per kg, in cents, by grain.
+array<Price> rates = { { 12 }, { 9 }, { 7 }, { 12 } };
+
+//                   lo           hi           label
+array<Span> bands = {
+    { { 0 },   { 49 },  "small" },
+    { { 50 },  { 149 }, "medium" },
+    { { 150 }, { 999 }, "large" }
+};
+
+//                       kind          kg            rate
+array<Lot> lots[LOT_MAX] = {
+    { grain.wheat,  { 120 }, { 12 } },
+    { grain.oats,   { 40 },  { 7 } },
+    { grain.barley, { 200 }, { 9 } },
+    { grain.wheat,  { 75 },  { 12 } },
+    { grain.rye,    { 40 },  { 12 } }
+};
+
+// Ways to combine two weights, picked by number.
+array<func<Qty, Qty, Qty>> mixers = {
+    (Qty a, Qty b) => a + b,
+    (Qty a, Qty b) => a > b ? a - b : b - a,
+    (Qty a, Qty b) => heavier(a, b),
+    (Qty a, Qty b) => (a + b) / 2
+};
+array<string> mixerNames = { "sum", "difference", "heavier", "mean" };
+
+//-- Objects ---------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object depot {
+    "depot";
+    Qty stock;
+    Qty cap = Qty{ 600 };
+    Lot lastIn;
+    ref Lot pick;
+    Price takings;
+    Tally tally;
+    array<Qty> moves[LOG_MAX];
+
+    bool accept(Lot l) {
+        if (stock + l.weight > cap) return false;
+        stock += l.weight;
+        lastIn = l;
+        takings = takings + l.worth();
+        tally.log(l.weight);
+        if (moves.length == LOG_MAX) moves.remove(0);
+        moves += l.weight;
+        return true;
+    }
+}
+
+class Bin : object {
+    inline Qty cap;
+    Qty held;
+    bool fits(Qty q) { return held + q <= cap; }
+    Qty room() { return cap - held; }
+}
+
+object binRow { "bin row"; }
+
+Bin binA { { 150 }, "bin A"; parent = binRow; }
+Bin binB { { 250 }, "bin B"; parent = binRow; }
+Bin binC { { 100 }, "bin C"; parent = binRow; }
+
+class Crate[3] : object {
+    Qty load = Qty{ 5 };
+    Price paid;
+    static Qty made;
+    void create(int kg) {
+        load += Qty{ kg };
+        made += load;
+    }
+}
+
+//-- Parsing ---------------------------------------------------------------------
+
+int parseGrain() {
+    int at = grainWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at + 1;
+    return 1;
+}
+
+//-- Helpers ---------------------------------------------------------------------
+
+int gap(int a, int b) { return a > b ? a - b : b - a; }
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+Qty heavier(Qty a, Qty b) { return a > b ? a : b; }
+
+void addTo(ref Qty dst, Qty amount = Qty{ 1 }, int times = 1) {
+    for (int i in 1 to times) dst += amount;
+}
+
+Lot lotAt(int i) { return lots[i]; }
+
+void swapQty(ref Qty a, ref Qty b) {
+    Qty t = a;
+    a = b;
+    b = t;
+}
+
+Qty totalOf(array<Lot> a) {
+    Qty t = Qty.of(0);
+    for (Lot l in a) t += l.weight;
+    return t;
+}
+
+int bandOf(Qty q) {
+    for (int i in 0 to bands.length - 1)
+        if (bands[i].holds(q)) return i;
+    return NONE;
+}
+
+Qty totalBy(func<bool, Lot> keep) {
+    Qty t;
+    for (int i in 0 to lots.length - 1)
+        if (keep(lots[i])) t += lots[i].weight;
+    return t;
+}
+
+// Halves a load until each piece is no more than unit; lists the pieces as it returns.
+int split(Qty load, Qty unit, ref stringObj s) {
+    if (load <= unit) {
+        s += $" {load.kg}";
+        return 1;
+    }
+    Qty a = load.half();
+    Qty b = load - a;
+    int n = split(a, unit, s);
+    n += split(b, unit, s);
+    if (a != b) s += "*";
+    return n;
+}
+
+void lotRow(ref stringObj row, Lot l) {
+    l.into(row);
+    padTo(row, 22);
+    int b = bandOf(l.weight);
+    row += b == NONE ? "-" : bands[b].label;
+    padTo(row, 29);
+    l.worth().into(row);
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb LotsTest {
+    grammar = {.lots};
+    void handler() {
+        for (int i in 0 to lots.length - 1) {
+            stringObj row = $"{i}: ";
+            lotRow(row, lots[i]);
+            row.print();
+            print("^");
+        }
+        array<Lot> byWeight[LOT_MAX] = lots;
+        byWeight.sort();
+        stringObj line = "By weight:";
+        for (Lot l in byWeight) line += $" {l.weight.kg}";
+        line += ".";
+        line.print();
+        print("^");
+        Lot big = lots.orderBy((Lot a, Lot b) => b <=> a).first();
+        Lot small = lots.orderBy((Lot a, Lot b) => b <=> a).last();
+        print($"Heaviest {grainNames[(int)big.kind - 1]} {big.weight.kg}; lightest {small.weight.kg}; total {totalOf(lots).kg}.^");
+    }
+}
+
+verb BandsTest {
+    grammar = {.bands};
+    void handler() {
+        for (Span s in bands) {
+            int n = lots.filter((Lot l) => s.holds(l.weight)).count();
+            stringObj row = s.label;
+            padTo(row, 8);
+            row += $"{s.lo.kg}-{s.hi.kg} ({s.width().kg}): {n}";
+            row.print();
+            print("^");
+        }
+        array<Lot> banded[LOT_MAX] = lots.filter((Lot l) => bands.any((Span s) => s.holds(l.weight) && s.label == "medium"));
+        print($"Medium lots: {banded.length}, weighing {totalOf(banded).kg}.^");
+        bool allBanded = lots.all((Lot l) => bandOf(l.weight) != NONE);
+        print($"All banded: {allBanded ? "yes" : "no"}.^");
+    }
+}
+
+verb LoadTest {
+    grammar = {.load, parseGrain, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        Lot l = Lot{ (grain)g, Qty{ (int)second }, rates[g - 1] };
+        if (lots.length == lots.size) {
+            print("The table is full.^");
+            return;
+        }
+        if (!depot.accept(l)) {
+            print($"Refused: {depot.stock.kg} + {l.weight.kg} is over {depot.cap.kg}.^");
+            return;
+        }
+        lots += l;
+        stringObj row = "Loaded ";
+        depot.lastIn.into(row);
+        row += $"; stock {depot.stock.kg}, takings ";
+        depot.takings.into(row);
+        row += ".";
+        row.print();
+        print("^");
+    }
+}
+
+verb ShipTest {
+    grammar = {.ship, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= lots.length) {
+            print("No such lot.^");
+            return;
+        }
+        Lot gone = lotAt(i);
+        lots -= gone;
+        stringObj row = "Shipped ";
+        gone.into(row);
+        row += $"; {lots.length} left.";
+        row.print();
+        print("^");
+    }
+}
+
+verb MixTest {
+    grammar = {.mix, NUMBER, NUMBER};
+    void handler() {
+        int m = (int)noun;
+        int i = (int)second;
+        if (m < 1 || m > mixers.length || i < 0 || i >= lots.length - 1) {
+            print("No such mix.^");
+            return;
+        }
+        func<Qty, Qty, Qty> f = mixers[m - 1];
+        Qty a = lots[i].weight;
+        Qty r = f(a, lots[i + 1].weight);
+        if (heavier({ 3 }, b: r) == r) print("(over 3) ");
+        print($"{mixerNames[m - 1]} of {a.kg} and {lots[i + 1].weight.kg}: {r.kg} ({bands[bandOf(r)].label}).^");
+    }
+}
+
+verb SplitTest {
+    grammar = {.split, NUMBER, NUMBER};
+    void handler() {
+        stringObj s = "Pieces:";
+        int n = split({ (int)noun }, unit: { (int)second }, s: s);
+        s.print();
+        print($" ({n})^");
+    }
+}
+
+verb BinsTest {
+    grammar = {.bins};
+    void handler() {
+        for (object o in binRow.children) {
+            Bin b = (Bin)o;
+            print(b);
+            print($": {b.held.kg}/{b.cap.kg}, room {b.room().kg}.^");
+        }
+    }
+}
+
+verb FillTest {
+    grammar = {.fill};
+    void handler() {
+        for (int i in 0 to lots.length - 1) {
+            ref Lot l := lots[i];
+            for (object o in binRow.children) {
+                Bin b = (Bin)o;
+                if (l.bin == 0 && b.fits(l.weight)) {
+                    b.held += l.weight;
+                    l.bin = b == binA ? 1 : b == binB ? 2 : 3;
+                }
+            }
+        }
+        stringObj line = "Bins:";
+        for (Lot l in lots) line += $" {l.bin}";
+        line += ".";
+        line.print();
+        print("^");
+        Qty left = totalBy((Lot l) => l.bin == 0);
+        print($"Unbinned: {left.kg}kg.^");
+    }
+}
+
+verb ChainTest {
+    grammar = {.chain};
+    void handler() {
+        for (int i in 0 to lots.length - 2) lots[i].next := lots[i + 1];
+        lots[lots.length - 1].next := null;
+        ref Lot at := lots[0];
+        Qty run;
+        int n = 0;
+        stringObj line = "Chain:";
+        while (at) {
+            run += at.weight;
+            n++;
+            line += $" {run.kg}";
+            if (run > depot.cap) break;
+            at := at.next;
+        }
+        line += $" ({n} links).";
+        line.print();
+        print("^");
+    }
+}
+
+verb GradeTest {
+    grammar = {.grade, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= lots.length) {
+            print("No such lot.^");
+            return;
+        }
+        Graded g = Graded{ 'B', lots[i].kind, lots[i].weight, lots[i].rate };
+        if (g.weight > Qty{ 100 }) g.grade = 'A';
+        Graded h = g;
+        h.weight += Qty{ 5 };
+        Lot plain = h;
+        bool same = plain == lots[i];
+        bool near = plain.weight ?= lots[i].weight;
+        stringObj row = $"Grade {g.grade}: ";
+        h.into(row);
+        row += $"; same {same ? "yes" : "no"}, near {near ? "yes" : "no"}, copy grade {h.grade}.";
+        row.print();
+        print("^");
+    }
+}
+
+verb MatchTest {
+    grammar = {.match, NUMBER};
+    void handler() {
+        Qty want = Qty{ (int)noun };
+        int exact = lots.indexOf(Lot{ grain.wheat, want, rates[0] });
+        int close = NONE;
+        for (int i in 0 to lots.length - 1)
+            if (close == NONE && lots[i].weight ?= want) close = i;
+        stringObj line = $"Wheat at {want.kg}: {exact == NONE ? "none" : "lot"}";
+        if (exact != NONE) line += $" {exact}";
+        line += $"; within 5: {close}";
+        switch (want) {
+            case 40: line += "; a common size";
+            case 120: line += "; a full sack";
+            default: line += "";
+        }
+        switch (lots[0].weight) {
+            case 40: line += "; the first lot is common";
+            case 120: line += "; the first lot is a full sack";
+        }
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        if (!depot.stock) {
+            print("The depot is empty.^");
+        } else {
+            Qty room = depot.cap - depot.stock;
+            print($"Stock {depot.stock.kg} of {depot.cap.kg}, room {room.kg}, {depot.tally.hits} loads.^");
+        }
+        stringObj line = "Moves:";
+        for (Qty q in depot.moves) line += $" {(int)q}";
+        line += $"; tally sum {depot.tally.sum().kg}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb TopUpTest {
+    grammar = {.topup, NUMBER};
+    void handler() {
+        ref Qty s := depot.stock;
+        addTo(s);
+        addTo(s, Qty{ (int)noun });
+        addTo(s, times: 2);
+        addTo(s, amount: Qty{ 3 }, times: 2);
+        s++;
+        ++s;
+        print($"Stock now {depot.stock.kg}.^");
+    }
+}
+
+verb PricesTest {
+    grammar = {.prices};
+    void handler() {
+        // map() can't produce value-class elements, so the rates are gathered by a loop.
+        array<Price> seen[LOT_MAX];
+        for (Lot l in lots) seen += l.rate;
+        array<Price> uniq[LOT_MAX] = seen.distinct();
+        array<Price> sorted[LOT_MAX] = uniq.orderBy();
+        stringObj line = "Rates:";
+        for (Price p in sorted) {
+            line += " ";
+            p.into(line);
+        }
+        int at = rates.indexOf(Price{ 9 });
+        line += $"; barley's at {at}";
+        if (rates[0] == rates[3]) line += "; wheat and rye match";
+        if (rates[1] != rates[2]) line += "; barley and oats differ";
+        Price dear = rates[0] <=> rates[1] > 0 ? rates[0] : rates[1];
+        line += "; dearer ";
+        dear.into(line);
+        int sum = 0;
+        for (var c in lots.map((Lot l) => l.worth().cents)) sum += c;
+        line += $"; worth of all lots {sum / 100}.{sum % 100 / 10}{sum % 10}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb ShuffleTest {
+    grammar = {.shuffle};
+    void handler() {
+        array<Qty> ws[LOT_MAX];
+        for (Lot l in lots) ws += l.weight;
+        ws.sort(Qty::operator <=>);
+        ws.reverse();
+        ws.swap(0, ws.length - 1);
+        ws.prepend(Qty{ 1 });
+        ws.insert(2, ws.peekEnd() * 3);
+        bool has = ws.contains(Qty{ 200 });
+        ws -= Qty{ 40 };
+        stringObj line = "Weights:";
+        for (Qty q in ws) line += $" {q.kg}";
+        line += $"; had 200: {has ? "yes" : "no"}; index of 75: {ws.indexOf(Qty.of(75))}.";
+        line.print();
+        print("^");
+        array<Qty> head[LOT_MAX] = ws.skip(1).takeWhile((Qty q) => q > Qty{ 50 });
+        array<Qty> tail[LOT_MAX] = ws.skipWhile((Qty q) => q != Qty{ 75 }).take(2);
+        Qty firstBig = ws.filter((Qty q) => q >= Qty{ 100 }).first();
+        print($"Head {head.length}, tail {tail.length} from {tail.first().kg}, first big {firstBig.kg}.^");
+    }
+}
+
+verb PickTest {
+    grammar = {.pick, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= lots.length) {
+            print("No such lot.^");
+            return;
+        }
+        depot.pick := lots[i];
+        ++depot.pick.weight;
+        depot.pick.weight++;
+        Qty w = depot.pick.weight;
+        w -= Qty{ 1000 };
+        stringObj row = "Picked ";
+        lots[i].into(row);
+        row += $"; local copy {w.kg}.";
+        row.print();
+        print("^");
+    }
+}
+
+verb SameTest {
+    grammar = {.same};
+    void handler() {
+        Qty probe = lots[1].weight;
+        int n = lots.filter((Lot l) => l.weight == probe).count();
+        Lot firstLight = lots.filter((Lot l) => l.weight == probe).first();
+        bool any200 = lots.any((Lot l) => l.weight == Qty{ 200 });
+        bool allUnder = lots.all((Lot l) => l.weight < depot.cap);
+        print($"{n} at {probe.kg}kg, first {grainNames[(int)firstLight.kind - 1]}; any 200: {any200 ? "yes" : "no"}; all under cap: {allUnder ? "yes" : "no"}.^");
+    }
+}
+
+verb AuditTest {
+    grammar = {.audit};
+    void handler() {
+        Tally snap = depot.tally;
+        snap.log(Qty{ 9 });
+        snap.note = "copy";
+        depot.tally.note = "depot";
+        print($"Snap {snap.hits} loads, sum {snap.sum().kg}, {snap.note}; depot {depot.tally.hits} loads, sum {depot.tally.sum().kg}, {depot.tally.note}.^");
+        Qty acc;
+        int seen = 0;
+        bool hit = lots.any((Lot l) => {
+            acc += l.weight;
+            seen++;
+            return l.weight > Qty{ 300 };
+        });
+        print($"Walked {seen}, {acc.kg}kg before a big lot: {hit ? "yes" : "no"}.^");
+        Qty left = Qty{ 100 };
+        Qty step = lots[0].weight / 4;
+        int n = 0;
+        while (left > Qty{ 0 } && !(left < step)) {
+            left -= step;
+            n++;
+        }
+        print($"{n} steps of {step.kg}, {left.kg} left; first and third alike: {lotAt(0) == lotAt(2) ? "yes" : "no"}; next half {(depot.lastIn.weight + Qty{ 1 }).half().kg}.^");
+        ref Tally t := depot.tally;
+        t.log(heavier(step > left ? step : left, Qty{ 5 }));
+        for (int i in 0 to lots.length - 1)
+            if (!lots[i].weight) print("Empty lot.^");
+        print($"Depot tally now {depot.tally.hits}, last {depot.tally.recent.peekEnd().kg}.^");
+    }
+}
+
+verb GradesTest {
+    grammar = {.grades};
+    void handler() {
+        array<Graded> gs[LOT_MAX];
+        for (Lot l in lots) {
+            Graded g;
+            (Lot)g = l;
+            g.grade = l.weight >= Qty{ 100 } ? 'A' : 'C';
+            gs += g;
+        }
+        gs.sort();
+        stringObj line = "Graded:";
+        for (Graded g in gs) line += $" {g.grade}{g.weight.kg}";
+        line += ".";
+        line.print();
+        print("^");
+        gs[0].weight += Qty{ 1 };
+        gs[0].rate = rates[1];
+        Graded top = gs.filter((Graded g) => g.grade == 'A').last();
+        int as = gs.filter((Graded g) => g.grade == 'A').count();
+        Lot asLot = top;
+        stringObj row = $"First now {gs[0].weight.kg} @";
+        gs[0].rate.into(row);
+        row += $"; {as} grade A, top ";
+        asLot.into(row);
+        row += $"; top in table: {lots.contains(asLot) ? "yes" : "no"}.";
+        row.print();
+        print("^");
+    }
+}
+
+verb TrimTest {
+    grammar = {.trim, NUMBER};
+    void handler() {
+        int i = (int)noun;
+        if (i < 0 || i >= lots.length - 1) {
+            print("No such lot.^");
+            return;
+        }
+        addTo(lots[i].weight, Qty{ -5 });
+        swapQty(lots[i].weight, lots[i + 1].weight);
+        if (depot.moves.length > 0) addTo(depot.moves[0], times: 3);
+        int k = 0;
+        for (k = 0; k < lots.length && lots[k].weight != lots[i].weight; k++) { }
+        stringObj row = "";
+        lots[i].into(row);
+        row += " / ";
+        lots[i + 1].into(row);
+        row += $"; first of its weight at {k}; sum {(int)lots[i].weight + (int)lots[i + 1].weight}";
+        if (depot.tally.hits > 0) row += $"; tally[0] {depot.tally[0].kg}, moves[0] {depot.moves[0].kg}";
+        row += ".";
+        row.print();
+        print("^");
+    }
+}
+
+verb CratesTest {
+    grammar = {.crates};
+    void handler() {
+        Crate a = new Crate(10);
+        Crate b = new Crate(20);
+        if (a == null || b == null) {
+            print("No crates.^");
+            return;
+        }
+        a.load += b.load;
+        b.paid = rates[3] * b.load;
+        print($"Crate a {a.load.kg}, b {b.load.kg} paid {b.paid.cents}.^");
+        delete a;
+        Crate c = new Crate(1);
+        print($"Crate c {c.load.kg}, paid {c.paid.cents}; b still {b.load.kg}.^");
+        delete b;
+        delete c;
+        func<Qty, int> mk = Qty.of;
+        array<Qty> pair[3] = { mk(7), Crate.made };
+        pair += pair[0] * 2;
+        print($"Made so far {Crate.made.kg}; pair {pair[0].kg} {pair[1].kg} {pair[2].kg}, ordered max {pair.orderBy((Qty x, Qty y) => y <=> x).first().kg}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,695 @@
+#grids
+Room A
+Room A. A panel of three dials.
+You can see an A dial, a B dial, a C dial and a panel here.
+[win 1] [0] panel ready
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 - idle     [.........] t0                     |
+|B12 - idle     [.....] t0                         |
+|C135- held     [.........] t0                     |
+|count 0 total 100 class 0 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 0 | panel                           |
+> table
+Dial  Cnt  Lim  Mode     Score
+A11   0    9    idle     1
+B12   0    5    idle     1
+C135  0    9    held     1
+held 0, idle 0, counting 0; 0 counting, 1 held.
+At limit 0; open and not selected 0; selected A.
+Fill A=empty/empty B=empty/empty C=empty/empty; grand 100.
+Any held y, any idle y, any counting n.
+First counting none; first dial A; first held C.
+[w  ] [w     ] [w     ] number 40 vs 7.
+Presses 0 (panel 0); class total 0; global total 100; number 40; capacity 3.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 - idle     [.........] t0                     |
+|B12 - idle     [.....] t0                         |
+|C135- held     [.........] t0                     |
+|count 0 total 100 class 0 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 0 | panel                           |
+> push a dial
+(the A dial)
+Dial A clicks to 1.
+[win 1] [1] dial A: 1/9
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 - counting [#........] t1                     |
+|B12 - idle     [.....] t0                         |
+|C135- held     [.........] t0                     |
+|count 1 total 100 class 1 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 1 | panel                           |
+> push a
+(the A dial)
+Dial A clicks to 2.
+[win 1] [3] dial A: 2/9
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 - counting [##.......] t2                     |
+|B12 - idle     [.....] t0                         |
+|C135- held     [.........] t0                     |
+|count 2 total 100 class 2 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 2 | panel                           |
+> push b
+Dial B clicks to 1.
+[win 1] [5] dial B: 1/5
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 - counting [##.......] t3                     |
+|B12 - counting [#....] t1                         |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 3 | panel                           |
+> push c
+Dial C is held.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 - counting [##.......] t4                     |
+|B12 - counting [#....] t2                         |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 4 | panel                           |
+> open a
+(the A dial)
+You lift dial A's cover.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t5                     |
+|B12 - counting [#....] t3                         |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 5 | panel                           |
+> examine a
+(the A dial)
+Dial A reads 2 of 9 (counting); cover up (open); number 11; score 5.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t6                     |
+|B12 - counting [#....] t4                         |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p0                      |
+|                                                  |
+[grid 2]
+|Room A | turn 6 | panel                           |
+> select b
+Selected the B dial.
+[win 1] [9] select B
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t7                     |
+|B12 - counting [#....] t5                         |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 7 | panel                           |
+> limit 20
+Dial B limit 9 (asked 20, cap 9, local 20).
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t8                     |
+|B12 - counting [#........] t6                     |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 8 | panel                           |
+> limit 3
+Dial B limit 3 (asked 3, cap 9, local 3).
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t9                     |
+|B12 - counting [#..] t7                           |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 9 | panel                           |
+> unlimit
+Dial B limit 9.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t10                    |
+|B12 - counting [#........] t8                     |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 10 | panel                          |
+> limit 3
+Dial B limit 3 (asked 3, cap 9, local 3).
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t11                    |
+|B12 - counting [#..] t9                           |
+|C135- held     [.........] t0                     |
+|count 3 total 100 class 3 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 11 | panel                          |
+> push b
+Dial B clicks to 2.
+[win 1] [15] dial B: 2/3
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t12                    |
+|B12 - counting [##.] t10                          |
+|C135- held     [.........] t0                     |
+|count 4 total 100 class 4 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 12 | panel                          |
+> push b
+Dial B clicks to 3.
+[win 1] [17] dial B: 3/3
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t13                    |
+|B12 - counting [###] t11                          |
+|C135- held     [.........] t0                     |
+|count 5 total 100 class 5 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 13 | panel                          |
+> push b
+Dial B clicks to 3.
+[win 1] [19] dial B: 3/3
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t14                    |
+|B12 - counting [###] t12                          |
+|C135- held     [.........] t0                     |
+|count 6 total 100 class 6 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 14 | panel                          |
+> push b
+Dial B clicks to 3.
+[win 1] [21] dial B: 3/3
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t15                    |
+|B12 - counting [###] t13                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 15 | panel                          |
+> mark b
+Marked B3@15 (copy B3@15); 1 mark.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t16                    |
+|B12 - counting [###] t14                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 16 | panel                          |
+> mark a
+(the A dial)
+Marked A2@16 (copy A2@16); 2 marks.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t17                    |
+|B12 - counting [###] t15                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | panel                          |
+> marks
+Marks: B3@15 A2@16; first B3@15, last A2@16, together 5.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t17                    |
+|B12 - counting [###] t15                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | panel                          |
+> who a
+(the A dial)
+A: 2 vs 7 [first]
+A: 2 vs 7 (lit) [first] (A dial unlit)
+Names A,B,C of panel; twice 6, panel twice 7, dial twice 7.
+Meter 309 204 109.
+Provides count: yny; dial: yy; number: yyn; tick: yyn.
+Provides capacity: panel yes, dial no; panel capacity 4, spare 43, #define 3.
+A is unpaired; paired with the panel's dial: n; with the panel: n.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t17                    |
+|B12 - counting [###] t15                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | panel                          |
+> who b
+B: 3 vs 7
+A: 2 vs 7 (lit) [first] (A dial unlit)
+Names A,B,C of panel; twice 6, panel twice 7, dial twice 7.
+Meter 309 204 109.
+Provides count: yny; dial: yy; number: yyn; tick: yyn.
+Provides capacity: panel yes, dial no; panel capacity 4, spare 43, #define 3.
+B is unpaired; paired with the panel's dial: n; with the panel: n.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t17                    |
+|B12 - counting [###] t15                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 17 | panel                          |
+> pair b
+A dial can't pair with itself.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t18                    |
+|B12 - counting [###] t16                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p1                      |
+|                                                  |
+[grid 2]
+|Room A | turn 18 | panel                          |
+> select a
+(the A dial)
+Selected the A dial.
+[win 1] [25] select A
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t19                    |
+|B12 - counting [###] t17                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p2                      |
+|                                                  |
+[grid 2]
+|Room A | turn 19 | panel                          |
+> pair b
+Dial A is paired with B.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t20                    |
+|B12 - counting [###] t18                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p2                      |
+|                                                  |
+[grid 2]
+|Room A | turn 20 | panel                          |
+> pair a
+(the A dial)
+A dial can't pair with itself.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t21                    |
+|B12 - counting [###] t19                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p2                      |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | panel                          |
+> who a
+(the A dial)
+A: 2 vs 7 [first]
+A: 2 vs 7 (lit) [first] (A dial unlit)
+Names A,B,C of panel; twice 6, panel twice 8, dial twice 7.
+Meter 309 204 109.
+Provides count: yny; dial: yy; number: yyn; tick: yyn.
+Provides capacity: panel yes, dial no; panel capacity 4, spare 43, #define 3.
+A is paired with B; paired with the panel's dial: n; with the panel: n.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t21                    |
+|B12 - counting [###] t19                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p2                      |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | panel                          |
+> who b
+B: 3 vs 7
+A: 2 vs 7 (lit) [first] (A dial unlit)
+Names A,B,C of panel; twice 6, panel twice 8, dial twice 7.
+Meter 309 204 109.
+Provides count: yny; dial: yy; number: yyn; tick: yyn.
+Provides capacity: panel yes, dial no; panel capacity 4, spare 43, #define 3.
+B is unpaired; paired with the panel's dial: y; with the panel: n.
+[grid 1]
+|dials (sel A) n40                                 |
+|A11 o counting [##.......] t21                    |
+|B12 - counting [###] t19                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p2                      |
+|                                                  |
+[grid 2]
+|Room A | turn 21 | panel                          |
+> select b
+Selected the B dial.
+[win 1] [28] select B
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t22                    |
+|B12 - counting [###] t20                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p3                      |
+|                                                  |
+[grid 2]
+|Room A | turn 22 | panel                          |
+> pair a
+(the A dial)
+Dial B is paired with A both ways.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t23                    |
+|B12 - counting [###] t21                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p3                      |
+|                                                  |
+[grid 2]
+|Room A | turn 23 | panel                          |
+> who c
+C: 0 vs 7
+A: 2 vs 7 (lit) [first] (A dial unlit)
+Names A,B,C of panel; twice 6, panel twice 9, dial twice 7.
+Meter 309 204 109.
+Provides count: yny; dial: yy; number: yyn; tick: yyn.
+Provides capacity: panel yes, dial no; panel capacity 4, spare 43, #define 3.
+C is unpaired; paired with the panel's dial: n; with the panel: n.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t23                    |
+|B12 - counting [###] t21                          |
+|C135- held     [.........] t0                     |
+|count 7 total 100 class 7 p3                      |
+|                                                  |
+[grid 2]
+|Room A | turn 23 | panel                          |
+> release c
+Dial C is free.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t24                    |
+|B12 - counting [###] t22                          |
+|C135- idle     [.........] t0                     |
+|count 7 total 100 class 7 p3                      |
+|                                                  |
+[grid 2]
+|Room A | turn 24 | panel                          |
+> push c
+Dial C clicks to 1.
+[win 1] [32] dial C: 1/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [##.......] t25                    |
+|B12 - counting [###] t23                          |
+|C13*5- counting [#........] t1                    |
+|count 8 total 100 class 8 p3                      |
+|                                                  |
+[grid 2]
+|Room A | turn 25 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 3.
+[win 1] [34] dial A: 3/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [###......] t26                    |
+|B12 - counting [###] t24                          |
+|C13*5- counting [#........] t2                    |
+|count 9 total 100 class 9 p3                      |
+|                                                  |
+[grid 2]
+|Room A | turn 26 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 4.
+[win 1] [36] dial A: 4/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [####.....] t27                    |
+|B12 - counting [###] t25                          |
+|C13*5- counting [#........] t3                    |
+|count 10 total 100 class 10 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 27 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 5.
+[win 1] [38] dial A: 5/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#####....] t28                    |
+|B12 - counting [###] t26                          |
+|C13*5- counting [#........] t4                    |
+|count 11 total 100 class 11 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 28 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 6.
+[win 1] [40] dial A: 6/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [######...] t29                    |
+|B12 - counting [###] t27                          |
+|C13*5- counting [#........] t5                    |
+|count 12 total 100 class 12 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 29 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 7.
+[win 1] [42] dial A: 7/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#######..] t30                    |
+|B12 - counting [###] t28                          |
+|C13*5- counting [#........] t6                    |
+|count 13 total 100 class 13 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 30 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 8.
+[win 1] [44] dial A: 8/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [########.] t31                    |
+|B12 - counting [###] t29                          |
+|C13*5- counting [#........] t7                    |
+|count 14 total 100 class 14 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 31 | panel                          |
+> push a
+(the A dial)
+Dial A clicks to 9.
+[win 1] [46] dial A: 9/9
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> stamp a
+(the A dial)
+A row 1 at Room A: 32 of 32 turns, score 19 vs 0, clicks 9 of 47; light yes/yes
+Stamp 32/32; 32/32.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> stamp c
+C row 3 at Room A: 8 of 32 turns, score 3 vs 0, clicks 1 of 47; light no/yes
+Stamp 8/32; 32/32.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> table
+Dial  Cnt  Lim  Mode     Score
+A11   9    9    counting 19
+B12   3    3    counting 7
+C13*5 1    9    counting 3
+held 0, idle 0, counting 13; 3 counting, 0 held.
+At limit 2; open and not selected 1; selected B.
+Fill A=brim/brim B=full/full C=part/part; grand 15100.
+Any held n, any idle n, any counting y.
+First counting A; first dial A; first held none.
+[w  ] [w     ] [w     ] number 40 vs 7.
+Presses 15 (panel 3); class total 15; global total 100; number 40; capacity 3.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> taller
+Grid height 7 (rows 6, global 7).
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> taller
+Grid height 8 (rows 6, global 8).
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+|                                                  |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> taller
+The grid stays at 8.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+|                                                  |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> shorter
+Grid height 7 (rows 6, global 7).
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> links
+Links: reset fill
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> stamp b
+B row 2 at Room A: 30 of 32 turns, score 7 vs 0, clicks 5 of 47; light no/yes
+Stamp 30/32; 32/32.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [#########] t32                    |
+|B12 - counting [###] t30                          |
+|C13*5- counting [#........] t8                    |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> unclick
+Cleared: 0/9 0/9 0/9; clicks 0 0 0; ticks 47; height 6.
+[win 1] [47] + clicks cleared
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [.........] t32                    |
+|B12 - counting [.........] t30                    |
+|C135- counting [.........] t8                     |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> stamp b
+B row 2 at Room A: 30 of 32 turns, score 1 vs 0, clicks 0 of 47; light no/yes
+Stamp 30/32; 32/32.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [.........] t32                    |
+|B12 - counting [.........] t30                    |
+|C135- counting [.........] t8                     |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> table
+Dial  Cnt  Lim  Mode     Score
+A11   0    9    counting 1
+B12   0    9    counting 1
+C135  0    9    counting 1
+held 0, idle 0, counting 0; 3 counting, 0 held.
+At limit 0; open and not selected 1; selected B.
+Fill A=empty/empty B=empty/empty C=empty/empty; grand 15100.
+Any held n, any idle n, any counting y.
+First counting A; first dial A; first held none.
+[w  ] [w     ] [w     ] number 40 vs 7.
+Presses 15 (panel 3); class total 15; global total 100; number 40; capacity 3.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [.........] t32                    |
+|B12 - counting [.........] t30                    |
+|C135- counting [.........] t8                     |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 32 | panel                          |
+> x b
+Dial B reads 0 of 9 (counting); cover down (shut); number 12; score 1.
+[grid 1]
+|dials (sel B) n40                                 |
+|A11 o counting [.........] t33                    |
+|B12 - counting [.........] t31                    |
+|C135- counting [.........] t9                     |
+|count 15 total 100 class 15 p3                    |
+|                                                  |
+[grid 2]
+|Room A | turn 33 | panel                          |

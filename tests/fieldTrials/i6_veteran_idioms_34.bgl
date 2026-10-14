@@ -1,0 +1,639 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5 whose routines, methods and operators are overloaded
+// almost everywhere. Global overload sets chosen by argument type (int, string, enum, a value class,
+// a class, its subclass, object, stringObj against string, var as the last resort, a class with an
+// implicit conversion to int), by arity with defaults (`Weigh(c)`, `Weigh(c, d)`, `Weigh(c, 2,
+// round: true)`) and by a named argument only one overload has (`Mark(label: …)` against
+// `Mark(amount: …)`); a `replace` of one member of an overload set calling `replaced()`; overloads
+// taking `ref` value-class parameters, given globals and global array elements; overloaded methods on
+// a class hierarchy (inherited overloads still callable on the subclass, a subclass adding one and
+// replacing one, ancestor dispatch through a cast), static overloaded methods chosen by type and
+// arity, an `extend class` adding an overload and replacing another; overloaded object methods
+// reached through `#using` and through the object, in `?.` chains with named arguments; a value
+// class with overloaded `=`, `+`, `-`, `+=`, `-=`, `==`, `!=`, `<=>`, postfix `++` and `prefix++`
+// taking itself, int and a class; instance `==`, `!=`, `<=>`, `+` on a reference class hierarchy with
+// a subclass replacing one overload; static `==` and `<=>` on that class referenced as func values
+// (`Coin::operator <=>`, `Coin::operator ==(int)`, `Coin::operator ==(Coin)`) and passed to `sort`;
+// derived `<`/`>` from `<=>`; `indexOf`/`contains` consulting `==`; overloaded calls in conditions,
+// returns, interpolation, lambdas, loops and `switch`; native Assay, Pay, Compare, Strike and Spend
+// verbs and meta Tally and Ledger verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int NDRAW = 4;
+const int NPURSE = 4;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- the scales, used bare below
+
+object scales {
+    short_name = "pair of scales";
+    name = {.scales, .pair, .balance};
+    parent = countingRoom;
+    int uses;
+    int Balance(Coin a, Coin b) {
+        uses++;
+        return Sign(a.grains - b.grains);
+    }
+    int Balance(Pence p, int n) {
+        uses++;
+        return Sign(p.d - n);
+    }
+    int Balance(int a, int b) {
+        uses++;
+        return Sign(a - b);
+    }
+    void Note(int n)       { print($"<n {n}>"); }
+    void Note(string s)    { print($"<s {s}>"); }
+    void Note(Coin c)      { print($"<c {c.mark}>"); }
+    void Note(Coin c, bool brief = true) { if (brief) print($"<c* {c.mark}>"); else print($"<c* {c.mark} {c.worth}d>"); }
+    void description() {
+        print($"A brass balance, used {uses} times.^");
+    }
+    attributes = {static};
+}
+
+#using scales
+
+// ---------------------------------------------------------------- globals
+
+Pence till;
+Pence lastPaid;
+array<Pence> drawer[NDRAW];
+array<Coin> purse = {coinA, coinB, coinC, coinD};
+int paidCount;
+
+// ---------------------------------------------------------------- overloaded routines
+
+int Sign(int n) {
+    if (n < 0) return -1;
+    if (n > 0) return 1;
+    return 0;
+}
+
+void Say(int n)       { print($"#{n}"); }
+void Say(string s)    { print($"'{s}'"); }
+void Say(Pence p)     { print($"{p.d}d"); }
+void Say(Coin c)      { print($"coin {c.mark}"); }
+void Say(Token t)     { print($"token {t.mark}"); }
+void Say(object o)    { print($"thing {o.short_name}"); }
+void Say(eMetal m) {
+    switch (m) {
+        case copper: print("copper");
+        case silver: print("silver");
+        case gold:   print("gold");
+        case brass:  print("brass");
+    }
+}
+
+replace void Say(Pence p) {
+    print("[");
+    replaced(p);
+    print("]");
+}
+
+void Label(string s)   { print($"lit:{s}"); }
+void Label(stringObj s) { print($"obj:{s}({s.length})"); }
+
+void Jot(Pence p)  { print($"pence {p.d}"); }
+void Jot(var v)    { print($"word {v}"); }
+
+int Cost(int n)    { return n * 2; }
+int Cost(string s) { return 0; }
+
+int Weigh(Coin c) {
+    return c.grains;
+}
+
+int Weigh(Coin c, Coin d) {
+    return c.grains + d.grains;
+}
+
+int Weigh(Coin c, int times, bool round = false) {
+    int w = c.grains * times;
+    if (round) w = (w / 10) * 10;
+    return w;
+}
+
+void Mark(int amount, bool loud = false) {
+    if (loud) print($"AMOUNT {amount}");
+    else print($"amount {amount}");
+}
+
+void Mark(string label, bool loud = false) {
+    if (loud) print($"LABEL {label}");
+    else print($"label {label}");
+}
+
+void Add(ref Pence p, int n) {
+    p.d = p.d + n;
+}
+
+void Add(ref Pence p, Pence q) {
+    p += q;
+}
+
+void Add(ref Pence p, Coin c) {
+    p += c;
+}
+
+Pence Total(Pence a, Pence b) {
+    Pence r = a + b;
+    return r;
+}
+
+Pence Total(Pence a, int n) {
+    Pence r = a;
+    r += n;
+    return r;
+}
+
+bool Initialise() {
+    location = countingRoom;
+    rfalse;
+}
+
+bool Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+    rtrue;
+}
+
+int ByWorthDown(Coin a, Coin b) {
+    return Sign(b <=> a);
+}
+
+void ShowPurse() {
+    for (int i = 0; i < purse.length; i++) {
+        if (i > 0) print(" ");
+        Say(purse[i]);
+    }
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Assay {
+    grammar = {.assay, NOUN};
+    void handler() {
+        if (noun.is(Token)) {
+            Token t = (Token)noun;
+            Say(t);
+            print(", as coin ");
+            Say((Coin)t);
+            print($", value {t.Value()} or {t.Value(3)} for three, as coin {((Coin)t).Value()}, tag ");
+            print(t.Value("tag"));
+            print(", metal ");
+            Say(t.metal);
+            if (t == 6) print(", equals six");
+            if (((Coin)t) == 6) print(", as coin equals six");
+            if (t != 6) print(", differs from six");
+            print($", plus one {t + 1}, pick ");
+            Say(t.paid ? (Coin)t : coinA);
+            print(".^");
+            return;
+        }
+        if (noun.is(Coin)) {
+            Coin c = (Coin)noun;
+            Say(c);
+            print($": {Weigh(c)} grains, {Weigh(c, 3)} for three, {Weigh(c, 3, round: true)} rounded, {Weigh(c, times: 2)} for two");
+            print(", metal ");
+            Say(c.metal);
+            print($", worth {c.Value()}");
+            if (c == 6) print(" (sixpence)");
+            if (c != 1) print(" (not a penny)");
+            print(".^");
+            return;
+        }
+        if (noun.is(Ingot)) {
+            Ingot g = (Ingot)noun;
+            print($"{cThe(noun)} costs {Cost(g)} at {Cost("lead")} for the word.^");
+            return;
+        }
+        Say(noun);
+        print(" is not money.^");
+    }
+}
+
+verb Pay {
+    grammar = {.pay, NOUN};
+    void handler() {
+        if (!noun.is(Coin)) {
+            print("Only coins are paid in.^");
+            return;
+        }
+        Coin c = (Coin)noun;
+        if (c.paid) {
+            print("That coin is already in the till.^");
+            return;
+        }
+        if (c.is(Token)) {
+            if (c == 6) print("The till takes the token as a sixpence.^");
+            else print("The till refuses the token.^");
+            return;
+        }
+        c.paid = true;
+        lastPaid = c;
+        till += c;
+        if (drawer.length < NDRAW) {
+            drawer += lastPaid;
+            Add(drawer[drawer.length - 1], 0);
+        }
+        paidCount++;
+        print("Paid in: ");
+        Say(lastPaid);
+        print(", till ");
+        Say(till);
+        print(".^");
+        if (till > 240 && till <=> 250 <= 0) print("The till is near a pound.^");
+        if (paidCount == 2 || c.metal == gold) Award();
+    }
+}
+
+verb Compare {
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(Coin) || !second.is(Coin)) {
+            print("Compare two coins.^");
+            return;
+        }
+        Coin a = (Coin)noun;
+        Coin b = (Coin)second;
+        func<int, Coin, Coin> cmp = Coin::operator <=>;
+        func<bool, Coin, Coin> same = Coin::operator ==(Coin);
+        print($"{a.mark} vs {b.mark}: ");
+        if (a == b) print("equal");
+        else if (a < b) print("less");
+        else if (a > b) print("more");
+        else print("unequal");
+        print($", <=> {Sign(a <=> b)}, static {Sign(cmp(a, b))}, same {same(a, b)}");
+        print($", sum {a + b}, plus one {a + 1}");
+        print($", together {Weigh(a, b)} grains, balance {Balance(a, b)}");
+        if (a != b) print(", differ");
+        print(", note ");
+        Note(a);
+        Note(b, false);
+        Note(b, brief: true);
+        print(".^");
+    }
+}
+
+verb Strike {
+    grammar = {.strike, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Coin)) {
+            print("Only coins are struck.^");
+            return;
+        }
+        int n = (int)second;
+        Coin c = (Coin)noun;
+        switch (n) {
+            case 1:  c.Stamp(1900);
+            case 2:  c.Stamp("crown");
+            case 3:  c.Stamp(gold);
+            case 4:  c.Stamp(till);
+            default: Coin.Find(c.mark)?.Stamp(by: "mint");
+        }
+        print($"Struck {c.mark}: {c.Struck()}.^");
+    }
+}
+
+verb Spend {
+    grammar = {.spend, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (till < n) {
+            print($"The till holds only {till.d}d.^");
+            return;
+        }
+        till -= n;
+        Pence left = Total(till, 0);
+        Pence back = Total(left, till);
+        print($"Spent {n}d; ");
+        Say(left);
+        print(" left, doubled ");
+        Say(back);
+        print(".^");
+    }
+}
+
+verb Seek {
+    grammar = {.seek, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        Coin c = Coin.Find(n);
+        if (!c?) c = Coin.Find(n, silver);
+        if (!c? && n >= 1 && n <= 4) c = Coin.Find((eMetal)n);
+        print($"Seek {n}: ");
+        if (!c?) {
+            print("nothing.^");
+            return;
+        }
+        Say(c);
+        print($", value {c?.Value()}, twice {c?.Value(2)}, as coin {((Coin)c).Value()}");
+        int total = 0;
+        int m = 11;
+        while (Coin.Find(m)?) {
+            total += Coin.Find(m).Value();
+            m++;
+        }
+        print($", marks 11 to {m - 1} worth {total}");
+        print($", heavier than the penny {Balance(c, coinA) > 0}, note ");
+        Coin.Find(c.mark)?.Note(brief: false);
+        c.Note(2);
+        Coin.Find(c.metal)?.Note(brief: true, times: 1);
+        print(".^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print("Purse: ");
+        ShowPurse();
+        purse.sort();
+        print(". Sorted: ");
+        ShowPurse();
+        purse.sort(ByWorthDown);
+        print(". Down: ");
+        ShowPurse();
+        purse.sort(Coin::operator <=>);
+        print(". Up: ");
+        ShowPurse();
+        purse.sort((Coin a, Coin b) => Sign(b.grains - a.grains));
+        print(". Heavy first: ");
+        ShowPurse();
+        print($". Sixpence at {purse.indexOf(coinD)}, token in purse {purse.contains(tokenA)}");
+        func<bool, Coin, int> worth = Coin::operator ==(int);
+        int n = 0;
+        for (Coin c in purse) {
+            if (worth(c, 6)) n++;
+        }
+        print($", {n} worth sixpence");
+        func<int, Coin> w = (Coin c) => Weigh(c, 2);
+        print($", sovereign twice {w(coinC)}");
+        print(". Marks: ");
+        Mark(4);
+        print(", ");
+        Mark("four");
+        print(", ");
+        Mark(amount: 5, loud: true);
+        print(", ");
+        Mark(loud: true, label: "five");
+        print(", ");
+        Mark(label: "six");
+        print(". Labels: ");
+        stringObj so = "bag";
+        so += '!';
+        Label("bag");
+        print(" ");
+        Label(so);
+        print(". Logs: ");
+        Jot(till);
+        print(" ");
+        Jot(gold);
+        print(". Notes: ");
+        Note(3);
+        Note("x");
+        Note(coinA);
+        scales.Note(coinB);
+        print(".^");
+    }
+}
+
+verb Ledger {
+    grammar = {.ledger};
+    meta = true;
+    void handler() {
+        print("Till ");
+        Say(till);
+        print(", last ");
+        Say(lastPaid);
+        print(", drawer");
+        if (drawer.length == 0) print(" empty");
+        for (int i = 0; i < drawer.length; i++) {
+            print(" ");
+            Say(drawer[i]);
+        }
+        Pence six;
+        six = 6;
+        func<bool, Pence, Pence> eq = Pence::operator ==;
+        print($". Sixpence at {drawer.indexOf(six)}, first is six {drawer.length > 0 && eq(drawer[0], six)}");
+        if (till == lastPaid) print(", till is the last coin");
+        if (till != 0) print(", till not empty");
+        if (lastPaid == six) print(", last was sixpence");
+        print($", balance till/240 {Balance(till, 240)}, ints {Balance(3, 7)}, used {scales.uses}");
+        Pence p = till;
+        p++;
+        print(", plus a penny ");
+        Say(p);
+        ++p;
+        print(", plus a shilling ");
+        Say(p);
+        p -= 13;
+        Add(p, coinA);
+        Add(p, six);
+        Add(p, 2);
+        print(", adjusted ");
+        Say(p);
+        print($", paid {paidCount}, score {score}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+// ---------------------------------------------------------------- rooms
+
+object countingRoom {
+    short_name = "Room A";
+    description = "Room A. A counting table stands here.";
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- money
+
+Coin coinA {
+    short_name = "copper penny";
+    name = {.copper, .penny, .coin};
+    parent = countingRoom;
+    worth = 1;
+    mark = 11;
+    grains = 145;
+    metal = copper;
+}
+
+Coin coinB {
+    short_name = "silver sixpence";
+    name = {.silver, .sixpence, .coin, .first};
+    parent = countingRoom;
+    worth = 6;
+    mark = 12;
+    grains = 43;
+    metal = silver;
+}
+
+Coin coinC {
+    short_name = "gold sovereign";
+    name = {.gold, .sovereign, .coin};
+    parent = countingRoom;
+    worth = 240;
+    mark = 13;
+    grains = 123;
+    metal = gold;
+}
+
+Coin coinD {
+    short_name = "worn sixpence";
+    name = {.worn, .sixpence, .coin};
+    parent = countingRoom;
+    worth = 6;
+    mark = 14;
+    grains = 40;
+    metal = silver;
+}
+
+Token tokenA {
+    short_name = "brass token";
+    name = {.brass, .token, .coin};
+    parent = countingRoom;
+    worth = 6;
+    mark = 15;
+    grains = 60;
+    metal = brass;
+}
+
+Ingot ingotA {
+    short_name = "lead ingot";
+    name = {.lead, .ingot};
+    parent = countingRoom;
+    grains = 900;
+}
+
+// ---------------------------------------------------------------- classes
+
+enum eMetal { copper, silver, gold, brass }
+
+class Item : object {
+    int grains;
+}
+
+class Coin : Item {
+    int worth;
+    int mark;
+    eMetal metal;
+    bool paid;
+    int year;
+    string by;
+
+    static Coin Find(int mark) {
+        for (Coin c in purse) {
+            if (c.mark == mark) return c;
+        }
+        if (tokenA.mark == mark) return tokenA;
+        return null;
+    }
+    static Coin Find(eMetal m) {
+        for (Coin c in purse) {
+            if (c.metal == m) return c;
+        }
+        return null;
+    }
+    static Coin Find(int worth, eMetal m) {
+        for (Coin c in purse) {
+            if (c.worth == worth && c.metal == m) return c;
+        }
+        return null;
+    }
+
+    default int Value() { return worth; }
+    int Value(int count) { return Value() * count; }
+
+    void Note(bool brief = true) { scales.Note(self, brief); }
+    void Note(int times, bool brief = true) {
+        for (int i = 0; i < times; i++) Note(brief: brief);
+    }
+
+    void Stamp(int y)      { year = y; }
+    void Stamp(string by)  { self.by = by; }
+    void Stamp(eMetal m)   { metal = m; }
+
+    string Struck() {
+        if (year > 0 && by?) return "dated and signed";
+        if (year > 0) return "dated";
+        if (by?) return "signed";
+        return "plain";
+    }
+
+    bool operator == (Coin o) { return worth == o.worth && metal == o.metal; }
+    bool operator != (Coin o) { return !(self == o); }
+    bool operator == (int n)  { return worth == n; }
+    bool operator != (int n)  { return worth != n; }
+    int operator <=> (Coin o) { return Sign(worth - o.worth); }
+    int operator + (Coin o)   { return worth + o.worth; }
+    int operator + (int n)    { return worth + n; }
+
+    static bool operator == (Coin a, Coin b) { return a.worth == b.worth && a.metal == b.metal; }
+    static bool operator == (Coin a, int n)  { return a.worth == n; }
+    static int operator <=> (Coin a, Coin b) { return Sign(a.worth - b.worth); }
+}
+
+class Token : Coin {
+    replace int Value() { return 0; }
+    string Value(string what) { return "brass"; }
+    replace bool operator == (int n) { return false; }
+    replace bool operator != (int n) { return true; }
+}
+
+class Ingot : Item {
+    int operator () { return grains / 100; }
+}
+
+extend class Coin {
+    void Stamp(Pence p) { year = 1800 + p.d; }
+    replace void Stamp(eMetal m) {
+        metal = m;
+        year = 1;
+    }
+}
+
+// ---------------------------------------------------------------- value class
+
+value class Pence {
+    int d;
+    Pence operator = (Pence o) { d = o.d; return self; }
+    Pence operator = (int n)   { d = n; return self; }
+    Pence operator = (Coin c)  { d = c.worth; return self; }
+    Pence operator + (Pence o) { Pence r; r.d = d + o.d; return r; }
+    Pence operator + (int n)   { Pence r; r.d = d + n; return r; }
+    Pence operator - (Pence o) { Pence r; r.d = d - o.d; return r; }
+    Pence operator += (Pence o) { d = d + o.d; return self; }
+    Pence operator += (int n)   { d = d + n; return self; }
+    Pence operator += (Coin c)  { d = d + c.worth; return self; }
+    Pence operator -= (int n)   { d = d - n; return self; }
+    bool operator == (Pence o) { return d == o.d; }
+    bool operator == (int n)   { return d == n; }
+    bool operator != (Pence o) { return d != o.d; }
+    bool operator != (int n)   { return d != n; }
+    int operator <=> (Pence o) { return Sign(d - o.d); }
+    int operator <=> (int n)   { return Sign(d - n); }
+    Pence operator ++ ()       { d = d + 1; return self; }
+    Pence operator prefix++ () { d = d + 12; return self; }
+    static bool operator == (Pence a, Pence b) { return a.d == b.d; }
+}
