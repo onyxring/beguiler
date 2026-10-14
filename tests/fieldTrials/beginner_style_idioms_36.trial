@@ -1,0 +1,101 @@
+Room A
+> counter
+== TICKETS ==
+== ROW B ==
+Holder: nobody. Holder or desk: desk. Last code: none.
+(no holder)
+Who: nobody (6), sign OPEN#.
+A: A-07 for Ann. B: B-12 for Bob.
+Tagged: AA-07 BB-12. Last name: Bob (B-12). Made: 2.
+Sizes: none, a pair, a few. Suffixes: 1st 2nd 3rd 11th 22nd.
+> print
+1st: A-04 2nd: A-08L 3rd: A-12+ 4th: B-04 5th: B-08R 6th: B-12
+Last: B-12, shorter of first two: a-04, of B1 and the last: b-.
+First letters: AB, code of A: 65.
+> write
+Before: desk: you. desk: Cy. hi: you!.
+After: desk: Dee. desk: Dee-.
+A: C-03 for Dee. B: D-21 for Eve Ray. Last name: Eve Ray (D-21).
+Safe B: Eve-Ray. Safe code: D-21.
+Both: Dee & Eve Ray. Same? no. Same any case? yes.
+Lower A: dee, cmp to B 1, ignoring case -1.
+Fixed: Dee.
+> clip
+A: C-03., B: D-21*..
+C-03. for Dee, punched 1
+D-21*. for Eve Ray, punched 2.
+Marks: ***##-.
+Ticks: xoxoxox (7).
+Twice: babababab.
+Codes: ABCDEz.
+> roll
+Roll: A-04 A-08L A-12+ B-04 B-08R B-12
+Backwards: B-12 .. A-04.
+Forwards: A-04 .. B-12.
+With L or R: 2. Any plus: true. First B: B-04. Where: 3.
+Seen: 4L+4R2. All short: true.
+<b-12><b-08r><b-04><a-12+><a-08l><a-04>
+Now: #B-12, 6 on the roll, has A-04: false.
+> codes
+Boxes: the spare box, the desk box, no box, the short box, the long box.
+c is the spare word.
+c comes after desk.
+Order: 1 -1 0.
+Short: <ab> <spa>  - too long.
+Wrap: (((A-1))) [(((A-1)))] <<B>>.
+Count down: 12th 11th 10th 9th 8th 7th 6th 5th 4th 3rd 2nd 1st.
+Split: A|B|C|D|E|F|G, B|-|1|2.
+> tear
+[CDee:1] [DEve:2] [CDee!:3] copy [CDee?:1].
+Second: DEVEe (5), first letter D.
+> spin
+Spin 1: kept [ADG999], total 220.
+Log: log: p6 t3 s1.
+> spin
+Spin 2: kept [ADG999], total 220.
+Log: log: p6 t3 s1 s2.
+> odds
+|OPEN 4|
+|CD|
+|1st|
+|2nd|
+|3rd!|
+Sign: OPEN#2.
+Through a ref: [OPEN#2]#.
+Pick: spare, spare5.
+Ab: abcbc, upper ABCBC, reversed cbcba, all b: aBcBc.
+Gap: x-y-z and x- y z and x z.
+Starts with x: true, at z: 4, empty: false.
+No holder: nobody / -.
+No fallback: someone.
+> counter
+== TICKETS ==
+== ROW B ==
+Holder: nobody. Holder or desk: desk. Last code: B-12.
+(no holder)
+Who: nobody (6), sign [OPEN#2]##.
+A: C-03. for Dee, punched 1. B: D-21*. for Eve Ray, punched 2.
+Tagged: DC-03. ED-21*.. Last name: Eve Ray (D-21). Made: 4.
+Sizes: none, a pair, a few. Suffixes: 1st 2nd 3rd 11th 22nd.
+> more
+R: B-12. Holder word: spare, x.
+B-12
+Switch: the spare word.
+Last code is on row B.
+Grow: abaaaaaaa. Mixed: ab-aa!. Front: <ab-aa!>.
+short grow
+aba
+Same both ways: true false true true.
+Rows: A1-A2-A3/B1-B2-B3/C1-C2-C3/A1.A2/.
+Last name now: >Eve Ray (D-21)DE.
+Heard: [C-03.:3 and 8], inner: [D-21*.:7].
+Loud: EVE RAY! AB!. Short: true false.
+Roll: #B-12? A-08L/6. Stub: [CDee+1:1].
+Format: A! then B-.
+> edges
+Pick: B-12, edge, none.
+Turns: 31edgeac.
+Self: aabyesaa.
+Echo: xeeeeeeee, Beee. Stand-in: (blank), w, B-12.
+Marked: A-12+!!, >Eve Ray (D-21)DE<, DEVEe%%.
+Sum: 220.

@@ -1,0 +1,740 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a palette of colors drawn in a text grid split above the main window, with a text-buffer
+// log split below, where nearly every value is a value class. A value class Rgb (positional inline
+// members, copy operator, instance and static `==`, `!=`, a static `<=>` with derived `<` and `>`,
+// `+` of an Rgb, `-` of an int, `+=` overloaded on Rgb and int, methods returning int, stringObj and
+// Rgb, a method copying `self` into a local); a value subclass Tint adding an alpha, chaining its copy
+// operator through `(Rgb)self = o`, positional order subclass first, passed where an Rgb is wanted; a
+// value class Swatch owning an Rgb, holding a `ref Rgb` member bound with `:=`, tested unbound with `!`,
+// and a member array of Rgb copied whole by its copy operator. Rgb as globals (inline and bare-brace
+// initializers), a global array with explicit, bare-brace and named-member elements, a sized array, an
+// array of arrays (a table, iterated by row and written by `[i][j]`), an array of Swatch; as owned
+// members of a reference class (an inline initializer in the class, a positional one and a bare-brace
+// one in object bodies, a Tint member), a member array of Rgb with remove/append, a static Rgb member
+// and a `ref Rgb` member bound to a global array element; as an object member array with initial
+// elements. Parameters (copies changed locally), `ref` parameters (swap through a temporary, an array
+// element passed by ref), `ref` locals bound and rebound, default arguments of int and of an Rgb inline
+// value, named arguments; returns of locals, parameters, `?:` results, array elements and recursive
+// results; comparisons with inline values, call results and elements; values in conditions and
+// loops; a run-time inline value per call; <linq> filter, orderBy by `Rgb::operator <=>` and by a
+// lambda, first, last, any and all with a lambda capturing an Rgb local, count, distinct, take, map;
+// <array> sort, indexOf, contains, removeValue, `-=` of an inline value, insert, prepend, clear and
+// list assignment; a func<Rgb, Rgb> and a func<bool, Rgb> lambda. An Rgb global declared in object form
+// and one by `=`, stored into and searched for in a sized array given elements by `extend … inject`
+// (bare-brace and typed); `ref` locals bound to array elements and rebound; recursion through a `ref`
+// parameter and through a value-class accumulator; element member writes through `[i][j]`, an object's
+// member array and a reference-class member array. A replaced DrawStatusLine redraws the grid.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GRID_ROWS 8
+#define LOG_LINES 4
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+
+extend extern class object {
+    string description;
+}
+
+const int MIX_MAX = 4;
+const int PAST_MAX = 3;
+
+// ---- helpers ------------------------------------------------------------------------------------------
+
+int clamp(int v) {
+    if (v < 0) return 0;
+    if (v > 255) return 255;
+    return v;
+}
+
+char hexDigit(int n) {
+    if (n < 10) return '0' + n;
+    return 'A' + (n - 10);
+}
+
+// ---- the value classes ----------------------------------------------------------------------------------
+
+value class Rgb {
+    inline int r;
+    inline int g;
+    inline int b;
+
+    Rgb operator = (Rgb o) { r = o.r; g = o.g; b = o.b; return self; }
+
+    bool operator == (Rgb o) { return r == o.r && g == o.g && b == o.b; }
+    bool operator != (Rgb o) { return r != o.r || g != o.g || b != o.b; }
+    static bool operator == (Rgb x, Rgb y) { return x.r == y.r && x.g == y.g && x.b == y.b; }
+    static int operator <=> (Rgb x, Rgb y) { return x.lum() - y.lum(); }
+
+    Rgb operator + (Rgb o) {
+        Rgb out;
+        out.r = clamp(r + o.r);
+        out.g = clamp(g + o.g);
+        out.b = clamp(b + o.b);
+        return out;
+    }
+
+    Rgb operator - (int by) {
+        Rgb out = self;
+        out += -by;
+        return out;
+    }
+
+    Rgb operator += (Rgb o) {
+        r = clamp(r + o.r);
+        g = clamp(g + o.g);
+        b = clamp(b + o.b);
+        return self;
+    }
+
+    Rgb operator += (int by) {
+        r = clamp(r + by);
+        g = clamp(g + by);
+        b = clamp(b + by);
+        return self;
+    }
+
+    int lum() { return (r * 3 + g * 6 + b) / 10; }
+
+    Rgb inverted() {
+        Rgb out = { 255 - r, 255 - g, 255 - b };
+        return out;
+    }
+
+    stringObj hex() {
+        stringObj s = "#";
+        s += hexDigit(r / 16);
+        s += hexDigit(r % 16);
+        s += hexDigit(g / 16);
+        s += hexDigit(g % 16);
+        s += hexDigit(b / 16);
+        s += hexDigit(b % 16);
+        return s;
+    }
+}
+
+value class Tint : Rgb {
+    inline int alpha;
+
+    Tint operator = (Tint o) {
+        alpha = o.alpha;
+        (Rgb)self = o;
+        return self;
+    }
+
+    Rgb over(Rgb back) {
+        Rgb out;
+        out.r = (r * alpha + back.r * (100 - alpha)) / 100;
+        out.g = (g * alpha + back.g * (100 - alpha)) / 100;
+        out.b = (b * alpha + back.b * (100 - alpha)) / 100;
+        return out;
+    }
+}
+
+value class Swatch {
+    string label = "card";
+    Rgb base;
+    ref Rgb against;
+    array<Rgb> steps[3];
+
+    Swatch operator = (Swatch o) {
+        label = o.label;
+        base = o.base;
+        against := o.against;
+        steps = o.steps;
+        return self;
+    }
+
+    bool operator == (Swatch o) { return base == o.base; }
+    bool operator != (Swatch o) { return base != o.base; }
+
+    void build() {
+        steps.clear();
+        for (int i = 0; i < 3; i++) steps.append(base - i * 60);
+    }
+
+    int contrast() {
+        if (!against) return 0;
+        int d = base.lum() - against.lum();
+        return d < 0 ? -d : d;
+    }
+}
+
+// ---- values held globally -------------------------------------------------------------------------------
+
+Rgb paper = Rgb{ 240, 240, 224 };
+Rgb ink = { 16, 16, 32 };
+Rgb lastMix;
+Tint wash = Tint{ 50, 255, 255, 0 };
+
+array<Rgb> palette = {
+    Rgb{ 255, 0, 0 },
+    { 0, 255, 0 },
+    { 0, 0, 255 },
+    Rgb{ 255, 255, 0 },
+    Rgb{ r = 128; g = 128; b = 128; },
+};
+
+array<Rgb> mixes[MIX_MAX];
+
+array<array<Rgb>> ramps = {
+    { Rgb{ 0, 0, 0 }, Rgb{ 128, 128, 128 }, Rgb{ 255, 255, 255 } },
+    { Rgb{ 64, 0, 0 }, Rgb{ 192, 0, 0 } },
+};
+
+array<Swatch> cards[3];
+
+Rgb chalk { 250, 250, 250; }
+Rgb soot = Rgb{ 20, 20, 20 };
+
+array<Rgb> edges[6] = { chalk, soot };
+
+extend edges {
+    inject { 128, 0, 128 } first;
+    inject Rgb{ 0, 128, 128 } after [1];
+}
+
+func<Rgb, Rgb> flip = (Rgb c) => c.inverted();
+func<bool, Rgb> isLight = (Rgb c) => c.lum() > 100;
+
+array<Tint> glazes = {
+    Tint{ 20, 255, 0, 0 },
+    Tint{ alpha = 90; r = 0; g = 0; b = 64; },
+    { 50, 0, 255, 255 },
+};
+
+textGridWindowHorz grid = null;
+textBufferWindowHorz logPane = null;
+
+styleSheet gridLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+// ---- working with values --------------------------------------------------------------------------------
+
+Rgb mixOf(Rgb a, Rgb b = Rgb{ 255, 255, 255 }) {
+    Rgb out = { (a.r + b.r) / 2, (a.g + b.g) / 2, (a.b + b.b) / 2 };
+    return out;
+}
+
+Rgb darker(Rgb c, int by = 40) {
+    c += -by;
+    return c;
+}
+
+void lighten(ref Rgb c, int by) {
+    c += by;
+}
+
+void swapInk(ref Rgb a, ref Rgb b) {
+    Rgb t = a;
+    a = b;
+    b = t;
+}
+
+Rgb brightestOf(array<Rgb> list) {
+    Rgb best = list[0];
+    for (Rgb c in list) {
+        if (c > best) best = c;
+    }
+    return best;
+}
+
+Rgb blendFrom(array<Rgb> list, int i) {
+    if (i >= list.length - 1) return list[i];
+    Rgb rest = blendFrom(list, i + 1);
+    return mixOf(list[i], rest);
+}
+
+void fade(ref Rgb c, int times) {
+    if (times <= 0) return;
+    c += -10;
+    fade(c, times - 1);
+}
+
+Rgb sumDown(array<Rgb> list, int i, Rgb acc) {
+    if (i < 0) return acc;
+    acc += list[i];
+    return sumDown(list, i - 1, acc);
+}
+
+Rgb pickFor(bool light) {
+    return light ? paper : ink;
+}
+
+string nameOf(Rgb c) {
+    if (c == Rgb{ 255, 0, 0 }) return "red";
+    if (c == Rgb{ 0, 255, 0 }) return "green";
+    if (c == Rgb{ 0, 0, 255 }) return "blue";
+    if (c == Rgb{ 255, 255, 0 }) return "yellow";
+    if (c.r == c.g && c.g == c.b) return "gray";
+    return "mixed";
+}
+
+stringObj colorText(Rgb c) {
+    stringObj s = c.hex();
+    s += ' ';
+    s += $"lum {c.lum()} {nameOf(c)}";
+    return s;
+}
+
+void logLine(stringObj text) {
+    logPane?.printLine($"[{turns}] {text}");
+}
+
+bool slotOk(int n) {
+    if (n < 0 || n >= palette.length) {
+        printLine($"Colors are 0 to {palette.length - 1}.");
+        return false;
+    }
+    return true;
+}
+
+// ---- panels ---------------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. Two panels and a mixer.";
+    attributes = {light};
+}
+
+class Panel : object {
+    attributeList attributes = {static};
+    char letter = '?';
+    Rgb fill;
+    Rgb edge = Rgb{ 0, 0, 0 };
+    Tint glaze = Tint{ alpha = 30; r = 0; g = 0; b = 255; };
+    array<Rgb> past[PAST_MAX];
+    ref Rgb pinned;
+    static Rgb lastPaint;
+    static int repaints = 0;
+
+    Rgb shown() { return glaze.over(fill); }
+
+    void paint(Rgb c) {
+        if (past.length >= PAST_MAX) past.remove(0);
+        past.append(fill);
+        fill = c;
+        lastPaint = c;
+        repaints++;
+    }
+
+    bool revert() {
+        if (past.length == 0) return false;
+        fill = past[past.length - 1];
+        past.remove(past.length - 1);
+        return true;
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"Panel {letter}: fill {colorText(fill)}, shown {shown().hex()}, edge {edge.hex()}.");
+                if (pinned) printLine($"Pinned to {colorText(pinned)}.");
+                else printLine("Not pinned.");
+                stringObj back = "";
+                for (Rgb c in past) back += $" {c.hex()}";
+                printLine($"History ({past.length}):{back}");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+Panel panelA { "panel A"; parent = roomA; name = {.a, .panel}; letter = 'A'; fill = Rgb{ 200, 40, 40 }; }
+Panel panelB { "panel B"; parent = roomA; name = {.b, .panel}; letter = 'B'; fill = Rgb{ 40, 200, 40 }; edge = { 255, 255, 255 }; }
+
+object mixer {
+    "mixer";
+    parent = roomA;
+    name = {.mixer};
+    description = "A mixer with a tray of three colors.";
+    attributes = {static};
+    array<Rgb> tray = { Rgb{ 10, 20, 30 }, { 40, 50, 60 }, Rgb{ 70, 80, 90 } };
+
+    Rgb trayTotal() {
+        Rgb sum;
+        for (int i = 0; i < tray.length; i++) sum += tray[i];
+        return sum;
+    }
+}
+
+Panel asPanel(object o) {
+    if (o == null || !o.is(Panel)) {
+        printLine("That is not a panel.");
+        return null;
+    }
+    return (Panel)o;
+}
+
+// ---- the grid -------------------------------------------------------------------------------------------
+
+void drawGrid() {
+    if (grid == null) return;
+    grid.clear();
+    grid.moveCursor(0, 0);
+    grid.print($"palette {palette.length} | mixes {mixes.length}/{MIX_MAX}");
+    for (int i = 0; i < palette.length; i++) {
+        if (i + 1 >= GRID_ROWS - 1) break;
+        grid.moveCursor(0, i + 1);
+        grid.print($"{i} {colorText(palette[i])}");
+    }
+    grid.moveCursor(0, GRID_ROWS - 1);
+    grid.print($"A {panelA.shown().hex()} B {panelB.shown().hex()} last {lastMix.hex()}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | paints {Panel.repaints}");
+    drawGrid();
+}
+
+bool Initialise() {
+    location = roomA;
+    grid = bgl.ui.mainWin.splitUpGrid(GRID_ROWS, fixed, border, styles: gridLook);
+    logPane = bgl.ui.mainWin.splitDownBuffer(LOG_LINES, fixed, border);
+    stringObj note = $"palette ready, {palette.length} colors";
+    logLine(note);
+    rfalse;
+}
+
+// ---- reports --------------------------------------------------------------------------------------------
+
+void showPalette() {
+    for (int i = 0; i < palette.length; i++) printLine($"{i}: {colorText(palette[i])}");
+    array<Rgb> sorted[8];
+    sorted = palette.orderBy(Rgb::operator <=>);
+    stringObj order = "";
+    for (Rgb c in sorted) order += $" {c.lum()}";
+    printLine($"By lum:{order}");
+    Rgb top = palette.orderBy((Rgb x, Rgb y) => y <=> x).first();
+    Rgb low = sorted.last();
+    printLine($"Brightest {colorText(top)}; last ascending is {low == top ? "the same" : "different"}.");
+    printLine($"Brightest by loop {colorText(brightestOf(palette))}.");
+    int light = palette.filter((Rgb c) => c.lum() > 100).count();
+    printLine($"Light: {light}; distinct: {palette.distinct().count()}.");
+    Rgb probe = paper;
+    if (palette.any((Rgb c) => c == probe)) printLine("Paper is in the palette.");
+    else printLine("Paper is not in the palette.");
+    if (palette.all((Rgb c) => c != ink)) printLine("Ink is not in the palette.");
+    printLine($"Blue at {palette.indexOf(Rgb{ 0, 0, 255 })}; has gray {palette.contains(Rgb{ 128, 128, 128 })}.");
+    stringObj firstTwo = "";
+    for (Rgb c in palette.take(2)) firstTwo += $" {nameOf(c)}";
+    printLine($"First two:{firstTwo}; first lum {palette.map((Rgb c) => c.lum()).first()}.");
+}
+
+void showMixes() {
+    if (mixes.length == 0) {
+        printLine("No mixes yet.");
+        return;
+    }
+    mixes.sort();
+    stringObj all = "";
+    for (Rgb c in mixes) all += $" {c.hex()}";
+    printLine($"Mixes, dim first:{all}");
+    Rgb dim = mixes[0];
+    Rgb bright = mixes[mixes.length - 1];
+    if (dim < bright) printLine($"{dim.hex()} is dimmer than {bright.hex()}.");
+    else printLine("All mixes are equally bright.");
+    printLine($"Last mix is entry {mixes.indexOf(lastMix)}.");
+}
+
+void showRamps() {
+    int row = 0;
+    for (array<Rgb> line in ramps) {
+        stringObj s = "";
+        for (Rgb c in line) s += $" {c.hex()}";
+        printLine($"Ramp {row}:{s}");
+        row++;
+    }
+    ramps[1][1] = ramps[1][0] + ramps[1][0];
+    printLine($"Ramp 1 end is now {ramps[1][1].hex()}; mid gray {ramps[0][1] == Rgb{ 128, 128, 128 } ? "kept" : "changed"}.");
+    Rgb total = mixer.trayTotal();
+    printLine($"Tray total {total.hex()}, tray middle {mixer.tray[1].hex()}.");
+}
+
+void showCards() {
+    cards.clear();
+    for (int i = 0; i < 3; i++) {
+        Swatch s;
+        s.label = i == 0 ? "first" : "later";
+        s.base = palette[i];
+        if (i != 1) s.against := paper;
+        else s.against := ink;
+        s.build();
+        cards.append(s);
+    }
+    for (Swatch s in cards) {
+        stringObj steps = "";
+        for (Rgb c in s.steps) steps += $" {c.hex()}";
+        printLine($"{s.label} {s.base.hex()} contrast {s.contrast()}:{steps}");
+    }
+    Swatch copy = cards[2];
+    copy.base = ink;
+    printLine($"Copy {copy.base.hex()} vs card {cards[2].base.hex()}; equal {copy == cards[2] ? "yes" : "no"}; steps kept {copy.steps[1].hex()}.");
+    ref Swatch held := cards[0];
+    held.base += 10;
+    printLine($"Card 0 through ref: {cards[0].base.hex()}; contrast {held.contrast()}.");
+    held := cards[1];
+    printLine($"Rebound to {held.label} {held.base.hex()}.");
+    Swatch blank;
+    printLine($"Blank card: {blank.label} {blank.base.hex()} contrast {blank.contrast()} steps {blank.steps.length}.");
+}
+
+// ---- verbs ----------------------------------------------------------------------------------------------
+
+verb ListPalette {
+    grammar = {.palette};
+    meta = true;
+    void handler() { showPalette(); }
+}
+
+verb ListMixes {
+    grammar = {.mixes};
+    meta = true;
+    void handler() { showMixes(); }
+}
+
+verb ListRamps {
+    grammar = {.ramps};
+    meta = true;
+    void handler() { showRamps(); }
+}
+
+verb ListCards {
+    grammar = {.cards};
+    meta = true;
+    void handler() { showCards(); }
+}
+
+verb MixTwo {
+    grammar = { {.mix, NUMBER, .with, NUMBER}, {.mix, NUMBER} };
+    void handler() {
+        int a = (int)noun;
+        if (!slotOk(a)) return;
+        if (second == null) {
+            lastMix = mixOf(palette[a]);
+        } else {
+            int b = (int)second;
+            if (!slotOk(b)) return;
+            lastMix = mixOf(b: palette[b], a: palette[a]);
+        }
+        if (!mixes.append(lastMix)) {
+            mixes.remove(0);
+            mixes.append(lastMix);
+        }
+        printLine($"Mixed {colorText(lastMix)}.");
+        logLine(lastMix.hex());
+    }
+}
+
+verb DarkenOne {
+    grammar = { {.darken, NUMBER}, {.darken, NUMBER, .by, NUMBER} };
+    void handler() {
+        int n = (int)noun;
+        if (!slotOk(n)) return;
+        Rgb was = palette[n];
+        if (second == null) palette[n] = darker(palette[n]);
+        else palette[n] = darker(palette[n], by: (int)second);
+        printLine($"Color {n} from {was.hex()} to {palette[n].hex()}.");
+    }
+}
+
+verb LightenOne {
+    grammar = {.lighten, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (!slotOk(n)) return;
+        lighten(palette[n], 30);
+        printLine($"Color {n} is now {colorText(palette[n])}.");
+    }
+}
+
+verb SwapTwo {
+    grammar = {.swap, NUMBER, .to, NUMBER};
+    void handler() {
+        int a = (int)noun;
+        int b = (int)second;
+        if (!slotOk(a) || !slotOk(b)) return;
+        swapInk(palette[a], palette[b]);
+        printLine($"Swapped: {a} is {nameOf(palette[a])}, {b} is {nameOf(palette[b])}.");
+    }
+}
+
+verb PaintPanel {
+    grammar = {.paint, NOUN, .with, NUMBER};
+    void handler() {
+        Panel p = asPanel(noun);
+        if (p == null) return;
+        int n = (int)second;
+        if (!slotOk(n)) return;
+        if (p.fill == palette[n]) {
+            printLine($"Panel {p.letter} is already {nameOf(palette[n])}.");
+            return;
+        }
+        p.paint(palette[n]);
+        printLine($"Panel {p.letter} painted {nameOf(p.fill)}; shown {p.shown().hex()}; last paint {Panel.lastPaint.hex()}.");
+    }
+}
+
+verb RevertPanel {
+    grammar = {.revert, NOUN};
+    void handler() {
+        Panel p = asPanel(noun);
+        if (p == null) return;
+        if (p.revert()) printLine($"Panel {p.letter} back to {p.fill.hex()} ({p.past.length} left).");
+        else printLine($"Panel {p.letter} has no history.");
+    }
+}
+
+verb PinPanel {
+    grammar = {.pin, NOUN, .to, NUMBER};
+    void handler() {
+        Panel p = asPanel(noun);
+        if (p == null) return;
+        int n = (int)second;
+        if (!slotOk(n)) return;
+        p.pinned := palette[n];
+        printLine($"Panel {p.letter} pinned to color {n} ({p.pinned.hex()}).");
+    }
+}
+
+verb BlendAll {
+    grammar = {.blend};
+    void handler() {
+        Rgb b = blendFrom(palette, 0);
+        printLine($"Blend of all: {colorText(b)}.");
+        Rgb two = blendFrom(ramps[1], 0);
+        printLine($"Blend of ramp 1: {two.hex()}.");
+        Rgb back = flip(b);
+        printLine($"Flipped: {back.hex()}; double flip same {flip(back) == b ? "yes" : "no"}.");
+    }
+}
+
+verb WashOne {
+    grammar = {.wash, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (!slotOk(n)) return;
+        Rgb under = palette[n];
+        Rgb seen = wash.over(under);
+        printLine($"Wash over {nameOf(under)}: {seen.hex()}; wash as color {colorText(wash)}.");
+        Tint stronger = wash;
+        stronger.alpha = 80;
+        printLine($"Stronger: {stronger.over(under).hex()}; wash alpha still {wash.alpha}.");
+        Rgb on = pickFor(seen.lum() < 128);
+        printLine($"Text on it: {on.hex()} ({on == paper ? "paper" : "ink"}).");
+    }
+}
+
+verb Tidy {
+    grammar = {.tidy};
+    void handler() {
+        int had = mixes.length;
+        mixes -= Rgb{ 255, 255, 255 };
+        mixes.removeValue(lastMix);
+        printLine($"Tidied {had - mixes.length}; {mixes.length} mixes left.");
+        mixes.insert(0, ink + paper);
+        printLine($"Front mix {mixes[0].hex()}; last mix kept {lastMix.hex()}.");
+        Rgb walk = ink;
+        int steps = 0;
+        while (walk.lum() < 100) {
+            walk += 25;
+            steps++;
+        }
+        printLine($"Ink reaches lum 100 in {steps} steps at {walk.hex()}; ink still {ink.hex()}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (!slotOk(n)) return;
+        ref Rgb cur := palette[n];
+        Rgb before = cur;
+        fade(cur, 3);
+        printLine($"Faded {n}: {before.hex()} to {palette[n].hex()}; cur {cur.hex()}.");
+        cur := palette[(n + 1) % palette.length];
+        cur.g = 0;
+        printLine($"Next has no green: {palette[(n + 1) % palette.length].hex()}.");
+        printLine($"Pick: {colorText(n % 2 == 0 ? paper : ink)}.");
+        Rgb sum = palette[0] + palette[1] + ink;
+        printLine($"Sum of 0, 1 and ink: {sum.hex()}; mix of 0 and 1 is yellowish {mixOf(palette[0], palette[1]) == Rgb{ 127, 127, 0 } ? "yes" : "no"}.");
+        Rgb zero;
+        Rgb total = sumDown(palette, palette.length - 1, zero);
+        printLine($"Sum down: {total.hex()}; zero still {zero.hex()}.");
+        array<Rgb> lights[8];
+        lights = palette.filter(isLight);
+        printLine($"Light by func: {lights.length}; any light {palette.any(isLight)}.");
+        mixer.tray[n % 3] = palette[n];
+        mixer.tray[0].b = 1;
+        printLine($"Tray: {mixer.tray[0].hex()} {mixer.tray[1].hex()} {mixer.tray[2].hex()}.");
+        ramps[0][2].r = 10;
+        printLine($"Ramp 0 end {ramps[0][2].hex()}, ramp rows {ramps.length}, row 0 has {ramps[0].length}.");
+        panelA.past[0].g = 99;
+        printLine($"Panel A first past {panelA.past[0].hex()} at {panelA.past.indexOf(Rgb{ 200, 99, 40 })}.");
+    }
+}
+
+verb ListEdges {
+    grammar = {.edges};
+    meta = true;
+    void handler() {
+        stringObj s = "";
+        for (Rgb c in edges) s += $" {c.hex()}";
+        printLine($"Edges ({edges.length}):{s}");
+        edges.prepend({ 1, 1, 1 });
+        edges.removeValue(chalk);
+        printLine($"Has soot {edges.contains(soot)}; has chalk {edges.contains(chalk)}; chalk at {edges.indexOf(chalk)}.");
+        edges[edges.length - 1] = chalk;
+        chalk.r = 0;
+        s = "";
+        for (Rgb c in edges) s += $" {c.hex()}";
+        printLine($"Edges ({edges.length}):{s}; chalk {chalk.hex()}, soot {soot.hex()}.");
+        chalk.r = 250;
+        edges.clear();
+        edges = { soot, chalk, paper };
+        printLine($"Reset to {edges.length}: {edges[0].hex()} {edges[1].hex()} {edges[2].hex()}.");
+    }
+}
+
+verb ListGlazes {
+    grammar = {.glazes};
+    meta = true;
+    void handler() {
+        stringObj s = "";
+        for (Tint t in glazes) s += $" {t.alpha}:{t.over(paper).hex()}";
+        printLine($"Glazes:{s}");
+        glazes.sort();
+        s = "";
+        for (Tint t in glazes) s += $" {t.hex()}";
+        printLine($"By lum:{s}");
+        Tint strongest = glazes.orderBy((Tint x, Tint y) => y.alpha - x.alpha).first();
+        printLine($"Strongest {strongest.alpha} {strongest.hex()}; as color {nameOf(strongest)}.");
+        glazes[1] = wash;
+        printLine($"Slot 1 now {glazes[1].alpha} {glazes[1].hex()}; wash {wash == glazes[1] ? "equal" : "differs"}.");
+        mixes.sort((Rgb x, Rgb y) => y <=> x);
+        s = "";
+        for (Rgb c in mixes) s += $" {c.lum()}";
+        printLine($"Mixes bright first:{s}");
+    }
+}
+
+#includeI6 "grammar"

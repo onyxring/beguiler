@@ -618,6 +618,8 @@ class bglParser {
         void foldCaseConstant(class expression* expr);
         bool namesProperty(const string& name);
         static bool isI6OperatorWord(const string& name);
+        static bool isI6SystemFunction(const string& name);
+        token peekTokenOrEof();
         // Parse an optional `asI6 <i6name>` / `asBgl <beguileName>` clause (§3.11). The two run in
         // opposite directions, which is why each is tied to one side of `extern`: `asI6` CREATES the
         // name I6 will get, so it belongs on a declaration Beguile defines; `alias` MAPS a symbol I6
@@ -854,6 +856,8 @@ class bglParser {
         expression* parseExpressionInner(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body, int startParenDepth);
         // parseExpression sub-functions
         void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body, int parenDepth = 0);
+        struct ShortCircuitOp { std::string op; size_t injectionsBefore; };
+        void guardShortCircuitSetUp(expression* expr, const std::vector<ShortCircuitOp>& ops);
         void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
         bool parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall, functionDef* func, statementBlock* body);
         bool applyNotOperator(expression* expr, const string& opType, const string& opText);
@@ -923,7 +927,7 @@ class bglParser {
         void chainSubscripts(expression* expr, string& subscriptText, functionDef* func, statementBlock* body);
         bool isOwnMember(const string& type, const string& name);
         bool absorbPostfixQuery(expression* sub);
-        bool bareAccessorRead(const string& name, functionDef* func, statementBlock* body, string& text, string& type);
+        bool bareAccessorRead(const string& name, functionDef* func, statementBlock* body, string& text, string& type, const std::string& memberHint = "");
         bool pathGoesOnToOwnMember(ExprParseState& st, const string& type);
         ExprStep parseExprIdentifier(ExprParseState& st);
         ExprStep parseExprOperator(ExprParseState& st);
@@ -1318,7 +1322,7 @@ class bglParser {
         vector<functionDef*> collectGlobalCandidates(const string& name);
         vector<functionDef*> collectMethodCandidates(const string& typeName, const string& methodName);
         // Compute the per-position / per-name agreed object-backed class from candidate callees.
-        BraceArgHints braceArgHints(const vector<functionDef*>& candidates);
+        BraceArgHints braceArgHints(const vector<functionDef*>& candidates, const std::string& elemType = "");
         // A class a bare `{ … }` constructs as an inline instance: object-backed, or a value class with
         // positional (`inline`) members.
         bool isInlineConstructible(classDef* cls);
@@ -1431,6 +1435,7 @@ class bglParser {
         set<pair<string, string>> deferredConversions;
         void rejectUnionInto(class expression* val, class classDef* target);
         bool readingForBind = false;   // parsing the right side of `:=`: a member read names the instance, not its getter's value
+        string escapePropertyName(const string& prop);
         string checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked);
         bool memberArrayDeclTracked(class arrayDeclaration* ad);
         void rejectConstantIndexOutside(const string& path, class expression* index, class functionDef* func, class statementBlock* body);

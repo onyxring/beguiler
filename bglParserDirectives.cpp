@@ -264,7 +264,8 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     if(b.self && !shadowed("self"))  out = i6Emitter::replaceOperand(out, "$self",  *b.self);
     if(b.val  && !shadowed("val"))   out = i6Emitter::replaceOperand(out, "$val",   *b.val);
     if(b.host && !shadowed("host"))  out = i6Emitter::replaceWord(out, "$host",  *b.host);
-    if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  propertyI6Name(*b.prop));
+    // A property passed by name is kept out of the routine's local renames (a local may share its name).
+    if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  escapePropertyName(propertyI6Name(*b.prop)));
     if(b.cls  && !shadowed("class")) out = i6Emitter::replaceWord(out, "$class", *b.cls);
     // Lookup tokens last: their payloads are Beguile paths and operator names, never $tokens, so
     // they neither consume nor are consumed by the substitutions above.

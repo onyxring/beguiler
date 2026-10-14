@@ -1,0 +1,11 @@
+/* a case value naming a global int variable */
+// EXPECT_ERROR: A case value is a constant, and 'limit' is a variable here
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int limit = 5;
+string band(int n) {
+    switch (n) {
+        case limit: return "at limit";
+    }
+    return "other";
+}
+void main() { print(band(5)); }

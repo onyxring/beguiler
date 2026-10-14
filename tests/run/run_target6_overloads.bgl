@@ -1,0 +1,73 @@
+// run_target6_overloads — an operator reference picking a class's own static operator over the inherited
+// one, a program `print(Size)` beside library prints of ints, method overloads choosing the base-class
+// parameter over the implicit `operator ()` conversion, and a value-class compound operator choosing its
+// object-class overload for a declared object.
+// EXPECT_OUTPUT: y n 3 5 7 part4 part4 part4 part4 part4 8 12 16 11
+#beguilerSettings { target = z5; informName = "none"; }
+class Part : object {
+    int code;
+    int weight;
+    int operator () { return weight; }
+    static bool operator == (Part a, int n) { return a.code == n; }
+    static bool operator != (Part a, int n) { return a.code != n; }
+}
+class Gear : Part {
+    int teeth;
+    static bool operator == (Gear a, int n) { return a.teeth == n; }
+    static bool operator != (Gear a, int n) { return a.teeth != n; }
+}
+Gear g { code = 4; weight = 60; teeth = 12; }
+Part gearA { weight = 40; }
+value class Size {
+    int mm;
+    Size operator = (Size o) { mm = o.mm; return self; }
+    Size operator = (int n)  { mm = n; return self; }
+    Size operator = (Part p) { mm = p.weight; return self; }
+    Size operator += (Size o) { mm = mm + o.mm; return self; }
+    Size operator += (int n)  { mm = mm + n; return self; }
+    Size operator += (Part p) { mm = mm + p.weight / 10; return self; }
+}
+void print(Size s) { print(s.mm); }
+object bench {
+    void Rec(int n)  { print("int"); print(n); print(" "); }
+    void Rec(Part p) { print("part"); print(p.code); print(" "); }
+}
+class Logger {
+    void Rec(int n)  { print("int"); print(n); print(" "); }
+    void Rec(Part p) { print("part"); print(p.code); print(" "); }
+}
+Logger lg { }
+void Rec2(int n)  { print("int"); print(n); print(" "); }
+void Rec2(Part p) { print("part"); print(p.code); print(" "); }
+Size gs;
+void main() {
+    bglInit();
+    func<bool, Gear, int> teethIs = Gear::operator ==(int);
+    print(teethIs(g, 12) ? "y" : "n"); print(" ");
+    print(teethIs(g, 4) ? "y" : "n"); print(" ");
+    int k = 3;
+    print(k); print(" ");
+    print(5); print(" ");
+    Size sz;
+    sz = 7;
+    print(sz); print(" ");
+    bench.Rec(g);
+    lg.Rec(g);
+    Rec2(g);
+    Part p = g;
+    bench.Rec(p);
+    Gear gv = g;
+    lg.Rec(gv);
+    Size a;
+    a = 7;
+    a += 1;
+    print(a.mm); print(" ");
+    a += gearA;
+    print(a.mm); print(" ");
+    Part pa = gearA;
+    a += pa;
+    print(a.mm); print(" ");
+    gs = 7;
+    gs += gearA;
+    print(gs.mm);
+}

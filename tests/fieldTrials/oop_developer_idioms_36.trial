@@ -1,0 +1,77 @@
+Room A
+Room A.
+
+You can see an alpha, a beta, a gamma and an epic here.
+
+> casts
+first job alpha, pri 3, marks 0
+after: mark 8, effort 6 (2 sets), hits 1, touches 1, pos (10,2)
+far gamma lane done, epic note ship, extra 7
+epic extra 10, note draft, notes 2
+kinds epic job job epic epic epic
+epic effort 9, lead beta, lead lane doing
+
+> calls
+beta marks 11 5 len 2, calls 6
+beta effort 7 sets 2, hits 3 touches 2, pos (3,3), memo b!5, calls 16
+chains beta end gamma gamma beta gamma, visits 2
+labels alpha#3 BETA#5 7 beta#5 0 beta
+values 4 65 9 0 12
+funcs 6 3 25 gamma 0 5
+
+> elems
+queue gamma marks 2 sum 3, epic hits 5 pos (7,2), memos c b!5+, picks 1
+spots (1,1) (9,3) (4,4) 64 false beta (3,3)
+grid gamma 6 8 2 gamma#1
+linq alpha gamma 3 (10,2)
+[alpha:2][beta:1]<11><5>(draft)(ship)
+
+> picks
+beta x 30 marks 3, gamma hits 1 effort 2, alpha pri 4
+pick beta#5 alpha gamma gamma
+gamma pos (51,7) effort 7, epic effort 21 sets 4, alpha pos (12,0), beta pos (31,2)
+beta outworks alpha
+lead doing
+three marks
+looped 2, alpha marks 01, hits 2 4 2 6, cursor 0
+
+> build
+draft gamma:fix:ok steps 5, done gamma effort 12 memo gamma:fix:ok, live 1
+chained 3, alpha effort 7, 7 beta, live 2
+pending beta effort 11, hits 5, effort now 15
+live 0
+
+> inner
+depth 2 gamma gamma spread -20 first none alpha
+absorbed 3 epic beta~
+apply 12 has true at 1 effort 21
+
+> more
+path (2,1) (4,7) (7,-4) 8 spot (3,-1), calls 9
+deps alpha beta epic gamma len 0 2
+copied 3 0 len 3, beta 9 len 1, has true at 2
+deps of gamma 2 alpha false
+memos m! gamma:fix:ok! 2 GAMMA:FIX:OK! true
+reset 0 16 3 (0,2)
+pos 62 true beta 9 beta true false
+gamma 13 2, beta pos (32,3) marks 9 3, calls 6 picks 1, pris 5 2 4
+weighs 9 1 alpha
+
+> guard
+guard 15 3 (6,0) (0,4) end gamma false, calls 6
+casts epic ship 4 beta
+elems (0,2) 5 4 20 true true
+funcs 96 7 true
+lambdas 2 alpha beta
+label beta#5
+first note draft
+
+> poke beta
+Poked beta (job): hits 6, marks 2, next gamma, in Room A.
+
+> poke epic
+Poked epic (epic): hits 7, marks 1, next none, in Room A.
+
+> poke alpha
+Poked alpha (job): hits 3, marks 4, next beta, in Room A.
+

@@ -1,0 +1,727 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-sixth PunyInform program that leans on `?.`, `??` and postfix `?`: two rooms
+// (Room A with three crates and a pallet, Room B with a barrel); a `Crate` class whose crates stack
+// (`under`) and nest (`inner`) through class-typed members, carry a pooled `Tag` (obtained with `new`,
+// falling back through `??` when the pool is empty), an owned value class `Mark` with its own
+// `operator ?` and methods returning `Mark` and `stringObj`, a `Load` accessor class with an
+// `operator ?` of its own, a member `array<int>` and a `stringObj` log; a `Barrel` subclass overriding
+// the fluent `default` method `stamp()`; a static finder reached with `?.`; `?.` chains through fluent
+// returns, overloads, default and named arguments (out of order), value-class results (`?.bumped()?.code`),
+// stringObj results (`?.tagText(upper: true)?.length`), accessor members (`c?.load += n`, `c?.load?`),
+// member-array elements (`c?.weights[i] = n`, `c?.weights[i]`), library routines (`?.has()`,
+// `?.give()`), an inline `auto` accessor on an object (`pallet?.top = …`), a `func<>` value and lambdas
+// whose bodies chain; `??` on objects, strings, value classes and call results in declarations,
+// arguments, returns, `throw`, interpolation and `switch`; postfix `?` and `?.` in `if`, `while`, `for`,
+// `do`/`while`, ternaries and <linq> predicates; and verbs stack, unstack, nest, tag, untag, stamp,
+// load, slide, plus meta verbs probe, path, crates and marks.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// --- shared values ----------------------------------------------------------------------------------
+
+const int LOAD_MAX = 12;
+
+value class Load {
+    int _kg = 0;
+
+    int  operator ()        { return _kg; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > LOAD_MAX) v = LOAD_MAX;
+        _kg = v;
+    }
+    emitter eBool operator ? () { ($self ~= 0 && $self._kg ~= 0) }
+}
+
+value class Mark {
+    int code;
+    int hits;
+
+    Mark operator = (Mark o) {
+        code = o.code;
+        hits = o.hits;
+        return self;
+    }
+    emitter eBool operator ? () { ($self ~= 0 && $self.code ~= 0) }
+
+    Mark bumped(int by = 1, int extra = 0) {
+        Mark m;
+        m.code = code + by + extra;
+        m.hits = hits + 1;
+        return m;
+    }
+
+    stringObj text(string prefix = "#") {
+        stringObj s;
+        s = prefix;
+        s += $"{code}";
+        return s;
+    }
+}
+
+Mark blankMark;
+Mark lastMark;
+stringObj trail;
+int newTags = 0;
+int stolen = 0;
+func<Crate, Crate> down;
+array<string> tagWords = {"red", "blue", "green", "white"};
+array<Crate> row[4];
+
+// --- tags -------------------------------------------------------------------------------------------
+
+class Tag[3] : object {
+    string word;
+    int uses = 0;
+
+    void create(string w) {
+        word = w;
+    }
+
+    Tag touch(int n = 1) {
+        uses += n;
+        return self;
+    }
+}
+
+// --- crates -----------------------------------------------------------------------------------------
+
+class Crate : object {
+    Crate under;
+    Crate inner;
+    Tag tag;
+    string label;
+    int code;
+    Mark mark;
+    Load load;
+    array<int> weights[3];
+    stringObj log;
+    func<int, int> scaler;
+    name = {.crate};
+
+    void description() {
+        print($"Crate {label ?? "?"}");
+        if (under?) print($", stacked on {under.label}");
+        if (inner?.label?) print($", holding {inner.label}");
+        if (tag?) print($", tagged {tag.word}");
+        printLine(".");
+    }
+
+    default Crate stamp(int c, string by = "hand") {
+        mark.code = c;
+        mark.hits++;
+        log += by;
+        log += ' ';
+        return self;
+    }
+
+    Crate bottom() {
+        return under?.bottom() ?? self;
+    }
+
+    Crate core(int limit = 4) {
+        if (limit <= 0) return self;
+        return inner?.core(limit - 1) ?? self;
+    }
+
+    int height() {
+        return 1 + under?.height();
+    }
+
+    Tag tagOr(Tag spare = null) {
+        return tag ?? spare;
+    }
+
+    stringObj tagText(bool upper = false) {
+        stringObj s;
+        s = tag?.word ?? "untagged";
+        if (upper) return s.toUpper();
+        return s;
+    }
+
+    int weigh() {
+        return load + weights[0] + weights[1] + weights[2];
+    }
+
+    int weigh(int extra) {
+        return weigh() + extra + inner?.weigh();
+    }
+
+    static Crate byCode(int n) {
+        for (object o in bgl.world.instances(Crate)) {
+            if (((Crate)o).code == n) return (Crate)o;
+        }
+        return null;
+    }
+}
+
+class Barrel : Crate {
+    int hoops = 2;
+
+    Crate stamp(int c, string by = "hand") {
+        hoops++;
+        mark.code = c * 10;
+        mark.hits++;
+        log += "barrel ";
+        return self;
+    }
+}
+
+extend class Crate {
+    Crate top() {
+        for (object o in bgl.world.instances(Crate)) {
+            if (((Crate)o).under == self) return ((Crate)o).top();
+        }
+        return self;
+    }
+
+    stringObj logOr(string none = "(none)") {
+        stringObj s;
+        if (log.isEmpty()) s = none;
+        else s = log.trim();
+        return s;
+    }
+}
+
+// --- helpers ----------------------------------------------------------------------------------------
+
+stringObj logOf(Crate c) {
+    return c?.log;
+}
+
+stringObj loudTag(Crate c) {
+    return c?.tagText(upper: true);
+}
+
+string labelOf(Crate c, string none = "nothing") {
+    return c?.label ?? none;
+}
+
+Mark markOf(Crate c) {
+    return c?.mark ?? blankMark;
+}
+
+Crate asCrate(object o) {
+    return o?.is(Crate) ? (Crate)o : null;
+}
+
+Crate find(string lbl) {
+    for (object o in bgl.world.instances(Crate)) {
+        if (((Crate)o)?.label == lbl) return (Crate)o;
+    }
+    return null;
+}
+
+Tag takeTag() {
+    for (object o in bgl.world.instances(Crate)) {
+        Crate c = (Crate)o;
+        if (c.tag?) {
+            Tag t = c.tag;
+            c.tag = null;
+            stolen++;
+            trail += $"steal {c.label}; ";
+            return t;
+        }
+    }
+    return null;
+}
+
+stringObj stackText(Crate c, string sep = "/") {
+    stringObj s;
+    for (Crate k = c; k?; k = k?.under) {
+        s += k.label ?? "?";
+        if (k.under?) s += sep;
+    }
+    return s;
+}
+
+int tagged() {
+    return bgl.world.instances(Crate, (object o) => ((Crate)o).tag?).count();
+}
+
+int evals = 0;
+
+Crate step(Crate c) {
+    evals++;
+    return c?.under;
+}
+
+bool stacked(Crate c) {
+    return c?.under?;
+}
+
+int twice(int n) {
+    return n * 2;
+}
+
+int heavier(object a, object b) {
+    return ((Crate)b)?.weigh() - ((Crate)a)?.weigh();
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Three crates and a pallet. A doorway leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A barrel. A doorway leads west.";
+    w_to = roomA;
+}
+
+Crate crateP {
+    "crate P";
+    parent = roomA;
+    name = {.p};
+    attributes = {static};
+    label = "P";
+    code = 1;
+}
+
+Crate crateQ {
+    "crate Q";
+    parent = roomA;
+    name = {.q};
+    attributes = {static};
+    label = "Q";
+    code = 2;
+}
+
+Crate crateR {
+    "crate R";
+    parent = roomA;
+    name = {.r};
+    attributes = {static};
+    label = "R";
+    code = 3;
+}
+
+Barrel barrelT {
+    "barrel T";
+    parent = roomB;
+    name = {.t, .barrel};
+    attributes = {static};
+    label = "T";
+    code = 4;
+}
+
+object pallet {
+    "pallet";
+    parent = roomA;
+    name = {.pallet};
+    description = "A flat pallet.";
+    attributes = {static, supporter};
+    int moves = 0;
+
+    Crate held() {
+        return Crate.byCode(top);
+    }
+    auto top = {
+        int _code = 0;
+        int  operator ()        { return _code; }
+        void operator = (int v) {
+            _code = v;
+            outer.moves++;
+        }
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Stack {
+    grammar = {.stack, NOUN, .on, NOUN};
+    void handler() {
+        Crate a = asCrate(noun);
+        Crate b = asCrate(second);
+        if (!a? || !b?) {
+            printLine("Only crates stack.");
+            return;
+        }
+        if (a == b || b.bottom() == a || b?.under?.under == a) {
+            printLine($"Crate {a.label} can't go under itself.");
+            return;
+        }
+        a.under = b;
+        trail += $"stack {a.label}; ";
+        printLine($"You stack {labelOf(a)} on {labelOf(a?.under)}. Stack: {stackText(a)}, height {a?.height()}.");
+    }
+}
+
+verb Unstack {
+    grammar = {.unstack, NOUN};
+    void handler() {
+        Crate a = asCrate(noun);
+        string was = labelOf(a?.under, "nothing");
+        a?.under = null;
+        if (!a?) {
+            printLine($"{cThe(noun)} doesn't stack.");
+            return;
+        }
+        printLine($"You lift {labelOf(a)} off {was}.");
+    }
+}
+
+verb Nest {
+    grammar = {.nest, NOUN, .in, NOUN};
+    void handler() {
+        Crate a = asCrate(noun);
+        Crate b = asCrate(second);
+        if (!a? || !b? || a == b) {
+            printLine("That doesn't nest.");
+            return;
+        }
+        if (a.core() == b) {
+            printLine($"Crate {b.label} is already inside {a.label}.");
+            return;
+        }
+        b.inner = a;
+        printLine($"You nest {labelOf(b?.inner)} in {b.label}; the core of {b.label} is {b.core()?.label ?? "?"}.");
+    }
+}
+
+verb TagIt {
+    grammar = {.tag, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        if (!c?) {
+            printLine($"{cThe(noun)} takes no tag.");
+            return;
+        }
+        if (c.tag?) {
+            printLine($"Crate {c.label} already has the {c.tag?.touch()?.word} tag.");
+            return;
+        }
+        Tag t = new Tag(tagWords[newTags % 4]) ?? takeTag();
+        newTags++;
+        c.tag = t;
+        c?.tag?.touch(2);
+        printLine($"Crate {c.label} gets the {c.tag?.word ?? "missing"} tag ({c?.tag?.uses} use(s)); {tagged()} crate(s) tagged.");
+    }
+}
+
+verb Untag {
+    grammar = {.untag, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        Tag t = c?.tagOr();
+        if (!t?) {
+            printLine($"{cThe(noun)} has no tag.");
+            return;
+        }
+        c.tag = null;
+        string w = t.word ?? "?";
+        delete t;
+        printLine($"You peel the {w} tag off {labelOf(c)}.");
+    }
+}
+
+verb StampIt {
+    grammar = {.stamp, NOUN, .with, NUMBER};
+    void handler() {
+        Crate c = asCrate(noun);
+        Crate got = c?.stamp(by: "verb", c: parsed_number)?.stamp(parsed_number + 1);
+        if (!got?) {
+            printLine($"{cThe(noun)} can't be stamped.");
+            return;
+        }
+        lastMark = got?.mark ?? blankMark;
+        printLine($"Stamped {labelOf(got)}: mark {got?.mark?.code}, {got.mark.hits} hit(s), text {got?.mark?.text(prefix: "no.")}.");
+    }
+}
+
+verb LoadUp {
+    grammar = {.load, NOUN, .with, NUMBER};
+    void handler() {
+        Crate c = asCrate(noun);
+        c?.load += parsed_number;
+        c?.weights[parsed_number % 3] = parsed_number;
+        if (!c?) {
+            printLine($"{cThe(noun)} holds nothing.");
+            return;
+        }
+        printLine($"Crate {c.label} holds {c?.load}; slot {parsed_number % 3} is {c?.weights[parsed_number % 3]}; weight {c?.weigh()} ({c?.weigh(1)} with one more).");
+    }
+}
+
+verb Slide {
+    grammar = {.slide, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        if (!c?) {
+            printLine($"{cThe(noun)} won't slide.");
+            return;
+        }
+        pallet?.top = c?.code;
+        c?.give(general);
+        printLine($"You slide {labelOf(c)} onto the pallet; top {pallet?.top}, moves {pallet?.moves}.");
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        pallet?.top++;
+        pallet?.top -= 2;
+        pallet?.top += c?.code;
+        printLine($"The pallet marker reads {pallet?.top} after {pallet.moves} move(s); it names {pallet?.held()?.label ?? "no crate"}.");
+    }
+}
+
+verb Probe {
+    meta = true;
+    grammar = {.probe, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        if (!c?) {
+            printLine($"{cThe(noun)} is not a crate.");
+            return;
+        }
+        printLine($"{labelOf(c)}: under {labelOf(c.under)}, under that {c.under?.under?.label ?? "nothing"}, bottom {c.bottom()?.label}.");
+        printLine($"Inner {c.inner?.label ?? "none"}, core {c?.core(limit: 1)?.label}, deep core {c.core()?.label ?? "?"}.");
+        printLine($"Tag {c?.tagText()}, loud {c?.tagText(upper: true)}, {c?.tagText(upper: true)?.length} char(s); uses {c.tag?.uses}.");
+        Mark m = c?.mark ?? blankMark;
+        Mark n = c?.mark?.bumped(by: 2) ?? blankMark;
+        printLine($"Mark {m.code} ({m.hits}); bumped {n.code}; bumped again {c?.mark?.bumped(extra: 5, by: 0)?.code}.");
+        if (c.load?) printLine($"Loaded with {c.load}.");
+        else printLine("Empty.");
+        printLine($"General: {(c?.has(general)) ? "yes" : "no"}; on a supporter: {(c?.parent?.has(supporter)) ? "yes" : "no"}.");
+        string kind = c.is(Barrel) ? "barrel" : "crate";
+        printLine($"Kind {kind}, log [{c?.log}], {c?.log?.length} char(s).");
+    }
+}
+
+verb Path {
+    meta = true;
+    grammar = {.path, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        print("Down:");
+        Crate k = c;
+        while (k?) {
+            print($" {k.label}");
+            k = down(k);
+        }
+        printLine(".");
+        print("In:");
+        k = c;
+        if (k?.inner?) {
+            do {
+                k = k.inner;
+                print($" {k?.label}");
+            } while (k?.inner?);
+        }
+        printLine(".");
+        Crate under = (c?.under? ? c.under : c)?.under;
+        printLine($"Two down: {labelOf(under)}; via func {down(down(c))?.label ?? "nothing"}.");
+        switch (c?.bottom()?.label ?? "-") {
+            case "P": printLine("Rests on P.");
+            case "Q": printLine("Rests on Q.");
+            case "-": printLine("Rests on nothing.");
+            default:  printLine("Rests elsewhere.");
+        }
+    }
+}
+
+verb Crates {
+    meta = true;
+    grammar = {.crates};
+    void handler() {
+        for (object o in bgl.world.instances(Crate)) {
+            Crate c = (Crate)o;
+            print($"{c.label}:{c?.tag?.word ?? "-"}/{c?.mark?.code}/{c.load}");
+            if (c?.under?) print($" on {c.under.label}");
+            if (c?.inner?) print($" holds {c.inner.label}");
+            printLine("");
+        }
+        int nStacked = bgl.world.instances(Crate).filter((object o) => ((Crate)o).under?).count();
+        bool deep = bgl.world.instances(Crate).any((object o) => ((Crate)o)?.under?.under?);
+        printLine($"{nStacked} stacked; three high: {deep ? "yes" : "no"}; {tagged()} tagged; tags made {newTags}, stolen {stolen}.");
+        Crate top = (Crate)bgl.world.instances(Crate, (object o) => ((Crate)o).mark?).first();
+        printLine($"First marked: {top?.label ?? "none"}; by code 4: {Crate.byCode(4)?.label ?? "none"}; by code 9: {Crate.byCode(9)?.label ?? "none"}.");
+        printLine($"Pallet top {pallet?.top}, moves {pallet.moves}; holds {labelOf(Crate.byCode(pallet?.top), "nothing")}.");
+        printLine($"Trail: {trail}");
+    }
+}
+
+verb Marks {
+    meta = true;
+    grammar = {.marks};
+    void handler() {
+        print("Marks:");
+        for (int i = 1; i <= 5; i++) {
+            Mark m = markOf(Crate.byCode(i));
+            print($" {i}={m.code}");
+        }
+        printLine(".");
+        printLine($"Last {lastMark?.code}, as text {lastMark?.text()}; present {(lastMark?) ? "yes" : "no"}.");
+        Mark best = find("T")?.mark ?? find("P")?.mark ?? blankMark;
+        printLine($"Best {best.code}; T bumped {find("T")?.mark?.bumped()?.code}; Z bumped {find("Z")?.mark?.bumped()?.code}.");
+        try {
+            throw find("Z") ?? find("R")?.under ?? crateP;
+        } catch (object o) {
+            printLine($"Caught {o}.");
+        }
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        evals = 0;
+        Crate a = step(c) ?? crateR;
+        int h = step(c)?.height();
+        step(c)?.log += $"t{c?.code}{c?.label ?? "-"} ";
+        string l = step(step(c))?.label ?? step(c)?.label ?? "none";
+        bool deep = c?.under? && step(step(c))?.under?;
+        printLine($"Below {labelOf(a)}, height {h}, two below {l}, deeper {deep ? "yes" : "no"}; {evals} step(s).");
+        evals = 0;
+        step(c)?.stamp(7)?.stamp(by: "tally", c: 8);
+        step(c)?.load++;
+        step(c)?.weights[0] += 3;
+        printLine($"Stamped below: {step(c)?.mark?.code}, load {step(c)?.load}, slot {step(c)?.weights[0]}; {evals} step(s).");
+        Crate pick = (c?.under? ? c.under : null) ?? c;
+        printLine($"Pick {pick?.label}; stacked {stacked(c) ? "yes" : "no"}, under stacked {stacked(c?.under) ? "yes" : "no"}.");
+        printLine($"Scaled {c?.scaler(c?.code)}; word {tagWords[c?.code % 4]}; lower {c?.label?.toLower()?.left(1)}; tag length {c?.tag?.word?.length}.");
+        array<object> byWeight[6];
+        byWeight = bgl.world.instances(Crate).orderBy(heavier);
+        print("Heaviest first:");
+        for (object o in byWeight) print($" {((Crate)o)?.label}={((Crate)o)?.weigh()}");
+        printLine(".");
+        printLine($"First tagged sits in {bgl.world.instances(Crate, (object o) => ((Crate)o).tag?).first()?.parent ?? roomB}.");
+    }
+}
+
+verb Shift {
+    grammar = {.shift, NUMBER};
+    void handler() {
+        int i = parsed_number % 4;
+        row[i]?.load += 2;
+        row[i]?.mark?.hits++;
+        row[i]?.weights[2] -= 1;
+        Crate.byCode(i + 1)?.load -= 1;
+        row[(i + 2) % 4]?.mark = lastMark ?? blankMark;
+        row[i]?.stamp(row[i]?.under? ? 1 : 2, by: "s");
+        row[(i + 1) % 4]?.under?.stamp(i, by: "shift");
+        printLine($"Row {i}: {row[i]?.label ?? "empty"} now {row[i]?.load}, hits {row[i]?.mark?.hits}, slot {row[i]?.weights[2]}; next under {row[(i + 1) % 4]?.under?.label ?? "none"}.");
+    }
+}
+
+verb Survey {
+    meta = true;
+    grammar = {.survey};
+    void handler() {
+        print("Row:");
+        for (int i = 0; i < row.size; i++) {
+            print($" {row[i]?.label ?? "-"}{(row[i]?.under?.is(Barrel)) ? "^" : ""}{row[i]?.tag?.word?.length}");
+        }
+        printLine(".");
+        printLine($"Held {pallet.held()?.label ?? "nothing"}, its tag {pallet?.held()?.tag?.touch()?.touch(3)?.word ?? "none"}, uses {pallet.held()?.tag?.uses}.");
+        printLine($"Barrel hoops {((Barrel)Crate.byCode(4))?.hoops}; T under is a barrel: {(Crate.byCode(4)?.under?.is(Barrel)) ? "yes" : "no"}.");
+        int big = bgl.world.instances(Crate).filter((object o) => (((Crate)o).inner ?? (Crate)o).code > 2).count();
+        printLine($"{big} crate(s) hold or are a big code.");
+        Mark m = row[0]?.mark?.bumped() ?? blankMark;
+        if (row[0]?.mark?.bumped()?) printLine($"Row 0 bumps to {m.code}.");
+        else printLine("Row 0 has no mark.");
+        stringObj t = row[0]?.tagText();
+        printLine($"Row 0 tag has e: {(t.contains('e')) ? "yes" : "no"}; via chain {(row[0]?.tagText()?.contains('e')) ? "yes" : "no"}, at {row[0]?.tagText()?.indexOf('e')}; loud+ {row[0]?.tagText(true) + "!"}.");
+        ref Mark rm := crateP.mark;
+        printLine($"P by ref: {rm?.code}, bumped {rm?.bumped(by: 10)?.code}, text {rm?.text()}.");
+        printLine($"Named: {labelOf(none: row[3]?.inner?.label ?? "x", c: row[2]?.under)}.");
+    }
+}
+
+verb Logs {
+    meta = true;
+    grammar = {.logs};
+    void handler() {
+        for (int i = 0; i < row.size; i++) {
+            Crate c = row[i];
+            print(c?.label ?? "-");
+            print($": [{logOf(c)}] trimmed {c?.log?.trim()?.length}, short [{c?.log?.replaceAll("hand", "h")}], ");
+            printLine($"or [{c?.logOr()}], loud [{loudTag(c)}], top {c?.top()?.label}.");
+        }
+        switch (row[0]?.mark?.code) {
+            case 0:  printLine("P is unmarked.");
+            case 6:  printLine("P is marked 6.");
+            default: printLine("P is marked otherwise.");
+        }
+        Crate k = row[0];
+        while (k? && k.hasnt(general)) k = k?.under;
+        printLine($"First general from P: {k?.label ?? "none"}; P lacks it: {(row[0]?.hasnt(general)) ? "yes" : "no"}.");
+        printLine($"Last mark text {lastMark?.text()?.length} char(s), reversed [{lastMark?.text(prefix: "ab")?.reverse()}].");
+    }
+}
+
+int made = 0;
+
+Mark makeMark(int c) {
+    Mark m;
+    made++;
+    m.code = c;
+    return m;
+}
+
+verb Totals {
+    meta = true;
+    grammar = {.totals};
+    void handler() {
+        int total = row[0]?.weigh() + row[1]?.weigh(2) * 2;
+        total += row[2]?.load;
+        total -= -row[3]?.code;
+        printLine($"Total {total}; negated P code {-row[0]?.code}; P not general: {(!row[0]?.has(general)) ? "yes" : "no"}.");
+        made = 0;
+        Mark a = row[0]?.mark ?? makeMark(1);
+        Mark b = row[1]?.mark ?? makeMark(2);
+        Mark c = Crate.byCode(9)?.mark ?? makeMark(3);
+        printLine($"Marks {a.code} {b.code} {c.code}; made {made}.");
+        int j = 0;
+        do {
+            j++;
+        } while (row[j]?.under? && j < 3);
+        printLine($"Walked to {j}; room of noun-less P: {row[0]?.parent ?? location}; under-or-self {(row[1]?.under ?? row[1])?.label}.");
+    }
+}
+
+bool Initialise() {
+    row[0] = crateP;
+    row[1] = crateQ;
+    row[2] = crateR;
+    row[3] = barrelT;
+    down = (Crate c) => c?.under;
+    for (object o in bgl.world.instances(Crate)) ((Crate)o).scaler = twice;
+    rfalse;
+}

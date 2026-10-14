@@ -1,0 +1,517 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program with two rooms, a cabinet of three drawers,
+// five parts and a pool of cards, written so that members are nearly always reached through computed
+// receivers. A part class with a named accessor value class `Dial`, an owned value class `Size`, a
+// member array of marks, a `default` describe() returning a stringObj, a method returning the part, a
+// `selfType` method and a method returning its drawer through a cast of `parent`; a gear subclass that
+// overrides describe() and adds a mesh() returning a gear; a spring subclass that hides the setter of
+// the inherited accessor; an object with a member of its own reached by an instance cast. A drawer
+// class with a member array of parts, an inline `auto` accessor, a next link, an owned `Size`, a member
+// array of `Size`, an `operator []`, methods returning a part, self and an int, and a static method
+// returning a drawer. A cabinet object whose method returns a drawer and counts its calls, so that each
+// receiver is seen to be evaluated once. Receivers are: casts of `noun`, of `noun.parent`, of array
+// elements, of call results and of <linq> results, `((T)x).m` and `((T)(U)x).m`; ancestor casts that
+// select the base describe() through elements and call results; call results of methods, static
+// methods, `func<>` values and `new`; array and member-array elements, subscripts on call results
+// `pick(1)[0]`, member arrays reached through call results (read, subscripted, appended to with `+=`,
+// iterated, filtered); `?:` and `??` results; `selfType` and self-returning chains; value-class results
+// chained into further methods. Through them: fields read and assigned, `+=`, `++` and `--` on fields,
+// accessors and member-array elements, accessors compared and interpolated, methods with default and
+// named arguments, `?.` after a cast, receivers in `if`, `while`, `for`, `for`-in, `switch` and
+// `return`. Mixed-case keywords, Allman, K&R and one-line braces, tab indentation in one routine,
+// comments between tokens and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 24 ; }
+#include <string>
+#include <array>
+#include <linq>
+
+#using bgl.printRules ;
+
+// ---- value classes --------------------------------------------------------------------------------
+
+/// Wear held between 0 and 20.
+value class Dial
+{
+    int _v = 0 ;
+    int  operator ()          { return _v ; }
+    void operator = ( int v ) { _v = v > 20 ? 20 : ( v < 0 ? 0 : v ) ; }
+}
+
+VALUE CLASS Size {
+    inline int w ;
+    inline int h ;
+    Size operator =  ( Size o ) { w = o.w ; h = o.h ; return self ; }
+    Size operator +  ( Size o ) { Size r ; r.w = w + o.w ; r.h = h + o.h ; return r ; }
+    bool operator == ( Size o ) { return w == o.w && h == o.h ; }
+    int  area () { return w * h ; }
+    Size grown ( int n = 1 ) { Size r ; r.w = w + n ; r.h = h + n ; return r ; }
+    selfType widen ( int n ) { w += n ; return self ; }
+    stringObj text () { stringObj s = $"{w}x{h}" ; return s ; }
+}
+
+// ---- classes --------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+class Part : object
+{
+    string     label ;
+    int        weight ;
+    Dial       wear ;
+    Size       size ;
+    array<int> marks[ 4 ] ;
+    Static int made = 0 ;
+
+    default stringObj describe () { stringObj s = $"part {label}" ; return s ; }
+
+    Part tag ( int m )
+    {
+        IF ( marks.length < marks.size ) marks += m ;
+        made++ ;
+        return self ;
+    }
+
+    selfType bump ( int n = 1 ) { weight += n ; return self ; }
+
+    Drawer home () { return ( Drawer ) parent ; }
+}
+
+class Gear : Part {
+    int teeth ;
+    stringObj describe () {
+        stringObj s = $"gear {label}/{teeth}" ;
+        return s ;
+    }
+    Gear mesh ( Gear g ) { teeth += g.teeth ; return g ; }
+}
+
+class Spring : Part
+{
+    hide wear.operator = ;
+    int coils ;
+}
+
+class Drawer : object
+{
+    string      label ;
+    array<Part> parts[ 4 ] ;
+    auto fill = {
+        int _n = 0 ;
+        int  operator ()          { return _n ; }
+        void operator = ( int v ) { _n = v < 0 ? 0 : v ; }
+    } ;
+    Drawer      next ;
+    Size        box ;
+    array<Size> slots[ 3 ] ;
+
+    Part operator [] ( int i ) { return i >= 0 && i < parts.length ? parts[ i ] : null ; }
+
+    Part first () { return parts.length > 0 ? parts[ 0 ] : null ; }
+
+    Drawer link ( Drawer d ) { next = d ; return self ; }
+
+    Drawer put ( Part p )
+    {
+        parts += p ;
+        p.parent = self ;
+        fill += 1 ;
+        return self ;
+    }
+
+    Part drop ( Part p ) { parts -= p ; fill -= 1 ; return p ; }
+
+    int load () { int t = 0 ; for ( Part p in parts ) t += p.weight ; return t ; }
+
+    static Drawer heaviest () { return cabinet.drawers.orderBy( byLoad ).first() ; }
+
+    Part nextFirst () { return next == null ? null : next[ 0 ] ; }
+
+    int chainLoad () { return load() + ( next == null ? 0 : self.next.chainLoad() ) ; }
+
+    func<bool , Part> keep ;
+}
+
+class Card[ 3 ] : object
+{
+    Part about ;
+    int  n ;
+    void create ( Part p , int k ) { about = p ; n = k ; }
+    Card stamp ( int k = 1 ) { n += k ; return self ; }
+}
+
+// ---- objects --------------------------------------------------------------------------------------
+
+Room roomA { "Room A" ; description = "Room A. A cabinet stands here. Room B is north." ; object n_to = roomB ; }
+
+Room roomB
+{
+    "Room B" ;
+    description = "Room B. Bare walls. Room A is south." ;
+    object s_to = roomA ;
+}
+
+object cabinet
+{
+    "cabinet" ;
+    parent     = roomA ;
+    name       = { .cabinet } ;
+    attributes = { static , transparent } ;
+    string description = "A cabinet of three drawers." ;
+    array<Drawer> drawers[ 3 ] ;
+    int picks = 0 ;
+    Drawer pick ( int i ) { picks++ ; return drawers[ i ] ; }
+}
+
+Drawer drawerA { "top drawer" ;    name = { .top , .drawer } ;    parent = cabinet ; attributes = { static , transparent } ; label = "top" ;    box = Size{ 4 , 2 } ; }
+Drawer drawerB { "middle drawer" ; name = { .middle , .drawer } ; parent = cabinet ; attributes = { static , transparent } ; label = "middle" ; box = Size{ 5 , 2 } ; }
+Drawer drawerC
+{
+    "bottom drawer" ;
+    name       = { .bottom , .drawer } ;
+    parent     = cabinet ;
+    attributes = { static , transparent } ;
+    label      = "bottom" ;
+    box        = Size{ w = 6 ; h = 3 ; } ;
+}
+
+Gear   gearA   { "brass gear" ; name = { .brass , .gear } ; parent = drawerA ; label = "brass" ; weight = 3 ; teeth = 12 ; size = Size{ 2 , 2 } ; }
+Spring springA { "steel spring" ; name = { .steel , .spring } ; parent = drawerA ; label = "steel" ; weight = 1 ; coils = 9 ; size = Size{ 1 , 4 } ; }
+Gear   gearB   { "iron gear" ; name = { .iron , .gear } ; parent = drawerB ; label = "iron" ; weight = 5 ; teeth = 20 ; size = Size{ 3 , 3 } ; }
+Part   pinA    { "tin pin" ; name = { .tin , .pin } ; parent = drawerB ; label = "tin" ; weight = 1 ; size = Size{ 1 , 1 } ; }
+Gear oddGear
+{
+    "odd gear" ;
+    name   = { .odd , .gear } ;
+    parent = drawerC ;
+    label  = "odd" ;
+    weight = 2 ;
+    teeth  = 7 ;
+    size   = Size{ 2 , 1 } ;
+    int spare = 5 ;
+}
+
+// ---- globals --------------------------------------------------------------------------------------
+
+array<Part> allParts = { gearA , springA , gearB , pinA , oddGear } ;
+array<Size>
+            plans[ 3 ] ;
+Part        sparePart ;
+int         pickedIn = 0 ;
+
+func<Drawer , int> at = ( int i ) => cabinet.drawers[ i ] ;
+
+// ---- routines -------------------------------------------------------------------------------------
+
+int  byLoad   ( Drawer a , Drawer b ) { return b.load() - a.load() ; }
+bool isGear   ( Part p )              { return p.is( Gear ) ; }
+Part heavier  ( Part a , Part b )     { return a.weight >= b.weight ? a : b ; }
+
+Gear asGear ( object o )
+{
+    if ( o.is( Gear ) ) return ( Gear ) o ;
+    return null ;
+}
+
+Part asPart ( object o ) {
+    IF ( !o.is( Part ) ) { printLine( "That is not a part." ) ; RETURN null ; }
+    return ( Part ) o ;
+}
+
+/// The labels in drawer i, from slot j on.
+stringObj labelsIn ( int i , int j = 0 )
+{
+	stringObj s ;
+	if ( cabinet.drawers[ i ][ j ] == null ) return s ;
+	s = cabinet.drawers[ i ][ j ].label ;
+	if ( cabinet.drawers[ i ][ j + 1 ] != null )
+	{
+		s += "," ;
+		s += labelsIn( i , j + 1 ) ;
+	}
+	return s ;
+}
+
+void showDrawer ( int i )
+{
+    Drawer d = cabinet.pick( i ) ;
+    print( $"{cabinet.pick( i ).label}: [{labelsIn( i )}] fill {cabinet.pick( i ).fill} load {at( i ).load()}" ) ;
+    printLine( $" first {cabinet.pick( i ).first()?.label ?? "none"} box {d.box.text()} next {at( i ).next?.label ?? "none"}" ) ;
+}
+
+bool Initialise ()
+{
+    location = roomA ;
+    cabinet.drawers += drawerA ;
+    cabinet.drawers += drawerB ;
+    cabinet.drawers += drawerC ;
+    drawerA.link( drawerB ).next.link( drawerC ) ;
+    drawerA.keep = isGear ;
+    cabinet.drawers[ 1 ].keep = ( Part p ) => p.weight < 4 ;
+    at( 2 ).keep = isGear ;
+    for ( Part p in allParts ) ( ( Drawer ) p.parent ).put( p ) ;
+    plans += Size{ 1 , 2 } ;
+    plans += Size{ 3 , 1 } ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands -------------------------------------------------------------------------------------
+
+verb Drawers
+{
+    meta = true ;
+    grammar = { .drawers } ;
+    void handler ()
+    {
+        for ( int i = 0 ; i < cabinet.drawers.length ; i++ ) showDrawer( i ) ;
+        printLine( $"heaviest {Drawer.heaviest().label} ({Drawer.heaviest().load()}) first {Drawer.heaviest().first().label} picks {cabinet.picks}" ) ;
+    }
+}
+
+verb Inspect
+{
+    meta = TRUE ;
+    grammar = { .inspect , NOUN } ;
+    void handler ()
+    {
+        if ( asPart( noun ) == null ) return ;
+        printLine( $"{( ( Part ) noun ).describe()} base {( ( Part ) noun ).label} in {( ( Drawer ) noun.parent ).label} ({( ( Part ) noun ).home().label}) w {( ( Part ) noun ).weight} wear {( ( Part ) noun ).wear}" ) ;
+        printLine( $"size {( ( Part ) noun ).size.text()} grown {( ( Part ) noun ).size.grown().text()} {( ( Part ) noun ).size.grown( 2 ).area()} marks {( ( Part ) noun ).marks.length}" ) ;
+        if ( noun.is( Gear ) )
+        {
+            printLine( $"teeth {( ( Gear ) noun ).teeth} as part {( ( Part ) ( Gear ) noun ).describe()} next {( ( Part ) noun ).home().next?.first()?.label ?? "none"}" ) ;
+        }
+        if ( noun == oddGear ) printLine( $"spare {( ( oddGear ) noun ).spare} {( ( oddGear ) ( ( Part ) noun ).home()[ 0 ] ).spare}" ) ;
+        if ( noun.is( Spring ) ) printLine( $"coils {( ( Spring ) noun ).coils} wear {( ( Spring ) noun ).wear}" ) ;
+        print( "marks:" ) ;
+        for ( int m in ( ( Part ) noun ).marks ) print( $" {m}" ) ;
+        printLine( "" ) ;
+    }
+}
+
+verb Tag
+{
+    grammar = { .tag , NOUN , NUMBER } ;
+    void handler () {
+        Part p = asPart( noun ) ;
+        if ( p == null ) return ;
+        int n = ( ( Part ) noun ).tag( parsed_number ).tag( parsed_number + 1 ).marks.length ;
+        ( ( Part ) noun ).marks[ 0 ] += 100 ;
+        p.home()[ 0 ].tag( 7 ).marks[ 0 ]++ ;
+        p.home().first().marks[ 0 ]-- ;
+        printLine( $"{cThe( p )} has {n} marks, first {( ( Part ) noun ).marks[ 0 ]}, last {p.tag( 0 ).marks.last()}; drawer's first has {p.home()[ 0 ].marks.length} ({p.home().first().marks[ 0 ]}); made {Part.made}" ) ;
+    }
+}
+
+verb Scuff
+{
+    grammar = { .scuff , NOUN , NUMBER } ;
+    void handler ()
+    {
+        if ( asPart( noun ) == null ) return ;
+        ( ( Part ) noun ).wear += parsed_number ;
+        ( ( Part ) noun ).home()[ 0 ].wear++ ;
+        asGear( noun )?.wear += 1 ;
+        ( heavier( ( Part ) noun , ( ( Part ) noun ).home().first() ) ).wear -= 1 ;
+        IF ( ( ( Part ) noun ).wear > ( ( Part ) noun ).home().first().wear )
+            printLine( $"{cThe( noun )} wears more than {the( ( ( Part ) noun ).home().first() )}." ) ;
+        ELSE IF ( ( ( Part ) noun ).wear == ( ( Part ) noun ).home()[ 0 ].wear )
+            printLine( $"{cThe( noun )} wears as much as the first in its drawer." ) ;
+        else
+            printLine( $"{cThe( noun )} wears less than {the( ( ( Part ) noun ).home()[ 0 ] )}." ) ;
+        printLine( $"wear {( ( Part ) noun ).wear} first {( ( Part ) noun ).home()[ 0 ].wear} gear? {asGear( noun )?.wear}" ) ;
+    }
+}
+
+verb Count
+{
+    meta = true ; grammar = { .count } ;
+    void handler ()
+    {
+        int p0 = cabinet.picks ;
+        cabinet.pick( 0 ).fill += 2 ;
+        int p1 = cabinet.picks ;
+        cabinet.pick( 0 ).fill++ ;
+        int p2 = cabinet.picks ;
+        cabinet.pick( 1 ).parts[ 0 ].weight += 1 ;
+        int p3 = cabinet.picks ;
+        cabinet.pick( 1 )[ 0 ].wear += 3 ;
+        int p4 = cabinet.picks ;
+        cabinet.pick( 2 ).box.w += 1 ;
+        int p5 = cabinet.picks ;
+        cabinet.pick( 2 ).slots[ 0 ].h++ ;
+        int p6 = cabinet.picks ;
+        cabinet.pick( 1 ).parts[ 1 ].marks[ 0 ] += 5 ;
+        int p7 = cabinet.picks ;
+        printLine( $"steps {p1 - p0} {p2 - p1} {p3 - p2} {p4 - p3} {p5 - p4} {p6 - p5} {p7 - p6}" ) ;
+        printLine( $"fill {drawerA.fill} weight {gearB.weight} wear {gearB.wear} box {drawerC.box.text()} slot {drawerC.slots[ 0 ].h} mark {pinA.marks[ 0 ]}" ) ;
+        drawerA.fill -= 3 ;
+        gearB.weight -= 1 ;
+    }
+}
+
+verb Mesh
+{
+    meta = true ;
+    grammar = { .mesh } ;
+    void handler ()
+    {
+        Gear g = gearA.bump().bump( 2 ).mesh( gearB ) ;
+        printLine( $"mesh {g.label} {gearA.teeth} {gearA.weight} {gearA.bump( n: 0 ).teeth} {( ( Gear ) allParts[ 0 ] ).bump( 1 ).weight}" ) ;
+        printLine( $"filter {( ( Gear ) allParts.filter( isGear ).last() ).teeth} {allParts.filter( isGear ).count()} {( ( Part ) allParts.filter( isGear ).first() ).describe()} {allParts.orderBy( ( Part a , Part b ) => b.weight - a.weight ).first().label}" ) ;
+        SWITCH ( ( ( Gear ) cabinet.pick( 1 ).first() ).teeth % 4 )
+        {
+            case 0 : printLine( "teeth fours" ) ;
+            default : printLine( "teeth odd" ) ;
+        }
+        int k = 0 ;
+        while ( at( k ) != null && at( k ).first() != null && at( k ).first().weight < 5 ) k++ ;
+        printLine( $"first heavy drawer {k} {at( k )?.label ?? "none"}" ) ;
+        for ( Part p in cabinet.pick( 1 ).parts ) print( $"{p.describe()}; " ) ;
+        printLine( "" ) ;
+        for ( Part p in at( 0 ).parts ) print( $"{( ( Part ) p ).describe()}|{p.describe()} " ) ;
+        printLine( "" ) ;
+        gearA.bump( -3 ) ;
+        gearA.teeth = 12 ;
+        gearB.teeth = 20 ;
+        allParts[ 0 ].weight = 3 ;
+    }
+}
+
+verb Cards
+{
+    grammar = { .card , NOUN } ;
+    void handler ()
+    {
+        Part p = asPart( noun ) ;
+        if ( p == null ) return ;
+        Card c = new Card( p , 2 ) ;
+        if ( c == null ) { printLine( "No card is left." ) ; return ; }
+        printLine( $"card {c.stamp().stamp( 3 ).n} for {c.about.label} in {c.about.home().label} first {c.about.home()[ 0 ].label} {c.about.describe()}" ) ;
+        Card d = new Card( c.about.home().first() , c.n * 2 ) ;
+        printLine( $"second {d?.stamp( k: 1 )?.about?.label ?? "none"} x {d == null ? 0 : d.n} size {d.about.size.grown( n: 1 ).text()}" ) ;
+        delete d ;
+        delete c ;
+    }
+}
+
+verb Sizes
+{
+    meta = true ;
+    grammar = { .sizes } ;
+    void handler ()
+    {
+        cabinet.pick( 0 ).slots += cabinet.pick( 0 ).box.grown() ;
+        at( 0 ).slots += Size{ 1 , 1 } ;
+        at( 0 ).slots[ 1 ].widen( 2 ).widen( 1 ) ;
+        Size s = cabinet.pick( 0 ).box.grown( 2 ).widen( 1 ) ;
+        printLine( $"slots {at( 0 ).slots.length} {at( 0 ).slots[ 0 ].text()} {at( 0 ).slots[ 1 ].text()} {at( 0 ).slots[ 1 ].grown().area()} s {s.text()} box {drawerA.box.text()}" ) ;
+        printLine( $"sum {( gearA.size + gearB.size ).text()} {( gearA.size + gearB.size ).grown( 1 ).area()} {( allParts[ 1 ].size + allParts[ 3 ].size ).text()} eq {gearA.size == ( ( Part ) allParts[ 0 ] ).size} {at( 1 )[ 0 ].size == at( 1 )[ 1 ].size}" ) ;
+        printLine( $"plans {plans.length} {plans[ 0 ].text()} {plans[ 1 ].grown().text()} {plans.orderBy( ( Size a , Size b ) => b.area() - a.area() ).first().text()} {( heavier( gearA , gearB ) ).size.text()}" ) ;
+        Size total ;
+        for ( Size x in at( 0 ).slots ) total = total + x ;
+        printLine( $"total {total.text()} widest {at( 0 ).slots.orderBy( ( Size a , Size b ) => b.w - a.w ).first().w}" ) ;
+        at( 0 ).slots.clear() ;
+    }
+}
+
+verb Move
+{
+    grammar = { .move , NOUN } ;
+    void handler ()
+    {
+        if ( asPart( noun ) == null ) return ;
+        if ( ( ( Part ) noun ).home().next == null ) { printLine( $"{cThe( noun )} is in the last drawer." ) ; return ; }
+        ( ( Part ) noun ).home().next.put( ( ( Part ) noun ).home().drop( ( Part ) noun ) ) ;
+        printLine( $"{cThe( noun )} moves to the {( ( Part ) noun ).home().label} drawer ({( ( Part ) noun ).home().fill} parts, load {( ( Drawer ) noun.parent ).load()})." ) ;
+    }
+}
+
+verb Spring
+{
+    grammar = { .stretch , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( Spring ) ) { printLine( "That is not a spring." ) ; return ; }
+        ( ( Part ) noun ).wear = ( ( Spring ) noun ).coils ;
+        ( ( Part ) ( Spring ) noun ).wear += 2 ;
+        ( ( Spring ) noun ).coils-- ;
+        sparePart = ( Part ) noun ;
+        printLine( $"{cThe( noun )}: coils {( ( Spring ) noun ).coils} wear {( ( Spring ) noun ).wear} {sparePart.wear} spare {( sparePart ?? gearA ).label} {( ( Part ) noun ).home()[ ( ( Part ) noun ).home().parts.indexOf( ( Part ) noun ) ].label}" ) ;
+    }
+}
+
+verb Pick
+{
+    meta = true ;
+    grammar = { .pick , NUMBER } ;
+    void handler ()
+    {
+        if ( parsed_number < 1 || parsed_number > 3 ) { printLine( "No such drawer." ) ; return ; }
+        Drawer d = cabinet.pick( parsed_number - 1 ) ;
+        Part   q = ( d.first() ?? sparePart ) ;
+        printLine( $"{d.label}: {( d.first() ?? pinA ).label} {( d.load() > 3 ? d : d.next ?? drawerA ).label} {( d.parts.length > 1 ? d[ 1 ] : d[ 0 ] )?.label ?? "none"} q {q?.label ?? "none"}" ) ;
+        print( "heavy:" ) ;
+        for ( Part p in cabinet.pick( parsed_number - 1 ).parts.filter( ( Part x ) => x.weight > 1 ) ) print( $" {p.label}" ) ;
+        printLine( $" ({cabinet.pick( parsed_number - 1 ).parts.filter( ( Part x ) => x.wear > 0 ).count()} worn)" ) ;
+    }
+}
+
+int teethOf ( int i )
+{
+    if ( at( i ).first() == null || !at( i ).first().is( Gear ) ) return -1 ;
+    return ( ( Gear ) at( i ).first() ).teeth ;
+}
+
+verb Survey
+{
+    meta = true ;
+    grammar = { .survey } ;
+    void handler () {
+        printLine( $"teeth {teethOf( 0 )} {teethOf( 1 )} {teethOf( 2 )} chain {at( 0 ).chainLoad()} {cabinet.pick( 1 ).chainLoad()} next {drawerA.nextFirst()?.label ?? "none"} {at( 2 ).nextFirst()?.label ?? "none"}" ) ;
+        printLine( $"keep {cabinet.pick( 0 ).keep( gearA )} {at( 1 ).keep( gearB )} {at( 1 ).keep( pinA )} {( ( Drawer ) springA.parent ).keep( springA )} {cabinet.drawers.filter( ( Drawer d ) => d.keep( d.first() ) ).count()}" ) ;
+        printLine( $"heavy {Drawer.heaviest()[ 0 ].label} {Drawer.heaviest().parts[ 0 ].marks.length} {cabinet.drawers.orderBy( byLoad ).first().parts.filter( isGear ).first().describe()} {( ( Gear ) ( object ) allParts[ 2 ] ).teeth}" ) ;
+        Drawer.heaviest().fill += 4 ;
+        Drawer.heaviest().fill-- ;
+        at( 1 ).parts[ 0 ].size.w += 1 ;
+        cabinet.pick( 1 ).parts[ 0 ].size.h -= 1 ;
+        printLine( $"after {Drawer.heaviest().fill} {at( 1 ).parts[ 0 ].size.text()} {( gearA.size + gearB.size ).widen( 1 ).text()} {( ( Drawer ) cabinet.drawers[ 2 ] ).parts.length}" ) ;
+        int k = 0 ;
+        do { k++ ; } while ( k < cabinet.drawers.length && at( k ).parts.length > 0 && at( k ).first()?.wear < 10 ) ;
+        printLine( $"worn drawer {k} worn {allParts.orderBy( ( Part a , Part b ) => a.wear - b.wear ).last().label}={allParts.orderBy( ( Part a , Part b ) => a.wear - b.wear ).last().wear} fills {cabinet.pick( 0 ).fill < at( 1 ).fill} {at( 1 ).fill == cabinet.drawers[ 2 ].fill}" ) ;
+        for ( int i = 0 ; i < cabinet.drawers.length ; i++ )
+            if ( ( ( Drawer ) cabinet.drawers[ i ] ).parts.length > 1 && cabinet.drawers[ i ][ 1 ].wear >= 0 )
+                print( $"[{i}:{cabinet.drawers[ i ][ 1 ].label}/{cabinet.drawers[ i ].parts[ 1 ].wear}]" ) ;
+        printLine( "" ) ;
+        ( cabinet.pick( 0 ).fill > 5 ? drawerB : drawerC )[ 0 ].wear += 1 ;
+        ( heavier( gearA , gearB ) ).bump( 0 ).size.w += 0 ;
+        Drawer.heaviest().fill -= 3 ;
+        at( 1 ).parts[ 0 ].size.w -= 1 ;
+        at( 1 ).parts[ 0 ].size.h += 1 ;
+    }
+}
+
+verb Peek { grammar = { .peek , NOUN } ;
+    void handler () {
+        if ( !noun.is( Drawer ) ) { printLine( "That is not a drawer." ) ; return ; }
+        ( ( Drawer ) noun ).parts[ 0 ]?.wear += 2 ;
+        ( ( Drawer ) noun ).first()?.tag( 9 ) ;
+        ( ( Drawer ) noun )[ 1 ]?.bump() ;
+        ( ( Drawer ) noun ).slots[ 2 ] = ( ( Drawer ) noun ).box.grown( n: 0 ) ;
+        printLine( $"{cThe( noun )}: {( ( Drawer ) noun )?.first()?.label ?? "empty"} / {( ( Drawer ) noun )[ 1 ]?.label ?? "nothing"} w {( ( Drawer ) noun )[ 1 ]?.weight} next {( ( Drawer ) noun ).next?.first()?.describe()?.length} slot {( ( Drawer ) noun ).slots[ 2 ].text()} marks {( ( Drawer ) noun ).first()?.marks?.length}" ) ;
+        printLine( $"wear {( ( Drawer ) noun ).parts[ 0 ]?.wear} load {( ( Drawer ) ( ( ( Drawer ) noun ).first()?.parent ?? noun ) ).load()}" ) ;
+    }
+}

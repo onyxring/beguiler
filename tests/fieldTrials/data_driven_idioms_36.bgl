@@ -1,0 +1,493 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a tool crib kept in parallel slot tables, whose names keep meeting. Global tables
+// label, word, qty, kind, state and lent beside a global variable slot, a global total and owner,
+// #defines LIMIT and WIDTH, consts SLOTS and NONE, and an array named log beside the library's log
+// emitter. An Entry value class whose fields slot, qty and kind are named like the global tables and
+// variable, built inline with named members from same-named parameters (`slot = slot; kind =
+// kind[slot];`), with a method label() reading ::label and a test against ::slot; a Tally value class
+// whose fields are named like the eKind values, with == / != taking a parameter named tally and a
+// static made, beside a verb Tally (`Tally t;` and `Tally.made` in the verb's own handler, `action ==
+// Tally`, a function taking `ref Tally tally`); an eState enum whose member locked is also the library
+// attribute, read bare where an eState is expected and as the attribute in `has(locked)` and an
+// attributes list. A Bin class with members slot, limit (initialized from the #define LIMIT), number
+// (a library property), open (a library attribute, also given as the attribute and tested with
+// `has(::open)` in the class), bin (its own class's name), crib (initialized from the object of that
+// name), a static total (like the global), a static at(number), and methods qty(), label() and spare()
+// named like a global table and an enum value, reaching the globals with ::qty, ::label, ::LIMIT and
+// ::crib; a switch on a member read with `case ::LIMIT:` and `case > limit:`; `extend class Bin` adding
+// an owner like the global; `provides(limit)` and `provides(open)`. A crib object with members total,
+// owner, turns (the library global), first (like <linq>'s first), tally (like the verb), a member
+// array qty (like the global table), a Tally seen, and a method count() beside a global function
+// count() (also <linq>'s count), called bare, through ::, and from lambdas inside its methods. A scan
+// object with a method NextWord() wrapping the library's ::NextWord(). A fmt object imported with
+// #using whose parameters are named like the #define WIDTH (defaulting to ::WIDTH) and the table word.
+// Parameters, locals, loop variables and lambda parameters named like global tables, the global
+// variable, the global function, consts, the class, the #define and library globals; a ref local
+// named last beside `log.last()`; a local first initialized from `.first()`; `::Bin.at(n)` in the
+// initializer of a local named bin; a default `owner = ::owner`; named arguments `qty:` and `owner:`;
+// lambda parameters named like the array the chain runs on; GamePreRoutine switching on action; reads
+// in other letter cases (Qty[..], LABEL[..], ::QTY, Slots, CRIB.Total, Crib.Count, binA.QTY(),
+// Bin.TOTAL, ::Limit, eKind.TOOL, LOG.LAST().QTY).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define LIMIT 4
+#define WIDTH 9
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants and enumerations ------------------------------------------------
+
+const int SLOTS = 6;
+const int NONE = -1;
+const int LOG_MAX = 5;
+
+enum eKind { tool, part, spare }
+enum eState { ready, shut, locked }     // locked is also the library attribute
+
+//-- Slot tables ---------------------------------------------------------------
+
+//                             0         1         2       3      4       5
+array<string> label        = { "hammer", "wrench", "bolt", "nut", "fuse", "file" };
+array<dictionaryWord> word = { .hammer,  .wrench,  .bolt,  .nut,  .fuse,  .file };
+array<int> qty             = { 3,        2,        12,     20,    0,      1 };
+array<eKind> kind          = { tool,     tool,     part,   part,  spare,  tool };
+array<eState> state        = { ready,    ready,    ready,  shut,  locked, ready };
+array<int> lent            = { 0,        0,        0,      0,     0,      0 };
+array<int> ids             = { 0,        1,        2,      3,     4,      5 };
+
+int slot = NONE;            // the slot touched last
+int total = 0;              // items issued, all slots
+string owner = "desk";
+
+//-- Value classes -------------------------------------------------------------
+
+value class Entry {
+    inline int slot;
+    inline int qty;
+    inline eKind kind;
+    Entry operator = (Entry o) { slot = o.slot; qty = o.qty; kind = o.kind; return self; }
+    string label() { return ::label[slot]; }
+    bool isLast() { return slot == ::slot; }
+}
+
+array<Entry> log[LOG_MAX];
+
+value class Tally {
+    inline int tool;
+    inline int part;
+    inline int spare;
+    static int made = 0;
+    Tally operator = (Tally o) { tool = o.tool; part = o.part; spare = o.spare; return self; }
+    void add(eKind k, int n) {
+        switch (k) {
+            case eKind.tool:  tool += n;
+            case eKind.part:  part += n;
+            case eKind.spare: spare += n;
+        }
+    }
+    bool operator == (Tally tally) { return tool == tally.tool && part == tally.part && spare == tally.spare; }
+    bool operator != (Tally tally) { return !(self == tally); }
+    int sum() { return tool + part + spare; }
+}
+
+//-- Bins ----------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+class Bin : object {
+    int slot;
+    int limit = LIMIT;
+    int number = 0;
+    bool open = true;
+    Bin bin;
+    object crib = crib;
+    static int total = 0;
+    int qty() { return ::qty[slot]; }
+    string label() { return ::label[slot]; }
+    bool full() { return qty() >= limit; }
+    int spare() { return limit - qty(); }
+    int headroom() { return ::LIMIT * 2 - qty(); }
+    bool lidUp() { return self.has(::open); }
+    string band() {
+        int n = qty();
+        if (n == limit) return "at limit";
+        switch (n) {
+            case 0:       return "empty";
+            case ::LIMIT: return "standard";
+            case > limit: return "over";
+        }
+        return "under";
+    }
+    static Bin at(int number) {
+        for (Bin b in bins) if (b.number == number) return b;
+        return null;
+    }
+    void put(int n) {
+        ::qty[slot] += n;
+        total += n;
+        Bin.TOTAL++;
+    }
+}
+
+extend class Bin {
+    string owner = "rack";
+    bool mine() { return owner != ::owner && crib == ::crib; }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Bin binA { "bin A"; slot = 0; number = 1; bin = binB; attributes = {open}; }
+Bin binB { "bin B"; slot = 2; number = 2; limit = 15; bin = binC; }
+Bin binC { "bin C"; slot = 4; number = 3; open = false; owner = "cage"; attributes = {locked}; }
+
+array<Bin> bins = { binA, binB, binC };
+
+//-- The crib ------------------------------------------------------------------
+
+object crib {
+    "crib";
+    int total = 0;
+    string owner = "crib";
+    int turns = 0;
+    Bin first = binA;
+    int moves = 0;
+    Tally seen;
+    int tally = 0;
+    array<int> qty[SLOTS];
+    bool tallied() { return tally > 0; }
+    int outSlots() {
+        return ids.filter((int slot) => lent[slot] > 0 && count(kind[slot]) > 1).count();
+    }
+    void snap() {
+        for (int i in 0 to SLOTS - 1) qty[i] = ::qty[i];
+    }
+    int drift() {
+        int n = 0;
+        for (int i in 0 to SLOTS - 1) if (qty[i] != ::qty[i]) n++;
+        return n;
+    }
+    int count(eKind k) {
+        int n = 0;
+        for (int slot in 0 to SLOTS - 1)
+            if (kind[slot] == k && lent[slot] > 0) n++;
+        return n;
+    }
+    void record(int slot, int qty) {
+        total += qty;
+        ::total += qty;
+        turns = ::turns;
+        ::slot = slot;
+        if (count(kind[slot]) == 1 && ::count(kind[slot]) > 1)
+            print("(first of its kind out)^");
+    }
+}
+
+// Slots of kind k with anything still on the shelf.
+int count(eKind k) {
+    return ids.filter((int slot) => kind[slot] == k && qty[slot] > 0).count();
+}
+
+//-- Formatting ----------------------------------------------------------------
+
+object fmt {
+    void pad(ref stringObj s, int width = ::WIDTH) {
+        while (s.length < width) s += " ";
+    }
+    stringObj plural(int n, string word) {
+        stringObj s = $"{n} {word}";
+        if (n != 1) s += "s";
+        return s;
+    }
+}
+
+#using fmt
+
+string kindName(eKind kind) {
+    switch (kind) {
+        case tool:  return "tool";
+        case part:  return "part";
+        case spare: return "spare";
+    }
+    return "?";
+}
+
+string stateName(eState state) {
+    switch (state) {
+        case ready:  return "ready";
+        case shut:   return "shut";
+        case locked: return "locked";
+    }
+    return "?";
+}
+
+//-- Parsing -------------------------------------------------------------------
+
+object scan {
+    int words = 0;
+    dictionaryWord NextWord() {
+        words++;
+        return ::NextWord();
+    }
+}
+
+int parseSlot() {
+    int at = word.indexOf(scan.NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Actions -------------------------------------------------------------------
+
+void logEntry(Entry e) {
+    if (log.length == LOG_MAX) log.remove(0);
+    log += e;
+}
+
+bool issueSlot(int slot, int qty = 1, string owner = ::owner) {
+    if (state[slot] != ready) {
+        print($"{label[slot]} is {stateName(state[slot])}.^");
+        return false;
+    }
+    if (::qty[slot] < qty) {
+        print($"Only {::qty[slot]} {label[slot]} on the shelf.^");
+        return false;
+    }
+    ::QTY[slot] -= qty;
+    Lent[SLOT] += QTY;
+    crib.record(slot, qty);
+    logEntry(Entry{ slot = slot; qty = qty; kind = kind[slot]; });
+    print($"{owner} takes {plural(qty, label[slot])}; {::qty[slot]} left.^");
+    return true;
+}
+
+//-- Verbs ---------------------------------------------------------------------
+
+verb ListSlots {
+    grammar = {.slots};
+    void handler() {
+        for (int slot in 0 to Slots - 1) {
+            stringObj row = LABEL[slot];
+            pad(row, WIDTH);
+            row += kindName(kind[slot]);
+            pad(row, WIDTH + 6);
+            row += $"{Qty[slot]}";
+            pad(row, WIDTH + 10);
+            row += stateName(state[slot]);
+            if (lent[slot] > 0) row += $" ({lent[slot]} out)";
+            row.print();
+            print("^");
+        }
+    }
+}
+
+verb Issue {
+    grammar = { {.issue, parseSlot}, {.issue, parseSlot, .times, NUMBER} };
+    void handler() {
+        int slot = (int)noun;
+        int qty = (int)second;
+        if (qty == 0) qty = 1;
+        issueSlot(slot, qty: qty);
+    }
+}
+
+verb Lend {
+    grammar = {.lend, parseSlot, .to, .bench};
+    void handler() {
+        issueSlot((int)noun, owner: "bench");
+    }
+}
+
+verb PutBack {
+    grammar = {.putback, parseSlot};
+    void handler() {
+        int slot = (int)noun;
+        if (lent[slot] == 0) { print($"No {label[slot]} is out.^"); return; }
+        int qty = lent[slot];
+        int times = log.filter((Entry e) => e.slot == slot).count();
+        lent[slot] = 0;
+        ::qty[slot] += qty;
+        ::slot = slot;
+        print($"{plural(qty, label[slot])} back; {::qty[slot]} on the shelf ({plural(times, "line")} logged).^");
+    }
+}
+
+verb Kinds {
+    grammar = {.kinds};
+    void handler() {
+        for (eKind kind in {tool, part, spare}) {
+            stringObj row = kindName(kind);
+            pad(row, 6);
+            row += $"{count(kind)} stocked, {Crib.Count(kind)} out";
+            row.print();
+            print("^");
+        }
+        print($"Out of shared kinds: {crib.outSlots()}.^");
+    }
+}
+
+verb Low {
+    grammar = {.low, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        array<int> hits[SLOTS] = ids.filter((int slot) => qty[slot] <= limit);
+        stringObj line = $"At or under {limit}:";
+        if (hits.length == 0) line += " none";
+        for (int slot in hits) line += $" {label[slot]}";
+        line += ".";
+        line.print();
+        print("^");
+        int many = qty.filter((int qty) => qty > limit).count();
+        print($"Over {limit}: {many}.^");
+        int first = ids.orderBy((int a, int b) => qty[b] - qty[a]).first();
+        print($"Most: {label[first]} ({qty[first]}).^");
+        int short = ids.filter((int count) => lent[count] > 0 && qty[count] <= limit).count();
+        if (short > 0) print($"Out and low: {short}.^");
+    }
+}
+
+verb ListBins {
+    grammar = {.bins};
+    void handler() {
+        for (Bin bin in bins) {
+            stringObj row = $"{bin.number} {bin.label()}";
+            pad(row, WIDTH);
+            row += $"{bin.qty()}/{bin.limit}";
+            if (bin.full()) row += " full";
+            else row += $" room {bin.spare()}";
+            row += $" head {bin.headroom()} {bin.band()}";
+            if (!bin.open) row += " closed";
+            if (bin.has(open)) row += " lid";
+            if (bin.lidUp()) row += "!";
+            if (bin.has(locked)) row += " locked";
+            if (bin.mine()) row += $" [{bin.owner}]";
+            if (bin.bin) row += $" -> {bin.bin.label()}";
+            row.print();
+            print("^");
+        }
+        print($"Put away: {Bin.TOTAL}.^");
+        if (bins.any((Bin bin) => bin.full())) print("Some bin is full.^");
+        if (BINS[0].provides(limit) && bins[0].provides(open)) print("limit and open are properties.^");
+    }
+}
+
+verb Stow {
+    grammar = {.stow, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        Bin bin = crib.first;
+        while (bin) {
+            if (!bin.full() && bin.open) {
+                bin.put(n);
+                print($"{plural(n, bin.label())} into {bin.number}; {bin.QTY()} there.^");
+                return;
+            }
+            bin = bin.bin;
+        }
+        print("No open bin has room.^");
+    }
+}
+
+verb ShowLog {
+    grammar = {.log};
+    void handler() {
+        if (log.length == 0) { print("Log empty.^"); return; }
+        for (Entry e in log) {
+            stringObj row = e.label();
+            pad(row);
+            row += $"{e.qty} {kindName(e.kind)}";
+            if (e.isLast()) row += " *";
+            row.print();
+            print("^");
+        }
+        ref Entry last := log[log.length - 1];
+        if (last.qty == log.last().qty && last.isLast()) print($"Last: {last.label()} x{LOG.LAST().QTY}.^");
+        int qty = log.filter((Entry e) => e.kind == tool).count();
+        int count = log.filter((Entry e) => e.qty > 1).count();
+        print($"Tool lines: {qty}; multiple: {count}; tool slots stocked: {::count(eKind.TOOL)}.^");
+    }
+}
+
+void addAll(ref Tally tally) {
+    for (Entry e in log) tally.add(e.kind, e.qty);
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        Tally t;
+        addAll(t);
+        if (crib.tallied()) print($"Changed since last tally: {crib.drift()}.^");
+        if (crib.tallied() && t == crib.seen) print("No new issues.^");
+        else if (t != crib.seen) crib.seen = t;
+        crib.snap();
+        crib.tally++;
+        if (action == Tally)
+            print($"tool {t.tool}, part {t.part}, spare {t.spare}: {t.sum()} (tally {Tally.made}).^");
+        int turns = crib.turns;
+        print($"Crib total {CRIB.Total} at turn {turns}; global total {total}; owner {crib.owner}/{owner}.^");
+        print($"Moves {crib.moves}, tallies {crib.tally}, words read {scan.words}.^");
+    }
+}
+
+verb Bar {
+    grammar = {.bar, parseSlot};
+    void handler() {
+        int slot = (int)noun;
+        eState was = state[slot];
+        state[slot] = shut;
+        if (was == locked) print($"{label[slot]} stays locked.^");
+        else print($"{label[slot]}: {stateName(was)} -> {stateName(state[slot])}.^");
+        if (was == eState.locked) state[slot] = eState.locked;
+    }
+}
+
+verb Free {
+    grammar = {.free, parseSlot};
+    void handler() {
+        int slot = (int)noun;
+        state[slot] = ready;
+        print($"{label[slot]} ready.^");
+    }
+}
+
+verb ShowBin {
+    grammar = {.bin, NUMBER};
+    void handler() {
+        Bin bin = ::Bin.at((int)noun);
+        if (!bin) { print("No such bin.^"); return; }
+        print($"Bin {bin.number}: {bin.label()}, limit {bin.limit} (define {::Limit}), {bin.qty()} in.^");
+    }
+}
+
+bool GamePreRoutine() {
+    switch (action) {
+        case Issue, Lend: crib.moves++;
+        case Tally:       Tally.made++;
+    }
+    rfalse;
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

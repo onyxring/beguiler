@@ -20,13 +20,12 @@ object bgl
 [main a b c maybeName label first _bgl_tempL0 _bgl_tempL1;
     a="hello";
     b="world";
-    _bgl_tempL0 = a; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = b;
+    _bgl_tempL0 = a; if (~~(_bgl_tempL0 ~= 0)) { _bgl_tempL0 = b; }
     c = _bgl_tempL0;
     maybeName="";
-    _bgl_tempL0 = maybename; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = "unnamed";
+    _bgl_tempL0 = maybename; if (~~(_bgl_tempL0 ~= 0)) { _bgl_tempL0 = "unnamed"; }
     label = _bgl_tempL0;
-    _bgl_tempL1 = label; if (~~(_bgl_tempL1 ~= 0)) _bgl_tempL1 = "default";
-    _bgl_tempL0 = maybename; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = _bgl_tempL1;
+    _bgl_tempL0 = maybename; if (~~(_bgl_tempL0 ~= 0)) { _bgl_tempL1 = label; if (~~(_bgl_tempL1 ~= 0)) { _bgl_tempL1 = "default"; } _bgl_tempL0 = _bgl_tempL1; }
     first = _bgl_tempL0;
     print (string)c;
     print (string)label;

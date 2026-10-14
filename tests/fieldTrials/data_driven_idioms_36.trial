@@ -1,0 +1,120 @@
+Room A
+> slots
+hammer   tool  3   ready
+wrench   tool  2   ready
+bolt     part  12  ready
+nut      part  20  shut
+fuse     spare 0   locked
+file     tool  1   ready
+> bins
+1 hammer 3/4 room 1 head 5 under lid! [rack] -> bolt
+2 bolt   12/15 room 3 head -4 under [rack] -> fuse
+3 fuse   0/4 room 4 head 8 empty closed locked [cage]
+Put away: 0.
+limit and open are properties.
+> kinds
+tool  3 stocked, 0 out
+part  2 stocked, 0 out
+spare 0 stocked, 0 out
+Out of shared kinds: 0.
+> issue hammer
+(first of its kind out)
+desk takes 1 hammer; 2 left.
+> issue bolt times 5
+(first of its kind out)
+desk takes 5 bolts; 7 left.
+> issue fuse
+fuse is locked.
+> issue nut
+nut is shut.
+> lend wrench to bench
+bench takes 1 wrench; 1 left.
+> issue hammer times 9
+Only 2 hammer on the shelf.
+> slots
+hammer   tool  2   ready (1 out)
+wrench   tool  1   ready (1 out)
+bolt     part  7   ready (5 out)
+nut      part  20  shut
+fuse     spare 0   locked
+file     tool  1   ready
+> kinds
+tool  3 stocked, 2 out
+part  2 stocked, 1 out
+spare 0 stocked, 0 out
+Out of shared kinds: 2.
+> low 2
+At or under 2: hammer wrench fuse file.
+Over 2: 2.
+Most: nut (20).
+Out and low: 2.
+> low 0
+At or under 0: fuse.
+Over 0: 5.
+Most: nut (20).
+> log
+hammer   1 tool
+bolt     5 part
+wrench   1 tool *
+Last: wrench x1.
+Tool lines: 2; multiple: 1; tool slots stocked: 3.
+> tally
+tool 2, part 5, spare 0: 7 (tally 1).
+Crib total 7 at turn 7; global total 7; owner crib/desk.
+Moves 6, tallies 1, words read 8.
+> stow 3
+3 hammers into 1; 5 there.
+> stow 20
+20 bolts into 2; 27 there.
+> bins
+1 hammer 5/4 full head 3 over lid! [rack] -> bolt
+2 bolt   27/15 full head -19 over [rack] -> fuse
+3 fuse   0/4 room 4 head 8 empty closed locked [cage]
+Put away: 25.
+Some bin is full.
+limit and open are properties.
+> putback bolt
+5 bolts back; 32 on the shelf (1 line logged).
+> putback fuse
+No fuse is out.
+> bar hammer
+hammer: ready -> shut.
+> issue hammer
+hammer is shut.
+> bar fuse
+fuse stays locked.
+> free hammer
+hammer ready.
+> issue hammer times 2
+desk takes 2 hammers; 3 left.
+> log
+hammer   1 tool *
+bolt     5 part
+wrench   1 tool
+hammer   2 tool *
+Last: hammer x2.
+Tool lines: 3; multiple: 2; tool slots stocked: 3.
+> tally
+Changed since last tally: 2.
+tool 4, part 5, spare 0: 9 (tally 2).
+Crib total 9 at turn 24; global total 9; owner crib/desk.
+Moves 8, tallies 2, words read 16.
+> bin 2
+Bin 2: bolt, limit 15 (define 4), 32 in.
+> bin 7
+No such bin.
+> bins
+1 hammer 3/4 room 1 head 5 under lid! [rack] -> bolt
+2 bolt   32/15 full head -24 over [rack] -> fuse
+3 fuse   0/4 room 4 head 8 empty closed locked [cage]
+Put away: 25.
+Some bin is full.
+limit and open are properties.
+> putback hammer
+3 hammers back; 6 on the shelf (2 lines logged).
+> tally
+Changed since last tally: 1.
+No new issues.
+tool 4, part 5, spare 0: 9 (tally 3).
+Crib total 9 at turn 24; global total 9; owner crib/desk.
+Moves 8, tallies 3, words read 17.

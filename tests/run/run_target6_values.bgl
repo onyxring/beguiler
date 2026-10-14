@@ -1,0 +1,50 @@
+// run_target6_values — bare `{ … }` for an owned value-class member in an object body, a local named like
+// a member array beside reads of that member through receivers, value-class globals in object form and
+// initialized form as elements of a file-scope array initializer, and bare `{ … }` arguments to array
+// methods for a value class and an object-backed class.
+// EXPECT_OUTPUT: 200 5 99 2 8 2 8 1 2 3 2 2 5 1 99 9 4 8 2 5
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+#include <string>
+value class Rgb {
+    inline int r; inline int g; inline int b;
+    Rgb operator = (Rgb o) { r = o.r; g = o.g; b = o.b; return self; }
+}
+class Panel { Rgb fill; }
+Panel p1 { fill = { 40, 200, 40 }; }
+object holder { Rgb c = { 5, 5, 5 }; }
+class Card : object { array<int> steps[3]; }
+Card c1 { }
+array<Card> cards = { c1 };
+Rgb named { 1, 2, 3; }
+array<Rgb> arr = { named, Rgb{ 4, 5, 6 } };
+Rgb named2 = Rgb{ 1, 2, 3 };
+array<Rgb> arr2 = { named2, Rgb{ 4, 5, 6 } };
+class Pt : object { inline int x; inline int y; }
+array<Rgb> mixes[4];
+array<Pt> pts[4];
+void main() {
+    glulxConsole();
+    bglInit();
+    print(p1.fill.g); print(" "); print(holder.c.b); print(" ");
+    c1.steps.append(7);
+    c1.steps.append(8);
+    for (int i = 0; i < 1; i++) {
+        int steps = 99;
+        print(steps); print(" ");
+    }
+    print(c1.steps.length); print(" "); print(c1.steps[1]); print(" ");
+    print(cards[0].steps.length); print(" "); print(cards[0].steps[1]); print(" ");
+    stringObj steps = "x";
+    print(named.r); print(" "); print(named.g); print(" "); print(named.b); print(" "); print(arr.length); print(" ");
+    print(arr[0].g); print(" "); print(arr[1].g); print(" ");
+    arr2[0].r = 99;
+    print(named2.r); print(" "); print(arr2[0].r); print(" ");
+    mixes.append({ 7, 8, 9 });
+    mixes.prepend({ 1, 1, 9 });
+    pts.append({ 1, 2 });
+    pts.prepend({ 3, 4 });
+    print(mixes[1].b); print(" "); print(mixes.length * 2); print(" "); print(mixes[1].g); print(" ");
+    print(pts[1].y); print(" "); print(pts[0].x + pts[1].y);
+}

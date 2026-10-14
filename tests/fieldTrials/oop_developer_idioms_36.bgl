@@ -1,0 +1,655 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-sixth pass: a job board whose
+// members are reached through computed receivers. A value class for a grid cell with a copy operator,
+// `+`, `==`/`!=`, methods returning new cells (chained `Scaled(2).Swapped().X`) and a static factory; a
+// named accessor class (a meter counting its writes) with an int setter, a copy operator and its own
+// `+=`; a job class with an owned cell, a meter, an inline `auto` accessor with a method of its own,
+// a member `array<int>`, a member `array<Job>`, a link, a `func<int, int>` member, a stringObj
+// memo, a member `array<Cell>`, a static counter, `operator []`/`[]=` over its dependencies, fluent methods returning `self`,
+// methods returning cells, meters, stringObj and jobs, recursive walks through call results and a
+// `default` kind; an epic subclass with a member `array<string>`, a lead job and `hide` of the meter's
+// int setter, written through an ancestor cast of a call result; a repository object with an indexing
+// method that counts its calls, a side-effecting index, `<linq>` lookups and an inline `auto` cursor;
+// a pooled builder with fluent steps and a `Finish()` that hands back the job. Members, member arrays,
+// accessors and methods are reached through casts of the object tree (`((Job)o).Marks[0] += 1`, an
+// instance cast `((epicE)x).Extra`), ancestor casts (`((Job)epicE).Kind()`), casts of call results and
+// array elements, call results (`Board.At(1).Marks[0] += 10`, `Board.At(1).Hits++`, `Board.At(1).Memo
+// += '!'`, counted so a receiver is evaluated once), static call results, `func<>` call results,
+// `operator []` results (`Board.At(3)[0][0].Title`), global, nested and value-class array elements, an
+// element whose index has side effects, `<linq>` results (`orderBy(…)[0].Title`), ternaries and `??`
+// (`(big ? jobA : jobB).Marks += 6`), `?.` on call results and elements, parenthesized operator results (`(a.Pos + b.Pos).Area()`), `new`
+// and fluent chains; `ref` locals and `ref` parameters bound to members of computed receivers; `for … in`
+// over member arrays of call results and casts; `switch` subjects, `while`/`do` conditions and bodies,
+// `self` and `self[1]` inside methods, a downcast of `self`, and interpolation throughout.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eLane { Inbox, Doing, Done }
+
+string LaneName(eLane l) {
+    switch (l) {
+        case eLane.Inbox: return "inbox";
+        case eLane.Doing: return "doing";
+        case eLane.Done:  return "done";
+    }
+    return "?";
+}
+
+//-- Cell: a value type ----------------------------------------------------------------------------------------
+
+value class Cell {
+    int X;
+    int Y;
+
+    Cell operator = (Cell o) {
+        X = o.X;
+        Y = o.Y;
+        return self;
+    }
+
+    Cell operator + (Cell o) {
+        Cell r;
+        r.X = X + o.X;
+        r.Y = Y + o.Y;
+        return r;
+    }
+
+    bool operator == (Cell o) { return X == o.X && Y == o.Y; }
+    bool operator != (Cell o) { return X != o.X || Y != o.Y; }
+
+    Cell Scaled(int k) {
+        Cell r;
+        r.X = X * k;
+        r.Y = Y * k;
+        return r;
+    }
+
+    Cell Swapped() {
+        Cell r;
+        r.X = Y;
+        r.Y = X;
+        return r;
+    }
+
+    int Area() { return X * Y; }
+
+    static Cell Of(int x, int y) {
+        Cell c;
+        c.X = x;
+        c.Y = y;
+        return c;
+    }
+
+    void print() {
+        print("(");
+        print(X);
+        print(",");
+        print(Y);
+        print(")");
+    }
+}
+
+//-- Meter: a named accessor that counts its writes ------------------------------------------------------------
+
+value class Meter {
+    int _v;
+    int _sets;
+
+    int operator () { return _v; }
+
+    void operator = (int v) {
+        _v = v < 0 ? 0 : v;
+        _sets++;
+    }
+
+    Meter operator = (Meter o) {
+        _v = o._v;
+        _sets = o._sets;
+        return self;
+    }
+
+    void operator += (int by) {
+        _v += by;
+        _sets++;
+    }
+
+    int Sets() { return _sets; }
+}
+
+//-- Jobs ------------------------------------------------------------------------------------------------------
+
+class Job : object {
+    string Title;
+    eLane Lane = eLane.Inbox;
+    int Pri;
+    Cell Pos;
+    Meter Effort;
+    auto Hits = {
+        int _h;
+        int _touches;
+        int operator () { return _h; }
+        void operator = (int v) {
+            _h = v;
+            _touches++;
+        }
+        int Touches() { return _touches; }
+    }
+    array<int> Marks[4];
+    array<Job> Deps[3];
+    array<Cell> Path[3];
+    Job Next;
+    func<int, int> Weigh;
+    stringObj Memo;
+    static int Visits;
+
+    Job Tag(int m) {
+        Marks += m;
+        return self;
+    }
+
+    Job Link(Job j) {
+        Next = j;
+        return self;
+    }
+
+    Job Dep(int i) {
+        Visits++;
+        return Deps[i];
+    }
+
+    Job operator [] (int i) { return Deps[i]; }
+
+    Job operator []= (int i, Job j) {
+        Deps[i] = j;
+        return j;
+    }
+
+    Cell Where() { return Pos; }
+
+    Meter Snapshot() { return Effort; }
+
+    stringObj Label() {
+        stringObj s = Title;
+        s += '#';
+        s += $"{Pri}";
+        return s;
+    }
+
+    default string Kind() { return "job"; }
+
+    int Load() { return Effort + Pri; }
+
+    int Sum() {
+        int t = 0;
+        for (int m in Marks) t += m;
+        return t;
+    }
+
+    int Depth() { return Next == null ? 0 : 1 + Next.Depth(); }
+
+    Job Walk(int k) { return k == 0 ? self : Next.Walk(k - 1); }
+
+    string FirstDepTitle() { return Deps.length > 0 ? Deps[0].Title : "none"; }
+
+    int Spread() { return self.Deps.length > 1 ? self.Deps[0].Pos.X - self[1].Pos.X : 0; }
+
+    void Absorb() {
+        if (self.is(Epic)) ((Epic)self).Notes += Title;
+        else Memo += '~';
+    }
+
+    static Job Find(string t) {
+        for (Job j in Board.All) {
+            if (j.Title == t) return j;
+        }
+        return null;
+    }
+
+    void print() { print(Title); }
+}
+
+class Epic : Job {
+    array<string> Notes[3];
+    Job Lead;
+    hide Effort.operator = (int);
+
+    replace string Kind() { return "epic"; }
+
+    string BaseKind() { return ((Job)self).Kind(); }
+
+    void Reset() {
+        ((Job)self).Effort = 0;
+        Lead.Effort += 1;
+        Lead.Deps[0].Hits++;
+        self.Lead.Path[0].Y = Deps.length;
+    }
+}
+
+//-- The repository --------------------------------------------------------------------------------------------
+
+object Board {
+    "board";
+    array<Job> All[6];
+    int Calls;
+    int Picks;
+    auto Cursor = {
+        int _i;
+        int operator () { return _i; }
+        void operator = (int v) { _i = v % outer.All.length; }
+    }
+
+    Job At(int i) {
+        Calls++;
+        return All[i];
+    }
+
+    int Idx() {
+        Picks++;
+        return Picks;
+    }
+
+    Job Current() { return All[Cursor]; }
+
+    Job InLane(eLane l) { return All.filter((Job j) => j.Lane == l).first(); }
+
+    Epic FirstEpic() {
+        for (Job j in All) {
+            if (j.is(Epic)) return (Epic)j;
+        }
+        return null;
+    }
+
+    Job Heaviest() { return All.orderBy((Job a, Job b) => b.Pri - a.Pri).first(); }
+}
+
+//-- The builder -----------------------------------------------------------------------------------------------
+
+class Draft[3] : object {
+    Job Target;
+    stringObj Text;
+    int Steps;
+    static int Live;
+
+    void create(Job j) {
+        Target = j;
+        Text = j.Title;
+        Live++;
+    }
+
+    void destroy() { Live--; }
+
+    Draft Step(int n) {
+        Steps += n;
+        return self;
+    }
+
+    Draft Note(string s) {
+        Text += ':';
+        Text += s;
+        return self;
+    }
+
+    Job Finish() {
+        Target.Effort += Steps;
+        Target.Memo = Text;
+        return Target;
+    }
+
+    void print() { print(Text); }
+}
+
+//-- Globals and helpers ---------------------------------------------------------------------------------------
+
+array<Job> Queue[4];
+array<Cell> Spots[3];
+array<array<Job>> Grid = { {jobA, jobB}, {jobC} };
+func<Job, int> Pick = (int i) => Board.All[i];
+func<Cell, int> CellAt = (int i) => Board.At(i).Pos;
+Draft Pending;
+
+void Shift(ref Cell c, int by) {
+    c.X += by;
+    c.Y -= by;
+}
+
+void Bump(ref Meter m, int by) { m += by; }
+
+Job Pass(Job j) { return j; }
+
+Job Either(bool b, Job x, Job y) { return b ? x : y; }
+
+int Apply(func<int, int> f, int v) { return f(v); }
+
+void Shout(ref stringObj s) { s += "!"; }
+
+Cell PosOf(int i) { return Board.At(i).Pos; }
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Casts {
+    grammar = {.casts};
+    void handler() {
+        object o = roomA.child.sibling;
+        printLine($"first job {((Job)o).Title}, pri {((Job)o).Pri}, marks {((Job)o).Marks.length}");
+        ((Job)o).Marks += 7;
+        ((Job)o).Marks[0] += 1;
+        ((Job)o).Effort = 4;
+        ((Job)o).Effort += 2;
+        ((Job)o).Hits++;
+        ((Job)o).Pos.X = 10;
+        printLine($"after: mark {((Job)o).Marks[0]}, effort {((Job)o).Effort} ({((Job)o).Effort.Sets()} sets), hits {((Job)o).Hits}, touches {((Job)o).Hits.Touches()}, pos {((Job)o).Pos}");
+        object far = jobA.sibling.sibling;
+        printLine($"far {((Job)far).Title} lane {LaneName(((Job)far).Lane)}, epic note {((Epic)far.sibling).Notes[1]}, extra {((epicE)far.sibling).Extra}");
+        ((epicE)jobC.sibling).Extra += 3;
+        ((Epic)jobC.sibling).Notes[0] = "draft";
+        printLine($"epic extra {epicE.Extra}, note {epicE.Notes[0]}, notes {((Epic)jobC.sibling).Notes.length}");
+        Job j = epicE;
+        printLine($"kinds {epicE.Kind()} {((Job)epicE).Kind()} {epicE.BaseKind()} {j.Kind()} {((Job)Board.At(3)).Kind()} {((Epic)Board.At(3)).Kind()}");
+        ((Job)Board.FirstEpic()).Effort = 9;
+        printLine($"epic effort {epicE.Effort}, lead {((Epic)Board.At(3)).Lead.Title}, lead lane {LaneName(((Epic)Board.At(3)).Lead.Lane)}");
+    }
+}
+
+verb Calls {
+    grammar = {.calls};
+    void handler() {
+        Board.Calls = 0;
+        Board.At(1).Marks += 2;
+        Board.At(1).Marks += 4;
+        Board.At(1).Marks[0] += 10;
+        Board.At(1).Marks[1]++;
+        --Board.At(1).Marks[0];
+        printLine($"beta marks {jobB.Marks[0]} {jobB.Marks[1]} len {Board.At(1).Marks.length}, calls {Board.Calls}");
+        Board.At(1).Effort = 3;
+        Board.At(1).Effort += 4;
+        Board.At(1).Hits += 2;
+        Board.At(1).Hits++;
+        Board.At(1).Pos.Y -= 1;
+        Board.At(1).Memo = "b";
+        Board.At(1).Memo += '!';
+        Board.At(1).Memo += $"{Board.At(1).Pri}";
+        printLine($"beta effort {jobB.Effort} sets {jobB.Effort.Sets()}, hits {jobB.Hits} touches {Board.At(1).Hits.Touches()}, pos {jobB.Pos}, memo {jobB.Memo}, calls {Board.Calls}");
+        printLine($"chains {Board.At(0).Dep(0).Title} {Board.At(0).Dep(1).Next?.Title ?? "end"} {Board.At(0).Next.Next.Title} {Board.At(0)[1].Title} {Board.At(3)[0][0].Title} {Board.At(3).Deps[1].Deps[0].Title}, visits {Job.Visits}");
+        printLine($"labels {Board.At(0).Label()} {Board.At(1).Label().toUpper()} {Board.At(2).Label().length} {Board.Heaviest().Label()} {Job.Find("gamma").Deps.length} {Job.Find("epic").Deps[1].Title}");
+        printLine($"values {Board.At(0).Where().Scaled(2).Swapped().X} {(Board.At(0).Pos + Board.At(1).Pos).Area()} {Cell.Of(2, 3).Scaled(3).Y} {Board.At(2).Snapshot().Sets()} {Board.At(1).Load()}");
+        printLine($"funcs {Board.At(0).Weigh(3)} {Pick(2).Weigh(4)} {Pick(3).Weigh(Pick(1).Pri)} {Pass(jobB).Next.Title} {Either(false, jobA, jobC).Deps.length} {Pick(0).Deps[0].Marks[1]}");
+    }
+}
+
+verb Elems {
+    grammar = {.elems};
+    void handler() {
+        Queue[0].Marks += 1;
+        Queue[0].Marks += 2;
+        Queue[1].Hits = 5;
+        Queue[Queue.length - 1].Pos.X += 5;
+        Board.All[2].Memo = "c";
+        Board.All[Board.Idx()].Memo += "+";
+        printLine($"queue {Queue[0]} marks {Queue[0].Marks.length} sum {Queue[0].Sum()}, epic hits {Queue[1].Hits} pos {Queue[1].Pos}, memos {jobC.Memo} {jobB.Memo}, picks {Board.Picks}");
+        Spots[0] = Cell.Of(1, 1);
+        Spots[1] = Board.At(1).Pos;
+        Spots[2] = Spots[0] + Spots[1];
+        Spots[1].X = 9;
+        printLine($"spots {Spots[0]} {Spots[1]} {Spots[2]} {Spots[2].Scaled(2).Area()} {Spots[1] == Board.At(1).Pos} beta {jobB.Pos}");
+        printLine($"grid {Grid[0][1].Deps[0].Title} {Grid[1][0].Pos.Y} {Grid[0][0].Marks[0]} {Grid[0].length} {Grid[Grid.length - 1][0].Label()}");
+        printLine($"linq {Board.All.filter((Job j) => j.Pri > 2).first().Title} {Board.All.orderBy((Job a, Job b) => a.Pri - b.Pri)[0].Title} {Board.All.filter((Job j) => j.Marks.length > 0).count()} {Board.All.orderBy((Job a, Job b) => b.Pos.X - a.Pos.X).first().Pos}");
+        for (Job d in Board.At(3).Deps) print($"[{d.Title}:{d.Deps.length}]");
+        for (int m in Board.At(1).Marks) print($"<{m}>");
+        for (string n in ((Epic)Board.At(3)).Notes) print($"({n})");
+        printLine("");
+    }
+}
+
+verb Picks {
+    grammar = {.picks};
+    void handler() {
+        bool big = jobA.Pri > jobB.Pri;
+        (big ? jobA : jobB).Pos.X = 30;
+        (big ? jobA : jobB).Marks += 6;
+        (Board.InLane(eLane.Done) ?? jobA).Hits++;
+        (Board.InLane(eLane.Done) ?? jobA).Effort += 2;
+        (jobC.Next ?? jobA).Pri += 1;
+        printLine($"beta x {jobB.Pos.X} marks {jobB.Marks.length}, gamma hits {jobC.Hits} effort {jobC.Effort}, alpha pri {jobA.Pri}");
+        printLine($"pick {(big ? jobA : jobB).Label()} {(Board.InLane(eLane.Inbox) ?? jobC).Title} {(Board.InLane(eLane.Doing) ?? jobC)[0].Title} {(jobA.Pri > 3 ? Board.At(0) : Board.At(2)).Deps[1].Title}");
+        ref Cell c := Board.At(2).Pos;
+        c.X = 50;
+        c += Cell.Of(1, 1);
+        ref Meter m := Queue[1].Effort;
+        m += 1;
+        m = 20;
+        Shift(Board.At(0).Pos, 2);
+        Shift(((Epic)Board.At(3)).Lead.Pos, 1);
+        Bump(Board.At(2).Effort, 5);
+        Bump(((Job)epicE).Effort, 1);
+        printLine($"gamma pos {jobC.Pos} effort {jobC.Effort}, epic effort {epicE.Effort} sets {epicE.Effort.Sets()}, alpha pos {jobA.Pos}, beta pos {jobB.Pos}");
+        if (Board.At(1).Effort > Board.At(0).Effort && Board.At(2).Pos != Board.At(0).Pos) printLine("beta outworks alpha");
+        switch (((Epic)Board.At(3)).Lead.Lane) {
+            case eLane.Inbox: printLine("lead in inbox");
+            case eLane.Doing: printLine("lead doing");
+            default:          printLine("lead elsewhere");
+        }
+        switch (Board.At(0).Deps[0].Marks.length) {
+            case 0:  printLine("no marks");
+            case 3:  printLine("three marks");
+            default: printLine("some marks");
+        }
+        int n = 0;
+        while (Board.At(0).Marks.length < 3) {
+            Board.At(0).Tag(n);
+            n++;
+        }
+        do {
+            Board.Current().Hits++;
+            Board.Cursor++;
+        } while (Board.Cursor != 0);
+        printLine($"looped {n}, alpha marks {jobA.Marks[1]}{jobA.Marks[2]}, hits {jobA.Hits} {jobB.Hits} {jobC.Hits} {epicE.Hits}, cursor {Board.Cursor}");
+    }
+}
+
+verb Build {
+    grammar = {.build};
+    void handler() {
+        Draft d = new Draft(jobC);
+        Job done = d.Step(2).Step(3).Note("fix").Note("ok").Finish();
+        printLine($"draft {d} steps {d.Steps}, done {done.Title} effort {done.Effort} memo {done.Memo}, live {Draft.Live}");
+        Draft e = new Draft(Board.At(0));
+        printLine($"chained {e.Step(1).Finish().Marks.length}, alpha effort {jobA.Effort}, {e.Note("x").Text.length} {e.Target.Deps[0].Title}, live {Draft.Live}");
+        Pending = new Draft(Job.Find("beta"));
+        Pending.Step(4).Finish().Hits += 1;
+        printLine($"pending {Pending.Target.Title} effort {Pending.Target.Effort}, hits {Pending.Finish().Hits}, effort now {jobB.Effort}");
+        delete d;
+        delete e;
+        delete Pending;
+        Pending = null;
+        printLine($"live {Draft.Live}");
+    }
+}
+
+verb Inner {
+    grammar = {.inner};
+    void handler() {
+        printLine($"depth {jobA.Depth()} {Board.At(0).Walk(2).Title} {Board.At(3).Deps[0].Walk(1).Deps[0].Title} spread {jobA.Spread()} first {Board.At(2).FirstDepTitle()} {Board.At(3).FirstDepTitle()}");
+        Board.At(3).Absorb();
+        Board.At(1).Absorb();
+        printLine($"absorbed {epicE.Notes.length} {epicE.Notes[2]} {jobB.Memo}");
+        printLine($"apply {Apply(Board.At(1).Weigh, 2)} has {Board.At(0).Deps.contains(jobC)} at {Board.At(0).Deps.indexOf(jobC)} effort {((Job)Queue[1]).Effort}");
+    }
+}
+
+verb More {
+    grammar = {.more};
+    void handler() {
+        Board.Calls = 0;
+        Board.At(0).Path[0] = Cell.Of(1, 2);
+        Board.At(0).Path[1] = Board.At(0).Path[0].Scaled(3);
+        Board.At(0).Path[1] += Cell.Of(1, 1);
+        Board.At(0).Path[2].X = Board.At(0).Path[1].Y;
+        Board.At(0).Path[2].Y -= 4;
+        Shift(Board.At(0).Path[0], 1);
+        Shift(Spots[0], 2);
+        printLine($"path {jobA.Path[0]} {jobA.Path[1]} {jobA.Path[2]} {Board.At(0).Path[1].Swapped().Scaled(2).Y} spot {Spots[0]}, calls {Board.Calls}");
+        Board.At(2)[0] = jobA;
+        Board.At(2)[1] = Board.At(0)[0];
+        ((Job)roomA.child.sibling)[2] = epicE;
+        Queue[1][0] = Queue[0];
+        printLine($"deps {Board.At(2)[0].Title} {Board.At(2)[1].Title} {jobA.Deps[2].Title} {epicE.Deps[0].Title} len {jobC.Deps.length} {jobA.Deps.length}");
+        jobC.Deps.length = 2;
+        jobC.Marks = Board.At(1).Marks;
+        Board.At(2).Marks[0] = Board.At(2).Marks.length;
+        Board.At(1).Marks.clear();
+        Board.At(1).Marks += 9;
+        printLine($"copied {jobC.Marks[0]} {jobC.Marks[3]} len {jobC.Marks.length}, beta {jobB.Marks[0]} len {jobB.Marks.length}, has {Board.At(2).Marks.contains(6)} at {Board.At(2).Marks.indexOf(6)}");
+        printLine($"deps of gamma {Board.At(2).Deps.filter((Job j) => j.Pri > 2).count()} {Board.At(2).Deps.orderBy((Job a, Job b) => a.Pri - b.Pri)[0].Title} {Board.At(3).Deps.any((Job j) => j.Marks.length > 3)}");
+        Board.At(1).Memo = "m";
+        Shout(Board.At(1).Memo);
+        Shout(((Job)Queue[0]).Memo);
+        printLine($"memos {jobB.Memo} {jobC.Memo} {Board.At(1).Memo.length} {Board.At(2).Memo.toUpper()} {Board.At(1).Memo.contains('!')}");
+        ((Epic)Board.At(3)).Reset();
+        printLine($"reset {epicE.Effort} {jobB.Effort} {jobC.Hits} {jobB.Path[0]}");
+        printLine($"pos {PosOf(1).Area()} {PosOf(0) == Pick(0).Pos} {Board.At(Board.At(2).Pri).Title} {Grid[0][Grid[1].length].Marks[0]} {Board.At(1)} {Queue[1].is(Epic)} {Board.At(2).is(Epic)}");
+        Job.Find("gamma").Effort += 1;
+        Job.Find("gamma").Hits--;
+        Pick(1).Pos.X++;
+        ++Pick(1).Pos.Y;
+        Board.Calls = 0;
+        Board.Picks = 0;
+        Board.At(1).Marks[Board.Idx() % 2] += 3;
+        for (int i = 0; i < Board.At(0).Deps.length; i++) Board.At(0).Deps[i].Pri += i;
+        printLine($"gamma {jobC.Effort} {jobC.Hits}, beta pos {jobB.Pos} marks {jobB.Marks[0]} {jobB.Marks[1]}, calls {Board.Calls} picks {Board.Picks}, pris {jobB.Pri} {jobC.Pri} {epicE.Pri}");
+        printLine($"weighs {((Job)Queue[1]).Weigh(3)} {Board.At(Queue.length).Weigh(2)} {Pick(Pick(2).Pri)[0].Title}");
+    }
+}
+
+verb Guard {
+    grammar = {.guard};
+    void handler() {
+        Board.Calls = 0;
+        Board.At(2).Next?.Marks += 1;
+        Board.InLane(eLane.Done)?.Effort += 2;
+        Job.Find("none")?.Hits++;
+        Job.Find("gamma")?.Hits++;
+        Board.At(0).Deps[1]?.Path[1].X = 6;
+        Board.At(1)?.Path[2].Y += 4;
+        printLine($"guard {jobC.Effort} {jobC.Hits} {jobC.Path[1]} {jobB.Path[2]} {Board.At(2).Next?.Title ?? "end"} {Board.At(0).Next?.Next?.Title} {Board.At(2).Next?}, calls {Board.Calls}");
+        bool flag = true;
+        printLine($"casts {((Epic)Job.Find("epic")).Notes[2]} {((Epic)(flag ? epicE : Queue[1])).Notes[1]} {((Epic)Queue[1]).Lead.Path[0].Scaled(2).Swapped().X} {((Job)Pick(3)).Deps[1].Title}");
+        ((Epic)Queue[1]).Deps[0].Hits++;
+        ((Epic)Queue[1]).Lead.Effort += 4;
+        printLine($"elems {Board.At(1).Path[0]} {Queue[0].Effort.Sets()} {Queue[0].Hits} {jobB.Effort} {Board.At(0).Where() == Board.At(0).Pos} {Board.At(0).Where() != Board.At(1).Pos}");
+        printLine($"funcs {CellAt(1).Area()} {CellAt(2).Swapped().X} {CellAt(0) == jobA.Pos}");
+        printLine($"lambdas {Board.All.filter((Job j) => j.Deps.length > 0 && j.Deps[0].Pri > 2).count()} {Board.All.orderBy((Job a, Job b) => a.Path[2].Y - b.Path[2].Y)[0].Title} {Board.All.filter((Job j) => j[0]?.Lane == eLane.Done).first()?.Title ?? "none"}");
+        switch (Board.At(1).Label()) {
+            case "beta#5": printLine("label beta#5");
+            default:       printLine("label other");
+        }
+        switch (((Epic)Queue[1]).Notes[0]) {
+            case "draft": printLine("first note draft");
+            default:      printLine("first note other");
+        }
+    }
+}
+
+verb Poke {
+    grammar = {.poke, NOUN};
+    void handler() {
+        if (!noun.is(Job)) {
+            printLine("Not a job.");
+            return;
+        }
+        ((Job)noun).Hits++;
+        ((Job)noun).Marks += ((Job)noun).Hits;
+        printLine($"Poked {((Job)noun).Title} ({((Job)noun).Kind()}): hits {((Job)noun).Hits}, marks {((Job)noun).Marks.length}, next {((Job)noun).Next?.Title ?? "none"}, in {noun.parent}.");
+    }
+}
+
+#includeI6 "grammar"
+
+//-- The objects -----------------------------------------------------------------------------------------------
+
+Job jobA {
+    "alpha";
+    parent = roomA;
+    name = {.alpha};
+    Title = "alpha";
+    Pri = 3;
+}
+
+Job jobB {
+    "beta";
+    parent = roomA;
+    name = {.beta};
+    Title = "beta";
+    Pri = 5;
+    Lane = eLane.Doing;
+}
+
+Job jobC {
+    "gamma";
+    parent = roomA;
+    name = {.gamma};
+    Title = "gamma";
+    Pri = 1;
+    Lane = eLane.Done;
+}
+
+Epic epicE {
+    "epic";
+    parent = roomA;
+    name = {.epic};
+    Title = "epic";
+    Pri = 4;
+    int Extra = 7;
+}
+
+bool Initialise() {
+    location = roomA;
+    Board.All += jobA;
+    Board.All += jobB;
+    Board.All += jobC;
+    Board.All += epicE;
+    jobA.Deps += jobB;
+    jobA.Deps += jobC;
+    jobB.Deps += jobC;
+    epicE.Deps += jobA;
+    epicE.Deps += jobB;
+    epicE.Lead = jobB;
+    jobA.Link(jobB).Link(jobB);
+    jobB.Link(jobC);
+    jobA.Pos = Cell.Of(1, 2);
+    jobB.Pos = Cell.Of(3, 4);
+    jobC.Pos = Cell.Of(5, 6);
+    epicE.Pos = Cell.Of(2, 2);
+    epicE.Notes += "plan";
+    epicE.Notes += "ship";
+    jobA.Weigh = (int n) => n * 2;
+    jobB.Weigh = (int n) => n + 10;
+    jobC.Weigh = (int n) => n - 1;
+    epicE.Weigh = (int n) => n * n;
+    Queue += jobC;
+    Queue += epicE;
+    rfalse;
+}

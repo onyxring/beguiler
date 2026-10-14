@@ -1,0 +1,82 @@
+Room A
+Room A.
+You can see a shelf A (on which are a bolt and a nut) and a shelf B (on which are a washer and a crate (which is empty)) here.
+> report
+--
+shelf A: 3 slots, floor low, weight 18, heaviest mid/1
+<shelf B: 2 slots, floor mid, weight 6, heaviest top/1>
+--
+bolt item low/2 4 pcs, load 8, faces fore
+nut item mid/1 10 pcs, load 10, faces fore, note hex
+washer item top/1 3 pcs, load 3, faces aft
+crate crate top/3 1 pc, load 3, faces fore, holds 0
+sums 4, log 
+> grades
+top 2 (best); mid 1 (fair); low 1; in stock at least mid 0, at least low 0
+tops 2: first top/1, heaviest top/1, any low false; lookups 13
+> counts
+moves 0, faults 0, all 0, visits 1; moved 0, 0, 0; tally 0 0; pad <6>; parts are part part part; bolt fits shelf A (3); bolt lighter; heavier of bolt and nut nut
+kept 0 pcs, last not a crate
+> audit
+sums 13, top pick none, fault shelf full at bolt, washer 5 pcs
+> slips
+made 3, fourth none; bolt:2:fore nut:5:aft washer:1:aft aft 2, total 8 pcs
+log slip:bolt noslip 
+> stock bolt
+The bolt goes into stock: 1 kept.
+> stock nut
+The nut goes into stock: 2 kept.
+> stock washer
+The washer goes into stock: 3 kept.
+> stock crate
+The crate goes into stock: 4 kept.
+> stock bolt
+The bolt is in stock already, or stock is full.
+> grades
+top 2 (best); mid 1 (fair); low 1; in stock at least mid 3, at least low 4
+tops 2: first top/1, heaviest top/1, any low false; lookups 18
+> shift bolt
+No: shelf full (bolt).
+> shift nut
+No: shelf full (nut).
+> shift washer
+The washer goes on shelf A.
+> pack bolt
+The bolt is packed; the crate weighs 11.
+> pack nut
+The nut is packed; the crate weighs 21.
+> pack washer
+No: crate full (washer).
+> pack crate
+A crate doesn't go in a crate.
+> bump bolt
+The bolt: low to mid, at least mid; a fresh bump gives mid.
+> bump bolt
+The bolt: mid to top, at least mid, top; a fresh bump gives mid.
+> bump nut
+The nut: mid to top, at least mid, top; a fresh bump gives mid.
+> restock nut
+The nut: 10 pcs to 15 pcs, more.
+> restock crate
+The crate: 1 pc to 6 pcs, more.
+> report
+--
+shelf A: 3 slots, floor low, weight 5, heaviest top/1
+<shelf B: 2 slots, floor mid, weight 26, heaviest top/3>
+--
+bolt item top/2 4 pcs, load 8, faces fore
+nut item top/1 15 pcs, load 15, faces fore, note hex
+washer item top/1 5 pcs, load 5, faces aft
+crate crate top/3 6 pcs, load 26, faces fore, holds 2
+sums 17, log slip:bolt noslip +bolt +nut +washer +crate >shelf A 
+> counts
+moves 1, faults 4, all 5, visits 2; moved 1, 1, 1; tally 5 1; pad <6>; parts are part part part; bolt fits shelf A (3); bolt lighter; crate heavier; heavier of bolt and nut nut
+kept 30 pcs, last a crate holding 2
+> slips
+made 3, fourth none; bolt:2:fore nut:5:aft washer:1:aft aft 2, total 8 pcs
+log slip:bolt noslip +bolt +nut +washer +crate >shelf A slip:bolt noslip 
+> grades
+top 4 (best); mid 0 (fair); low 0; in stock at least mid 4, at least low 4
+tops 4: first top/2, heaviest top/3, any low false; lookups 40
+> audit
+sums 26, top pick top/2, bolt placed, washer 7 pcs

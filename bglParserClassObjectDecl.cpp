@@ -236,6 +236,7 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
     if(tok.is("for")){
         // alias class single-parent clause
         token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        if(parentTok.is(eTokenType::identifier)) parentTok = consumeTypeToken(parentTok);   // `for ns.item` (an alias)
         classDef* parent = languageService.findClass(parentTok.value);
         if(!parent) unknownBaseError(parentTok);
         else { checkInheritanceCycle(parent, parentTok.originalValue); addBase(parent); }
@@ -768,6 +769,21 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     bool isReplace = q.isReplace;
     bool isMemberConst = q.isConst;
     bool isMemberStatic = q.isStatic;
+    // A single value under an additive property's name is reported at the member, before any use of it
+    // reports something less clear (the whole-program check would reach it only after the class).
+    {
+        string prop = i6alias.empty() ? (string)name : i6alias;
+        string t = (string)returnType;
+        bool text = t == "string" || t == "stringorroutine" || t == "auto" || t.empty();
+        if(!isEmitter && !newClass.isEmitterClass && !isMemberStatic && !text && file.peekToken().isNot(token::bracketOpen)
+           && t.find('<') == string::npos && name.src.file.find("beguiLib") == string::npos
+           && languageService.isAdditiveProperty(prop))
+            parsingError(format("'{0}.{1}' is declared '{2}', but '{3}' is an ADDITIVE "
+                "property: it holds a list of every class's and object's contributions, so the member is "
+                "a `rawArray<T>`, a routine or a string. A single value is a one-element list "
+                "(`rawArray<int> {1} = 3;`).",
+                newClass.dName(), name.originalValue.empty() ? (string)name : name.originalValue, typeDisplayName(t), prop));
+    }
     // Emitter class: allow alias members (typed reference to another class) but not variable declarations
     if(isEmitter || newClass.isEmitterClass){
         string aliasTypeName = (string)returnType;
@@ -1456,7 +1472,18 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
     // Detected by a class-body shape at the front of the brace (`<type> <ident>` / `<type> operator`
     // / `operator`); an ordinary `{ v1, v2 }` / `{ f = v }` initializer takes the path below.
     if(parseInlineAccessor(prop, typeName, (typeDef*)currentObject)) return;
+    fileLexer::mark_t beforeValue = file.mark();
     token first = file.getToken();
+    // `fill = { 40, 200, 40 };` for a value-class member: the class's inline form, as `Rgb{ … }` (§11.3.2).
+    if(first.is(token::braceOpen) && !file.hasPendingToken)
+        if(classDef* vc = languageService.findClass(typeName); vc != nullptr && isValueClass(vc) && isInlineConstructible(vc)){
+            file.rewind(beforeValue);
+            token typeTok = first;
+            typeTok.tokenType = eTokenType::dataType;
+            typeTok.value = typeName;
+            typeTok.originalValue = vc->dName();
+            first = typeTok;
+        }
     // Rows of an array of arrays bake as anonymous global arrays, as the class's own do.
     if(first.is(token::braceOpen) && isArrayOfArraysElement(listElementType(typeName))){
         prop.declaredExpressionValue = parseArrayInitializerList(listElementType(typeName), nullptr, nullptr);
@@ -2021,7 +2048,8 @@ void bglParser::consumeMethodI6Alias(functionDef& funcDef){
         // The library's own methods keep their names: a program routine named like one yields instead.
         bool libraryMethod = funcDef.src.file.find("beguiLib") != string::npos;
         if(!funcDef.isEmitter && !funcDef.isStatic
-           && (isI6OperatorWord(funcDef.name) || namesI6Class(funcDef.name) || (!libraryMethod && namesLibraryGlobal(funcDef.name))))
+           && (isI6OperatorWord(funcDef.name) || isI6SystemFunction(funcDef.name) || namesI6Class(funcDef.name)
+               || (!libraryMethod && namesLibraryGlobal(funcDef.name))))
             funcDef.i6name = "_m_" + funcDef.dName();
         return;
     }
@@ -3008,6 +3036,30 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
         aliasDef.isAlias = true;  // type alias
     } else if(sep.is(token::assignment)){
         token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        // `alias o = root.ops;`: a path through objects' value-alias and `auto` members to an object or a class.
+        if(file.peekToken().is(token::period)){
+            string shown = rhs.originalValue.empty() ? rhs.value : rhs.originalValue;
+            objectDef* at = languageService.findGlobalAs<objectDef>(rhs.value);
+            string target;
+            while(file.peekToken().is(token::period)){
+                file.getToken();
+                token seg = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                shown += "." + (seg.originalValue.empty() ? seg.value : seg.originalValue);
+                variableDeclaration* step = nullptr;
+                if(at != nullptr)
+                    for(typeMember* m : at->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == seg.value && (!step || step->isPrePassStub)) step = vd;
+                at = nullptr; target.clear();
+                if(step == nullptr) break;
+                string init = step->declaredExpressionValue ? step->declaredExpressionValue->text() : "";
+                if(!init.empty() && (at = languageService.findGlobalAs<objectDef>(init)) != nullptr) target = init;
+                else if(step->isAlias || step->isValueAlias) target = step->type.name;
+            }
+            if(target.empty())
+                parsingError(format("alias member '{0}': '{1}' does not name an object or a class", aliasName.value, shown));
+            rhs.value = target;
+            rhs.originalValue.clear();
+        }
         typeDef& rhsType = languageService.getType(rhs.value);
         objectDef* rhsObj = dynamic_cast<objectDef*>(&rhsType);
         classDef*  rhsCls = dynamic_cast<classDef*>(&rhsType);
@@ -3033,6 +3085,15 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
     if(aliasDef.isAlias)
         for(auto& m : members)
             if(m->name == aliasDef.name && m->isPrePassStub && dynamic_cast<variableDeclaration*>(m) != nullptr){ m = &aliasDef; return; }
+    // A value alias's stub takes what the alias names, for a use the stub answers (`alias t = root.tally;`).
+    if(aliasDef.isValueAlias)
+        for(typeMember* m : members)
+            if(auto* stub = dynamic_cast<variableDeclaration*>(m); stub && stub->isPrePassStub && stub->name == aliasDef.name){
+                stub->type = aliasDef.type;
+                stub->isValueAlias = true;
+                stub->isExternal = true;   // compile-time only, as the alias itself
+                if(aliasDef.declaredExpressionValue != nullptr) stub->declaredExpressionValue = aliasDef.declaredExpressionValue;
+            }
     members.push_back(&aliasDef);
 }
 

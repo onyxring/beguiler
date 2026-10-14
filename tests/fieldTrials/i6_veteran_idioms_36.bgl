@@ -1,0 +1,698 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5, routines and verbs first and objects and classes
+// after, whose overload sets are met from every side. A global Show set chosen by char, int, bool,
+// string, stringObj, enum, a value class, Part, Gear (a Cog picks the nearest ancestor), object and
+// array<int>; Weigh with a `string | int` union and `var` as fallbacks and Grams where a class's
+// implicit `operator ()` beats `var`; Total overloads calling each other by arity and over an
+// array<Part>; Twice returning int, stringObj, a value class and a class, fed straight into Show;
+// a two-deep `replace` chain on one member of the Mark set and a `replace` of the other; Mount picked
+// by a named argument only one overload has; Apply sets told apart by the lambda's func type and by
+// arity; emitter overloads of Tag by int, string, class and interpolatedStringLiteral; a program
+// `print(Size)` overload used by interpolation. An object's overloaded methods (one added by `extend`)
+// reached through `#using`, through the object and through `?.` with named and defaulted arguments.
+// A Part/Gear/Cog hierarchy with overloaded instance methods (default and replace overrides, added
+// overloads, ancestor casts, a base-typed variable, an object's own override), an overloaded class
+// `print`, static Pick overloads called through the subclass, a Spring with two parents each giving
+// Wind overloads plus its own; instance `==`, `!=`, `<=>`, `+`, `-`, `*`, `?=` overloads with a
+// subclass replacing some, static `<=>`/`==` on two levels referenced as func values and passed to
+// sort; a Rack with `operator []` overloaded by int and enum and `operator []=`; a value class Size
+// with overloaded `=`, `+`, `*`, `-`, `+=`, `*=`, `--`, `prefix--`, `==`, `!=`, `<=>`, overloaded
+// instance methods and static factories; native Inspect, Mate, Spin, Tension, Measure verbs and meta
+// Shelve and Tally verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 2;
+const int NRACK = 6;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- the bench, used bare below
+
+object bench {
+    short_name = "work bench";
+    name = {.bench, .work};
+    parent = roomA;
+    attributes = {static, supporter};
+    int calls;
+    void Rec(int n)                     { calls++; print($"(i{n})"); }
+    void Rec(string s)                  { calls++; print($"(s{s})"); }
+    void Rec(Part p)                    { calls++; print($"(p{p.code})"); }
+    void Rec(Part p, int n)             { calls++; print($"(p{p.code}x{n})"); }
+    void Rec(Size s, string unit = "mm") { calls++; print($"(z{s.mm}{unit})"); }
+    int Sum(Part a, Part b)             { return a.weight + b.weight; }
+    int Sum(Gear a, Gear b)             { return a.teeth + b.teeth; }
+    int Sum(Size a, int n = 1)          { return a.mm * n; }
+}
+
+extend bench {
+    void Rec(eShape s) {
+        calls++;
+        print("(e");
+        Shape(s);
+        print(")");
+    }
+    void Rec(char c) { calls++; print($"(c{c})"); }
+}
+
+#using bench
+
+// ---------------------------------------------------------------- globals
+
+Size gauge;
+Size lastSize;
+array<Part> parts = {gearA, gearB, cogA, cogB, springA};
+array<Gear> gears = {gearA, gearB, cogA, cogB};
+array<int> widths = {3, 5, 8};
+int mated;
+
+// ---------------------------------------------------------------- overloaded routines
+
+int Sign(int n) {
+    if (n < 0) return -1;
+    if (n > 0) return 1;
+    return 0;
+}
+
+void Shape(eShape s) {
+    switch (s) {
+        case spur:  print("spur");
+        case bevel: print("bevel");
+        case worm:  print("worm");
+    }
+}
+
+void Show(int n)         { print($"int {n}"); }
+void Show(char c)        { print($"char {c}"); }
+void Show(bool b)        { print($"bool {b}"); }
+void Show(string s)      { print($"str {s}"); }
+void Show(stringObj s)   { print($"obj {s}/{s.length}"); }
+void Show(eShape s)      { print("shape "); Shape(s); }
+void Show(Size s)        { print($"size {s}"); }
+void Show(Part p)        { print($"part {p.code}"); }
+void Show(Gear g)        { print($"gear {g.code}/{g.teeth}"); }
+void Show(object o)      { print($"thing {o.short_name}"); }
+void Show(array<int> a)  { print($"ints {a.length}"); }
+
+void print(Size s)       { print($"{s.mm}mm"); }
+
+int Weigh(Part p)          { return p.weight; }
+int Weigh(int g)           { return g; }
+int Weigh(string | int v)  { return 100; }
+int Weigh(var v)           { return -1; }
+
+int Grams(int n)  { return n; }
+int Grams(var v)  { return -1; }
+
+int Total(Part p)                   { return p.weight; }
+int Total(Part p, Part q)           { return Total(p) + Total(q); }
+int Total(Part p, Part q, Part r)   { return Total(p, q) + Total(r); }
+int Total(array<Part> a) {
+    int t = 0;
+    for (Part p in a) t += Total(p);
+    return t;
+}
+
+Size Twice(Size s) {
+    Size r = s * 2;
+    return r;
+}
+int Twice(int n) { return n * 2; }
+stringObj Twice(string s) {
+    stringObj r = s;
+    r += s;
+    return r;
+}
+Part Twice(Part p) { return Part.Pick(p.code + 1) ?? p; }
+
+void Mark(Part p) { print($"m{p.code}"); }
+void Mark(Gear g) { print($"g{g.teeth}"); }
+replace void Mark(Gear g) {
+    print("<");
+    replaced(g);
+    print(">");
+}
+replace void Mark(Gear g) {
+    print("{");
+    replaced(g);
+    print("}");
+}
+replace void Mark(Part p) {
+    replaced(p);
+    print("!");
+}
+
+void Mount(Part p, int slot = 0) { print($"slot {slot} {p}"); }
+void Mount(Part p, string at)    { print($"at {at} {p}"); }
+
+int Apply(func<int, int> f, int x)             { return f(x); }
+int Apply(func<int, Part> f, Part p)           { return f(p); }
+int Apply(func<int, int> f, int x, int times) {
+    int r = x;
+    for (int i = 0; i < times; i++) r = f(r);
+    return r;
+}
+
+emitter void Tag(int n)    { print "[#", $n, "]"; }
+emitter void Tag(string s) { print "[", (string) $s, "]"; }
+emitter void Tag(Part p)   { print "[part ", $i6Expr($p.code), "]"; }
+emitter void Tag(interpolatedStringLiteral v) { print "["; $v; print "]"; }
+
+bool Initialise() {
+    location = roomA;
+    rackA[0] = gearA;
+    rackA[1] = cogA;
+    rackA[2] = springA;
+    rackA[3] = gearB;
+    rackA.used = 4;
+    gauge = 10;
+    rfalse;
+}
+
+bool Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+    rtrue;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Inspect {
+    grammar = {.inspect, NOUN};
+    void handler() {
+        if (!noun.is(Part)) {
+            Show(noun);
+            print(": ");
+            Tag("not a part");
+            print(".^");
+            return;
+        }
+        Part p = (Part)noun;
+        Show(p);
+        print(", as ");
+        if (noun.is(Gear)) Show((Gear)noun);
+        else Show(noun);
+        print($", kind {p.Kind()}/{p.Kind(true)}, weighs {Weigh(p)} ({Grams(p)} by conversion), label ");
+        print((string)p);
+        print(", total ");
+        print(Total(p, gearA));
+        print(", mark ");
+        Mark(p);
+        if (noun.is(Gear)) {
+            print("/");
+            Mark((Gear)noun);
+        }
+        print(", twice ");
+        Show(Twice(p));
+        print(", tag ");
+        Tag(p);
+        Tag(p.code);
+        Tag($"w{p.weight}");
+        print(".^");
+    }
+}
+
+verb Mate {
+    grammar = {.mate, NOUN, .to, NOUN};
+    void handler() {
+        if (!noun.is(Part) || !second.is(Part)) {
+            print("Mate two parts.^");
+            return;
+        }
+        Part a = (Part)noun;
+        Part b = (Part)second;
+        func<int, Part, Part> byWeight = Part::operator <=>;
+        print($"{a} to {b}: ");
+        if (a == b) print("same");
+        else if (a < b) print("lighter");
+        else if (a > b) print("heavier");
+        else print("level");
+        print($", <=> {a <=> b}, static {byWeight(a, b)}");
+        print($", sum {a + b}, diff {a - b}, triple {a * 3}, plus five {a + 5}");
+        if (a ?= b) print(", same shape");
+        if (a ?= spur) print(", spur");
+        if (a == 3) print(", three");
+        print($", bench {Sum(a, b)}");
+        if (a.is(Gear) && b.is(Gear)) {
+            Gear g = (Gear)a;
+            Gear h = (Gear)b;
+            print($", gears {g + h} teeth, {g + 1} plus one, bench {Sum(g, h)}, fit {g.Fit(h)}");
+        }
+        print($", fits {a.Fit(b)}");
+        if (noun.is(Cog) && second.is(Cog)) print($", snug {((Cog)noun).Fit((Cog)second, snug: true)}");
+        print(" ");
+        Rec(a);
+        Rec(a, 2);
+        bench.Rec(b, n: 3);
+        print(".^");
+        mated++;
+        if (a + b > 100 && mated >= 2) Award();
+    }
+}
+
+verb Spin {
+    grammar = {.spin, NOUN, .by, NUMBER};
+    void handler() {
+        if (!noun.is(Part)) {
+            print("Only parts spin.^");
+            return;
+        }
+        int n = (int)second;
+        Part p = (Part)noun;
+        if (!noun.is(Gear)) {
+            print($"{p} does not turn; fit {p.Fit(n)}.^");
+            return;
+        }
+        Gear g = (Gear)noun;
+        switch (n % 4) {
+            case 0: g.Turn();
+            case 1: g.Turn(n);
+            case 2: g.Turn(true);
+            default: g.Turn(back: true, by: n);
+        }
+        print($"{g} turns {g.turns}; fit {g.Fit(n)}, as gear {((Gear)g).Fit(1)}, as part {((Part)g).Fit(1)}");
+        Part q = g;
+        print($", by base {q.Fit(0)}, kind {q.Kind()}.^");
+    }
+}
+
+verb Tension {
+    grammar = {.tension, NOUN, .to, NUMBER};
+    void handler() {
+        if (!noun.is(Spring)) {
+            print("Only springs take tension.^");
+            return;
+        }
+        Spring s = (Spring)noun;
+        int n = (int)second;
+        Size z = n;
+        s.Wind(n);
+        s.Wind("tight");
+        s.Wind(z);
+        print($"{s} wound {s.windings}, kind {s.Kind()}, ");
+        Rec(z);
+        Rec(z, "cm");
+        Rec(z, unit: "in");
+        print(".^");
+    }
+}
+
+verb Measure {
+    grammar = {.measure, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        Size a = n;
+        Size b = gauge;
+        lastSize = a + b;
+        print($"Measure {a} with {b}: sum {lastSize}, plus two {a + 2}, double {a * 2}, diff {a - b}");
+        if (a == b) print(", equal");
+        if (a != 10) print(", not ten");
+        if (a < b) print(", shorter");
+        if (a > 10) print(", over ten");
+        print($", <=> {a <=> b}/{a <=> 10}, ");
+        Show(Twice(a));
+        print(", ");
+        Show(Twice(n));
+        print(", ");
+        Show(Twice("ab"));
+        a += b;
+        a += 1;
+        a += gearA;
+        a *= 2;
+        a--;
+        --a;
+        print($", stepped {a}");
+        a.Add(3);
+        a.Add(b);
+        a.Add(cogA);
+        print($", added {a}, of {Size.Of(n)} and {Size.Of(gearB)}, bench {Sum(a)} {Sum(a, 2)}.^");
+        gauge = a;
+    }
+}
+
+verb Shelve {
+    grammar = {.shelve};
+    meta = true;
+    void handler() {
+        print("Rack:");
+        for (int i = 0; i < rackA.used; i++) {
+            print(" ");
+            Show(rackA[i]);
+        }
+        print($". Spur {rackA[spur]}, bevel {rackA[bevel]}, worm {rackA[worm]?.Kind() ?? "none"}");
+        print($", first kind {rackA[0].Kind()}, spur fit {rackA[spur].Fit(0)}");
+        print($", total {Total(rackA[0], rackA[1], rackA[2])}, all {Total(parts)}");
+        print($", picks {Gear.Pick(12, true)} {Gear.Pick(20, false)} {Gear.Pick(3)} {Part.Pick(worm)} {Part.Pick(9) ?? springA}");
+        print(", padded ");
+        rackA[0].print(3);
+        Part.Pick(bevel)?.print(1);
+        print(". Mounts: ");
+        Mount(rackA[0]);
+        print(", ");
+        Mount(rackA[1], 2);
+        print(", ");
+        Mount(rackA[2], at: "left");
+        print(", ");
+        Mount(at: "top", p: cogB);
+        print(", ");
+        Mount(slot: 4, p: gearB);
+        print(".^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        print("Shows: ");
+        Show(7);
+        print(", ");
+        Show('k');
+        print(", ");
+        Show(true);
+        print(", ");
+        Show("lit");
+        print(", ");
+        stringObj so = "obj";
+        so += '!';
+        Show(so);
+        print(", ");
+        Show(bevel);
+        print(", ");
+        Show(gauge);
+        print(", ");
+        Show(springA);
+        print(", ");
+        Show(cogA);
+        print(", ");
+        Show(roomA);
+        print(", ");
+        Show(widths);
+        print(", ");
+        Show(mated > 0 ? 1 : 2);
+        print(". Weighs: ");
+        print($"{Weigh(cogB)} {Weigh(9)} {Weigh("x")} {Weigh(roomA)}, grams {Grams(5)} {Grams(gearB)} {Grams(roomA)}");
+        print(". Applies: ");
+        print($"{Apply((int n) => n + 1, 4)} {Apply((Part p) => p.weight / 5, gearB)} {Apply((int n) => Twice(n), 3, 3)}");
+        print(". Recs: ");
+        Rec(4);
+        Rec("s");
+        Rec(cogB);
+        Rec(cogB, 7);
+        Rec(worm);
+        Rec('q');
+        Rec(gauge);
+        bench?.Rec(gearA, n: 1);
+        print($", calls {bench.calls}");
+        print(". Sorts: ");
+        func<int, Gear, Gear> byTeeth = Gear::operator <=>;
+        func<bool, Part, int> codeIs = Part::operator ==(int);
+        func<bool, Part, Part> same = Part::operator ==(Part);
+        func<bool, Gear, int> teethIs = Gear::operator ==(int);
+        parts.sort();
+        for (Part p in parts) print(p);
+        print(" ");
+        parts.sort(Part::operator <=>);
+        for (Part p in parts) print(p);
+        print(" ");
+        gears.sort(Gear::operator <=>);
+        for (Gear g in gears) print(g);
+        print(" ");
+        gears.sort((Gear a, Gear b) => byTeeth(b, a));
+        for (Gear g in gears) print(g);
+        print(" ");
+        parts.sort((Part a, Part b) => Sign(a.code - b.code));
+        for (Part p in parts) print(p);
+        print($". Cog at {parts.indexOf(cogA)}, has spring {parts.contains(springA)}");
+        int n = 0;
+        for (Part p in parts) {
+            if (codeIs(p, 4) || same(p, gearA)) n++;
+        }
+        print($", matches {n}, sixteen teeth {teethIs(cogB, 16)}");
+        print(". Tags: ");
+        Tag(3);
+        Tag("x");
+        Tag(springA);
+        Tag($"n{n}");
+        print(".^");
+    }
+}
+
+#includeI6 "grammar"
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A bench stands here.";
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- parts
+
+Rack rackA {
+    short_name = "parts rack";
+    name = {.parts, .rack};
+    parent = roomA;
+    attributes = {static};
+}
+
+Gear gearA {
+    short_name = "small gear";
+    name = {.small, .gear};
+    parent = roomA;
+    code = 1;
+    weight = 40;
+    teeth = 12;
+    shape = spur;
+    label = "G1";
+}
+
+Gear gearB {
+    short_name = "large gear";
+    name = {.large, .gear};
+    parent = roomA;
+    code = 2;
+    weight = 90;
+    teeth = 30;
+    shape = bevel;
+    label = "G2";
+}
+
+Cog cogA {
+    short_name = "brass cog";
+    name = {.brass, .cog};
+    parent = roomA;
+    code = 3;
+    weight = 25;
+    teeth = 8;
+    pitch = 5;
+    shape = spur;
+    label = "C3";
+}
+
+Cog cogB {
+    short_name = "iron cog";
+    name = {.iron, .cog};
+    parent = roomA;
+    code = 4;
+    weight = 60;
+    teeth = 16;
+    pitch = 2;
+    shape = worm;
+    label = "C4";
+    replace string Kind() { return "odd cog"; }
+}
+
+Spring springA {
+    short_name = "steel spring";
+    name = {.steel, .spring};
+    parent = roomA;
+    code = 5;
+    weight = 15;
+    shape = bevel;
+    label = "S5";
+}
+
+// ---------------------------------------------------------------- classes
+
+enum eShape { spur, bevel, worm }
+
+class Part : object {
+    int weight;
+    int code;
+    string label;
+    eShape shape;
+    int fits;
+
+    int operator () { return weight; }
+    explicit string operator () { return label; }
+
+    void print() { print($"#{code}"); }
+    void print(int width) {
+        print($"#{code}");
+        for (int i = 0; i < width; i++) print(".");
+    }
+
+    default int Fit(int n) {
+        fits += n;
+        return fits;
+    }
+    int Fit(Part p) {
+        fits++;
+        return code + p.code;
+    }
+    default string Kind() { return "part"; }
+    string Kind(bool brief) {
+        if (brief) return "p";
+        return Kind();
+    }
+
+    static Part Pick(int code) {
+        for (Part p in parts) {
+            if (p.code == code) return p;
+        }
+        return null;
+    }
+    static Part Pick(eShape s) {
+        for (Part p in parts) {
+            if (p.shape == s) return p;
+        }
+        return null;
+    }
+
+    bool operator == (Part o) { return code == o.code; }
+    bool operator != (Part o) { return code != o.code; }
+    bool operator == (int n)  { return code == n; }
+    bool operator != (int n)  { return code != n; }
+    int operator <=> (Part o) { return Sign(weight - o.weight); }
+    int operator + (Part o)   { return weight + o.weight; }
+    int operator + (int n)    { return weight + n; }
+    int operator - (Part o)   { return weight - o.weight; }
+    int operator * (int n)    { return weight * n; }
+    bool operator ?= (Part o)   { return shape == o.shape; }
+    bool operator ?= (eShape s) { return shape == s; }
+
+    static int operator <=> (Part a, Part b) { return Sign(a.weight - b.weight); }
+    static bool operator == (Part a, Part b) { return a.code == b.code; }
+    static bool operator == (Part a, int n)  { return a.code == n; }
+}
+
+class Gear : Part {
+    int teeth;
+    int turns;
+    default int Fit(int n) {
+        fits += n * 2;
+        return fits;
+    }
+    int Fit(Gear g) {
+        fits++;
+        return teeth + g.teeth;
+    }
+    default string Kind() { return "gear"; }
+    void Turn(int by = 1)             { turns += by; }
+    void Turn(bool back, int by = 1)  {
+        if (back) turns -= by;
+        else turns += by;
+    }
+    static Gear Pick(int teeth, bool exact) {
+        for (Gear g in gears) {
+            if (exact && g.teeth == teeth) return g;
+            if (!exact && g.teeth >= teeth) return g;
+        }
+        return null;
+    }
+    int operator + (Gear o)         { return teeth + o.teeth; }
+    replace int operator + (int n)  { return teeth + n; }
+    static int operator <=> (Gear a, Gear b) { return Sign(a.teeth - b.teeth); }
+    static bool operator == (Gear a, int n)  { return a.teeth == n; }
+}
+
+class Cog : Gear {
+    int pitch;
+    replace int Fit(int n) {
+        fits += n * 3;
+        return fits;
+    }
+    int Fit(Cog c, bool snug = false) {
+        fits++;
+        if (snug) return pitch * c.pitch;
+        return pitch + c.pitch;
+    }
+    replace string Kind() { return "cog"; }
+    replace bool operator == (int n) { return pitch == n; }
+    replace bool operator != (int n) { return pitch != n; }
+}
+
+class Coil : object {
+    int windings;
+    void Wind(int n)       { windings += n; }
+    void Wind(string how)  { windings += 100; }
+}
+
+class Spring : Part, Coil {
+    replace string Kind() { return "spring"; }
+    void Wind(Size s) { windings += s.mm * 1000; }
+}
+
+class Rack : object {
+    array<Part> slots[NRACK];
+    int used;
+    Part operator [] (int i) { return slots[i]; }
+    Part operator [] (eShape s) {
+        for (int i = 0; i < used; i++) {
+            if (slots[i].shape == s) return slots[i];
+        }
+        return null;
+    }
+    Part operator []= (int i, Part p) {
+        slots[i] = p;
+        return p;
+    }
+}
+
+// ---------------------------------------------------------------- value class
+
+value class Size {
+    int mm;
+    Size operator = (Size o) { mm = o.mm; return self; }
+    Size operator = (int n)  { mm = n; return self; }
+    Size operator = (Part p) { mm = p.weight / 10; return self; }
+    Size operator + (Size o) { Size r; r.mm = mm + o.mm; return r; }
+    Size operator + (int n)  { Size r; r.mm = mm + n; return r; }
+    Size operator * (int n)  { Size r; r.mm = mm * n; return r; }
+    int operator - (Size o)  { return mm - o.mm; }
+    Size operator += (Size o) { mm = mm + o.mm; return self; }
+    Size operator += (int n)  { mm = mm + n; return self; }
+    Size operator += (Part p) { mm = mm + p.weight / 10; return self; }
+    Size operator *= (int n)  { mm = mm * n; return self; }
+    Size operator -- ()       { mm = mm - 1; return self; }
+    Size operator prefix-- () { mm = mm - 10; return self; }
+    bool operator == (Size o) { return mm == o.mm; }
+    bool operator == (int n)  { return mm == n; }
+    bool operator != (Size o) { return mm != o.mm; }
+    bool operator != (int n)  { return mm != n; }
+    int operator <=> (Size o) { return Sign(mm - o.mm); }
+    int operator <=> (int n)  { return Sign(mm - n); }
+    void Add(int n)   { mm = mm + n; }
+    void Add(Size o)  { mm = mm + o.mm; }
+    void Add(Part p)  { mm = mm + p.code; }
+    static Size Of(int n)  { Size r; r.mm = n; return r; }
+    static Size Of(Part p) { Size r; r.mm = p.weight; return r; }
+    static bool operator == (Size a, Size b) { return a.mm == b.mm; }
+}

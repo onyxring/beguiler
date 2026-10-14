@@ -302,7 +302,9 @@ case body does nothing; a `break` before the end of the body ends the case there
 it unreachable. A `break` inside a loop within a case body belongs to that loop. Case values
 are type-checked against the switch expression (§2.10.1): integer literals match an `int`, and an enum
 value must be of the switch expression's enum type. When the switch expression is a `verb`, case
-values are verb names (§13.2).
+values are verb names (§13.2). A case value is a constant: a literal, an enum value, a `#define`, a
+`const`, an object or a verb. A variable (a local, a global variable, a member) is a compile-time error;
+test it with `if`. A type with `operator switch` (§9.5) compares any value it takes.
 
 **Ranges.** `low to high` matches the inclusive range and may be mixed with single values in one case:
 `case 1, 3, 5 to 10:`.

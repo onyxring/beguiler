@@ -1,0 +1,264 @@
+Room A
+> probe p
+P: under nothing, under that nothing, bottom P.
+Inner none, core P, deep core P.
+Tag untagged, loud UNTAGGED, 8 char(s); uses 0.
+Mark 0 (0); bumped 0; bumped again 0.
+Empty.
+General: no; on a supporter: no.
+Kind crate, log [], 0 char(s).
+> path p
+Down: P.
+In:.
+Two down: nothing; via func nothing.
+Rests on P.
+> survey
+Row: P0 Q0 R0 T0.
+Held nothing, its tag none, uses 0.
+Barrel hoops 2; T under is a barrel: no.
+2 crate(s) hold or are a big code.
+Row 0 has no mark.
+Row 0 tag has e: yes; via chain yes, at 6; loud+ UNTAGGED!.
+P by ref: 0, bumped 0, text .
+Named: x.
+> logs
+P: [] trimmed 0, short [], or [(none)], loud [UNTAGGED], top P.
+Q: [] trimmed 0, short [], or [(none)], loud [UNTAGGED], top Q.
+R: [] trimmed 0, short [], or [(none)], loud [UNTAGGED], top R.
+T: [] trimmed 0, short [], or [(none)], loud [UNTAGGED], top T.
+P is unmarked.
+First general from P: none; P lacks it: yes.
+Last mark text 0 char(s), reversed [].
+> totals
+Total 8; negated P code -1; P not general: yes.
+Marks 1 2 3; made 3.
+Walked to 1; room of noun-less P: Room A; under-or-self Q.
+> shift 1
+Row 1: Q now 1, hits 1, slot -1; next under none.
+> stack p on q
+You stack P on Q. Stack: P/Q, height 2.
+> stack q on r
+You stack Q on R. Stack: Q/R, height 2.
+> stack r on p
+Crate R can't go under itself.
+> path p
+Down: P Q R.
+In:.
+Two down: R; via func R.
+Rests elsewhere.
+> probe p
+P: under Q, under that R, bottom R.
+Inner none, core P, deep core P.
+Tag untagged, loud UNTAGGED, 8 char(s); uses 0.
+Mark 0 (0); bumped 0; bumped again 0.
+Empty.
+General: no; on a supporter: no.
+Kind crate, log [], 0 char(s).
+> nest r in p
+You nest R in P; the core of P is R.
+> nest p in r
+Crate R is already inside P.
+> path p
+Down: P Q R.
+In: R.
+Two down: R; via func R.
+Rests elsewhere.
+> tag p
+Crate P gets the red tag (2 use(s)); 1 crate(s) tagged.
+> tag q
+Crate Q gets the blue tag (2 use(s)); 2 crate(s) tagged.
+> tag r
+Crate R gets the green tag (2 use(s)); 3 crate(s) tagged.
+> tag p
+Crate P already has the red tag.
+> tally p
+Below Q, height 2, two below R, deeper no; 7 step(s).
+Stamped below: 8, load 2, slot 3; 6 step(s).
+Pick Q; stacked yes, under stacked yes.
+Scaled 2; word blue; lower p; tag length 3.
+Heaviest first: Q=4 P=0 R=0 T=0.
+First tagged sits in Room A.
+> untag q
+You peel the blue tag off Q.
+> east
+Room B
+Room B. A barrel. A doorway leads west.
+You can see a barrel T here.
+> tag t
+Crate T gets the white tag (2 use(s)); 3 crate(s) tagged.
+> crates
+P:red/0/0 on Q holds R
+Q:-/8/2 on R
+R:green/0/0
+T:white/0/0
+2 stacked; three high: yes; 3 tagged; tags made 4, stolen 0.
+First marked: Q; by code 4: T; by code 9: none.
+Pallet top 0, moves 0; holds nothing.
+Trail: stack P; stack Q;
+> tag t
+Crate T already has the white tag.
+> stamp t with 3
+Stamped T: mark 40, 2 hit(s), text no.40.
+> probe t
+T: under nothing, under that nothing, bottom T.
+Inner none, core T, deep core T.
+Tag white, loud WHITE, 5 char(s); uses 3.
+Mark 40 (2); bumped 42; bumped again 45.
+Empty.
+General: no; on a supporter: no.
+Kind barrel, log [barrel barrel ], 14 char(s).
+> west
+Room A
+You can see a crate P, a crate Q, a crate R and a pallet here.
+> stamp p with 5
+Stamped P: mark 6, 2 hit(s), text no.6.
+> load p with 4
+Crate P holds 4; slot 1 is 4; weight 8 (9 with one more).
+> load p with 20
+Crate P holds 12; slot 2 is 20; weight 36 (37 with one more).
+> load q with 2
+Crate Q holds 4; slot 2 is 2; weight 9 (10 with one more).
+> probe p
+P: under Q, under that R, bottom R.
+Inner R, core R, deep core R.
+Tag red, loud RED, 3 char(s); uses 3.
+Mark 6 (2); bumped 8; bumped again 11.
+Loaded with 12.
+General: no; on a supporter: no.
+Kind crate, log [verb hand ], 10 char(s).
+> probe q
+Q: under R, under that nothing, bottom R.
+Inner none, core Q, deep core Q.
+Tag untagged, loud UNTAGGED, 8 char(s); uses 0.
+Mark 8 (3); bumped 10; bumped again 13.
+Loaded with 4.
+General: no; on a supporter: no.
+Kind crate, log [s t1P hand tally ], 17 char(s).
+> slide r
+You slide R onto the pallet; top 3, moves 1.
+> probe r
+R: under nothing, under that nothing, bottom R.
+Inner none, core R, deep core R.
+Tag green, loud GREEN, 5 char(s); uses 2.
+Mark 0 (0); bumped 0; bumped again 0.
+Empty.
+General: yes; on a supporter: no.
+Kind crate, log [], 0 char(s).
+> nudge p
+The pallet marker reads 3 after 4 move(s); it names R.
+> nudge pallet
+The pallet marker reads 2 after 7 move(s); it names Q.
+> nudge q
+The pallet marker reads 3 after 10 move(s); it names R.
+> tally p
+Below Q, height 2, two below R, deeper no; 7 step(s).
+Stamped below: 8, load 5, slot 6; 6 step(s).
+Pick Q; stacked yes, under stacked yes.
+Scaled 2; word blue; lower p; tag length 3.
+Heaviest first: P=36 Q=13 R=0 T=0.
+First tagged sits in Room A.
+> tally q
+Below R, height 1, two below R, deeper no; 8 step(s).
+Stamped below: 8, load 1, slot 3; 6 step(s).
+Pick R; stacked yes, under stacked no.
+Scaled 4; word green; lower q; tag length 0.
+Heaviest first: P=36 Q=13 R=4 T=0.
+First tagged sits in Room A.
+> tally pallet
+Below R, height 0, two below none, deeper no; 6 step(s).
+Stamped below: 0, load 0, slot 0; 6 step(s).
+Pick ; stacked no, under stacked no.
+Scaled 0; word red; lower ; tag length 0.
+Heaviest first: P=36 Q=13 R=4 T=0.
+First tagged sits in Room A.
+> crates
+P:red/6/12 on Q holds R
+Q:-/8/5 on R
+R:green/8/1
+T:white/40/0
+2 stacked; three high: yes; 3 tagged; tags made 4, stolen 0.
+First marked: P; by code 4: T; by code 9: none.
+Pallet top 3, moves 10; holds R.
+Trail: stack P; stack Q;
+> marks
+Marks: 1=6 2=8 3=8 4=40 5=0.
+Last 6, as text #6; present yes.
+Best 40; T bumped 41; Z bumped 0.
+Caught crate P.
+> survey
+Row: P3 Q0 R5 T5.
+Held R, its tag green, uses 6.
+Barrel hoops 4; T under is a barrel: no.
+3 crate(s) hold or are a big code.
+Row 0 bumps to 7.
+Row 0 tag has e: yes; via chain yes, at 1; loud+ RED!.
+P by ref: 6, bumped 16, text #6.
+Named: x.
+> shift 4
+Row 0: P now 11, hits 4, slot 19; next under R.
+> shift 6
+Row 2: R now 2, hits 4, slot -1; next under none.
+> survey
+Row: P3 Q0 R5 T5.
+Held R, its tag green, uses 10.
+Barrel hoops 4; T under is a barrel: no.
+3 crate(s) hold or are a big code.
+Row 0 bumps to 7.
+Row 0 tag has e: yes; via chain yes, at 1; loud+ RED!.
+P by ref: 6, bumped 16, text #6.
+Named: x.
+> logs
+P: [verb hand s ] trimmed 11, short [verb h s ], or [verb hand s], loud [RED], top P.
+Q: [s t1P hand tally t1P hand tally ] trimmed 31, short [s t1P h tally t1P h tally ], or [s t1P hand tally t1P hand tally], loud [UNTAGGED], top P.
+R: [t2Q hand tally shift s ] trimmed 22, short [t2Q h tally shift s ], or [t2Q hand tally shift s], loud [GREEN], top P.
+T: [barrel barrel ] trimmed 13, short [barrel barrel ], or [barrel barrel], loud [WHITE], top T.
+P is marked 6.
+First general from P: R; P lacks it: yes.
+Last mark text 2 char(s), reversed [6ba].
+> totals
+Total 70; negated P code -1; P not general: yes.
+Marks 6 8 3; made 1.
+Walked to 2; room of noun-less P: Room A; under-or-self R.
+> unstack p
+You lift P off Q.
+> logs
+P: [verb hand s ] trimmed 11, short [verb h s ], or [verb hand s], loud [RED], top P.
+Q: [s t1P hand tally t1P hand tally ] trimmed 31, short [s t1P h tally t1P h tally ], or [s t1P hand tally t1P hand tally], loud [UNTAGGED], top Q.
+R: [t2Q hand tally shift s ] trimmed 22, short [t2Q h tally shift s ], or [t2Q hand tally shift s], loud [GREEN], top Q.
+T: [barrel barrel ] trimmed 13, short [barrel barrel ], or [barrel barrel], loud [WHITE], top T.
+P is marked 6.
+First general from P: none; P lacks it: yes.
+Last mark text 2 char(s), reversed [6ba].
+> totals
+Total 70; negated P code -1; P not general: yes.
+Marks 6 8 3; made 1.
+Walked to 2; room of noun-less P: Room A; under-or-self R.
+> path p
+Down: P.
+In: R.
+Two down: nothing; via func nothing.
+Rests on P.
+> path q
+Down: Q R.
+In:.
+Two down: nothing; via func nothing.
+Rests elsewhere.
+> path r
+Down: R.
+In:.
+Two down: nothing; via func nothing.
+Rests elsewhere.
+> probe pallet
+The pallet is not a crate.
+> stamp pallet with 2
+The pallet can't be stamped.
+> load pallet with 1
+The pallet holds nothing.
+> tag pallet
+The pallet takes no tag.
+> untag pallet
+The pallet has no tag.
+> slide pallet
+The pallet won't slide.
+> stack pallet on p
+Only crates stack.

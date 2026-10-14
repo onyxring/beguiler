@@ -1,0 +1,232 @@
+Room A
+Room A.
+
+> tree
+Root [R*] w 5: up -, total 32, height 4, leftmost B, root Root, leaf false false
+Ash [A.] w 3: up Root, total 10, height 3, leftmost B, root Root, leaf false false
+B [B.] w 1: up Ash, total 1, height 1, leftmost B, root Root, leaf true true
+Cedar [C.] w 4: up Ash, total 6, height 2, leftmost D, root Root, leaf false false
+Dock [D~] w 2: up Cedar, total 2, height 1, leftmost D, root Root, leaf true true
+E [E.] w 8: up Root, total 17, height 2, leftmost E, root Root, leaf false false
+Fir [F.] w 9: up E, total 9, height 1, leftmost F, root Root, leaf true true
+Lone [L.] w 6: up -, total 6, height 1, leftmost L, root Lone, leaf true true
+named 6, heavy 4, leaves 4
+heaviest Root, its leftmost B
+
+> draw root
+draw: Root(Ash(B Cedar(Dock -)) E(- Fir))
+square: Root[Ash[B Cedar[Dock -]] E[- Fir]], upper ROOT(ASH(B CEDAR(DOCK -)) E(- FIR))
+back: ))riF -(E ))- kcoD(radeC B(hsA(tooR, first four Root, length 35
+sides: Ash(B Cedar(Dock -)) / E<- Fir>
+path up: R, by dash B-A-R
+Ash, ROOT
+
+> draw ash
+draw: Ash(B Cedar(Dock -))
+square: Ash[B Cedar[Dock -]], upper ASH(B CEDAR(DOCK -))
+back: ))- kcoD(radeC B(hsA, first four Ash(, length 20
+sides: B / Cedar<Dock ->
+path up: A<R, by dash B-A-R
+left unnamed, ASH
+
+> draw elm
+draw: E(- Fir)
+square: E[- Fir], upper E(- FIR)
+back: )riF -(E, first four E(- , length 8
+sides: no left / Fir
+path up: E<R, by dash E-R
+left unnamed, UNNAMED
+
+> draw lone
+draw: Lone
+square: Lone, upper LONE
+back: enoL, first four Lone, length 4
+sides: no left / no right
+path up: L, by dash L
+left unnamed, LONE
+
+> hop root 1
+Root left 1: A; right 1: E; named right: unnamed
+landing A, then right C, up -
+descends 2 to B
+
+> hop root 2
+Root left 2: B; right 2: F; named right: Fir
+landing B, then right -, up R
+descends 2 to B
+
+> hop root 5
+Root left 5: off; right 5: off; named right: unnamed
+landing B, then right -, up R
+descends 2 to B
+
+> hop ash 1
+Ash left 1: B; right 1: C; named right: Cedar
+landing B, then right -, up R
+descends 1 to B
+
+> seek 4
+first of weight 4 or more: Root, its up -
+exact: Cedar, under ash: C
+lone's: L
+lightest such C, up A
+any whose up is heavy: true, all with a root: true
+either side: C, small true, asked 3
+
+> seek 7
+first of weight 7 or more: E, its up R
+exact: none, under ash: --
+lone's: --
+lightest such E, up R
+any whose up is heavy: true, all with a root: true
+either side: E, small true, asked 5
+
+> seek 20
+first of weight 20 or more: none, its up -
+exact: none, under ash: --
+lone's: --
+lightest such --, up --
+any whose up is heavy: false, all with a root: true
+either side: --, small true, asked 6
+
+> span root with ash
+Root spans 1..9 width 8
+Ash: 1..4, present true
+union 1..9, widened 9, by 2 left -1
+same false, differ true, first present width 3
+chosen 8..12
+
+> span lone with cedar
+Lone spans nothing (0..0)
+Cedar: 2..4, present true
+union 0..4, widened 0, by 2 left 0
+same false, differ true, first present width 2
+chosen 2..4
+
+> span dock with elm
+Dock spans nothing (0..0)
+E: 8..9, present true
+union 0..9, widened 0, by 2 left 0
+same false, differ true, first present width 1
+chosen 8..9
+
+> tick ash
+Ash hits 4, left 3, right 3, up 9
+trail t., up trail A/, lone 5, fir trail !
+
+> tick lone
+Lone hits 14, left 0, right 0, up 0
+trail t., up trail none, lone 14, fir trail !!
+
+> grade cedar 2
+C grade 2, left 7, right 0, up 0
+low
+grades sum 9, graded 2
+
+> grade root 6
+R grade 6, left 9, right 2, up 0
+high with a full left
+grades sum 26, graded 5
+
+> twig root 2
+head A x 3, under nothing, count 1
+spare Root
+
+> twig ash 1
+head B x 2, under Ash, count 2
+spare Ash
+
+> twig dock 3
+head D x 4, under B, count 3
+spare Dock
+
+> twig fir 4
+head F x 5, under Dock, count 4
+spare none
+
+> twig lone 5
+no twig left; head F x 5, under Dock, count 4
+spare none
+
+> untwig
+dropped F, left 3
+
+> untwig
+dropped D, left 2
+
+> slots
+slot 0: Ash -> B/C
+slot 1: empty -> -/-
+slot 2: E -> -/F
+slot 3: Dock -> -/-
+slot 4: empty -> -/-
+extra 0: - up -, via call unnamed
+extra 1: C up A, via call Cedar
+extra 2: L up -, via call Lone
+first leafy slot none, cedar hits 8, trails t.s|s
+
+> rise dock 1
+Dock up 1: Cedar; its other child -
+depth 3, stopped at R, is knot true, in room true
+kind leaf
+under C
+
+> rise dock 3
+Dock up 3: Root; its other child E
+depth 3, stopped at R, is knot true, in room true
+kind leaf
+under C
+
+> rise root 1
+Root up 1: above the top; its other child -
+depth 1, stopped at -, is knot false, in room true
+kind fork
+at a top
+
+> pick 2
+picked B, sign .
+right of pick C; pick or heaviest A
+pair BC, total 5
+next A, twice B, from null -
+ A B .
+
+> pick 5
+picked D, sign ~
+right of pick none; pick or heaviest D
+pair LL, total 12
+next C, twice D, from null -
+ D .
+
+> pick 9
+picked L, sign .
+right of pick none; pick or heaviest R
+pair LL, total 12
+next -, twice -, from null -
+ .
+
+> rank
+ R:A C:D A:B B:- D:- E:- F:- L:-
+ 3 1 0 2 0 0 0 0
+left heavier: 1, grandparents: 4
+labels: 6, total under root 32
+
+> probe root 2
+tag Root, of left Ash, of nothing ?
+stepped E
+left weighs 3
+code length 1, label length 4, lower root
+kids weigh 11, heavier kid E
+
+> probe elm 1
+tag E, of left ?, of nothing ?
+stepped -
+no left weight
+code length 1, label length 0, lower e
+kids weigh 9, heavier kid F
+
+> probe birch 3
+tag B, of left ?, of nothing ?
+stepped -
+no left weight
+code length 1, label length 0, lower b
+kids weigh 0, heavier kid -

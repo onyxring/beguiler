@@ -277,6 +277,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     // the exact `append(char v)`. First-compatible-in-declaration-order still decides ties
     // among equally-inexact matches; exact just wins outright.
     functionDef* exactMatch = nullptr;
+    functionDef* classMatch = nullptr;   // every argument exact or an instance of the parameter's class: no conversion
     functionDef* stubGuess = nullptr;   // a stub whose parameters weren't recorded: the last resort
     // Beguile is case-insensitive: stored names are canonical (lowercased), but the
     // methodName arriving here may be a display name (split from a qualified path like
@@ -337,7 +338,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         if(!result.arityMatch) result.arityMatch = fd;
 
         // Check arg types
-        bool argsOk = true, usesVar = false, allExact = true;
+        bool argsOk = true, usesVar = false, allExact = true, converts = false;
         for(size_t i = 0; i < args.size() && argsOk; i++){
             string argType = args[i]->resolvedType;
             string paramType = fd->params[i]->type.name;
@@ -366,13 +367,19 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
                 if(argBase == "charliteral") argBase = "char";
                 else if(argBase == "intliteral" || argBase == "negativeintliteral") argBase = "int";
                 else if(string oc = objectsClassName(argBase); !oc.empty()) argBase = oc;
-                if(argBase != paramType) allExact = false;  // compatible but not an exact type match
+                if(argBase != paramType){
+                    allExact = false;  // compatible but not an exact type match
+                    classDef* ac = languageService.classOf(argBase);
+                    classDef* pc = languageService.findClass(paramType);
+                    if(!(ac != nullptr && pc != nullptr && ac->hasAncestor(pc))) converts = true;
+                }
             }
         }
         if(!argsOk) return;
         if(usesVar){ if(!varFallback) varFallback = fd; }
         else {
             if(allExact && !exactMatch) exactMatch = fd;
+            if(!converts && !classMatch) classMatch = fd;
             if(!result.method) result.method = fd;
         }
     };
@@ -441,6 +448,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
 
     // An exact-type overload wins over a merely-compatible one found first in declaration order.
     if(exactMatch) result.method = exactMatch;
+    else if(classMatch && result.method != nullptr && result.method != varFallback) result.method = classMatch;
     if(!result.method) result.method = stubGuess;
     return result;
 }
@@ -748,7 +756,7 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
             bool funcExpected = currentExpectedType.rfind("func", 0) == 0 && !memberHint.size();
             // A verb can't be called: `Show(5)` beside an imported method `Show` is the method's call.
             bool calledVerbBeside = false;
-            if(hasNonFunction && (resolvingCallee || file.peekToken().is(token::parenOpen))){
+            if(hasNonFunction && (resolvingCallee || peekTokenOrEof().is(token::parenOpen))){
                 bool verb = false, imported = false;
                 for(auto& c : candidates){
                     if(!c.isFunction && c.origin.rfind("verb", 0) == 0) verb = true;
@@ -802,11 +810,11 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
             for(size_t i = 0; i < candidates.size(); i++)
                 if(candidates[i].origin.rfind("#using-imported", 0) != 0){ globals++; globalAt = i; }
             // A verb can't be called: `Show(5)` is the imported method's call.
-            if(globals == 1 && candidates[globalAt].origin.rfind("verb", 0) == 0 && (resolvingCallee || file.peekToken().is(token::parenOpen)))
+            if(globals == 1 && candidates[globalAt].origin.rfind("verb", 0) == 0 && (resolvingCallee || peekTokenOrEof().is(token::parenOpen)))
                 for(size_t i = 0; i < candidates.size(); i++)
                     if(i != globalAt) return candidates[i].type;
             // A verb has no members, so it isn't the head of a path: `stock.count` is the import's.
-            if(globals == 1 && (!memberHint.empty() || file.peekToken().is(token::period))){
+            if(globals == 1 && (!memberHint.empty() || [&]{ token pk = peekTokenOrEof(); return pk.is(token::period) || pk.is("?."); }())){
                 bool isVerb = dynamic_cast<verbObjectDef*>(languageService.findGlobalAs<objectDef>(name)) != nullptr;
                 for(verbObjectDef* v : languageService.verbs) if(v->name == name) isVerb = true;
                 if(isVerb)
@@ -1131,6 +1139,8 @@ string bglParser::resolveArrayElementTypeDottedRaw(const string& objNameIn, cons
         objName += "." + propName.substr(0, d);
         propName = propName.substr(d + 1);
     }
+    // A member renamed for a clash (`_m_boxes`, beside a verb Boxes) before its declaration has named it.
+    if(propName.rfind("_m_", 0) == 0 && clashRenamedMember(propName.substr(3)) == propName) propName = propName.substr(3);
     // Find objName's class — walk objectInstances + globals. A local or parameter of the name is nearer.
     classDef* cls = nullptr;
     bool local = func != nullptr && objName.find('.') == string::npos
@@ -1374,7 +1384,7 @@ bool bglParser::isInlineConstructible(classDef* cls){
     return false;
 }
 
-bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& candidates){
+bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& candidates, const string& elemType){
     BraceArgHints h;
     h.receiverType = lastCandidatesReceiver;
     size_t maxP = 0;
@@ -1393,6 +1403,8 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
     for(auto* fd : candidates){
         for(size_t i = 0; i < fd->params.size(); i++){
             classDef* cls = getDispatchClass(fd->params[i]->type.name);
+            // A generic parameter (`T` of `array<T>`) is the receiver's element type.
+            if(cls == nullptr && !elemType.empty()) cls = getDispatchClass(elemType);
             classDef* obj = inlineConstructible(cls) ? cls : nullptr;
             if(!posSet[i]){ h.positional[i] = obj; posSet[i] = 1; }
             else if(h.positional[i] != obj) posConflict[i] = 1;
@@ -1797,9 +1809,13 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
         auto* f = dynamic_cast<functionDef*>(mm);
         if(!f || f->name != opName || f->isEmitter) return false;   // emitters are not referenceable
         // The class is searched before its bases, so a base's operator of the same signature is shadowed.
+        // A static's first operand is its own class (a subclass's `(Gear, int)` shadows a base's `(Part, int)`).
+        auto ownClass = [&](const string& t){ classDef* pc = languageService.findClass(t); return pc != nullptr && (pc == cd || cd->hasAncestor(pc)); };
         for(functionDef* c : cands){
             bool same = c->isStatic == f->isStatic && c->params.size() == f->params.size();
-            for(size_t i = 0; same && i < f->params.size(); i++) same = c->params[i]->type.name == f->params[i]->type.name;
+            for(size_t i = 0; same && i < f->params.size(); i++)
+                same = c->params[i]->type.name == f->params[i]->type.name
+                    || (i == 0 && f->isStatic && ownClass(c->params[0]->type.name) && ownClass(f->params[0]->type.name));
             if(same) return false;
         }
         cands.push_back(f);
@@ -1839,7 +1855,7 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
         }
         parsingError(format("ambiguous operator reference: '{0}' has {1} referenceable "
                             "'operator {2}' overloads:{3}\n  Disambiguate by naming the operand "
-                            "type, e.g. $opref({2}, <type>).",
+                            "type: `{0}::operator {2}(<type>)` (in an emitter, `$opref({2}, <type>)`).",
                             typeDisplayName(typeName), cands.size(), opName, list));
     }
     functionDef* f = cands.front();
@@ -2489,7 +2505,7 @@ string bglParser::withMemberI6Name(const string& written, string qualified, func
     // The written path's members are the qualified one's last segments; its head may have grown (`self.`).
     string prefix = w[0];
     for(size_t i = 1; i < w.size(); i++){
-        string type = i == 1 ? resolveIdentifierType(w[0], func, body) : resolvePathType(prefix, func, body);
+        string type = i == 1 ? resolveIdentifierType(w[0], func, body, w[1]) : resolvePathType(prefix, func, body);
         // A verb's name types as its action; its members are the verb object's.
         if(i == 1 && type == "verb"){
             string head = w[0]; transform(head.begin(), head.end(), head.begin(), ::tolower);
@@ -2532,16 +2548,32 @@ bool bglParser::isI6OperatorWord(const string& name){
     return words.count(name) > 0;
 }
 
+// Inform 6's system functions can't be used as a property's name either.
+bool bglParser::isI6SystemFunction(const string& name){
+    static const std::set<string> words = {"child", "children", "elder", "eldest", "indirect",
+        "metaclass", "parent", "random", "sibling", "younger", "youngest"};
+    return words.count(name) > 0;
+}
+
+// The next token, or an end-of-input token where a sub-parse's text has run out (peeking past it is an error).
+token bglParser::peekTokenOrEof(){
+    if(!file.hasPendingToken){
+        fileLexer::mark_t at = file.mark();   // looking ahead consumes nothing (an interpolation's text keeps its spaces)
+        file.bleedSpaces();
+        bool atEnd = file.peekChar() == EOF;
+        file.rewind(at);
+        if(atEnd){ token t; t.tokenType = eTokenType::eof; return t; }
+    }
+    return file.peekToken();
+}
+
 string bglParser::clashRenamedMember(const string& name){
     if(isI6OperatorWord(name) || namesI6Class(name)) return "_m_" + name;
     // Globals Inform 6 declares for itself before any source is read.
     static const std::set<string> i6SetupGlobals = {"sender", "self", "temp_global", "temp__global2",
         "temp__global3", "temp__global4", "sw__var", "sys__glob0", "sys__glob1", "sys__glob2", "sys_statusline_flag"};
     if(i6SetupGlobals.count(name)) return "_m_" + name;
-    // Inform 6's system functions can't be used as a property's name either.
-    static const std::set<string> i6SystemFunctions = {"child", "children", "elder", "eldest", "indirect",
-        "metaclass", "parent", "random", "sibling", "younger", "youngest"};
-    if(i6SystemFunctions.count(name)) return "_m_" + name;
+    if(isI6SystemFunction(name)) return "_m_" + name;
     if(name == "main") return "_m_" + name;   // every I6 library defines a `Main` routine
     // Inform 6 keeps properties, globals, objects and routines in one namespace. A `property` global
     // names this very property; an emitter emits no symbol.
@@ -3582,11 +3614,11 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
             for(size_t i = 0; i < candidates.size(); i++)
                 if(candidates[i].origin.rfind("#using-imported", 0) != 0){ globals++; globalAt = i; }
             // A verb can't be called: `Show(5)` is the imported method's call.
-            if(globals == 1 && candidates[globalAt].origin.rfind("verb", 0) == 0 && (resolvingCallee || file.peekToken().is(token::parenOpen)))
+            if(globals == 1 && candidates[globalAt].origin.rfind("verb", 0) == 0 && (resolvingCallee || peekTokenOrEof().is(token::parenOpen)))
                 for(size_t i = 0; i < candidates.size(); i++)
                     if(i != globalAt) return candidates[i].qualified;
             // A verb has no members, so it isn't the head of a path: `stock.count` is the import's.
-            if(globals == 1 && (!memberHint.empty() || file.peekToken().is(token::period))){
+            if(globals == 1 && (!memberHint.empty() || [&]{ token pk = peekTokenOrEof(); return pk.is(token::period) || pk.is("?."); }())){
                 bool isVerb = dynamic_cast<verbObjectDef*>(languageService.findGlobalAs<objectDef>(name)) != nullptr;
                 for(verbObjectDef* v : languageService.verbs) if(v->name == name) isVerb = true;
                 if(isVerb)
@@ -4699,7 +4731,7 @@ variableDeclaration* bglParser::findAssignedDeclaration(const string& path, func
         return memberOf(currentClass, member);
     }
     if(auto* od = languageService.findObjectType(head)) if(auto* vd = objectMember(od, member)) return vd;
-    return memberOf(languageService.classOf(resolveIdentifierType(head, func, body)), member);
+    return memberOf(languageService.classOf(resolveIdentifierType(head, func, body, member.substr(0, member.find('.')))), member);
 }
 
 // The variable a lambda in `e` captures (other than a `const` with a compile-time value), or "".
@@ -5331,6 +5363,14 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                     classDef* pc = languageService.findClass(pt);
                     if(pt == "var" || isUnionType(pt) || (pc != nullptr && !pc->unionMembers.empty())) fits = false;
                     else if(args[i] && !args[i]->resolvedType.empty() && !isTypeCompatible(args[i]->resolvedType, pt)) fits = false;
+                    // Only a program overload that takes the argument as it is: one that needs a conversion
+                    // rightly loses to the library's exact match (`print(Size)` beside `print(int)`).
+                    else if(args[i] && !args[i]->resolvedType.empty()){
+                        string at = args[i]->resolvedType;
+                        string base = literalBaseType(at), oc = objectsClassName(at);
+                        classDef* ac = languageService.classOf(at);
+                        if(at != pt && base != pt && oc != pt && !(ac != nullptr && pc != nullptr && ac->hasAncestor(pc))) fits = false;
+                    }
                 }
                 if(fits){
                     parsingWarning(format("this call goes to the library's '{0}', which fits it better than the program's own "
@@ -5398,10 +5438,14 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
     if(auto* od = languageService.findGlobalAs<objectDef>(head); od != nullptr && dynamic_cast<verbObjectDef*>(od) == nullptr)
         curObj = od;
     // Inside an object, its own value alias heads a path (`Items.Part` for `alias Items = _items;`).
+    // So does a member typed by an object (`auto kit = _kit;`), as it does through a `#using`.
     if(!curObj && currentObject != nullptr)
         for(typeMember* m : currentObject->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == head && vd->isValueAlias && vd->declaredExpressionValue)
-                if(auto* od = languageService.findGlobalAs<objectDef>(vd->declaredExpressionValue->text())){ curObj = od; break; }
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == head){
+                if(vd->isValueAlias && vd->declaredExpressionValue)
+                    if(auto* od = languageService.findGlobalAs<objectDef>(vd->declaredExpressionValue->text())){ curObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name); od != nullptr && dynamic_cast<verbObjectDef*>(od) == nullptr){ curObj = od; break; }
+            }
     // If not a global, check #using imports: the head might be a member of an imported scope.
     // e.g., after `#using bgl;`, head="glulx" is a member of the bgl object.
     if(!curObj){
@@ -5763,8 +5807,9 @@ std::string bglParser::resolvePathTypeRaw(std::string path, functionDef* func, s
     string head = path.substr(0, dot);
     string tail = path.substr(dot + 1);
     // Don't pass memberHint to the head — the hint is about the final tail's resolved type, not
-    // about a member on the head. Head-resolution uses normal first-match priority.
-    string headType = resolveIdentifierType(head, func, body);
+    // about a member on the head. The head is hinted with the member reached on it, as
+    // qualifyDottedPath hints it: a name both a verb and an imported member is the import's.
+    string headType = resolveIdentifierType(head, func, body, tail.substr(0, tail.find('.')));
     if(headType.empty()) return "";
 
     // Walk each dotted segment of tail in turn. For each segment, look up a member by name on
@@ -5849,6 +5894,21 @@ string bglParser::keepValueResult(const string& text, const string& typeName){
         isCall = word != "_bglAt" && word != "_bglMemberAt" && word != "_bglByteAt" && word.rfind("_bglValSlot_", 0) != 0;
     }
     if(!isCall) return text;
+    // An element (`_bglValSlot_C(_bglMemberAt(me(), path, 1, 2))`) is the array's slot, not a call's result.
+    {
+        size_t b = text.find_first_not_of(" \t(");
+        size_t e = b == string::npos ? string::npos : text.find('(', b);
+        if(e != string::npos){
+            string word = text.substr(b, e - b);
+            bool slot = word == "_bglAt" || word == "_bglMemberAt" || word == "_bglByteAt" || word.rfind("_bglValSlot_", 0) == 0;
+            int depth = 0; size_t close = string::npos;
+            for(size_t i = e; i < text.size(); i++){
+                if(text[i] == '(') depth++;
+                else if(text[i] == ')' && --depth == 0){ close = i; break; }
+            }
+            if(slot && close != string::npos && text.find_first_not_of(" \t)", close + 1) == string::npos) return text;
+        }
+    }
     // The call's own result ends with its `)`; a member read off it (`pick(1).gain`) is the object's.
     if(size_t z = text.find_last_not_of(" \t"); z == string::npos || text[z] != ')') return text;
     classDef* cls = languageService.findClass(typeName);

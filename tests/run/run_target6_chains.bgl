@@ -1,0 +1,71 @@
+// run_target6_chains — value-class results of `?.` chains compared (also through `??`), methods named
+// `child` and `sibling`, the right of `??` / `&&` / `||` / `?:` skipped when the left decides even when it
+// is a `?.` chain, and char arguments to string methods at the end of a `?.` chain.
+// EXPECT_OUTPUT: n n n n 6 4 0 0 0 0 0 0 0 0 0 1 y y y 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+value class Span {
+    int lo;
+    int hi;
+    Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
+    emitter eBool operator ? () { ($self ~= 0 && $self.hi > $self.lo) }
+    bool operator == (Span o) { return lo == o.lo && hi == o.hi; }
+    bool operator != (Span o) { return lo != o.lo || hi != o.hi; }
+}
+Span noSpan;
+class Knot : object {
+    int a; int b; int w;
+    Knot left;
+    Knot right;
+    string label;
+    Span span() { Span s; s.lo = a; s.hi = b; return s; }
+    int child(int i) { return w + i; }
+    int sibling(int i) { return w - i; }
+    int noisy() { evals++; return w; }
+    Knot noisyKnot() { evals++; return right; }
+    stringObj text() { stringObj s; s = label; return s; }
+}
+int evals = 0;
+Knot k2 { a = 1; b = 4; }
+Knot k1 { a = 1; b = 9; w = 5; left = k2; right = k2; label = "red"; }
+Knot step(Knot k) { evals++; return k?.right; }
+void main() {
+    bglInit();
+    Knot x = k1;
+    Knot y = k2;
+    print(x?.span() == y?.span() ? "y" : "n"); print(" ");
+    print((x?.span() ?? noSpan) == (y?.span() ?? noSpan) ? "y" : "n"); print(" ");
+    Span p = x?.span() ?? noSpan;
+    Span q = y?.span() ?? noSpan;
+    print(p == q ? "y" : "n"); print(" ");
+    bool same = (x?.span() ?? noSpan) == (y?.span() ?? noSpan);
+    print(same ? "y" : "n"); print(" ");
+    print(k1.child(1)); print(" "); print(k1.sibling(1)); print(" ");
+    Knot r1 = x?.left ?? x?.noisyKnot();
+    print(evals); print(" ");
+    Knot r2 = x.left ?? step(x)?.right;
+    print(evals); print(" ");
+    string m = k1.label ?? step(k1)?.label;
+    print(evals); print(" ");
+    bool off = false;
+    if (off && x?.noisy() > 1) print("yes");
+    print(evals); print(" ");
+    if (!off || x?.noisy() > 1) evals += 0;
+    print(evals); print(" ");
+    bool c = off && x?.noisy() > 1;
+    print(evals); print(" ");
+    bool d = off && step(k1)?.right?;
+    print(evals); print(" ");
+    bool e = true || step(k1)?.label?;
+    print(evals); print(" ");
+    string t = off ? step(k1)?.label : "x";
+    print(evals); print(" ");
+    int n = 0;
+    do { n++; } while (off && x?.noisy() > 1);
+    print(n + evals); print(" ");
+    Knot b = k1;
+    print(b?.text()?.contains('e') ? "y" : "n"); print(" ");
+    print(b?.text()?.contains("e") ? "y" : "n"); print(" ");
+    print(b.text().contains('e') ? "y" : "n"); print(" ");
+    print(b?.text()?.indexOf('d'));
+}

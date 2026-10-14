@@ -126,16 +126,15 @@ _bglClass_Room cloakroom
     if (x ~= nothing) {
     remove x;
     }
-    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) { _bgl_tempL0 = foyer; }
     _l_target = _bgl_tempL0;
-    _bgl_tempL0 = cloakroom; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    _bgl_tempL0 = cloakroom; if (~~(_bgl_tempL0 ~= nothing)) { _bgl_tempL0 = foyer; }
     r = _bgl_tempL0;
-    _bglFrm-->0 = foyer; if (~~(_bglFrm-->0 ~= nothing)) _bglFrm-->0 = cloakroom;
-    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = _bglFrm-->0;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) { _bglFrm-->0 = foyer; if (~~(_bglFrm-->0 ~= nothing)) { _bglFrm-->0 = cloakroom; } _bgl_tempL0 = _bglFrm-->0; }
     first = _bgl_tempL0;
-    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) { _bgl_tempL0 = foyer; }
     dest = _bgl_tempL0;
-    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) _bgl_tempL0 = foyer;
+    _bgl_tempL0 = x; if (~~(_bgl_tempL0 ~= nothing)) { _bgl_tempL0 = foyer; }
     pick = _bgl_tempL0;
     desc = pick.description;
     _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; } else _bgl_tempL0 = 0; } else _bgl_tempL0 = 0;
@@ -145,10 +144,10 @@ _bglClass_Room cloakroom
     _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; _bgl_tempL0 = _bgl_tempL0.description; } else _bgl_tempL0 = 0;
     d3 = _bgl_tempL0;
     _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.next; } else _bgl_tempL0 = 0;
-    _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) _bglFrm-->0 = cloakroom;
+    _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) { _bglFrm-->0 = cloakroom; }
     result = _bglFrm-->0;
     _bgl_tempL0 = foyer; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.up; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = _bgl_tempL0.next; } else _bgl_tempL0 = 0; } else _bgl_tempL0 = 0;
-    _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) _bglFrm-->0 = cloakroom;
+    _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) { _bglFrm-->0 = cloakroom; }
     nested = _bglFrm-->0;
     _bglFrameFree(1);
 ];

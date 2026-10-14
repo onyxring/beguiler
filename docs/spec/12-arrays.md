@@ -494,7 +494,8 @@ when the class has no copy operator.
   another array at run time is a compile-time error.
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
-  instance is shared with the array.
+  instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)
+  gives its slot a copy of its initial value.
 - A member array of a value class declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance without returning it to the pool.

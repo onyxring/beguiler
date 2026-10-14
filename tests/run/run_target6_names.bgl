@@ -1,0 +1,29 @@
+// run_target6_names — lambda parameters named like a global variable (in a chain initializing a sized
+// local array), a global object, a class and a global function, with `::` reaching the hidden global
+// from the lambda body, and a for-in loop variable named like a class.
+// EXPECT_OUTPUT: 2 1 1 1 1 2 6 40
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+class Bin : object { int n; }
+Bin binA { n = 1; }
+Bin binB { n = 5; }
+array<Bin> bins = { binA, binB };
+array<int> ids = { 0, 1, 2 };
+int slot = 0;
+int total = 4;
+int count(int k) { return k; }
+void main() {
+    bglInit();
+    array<int> hits[3] = ids.filter((int slot) => slot > 0);
+    print(hits.length); print(" ");
+    print(bins.filter((Bin bin) => bin.n > 2).count()); print(" ");
+    print(bins.filter((Bin binA) => binA.n > 2).count()); print(" ");
+    print(bins.filter((Bin total) => total.n > 2).count()); print(" ");
+    print(bins.filter((Bin count) => count.n > 2).count()); print(" ");
+    print(bins.filter((Bin total) => total.n > ::total - 4).count()); print(" ");
+    int a = 0;
+    for (Bin bin in bins) a += bin.n;
+    print(a); print(" ");
+    print(count(40));
+}

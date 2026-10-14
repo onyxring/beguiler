@@ -1,0 +1,78 @@
+Room A
+> status
+Gauges: gauge A=0/0/low gauge B=0/0/low gauge C=0/0/low.
+Core 0, boost 0, shade low, mode low, writes 0, total 0.
+> feed gauge a 7
+gauge A: lvl 7, peak 7, tone mid; snap+ 9, sets 1.
+> feed gauge b 12
+gauge B: lvl 12, peak 12, tone high; snap+ 14, sets 1.
+> feed gauge c 3
+gauge C: lvl 3, peak 3, tone low; snap+ 5, sets 1.
+> feed room
+You can't see any such thing.
+> core 4
+Core 11 (sets 5); zero no; present yes.
+> status
+Gauges: gauge A=7/7/mid gauge B=12/12/high gauge C=3/3/low.
+Core 11, boost 11, shade low, mode low, writes 0, total 33.
+> boost 2
+Boost 36; core 11 -> 20; limit 20/20/20.
+> shade 6
+Shade mid; mode mid; same yes; high no.
+> shade 15
+Shade high; mode high; same yes; high yes.
+> pick 1
+Pick 1: gauge B lvl 12, tone high.
+Fallback gauge B now 13; by path 13.
+> pick 9
+Pick -1: none.
+Fallback gauge C now 4; by path 4.
+> kit 9
+Dial 8, half 4, twin 18, copy 18, over yes.
+> spare 3
+Spare 4; core 20; writes 0 -> 2; tone high.
+> drain
+Drained in 13; core 4, boost 5, sets 23.
+> rank
+Hot 2; any high yes; low gauge C 4; top gauge B 12; loudest 13; sum 24.
+Order gauge A<=A gauge B>A gauge C<=A.
+> tone gauge a
+gauge A tone high / high.
+> tone gauge b
+gauge B tone low / low.
+> tone gauge c
+gauge C tone mid / mid.
+> charge 4
+Cell 9, hue mid, is cell yes, is gauge no.
+> charge 30
+Cell 20, hue high, is cell yes, is gauge no.
+> reserve gauge b 6
+gauge B reserve 10, copy 10, lvl copy 13, more no.
+> swap gauge a with gauge b
+gauge A 13, gauge B 7; equal no.
+> made
+Made 8/8/8; core 4/4/4.
+> status
+Gauges: gauge A=13/7/high gauge B=7/12/low gauge C=4/3/mid.
+Core 4, boost 5, shade high, mode high, writes 2, total 28.
+> aim gauge c
+Aim gauge C at 6; core 5/5; dial 6 half 3; twin 12 copy 12; tone mid.
+> aim gauge a
+Aim gauge A at 15; core 14/14; dial 15 half 7; twin 20 copy 20; tone high.
+> cells 3
+Held 3, over dial 0: 3/low 4/low 5/high.
+> cells 1
+Held 3, over dial 0: 1/low 2/low 3/low.
+> status
+Gauges: gauge A=15/7/high gauge B=7/12/low gauge C=6/3/mid.
+Core 14, boost 15, shade high, mode high, writes 2, total 42.
+> probe
+Big 15; seen 15; dial 17; scaled 28/34; shade H; pick 6; aim 15.
+Unaimed: seen 14, at 0, pick 6, shade H.
+> shade 1
+Shade low; mode low; same yes; high no.
+> probe
+Big 17; seen 14; dial 19; scaled 28/38; shade L; pick 6; aim 7.
+Unaimed: seen 14, at 0, pick 6, shade L.
+> sweep
+Lift 15; A 16 mid; B high; C 7; mirror 33.

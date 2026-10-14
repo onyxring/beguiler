@@ -1,0 +1,31 @@
+// run_target6_strings — ordering comparisons with a string literal or a #define on the left and a
+// stringObj on the right, and a char read from a stringObj member of a value-class array element.
+// EXPECT_OUTPUT: y n y n y y y n y b c
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+#include <array>
+#define DESK "desk"
+value class Stub {
+    stringObj text;
+    Stub operator = (Stub o) { text = o.text; return self; }
+}
+array<Stub> stubs[4];
+void main() {
+    bglInit();
+    stringObj c = "spare";
+    print("desk" < c ? "y" : "n"); print(" ");
+    print("desk" > c ? "y" : "n"); print(" ");
+    print("zz" > c ? "y" : "n"); print(" ");
+    print("zz" <= c ? "y" : "n"); print(" ");
+    print("desk" <= c ? "y" : "n"); print(" ");
+    print("spare" >= c ? "y" : "n"); print(" ");
+    print(DESK < c ? "y" : "n"); print(" ");
+    print(DESK >= c ? "y" : "n"); print(" ");
+    print(("desk" <=> c) < 0 ? "y" : "n"); print(" ");
+    Stub s;
+    s.text = "abc";
+    stubs += s;
+    print($"{stubs[0].text[1]} ");
+    char ch = stubs[0].text[2];
+    print($"{ch}");
+}

@@ -1,0 +1,120 @@
+Room A
+Room A. A cabinet stands here. Room B is north.
+You can see a cabinet here.
+> drawers
+top: [brass,steel] fill 2 load 4 first brass box 4x2 next middle
+middle: [iron,tin] fill 2 load 6 first iron box 5x2 next bottom
+bottom: [odd] fill 1 load 2 first odd box 6x3 next none
+heaviest middle (6) first iron picks 12
+> inspect brass gear
+gear brass/12 base brass in top (top) w 3 wear 0
+size 2x2 grown 3x3 16 marks 0
+teeth 12 as part part brass next iron
+marks:
+> inspect odd gear
+gear odd/7 base odd in bottom (bottom) w 2 wear 0
+size 2x1 grown 3x2 12 marks 0
+teeth 7 as part part odd next none
+spare 5 5
+marks:
+> inspect steel spring
+part steel base steel in top (top) w 1 wear 0
+size 1x4 grown 2x5 18 marks 0
+coils 9 wear 0
+marks:
+> survey
+teeth 12 20 7 chain 12 8 next iron none
+keep true false true false 2
+heavy iron 0 gear iron/20 20
+after 5 4x2 7x4 1
+worn drawer 3 worn odd=0 fills true false
+[0:steel/0][1:tin/0]
+> count
+steps 1 1 1 1 1 1 1
+fill 5 weight 6 wear 3 box 7x3 slot 1 mark 5
+> drawers
+top: [brass,steel] fill 2 load 4 first brass box 4x2 next middle
+middle: [iron,tin] fill 2 load 6 first iron box 5x2 next bottom
+bottom: [odd] fill 1 load 2 first odd box 7x3 next none
+heaviest middle (6) first iron picks 36
+> tag brass gear 3
+The brass gear has 2 marks, first 103, last 0; drawer's first has 4 (103); made 4
+> tag tin pin 4
+The tin pin has 2 marks, first 104, last 0; drawer's first has 1 (7); made 8
+> scuff iron gear 4
+The iron gear wears as much as the first in its drawer.
+wear 8 first 8 gear? 8
+> scuff tin pin 2
+The tin pin wears less than the iron gear.
+wear 2 first 8 gear? 0
+> mesh
+mesh iron 32 6 32 7
+filter 7 3 gear brass/32 brass
+teeth fours
+first heavy drawer 0 top
+gear iron/20; part tin; 
+gear brass/32|gear brass/32 part steel|part steel 
+> card iron gear
+card 6 for iron in middle first iron gear iron/20
+second iron x 13 size 4x4
+> sizes
+slots 2 5x3 4x1 10 s 7x4 box 4x2
+sum 5x5 36 2x5 eq true false
+plans 2 1x2 4x2 3x1 3x3
+total 9x4 widest 5
+> stretch steel spring
+The steel spring: coils 8 wear 11 11 spare steel steel
+> pick 1
+top: brass top steel q brass
+heavy: brass (1 worn)
+> pick 2
+middle: iron middle tin q iron
+heavy: iron (2 worn)
+> peek top drawer
+The top drawer: brass / steel w 2 next 12 slot 4x2 marks 4
+wear 2 load 5
+> peek cabinet
+That is not a drawer.
+> move brass gear
+The brass gear moves to the middle drawer (3 parts, load 9).
+> pick 1
+top: steel middle steel q steel
+heavy: steel (1 worn)
+> drawers
+top: [steel] fill 1 load 2 first steel box 4x2 next middle
+middle: [iron,tin,brass] fill 3 load 9 first iron box 5x2 next bottom
+bottom: [odd] fill 1 load 2 first odd box 7x3 next none
+heaviest middle (9) first iron picks 62
+> inspect odd gear
+gear odd/7 base odd in bottom (bottom) w 2 wear 1
+size 2x1 grown 3x2 12 marks 0
+teeth 7 as part part odd next none
+spare 5 5
+marks:
+> move iron gear
+The iron gear moves to the bottom drawer (2 parts, load 7).
+> move odd gear
+The odd gear is in the last drawer.
+> peek middle drawer
+The middle drawer: tin / brass w 4 next 10 slot 5x2 marks 4
+wear 4 load 5
+> peek bottom drawer
+The bottom drawer: odd / iron w 6 next 0 slot 7x3 marks 1
+wear 3 load 8
+> drawers
+top: [steel] fill 1 load 2 first steel box 4x2 next middle
+middle: [tin,brass] fill 2 load 5 first tin box 5x2 next bottom
+bottom: [odd,iron] fill 2 load 8 first odd box 7x3 next none
+heaviest bottom (8) first odd picks 74
+> inspect steel spring
+part steel base steel in top (top) w 2 wear 11
+size 1x4 grown 2x5 18 marks 0
+coils 8 wear 11
+marks:
+> survey
+teeth -1 -1 7 chain 15 13 next tin none
+keep true false true false 2
+heavy odd 1 gear odd/7 20
+after 5 2x0 6x5 2
+worn drawer 3 worn steel=11 fills true false
+[1:brass/2][2:iron/8]

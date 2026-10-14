@@ -1,0 +1,509 @@
+#grids
+Room A
+Room A. Two panels and a mixer.
+You can see a panel A, a panel B and a mixer here.
+[win 1] [0] palette ready, 5 colors
+[grid 1]
+|palette 5 | mixes 0/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #808080 lum 128 gray                            |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #000000                  |
+[grid 2]
+|Room A | paints 0                                 |
+> palette
+0: #FF0000 lum 76 red
+1: #00FF00 lum 153 green
+2: #0000FF lum 25 blue
+3: #FFFF00 lum 229 yellow
+4: #808080 lum 128 gray
+By lum: 25 76 128 153 229
+Brightest #FFFF00 lum 229 yellow; last ascending is the same.
+Brightest by loop #FFFF00 lum 229 yellow.
+Light: 3; distinct: 5.
+Paper is not in the palette.
+Ink is not in the palette.
+Blue at 2; has gray true.
+First two: red green; first lum 76.
+[grid 1]
+|palette 5 | mixes 0/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #808080 lum 128 gray                            |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #000000                  |
+[grid 2]
+|Room A | paints 0                                 |
+> mixes
+No mixes yet.
+[grid 1]
+|palette 5 | mixes 0/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #808080 lum 128 gray                            |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #000000                  |
+[grid 2]
+|Room A | paints 0                                 |
+> mix 0 with 1
+Mixed #7F7F00 lum 114 mixed.
+[win 1] [0] #7F7F00
+[grid 1]
+|palette 5 | mixes 1/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #808080 lum 128 gray                            |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7F00                  |
+[grid 2]
+|Room A | paints 0                                 |
+> mix 2
+Mixed #7F7FFF lum 139 mixed.
+[win 1] [1] #7F7FFF
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #808080 lum 128 gray                            |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 0                                 |
+> mixes
+Mixes, dim first: #7F7F00 #7F7FFF
+#7F7F00 is dimmer than #7F7FFF.
+Last mix is entry 1.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #808080 lum 128 gray                            |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 0                                 |
+> darken 4
+Color 4 from #808080 to #585858.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #FFFF00 lum 229 yellow                          |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 0                                 |
+> darken 3 by 100
+Color 3 from #FFFF00 to #9B9B00.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #0000FF lum 25 blue                             |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 0                                 |
+> lighten 2
+Color 2 is now #1E1EFF lum 52 mixed.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #FF0000 lum 76 red                              |
+|1 #00FF00 lum 153 green                           |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 0                                 |
+> swap 0 to 1
+Swapped: 0 is green, 1 is red.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #8C1C68 B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 0                                 |
+> paint panel a with 1
+Panel A painted red; shown #B2004C; last paint #FF0000.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 1                                 |
+> paint panel a with 1
+Panel A is already red.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 1                                 |
+> paint panel a with 4
+Panel A painted gray; shown #3D3D8A; last paint #585858.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #3D3D8A B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> examine panel a
+Panel A: fill #585858 lum 88 gray, shown #3D3D8A, edge #000000.
+Not pinned.
+History (2): #C82828 #FF0000
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #3D3D8A B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> pin panel b to 4
+Panel B pinned to color 4 (#585858).
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #585858 lum 88 gray                             |
+|                                                  |
+|A #3D3D8A B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> darken 4
+Color 4 from #585858 to #303030.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #3D3D8A B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> examine panel b
+Panel B: fill #28C828 lum 136 mixed, shown #1C8C68, edge #FFFFFF.
+Pinned to #303030 lum 48 gray.
+History (0):
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #3D3D8A B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> revert panel a
+Panel A back to #FF0000 (1 left).
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> revert panel b
+Panel B has no history.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> cards
+first #00FF00 contrast 85: #00FF00 #00C300 #008700
+later #FF0000 contrast 59: #FF0000 #C30000 #870000
+later #1E1EFF contrast 186: #1E1EFF #0000C3 #000087
+Copy #101020 vs card #1E1EFF; equal no; steps kept #0000C3.
+Card 0 through ref: #0AFF0A; contrast 81.
+Rebound to later #FF0000.
+Blank card: card #000000 contrast 0 steps 0.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> ramps
+Ramp 0: #000000 #808080 #FFFFFF
+Ramp 1: #400000 #C00000
+Ramp 1 end is now #800000; mid gray kept.
+Tray total #7896B4, tray middle #28323C.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> blend
+Blend of all: #508F22 lum 113 mixed.
+Blend of ramp 1: #600000.
+Flipped: #AF70DD; double flip same yes.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> wash 2
+Wash over mixed: #8E8E7F; wash as color #FFFF00 lum 229 yellow.
+Stronger: #D2D233; wash alpha still 50.
+Text on it: #101020 (ink).
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> tidy
+Tidied 1; 1 mixes left.
+Front mix #FFFFFF; last mix kept #7F7FFF.
+Ink reaches lum 100 in 4 steps at #747484; ink still #101020.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> tidy
+Tidied 1; 1 mixes left.
+Front mix #FFFFFF; last mix kept #7F7FFF.
+Ink reaches lum 100 in 4 steps at #747484; ink still #101020.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> mixes
+Mixes, dim first: #7F7F00 #FFFFFF
+#7F7F00 is dimmer than #FFFFFF.
+Last mix is entry -1.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> mix 9
+Colors are 0 to 4.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #FF0000 lum 76 red                              |
+|2 #1E1EFF lum 52 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> probe 1
+Faded 1: #FF0000 to #E10000; cur #E10000.
+Next has no green: #1E00FF.
+Pick: #101020 lum 17 mixed.
+Sum of 0, 1 and ink: #F1FF20; mix of 0 and 1 is yellowish no.
+Sum down: #FFFFFF; zero still #000000.
+Light by func: 2; any light true.
+Tray: #0A1401 #E10000 #46505A.
+Ramp 0 end #0AFFFF, ramp rows 2, row 0 has 3.
+Panel A first past #C86328 at 0.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #E10000 lum 67 mixed                            |
+|2 #1E00FF lum 34 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> glazes
+Glazes: 20:#F3C0B3 90:#181850 50:#78F7EF
+By lum: #000040 #FF0000 #00FFFF
+Strongest 90 #000040; as color mixed.
+Slot 1 now 50 #FFFF00; wash equal.
+Mixes bright first: 255 114
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #E10000 lum 67 mixed                            |
+|2 #1E00FF lum 34 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> edges
+Edges (4): #800080 #FAFAFA #008080 #141414
+Has soot true; has chalk false; chalk at -1.
+Edges (4): #010101 #800080 #008080 #FAFAFA; chalk #00FAFA, soot #141414.
+Reset to 3: #141414 #FAFAFA #F0F0E0.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #E10000 lum 67 mixed                            |
+|2 #1E00FF lum 34 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> edges
+Edges (3): #141414 #FAFAFA #F0F0E0
+Has soot true; has chalk false; chalk at -1.
+Edges (3): #010101 #141414 #FAFAFA; chalk #00FAFA, soot #141414.
+Reset to 3: #141414 #FAFAFA #F0F0E0.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #00FF00 lum 153 green                           |
+|1 #E10000 lum 67 mixed                            |
+|2 #1E00FF lum 34 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #303030 lum 48 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> probe 4
+Faded 4: #303030 to #121212; cur #121212.
+Next has no green: #000000.
+Pick: #F0F0E0 lum 238 mixed.
+Sum of 0, 1 and ink: #F11020; mix of 0 and 1 is yellowish no.
+Sum down: #FFADFF; zero still #000000.
+Light by func: 1; any light true.
+Tray: #0A1401 #121212 #46505A.
+Ramp 0 end #0AFFFF, ramp rows 2, row 0 has 3.
+Panel A first past #C86328 at 0.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #000000 lum 0 gray                              |
+|1 #E10000 lum 67 mixed                            |
+|2 #1E00FF lum 34 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #121212 lum 18 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |
+> palette
+0: #000000 lum 0 gray
+1: #E10000 lum 67 mixed
+2: #1E00FF lum 34 mixed
+3: #9B9B00 lum 139 mixed
+4: #121212 lum 18 gray
+By lum: 0 18 34 67 139
+Brightest #9B9B00 lum 139 mixed; last ascending is the same.
+Brightest by loop #9B9B00 lum 139 mixed.
+Light: 1; distinct: 5.
+Paper is not in the palette.
+Ink is not in the palette.
+Blue at -1; has gray false.
+First two: gray mixed; first lum 0.
+[grid 1]
+|palette 5 | mixes 2/4                             |
+|0 #000000 lum 0 gray                              |
+|1 #E10000 lum 67 mixed                            |
+|2 #1E00FF lum 34 mixed                            |
+|3 #9B9B00 lum 139 mixed                           |
+|4 #121212 lum 18 gray                             |
+|                                                  |
+|A #B2004C B #1C8C68 last #7F7FFF                  |
+[grid 2]
+|Room A | paints 2                                 |

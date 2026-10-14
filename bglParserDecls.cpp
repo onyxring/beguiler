@@ -330,11 +330,32 @@ void bglParser::bakeInlineArrayAggregate(const string& innerElemType, const stri
 // slot owns its own instance.
 void bglParser::adoptInitialElements(const string& arrName, const string& elementType, initializerList* list){
     if(list == nullptr || list->elements.empty()) return;
-    string assign = operatorRef(elementType, "=");
-    if(assign.empty() || assign == "0") return;
+    // A value-class global named as an element is a value: the slot gets an instance of its own with the
+    // global's initial fields (a named instance, `Rgb named { … }`, is shared instead — §12.10).
+    if(classDef* ec = languageService.findClass(elementType); ec != nullptr && isValueClass(ec))
+        for(expression* e : list->elements)
+            if(e != nullptr && e->tokens.size() == 1)
+                if(auto* gv = languageService.findGlobalAs<variableDeclaration>(e->tokens[0]);
+                   gv != nullptr && gv->declaredExpressionValue != nullptr && gv->declaredExpressionValue->tokens.size() == 1
+                   && gv->declaredExpressionValue->tokens[0].rfind("_bglanon", 0) == 0)
+                    if(auto* made = languageService.findGlobalAs<objectDef>(gv->declaredExpressionValue->tokens[0])){
+                        string copyName = format("_bglanon{0}", anonObjectCounter++);
+                        objectDef& copy = languageService.registerObject(copyName, false, "");
+                        copy.objectClass = made->objectClass;
+                        copy.members = made->members;
+                        if(std::find(languageService.globals.begin(), languageService.globals.end(), &copy) == languageService.globals.end())
+                            languageService.globals.push_back(&copy);
+                        e->tokens[0] = copyName;
+                        e->resolvedType = elementType;
+                    }
+    bool isStatic = false;
+    string assign = operatorRef(elementType, "=", "", &isStatic);
+    if(assign.empty() || assign == "0" || !isStatic) return;
     for(size_t i = 0; i < list->elements.size(); i++){
         expression* e = list->elements[i];
         if(e == nullptr || e->resolvedType == elementType || e->text() == "0") continue;
+        // A named instance of the class (`Rgb named { … }`) is shared, not copied.
+        if(objectsClassName(e->resolvedType) == elementType) continue;
         string slot = format("{0}-->{1}", arrName, i + 1);
         languageService.globalInits.push_back({arrName, format("{0} = {1}(0, {0});", slot, assign)});
     }

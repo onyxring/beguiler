@@ -84,6 +84,9 @@ reachable through the path. The two forms differ in whether a runtime member exi
   `alias asm = bglOpCodes` is equivalent to the alias-member form `emitter auto asm = bglOpCodes;`, a
   compile-time redirect with no I6 backing.
 
+`⟨target⟩` may be a path through other namespace members (`alias o = root.ops;`); it names the object or
+class the path reaches.
+
 Only these forms make a path step a namespace step. An ordinary member whose declared value happens
 to name an object — `object door { room target = hallway; }` — is storage: `door.target` reads the
 member at run time and may be assigned.

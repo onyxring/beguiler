@@ -1366,8 +1366,7 @@ class _bglString(bglstringpoolreserve)
 [exerciseNullable s1 s2 c present _bgl_tempL0 _bgl_tempL1;
     s1 = "hi";
     c = _bglStr.new();
-    _bgl_tempL1 = s2; if (~~(_bgl_tempL1 ~= 0)) _bgl_tempL1 = "fallback";
-    _bgl_tempL0 = s1; if (~~(_bgl_tempL0 ~= 0)) _bgl_tempL0 = _bgl_tempL1;
+    _bgl_tempL0 = s1; if (~~(_bgl_tempL0 ~= 0)) { _bgl_tempL1 = s2; if (~~(_bgl_tempL1 ~= 0)) { _bgl_tempL1 = "fallback"; } _bgl_tempL0 = _bgl_tempL1; }
     c.setFromLit(_bgl_tempL0);
     present=s1 ~= 0;
     if (c) c.free();

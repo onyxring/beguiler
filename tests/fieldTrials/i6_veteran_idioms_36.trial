@@ -1,0 +1,58 @@
+Room A
+> tally
+Shows: int 7, char k, bool true, str lit, obj obj!/4, shape bevel, size 10mm, part 5, gear 3/8, thing Room A, ints 3, int 2. Weighs: 60 9 100 -1, grams 5 90 -1. Applies: 5 18 24. Recs: (i4)(ss)(p4)(p4x7)(eworm)(cq)(z10mm)(p1x1), calls 8. Sorts: #5#3#1#4#2 #5#3#1#4#2 #3#1#4#2 #2#4#1#3 #1#2#3#4#5. Cog at 2, has spring true, matches 2, sixteen teeth true. Tags: [#3][x][part 5][n2].
+> inspect small gear
+part 1, as gear 1/12, kind gear/p, weighs 40 (40 by conversion), label G1, total 80, mark m1!/{<g12>}, twice part 2, tag [part 1][#1][w40].
+> inspect large gear
+part 2, as gear 2/30, kind gear/p, weighs 90 (90 by conversion), label G2, total 130, mark m2!/{<g30>}, twice part 3, tag [part 2][#2][w90].
+> inspect brass cog
+part 3, as gear 3/8, kind cog/p, weighs 25 (25 by conversion), label C3, total 65, mark m3!/{<g8>}, twice part 4, tag [part 3][#3][w25].
+> inspect iron cog
+part 4, as gear 4/16, kind odd cog/p, weighs 60 (60 by conversion), label C4, total 100, mark m4!/{<g16>}, twice part 5, tag [part 4][#4][w60].
+> inspect spring
+part 5, as thing steel spring, kind spring/p, weighs 15 (15 by conversion), label S5, total 55, mark m5!, twice part 5, tag [part 5][#5][w15].
+> inspect rack
+thing parts rack: [not a part].
+> shelve
+Rack: part 1 part 3 part 5 part 2. Spur #1, bevel #5, worm none, first kind gear, spur fit 0, total 80, all 230, picks #1 #2 #3 #4 #5, padded #1...#2.. Mounts: slot 0 #1, slot 2 #3, at left #5, at top #4, slot 4 #2.
+> mate small gear to large gear
+#1 to #2: lighter, <=> -1, static -1, sum 130, diff -50, triple 120, plus five 17, spur, bench 130, gears 42 teeth, 13 plus one, bench 42, fit 42, fits 3 (p1)(p1x2)(p2x3).
+> mate brass cog to iron cog
+#3 to #4: lighter, <=> -1, static -1, sum 85, diff -35, triple 75, plus five 13, spur, bench 85, gears 24 teeth, 9 plus one, bench 24, fit 24, fits 7, snug 10 (p3)(p3x2)(p4x3).
+> mate spring to small gear
+#5 to #1: lighter, <=> -1, static -1, sum 55, diff -25, triple 45, plus five 20, bench 55, fits 6 (p5)(p5x2)(p1x3).
+> mate iron cog to brass cog
+#4 to #3: heavier, <=> 1, static 1, sum 85, diff 35, triple 180, plus five 21, bench 85, gears 24 teeth, 17 plus one, bench 24, fit 24, fits 7, snug 10 (p4)(p4x2)(p3x3).
+> spin small gear by 4
+#1 turns 1; fit 10, as gear 12, as part 13, by base 13, kind gear.
+> spin small gear by 5
+#1 turns 6; fit 23, as gear 25, as part 26, by base 26, kind gear.
+> spin brass cog by 2
+#3 turns -1; fit 9, as gear 12, as part 13, by base 13, kind cog.
+> spin iron cog by 7
+#4 turns -7; fit 24, as gear 27, as part 28, by base 28, kind odd cog.
+> spin spring by 3
+#5 does not turn; fit 4.
+> spin bench by 1
+Only parts spin.
+> tension spring to 4
+#5 wound 4104, kind spring, (z4mm)(z4cm)(z4in).
+> tension small gear to 4
+Only springs take tension.
+> measure 7
+Measure 7mm with 10mm: sum 17mm, plus two 9mm, double 14mm, diff -3, not ten, shorter, <=> -1/-1, size 14mm, int 14, obj abab/4, stepped 33mm, added 49mm, of 7mm and 90mm, bench 49 98.
+> measure 30
+Measure 30mm with 49mm: sum 79mm, plus two 32mm, double 60mm, diff -19, not ten, shorter, over ten, <=> -1/1, size 60mm, int 60, obj abab/4, stepped 157mm, added 212mm, of 30mm and 90mm, bench 212 424.
+> shelve
+Rack: part 1 part 3 part 5 part 2. Spur #1, bevel #5, worm none, first kind gear, spur fit 26, total 80, all 230, picks #1 #2 #3 #4 #5, padded #1...#2.. Mounts: slot 0 #1, slot 2 #3, at left #5, at top #4, slot 4 #2.
+> tally
+Shows: int 7, char k, bool true, str lit, obj obj!/4, shape bevel, size 212mm, part 5, gear 3/8, thing Room A, ints 3, int 1. Weighs: 60 9 100 -1, grams 5 90 -1. Applies: 5 18 24. Recs: (i4)(ss)(p4)(p4x7)(eworm)(cq)(z212mm)(p1x1), calls 31. Sorts: #5#3#1#4#2 #5#3#1#4#2 #3#1#4#2 #2#4#1#3 #1#2#3#4#5. Cog at 2, has spring true, matches 2, sixteen teeth true. Tags: [#3][x][part 5][n2].
+> mate large gear to brass cog
+#2 to #3: heavier, <=> 1, static 1, sum 115, diff 65, triple 270, plus five 35, bench 115, gears 38 teeth, 31 plus one, bench 38, fit 38, fits 5 (p2)(p2x2)(p3x3).
+[The score has just gone up by one point.]
+> mate iron cog to large gear
+#4 to #2: lighter, <=> -1, static -1, sum 150, diff -30, triple 180, plus five 21, bench 150, gears 46 teeth, 17 plus one, bench 46, fit 46, fits 6 (p4)(p4x2)(p2x3).
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 2 out of a possible 2, in 22 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

@@ -1,0 +1,605 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small pressure-panel program, on the Z-machine, leaning on
+// namespaces and property accessors together.
+// Named accessor classes (int setter, copy operator, `==`/`!=` taking int and a namespace alias of an
+// enum, instance `<=>` with derived orderings, `operator ?`, a static method and a static counter written
+// through a value alias) placed in object namespaces with `alias … for` and used by full path, partial
+// path and bare name: as owned members of classes, objects and the namespace objects themselves, as `ref`
+// parameters and locals (defaults from a const, named arguments), returns, casts, a setter parameter and a
+// static path (`_panel.meter.limit()`). Inline `auto` accessors in namespace object bodies (getters
+// returning a type alias named bare, an object of an aliased class, an enum and the value class; setters
+// taking alias types, an object and the value class; `outer` reading and compound-assigning other
+// accessors of the host), some added by `extend` blocks written above the namespace object and after the
+// imports that reach them; a root `hub` reaching one namespace through a runtime `auto` member and others
+// through compile-time `alias`es (an object and a class's statics), extended above and below its
+// declaration; `#using hub`, `#using hub.panel` and `#using hub.kit` (both declare `meter`, so it is
+// always written with a path), with verbs named like imported members, so accessor members are written,
+// compound-assigned, incremented, passed by `ref` and interpolated bare; accessors through `?.`, `??`,
+// casts to alias types, `is()` and `new` through an alias, a pooled class whose accessor members are typed
+// by paths, `array<path>` with <linq> lambdas whose parameters are alias types, `func<alias, alias>`
+// globals, a parameter default read from an accessor by path, for-in over arrays and inline lists,
+// `switch` on alias-enum getters, ternaries, `while`/`do`-`until` conditions and `for` headers.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+// ---- the root namespace, given a member by an extend written above it -----------------------------------
+
+extend hub {
+    auto panel = _panel;
+}
+
+extend _panel {
+    auto spare = {
+        int _s = 0;
+        int operator () { return _s; }
+        void operator = (int v) {
+            _s = v;
+            outer.core += v;
+            outer.writes++;
+        }
+    };
+}
+
+const int TOP = 20;
+const int STEP = 2;
+
+enum eTone { low, mid, high }
+
+value class Meter {
+    static int made = 0;
+    int _v = 0;
+    int _sets = 0;
+    int operator () { return _v; }
+    void operator = (int v) {
+        _v = v < 0 ? 0 : (v > TOP ? TOP : v);
+        _sets++;
+    }
+    Meter operator = (Meter o) {
+        _v = o._v;
+        return self;
+    }
+    bool operator == (int n) { return _v == n; }
+    bool operator != (int n) { return _v != n; }
+    int operator <=> (Meter o) { return _v - o._v; }
+    emitter eBool operator ? () { ($self._v ~= 0) }
+    int sets() { return _sets; }
+    static int limit() { return TOP; }
+}
+
+value class ToneBox {
+    eTone _t = eTone.low;
+    eTone operator () { return _t; }
+    void operator = (hub.panel.tone t) { _t = t; }
+    bool operator == (hub.panel.tone t) { return _t == t; }
+    bool operator != (hub.panel.tone t) { return _t != t; }
+}
+
+object _panel {
+    alias meter for Meter;
+    alias tone for eTone;
+    alias toneBox for ToneBox;
+    alias gauge for Gauge;
+    alias cell for Cell;
+
+    meter core;
+    toneBox mode;
+    int writes = 0;
+    int pickAt = 0;
+
+    auto boost = {
+        int _b = 0;
+        int operator () { return _b + outer.core; }
+        void operator = (int v) {
+            _b = v;
+            outer.core = outer.core + v;
+        }
+    };
+
+    auto shade = {
+        int _n = 0;
+        tone operator () {
+            if (_n > 10) return tone.high;
+            if (_n > 4) return tone.mid;
+            return tone.low;
+        }
+        void operator = (tone t) {
+            switch (t) {
+                case tone.low:  _n = 0;
+                case tone.mid:  _n = 5;
+                default:        _n = 11;
+            }
+            outer.mode = t;
+        }
+    };
+
+    auto pick = {
+        int _i = 0;
+        gauge operator () { return _i < 0 ? null : gauges[_i]; }
+        void operator = (int i) {
+            _i = i;
+            if (_i >= gauges.length) _i = -1;
+            outer.pickAt = _i;
+        }
+    };
+
+    int total() {
+        int t = core;
+        for (gauge g in gauges) t += g.lvl;
+        return t;
+    }
+
+    meter loudest() {
+        meter best;
+        best = core;
+        for (gauge g in gauges) if (g.lvl > best) best = g.lvl;
+        return best;
+    }
+
+    tone toneFor(int n) { return n > 10 ? tone.high : (n > 4 ? tone.mid : tone.low); }
+}
+
+array<hub.panel.gauge> gauges = { gaugeA, gaugeB, gaugeC };
+
+object hub {
+    int opens = 0;
+}
+
+extend hub {
+    alias kit = _kit;
+    alias meters = Meter;
+}
+
+object _kit {
+    alias meter for Meter;
+    meter dial;
+    auto twin = {
+        int _t = 0;
+        hub.panel.meter operator () {
+            hub.panel.meter m;
+            m = _t;
+            return m;
+        }
+        void operator = (int v) { _t = v * 2; }
+    };
+    int half() { return dial / 2; }
+}
+
+// ---- classes typed through the namespace ----------------------------------------------------------------
+
+class Gauge : object {
+    hub.panel.meter lvl;
+    _panel.toneBox tone;
+    auto peak = {
+        int _p = 0;
+        int operator () { return _p; }
+        void operator = (int v) { if (v > _p) _p = v; }
+    };
+    void feed(int v) {
+        lvl = v;
+        peak = lvl;
+        tone = hub.panel.toneFor(lvl);
+    }
+}
+
+extend class Gauge {
+    hub.kit.meter reserve;
+}
+
+class Cell[3] : object {
+    hub.panel.meter charge;
+    hub.panel.toneBox hue;
+}
+
+// ---- routines written with full paths ----------------------------------------------------------------
+
+void bump(ref hub.panel.meter m, int by = STEP) {
+    m += by;
+    hub.meters.made++;
+}
+
+hub.panel.meter snap(hub.panel.gauge g) {
+    hub.panel.meter m;
+    m = g.lvl;
+    return m;
+}
+
+hub.panel.tone toneOf(_panel.gauge g) { return g.tone; }
+
+string toneWord(hub.panel.tone t) {
+    switch (t) {
+        case hub.panel.tone.low:  return "low";
+        case _panel.tone.mid:     return "mid";
+    }
+    return "high";
+}
+
+int lvlOf(object o) {
+    if (o.is(hub.panel.gauge)) return ((hub.panel.gauge)o).lvl;
+    if (o.is(_panel.cell)) return ((_panel.cell)o).charge;
+    return -1;
+}
+
+// ---- world -------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+hub.panel.gauge gaugeA {
+    "gauge A";
+    parent = roomA;
+    attributes = {static};
+    name = {.gauge, .a};
+    description = "Gauge A.";
+}
+
+_panel.gauge gaugeB {
+    "gauge B";
+    parent = roomA;
+    attributes = {static};
+    name = {.gauge, .b};
+    description = "Gauge B.";
+}
+
+Gauge gaugeC {
+    "gauge C";
+    parent = roomA;
+    attributes = {static};
+    name = {.gauge, .c};
+    description = "Gauge C.";
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+verb Status {
+    grammar = {.status};
+    void handler() {
+        print("Gauges:");
+        for (hub.panel.gauge g in gauges) print($" {g}={g.lvl}/{g.peak}/{toneWord(g.tone)}");
+        printLine(".");
+        printLine($"Core {hub.panel.core}, boost {hub.panel.boost}, shade {toneWord(hub.panel.shade)}, mode {toneWord(hub.panel.mode)}, writes {hub.panel.writes}, total {hub.panel.total()}.");
+    }
+}
+
+verb Feed {
+    grammar = {.feed, NOUN, NUMBER};
+    void handler() {
+        if (!noun.is(hub.panel.gauge)) {
+            printLine("Only gauges.");
+            return;
+        }
+        hub.panel.gauge g = (hub.panel.gauge)noun;
+        g.feed((int)second);
+        hub.panel.meter s = snap(g);
+        bump(s);
+        printLine($"{g}: lvl {g.lvl}, peak {g.peak}, tone {toneWord(toneOf(g))}; snap+ {s}, sets {g.lvl.sets()}.");
+    }
+}
+
+verb SetCore {
+    grammar = {.core, NUMBER};
+    void handler() {
+        hub.panel.core = (int)noun;
+        hub.panel.core += 3;
+        bump(hub.panel.core);
+        bump(by: 1, m: hub.panel.core);
+        _panel.core++;
+        printLine($"Core {hub.panel.core} (sets {_panel.core.sets()}); zero {hub.panel.core == 0 ? "yes" : "no"}; present {hub.panel.core? ? "yes" : "no"}.");
+    }
+}
+
+#using hub
+
+// From here `panel`, `kit` and `meters` are reachable without `hub.`.
+
+verb SetBoost {
+    grammar = {.boost, NUMBER};
+    void handler() {
+        int before = panel.core;
+        panel.boost = (int)noun;
+        panel.boost += 1;
+        printLine($"Boost {panel.boost}; core {before} -> {panel.core}; limit {meters.limit()}/{hub.panel.meter.limit()}/{_panel.meter.limit()}.");
+    }
+}
+
+verb Shade {
+    grammar = {.shade, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        panel.shade = panel.toneFor(n);
+        hub.panel.tone t = panel.shade;
+        printLine($"Shade {toneWord(t)}; mode {toneWord(panel.mode)}; same {panel.mode == t ? "yes" : "no"}; high {panel.mode != panel.tone.high ? "no" : "yes"}.");
+    }
+}
+
+verb Pick {
+    grammar = {.pick, NUMBER};
+    void handler() {
+        panel.pick = (int)noun;
+        print($"Pick {panel.pickAt}: ");
+        if (panel.pick?) printLine($"{panel.pick} lvl {panel.pick.lvl}, tone {toneWord(panel.pick?.tone)}.");
+        else printLine("none.");
+        hub.panel.gauge g = panel.pick ?? gaugeC;
+        g.lvl += 1;
+        printLine($"Fallback {g} now {g.lvl}; by path {lvlOf(hub.panel.pick ?? gaugeC)}.");
+    }
+}
+
+verb Kit {
+    grammar = {.kit, NUMBER};
+    void handler() {
+        kit.dial = (int)noun;
+        kit.twin = kit.dial;
+        hub.kit.dial -= 1;
+        kit.meter m = kit.twin;
+        printLine($"Dial {kit.dial}, half {kit.half()}, twin {kit.twin}, copy {m}, over {m > hub.kit.dial ? "yes" : "no"}.");
+    }
+}
+
+#using hub.panel
+
+// From here the panel's aliases and members are bare: `meter`, `tone`, `gauge`, `core`, `boost`, `pick`.
+
+int sumBy(func<int, gauge> f) {
+    int t = 0;
+    for (gauge g in gauges) t += f(g);
+    return t;
+}
+
+tone toneOfCore() { return toneFor(core); }
+
+verb SetSpare {
+    grammar = {.spare, NUMBER};
+    void handler() {
+        int w = writes;
+        spare = (int)noun;
+        spare += 1;
+        printLine($"Spare {spare}; core {core}; writes {w} -> {writes}; tone {toneWord(toneOfCore())}.");
+    }
+}
+
+verb Drain {
+    grammar = {.drain};
+    void handler() {
+        int laps = 0;
+        while (core?) {
+            core -= 3;
+            laps++;
+        }
+        do {
+            boost = 1;
+            laps++;
+        } until (core >= 2);
+        for (core = 0; core < 4; core++) laps++;
+        printLine($"Drained in {laps}; core {core}, boost {boost}, sets {core.sets()}.");
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        int hot = gauges.filter((gauge g) => g.lvl > 5).count();
+        bool anyHigh = gauges.any((panel.gauge g) => g.tone == tone.high);
+        gauge low = gauges.orderBy((gauge a, gauge b) => a.lvl <=> b.lvl).first();
+        gauge top = gauges.orderBy((hub.panel.gauge a, hub.panel.gauge b) => a.peak - b.peak).last();
+        meter loud = loudest();
+        int sum = sumBy((gauge g) => g.lvl);
+        printLine($"Hot {hot}; any high {anyHigh ? "yes" : "no"}; low {low} {low.lvl}; top {top} {top.peak}; loudest {loud}; sum {sum}.");
+        print("Order");
+        for (gauge g in gauges) {
+            if (g.lvl < low.lvl) print(" ?");
+            else if (g.lvl <= gaugeA.lvl) print($" {g}<=A");
+            else print($" {g}>A");
+        }
+        printLine(".");
+    }
+}
+
+verb Tone {
+    grammar = {.tone, NOUN};
+    void handler() {
+        if (!noun.is(gauge)) {
+            printLine("Only gauges.");
+            return;
+        }
+        gauge g = (gauge)noun;
+        switch (g.tone) {
+            case tone.low:  g.tone = tone.mid;
+            case tone.mid:  g.tone = tone.high;
+            default:        g.tone = tone.low;
+        }
+        string word = g.tone == tone.high ? "high" : (g.tone != tone.low ? "mid" : "low");
+        printLine($"{g} tone {word} / {toneWord(toneOf(g))}.");
+    }
+}
+
+verb Charge {
+    grammar = {.charge, NUMBER};
+    void handler() {
+        cell c = new cell();
+        if (c == null) {
+            printLine("No cells.");
+            return;
+        }
+        c.charge = (int)noun;
+        bump(c.charge, 5);
+        c.hue = toneFor(c.charge);
+        object o = c;
+        printLine($"Cell {lvlOf(o)}, hue {toneWord(c.hue)}, is cell {o.is(hub.panel.cell) ? "yes" : "no"}, is gauge {o.is(gauge) ? "yes" : "no"}.");
+        delete c;
+    }
+}
+
+verb Reserve {
+    grammar = {.reserve, NOUN, NUMBER};
+    void handler() {
+        if (!noun.is(gauge)) {
+            printLine("Only gauges.");
+            return;
+        }
+        gauge g = (gauge)noun;
+        g.reserve = (int)second;
+        bump(g.reserve, by: 4);
+        kit.meter k = g.reserve;
+        meter m = g.lvl;
+        printLine($"{g} reserve {g.reserve}, copy {k}, lvl copy {m}, more {g.reserve > g.lvl ? "yes" : "no"}.");
+    }
+}
+
+verb Swap {
+    grammar = {.swap, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(gauge) || !second.is(gauge)) {
+            printLine("Only gauges.");
+            return;
+        }
+        meter t = ((gauge)noun).lvl;
+        ((gauge)noun).lvl = ((gauge)second).lvl;
+        ((panel.gauge)second).lvl = t;
+        printLine($"{noun} {lvlOf(noun)}, {second} {lvlOf(second)}; equal {((gauge)noun).lvl == lvlOf(second) ? "yes" : "no"}.");
+    }
+}
+
+verb Made {
+    grammar = {.made};
+    void handler() {
+        printLine($"Made {meters.made}/{Meter.made}/{hub.meters.made}; core {core}/{panel.core}/{hub.panel.core}.");
+    }
+}
+
+// ---- added after the imports: an extend the imports already reach ---------------------------------------
+
+extend _panel {
+    auto aim = {
+        int _a = 0;
+        gauge operator () { return _a == 0 ? null : gauges[_a - 1]; }
+        void operator = (gauge g) {
+            _a = 0;
+            for (int i = 0; i < gauges.length; i++) if (gauges[i] == g) _a = i + 1;
+            if (g?) outer.core = g.lvl;
+        }
+    };
+    int aimAt() { return aim == null ? 0 : lvlOf(aim); }
+}
+
+#using hub.kit
+
+// `meter` is now in hub.panel and hub.kit both, so it is always written with a path; `dial`, `twin` and
+// `half()` are bare.
+
+func<tone, gauge> toneFn = (gauge g) => g.tone;
+
+verb AimAt {
+    grammar = {.aim, NOUN};
+    void handler() {
+        if (!noun.is(panel.gauge)) {
+            printLine("Only gauges.");
+            return;
+        }
+        aim = (gauge)noun;
+        aim?.lvl += 2;
+        ref panel.meter r := core;
+        r += 1;
+        dial = aim?.lvl ?? 0;
+        twin = dial;
+        hub.panel.meter copy;
+        copy = twin;
+        printLine($"Aim {aim} at {aimAt()}; core {core}/{r}; dial {dial} half {half()}; twin {twin} copy {copy}; tone {toneWord(toneFn(aim))}.");
+    }
+}
+
+verb Cells {
+    grammar = {.cells, NUMBER};
+    void handler() {
+        array<object> held[3];
+        for (int i = 0; i < 3; i++) {
+            hub.panel.cell c = new hub.panel.cell();
+            if (c == null) break;
+            c.charge = (int)noun + i;
+            c.hue = c.charge > 4 ? tone.high : tone.low;
+            held.append(c);
+        }
+        int lit = 0;
+        for (object o in held) {
+            if (o.is(panel.cell) && ((kit.meter)((cell)o).charge > dial)) lit++;
+        }
+        print($"Held {held.length}, over dial {lit}:");
+        for (object o in held) print($" {((_panel.cell)o).charge}/{toneWord(((hub.panel.cell)o).hue)}");
+        printLine(".");
+        while (held.length > 0) {
+            cell c = (cell)held.popEnd();
+            delete c;
+        }
+    }
+}
+
+int scaled(int k, int base = hub.panel.core) { return k * base; }
+
+hub.kit.meter peekAim() { return aim?.lvl ?? core; }
+
+string shadeWord() {
+    switch (panel.shade) {
+        case hub.panel.tone.low: return "L";
+        case panel.tone.mid:     return "M";
+        case tone.high:          return "H";
+    }
+    return "?";
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        hub.panel.meter big = core > dial ? core : dial;
+        kit.meter seen = peekAim();
+        bump(by: STEP, m: dial);
+        print($"Big {big}; seen {seen}; dial {dial}; scaled {scaled(2)}/{scaled(2, base: dial)}; shade {shadeWord()}");
+        printLine($"; pick {hub.panel.pick?.lvl ?? gaugeC.lvl}; aim {aim?.lvl ?? gaugeB.lvl}.");
+        aim = null;
+        panel.pick = 2;
+        printLine($"Unaimed: seen {peekAim()}, at {aimAt()}, pick {pick?.lvl ?? gaugeC.lvl}, shade {shadeWord()}.");
+    }
+}
+
+extend _kit {
+    auto mirror = {
+        int _m = 0;
+        int operator () { return _m; }
+        void operator = (hub.panel.meter m) { _m = m + outer.dial; }
+    };
+}
+
+void setTone(gauge g, tone t = tone.mid) { g.tone = t; }
+
+verb Sweep {
+    grammar = {.sweep};
+    void handler() {
+        func<int, int> lift = (int x) => x + core;
+        for (panel.gauge g in {gaugeA, gaugeC}) {
+            g.lvl++;
+            setTone(g);
+        }
+        setTone(t: tone.high, g: gaugeB);
+        mirror = core;
+        kit.mirror = core;
+        printLine($"Lift {lift(1)}; A {gaugeA.lvl} {toneWord(gaugeA.tone)}; B {toneWord(toneFn(gaugeB))}; C {gaugeC.lvl}; mirror {mirror}.");
+    }
+}

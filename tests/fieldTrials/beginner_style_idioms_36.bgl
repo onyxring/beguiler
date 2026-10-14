@@ -1,0 +1,767 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-sixth first-time-programmer program, a ticket counter where tickets are
+// printed with codes, holders' names are written on them, tickets are punched, rolled up, checked
+// and torn, written by a beginner who builds every piece of text a bit at a time. string and
+// stringObj together: functions returning string from ?: chains and recursion, functions returning
+// stringObj from ?: of a local and a literal, of two call results and of a member; string and
+// stringObj parameters with string, char and #define defaults, named, and as ref; ?? between string
+// globals, string-returning calls, consts and stringObjs in declarations, arguments, returns,
+// interpolation spans and print(); append / prepend of char literals, char locals, chars read from
+// s[i], chars returned by a function, char members, char consts, ints, ?: of chars, #defines,
+// consts, members, statics, call results and the text itself (s += s, s.append(s)); interpolation
+// assigned to locals, members, statics, array elements, ref locals and ref parameters, appended with
+// +=, passed to an emitter, printed from lambdas and inside nested loops, with spans holding
+// concatenations, ?? chains, s[i], casts of chars, compareTo, =~, call chains on array elements and
+// method results of class instances; a class with stringObj members and string | stringObj methods,
+// a static method returning stringObj; a value class holding stringObj kept in an array of the value
+// class; an array<stringObj> sorted, searched and filtered with lambdas building their own text;
+// pool pressure from recursion (wrapping, counting down, splitting, two routines calling each other
+// through a ref) and from loops that make and drop stringObjs in every pass; string switch on a
+// parameter with const and #define cases; strings thrown and caught from a routine with stringObj
+// locals; and verbs (counter, print, write, clip, roll, codes, tear, spin, odds, more, edges) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 48; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#define DESK_WORD "desk"
+const string SPARE_WORD = "spare";
+const char DASH = '-';
+
+// ===== COUNTS =====
+
+// how many tickets fit on the roll
+const int ROLL_SIZE = 6;
+// how many stubs fit in the box
+const int STUB_BOX = 4;
+// how many tickets have been printed
+int ticketsPrinted = 0;
+// how many times SPIN has run
+int spins = 0;
+
+// ===== TEXT KEPT BETWEEN TURNS =====
+
+// the holder's name, not set yet
+string holder;
+// the name to use when there is no holder
+string fallbackName = "nobody";
+// the last code printed
+stringObj lastCode = "";
+// a line that grows every turn
+stringObj logLine;
+// the roll of tickets
+array<stringObj> roll[ROLL_SIZE];
+
+// ===== LITTLE HELPERS =====
+
+// the letter for a row number
+char rowLetter(int row) {
+    return 'A' + row;
+}
+
+// "st", "nd", "rd" or "th" for a number (a ?: chain)
+string suffixFor(int n) {
+    return n % 10 == 1 && n != 11 ? "st" : n % 10 == 2 && n != 12 ? "nd" : n % 10 == 3 && n != 13 ? "rd" : "th";
+}
+
+// the holder, or the fallback name, or a plain word
+string whoHolds() {
+    return holder ?? fallbackName ?? "someone";
+}
+
+// a word for how many, counting down until it finds one (recursive, returns a string)
+string sizeWord(int n) {
+    if (n > 3) {
+        return sizeWord(n - 1);
+    }
+    return n == 0 ? "none" : n == 1 ? "one" : n == 2 ? "a pair" : "a few";
+}
+
+// a code like "A-07" for a row and a seat
+stringObj seatCode(int row, int seat) {
+    stringObj s = "";
+    s += rowLetter(row);
+    s += DASH;
+    if (seat < 10) {
+        s += '0';
+    }
+    s += $"{seat}";
+    return s;
+}
+
+// the code, or "none" when it is empty
+stringObj codeOrNone(stringObj code) {
+    return code.isEmpty() ? "none" : code;
+}
+
+// the shorter of two codes
+stringObj shorterOf(stringObj a, stringObj b) {
+    return a.length <= b.length ? a.toLower() : b.toUpper();
+}
+
+// the code wrapped in n pairs of brackets (recursive)
+stringObj wrap(stringObj code, int n, char open = '(', char close = ')') {
+    if (n <= 0) {
+        return code;
+    }
+    stringObj inner = wrap(code, n - 1, open, close);
+    stringObj outer = inner.prepend(open);
+    outer = outer.append(close);
+    return outer;
+}
+
+// numbers counting down, each with its suffix (recursive, an interpolation in every frame)
+stringObj countDown(int n) {
+    stringObj here = $"{n}{suffixFor(n)}";
+    if (n <= 1) {
+        return here;
+    }
+    return here + " " + countDown(n - 1);
+}
+
+// the code with a mark between each half (recursive splitting)
+stringObj split(stringObj code) {
+    if (code.length < 2) {
+        return code;
+    }
+    int half = code.length / 2;
+    stringObj a = split(code.left(half));
+    stringObj b = split(code.right(code.length - half));
+    return a + '|' + b;
+}
+
+// adds a mark to the caller's text, n times (recursive through a ref)
+void markN(ref stringObj s, char mark, int n) {
+    if (n == 0) {
+        return;
+    }
+    s += mark;
+    markN(s, mark, n - 1);
+}
+
+// "x" and "o" taking turns into the caller's text (two routines calling each other)
+void tickX(ref stringObj s, int n) {
+    if (n == 0) {
+        return;
+    }
+    s += 'x';
+    tickO(s, n - 1);
+}
+void tickO(ref stringObj s, int n) {
+    if (n == 0) {
+        return;
+    }
+    s = $"{s}o";
+    tickX(s, n - 1);
+}
+
+// a name with a greeting in front, with defaults
+stringObj greeting(string name = "you", string word = DESK_WORD, char end = '.') {
+    stringObj s = word;
+    s = s.append(": ").append(name).append(end);
+    return s;
+}
+
+// the name of the stub box a code goes in
+string boxFor(string code) {
+    switch (code) {
+        case SPARE_WORD: return "the spare box";
+        case DESK_WORD: return "the desk box";
+        case "": return "no box";
+    }
+    return code.length > 4 ? "the long box" : "the short box";
+}
+
+// the code made safe: spaces become dashes
+stringObj safeCode(stringObj code) {
+    stringObj s = code;
+    while (s.indexOf(' ') >= 0) {
+        s = s.replace(' ', DASH);
+    }
+    return s;
+}
+
+// a word that must be short, else it is thrown back
+stringObj mustBeShort(string | stringObj w) {
+    stringObj s = "";
+    s = s.format("$1", w);
+    stringObj tag = "<";
+    tag += s;
+    if (s.length > 5) {
+        throw "too long";
+    }
+    tag += '>';
+    return tag;
+}
+
+// prints a line between bars
+emitter void barred(interpolatedStringLiteral v) { print "|"; $v; print "|^"; }
+
+// ===== TICKETS =====
+
+class Ticket : object {
+    stringObj code;
+    stringObj owner;
+    char mark = '.';
+    int punches = 0;
+    static stringObj lastName;
+    static int made = 0;
+
+    // fills in the ticket
+    void fill(int row, int seat, string | stringObj who) {
+        code = seatCode(row, seat);
+        owner = "";
+        owner = owner.format("$1", who);
+        Ticket.lastName = $"{owner} ({code})";
+        Ticket.made++;
+    }
+
+    // punches the ticket: the mark goes on the end of the code
+    void punch() {
+        punches++;
+        code += mark;
+        mark = mark == '.' ? '*' : '.';
+    }
+
+    // the ticket as a line of text
+    stringObj line() {
+        stringObj s = $"{code} for {owner}";
+        if (punches > 0) {
+            s += $", punched {punches}";
+        }
+        return s;
+    }
+
+    // the code with the name's first letter on the front
+    stringObj tagged() {
+        return owner.isEmpty() ? code : code.prepend(owner[0]);
+    }
+
+    // a heading for every ticket
+    static stringObj heading(string | stringObj title = "TICKETS") {
+        stringObj s = "";
+        s = s.format("== $1 ==", title);
+        return s;
+    }
+}
+
+// ===== STUBS: A VALUE CLASS WITH TEXT IN IT =====
+
+value class Stub {
+    stringObj text;
+    int seat;
+
+    Stub operator = (Stub o) {
+        text = o.text;
+        seat = o.seat;
+        return self;
+    }
+
+    // the stub as text
+    stringObj show() {
+        stringObj s = $"[{text}:{seat}]";
+        return s;
+    }
+}
+
+// the stub box
+array<Stub> stubs[STUB_BOX];
+
+// a stub made from a ticket
+Stub stubFrom(Ticket t, int seat) {
+    Stub s;
+    s.text = t.code.left(1);
+    s.text += t.owner.left(3);
+    s.seat = seat;
+    return s;
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The ticket counter.";
+    attributes = {light};
+}
+
+// ===== THINGS =====
+
+object counter {
+    "counter";
+    parent = roomA;
+    name = {.counter};
+    string description = "The counter.";
+    attributes = {static};
+    stringObj sign = "OPEN";
+    char edge = '#';
+}
+
+Ticket ticketA {
+    "ticket A";
+    parent = roomA;
+    name = {.ticket, .a};
+}
+
+Ticket ticketB {
+    "ticket B";
+    parent = roomA;
+    name = {.ticket, .b};
+    mark = '*';
+}
+
+bool Initialise() {
+    location = roomA;
+    ticketA.fill(0, 7, "Ann");
+    ticketB.fill(1, 12, "Bob");
+    logLine = "log:";
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// COUNTER - shows the counter
+verb ShowCounter {
+    meta = true;
+    grammar = {.counter};
+    void handler() {
+        printLine(Ticket.heading());
+        stringObj row = "ROW ";
+        row += rowLetter(1);
+        printLine(Ticket.heading(row));
+        print($"Holder: {whoHolds()}. Holder or desk: {holder ?? DESK_WORD}. Last code: {codeOrNone(lastCode)}.^");
+        print(holder ?? "(no holder)");
+        print("^");
+        stringObj who = holder ?? whoHolds();
+        print($"Who: {who} ({who.length}), sign {counter.sign}{counter.edge}.^");
+        print($"A: {ticketA.line()}. B: {ticketB.line()}.^");
+        print($"Tagged: {ticketA.tagged()} {ticketB.tagged()}. Last name: {Ticket.lastName}. Made: {Ticket.made}.^");
+        print($"Sizes: {sizeWord(0)}, {sizeWord(2)}, {sizeWord(9)}. Suffixes: 1{suffixFor(1)} 2{suffixFor(2)} 3{suffixFor(3)} 11{suffixFor(11)} 22{suffixFor(22)}.^");
+    }
+}
+
+// PRINT - prints tickets onto the roll
+verb PrintTickets {
+    meta = true;
+    grammar = {.print};
+    void handler() {
+        roll.clear();
+        for (int row = 0; row < 2; row++) {
+            for (int seat = 1; seat <= 3; seat++) {
+                stringObj c = seatCode(row, seat * 4);
+                if (seat == 2) {
+                    c = c.append(row == 0 ? 'L' : 'R');
+                }
+                roll += c;
+                ticketsPrinted++;
+            }
+        }
+        roll[2] = $"{roll[2]}+";
+        int i = 0;
+        while (i < roll.length) {
+            print($"{i + 1}{suffixFor(i + 1)}: {roll[i]} ");
+            i++;
+        }
+        print("^");
+        lastCode = roll[roll.length - 1];
+        logLine += $" p{ticketsPrinted}";
+        print($"Last: {lastCode}, shorter of first two: {shorterOf(roll[0], roll[1])}, of B1 and the last: {shorterOf(roll[3].left(2), lastCode)}.^");
+        print($"First letters: {roll[0][0]}{roll[3][0]}, code of A: {(int)roll[0][0]}.^");
+    }
+}
+
+// WRITE - writes holders' names onto the tickets
+verb WriteNames {
+    meta = true;
+    grammar = {.write};
+    void handler() {
+        print($"Before: {greeting()} {greeting(holder ?? "Cy")} {greeting(word: "hi", end: '!')}.^");
+        holder = "Dee";
+        ticketA.fill(2, 3, whoHolds());
+        stringObj longName = "Eve";
+        longName += ' ';
+        longName += "Ray";
+        ticketB.fill(3, 21, longName);
+        print($"After: {greeting(holder)} {greeting(name: whoHolds(), end: DASH)}.^");
+        print($"A: {ticketA.line()}. B: {ticketB.line()}. Last name: {Ticket.lastName}.^");
+        print($"Safe B: {safeCode(ticketB.owner)}. Safe code: {safeCode(ticketB.code)}.^");
+        stringObj both = ticketA.owner + " & " + ticketB.owner;
+        print($"Both: {both}. Same? {ticketA.owner == ticketB.owner ? "yes" : "no"}. Same any case? {ticketA.owner =~ "DEE" ? "yes" : "no"}.^");
+        ticketA.owner[0] = 'd';
+        print($"Lower A: {ticketA.owner}, cmp to B {ticketA.owner.compareTo(ticketB.owner)}, ignoring case {ticketA.owner.compareTo(ticketB.owner, true)}.^");
+        ticketA.owner[0] = ticketA.owner[0].toUpper();
+        print($"Fixed: {ticketA.owner}.^");
+    }
+}
+
+// CLIP - punches tickets
+verb PunchTickets {
+    meta = true;
+    grammar = {.clip};
+    void handler() {
+        ticketA.punch();
+        ticketB.punch();
+        ticketB.punch();
+        print($"A: {ticketA.code}, B: {ticketB.code}.^");
+        printLine(ticketA.line());
+        printLine(ticketB.line() + '.');
+        stringObj marks = "";
+        markN(marks, ticketA.mark, 3);
+        markN(marks, counter.edge, 2);
+        markN(marks, DASH, 1);
+        print($"Marks: {marks}.^");
+        stringObj ticks = "";
+        tickX(ticks, 7);
+        print($"Ticks: {ticks} ({ticks.length}).^");
+        stringObj twice = "ab";
+        twice += twice;
+        twice = twice.append(twice);
+        twice = twice.prepend(twice.right(1));
+        print($"Twice: {twice}.^");
+        stringObj codes = "";
+        for (int n = 65; n < 70; n++) {
+            codes += n;
+        }
+        codes += n2c(2);
+        print($"Codes: {codes}.^");
+    }
+}
+
+// the char after 'x' by some steps, wrapping round
+char n2c(int steps) {
+    char c = 'x';
+    for (int i = 0; i < steps; i++) {
+        c = c == 'z' ? 'a' : c + 1;
+    }
+    return c;
+}
+
+// ROLL - the roll of tickets, sorted and searched
+verb RollTickets {
+    meta = true;
+    grammar = {.roll};
+    void handler() {
+        if (roll.length == 0) {
+            print("The roll is empty.^");
+            return;
+        }
+        print("Roll: ");
+        for (stringObj c in roll) {
+            print($"{c} ");
+        }
+        print("^");
+        roll.sort((stringObj a, stringObj b) => b.compareTo(a));
+        print($"Backwards: {roll[0]} .. {roll[roll.length - 1]}.^");
+        roll.sort();
+        print($"Forwards: {roll[0]} .. {roll[roll.length - 1]}.^");
+        int withL = roll.filter((stringObj c) => c.endsWith('L') || c.endsWith('R')).count();
+        bool anyPlus = roll.any((stringObj c) => c.contains('+'));
+        stringObj firstB = roll.filter((stringObj c) => c[0] == 'B').first();
+        print($"With L or R: {withL}. Any plus: {anyPlus}. First B: {firstB}. Where: {roll.indexOf(firstB)}.^");
+        stringObj seen = "";
+        bool allShort = roll.all((stringObj c) => {
+            seen += c.right(1);
+            stringObj t = $"{c.length}";
+            return t == "4" || t == "5";
+        });
+        print($"Seen: {seen}. All short: {allShort}.^");
+        func<void, stringObj> show = (stringObj c) => print($"<{c.toLower()}>");
+        for (int i = roll.length - 1; i >= 0; i--) {
+            show(roll[i]);
+        }
+        print("^");
+        roll -= "A-04";
+        roll.prepend(lastCode.prepend('#'));
+        print($"Now: {roll[0]}, {roll.length} on the roll, has A-04: {roll.contains("A-04")}.^");
+    }
+}
+
+// CODES - checks codes against boxes
+verb CheckCodes {
+    meta = true;
+    grammar = {.codes};
+    void handler() {
+        print($"Boxes: {boxFor("spare")}, {boxFor(DESK_WORD)}, {boxFor("")}, {boxFor("A-1")}, {boxFor("B-0012")}.^");
+        stringObj c = "spa";
+        c += "re";
+        if (c == SPARE_WORD) {
+            print("c is the spare word.^");
+        }
+        if (c != DESK_WORD && c > DESK_WORD && DESK_WORD < c) {
+            print("c comes after desk.^");
+        }
+        print($"Order: {c <=> DESK_WORD} {DESK_WORD <=> SPARE_WORD} {c <=> SPARE_WORD}.^");
+        try {
+            print($"Short: {mustBeShort("ab")}");
+            print($" {mustBeShort(c.left(3))}");
+            print($" {mustBeShort(c + c)}.^");
+        } catch (string why) {
+            print($" - {why}.^");
+        }
+        stringObj w = wrap("A-1", 3);
+        print($"Wrap: {w} {wrap(w, 1, '[', ']')} {wrap(close: '>', open: '<', n: 2, code: "B")}.^");
+        print($"Count down: {countDown(12)}.^");
+        print($"Split: {split("ABCDEFG")}, {split(lastCode)}.^");
+    }
+}
+
+// TEAR - tears tickets into stubs
+verb TearTickets {
+    meta = true;
+    grammar = {.tear};
+    void handler() {
+        stubs.clear();
+        stubs += stubFrom(ticketA, 1);
+        stubs += stubFrom(ticketB, 2);
+        Stub third = stubFrom(ticketA, 3);
+        third.text += '!';
+        stubs += third;
+        Stub copy = stubs[0];
+        copy.text = $"{copy.text}?";
+        for (int i = 0; i < stubs.length; i++) {
+            print($"{stubs[i].show()} ");
+        }
+        print($"copy {copy.show()}.^");
+        stubs[1].text = stubs[1].text.toUpper();
+        stubs[1].text += stubs[0].text.right(1);
+        print($"Second: {stubs[1].text} ({stubs[1].text.length}), first letter {stubs[1].text[0]}.^");
+        logLine += $" t{stubs.length}";
+    }
+}
+
+// SPIN - makes and drops lots of text, to see the pool stays well
+verb SpinText {
+    meta = true;
+    grammar = {.spin};
+    void handler() {
+        spins++;
+        stringObj kept = "";
+        for (int a = 0; a < 8; a++) {
+            for (int b = 0; b < 8; b++) {
+                stringObj code = seatCode(a, b);
+                stringObj w = wrap(code, 2);
+                if (a == b && a % 3 == 0) {
+                    kept += w.mid(2, 1);
+                }
+            }
+        }
+        int total = 0;
+        int k = 0;
+        do {
+            stringObj c = countDown(5);
+            stringObj s = split(c.left(6));
+            total += s.length;
+            k++;
+        } while (k < 20);
+        for (int j = 0; j < 30; j++) {
+            stringObj t = $"{j}";
+            t = t.length > 1 ? t : t.prepend('0');
+            if (j % 10 != 9) {
+                continue;
+            }
+            kept += t.right(1);
+        }
+        print($"Spin {spins}: kept [{kept}], total {total}.^");
+        logLine += $" s{spins}";
+        print($"Log: {logLine}.^");
+    }
+}
+
+// ODDS - the last few string things
+verb OddsAndEnds {
+    meta = true;
+    grammar = {.odds};
+    void handler() {
+        barred($"{counter.sign} {counter.sign.length}");
+        barred($"{ticketA.code.left(1) + ticketB.code.left(1)}");
+        for (int i = 0; i < 3; i++) {
+            barred($"{i + 1}{suffixFor(i + 1)}{i == 2 ? "!" : ""}");
+        }
+        counter.sign = $"{counter.sign}{counter.edge}{spins}";
+        print($"Sign: {counter.sign}.^");
+        ref stringObj r := counter.sign;
+        r = $"[{r}]";
+        r += counter.edge;
+        print($"Through a ref: {counter.sign}.^");
+        string pick = spins > 100 ? "many" : SPARE_WORD;
+        stringObj fromPick = pick ?? "none";
+        fromPick += $"{pick.length}";
+        print($"Pick: {pick}, {fromPick}.^");
+        stringObj ab = "a";
+        for (int n = 0; n < 4; n++) {
+            ab += n % 2 == 0 ? 'b' : 'c';
+        }
+        print($"Ab: {ab}, upper {ab.toUpper()}, reversed {ab.reverse()}, all b: {ab.replaceAll('b', "B")}.^");
+        stringObj gap = "x y z";
+        print($"Gap: {safeCode(gap)} and {gap.insert(1, DASH)} and {gap.delete(1, 2)}.^");
+        print($"Starts with x: {gap.startsWith('x')}, at z: {gap.indexOf('z')}, empty: {gap.isEmpty()}.^");
+        holder = null;
+        print($"No holder: {whoHolds()} / {holder ?? "-"}.^");
+        fallbackName = null;
+        print($"No fallback: {whoHolds()}.^");
+        fallbackName = "nobody";
+    }
+}
+
+// ===== MORE HELPERS =====
+
+// true when the word reads the same both ways (recursive, a new piece in every frame)
+bool sameBothWays(stringObj w) {
+    if (w.length < 2) {
+        return true;
+    }
+    if (w[0] != w[w.length - 1]) {
+        return false;
+    }
+    return sameBothWays(w.mid(1, w.length - 2));
+}
+
+// the holder's word, or a spare word
+string holderWord(string spare = SPARE_WORD) {
+    return holder ?? spare;
+}
+
+// one row of seats as text into the caller's line (recursive, a loop in every frame)
+void fillRows(ref stringObj line, int row, int seats, char sep = DASH) {
+    if (row < 0) {
+        return;
+    }
+    fillRows(line, row - 1, seats, sep);
+    stringObj one = "";
+    for (int seat = 1; seat <= seats; seat++) {
+        one += rowLetter(row);
+        one += $"{seat}";
+        if (seat < seats) {
+            one += sep;
+        }
+    }
+    line += $"{one}/";
+}
+
+// prints the ticket's line (so it can be captured)
+void sayTicket(Ticket t) {
+    print($"{t.code}:{t.owner.length}");
+}
+
+// ===== MORE =====
+
+// MORE - text in still more places
+verb MoreText {
+    meta = true;
+    grammar = {.more};
+    void handler() {
+        stringObj r = holder ?? lastCode;
+        print($"R: {r}. Holder word: {holderWord()}, {holderWord("x")}.^");
+        print(holder ?? lastCode);
+        print("^");
+        switch (holderWord()) {
+            case SPARE_WORD: print("Switch: the spare word.^");
+            case DESK_WORD: print("Switch: the desk word.^");
+            default: print("Switch: something else.^");
+        }
+        switch (lastCode.left(1)) {
+            case "A": print("Last code is on row A.^");
+            case "B": print("Last code is on row B.^");
+        }
+        stringObj grow = "ab";
+        while (grow.length < 9) {
+            grow = grow + grow.left(1);
+        }
+        stringObj mixed = grow.left(2) + '-' + grow.right(2) + '!';
+        stringObj front = "<" + mixed + '>';
+        print($"Grow: {grow}. Mixed: {mixed}. Front: {front}.^");
+        printLine(grow.length > 20 ? grow : "short grow");
+        printLine(grow.length > 2 ? grow.left(3) : "none");
+        print($"Same both ways: {sameBothWays("abcba")} {sameBothWays("abca")} {sameBothWays(grow.left(1) + grow.left(1))} {sameBothWays("")}.^");
+        stringObj rows = "";
+        fillRows(rows, 2, 3);
+        fillRows(rows, 0, 2, '.');
+        print($"Rows: {rows}.^");
+        for (Ticket t in {ticketA, ticketB}) {
+            Ticket.lastName += t.owner.left(1);
+        }
+        Ticket.lastName = Ticket.lastName.prepend('>');
+        print($"Last name now: {Ticket.lastName}.^");
+        stringObj heard = "";
+        heard.capture();
+        sayTicket(ticketA);
+        print(" and ");
+        stringObj inner = "";
+        inner.capture();
+        sayTicket(ticketB);
+        inner.release();
+        print(inner.length);
+        heard.release();
+        print($"Heard: [{heard}], inner: [{inner}].^");
+        func<stringObj, stringObj> loud = (stringObj w) => w.toUpper().append('!');
+        func<bool, string> isShort = (string w) => w.length < 4;
+        print($"Loud: {loud(ticketB.owner)} {loud(grow.left(2))}. Short: {isShort("abc")} {isShort(DESK_WORD)}.^");
+        roll[0] += '?';
+        roll[1] += $"/{roll.length}";
+        stubs[0].text += $"+{stubs[0].seat}";
+        print($"Roll: {roll[0]} {roll[1]}. Stub: {stubs[0].show()}.^");
+        stringObj fmt = "";
+        fmt = fmt.format("$1 then $2", loud("a"), r.left(2));
+        print($"Format: {fmt}.^");
+    }
+}
+
+// ===== EDGE HELPERS =====
+
+// the word with an "e" put on for every step left (recursive, a copy in every frame)
+stringObj echo(stringObj w, int n) {
+    if (n == 0) {
+        return w;
+    }
+    return echo(w + "e", n - 1);
+}
+
+// the word, or a stand-in when there is none
+stringObj orStandIn(string w, stringObj standIn = "(blank)") {
+    return w ?? standIn;
+}
+
+// ===== EDGES =====
+
+// EDGES - text at the edges
+verb EdgeText {
+    meta = true;
+    grammar = {.edges};
+    void handler() {
+        stringObj grow = "edge";
+        print($"Pick: {holder ?? lastCode}, {grow.length > 3 ? grow : "none"}, {grow.length > 9 ? grow : "none"}.^");
+        for (int i = 0; i < 4; i++) {
+            grow = i % 2 == 0 ? grow.append('a' + i) : grow.prepend('0' + i);
+        }
+        print($"Turns: {grow}.^");
+        stringObj s = "ab";
+        s += s.length > 1 ? "yes" : SPARE_WORD;
+        s = s.left(1) + s;
+        s = s + s[0];
+        s = s.append(s[s.length - 1]);
+        print($"Self: {s}.^");
+        print($"Echo: {echo("x", 8)}, {echo(lastCode.left(1), 3)}. Stand-in: {orStandIn(holder)}, {orStandIn("w")}, {orStandIn(holder, lastCode)}.^");
+        markN(roll[2], '!', 2);
+        markN(Ticket.lastName, '<', 1);
+        markN(stubs[1].text, '%', 2);
+        print($"Marked: {roll[2]}, {Ticket.lastName}, {stubs[1].text}.^");
+        int sum = 0;
+        for (int e = 0; e < 15; e++) {
+            stringObj seed = $"{e}";
+            sum += echo(seed, 6).length;
+            sum += wrap(seed, 3).length;
+        }
+        print($"Sum: {sum}.^");
+    }
+}

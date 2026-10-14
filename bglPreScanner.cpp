@@ -1691,7 +1691,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
     token peek = file.peekToken();
     if(peek.is(token::braceOpen) || peek.is(":")){ // object body
         objectDef* objStub = nullptr;
-        if(!languageService.isObjectType(nameStr)){
+        // A verb may share a class's name: only an object of the name has already registered it.
+        if(isVerbType ? languageService.findGlobalAs<objectDef>(nameStr) == nullptr : !languageService.isObjectType(nameStr)){
             if(isVerbType){
                 verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
                 vs.isPrePassStub = true;
@@ -2562,4 +2563,14 @@ void bglParser::resolveStubParamAliases(){
         if(auto* cd = dynamic_cast<classDef*>(t)) resolveElements(cd->members);
     for(typeDef* g : languageService.globals)
         if(auto* od = dynamic_cast<objectDef*>(g)) resolveElements(od->members);
+    // A global array's element type, for a use above it (`array<hub.ns.gauge> gauges`).
+    for(typeDef* g : languageService.globals)
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(g); ad && ad->isPrePassStub){
+            string e = resolveName(ad->elementType);
+            if(e != ad->elementType){
+                if(ad->type.name.find(ad->elementType) != string::npos)
+                    ad->type.name = ad->type.name.substr(0, ad->type.name.find('<') + 1) + e + ">";
+                ad->elementType = e;
+            }
+        }
 }

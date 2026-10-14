@@ -1,0 +1,683 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a stock-keeping kit published only through namespaces, and a consumer that reaches it
+// by every path. A kit object holds type aliases for two enums, a value class of pieces, an item
+// class, a crate subclass based through the alias path, an alias class over the item path, an alias
+// class over object, a pooled slip class and a pooled fault class that is thrown and caught as the
+// alias type; its helpers name the aliases bare, with a default argument through a bare enum alias.
+// The root object holds the kit as an `auto` member, a superposed ops object, a statics-only tally
+// class and an emitter class (with an alias member) by value alias, and a type alias whose target is
+// itself an alias path; its methods type parameters through its own `auto` member's path and throw
+// faults made with `new` through that path. A second namespace re-exports the first: a value alias
+// to the root's `auto` member, a value alias to the root's value alias, a class alias through a path
+// and a type alias to a type alias, with a member array of the alias class and a method that
+// imports the tally's statics inside its body. A later `extend` of the kit adds an enum alias that the
+// slip class and an `extend class` of the item use above it; `extend` of the root adds an issuing
+// method. Paths appear as base classes, object declaration types (full, partial, imported), inline
+// value-class initializers `kit.qty{ … }` in object bodies, member and global arrays, for-in
+// variables, parameters with path-typed defaults, `ref` locals bound to members, returns, casts on
+// `?.` chains, is(), `new` through three different paths with named arguments, catch types, func<>
+// generic arguments and lambda parameters in <linq> chains, enum values through a type alias of a
+// type alias, switch cases, a reference-class <=> with an alias-typed parameter, statics through a
+// class alias (++, +=, in interpolation) and fields of a superposed object through value aliases.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: items, crates, shelves, slips and faults, published through la36. ====
+
+/// How good an item is.
+enum eLa36Grade { low, mid, top }
+
+/// Which way an item faces on its shelf.
+enum eLa36Side { fore, aft }
+
+/// A count of pieces, copied on assignment.
+value class La36Qty {
+    int n;
+    La36Qty operator = (La36Qty o) { n = o.n; return self; }
+    La36Qty operator = (int v) { n = v; return self; }
+    /// The two counts together.
+    la36.kit.qty operator + (la36.kit.qty o) {
+        la36.kit.qty r;
+        r.n = n + o.n;
+        return r;
+    }
+    /// The count with some taken off, never below none.
+    La36Qty operator - (int v) {
+        La36Qty r;
+        r.n = bgl.util.math.max(n - v, 0);
+        return r;
+    }
+    /// Negative when this is fewer, 0 when the same, positive when more.
+    int operator <=> (la36.kit.qty o) { return n - o.n; }
+    /// True when it is exactly so many.
+    bool operator == (int v) { return n == v; }
+    /// True when it is not exactly so many.
+    bool operator != (int v) { return n != v; }
+
+    /// Prints the count.
+    void show() {
+        print($"{n} pc");
+        if (n != 1) print("s");
+    }
+}
+
+/// Something kept in stock: a weight per piece, a grade and a count.
+class La36Item : object {
+    /// Weight of one piece.
+    required inline int weight;
+    la36.kit.grade grade = la36.kit.grade.mid;
+    la36.kit.qty count;
+    /// Items moved from shelf to shelf.
+    static int moved = 0;
+
+    /// What sort of thing it is.
+    default string label() { return "item"; }
+    /// Weight of the whole count.
+    default int load() { return weight * count.n; }
+    /// True when it is at least a grade; mid unless told.
+    bool atLeast(la36.kit.grade g = la36.kit.grade.mid) { return grade >= g; }
+    /// Negative when this is lighter, 0 when the same, positive when heavier.
+    int operator <=> (la36.kit.item o) { return load() - o.load(); }
+}
+
+/// A crate: an item that holds other items.
+class La36Crate : la36.kit.item {
+    array<la36.kit.item> inside[2];
+
+    string label() { return "crate"; }
+
+    /// Its own weight and everything packed in it.
+    int load() {
+        int t = weight;
+        for (la36.kit.item it in inside) t += it.load();
+        return t;
+    }
+
+    /// Packs an item. Throws a fault when the crate is full.
+    void pack(la36.kit.item it) {
+        if (inside.length >= 2) throw new la36.kit.fault(it, "crate full");
+        inside.append(it);
+        it.parent = self;
+    }
+}
+
+/// A part: an item with a note, declared without a type keyword.
+alias class La36Part for la36.kit.item {
+    string note;
+    /// The word for parts.
+    static string kindName() { return "part"; }
+}
+
+/// A shelf: a plain object with a slot count and a lowest grade it takes.
+alias class La36Shelf for object {
+    int slots;
+    la36.kit.grade floor;
+}
+
+/// A slip for moving some pieces; made with new and done away with by delete.
+class La36Slip[3] : object {
+    string short_name = "slip";
+    la36.kit.item item;
+    la36.kit.qty qty;
+    la36.kit.side side = la36.kit.side.fore;
+
+    void create(la36.kit.item it, int n, la36.kit.side s = la36.kit.side.fore) {
+        item = it;
+        qty = n;
+        side = s;
+    }
+
+    void destroy() {
+        item = null;
+    }
+}
+
+/// Why something could not be done; thrown, caught and deleted.
+class La36Fault[2] : object {
+    string short_name = "fault";
+    la36.kit.item at;
+    string why;
+
+    void create(la36.kit.item where, string reason) {
+        at = where;
+        why = reason;
+        la36.tally.faults++;
+    }
+
+    void destroy() {
+        at = null;
+    }
+}
+
+/// The kit's type names, and helpers that use them bare.
+object _la36Kit {
+    alias item  for La36Item;
+    alias crate for La36Crate;
+    alias part  for La36Part;
+    alias shelf for La36Shelf;
+    alias grade for eLa36Grade;
+    alias qty   for La36Qty;
+    alias slip  for La36Slip;
+    alias fault for La36Fault;
+    /// How many words it has looked up.
+    int lookups = 0;
+
+    /// A word for a grade.
+    string gradeWord(grade g) {
+        lookups++;
+        switch (g) {
+            case grade.low: return "low";
+            case grade.mid: return "mid";
+            default:        return "top";
+        }
+    }
+
+    /// The next grade up from one; low unless told. Top stays top.
+    grade bump(grade g = grade.low) {
+        if (g == grade.low) return grade.mid;
+        return grade.top;
+    }
+
+    /// A count of so many pieces.
+    qty of(int n) {
+        qty q;
+        q = n;
+        return q;
+    }
+
+    /// Adds some pieces to a count in place.
+    void topUp(ref qty q, int by) {
+        q = q + of(by);
+    }
+
+    /// True when an item is good enough for a shelf.
+    bool fits(shelf s, item it) { return it.grade >= s.floor; }
+
+    /// The heavier of two items; the first when they weigh the same.
+    item heavier(item a, item b) {
+        if (a >= b) return a;
+        return b;
+    }
+}
+
+/// Shelf sums; part of the program only when la36.ops is used.
+superposed object _la36Ops {
+    /// How many sums it has done.
+    int calls = 0;
+
+    /// Everything on a shelf, weighed.
+    int weigh(la36.kit.shelf s) {
+        calls++;
+        int t = 0;
+        for (object o in s.children) {
+            if (o.is(la36.kit.item)) t += ((la36.kit.item)o).load();
+        }
+        return t;
+    }
+
+    /// The heaviest item on a shelf, or null.
+    la36.kit.item heaviest(la36.kit.shelf s) {
+        calls++;
+        la36.kit.item best = null;
+        for (object o in s.children) {
+            if (!o.is(la36.kit.item)) continue;
+            la36.kit.item it = (la36.kit.item)o;
+            best = (best == null) ? it : la36.kit.heavier(best, it);
+        }
+        return best;
+    }
+}
+
+/// Counts kept for the whole kit; only statics.
+class La36Tally {
+    static int moves = 0;
+    static int faults = 0;
+    /// Everything counted.
+    static int total() { return moves + faults; }
+}
+
+/// Angle brackets.
+emitter class La36Brk {
+    void open() { print "<"; }
+    void shut() { print ">"; }
+}
+
+/// Formatting, reached as la36.fmt.
+emitter class La36Fmt {
+    La36Brk brk;
+    void rule() { print "--"; new_line; }
+    int pad     { 3 }
+}
+
+/// The kit's root: everything is reached from here.
+object la36 {
+    auto  kit   = _la36Kit;
+    alias ops   = _la36Ops;
+    alias tally = La36Tally;
+    alias fmt   = La36Fmt;
+    alias level for la36.kit.grade;
+    array<la36.kit.item> stock[4];
+    stringObj log;
+
+    /// Takes an item into stock; false when it is there already or stock is full.
+    bool add(kit.item it) {
+        if (stock.contains(it)) return false;
+        if (!stock.append(it)) return false;
+        log += $"+{it} ";
+        return true;
+    }
+
+    /// Puts an item on a shelf. Throws a fault when the shelf is full or the item is below its floor.
+    void place(la36.kit.item it, la36.kit.shelf s) {
+        int used = 0;
+        for (object o in s.children) used++;
+        if (used >= s.slots) throw new la36.kit.fault(it, "shelf full");
+        if (!kit.fits(s, it)) throw new la36.kit.fault(it, "too low");
+        it.parent = s;
+        tally.moves++;
+        kit.item.moved++;
+        log += $">{s} ";
+    }
+
+    /// The items in stock at or above a grade.
+    int countAtLeast(level g) {
+        return stock.filter((la36.kit.item i) => i.atLeast(g)).count();
+    }
+}
+
+/// A second way in: the root's names under other names.
+object la36Store {
+    alias kit   = la36.kit;
+    alias ops   = la36.ops;
+    alias t     = la36.tally;
+    alias grade for la36.level;
+    array<la36.kit.shelf> shelves[3];
+    int visits = 0;
+
+    /// Adds a shelf; false when it is there already.
+    bool open(la36.kit.shelf s) {
+        if (shelves.contains(s)) return false;
+        return shelves.append(s);
+    }
+
+    /// A line of the tally's counts.
+    void counts() {
+        #using la36.tally
+        visits++;
+        print($"moves {moves}, faults {faults}, all {total()}, visits {visits}");
+    }
+
+    /// The first shelf an item fits on with a free slot, or null.
+    la36.kit.shelf roomFor(kit.item it) {
+        for (la36.kit.shelf s in shelves) {
+            int used = 0;
+            for (object o in s.children) used++;
+            if (used < s.slots && kit.fits(s, it)) return s;
+        }
+        return null;
+    }
+}
+
+/// Later additions to the kit: the side enum and a word for it.
+extend _la36Kit {
+    alias side for eLa36Side;
+
+    /// A word for a side.
+    string sideWord(side s) {
+        if (s == side.fore) return "fore";
+        return "aft";
+    }
+}
+
+/// Later additions to the root: issuing slips.
+extend la36 {
+    /// Writes a slip; null when no slip is free.
+    kit.slip issue(kit.item it, int n, kit.side s = kit.side.fore) {
+        kit.slip p = new kit.slip(it, n, s);
+        if (p == null) {
+            log += "noslip ";
+            return null;
+        }
+        log += $"slip:{it} ";
+        return p;
+    }
+}
+
+/// Every item can face a way and give a short tag.
+extend class La36Item {
+    la36.kit.side facing = la36.kit.side.fore;
+
+    /// Grade and weight, as a tag.
+    stringObj tag() {
+        stringObj t = $"{la36.kit.gradeWord(grade)}/{weight}";
+        return t;
+    }
+}
+
+// ==== The consumer. ====
+
+#using la36
+#using La36Fmt
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+kit.shelf shelfA {
+    "shelf A";
+    parent = roomA;
+    attributes = {supporter, static};
+    name = {.shelf, .a};
+    slots = 3;
+    floor = kit.grade.low;
+}
+
+la36.kit.shelf shelfB {
+    "shelf B";
+    parent = roomA;
+    attributes = {supporter, static};
+    name = {.shelf, .b};
+    slots = 2;
+    floor = level.mid;
+}
+
+la36.kit.item boltA {
+    2, "bolt";
+    parent = shelfA;
+    name = {.bolt};
+    grade = la36.kit.grade.low;
+    count = la36.kit.qty{ n = 4; };
+}
+
+kit.part nutA {
+    1, "nut";
+    parent = shelfA;
+    name = {.nut};
+    count = kit.qty{ n = 10; };
+    note = "hex";
+}
+
+#using la36.kit
+
+item washerA {
+    1, "washer";
+    parent = shelfB;
+    name = {.washer};
+    grade = la36Store.grade.top;
+    count = qty{ n = 3; };
+    facing = side.aft;
+}
+
+crate crateA {
+    3, "crate";
+    parent = shelfB;
+    name = {.crate};
+    grade = level.top;
+    count = qty{ n = 1; };
+    attributes = {container, open};
+}
+
+/// Grades in the order they are reported.
+array<la36.level> la36Order = { la36Store.grade.top, level.mid, grade.low };
+
+/// The item behind the noun, or null.
+item la36ItemOf(object o) {
+    if (o.is(la36.kit.item)) return (item)o;
+    return null;
+}
+
+/// Prints one item's line.
+void la36ShowItem(kit.item it) {
+    print($"{it} {it.label()} {it.tag()} ");
+    it.count.show();
+    print($", load {it.load()}, faces {kit.sideWord(it.facing)}");
+    if (it.is(la36Store.kit.crate)) print($", holds {((crate)it).inside.length}");
+    if (it.is(la36.kit.part) && it == nutA) print($", note {((part)it).note}");
+    print("^");
+}
+
+/// Prints a shelf's line: weight and heaviest item.
+void la36ShowShelf(la36Store.kit.shelf s, bool brackets = false) {
+    la36.kit.item h = ops.heaviest(s);
+    if (brackets) brk.open();
+    print($"{s}: {s.slots} slots, floor {kit.gradeWord(s.floor)}, weight {la36.ops.weigh(s)}, heaviest {h?.tag() ?? "none"}");
+    if (brackets) la36.fmt.brk.shut();
+    print("^");
+}
+
+// ==== Verbs. ====
+
+/// True when the noun is an item.
+bool la36IsItem() { return noun.is(item); }
+
+verb La36Stock {
+    grammar = {.stock, NOUN(la36IsItem)};
+    void handler() {
+        kit.item it = (kit.item)noun;
+        if (!la36.add(it)) {
+            print($"The {it} is in stock already, or stock is full.^");
+            return;
+        }
+        print($"The {it} goes into stock: {la36.stock.length} kept.^");
+    }
+}
+
+verb La36Move {
+    grammar = {.shift, NOUN(la36IsItem)};
+    void handler() {
+        item it = (item)noun;
+        shelf to = (shelf)((it.parent == shelfA) ? shelfB : shelfA);
+        try {
+            la36.place(it, to);
+            print($"The {it} goes on {to}.^");
+        } catch (la36.kit.fault f) {
+            print($"No: {f.why} ({f.at}).^");
+            delete f;
+        }
+    }
+}
+
+verb La36Pack {
+    grammar = {.pack, NOUN(la36IsItem)};
+    void handler() {
+        item it = la36ItemOf(noun);
+        if (it.is(crate)) {
+            print("A crate doesn't go in a crate.^");
+            return;
+        }
+        try {
+            crateA.pack(it);
+            print($"The {it} is packed; the crate weighs {crateA.load()}.^");
+        } catch (fault f) {
+            print($"No: {f.why} ({f.at}).^");
+            delete f;
+        }
+    }
+}
+
+verb La36Bump {
+    grammar = {.bump, NOUN(la36IsItem)};
+    void handler() {
+        item it = (item)noun;
+        la36.level was = it.grade;
+        it.grade = la36.kit.bump(it.grade);
+        print($"The {it}: {kit.gradeWord(was)} to {kit.gradeWord(it.grade)}");
+        if (it.atLeast()) print(", at least mid");
+        if (it.atLeast(la36Store.grade.top)) print(", top");
+        print($"; a fresh bump gives {la36Store.kit.gradeWord(kit.bump())}.^");
+    }
+}
+
+verb La36Restock {
+    grammar = {.restock, NOUN(la36IsItem)};
+    void handler() {
+        ref la36.kit.qty r := ((item)noun).count;
+        qty before = r;
+        r = r + kit.of(5);
+        print($"The {noun}: ");
+        before.show();
+        print(" to ");
+        ((item)noun).count.show();
+        if (r > before) print(", more");
+        print(".^");
+    }
+}
+
+/// Report verbs: they take no time.
+class La36Info : verb {
+    meta = true;
+}
+
+La36Info La36Report {
+    grammar = {.report};
+    void handler() {
+        rule();
+        for (la36.kit.shelf s in la36Store.shelves) la36ShowShelf(s, s == shelfB);
+        la36.fmt.rule();
+        for (object o in bgl.world.instances(la36.kit.item)) la36ShowItem((kit.item)o);
+        print($"sums {la36Store.ops.calls}, log {la36.log}^");
+    }
+}
+
+La36Info La36Grades {
+    grammar = {.grades};
+    void handler() {
+        for (level g in la36Order) {
+            int n = bgl.world.instances(item, (object o) => ((item)o).grade == g).count();
+            print($"{kit.gradeWord(g)} {n}");
+            switch (g) {
+                case la36Store.grade.top: print(" (best)");
+                case la36.kit.grade.mid:  print(" (fair)");
+                default:                  ;
+            }
+            print("; ");
+        }
+        print($"in stock at least mid {la36.countAtLeast(grade.mid)}, at least low {la36.countAtLeast(level.low)}^");
+        func<bool, la36.kit.item> isTop = (la36.kit.item i) => i.grade == la36.level.top;
+        array<item> tops[4];
+        for (object o in bgl.world.instances(kit.item)) {
+            if (isTop((item)o)) tops.append((item)o);
+        }
+        print($"tops {tops.length}: first {tops.first()?.tag() ?? "none"}, ");
+        item heavy = tops.orderBy((item a, item b) => b.load() - a.load()).first();
+        print($"heaviest {heavy?.tag() ?? "none"}, any low {tops.any((kit.item i) => i.grade == kit.grade.low)}");
+        print($"; lookups {la36.kit.lookups}^");
+    }
+}
+
+La36Info La36Slips {
+    grammar = {.slips};
+    void handler() {
+        array<slip> made[4];
+        slip a = la36.issue(boltA, 2);
+        slip b = new la36Store.kit.slip(nutA, 5, s: side.aft);
+        slip c = new kit.slip(washerA, n: 1, s: la36.kit.side.aft);
+        slip d = la36.issue(crateA, 1, s: kit.side.aft);
+        if (a != null) made.append(a);
+        if (b != null) made.append(b);
+        if (c != null) made.append(c);
+        if (d != null) made.append(d);
+        print($"made {made.length}, fourth {(d == null) ? "none" : "some"}; ");
+        func<int, slip> pcs = (slip x) => x.qty.n;
+        qty all = kit.of(0);
+        for (slip x in made) {
+            all = all + x.qty;
+            print($"{x.item}:{pcs(x)}:{kit.sideWord(x.side)} ");
+        }
+        print($"aft {made.filter((la36.kit.slip x) => x.side == side.aft).count()}, total ");
+        all.show();
+        print("^");
+        while (made.length > 0) {
+            slip x = made.popEnd();
+            delete x;
+        }
+        print($"log {la36.log}^");
+    }
+}
+
+La36Info La36Counts {
+    grammar = {.counts};
+    void handler() {
+        la36Store.counts();
+        print($"; moved {item.moved}, {La36Item.moved}, {la36.kit.item.moved}; tally {la36.tally.total()} {la36Store.t.moves}");
+        la36Store.t.moves += 0;
+        print($"; pad ");
+        fmt.brk.open();
+        print(pad + la36.fmt.pad);
+        la36.fmt.brk.shut();
+        print($"; parts are {la36.kit.part.kindName()} {kit.part.kindName()} {part.kindName()}");
+        la36.kit.shelf room = la36Store.roomFor(boltA);
+        if (room != null) print($"; bolt fits {room} ({room.slots})");
+        else print("; bolt fits nowhere");
+        if (boltA < nutA) print("; bolt lighter");
+        if (crateA > washerA) print("; crate heavier");
+        print($"; heavier of bolt and nut {kit.heavier(boltA, nutA)}^");
+        func<la36.kit.qty, kit.item> countOf = (kit.item i) => i.count;
+        qty kept = kit.of(0);
+        for (la36.kit.item i in la36.stock) kept = kept + countOf(i);
+        print("kept ");
+        kept.show();
+        la36.kit.item last = la36.stock.last();
+        if (last != null && last.is(kit.crate)) print($", last a crate holding {((la36Store.kit.crate)last).inside.length}");
+        else print(", last not a crate");
+        print("^");
+    }
+}
+
+/// The first item in stock of a grade, or a word when there is none.
+kit.item | string la36Pick(la36.level g) {
+    for (kit.item i in la36.stock) {
+        if (i.grade == g) return i;
+    }
+    return "none";
+}
+
+La36Info La36Audit {
+    grammar = {.audit};
+    void handler() {
+        ops.calls += 10;
+        la36.ops.calls--;
+        print($"sums {la36Store.ops.calls}");
+        kit.item | string pick = la36Pick(kit.grade.top);
+        if (typeof(pick) == eType.object) print($", top pick {((kit.item)pick).tag()}");
+        else print($", top pick {(string)pick}");
+        try {
+            la36.place(boltA, shelfB);
+            print(", bolt placed");
+        } catch (kit.fault f) {
+            print($", fault {f.why} at {f.at}");
+            delete f;
+        }
+        kit.topUp(washerA.count, 2);
+        print(", washer ");
+        washerA.count.show();
+        print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la36Store.open(shelfA);
+    la36Store.open(shelfB);
+    la36Store.open(shelfA);
+    rfalse;
+}
+
+#includeI6 "grammar"

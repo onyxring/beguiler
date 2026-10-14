@@ -1,0 +1,514 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a knot tree written in a functional style, leaning on `?.` and `??`. Knots are a class
+// with nullable `left`, `right` and `up` links, a label that may be unset, a char sign, an inline
+// `auto` grade accessor, a member array of extras with empty slots, a stringObj trail and recursive
+// methods reached through `?.` that return a knot, an int, a bool, a stringObj or a value class
+// (`total()`, `height()`, `leftmost()`, `step(dir:, n:)`, `find(pred)`, `show(open:, close:)`,
+// `span()`, `root()`). A value class `Span` defines `operator ?` (absent when empty), `==` and `+`, and
+// is coalesced with `??`, chained with `?.` into `widen(by:, left:)` and compared after parenthesized
+// `??`. A pooled class `Twig` is made with `new`, chained with `?.` and linked through `chain()`. `?.` appears as a
+// statement on locals, globals, `ref` parameters, elements of global and member arrays, static method
+// results, <linq> terminal results, casts, func results and `new`; with `++`, `--`, `+=`, `-=`,
+// stringObj `+=` and accessor writes; `?.` and `??` appear in declarations, local array initializers,
+// assignments, returns (including recursive ones on both sides of `??`), arguments
+// (positional, named out of order, defaults), plain `print()`, interpolation, ternaries and their
+// conditions, `if`/`while`/`for`/`do`/`switch` subjects and conditions, `!`, `&&`, `||`, arithmetic
+// and comparisons, inside lambdas held in func<> locals and passed to <linq> filter/map/any/all/orderBy,
+// on string members with string methods (`label?.toUpper()`), on stringObj results (`?.reverse()`,
+// `?.left()`, `?.length`), on `is()`, on `parent`, and in right-nested `??` chains of four.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 32; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXEXTRAS = 3;
+
+//-- A value class with a presence test ------------------------------------------------------------
+
+// A span is absent when it is empty.
+value class Span {
+    int lo;
+    int hi;
+
+    Span operator = (Span o) {
+        lo = o.lo;
+        hi = o.hi;
+        return self;
+    }
+
+    emitter eBool operator ? () { ($self ~= 0 && $self.hi > $self.lo) }
+
+    bool operator == (Span o) { return lo == o.lo && hi == o.hi; }
+
+    bool operator != (Span o) { return lo != o.lo || hi != o.hi; }
+
+    Span operator + (Span o) {
+        Span s;
+        s.lo = lo < o.lo ? lo : o.lo;
+        s.hi = hi > o.hi ? hi : o.hi;
+        return s;
+    }
+
+    int width() { return hi - lo; }
+
+    Span widen(int by = 1, bool left = false) {
+        Span s;
+        s.lo = left ? lo - by : lo;
+        s.hi = left ? hi : hi + by;
+        return s;
+    }
+}
+
+Span noSpan;
+
+//-- Knots ------------------------------------------------------------------------------------------
+
+class Knot : object {
+    attributeList attributes = {scenery};
+    string label;
+    string code;
+    char sign = '.';
+    int weight;
+    int hits;
+    Knot left;
+    Knot right;
+    Knot up;
+    array<Knot> extras[MAXEXTRAS];
+    stringObj trail;
+    auto grade = {
+        int _g = 0;
+        int  operator ()        { return _g; }
+        void operator = (int v) { _g = v < 0 ? 0 : v > 9 ? 9 : v; }
+    };
+
+    int total() { return weight + left?.total() + right?.total(); }
+
+    int height() {
+        int l = left?.height();
+        int r = right?.height();
+        return 1 + (l > r ? l : r);
+    }
+
+    Knot leftmost() { return left?.leftmost() ?? self; }
+
+    Knot rightmost() { return right?.rightmost() ?? self; }
+
+    Knot root() { return up?.root() ?? self; }
+
+    Knot child(int i) { return i == 0 ? left : i == 1 ? right : null; }
+
+    Knot extra(int i) { return i >= 0 && i < extras.length ? extras[i] : null; }
+
+    // The knot n steps down one side, or null when that side ends first.
+    Knot step(char dir = 'l', int n = 1) {
+        if (n <= 0) return self;
+        Knot k = dir == 'l' ? left : right;
+        return k?.step(n: n - 1, dir: dir);
+    }
+
+    Knot find(func<bool, Knot> pred) {
+        if (pred(self)) return self;
+        return left?.find(pred) ?? right?.find(pred);
+    }
+
+    stringObj show(string open = "(", string close = ")") {
+        stringObj s = label ?? code;
+        if (left? || right?) {
+            s += open;
+            s += left?.show(open, close) ?? "-";
+            s += ' ';
+            s += right?.show(close: close, open: open) ?? "-";
+            s += close;
+        }
+        return s;
+    }
+
+    Span span() {
+        Span s;
+        s.lo = leftmost().weight;
+        s.hi = rightmost().weight;
+        return s;
+    }
+
+    Knot mark(int by = 1) {
+        hits += by;
+        return self;
+    }
+
+    bool isLeaf() { return !left? && !right?; }
+
+    static Knot heaviest() { return knots.orderBy(byTotalDesc).first(); }
+
+    static Knot pick(int i) { return i >= 0 && i < knots.length ? knots[i] : null; }
+}
+
+class Twig[4] : object {
+    Knot at;
+    int qty;
+    Twig link;
+
+    void create(Knot k, int q = 1) {
+        at = k;
+        qty = q;
+    }
+
+    Twig chain(Twig t) {
+        link = t;
+        return self;
+    }
+
+    Twig bump(int n = 1) {
+        qty += n;
+        return self;
+    }
+
+    int count() { return 1 + link?.count(); }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Knot knotR { "root knot";  name = {.root, .knot};  label = "Root";  code = "R"; sign = '*'; weight = 5; left = ash; right = elm; parent = roomA; }
+Knot ash   { "ash knot";   name = {.ash, .knot};   label = "Ash";   code = "A"; weight = 3; left = birch; right = cedar; up = knotR; parent = roomA; }
+Knot birch { "birch knot"; name = {.birch, .knot};                  code = "B"; weight = 1; up = ash; parent = roomA; }
+Knot cedar { "cedar knot"; name = {.cedar, .knot}; label = "Cedar"; code = "C"; weight = 4; left = dock; up = ash; parent = roomA; }
+Knot dock  { "dock knot";  name = {.dock, .knot};  label = "Dock";  code = "D"; sign = '~'; weight = 2; up = cedar; parent = roomA; }
+Knot elm   { "elm knot";   name = {.elm, .knot};                    code = "E"; weight = 8; right = fir; up = knotR; parent = roomA; }
+Knot fir   { "fir knot";   name = {.fir, .knot};   label = "Fir";   code = "F"; weight = 9; up = elm; parent = roomA; }
+Knot lone  { "lone knot";  name = {.lone, .knot};  label = "Lone";  code = "L"; weight = 6; parent = roomA; }
+
+array<Knot> knots = {knotR, ash, birch, cedar, dock, elm, fir, lone};
+array<Knot> slots[5];
+Knot cursor;
+Twig held;
+int asked;
+int floor;
+
+//-- Pure helpers -----------------------------------------------------------------------------------
+
+bool heavy(Knot k) { return k?.weight > 4; }
+bool leafy(Knot k) { return !k?.left? && !k?.right?; }
+bool named(Knot k) { return k?.label?; }
+
+int byTotalDesc(Knot a, Knot b) {
+    if (a.total() != b.total()) return b.total() - a.total();
+    return a.code.compareTo(b.code);
+}
+
+string nameOf(Knot k, string dflt = "none") { return k?.label ?? k?.code ?? dflt; }
+
+Knot firstOf(Knot a, Knot b, Knot c, Knot d) { return a ?? b ?? c ?? d; }
+
+Span spanOf(Knot k) { return k?.span() ?? noSpan; }
+
+int weightOf(Knot k) { return k?.weight; }
+
+Knot rise(Knot k, int n) { return n <= 0 ? k : rise(k?.up, n - 1); }
+
+// One step down, preferring the left side; null below a leaf.
+Knot descend(Knot k) { return k?.left ?? k?.right; }
+
+void touch(Knot k, int by = 1) {
+    k?.mark(by);
+    k?.trail += k?.sign;
+}
+
+stringObj pathUp(Knot k, string sep = "<") {
+    stringObj s;
+    for (Knot t = k; t?; t = t?.up) {
+        s += t.code;
+        if (t.up?) s += sep;
+    }
+    return s;
+}
+
+// A search predicate that counts how often it is asked.
+bool counted(Knot k) {
+    asked++;
+    return k.weight >= floor;
+}
+
+int sumBy(array<Knot> xs, func<int, Knot> f) {
+    int n = 0;
+    for (Knot k in xs) n += f(k);
+    return n;
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb TreeVerb {
+    grammar = {{.tree}};
+    void handler() {
+        for (Knot k in knots) {
+            print($"{nameOf(k)} [{k.code}{k.sign}] w {k.weight}: up {nameOf(k.up, "-")}, total {k.total()}, height {k.height()}, ");
+            print($"leftmost {k.leftmost()?.code}, root {k.root()?.label ?? "?"}, leaf {k.isLeaf()} {leafy(k)}^");
+        }
+        print($"named {knots.filter(named).count()}, heavy {knots.filter(heavy).count()}, leaves {knots.filter(leafy).count()}^");
+        print($"heaviest {Knot.heaviest()?.label ?? "-"}, its leftmost {Knot.heaviest()?.leftmost()?.label ?? Knot.heaviest()?.leftmost()?.code ?? "?"}^");
+    }
+}
+
+verb DrawVerb {
+    grammar = {{.draw, NOUN}};
+    void handler() {
+        if (!noun?.is(Knot)) {
+            print("That is not a knot.^");
+            return;
+        }
+        Knot k = (Knot)noun;
+        print($"draw: {k?.show()}^");
+        print($"square: {k?.show(close: "]", open: "[")}, upper {k?.show()?.toUpper()}^");
+        print($"back: {k?.show()?.reverse()}, first four {k?.show()?.left(4)}, length {k?.show()?.length}^");
+        stringObj l = k?.left?.show() ?? "no left";
+        stringObj r = k?.right?.show("<", ">") ?? "no right";
+        print($"sides: {l} / {r}^");
+        print($"path up: {pathUp(k)}, by dash {pathUp(k?.leftmost(), "-")}^");
+        print(k?.left?.label ?? "left unnamed");
+        print(", ");
+        print(k?.label?.toUpper() ?? "UNNAMED");
+        print("^");
+    }
+}
+
+verb HopVerb {
+    grammar = {{.hop, NOUN, NUMBER}};
+    void handler() {
+        Knot k = (Knot)noun;
+        int n = parsed_number;
+        print($"{nameOf(k)} left {n}: {k?.step(n: n)?.code ?? "off"}; right {n}: {k?.step('r', n)?.code ?? "off"}; ");
+        print($"named right: {k?.step(n: n, dir: 'r')?.label ?? "unnamed"}^");
+        Knot end = k?.step(n: n) ?? k.leftmost();
+        print($"landing {end.code}, then right {end?.right?.code ?? "-"}, up {end?.up?.up?.code ?? "-"}^");
+        Knot d = k;
+        int steps = 0;
+        while (d?.left? || d?.right?) {
+            d = descend(d);
+            steps++;
+        }
+        print($"descends {steps} to {d?.code ?? "-"}^");
+    }
+}
+
+verb SeekVerb {
+    grammar = {{.seek, NUMBER}};
+    void handler() {
+        int w = parsed_number;
+        Knot hit = knotR?.find((Knot k) => k.weight >= w);
+        print($"first of weight {w} or more: {nameOf(hit)}, its up {hit?.up?.code ?? "-"}^");
+        print($"exact: {knotR?.find((Knot k) => k.weight == w)?.label ?? "none"}, under ash: {ash?.find((Knot k) => k?.weight == w)?.code ?? "--"}^");
+        print($"lone's: {lone?.find((Knot k) => k.weight >= w)?.code ?? "--"}^");
+        Knot lightest = knots.filter((Knot k) => k.weight >= w).orderBy((Knot a, Knot b) => a.weight - b.weight).first();
+        print($"lightest such {lightest?.code ?? "--"}, up {knots.filter((Knot k) => k.weight >= w).orderBy((Knot a, Knot b) => a.weight - b.weight).first()?.up?.code ?? "--"}^");
+        print($"any whose up is heavy: {knots.any((Knot k) => k.up?.weight > w)}, all with a root: {knots.all((Knot k) => k.root()?)}^");
+        asked = 0;
+        floor = w;
+        Knot either = ash?.find(counted) ?? elm?.find(counted);
+        bool small = w < 100 || lone?.find(counted)?;
+        print($"either side: {either?.code ?? "--"}, small {small}, asked {asked}^");
+    }
+}
+
+verb SpanVerb {
+    grammar = {{.span, NOUN, .with, NOUN}};
+    void handler() {
+        Knot a = (Knot)noun;
+        Knot b = (Knot)second;
+        Span sa = a?.span() ?? noSpan;
+        Span sb = spanOf(b);
+        if (sa?) print($"{nameOf(a)} spans {sa.lo}..{sa.hi} width {sa.width()}^");
+        else print($"{nameOf(a)} spans nothing ({sa.lo}..{sa.hi})^");
+        print($"{nameOf(b)}: {sb.lo}..{sb.hi}, present {sb?}^");
+        Span both = sa + sb;
+        print($"union {both.lo}..{both.hi}, widened {a?.span()?.widen()?.width()}, by 2 left {a?.span()?.widen(left: true, by: 2)?.lo}^");
+        print($"same {(a?.span() ?? noSpan) == (b?.span() ?? noSpan)}, differ {sa != sb}, first present width {(a?.left?.span() ?? b?.left?.span() ?? sb).width()}^");
+        Span w = a?.right?.span()?.widen(by: 3) ?? b?.span() ?? noSpan;
+        print($"chosen {w.lo}..{w.hi}^");
+    }
+}
+
+verb TickVerb {
+    grammar = {{.tick, NOUN}};
+    void handler() {
+        cursor = (Knot)noun;
+        cursor?.mark();
+        cursor?.left?.mark(by: 2).mark();
+        cursor?.right?.mark(3);
+        cursor?.hits++;
+        cursor?.up?.hits--;
+        cursor?.up?.hits += 10;
+        cursor?.left?.left?.hits -= 1;
+        cursor?.trail += "t";
+        cursor?.up?.trail += $"{cursor.code}/";
+        ((Knot)noun)?.extra(0)?.mark(by: 7);
+        knots.filter(leafy).last()?.mark(by: 4);
+        Knot.pick(9)?.mark(by: 100);
+        Knot.pick(7)?.mark(by: 1);
+        Knot.heaviest()?.rightmost()?.trail += '!';
+        touch(cursor, 2);
+        Knot gone = null;
+        touch(gone);
+        print($"{nameOf(cursor)} hits {cursor?.hits}, left {cursor?.left?.hits}, right {cursor?.right?.hits}, up {cursor?.up?.hits}^");
+        print($"trail {cursor?.trail}, up trail {cursor?.up?.trail ?? "none"}, lone {lone.hits}, fir trail {fir.trail}^");
+    }
+}
+
+verb GradeVerb {
+    grammar = {{.grade, NOUN, NUMBER}};
+    void handler() {
+        Knot k = (Knot)noun;
+        k?.grade = parsed_number;
+        k?.left?.grade = parsed_number + 5;
+        k?.right?.grade += 2;
+        k?.up?.grade -= 1;
+        print($"{k.code} grade {k?.grade}, left {k?.left?.grade}, right {k?.right?.grade}, up {k?.up?.grade}^");
+        if (k?.grade > 3 && k?.left?.grade == 9) print("high with a full left^");
+        else if (k?.grade > 3 || k?.right?.grade > 3) print("high somewhere^");
+        else print("low^");
+        int sum = sumBy(knots, (Knot x) => x?.grade);
+        print($"grades sum {sum}, graded {knots.filter((Knot x) => x.grade > 0).count()}^");
+    }
+}
+
+verb TwigVerb {
+    grammar = {{.twig, NOUN, NUMBER}};
+    void handler() {
+        Knot k = (Knot)noun;
+        Twig t = new Twig(k?.left ?? k, parsed_number);
+        held = t?.bump()?.chain(held) ?? held;
+        if (t == null) print("no twig left; ");
+        print($"head {held?.at?.code ?? "-"} x {held?.qty}, under {held?.link?.at?.label ?? held?.link?.at?.code ?? "nothing"}, count {held?.count()}^");
+        Twig e = new Twig(k);
+        print($"spare {e?.bump(n: 2)?.at?.label ?? "none"}^");
+        if (e?) delete e;
+    }
+}
+
+verb UntwigVerb {
+    grammar = {{.untwig}};
+    void handler() {
+        Twig h = held;
+        held = held?.link;
+        print($"dropped {h?.at?.code ?? "nothing"}, left {held?.count()}^");
+        if (h?) delete h;
+    }
+}
+
+verb SlotsVerb {
+    grammar = {{.slots}};
+    void handler() {
+        for (int i = 0; i < slots.size; i++) {
+            print($"slot {i}: {slots[i]?.label ?? slots[i]?.code ?? "empty"} -> {slots[i]?.left?.code ?? "-"}/{slots[i]?.right?.code ?? "-"}^");
+        }
+        for (int i = 0; i < slots.size; i++) slots[i]?.trail += "s";
+        for (int i = 0; i < MAXEXTRAS; i++) {
+            print($"extra {i}: {knotR.extras[i]?.code ?? "-"} up {knotR.extras[i]?.up?.code ?? "-"}, via call {knotR?.extra(i)?.label ?? "unnamed"}^");
+        }
+        knotR.extras[1]?.mark(by: 5);
+        print($"first leafy slot {slots.filter(leafy).first()?.code ?? "none"}, cedar hits {cedar.hits}, trails {ash.trail}|{dock.trail}^");
+    }
+}
+
+verb RiseVerb {
+    grammar = {{.rise, NOUN, NUMBER}};
+    void handler() {
+        Knot k = (Knot)noun;
+        print($"{nameOf(k)} up {parsed_number}: {nameOf(rise(k, parsed_number), "above the top")}; ");
+        print($"its other child {rise(k, parsed_number)?.child(1)?.code ?? "-"}^");
+        int depth = 0;
+        Knot t = k;
+        do {
+            depth++;
+            t = t?.up;
+        } while (t?.up?);
+        print($"depth {depth}, stopped at {t?.code ?? "-"}, is knot {t?.is(Knot)}, in room {k?.parent == roomA}^");
+        string kind = k?.left? ? (k?.right? ? "fork" : "left only") : k?.right? ? "right only" : "leaf";
+        print($"kind {kind}^");
+        switch (k?.up?.label ?? "top") {
+            case "Root": print("under the root^");
+            case "Ash":  print("under ash^");
+            case "top":  print("at a top^");
+            default:     print($"under {k.up.code}^");
+        }
+    }
+}
+
+verb PickVerb {
+    grammar = {{.pick, NUMBER}};
+    void handler() {
+        int i = parsed_number - 1;
+        Knot k = firstOf(Knot.pick(i)?.left, Knot.pick(i), cursor, knotR);
+        print($"picked {k.code}, sign {k?.sign}^");
+        Knot p = (Knot.pick(i) ?? cursor)?.right;
+        print($"right of pick {p?.code ?? "none"}; pick or heaviest {(Knot.pick(i) ?? Knot.heaviest())?.code}^");
+        array<Knot> pair = {Knot.pick(i)?.left ?? lone, Knot.pick(i)?.right ?? lone};
+        print($"pair {pair[0].code}{pair[1].code}, total {sumBy(pair, weightOf)}^");
+        func<Knot, Knot> next = (Knot x) => x?.left ?? x?.right ?? x?.up;
+        print($"next {next(k)?.code ?? "-"}, twice {next(next(k))?.code ?? "-"}, from null {next(null)?.code ?? "-"}^");
+        for (Knot t = Knot.pick(i); t?; t = t.left ?? t.right) print($" {t.code}");
+        print(" .^");
+    }
+}
+
+verb RankVerb {
+    grammar = {{.rank}};
+    void handler() {
+        array<Knot> byLeft = knots.orderBy((Knot a, Knot b) => weightOf(a.left) != weightOf(b.left) ? weightOf(b.left) - weightOf(a.left) : a.code.compareTo(b.code));
+        for (Knot k in byLeft) print($" {k.code}:{k.left?.code ?? "-"}");
+        print("^");
+        array<var> lefts = knots.map((var x) => ((Knot)x)?.left?.weight);
+        for (var w in lefts) print($" {w}");
+        print("^");
+        print($"left heavier: {knots.filter((Knot k) => k.left?.weight > k.right?.weight).count()}, grandparents: {knots.filter((Knot k) => k.up?.up?).count()}^");
+        print($"labels: {knots.filter(named).map((var x) => ((Knot)x).code).count()}, total under root {sumBy(knots, (Knot k) => k.root() == knotR ? k.weight : 0)}^");
+    }
+}
+
+verb ProbeVerb {
+    grammar = {{.probe, NOUN, NUMBER}};
+    void handler() {
+        Knot k = (Knot)noun;
+        int n = parsed_number;
+        func<string, Knot> tagOf = (Knot x) => x?.label ?? x?.code ?? "?";
+        print($"tag {tagOf(k)}, of left {tagOf(k?.left)}, of nothing {tagOf(null)}^");
+        Knot s = k?.step(n > 1 ? 'r' : 'l', n - 1 > 0 ? n - 1 : 1);
+        print($"stepped {s?.code ?? "-"}^");
+        switch (k?.left?.weight) {
+            case 0:    print("no left weight^");
+            case 1, 2: print("light left^");
+            default:   print($"left weighs {k.left.weight}^");
+        }
+        print($"code length {k?.code?.length}, label length {k?.label?.length}, lower {k?.label?.toLower() ?? k?.code?.toLower()}^");
+        int sum = 0;
+        for (int i = 0; i < 2; i++) sum += k?.child(i)?.weight;
+        print($"kids weigh {sum}, heavier kid {(k?.left?.weight > k?.right?.weight ? k?.left : k?.right)?.code ?? "-"}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    slots.length = slots.size;
+    knotR.extras.length = MAXEXTRAS;
+    slots[0] = ash;
+    slots[2] = elm;
+    slots[3] = dock;
+    knotR.extras[1] = cedar;
+    knotR.extras[2] = lone;
+    location = roomA;
+    rfalse;
+}

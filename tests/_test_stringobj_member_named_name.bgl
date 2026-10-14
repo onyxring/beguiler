@@ -1,0 +1,16 @@
+/* a stringObj member named `name`, used in a method before the class closes */
+// EXPECT_ERROR: _test_stringobj_member_named_name.bgl:10:
+// EXPECT_ERROR: is declared 'stringObj', but 'name' is an ADDITIVE property
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; includePaths = "../../inform6/stdlib"; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+class Ticket : object {
+    stringObj name;
+    char first() { return name[0]; }
+}
+object roomA { "Room A"; attributes = {light}; }
+Ticket t { "ticket"; parent = roomA; }
+bool Initialise() { location = roomA; rtrue; }
+#includeI6 "grammar"

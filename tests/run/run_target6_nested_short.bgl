@@ -1,0 +1,25 @@
+// run_target6_nested_short — a `?.` operand of `&&` inside parentheses under another operator, in initializers,
+// a loop condition and an `if`: the call runs only when its operand is evaluated.
+// EXPECT_OUTPUT: 0 0 0 0 0 0
+#beguilerSettings { target = z5; informName = "none"; }
+class Knot : object { int w; int noisy() { evals++; return w; } }
+int evals = 0;
+Knot k1 { w = 5; }
+void main() {
+    Knot x = k1;
+    bool off = false;
+    bool t = true;
+    bool c1 = (off && x?.noisy() > 1) || true;
+    print(evals); print(" ");
+    bool c2 = t && (off && x?.noisy() > 1);
+    print(evals); print(" ");
+    bool c3 = t && (off && x?.noisy() > 1 || true);
+    print(evals); print(" ");
+    int n = 0;
+    while (n < 3 && (off && x?.noisy() > 1)) { n++; }
+    print(evals); print(" ");
+    if (t && (off && x?.noisy() > 1)) print("bad");
+    print(evals); print(" ");
+    if (t && off && x?.noisy() > 1) print("bad");
+    print(evals);
+}

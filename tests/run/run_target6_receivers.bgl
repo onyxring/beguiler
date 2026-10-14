@@ -1,0 +1,106 @@
+// run_target6_receivers — parenthesized receivers (ternary, `??`, cast, call) followed by member, call,
+// subscript and accessor steps in reads, stores, compound assignments and statements; casts over two
+// object-tree steps and over a `??`; a `ref` argument taken from a value-class member-array element of a
+// call result; and a local named like a value-class member beside a parenthesized-receiver statement.
+// EXPECT_OUTPUT: 4 30 7 7 alpha 7 3 2 2 1 2 1 2 5 6 1 5 2 3 5 y 10 11 12 13 14 15 4 4
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+value class Cell {
+    int X;
+    Cell operator = (Cell o) { X = o.X; return self; }
+}
+value class Size { int w; int h; Size operator = (Size o) { w = o.w; h = o.h; return self; } }
+class Job : object {
+    int N;
+    Cell Pos;
+    Job Next;
+    array<Cell> Path[3];
+    array<Job> Deps[3];
+    auto Hits = {
+        int _h;
+        int operator () { return _h; }
+        void operator = (int v) { _h = v; }
+    }
+    Job operator [] (int i) { return Next; }
+    Job operator []= (int i, Job j) { Next = j; return j; }
+}
+Job jobA { N = 1; }
+Job jobB { N = 2; }
+object shelf { }
+Job inner { N = 3; parent = shelf; }
+Job deepest { N = 5; parent = inner; }
+void Shift(ref Cell c, int by) { c.X += by; }
+Job Me() { return jobA; }
+class Box : object {
+    int n;
+    Size size;
+    Box next;
+    Box self2() { return self; }
+    Box bump() { n++; return self; }
+    Box first() { return self; }
+    Box operator [] (int i) { return self; }
+}
+Box b1 { n = 10; size = Size{ w = 4; h = 2; }; }
+Box b2 { n = 20; }
+int calls = 0;
+Box pick() { calls++; return b1; }
+void main() {
+    bglInit();
+    bool big = false;
+    (big ? jobA : jobB).N = 4;
+    (big ? jobA : jobB).Pos.X = 30;
+    print(jobB.N); print(" "); print(jobB.Pos.X); print(" ");
+    jobB.N = 2;
+    (jobA.Next ?? jobB).N = 7;
+    print(jobB.N); print(" ");
+    jobA.Next = jobB;
+    print((big ? jobB : jobA)[0].N); print(" ");
+    jobB.Next = jobA;
+    print((jobA.Next ?? jobB)[0] == jobA ? "alpha" : "beta"); print(" ");
+    print((jobB.Next ?? jobA)[0].N); print(" ");
+    object o = jobA;
+    ((Job)o)[0] = jobB;
+    (jobB)[0] = jobB;
+    print(jobA.Next == jobB && jobB.Next == jobB ? 3 : 0); print(" ");
+    print(((Job)shelf.child.child).N == 5 ? 2 : 0); print(" ");
+    Job two = (Job)shelf.child.child;
+    print(two == deepest ? 2 : 0); print(" ");
+    Shift(Me().Path[1], 2);
+    Shift(jobA.Path[0], 1);
+    print(jobA.Path[0].X); print(" "); print(jobA.Path[1].X); print(" ");
+    jobA.Deps += jobB;
+    (jobA).Deps[0].Hits++;
+    print(jobB.Hits); print(" ");
+    (jobA).Deps[0].Hits += 1;
+    print(jobB.Hits); print(" ");
+    (jobA).Deps[0].Hits = 5;
+    print(jobB.Hits); print(" ");
+    ++(jobA).Deps[0].Hits;
+    print(jobB.Hits); print(" ");
+    calls = 0;
+    (pick()).size.w += 1;
+    print(calls); print(" "); print(b1.size.w); print(" ");
+    b1.next = b1;
+    (pick()).next.size.h++;
+    print(calls); print(" "); print(b1.size.h); print(" ");
+    object w = b1;
+    b1.size.w += 0;
+    print(b1.size.w); print(" ");
+    print(w == b1 ? "y" : "n"); print(" ");
+    object ob = b1;
+    print(b1.n); print(" ");
+    ((Box)ob).self2()[0].n++;
+    print(b1.n); print(" ");
+    ((Box)ob).self2()[0].n += 1;
+    print(b1.n); print(" ");
+    ((Box)ob)[0].n++;
+    print(b1.n); print(" ");
+    (big ? b2 : b1)[0].n += 1;
+    print(b1.n); print(" ");
+    ((Box)ob).self2()?.bump();
+    print(b1.n); print(" ");
+    int k = ((Box)(ob ?? b2)).n;
+    print(k - 11); print(" ");
+    int j = ((Box)(b1.first().parent ?? ob)).n;
+    print(j - 11);
+}

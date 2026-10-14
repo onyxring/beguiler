@@ -1,0 +1,77 @@
+// run_target6_namespaces — `alias class X for` a path, a type path through an object's own `auto` member,
+// a value alias whose target is a path, static methods through an `auto` member and a class alias, a
+// global array whose element type is a path, `?.` then `??` on a value class with an emitter `operator ?`,
+// a bare inline-accessor name then a member (through #using and in its own object), and an accessor
+// setter fed a value-class accessor member.
+// EXPECT_OUTPUT: hex 4 4 5 6 20 7 4 9 3 3 107 105
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Item : object { int weight = 1; static int twice(int n) { return n * 2; } }
+object ns { alias item for Item; }
+alias class Part for ns.item { string note; }
+Part nut { note = "hex"; }
+object _kit { alias item for Item; }
+object _ops { int calls = 5; }
+object root {
+    auto kit = _kit;
+    alias ops = _ops;
+    int weigh(kit.item it) { return it.weight; }
+    int weighLocal(Item x) { kit.item it = x; return it.weight; }
+}
+object store { alias o = root.ops; }
+Item bolt { weight = 4; }
+class Meter { int v = 0; static int limit() { return 20; } }
+object _ns { alias meter for Meter; alias gauge for Gauge; gauge first() { return gauges[0]; } }
+object hub { auto ns = _ns; }
+class Gauge : object { int n = 7; }
+array<hub.ns.gauge> gauges = { gA };
+Gauge gA { }
+value class Level {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+    Level operator = (Level o) { _v = o._v; return self; }
+    emitter eBool operator ? () { ($self._v ~= 0) }
+}
+class Dial : object { Level lvl; int depth = 3; }
+Dial dA { }
+object _aims {
+    auto aim = {
+        int _a = 0;
+        Dial operator () { return dA; }
+        void operator = (Dial d) { _a = 1; }
+    };
+    int inside() { return aim.depth; }
+}
+#using _aims
+int viaImport() { return aim.depth; }
+object box {
+    Level core;
+    auto mirror = {
+        int _m = 0;
+        int operator () { return _m; }
+        void operator = (Level m) { _m = m + 100; }
+    };
+}
+void main() {
+    bglInit();
+    print(nut.note); print(" ");
+    print(root.weigh(bolt)); print(" "); print(root.weighLocal(bolt)); print(" ");
+    print(store.o.calls); print(" ");
+    print(root.kit.item.twice(3)); print(" ");
+    print(hub.ns.meter.limit()); print(" ");
+    print(_ns.first().n); print(" ");
+    dA.lvl = 4;
+    Dial g = dA;
+    print(g?.lvl ?? 9); print(" ");
+    g = null;
+    print(g?.lvl ?? 9); print(" ");
+    print(viaImport()); print(" "); print(_aims.inside()); print(" ");
+    Level local;
+    local = 7;
+    box.mirror = local;
+    print(box.mirror); print(" ");
+    box.core = 5;
+    box.mirror = box.core;
+    print(box.mirror);
+}
