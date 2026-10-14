@@ -2090,7 +2090,8 @@ void bglParser::rejectMethodOnWordProperty(token name, const string& owner, cons
     for(typeDef* g : languageService.objectTypes)
         if(auto* cd = dynamic_cast<classDef*>(g))
             for(typeMember* m : cd->members)
-                if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad && (ad->i6name.empty() ? ad->name : ad->i6name) == prop)
+                if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad && ad->elementType == "dictionaryword"
+                   && (ad->i6name.empty() ? ad->name : ad->i6name) == prop)
                     parsingError(format("'{0}.{1}()' would join the ADDITIVE property '{2}', which holds an object's words; "
                         "give the method another name.", owner, name.originalValue.empty() ? (string)name : name.originalValue, prop));
 }

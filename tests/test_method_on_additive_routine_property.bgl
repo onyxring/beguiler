@@ -1,0 +1,11 @@
+// An extern class that declares an additive property as a list of routines (`rawArray<var> describe`) takes a
+// method of that name from each object: the method joins the list, as Inform 6's additive routines do.
+#beguilerSettings { target = z5; informName = "none"; }
+extern additive property describe;
+extern class Thing : object {
+    rawArray<var> describe;
+}
+Thing lamp {
+    bool describe() { print("A lamp."); return true; }
+}
+void main() { }

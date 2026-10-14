@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 5;
+#Ifdef beguiler;#Endif;
+constant _bglWorldBufSize = 128;
+global _bglWorldBufIdx = -1;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
+];
+ Constant NO_ATTRIBUTE 0; 
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
+! test_inf_mode_raw_object_parent.inf — an object declared in raw I6, read in a #bgl island through a
+! member every object has (`parent`, `child`): the read goes through the member's emitter, `parent(x)`.
+
+
+Object pad "pad";
+Object basket "basket";
+[ Main;
+if (parent(basket) == pad&&child(basket) == nothing) {
+    print (string)"on the pad";
+}
+
+];
+

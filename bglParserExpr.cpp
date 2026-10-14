@@ -4179,6 +4179,14 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     string objText = func != nullptr ? qualifyIdentifier(cur.value, func, body, member.value) : cur.value;
     string computedProp;   // set when `obj.p` is a computed property access
     string recvType = !objText.empty() ? resolveIdentifierType(cur.value, func, body) : "";
+    // In an island, a name Inform 6 declares is an object Beguile can't see: a member every object has
+    // (`parent`, `child`, …) is read as that object's.
+    if(looseIdentifierMode && propType.empty() && (recvType.empty() || recvType == "var"))
+        if(classDef* oc = getDispatchClass("object"))
+            if(typeMember* om = findMemberInHierarchy(oc, [&](typeMember* m){ return m->name == member.value; })){
+                recvType = "object";
+                if(auto* vd = dynamic_cast<variableDeclaration*>(om)) propType = vd->type.name;
+            }
     // `((T)obj).member` reads T's member; `(T)obj.member` casts the value read (below).
     string receiverCastType;
     if(st.receiverCast){
@@ -6457,3 +6465,4 @@ string bglParser::stepThroughAccessor(const string& reading, const string& op, b
     pendingInjections.push_back(inj);
     return value;
 }
+
