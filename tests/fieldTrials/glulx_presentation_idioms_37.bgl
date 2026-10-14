@@ -1,0 +1,712 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a label press that prints labels for three crates, shown in a text grid split above the
+// main window, with a text-buffer log split below. Text is held as a global stringObj, a static
+// stringObj of a class, a stringObj member of each Crate, a stringObj member and a member array of
+// stringObj on the press object, a stringObj field of a value class Tag (copied, returned from a
+// function, passed by value and by ref), and global and local array<stringObj>. Routines overloaded
+// on string, stringObj and char; defaults and named arguments of char, int and bool picking the
+// padding; string | stringObj narrowed with typeof; ref stringObj accumulators filled by recursion;
+// recursion returning stringObj built from + of two recursive results (pool pressure per frame);
+// mutual recursion prepending chars. stringObj results from ?:, nested ?:, ?. feeding ?? on a
+// string member, and method chains off call results, element reads and member reads. Append and
+// prepend with chars and strings (+, +=, append, prepend, a char from an index, an int code cast to
+// char). Interpolated strings go to print, printLine, log, window print/printLine through ?., the
+// status bar, program emitters taking one or two interpolated strings beside a char, expression-bodied
+// lambdas and link lambdas, and into stringObj by declaration, assignment and += on a local, a global,
+// a class static, an instance member, an object member, a member array element (variable index), a
+// value-class field and a ref parameter; their spans hold nested ternaries, ??, ?., char elements,
+// casts, named-argument calls, recursive calls and article rules. Loops: for with a stringObj
+// condition and += step, while on a comparison, do/until on length, for-in over array<stringObj>
+// with break and continue; switch on a stringObj result with string cases. <linq> filter, orderBy
+// (by text and by comparator), distinct, takeWhile, skip, any, all, first and last over an
+// array<stringObj>; a func<stringObj, stringObj> held in a local and called in a loop, and a block-bodied
+// func<stringObj, int> lambda capturing a stringObj. A value class Sheet with `+=` overloaded on
+// stringObj and char, `+` and `==` taking stringObj; a static method returning stringObj with char and
+// int defaults called by name; nested capture/release inside a routine returning the captured text;
+// ref stringObj bound to a member array element; characters written into an instance member stringObj.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define GRID_ROWS 4
+#define LOG_ROWS 4
+#define REEL_MAX 6
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 64; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+emitter void ruled(interpolatedStringLiteral v, char edge) {
+    print (char) $edge, " "; $v; print " ", (char) $edge, "^";
+}
+
+emitter void ruledPair(interpolatedStringLiteral a, interpolatedStringLiteral b, char edge) {
+    print (char) $edge, " "; $a; $b; print " ", (char) $edge, "^";
+}
+
+const int labelWidth = 18;
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet gridLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz pressGrid = null;
+textBufferWindowHorz logPane = null;
+stringObj current;
+array<stringObj> reel[REEL_MAX];
+int pressings = 0;
+
+// ---- overloaded text helpers ---------------------------------------------------------------------
+
+stringObj quoted(string s) {
+    stringObj out = s;
+    return out.prepend('"').append('"');
+}
+
+stringObj quoted(stringObj s) {
+    return s.prepend('<').append('>');
+}
+
+stringObj quoted(char c) {
+    stringObj out = "'";
+    out += c;
+    out += '\'';
+    return out;
+}
+
+stringObj fit(stringObj s, int width = 10, char fill = '.', bool right = false) {
+    stringObj out = s.left(width);
+    while (out.length < width) {
+        if (right) out = out.prepend(fill);
+        else out += fill;
+    }
+    return out;
+}
+
+stringObj either(string | stringObj v, bool loud) {
+    stringObj s = "";
+    if (typeof(v) == eType.string) s += (string)v;
+    else s += (stringObj)v;
+    return loud ? s.toUpper() : s.toLower();
+}
+
+string countWord(int n, string one, string many) {
+    return n == 1 ? one : many;
+}
+
+stringObj sizeWord(stringObj s) {
+    return s.isEmpty() ? "empty" : (s.length < 6 ? s.left(1).append("-short") : (s.length < 12 ? s.right(1).prepend("mid-") : "long"));
+}
+
+// ---- recursion -----------------------------------------------------------------------------------
+
+stringObj ladder(int n) {
+    if (n <= 0) return "0";
+    stringObj below = ladder(n - 1);
+    stringObj me = $"{n}";
+    return below + ',' + me;
+}
+
+stringObj tree(int n) {
+    if (n <= 1) return "x";
+    return "(" + tree(n - 1) + tree(n - 2) + ")";
+}
+
+stringObj evens(int n) {
+    if (n <= 0) return "";
+    return odds(n - 1).prepend('E');
+}
+
+stringObj odds(int n) {
+    if (n <= 0) return "";
+    return evens(n - 1).prepend('o');
+}
+
+void collect(ref stringObj acc, int n, char sep) {
+    if (n <= 0) return;
+    if (!acc.isEmpty()) acc += sep;
+    acc += $"[{n}]";
+    collect(acc, n - 1, sep);
+}
+
+int depthOf(stringObj s, int at) {
+    if (at >= s.length) return 0;
+    int rest = depthOf(s, at + 1);
+    stringObj here = s.mid(at, 1);
+    if (here == "(") return rest + 1;
+    return rest;
+}
+
+stringObj backwards(stringObj s) {
+    if (s.length <= 1) return s;
+    return backwards(s.right(s.length - 1)) + s[0];
+}
+
+stringObj framed(stringObj inner) {
+    stringObj shot = "";
+    shot.capture();
+    print("[");
+    stringObj deeper = "";
+    deeper.capture();
+    print(inner.toUpper());
+    deeper.release();
+    print(deeper.length);
+    print(":");
+    print(deeper);
+    print("]");
+    shot.release();
+    return shot;
+}
+
+// ---- tags (a value class) ------------------------------------------------------------------------
+
+value class Tag {
+    stringObj text;
+    char mark = '*';
+    int width = 8;
+
+    Tag operator = (Tag o) {
+        text = o.text;
+        mark = o.mark;
+        width = o.width;
+        return self;
+    }
+
+    stringObj shown() {
+        stringObj body = fit(text, width, fill: ' ');
+        return body.prepend(mark).append(mark);
+    }
+}
+
+Tag makeTag(string word, char m) {
+    Tag t;
+    t.text = word;
+    t.mark = m;
+    t.width = word.length + 2;
+    return t;
+}
+
+void stampTag(ref Tag t, int n) {
+    t.text += $"#{n}";
+    t.width = t.text.length;
+}
+
+stringObj tagLine(Tag t) {
+    t.text = t.text.toUpper();
+    return t.shown();
+}
+
+// ---- a sheet (a value class with string operators) ----------------------------------------------
+
+value class Sheet {
+    stringObj body;
+    int adds = 0;
+
+    Sheet operator = (Sheet o) {
+        body = o.body;
+        adds = o.adds;
+        return self;
+    }
+
+    Sheet operator += (stringObj s) {
+        if (!body.isEmpty()) body += ' ';
+        body += s;
+        adds++;
+        return self;
+    }
+
+    Sheet operator += (char c) {
+        body += c;
+        adds++;
+        return self;
+    }
+
+    Sheet operator + (stringObj s) {
+        Sheet r;
+        r = self;
+        r += s;
+        return r;
+    }
+
+    bool operator == (stringObj s) { return body == s; }
+}
+
+Sheet ledger;
+
+// ---- crates --------------------------------------------------------------------------------------
+
+class Crate : object {
+    attributeList attributes = {static};
+    string code = "C0";
+    string owner = null;
+    char grade = 'B';
+    int weight = 1;
+    stringObj label;
+    static stringObj lastPrinted;
+    static int printedCount = 0;
+
+    static stringObj history(char sep = ';', int keep = 12) {
+        stringObj out = lastPrinted.left(keep);
+        out += sep;
+        out += $"{printedCount}";
+        return out;
+    }
+
+    stringObj ownerText() {
+        return owner?.toUpper() ?? "UNOWNED";
+    }
+
+    stringObj render() {
+        stringObj out = code;
+        out += '/';
+        out += grade;
+        out = out + " " + fit(ownerText(), 8, fill: '_');
+        out += $" {weight}kg";
+        return out;
+    }
+
+    void press() {
+        label = $"{code}:{grade}:{owner ?? "none"}";
+        printedCount++;
+        lastPrinted = render();
+        lastPrinted += $" (#{printedCount})";
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)} is marked {code}, grade {grade}, {weight} {countWord(weight, "kilo", "kilos")}.");
+                printLine($"Label: {label.isEmpty() ? "none yet" : label}; owner {owner ?? "-"}; render {render().trim()}.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A label press stands beside three crates.";
+    attributes = {light};
+}
+
+Crate crateA { "first crate";  parent = roomA; name = {.first, .crate};  code = "A1"; grade = 'A'; weight = 3; owner = "dock"; }
+Crate crateB { "second crate"; parent = roomA; name = {.second, .crate}; code = "B22"; grade = 'B'; weight = 1; }
+Crate crateC { "third crate";  parent = roomA; name = {.third, .crate};  code = "C333"; grade = 'C'; weight = 12; owner = "yard"; }
+
+array<Crate> crates = { crateA, crateB, crateC };
+
+object press {
+    "label press";
+    parent = roomA;
+    name = {.label, .press};
+    description = "A label press with a reel.";
+    attributes = {static};
+    stringObj header;
+    array<stringObj> lines[3];
+
+    void retitle() {
+        header = $"press {pressings} {countWord(pressings, "time", "times")}";
+        header += $", reel {reel.length}";
+    }
+
+    void setLine(int i, Crate c) {
+        lines[i] = $"{i + 1}) {c.code}";
+        lines[i] += c.grade;
+        lines[i] = lines[i].append(c.owner == null ? "?" : "!");
+    }
+
+    stringObj summary() {
+        stringObj out = "";
+        for (stringObj l in lines) {
+            if (l.isEmpty()) continue;
+            if (!out.isEmpty()) out += " | ";
+            out += l;
+        }
+        return out.isEmpty() ? "no lines" : out;
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"The press: {header}. Lines: {summary()}.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ---- the grid ------------------------------------------------------------------------------------
+
+void drawGrid() {
+    if (pressGrid == null) return;
+    pressGrid.clear();
+    pressGrid.moveCursor(0, 0);
+    pressGrid.print($"Label: {current.isEmpty() ? "(none)" : current}");
+    pressGrid.moveCursor(0, 1);
+    stringObj bar = "";
+    for (bar = "["; bar.length <= current.length; bar += '=') {}
+    bar += ']';
+    pressGrid.print(bar);
+    pressGrid.moveCursor(0, 2);
+    pressGrid.print($"{press.header} | {sizeWord(current)}");
+    pressGrid.moveCursor(0, 3);
+    pressGrid.print($"last {Crate.lastPrinted.isEmpty() ? "-" : Crate.lastPrinted.left(12)}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | {Crate.printedCount} printed");
+    drawGrid();
+}
+
+void note(stringObj text) {
+    logPane?.printLine($"[{turns}] {text}");
+    log($"note: {text}");
+}
+
+// ---- reports -------------------------------------------------------------------------------------
+
+Crate asCrate(object o) {
+    if (o == null || !o.is(Crate)) {
+        printLine("That is not a crate.");
+        return null;
+    }
+    return (Crate)o;
+}
+
+void keep(stringObj s) {
+    if (reel.length >= REEL_MAX) reel.remove(0);
+    reel += s;
+}
+
+void showReel() {
+    if (reel.length == 0) {
+        printLine("The reel is empty.");
+        return;
+    }
+    int i = 0;
+    for (stringObj r in reel) {
+        i++;
+        printLine($"{i}. {fit(r, labelWidth, fill: '.')}|{r.length}");
+    }
+    array<stringObj> sorted[REEL_MAX];
+    sorted = reel.orderBy();
+    stringObj joined = "";
+    for (stringObj s in sorted) joined = joined.isEmpty() ? s.left(3) : joined + "," + s.left(3);
+    printLine($"By text: {joined}");
+    array<stringObj> byLength[REEL_MAX];
+    byLength = reel.orderBy((stringObj x, stringObj y) => x.length - y.length);
+    printLine($"Shortest {byLength.first()}; longest {byLength.last()}.");
+    int unique = reel.distinct().count();
+    printLine($"{unique} distinct of {reel.length}; any with A: {reel.any((stringObj s) => s.startsWith('A')) ? "yes" : "no"}; all with colon: {reel.all((stringObj s) => s.contains(':')) ? "yes" : "no"}.");
+    int lead = reel.takeWhile((stringObj s) => !s.contains("C333")).count();
+    int tail = reel.skip(1).filter((stringObj s) => s.endsWith('g')).count();
+    printLine($"{lead} before C333; {tail} after the first end in g.");
+}
+
+void showChecks() {
+    stringObj acc = "";
+    collect(acc, 4, '-');
+    printLine($"Collected {acc} ({acc.length}).");
+    printLine($"Ladder {ladder(5)}; tree {tree(4)} depth {depthOf(tree(4), 0)}.");
+    printLine($"Parity {evens(5)} and {odds(4)}.");
+    stringObj pressure = "";
+    for (int i = 0; i < 120; i++) {
+        stringObj step = $"{i % 10}";
+        stringObj both = step + step.append('|');
+        if (i % 40 == 0) pressure += both.left(2);
+    }
+    printLine($"Pressure {pressure} ({pressure.length}).");
+    int deep = 0;
+    for (int i = 0; i < 25; i++) {
+        stringObj t = tree(5);
+        deep += t.length;
+    }
+    printLine($"Deep {deep}.");
+    printLine($"Quoted {quoted("lit")} {quoted(current.left(3))} {quoted('q')} {quoted(crateA.code)}.");
+    printLine($"Either {either("MiXeD", false)} {either(current.left(4), true)}.");
+}
+
+void showTags() {
+    Tag a = makeTag("bolt", '#');
+    Tag b = a;
+    stampTag(b, 7);
+    Tag c;
+    c.text = $"{crateC.code}-{crateC.grade}";
+    c.mark = (char)((int)'a' + 2);
+    c.width = 9;
+    printLine($"Tags {a.shown()} {b.shown()} {c.shown()}.");
+    printLine($"Upper {tagLine(a)}; original {a.text}; b width {b.width}.");
+    array<Tag> tags[3];
+    tags += a;
+    tags += b;
+    tags += c;
+    stringObj marks = "";
+    for (Tag t in tags) marks = marks.append(t.mark);
+    printLine($"Marks {marks}; widest {tags.filter((Tag t) => t.width > 8).count()}.");
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb PressLabel {
+    grammar = {.print, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        if (c == null) return;
+        c.press();
+        pressings++;
+        current = c.label;
+        press.setLine(pressings % 3, c);
+        press.retitle();
+        keep(c.render());
+        note(c.label);
+        ruled($"{c.label} for {the(c)}", '|');
+    }
+}
+
+verb Reown {
+    grammar = {.owner, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        if (c == null) return;
+        if (c.owner == null) c.owner = "shed";
+        else c.owner = null;
+        printLine($"{cThe(c)} now belongs to {c.owner ?? "nobody"} ({c.ownerText().toLower()}).");
+    }
+}
+
+verb Regrade {
+    grammar = {.grade, NOUN};
+    void handler() {
+        Crate c = asCrate(noun);
+        if (c == null) return;
+        c.grade = c.grade == 'C' ? 'A' : (char)((int)c.grade + 1);
+        stringObj g = "";
+        g += c.grade;
+        switch (g.toLower()) {
+            case "a": printLine("Top grade.");
+            case "b": printLine("Middle grade.");
+            default: printLine($"Grade {g}.");
+        }
+    }
+}
+
+verb Join {
+    grammar = {.join};
+    void handler() {
+        stringObj out = "";
+        int i = 0;
+        while (out.length < labelWidth) {
+            Crate c = crates[i % 3];
+            out = out.isEmpty() ? c.code.prepend('>') : out + "+" + c.code;
+            i++;
+        }
+        current = out;
+        pressings++;
+        press.retitle();
+        keep(out);
+        stringObj msg = $"join {i}";
+        note(msg);
+        printLine($"Joined {i}: {out} ({out.length}).");
+    }
+}
+
+verb TrimLabel {
+    grammar = {.trim};
+    void handler() {
+        if (current.isEmpty()) {
+            printLine("Nothing to trim.");
+            return;
+        }
+        do {
+            current = current.left(current.length - 1);
+        } until (current.length <= 6);
+        current += '~';
+        press.retitle();
+        printLine($"Trimmed to {current}, last char {current[current.length - 1]}, first code {(int)current[0]}.");
+    }
+}
+
+verb Spread {
+    grammar = {.spread};
+    void handler() {
+        stringObj out = "";
+        for (int i = 0; i < current.length; i++) {
+            if (i > 0) out += ' ';
+            out += current[i];
+        }
+        current = out;
+        printLine($"Spread: {current}");
+    }
+}
+
+verb FindCode {
+    grammar = {.find, NOUN};
+    meta = true;
+    void handler() {
+        Crate c = asCrate(noun);
+        if (c == null) return;
+        stringObj hit = "none";
+        int n = 0;
+        for (stringObj r in reel) {
+            n++;
+            if (r.startsWith(c.code)) {
+                hit = $"#{n} {r.mid(c.code.length, 3).trim()}";
+                break;
+            }
+        }
+        printLine($"Find {c.code}: {hit}; reel has it {reel.any((stringObj r) => r.contains(c.code)) ? "yes" : "no"}.");
+    }
+}
+
+verb OrderCodes {
+    grammar = {.order};
+    meta = true;
+    void handler() {
+        array<stringObj> codes[3];
+        for (Crate c in crates) codes += c.code;
+        stringObj first = codes.orderBy((stringObj x, stringObj y) => y.compareTo(x)).first();
+        printLine($"Last by code: {first}; {crateA.code < crateB.code ? "A1 first" : "B22 first"}; {current =~ current.toUpper() ? "same" : "differs"} ignoring case.");
+        string lit = "B22";
+        stringObj cmp = crateB.code;
+        printLine($"Compare {lit <=> cmp} {cmp.compareTo("A")} {(cmp + "x") > lit ? "longer sorts after" : "not after"}.");
+    }
+}
+
+verb Echo {
+    grammar = {.echo};
+    meta = true;
+    void handler() {
+        func<stringObj, stringObj> shout = (stringObj s) => s.toUpper().append('!');
+        stringObj all = "";
+        for (Crate c in crates) all += shout(c.code);
+        printLine($"Shouts {all}");
+        func<void> say = () => printLine($"Echo {current.isEmpty() ? '-' : current[0]} / {(crateB.owner ?? "").length} / {fit(current, 6, right: true, fill: '*')}");
+        say();
+        Crate pick = crateB.owner == null ? null : crateB;
+        string who = pick?.owner ?? "nobody";
+        printLine($"Pick {who}; {(pick?.code ?? crateA.code).toLower()}.");
+        ruled($"{fit("left", 6)}{fit("right", 7, right: true)}", '#');
+        ruledPair($"{crateA.code}", $"{crateB.code.toLower()}", '<');
+        ruled($"{sizeWord(crateC.label)}", '=');
+    }
+}
+
+verb TagsVerb {
+    grammar = {.tags};
+    meta = true;
+    void handler() { showTags(); }
+}
+
+verb ReelVerb {
+    grammar = {.reel};
+    meta = true;
+    void handler() { showReel(); }
+}
+
+verb ChecksVerb {
+    grammar = {.checks};
+    meta = true;
+    void handler() { showChecks(); }
+}
+
+verb Mix {
+    grammar = {.mix};
+    meta = true;
+    void handler() {
+        printLine($"History {Crate.history()} / {Crate.history(keep: 4)} / {Crate.history('|', 2)}.");
+        stringObj trail = "";
+        collect(trail, 2, ',');
+        collect(press.header, 2, '.');
+        printLine($"Trail {trail}; header {press.header}.");
+        press.retitle();
+        ref stringObj second := press.lines[1];
+        second += '*';
+        crateA.label[0] = 'a';
+        printLine($"Second {press.lines[1]}; first label {crateA.label}, {crateA.label[0]}{Crate.lastPrinted[0]}.");
+        stringObj who = crateB.owner ?? current;
+        printLine($"Who {who}; back {backwards(who)}; {quoted(who.isEmpty() ? crateA.code : who.left(2))}.");
+        printLine($"Frame {framed(crateC.code)} then {framed(backwards("ab"))}.");
+        stringObj walk = "a";
+        while (walk < "aaaa") walk += 'a';
+        int lines = 0;
+        for (int i = 0; i < 40; i++) {
+            stringObj row = $"{i}:{ladder(i % 4)}";
+            if (row.endsWith("3")) lines++;
+        }
+        func<stringObj, int> wide = (int n) => {
+            stringObj w = walk;
+            for (int k = 0; k < n; k++) w = w.prepend('<');
+            return w;
+        };
+        printLine($"Walk {walk}; {lines} rows end in 3; wide {wide(3)}; format {walk.format("$0=$1/$2", who.left(1), Crate.history(sep: '-'))}.");
+    }
+}
+
+verb LedgerVerb {
+    grammar = {.ledger};
+    meta = true;
+    void handler() {
+        ledger += "codes:";
+        for (Crate c in crates) ledger += c.code;
+        ledger += '.';
+        ledger += current.left(3);
+        Sheet copy = ledger + "end";
+        printLine($"Sheet {ledger.body} ({ledger.adds}); copy {copy.body.right(9)} ({copy.adds}); {ledger == "codes: A1 B22 C333. > A" ? "as expected" : "differs"}.");
+        bgl.ui.mainWin.print($"Main {crateC?.owner?.toUpper() ?? "none"} ");
+        bgl.ui.mainWin.printLine(crates[1]?.label.left(4));
+        logPane?.print(current[0]);
+        logPane?.printLine(ledger.body.reverse().left(5));
+    }
+}
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        printLine($"Press: {link("first", => { pressFromLink(crateA); })} {link("third", => { pressFromLink(crateC); })}");
+    }
+}
+
+void pressFromLink(Crate c) {
+    c.press();
+    current = c.label;
+    stringObj msg = $"linked {c.code}";
+    note(msg);
+    drawGrid();
+}
+
+bool Initialise() {
+    location = roomA;
+    current = "";
+    press.lines.length = 3;
+    press.retitle();
+    pressGrid = bgl.ui.mainWin.splitUpGrid(GRID_ROWS, fixed, border, styles: gridLook);
+    logPane = bgl.ui.mainWin.splitDownBuffer(LOG_ROWS, fixed, border);
+    note("press ready");
+    rfalse;
+}
+
+#includeI6 "grammar"

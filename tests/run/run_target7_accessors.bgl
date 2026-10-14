@@ -1,0 +1,46 @@
+// run_target7_accessors — accessor-class values as the negated operand of a binary operator, in overload
+// selection (exact value-class type beats the getter's int), as a parameter default read from a global or a
+// member, and compared after a `?.` chain that may yield null.
+// EXPECT_OUTPUT: 3 -4 L L L L i 8 4 none some none
+#beguilerSettings { target = z5; informName = "none"; }
+value class Level {
+    int _val = 0;
+    int operator () { return _val; }
+    void operator = (int v) { _val = v; }
+    Level operator = (Level o) { _val = o._val; return self; }
+    int operator + (int n) { return _val + n; }
+    int operator <=> (int n) { return _val - n; }
+}
+value class Plain {
+    int _val = 0;
+    int operator () { return _val; }
+    void operator = (int v) { _val = v; }
+}
+class Tank : object { Level level; Plain plain; }
+Tank tankA { level = Level{ _val = 4; }; plain = Plain{ _val = 4; }; }
+Tank tankC { level = Level{ _val = 7; }; }
+Level spare;
+void show(Level l) { print("L "); }
+void show(int n) { print("i "); }
+void show2(int n) { print("i "); }
+void show2(Level l) { print("L "); }
+int echo(int mark = spare) { return mark; }
+int echo2(int mark = tankA.level) { return mark; }
+Tank pick(int n) { if (n == 1) return tankA; return null; }
+void main() {
+    bglInit();
+    int diff = -tankA.level + tankC.level;
+    print(diff); print(" ");
+    int neg = -tankA.level;
+    print(neg); print(" ");
+    show(tankA.level);
+    show2(tankA.level);
+    show(spare);
+    show2(spare);
+    show(5);
+    spare = 8;
+    print(echo()); print(" "); print(echo2()); print(" ");
+    if (pick(2)?.plain > 0) print("some "); else print("none ");
+    if (pick(1)?.level > 0) print("some "); else print("none ");
+    if (pick(2)?.level > 0) print("some"); else print("none");
+}

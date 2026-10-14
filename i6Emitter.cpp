@@ -3184,11 +3184,12 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
         size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
         // Check if any argument is an interpolated string literal
         int interpArgIdx = -1;
+        set<size_t> interpArgs;
         for(size_t i=0; i<call->interpSegmentsPerArg.size(); i++)
-            if(!call->interpSegmentsPerArg[i].empty()){ interpArgIdx = (int)i; break; }
+            if(!call->interpSegmentsPerArg[i].empty()){ if(interpArgIdx < 0) interpArgIdx = (int)i; interpArgs.insert(i); }
         // Substitute all non-interpolated parameters normally
         for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
-            if((int)i != interpArgIdx)
+            if(!interpArgs.count(i))
                 b=replaceOperand(b, "$" + call->emitterParams[i], exprText(call->args[i]));
         // $target substitution for a discarded (statement-position) value-returning opcode:
         // the result is thrown away, so store it to `sp` (the stack pointer, I6 variable 0) —
@@ -3202,7 +3203,26 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
             static const regex giveParen(R"((\bgive\s+[^\s~]+\s+)\()");
             if(b.find("give") != string::npos) b = regex_replace(b, giveParen, "$010+(");   // $01: group 1, then "0+("
         }
-        if(interpArgIdx >= 0){
+        if(interpArgs.size() > 1){
+            // Several interpolated parameters: each print-block is spliced where its parameter stands, in body order.
+            string rest = spillWord(b);
+            while(true){
+                size_t at = string::npos; size_t which = 0; string ref;
+                for(size_t i : interpArgs){
+                    string d = "$" + call->emitterParams[i];
+                    for(size_t f = rest.find(d); f != string::npos; f = rest.find(d, f + 1)){
+                        bool l = f == 0 || !(isalnum((unsigned char)rest[f-1]) || rest[f-1]=='_' || rest[f-1]=='$');
+                        bool r = f + d.size() >= rest.size() || !(isalnum((unsigned char)rest[f+d.size()]) || rest[f+d.size()]=='_');
+                        if(l && r){ if(f < at){ at = f; which = i; ref = d; } break; }
+                    }
+                }
+                if(at == string::npos){ emitInterpolatedEmitterBody(rest, "", {}, indent); break; }
+                size_t endStmt = rest.find(';', at);
+                string head = rest.substr(0, endStmt == string::npos ? rest.size() : endStmt + 1);
+                rest = endStmt == string::npos ? string() : rest.substr(endStmt + 1);
+                emitInterpolatedEmitterBody(head, call->emitterParams[which], call->interpSegmentsPerArg[which], indent);
+            }
+        } else if(interpArgIdx >= 0){
             // Splice interpolated print-block at the interpolated parameter's position
             emitInterpolatedEmitterBody(spillWord(b), call->emitterParams[interpArgIdx],
                 call->interpSegmentsPerArg[interpArgIdx], indent);
@@ -3721,13 +3741,23 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
             string rt = seg.expr->resolvedType;
             string exprStr = exprText(seg.expr);
 
-            // A `print` overload declared for exactly this type (`void print(Res r)`) prints it.
+            // A `print` overload declared for this type (`void print(Res r)`), or for its nearest program
+            // ancestor, prints it, as a direct `print(x)` would.
             {
+                vector<string> kinds{rt};
+                classDef* c = languageService.findObjectType(rt) != nullptr ? languageService.classOf(rt) : languageService.findClass(rt);
+                for(int depth = 0; c != nullptr && depth < 32; depth++, c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
+                    if(c->name.rfind("_bgl", 0) == 0 || c->name == "object") break;
+                    if(c->name != rt) kinds.push_back(c->name);
+                }
                 functionDef* overload = nullptr;
-                for(typeDef* g : languageService.globals)
-                    if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == "print"
-                       && (!fd->isEmitter || dynamic_cast<i6Block*>(fd->body) != nullptr)
-                       && !fd->isPrePassStub && fd->params.size() == 1 && fd->params[0]->type.name == rt){ overload = fd; break; }
+                for(const string& k : kinds){
+                    for(typeDef* g : languageService.globals)
+                        if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == "print"
+                           && (!fd->isEmitter || dynamic_cast<i6Block*>(fd->body) != nullptr)
+                           && !fd->isPrePassStub && fd->params.size() == 1 && fd->params[0]->type.name == k){ overload = fd; break; }
+                    if(overload != nullptr) break;
+                }
                 if(overload != nullptr && !rt.empty() && overload->isEmitter){
                     emitterBindings ob; ob.fn = overload; ob.args.push_back(exprStr); ob.trim = emitterTrim::wsSemi;
                     string body = parser.expandEmitterBody(dynamic_cast<i6Block*>(overload->body), ob);

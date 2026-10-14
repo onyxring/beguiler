@@ -1,0 +1,7 @@
+/* 'ref T r := e' declaration bound to an unrelated value class */
+// EXPECT_ERROR: cannot bind 'Mm' to 'Nn'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+value class Nn { int c; Nn operator = (Nn o) { c = o.c; return self; } }
+value class Mm { int c; Mm operator = (Mm o) { c = o.c; return self; } }
+Mm other;
+void main(){ ref Nn r := other; }

@@ -1,0 +1,319 @@
+#grids
+Room A
+Room A. A label press stands beside three crates.
+You can see a first crate, a second crate, a third crate and a label press here.
+[win 1] [0] press ready
+[grid 1]
+|Label: (none)                                     |
+|[]                                                |
+|press 0 times, reel 0 | empty                     |
+|last -                                            |
+[grid 2]
+|Room A | turn 0 | 0 printed                       |
+> reel
+The reel is empty.
+[grid 1]
+|Label: (none)                                     |
+|[]                                                |
+|press 0 times, reel 0 | empty                     |
+|last -                                            |
+[grid 2]
+|Room A | turn 0 | 0 printed                       |
+> checks
+Collected [4]-[3]-[2]-[1] (15).
+Ladder 0,1,2,3,4,5; tree (((xx)x)(xx)) depth 4.
+Parity EoEoE and oEoE.
+Pressure 000000 (6).
+Deep 550.
+Quoted "lit" <> 'q' "A1".
+Either mixed .
+[grid 1]
+|Label: (none)                                     |
+|[]                                                |
+|press 0 times, reel 0 | empty                     |
+|last -                                            |
+[grid 2]
+|Room A | turn 0 | 0 printed                       |
+> print first crate
+| A1:A:dock for the first crate |
+[win 1] [0] A1:A:dock
+[grid 1]
+|Label: A1:A:dock                                  |
+|[=========]                                       |
+|press 1 time, reel 0 | mid-k                      |
+|last A1/A DOCK___                                 |
+[grid 2]
+|Room A | turn 1 | 1 printed                       |
+> print second crate
+| B22:B:none for the second crate |
+[win 1] [1] B22:B:none
+[grid 1]
+|Label: B22:B:none                                 |
+|[==========]                                      |
+|press 2 times, reel 1 | mid-e                     |
+|last B22/B UNOWNE                                 |
+[grid 2]
+|Room A | turn 2 | 2 printed                       |
+> examine first crate
+The first crate is marked A1, grade A, 3 kilos.
+Label: A1:A:dock; owner dock; render A1/A DOCK____ 3kg.
+[grid 1]
+|Label: B22:B:none                                 |
+|[==========]                                      |
+|press 2 times, reel 1 | mid-e                     |
+|last B22/B UNOWNE                                 |
+[grid 2]
+|Room A | turn 3 | 2 printed                       |
+> examine label press
+The press: press 2 times, reel 1. Lines: 2) A1A! | 3) B22B?.
+[grid 1]
+|Label: B22:B:none                                 |
+|[==========]                                      |
+|press 2 times, reel 1 | mid-e                     |
+|last B22/B UNOWNE                                 |
+[grid 2]
+|Room A | turn 4 | 2 printed                       |
+> owner second crate
+The second crate now belongs to shed (shed).
+[grid 1]
+|Label: B22:B:none                                 |
+|[==========]                                      |
+|press 2 times, reel 1 | mid-e                     |
+|last B22/B UNOWNE                                 |
+[grid 2]
+|Room A | turn 5 | 2 printed                       |
+> print second crate
+| B22:B:shed for the second crate |
+[win 1] [5] B22:B:shed
+[grid 1]
+|Label: B22:B:shed                                 |
+|[==========]                                      |
+|press 3 times, reel 2 | mid-d                     |
+|last B22/B SHED__                                 |
+[grid 2]
+|Room A | turn 6 | 3 printed                       |
+> grade second crate
+Grade C.
+[grid 1]
+|Label: B22:B:shed                                 |
+|[==========]                                      |
+|press 3 times, reel 2 | mid-d                     |
+|last B22/B SHED__                                 |
+[grid 2]
+|Room A | turn 7 | 3 printed                       |
+> grade third crate
+Top grade.
+[grid 1]
+|Label: B22:B:shed                                 |
+|[==========]                                      |
+|press 3 times, reel 2 | mid-d                     |
+|last B22/B SHED__                                 |
+[grid 2]
+|Room A | turn 8 | 3 printed                       |
+> print third crate
+| C333:A:yard for the third crate |
+[win 1] [8] C333:A:yard
+[grid 1]
+|Label: C333:A:yard                                |
+|[===========]                                     |
+|press 4 times, reel 3 | mid-d                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 9 | 4 printed                       |
+> join
+Joined 5: >A1+B22+C333+A1+B22 (19).
+[win 1] [9] join 5
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> reel
+1. A1/A DOCK____ 3kg.|17
+2. B22/B UNOWNED_ 1kg|18
+3. B22/B SHED____ 1kg|18
+4. C333/A YARD____ 12|20
+5. >A1+B22+C333+A1+B2|19
+By text: >A1,A1/,B22,B22,C33
+Shortest A1/A DOCK____ 3kg; longest C333/A YARD____ 12kg.
+5 distinct of 5; any with A: yes; all with colon: no.
+3 before C333; 3 after the first end in g.
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> find third crate
+Find C333: #4 /A; reel has it yes.
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> find second crate
+Find B22: #2 /B; reel has it yes.
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> order
+Last by code: C333; A1 first; same ignoring case.
+Compare 0 1 longer sorts after.
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> echo
+Shouts A1!B22!C333!
+Echo > / 4 / >A1+B2
+Pick shed; b22.
+# left....right #
+< A1b22 <
+= mid-d =
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> tags
+Tags #bolt  # #bolt#7# cC333-A   c.
+Upper #BOLT  #; original bolt; b width 6.
+Marks ##c; widest 1.
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> checks
+Collected [4]-[3]-[2]-[1] (15).
+Ladder 0,1,2,3,4,5; tree (((xx)x)(xx)) depth 4.
+Parity EoEoE and oEoE.
+Pressure 000000 (6).
+Deep 550.
+Quoted "lit" <>A1> 'q' "A1".
+Either mixed >A1+.
+[grid 1]
+|Label: >A1+B22+C333+A1+B22                        |
+|[===================]                             |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 10 | 4 printed                      |
+> spread
+Spread: > A 1 + B 2 2 + C 3 3 3 + A 1 + B 2 2
+[grid 1]
+|Label: > A 1 + B 2 2 + C 3 3 3 + A 1 + B 2 2      |
+|[=====================================]           |
+|press 5 times, reel 4 | long                      |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 11 | 4 printed                      |
+> trim
+Trimmed to > A 1 ~, last char ~, first code 62.
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 12 | 4 printed                      |
+> owner first crate
+The first crate now belongs to nobody (unowned).
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 13 | 4 printed                      |
+> examine first crate
+The first crate is marked A1, grade A, 3 kilos.
+Label: A1:A:dock; owner -; render A1/A UNOWNED_ 3kg.
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 14 | 4 printed                      |
+> echo
+Shouts A1!B22!C333!
+Echo > / 4 / > A 1
+Pick shed; b22.
+# left....right #
+< A1b22 <
+= mid-d =
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 14 | 4 printed                      |
+> reel
+1. A1/A DOCK____ 3kg.|17
+2. B22/B UNOWNED_ 1kg|18
+3. B22/B SHED____ 1kg|18
+4. C333/A YARD____ 12|20
+5. >A1+B22+C333+A1+B2|19
+By text: >A1,A1/,B22,B22,C33
+Shortest A1/A DOCK____ 3kg; longest C333/A YARD____ 12kg.
+5 distinct of 5; any with A: yes; all with colon: no.
+3 before C333; 3 after the first end in g.
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 14 | 4 printed                      |
+> mix
+History C333/A YARD_;4 / C333;4 / C3|4.
+Trail [2],[1]; header press 5 times, reel 5.[2].[1].
+Second 2) C333A!*; first label a1:A:dock, aC.
+Who shed; back dehs; <sh>.
+Frame [4:C333] then [2:BA].
+Walk aaaa; 10 rows end in 3; wide <<<aaaa; format aaaa=s/C333/A YARD_-4.
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 14 | 4 printed                      |
+> ledger
+Sheet codes: A1 B22 C333. > A (6); copy . > A end (7); as expected.
+Main YARD B22:
+[win 1] >A > .
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 14 | 4 printed                      |
+> panel
+Press: first third
+[grid 1]
+|Label: > A 1 ~                                    |
+|[=======]                                         |
+|press 5 times, reel 5 | mid-~                     |
+|last C333/A YARD_                                 |
+[grid 2]
+|Room A | turn 14 | 4 printed                      |

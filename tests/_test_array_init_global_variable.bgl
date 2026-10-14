@@ -1,0 +1,7 @@
+/* global int variable in a file-scope array initializer */
+// EXPECT_ERROR: 'g' is a variable, and the initial elements of 'nums' are fixed when the program is compiled
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+int g = 5;
+array<int> nums = { 1, g };
+void main(){ print(nums[0]); }

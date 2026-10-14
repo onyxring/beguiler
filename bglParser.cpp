@@ -698,6 +698,43 @@ void bglParser::validateVerbNameClashes(bool early){
     }
 }
 
+// A file-scope array's initial elements are fixed when the program is compiled: a global variable named
+// there (declared above or below) is a value-class instance's copy, or else an error.
+void bglParser::resolveArrayInitialGlobals(){
+    for(typeDef* g : languageService.globals){
+        auto* ad = dynamic_cast<arrayDeclaration*>(g);
+        auto* list = ad != nullptr ? dynamic_cast<initializerList*>(ad->declaredExpressionValue) : nullptr;
+        if(list == nullptr || ad->src.file.find("beguiLib") != string::npos) continue;
+        for(expression* e : list->elements){
+            if(e == nullptr || dynamic_cast<initializerList*>(e) != nullptr || e->tokens.size() != 1) continue;
+            string word = e->tokens[0];
+            transform(word.begin(), word.end(), word.begin(), ::tolower);
+            auto* gv = languageService.findGlobalAs<variableDeclaration>(word);
+            if(gv == nullptr || gv->isConst || dynamic_cast<arrayDeclaration*>(gv) != nullptr || gv->isExternal) continue;
+            const string& t = gv->type.name;
+            if(t == "attribute" || t == "property" || t == "verb" || t == "grammartoken") continue;
+            classDef* vc = getDispatchClass(t);
+            if(vc != nullptr && isValueClass(vc) && !vc->isEmitterClass && gv->declaredExpressionValue != nullptr
+               && gv->declaredExpressionValue->tokens.size() == 1 && gv->declaredExpressionValue->tokens[0].rfind("_bglanon", 0) == 0)
+                if(auto* made = languageService.findGlobalAs<objectDef>(gv->declaredExpressionValue->tokens[0])){
+                    string copyName = format("_bglanon{0}", anonObjectCounter++);
+                    objectDef& copy = languageService.registerObject(copyName, false, "");
+                    copy.objectClass = made->objectClass;
+                    copy.members = made->members;
+                    if(std::find(languageService.globals.begin(), languageService.globals.end(), &copy) == languageService.globals.end())
+                        languageService.globals.push_back(&copy);
+                    e->tokens[0] = copyName;
+                    continue;
+                }
+            // An uninitialized value-class global names the instance it owns.
+            if(vc != nullptr && isValueClass(vc) && gv->declaredExpressionValue == nullptr) continue;
+            string where = ad->src.line > 0 ? format("{0}:{1}:1: ", ad->src.file, ad->src.line) : string();
+            parsingError(where + format("'{0}' is a variable, and the initial elements of '{1}' are fixed when the program "
+                "is compiled; assign the element when the program runs, or make '{0}' a const.", gv->dName(), ad->dName()));
+        }
+    }
+}
+
 // A class that declares `==` without `!=` keeps the inherited `!=`, which compares identity, so
 // `a == b` and `a != b` can both be true.
 void bglParser::validateEqualityPairs(){
@@ -709,6 +746,15 @@ void bglParser::validateEqualityPairs(){
             if(auto* fd = dynamic_cast<functionDef*>(m)){
                 if(fd->name == "==") eq = fd;
                 if(fd->name == "!=") ne = true;
+            }
+        // A `!=` for the same operand inherited from a base (not the roots') compares by value too.
+        if(eq != nullptr && !ne && !eq->params.empty())
+            for(classDef* b = cls->baseClasses.empty() ? nullptr : cls->baseClasses[0]; b != nullptr && !ne;
+                b = b->baseClasses.empty() ? nullptr : b->baseClasses[0]){
+                if(b->name == "_bglobject" || b->name == "_bglprimitive") break;
+                for(typeMember* m : b->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == "!=" && fd->params.size() == eq->params.size()
+                       && fd->params.back()->type.name == eq->params.back()->type.name) ne = true;
             }
         if(eq == nullptr || ne || eq->src.file.empty() || eq->src.file.find("beguiLib") != string::npos) continue;
         // After the parse no file is open, so the location comes from the declaration.
@@ -2940,6 +2986,12 @@ bool bglParser::processParameterList(functionDef& funcDef){
             if(pendingInjections.size() != setUpBefore)
                 parsingError(format("The default of '{0}' needs statements to run before it (a `?.` or `??`); give the "
                                     "parameter a plain default and work it out inside the routine.", param.name));
+            // An accessor named as a default gives what its getter reads, as a call's argument does.
+            if(functionDef* g = defExpr->resolvedType != param.type.name ? nativeGetterOf(defExpr->resolvedType) : nullptr)
+                if(getDispatchClass(param.type.name) != getDispatchClass(defExpr->resolvedType)){
+                    defExpr->tokens = {parenthesizeReceiver(defExpr->text()) + "." + g->i6name + "()"};
+                    defExpr->resolvedType = g->returnType.name;
+                }
             param.defaultValue = defExpr->text();
             // As written, for display: a one-token default (`fixed`, `null`) reads better than its
             // emitted value (`16`, `nothing`). Longer defaults show the emitted text.
@@ -3195,6 +3247,7 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
                 }
             }
             convertStoragelessForPrint(exprNode);
+            holdObjectCallForPrint(exprNode);
             interpolatedSegment seg;
             seg.isExpr = true;
             seg.expr = exprNode;

@@ -1,0 +1,620 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a bin-and-rack kit whose public surface hands back bins, and a consumer that reaches
+// every member through a computed receiver. The kit has a value class of counts (copy operator, ==,
+// methods returning new counts), a named accessor class of fill levels counting its writes, a bin
+// class (required positional number, enum load, member arrays of ints and of bins, owned counts, a
+// fill accessor, a link, a static counter, a default kind(), a fluent link(), an operator [] over its
+// links, a weigh(), a stringObj tag(), a counts-returning more()), a tray subclass (member array of
+// strings, an override of kind() and of weigh() through an ancestor cast of self, a fluent addNote())
+// and a pooled ticket class with fluent add() and a dest() bin. The root object holds type aliases, a
+// member array of bins, counted lookups, an inline `auto` cursor whose getter gives a bin, static-like
+// helpers giving bins, trays and counts; `extend class` adds a recursive last() and a depth with a
+// default reached through an element's member; `extend` of the root adds a total(). The consumer
+// reaches members, member arrays, accessors and methods through casts (`((bin)noun).fill += 2`,
+// `((tray)tokenA.parent).notes[0]`), ancestor casts of call results, call results
+// (`la37.find(2).marks[0] += 3`, counted so a receiver is evaluated once), chained calls and fields
+// (`binA.link(binB).next.link(trayC)`), operator [] chained (`binA[0][0].tag()`), member-array
+// elements of member-array elements (`binA.links[0].links[0].id`), the cursor accessor's result
+// (`la37.cursor.marks[0]`, `la37.cursor.fill += 1`), static calls, func<> call results, <linq> results (`orderBy(…)[0]`,
+// `first()?.tag()`), ternaries, `new` with fluent steps, value-class method chains off elements
+// (`la37.rack[1].more(3).swapped().a`), `ref` locals and `ref` arguments bound to members of computed
+// receivers, for-in over member arrays of call results and casts, switch subjects, do/while conditions,
+// interpolation, `?.` statements and expressions on call results, elements, casts and the accessor,
+// `??` results as receivers of compound assignment and `ref` arguments, ternaries as receivers of
+// method calls, an array of arrays of bins (elements' members, element stores through a cast, an
+// ancestor cast of a downcast element), value-class member arrays reached through static-call results,
+// prefix and postfix ++/-- through call results and casts, and `?.` inside a <linq> predicate.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit: bins, trays and tickets, published through la37. ====
+
+/// How a bin's contents are kept.
+enum eLa37Load { loose, boxed, sealed }
+
+/// Two counts: on hand and on order.
+value class La37Pair {
+    int a;
+    int b;
+    La37Pair operator = (La37Pair o) { a = o.a; b = o.b; return self; }
+    /// True when both counts match.
+    bool operator == (La37Pair o) { return a == o.a && b == o.b; }
+    /// True when either count differs.
+    bool operator != (La37Pair o) { return a != o.a || b != o.b; }
+
+    /// Both counts together.
+    int sum() { return a + b; }
+
+    /// The counts the other way round.
+    La37Pair swapped() {
+        La37Pair r;
+        r.a = b;
+        r.b = a;
+        return r;
+    }
+
+    /// The counts with some more on hand.
+    La37Pair plus(int n) {
+        La37Pair r;
+        r.a = a + n;
+        r.b = b;
+        return r;
+    }
+}
+
+/// A fill level, never below none, that counts how often it is written.
+value class La37Meter {
+    int raw;
+    int writes;
+    int operator () { return raw; }
+    void operator = (int v) {
+        raw = bgl.util.math.max(v, 0);
+        writes++;
+    }
+}
+
+/// A bin on a rack: a number, a load, marks, links, counts and a fill level.
+class La37Bin : object {
+    /// The bin's number.
+    required inline int id;
+    eLa37Load load = eLa37Load.loose;
+    array<int> marks[4];
+    array<La37Bin> links[3];
+    La37Pair counts;
+    La37Meter fill;
+    La37Bin next = null;
+    array<La37Pair> hist[2];
+    /// Links followed through operator [].
+    static int asked = 0;
+
+    /// What sort of holder it is.
+    default string kind() { return "bin"; }
+
+    /// Links another bin after this one; gives this bin back.
+    La37Bin link(La37Bin o) {
+        links.append(o);
+        next = o;
+        return self;
+    }
+
+    /// The i-th linked bin.
+    La37Bin operator [] (int i) {
+        asked++;
+        return links[i];
+    }
+
+    /// The fill and every mark, added up.
+    default int weigh() {
+        int t = fill;
+        for (int m in marks) t += m;
+        return t;
+    }
+
+    /// Kind and number.
+    stringObj tag() {
+        stringObj t = $"{kind()}{id}";
+        return t;
+    }
+
+    /// The counts with some more on hand.
+    La37Pair more(int n) { return counts.plus(n); }
+
+    /// The bin at a rack position, counted.
+    static La37Bin pick(int i) {
+        la37.lookups++;
+        return la37.rack[i];
+    }
+
+    /// The first linked bin, or null.
+    La37Bin firstLink() { return (links.length > 0) ? self[0] : null; }
+}
+
+/// A tray: a bin with notes that weighs ten more.
+class La37Tray : La37Bin {
+    array<string> notes[8];
+
+    string kind() { return "tray"; }
+
+    int weigh() { return ((La37Bin)self).weigh() + 10; }
+
+    /// Adds a note; gives the tray back.
+    La37Tray addNote(string s) {
+        notes.append(s);
+        return self;
+    }
+}
+
+/// A ticket for moving pieces; made with new and returned with delete.
+class La37Ticket[2] : object {
+    string short_name = "ticket";
+    La37Bin from;
+    La37Bin to;
+    La37Pair p;
+
+    void create(La37Bin f, La37Bin t) {
+        from = f;
+        to = t;
+    }
+
+    /// Adds pieces; gives the ticket back.
+    La37Ticket add(int n) {
+        p.a += n;
+        return self;
+    }
+
+    /// The bin the pieces go to.
+    La37Bin dest() { return to; }
+}
+
+/// The kit's root.
+object la37 {
+    alias bin    for La37Bin;
+    alias tray   for La37Tray;
+    alias pair   for La37Pair;
+    alias ticket for La37Ticket;
+    array<La37Bin> rack[5];
+    /// Lookups made, so a receiver evaluated twice shows.
+    int lookups = 0;
+
+    /// The bin with a number, or null.
+    bin find(int id) {
+        lookups++;
+        for (bin b in rack) {
+            if (b.id == id) return b;
+        }
+        return null;
+    }
+
+    /// A rack position, counted.
+    int slot(int n) {
+        lookups++;
+        return n;
+    }
+
+    /// The heavier of two bins; the first when they weigh the same.
+    bin heavier(bin x, bin y) {
+        lookups++;
+        return (x.weigh() >= y.weigh()) ? x : y;
+    }
+
+    /// The bin as a tray, or null.
+    tray asTray(bin b) {
+        if (b.is(tray)) return (tray)b;
+        return null;
+    }
+
+    /// The counts of a bin, by value.
+    pair countsOf(bin b) { return b.counts; }
+
+    /// The bin under the cursor.
+    auto cursor = {
+        int at = 0;
+        La37Bin operator () { return outer.rack[at]; }
+        void operator = (int v) { at = v; }
+    }
+}
+
+/// Every bin can find the end of its links and how far away that is.
+extend class La37Bin {
+    /// The last bin reached by following next.
+    La37Bin last() {
+        if (next == null) return self;
+        return next.last();
+    }
+
+    /// Steps from this bin to another along next; -1 when it is not reached.
+    int depth(La37Bin to = la37.rack[0].next) {
+        int n = 0;
+        La37Bin b = self;
+        while (b != null) {
+            if (b == to) return n;
+            b = b.next;
+            n++;
+        }
+        return -1;
+    }
+}
+
+/// Later additions to the root.
+extend la37 {
+    /// Every bin's counts added up.
+    pair total() {
+        pair t;
+        for (int i = 0; i < rack.length; i++) {
+            t.a += rack[i].counts.a;
+            t.b += rack[i].counts.b;
+        }
+        return t;
+    }
+}
+
+// ==== The consumer. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La37Bin binA {
+    1, "bin A";
+    parent = roomA;
+    name = {.bin, .a};
+    attributes = {static};
+    counts = La37Pair{ a = 2; b = 1; };
+}
+
+La37Bin binB {
+    2, "bin B";
+    parent = roomA;
+    name = {.bin, .b};
+    attributes = {static};
+    load = eLa37Load.boxed;
+    counts = La37Pair{ a = 5; b = 0; };
+}
+
+La37Tray trayC {
+    3, "tray C";
+    parent = roomA;
+    name = {.tray, .c};
+    attributes = {static, container, open};
+    load = eLa37Load.sealed;
+    counts = La37Pair{ a = 0; b = 4; };
+}
+
+La37Bin binD {
+    4, "bin D";
+    parent = roomA;
+    name = {.bin, .d};
+    attributes = {static};
+}
+
+object tokenA {
+    "token";
+    parent = trayC;
+    name = {.token};
+}
+
+#using la37
+
+/// Puts some on order, in place.
+void la37OnOrder(ref pair p, int n) {
+    p.b += n;
+}
+
+/// A bin by number, through a func<>.
+func<La37Bin, int> la37ById = (int n) => la37.find(n);
+
+/// Prints a bin's line.
+void la37Line(bin b) {
+    print($"{b.tag()} w{b.weigh()} f{b.fill}/{b.fill.writes} c{b.counts.a}+{b.counts.b} m{b.marks.length}");
+    if (b.is(tray)) print($" n{((tray)b).notes.length}");
+    print("^");
+}
+
+/// True when the noun is a bin.
+bool la37IsBin() { return noun.is(bin); }
+
+// ==== Verbs. ====
+
+/// Report verbs: they take no time.
+class La37Info : verb {
+    meta = true;
+}
+
+La37Info La37Walk {
+    grammar = {.chain};
+    void handler() {
+        for (bin b = binA; b != null; b = b.next) print($"{b.tag()} ");
+        print($"| {binA.next.next.tag()} {binA[0][0].tag()} {binA.links[0].links[0].id}");
+        print($" | last {la37.find(1).last().tag()} {binA.last().links.length} {la37.rack[0].last().last().id}");
+        print($" | depth {binA.depth()} {binA.depth(la37.find(4))} {la37.find(2).depth(binA)}");
+        print($" | asked {La37Bin.asked}, lookups {la37.lookups}^");
+    }
+}
+
+La37Info La37Show {
+    grammar = {.bins};
+    void handler() {
+        for (int i = 0; i < la37.rack.length; i++) la37Line(la37.rack[i]);
+        pair t = la37.total();
+        print($"total {t.a}+{t.b} = {la37.total().sum()}, swapped {la37.total().swapped().a}, lookups {la37.lookups}^");
+    }
+}
+
+La37Info La37Tree {
+    grammar = {.tree};
+    void handler() {
+        for (object o in roomA.children) {
+            if (o.is(bin)) print($"{((bin)o).tag()}:{((bin)o).links.length} ");
+        }
+        print($"| token in {((tray)tokenA.parent).tag()}, notes {((tray)tokenA.parent).notes.length}");
+        if (((tray)tokenA.parent).notes.length > 0) print($", first {((la37.tray)tokenA.parent).notes[0]}");
+        print($" | kind {((La37Bin)la37.asTray(trayC)).kind()} {la37.asTray(trayC).kind()}");
+        print($", weigh {((La37Bin)la37.asTray(trayC)).weigh()} {la37.asTray(trayC).weigh()}");
+        print($", no tray {la37.asTray(binA)?.tag() ?? "none"}^");
+    }
+}
+
+verb La37Mark {
+    grammar = {.mark, NOUN(la37IsBin)};
+    void handler() {
+        int before = la37.lookups;
+        la37.find(((bin)noun).id).marks.append(1);
+        la37.find(((bin)noun).id).marks[0] += 3;
+        la37.rack[la37.slot(0)].marks.append(2);
+        ((bin)noun).marks[((bin)noun).marks.length - 1]++;
+        print($"The {noun}: marks");
+        for (int m in la37.find(((bin)noun).id).marks) print($" {m}");
+        print($"; weigh {((bin)noun).weigh()}; lookups +{la37.lookups - before}.^");
+    }
+}
+
+verb La37Fill {
+    grammar = {.fill, NOUN(la37IsBin)};
+    void handler() {
+        ((bin)noun).fill = 7;
+        ((bin)noun).fill += 2;
+        la37.find(((bin)noun).id).fill -= 20;
+        la37ById(((bin)noun).id).fill = la37ById(((bin)noun).id).fill + 4;
+        la37.find(9)?.fill = 50;
+        la37.asTray((bin)noun)?.addNote("filled");
+        print($"The {noun}: fill {((bin)noun).fill}, written {((bin)noun).fill.writes}");
+        if (la37.asTray((bin)noun) != null) print($", notes {la37.asTray((bin)noun).notes.length}");
+        print(".^");
+    }
+}
+
+La37Info La37Cursor {
+    grammar = {.cursor};
+    void handler() {
+        la37.cursor = 2;
+        print($"at {la37.cursor.tag()} ({la37.cursor.id})");
+        la37.cursor.marks.append(4);
+        la37.cursor.marks[0] = la37.cursor.marks[0] * 2;
+        la37.cursor.fill += 1;
+        int sum = 0;
+        for (int m in la37.cursor.marks) sum += m;
+        print($", marks {la37.cursor.marks.length} sum {sum}, fill {la37.cursor.fill}");
+        la37.cursor = 0;
+        print($"; back at {la37.cursor.tag()}, next {la37.cursor.next.tag()}, on {la37.cursor.next.next?.tag() ?? "none"}^");
+    }
+}
+
+La37Info La37Tally {
+    grammar = {.tally};
+    void handler() {
+        print($"heaviest {la37.rack.orderBy((bin x, bin y) => y.weigh() - x.weigh())[0].tag()}");
+        print($", first marked {la37.rack.filter((bin b) => b.marks.length > 0).first()?.tag() ?? "none"}");
+        print($", last {la37.rack.last().counts.sum()}, more {la37.rack[1].more(3).swapped().b} {la37.rack[1].more(3).a}");
+        print($", heavier {la37.heavier(binA, binB).tag()} of {la37.heavier(la37.rack[2], la37.find(4)).id}");
+        bool big = binA.weigh() > binB.weigh();
+        (big ? binA : binB).counts.a += 1;
+        print($", bumped {(big ? binA : binB).tag()} to {(big ? binA : binB).counts.a}");
+        print($", any sealed {la37.rack.any((bin b) => b.load == eLa37Load.sealed)}^");
+    }
+}
+
+La37Info La37Order {
+    grammar = {.order};
+    void handler() {
+        la37OnOrder(la37.rack[0].counts, 4);
+        la37OnOrder(((La37Bin)binA.next).counts, 1);
+        la37OnOrder(la37.find(3).counts, 2);
+        ref pair r := la37.cursor.counts;
+        r.a += 10;
+        pair copy = la37.countsOf(binB);
+        copy.a = 99;
+        print($"orders {binA.counts.b} {binB.counts.b} {trayC.counts.b}, cursor {la37.cursor.tag()} {la37.cursor.counts.a}, copy {copy.a} kept {binB.counts.a}");
+        print($", same {la37.countsOf(binB) == binB.counts} {la37.countsOf(binA) != la37.find(2).counts}, lookups {la37.lookups}^");
+    }
+}
+
+La37Info La37Loads {
+    grammar = {.loads};
+    void handler() {
+        for (int n = 1; n <= 4; n++) {
+            switch (la37.find(n).load) {
+                case eLa37Load.loose:  print($"{la37.find(n).tag()} loose");
+                case eLa37Load.boxed:  print($"{la37.find(n).tag()} boxed");
+                case eLa37Load.sealed: print($"{la37.find(n).tag()} sealed");
+            }
+            print("; ");
+        }
+        bin cur = la37.rack[0];
+        int hops = 0;
+        while (cur.next != null && cur.next.id < 4) {
+            cur = cur.next;
+            hops++;
+        }
+        print($"hops {hops} to {cur.tag()}, lookups {la37.lookups}^");
+    }
+}
+
+La37Info La37Tickets {
+    grammar = {.tickets};
+    void handler() {
+        ticket t = new la37.ticket(binA, la37.find(2));
+        ticket u = new La37Ticket(la37.rack[3], trayC);
+        ticket v = new ticket(binB, binD);
+        print($"made {(t != null) ? 1 : 0}{(u != null) ? 1 : 0}{(v != null) ? 1 : 0}");
+        if (t != null) {
+            print($", t {t.add(2).add(3).p.a} to {t.dest().tag()}");
+            t.dest().fill += t.p.a;
+            t.dest().counts.a += t.add(1).p.a;
+            print($", {t.to.tag()} fill {t.dest().fill} counts {t.to.counts.a}");
+            delete t;
+        }
+        if (u != null) {
+            print($", u from {u.from.tag()} to {u.dest().tag()} notes {((tray)u.dest()).notes.length}");
+            ((tray)u.dest()).addNote("ticket").addNote("over");
+            print($" then {((tray)u.dest()).notes.length} {((tray)u.to).notes[0]}");
+            delete u;
+        }
+        print("^");
+    }
+}
+
+La37Info La37Deep {
+    grammar = {.deep};
+    void handler() {
+        int before = la37.lookups;
+        La37Bin.pick(0).hist.append(la37.find(1).counts);
+        La37Bin.pick(0).hist[0].a += 2;
+        la37.bin.pick(1).hist.append(la37.countsOf(binB).swapped());
+        print($"hist {binA.hist.length}:{binA.hist[0].a}+{binA.hist[0].b} {binB.hist[0].a}+{binB.hist[0].b}");
+        print($", plus {La37Bin.pick(0).hist[0].plus(2).sum()} {binA.hist[binA.hist.length - 1].swapped().plus(1).a}");
+        print($", tags {binA.tag().toUpper()} {la37.find(3).tag().left(2)} {La37Bin.pick(2).tag().length}");
+        print($", links {binA.firstLink().firstLink().tag()} {binD.firstLink()?.tag() ?? "none"} {la37.rack[la37.find(2).id].tag()}");
+        print($"; lookups +{la37.lookups - before}^");
+        func<int, int> fillAt = (int i) => la37.rack[i].fill;
+        func<La37Pair, La37Bin> countsIn = (La37Bin b) => b.counts;
+        print($"fills {fillAt(0)} {fillAt(2)}, counts {countsIn(la37.find(2)).sum()} {countsIn(La37Bin.pick(0)).swapped().a}, hist {la37ById(2).hist.length}");
+        ((tray)binA.firstLink().next)?.addNote("deep");
+        array<bin> picks[3] = { binD, la37.find(3), La37Bin.pick(1) };
+        print($", picks {picks[0].tag()} {((tray)picks[1]).notes.length} {((tray)picks[1]).notes[((tray)picks[1]).notes.length - 1]} {picks[2].counts.a}");
+        for (int n = 0; n < 4; n++) {
+            switch (La37Bin.pick(n).kind()) {
+                case "tray": print(" T");
+                default:     print(" b");
+            }
+        }
+        la37.cursor = 0;
+        int steps = 0;
+        do {
+            steps++;
+            la37.cursor = la37.cursor.id;
+        } while (la37.cursor.next != null);
+        print($"; steps {steps} to {la37.cursor.id}");
+        la37.cursor = 0;
+        print($"; lookups {la37.lookups}^");
+    }
+}
+
+La37Info La37Guard {
+    grammar = {.guard};
+    void handler() {
+        int before = la37.lookups;
+        la37.find(4)?.fill += 3;
+        la37.find(8)?.fill += 3;
+        la37.rack[3]?.marks.append(7);
+        la37.asTray(la37.find(4))?.addNote("never");
+        stringObj far = la37.find(4)?.last()?.tag() ?? "none";
+        print($"D fill {binD.fill}/{binD.fill.writes}, marks {binD.marks.length}:{binD.marks[0]}, far {far}, lookups +{la37.lookups - before}^");
+    }
+}
+
+/// The counts of a bin's first link, or of the bin itself when it has none.
+La37Pair la37LinkCounts(int n) {
+    if (la37.find(n).links.length == 0) return la37.find(n).counts;
+    return la37.find(n).links[0].counts;
+}
+
+verb La37Poke {
+    grammar = {.poke, NOUN(la37IsBin)};
+    void handler() {
+        int before = la37.lookups;
+        int asked = La37Bin.asked;
+        la37.find(2).counts.a++;
+        ++la37.find(2).counts.b;
+        la37ById(4).counts.b += 2;
+        ((bin)noun).fill++;
+        binA[0].fill = binA[0].fill + 1;
+        binA[0].counts.a -= 1;
+        ref pair h := la37.find(1).hist[0];
+        h.b = h.b + 100;
+        ((bin)noun).marks.append(6);
+        --((bin)noun).marks[((bin)noun).marks.length - 1];
+        print($"The {noun}: fill {((bin)noun).fill}, last mark {((bin)noun).marks[((bin)noun).marks.length - 1]}");
+        print($"; B {binB.counts.a}+{binB.counts.b} f{binB.fill}, D {binD.counts.b}, A hist {binA.hist[0].b}");
+        print($"; link counts {la37LinkCounts(1).a} {la37LinkCounts(4).b}");
+        print($"; tray-led {la37.rack.filter((bin b) => b.firstLink()?.kind() == "tray").count()}");
+        print($"; lookups +{la37.lookups - before}, asked +{La37Bin.asked - asked}.^");
+    }
+}
+
+/// Rows of bins, by load.
+array<array<La37Bin>> la37Rows = { { binA, binD }, { binB }, { trayC } };
+
+La37Info La37RowWalk {
+    grammar = {.rows};
+    void handler() {
+        for (int r = 0; r < la37Rows.length; r++) {
+            print($"{la37Rows[r][0].tag()}/{la37Rows[r].length}/{la37Rows[r][la37Rows[r].length - 1].counts.a} ");
+        }
+        la37Rows[0][1].counts.a += 5;
+        ((tray)la37Rows[2][0]).notes[1] = "row";
+        print($"| D {binD.counts.a}, note {trayC.notes[1]}, cur {la37.cursor?.tag() ?? "none"}");
+        switch (la37.cursor.load) {
+            case eLa37Load.loose: print(" loose");
+            default:              print(" other");
+        }
+        print($", via {((La37Bin)((tray)la37Rows[2][0])).weigh()} {la37Rows[2][0].weigh()}^");
+    }
+}
+
+verb La37Nudge {
+    grammar = {.nudge, NOUN(la37IsBin)};
+    void handler() {
+        int before = la37.lookups;
+        (la37.find(9) ?? binA).fill += 1;
+        (la37.find(((bin)noun).id) ?? binA).counts.b *= 2;
+        la37OnOrder(((bin)noun).counts, 1);
+        la37OnOrder((la37.find(1) ?? binB).hist[0], 3);
+        bool tray = noun.is(La37Tray);
+        (tray ? (bin)noun : binD).marks.append(9);
+        print($"The {noun}: counts {((bin)noun).counts.a}+{((bin)noun).counts.b}, A fill {binA.fill}, A hist {binA.hist[0].b}");
+        print($", marked {(tray ? (bin)noun : binD).tag()} {(tray ? (bin)noun : binD).marks.length}, lookups +{la37.lookups - before}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la37.rack.append(binA);
+    la37.rack.append(binB);
+    la37.rack.append(trayC);
+    la37.rack.append(binD);
+    binA.link(binB).next.link(trayC);
+    la37.find(3).link(binD);
+    ((tray)la37.find(3)).addNote("top");
+    rfalse;
+}
+
+#includeI6 "grammar"

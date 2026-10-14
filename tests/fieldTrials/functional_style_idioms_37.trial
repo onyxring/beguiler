@@ -1,0 +1,239 @@
+Room A
+Room A.
+
+> survey
+Alpha Alpha:a score 4 peer Beta first Beta linkload 6 at 1,2 dist 3
+Beta Beta:b score 6 peer Gamma first Delta linkload 4 at 4,0 dist 4
+Gamma Gamma:c score 1 peer - first - linkload 0 at 0,3 dist 3
+Delta Delta:d score 7 peer Alpha first Alpha linkload 6 at 2,2 dist 4
+Red Red:r score 8 peer Slate first Gamma linkload 1 at 5,5 dist 10
+Slate Slate:s score 6 peer - first Alpha linkload 7 at -1,1 dist 2
+best Red, its first Gamma, peer's peer -
+nth 3 second link Red, its first Gamma, nth 9 none
+ring 1 head Red -> Gamma, ring 0 tail peer Gamma
+top by score then first link: Gamma, lightest linked Slate:s
+
+> walk alpha 1
+Alpha >> 1: Beta, links 1, first Delta, load 5
+hub Beta, hub first Delta, hop Beta, hop twice Gamma
+peers end after 2 at Gamma:c
+path abc, heavier of ends Alpha
+first peer is early
+
+> walk delta 3
+Delta >> 3: Gamma, links 0, first -, load 1
+hub Alpha, hub first Beta, hop Alpha, hop twice Beta
+peers end after 3 at Gamma:c
+path dabc, heavier of ends Delta
+first peer is early
+
+> walk red 0
+Red >> 0: Red, links 1, first Gamma, load 3
+hub Slate, hub first Alpha, hop Gamma, hop twice -
+peers end after 1 at Slate:s
+path rs, heavier of ends Red
+first peer tag s
+
+> walk gamma 2
+Gamma >> 2: Gamma, links 0, first -, load 1
+hub Gamma, hub first -, hop -, hop twice -
+peers end after 0 at Gamma:c
+path c, heavier of ends Gamma
+first peer is gamma
+
+> load alpha 3
+Alpha load 5, hub Beta loads 3/1/30 len 2
+peer loads[2] 30, gamma loads[0] -1, first 8, second 3
+level 8, hub level 3, alpha level 8, node 3 level 20
+peer heat 7, slate heat 2, sum of levels 31
+hub runs lower
+
+> load delta 2
+Delta load 6, hub Alpha loads 2/1/20 len 2
+peer loads[2] 20, gamma loads[0] -2, first 7, second 5
+level 6, hub level 10, alpha level 10, node 2 level 20
+peer heat 6, slate heat 4, sum of levels 39
+hub runs higher
+
+> load slate 5
+Slate load 5, hub Slate loads 5/1/50 len 2
+peer loads[2] 50, gamma loads[0] -3, first 12, second 10
+level 20, hub level 20, alpha level 9, node 5 level 20
+peer heat 9, slate heat 9, sum of levels 58
+hub runs level
+
+> buddy alpha
+Alpha buddy Beta, its links 1, first Delta
+buddy's buddy Gamma, hub's buddy Gamma:c, at x 4
+buddy is relay false, buddy score 11, bumped 11
+held as local Beta, same true, buddy of first link Gamma
+buddy's first link Delta at 2,2
+ da .
+
+> buddy gamma with red
+Gamma buddy Red, its links 1, first Gamma
+buddy's buddy Slate, hub's buddy Red:r, at x 5
+buddy is relay true, buddy score 12, bumped 6
+held as local Red, same true, buddy of first link -
+buddy's first link Gamma at 0,3
+ cr .
+
+> buddy red
+Red buddy Slate, its links 2, first Alpha
+buddy's buddy Slate, hub's buddy Slate:s, at x -1
+buddy is relay true, buddy score 21, bumped 6
+held as local Slate, same true, buddy of first link Red
+buddy's first link Alpha at 1,2
+ ab bc .
+
+> stir alpha
+Alpha's buddy Beta: load 13, level 7, heat 8, loads[0] 8, y 1
+delta load 7, beta's first level 8, best Slate level 20
+chosen Alpha, its first Beta:b
+peer-or-delta Beta heat 9, beta's buddy's buddy heat 1
+ring sum 48, marks moved 2,1
+
+> stir red
+Red's buddy Slate: load 8, level 20, heat 9, loads[0] 10, y 2
+delta load 8, beta's first level 10, best Slate level 20
+chosen Red, its first Gamma:c
+peer-or-delta Slate heat 9, beta's buddy's buddy heat 2
+ring sum 51, marks moved 2,1
+
+> place alpha
+Alpha at 1,2; moved 3,2; where up 5
+with hub 5,3 dist 8, via delta 2
+moved twice 8, tail 5, same as hub false, differs from beta true
+marks 1,2 4,1 10,3; marks[2] moved 11
+first linked at y 2, farthest Red
+nudged 2,2, hub 4,0
+
+> place slate
+Slate at -1,2; moved 1,2; where up 5
+with hub -2,4 dist 6, via delta 0
+moved twice 6, tail -1, same as hub true, differs from beta true
+marks -1,2 -1,2 9,2; marks[2] moved 10
+first linked at y 2, farthest Red
+nudged 0,1, hub 0,1
+
+> place delta
+Delta at 2,2; moved 4,2; where up 5
+with hub 4,4 dist 8, via delta 3
+moved twice 9, tail 0, same as hub true, differs from beta true
+marks 2,2 2,2 14,0; marks[2] moved 15
+first linked at y 2, farthest Red
+nudged 3,2, hub 2,1
+
+> chain
+alpha next 4,0, next next 5, tail 5
+nth 0 next moved 9, red tail 5, beta tail 4
+tails sum 15
+
+> cast 1
+handle 0 -> 3 Delta first Alpha load 8
+handle 1 -> 4 Red first Gamma load 6
+handle 2 -> 0 Alpha first Beta load 12
+handle 1: BETA:B, peer Gamma, links 1
+alpha boost 3, red gain 2, slate gain 3
+red score 14, as node 7, slate 30 / 30
+plain node, links to relay false
+after: load 15, boost 4
+
+> cast 4
+handle 0 -> 3 Delta first Alpha load 8
+handle 1 -> 4 Red first Gamma load 6
+handle 2 -> 0 Alpha first Beta load 12
+handle 4: RED:R, peer Slate, links 1
+alpha boost 4, red gain 2, slate gain 3
+red score 14, as node 7, slate 30 / 30
+relay with gain 2, base score 14
+after: load 10, boost 8
+
+> cast 7
+handle 0 -> 3 Delta first Alpha load 8
+handle 1 -> 4 Red first Gamma load 10
+handle 2 -> 0 Alpha first Beta load 12
+no node 7
+
+> links delta
+links: Alpha Red Gamma; hub links: b c
+hub linked 1, lightest Gamma, last over 1 Gamma:c
+copied 2, load 19, any grandlinks to gamma true
+first link's links 2, hub-first Beta, loads by first link 19
+ [0]Alpha [1]Red [2]Gamma
+
+> links alpha
+links: Beta Gamma; hub links: d
+hub linked 1, lightest Gamma, last over 1 Gamma:c
+copied 1, load 8, any grandlinks to gamma false
+first link's links 1, hub-first Delta, loads by first link 8
+ [0]Beta [1]Gamma
+
+> links gamma
+links:; hub links:
+hub linked 0, lightest -, last over 1 none
+copied 0, load 0, any grandlinks to gamma false
+first link's links 0, hub-first -, loads by first link 0
+ [0]-
+
+> log alpha 3
+Alpha log 2: first 3 last 6, hub log 2, big 2, gamma first 4
+shared 2, other 1, red sees 2, slate sees 1
+
+> log gamma 7
+Gamma log 4: first 4 last 8, hub log 4, big 4, gamma first 4
+shared 2, other 4, red sees 2, slate sees 4
+
+> log red 1
+Red log 3: first 3 last 1, hub log 6, big 2, gamma first 4
+shared 3, other 6, red sees 3, slate sees 6
+
+> inspect
+shelf holds 2; first child links 0, its sibling a node true
+shelf load 12, relays on shelf 1
+
+> token delta 2
+token Alpha x 4, links 2, first Beta, buddy Beta
+spare 6 on Delta
+
+> token gamma 1
+token Gamma x 3, links 0, first -, buddy Red
+replacing Alpha:a x 4
+spare 6 on Gamma
+
+> hop 0
+by nth Alpha, by lambda Beta:b
+hop Beta, through hub Gamma, element hop Beta
+first hop target Beta
+
+> hop 4
+by nth Red, by lambda Slate:s
+hop Gamma, through hub -, element hop Gamma
+first hop target Beta
+
+> hop 2
+by nth Gamma, by lambda Gamma:c
+hop -, through hub -, element hop -
+first hop target Beta
+
+> tie gamma to beta
+Gamma links 1, then peer 2, last Gamma
+hub Gamma now 3, its last Beta:b
+Beta cleared to 0, linked now 5
+
+> tie alpha to red
+Alpha links 3, then peer 4, last Slate
+hub Beta now 1, its last Red:r
+Red cleared to 0, linked now 5
+
+> survey
+Alpha Alpha:a score 16 peer Beta first Beta linkload 37 at 2,1 dist 3
+Beta Beta:b score 16 peer Gamma first Red linkload 10 at 4,0 dist 4
+Gamma Gamma:c score 7 peer - first Beta linkload 34 at 0,3 dist 3
+Delta Delta:d score 11 peer Alpha first Alpha linkload 26 at 3,2 dist 5
+Red Red:r score 20 peer Slate first - linkload 0 at 5,5 dist 10
+Slate Slate:s score 30 peer - first Alpha linkload 27 at 0,1 dist 1
+best Slate, its first Alpha, peer's peer -
+nth 3 second link Red, its first Gamma, nth 9 none
+ring 1 head Red -> Gamma, ring 0 tail peer Gamma
+top by score then first link: Alpha, lightest linked Gamma:c

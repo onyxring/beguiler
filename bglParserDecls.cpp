@@ -1233,6 +1233,11 @@ static bool initializerNeedsRuntime(const string& text){
         // A call: the name is followed by '(' (possibly across spaces).
         size_t j = text.find_first_not_of(" \t", i);
         if(j != string::npos && text[j] == '(') return true;
+        // A member read (`nodea.pri`): an object's property is storage, read when the program runs.
+        if(j != string::npos && text[j] == '.' && j + 1 < text.size() && (isalpha((unsigned char)text[j + 1]) || text[j + 1] == '_'))
+            return true;
+        // A `?.`/`??` temporary: worked out by statements, which run at startup.
+        if(word.rfind("_bgl_temp", 0) == 0) return true;
         // A read of another global's storage. An object, class, enum or routine name is a
         // constant in I6, and a `const` global was folded to its value before it got here.
         string lower = word;
@@ -1314,7 +1319,8 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
         if(varDecl.declaredExpressionValue != nullptr
            && initializerNeedsRuntime(varDecl.declaredExpressionValue->text())){
             string rhs = varDecl.declaredExpressionValue->text();
-            languageService.globalInits.push_back({varDecl.name, varDecl.name + " = " + rhs + ";"});
+            languageService.globalInits.push_back({varDecl.name, globalInitSetUp + varDecl.name + " = " + rhs + ";"});
+            globalInitSetUp.clear();
             markGlobalsReadEarly(rhs);
             varDecl.declaredExpressionValue = nullptr;
             varDecl.needsEarlyGlobalDecl = true;
@@ -1429,11 +1435,30 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     if(func != nullptr && currentFunc != nullptr && currentFunc->fileScopeReads.count(varDecl.name))
         parsingError(format("'{0}' in its own initializer names the global, but Inform 6 would read the new "
             "local there. Rename the local.", varDecl.dName()));
-    if(isRef && symbol.value == token::bindAssignment) rejectMemberArrayBind(varDecl.declaredExpressionValue, func, body);
+    if(isRef && symbol.value == token::bindAssignment){
+        rejectMemberArrayBind(varDecl.declaredExpressionValue, func, body);
+        // As a rebind is checked: the right side is an instance of the class, or of a class derived from it (§3.7).
+        expression* rhs = varDecl.declaredExpressionValue;
+        classDef* lc = getDispatchClass(varDecl.type.name);
+        string rt = rhs != nullptr ? rhs->resolvedType : string();
+        if(lc != nullptr && rhs != nullptr && rt != "nullliteral" && !isWordArrayType(varDecl.type.name)){
+            classDef* rc = getDispatchClass(rt);
+            if(rc == nullptr || rc->isPrimitive)
+                parsingError(format("the reference binding operator ':=' binds a reference, so the right side must be an "
+                                    "instance of a class; got '{0}'.", typeDisplayName(rt.empty() ? "unknown" : rt)));
+            if(rc != lc && !rc->hasAncestor(lc) && !isTypeCompatible(rt, lc->name))
+                parsingError(format("cannot bind '{0}' to '{1}': the reference binding operator ':=' requires the same "
+                                    "class (or a subclass).", typeDisplayName(rc->name), typeDisplayName(lc->name)));
+        }
+    }
 
     // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp
     declInjectionStart = body != nullptr ? (long)body->statements.size() : -1;
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    // At file scope a `?.`/`??` set-up runs at startup, ahead of the global's assignment there.
+    globalInitSetUp.clear();
+    if(body == nullptr && func == nullptr)
+        for(statement* inj : pendingInjections) if(auto* raw = dynamic_cast<i6RawNode*>(inj)) globalInitSetUp += raw->text + " ";
     pendingInjections.clear();
 
     synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body);

@@ -1,0 +1,683 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small survey-stake program, on the Z-machine, leaning on value
+// classes used from above their declarations.
+// Routines, globals, arrays and every verb come before the value classes, the classes that own them and
+// the objects they reach: value-class parameters, `ref` parameters (array elements, owned members, loop
+// variables, `self`), returns of locals, of `ref` locals and of inline objects, defaults from a later
+// `const` and an inline-object default given by name with bare braces; operators added by a later
+// `extend class` (`*`, `++`, `?=`, a static `make`, a `selfType` method and an emitter value) used on
+// globals, members, elements, call results and through a subclass; a value subclass chaining its copy
+// operator by cast, upcast copies, overloads picked by value class, and a static `<=>` driving derived
+// `<`/`>`, `orderBy` by operator reference and lambda, `sort`, `distinct`, `indexOf`, `contains`, `-=`
+// and `removeValue`; a global array holding a later named instance (shared) beside a global (copied),
+// an `extend` injecting an inline object; nested value members (`Seg` of two `Pt`s, a `Path` owning a
+// member array of them), a value class with a `ref` member to its own class walked recursively and by a
+// rebound `ref` local; owned, positional, `ref` and member-array members on a class extended after its
+// objects; an `extend` above an object adding a value member and a method; an inline `auto` accessor
+// whose getter returns and whose setter takes a value class, compound-assigned; a verb owning a value
+// member; a pooled class whose owned member resets on `new`; static value members; `func<Pt, Pt>`
+// globals bound to a later function and to a lambda, a value-class local captured by <linq> lambdas,
+// a for-in over an inline list of values, `?:` choosing values, and value classes in interpolation.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+// ---- routines written above every type, object and constant they touch ---------------------------------
+
+Pt midpoint(Pt a, Pt b) {
+    Pt m = Pt{ (a.x + b.x) / 2, (a.y + b.y) / 2 };
+    return m;
+}
+
+int span(int d) { return d < 0 ? -d : d; }
+
+int dist(ref Pt a, ref Pt b) { return span(a.x - b.x) + span(a.y - b.y); }
+
+void shove(ref Pt p, int dx = STEP, int dy = -STEP) { p += Pt{ dx, dy }; }
+
+Pt farthestFrom(Pt from) {
+    ref Pt best := stakes[0];
+    for (int i in 1 to stakes.length - 1) {
+        if (dist(stakes[i], from) > dist(best, from)) best := stakes[i];
+    }
+    return best;
+}
+
+string sideOf(Pt p) { return p < home ? "near" : (p == home ? "home" : "far"); }
+
+int hops(Pt from, Pt to) {
+    if (from == to) return 0;
+    Pt next = from;
+    if (next.x < to.x) next.x++;
+    else if (next.x > to.x) next.x--;
+    else if (next.y < to.y) next.y++;
+    else next.y--;
+    return 1 + hops(next, to);
+}
+
+void stampTrail(Post p) {
+    p.trail.append(p.at);
+    Post.moves++;
+    Post.lastMoved = p.at;
+}
+
+Pt pickOf(Post p, bool useAnchor) {
+    if (!useAnchor || !p.anchor) return p.at;
+    return p.anchor;
+}
+
+Path planRoute(Pt from, Pt to) {
+    Path r;
+    r.add(from);
+    r.add(midpoint(from, to));
+    r.add(to);
+    return r;
+}
+
+void place(Post p, Pt to = Pt{ 1, 1 }) { p.at = to; }
+
+func<Pt, Pt> stepRule = mirror;
+func<bool, Pt> isFar = (Pt p) => p > home;
+
+void bump(ref Pt p) { p++; }
+
+string kind(Pt p) { return "plain"; }
+string kind(Tagged t) { return "tagged"; }
+
+int chainLength(ref Chain c) {
+    if (!c.next) return 1;
+    return 1 + chainLength(c.next);
+}
+
+Pt chainEnd(ref Chain c) {
+    ref Chain walk := c;
+    while (walk.next) walk := walk.next;
+    return walk.at;
+}
+
+extend postC {
+    Pt spare = Pt{ 6, 6 };
+    Pt swapSpare() {
+        Pt old = at;
+        at = spare;
+        spare = old;
+        return old;
+    }
+}
+
+// ---- data written above its types -------------------------------------------------------------------------
+
+Pt home = Pt{ 2, 3 };
+Pt lastProbe;
+Seg diag = Seg{ { 0, 0 }, { 5, 5 } };
+Tagged flagA = Tagged{ 'a', 6, 1 };
+Chain c1;
+Chain c2;
+Chain c3;
+
+array<Pt> stakes = { { 1, 1 }, Pt{ 4, 0 }, cornerFar, home };
+array<Tagged> flags = { flagA, { 'c', 0, 8 }, Tagged{ 'd', 3, 3 } };
+array<Post> posts = { postA, postB, postC };
+array<Marker> planted[2];
+array<Pt> spare[4];
+
+array<Pt> pairs = { lateMark, { 5, 1 } };
+Pt lateMark = Pt{ 0, 9 };
+
+extend pairs {
+    inject lateMark after [0];
+}
+
+bool Initialise() {
+    bglInit();
+    ledger.log := spare;
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs, all above the types and objects they reach ------------------------------------------------
+
+verb Survey {
+    grammar = {.survey};
+    void handler() {
+        print("Stakes:");
+        for (Pt p in stakes) print($" {p}");
+        printLine(".");
+        printLine($"Home {home} sum {home.sum}; far {cornerFar}; diag {diag.a}-{diag.b} len {diag.measure()}.");
+        for (Post p in posts) printLine($"{p}: at {p.at} weight {p.weight} side {sideOf(p.at)}.");
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        if (!noun.is(Post)) {
+            printLine("Only posts.");
+            return;
+        }
+        Post p = (Post)noun;
+        Pt before = p.at;
+        shove(p.at);
+        stampTrail(p);
+        printLine($"{p}: {before} -> {p.at}; moved {Post.moves}, last {Post.lastMoved}, trail {p.trail.length}.");
+    }
+}
+
+verb Mid {
+    grammar = {.mid};
+    void handler() {
+        Pt m = midpoint(home, cornerFar);
+        Pt s = home + cornerFar;
+        Pt t = home + cornerFar + stakes[1];
+        Pt u = (home * 2).swapped();
+        print($"Mid {m}, sum {s}, three {t}, twice-swapped {u}");
+        printLine($", far {farthestFrom(home)}, center {diag.center()}, home still {home}.");
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        array<Pt> sorted[6];
+        sorted = stakes.orderBy(Pt::operator <=>);
+        print("Ranked:");
+        for (Pt p in sorted) print($" {p}");
+        int beyond = stakes.filter((Pt p) => p > home).count();
+        bool hasHome = stakes.any((Pt p) => p == home);
+        bool allPlaced = stakes.all((Pt p) => p.x >= 0 && p.y >= 0);
+        Pt low = stakes.orderBy((Pt a, Pt b) => b <=> a).last();
+        printLine($"; beyond home {beyond}; home listed {hasHome ? "yes" : "no"}; all placed {allPlaced ? "yes" : "no"}; lowest {low}; home at {stakes.indexOf(home)}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NUMBER, NUMBER};
+    void handler() {
+        lastProbe = Pt{ (int)noun, (int)second };
+        Pt here = lastProbe;
+        int hits = stakes.filter((Pt p) => dist(p, here) <= STEP).count();
+        Pt near = stakes.filter((Pt p) => p != here).orderBy((Pt a, Pt b) => dist(a, here) - dist(b, here)).first();
+        printLine($"Probe {lastProbe}: within {STEP} {hits}; nearest other {near} at {dist(near, lastProbe)}; {sideOf(lastProbe)}; hops {hops(stakes[0], lastProbe)}.");
+        Gap g;
+        g.dx = span(here.x - home.x);
+        g.dy = span(here.y - home.y);
+        if (g.dx + g.dy > Census.widest.dx + Census.widest.dy) Census.widest = g;
+        Census.checks++;
+        Gap w = Census.widest;
+        printLine($"Gap {g}; widest {w} after {Census.checks}.");
+    }
+}
+
+verb Anchor {
+    grammar = {.anchor, NOUN};
+    void handler() {
+        Post p = (Post)noun;
+        if (!p.anchor) p.anchor := cornerFar;
+        else p.anchor := stakes[0];
+        Pt pick = pickOf(p, true);
+        printLine($"{p} anchored to {p.anchor}; pick {pick}; plain {pickOf(p, false)}.");
+    }
+}
+
+verb Far {
+    grammar = {.far, NUMBER};
+    void handler() {
+        cornerFar += Pt{ (int)noun, 0 };
+        print($"Far {cornerFar}; stake {stakes[2]}");
+        for (Post p in posts) {
+            if (!p.anchor) continue;
+            print($"; {p} sees {p.anchor}");
+        }
+        printLine(".");
+    }
+}
+
+verb Rehome {
+    grammar = {.home, NUMBER};
+    void handler() {
+        home.x = (int)noun;
+        printLine($"Home {home}; stake copy {stakes[3]}; listed {stakes.contains(home) ? "yes" : "no"}; {postA} at home {postA.atHome() ? "yes" : "no"}.");
+    }
+}
+
+verb Trail {
+    grammar = {.trail, NOUN};
+    void handler() {
+        Post p = (Post)noun;
+        print($"{p} trail:");
+        for (Pt t in p.trail) print($" {t}");
+        Pt last = p.trail.length > 0 ? p.trail[p.trail.length - 1] : p.at;
+        int steps = 0;
+        Pt walker = p.at;
+        while (walker != home && steps < 4) {
+            shove(walker, dx: home.x < walker.x ? -1 : 1, dy: 0);
+            steps++;
+        }
+        printLine($"; last {last}; walker {walker} after {steps}; offset {p.offset(10)}.");
+    }
+}
+
+verb Focus {
+    grammar = {.focus, NOUN};
+    void handler() {
+        Post p = (Post)noun;
+        board.focus = p.at;
+        Pt f = board.focus;
+        f.x = 99;
+        printLine($"Focus {board.focus} (copy {f}); changes {board.changes}; x {board.focus.x}.");
+    }
+}
+
+verb Stretch {
+    grammar = {.diag, NUMBER};
+    void handler() {
+        Seg s = diag;
+        s.b = s.b * (int)noun;
+        Seg t;
+        t = s;
+        t.a += Pt{ 1, 1 };
+        printLine($"Diag {diag.a}-{diag.b} {diag.measure()}; copy {s.a}-{s.b} {s.measure()}; moved {t.a}-{t.b} {t.measure()}; same end {s.b == t.b ? "yes" : "no"}.");
+    }
+}
+
+verb Tags {
+    grammar = {.flags};
+    void handler() {
+        print("Flags:");
+        for (Tagged f in flags) print($" {f}");
+        Pt plain = flags[1];
+        Tagged t = flags[0];
+        t.tag = 'z';
+        flags[2] = t;
+        printLine($"; plain {plain}; stored {flags[2]}; first {flags[0]}; flagA {flagA}.");
+    }
+}
+
+verb Route {
+    grammar = {.route, NOUN};
+    void handler() {
+        Post p = (Post)noun;
+        Path a = planRoute(p.at, home);
+        Path b = a;
+        b.legs[0] = cornerFar;
+        b.add(Pt{ 0, 0 });
+        printLine($"Route {a} total {a.total()}; changed {b} total {b.total()}; legs {a.legs.length}/{b.legs.length}; first same {a.legs[0] == b.legs[0] ? "yes" : "no"}.");
+    }
+}
+
+verb Check {
+    grammar = {.check};
+    void handler() {
+        func<Pt, Pt> twice = (Pt q) => q * 2;
+        Pt d = twice(home);
+        Pt e = stepRule(d);
+        bool atStart = home == Pt{ 2, 3 };
+        int spread = postA.offset(1).swapped().sum;
+        Pt picked = postA.at > postB.at ? postA.at : postB.at;
+        int unique = stakes.distinct().count();
+        int total = 0;
+        for (Pt q in { home, cornerFar, Pt{ 1, 2 } }) total += q.sum;
+        Pt m2 = midpoint({ 1, 1 }, { 3, 5 });
+        printLine($"Twice {d}, mirrored {e}, start {atStart ? "yes" : "no"}, spread {spread}, picked {picked}, unique {unique}, total {total}, mid {m2}.");
+        array<Pt> scratch[6];
+        scratch = stakes;
+        scratch.append(home);
+        scratch.sort();
+        print("Sorted:");
+        for (Pt q in scratch) print($" {q}");
+        scratch -= home;
+        scratch.removeValue(cornerFar);
+        print("; trimmed:");
+        for (Pt q in scratch) print($" {q}");
+        printLine($"; home left at {scratch.indexOf(home)}.");
+    }
+}
+
+verb Pin {
+    grammar = {.pin, NOUN, NUMBER};
+    void handler() {
+        Post p = (Post)noun;
+        int n = (int)second;
+        if (!p.anchor) {
+            printLine($"{p} has no anchor.");
+            return;
+        }
+        p.anchor = Pt{ n, n };
+        if (p.trail.length > 0) {
+            ref Pt head := p.trail[0];
+            head.y = -n;
+        }
+        print($"{p} pinned {p.anchor}; far {cornerFar}; first stake {stakes[0]}; trail");
+        for (Pt t in p.trail) print($" {t}");
+        printLine(".");
+    }
+}
+
+verb Reset {
+    grammar = {.reset, NOUN};
+    void handler() {
+        Post p = (Post)noun;
+        place(p);
+        Pt one = p.at;
+        place(p, to: { 4, 4 });
+        printLine($"{p} reset to {one}, then {p.at}.");
+    }
+}
+
+verb Swap {
+    grammar = {.swap};
+    void handler() {
+        Pt old = postC.swapSpare();
+        printLine($"{postC} now {postC.at}, spare {postC.spare}, was {old}.");
+    }
+}
+
+verb Plant {
+    grammar = {.plant, NUMBER};
+    void handler() {
+        Marker m = new Marker((int)noun);
+        if (m == null) {
+            printLine("No markers.");
+            return;
+        }
+        planted.append(m);
+        m.spot += Pt{ (int)noun, 0 };
+        printLine($"Planted {m} at {m.spot}; made {Marker.made}; planted {planted.length}.");
+    }
+}
+
+verb Uproot {
+    grammar = {.uproot};
+    void handler() {
+        Marker m = planted.popEnd();
+        if (!m?) {
+            printLine("Nothing planted.");
+            return;
+        }
+        Pt was = m.spot;
+        delete m;
+        printLine($"Pulled a marker from {was}; left {planted.length}.");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    Pt lastSeen;
+    int marks = 0;
+    void handler() {
+        Post p = (Post)noun;
+        Pt prev = lastSeen;
+        lastSeen = p.at;
+        marks++;
+        p.at++;
+        stakes[1]++;
+        bump(p.base);
+        printLine($"Mark {marks}: {p} was {lastSeen} now {p.at}, base {p.base}; previous {prev}; stake {stakes[1]}; near home {p.at ?= home ? "yes" : "no"}.");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        array<Pt> trio = { home, cornerFar, { 0, 2 } };
+        int farCount = stakes.filter(isFar).count();
+        bool flagFar = isFar(flagA);
+        board.focus = home;
+        board.focus += Pt{ 1, 1 };
+        bool focusHome = board.focus == home;
+        int fsum = board.focus.sum;
+        bool pickFar = postA.weight > 1;
+        int px = (pickFar ? home : cornerFar).x;
+        print($"Far {farCount}, flag far {flagFar ? "yes" : "no"}, focus {board.focus} sum {fsum} home {focusHome ? "yes" : "no"}, px {px}");
+        print($", kinds {kind(home)}/{kind(flagA)}/{kind((Pt)flagA)}/{kind(flags[1])}");
+        Tagged sw = flagA.swapped();
+        print($", swapped {sw} from {flagA}, made {Pt.make(3, 4)}");
+        switch (home.sum) {
+            case 5:  print(", home sum five");
+            default: print(", home sum other");
+        }
+        print(";");
+        for (Pt q in trio) print($" {q}");
+        printLine(".");
+    }
+}
+
+verb Link {
+    grammar = {.link};
+    void handler() {
+        c1.at = home;
+        c2.at = cornerFar;
+        c3 = c1;
+        c3.at += Pt{ 10, 0 };
+        c1.next := c2;
+        c2.next := c3;
+        ref Chain mid := c1.next;
+        mid.at = Pt{ 0, 0 };
+        stringObj s = $"Chain {chainLength(c1)}/{chainLength(c2)}/{chainLength(c3)}";
+        s += $", end {chainEnd(c1)}, mid {c2.at}, far {cornerFar}, c3 next ";
+        s += !c3.next ? "none" : "set";
+        printLine(s);
+    }
+}
+
+verb Record {
+    grammar = {.record, NOUN};
+    void handler() {
+        Post p = (Post)noun;
+        ledger.log += p.at;
+        History.seen.append(p.at);
+        scores.sums += p.at.sum;
+        lateMark.y--;
+        print($"Recorded {p.at}; log {ledger.log.length}, seen {History.seen.length}, spare {spare.length}; sums");
+        for (int n in scores.sums) print($" {n}");
+        print("; pairs");
+        for (Pt q in pairs) print($" {q}");
+        printLine($"; late {lateMark}; last logged {ledger.log.peekEnd()}; weight {scores.weights[p.weight - 1]}.");
+    }
+}
+
+// ---- the types -------------------------------------------------------------------------------------------
+
+const int STEP = 2;
+
+value class Pt {
+    inline int x;
+    inline int y;
+    Pt operator = (Pt o) { x = o.x; y = o.y; return self; }
+    bool operator == (Pt o) { return x == o.x && y == o.y; }
+    bool operator != (Pt o) { return x != o.x || y != o.y; }
+    static int operator <=> (Pt a, Pt b) { return (a.x + a.y) - (b.x + b.y); }
+    Pt operator + (Pt o) {
+        Pt r = Pt{ x + o.x, y + o.y };
+        return r;
+    }
+    Pt operator += (Pt o) {
+        x = x + o.x;
+        y = y + o.y;
+        return self;
+    }
+    default void print() { ::print($"({x},{y})"); }
+}
+
+extend class Pt {
+    Pt operator * (int k) {
+        Pt r;
+        r.x = x * k;
+        r.y = y * k;
+        return r;
+    }
+    selfType swapped() {
+        int t = x;
+        x = y;
+        y = t;
+        return self;
+    }
+    emitter int sum { ($self.x + $self.y) }
+    Pt operator ++ () {
+        x++;
+        y++;
+        return self;
+    }
+    bool operator ?= (Pt o) { return dist(self, o) <= 3; }
+    static Pt make(int a, int b) {
+        Pt r = Pt{ a, b };
+        return r;
+    }
+}
+
+value class Tagged : Pt {
+    inline char tag;
+    Tagged operator = (Tagged o) {
+        tag = o.tag;
+        (Pt)self = o;
+        return self;
+    }
+    void print() {
+        ::print(tag);
+        ((Pt)self).print();
+    }
+}
+
+value class Seg {
+    inline Pt a;
+    inline Pt b;
+    Seg operator = (Seg o) {
+        a = o.a;
+        b = o.b;
+        return self;
+    }
+    int measure() { return dist(a, b); }
+    Pt center() { return midpoint(a, b); }
+}
+
+class Post : object {
+    inline instanceName;
+    inline Pt at;
+    ref Pt anchor;
+    array<Pt> trail[3];
+    static int moves = 0;
+    static Pt lastMoved;
+    Pt offset(int k) {
+        Pt r = at;
+        r.x += k;
+        return r;
+    }
+    bool atHome() { return at == home; }
+}
+
+extend class Post {
+    inline int weight = 1;
+}
+
+value class Path {
+    array<Pt> legs[3];
+    Path operator = (Path o) {
+        legs = o.legs;
+        return self;
+    }
+    void add(Pt p) {
+        if (legs.length < legs.size) legs.append(p);
+    }
+    int total() {
+        int t = 0;
+        for (int i in 1 to legs.length - 1) t += dist(legs[i - 1], legs[i]);
+        return t;
+    }
+    void print() {
+        for (Pt p in legs) ::print($"{p}");
+    }
+}
+
+value class Chain {
+    Pt at;
+    ref Chain next;
+    Chain operator = (Chain o) {
+        at = o.at;
+        return self;
+    }
+}
+
+class Marker[2] : object {
+    Pt spot = Pt{ 1, 1 };
+    int no;
+    static int made = 0;
+    void create(int k) {
+        made++;
+        no = k;
+    }
+    void print() { ::print($"marker {no}"); }
+}
+
+Pt mirror(Pt p) { return Pt{ p.y, p.x }; }
+
+// ---- the objects -----------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Pt cornerFar { 8, 9; }
+
+Post postA { "post A", { 3, 4 }; parent = roomA; attributes = {static}; name = {.post, .a}; description = "Post A."; }
+Post postB { "post B", Pt{ 0, 7 }, 3; parent = roomA; attributes = {static}; name = {.post, .b}; description = "Post B."; }
+Post postC { "post C"; at = { 5, 5 }; parent = roomA; attributes = {static}; name = {.post, .c}; description = "Post C."; }
+
+object board {
+    "board";
+    parent = roomA;
+    attributes = {static};
+    name = {.board};
+    description = "A board.";
+    int changes = 0;
+    auto focus = {
+        Pt _p;
+        Pt operator () { return _p; }
+        void operator = (Pt v) {
+            _p = v;
+            outer.changes++;
+        }
+    };
+}
+
+extend class Post {
+    Pt base = Pt{ 0, 1 };
+}
+
+class Census {
+    static Gap widest;
+    static int checks = 0;
+}
+
+value class Gap {
+    int dx;
+    int dy;
+    Gap operator = (Gap o) {
+        dx = o.dx;
+        dy = o.dy;
+        return self;
+    }
+    void print() { ::print($"<{dx},{dy}>"); }
+}
+
+object ledger { ref array<Pt> log; }
+
+object scores {
+    array<int> sums[40];
+    rawArray<int> weights = { 10, 20, 30 };
+}
+
+class History { static array<Pt> seen[4]; }

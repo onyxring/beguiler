@@ -320,6 +320,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     bool isExplicitConversion = q.isExplicit;
     bool isMemberStatic = q.isStatic;
     bool isMemberSuperposed = q.isSuperposed;
+    if(!isEmitter && !isMemberStatic) rejectMethodOnWordProperty(name, newClass.dName(), i6alias);
     functionDef& funcDef=*(new functionDef());
     funcDef.name=(string) name; funcDef.displayName=name.originalValue;
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
@@ -769,6 +770,19 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     bool isReplace = q.isReplace;
     bool isMemberConst = q.isConst;
     bool isMemberStatic = q.isStatic;
+    // `int runs asI6 pumpRuns;` beside a global `pumpRuns`: Inform 6 keeps properties and globals in one namespace.
+    if(!i6alias.empty() && !isMemberStatic){
+        string low = i6alias; transform(low.begin(), low.end(), low.begin(), ::tolower);
+        for(typeDef* g : languageService.globals){
+            string gi6 = g->i6name; transform(gi6.begin(), gi6.end(), gi6.begin(), ::tolower);
+            if(g->name != low && gi6 != low) continue;
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->type.name == "property") continue;
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->isEmitter) continue;
+            parsingError(format("'{0}.{1}' is emitted as '{2}', which is also the name of '{3}'; Inform 6 keeps one "
+                "namespace for both, so give the member another `asI6` name.", newClass.dName(),
+                name.originalValue.empty() ? (string)name : name.originalValue, i6alias, g->dName()));
+        }
+    }
     // A single value under an additive property's name is reported at the member, before any use of it
     // reports something less clear (the whole-program check would reach it only after the class).
     {
@@ -2066,7 +2080,23 @@ void bglParser::consumeMethodI6Alias(functionDef& funcDef){
         funcDef.i6name = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
 }
 
+// `string Name()`: a method under an additive property that holds an object's words (`name`) would be one
+// more entry in that list of words.
+void bglParser::rejectMethodOnWordProperty(token name, const string& owner, const string& i6alias){
+    if(name.src.file.find("beguiLib") != string::npos) return;
+    string prop = i6alias.empty() ? (string)name : i6alias;
+    transform(prop.begin(), prop.end(), prop.begin(), ::tolower);
+    if(!languageService.isAdditiveProperty(prop)) return;
+    for(typeDef* g : languageService.objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(g))
+            for(typeMember* m : cd->members)
+                if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad && (ad->i6name.empty() ? ad->name : ad->i6name) == prop)
+                    parsingError(format("'{0}.{1}()' would join the ADDITIVE property '{2}', which holds an object's words; "
+                        "give the method another name.", owner, name.originalValue.empty() ? (string)name : name.originalValue, prop));
+}
+
 void bglParser::processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace, string i6alias){
+    rejectMethodOnWordProperty(name, obj.dName(), i6alias);
     functionDef& funcDef = *(new functionDef());
     funcDef.name = (string)name;
     funcDef.displayName = name.originalValue;

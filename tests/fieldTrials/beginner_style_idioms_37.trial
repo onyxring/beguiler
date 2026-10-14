@@ -1,0 +1,192 @@
+Room A
+Room A. The pump room. The boiler room is to the north.
+You can see a tank A, a tank B, a tank C, a valve and a clock here.
+> levels
+Tank A: 4 (part full), 10 degrees.
+Tank B: 2 (low), 10 degrees.
+Tank C: 7 (part full), 10 degrees.
+Total: 13. Start: 4. Spare: 0.
+Boiler: heat 0, lamp ., note "cold".
+The valve is shut.
+> count
++= read 0, wrote 1.
+++ read 0, wrote 1.
+-= read 1, wrote 1.
+*= read 1, wrote 1.
+prefix ++ read 0, wrote 1.
+== read 0.
+Tank B has 7.
+A plain read read 1; it was 7.
+> compare
+A has less than B.
+C or A is well filled.
+A and B both have water.
+Most of A and C: 7.
+C minus A: 3. A plus 1: 5.
+Bigger of A and B: [7 of 9, room 2] [4 of 9, room 5] <7>
+Mark for C: G.
+> list
+Tanks with water: 3.
+Some tank has 5 or more.
+No tank is full.
+Least first: A4 B7 C7
+First level: 4.
+Low tanks: 0.
+> gauge
+Gauge: 9 7 8
+Copy of B plus one: 8; B still 7.
+> tap tank b
+It rings dull.
+A drop spills out. It has 6.
+> fill 1
+Tank A has 6.
+> fill 2
+Tank B has 8.
+> fill 3
+You unbolt the lid and fill it. Tank C has 9.
+> fill 9
+There is no tank with that number.
+> drain 2
+Tank B had 8; now 0.
+> levels
+Tank A: 6 (part full), 10 degrees.
+Tank B: 0 (empty), 10 degrees.
+Tank C: 9 (full), 10 degrees.
+Total: 15. Start: 4. Spare: 0.
+Boiler: heat 0, lamp ., note "cold".
+The valve is shut.
+> tap tank b
+It rings hollow.
+> pump
+The valve is shut.
+> turn
+The valve is now open (turned 1).
+> pump
+Pumped 2. A has 4, B has 2.
+> tip
+Tipped 0. Spare 0, B 2.
+> top
+Tank A took 5, the spare took 9.
+> levels
+Tank A: 9 (full), 10 degrees.
+Tank B: 2 (low), 10 degrees.
+Tank C: 9 (full), 10 degrees.
+Total: 20. Start: 4. Spare: 9.
+Boiler: heat 0, lamp ., note "cold".
+The valve is open.
+> set 0
+Boiler heat 0, lamp .. Sets: 1.
+> set 5
+Boiler heat 5, lamp o. Sets: 2.
+> set 12
+Boiler heat 15, lamp O. Sets: 3.
+It boils.
+> high
+Boiler heat 20.
+> n
+Room B
+Room B. The boiler room. The pump room is to the south.
+You can see a boiler here.
+> set 3
+Boiler heat 5, lamp o. Sets: 7.
+> s
+Room A
+Room A. The pump room. The boiler room is to the north.
+You can see a tank A, a tank B, a tank C, a valve and a clock here.
+> warm
+A 15, B 14, C 15. Changes: 4.
+> warm
+A 20, B 18, C 20. Changes: 8.
+> read
+Readings: 3.
+> log
+C=9 (turn 20) B=2 (turn 20) A=9 (turn 20)
+Copy of the first: 8. First: 9. Second: 0.
+> bucket 3
+A bucket of 4: poured 1 into B, 3 left, B 3.
+> bucket 0
+A bucket of 1: poured 1 into B, 0 left, B 4.
+The empty bucket goes back.
+> spare 6
+Spare 7, copy 4.
+Counted to 7.
+> spare 20
+Spare 9, copy 6.
+Counted to 9.
+> tip
+Tipped 1. Spare 8, B 5.
+> compare
+A has more than B.
+C or A is well filled.
+A and B both have water.
+Most of A and C: 9.
+C minus A: 0. A plus 1: 10.
+Bigger of A and B: [9 of 9, room 0] [9 of 9, room 0] <5>
+Mark for C: I.
+> list
+Tanks with water: 3.
+Some tank has 5 or more.
+Least first: B5 A9 C9
+First level: 9.
+Low tanks: 0.
+> drain 7
+Tank A had 9; now 0.
+> turn
+The valve is now shut (turned 2).
+> watch
+You open the valve.
+The boiler was set (set).
+Lamps: a b c
+Tank B is now 7. Over the spare (8): 1. Over 1: 2.
+Over the spare again: 1.
+Note: set/d, 5 long.
+> tap tank c
+It thuds.
+A drop spills out. It has 8.
+> tap tank a
+It rings hollow.
+> tap valve
+You can only tap a tank.
+> gauge
+Gauge: 9 7 9
+Copy of B plus one: 8; B still 7.
+> levels
+Tank A: 0 (empty), 20 degrees.
+Tank B: 7 (part full), 18 degrees.
+Tank C: 8 (part full), 20 degrees.
+Total: 15. Start: 4. Spare: 8.
+Boiler: heat 5, lamp d, note "set/d".
+The valve is open.
+> examine tank c
+Tank C: 8 (part full), 20 degrees.
+> mix 2
+Tank 2 has some.
+Level or A's: 7.
+A orders before B.
+Sum: 15. Stamps: 0 70 80. B both: 77.
+A takes B's: 7.
+Gauge: 9 4 9 (moved 0).
+Emptied a bucket in 5.
+> mix 1
+Tank 1 has some.
+Level or A's: 7.
+A and B order together.
+Sum: 22. Stamps: 70 70 80. B both: 77.
+A takes B's: 9.
+Gauge: 9 1 9 (moved 0).
+Emptied a bucket in 5.
+> mix 5
+Tank 5 has none, or is not there.
+Level or A's: 9.
+A orders after B.
+Sum: 24. Stamps: 90 70 80. B both: 77.
+A takes B's: 9.
+Gauge: 9 0 9 (moved 0).
+Emptied a bucket in 5.
+> levels
+Tank A: 9 (full), 20 degrees.
+Tank B: 7 (part full), 18 degrees.
+Tank C: 8 (part full), 20 degrees.
+Total: 24. Start: 4. Spare: 8.
+Boiler: heat 5, lamp d, note "set/d".
+The valve is open.

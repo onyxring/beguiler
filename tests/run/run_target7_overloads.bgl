@@ -1,0 +1,70 @@
+// run_target7_overloads — overloaded `operator []=` on an object and on a class instance; a program's
+// `print(Parcel)` overload in interpolation; overloaded `operator []` on an array element; a bare `{ … }`
+// argument beside an overload of another arity; an int returned where a value class with `operator =(int)`
+// is the return type; and an untyped operator reference resolved by the func type it is stored into.
+// EXPECT_OUTPUT: 5 107 5 107 <1200> <1200> <1200>|<1200> 102 102 102 2 1651 1652 8 500 500 2 -2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+enum zone { local, region }
+object box {
+    array<int> v[2];
+    int operator [] (int i) { return v[i]; }
+    void operator []= (int i, int n) { v[i] = n; }
+    void operator []= (zone z, int n) { v[(int)z - 1] = n + 100; }
+}
+class Holder : object {
+    array<int> v[2];
+    int operator [] (int i) { return v[i]; }
+    void operator []= (int i, int n) { v[i] = n; }
+    void operator []= (zone z, int n) { v[(int)z - 1] = n + 100; }
+}
+Holder hold {}
+class Parcel : object { int g; }
+Parcel pA { g = 1200; }
+void print(Parcel p) { print("<"); print(p.g); print(">"); }
+class Shelf : object {
+    int operator [] (int i) { return i + 1; }
+    int operator [] (zone z) { return (int)z + 100; }
+}
+Shelf s1 { }
+array<Shelf> shelves = { s1 };
+value class Mass {
+    inline int g;
+    Mass operator = (Mass o) { g = o.g; return self; }
+    Mass operator = (int n) { g = n; return self; }
+    static int operator <=> (Mass a, Mass b) { return a.g - b.g; }
+    static int operator <=> (Mass a, int b) { return a.g - b; }
+}
+int logm(int n) { return n; }
+int logm(Mass m, int k) { return m.g + k; }
+object desk {
+    int log(int n) { return n; }
+    int log(Mass m, int k) { return m.g + k; }
+}
+Mass made(int k) { return k * 2; }
+void main() {
+    bglInit();
+    box[0] = 5;
+    box[zone.region] = 7;
+    print(box[0]); print(" "); print(box[1]); print(" ");
+    hold[0] = 5;
+    hold[zone.region] = 7;
+    print(hold[0]); print(" "); print(hold[1]); print(" ");
+    Parcel v = pA;
+    print(pA); print(" "); print(v); print(" ");
+    print($"{pA}|{v}"); print(" ");
+    Shelf s = s1;
+    print(s1[zone.region]); print(" "); print(s[zone.region]); print(" ");
+    print(shelves[0][zone.region]); print(" "); print(shelves[0][1]); print(" ");
+    print(logm({ 1650 }, 1)); print(" ");
+    print(desk.log({ 1650 }, 2)); print(" ");
+    Mass a = 8;
+    Mass b = made(250);
+    print(a.g); print(" "); print(b.g); print(" "); print(made(250).g); print(" ");
+    func<int, Mass, int> c = Mass::operator <=>;
+    Mass q = Mass{ 5 };
+    print(c(q, 3)); print(" ");
+    func<int, Mass, Mass> d = Mass::operator <=>;
+    Mass w = Mass{ 7 };
+    print(d(q, w));
+}

@@ -1,0 +1,919 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-seventh first-time-programmer program, a pump room where three tanks are
+// filled, drained and pumped into each other, a boiler is turned up and down, a valve is opened and
+// shut and buckets are carried about, written by a beginner who has just found property accessors
+// and makes everything one. A named accessor class for a tank level (clamping int setter, a copy
+// operator, == and != against an int, <=> against an int and against another level so the
+// orderings come from it, its own + by an int, methods of its own) used as a class member, as a
+// member of a value class kept in an array, as a member of a pooled class made with `new`, as a
+// global variable and as a `ref` local; a subclass that hides the level's setter; an inline `auto`
+// accessor in a class body with a static of its own and a method of its own; an object whose inline
+// accessors have int, enum, bool, char and stringObj getters, overloaded setters (enum and int) and
+// reach the object through `outer`, one setter writing another accessor; a getter and setter that
+// count their calls, so that a compound assignment is seen to read once and write once. Accessors
+// are read from routines and global initializers above their objects, passed to `ref` parameters
+// (positional, named, default), passed by value to overloaded routines (accessor class vs int),
+// returned, compared with their class's operators against ints and against each other, changed
+// with `=`, `+=`, `-=`, `*=`, `++`, `--` and prefix `++` through objects, `self`, bare names in the
+// host's methods, casts, array elements, call results and `?.`, read in `if`, `while`, `do`/`while`,
+// `for`, `switch` (int and enum getters), `?:`, `!`, `&&`/`||`, unary minus, array subscripts, `print()`,
+// interpolation spans, lambdas and <linq> chains, and copied into locals and globals.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// the most water a tank can hold
+const int TANK_MAX = 9;
+// the hottest the boiler can get
+const int HEAT_MAX = 20;
+// how many times a tank level was read
+int levelReads = 0;
+// how many times a tank level was set
+int levelWrites = 0;
+// how many turns have gone by
+int turnCount = 0;
+// how much was in tank A at the start (read before tank A is written down below)
+int startLevel = tankA.level;
+// how hot the boiler was at the start
+int startHeat = boiler.heat;
+
+// ===== KINDS OF THINGS =====
+
+enum Mode { off, low, high }
+
+// ===== HELPERS THAT USE THE TANKS (the tanks come later) =====
+
+// all the water in all the tanks
+int totalWater() {
+    return tankA.level + tankB.level + tankC.level;
+}
+
+// is the boiler hot enough to boil?
+bool isBoiling() {
+    return boiler.heat >= 15 && valve.flowing;
+}
+
+// a word for how full a level is
+string fullWord(int n) {
+    switch (n) {
+        case 0: return "empty";
+        case 1 to 3: return "low";
+        case 4 to 8: return "part full";
+        default: return "full";
+    }
+}
+
+// ===== A TANK LEVEL =====
+
+// a level that never goes below 0 or above TANK_MAX
+value class Level {
+    int _val = 0;
+    int operator () {
+        levelReads++;
+        return _val;
+    }
+    void operator = (int v) {
+        levelWrites++;
+        if (v < 0) {
+            v = 0;
+        }
+        if (v > TANK_MAX) {
+            v = TANK_MAX;
+        }
+        _val = v;
+    }
+    Level operator = (Level o) {
+        _val = o._val;
+        return self;
+    }
+    bool operator == (int n) {
+        return _val == n;
+    }
+    bool operator != (int n) {
+        return _val != n;
+    }
+    int operator <=> (int n) {
+        return _val - n;
+    }
+    int operator <=> (Level o) {
+        return _val - o._val;
+    }
+    int operator + (int n) {
+        return _val + n;
+    }
+    // is it empty?
+    bool isEmpty() {
+        return _val == 0;
+    }
+    // how much more fits
+    int room() {
+        return TANK_MAX - _val;
+    }
+}
+
+// a spare level kept on its own
+Level spare;
+
+// ===== ROUTINES THAT TAKE LEVELS =====
+
+// moves water from one level to another, one at a time
+int pour(ref Level from, ref Level to, int amount = 1) {
+    int moved = 0;
+    while (amount > 0 && from > 0 && to < TANK_MAX) {
+        from--;
+        to++;
+        amount--;
+        moved++;
+    }
+    return moved;
+}
+
+// fills a level right up and says how much went in
+int topUp(ref Level l) {
+    int before = l;
+    l = TANK_MAX;
+    return l - before;
+}
+
+// prints a level (it gets its own copy)
+void show(Level l) {
+    print($"[{l} of {TANK_MAX}, room {l.room()}]");
+}
+
+// prints a plain number
+void show(int n) {
+    print($"<{n}>");
+}
+
+// a copy of the bigger level
+Level bigger(Level a, Level b) {
+    if (a >= b) {
+        return a;
+    }
+    return b;
+}
+
+// ===== TANKS =====
+
+class Tank : object {
+    // the letter painted on it
+    char letter = 'x';
+    // how much water is in it
+    Level level;
+    // how warm the water is
+    auto warmth = {
+        int _deg = 10;
+        static int changes = 0;
+        int operator () {
+            return _deg;
+        }
+        void operator = (int v) {
+            changes++;
+            _deg = v;
+        }
+        // how many times any tank's warmth changed
+        int changeCount() {
+            return changes;
+        }
+    }
+    string description;
+
+    // is it full?
+    bool isFull() {
+        return level == TANK_MAX;
+    }
+
+    // puts some water in
+    void fill(int by = 1) {
+        level += by;
+    }
+
+    // warms it up if there is water in it
+    void warm() {
+        if (level > 0 && warmth < 30) {
+            warmth += 5;
+        }
+    }
+
+    // prints how it is
+    void sayState() {
+        print($"Tank {letter}: {level} ({fullWord(level)}), {warmth} degrees.^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            sayState();
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a tank with a lid bolted on: you can look at its level but not set it
+class SealedTank : Tank {
+    hide level.operator =;
+}
+
+// ===== READINGS =====
+
+// a reading taken from a tank
+value class Reading {
+    char letter;
+    Level lvl;
+    int turn;
+    Reading operator = (Reading o) {
+        letter = o.letter;
+        lvl = o.lvl;
+        turn = o.turn;
+        return self;
+    }
+}
+
+// the readings taken so far
+array<Reading> readings[5];
+
+// ===== BUCKETS =====
+
+class Bucket[3] : object {
+    Level water;
+    int trips = 0;
+    void create(int start) {
+        water = start;
+    }
+    bool short_name() {
+        print("bucket");
+        rtrue;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The pump room. The boiler room is to the north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The boiler room. The pump room is to the south.";
+    object s_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE TANKS =====
+
+Tank tankA {
+    "tank A";
+    parent = roomA;
+    name = {.tank, .a};
+    letter = 'A';
+    level = Level{ _val = 4; };
+    description = "A tank.";
+    attributes = {static};
+}
+
+Tank tankB {
+    "tank B";
+    parent = roomA;
+    name = {.tank, .b};
+    letter = 'B';
+    description = "A tank.";
+    attributes = {static};
+}
+
+SealedTank tankC {
+    "tank C";
+    parent = roomA;
+    name = {.tank, .c};
+    letter = 'C';
+    level = Level{ _val = 7; };
+    description = "A tank.";
+    attributes = {static};
+}
+
+// all the tanks
+array<Tank> tanks = { tankA, tankB, tankC };
+
+// ===== THE VALVE AND THE BOILER =====
+
+object valve {
+    "valve";
+    parent = roomA;
+    name = {.valve};
+    string description = "A valve.";
+    // how many times it was turned
+    int turns = 0;
+    auto flowing = {
+        bool _on = false;
+        bool operator () {
+            return _on;
+        }
+        void operator = (bool v) {
+            _on = v;
+            outer.turns++;
+        }
+    }
+    attributes = {static};
+}
+
+object boiler {
+    "boiler";
+    parent = roomB;
+    name = {.boiler};
+    string description = "A boiler.";
+    // how many times the heat was set
+    int heatSets = 0;
+    auto heat = {
+        int _h = 0;
+        int operator () {
+            return _h;
+        }
+        void operator = (int v) {
+            if (v > HEAT_MAX) {
+                v = HEAT_MAX;
+            }
+            if (v < 0) {
+                v = 0;
+            }
+            _h = v;
+            outer.heatSets++;
+        }
+    }
+    auto mode = {
+        Mode _m = Mode.off;
+        Mode operator () {
+            return _m;
+        }
+        void operator = (Mode m) {
+            _m = m;
+            switch (m) {
+                case Mode.off: outer.heat = 0;
+                case Mode.low: outer.heat = 5;
+                case Mode.high: outer.heat = 15;
+            }
+        }
+        void operator = (int n) {
+            if (n <= 0) {
+                outer.mode = Mode.off;
+            } else if (n < 10) {
+                outer.mode = Mode.low;
+            } else {
+                outer.mode = Mode.high;
+            }
+        }
+    }
+    auto lamp = {
+        char _c = '.';
+        char operator () {
+            return _c;
+        }
+        void operator = (char c) {
+            _c = c;
+        }
+    }
+    auto note = {
+        stringObj _text;
+        stringObj operator () {
+            return _text;
+        }
+        void operator = (string s) {
+            _text = s;
+        }
+        void operator = (stringObj s) {
+            _text = s;
+        }
+    }
+    attributes = {static};
+}
+
+bool Initialise() {
+    location = roomA;
+    tankB.level = 2;
+    boiler.note = "cold";
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS =====
+
+// a tank by its number, or nothing
+Tank pickTank(int n) {
+    if (n < 1 || n > tanks.length) {
+        return null;
+    }
+    return tanks[n - 1];
+}
+
+// the level of a tank, as a number
+int levelOf(Tank t) {
+    return t.level;
+}
+
+// spills some water out of a level
+void spill(ref Level l, int by) {
+    l -= by;
+}
+
+// how many tanks have more than a mark (the spare by default)
+int countOver(int mark = spare) {
+    return tanks.filter((Tank t) => t.level > mark).count();
+}
+
+// a copy of a tank's level
+Level levelCopy(Tank t) {
+    return t.level;
+}
+
+// takes a reading of a tank
+void takeReading(Tank t) {
+    Reading r;
+    r.letter = t.letter;
+    r.lvl = t.level;
+    r.turn = turnCount;
+    if (readings.length >= 5) {
+        readings.popEnd();
+    }
+    readings.prepend(r);
+}
+
+// ===== VERBS =====
+
+// LEVELS - every tank and the boiler
+verb ShowLevels {
+    meta = true;
+    grammar = {.levels};
+    void handler() {
+        for (Tank t in tanks) {
+            t.sayState();
+        }
+        print($"Total: {totalWater()}. Start: {startLevel}. Spare: {spare}.^");
+        print($"Boiler: heat {boiler.heat}, lamp {boiler.lamp}, note ~{boiler.note}~.^");
+        if (valve.flowing) {
+            print("The valve is open.^");
+        } else {
+            print("The valve is shut.^");
+        }
+    }
+}
+
+// FILL <number> - puts water in a tank by its number
+verb FillTank {
+    grammar = {.fill, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        Tank t = pickTank(n);
+        if (!t) {
+            print("There is no tank with that number.^");
+            return;
+        }
+        if (t.is(SealedTank)) {
+            ((Tank)t).level += 2;
+            print($"You unbolt the lid and fill it. Tank {t.letter} has {t.level}.^");
+            return;
+        }
+        pickTank(n)?.level += 2;
+        print($"Tank {t.letter} has {pickTank(n)?.level}.^");
+    }
+}
+
+// DRAIN <number> - empties a tank by its number
+verb DrainTank {
+    grammar = {.drain, NUMBER};
+    void handler() {
+        Tank t = pickTank((int)noun);
+        Tank which = t ?? tankA;
+        if (which.level.isEmpty()) {
+            print($"Tank {which.letter} is already empty.^");
+            return;
+        }
+        int was = which.level;
+        while (which.level > 0) {
+            which.level--;
+        }
+        print($"Tank {which.letter} had {was}; now {which.level}.^");
+    }
+}
+
+// PUMP - moves water from A into B, two at a time
+verb PumpWater {
+    grammar = {.pump};
+    void handler() {
+        if (!valve.flowing) {
+            print("The valve is shut.^");
+            return;
+        }
+        int moved = pour(tankA.level, tankB.level, amount: 2);
+        print($"Pumped {moved}. A has {tankA.level}, B has {tankB.level}.^");
+    }
+}
+
+// TIP - tips the spare into tank B
+verb TipSpare {
+    grammar = {.tip};
+    void handler() {
+        int moved = pour(to: tankB.level, from: spare);
+        print($"Tipped {moved}. Spare {spare}, B {tankB.level}.^");
+    }
+}
+
+// TOP - tops up tank A and the spare
+verb TopUpTanks {
+    grammar = {.top};
+    void handler() {
+        int a = topUp(tankA.level);
+        int s = topUp(spare);
+        print($"Tank A took {a}, the spare took {s}.^");
+    }
+}
+
+// TURN - opens or shuts the valve
+verb TurnValve {
+    grammar = {.turn};
+    void handler() {
+        valve.flowing = !valve.flowing;
+        print($"The valve is now {valve.flowing ? "open" : "shut"} (turned {valve.turns}).^");
+    }
+}
+
+// SET <number> - sets the boiler by a number
+verb SetBoiler {
+    grammar = {.set, NUMBER};
+    void handler() {
+        boiler.mode = (int)noun;
+        switch (boiler.mode) {
+            case Mode.off: boiler.lamp = '.';
+            case Mode.low: boiler.lamp = 'o';
+            case Mode.high: boiler.lamp = 'O';
+        }
+        boiler.note = "set";
+        print($"Boiler heat {boiler.heat}, lamp {boiler.lamp}. Sets: {boiler.heatSets}.^");
+        if (isBoiling()) {
+            print("It boils.^");
+        }
+    }
+}
+
+// HIGH - turns the boiler up all the way
+verb BoilerHigh {
+    grammar = {.high};
+    void handler() {
+        boiler.mode = Mode.high;
+        boiler.heat *= 2;
+        ++boiler.heat;
+        print($"Boiler heat {boiler.heat}.^");
+    }
+}
+
+// WARM - warms every tank
+verb WarmTanks {
+    grammar = {.warm};
+    void handler() {
+        for (int i = 0; i < tanks.length; i++) {
+            tanks[i].warm();
+        }
+        tankB.warmth -= 1;
+        print($"A {tankA.warmth}, B {tankB.warmth}, C {tankC.warmth}. Changes: {tankA.warmth.changeCount()}.^");
+    }
+}
+
+// COUNT - shows that adding to a level reads it once and writes it once
+verb CountCalls {
+    meta = true;
+    grammar = {.count};
+    void handler() {
+        int r = levelReads;
+        int w = levelWrites;
+        tankB.level += 1;
+        print($"+= read {levelReads - r}, wrote {levelWrites - w}.^");
+        r = levelReads;
+        w = levelWrites;
+        tankB.level++;
+        print($"++ read {levelReads - r}, wrote {levelWrites - w}.^");
+        r = levelReads;
+        w = levelWrites;
+        tankB.level -= 1;
+        print($"-= read {levelReads - r}, wrote {levelWrites - w}.^");
+        r = levelReads;
+        w = levelWrites;
+        tankB.level *= 2;
+        print($"*= read {levelReads - r}, wrote {levelWrites - w}.^");
+        r = levelReads;
+        w = levelWrites;
+        ++tankB.level;
+        print($"prefix ++ read {levelReads - r}, wrote {levelWrites - w}.^");
+        r = levelReads;
+        bool same = tankB.level == 7;
+        print($"== read {levelReads - r}.^");
+        if (same) {
+            print("Tank B has 7.^");
+        }
+        r = levelReads;
+        int n = tankB.level;
+        print($"A plain read read {levelReads - r}; it was {n}.^");
+    }
+}
+
+// COMPARE - compares the tanks
+verb CompareTanks {
+    meta = true;
+    grammar = {.compare};
+    void handler() {
+        if (tankA.level < tankB.level) {
+            print("A has less than B.^");
+        } else if (tankA.level > tankB.level) {
+            print("A has more than B.^");
+        } else {
+            print("A and B are the same.^");
+        }
+        if (tankC.level >= 7 || tankA.level == TANK_MAX) {
+            print("C or A is well filled.^");
+        }
+        if (tankA.level != 0 && !tankB.level.isEmpty()) {
+            print("A and B both have water.^");
+        }
+        int most = tankA.level > tankC.level ? tankA.level : tankC.level;
+        print($"Most of A and C: {most}.^");
+        int diff = -tankA.level + tankC.level;
+        print($"C minus A: {diff}. A plus 1: {tankA.level + 1}.^");
+        Level big = bigger(tankA.level, tankB.level);
+        print("Bigger of A and B: ");
+        show(big);
+        print(" ");
+        show(tankA.level);
+        print(" ");
+        show(levelOf(tankB));
+        print("^");
+        string marks = "-ABCDEFGHI";
+        print($"Mark for C: {marks[tankC.level]}.^");
+    }
+}
+
+// LIST - the tanks, with <linq>
+verb ListTanks {
+    meta = true;
+    grammar = {.list};
+    void handler() {
+        int wet = tanks.filter((Tank t) => t.level > 0).count();
+        print($"Tanks with water: {wet}.^");
+        int need = 5;
+        if (tanks.any((Tank t) => t.level >= need)) {
+            print($"Some tank has {need} or more.^");
+        }
+        if (tanks.all((Tank t) => t.level != TANK_MAX)) {
+            print("No tank is full.^");
+        }
+        array<Tank> order[3];
+        order = tanks.orderBy((Tank a, Tank b) => a.level <=> b.level);
+        stringObj row = "Least first:";
+        for (Tank t in order) {
+            row += ' ';
+            row += t.letter;
+            row += $"{t.level}";
+        }
+        print(row);
+        print("^");
+        int firstLevel = tanks.map((Tank t) => t.level).first();
+        print($"First level: {firstLevel}.^");
+        func<bool, Tank> isLow = (Tank t) => t.level <= 3;
+        int low = tanks.filter(isLow).count();
+        print($"Low tanks: {low}.^");
+    }
+}
+
+// READ - takes a reading of every tank
+verb TakeReadings {
+    grammar = {.read};
+    void handler() {
+        int i = 0;
+        do {
+            takeReading(tanks[i]);
+            i++;
+        } while (i < tanks.length);
+        print($"Readings: {readings.length}.^");
+    }
+}
+
+// LOG - the readings taken
+verb ShowLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (readings.length == 0) {
+            print("No readings yet.^");
+            return;
+        }
+        for (int i = 0; i < readings.length; i++) {
+            print($"{readings[i].letter}={readings[i].lvl} (turn {readings[i].turn}) ");
+        }
+        print("^");
+        Reading top = readings[0];
+        top.lvl -= 1;
+        readings[1].lvl = 0;
+        print($"Copy of the first: {top.lvl}. First: {readings[0].lvl}. Second: {readings[1].lvl}.^");
+    }
+}
+
+// BUCKET <number> - fills a new bucket with that much
+verb NewBucket {
+    grammar = {.bucket, NUMBER};
+    void handler() {
+        Bucket b = new Bucket((int)noun);
+        if (b == null) {
+            print("There are no more buckets.^");
+            return;
+        }
+        b.water += 1;
+        b.trips++;
+        int got = pour(b.water, tankB.level);
+        print($"A bucket of {b.water + got}: poured {got} into B, {b.water} left, B {tankB.level}.^");
+        if (b.water == 0) {
+            delete b;
+            print("The empty bucket goes back.^");
+        }
+    }
+}
+
+// SPARE <number> - sets the spare level
+verb SetSpare {
+    grammar = {.spare, NUMBER};
+    void handler() {
+        spare = (int)noun;
+        ref Level r := spare;
+        r += 1;
+        Level copy = spare;
+        copy -= 3;
+        print($"Spare {spare}, copy {copy}.^");
+        int k = 0;
+        for (int i = 0; i < spare; i++) {
+            k++;
+        }
+        print($"Counted to {k}.^");
+    }
+}
+
+// WAIT is handled by the library; every turn bumps the count
+object clock {
+    "clock";
+    parent = roomA;
+    name = {.clock};
+    string description = "A clock.";
+    attributes = {static};
+    void each_turn() {
+        turnCount++;
+    }
+}
+
+// TAP <tank> - knocks on a tank to hear how full it is
+verb TapTank {
+    grammar = {.tap, NOUN};
+    void handler() {
+        if (!(noun.is(Tank))) {
+            print("You can only tap a tank.^");
+            return;
+        }
+        switch (((Tank)noun).level) {
+            case 0: print("It rings hollow.^");
+            case 1 to 4: print("It rings low.^");
+            case TANK_MAX: print("It thuds.^");
+            default: print("It rings dull.^");
+        }
+        if (((Tank)noun).level != 0) {
+            spill(((Tank)noun).level, 1);
+            print($"A drop spills out. It has {((Tank)noun).level}.^");
+        }
+    }
+}
+
+// the marks on the gauge board
+array<Level> gauge[3];
+
+// GAUGE - copies the tanks onto the gauge board
+verb ShowGauge {
+    grammar = {.gauge};
+    void handler() {
+        for (int i = 0; i < 3; i++) {
+            gauge[i] = tanks[i].level;
+        }
+        gauge[2] += 1;
+        gauge[0] = 99;
+        stringObj row = "Gauge:";
+        for (int i = 0; i < 3; i++) {
+            int g = gauge[i];
+            row += $" {g}";
+        }
+        print(row);
+        print("^");
+        Level copyB = levelCopy(tankB);
+        copyB++;
+        print($"Copy of B plus one: {copyB}; B still {tankB.level}.^");
+    }
+}
+
+// WATCH - the boiler and the valve, and the spare
+verb WatchThings {
+    grammar = {.watch};
+    void handler() {
+        while (!valve.flowing) {
+            valve.flowing = true;
+            print("You open the valve.^");
+        }
+        if (boiler.mode == Mode.high || boiler.note == "set") {
+            print($"The boiler was set ({boiler.note}).^");
+        }
+        stringObj lamps = "Lamps:";
+        for (boiler.lamp = 'a'; boiler.lamp != 'd'; boiler.lamp++) {
+            lamps += ' ';
+            lamps += boiler.lamp;
+        }
+        print(lamps);
+        print("^");
+        ref Level r := tanks[1].level;
+        r += 2;
+        print($"Tank B is now {tankB.level}. Over the spare ({spare}): {countOver()}. Over 1: {countOver(mark: 1)}.^");
+        int over = tanks.filter((Tank t) => t.level > spare).count();
+        print($"Over the spare again: {over}.^");
+        boiler.note += "/";
+        boiler.note += boiler.lamp;
+        print($"Note: {boiler.note}, {boiler.note.length} long.^");
+    }
+}
+
+// extra marks for every tank, added after the class
+extend class Tank {
+    auto stamp = {
+        int _n = 0;
+        int operator () {
+            return _n;
+        }
+        void operator = (int v) {
+            _n = v * 10;
+        }
+    }
+    // the stamp and the level together
+    int stampAndLevel() {
+        return self.stamp + self.level;
+    }
+}
+
+// MIX <number> - mixes the tanks about
+verb MixTanks {
+    grammar = {.mix, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (pickTank(n)?.level > 0) {
+            print($"Tank {n} has some.^");
+        } else {
+            print($"Tank {n} has none, or is not there.^");
+        }
+        Tank t = pickTank(n);
+        print($"Level or A's: {(t ?? tankA).level}.^");
+        int c = tankA.level <=> tankB.level;
+        if (c < 0) {
+            print("A orders before B.^");
+        } else if (c > 0) {
+            print("A orders after B.^");
+        } else {
+            print("A and B order together.^");
+        }
+        if (tankA.level == boiler.heat) {
+            print("A matches the heat.^");
+        }
+        int sum = 0;
+        for (Tank k in {tankA, tankB, tankC}) {
+            sum += k.level;
+            k.stamp = k.level;
+        }
+        print($"Sum: {sum}. Stamps: {tankA.stamp} {tankB.stamp} {tankC.stamp}. B both: {tankB.stampAndLevel()}.^");
+        tankA.level += tankB.level;
+        print("A takes B's: ");
+        print(tankA.level);
+        print(".^");
+        spill(gauge[1], 3);
+        int moved = pour(gauge[2], gauge[0], amount: 5);
+        print($"Gauge: {gauge[0]} {gauge[1]} {gauge[2]} (moved {moved}).^");
+        Bucket b = new Bucket(2);
+        b?.water += 3;
+        int left = 0;
+        do {
+            b.water--;
+            left++;
+        } while (b.water > 0);
+        print($"Emptied a bucket in {left}.^");
+        delete b;
+    }
+}

@@ -1,0 +1,134 @@
+Room A
+Room A. A bench and a rack. Room B is north.
+You can see a bench (on which are a bronze spur, a brass gear and a steel cog), a rack and an iron bolt here.
+> probe
+emit 6 6 8 32
+|bars|
+calc 10 6 14 2 7 0
+grades mid high mid goal high
+flags ot wt -
+span 2..9 1..11 narrow 4..6 cmp 3 true true
+bench 0 bench A rack rack A 6 deep true
+best iron bolt floor low heavier tin bolt asks 1
+top 12 20 0 20
+cog 20 true true false true
+> tally
+brass gear: size 3 grade mid flags - fit 1..3 teeth 12 big false cog weight 8
+steel cog: size 2 grade high flags w fit 0..0 teeth 20 big true cog weight 7
+bronze spur: size 2 grade mid flags - fit 0..0 teeth 10 big false cog weight 6
+iron bolt: size 1 grade mid flags - fit 0..0 weight 4
+tin bolt: size 4 grade low flags - fit 0..8 weight 9
+low 1 mid 3 high 1
+by weight tin bolt brass gear steel cog bronze spur iron bolt
+meshed
+tags
+Last the iron bolt; top brass gear; any oiled false.
+> oil brass gear
+The brass gear is oiled; flags o, bench uses 1, calls 1.
+> oil steel cog
+The steel cog is oiled; flags o, bench uses 2, calls 2.
+> fray tin bolt
+You can't see any such thing.
+> mesh brass gear
+The brass gear meshes with the steel cog (17); top 20, meshed 1.
+> mesh steel cog
+The steel cog meshes with the brass gear (24); top 24, meshed 2.
+> mesh iron bolt
+Only gears mesh.
+> tag iron bolt
+The iron bolt takes tag 2; tags 1, out 1.
+> tag brass gear
+The brass gear takes tag 4; tags 2, out 2.
+> tag steel cog
+The steel cog takes tag 6; tags 3, out 3.
+> tag bronze spur
+No tag is left.
+> grade iron bolt
+The iron bolt is middling.
+Now high; best iron bolt, asks 2.
+> grade iron bolt
+The iron bolt is at the goal.
+Now high; best iron bolt, asks 3.
+> grade steel cog
+The steel cog is at the goal.
+Now high; best steel cog, asks 4.
+> untag
+Tag 6 comes off the steel cog.
+> n
+Room B
+Room B. Bare boards. Room A is south.
+You can see a tin bolt and a flat washer here.
+> oil tin bolt
+The tin bolt is oiled; flags o, bench uses 3, calls 3.
+> fray tin bolt
+The tin bolt frays; grade low, flags ow.
+> oil flat washer
+The flat washer is oiled; flags o, bench uses 4, calls 4.
+> grade tin bolt
+The tin bolt is below the floor of low.
+Now mid; best tin bolt, asks 5.
+> grade flat washer
+The flat washer is middling.
+Now high; best flat washer, asks 6.
+> s
+Room A
+Room A. A bench and a rack. Room B is north.
+You can see a bench (on which are a bronze spur, a brass gear and a steel cog), a rack and an iron bolt here.
+> touch bench
+You feel nothing unexpected.
+> tally
+brass gear: size 3 grade mid flags ot fit 1..3 teeth 17 big true cog weight 8
+steel cog: size 2 grade high flags ot fit 0..0 teeth 24 big true cog weight 7
+bronze spur: size 2 grade mid flags - fit 0..0 teeth 10 big false cog weight 6
+iron bolt: size 1 grade high flags t fit 0..0 weight 5
+tin bolt: size 4 grade mid flags ow fit 0..8 weight 10
+low 0 mid 3 high 2
+by weight tin bolt brass gear steel cog bronze spur iron bolt
+meshed brass gear steel cog
+tags 2:iron bolt 4:brass gear
+Last the flat washer; top steel cog; any oiled true.
+> probe
+emit 6 6 8 32
+|bars|
+calc 10 6 14 5 7 4
+grades mid high mid goal high
+flags ot wt -
+span 2..9 1..11 narrow 4..6 cmp 3 true true
+bench 4 bench A rack rack A 6 deep true
+best flat washer floor low heavier tin bolt asks 7
+top 24 24 0 24
+cog 24 true true false true
+> survey
+survey flat washer high ow 7..11 slot 7 7 uses 14 asks 8
+opt 5 rack A 4 5 2
+gears 17 24 10
+spurs bronze spur 3 10
+No second spare.
+spare tag 9 on tin bolt
+widths 6 0 3 6 6 calls 5 102
+held brass gear/1 steel cog/1 tin bolt/1; washer flat washer 5 4 24 0 6 12
+pair 4..7 2..9 false 4
+statics 4 4 4 4 4 4
+spare tag 13 on tin bolt 5
+spare tag 15 on brass gear
+> mesh bronze spur
+The bronze spur meshes with the brass gear (14); top 24, meshed 3.
+> untag
+Tag 4 comes off the brass gear.
+> untag
+Tag 2 comes off the iron bolt.
+> untag
+No tags are out.
+> survey
+survey flat washer high ow 8..12 slot 8 8 uses 24 asks 9
+opt 5 rack A 4 5 2
+gears 17 24 14
+spurs bronze spur 3 14
+spare tag 9 on tin bolt
+spare tag 11 on brass gear
+widths 6 0 4 6 6 calls 6 102
+held brass gear/1 steel cog/1 tin bolt/1; washer flat washer 5 8 24 0 6 12
+pair 4..8 2..10 false 4
+statics 8 8 8 8 8 8
+spare tag 13 on tin bolt 9
+spare tag 15 on brass gear

@@ -390,6 +390,7 @@ void beguiler::runPostParseChecks() {
     parser.validateGlobalNameClashes();
     parser.validateVerbNameClashes();
     parser.validateEqualityPairs();
+    parser.resolveArrayInitialGlobals();
     parser.validateRequiredMembers();
     parser.renameI6KeywordNames();
     parser.resolveDeletes();

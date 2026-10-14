@@ -136,12 +136,12 @@ class OrderState : object {
     default bool IsFinal() { return false; }
 
     OrderState Refuse(string action) {
-        TransitionError err = new TransitionError(Name(), action);
+        TransitionError err = new TransitionError(StateName(), action);
         if (err == null) return self;
         throw err;
     }
 
-    string Name() {
+    string StateName() {
         switch (Code) {
             case eStatus.Pending:   return "pending";
             case eStatus.Paid:      return "paid";
@@ -321,7 +321,7 @@ class EventBus : object {
 int ShippedCount;
 
 void LogTransition(Order o, eStatus status) {
-    printLine($"[{o} -> {o.State.Name()}]");
+    printLine($"[{o} -> {o.State.StateName()}]");
 }
 
 void CountShipments(Order o, eStatus status) {
@@ -339,12 +339,12 @@ Order FindById(int id) {
 
 void Run(Order o, string command) {
     bool ok = o.Apply(command);
-    if (!ok) printLine($"{o} stays {o.State.Name()}.");
+    if (!ok) printLine($"{o} stays {o.State.StateName()}.");
 }
 
 void ShowOrder(Order o, bool withLines = true) {
     stringObj total = o.Total().Format();
-    printLine($"{o} #{o.Id}: {o.State.Name()}, {o.LineCount()} lines, total {total}, v{o.Version}, tag {o.Tag}.");
+    printLine($"{o} #{o.Id}: {o.State.StateName()}, {o.LineCount()} lines, total {total}, v{o.Version}, tag {o.Tag}.");
     if (!withLines) return;
     for (LineItem line in o.Lines) {
         stringObj sub = line.Subtotal().Format();
@@ -406,8 +406,8 @@ verb Query {
         printLine($"Ids {ids[0]} {ids[1]} {ids[2]}.");
         Order found = FindById(102);
         Order missing = FindById(999);
-        string foundName = found?.State.Name() ?? "none";
-        string missingName = missing?.State.Name() ?? "none";
+        string foundName = found?.State.StateName() ?? "none";
+        string missingName = missing?.State.StateName() ?? "none";
         printLine($"Found {foundName}, missing {missingName}.");
         stringObj refunded = Order.Refunded.Format();
         printLine($"Refunded {refunded}; stock bolt {stock.CountOf("bolt")}, nut {stock.CountOf("nut")}, gear {stock.CountOf("gear")}.");

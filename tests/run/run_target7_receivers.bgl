@@ -1,0 +1,117 @@
+// run_target7_receivers — members, methods and member-array steps on an accessor getter's result; casts
+// over a call's field (into a local and before `?.`); an ancestor cast over a downcast element; member
+// writes through a <linq> terminal; a conversion cast as a receiver; `is()` on an accessor getter result;
+// and writes into a member of a member-array element of a nested-array element.
+// EXPECT_OUTPUT: 2 hello2 1 4 1 6 three seven 1 1 1 3 13 113 114 two two one relay 1 1 2 1 3 4 0 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+class Bin : object {
+    int id;
+    array<int> marks[4];
+    Bin next = null;
+    Bin link() { return self; }
+    void hello() { print("hello"); print(id); print(" "); }
+    int weigh() { return 1; }
+}
+class Tray : Bin {
+    void addNote(string s) { print(s); print(" "); }
+    int weigh() { return 2; }
+}
+Bin binA { id = 1; }
+Bin binB { id = 2; }
+Tray trayB { }
+Tray trayC { }
+array<Bin> rack = { binA, binB };
+array<Bin> trays = { trayC };
+value class BinPick {
+    int at;
+    Bin operator () { return rack[at]; }
+    void operator = (int v) { at = v; }
+}
+object ns { BinPick cursor; }
+class Node : object {
+    int load;
+    string label;
+    Node bump() { load++; return self; }
+    Node self1() { return self; }
+}
+Node n1 { load = 1; label = "one"; }
+Node n2 { load = 2; label = "two"; }
+array<Node> nodes = {n1, n2};
+bool any(Node n) { return true; }
+value class Handle {
+    int idx;
+    Handle operator = (Handle o) { idx = o.idx; return self; }
+    explicit Node operator () { return nodes[idx]; }
+}
+array<Handle> handles[2];
+value class Peer {
+    Node _p;
+    Node operator () { return _p; }
+    void operator = (Node n) { _p = n; }
+}
+class Hub : object { Peer buddy; }
+class Relay : Node { int gain = 2; }
+Relay r1 { label = "relay"; }
+Hub hubA { }
+value class Gauge {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+}
+class Link : object {
+    Gauge level;
+    int m;
+    array<Link> links[2];
+}
+Link k1 { }
+Link k2 { links = {k1}; }
+array<array<Link>> rings = { {k1, k2} };
+void main() {
+    bglInit();
+    ns.cursor = 1;
+    print(ns.cursor.id); print(" ");
+    ns.cursor.hello();
+    ns.cursor.marks.append(4);
+    print(binB.marks.length); print(" "); print(binB.marks[0]); print(" ");
+    ns.cursor.marks[0] = 5; ns.cursor.marks[0] += 1;
+    print(binB.marks.length); print(" "); print(binB.marks[0]); print(" ");
+    binA.next = trayB;
+    ((Tray)binA.link().next)?.addNote("three");
+    Tray t = (Tray)binA.link().next; t.addNote("seven");
+    Bin b = trayC;
+    print(((Bin)((Tray)b)).weigh()); print(" ");
+    print(((Bin)((Tray)trays[0])).weigh()); print(" ");
+    Tray t2 = (Tray)b; print(((Bin)t2).weigh()); print(" ");
+    nodes.filter(any).last().bump();
+    print(n2.load); print(" ");
+    nodes.filter(any).last()?.load += 10;
+    print(n2.load); print(" ");
+    nodes.filter(any).last().load += 100;
+    print(n2.load); print(" ");
+    nodes.filter(any).last().load++;
+    print(n2.load); print(" ");
+    Handle h;
+    h.idx = 1;
+    print(((Node)h).label); print(" ");
+    print(((Node)h).self1().label); print(" ");
+    handles.length = 2;
+    handles[0].idx = 0;
+    print(((Node)handles[0]).label); print(" ");
+    hubA.buddy = r1;
+    print(hubA.buddy.label); print(" ");
+    print(hubA.buddy.is(Relay) ? 1 : 0); print(" ");
+    print(hubA.buddy.is(Node) ? 1 : 0); print(" ");
+    rings[0][1].links[0].level += 2;
+    print(k1.level); print(" ");
+    for (int j = 0; j < 1; j++) print(j + 1); print(" ");
+    rings[0][1].links[0].level = 3;
+    print(k1.level); print(" ");
+    rings[0][1].links[0].m = 3;
+    rings[0][1].links[0].m++;
+    print(k1.m); print(" ");
+    rings[0][1].links[0].m -= 4;
+    print(k1.m); print(" ");
+    print(binA.marks.length);
+}

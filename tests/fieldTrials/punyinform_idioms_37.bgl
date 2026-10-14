@@ -1,0 +1,862 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-seventh PunyInform program that leans on value classes: two rooms (Room A with
+// two carts, Room B with a scale); a `Price` value class (an `inline` member, a copy operator, `+`, `-`,
+// `*`, `+=` overloaded on `Price` and `int`, `++`, static `==`/`!=` beside instance `==`/`!=` taking an
+// int, an instance `<=>` with the derived orderings, `operator switch`, a static factory, methods
+// returning `Price` and `stringObj`, and a method added by a later `extend class`); a `Coord` value class
+// with instance `==`/`!=`/`+` and a `Span` subclass whose copy operator chains with `(Coord)self = o`; a
+// `Tag` value class owning a `stringObj`; a `Line` value class owning a `Price`, with a `ref Line` link,
+// a static counter and static operators; a `Cart` class with owned members (one with an inline-object
+// initializer), a static `Price`, a `ref Price` member bound to member-array slots and a member
+// `array<Price>`; a pooled `Ticket` class whose owned members are reset by `new`; an object with an owned
+// member given as a bare `{ … }`, a `ref Price` member and an `array<Price>` of inline objects; global
+// value-class variables, a global `array<Price>` of inline objects, a bare `{ … }`, a named instance and
+// a global variable, an `array<Coord>`, an `array<Span>`, an `array<Line>` with nested inline objects and
+// an `array<array<Price>>`; routines taking value classes by copy and by `ref` (array elements, members
+// and nested members as `ref` arguments), with value-class defaults, returning them through `?:`,
+// operators and recursion; `ref` locals bound to slots and members and rebound; value-class locals in
+// `for` heads, `while`, `switch`, ternaries and interpolation; operators on call results; <linq> chains
+// over value-class arrays (`filter` with a func value, a capturing lambda and a nested chain, `orderBy`
+// with and without a comparator, `take`, `skip`, `takeWhile`, `skipWhile`, `distinct`, `map`, `first`,
+// `last`, `count`, `any`, `all`) captured into local arrays; `<array>` operations (`indexOf`, `contains`,
+// `sort` with a lambda and an operator reference, `remove`, `removeValue`, `-=`, `+=`, `insert`, `swap`,
+// `reverse`, `pop`, `clear`); `func<>` values taking and returning value classes; and verbs add, unload,
+// swap, mix, issue, void, plus meta verbs menu, sorted, carts, spots, grid, tags, churn, weigh, deals,
+// calc and more.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#emitfirst { Constant bglStringDefaultSize 200; }
+#i6 { Constant bglStringPoolReserve 16; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// --- values -----------------------------------------------------------------------------------------
+
+value class Price {
+    inline int cents;
+    int marks;
+
+    Price operator = (Price o) {
+        cents = o.cents;
+        marks = o.marks;
+        return self;
+    }
+    Price operator + (Price o) {
+        Price r;
+        r.cents = cents + o.cents;
+        r.marks = marks + o.marks;
+        return r;
+    }
+    Price operator - (Price o) {
+        Price r;
+        r.cents = cents - o.cents;
+        r.marks = marks;
+        return r;
+    }
+    Price operator * (int n) {
+        Price r;
+        r.cents = cents * n;
+        r.marks = marks;
+        return r;
+    }
+    Price operator += (Price o) {
+        cents += o.cents;
+        marks++;
+        return self;
+    }
+    Price operator += (int n) {
+        cents += n;
+        return self;
+    }
+    Price operator ++ () {
+        cents++;
+        return self;
+    }
+    static bool operator == (Price a, Price b) { return a.cents == b.cents; }
+    static bool operator != (Price a, Price b) { return a.cents != b.cents; }
+    int operator <=> (Price o) { return cents - o.cents; }
+    emitter eBool operator switch (int v) { ($self.cents == $v) }
+    bool operator == (int c) { return cents == c; }
+    bool operator != (int c) { return cents != c; }
+
+    static Price of(int c) {
+        Price r;
+        r.cents = c;
+        return r;
+    }
+
+    Price half() {
+        Price r;
+        r.cents = cents / 2;
+        r.marks = marks;
+        return r;
+    }
+
+    stringObj text() {
+        stringObj s;
+        s = $"{cents}c";
+        if (marks > 0) s += $"/{marks}";
+        return s;
+    }
+}
+
+value class Coord {
+    inline int x;
+    inline int y;
+
+    Coord operator = (Coord o) {
+        x = o.x;
+        y = o.y;
+        return self;
+    }
+    Coord operator + (Coord o) {
+        Coord r;
+        r.x = x + o.x;
+        r.y = y + o.y;
+        return r;
+    }
+    bool operator == (Coord o) { return x == o.x && y == o.y; }
+    bool operator != (Coord o) { return x != o.x || y != o.y; }
+
+    int dist(Coord o) {
+        return absv(x - o.x) + absv(y - o.y);
+    }
+
+    Coord moved(int dx, int dy = 0) {
+        Coord r = self;
+        r.x += dx;
+        r.y += dy;
+        return r;
+    }
+}
+
+value class Span : Coord {
+    inline int len;
+
+    Span operator = (Span o) {
+        len = o.len;
+        (Coord)self = o;
+        return self;
+    }
+
+    Coord tip() {
+        return moved(len);
+    }
+}
+
+value class Tag {
+    stringObj text;
+    int uses;
+
+    Tag operator = (Tag o) {
+        text = o.text;
+        uses = o.uses;
+        return self;
+    }
+}
+
+value class Line {
+    inline Price unit;
+    inline int qty;
+    ref Line next;
+    static int made = 0;
+
+    Line operator = (Line o) {
+        unit = o.unit;
+        qty = o.qty;
+        made++;
+        return self;
+    }
+    static bool operator == (Line a, Line b) { return a.unit == b.unit && a.qty == b.qty; }
+    static bool operator != (Line a, Line b) { return !(a == b); }
+    static int  operator <=> (Line a, Line b) { return a.cost().cents - b.cost().cents; }
+
+    Price cost() {
+        return unit * qty;
+    }
+
+    int chainCost() {
+        if (!self.next) return cost().cents;
+        return cost().cents + next.chainCost();
+    }
+}
+
+int absv(int n) {
+    if (n < 0) return -n;
+    return n;
+}
+
+// --- globals ----------------------------------------------------------------------------------------
+
+Price fee = Price{ 2 };
+Price spent;
+Price ceiling = Price{ cents = 30; marks = 1; };
+Price fallback = fee;
+Price special { 9; }
+
+array<Price> menu = { Price{ 3 }, Price{ cents = 7; }, { 5 }, special, fee };
+array<Coord> spots = { { 1, 2 }, Coord{ 3, 4 }, Coord{ x = 0; y = 5; } };
+array<Span> spans[3];
+array<array<Price>> grid = { { Price{ 1 }, Price{ 2 } }, { Price{ 4 } } };
+array<Tag> tags[3];
+
+Coord home = Coord{ 0, 0 };
+Span ruler = Span{ 4, 1, 1 };
+Tag mainTag;
+Line deal = Line{ { 3 }, 2 };
+Line extra = Line{ unit = Price{ cents = 4; marks = 1; }; qty = 1; };
+array<Line> lines = { Line{ { 5 }, 1 }, deal, { Price{ 2 }, 3 } };
+array<Line> basket[4];
+
+func<bool, Price> cheapTest;
+func<Price, Price> doubler;
+int copies = 0;
+
+// --- routines ---------------------------------------------------------------------------------------
+
+Price sumOf(Price a, Price b, Price c = fee) {
+    return a + b + c;
+}
+
+void bump(ref Price p, int by = 1) {
+    p += by;
+}
+
+void swapPrices(ref Price a, ref Price b) {
+    Price t = a;
+    a = b;
+    b = t;
+}
+
+Price maxOf(Price a, Price b) {
+    return a > b ? a : b;
+}
+
+Price minOf(Price a, Price b) {
+    if (a <= b) return a;
+    return b;
+}
+
+Price withTax(Price p, Price tax = Price{ 1 }) {
+    return p + tax;
+}
+
+void bumpTwice(ref Price p) {
+    bump(p);
+    bump(p, 2);
+    ruin(p);
+}
+
+Price pickOf(bool first, ref Price a, Price b) {
+    return first ? a : b;
+}
+
+void ruin(Price p) {
+    p.cents = 999;
+    copies++;
+}
+
+Price twice(Price p) {
+    return p * 2;
+}
+
+bool cheap(Price p) {
+    return p.cents < 6;
+}
+
+Price cheapest(array<Price> a) {
+    Price best = a[0];
+    for (Price p in a) {
+        if (p < best) best = p;
+    }
+    return best;
+}
+
+bool sameSpot(Coord a, Coord b) {
+    return a == b;
+}
+
+Tag tagged(string w, int n) {
+    Tag t;
+    t.text = w;
+    t.uses = n;
+    return t;
+}
+
+void printPrices(string label, array<Price> a) {
+    print(label);
+    print(":");
+    for (Price p in a) print($" {p.cents}");
+    printLine(".");
+}
+
+// --- rooms and things -------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+class Cart : object {
+    Price total;
+    Price limit = Price{ cents = 20; };
+    ref Price best;
+    array<Price> lines[5];
+    int code;
+    static Price floor;
+    name = {.cart};
+
+    void description() {
+        printLine($"Cart {code}: total {total.cents}, limit {limit.cents}.");
+    }
+
+    Price sum() {
+        Price s;
+        for (Price p in lines) s += p;
+        return s;
+    }
+
+    bool add(Price p) {
+        if (total + p > limit) return false;
+        lines.append(p);
+        total += p;
+        if (!best || p > best) best := lines[lines.length - 1];
+        return true;
+    }
+
+    Price line(int i) {
+        return lines[i];
+    }
+
+    Price room() {
+        return limit - total;
+    }
+
+}
+
+class Ticket[2] : object {
+    Price fare = Price{ cents = 1; };
+    Coord seat;
+    Line item;
+    int num;
+
+    void create(int n, Price f) {
+        num = n;
+        fare += f;
+        seat.x = n;
+        seat.y++;
+        item.unit = f;
+        item.qty += n;
+    }
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Two carts. A doorway leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A scale. A doorway leads west.";
+    w_to = roomA;
+}
+
+Cart cartX {
+    "cart X";
+    parent = roomA;
+    name = {.x};
+    attributes = {static};
+    code = 1;
+}
+
+Cart cartY {
+    "cart Y";
+    parent = roomA;
+    name = {.y};
+    attributes = {static};
+    code = 2;
+    limit = Price{ 12 };
+}
+
+object scale {
+    "scale";
+    parent = roomB;
+    name = {.scale};
+    description = "A flat scale.";
+    attributes = {static, supporter};
+    Price load = { 12 };
+    ref Price watched;
+    int weighed = 0;
+    array<Price> weights = { Price{ 1 }, Price{ cents = 4; }, { 3 }, special };
+
+    Price heaviest() {
+        Price h = weights[0];
+        for (Price w in weights) if (w > h) h = w;
+        return h;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+Cart asCart(object o) {
+    return o?.is(Cart) ? (Cart)o : null;
+}
+
+verb AddTo {
+    grammar = {.add, NUMBER, .to, NOUN};
+    void handler() {
+        Cart c = asCart(second);
+        if (!c?) {
+            printLine($"{cThe(second)} takes no prices.");
+            return;
+        }
+        Price p = Price.of(parsed_number);
+        if (!c.add(p)) {
+            printLine($"Cart {c.code} can't take {p.cents}; room {c.room().cents}.");
+            return;
+        }
+        spent += p;
+        printLine($"Cart {c.code} takes {p.cents}: total {c.total.cents} ({c.total.marks} mark(s)), best {c.best.cents}, room {c.room().cents}.");
+    }
+}
+
+verb Unload {
+    grammar = {.unload, NUMBER, .from, NOUN};
+    void handler() {
+        Cart c = asCart(second);
+        int i = parsed_number;
+        if (!c? || i >= c.lines.length) {
+            printLine("Nothing there.");
+            return;
+        }
+        Price gone = c.lines[i];
+        c.lines.remove(i);
+        c.total = c.sum();
+        if (c.lines.length > 0) c.best := c.lines[0];
+        printLine($"Cart {c.code} drops {gone.cents}; total {c.total.cents}, {c.lines.length} line(s) left.");
+    }
+}
+
+verb SwapIt {
+    grammar = {.swap, NUMBER};
+    void handler() {
+        int i = parsed_number;
+        if (i >= menu.length - 1) i = 0;
+        int j = i + 1;
+        swapPrices(menu[i], menu[j]);
+        swapPrices(fee, fallback);
+        bump(menu[0]);
+        bump(cartX.total, 3);
+        printPrices("Menu", menu);
+        printLine($"Fee {fee.cents}, fallback {fallback.cents}, cart X total {cartX.total.cents}.");
+    }
+}
+
+verb ShowMenu {
+    meta = true;
+    grammar = {.menu};
+    void handler() {
+        printPrices("Menu", menu);
+        array<Price> view[5];
+        view = menu.orderBy();
+        printPrices("Sorted", view);
+        view = menu.orderBy((Price a, Price b) => b.cents - a.cents);
+        printPrices("Down", view);
+        view = menu.filter(cheapTest);
+        printPrices("Cheap", view);
+        printLine($"{menu.filter((Price p) => p.cents > 4).count()} over 4; any over 8: {(menu.any((Price p) => p.cents > 8)) ? "yes" : "no"}; all over 1: {(menu.all((Price p) => p > Price{ 1 })) ? "yes" : "no"}.");
+        printLine($"Index of 7: {menu.indexOf(Price{ 7 })}; has 9: {(menu.contains(special)) ? "yes" : "no"}; has 4: {(menu.contains(Price.of(4))) ? "yes" : "no"}.");
+        printLine($"First {menu.first().cents}, last {menu.last().cents}, cheapest {cheapest(menu).cents}, max of first two {maxOf(menu[0], menu[1]).cents}, min {minOf(menu[0], menu[1]).cents}.");
+        printLine($"Sum of first three {sumOf(menu[0], menu[1], menu[2]).cents}; with fee {sumOf(menu[0], menu[1]).cents}; named {sumOf(b: Price{ 1 }, a: special).cents}.");
+        printLine($"Doubled first {doubler(menu[0]).cents}; twice special {twice(special).cents}; half special {special.half().cents}.");
+        Price pick = menu.length > 3 ? menu[3] : fee;
+        printLine($"Pick {pick.cents} ({pick.text()}); special {special.text()}; ceiling {ceiling.text()}.");
+    }
+}
+
+verb Sorted {
+    meta = true;
+    grammar = {.sorted};
+    void handler() {
+        array<Price> work[6];
+        work = menu;
+        work.sort();
+        printPrices("Up", work);
+        work.sort((Price a, Price b) => b <=> a);
+        printPrices("Down", work);
+        work.reverse();
+        work.swap(0, 1);
+        printPrices("Shuffled", work);
+        work -= Price{ 5 };
+        work += Price{ 6 };
+        work.insert(0, Price.of(8));
+        printPrices("Edited", work);
+        Price top = work.pop();
+        printPrices("Popped", work);
+        array<Price> part[3];
+        part = work.skip(1).take(2);
+        printPrices("Part", part);
+        array<Price> uniq[5];
+        uniq = menu.distinct();
+        printLine($"Top {top.cents}; part first {part.first().cents}; distinct {uniq.length}; work {work.length}, menu {menu.length}.");
+    }
+}
+
+verb ShowCarts {
+    meta = true;
+    grammar = {.carts};
+    void handler() {
+        for (object o in bgl.world.instances(Cart)) {
+            Cart c = (Cart)o;
+            c.description();
+            print("  lines:");
+            for (Price p in c.lines) print($" {p.cents}");
+            printLine(".");
+            Price s = c.sum();
+            printLine($"  sum {s.cents} ({(s == c.total) ? "matches" : "differs"}); best {(c.best) ? c.best.cents : 0}; room {c.room().cents}; half limit {c.limit.half().cents}.");
+        }
+        Price both = cartX.total + cartY.total;
+        printLine($"Both {both.cents}; X bigger: {(cartX.total > cartY.total) ? "yes" : "no"}; spent {spent.cents} in {spent.marks} add(s).");
+    }
+}
+
+verb ShowSpots {
+    meta = true;
+    grammar = {.spots};
+    void handler() {
+        for (int i = 0; i < spots.length; i++) {
+            Coord s = spots[i] + Coord{ 1, 1 };
+            print($"{spots[i].x},{spots[i].y}->{s.x},{s.y} ");
+        }
+        printLine("");
+        spans.clear();
+        spans += ruler;
+        spans.append(Span{ 2, 3, 4 });
+        spans += spans[1];
+        spans[2].len = 7;
+        for (Span sp in spans) {
+            Coord t = sp.tip();
+            print($"[{sp.x},{sp.y}+{sp.len}={t.x},{t.y}]");
+        }
+        printLine("");
+        Coord base = spans[1];
+        Span copy = spans[2];
+        copy.x = 99;
+        printLine($"Base {base.x},{base.y}; copy {copy.x}/{spans[2].x}; ruler tip {ruler.tip().x}; moved {home.moved(2, 3).x},{home.moved(dy: 5, dx: 1).y}.");
+        printLine($"Spans 1 and 2 at one spot: {(sameSpot(spans[1], spans[2])) ? "yes" : "no"}; spot 1 is at span 1: {(spots[1] == spans[1]) ? "yes" : "no"}.");
+    }
+}
+
+verb ShowGrid {
+    meta = true;
+    grammar = {.grid};
+    void handler() {
+        int total = 0;
+        for (int r = 0; r < grid.length; r++) {
+            print($"Row {r}:");
+            for (int c = 0; c < grid[r].length; c++) {
+                print($" {grid[r][c].cents}");
+                total += grid[r][c].cents;
+            }
+            printLine(".");
+        }
+        grid[0][1] = grid[1][0] + fee;
+        grid[1][0].cents += 10;
+        printLine($"Total {total}; now {grid[0][1].cents} and {grid[1][0].cents}; first row sum {sumOf(grid[0][0], grid[0][1], Price{ 0 }).cents}.");
+    }
+}
+
+verb ShowTags {
+    meta = true;
+    grammar = {.tags};
+    void handler() {
+        mainTag = tagged("main", 1);
+        tags.clear();
+        tags += mainTag;
+        tags += tagged("side", 2);
+        tags.append(tags[1]);
+        tags[2].text += "-copy";
+        tags[2].uses++;
+        mainTag.text += "!";
+        for (Tag t in tags) print($"[{t.text}:{t.uses}]");
+        printLine("");
+        ref Tag rt := tags[1];
+        rt.text = "bound";
+        rt := tags[0];
+        rt.uses = 5;
+        printLine($"Main {mainTag.text} {mainTag.uses}; slot 0 {tags[0].text} {tags[0].uses}; slot 1 {tags[1].text}; lengths {tags[2].text.length}.");
+    }
+}
+
+verb Mix {
+    grammar = {.mix, NUMBER};
+    void handler() {
+        int i = parsed_number % menu.length;
+        Price was = menu[i];
+        menu[i] += Price{ 1 };
+        menu[i]++;
+        menu[i].cents *= 2;
+        if (cartX.lines.length > 0) cartX.lines[0] += 1;
+        Price p = (menu[i] > fee * 5) ? menu[i] : fee * 5;
+        ref Price rp := cartX.total;
+        rp = rp + menu[i].half();
+        bumpTwice(rp);
+        printLine($"Slot {i}: {was.cents} -> {menu[i].cents} ({menu[i].marks} mark(s)); pick {p.cents}; cart X total {cartX.total.cents}, first line {cartX.lines[0].cents}; copies {copies}.");
+        rp := cartY.total;
+        rp += Price.of(i);
+        printLine($"Cart Y total {cartY.total.cents}; X and Y equal: {(cartX.total == cartY.total) ? "yes" : "no"}; differ: {(cartX.total != cartY.total) ? "yes" : "no"}; chosen {pickOf(i > 1, rp, fee).cents}.");
+    }
+}
+
+verb Weigh {
+    meta = true;
+    grammar = {.weigh};
+    void handler() {
+        Price s;
+        for (int i = 0; i < scale.weights.length; i++) s += scale.weights[i];
+        print($"Weights {s.cents} in {s.marks}, heaviest {scale.heaviest().cents}; steps:");
+        for (Price step = Price.of(1); step < fee * 3; step += 2) print($" {step.cents}");
+        printLine(".");
+        Price grow = s;
+        int rounds = 0;
+        while (grow < ceiling) {
+            grow = grow * 2;
+            rounds++;
+        }
+        switch (grow.cents) {
+            case 34: printLine($"Grew to 34 in {rounds}.");
+            case 68: printLine($"Grew to 68 in {rounds}.");
+            default: printLine($"Grew to {grow.cents} in {rounds}.");
+        }
+        printLine($"Taxed {withTax(s).cents}, taxed by fee {withTax(s, fee).cents}, by name {withTax(tax: special, p: fee).cents}; capped {grow.capped(ceiling).cents}/{fee.capped(ceiling).cents}.");
+        int shared = menu.filter((Price p) => grid[0].any((Price q) => q == p)).count();
+        Price firstBig = menu.filter((Price p) => p >= Price{ 5 }).first();
+        printLine($"Shared with grid row 0: {shared}; first big {firstBig.cents}; larger of fee and special {(fee > special ? fee : special).cents}; any equal to the heaviest weight: {(menu.any((Price p) => p == scale.heaviest())) ? "yes" : "no"}.");
+        array<Price> dup[5];
+        dup += { Price{ 4 }, Price{ 2 }, Price{ 4 }, fee, Price.of(2) };
+        array<Price> once[5];
+        once = dup.distinct();
+        printPrices("Distinct", once);
+        dup.removeValue(Price{ 4 });
+        printPrices("Without 4", dup);
+        printLine($"Cheapest of dup {cheapest(dup).cents}; same as fee {(cheapest(dup) == fee) ? "yes" : "no"}; scale load above special {(scale.load > special) ? "yes" : "no"}.");
+    }
+}
+
+extend class Price {
+    Price capped(Price top) {
+        if (self > top) return top;
+        return self;
+    }
+}
+
+Price build(int n) {
+    if (n <= 0) return Price.of(1);
+    return build(n - 1) * 2 + Price.of(n);
+}
+
+Line bigger(Line a, Line b) {
+    if (a > b) return a;
+    return b;
+}
+
+verb Deals {
+    meta = true;
+    grammar = {.deals};
+    void handler() {
+        Line.made = 0;
+        for (Line l in lines) print($" {l.unit.cents}x{l.qty}={l.cost().cents}");
+        printLine($"; copies {Line.made}.");
+        Line.made = 0;
+        Line top = bigger(lines[0], lines[1]);
+        Line local = deal;
+        local.unit.cents = 11;
+        local.qty++;
+        printLine($"Bigger {top.unit.cents}x{top.qty}; local {local.cost().cents}, deal {deal.cost().cents}; copies {Line.made}.");
+        printLine($"Deal is line 1: {(deal == lines[1]) ? "yes" : "no"}; local is deal: {(local != deal) ? "no" : "yes"}; line 2 cheaper than extra: {(lines[2] < extra) ? "yes" : "no"}; order {(lines[0] <=> lines[2])}.");
+        basket.clear();
+        basket += lines[2];
+        basket += extra;
+        basket.append(Line{ { 1 }, 9 });
+        basket.insert(1, deal);
+        basket[0].next := basket[1];
+        basket[1].next := basket[2];
+        print("Order:");
+        for (int i = 0; i < basket.length; i++) print($" {basket[i].cost().cents}");
+        printLine($"; chain from 0 costs {basket[0].chainCost()}, from 2 {basket[2].chainCost()}.");
+        basket.sort();
+        print("Sorted:");
+        for (Line l in basket) print($" {l.cost().cents}");
+        printLine($"; index of deal {basket.indexOf(deal)}; has extra {(basket.contains(extra)) ? "yes" : "no"}; dearest {basket.orderBy().last().cost().cents}.");
+        int many = lines.filter((Line l) => l.qty > 1).count();
+        bool anyFive = lines.any((Line l) => l.unit == Price{ 5 });
+        printLine($"{many} line(s) of more than one; a 5 unit: {anyFive ? "yes" : "no"}; total qty {lines[0].qty + lines[1].qty + lines[2].qty}.");
+    }
+}
+
+verb Calc {
+    meta = true;
+    grammar = {.calc, NUMBER};
+    void handler() {
+        int n = parsed_number % 6;
+        Price a = build(n);
+        printLine($"Build {n}: {a.cents}; build 2 + build 3: {(build(2) + build(3)).cents}; equal builds: {(build(n) == build(n)) ? "yes" : "no"}.");
+        printLine($"Twice fee is fee taxed by fee: {(twice(fee) == withTax(fee, fee)) ? "yes" : "no"}; twice special over taxed special: {(twice(special) > withTax(special)) ? "yes" : "no"}.");
+        printLine($"Sum {(twice(fee) + twice(special)).cents}; max {maxOf(twice(fee), withTax(special)).cents}; nested {sumOf(maxOf(fee, special), minOf(fee, special), build(1)).cents}.");
+        Price c = n > 2 ? build(n) : twice(build(n));
+        Price d = (n % 2 == 0) ? fee : special;
+        printLine($"Chosen {c.cents}, {d.cents}; via text {build(n).text()}; half of build {build(n).half().cents}; capped {build(n).capped(ceiling).cents}.");
+        int tot = 0;
+        for (auto p in menu) tot += p.cents;
+        array<var> cents[8];
+        cents = menu.map((Price p) => p.cents);
+        array<Price> front[5];
+        front = menu.takeWhile((Price p) => p < Price{ 10 });
+        printLine($"Menu total {tot}; mapped first {cents[0]}, {cents.length} value(s); front {front.length}, skipped {menu.skipWhile((Price p) => p < Price{ 10 }).count()}.");
+    }
+}
+
+Tag relabel(Tag t, string suffix) {
+    Tag r = t;
+    r.text += suffix;
+    r.uses++;
+    return r;
+}
+
+verb Churn {
+    meta = true;
+    grammar = {.churn, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        Tag t = tagged("t", 0);
+        for (int i = 0; i < n; i++) {
+            Tag u = relabel(t, ".");
+            t = u;
+            if (i % 2 == 0) tags[0] = relabel(tags[0], "+");
+        }
+        int busy = tags.filter((Tag g) => g.uses > 1).count();
+        bool longOne = tags.any((Tag g) => g.text.length > 6);
+        printLine($"Churned {n}: {t.text} ({t.uses}); slot 0 {tags[0].text} ({tags[0].uses}); busy {busy}; long {longOne ? "yes" : "no"}.");
+        Cart.floor = menu[0];
+        Cart.floor += fee;
+        scale.watched := menu[1];
+        scale.watched += 1;
+        ruin(menu[1]);
+        ruin(scale.watched);
+        switch (Cart.floor) {
+            case 6:  printLine("Floor is 6.");
+            case 7:  printLine("Floor is 7.");
+            default: printLine($"Floor is {Cart.floor.cents}.");
+        }
+        switch (menu[1]) {
+            case 6:  printLine($"Menu 1 is 6; watched {scale.watched.cents}.");
+            default: printLine($"Menu 1 is {menu[1].cents}; watched {scale.watched.cents}.");
+        }
+        printLine($"Floor under special: {(Cart.floor < special) ? "yes" : "no"}; floor by ref {pickOf(true, Cart.floor, fee).cents}; copies {copies}.");
+    }
+}
+
+verb More {
+    meta = true;
+    grammar = {.more, NUMBER};
+    void handler() {
+        int n = parsed_number % 5;
+        Line l = Line{ fee, n };
+        Line m = Line{ unit = special; qty = n + 1; };
+        printLine($"Lines {l.cost().cents} and {m.cost().cents}; fee is 2: {(fee == 2) ? "yes" : "no"}; special isn't 9: {(special != 9) ? "yes" : "no"}; fee is fee: {(fee == fee) ? "yes" : "no"}.");
+        lines[0].unit.cents += 1;
+        lines[0].unit += fee;
+        lines[2].unit = special;
+        print($"Units {lines[0].unit.cents}/{lines[0].unit.marks} {lines[2].unit.cents}; ");
+        if (basket.length > 1) {
+            basket[0].next := basket[1];
+            basket[0].next.qty++;
+            print($"next qty {basket[1].qty}; ");
+        }
+        basket.sort(Line::operator <=>);
+        print("by ref:");
+        for (Line k in basket) print($" {k.cost().cents}");
+        printLine(".");
+        if (cartX.lines.length > 1) {
+            printLine($"X lines 0 and 1: {cartX.line(0).cents}, {cartX.line(1).cents}; equal {(cartX.line(0) == cartX.line(1)) ? "yes" : "no"}; sum {(cartX.line(0) + cartX.line(1)).cents}.");
+        }
+        array<Price> held[5];
+        held = cartX.lines;
+        cartY.lines = menu;
+        printPrices("Held", held);
+        print("Y now:");
+        for (Price p in cartY.lines) print($" {p.cents}");
+        printLine($"; Y total by sum {cartY.sum().cents}.");
+        array<Coord> pts[4];
+        pts += ruler;
+        pts += spots[2];
+        pts.append(home.moved(n));
+        printLine($"Points {pts[0].x},{pts[0].y} {pts[1].x},{pts[1].y} {pts[2].x},{pts[2].y}; ruler is point 0: {(ruler == pts[0]) ? "yes" : "no"}; index of home moved {pts.indexOf(Coord{ n, 0 })}.");
+    }
+}
+
+Ticket held1;
+Ticket held2;
+
+verb Issue {
+    grammar = {.issue, NUMBER};
+    void handler() {
+        Ticket t = new Ticket(parsed_number, menu[parsed_number % 5]);
+        if (!t?) {
+            printLine("No tickets left.");
+            return;
+        }
+        if (!held1?) held1 = t;
+        else held2 = t;
+        Price lim = Price.of(parsed_number);
+        int under = menu.filter((Price p) => p < lim).count();
+        func<Price> mk = () => t.fare * 2;
+        printLine($"Ticket {t.num}: fare {t.fare.cents} ({t.fare.marks}), seat {t.seat.x},{t.seat.y}, item {t.item.cost().cents}; {under} under {lim.cents}; doubled {mk().cents}.");
+    }
+}
+
+verb Void {
+    grammar = {.void};
+    void handler() {
+        if (held2?) {
+            printLine($"Ticket {held2.num} voided at {held2.fare.cents}.");
+            delete held2;
+            held2 = null;
+            return;
+        }
+        if (held1?) {
+            printLine($"Ticket {held1.num} voided at {held1.fare.cents}.");
+            delete held1;
+            held1 = null;
+            return;
+        }
+        printLine("No tickets held.");
+    }
+}
+
+bool Initialise() {
+    cheapTest = cheap;
+    doubler = (Price p) => p * 2;
+    rfalse;
+}

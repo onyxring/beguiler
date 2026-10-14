@@ -1,0 +1,39 @@
+// run_target7_values — `!x` on a bare class-typed name (a `ref` member inside its class, a value-class
+// local, a reference-class local) combined with `||` and `&&` and stored into a bool; and a `ref` local
+// declared bound to an element of the same value class.
+// EXPECT_OUTPUT: unbound bound 0 0 0 1 1 9
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+value class Nn { int c; Nn operator = (Nn o) { c = o.c; return self; } }
+class Rc : object { int c; }
+class Holder : object {
+    ref Nn best;
+    void test(bool ok) {
+        if (!best || ok) print("unbound "); else print("bound ");
+    }
+    bool missing() { bool z = !best; return z; }
+}
+Nn g;
+Holder h { }
+Rc r1 { }
+array<Nn> ns[2];
+void main() {
+    bglInit();
+    bool ok = false;
+    h.test(ok);
+    h.best := g;
+    h.test(ok);
+    print(h.missing() ? 1 : 0); print(" ");
+    Nn loc;
+    Rc rl = r1;
+    Rc none = null;
+    bool z = !loc;
+    print(z ? 1 : 0); print(" ");
+    print(!rl || ok ? 1 : 0); print(" ");
+    print(!none && !ok ? 1 : 0); print(" ");
+    print(!none ? 1 : 0); print(" ");
+    ns.length = 2;
+    ref Nn r := ns[1];
+    r.c = 9;
+    print(ns[1].c);
+}

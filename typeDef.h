@@ -233,6 +233,7 @@ class expression {
         // A name cast to one of its ancestors (`(Coin)t`): the text, and the type it was, so an operator
         // applied to it runs the ancestor's own.
         string upcastText, upcastFrom;
+        string nullableText;   // a `?.` chain's temporary: the value it leaves, which is null when the chain stopped
 
         string text() const {
             string result;

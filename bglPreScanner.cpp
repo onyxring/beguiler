@@ -192,6 +192,12 @@ void bglParser::preScanTypePathFixup(const string& path, string* slot){
     preScanFixups.push_back([this, slot, path]{ if(*slot == path) if(string r = resolveNamespacedType(path); !r.empty()) *slot = r; });
 }
 
+// A member array stub's `ref` and size, so a use above the declaration addresses it the same way.
+void bglParser::preScanArrayStubShape(arrayDeclaration& ad, bool isRef, token afterName, token sizeTok){
+    ad.isRefLocal = isRef;
+    if(afterName.is(token::bracketOpen) && sizeTok.is(eTokenType::integer)) ad.arraySize = atoi(sizeTok.value.c_str());
+}
+
 void bglParser::preScanCaptureParams(vector<paramDef*>& out){
     // Opening '(' already consumed. Capture each `type name [= default]` up to matching ')'.
     // Defaults, nested parens (in default exprs), and generic suffixes on param types are all tolerated.
@@ -611,7 +617,8 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
         if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
         if(t.is("explicit")) t = file.getToken();
         if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-        if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+        bool memberIsRef = false;
+        if(t.is("ref")){ memberIsRef = true; t = file.getToken(); }
         if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
 
         // Namespace-redirect members become resolution stubs so dotted resolution (bgl.asm,
@@ -699,7 +706,9 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
                     }
                     vd.name = memberName.value;
                     vd.displayName = memberName.originalValue;
-                    vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : t.value;
+                    vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : isArr ? string("array") : t.value;   // a rawArray is an array with isRaw, as its declaration
+                    if(isArr) preScanArrayStubShape(static_cast<arrayDeclaration&>(vd), memberIsRef, afterName, file.peekToken());
+                    vd.isRefLocal = memberIsRef;
                     vd.isPrePassStub = true;
                     obj->members.push_back(&vd);
                     stubVd = &vd;
@@ -762,6 +771,8 @@ void bglParser::drainDeferredClassBases(){
             if(string root = implicitRootName(db.cls); !root.empty()) baseNames.push_back(root);
         for(const string& baseName : baseNames){
             classDef* base = languageService.findClass(baseName);
+            if(base == nullptr && baseName.find('.') != string::npos)
+                if(string r = resolveNamespacedType(baseName); !r.empty()) base = languageService.findClass(r);
             if(base == nullptr) continue;
             if(find(db.cls->baseClasses.begin(), db.cls->baseClasses.end(), base) != db.cls->baseClasses.end()) continue;
             set<classDef*> seen;
@@ -1124,7 +1135,7 @@ void bglParser::preScanExtend(token& tok){
                                 ad.isByteArray = ad.elementType == "char" && !ad.isRaw;
                             }
                             vd.name = memberName.value;
-                            vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : t.value;
+                            vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : isArr ? string("array") : t.value;
                             if(!typePath.empty()) preScanTypePathFixup(typePath, &vd.type.name);
                             vd.isInline = memberIsInline;
                             vd.isStatic = memberIsStatic;
@@ -1212,7 +1223,7 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
           do {
               token baseTok = file.getToken();
               if(!baseTok.is(eTokenType::identifier) && !baseTok.isDataType()){ t = baseTok; break; }
-              db.baseNames.push_back(baseTok.value);
+              db.baseNames.push_back(baseTok.is(eTokenType::identifier) ? preScanTypePath(baseTok, nullptr) : baseTok.value);   // `kit.part`
               t = file.getToken();
           } while(t.is(","));
           if(cls != nullptr && !db.baseNames.empty()) deferredClassBases.push_back(db);
@@ -1267,23 +1278,41 @@ void bglParser::preScanClassBody(classDef* cls){
               // routines, and stubbing them as variables produced a `global` that
               // collided with the routine's own name.
               token afterName = file.peekToken();
-              bool isStaticVar = (typeTok.isDataType() || pathType)
+              bool isStaticArr = (typeTok.is("array") || typeTok.is("rawarray")) && staticGeneric.size() > 2;
+              // A class declared further down lexes as an identifier; `Type name;` is still a variable.
+              bool isStaticVar = (typeTok.isDataType() || pathType || typeTok.is(eTokenType::identifier))
                               && memberName.is(eTokenType::identifier)
                               && !memberName.is("operator")
                               && (afterName.is(token::assignment)
-                                  || afterName.is(token::endStatement));
+                                  || afterName.is(token::endStatement)
+                                  || (isStaticArr && afterName.is(token::bracketOpen)));
               if(isStaticVar){
                   bool exists = false;
                   for(typeMember* m : cls->members)
                       if(m->name == memberName.value){ exists = true; break; }
                   if(!exists){
-                      variableDeclaration& vd = *(new variableDeclaration());
+                      variableDeclaration& vd = isStaticArr ? *(new arrayDeclaration()) : *(new variableDeclaration());
+                      if(isStaticArr){
+                          auto& ad = static_cast<arrayDeclaration&>(vd);
+                          ad.elementType = staticGeneric.substr(1, staticGeneric.size() - 2);
+                          ad.isRaw = typeTok.is("rawarray");
+                          ad.isByteArray = ad.elementType == "char" && !ad.isRaw;
+                          preScanArrayStubShape(ad, false, afterName, file.peekToken(2));
+                      }
                       vd.name = memberName.value;
-                      vd.type.name = typeTok.value == "func" ? "func" + staticGeneric : typeTok.value;
+                      vd.type.name = typeTok.value == "func" ? "func" + staticGeneric
+                                   : isStaticArr ? (static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : "array") : typeTok.value;
                       vd.isStatic = true;
                       vd.isPrePassStub = true;
                       cls->members.push_back(&vd);
                       if(pathType) preScanTypePathFixup(typePath, &vd.type.name);
+                      // Its global array, so a use above the class addresses it as the declaration will.
+                      if(isStaticArr && languageService.findGlobalAs<variableDeclaration>("_bgl_" + cls->name + "_" + vd.name) == nullptr){
+                          auto* g = new arrayDeclaration(static_cast<arrayDeclaration&>(vd));
+                          g->name = g->displayName = "_bgl_" + cls->name + "_" + vd.name;
+                          g->isPrePassStub = true;
+                          languageService.globals.push_back(g);
+                      }
                   }
               }
               // A static operator (`static int operator <=> (A a, A b)`): a stub, so a reference or use
@@ -1306,7 +1335,7 @@ void bglParser::preScanClassBody(classDef* cls){
                   if(!exists) cls->members.push_back(&fd);
               }
               // A static method: a stub with its signature, so a call above it in the class resolves.
-              else if((typeTok.isDataType() || pathType) && memberName.is(eTokenType::identifier)
+              else if((typeTok.isDataType() || pathType || typeTok.is(eTokenType::identifier)) && memberName.is(eTokenType::identifier)
                       && !memberName.is("operator") && afterName.is(token::parenOpen)){
                   file.getToken();   // '('
                   vector<paramDef*> ps;
@@ -1348,12 +1377,14 @@ void bglParser::preScanClassBody(classDef* cls){
               // when the class is only a pre-scan stub at the use site — i.e. defined
               // AFTER the #include that uses it. Order-independence requires the stub to
               // carry the full signature, not just the name.
-              bool sawEmitter = false;
+              bool sawEmitter = cls != nullptr && cls->isEmitterClass;   // an emitter class's members are emitters
               bool sawInline  = false;
+              bool sawRef     = false;
               while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref") || bt.is("inline")
                     || bt.is("const") || bt.is("typesealed") || preScanIsMemberQualifier(bt)){
                   if(bt.is("emitter")) sawEmitter = true;
                   if(bt.is("inline"))  sawInline  = true;
+                  if(bt.is("ref"))     sawRef     = true;
                   bt = file.getToken();
               }
               if(bt.isDataType() || bt.is(eTokenType::identifier)){
@@ -1546,7 +1577,9 @@ void bglParser::preScanClassBody(classDef* cls){
                           }
                           vd.name = pname;
                           vd.type.name = isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray"
-                                       : typeTok.value == "func" ? "func" + memberGeneric : typeTok.value;   // a func<> keeps its signature
+                                       : typeTok.value == "func" ? "func" + memberGeneric : isArr ? string("array") : typeTok.value;   // a func<> keeps its signature
+                          if(isArr) preScanArrayStubShape(static_cast<arrayDeclaration&>(vd), sawRef, afterName, file.peekToken(2));
+                          vd.isRefLocal = sawRef;
                           vd.isInline = sawInline;   // carry inline so braceArgHints treats the class as inline-constructible pre-main-pass
                           vd.isPrePassStub = true;
                           cls->members.push_back(&vd);
@@ -1761,7 +1794,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                 if(t.is("replace")) t = file.getToken();   // `replace void report()`: a member like any other here
                 if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                 if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-                if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+                bool memberIsRef = false;
+                if(t.is("ref")){ memberIsRef = true; t = file.getToken(); }
                 if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
                 if(preScanNamespaceRedirect(t, objStub)){ t = file.getToken(); continue; }
                 // A member typed by one of the object's own aliases (`alias cents for Cents; cents takings;`).
@@ -1920,6 +1954,9 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                             vd.displayName = memberName.originalValue;
                             vd.type = languageService.getType(isArr && static_cast<arrayDeclaration&>(vd).isByteArray ? "bytearray" : t.value);
                             if(t.value == "func" && genericSuffix.size() > 2) vd.type.name = "func" + genericSuffix;   // its signature, for a call above it
+                            if(isArr && !static_cast<arrayDeclaration&>(vd).isByteArray) vd.type.name = "array";   // a rawArray too, with isRaw
+                            if(isArr) preScanArrayStubShape(static_cast<arrayDeclaration&>(vd), memberIsRef, afterName, file.peekToken());
+                            vd.isRefLocal = memberIsRef;
                             vd.isPrePassStub = true;
                             bool exists = false;
                             for(typeMember* m : objStub->members)
@@ -2040,7 +2077,8 @@ void bglParser::preScanAttribute(bool isExtern){
     token nameTok = file.getToken();
     string nameStr = nameTok.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
-    preScanI6NameClause(nameStr);
+    string asI6Name;   // a member of that name, in a class above, is renamed away from it
+    preScanI6NameClause(nameStr, &asI6Name);
     bool alreadyReg = false;
     for(typeDef* g : languageService.globals)
         if(auto* vd = dynamic_cast<variableDeclaration*>(g))
@@ -2052,6 +2090,7 @@ void bglParser::preScanAttribute(bool isExtern){
         stub.isPrePassStub = true;
         stub.isExternal = isExtern;
         if(!isExtern && bglLanguageService::isI6StatementKeyword(nameStr)){ stub.i6name = "_" + nameStr; stub.i6nameAvoidsKeyword = true; }
+        if(!asI6Name.empty()) stub.i6name = asI6Name;
         languageService.globals.push_back(&stub);
     }
     preScanSkipToSemicolon();

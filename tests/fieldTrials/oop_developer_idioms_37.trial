@@ -1,0 +1,115 @@
+Room A
+Room A.
+You can see an alpha, a beta, a gamma, a delta, an epsilon, a leaf and a rock here.
+
+> reads
+names alpha bee nobody bee end
+links gamma end beta gamma off alpha
+lookups beta missing beta top, calls 4
+labels alpha:2 beta:1.. none gamma/0. delta=0
+kids delta past gamma no gamma
+counts 2 0 1 0 0
+roots alpha alpha 3 3 gamma beta none
+
+> writes
+beta hits 6 marks 8 len 1 memo pokepoke
+gamma hits 5 uses 5 writes 2 memo namedw!
+alpha pos (4,2) path (0,6), touches 4, calls 9
+picks 3, beta 7 pokepokearg, gamma 6
+or beta delta fallback bee, makes 2
+was 0 now 1, none 0
+
+> conds
+alpha has next
+gamma has no next
+alpha next next
+beta under alpha
+zeta has no up
+beta has a nick
+alpha placed
+delta unplaced
+gamma used
+walked 2 to gamma
+trail abg
+[epsilon][gamma][beta][alpha]
+kinds linked delta root deep
+beta one kid
+zeta none
+label beta-1
+
+> values
+cells (4,2) (7,7) (9,9) (3,4) 4 (3,4)
+moved (5,2) (5,4) 24 6
+paths 6 (2,0) (1,1)
+uses 5 on off 2
+shifted (4,-4)
+sum (5,3) true
+
+> linqs
+first gamma beta none
+count 0 1 false true
+order gamma gamma
+kid delta none delta:0
+weigh 6 14 4 0 gamma
+cursor beta gamma beta
+cursor now null epsilon
+
+> casts
+casts alpha none gamma gamma
+after 1 c 8
+hold beta epsilon alpha beta
+pick delta
+
+> pools
+pool alpha+x-y beta+z none none live 2
+fors beta alpha alpha:2..
+reuse delta+w live 2
+live 0
+
+> strings
+built alpha/-/gamma:0./none len 21
+nicks 3 0 BEE none alpha
+objs ALPHA:2 6 namedw!poke 0
+memo setalphay delta none bee delta
+bee
+none
+gamma#0
+epsilon under gamma
+nobody is none
+
+> mixed
+alpha 2 cgammax
+beta kids 2 epsilon marks 9, alpha hits 4, delta kids 1 epsilon, calls 2
+leaves alpha leaf heavy none 5 0
+sprout leaf leaf 2 growagain none
+is false true false heavy none
+kinds heavy none node node heavy
+funcs 11 10 4 beta
+steps 2, far beta
+picks gamma delta gamma
+cursor touched namedw!pokecur uses 6
+found 11 namedw!pokecurf
+cells 2 0 6 6 3
+
+> loops
+marks 1 4 2, seen 4
+<delta:-:-><beta:gamma:->
+index beta none alpha leaf, calls 4
+once gamma none, calls 6 picks 2
+after setalphayidx 2 growagainloop, calls 9
+peek beta alpha beta none none
+peek end gamma
+ternary none beta bee
+nested gamma beta
+nested gammagamma0 false
+hops 1 beta
+total 4
+
+> poke beta
+Poked beta: hits 8, next gamma, up alpha, root alpha.
+
+> poke rock
+Poked nothing: hits 0, next none, up none, root none.
+
+> poke epsilon
+Poked epsilon: hits 2, next none, up gamma, root alpha.

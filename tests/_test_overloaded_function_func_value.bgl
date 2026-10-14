@@ -1,0 +1,6 @@
+/* overloaded global function used as a func value */
+// EXPECT_ERROR: 'twice' names 2 overloads, so it cannot be used as a bare function reference
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int twice(int n) { return n * 2; }
+int twice(int n, int k) { return n * k; }
+void main(){ func<int, int> t = twice; }

@@ -2,7 +2,7 @@ Room A
 Room A.
 You can see a panel A, a panel B, a meter C and a rope here.
 > dials
-A 4 B 10 C 20; words low high high; #4 #10 'main'
+A 4 B 10 C 20; words low high high; d4/1 #10 'main'
 now A 8 B 9 C 0, sets 4 4
 A==8 true, A!=8 false, A==B false, A!=B true, A<B true, A>=B false, A<=>B -1, order 1, A+5 13, A*2 16, A>7 true
 B caught up 9, steps 3, same false; mid band, under, pick 8, reading 8

@@ -1,0 +1,551 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a node graph written in a functional style on z5, leaning on members reached through
+// computed receivers. Nodes are a class with a peer link, a member array of links and one of loads,
+// an owned value class position whose `ref` next member chains to another node's position, a named
+// accessor class `Gauge`, a named accessor class `Peer` whose getter returns a node (so members are
+// reached through the getter: `n.buddy.links[0].label`), an inline `auto` accessor, a `ref` member
+// array bound to a shared global log, a func<Node, Node> member, an `operator >>` returning a node,
+// self-returning, value-returning and stringObj methods, a `default` score overridden by a subclass
+// that calls the ancestor through `((Node)self).score()`, and static methods returning nodes.
+// Members, member arrays, accessors and methods are read, written, compound-assigned, incremented and
+// called through: operator results `(n >> 2).links[0].label`, call results `hubOf(n).loads[1]++`,
+// static method results `Node.nth(3).links[1].links[0].label`, func-member call results
+// `n.hop(n).hop(m).label`, func-parameter call results, accessor getter results, casts of noun, of
+// elements and of `.child`/`.sibling` (`((Node)shelf.child).links.length`), instance casts
+// `((nodeA)x).boost`, explicit-conversion casts of a value class `((Node)handles[i]).label`, ancestor
+// casts, <linq> chain results `nodes.filter(f).orderBy(g).first().links[0].label`, array-of-array
+// elements, value class operator and method results `(a.at + b.at).moved(dy: 2).dist()`, `ref`
+// chains `n.at.next.x`, `new` results and pooled tokens; receivers appear in for-in collections,
+// `while`/`do`/`for`/`switch` heads, returns, ternaries, `??`, lambdas, <linq> predicates, member
+// array copies and appends, and interpolation; verbs read noun, second and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 32; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXLINKS = 4;
+
+//-- Values -----------------------------------------------------------------------------------------
+
+value class Pt {
+    int x;
+    int y;
+    ref Pt next;
+
+    Pt operator = (Pt o) {
+        x = o.x;
+        y = o.y;
+        return self;
+    }
+
+    bool operator == (Pt o) { return x == o.x && y == o.y; }
+
+    bool operator != (Pt o) { return x != o.x || y != o.y; }
+
+    Pt operator + (Pt o) {
+        Pt p;
+        p.x = x + o.x;
+        p.y = y + o.y;
+        return p;
+    }
+
+    Pt moved(int dx = 1, int dy = 0) {
+        Pt p;
+        p.x = x + dx;
+        p.y = y + dy;
+        return p;
+    }
+
+    int dist() { return (x < 0 ? -x : x) + (y < 0 ? -y : y); }
+
+    // The x of the last position in the next chain.
+    int tailX() {
+        if (!next) return x;
+        return next.tailX();
+    }
+}
+
+// Read as an int; writes are kept within 0..20.
+value class Gauge {
+    int _v = 0;
+    int  operator ()        { return _v; }
+    void operator = (int v) { _v = v < 0 ? 0 : (v > 20 ? 20 : v); }
+}
+
+// Reads as the node it holds.
+value class Peer {
+    Node _p;
+    Node operator ()         { return _p; }
+    void operator = (Node n) { _p = n; }
+}
+
+// An index into the node list, converted to the node only on request.
+value class Handle {
+    int idx;
+
+    Handle operator = (Handle o) {
+        idx = o.idx;
+        return self;
+    }
+
+    explicit Node operator () { return Node.nth(idx); }
+}
+
+//-- Nodes ------------------------------------------------------------------------------------------
+
+class Node : object {
+    attributeList attributes = {scenery};
+    string label;
+    char tag = '.';
+    int load;
+    Node peer;
+    array<Node> links[MAXLINKS];
+    array<int> loads[MAXLINKS];
+    Pt at;
+    Gauge level;
+    Peer buddy;
+    ref array<int> log;
+    func<Node, Node> hop;
+    auto heat = {
+        int _h = 0;
+        int  operator ()        { return _h; }
+        void operator = (int v) { _h = v > 9 ? 9 : v; }
+    };
+
+    Node link(int i = 0) { return i >= 0 && i < links.length ? links[i] : null; }
+
+    Node bump(int by = 1) {
+        load += by;
+        return self;
+    }
+
+    Node tie(Node n) {
+        if (links.length < links.size && !links.contains(n)) links += n;
+        return self;
+    }
+
+    Pt where() { return at; }
+
+    stringObj describe(string sep = ":") {
+        stringObj s = label;
+        s += sep;
+        s += tag;
+        return s;
+    }
+
+    default int score() { return load + links.length; }
+
+    int linkLoad() {
+        int t = 0;
+        for (Node n in links) t += n.load;
+        return t;
+    }
+
+    // The node n peers along, stopping where the peers end.
+    Node operator >> (int n) {
+        if (n <= 0 || peer == null) return self;
+        return peer >> (n - 1);
+    }
+
+    static Node nth(int i) { return i >= 0 && i < nodes.length ? nodes[i] : null; }
+
+    static Node best() { return nodes.orderBy(byScore).first(); }
+}
+
+class Relay : Node {
+    int gain = 2;
+
+    int score() { return ((Node)self).score() * gain; }
+}
+
+class Token[3] : object {
+    Node target;
+    int qty;
+
+    void create(Node n, int q = 1) {
+        target = n;
+        qty = q;
+    }
+
+    Token add(int n = 1) {
+        qty += n;
+        return self;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+object shelf { "shelf"; name = {.shelf}; attributes = {supporter, scenery}; parent = roomA; }
+
+Node nodeA {
+    "alpha node"; name = {.alpha, .node}; label = "Alpha"; tag = 'a'; load = 2; peer = nodeB;
+    links = {nodeB, nodeC}; at = Pt{ x = 1; y = 2; }; parent = roomA;
+    int boost = 3;
+}
+Node nodeB  { "beta node";   name = {.beta, .node};   label = "Beta";  tag = 'b'; load = 5; peer = nodeC;  links = {nodeD};                 at = Pt{ x = 4; y = 0; };  parent = roomA; }
+Node nodeC  { "gamma node";  name = {.gamma, .node};  label = "Gamma"; tag = 'c'; load = 1;                                                   at = Pt{ x = 0; y = 3; };  parent = shelf; }
+Node nodeD  { "delta node";  name = {.delta, .node};  label = "Delta"; tag = 'd'; load = 4; peer = nodeA;  links = {nodeA, relayR, nodeC}; at = Pt{ x = 2; y = 2; };  parent = roomA; }
+Relay relayR { "red relay";   name = {.red, .relay};   label = "Red";   tag = 'r'; load = 3; peer = relaySl; links = {nodeC};                 at = Pt{ x = 5; y = 5; };  parent = roomA; }
+Relay relaySl { "slate relay"; name = {.slate, .relay}; label = "Slate"; tag = 's'; load = 0; gain = 3;   links = {nodeA, nodeB};          at = Pt{ x = -1; y = 1; }; parent = shelf; }
+
+array<Node> nodes = {nodeA, nodeB, nodeC, nodeD, relayR, relaySl};
+array<array<Node>> rings = { {nodeA, nodeB}, {relayR, nodeC, nodeD} };
+array<Pt> marks[4];
+array<Handle> handles[3];
+array<int> sharedLog[8];
+array<int> otherLog[8];
+Token held;
+
+//-- Pure helpers -----------------------------------------------------------------------------------
+
+Node hubOf(Node n) { return n.peer ?? n; }
+
+Node heavier(Node a, Node b) { return a.load >= b.load ? a : b; }
+
+int byScore(Node a, Node b) { return b.score() - a.score(); }
+
+int byLoad(Node a, Node b) { return a.load - b.load; }
+
+Node toPeer(Node n) { return n.peer; }
+
+Node toFirst(Node n) { return n.link(); }
+
+bool linked(Node n) { return n.links.length > 0; }
+
+Node pickBy(func<Node, int> f, int i) { return f(i); }
+
+Pt sumAt(Node a, Node b) { return a.at + b.at; }
+
+Node hubFirst(Node n) { return hubOf(n).links[0]; }
+
+int sumBy(array<Node> xs, func<int, Node> f) {
+    int t = 0;
+    for (Node n in xs) t += f(n);
+    return t;
+}
+
+Node asNode(object o) {
+    if (!o.is(Node)) {
+        print("That is not a node.^");
+        return null;
+    }
+    return (Node)o;
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb SurveyVerb {
+    grammar = {{.survey}};
+    void handler() {
+        for (Node n in nodes) {
+            print($"{n.label} {n.describe()} score {n.score()} peer {n.peer?.label ?? "-"} first {n.link()?.label ?? "-"} ");
+            print($"linkload {n.linkLoad()} at {n.where().x},{n.where().y} dist {n.where().dist()}^");
+        }
+        print($"best {Node.best().label}, its first {Node.best().link().label}, peer's peer {Node.best().peer?.peer?.label ?? "-"}^");
+        print($"nth 3 second link {Node.nth(3).links[1].label}, its first {Node.nth(3).links[1].links[0].label}, nth 9 {Node.nth(9)?.label ?? "none"}^");
+        print($"ring 1 head {rings[1][0].label} -> {rings[1][0].links[0].label}, ring 0 tail peer {rings[0][rings[0].length - 1].peer.label}^");
+        print($"top by score then first link: {nodes.filter(linked).orderBy(byScore).first().links[0].label}, ");
+        print($"lightest linked {nodes.filter(linked).orderBy(byLoad).first().describe()}^");
+    }
+}
+
+verb WalkVerb {
+    grammar = {{.walk, NOUN, NUMBER}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        int k = parsed_number;
+        print($"{n.label} >> {k}: {(n >> k).label}, links {(n >> k).links.length}, first {(n >> k).link(0)?.label ?? "-"}, load {(n >> k).bump(0).load}^");
+        print($"hub {hubOf(n).label}, hub first {hubOf(n).links[0]?.label ?? "-"}, hop {n.hop(n)?.label ?? "-"}, hop twice {n.hop(n)?.hop(n.hop(n))?.label ?? "-"}^");
+        int steps = 0;
+        while ((n >> steps).peer != null && steps < 5) steps++;
+        print($"peers end after {steps} at {(n >> steps).describe()}^");
+        stringObj path;
+        for (Node t = n; t != null; t = t.peer) {
+            path += t.tag;
+            if (t.peer != null && t.peer.peer == n) break;
+        }
+        print($"path {path}, heavier of ends {heavier(n, n >> 9).label}^");
+        switch ((n >> 1).tag) {
+            case 'a', 'b': print("first peer is early^");
+            case 'c':      print("first peer is gamma^");
+            default:       print($"first peer tag {(n >> 1).tag}^");
+        }
+    }
+}
+
+verb LoadVerb {
+    grammar = {{.load, NOUN, NUMBER}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        int k = parsed_number;
+        ((Node)noun).load += k;
+        hubOf(n).loads[0] += k;
+        hubOf(n).loads[1]++;
+        hubOf(n).loads.length = 2;
+        (n >> 1).loads[2] = k * 10;
+        Node.nth(2).loads[0]--;
+        n.link()?.bump(k);
+        n.link(1)?.bump(by: 1).bump();
+        print($"{n.label} load {n.load}, hub {hubOf(n).label} loads {hubOf(n).loads[0]}/{hubOf(n).loads[1]}/{hubOf(n).loads[2]} len {hubOf(n).loads.length}^");
+        print($"peer loads[2] {(n >> 1).loads[2]}, gamma loads[0] {Node.nth(2).loads[0]}, first {n.link()?.load}, second {n.link(1)?.load}^");
+        ((Node)noun).level = k * 3;
+        hubOf(n).level++;
+        hubOf(n).level += 2;
+        Node.nth(0).level -= 1;
+        nodes[k % nodes.length].level = 25;
+        (n >> 1).heat = k + 4;
+        nodes.filter(linked).last().heat += 2;
+        print($"level {n.level}, hub level {hubOf(n).level}, alpha level {nodeA.level}, node {k % nodes.length} level {nodes[k % nodes.length].level}^");
+        print($"peer heat {(n >> 1).heat}, slate heat {relaySl.heat}, sum of levels {sumBy(nodes, (Node m) => m.level)}^");
+        if (hubOf(n).level > n.level) print("hub runs higher^");
+        else if (hubOf(n).level == n.level) print("hub runs level^");
+        else print("hub runs lower^");
+    }
+}
+
+verb BuddyVerb {
+    grammar = {{.buddy, NOUN}, {.buddy, NOUN, .with, NOUN}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        if (second != null) n.buddy = asNode(second);
+        print($"{n.label} buddy {n.buddy.label}, its links {n.buddy.links.length}, first {n.buddy.link()?.label ?? "-"}^");
+        print($"buddy's buddy {n.buddy.buddy.label}, hub's buddy {hubOf(n).buddy.describe()}, at x {((Node)noun).buddy.at.x}^");
+        print($"buddy is relay {n.buddy.is(Relay)}, buddy score {n.buddy.score()}, bumped {n.buddy.bump(1).load}^");
+        Node b = n.buddy;
+        print($"held as local {b.label}, same {b == n.buddy}, buddy of first link {n.link()?.buddy.label ?? "-"}^");
+        if (n.buddy.links.length > 0) print($"buddy's first link {n.buddy.links[0].label} at {n.buddy.links[0].at.x},{n.buddy.links[0].at.y}^");
+        for (Node m in n.buddy.links) print($" {m.tag}{m.buddy.tag}");
+        print(" .^");
+    }
+}
+
+verb StirVerb {
+    grammar = {{.stir, NOUN}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        n.buddy.load += 2;
+        n.buddy.level++;
+        n.buddy.level += 3;
+        n.buddy.heat = n.buddy.heat + 1;
+        n.buddy.loads[0] = n.buddy.loads[0] + 5;
+        n.buddy.at.y += 1;
+        print($"{n.label}'s buddy {n.buddy?.label ?? "-"}: load {n.buddy.load}, level {n.buddy.level}, heat {n.buddy.heat}, loads[0] {n.buddy.loads[0]}, y {n.buddy.at.y}^");
+        rings[1][2].load += 1;
+        rings[0][1].links[0].level += 2;
+        (n.load > 5 ? n : hubOf(n)).links[0]?.bump(1);
+        (n.peer ?? nodeD).heat++;
+        Node.best().level += 1;
+        Node.nth(1).buddy.buddy.heat += 1;
+        print($"delta load {nodeD.load}, beta's first level {nodeB.links[0].level}, best {Node.best().label} level {Node.best().level}^");
+        print($"chosen {(n.load > 5 ? n : hubOf(n)).label}, its first {(n.load > 5 ? n : hubOf(n)).links[0]?.describe() ?? "none"}^");
+        print($"peer-or-delta {(n.peer ?? nodeD).label} heat {(n.peer ?? nodeD).heat}, beta's buddy's buddy heat {Node.nth(1).buddy.buddy.heat}^");
+        int total = 0;
+        for (array<Node> ring in rings) {
+            for (int j = 0; j < ring.length; j++) total += ring[j].buddy.load + ring[j].links.length;
+        }
+        print($"ring sum {total}, marks moved {marks[1].moved().moved(dy: 1).x},{marks[1].moved().moved(dy: 1).y}^");
+    }
+}
+
+verb PlaceVerb {
+    grammar = {{.place, NOUN}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        print($"{n.label} at {n.at.x},{n.at.y}; moved {n.at.moved(2).x},{n.at.moved(2).y}; where up {n.where().moved(dy: 3).y}^");
+        print($"with hub {(n.at + hubOf(n).at).x},{(n.at + hubOf(n).at).y} dist {(n.at + hubOf(n).at).dist()}, via delta {sumAt(n, nodeD).moved(-1, -1).x}^");
+        print($"moved twice {n.at.moved(1, 1).moved(dy: 2).dist()}, tail {n.at.tailX()}, same as hub {n.at == hubOf(n).at}, differs from beta {n.at != nodeB.at}^");
+        marks[0] = n.at;
+        marks[1] = hubOf(n).where();
+        marks[2] = (n >> 2).at.moved(10);
+        print($"marks {marks[0].x},{marks[0].y} {marks[1].x},{marks[1].y} {marks[2].x},{marks[2].y}; marks[2] moved {marks[2].moved().x}^");
+        print($"first linked at y {nodes.filter(linked).first().at.y}, farthest {nodes.orderBy((Node a, Node b) => b.at.dist() - a.at.dist()).first().label}^");
+        n.at.x += 1;
+        hubOf(n).at.y -= 1;
+        print($"nudged {n.at.x},{n.at.y}, hub {hubOf(n).at.x},{hubOf(n).at.y}^");
+    }
+}
+
+verb ChainVerb {
+    grammar = {{.chain}};
+    void handler() {
+        print($"alpha next {nodeA.at.next.x},{nodeA.at.next.y}, next next {nodeA.at.next.next.x}, tail {nodeA.at.tailX()}^");
+        print($"nth 0 next moved {Node.nth(0).at.next.moved(5).x}, red tail {relayR.at.tailX()}, beta tail {nodeB.where().tailX()}^");
+        int hops = 0;
+        for (Node m in nodes) hops += m.at.tailX();
+        print($"tails sum {hops}^");
+    }
+}
+
+verb CastVerb {
+    grammar = {{.cast, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        for (int i = 0; i < handles.length; i++) {
+            print($"handle {i} -> {handles[i].idx} {((Node)handles[i]).label} first {((Node)handles[i]).link()?.label ?? "-"} load {((Node)handles[i]).load}^");
+        }
+        Handle h;
+        h.idx = k;
+        Node hn = (Node)h;
+        if (hn == null) {
+            print($"no node {k}^");
+            return;
+        }
+        print($"handle {k}: {hn.describe().toUpper()}, peer {(((Node)h) >> 1).label}, links {hn.links.length}^");
+        print($"alpha boost {((nodeA)Node.nth(0)).boost}, red gain {((Relay)Node.nth(4)).gain}, slate gain {((Relay)nodes[5]).gain}^");
+        print($"red score {relayR.score()}, as node {((Node)relayR).score()}, slate {Node.nth(5).score()} / {((Node)Node.nth(5)).score()}^");
+        if (hn.is(Relay)) print($"relay with gain {((Relay)hn).gain}, base score {((Node)hn).score()}^");
+        else print($"plain node, links to relay {hn.links.any((Node m) => m.is(Relay))}^");
+        hn.bump(k);
+        ((nodeA)Node.nth(0)).boost += k;
+        print($"after: load {hn.load}, boost {nodeA.boost}^");
+    }
+}
+
+verb LinksVerb {
+    grammar = {{.links, NOUN}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        print("links:");
+        for (Node m in asNode(noun).links) print($" {m.label}");
+        print("; hub links:");
+        for (Node m in hubOf(n).links) print($" {m.tag}");
+        print("^");
+        print($"hub linked {hubOf(n).links.filter(linked).count()}, lightest {n.links.orderBy(byLoad).first()?.label ?? "-"}, ");
+        print($"last over 1 {n.links.filter((Node m) => m.load > 1).last()?.describe() ?? "none"}^");
+        array<Node> tmp[MAXLINKS];
+        tmp = hubOf(n).links;
+        int t = 0;
+        for (Node m in tmp) t += m.load;
+        print($"copied {tmp.length}, load {t}, any grandlinks to gamma {n.links.any((Node m) => m.links.any((Node q) => q == nodeC))}^");
+        print($"first link's links {n.link()?.links.length}, hub-first {hubFirst(n)?.label ?? "-"}, ");
+        array<Node> mine[MAXLINKS];
+        mine = asNode(noun).links;
+        print($"loads by first link {sumBy(mine, (Node m) => m.link()?.load)}^");
+        int i = 0;
+        do {
+            print($" [{i}]{n.links[i]?.label ?? "-"}");
+            i++;
+        } while (i < n.links.length);
+        print("^");
+    }
+}
+
+verb TieVerb {
+    grammar = {{.tie, NOUN, .to, NOUN}};
+    void handler() {
+        Node a = asNode(noun);
+        Node b = asNode(second);
+        if (a == null || b == null) return;
+        print($"{a.label} links {a.tie(b).links.length}, then peer {a.tie(b).tie(hubOf(b)).links.length}, last {a.links[a.links.length - 1].label}^");
+        hubOf(a).links += b;
+        print($"hub {hubOf(a).label} now {hubOf(a).links.length}, its last {hubOf(a).links.last().describe()}^");
+        asNode(second).links.length = 0;
+        print($"{b.label} cleared to {b.links.length}, linked now {nodes.filter(linked).count()}^");
+    }
+}
+
+verb LogVerb {
+    grammar = {{.log, NOUN, NUMBER}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        int k = parsed_number;
+        n.log += k;
+        hubOf(n).log += k * 2;
+        (n >> 2).log.append(k + 1);
+        print($"{n.label} log {n.log.length}: first {n.log[0]} last {n.log.last()}, hub log {hubOf(n).log.length}, ");
+        print($"big {n.log.filter((int v) => v > 2).count()}, gamma first {Node.nth(2).log[0]}^");
+        print($"shared {sharedLog.length}, other {otherLog.length}, red sees {relayR.log.length}, slate sees {relaySl.log.length}^");
+    }
+}
+
+verb ShelfVerb {
+    grammar = {{.inspect}};
+    void handler() {
+        print($"shelf holds {shelf.children.length}; first child links {((Node)shelf.child).links.length}, ");
+        print($"its sibling a node {shelf.child.sibling.is(Node)}^");
+        int t = 0;
+        for (object o in shelf.children) t += ((Node)o).load;
+        print($"shelf load {t}, relays on shelf {nodes.filter((Node m) => m.parent == shelf && m.is(Relay)).count()}^");
+    }
+}
+
+verb TokenVerb {
+    grammar = {{.token, NOUN, NUMBER}};
+    void handler() {
+        Node n = asNode(noun);
+        if (n == null) return;
+        Token t = new Token(hubOf(n), parsed_number);
+        if (t == null) {
+            print("no token^");
+            return;
+        }
+        print($"token {t.add(2).target.label} x {t.qty}, links {t.target.links.length}, first {t.target.link()?.label ?? "-"}, buddy {t.target.buddy.label}^");
+        if (held != null) print($"replacing {held.target.describe()} x {held.qty}^");
+        if (held != null) delete held;
+        held = t;
+        Token u = new Token(n);
+        print($"spare {u?.add(5)?.qty} on {u?.target?.label ?? "-"}^");
+        if (u != null) delete u;
+    }
+}
+
+verb HopVerb {
+    grammar = {{.hop, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        print($"by nth {pickBy(Node.nth, k)?.label ?? "-"}, by lambda {pickBy((int i) => nodes[i].peer ?? nodes[i], k).describe()}^");
+        Node s = Node.nth(k);
+        if (s == null) return;
+        print($"hop {s.hop(s)?.label ?? "-"}, through hub {hubOf(s).hop(hubOf(s))?.label ?? "-"}, element hop {nodes[k].hop(nodes[k])?.label ?? "-"}^");
+        Node far = nodes.map((var x) => ((Node)x).hop((Node)x)).filter((var x) => x != 0).first();
+        print($"first hop target {((Node)far)?.label ?? "-"}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    for (Node n in nodes) {
+        n.hop = toPeer;
+        n.buddy = n.peer ?? n;
+        n.loads.length = 1;
+    }
+    relayR.hop = toFirst;
+    nodeA.log := sharedLog;
+    nodeB.log := sharedLog;
+    relayR.log := sharedLog;
+    nodeC.log := otherLog;
+    nodeD.log := otherLog;
+    relaySl.log := otherLog;
+    nodeA.at.next := nodeB.at;
+    nodeB.at.next := relayR.at;
+    nodeD.at.next := nodeC.at;
+    handles.length = 3;
+    handles[0].idx = 3;
+    handles[1].idx = 4;
+    handles[2].idx = 0;
+    location = roomA;
+    rfalse;
+}

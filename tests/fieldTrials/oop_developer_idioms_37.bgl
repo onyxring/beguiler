@@ -1,0 +1,721 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-seventh pass: a linked node
+// registry walked with `?.` and `??` everywhere. A value class for a grid cell that declares its own
+// `operator ?` (present when not at the origin), so cells take `?.`, `??` and postfix `?`; a named
+// accessor class for a counter with a getter, an int setter, its own `+=` and an `operator ?`; a node
+// class with links (`Next`, `Up`), a member `array<Node>`, a member `array<int>`, a member `array<Cell>`,
+// an owned cell, a counter, an inline `auto` accessor, a stringObj memo, a `func<int, int>` member, a
+// nullable string, `operator []` returning null past the end, and methods with default and named
+// parameters returning nodes, strings, stringObj and cells (`Go(steps: 2)`, `Label(pad: 1, sep: "/")`);
+// recursive methods built on `?.`/`??` (`Up?.Root() ?? Title`); a registry object with a counted lookup
+// that may return null, a side-effecting index and an inline `auto` cursor over a node; a leaf subclass with fluent methods and an
+// override reached through `?.`; a pooled scratch class whose `new` returns null when the pool is full. `?.` and `??` appear as statements (calls with
+// default and named arguments, `++`, `+=` on ints, accessors, member arrays and stringObj, element and
+// field stores), in initializers, returns, arguments, interpolation, conditions of `if`/`while`/`for`/
+// `do`, `switch` subjects, ternary conditions and branches, `<linq>` predicates and results, lambdas,
+// after casts, element reads, static and `func<>` call results and `new`, chained across several links,
+// mixed with plain `.`, nested inside each other's arguments and right operands, with receivers, indexes
+// and arguments counted so each is evaluated once (and not at all on a null receiver), and `??` right
+// operands counted so they run only when needed.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Cell: a value type with its own presence test -------------------------------------------------------------
+
+value class Cell {
+    int X;
+    int Y;
+
+    Cell operator = (Cell o) {
+        X = o.X;
+        Y = o.Y;
+        return self;
+    }
+
+    Cell operator + (Cell o) {
+        Cell r;
+        r.X = X + o.X;
+        r.Y = Y + o.Y;
+        return r;
+    }
+
+    bool operator == (Cell o) { return X == o.X && Y == o.Y; }
+
+    emitter eBool operator ? () { ($self.X ~= 0 || $self.Y ~= 0) }
+
+    Cell Moved(int dx = 1, int dy = 0) {
+        Cell r;
+        r.X = X + dx;
+        r.Y = Y + dy;
+        return r;
+    }
+
+    int Area() { return X * Y; }
+
+    static Cell Of(int x, int y) {
+        Cell c;
+        c.X = x;
+        c.Y = y;
+        return c;
+    }
+
+    void print() {
+        print("(");
+        print(X);
+        print(",");
+        print(Y);
+        print(")");
+    }
+}
+
+//-- Counter: a named accessor with a presence test ------------------------------------------------------------
+
+value class Counter {
+    int _n;
+    int _writes;
+
+    int operator () { return _n; }
+
+    void operator = (int v) {
+        _n = v;
+        _writes++;
+    }
+
+    Counter operator = (Counter o) {
+        _n = o._n;
+        _writes = o._writes;
+        return self;
+    }
+
+    void operator += (int by) {
+        _n += by;
+        _writes++;
+    }
+
+    emitter eBool operator ? () { ($self._n > 0) }
+
+    int Writes() { return _writes; }
+}
+
+//-- Nodes -----------------------------------------------------------------------------------------------------
+
+class Node : object {
+    string Title;
+    string Nick;
+    Node Next;
+    Node Up;
+    array<Node> Kids[4];
+    array<int> Marks[4];
+    array<Cell> Path[3];
+    Cell Pos;
+    Counter Uses;
+    auto Hits = {
+        int _h;
+        int operator () { return _h; }
+        void operator = (int v) { _h = v; }
+    }
+    stringObj Memo;
+    func<int, int> Weigh;
+    static int Touches;
+
+    Node Go(int steps = 1, bool wrap = false) {
+        Node n = self;
+        for (int i = 0; i < steps; i++) {
+            if (n.Next == null) return wrap ? self : null;
+            n = n.Next;
+        }
+        return n;
+    }
+
+    Node Child(int i = 0) { return i < Kids.length ? Kids[i] : null; }
+
+    Node operator [] (int i) { return Child(i); }
+
+    Node Tag(int m) {
+        Marks += m;
+        return self;
+    }
+
+    void Touch(int by = 1, string why = "poke") {
+        Touches++;
+        Hits += by;
+        Memo += why;
+    }
+
+    string Display() { return Nick ?? Title; }
+
+    stringObj Label(string sep = ":", int pad = 0) {
+        stringObj s = Title;
+        s += sep;
+        s += $"{Kids.length}";
+        for (int i = 0; i < pad; i++) s += '.';
+        return s;
+    }
+
+    Cell Where() { return Pos; }
+
+    void Shift(ref Cell c, int by = 1) {
+        c.X += by;
+        c.Y -= by;
+    }
+
+    default string Kind() { return "node"; }
+
+    Node Pick(Node a, Node b = null) { return a ?? b ?? self; }
+
+    int Count() { return Kids.length; }
+
+    string Root() { return Up?.Root() ?? Title; }
+
+    int Depth() { return Up? ? 1 + Up.Depth() : 0; }
+
+    int Chain() { return Next? ? 1 + Next.Chain() : 1; }
+
+    string Tail() { return Next?.Tail() ?? Title; }
+
+    string Grand() { return Up?.Up?.Title ?? "none"; }
+
+    Node FirstKidWith(int mark) { return Kids.filter((Node k) => k.Marks.contains(mark)).first(); }
+
+    static string UpOf(string t) { return Find(t)?.Up?.Title ?? "none"; }
+
+    static Node Find(string t) {
+        for (Node n in Reg.All) {
+            if (n.Title == t) return n;
+        }
+        return null;
+    }
+
+    void print() { print(Title); }
+}
+
+//-- Leaves: a subclass reached through chains ------------------------------------------------------------------
+
+class Leaf : Node {
+    int Weight = 2;
+
+    Leaf Heavier(int by = 1) {
+        Weight += by;
+        return self;
+    }
+
+    replace string Kind() { return Weight > 3 ? "heavy" : "light"; }
+
+    Node Sprout(string why = "grow") {
+        Touch(why: why);
+        return Up?.Next ?? self;
+    }
+}
+
+//-- The registry ----------------------------------------------------------------------------------------------
+
+object Reg {
+    "registry";
+    array<Node> All[6];
+    int Calls;
+    int Picks;
+    int Makes;
+    auto Cursor = {
+        Node _n;
+        Node operator () { return _n; }
+        void operator = (Node v) { _n = v; }
+        string Peek() { return _n?.Next?.Title ?? "end"; }
+    }
+
+    Node operator [] (string t) { return Get(t); }
+
+    string CursorTitle() { return Cursor?.Title ?? "none"; }
+
+    Node Get(string t) {
+        Calls++;
+        return Node.Find(t);
+    }
+
+    int Idx() {
+        Picks++;
+        return Picks;
+    }
+
+    Node Spare() {
+        Makes++;
+        return nodeD;
+    }
+
+    string Fallback() {
+        Makes++;
+        return "fallback";
+    }
+
+    int Arg(int v) {
+        Picks++;
+        return v;
+    }
+}
+
+//-- Scratch pool ----------------------------------------------------------------------------------------------
+
+class Scratch[2] : object {
+    stringObj Text;
+    Node Owner;
+    static int Live;
+
+    void create(Node n) {
+        Owner = n;
+        Text = n.Title;
+        Live++;
+    }
+
+    void destroy() { Live--; }
+
+    Scratch Add(string s, char sep = '+') {
+        Text += sep;
+        Text += s;
+        return self;
+    }
+
+    void print() { print(Text); }
+}
+
+//-- Globals and helpers ---------------------------------------------------------------------------------------
+
+Node Hold;
+Node Nobody;
+func<Node, string> Lookup = (string t) => Reg.Get(t);
+
+func<string, Node> Summary = (Node n) => n?.Display() ?? "none";
+string StartNick = nodeB.Nick ?? "unnamed";
+string StartTitle = nodeD?.Title ?? "untitled";
+
+string NameOf(Node n) { return n?.Display() ?? "nobody"; }
+
+stringObj LabelOf(Node n, int pad = 0) { return n?.Label(pad: pad) ?? "none"; }
+
+Node Either(Node a, Node b) { return a ?? b; }
+
+int KidsOf(Node n) { return n?.Count(); }
+
+Cell SpotOf(Node n) { return n?.Where() ?? Cell.Of(9, 9); }
+
+void Say(string s) { printLine(s); }
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Reads {
+    grammar = {.reads};
+    void handler() {
+        Reg.Calls = 0;
+        printLine($"names {NameOf(nodeA)} {NameOf(nodeB)} {NameOf(Nobody)} {nodeA.Next?.Display()} {nodeC.Next?.Display() ?? "end"}");
+        printLine($"links {nodeA.Next?.Next?.Title} {nodeA.Next?.Next?.Next?.Title ?? "end"} {nodeA.Go()?.Title} {nodeA.Go(steps: 2)?.Title} {nodeA.Go(5)?.Title ?? "off"} {nodeA.Go(5, wrap: true)?.Title}");
+        printLine($"lookups {Reg.Get("beta")?.Title} {Reg.Get("zeta")?.Title ?? "missing"} {Reg.Get("gamma")?.Up?.Title} {Reg.Get("alpha")?.Up?.Title ?? "top"}, calls {Reg.Calls}");
+        printLine($"labels {nodeA?.Label()} {LabelOf(nodeB, 2)} {LabelOf(Nobody)} {nodeC?.Label(pad: 1, sep: "/")} {Reg.Get("delta")?.Label(sep: "=") ?? "none"}");
+        printLine($"kids {nodeA[0]?.Title} {nodeA[3]?.Title ?? "past"} {nodeA.Child(1)?.Child()?.Title} {nodeA.Child()?.Child(2)?.Title ?? "no"} {nodeA[1]?.Kids[0]?.Title}");
+        printLine($"counts {KidsOf(nodeA)} {KidsOf(Nobody)} {nodeB?.Count()} {Nobody?.Count()} {nodeA.Child(1)?.Marks.length}");
+        printLine($"roots {nodeE.Root()} {nodeA.Root()} {nodeE.Depth()} {nodeA.Chain()} {nodeB.Tail()} {nodeE.Grand()} {nodeB.Grand()}");
+    }
+}
+
+verb Writes {
+    grammar = {.writes};
+    void handler() {
+        Reg.Calls = 0;
+        Node.Touches = 0;
+        Reg.Get("beta")?.Touch();
+        Reg.Get("zeta")?.Touch();
+        Reg.Get("gamma")?.Touch(3, why: "named");
+        Reg.Get("gamma")?.Touch(why: "w", by: 2);
+        nodeA.Next?.Touch(by: 4);
+        Nobody?.Touch();
+        Reg.Get("beta")?.Hits++;
+        Reg.Get("zeta")?.Hits++;
+        Reg.Get("beta")?.Marks += 7;
+        Reg.Get("beta")?.Marks[0] += 1;
+        Reg.Get("zeta")?.Marks += 7;
+        nodeC?.Uses += 2;
+        nodeC?.Uses = 5;
+        Nobody?.Uses += 1;
+        nodeC?.Memo += '!';
+        Nobody?.Memo += '!';
+        nodeA?.Pos.X = 4;
+        nodeA?.Path[1].Y = 6;
+        nodeA.Up?.Pos.X = 99;
+        printLine($"beta hits {nodeB.Hits} marks {nodeB.Marks[0]} len {nodeB.Marks.length} memo {nodeB.Memo}");
+        printLine($"gamma hits {nodeC.Hits} uses {nodeC.Uses} writes {nodeC.Uses.Writes()} memo {nodeC.Memo}");
+        printLine($"alpha pos {nodeA.Pos} path {nodeA.Path[1]}, touches {Node.Touches}, calls {Reg.Calls}");
+        Reg.Picks = 0;
+        Nobody?.Touch(Reg.Arg(5));
+        nodeB?.Touch(Reg.Arg(1), "arg");
+        Reg.All[Reg.Idx()]?.Hits++;
+        Reg.All[Reg.Idx() + 2]?.Touch(by: 0);
+        printLine($"picks {Reg.Picks}, beta {nodeB.Hits} {nodeB.Memo}, gamma {nodeC.Hits}");
+        Reg.Makes = 0;
+        Node o1 = nodeA.Next ?? Reg.Spare();
+        Node o2 = nodeC.Next ?? Reg.Spare();
+        string s1 = nodeA.Nick ?? Reg.Fallback();
+        string s2 = nodeB.Nick ?? Reg.Fallback();
+        printLine($"or {o1.Title} {o2.Title} {s1} {s2}, makes {Reg.Makes}");
+        int was = Reg.Get("delta")?.Hits++;
+        int none = Reg.Get("zeta")?.Hits;
+        printLine($"was {was} now {nodeD.Hits}, none {none}");
+    }
+}
+
+verb Conds {
+    grammar = {.conds};
+    void handler() {
+        if (nodeA.Next?) printLine("alpha has next");
+        if (!nodeC.Next?) printLine("gamma has no next");
+        if (nodeA.Next?.Next?) printLine("alpha next next");
+        if (nodeC.Next?.Next?) printLine("never");
+        if (Reg.Get("beta")?.Up == nodeA) printLine("beta under alpha");
+        if (Reg.Get("zeta")?.Up == null) printLine("zeta has no up");
+        if ((nodeB.Nick ?? "x") == nodeB.Nick) printLine("beta has a nick");
+        if (nodeA.Pos?) printLine("alpha placed");
+        if (!nodeD.Pos?) printLine("delta unplaced");
+        if (nodeC.Uses?) printLine("gamma used");
+        int n = 0;
+        Node cur = nodeA;
+        while (cur?.Next?) {
+            cur = cur.Next;
+            n++;
+        }
+        printLine($"walked {n} to {cur}");
+        stringObj trail = "";
+        for (Node w = nodeA; w?; w = w?.Next) trail += w.Title.left(1);
+        printLine($"trail {trail}");
+        Node up = nodeE;
+        do {
+            print($"[{up.Title}]");
+            up = up.Up;
+        } while (up?.Up? || up?);
+        printLine("");
+        string kind = nodeA.Next? ? "linked" : "single";
+        string kind2 = (nodeC.Next ?? nodeD)?.Title ?? "none";
+        printLine($"kinds {kind} {kind2} {(nodeA.Up? ? nodeA.Up.Title : "root")} {(nodeE.Up?.Up? ? "deep" : "shallow")}");
+        switch (nodeA.Child(1)?.Count()) {
+            case 0:  printLine("beta leaf");
+            case 1:  printLine("beta one kid");
+            default: printLine("beta many");
+        }
+        switch (Reg.Get("zeta")?.Count()) {
+            case 0:  printLine("zeta none");
+            default: printLine("zeta some");
+        }
+        switch (Reg.Get("beta")?.Label(sep: "-") ?? "none") {
+            case "beta-1": printLine("label beta-1");
+            default:       printLine("label other");
+        }
+    }
+}
+
+verb Values {
+    grammar = {.values};
+    void handler() {
+        Cell a = nodeA?.Where() ?? Cell.Of(0, 1);
+        Cell d = nodeD.Where() ?? Cell.Of(7, 7);
+        Cell z = SpotOf(Nobody);
+        printLine($"cells {a} {d} {z} {SpotOf(nodeB)} {nodeA.Pos?.X} {nodeD.Pos ?? nodeB.Pos}");
+        printLine($"moved {nodeA.Where()?.Moved()} {nodeA?.Where().Moved(dy: 2)} {nodeB.Pos?.Moved(dx: 3).Area()} {(nodeD.Pos ?? Cell.Of(2, 3)).Area()}");
+        printLine($"paths {nodeA.Path[1]?.Y} {nodeA.Path[0] ?? nodeA.Path[1]} {nodeA.Path[2] ?? Cell.Of(1, 1)}");
+        printLine($"uses {nodeC.Uses} {(nodeC.Uses? ? "on" : "off")} {(nodeA.Uses? ? "on" : "off")} {nodeC?.Uses.Writes()}");
+        Cell c = Cell.Of(0, 0);
+        nodeA?.Shift(c, by: 3);
+        Nobody?.Shift(c);
+        nodeB?.Shift(c);
+        printLine($"shifted {c}");
+        Cell sum = (nodeA.Pos ?? Cell.Of(0, 0)) + (nodeD.Pos ?? Cell.Of(1, 1));
+        printLine($"sum {sum} {sum == Cell.Of(5, 3)}");
+    }
+}
+
+verb Linqs {
+    grammar = {.linqs};
+    void handler() {
+        printLine($"first {Reg.All.filter((Node n) => n.Up?.Up?).first()?.Title ?? "none"} {Reg.All.filter((Node n) => n.Next? && n.Up?).first()?.Title ?? "none"} {Reg.All.filter((Node n) => n.Count() > 5).first()?.Title ?? "none"}");
+        printLine($"count {Reg.All.filter((Node n) => (n.Nick ?? "") == n.Title).count()} {Reg.All.filter((Node n) => (n.Up ?? n) == n).count()} {Reg.All.any((Node n) => n.Next?.Next?.Next?)} {Reg.All.all((Node n) => n.Title?)}");
+        printLine($"order {Reg.All.orderBy((Node a, Node b) => a.Chain() - b.Chain())[0]?.Title} {Reg.All.orderBy((Node a, Node b) => b.Depth() - a.Depth()).first()?.Up?.Title ?? "none"}");
+        printLine($"kid {nodeA.FirstKidWith(7)?.Title ?? "none"} {nodeA.FirstKidWith(3)?.Title ?? "none"} {nodeA.Kids.filter((Node k) => k.Next == null).first()?.Label() ?? "none"}");
+        printLine($"weigh {nodeA.Weigh(3)} {nodeB?.Weigh(4)} {Lookup("gamma")?.Weigh(5)} {Lookup("zeta")?.Weigh(5)} {Lookup("beta")?.Next?.Title}");
+        Reg.Cursor = nodeB;
+        printLine($"cursor {Reg.Cursor?.Title} {Reg.Cursor?.Next?.Title ?? "end"} {Reg.Cursor?.Up?.Next?.Title}");
+        Reg.Cursor = Reg.Cursor?.Next;
+        Reg.Cursor = Reg.Cursor?.Next;
+        printLine($"cursor now {Reg.Cursor?.Title ?? "null"} {(Reg.Cursor ?? nodeE).Title}");
+    }
+}
+
+verb Casts {
+    grammar = {.casts};
+    void handler() {
+        object o = roomA.child.sibling;
+        object none = null;
+        printLine($"casts {((Node)o)?.Title} {((Node)none)?.Title ?? "none"} {((Node)o.sibling)?.Next?.Title} {((Node)o)?.Next?.Next?.Title}");
+        ((Node)o)?.Touch(why: "c");
+        ((Node)none)?.Touch();
+        ((Node)o).Next?.Kids[0]?.Touch(2);
+        printLine($"after {nodeA.Hits} {nodeA.Memo} {nodeC.Hits}");
+        Hold = (Node)(o.sibling ?? o);
+        printLine($"hold {Hold?.Title} {Either(Nobody, nodeE).Title} {Either(nodeD, nodeE)?.Up?.Title ?? "free"} {(Nobody ?? Hold ?? nodeA).Title}");
+        Node pick = Nobody ?? Reg.Get("zeta") ?? Reg.Get("delta");
+        printLine($"pick {pick?.Title}");
+    }
+}
+
+verb Pools {
+    grammar = {.pools};
+    void handler() {
+        Scratch s1 = new Scratch(nodeA);
+        Scratch s2 = new Scratch(nodeB);
+        Scratch s3 = new Scratch(nodeC);
+        s1?.Add("x").Add("y", sep: '-');
+        s3?.Add("never");
+        printLine($"pool {s1?.Text ?? "none"} {s2?.Add("z")?.Text} {s3?.Text ?? "none"} {s3?.Owner?.Title ?? "none"} live {Scratch.Live}");
+        printLine($"fors {s1?.Owner?.Next?.Title} {s2?.Owner?.Up?.Title} {s1?.Owner?.Label(pad: 2)}");
+        delete s1;
+        Scratch s4 = new Scratch(nodeD);
+        printLine($"reuse {s4?.Add("w")?.Text ?? "none"} live {Scratch.Live}");
+        delete s2;
+        delete s4;
+        printLine($"live {Scratch.Live}");
+    }
+}
+
+verb Strings {
+    grammar = {.strings};
+    void handler() {
+        stringObj s = "";
+        s += nodeA?.Title ?? "-";
+        s += '/';
+        s += Nobody?.Title ?? "-";
+        s += '/';
+        s += nodeB.Next?.Label(pad: 1) ?? "none";
+        s += '/';
+        s += Nobody?.Label() ?? "none";
+        printLine($"built {s} len {s.length}");
+        printLine($"nicks {nodeB.Nick?.length} {nodeA.Nick?.length} {nodeB.Nick?.toUpper() ?? "none"} {nodeA.Nick?.toUpper() ?? "none"} {nodeA?.Nick ?? nodeA?.Title}");
+        printLine($"objs {nodeA?.Label()?.toUpper()} {nodeB?.Label(sep: "_").length} {nodeC?.Memo ?? "empty"} {nodeE.Memo.length}");
+        nodeD?.Memo = "set";
+        Nobody?.Memo = "never";
+        nodeD?.Memo += nodeA?.Title ?? "x";
+        nodeD?.Memo += Nobody?.Title ?? "y";
+        printLine($"memo {nodeD.Memo} {Summary(nodeD)} {Summary(Nobody)} {StartNick} {StartTitle}");
+        printLine(nodeA.Next?.Display() ?? "none");
+        printLine(Nobody?.Display() ?? "none");
+        print(nodeC?.Label(sep: "#") ?? "none");
+        printLine("");
+        switch (nodeE.Up?.Title ?? "none") {
+            case "gamma": printLine("epsilon under gamma");
+            default:      printLine("epsilon elsewhere");
+        }
+        switch (Nobody?.Display() ?? "none") {
+            case "none": printLine("nobody is none");
+            default:     printLine("nobody is someone");
+        }
+    }
+}
+
+verb Mixed {
+    grammar = {.mixed};
+    void handler() {
+        Reg.Calls = 0;
+        nodeA?.Touch(by: nodeB?.Count(), why: nodeC?.Title ?? "x");
+        nodeA?.Touch(by: Nobody?.Count(), why: Nobody?.Title ?? "x");
+        printLine($"alpha {nodeA.Hits} {nodeA.Memo}");
+        nodeB?.Kids += nodeE;
+        nodeB?.Kids[1]?.Touch(why: "k2");
+        nodeB?.Marks[0]++;
+        Nobody?.Kids += nodeE;
+        nodeA?.Hits += nodeB?.Count();
+        Reg.Get("delta")?.Kids += Reg.Get("epsilon") ?? nodeA;
+        printLine($"beta kids {nodeB.Kids.length} {nodeB[1]?.Title} marks {nodeB.Marks[0]}, alpha hits {nodeA.Hits}, delta kids {nodeD.Count()} {nodeD[0]?.Title}, calls {Reg.Calls}");
+        Leaf lf = leafF;
+        Leaf none = null;
+        Node n1 = none ?? nodeA;
+        Node n2 = lf ?? nodeA;
+        printLine($"leaves {n1.Title} {n2.Title} {lf?.Heavier()?.Heavier(by: 2)?.Kind()} {none?.Heavier()?.Kind() ?? "none"} {lf?.Weight} {none?.Weight}");
+        printLine($"sprout {lf?.Sprout()?.Title} {lf?.Sprout(why: "again").Title} {lf.Hits} {lf.Memo} {none?.Sprout()?.Title ?? "none"}");
+        printLine($"is {nodeA?.is(Leaf)} {lf?.is(Leaf)} {Nobody?.is(Node)} {((Leaf)nodeE.Kids[0])?.Kind() ?? "none"} {((Leaf)leafF.Up?.Next)?.Title ?? "none"}");
+        printLine($"kinds {lf?.Kind()} {Nobody?.Kind() ?? "none"} {((Node)lf)?.Kind() ?? "none"} {nodeA?.Kind()} {Reg.All[4]?.Kids[0]?.Kind()}");
+        func<int, int> w = nodeB?.Weigh;
+        printLine($"funcs {w(1)} {(nodeA ?? nodeB).Weigh(5)} {(Nobody ?? nodeC).Weigh(5)} {(Nobody ?? nodeB)?.Go(wrap: true, steps: 3)?.Title}");
+        int steps = 0;
+        for (Node u = nodeE; u?.Up?; u = u.Up?.Up) steps++;
+        Node far = nodeE;
+        while ((far.Up ?? nodeA) != nodeA) far = far.Up;
+        printLine($"steps {steps}, far {far}");
+        bool deep = true;
+        Node pickA = deep ? (Nobody ?? nodeC) : (nodeA?.Next ?? nodeD);
+        Node pickB = !deep ? (Nobody ?? nodeC) : (Nobody?.Next ?? nodeD);
+        printLine($"picks {pickA} {pickB} {(deep ? nodeE.Up?.Title : "flat") ?? "none"}");
+        Reg.Cursor = nodeC;
+        Reg.Cursor?.Touch(why: "cur");
+        Reg.Cursor?.Uses += 1;
+        Reg.Cursor = null;
+        Reg.Cursor?.Touch(why: "never");
+        printLine($"cursor touched {nodeC.Memo} uses {nodeC.Uses}");
+        Node.Find("beta")?.Next?.Touch(by: 2, why: "f");
+        Node.Find("omega")?.Next?.Touch();
+        printLine($"found {nodeC.Hits} {nodeC.Memo}");
+        printLine($"cells {nodeA?.Path[0]?.X} {nodeA.Path[2]?.X} {(nodeA.Uses ?? nodeC.Uses)} {(nodeC.Uses ?? nodeA.Uses)} {nodeC.Uses?.Writes()}");
+    }
+}
+
+verb Loops {
+    grammar = {.loops};
+    void handler() {
+        for (int i = 0; i < Reg.All.size; i++) Reg.All[i]?.Marks += i;
+        int seen = 0;
+        for (int i = 0; i < Reg.All.size; i++) {
+            if (Reg.All[i]?.Up?) seen++;
+        }
+        printLine($"marks {nodeA.Marks.length} {nodeE.Marks[0]} {nodeC.Marks[2]}, seen {seen}");
+        for (Node k in (Nobody ?? nodeA).Kids) print($"<{k.Title}:{k.Next?.Title ?? "-"}:{k.Up?.Up?.Title ?? "-"}>");
+        for (Node k in nodeB.Kids) k.Kids[0]?.Touch(why: "loop");
+        printLine("");
+        Reg.Calls = 0;
+        Reg.Picks = 0;
+        printLine($"index {Reg["beta"]?.Title} {Reg["zeta"]?.Title ?? "none"} {Reg["gamma"]?.Up?.Up?.Title} {Reg["epsilon"]?.Kids[0]?.Title}, calls {Reg.Calls}");
+        printLine($"once {Reg.Get("alpha")?.Go(Reg.Arg(1))?.Go(steps: Reg.Arg(1))?.Title} {Reg.Get("zeta")?.Go(Reg.Arg(1))?.Title ?? "none"}, calls {Reg.Calls} picks {Reg.Picks}");
+        Reg["delta"]?.Touch(why: "idx");
+        Reg["zeta"]?.Touch(why: "idx");
+        Reg["epsilon"]?.Kids[0]?.Hits -= 1;
+        printLine($"after {nodeD.Memo} {leafF.Hits} {leafF.Memo}, calls {Reg.Calls}");
+        Reg.Cursor = nodeA;
+        printLine($"peek {Reg.Cursor.Peek()} {Reg.CursorTitle()} {Node.UpOf("gamma")} {Node.UpOf("alpha")} {Node.UpOf("zeta")}");
+        Reg.Cursor = nodeC;
+        printLine($"peek {Reg.Cursor.Peek()} {Reg.CursorTitle()}");
+        bool flag = false;
+        printLine($"ternary {(flag ? nodeA : Nobody)?.Title ?? "none"} {(!flag ? nodeA : Nobody)?.Next?.Title} {(flag ? nodeA : nodeB)?.Display()}");
+        printLine($"nested {nodeA?.Pick(nodeB?.Pick(Nobody?.Next ?? nodeC?.Up, b: Nobody ?? nodeA?.Next) ?? nodeC)?.Next?.Title ?? "u"} {Nobody?.Pick(nodeB)?.Title ?? nodeA?.Pick(Nobody?.Up ?? Nobody, b: nodeC?.Next ?? nodeC?.Up)?.Title ?? "u"}");
+        printLine($"nested {(nodeA?.Next ?? nodeC)?.Pick((Nobody ?? nodeA)?.Up ?? nodeC)?.Label(nodeA?.Next?.Next?.Title ?? "x", pad: Nobody?.Count()) ?? "z"} {(Nobody?.Up ?? nodeC?.Up ?? nodeA)?.Pick(Nobody)?.Next?.Next == nodeC}");
+        Node v = nodeA;
+        int hops = 0;
+        while ((v?.Next ?? Nobody)?.Next?.Title ?? Nobody?.Title) {
+            v = v.Next;
+            hops++;
+        }
+        printLine($"hops {hops} {v}");
+        int total = 0;
+        Node w = nodeA;
+        do {
+            total += w?.Count();
+            w = w?.Next;
+        } while (w?);
+        printLine($"total {total}");
+    }
+}
+
+verb Poke {
+    grammar = {.poke, NOUN};
+    void handler() {
+        Node n = noun.is(Node) ? (Node)noun : null;
+        n?.Touch(why: "k");
+        n?.Up?.Touch(why: "u");
+        printLine($"Poked {n?.Title ?? "nothing"}: hits {n?.Hits}, next {n?.Next?.Title ?? "none"}, up {n?.Up?.Title ?? "none"}, root {n?.Root() ?? "none"}.");
+    }
+}
+
+#includeI6 "grammar"
+
+//-- The objects -----------------------------------------------------------------------------------------------
+
+Node nodeA {
+    "alpha";
+    parent = roomA;
+    name = {.alpha};
+    Title = "alpha";
+}
+
+Node nodeB {
+    "beta";
+    parent = roomA;
+    name = {.beta};
+    Title = "beta";
+    Nick = "bee";
+}
+
+Node nodeC {
+    "gamma";
+    parent = roomA;
+    name = {.gamma};
+    Title = "gamma";
+}
+
+Node nodeD {
+    "delta";
+    parent = roomA;
+    name = {.delta};
+    Title = "delta";
+}
+
+Node nodeE {
+    "epsilon";
+    parent = roomA;
+    name = {.epsilon};
+    Title = "epsilon";
+}
+
+Leaf leafF {
+    "leaf";
+    parent = roomA;
+    name = {.leaf};
+    Title = "leaf";
+}
+
+object rock {
+    "rock";
+    parent = roomA;
+    name = {.rock};
+}
+
+bool Initialise() {
+    location = roomA;
+    Reg.All += nodeA;
+    Reg.All += nodeB;
+    Reg.All += nodeC;
+    Reg.All += nodeD;
+    Reg.All += nodeE;
+    nodeA.Next = nodeB;
+    nodeB.Next = nodeC;
+    nodeA.Kids += nodeD;
+    nodeA.Kids += nodeB;
+    nodeB.Kids += nodeC;
+    nodeB.Up = nodeA;
+    nodeD.Up = nodeA;
+    nodeC.Up = nodeB;
+    nodeE.Up = nodeC;
+    nodeA.Pos = Cell.Of(1, 2);
+    nodeB.Pos = Cell.Of(3, 4);
+    nodeA.Path[0] = Cell.Of(2, 0);
+    nodeC.Tag(3).Tag(5);
+    nodeD.Tag(7);
+    nodeE.Kids += leafF;
+    leafF.Up = nodeE;
+    nodeA.Weigh = (int n) => n * 2;
+    nodeB.Weigh = (int n) => n + 10;
+    nodeC.Weigh = (int n) => n - 1;
+    rfalse;
+}

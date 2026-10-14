@@ -1,0 +1,38 @@
+// run_target7_chains — global initializers that read an object's member (plain, `?.`, `??`), declared above
+// and below the object, applied at startup; `?.` member increments used as values and as
+// statements; and an ancestor cast before `?.` on a method call.
+// EXPECT_OUTPUT: 3 alpha al unnamed 3 alpha 0 1 2 2 3 1 2 node node
+#beguilerSettings { target = z5; informName = "none"; }
+int EarlyPri = nodeA.Pri;
+string EarlyTitle = nodeA?.Title;
+string EarlyNick = nodeA.Nick ?? "al";
+string MissNick = nodeB.Nick ?? "unnamed";
+class Node : object {
+    int Pri = 3;
+    int Hits;
+    string Title;
+    string Nick;
+    default string Kind() { return "node"; }
+}
+class Leaf : Node {
+    replace string Kind() { return "leaf"; }
+}
+Node nodeA { Title = "alpha"; Nick = "al"; }
+Node nodeB { }
+Leaf leafB { }
+int LatePri = nodeA.Pri;
+string LateTitle = nodeA?.Title;
+void main() {
+    bglInit();
+    print(EarlyPri); print(" "); print(EarlyTitle); print(" "); print(EarlyNick); print(" "); print(MissNick); print(" ");
+    print(LatePri); print(" "); print(LateTitle); print(" ");
+    int was = nodeA?.Hits++;
+    print(was); print(" "); print(nodeA.Hits); print(" ");
+    int pre = ++nodeA?.Hits;
+    print(pre); print(" "); print(nodeA.Hits); print(" ");
+    nodeA?.Hits++;
+    print(nodeA.Hits); print(" ");
+    nodeA.Hits = 1;
+    print(nodeA?.Hits++); print(" "); print(nodeA.Hits); print(" ");
+    print(((Node)leafB).Kind()); print(" "); print(((Node)leafB)?.Kind());
+}

@@ -1,0 +1,59 @@
+Room A
+Room A.
+You can see a bin A, a bin B, a tray C (in which is a token) and a bin D here.
+> chain
+bin1 bin2 tray3 bin4 | tray3 tray3 3 | last bin4 0 4 | depth 1 3 -1 | asked 2, lookups 5
+> bins
+bin1 w0 f0/0 c2+1 m0
+bin2 w0 f0/0 c5+0 m0
+tray3 w10 f0/0 c0+4 m0 n1
+bin4 w0 f0/0 c0+0 m0
+total 7+5 = 12, swapped 5, lookups 5
+> tree
+bin1:1 bin2:1 tray3:1 bin4:0 | token in tray3, notes 1, first top | kind bin tray, weigh 0 10, no tray none
+> mark bin b
+The bin B: marks 5; weigh 5; lookups +4.
+> mark tray
+The tray C: marks 5; weigh 15; lookups +4.
+> fill bin a
+The bin A: fill 4, written 4.
+> fill tray
+The tray C: fill 4, written 4, notes 2.
+> cursor
+at tray3 (3), marks 2 sum 14, fill 5; back at bin1, next bin2, on tray3
+> tally
+heaviest tray3, first marked bin1, last 0, more 8 8, heavier bin1 of 3, bumped bin1 to 3, any sealed true
+> order
+orders 5 1 6, cursor bin1 13, copy 99 kept 5, same true true, lookups 26
+> loads
+bin1 loose; bin2 boxed; tray3 sealed; bin4 loose; hops 2 to tray3, lookups 34
+> tickets
+made 110, t 5 to bin2, bin2 fill 5 counts 11, u from bin4 to tray3 notes 2 then 4 top
+> tickets
+made 110, t 5 to bin2, bin2 fill 10 counts 17, u from bin4 to tray3 notes 4 then 6 top
+> deep
+hist 1:15+5 1+17, plus 22 6, tags BIN1 tr 5, links tray3 none tray3; lookups +8
+fills 4 5, counts 18 5, hist 1, picks bin4 7 deep 17 b b T b; steps 3 to 4; lookups 53
+> deep
+hist 2:17+5 1+17, plus 24 6, tags BIN1 tr 5, links tray3 none tray3; lookups +8
+fills 4 5, counts 18 5, hist 2, picks bin4 8 deep 17 b b T b; steps 3 to 4; lookups 70
+> guard
+D fill 3/1, marks 1:7, far bin4, lookups +4
+> bins
+bin1 w8 f4/4 c13+5 m2
+bin2 w15 f10/2 c17+1 m1
+tray3 w29 f5/5 c0+6 m2 n8
+bin4 w10 f3/1 c0+0 m1
+total 30+12 = 42, swapped 12, lookups 74
+> chain
+bin1 bin2 tray3 bin4 | tray3 tray3 3 | last bin4 0 4 | depth 1 3 -1 | asked 10, lookups 77
+> tree
+bin1:1 bin2:1 tray3:1 bin4:0 | token in tray3, notes 8, first top | kind bin tray, weigh 19 29, no tray none
+> poke bin d
+The bin D: fill 4, last mark 5; B 17+2 f11, D 2, A hist 105; link counts 17 2; tray-led 1; lookups +8, asked +6.
+> rows
+bin1/2/0 bin2/1/17 tray3/1/0 | D 5, note row, cur bin1 loose, via 19 29
+> nudge bin b
+The bin B: counts 17+5, A fill 5, A hist 108, marked bin4 3, lookups +3.
+> nudge tray
+The tray C: counts 0+13, A fill 6, A hist 111, marked tray3 3, lookups +3.

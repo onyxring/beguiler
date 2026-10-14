@@ -1,0 +1,65 @@
+// run_target7_names — `::` on a global that an imported member also names (plain and compound writes) and on
+// a name that only an import provides; `asI6` names on an attribute and an object beside members of the same
+// spelling; and lambdas reading a local, parameter or for-in variable that hides a member of the enclosing object.
+// EXPECT_OUTPUT: 4 2 4 11 2 1 4 3 1 2 2 21 107 5
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+int level = 1;
+attribute spent asI6 drained;
+class Pump : object { int flow; int drained; int pit; }
+Pump pa { flow = 3; pit = 4; }
+Pump pb { flow = 5; }
+array<Pump> pumps = {pa, pb};
+array<int> limits = {1, 4};
+object book {
+    int level = 2;
+    int entries = 4;
+}
+#using book;
+object sump asI6 pit { int depth = 3; }
+void Drain(Pump p) { ::level += p.flow - 3; ::level = ::level + 3; }
+int B() { return ::entries; }
+int D() { int entries = 7; return entries + ::entries; }
+int Total() { return 100; }
+object gauge {
+    int high = 9;
+    Pump best;
+    int Above() {
+        int high = 1;
+        return pumps.filter((Pump p) => p.flow > high).count();
+    }
+    int Count2(int high) {
+        return pumps.filter((Pump p) => p.flow > high).count();
+    }
+    int Run() {
+        int n = 0;
+        for (int high in limits) {
+            n = n * 10 + pumps.filter((Pump p) => p.flow > high).count();
+        }
+        return n;
+    }
+    int Total() { return 7; }
+    int Sum() { return Total() + ::Total(); }
+    int Pick() {
+        for (Pump best in pumps) { if (best.flow > 4) self.best = best; }
+        return self.best.flow;
+    }
+}
+object meter {
+    int high = 4;
+    Pump level;
+    int Count() { return pumps.filter((Pump level) => level.flow > high).count(); }
+}
+void main() {
+    bglInit();
+    Drain(pa);
+    print(::level); print(" "); print(book.level); print(" ");
+    print(B()); print(" "); print(D()); print(" ");
+    pa.drained = 2;
+    pa.give(spent);
+    print(pa.drained); print(" "); print(pa.has(spent) ? 1 : 0); print(" ");
+    print(pa.pit); print(" "); print(sump.depth); print(" ");
+    print(meter.Count()); print(" ");
+    print(gauge.Count2(1)); print(" "); print(gauge.Above()); print(" ");
+    print(gauge.Run()); print(" "); print(gauge.Sum()); print(" "); print(gauge.Pick());
+}

@@ -82,7 +82,7 @@ value class Tag
     }
     char operator [] ( int i ) { return mark[i] ; }
     void operator []= ( int i , char c ) { mark[i] = c ; }
-    string name()
+    string tagName()
     {
         string s ;
         if (code >= 0 && code < Tag.names.length) s = Tag.names[code] ;
@@ -139,7 +139,7 @@ int best(array<Tag> list, int floor)
 {
     int top = floor ;
     string who ;
-    for (Tag t /* each slot */ in list) if (t.weight > top) { top = t.weight ; who = t.name() ; }
+    for (Tag t /* each slot */ in list) if (t.weight > top) { top = t.weight ; who = t.tagName() ; }
     if (who?) print(who) ; else print("-") ;
     return top ;
 }
@@ -338,9 +338,9 @@ verb V_tags
         tagB = tagA ;
         tagA[0] = 'q' ;
         print(tagB[0]) ; print(tagB[1]) ; print(" ") ; print(tagA[0]) ;
-        printLine($" {tagB.weight} {Tag.copies} {tagB.name()}") ;
+        printLine($" {tagB.weight} {Tag.copies} {tagB.tagName()}") ;
         tagB.code = 7 ;
-        printLine($"{tagB.name()} {tagA.score(trio)} {tagA.score(pair)}") ;
+        printLine($"{tagB.tagName()} {tagA.score(trio)} {tagA.score(pair)}") ;
         tagA.label = 5 ; tagA.label = 2 ; tagB.label = 7 ;
         printLine($"{tagA.label} {tagB.label} {Tag.heard.length} {Tag.heard[0]}{Tag.heard[2]}") ;
         printLine(tagA.letters()) ;
@@ -379,7 +379,7 @@ verb V_panel
     {
         panel.total = 3 ;
         print(panel.total) ; print(" ") ; print(panel.label[0]) ;
-        printLine($" {panel.held.code} {panel.held.name()} {panel.sum(pair)} {panel.held[0]}") ;
+        printLine($" {panel.held.code} {panel.held.tagName()} {panel.sum(pair)} {panel.held[0]}") ;
         panel.watch = 4 ;
         print(panel.watch) ; print(" ") ;
         panel.near = null ;

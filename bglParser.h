@@ -271,6 +271,7 @@ class bglParser {
         void validateVerbNameClashes(bool early = false);
         void resolveStubParamAliases();
         void validateEqualityPairs();
+        void resolveArrayInitialGlobals();
         void validateRequiredMembers();
         void resolveDeletes();   // pick each `delete`'s pool once every class is known
         // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
@@ -620,6 +621,12 @@ class bglParser {
         static bool isI6OperatorWord(const string& name);
         static bool isI6SystemFunction(const string& name);
         token peekTokenOrEof();
+        string chainPrefixStepOp;   // `++x?.m`: the step the chain's last member read takes
+        string globalInitSetUp;   // a file-scope initializer's `?.`/`??` set-up, for its startup assignment
+        void rejectMethodOnWordProperty(token name, const string& owner, const string& i6alias);
+        void holdObjectCallForPrint(class expression* e);
+        bool redirectThroughGetter(string& recvText, string& recvType, const string& member);
+        void convertReceiverForCast(class expression* recv, const string& target);
         // Parse an optional `asI6 <i6name>` / `asBgl <beguileName>` clause (§3.11). The two run in
         // opposite directions, which is why each is tied to one side of `extern`: `asI6` CREATES the
         // name I6 will get, so it belongs on a declaration Beguile defines; `alias` MAPS a symbol I6
@@ -706,6 +713,7 @@ class bglParser {
         string parseLambdaExpr(functionDef* func, statementBlock* body, bool bareArrow = false);  // parses lambda, lifts to global, returns lifted name
 
         bool processStatement(token, abstractObject& = emptyContainer);
+        bool staticArrayDeclaredBelow(const string& path);
         string staticMemberGlobal(const string& path);
         bool memberTakesCall(functionDef* fd, const string& name, bool openConsumed);   // `Class.member` static → its global, else ""
         // Per-statement context shared by the processStatement branch methods.
@@ -760,7 +768,8 @@ class bglParser {
         bool queryIsPostfix(token after);
         class variableDeclaration* forInLoopDecl = nullptr;   // the loop variable a typed for-in head just declared
         bool hasEndedLoopLocal(const string& name);
-        string newChainTemp();   // a temporary for a `?.`/`??`/`?:` step: a routine local, or a global outside routines
+        string newChainTemp();
+        string stepThroughAccessor(const string& reading, const string& op, bool prefix);   // a temporary for a `?.`/`??`/`?:` step: a routine local, or a global outside routines
         void rejectUnionArgument(class expression* arg, const string& paramType, const string& callee, bool globalCall);
         string memberTypeName(class variableDeclaration* vd);
         std::set<std::string> warnedAt;   // warnings already given at a source position
@@ -1310,6 +1319,8 @@ class bglParser {
             map<string, string> namedEnum;
             // Where every candidate's parameter is `ref`, the argument names an instance, not its getter's value.
             vector<char> positionalRef;
+            vector<classDef*> positionalAccessor;   // an accessor class a candidate takes there (null when none or several)
+            vector<functionDef*> candidates;          // for a `{ … }` the positions disagree on: those taking the call's argument count
             set<string> namedRef;
             string receiverType;   // a method's receiver: a `property` argument names its member
         };
@@ -1473,6 +1484,7 @@ class bglParser {
         void preScanSkipBodyContents(bool isI6Content = false);   // assumes '{' already consumed; skips to matching '}'
         void preScanSkipToSemicolon();    // consumes tokens up to and including ';'
         void preScanSkipParens();         // assumes '(' already consumed; skips to matching ')'
+        void preScanArrayStubShape(arrayDeclaration& ad, bool isRef, token afterName, token sizeTok);
         void preScanCaptureParams(vector<paramDef*>& out); // like preScanSkipParens but captures type/name of each parameter
         // If typeTok is a generic base type (array/func) and the next token is '<', consume
         // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller

@@ -165,6 +165,9 @@ string bglParser::paramDefaultText(paramDef* p){
     file.openText(p->defaultValue + ")", p->defaultSrc.file, p->defaultSrc.line);
     try {
         expression* e = parseExpression(file.getToken(), {token::parenClose}, nullptr, nullptr);
+        if(functionDef* g = e->resolvedType != p->type.name ? nativeGetterOf(e->resolvedType) : nullptr)
+            if(getDispatchClass(p->type.name) != getDispatchClass(e->resolvedType))
+                e->tokens = {parenthesizeReceiver(e->text()) + "." + g->i6name + "()"};
         p->defaultValue = e->text();
     } catch(...) {
         file.close();
@@ -780,6 +783,12 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
                        && filtered[0].origin.rfind("#using-imported", 0) != 0)
                         warnOnceHere(format("'{0}' is both {1} and an imported method; the global is used. Write the "
                                         "imported one with its full path.", name, filtered[0].origin));
+                // A global function beside an imported member of its name, read as a value: the member is the value.
+                for(auto& c : candidates)
+                    if(c.isFunction && !funcExpected && c.origin.rfind("#using-imported", 0) != 0 && filtered.size() == 1
+                       && filtered[0].origin.rfind("#using-imported", 0) == 0)
+                        warnOnceHere(format("'{0}' is both {1} and an imported member; the imported member is the value "
+                                            "here. Write the member with its full path.", name, c.origin));
                 candidates = filtered;
             }
         }
@@ -967,8 +976,16 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
                 candidates.push_back({defineLiteral(it->second).second, format("#define symbol '{0}'", name), false});
         }
     }
-    // #using class imports (not for `::name`, which is file scope)
-    for(classDef* imp : forceGlobalScope ? vector<classDef*>{} : usingImports){
+    // #using class imports (not for `::name`, which is file scope — unless only a property's name answers it,
+    // when an imported member of the name is what `::` reaches)
+    bool importsReach = !forceGlobalScope || all_of(candidates.begin(), candidates.end(), [](const TypeCandidate& c){ return c.type == "property"; });
+    if(forceGlobalScope && importsReach){
+        bool imported = false;
+        for(objectDef* imp : usingObjectImports)
+            for(typeMember* m : imp->members) if(m->name == name) imported = true;
+        if(imported) candidates.clear(); else importsReach = false;
+    }
+    for(classDef* imp : !importsReach ? vector<classDef*>{} : usingImports){
         bool added = false;
         for(typeMember* m : imp->members){
             if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -988,7 +1005,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         if(added) continue;
     }
     // #using object imports
-    for(objectDef* imp : forceGlobalScope ? vector<objectDef*>{} : usingObjectImports){
+    for(objectDef* imp : !importsReach ? vector<objectDef*>{} : usingObjectImports){
         bool added = false;
         for(typeMember* m : imp->members){
             if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -1387,6 +1404,7 @@ bool bglParser::isInlineConstructible(classDef* cls){
 bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& candidates, const string& elemType){
     BraceArgHints h;
     h.receiverType = lastCandidatesReceiver;
+    h.candidates = candidates;
     size_t maxP = 0;
     for(auto* fd : candidates) maxP = std::max(maxP, fd->params.size());
     h.positional.assign(maxP, nullptr);
@@ -1435,6 +1453,17 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
         }
     }
     for(size_t i = 0; i < maxP; i++) if(enumConflict[i]) h.positionalEnum[i] = "";
+    // An accessor class some candidate takes at a position: the argument is read as the accessor itself,
+    // so that overload can match it exactly (`show(Level)` beside `show(int)`).
+    h.positionalAccessor.assign(maxP, nullptr);
+    vector<char> accessorConflict(maxP, 0);
+    for(auto* fd : candidates)
+        for(size_t i = 0; i < fd->params.size(); i++)
+            if(classDef* pc = getDispatchClass(fd->params[i]->type.name); pc != nullptr && nativeGetterOf(pc->name) != nullptr){
+                if(h.positionalAccessor[i] == nullptr) h.positionalAccessor[i] = pc;
+                else if(h.positionalAccessor[i] != pc) accessorConflict[i] = 1;
+            }
+    for(size_t i = 0; i < maxP; i++) if(accessorConflict[i]) h.positionalAccessor[i] = nullptr;
     h.positionalRef.assign(maxP, !candidates.empty());
     map<string, bool> namedRefSeen;
     for(auto* fd : candidates){
@@ -1489,6 +1518,33 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                 if(it != braceHints.named.end()) cls = it->second;
             } else if(posIdx < braceHints.positional.size()){
                 cls = braceHints.positional[posIdx];
+            }
+            // Overloads that can't take this many arguments don't count (`log(int)` beside `log(Mass, int)`).
+            if(cls == nullptr && namedArgName.empty() && !braceHints.candidates.empty()){
+                size_t argc = posIdx + 1;
+                {
+                    int depth = 2;   // inside this `{` and the call's `(`
+                    vector<token> ahead = file.peekTokens(4000, [&](token& t){
+                        if(t.is(token::parenOpen) || t.is(token::braceOpen) || t.is(token::bracketOpen)) depth++;
+                        else if((t.is(token::parenClose) || t.is(token::braceClose) || t.is(token::bracketClose)) && --depth == 0) return true;
+                        return t.is(token::endStatement) || t.is(eTokenType::eof);
+                    });
+                    int d = 2;
+                    for(token& t : ahead){
+                        if(t.is(token::parenOpen) || t.is(token::braceOpen) || t.is(token::bracketOpen)) d++;
+                        else if(t.is(token::parenClose) || t.is(token::braceClose) || t.is(token::bracketClose)) d--;
+                        else if(t.is(token::comma) && d == 1) argc++;
+                    }
+                }
+                classDef* agreed = nullptr; bool conflict = false;
+                for(functionDef* fd : braceHints.candidates){
+                    size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                    if(argc < req || argc > fd->params.size() || posIdx >= fd->params.size()) continue;
+                    classDef* pc = getDispatchClass(fd->params[posIdx]->type.name);
+                    classDef* obj = isInlineConstructible(pc) ? pc : nullptr;
+                    if(agreed == nullptr && !conflict) agreed = obj; else if(agreed != obj) conflict = true;
+                }
+                if(!conflict) cls = agreed;
             }
             if(cls == nullptr){
                 string where = namedArgName.empty() ? format("argument {0}", posIdx + 1)
@@ -1545,7 +1601,16 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                 readingForBind = namedArgName.empty() ? posIdx < braceHints.positionalRef.size() && braceHints.positionalRef[posIdx]
                                                       : braceHints.namedRef.count(nm) > 0;
             }
-            expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
+            classDef* savedOwnOperand = ownOperatorOperand;
+            if(namedArgName.empty() && posIdx < braceHints.positionalAccessor.size() && braceHints.positionalAccessor[posIdx] != nullptr
+               && currentExpectedType.empty()){
+                ownOperatorOperand = braceHints.positionalAccessor[posIdx];
+                currentExpectedType = ownOperatorOperand->name;
+            }
+            expression* arg = nullptr;
+            try { arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body); }
+            catch(...){ ownOperatorOperand = savedOwnOperand; throw; }
+            ownOperatorOperand = savedOwnOperand;
             readingForBind = false;
             currentExpectedType = "";
             if(arg->resolvedType == "void")
@@ -2555,6 +2620,18 @@ bool bglParser::isI6SystemFunction(const string& name){
     return words.count(name) > 0;
 }
 
+// An object printed asks whether it provides print() and then prints it, naming it twice: a call is
+// held in a temporary first so it runs once.
+void bglParser::holdObjectCallForPrint(expression* e){
+    if(e == nullptr || currentFunc == nullptr || e->text().find('(') == string::npos) return;
+    classDef* c = getDispatchClass(e->resolvedType);
+    if(languageService.findObjectType(e->resolvedType) == nullptr && !(c != nullptr && isObjectBackedClass(c))) return;
+    string t = newChainTemp();
+    auto* n = new i6RawNode(); n->text = t + " = " + e->text() + ";"; n->cooked = true;
+    pendingInjections.push_back(n);
+    e->tokens = {t};
+}
+
 // The next token, or an end-of-input token where a sub-parse's text has run out (peeking past it is an error).
 token bglParser::peekTokenOrEof(){
     if(!file.hasPendingToken){
@@ -2578,7 +2655,13 @@ string bglParser::clashRenamedMember(const string& name){
     // Inform 6 keeps properties, globals, objects and routines in one namespace. A `property` global
     // names this very property; an emitter emits no symbol.
     for(typeDef* g : languageService.globals){
-        if(g->name != name) continue;
+        if(g->name != name){
+            // A global emitted under an `asI6` name holds that name in I6 (`attribute spent asI6 drained`).
+            string i6 = g->i6name; transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
+            if(i6.empty() || i6 != name) continue;
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->isEmitter) continue;
+            return "_m_" + name;
+        }
         if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ if(vd->type.name != "property") return "_m_" + name; }
         else if(auto* fd = dynamic_cast<functionDef*>(g)){ if(!fd->isEmitter) return "_m_" + name; }
     }
@@ -2722,10 +2805,19 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
 bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string& propName,
                                  functionDef* func, statementBlock* body){
     auto check = [&](vector<typeMember*>& members) -> int {   // -1 unknown, 0 no, 1 yes
+        arrayDeclaration* stub = nullptr;
         for(typeMember* m : members)
-            if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad != nullptr && !ad->isPrePassStub)
-                if(ad->name == propName || (!ad->i6name.empty() && ad->i6name == propName)) return ad->isRefLocal ? 1 : 0;
-        return -1;
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad != nullptr)
+                if(ad->name == propName || (!ad->i6name.empty() && ad->i6name == propName)){
+                    if(!ad->isPrePassStub) return ad->isRefLocal ? 1 : 0;
+                    if(stub == nullptr) stub = ad;
+                }
+        if(stub == nullptr) return -1;
+        // Declared further down: its stub's `ref`, or the size that will promote it.
+        if(stub->isRefLocal) return 1;
+        const string& tg = beguilerSettings.target;
+        bool isZ = !tg.empty() && (tg[0] == 'z' || tg[0] == 'Z');
+        return isZ && !stub->isRaw && stub->arraySize + 1 > 32 ? 1 : 0;
     };
     // `self` in an inline accessor is the accessor's own class, not the object hosting it.
     if(ownerName == "self" && currentClass != nullptr && currentClass->name.rfind("_bglaccessor", 0) == 0){
@@ -3790,6 +3882,9 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             if(lambdaOuterFunc != nullptr && q.rfind("self.", 0) == 0) qualifyFromCaptures("self");
             return q;
         };
+        // In a lambda, an enclosing routine's local or parameter is nearer than the object's member it hides.
+        if(lambdaOuterFunc != nullptr)
+            if(auto r = qualifyFromCaptures(name))          return *r;
         if(auto r = qualifyFromCurrentObject(name))         return viaSelf(*r);
         if(auto r = qualifyFromCurrentClass(name))          return viaSelf(*r);
         if(auto r = qualifyFromCaptures(name))              return *r;
@@ -3818,7 +3913,14 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         candidates.push_back({enumQualified, ed->name, format("enum value of '{0}'", ed->name), true});
     }
     collectQualifyCandidatesFromGlobals(name, candidates);
-    if(!forceGlobalScope){   // `::name` is file scope; an import isn't
+    // `::name` is file scope; an import isn't — unless only a property's name answers it.
+    bool onlyProperty = forceGlobalScope && all_of(candidates.begin(), candidates.end(), [](const QualifyCandidate& c){ return c.type == "property"; });
+    if(onlyProperty){
+        bool imported = false;
+        for(objectDef* imp : usingObjectImports) for(typeMember* m : imp->members) if(m->name == name) imported = true;
+        if(imported) candidates.clear(); else onlyProperty = false;
+    }
+    if(!forceGlobalScope || onlyProperty){
         collectQualifyCandidatesFromUsingClassImports(name, func, body, candidates);
         collectQualifyCandidatesFromUsingObjectImports(name, func, body, candidates);
     }
@@ -5346,6 +5448,7 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
     }
     if(name == "print" && args.size() == 1 && args[0] != nullptr){
         convertStoragelessForPrint(args[0]);
+        holdObjectCallForPrint(args[0]);
         ensureOwnPrintOverload(args[0]->resolvedType);
     }
     GlobalCallMatch gcm = resolveGlobalCall(name, args, func, body);

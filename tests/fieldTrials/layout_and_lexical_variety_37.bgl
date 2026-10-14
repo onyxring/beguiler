@@ -1,0 +1,489 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program with two rooms, a bench, a rack, six parts
+// and a pool of tags, written so that almost every type and class is reached through a namespace. A
+// namespace object `kit` with type aliases for a class, an enum, a bnum, a value class and an emitter
+// class, a value alias to a class (statics through the path, read, written, `++`d and taken as a
+// `func<>`) and one to an object (fields read, assigned and `++`d, a member array appended to and
+// iterated), and methods and members that name its own aliases bare; a second namespace object `depot`
+// nested under `kit` by an `auto` member and by an `alias` member that forward `extend`s add, and given a
+// further type alias by an `extend` at the foot that is used above it; a third object whose aliases
+// target paths (`alias o = kit.inner`, `alias c = kit.calc`); `#using` of an object, of a dotted path, of
+// an emitter class whose alias members chain three deep and of a branch of it; imported aliases,
+// methods, fields and value aliases named bare and through partial paths. Alias paths as global, local,
+// parameter, return, member and static types, as array element types (global, local and member arrays)
+// and `func<>` generic arguments, in a base-class list, in casts (`((kit.inner.gear)x).m`), `is()`, `new`
+// of a pooled class (positional and named arguments), inline value-class initializers (as arguments, in
+// returns and in object bodies), `ref` parameters and locals, value-class members of a value class,
+// operator parameters, <linq> lambdas, `switch` cases, casts of ints to enums and bnums, and defaults of
+// parameters given by name; `extend class` through an alias path; enum and bnum values through paths in
+// conditions and compound assignment; an operator reference through a type alias; `?.` and `??` on
+// paths. Mixed-case keywords, Allman, K&R and one-line braces, tab indentation in one routine, comments
+// between tokens and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+#using bgl.printRules ;
+
+// ---- the namespaces: declared first so that #using can see them -----------------------------------
+
+object kit
+{
+    alias part  for Part ;
+    alias grade for eGrade ;
+    alias flag  for bFlag ;
+    alias span  for Span ;
+    alias calc  = Calc ;
+    alias bench = benchA ;
+    alias fm    for fmtLeaf ;
+
+    part  best ;                         // a member typed by the object's own alias, named bare
+    grade floor = grade.low ;
+    int   asks  = 0 ;
+
+    /// The heavier of two parts, by the namespace's own rule.
+    part heavier ( part a , part b ) { asks++ ; return a.size >= b.size ? a : b ; }
+
+    bool atLeast ( part p , grade g = grade.mid ) { return p.tier >= g ; }
+}
+
+object depot {
+    alias gear for Gear ;
+    alias cog  for Cog ;
+    alias tag  for Tag ;
+    auto  keeper = rackA ;
+}
+
+extend kit { auto inner = depot ; }
+EXTEND kit { alias deep = depot ; }
+
+object shop { alias o = kit.inner ; alias c = kit.calc ; }
+
+#using kit
+#using kit.inner
+
+emitter class fmtLeaf
+{
+    int  width { 6 }
+    void bar   { print "|"; }
+    int  twice ( int n ) { $n * 2 }
+}
+emitter class fmtMid  { }
+emitter class fmtRoot { }
+extend class fmtMid  { fmtLeaf leaf ; }
+extend class fmtRoot { fmtMid  mid ; }
+
+#using fmtRoot
+#using fmtRoot.mid
+
+// ---- globals --------------------------------------------------------------------------------------
+
+kit.part              gLast ;
+grade                 gGoal    = grade.high ;            // bare: imported from kit
+kit.flag              gSeen    = kit.flag.oiled ;
+kit.span              gWindow  = kit.span{ lo = 2 ; hi = 9 ; } ;
+inner.gear            gTop     = gearA ;                 // partial path from the kit import
+array<kit.part>       parts    = { gearA , gearB , boltA , boltB } ;    // the spur joins below
+array<shop.o.gear>
+                      gears[ 4 ] ;
+array<kit.inner.tag>  issued[ TAGS ] ;
+func<int , kit.part>  weightOf = ( kit.part p ) => p.size * 2 + ( int ) p.tier ;
+func<int , int>       doubler  = kit.calc.twice ;
+func<int , span , span> spanCmp = kit.span::operator <=> ;
+func<bool , gear>     isBig    = ( gear g ) => g.teeth >= BIG ;
+kit.inner.washer      gWasher  = washerA ;                // the alias is added by an extend at the foot
+Pair                  gPair ;
+func<kit.inner.gear , kit.part>
+                      toGear   = ( kit.part p ) => p.is( gear ) ? ( depot.gear ) p : null ;
+
+// ---- routines -------------------------------------------------------------------------------------
+
+/// A word for a grade.
+stringObj gradeWord ( kit.grade g = grade.mid )
+{
+    stringObj w ;
+    switch ( g )
+    {
+        case kit.grade.low  : w = "low" ;
+        case grade.mid      : w = "mid" ;
+        case eGrade.high    : w = "high" ;
+        default             : w = "?" ;
+    }
+    return w ;
+}
+
+stringObj flagWord ( kit.flag f ) {
+    stringObj w = "" ;
+    if ( f & flag.oiled )        w += "o" ;
+    if ( f & kit.flag.worn )     w += "w" ;
+    if ( f & bFlag.tagged )      w += "t" ;
+    if ( w.length == 0 )         w = "-" ;
+    return w ;
+}
+
+kit.inner.gear asGear ( object o ) { if ( o.is( kit.inner.gear ) ) return ( depot.gear ) o ; return null ; }
+
+shop.o.gear biggest ()
+{
+    return parts.filter( ( kit.part p ) => p.is( gear ) )
+                .map( ( part p ) => ( gear ) p )
+                .orderBy( ( inner.gear a , kit.deep.gear b ) => b.teeth - a.teeth )
+                .first() ;
+}
+
+kit.span widened ( kit.span s , int by = STEP ) { kit.span r = s ; r.lo -= by ; r.hi += by ; return r ; }
+
+void stretch ( ref kit.span s , int by ) { s.hi += by ; }
+
+kit.span unit () { return kit.span{ lo = 1 ; hi = 1 ; } ; }
+
+int width ( span s ) { return s.hi - s.lo ; }
+
+int countAt ( grade g ) { return parts.filter( ( part p ) => p.tier == g ).count() ; }
+
+/// One line about a part.
+void showPart ( kit.part p )
+{
+	print( $"{p}: size {p.size} grade {gradeWord( p.tier )} flags {flagWord( p.flags )} fit {p.fit.lo}..{p.fit.hi}" ) ;
+	if ( p.is( kit.inner.gear ) )
+	{
+		gear g = ( gear ) p ;
+		print( $" teeth {g.teeth} big {isBig( g )}" ) ;
+		if ( p.is( cog ) ) print( " cog" ) ;
+	}
+	printLine( $" weight {weightOf( p )}" ) ;
+}
+
+bool Initialise ()
+{
+    location = roomA ;
+    kit.best = boltA ;
+    gSeen    = gSeen | kit.flag.tagged ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands -------------------------------------------------------------------------------------
+
+verb Oil
+{
+    grammar = { .oil , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( kit.part ) ) { printLine( "That is not a part." ) ; return ; }
+        kit.part p = ( kit.part ) noun ;
+        p.flags |= kit.flag.oiled ;
+        if ( p.flags & flag.worn ) p.flags = p.flags ^ flag.worn ;
+        kit.bench.uses++ ;
+        p.bumps++ ;
+        if ( !kit.bench.held.contains( p ) && kit.bench.held.length < kit.bench.held.size ) kit.bench.held += p ;
+        kit.calc.calls += 1 ;
+        gLast = p ;
+        printLine( $"{cThe(p)} is oiled; flags {flagWord( p.flags )}, bench uses {benchA.uses}, calls {Calc.calls}." ) ;
+    }
+}
+
+verb Fray {
+    grammar = { .fray , NOUN } ;
+    void handler () {
+        kit.part p = noun.is( part ) ? ( part ) noun : null ;
+        IF ( p == null ) { printLine( "That is not a part." ) ; RETURN ; }
+        p.flags = p.flags | kit.flag.worn ;
+        if ( p.tier > kit.grade.low ) p.tier = kit.calc.lower( p.tier ) ;
+        printLine( $"{cThe(p)} frays; grade {gradeWord( p.tier )}, flags {flagWord( p.flags )}." ) ;
+    }
+}
+
+verb Mesh
+{
+    grammar = { .mesh , NOUN } ;
+    void handler ()
+    {
+        gear g = asGear( noun ) ;
+        if ( g == null ) { printLine( "Only gears mesh." ) ; return ; }
+        shop.o.gear other = g == gearA ? ( shop.o.gear ) gearB : gearA ;
+        int t = ( ( kit.inner.gear ) noun ).mesh( other ).teeth ;
+        gears += g ;
+        gTop = biggest() ;
+        printLine( $"{cThe(g)} meshes with {the(other)} ({t}); top {gTop.teeth}, meshed {gears.length}." ) ;
+    }
+}
+
+verb Tag
+{
+    grammar = { .tag , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( kit.part ) ) { printLine( "That is not a part." ) ; return ; }
+        tag t = new kit.inner.tag( ( kit.part ) noun , kit.calc.twice( issued.length + 1 ) ) ;
+        if ( t == null ) { printLine( "No tag is left." ) ; return ; }
+        issued += t ;
+        t.owner.flags |= flag.tagged ;
+        printLine( $"{cThe(t.owner)} takes tag {t.n}; tags {Tag.made}, out {issued.length}." ) ;
+    }
+}
+
+verb Untag
+{
+    grammar = { .untag } ;
+    void handler ()
+    {
+        if ( issued.length == 0 ) { printLine( "No tags are out." ) ; return ; }
+        depot.tag t = issued.popEnd() ;
+        printLine( $"Tag {t.n} comes off {the(t.owner)}." ) ;
+        delete t ;
+    }
+}
+
+verb Grade
+{
+    grammar = { .grade , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( kit.part ) ) { printLine( "That is not a part." ) ; return ; }
+        kit.part p = ( kit.part ) noun ;
+        if ( kit.atLeast( p , gGoal ) )             printLine( $"{cThe(p)} is at the goal." ) ;
+        else if ( kit.atLeast( g: grade.mid , p: p ) ) printLine( $"{cThe(p)} is middling." ) ;
+        else                                         printLine( $"{cThe(p)} is below the floor of {gradeWord( kit.floor )}." ) ;
+        p.tier = kit.calc.raise( p.tier ) ;
+        kit.best = kit.heavier( kit.best , p ) ;
+        printLine( $"Now {gradeWord( p.tier )}; best {kit.best}, asks {kit.asks}." ) ;
+    }
+}
+
+verb Tally
+{
+    meta    = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        for ( kit.part p in parts ) showPart( p ) ;
+        printLine( $"low {countAt( kit.grade.low )} mid {countAt( grade.mid )} high {countAt( eGrade.high )}" ) ;
+        print( "by weight" ) ;
+        for ( part p in parts.orderBy( ( kit.part a , part b ) => weightOf( b ) - weightOf( a ) ) ) print( $" {p}" ) ;
+        printLine( "" ) ;
+        print( "meshed" ) ;
+        for ( depot.gear g in gears ) print( $" {g}" ) ;
+        printLine( "" ) ;
+        print( "tags" ) ;
+        for ( kit.inner.tag t in issued ) print( $" {t.n}:{t.owner}" ) ;
+        printLine( "" ) ;
+        printLine( $"Last {the(gLast ?? kit.best)}; top {gTop}; any oiled {parts.any( ( kit.part p ) => ( p.flags & kit.flag.oiled ) != 0 )}." ) ;
+    }
+}
+
+verb Probe
+{
+    meta = TRUE ;
+    grammar = { .probe } ;
+    void handler ()
+    {
+        printLine( $"emit {fmtRoot.mid.leaf.width} {mid.leaf.width} {mid.leaf.twice( 4 )} {fmtMid.leaf.twice( BIG )}" ) ;
+        mid.leaf.bar ; print( "bars" ) ; fmtRoot.mid.leaf.bar ; printLine( "" ) ;
+        printLine( $"calc {kit.calc.twice( 5 )} {shop.c.twice( 3 )} {doubler( 7 )} {Calc.made( 2 )} {kit.calc.lastIn} {shop.c.calls}" ) ;
+        printLine( $"grades {gradeWord()} {gradeWord( g: kit.grade.high )} {gradeWord( kit.calc.lower( grade.high ) )} goal {gradeWord( gGoal )}" ) ;
+        printLine( $"flags {flagWord( gSeen )} {flagWord( kit.flag.worn | flag.tagged )} {flagWord( ( kit.flag ) 0 )}" ) ;
+        kit.span w = widened( gWindow ) ;
+        stretch( w , 1 ) ;
+        span narrow = shop.o.keeper.slot ;
+        printLine( $"span {gWindow.lo}..{gWindow.hi} {w.lo}..{w.hi} narrow {narrow.lo}..{narrow.hi} cmp {spanCmp( w , gWindow )} {w > gWindow} {gWindow.holds( 3 )}" ) ;
+        printLine( $"bench {kit.bench.uses} {kit.bench.label} rack {kit.inner.keeper.label} {depot.keeper.slot.hi} deep {kit.deep.keeper == rackA}" ) ;
+        printLine( $"best {kit.best} floor {gradeWord( kit.floor )} heavier {kit.heavier( gearA , boltB )} asks {kit.asks}" ) ;
+        printLine( $"top {gTop?.teeth} {biggest()?.teeth} {asGear( boltA )?.teeth} {( asGear( boltA ) ?? gearB ).teeth}" ) ;
+        kit.inner.cog c = ( kit.inner.cog ) gearB ;
+        printLine( $"cog {c.teeth} {c.is( cog )} {gearA.is( depot.cog )} {boltA.is( kit.deep.gear )} {gearB.is( kit.part )}" ) ;
+    }
+}
+
+verb Survey
+{
+    meta = true ; grammar = { .survey } ;
+    void handler ()
+    {
+        // every name below comes in through `#using kit` and `#using kit.inner`
+        part   p = best ?? gLast ;
+        grade  g = ( grade ) 3 ;
+        flag   f = flag.worn | kit.flag.oiled ;
+        span   s = span{ lo = asks ; hi = asks + calc.twice( 2 ) ; } ;
+        ref kit.span r := rackA.slot ;
+        r.hi += 1 ;
+        best = heavier( p , boltA ) ;
+        bench.uses += 10 ;
+        printLine( $"survey {p} {gradeWord( g )} {flagWord( f )} {s.lo}..{s.hi} slot {rackA.slot.hi} {keeper.slot.hi} uses {bench.uses} asks {asks}" ) ;
+        printLine( $"opt {kit.best?.size} {inner.keeper?.label} {deep.keeper?.slot.lo} {( gLast ?? kit.best ).size} {calc.lastIn}" ) ;
+        print( "gears" ) ;
+        for ( gear x in parts.filter( ( part q ) => q.is( gear ) ).map( ( part q ) => ( inner.gear ) q ) ) print( $" {x.teeth}" ) ;
+        printLine( "" ) ;
+        print( "spurs" ) ;
+        for ( kit.part q in parts ) if ( q.is( Spur ) ) print( $" {q} {( ( Spur ) q ).pitch} {( ( depot.gear ) q ).teeth}" ) ;
+        printLine( "" ) ;
+        array<kit.inner.tag> spare[ 2 ] ;
+        kit.inner.tag a = new kit.inner.tag( boltB , 9 ) ;
+        if ( a != null ) spare += a ;
+        depot.tag b = new depot.tag( k : 11 , p : gearA ) ;
+        if ( b != null ) spare += b ;
+        else             printLine( "No second spare." ) ;
+        for ( tag t in spare ) printLine( $"spare tag {t?.n} on {t?.owner}" ) ;
+        while ( spare.length > 0 ) { tag t = spare.popEnd() ; delete t ; }
+        kit.calc.calls++ ;
+        shop.c.lastIn += 100 ;
+        printLine( $"widths {width( kit.span{ lo = 3 ; hi = 9 ; } )} {width( unit() )} {width( rackA.slot )} {leaf.width} {leaf.twice( 3 )} calls {Calc.calls} {kit.calc.lastIn}" ) ;
+        print( "held" ) ;
+        for ( part q in kit.bench.held ) print( $" {q}/{q.bumps}" ) ;
+        printLine( $"; washer {gWasher} {gWasher.size} {kit.inner.washer.made} {toGear( gearB )?.teeth} {toGear( boltA )?.teeth} {kit.fm.width} {kit.fm.twice( kit.fm.width )}" ) ;
+        ref kit.span pa := gPair.a ;
+        pa = rackA.slot ;
+        gPair.b = widened( pa , by : 2 ) ;
+        printLine( $"pair {gPair.a.lo}..{gPair.a.hi} {gPair.b.lo}..{gPair.b.hi} {gPair.a == gPair.b} {spanCmp( gPair.b , gPair.a )}" ) ;
+        printLine( $"statics {kit.part.made} {part.made} {depot.tag.made} {kit.inner.tag.made} {tag.made} {Tag.made}" ) ;
+        tag t = new tag( boltB , 13 ) ;
+        if ( t != null ) { printLine( $"spare tag {t.n} on {t.owner} {Tag.made}" ) ; delete t ; }
+        shop.o.tag u = new shop.o.tag( p : gearA , k : 15 ) ;
+        if ( u != null ) { printLine( $"spare tag {u.n} on {u.owner}" ) ; delete u ; }
+        else               printLine( "No spare tag." ) ;
+    }
+}
+
+// ---- rooms and things -----------------------------------------------------------------------------
+
+class Spur : shop.o.gear { int pitch = 2 ; }
+
+Spur spurA { "bronze spur" ; name = { .bronze , .spur } ; parent = benchA ; size = 2 ; teeth = 10 ; pitch = 3 ; }
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A bench and a rack. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB { "Room B" ; description = "Room B. Bare boards. Room A is south." ;
+    object s_to = roomA ; }
+
+object benchA
+{
+    "bench" ;
+    parent     = roomA ;
+    name       = { .bench } ;
+    attributes = { static , supporter } ;
+    string description = "A plain bench." ;
+    string label = "bench A" ;
+    int    uses  = 0 ;
+    array<kit.part> held[ 3 ] ;
+}
+
+object rackA {
+    "rack" ; parent = roomA ; name = { .rack } ; attributes = { static } ;
+    string description = "A plain rack." ;
+    string label = "rack A" ;
+    kit.span slot = kit.span{ lo = 4 ; hi = 6 ; } ;
+}
+
+kit.inner.gear gearA { "brass gear" ; name = { .brass , .gear } ; parent = benchA ;
+    size = 3 ; teeth = 12 ; tier = kit.grade.mid ; fit = kit.span{ lo = 1 ; hi = 3 ; } ; }
+
+Cog gearB
+{
+    "steel cog" ;
+    name   = { .steel , .cog } ;
+    parent = benchA ;
+    size   = 2 ;
+    teeth  = 20 ;
+    tier   = grade.high ;
+    flags  = flag.worn ;
+}
+
+kit.part boltA { "iron bolt" ; name = { .iron , .bolt } ; parent = roomA ; size = 1 ; }
+
+part boltB
+{
+    "tin bolt" ;
+    name   = { .tin , .bolt } ;
+    parent = roomB ;
+    size   = /* small */ 4 ;
+    tier   = kit.grade.low ;
+    fit    = span{ lo = 0 ; hi = 8 ; } ;
+}
+
+// ---- classes --------------------------------------------------------------------------------------
+
+CLASS Part : object
+{
+    int       size = 1 ;
+    kit.grade tier = eGrade.mid ;
+    kit.flag  flags ;
+    kit.span  fit ;
+    static int made = 0 ;
+}
+
+class Gear : kit.part
+{
+    int teeth = 8 ;
+    selfType mesh ( depot.gear g ) { teeth += g.teeth / 4 ; return self ; }
+}
+
+alias class Cog for depot.gear { }
+
+class Tag[ TAGS ] : object
+{
+    kit.part owner ;
+    int n = 0 ;
+    static int made = 0 ;
+    void create ( part p , int k ) { owner = p ; n = k ; made++ ; kit.part.made++ ; }
+}
+
+class Calc
+{
+    static int calls  = 0 ;
+    static int lastIn = 0 ;
+    static int twice ( int n ) { lastIn = n ; return n * 2 ; }
+    static int made ( int n ) { return Part.made + n ; }
+    static kit.grade raise ( kit.grade g ) { if ( g == kit.grade.high ) return g ; return g == grade.low ? grade.mid : eGrade.high ; }
+    static eGrade lower ( kit.grade g ) { return g == grade.high ? kit.grade.mid : kit.grade.low ; }
+}
+
+enum eGrade { low , mid , high }
+bnum bFlag  { oiled , worn , tagged }
+
+value class Pair { kit.span a ; span b ; }
+
+value class Span
+{
+    int lo ;
+    int hi ;
+    Span operator =   ( Span o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    int  operator <=> ( Span o ) { return ( hi - lo ) - ( o.hi - o.lo ) ; }
+    static int operator <=> ( kit.span a , span b ) { return ( a.hi - a.lo ) - ( b.hi - b.lo ) ; }
+    bool operator == ( kit.span o ) { return lo == o.lo && hi == o.hi ; }
+    bool operator != ( span o ) { return !( self == o ) ; }
+    bool holds ( int v ) { return v >= lo && v <= hi ; }
+}
+
+
+const int TAGS = 3 ;
+CONST INT
+    STEP = 1 ;
+emitter int BIG { 16 }
+
+extend parts { inject spurA after gearB ; }
+extend class kit.part { int bumps = 0 ; }
+extend depot { alias washer for Washer ; }
+
+class Washer : Part { }
+
+Washer washerA { "flat washer" ; name = { .flat , .washer } ; parent = roomB ; size = 5 ; }

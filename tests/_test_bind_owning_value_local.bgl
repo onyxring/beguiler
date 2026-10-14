@@ -1,0 +1,6 @@
+/* ':=' on a local that owns its value-class instance */
+// EXPECT_ERROR: owns its N, so ':=' can't bind it to another
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+value class N { int c; N operator = (N o) { c = o.c; return self; } }
+N b;
+void main(){ N loc; loc := b; }

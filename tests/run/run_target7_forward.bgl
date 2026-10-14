@@ -1,0 +1,67 @@
+// run_target7_forward — uses above the declaring object or class of `ref` member arrays, oversized
+// (separate-storage) member arrays, static member arrays, rawArray members and static value-class members
+// (read and field-written, with the value class declared later still); a value-class global named in an
+// array initializer above its own declaration; and a subclass of an alias-path base used above it.
+// EXPECT_OUTPUT: 2 2 5 7 2 2 2 40 9 4 1 2 3 5 4 5 6 5 4 0 4 5 (1,1) (2,3) 9 3 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<int> shared[4];
+array<int> other[4];
+array<Pt> stakes = { { 1, 1 }, home };
+Pt home = Pt{ 2, 3 };
+class Part : object { int size = 1; int heft() { return size * 2; } }
+object kit { alias part for Part; }
+int weigh(Part p) { return p.heft(); }
+void main() {
+    bglInit();
+    w.log := shared;
+    w.log += 5;
+    w.log.append(7);
+    print(shared.length); print(" "); print(w.log.length); print(" ");
+    for (int v in w.log) { print(v); print(" "); }
+    k1.log := other;
+    k1.log += 5;
+    k1.log += 7;
+    print(other.length); print(" "); print(k1.log.length); print(" ");
+    w.big += 9;
+    w.big += 4;
+    print(w.big.length); print(" "); print(w.big.size); print(" ");
+    for (int v in w.big) { print(v); print(" "); }
+    k1.wide += 1;
+    print(k1.wide.length); print(" ");
+    Bin.seen += 3;
+    Bin.seen += 5;
+    print(Bin.seen.length); print(" ");
+    for (int v in Bin.seen) { print(v); print(" "); }
+    print(w.raw[0]); print(" "); print(w.raw[1]); print(" "); print(w.raw[2]); print(" "); print(k1.raw[1]); print(" ");
+    Reg.home.x = 4;
+    Pt h = Reg.home;
+    print(h.x); print(" "); print(h.y); print(" ");
+    Reg.home.y = 5;
+    print(Reg.home.x); print(" "); print(Reg.home.y); print(" ");
+    home.x = 9;
+    for (Pt p in stakes) { print($"({p.x},{p.y})"); print(" "); }
+    print(home.x); print(" ");
+    print(weigh(gearA) / 2); print(" ");
+    print(gearA.is(Part) ? 2 : 0);
+}
+object w {
+    ref array<int> log;
+    array<int> big[40];
+    rawArray<int> raw = { 4, 5, 6 };
+}
+class K : object {
+    ref array<int> log;
+    array<int> wide[50];
+    rawArray<int> raw = { 4, 5, 6 };
+}
+K k1 { }
+class Bin : object { static array<int> seen[4]; }
+class Reg { static Pt home; }
+class Gear : kit.part { int teeth = 8; }
+Gear gearA { size = 3; }
+value class Pt {
+    inline int x;
+    inline int y;
+    Pt operator = (Pt o) { x = o.x; y = o.y; return self; }
+}

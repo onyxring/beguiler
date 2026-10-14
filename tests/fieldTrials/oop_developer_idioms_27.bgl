@@ -260,10 +260,10 @@ class Parcel[6] : object {
 
 class PriceRule : object {
     default Money Price(Parcel p) { return Money.Of(0); }
-    default string Name() { return "free"; }
+    default string RuleName() { return "free"; }
 
     stringObj Describe() {
-        stringObj text = Name();
+        stringObj text = RuleName();
         return text;
     }
 }
@@ -284,7 +284,7 @@ class PerMileRate[1] : PriceRule {
         return byDistance;
     }
 
-    string Name() { return "per-mile"; }
+    string RuleName() { return "per-mile"; }
 }
 
 class RuleDecorator : PriceRule {
@@ -296,7 +296,7 @@ class RuleDecorator : PriceRule {
 
     stringObj Describe() {
         stringObj inner = Inner.Describe();
-        stringObj text = $"{Name()}({inner})";
+        stringObj text = $"{RuleName()}({inner})";
         return text;
     }
 }
@@ -317,7 +317,7 @@ class WeightSurcharge[2] : RuleDecorator {
         return Money.Of(CentsPerKilo) * kilos;
     }
 
-    string Name() { return "weight"; }
+    string RuleName() { return "weight"; }
 }
 
 class ServiceSurcharge[2] : RuleDecorator {
@@ -331,7 +331,7 @@ class ServiceSurcharge[2] : RuleDecorator {
         return Money.Of(0);
     }
 
-    string Name() { return "service"; }
+    string RuleName() { return "service"; }
 }
 
 //-- Building parcels: the Builder pattern ---------------------------------------------------------------------
@@ -583,7 +583,7 @@ verb Dispatch {
             layers++;
             rule = ((RuleDecorator)rule).Inner;
         }
-        printLine($"Pricing layers {layers} over {rule.Name()}.");
+        printLine($"Pricing layers {layers} over {rule.RuleName()}.");
     }
 }
 

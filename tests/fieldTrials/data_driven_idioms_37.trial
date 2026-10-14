@@ -1,0 +1,84 @@
+Room A
+> rates
+Rates: local..5 region.9 abroad.20; by enum 20, by word 9, out of range 0; parcel B 200.
+> stock
+0: 1.2kg to local, cost 5, parcel
+1: 0.4kg to abroad, cost 0, parcel
+2: 3.0kg to region, cost 29, parcel
+3: 0.4kg to abroad, cost 4, parcel
+Total 5.1kg; C costs 29 as fragile, 39 with 10, 15 if local.
+> kinds
+int mass parcel fragile parcel object word int.
+object parcel fragile mass.
+> find
+D found at 1, C at 2; C == D: no; B == D: yes; [1] == [3]: yes; 2 lighter than parcel A (1.2kg).
+First parcel D (0.4kg); heaviest parcel C (3.0kg); C > D: no.
+> masses
+Masses: 1.2kg 0.4kg 3.0kg 0.4kg 0.8kg; sum 5.9kg; m 2700, n 1505, of 1350; kg 2 / 2; m == 2700: yes; n != m: yes; m <=> 3000: under; sizes heavy light light long long; 450 at 1, 3000 at 2; gross 2620 1.0kg.
+> order 1
+lightest first: 0.4kg 0.4kg 0.8kg 1.2kg 3.0kg.
+> order 2
+heaviest first: 3.0kg 1.2kg 0.8kg 0.4kg 0.4kg.
+> order 3
+by grams: 3.0kg 1.2kg 0.4kg 0.4kg 0.8kg.
+> order 4
+No such order.
+> sort
+Sorted: 0.4kg 0.4kg 0.8kg 1.2kg 3.0kg; 450 at 1, 800 in: yes; parcels: 0.4kg 0.4kg 1.2kg 3.0kg.
+> refs 450
+2 at 450g, 0 under; any equal: yes; over: 3.
+> refs 1000
+0 at 1000g, 3 under; any equal: no; over: 2.
+> tares
+Tares 1050 and 2620; both 3670; plus 1100; more 1450; t 1010; t == 1010: no; kind mass.
+> zone local
+local: rate 5, tariff 0 / 0 / 0 (450 elsewhere) (450 elsewhere); 1 bound there.
+> zone abroad
+abroad: rate 20, tariff 0 / 0 / 0; 2 bound there.
+> tariff 3
+Tariff: 3,6,9; sum 18; by word abroad 9.
+> fee 1500
+Fee 18 by zone, 60 rushed, 40 abroad, 10 plain, 60 named, 60 by test, 10 by cast.
+> mark
+A 7 keep dry; D 3 pad 5; C pad 1 this way up; A rate 60; D costs 5.
+> heavy 1000
+Over 1000g: 2 / 2; over B: 2; over the heaviest: no.
+> add 50
+1.3kg to abroad / 0.5kg to abroad; were alike: no; now alike: no; differ: yes.
+> units
+Grams 2000, 1250, 3000, 3000, 3000, 8000.
+> twice
+Twice 40, 900, abab, 2; widths 3 104 101 11.
+> desk
+#5; this way up; 0.5kg to abroad; pair: 1.6kg; bare: 0.7kg; 5 entries.
+> counts
+Picks 4 9 30 70; rate 5; kind int; as int 8.
+> stock
+0: 1.2kg to local, cost 5, parcel
+1: 1.3kg to abroad, cost 20, parcel
+2: 3.0kg to region, cost 28, parcel
+3: 0.5kg to abroad, cost 5, parcel
+Total 6.0kg; C costs 28 as fragile, 38 with 10, 15 if local.
+> find
+D found at 3, C at 2; C == D: no; B == D: no; [1] == [3]: no; 1 lighter than parcel A (1.2kg).
+First parcel D (0.5kg); heaviest parcel C (3.0kg); C > D: no.
+> more 1
+0.4kg 1.2kg to local small [k1]k2/keep dry/this way up; light 0.4kg sum 1.7kg; via ?. 21 20; kg 3 3 1005; applied 4 10 5900 58; mapped 6000; named 1005 900; heavy 1.2kg 3.0kg; codes 7,0,0,3.
+> more 3
+3.0kg 3.0kg to region big [k3]k2/keep dry/this way up; light 0.4kg sum 1.7kg; via ?. 6 0; kg 3 3 3005; applied 4 10 5900 58; mapped 6000; named 3005 900; heavy 1.2kg 3.0kg; codes 7,0,0,3.
+> label 7
+7 grams, g; 0.0kg kilograms, kg; many (7 text text).
+E code 7, parcel E (2.0kg), rate 100, kind parcel.
+> label 2500
+2500 grams, g; 2.5kg kilograms, kg; many (2500 text text).
+E code 2500, parcel E (4.5kg), rate 100, kind parcel.
+> tweak 2
+Now: 1.2kg 0.4kg 3.0kg 0.9kg 1.2kg; tare 1450; A 1512; m 3450 kg 3 3; A extra 15 vs 9; at its own weight heavier yes - a c b -; distinct 5 p0=3000 p1=5 p2=6000 p3=2000.
+> tweak 3
+Now: 1.2kg 0.4kg 3.0kg 0.9kg 1.7kg; tare 1900; A 1513; m 3450 kg 3 3; A extra 15 vs 9; at its own weight heavier yes - a c b -; distinct 5 p0=999 p1=5 p2=1998 p3=-1.
+> racks region
+A 1002 2 2002; 0: 1002 2 2003; 1: 1050 50 2060.
+> racks abroad
+A 1003 3 2003; 0: 1003 2 2003; 1: 1060 50 2060.
+> scale 2
+Scaled 30 60 120; tare 25 50 26 25 38; gross yes yes no no; pads 1 5; C < D yes; A < C yes.

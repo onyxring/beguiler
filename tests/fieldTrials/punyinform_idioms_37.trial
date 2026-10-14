@@ -1,0 +1,215 @@
+Room A
+> menu
+Menu: 3 7 5 9 2.
+Sorted: 2 3 5 7 9.
+Down: 9 7 5 3 2.
+Cheap: 3 5 2.
+3 over 4; any over 8: yes; all over 1: yes.
+Index of 7: 1; has 9: yes; has 4: no.
+First 3, last 2, cheapest 2, max of first two 7, min 3.
+Sum of first three 15; with fee 12; named 12.
+Doubled first 6; twice special 18; half special 4.
+Pick 9 (9c); special 9c; ceiling 30c/1.
+> sorted
+Up: 2 3 5 7 9.
+Down: 9 7 5 3 2.
+Shuffled: 3 2 5 7 9.
+Edited: 8 3 2 7 9 6.
+Popped: 3 2 7 9 6.
+Part: 2 7.
+Top 8; part first 2; distinct 5; work 5, menu 5.
+> carts
+Cart 1: total 0, limit 20.
+  lines:.
+  sum 0 (matches); best 0; room 20; half limit 10.
+Cart 2: total 0, limit 12.
+  lines:.
+  sum 0 (matches); best 0; room 12; half limit 6.
+Both 0; X bigger: no; spent 0 in 0 add(s).
+> spots
+1,2->2,3 3,4->4,5 0,5->1,6
+[1,1+4=5,1][3,4+2=5,4][3,4+7=10,4]
+Base 3,4; copy 99/3; ruler tip 5; moved 2,5.
+Spans 1 and 2 at one spot: yes; spot 1 is at span 1: yes.
+> grid
+Row 0: 1 2.
+Row 1: 4.
+Total 7; now 6 and 14; first row sum 7.
+> tags
+[main:1][side:2][side-copy:3]
+Main main! 1; slot 0 main 5; slot 1 bound; lengths 9.
+> add 5 to x
+Cart 1 takes 5: total 5 (1 mark(s)), best 5, room 15.
+> add 7 to x
+Cart 1 takes 7: total 12 (2 mark(s)), best 7, room 8.
+> add 3 to x
+Cart 1 takes 3: total 15 (3 mark(s)), best 7, room 5.
+> add 9 to x
+Cart 1 can't take 9; room 5.
+> add 6 to y
+Cart 2 takes 6: total 6 (1 mark(s)), best 6, room 6.
+> carts
+Cart 1: total 15, limit 20.
+  lines: 5 7 3.
+  sum 15 (matches); best 7; room 5; half limit 10.
+Cart 2: total 6, limit 12.
+  lines: 6.
+  sum 6 (matches); best 6; room 6; half limit 6.
+Both 21; X bigger: yes; spent 21 in 4 add(s).
+> unload 1 from x
+Cart 1 drops 7; total 8, 2 line(s) left.
+> unload 4 from x
+Nothing there.
+> carts
+Cart 1: total 8, limit 20.
+  lines: 5 3.
+  sum 8 (matches); best 5; room 12; half limit 10.
+Cart 2: total 6, limit 12.
+  lines: 6.
+  sum 6 (matches); best 6; room 6; half limit 6.
+Both 14; X bigger: yes; spent 21 in 4 add(s).
+> swap 1
+Menu: 4 5 7 9 2.
+Fee 2, fallback 2, cart X total 11.
+> menu
+Menu: 4 5 7 9 2.
+Sorted: 2 4 5 7 9.
+Down: 9 7 5 4 2.
+Cheap: 4 5 2.
+3 over 4; any over 8: yes; all over 1: yes.
+Index of 7: 2; has 9: yes; has 4: yes.
+First 4, last 2, cheapest 2, max of first two 5, min 4.
+Sum of first three 16; with fee 11; named 12.
+Doubled first 8; twice special 18; half special 4.
+Pick 9 (9c); special 9c; ceiling 30c/1.
+> grid
+Row 0: 1 6.
+Row 1: 14.
+Total 21; now 16 and 24; first row sum 17.
+> tags
+[main:1][side:2][side-copy:3]
+Main main! 1; slot 0 main 5; slot 1 bound; lengths 9.
+> spots
+1,2->2,3 3,4->4,5 0,5->1,6
+[1,1+4=5,1][3,4+2=5,4][3,4+7=10,4]
+Base 3,4; copy 99/3; ruler tip 5; moved 2,5.
+Spans 1 and 2 at one spot: yes; spot 1 is at span 1: yes.
+> weigh
+Weights 17 in 4, heaviest 9; steps: 1 3 5.
+Grew to 34 in 1.
+Taxed 18, taxed by fee 19, by name 11; capped 30/2.
+Shared with grid row 0: 0; first big 5; larger of fee and special 9; any equal to the heaviest weight: yes.
+Distinct: 4 2.
+Without 4: 2 2 2.
+Cheapest of dup 2; same as fee yes; scale load above special yes.
+> mix 2
+Slot 2: 7 -> 18 (1 mark(s)); pick 18; cart X total 23, first line 6; copies 1.
+Cart Y total 8; X and Y equal: no; differ: yes; chosen 8.
+> mix 7
+Slot 2: 18 -> 40 (2 mark(s)); pick 40; cart X total 46, first line 7; copies 2.
+Cart Y total 10; X and Y equal: no; differ: yes; chosen 10.
+> carts
+Cart 1: total 46, limit 20.
+  lines: 7 3.
+  sum 10 (differs); best 7; room -26; half limit 10.
+Cart 2: total 10, limit 12.
+  lines: 6.
+  sum 6 (differs); best 6; room 2; half limit 6.
+Both 56; X bigger: yes; spent 21 in 4 add(s).
+> menu
+Menu: 4 5 40 9 2.
+Sorted: 2 4 5 9 40.
+Down: 40 9 5 4 2.
+Cheap: 4 5 2.
+3 over 4; any over 8: yes; all over 1: yes.
+Index of 7: -1; has 9: yes; has 4: yes.
+First 4, last 2, cheapest 2, max of first two 5, min 4.
+Sum of first three 49; with fee 11; named 12.
+Doubled first 8; twice special 18; half special 4.
+Pick 9 (9c); special 9c; ceiling 30c/1.
+> deals
+ 5x1=5 3x2=6 2x3=6; copies 3.
+Bigger 3x2; local 33, deal 6; copies 6.
+Deal is line 1: yes; local is deal: no; line 2 cheaper than extra: no; order -1.
+Order: 6 6 4 9; chain from 0 costs 16, from 2 4.
+Sorted: 4 6 6 9; index of deal 2; has extra yes; dearest 9.
+2 line(s) of more than one; a 5 unit: yes; total qty 6.
+> deals
+ 5x1=5 3x2=6 2x3=6; copies 3.
+Bigger 3x2; local 33, deal 6; copies 6.
+Deal is line 1: yes; local is deal: no; line 2 cheaper than extra: no; order -1.
+Order: 6 6 4 9; chain from 0 costs 16, from 2 4.
+Sorted: 4 6 6 9; index of deal 2; has extra yes; dearest 9.
+2 line(s) of more than one; a 5 unit: yes; total qty 6.
+> calc 3
+Build 3: 19; build 2 + build 3: 27; equal builds: yes.
+Twice fee is fee taxed by fee: yes; twice special over taxed special: yes.
+Sum 22; max 10; nested 14.
+Chosen 19, 9; via text 19c; half of build 9; capped 19.
+Menu total 60; mapped first 4, 5 value(s); front 2, skipped 3.
+> calc 0
+Build 0: 1; build 2 + build 3: 27; equal builds: yes.
+Twice fee is fee taxed by fee: yes; twice special over taxed special: yes.
+Sum 22; max 10; nested 14.
+Chosen 2, 2; via text 1c; half of build 0; capped 1.
+Menu total 60; mapped first 4, 5 value(s); front 2, skipped 3.
+> calc 4
+Build 4: 42; build 2 + build 3: 27; equal builds: yes.
+Twice fee is fee taxed by fee: yes; twice special over taxed special: yes.
+Sum 22; max 10; nested 14.
+Chosen 42, 2; via text 42c; half of build 21; capped 30.
+Menu total 60; mapped first 4, 5 value(s); front 2, skipped 3.
+> churn 3
+Churned 3: t... (3); slot 0 main++ (7); busy 3; long yes.
+Floor is 6.
+Menu 1 is 6; watched 6.
+Floor under special: yes; floor by ref 6; copies 4.
+> churn 12
+Churned 12: t............ (12); slot 0 main++++++++ (13); busy 3; long yes.
+Floor is 6.
+Menu 1 is 7; watched 7.
+Floor under special: yes; floor by ref 6; copies 6.
+> churn 40
+Churned 40: t........................................ (40); slot 0 main++++++++++++++++++++++++++++ (33); busy 3; long yes.
+Floor is 6.
+Menu 1 is 8; watched 8.
+Floor under special: yes; floor by ref 6; copies 8.
+> deals
+ 5x1=5 3x2=6 2x3=6; copies 3.
+Bigger 3x2; local 33, deal 6; copies 6.
+Deal is line 1: yes; local is deal: no; line 2 cheaper than extra: no; order -1.
+Order: 6 6 4 9; chain from 0 costs 16, from 2 4.
+Sorted: 4 6 6 9; index of deal 2; has extra yes; dearest 9.
+2 line(s) of more than one; a 5 unit: yes; total qty 6.
+> more 2
+Lines 4 and 27; fee is 2: yes; special isn't 9: no; fee is fee: yes.
+Units 8/1 9; next qty 4; by ref: 4 6 8 9.
+X lines 0 and 1: 7, 3; equal no; sum 10.
+Held: 7 3.
+Y now: 4 8 40 9 2; Y total by sum 63.
+Points 1,1 0,5 2,0; ruler is point 0: yes; index of home moved 2.
+> more 3
+Lines 6 and 36; fee is 2: yes; special isn't 9: no; fee is fee: yes.
+Units 11/2 9; next qty 3; by ref: 4 8 9 9.
+X lines 0 and 1: 7, 3; equal no; sum 10.
+Held: 7 3.
+Y now: 4 8 40 9 2; Y total by sum 63.
+Points 1,1 0,5 3,0; ruler is point 0: yes; index of home moved 2.
+> issue 3
+Ticket 3: fare 10 (1), seat 3,1, item 27; 1 under 3; doubled 20.
+> issue 4
+Ticket 4: fare 3 (1), seat 4,1, item 8; 1 under 4; doubled 6.
+> issue 1
+No tickets left.
+> void
+Ticket 4 voided at 3.
+> issue 2
+Ticket 2: fare 41 (1), seat 2,1, item 80; 0 under 2; doubled 82.
+> void
+Ticket 2 voided at 41.
+> void
+Ticket 3 voided at 10.
+> void
+No tickets held.
+> issue 0
+Ticket 0: fare 5 (1), seat 0,1, item 0; 0 under 0; doubled 10.

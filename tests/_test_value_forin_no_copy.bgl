@@ -1,0 +1,7 @@
+/* for-in over array<N> whose class has no copy operator */
+// EXPECT_ERROR: the loop variable 'k' is a copy of each element, and N has no operator = to copy one
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+value class N { int c; }
+array<N> ns[3];
+void main(){ for (N k in ns) { k.c++; } }

@@ -1,0 +1,44 @@
+// run_target7_strings — a bare static stringObj assigned (literal and interpolated) and subscripted inside
+// its class's methods, subscripted through its class; an emitter taking two interpolated-string parameters;
+// and a value class's binary `+` and `==` taking a stringObj, given a literal or a `string` operand.
+// EXPECT_OUTPUT: set y x n4 one 4 / two 5 ab ac aw eq ne
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <string>
+class Box {
+    static stringObj last;
+    void mark() { last = "set"; }
+    void markN(int n) { last = $"n{n}"; }
+    char firstBare() { return last[0]; }
+}
+Box b { }
+emitter void two(interpolatedStringLiteral a, interpolatedStringLiteral c) { $a; print " / "; $c; }
+value class Sheet {
+    stringObj body;
+    Sheet operator = (Sheet o) { body = o.body; return self; }
+    Sheet operator + (stringObj s) { Sheet r; r = self; r.body += s; return r; }
+    bool operator == (stringObj s) { return body == s; }
+}
+void main() {
+    glulxConsole();
+    bglInit();
+    b.mark();
+    print(Box.last); print(" ");
+    Box.last = "xyz";
+    print(Box.last[1]); print(" ");
+    print(b.firstBare()); print(" ");
+    b.markN(4);
+    print(Box.last); print(" ");
+    int n = 4;
+    two($"one {n}", $"two {n + 1}"); print(" ");
+    Sheet s;
+    s.body = "a";
+    stringObj t = "b";
+    Sheet u = s + t;
+    Sheet v = s + "c";
+    string w = "w";
+    Sheet x = s + w;
+    print(u.body); print(" "); print(v.body); print(" "); print(x.body); print(" ");
+    print(x == "aw" ? "eq" : "ne"); print(" ");
+    print(s == w ? "eq" : "ne");
+}

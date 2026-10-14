@@ -1,0 +1,8 @@
+/* overloaded static method used as a func value */
+// EXPECT_ERROR: 'Calc.of' names 2 overloads, so it cannot be used as a bare function reference
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Calc {
+    static int of(int n) { return n; }
+    static int of(int a, int b) { return a + b; }
+}
+void main(){ func<int, int> mk = Calc.of; }

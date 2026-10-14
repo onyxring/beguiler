@@ -1,0 +1,53 @@
+// A step on an accessor or an element used as a value, `!` on a ref member in `||`, a subclass object interpolated
+// through its base's print overload, and an attribute whose asI6 name a class member above it already has.
+// EXPECT_OUTPUT: 0 1 3 3 3 3 4 5 6 6 1 <p> <p> 3 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+class Node {
+    auto Hits = {
+        int _h;
+        int operator () { return _h; }
+        void operator = (int v) { _h = v; }
+    }
+    array<int> marks[2];
+}
+Node nodeA { }
+Node pick() { return nodeA; }
+
+value class Price {
+    int c;
+    Price operator = (Price o) { c = o.c; return self; }
+    int operator <=> (Price o) { return c - o.c; }
+}
+class Cart { ref Price best; bool better(Price p) { if (!best || p > best) { best := p; return true; } return false; } }
+Cart shop { }
+
+class Parcel { }
+class Fragile : Parcel { }
+void print(Parcel p) { ::print("<p>"); }
+Fragile pD { }
+
+class Pump : object { int drained; }
+Pump pa { }
+attribute spent asI6 drained;
+
+void main() {
+    bglInit();
+    int a = nodeA.Hits++;
+    int b = pick()?.Hits++;
+    int c = ++nodeA.Hits;
+    print($"{a} {b} {c} {nodeA.Hits} ");
+    nodeA.marks.append(3);
+    int m = nodeA?.marks[0]++;
+    print($"{nodeA.Hits} {m} {nodeA.marks[0]} ");
+    nodeA?.marks[0]++;
+    int q = ++nodeA?.marks[0];
+    print($"{nodeA.marks[0] - 1} {q} {nodeA.marks[0]} ");
+    Price p1; p1.c = 3;
+    print($"{shop.better(p1) ? 1 : 0} ");
+    Fragile f = pD;
+    print($"{pD} {f} ");
+    pa.drained = 3; pa.give(spent);
+    print($"{pa.drained} {pa.has(spent) ? 1 : 0}");
+}

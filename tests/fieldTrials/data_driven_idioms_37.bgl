@@ -1,0 +1,797 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a parcel desk kept in tables, read almost entirely through overload sets. A Mass value
+// class with overloaded `=` (copy, int), `==` / `!=` / `<=>` by Mass and int (instance and static),
+// `+` / `+=` by Mass and int, `*`, `-=`, an emitter `operator switch`, an explicit int conversion,
+// static `of` overloads by arity and type (called with named arguments and through a subclass),
+// `kg` and `scaled` overloads mixing emitter and plain methods, and an `extend` adding `+ (Count)` and
+// `kg(bool)`; a Tare value subclass adding `+ (Tare)`, `scaled(bool)` and replacing `== (int)`; a
+// Count value class with an implicit int and an explicit string conversion. A Parcel / Fragile /
+// Sealed class hierarchy with overloaded `cost`, `mark` and `heavierThan` (a default override calling
+// the base through a cast, an added `mark(char)`, a hidden `mark(string)`, an `extend` adding
+// `cost(Mass)` and replacing one `heavierThan`), overloaded instance `==` / `!=` / `+=` and `operator
+// switch` by zone and int, static `<=>` on two levels referenced as sort comparators and deriving `<`
+// / `>`. A Tariff object and a Rack class with `operator []` overloaded by int, zone and dictionary
+// word. A global `put` set appending to a ref stringObj by int, char, string, stringObj, zone, Mass,
+// Parcel, array<int>, array<string>, array<Mass> and (string, width, fill = ' '); `rate` by zone,
+// int, word and Parcel with two overloads replaced; `fee` picked by named argument, comparison and
+// cast; `kindOf` with `var`, a union, object, Parcel and Fragile; `twice` mixing an emitter and plain
+// overloads; `sum` over typed arrays and <linq> results; `apply` told apart by func type; `sizeOf`
+// reached by an int through Mass's `operator = (int)`; a program `print(Mass)` and `print(Parcel)`
+// reached through interpolation; overloaded methods of a `units` object imported with `#using` (one
+// added by `extend`, two with defaults and named arguments); a desk object's own `log` overloads.
+// Arguments are table elements, casts, `?:` choices, call results, chain results, `?.` calls, enum
+// members and literals of every kind; operator references (`Mass::operator <=>(Mass)`,
+// `Mass::operator ==(int)`, `Parcel::operator <=>`) kept in func<> variables and tables of lambdas.
+
+#beguilerSettings {
+    // Glulx: value-class tables and pooled strings outgrow the Z-machine's readable memory.
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+//-- Constants -------------------------------------------------------------------
+
+const int SLOTS = 8;
+const int NONE = -1;
+
+enum zone { local, region, abroad }
+
+//-- Value classes ---------------------------------------------------------------
+
+value class Mass {
+    inline int g;
+    Mass operator = (Mass o) { g = o.g; return self; }
+    Mass operator = (int n) { g = n; return self; }
+    bool operator == (Mass o) { return g == o.g; }
+    bool operator == (int n) { return g == n; }
+    bool operator != (Mass o) { return g != o.g; }
+    bool operator != (int n) { return g != n; }
+    int operator <=> (Mass o) { return g - o.g; }
+    int operator <=> (int n) { return g - n; }
+    static bool operator == (Mass a, Mass b) { return a.g == b.g; }
+    static bool operator == (Mass a, int b) { return a.g == b; }
+    static int operator <=> (Mass a, Mass b) { return a.g - b.g; }
+    static int operator <=> (Mass a, int b) { return a.g - b; }
+    Mass operator + (Mass o) { return Mass{ g + o.g }; }
+    Mass operator + (int n) { return Mass{ g + n }; }
+    Mass operator - (Mass o) { return Mass{ g - o.g }; }
+    Mass operator * (int n) { return Mass{ g * n }; }
+    Mass operator += (Mass o) { g += o.g; return self; }
+    Mass operator += (int n) { g += n; return self; }
+    Mass operator -= (int n) { g -= n; return self; }
+    emitter eBool operator switch (int v) { $self.g == $v }
+    explicit int operator () { return g; }
+    static Mass of(int grams) { return Mass{ grams }; }
+    static Mass of(int kilos, int grams) { return Mass{ kilos * 1000 + grams }; }
+    static Mass of(Mass m, int times) { return Mass{ m.g * times }; }
+    int kg() { return g / 1000; }
+    emitter int scaled() { ($self.g / 100) }
+    int scaled(int k) { return g / 100 * k; }
+    emitter int scaled(Mass o) { ($self.g / 100 * ($o.g / 100)) }
+    int kg(int step) { return (g + step / 2) / step * step / 1000; }
+}
+
+// A tare is a box weight: its own box grams come first, then the inherited g.
+value class Tare : Mass {
+    inline int box;
+    Tare operator = (Tare o) { (Mass)self = o; box = o.box; return self; }
+    Mass operator + (Tare o) { return Mass{ g + o.g + box + o.box }; }
+    int gross() { return g + box; }
+    int scaled(bool withBox) { return withBox ? (g + box) / 100 : g / 100; }
+    replace bool operator == (int n) { return g + box == n; }
+    replace bool operator != (int n) { return g + box != n; }
+}
+
+value class Count {
+    inline int n;
+    Count operator = (Count o) { n = o.n; return self; }
+    int operator () { return n; }
+    explicit string operator () { return n > 5 ? "many" : "few"; }
+}
+
+extend class Mass {
+    Mass operator + (Count c) { return Mass{ g + c.n * 1000 }; }
+    string kg(bool brief) { return brief ? "kg" : "kilograms"; }
+}
+
+//-- Tables ----------------------------------------------------------------------
+
+array<int> zoneRate = { 5, 9, 20 };
+array<string> zoneName = { "local", "region", "abroad" };
+array<dictionaryWord> zoneWord = { .local, .region, .abroad };
+
+array<Mass> masses[SLOTS] = { { 1200 }, { 450 }, { 3000 }, { 450 }, { 800 } };
+array<Tare> tares = { { 50, 1000 }, { 120, 2500 } };
+array<Count> counts = { { 3 }, { 7 } };
+array<string> notes = { "keep dry", "this way up", "" };
+
+// Ways to order two masses, picked by number.
+array<func<int, Mass, Mass>> ways = {
+    Mass::operator <=>(Mass),
+    (Mass a, Mass b) => b <=> a,
+    (Mass a, Mass b) => (a.g % 1000) - (b.g % 1000)
+};
+array<string> wayNames = { "lightest first", "heaviest first", "by grams" };
+
+//-- Objects ---------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object shelf { "shelf"; }
+
+class Parcel : object {
+    inline Mass weight;
+    inline zone dest;
+    int code;
+    string note;
+
+    default int cost() { return rate(dest) * weight.kg(500); }
+    int cost(int surcharge) { return cost() + surcharge; }
+    int cost(zone z) { return rate(z) * weight.kg(500); }
+    void mark(int c) { code = c; }
+    void mark(string s) { note = s; }
+    bool heavierThan(Mass m) { return weight > m; }
+    bool heavierThan(int grams) { return weight > grams; }
+    bool heavierThan(Parcel p) { return weight > p.weight; }
+
+    bool operator == (Parcel o) { return weight == o.weight && dest == o.dest; }
+    bool operator != (Parcel o) { return !(self == o); }
+    Parcel operator += (int grams) { weight += grams; return self; }
+    Parcel operator += (Mass m) { weight += m; return self; }
+    static int operator <=> (Parcel a, Parcel b) { return a.weight <=> b.weight; }
+    emitter eBool operator switch (zone z) { $self.dest == $z }
+    emitter eBool operator switch (int grams) { $self.weight.g == $grams }
+}
+
+class Fragile : Parcel {
+    int padding = 2;
+    replace int cost() { return ((Parcel)self).cost() + padding; }
+    void mark(char c) { padding = c == '!' ? 5 : 1; }
+    bool operator == (Fragile o) { return weight == o.weight && padding == o.padding; }
+    bool operator != (Fragile o) { return !(self == o); }
+    static int operator <=> (Fragile a, Fragile b) { return a.padding - b.padding; }
+}
+
+// A sealed parcel takes no written note.
+class Sealed : Parcel {
+    hide mark(string);
+}
+
+Parcel pA { { 1200 }, zone.local, "parcel A"; parent = shelf; }
+Parcel pB { { 450 }, zone.abroad, "parcel B"; parent = shelf; }
+Fragile pC { { 3000 }, zone.region, "parcel C"; parent = shelf; }
+Fragile pD { { 450 }, zone.abroad, "parcel D"; parent = shelf; padding = 4; }
+
+array<Parcel> stock = { pA, pB, pC, pD };
+
+extend class Parcel {
+    int cost(Mass extra) { return rate(dest) * (weight + extra).kg(500); }
+    replace bool heavierThan(int grams) { return weight >= grams; }
+}
+
+// A rack holds a count per zone, read by position, zone or word.
+class Rack : object {
+    array<int> held[3];
+    int operator [] (int i) { return held[i]; }
+    int operator [] (zone z) { return held[(int)z - 1] + 1000; }
+    int operator [] (dictionaryWord w) { return held[zoneWord.indexOf(w)] + 2000; }
+    void fill(int a, int b, int c) {
+        held[0] = a;
+        held[1] = b;
+        held[2] = c;
+    }
+}
+
+Rack rackA { "rack A"; }
+Rack rackB { "rack B"; }
+array<Rack> racks = { rackA, rackB };
+
+object bench { "bench"; }
+Sealed pE { { 2000 }, zone.region, "parcel E"; parent = bench; }
+
+
+object tariff {
+    "tariff";
+    array<int> perKg = { 0, 0, 0 };
+    int operator [] (int i) { return perKg[i]; }
+    int operator [] (zone z) { return perKg[(int)z - 1]; }
+    int operator [] (dictionaryWord w) {
+        int at = zoneWord.indexOf(w);
+        return at == NONE ? 0 : perKg[at];
+    }
+    void operator []= (int i, int v) { perKg[i] = v; }
+    void operator []= (zone z, int v) { perKg[(int)z - 1] = v; }
+}
+
+object units {
+    int grams(int kilos) { return kilos * 1000; }
+    int grams(int kilos, int extra) { return kilos * 1000 + extra; }
+    int grams(Mass m) { return m.g; }
+    string label(int grams, bool brief = false) { return brief ? "g" : "grams"; }
+    string label(Mass m, bool brief = false) { return brief ? "kg" : "kilograms"; }
+}
+
+extend units {
+    int grams(Parcel p) { return p.weight.g; }
+}
+
+#using units
+
+// Probes run over each mass, picked by number.
+array<func<int, Mass>> probes = {
+    (Mass m) => grams(m),
+    (Mass m) => rate(m.kg() % 3),
+    (Mass m) => twice(m).g,
+    (Mass m) => m <=> 1000
+};
+
+object desk {
+    "desk";
+    stringObj last;
+    int entries;
+    void log(int n) { last = $"#{n}"; entries++; }
+    void log(string s) { last = s; entries++; }
+    void log(Parcel p) { last = ""; put(last, p); entries++; }
+    void log(Mass m, string tag) { last = tag; last += ": "; put(last, m); entries++; }
+}
+
+//-- Overload sets ---------------------------------------------------------------
+
+void print(Mass m) {
+    print(m.g / 1000);
+    print(".");
+    print(m.g % 1000 / 100);
+    print("kg");
+}
+
+void print(Parcel p) {
+    print((object)p);
+    print(" (");
+    print(p.weight);
+    print(")");
+}
+
+void put(ref stringObj s, int n) { s += $"{n}"; }
+void put(ref stringObj s, char c) { s += c; }
+void put(ref stringObj s, string t) { s += t; }
+void put(ref stringObj s, zone z) { s += zoneName[(int)z - 1]; }
+void put(ref stringObj s, Mass m) { s += $"{m}"; }
+void put(ref stringObj s, Parcel p) {
+    put(s, p.weight);
+    put(s, " to ");
+    put(s, p.dest);
+}
+void put(ref stringObj s, array<int> a) {
+    for (int i in 0 to a.length - 1) {
+        if (i > 0) put(s, ',');
+        put(s, a[i]);
+    }
+}
+void put(ref stringObj s, array<Mass> a) {
+    for (int i in 0 to a.length - 1) {
+        if (i > 0) put(s, ' ');
+        put(s, a[i]);
+    }
+}
+void put(ref stringObj s, stringObj t) { s += "["; s += t; s += "]"; }
+void put(ref stringObj s, array<string> a) {
+    for (string t in a) {
+        if (t.length == 0) continue;
+        put(s, '/');
+        put(s, t);
+    }
+}
+void put(ref stringObj s, string t, int w, char fill = ' ') {
+    int start = s.length;
+    s += t;
+    while (s.length - start < w) s += fill;
+}
+
+int rate(zone z) { return zoneRate[(int)z - 1]; }
+int rate(int i) { return zoneRate[i]; }
+int rate(dictionaryWord w) {
+    int at = zoneWord.indexOf(w);
+    return at == NONE ? 0 : zoneRate[at];
+}
+int rate(Parcel p) { return rate(p.dest) + (p.code > 0 ? 1 : 0); }
+
+replace int rate(int i) {
+    if (i < 0 || i >= zoneRate.length) return 0;
+    return replaced(i);
+}
+
+int fee(int grams, zone z) { return rate(z) * ((grams + 999) / 1000); }
+int fee(int grams, bool rush) { return fee(grams, zone.local) + (rush ? 50 : 0); }
+
+string kindOf(var v) { return "word"; }
+string kindOf(int n) { return "int"; }
+string kindOf(object o) { return "object"; }
+string kindOf(Parcel p) { return "parcel"; }
+string kindOf(Fragile f) { return "fragile"; }
+string kindOf(Mass m) { return "mass"; }
+string kindOf(string | stringObj t) { return "text"; }
+
+emitter int twice(int n) { ($n * 2) }
+Mass twice(Mass m) { return m * 2; }
+stringObj twice(string t) {
+    stringObj r = t;
+    r += t;
+    return r;
+}
+
+int sum(array<int> a) {
+    int t = 0;
+    for (int n in a) t += n;
+    return t;
+}
+Mass sum(array<Mass> a) {
+    Mass t = 0;
+    for (Mass m in a) t += m;
+    return t;
+}
+Mass sum(array<Parcel> a) {
+    Mass t = 0;
+    for (Parcel p in a) t += p.weight;
+    return t;
+}
+
+int width(string t) { return t.length; }
+int width(stringObj t) { return t.length + 100; }
+
+string sizeOf(Mass m) { return m > 1000 ? "heavy" : "light"; }
+string sizeOf(string t) { return t.length > 4 ? "long" : "short"; }
+
+Mass grossOf(Tare t) {
+    return t.gross();
+}
+
+int pick(int a, int b = 0) { return a + b; }
+int pick(Count c) { return c * 10; }
+
+int apply(func<int, Mass> f) {
+    int t = 0;
+    for (Mass m in masses) t += f(m);
+    return t;
+}
+int apply(func<int, Parcel> f) {
+    int t = 0;
+    for (Parcel p in stock) t += f(p);
+    return t;
+}
+int gramsOf(Mass m) { return grams(m); }
+int costOf(Parcel p) { return p.cost(); }
+
+replace int rate(Parcel p) { return replaced(p) * 10; }
+
+//-- Parsing ---------------------------------------------------------------------
+
+int parseZone() {
+    int at = zoneWord.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at + 1;
+    return 1;
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb RatesTest {
+    grammar = {.rates};
+    void handler() {
+        stringObj line = "Rates:";
+        for (int i in 0 to 2) {
+            put(line, ' ');
+            put(line, zoneName[i], 7, '.');
+            put(line, rate(i));
+        }
+        line += $"; by enum {rate(zone.abroad)}, by word {rate(.region)}, out of range {rate(9)}";
+        line += $"; parcel B {rate(pB)}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        for (int i in 0 to stock.length - 1) {
+            stringObj row = "";
+            put(row, i);
+            put(row, ": ");
+            put(row, stock[i]);
+            row += $", cost {stock[i].cost()}, {kindOf(stock[i])}";
+            row.print();
+            print("^");
+        }
+        print($"Total {sum(stock)}; C costs {pC.cost()} as fragile, {pC.cost(10)} with 10, {pC.cost(zone.local)} if local.^");
+    }
+}
+
+verb KindsTest {
+    grammar = {.kinds};
+    void handler() {
+        print($"{kindOf(5)} {kindOf(masses[0])} {kindOf(pA)} {kindOf(pD)} {kindOf((Parcel)pD)} {kindOf(shelf)} {kindOf(zone.local)} {kindOf('x')}.^");
+        object o = pC;
+        print($"{kindOf(o)} {kindOf(stock[2])} {kindOf((Fragile)stock[2])} {kindOf(tares[0])}.^");
+    }
+}
+
+verb MassTest {
+    grammar = {.masses};
+    void handler() {
+        stringObj line = "Masses: ";
+        put(line, masses);
+        line += $"; sum {sum(masses)}";
+        Mass m = 2000;
+        m += 250;
+        m += masses[1];
+        Mass n = Mass.of(1, 500) + 5;
+        line += $"; m {m.g}, n {n.g}, of {Mass.of(masses[1], 3).g}";
+        line += $"; kg {m.kg()} / {m.kg(500)}";
+        line += $"; m == 2700: {m == 2700 ? "yes" : "no"}; n != m: {n != m ? "yes" : "no"}";
+        line += $"; m <=> 3000: {(m <=> 3000) < 0 ? "under" : "over"}";
+        line += $"; sizes {sizeOf(2500)} {sizeOf(m.g / 10)} {sizeOf(masses[1])} {sizeOf(notes[1])} {sizeOf(zoneName[0])}";
+        line += $"; 450 at {masses.indexOf(450)}, 3000 at {masses.indexOf(m.g + 300)}; gross {grossOf(tares[1]).g} {grossOf(tares[0]) + 1}";
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb OrderTest {
+    grammar = {.order, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        if (k < 1 || k > ways.length) {
+            print("No such order.^");
+            return;
+        }
+        array<Mass> ms[SLOTS] = masses;
+        func<int, Mass, Mass> f = ways[k - 1];
+        ms.sort(f);
+        stringObj line = $"{wayNames[k - 1]}: ";
+        put(line, ms);
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb SortTest {
+    grammar = {.sort};
+    void handler() {
+        array<Mass> ms[SLOTS] = masses;
+        ms.sort();
+        stringObj line = "Sorted: ";
+        put(line, ms);
+        line += $"; 450 at {masses.indexOf(Mass{ 450 })}, 800 in: {masses.contains(Mass.of(800)) ? "yes" : "no"}";
+        array<Parcel> ps = stock;
+        ps.sort(Parcel::operator <=>);
+        line += "; parcels:";
+        for (Parcel p in ps) {
+            line += " ";
+            put(line, p.weight);
+        }
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb RefsTest {
+    grammar = {.refs, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        func<bool, Mass, int> same = Mass::operator ==(int);
+        func<int, Mass, int> cmp = Mass::operator <=>(int);
+        int hits = 0;
+        int under = 0;
+        for (Mass m in masses) {
+            if (same(m, g)) hits++;
+            if (cmp(m, g) < 0) under++;
+        }
+        print($"{hits} at {g}g, {under} under; any equal: {masses.any((Mass m) => m == g) ? "yes" : "no"}; over: {masses.filter((Mass m) => m > g).count()}.^");
+    }
+}
+
+verb TareTest {
+    grammar = {.tares};
+    void handler() {
+        Tare t = tares[0];
+        Mass both = tares[0] + tares[1];
+        Mass plus = t + 100;
+        Mass more = t + masses[1];
+        t += 10;
+        stringObj line = $"Tares {tares[0].gross()} and {tares[1].gross()}; both {both.g}; plus {plus.g}; more {more.g}; t {t.g}";
+        line += $"; t == 1010: {t == 1010 ? "yes" : "no"}; kind {kindOf(t)}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb ZoneTest {
+    grammar = {.zone, parseZone};
+    void handler() {
+        zone z = (zone)(int)noun;
+        stringObj line = "";
+        put(line, z);
+        line += $": rate {rate(z)}, tariff {tariff[z]} / {tariff[(int)z - 1]} / {tariff[zoneWord[(int)z - 1]]}";
+        int n = 0;
+        for (Parcel p in stock) {
+            switch (p) {
+                case z: n++;
+                case 450: line += " (450 elsewhere)";
+            }
+        }
+        line += $"; {n} bound there.";
+        line.print();
+        print("^");
+    }
+}
+
+verb TariffTest {
+    grammar = {.tariff, NUMBER};
+    void handler() {
+        int base = (int)noun;
+        tariff[0] = base;
+        tariff[zone.region] = base * 2;
+        tariff[2] = tariff[zone.region] + tariff[.local];
+        array<int> kg[3] = tariff.perKg;
+        stringObj line = "Tariff: ";
+        put(line, kg);
+        line += $"; sum {sum(kg)}; by word abroad {tariff[.abroad]}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb FeeTest {
+    grammar = {.fee, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        print($"Fee {fee(g, zone.region)} by zone, {fee(g, rush: true)} rushed, {fee(g, z: zone.abroad)} abroad, {fee(g, false)} plain, {fee(rush: true, grams: g)} named, {fee(g, g > 1000)} by test, {fee(g, (zone)(g % 3 + 1))} by cast.^");
+    }
+}
+
+verb MarkTest {
+    grammar = {.mark};
+    void handler() {
+        pA.mark(7);
+        pA.mark(notes[0]);
+        pD.mark('!');
+        pD.mark(3);
+        pC.mark('?');
+        pC.mark(notes[1]);
+        stringObj line = $"A {pA.code} {pA.note}; D {pD.code} pad {pD.padding}; C pad {pC.padding} {pC.note}";
+        line += $"; A rate {rate(pA)}; D costs {pD.cost()}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb HeavyTest {
+    grammar = {.heavy, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        int byInt = stock.filter((Parcel p) => p.heavierThan(g)).count();
+        int byMass = stock.filter((Parcel p) => p.heavierThan(Mass.of(g))).count();
+        int byParcel = stock.filter((Parcel p) => p.heavierThan(pB)).count();
+        bool any = stock.any((Parcel p) => p.heavierThan(masses[2]));
+        print($"Over {g}g: {byInt} / {byMass}; over B: {byParcel}; over the heaviest: {any ? "yes" : "no"}.^");
+    }
+}
+
+verb AddTest {
+    grammar = {.add, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        pB += g;
+        pB += masses[4];
+        bool same = pB == pD;
+        pD += Mass.of(g);
+        stringObj line = "";
+        put(line, pB);
+        line += " / ";
+        put(line, pD);
+        line += $"; were alike: {same ? "yes" : "no"}; now alike: {pB == pD ? "yes" : "no"}; differ: {pB != pD ? "yes" : "no"}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb UnitsTest {
+    grammar = {.units};
+    void handler() {
+        print($"Grams {grams(2)}, {grams(1, 250)}, {grams(masses[2])}, {grams(pC)}, {units.grams(3)}, {grams(twice(4))}.^");
+    }
+}
+
+verb TwiceTest {
+    grammar = {.twice};
+    void handler() {
+        stringObj s = twice("ab");
+        Mass m = twice(masses[1]);
+        int n = twice(rate(zone.abroad));
+        print($"Twice {n}, {m.g}, {s}, {twice(masses[0]).kg()}; widths {width("abc")} {width(s)} {width(s.left(1))} {width(notes[1])}.^");
+    }
+}
+
+verb DeskTest {
+    grammar = {.desk};
+    void handler() {
+        desk.log(5);
+        print($"{desk.last}; ");
+        desk.log(notes[1]);
+        print($"{desk.last}; ");
+        desk.log(stock[3]);
+        print($"{desk.last}; ");
+        desk.log(masses[0] + masses[1], tag: "pair");
+        print($"{desk.last}; ");
+        desk.log({ 700 }, "bare");
+        print($"{desk.last}; {desk.entries} entries.^");
+    }
+}
+
+verb CountTest {
+    grammar = {.counts};
+    void handler() {
+        Count c = counts[1];
+        int a = pick(4);
+        int b = pick(4, 5);
+        int d = pick(counts[0]);
+        int e = pick(c);
+        int f = rate((int)masses[1] / 1000);
+        print($"Picks {a} {b} {d} {e}; rate {f}; kind {kindOf(c)}; as int {c + 1}.^");
+    }
+}
+
+verb FindTest {
+    grammar = {.find};
+    void handler() {
+        int at = stock.indexOf(pD);
+        int atC = stock.indexOf(pC);
+        bool sameF = pC == pD;
+        bool sameP = pB == pD;
+        bool mixed = stock[1] == stock[3];
+        int lighter = 0;
+        for (Parcel p in stock)
+            if (p < pA) lighter++;
+        print($"D found at {at}, C at {atC}; C == D: {sameF ? "yes" : "no"}; B == D: {sameP ? "yes" : "no"}; [1] == [3]: {mixed ? "yes" : "no"}; {lighter} lighter than {pA}.^");
+        print($"First {pD}; heaviest {stock.orderBy(Parcel::operator <=>).last()}; C > D: {pC > pD ? "yes" : "no"}.^");
+    }
+}
+
+verb MoreTest {
+    grammar = {.more, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        bool big = k > 2;
+        stringObj line = "";
+        put(line, big ? masses[2] : masses[1]);
+        put(line, ' ');
+        put(line, big ? pC : pA);
+        put(line, ' ');
+        put(line, big ? "big" : "small");
+        put(line, ' ');
+        stringObj t = $"k{k}";
+        put(line, t);
+        put(line, t[0]);
+        put(line, t.length);
+        stock[0] += masses.filter((Mass m) => m < 1000).first();
+        stock[0] += -450;
+        put(line, notes);
+        line += $"; light {masses.filter((Mass m) => m < 1000).first()} sum {sum(masses.filter((Mass m) => m < 1000))}";
+        line += $"; via ?. {stock[k % 4]?.cost(surcharge: 1)} {stock[k % 4]?.cost(z: zone.abroad)}";
+        line += $"; kg {masses[2].kg(250)} {Mass.of(2, 600).kg(1000)} {Tare.of(k, 5).g}";
+        line += $"; applied {apply((Mass m) => m.kg())} {apply((Parcel p) => p.code)} {apply(gramsOf)} {apply(costOf)}";
+        line += $"; mapped {sum(stock.map((Parcel p) => grams(p)))}; named {Mass.of(kilos: k, grams: 5).g} {Mass.of(times: 2, m: masses[1]).g}; heavy ";
+        put(line, masses.filter((Mass m) => m > 1000));
+        line += "; codes ";
+        put(line, stock.map((Parcel p) => p.code));
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb LabelTest {
+    grammar = {.label, NUMBER};
+    void handler() {
+        int g = (int)noun;
+        Count c = Count{ g };
+        Mass m = g;
+        print($"{g} {label(g)}, {label(g, brief: true)}; {m} {label(m)}, {label(m, true)}; {(string)c} ({c} {kindOf((string)c)} {kindOf("x")}).^");
+        pE.mark(g);
+        pE += c;
+        print($"E code {pE.code}, {pE}, rate {rate(pE)}, kind {kindOf(pE)}.^");
+    }
+}
+
+verb TweakTest {
+    grammar = {.tweak, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        masses[3] = 999;
+        masses[0] += k;
+        masses[4] += masses[1];
+        tares[0] += masses[1];
+        pA.weight = 1500;
+        pA.weight += k;
+        stock[0] += 10;
+        Mass m = masses[1] + counts[0];
+        stringObj line = "Now: ";
+        put(line, masses);
+        line += $"; tare {tares[0].g}; A {pA.weight.g}; m {m.g} {m.kg(true)} {m.kg(1000)} {m.kg()}";
+        line += $"; A extra {pA.cost(Mass{ 2000 })} vs {pA.cost(zone.region)}; at its own weight heavier {pA.heavierThan(pA.weight.g) ? "yes" : "no"}";
+        for (Mass x in masses) {
+            switch (x) {
+                case 450: line += " a";
+                case 999: line += " b";
+                case 3000: line += " c";
+                default: line += " -";
+            }
+        }
+        line += $"; distinct {masses.distinct().count()}";
+        int t = 0;
+        for (int i in 0 to probes.length - 1) {
+            func<int, Mass> f = probes[i];
+            t = f(masses[k % masses.length]);
+            line += $" p{i}={t}";
+        }
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb RacksTest {
+    grammar = {.racks, parseZone};
+    void handler() {
+        zone z = (zone)(int)noun;
+        rackA.fill(1, 2, 3);
+        rackB.fill(40, 50, 60);
+        stringObj line = $"A {rackA[z]} {rackA[(int)z - 1]} {rackA[zoneWord[(int)z - 1]]}";
+        for (int i in 0 to racks.length - 1) {
+            line += $"; {i}: {racks[i][z]} {racks[i][1]} {racks[i][.abroad]}";
+        }
+        line += ".";
+        line.print();
+        print("^");
+    }
+}
+
+verb ScaleTest {
+    grammar = {.scale, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        Tare t = tares[1];
+        ref Mass r := tares[0];
+        array<Fragile> fs = { pC, pD };
+        fs.sort(Fragile::operator <=>);
+        print($"Scaled {masses[2].scaled()} {masses[2].scaled(k)} {masses[2].scaled(masses[1])}; tare {t.scaled()} {t.scaled(k)} {t.scaled(true)} {t.scaled(false)} {r.scaled(k)}");
+        print($"; gross {t == 2620 ? "yes" : "no"} {t != 2500 ? "yes" : "no"} {tares[0] == masses[1] ? "yes" : "no"} {r == 1000 ? "yes" : "no"}");
+        print($"; pads {fs[0].padding} {fs[1].padding}; C < D {pC < pD ? "yes" : "no"}; A < C {pA < pC ? "yes" : "no"}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

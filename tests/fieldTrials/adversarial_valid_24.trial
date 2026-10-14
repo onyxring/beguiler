@@ -1,0 +1,102 @@
+Room A
+Room A.
+You can see a post A, a post B, a post C and a board here.
+> survey
+Stakes: (1,1) (4,0) (8,9) (2,3).
+Home (2,3) sum 5; far (8,9); diag (0,0)-(5,5) len 10.
+post A: at (3,4) weight 1 side far.
+post B: at (0,7) weight 3 side far.
+post C: at (5,5) weight 1 side far.
+> mid
+Mid (5,6), sum (10,12), three (14,12), twice-swapped (6,4), far (8,9), center (2,2), home still (2,3).
+> rank
+Ranked: (1,1) (4,0) (2,3) (8,9); beyond home 1; home listed yes; all placed yes; lowest (1,1); home at 3.
+> check
+Twice (4,6), mirrored (6,4), start yes, spread 8, picked (0,7), unique 4, total 25, mid (2,3).
+Sorted: (1,1) (4,0) (2,3) (2,3) (8,9); trimmed: (1,1) (4,0); home left at -1.
+> probe 3 2
+Probe (3,2): within 2 1; nearest other (2,3) at 2; far; hops 3.
+Gap <1,1>; widest <1,1> after 1.
+> probe 0 9
+Probe (0,9): within 2 0; nearest other (8,9) at 8; far; hops 9.
+Gap <2,6>; widest <2,6> after 2.
+> route post a
+Route (3,4)(2,3)(2,3) total 2; changed (8,9)(2,3)(2,3) total 12; legs 3/3; first same no.
+> flags
+Flags: a(6,1) c(0,8) d(3,3); plain (0,8); stored z(6,1); first a(6,1); flagA a(6,1).
+> flags
+Flags: a(6,1) c(0,8) z(6,1); plain (0,8); stored z(6,1); first a(6,1); flagA a(6,1).
+> diag 2
+Diag (0,0)-(5,5) 10; copy (0,0)-(10,10) 20; moved (1,1)-(10,10) 18; same end yes.
+> nudge post a
+post A: (3,4) -> (5,2); moved 1, last (5,2), trail 1.
+> nudge post a
+post A: (5,2) -> (7,0); moved 2, last (7,0), trail 2.
+> nudge post b
+post B: (0,7) -> (2,5); moved 3, last (2,5), trail 1.
+> trail post a
+post A trail: (5,2) (7,0); last (7,0); walker (3,0) after 4; offset (17,0).
+> trail post c
+post C trail:; last (5,5); walker (3,5) after 4; offset (15,5).
+> mark post a
+Mark 1: post A was (7,0) now (8,1), base (1,2); previous (0,0); stake (5,1); near home no.
+> mark post b
+Mark 2: post B was (2,5) now (3,6), base (1,2); previous (7,0); stake (6,2); near home no.
+> anchor post a
+post A anchored to (8,9); pick (8,9); plain (8,1).
+> anchor post b
+post B anchored to (8,9); pick (8,9); plain (3,6).
+> anchor post b
+post B anchored to (1,1); pick (1,1); plain (3,6).
+> far 1
+Far (9,9); stake (9,9); post A sees (9,9); post B sees (1,1).
+> pin post b 3
+post B pinned (3,3); far (9,9); first stake (3,3); trail (2,-3).
+> pin post c 2
+post C has no anchor.
+> focus post b
+Focus (3,6) (copy (99,6)); changes 1; x 3.
+> focus post c
+Focus (5,5) (copy (99,5)); changes 2; x 5.
+> tally
+Far 3, flag far yes, focus (3,4) sum 7 home no, px 9, kinds plain/tagged/plain/tagged, swapped a(1,6) from a(1,6), made (3,4), home sum five; (2,3) (9,9) (0,2).
+> link
+Chain 3/2/1, end (12,3), mid (0,0), far (9,9), c3 next none
+> swap
+post C now (6,6), spare (5,5), was (5,5).
+> swap
+post C now (5,5), spare (6,6), was (6,6).
+> reset post c
+post C reset to (1,1), then (4,4).
+> record post a
+Recorded (8,1); log 1, seen 1, spare 1; sums 9; pairs (0,9) (0,9) (5,1); late (0,8); last logged (8,1); weight 10.
+> record post c
+Recorded (4,4); log 2, seen 2, spare 2; sums 9 8; pairs (0,9) (0,9) (5,1); late (0,7); last logged (4,4); weight 10.
+> plant 4
+Planted marker 4 at (5,1); made 1; planted 1.
+> plant 5
+Planted marker 5 at (6,1); made 2; planted 2.
+> plant 6
+No markers.
+> uproot
+Pulled a marker from (6,1); left 1.
+> plant 7
+Planted marker 7 at (8,1); made 3; planted 2.
+> uproot
+Pulled a marker from (8,1); left 1.
+> uproot
+Pulled a marker from (5,1); left 0.
+> uproot
+Nothing planted.
+> home 7
+Home (7,3); stake copy (2,3); listed no; post A at home no.
+> rank
+Ranked: (2,3) (3,3) (6,2) (9,9); beyond home 1; home listed no; all placed yes; lowest (2,3); home at -1.
+> survey
+Stakes: (3,3) (6,2) (9,9) (2,3).
+Home (7,3) sum 10; far (9,9); diag (0,0)-(5,5) len 10.
+post A: at (8,1) weight 1 side near.
+post B: at (3,6) weight 3 side near.
+post C: at (4,4) weight 1 side near.
+> nudge board
+Only posts.

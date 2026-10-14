@@ -1,0 +1,41 @@
+// run_target7_namespaces — code above a class whose base is an alias path; a static method reached through
+// a class alias from above the class, returning an enum declared below it; object-typed calls printed and
+// interpolated (each evaluated once); an emitter class used above its declaration, directly and through an
+// alias; and an `alias class … for <alias path>` used above its declaration.
+// EXPECT_OUTPUT: 1 1 3 4 2 2 box1 box2 box1 box2 6 8 6 8 1 1 3
+#beguilerSettings { target = z5; informName = "none"; }
+class Part : object { int size = 1; }
+object kit { alias part for Part; alias calc = Calc; alias grade for eGrade; alias f for fmtLeaf; alias gear for Gear; }
+Part gFirst = gearA;
+bool takes(Part p) { return p.size > 0; }
+object boxA { "box"; }
+int gCalls = 0;
+object pickBox() { gCalls++; return boxA; }
+object shop { int asks = 0; object pick() { asks++; return boxA; } }
+void main() {
+    bglInit();
+    Part q = gearA;
+    print(takes(gearA) ? 1 : 0); print(" "); print(gearA.is(Part) ? 1 : 0); print(" "); print(q.size); print(" ");
+    print(kit.calc.twice(2)); print(" ");
+    eGrade a = Calc.lower(eGrade.high);
+    eGrade b = kit.calc.lower(eGrade.high);
+    print((int)a); print(" "); print((int)b); print(" ");
+    print($"{pickBox()}{gCalls}"); print(" ");
+    print(pickBox()); print(gCalls); print(" ");
+    print($"{shop.pick()}{shop.asks}"); print(" ");
+    print(shop.pick()); print(shop.asks); print(" ");
+    print($"{fmtLeaf.width} {fmtLeaf.twice(4)} {kit.f.width} {kit.f.twice(4)}"); print(" ");
+    Gear g = gearA;
+    print(g.is(Cog) ? 1 : 0); print(" "); print(g.is(kit.gear) ? 1 : 0); print(" ");
+    Cog c = gearA;
+    print(c.size);
+}
+class Gear : kit.part { int teeth = 8; }
+Gear gearA { size = 3; }
+class Calc {
+    static int twice(int n) { return n * 2; }
+    static eGrade lower(eGrade g) { return g == eGrade.high ? eGrade.mid : eGrade.low; }
+}
+enum eGrade { low, mid, high }
+alias class Cog for kit.gear { }
+emitter class fmtLeaf { int width { 6 } int twice(int n) { $n * 2 } }

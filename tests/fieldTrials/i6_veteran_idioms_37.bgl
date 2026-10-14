@@ -1,0 +1,497 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5 whose names meet each other's: globals level, flow,
+// runs, pumped and marks shadowed by members, a static member, parameters, locals, loop and lambda
+// variables; an emitter gauge sharing its name with the object gauge (called from that object, from a
+// value class with a field gauge, through `::gauge(…)` from an object whose method Gauge hides it, and
+// the object used bare as a value, in `cThe()` and `.parent`); enum values Low, Mid and High beside
+// members low, high and mid (`::High`, `::Low`, bare `Mid`, `case ::Low` in a switch) and locals named
+// like them; a program attribute primed beside a member primed (`give(::primed)`); an attribute with an
+// `asI6` name beside a member; the library's general under an `asBgl` name checked, beside members
+// checked and general on an object with a `before` (`has(::checked)`, `give(::general)`); an object
+// with an `asI6` name; a member with an `asI6` name beside the global of its Beguile name; a
+// free-standing property tagged beside a member tagged; one property flow as an int on one class and a
+// string on another; methods named like global functions calling them with `::` (Drain, Busiest,
+// Weigh, from `extend class`) and a static method named like a global variable (Level); members named
+// like their classes (`Valve valve`, `Pump pump`) tested with `is(::Valve)`; a #define RATE beside a
+// member rate; an object imported with #using whose method and members meet a global and a local;
+// parameters and named arguments named like globals and objects (`Feed(level: level, flow: flow)`,
+// `Weigh(gauge: pumpC)`, `Weigh(sump: 2)`); sibling blocks declaring one name with two types; a local
+// named like an object read beside `::pumpA`; reads in other letter cases (`PUMPA.Number`,
+// `Sump.LEVEL`, `::GAUGE.level`, `GAUGE(…)`, `ePhase.MID`, `FEED(…)`, `valveA.HAS(GENERAL)`); native
+// Pour, Prime, Crank, Purge verbs, the library's Turn in a `before`, and meta Readout and Names verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define RATE 3
+const int LIMIT = 12;
+const int FLOOR = 0;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- names the members meet
+
+attribute primed;                       // a program attribute; Pump has a member of its name
+attribute spent asI6 drained;          // Inform 6 calls it drained; Pump has a member drained
+extern attribute general asBgl checked;  // the library's general, which Beguile here calls checked
+property tagged;                        // a free-standing property; Valve has a member of its name
+
+int level = 0;                          // water in the sump
+int flow = 0;                           // water moved by every pump
+int runs = 0;                           // cranks of any pump
+int pumped = 0;                         // pumps that have moved water
+array<int> marks[4];                    // cranks by pump number
+enum ePhase { Low, Mid, High }
+
+emitter void gauge(int n) { print "<", $n, ">" }   // an emitter sharing its name with the object gauge
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. Three pumps stand over a sump. A gauge is on the wall. Room B is east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. A valve and a logbook. Room A is west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- the sump and the gauge
+
+object sump asI6 pit {                  // Beguile says sump; Inform 6 says pit
+    short_name = "sump";
+    name = {.sump, .pit};
+    parent = roomA;
+    attributes = {static};
+    int level;                          // the highest the water has stood; like the global
+    int pours;
+    Valve valve;                        // a member named like its class
+    Pump pump;                          // the pump that drew on it last; likewise
+    int Gauge() {                       // like the object and the emitter
+        return ::gauge.level - ::level;
+    }
+    void Check() {
+        print($"Sump check: gauge {Gauge()} ");
+        ::gauge(::gauge.high);          // the emitter; the method hides the name here
+        if (valve != null && valve.is(::Valve)) print($" valve {valve.flow}");
+        if (pump != null && pump.is(::Pump)) print($" pump {pump.number}");
+        print(".^");
+    }
+    void Pour(int level = 3) {          // the parameter hides the member and the global
+        ::level += level;
+        if (::level > LIMIT) ::level = LIMIT;
+        if (::level > self.level) self.level = ::level;
+        pours++;
+        ::gauge.reading = ::level;
+    }
+    void description() {
+        print($"The sump holds {::level} (at most {level}, poured {pours} times).^");
+    }
+}
+
+object gauge {
+    short_name = "gauge";
+    name = {.gauge, .dial};
+    parent = roomA;
+    attributes = {static};
+    int level;                          // the last reading; like the global
+    int high;                           // the highest reading; like the enum value High
+    int low = LIMIT;                    // the lowest reading; like the enum value Low
+    auto reading = {
+        int _raw = 0;
+        int operator () { return _raw; }
+        void operator = (int v) {
+            _raw = v;
+            outer.level = v;
+            if (v > outer.high) outer.high = v;
+            if (v < outer.low) outer.low = v;
+        }
+    }
+    ePhase Phase() {
+        if (level >= 8) return ::High;  // the enum value, which the member hides
+        if (level >= 4) return MID;     // no member of this name: the enum value
+        return ::Low;                   // the member low hides this one
+    }
+    void description() {
+        print($"The gauge reads {level} (global {::level}), high {high}, low {low}, phase {(int)Phase()} ");
+        gauge(reading);                 // the emitter, called from the object that shares its name
+        switch (Phase()) {
+            case ::Low:  print(", low water");     // the member low hides the enum value
+            case Mid:    print(", half");
+            case ::High: print(", high water");
+        }
+        print(".^");
+    }
+    int Above() {
+        int high = level / 2;           // a local hiding the member high
+        int over = pumps.filter((Pump level) => level.flow > high).count();   // a parameter named like the member
+        return over * 10 + self.high;
+    }
+}
+
+// ---------------------------------------------------------------- pumps
+
+class Pump : object {
+    int number;
+    int flow;                           // water this pump has moved; like the global
+    int runs asI6 pumpRuns;             // cranks of this pump; like the global, under another I6 name
+    bool primed;                        // like the program attribute
+    ePhase phase = ePhase.Low;
+    int mid;                            // cranks made at Mid; like the enum value
+    array<int> marks[4];                // the last four amounts; like the global array
+    static int pumped;                  // water moved by every pump; like the global
+    int rate = RATE;                    // like the #define
+    int drained;                        // times purged; like the attribute's Inform 6 name
+    dictionaryWord letter;
+
+    int parse_name() {
+        int n = 0;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .pump || (w != null && w == letter)) {
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+
+    void Prime() {                      // like the verb Prime
+        primed = true;
+        give(::primed);
+    }
+
+    int Crank(int flow = 1) {           // the parameter hides the member and the global
+        if (!primed) return 0;
+        int moved = flow * rate;
+        if (moved > ::level) moved = ::level;
+        ::level -= moved;
+        self.flow += moved;
+        ::flow += moved;
+        pumped += moved;                // the static member
+        if (moved > 0 && self.flow == moved) ::pumped++;
+        runs++;
+        ::runs++;
+        ::marks[number] = ::marks[number] + 1;
+        marks[(runs - 1) % 4] = moved;
+        phase = ::gauge.Phase();
+        if (phase == ::Mid) mid++;
+        ::gauge.reading = ::level;
+        return moved;
+    }
+
+    void Drain() {                      // like the global function, which this one calls
+        ::Drain(self);
+        primed = false;
+        drained++;
+        give(spent);
+        sump.pump = self;
+    }
+
+    static int Level() {                // like the global variable, which this one reads
+        return level * 10 + pumped;
+    }
+
+    static int Share(int pumped) {      // the parameter hides the static member
+        if (Pump.pumped == 0) return 0;
+        return pumped * 100 / Pump.pumped;
+    }
+
+    void description() {
+        print($"Pump {number}: moved {flow} of {::flow}, cranked {runs} of {::runs}, rate {rate}, phase {(int)phase}, mid {mid}");
+        if (primed) print(", primed");
+        if (self.has(::primed)) print(", flagged");
+        print(".^");
+    }
+}
+
+Pump pumpA {
+    short_name = "pump A";
+    letter = .a;
+    parent = roomA;
+    number = 1;
+    attributes = {static};
+}
+
+Pump pumpB {
+    short_name = "pump B";
+    letter = .b;
+    parent = roomA;
+    number = 2;
+    rate = 2;
+    attributes = {static};
+}
+
+Pump pumpC {
+    short_name = "pump C";
+    letter = .c;
+    parent = roomA;
+    number = 3;
+    attributes = {static};
+}
+
+array<Pump> pumps = {pumpA, pumpB, pumpC};
+
+extend class Pump {
+    bool Busiest() {                    // like the global function, which this one calls
+        return ::Busiest() == number;
+    }
+    int Weigh(int sump = 0) {           // like the global function; the parameter is named like the object
+        return ::Weigh(self, sump) + ::SUMP.level;
+    }
+}
+
+// ---------------------------------------------------------------- the valve
+
+class Valve : object {
+    string flow = "shut";               // the property Pump.flow, as a string here
+    int tagged;                         // the free-standing property, as a member here
+}
+
+Valve valveA {
+    short_name = "valve";
+    name = {.valve};
+    parent = roomB;
+    attributes = {static};
+    int checked;                        // times turned; like the attribute's Beguile name
+    int general;                        // like the library attribute
+    bool before() {
+        switch (action) {
+            case Turn:
+                checked++;
+                if (has(::checked)) {
+                    ungive(::checked);
+                    flow = "shut";
+                } else {
+                    give(::general);    // one attribute, under either name
+                    flow = "open";
+                }
+                general = checked * 10;
+                tagged = general + 1;
+                print($"You turn the valve {flow}.^");
+                rtrue;
+        }
+        rfalse;
+    }
+    void description() {
+        print($"The valve is {flow}, tagged {tagged}, turned {checked} ({general}), {(has(::checked) ? "checked" : "unchecked")}.^");
+    }
+}
+
+// ---------------------------------------------------------------- a sample
+
+value class Sample {
+    int gauge;                          // like the object and the emitter
+    int level;                          // like the global
+    int pumpA;                          // like the object
+    Sample operator = (Sample o) {
+        gauge = o.gauge;
+        level = o.level;
+        pumpA = o.pumpA;
+        return self;
+    }
+    void Take() {
+        gauge = ::gauge.level;
+        level = ::level;
+        pumpA = ::pumpA.flow;
+    }
+    void Show() {
+        print($"[{gauge} {level} {pumpA}]");
+        ::gauge(gauge);                 // the emitter, with the field as its argument
+    }
+}
+
+Sample last;
+
+// ---------------------------------------------------------------- the logbook
+
+object logbook {
+    short_name = "logbook";
+    name = {.logbook, .log, .book};
+    parent = roomB;
+    int entries;
+    int level;                          // the level at the last entry
+    void Note(int level) {              // the parameter hides the member and the global
+        entries++;
+        self.level = level;
+    }
+    void description() {
+        print($"{entries} entries, the last at {level}.^");
+    }
+}
+
+#using logbook;
+
+// ---------------------------------------------------------------- routines
+
+bool Initialise() {
+    location = roomA;
+    sump.valve = valveA;
+    rfalse;
+}
+
+void Drain(Pump p) {                    // like the method
+    ::level += p.flow;
+    if (::level > LIMIT) ::level = LIMIT;
+    ::gauge.reading = ::level;
+}
+
+int Feed(int level, int flow = 0) {     // parameters named like the globals
+    return level * 10 + flow;
+}
+
+int Busiest() {
+    int flow = 0;                       // a local named like the global and the member
+    Pump gauge = pumpA;                 // a local named like the object and the emitter
+    for (Pump valveA in pumps) {        // a loop variable named like the object
+        if (valveA.flow > flow) {
+            flow = valveA.flow;
+            gauge = valveA;
+        }
+    }
+    return gauge.number;
+}
+
+int Spread() {
+    int low = LIMIT;                    // locals named like the enum values
+    int high = 0;
+    for (Pump p in pumps) {
+        if (p.flow < low) low = p.flow;
+        if (p.flow > high) high = p.flow;
+    }
+    if (gauge.Phase() == ePhase.High) high++;
+    return high * 100 + low;
+}
+
+int Weigh(Pump gauge = pumpA, int sump = 1) {   // parameters named like the objects
+    return gauge.number * 10 + sump + ::sump.pours;
+}
+
+int Entries() {
+    int entries = 7;                    // a local named like the imported member
+    return entries + logbook.entries;
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Pour {
+    grammar = {.pour};
+    void handler() {
+        sump.Pour();
+        Note(::level);                  // the imported method
+        print($"Water pours in. The sump holds {level}.^");
+    }
+}
+
+verb Prime {
+    grammar = {.prime, NOUN};
+    void handler() {
+        if (!noun.is(Pump)) {
+            print("Only a pump primes.^");
+            return;
+        }
+        Pump pumpA = (Pump)noun;        // a local named like the object
+        pumpA.Prime();
+        print($"{cThe(pumpA)} is primed; pump A is {(::pumpA.primed ? "primed" : "dry")}.^");
+    }
+}
+
+verb Crank {
+    grammar = {{.crank, NOUN}, {.crank, NOUN, .by, NUMBER}};
+    void handler() {
+        if (!noun.is(Pump)) {
+            print("Only a pump cranks.^");
+            return;
+        }
+        int flow = 1;                   // a local named like the global
+        if (second != null) flow = (int)second;
+        int level = ::level;            // and one like the global, read through ::
+        int moved = ((Pump)noun).Crank(flow);
+        if (moved == 0) {
+            string why = "dry";         // sibling blocks reuse one name with two types
+            if (level == 0) why = "empty";
+            print($"{cThe(noun)} turns over; the sump stays at {::level} ({why}).^");
+            return;
+        } else {
+            int why = moved;
+            print($"{cThe(noun)} moves {why}; the sump falls from {level} to {::level}.^");
+        }
+        Note(level: ::level);
+        print($"Feed {Feed(level: level, flow: flow)} {Feed(flow: moved, level: ::level)}.^");
+    }
+}
+
+verb Purge {
+    grammar = {.purge, NOUN};
+    void handler() {
+        if (!noun.is(Pump)) {
+            print("Only a pump purges.^");
+            return;
+        }
+        ((Pump)noun).Drain();
+        print($"{cThe(noun)} runs back; the sump holds {::level}.^");
+    }
+}
+
+verb Readout {
+    grammar = {.readout};
+    meta = true;
+    void handler() {
+        print($"Level {level}, flow {flow}, runs {runs}, pumped {pumped}, Pump.pumped {Pump.pumped}, Pump.Level {Pump.Level()}.^");
+        print("Marks:");
+        for (int i = 1; i <= 3; i++) print($" {marks[i]}");
+        print(".^");
+        for (Pump gauge in pumps) {     // a loop variable named like the object
+            print($"{gauge.number}: flow {gauge.flow} runs {gauge.runs} mid {gauge.mid} share {Pump.Share(gauge.flow)} marks");
+            for (int i = 0; i < 4; i++) print($" {gauge.marks[i]}");
+            print(".^");
+        }
+        print($"Gauge {::gauge.level}/{::gauge.high}/{::gauge.low}, reading ");
+        gauge(::gauge.reading);
+        print($", phase {(int)::gauge.Phase()}; sump {sump.level} ({sump.pours}); busiest {Busiest()}.^");
+        print($"Spread {Spread()}, above {::gauge.Above()}, drained");
+        for (Pump p in pumps) print($" {p.drained}{(p.has(spent) ? "*" : "")}");
+        print(".^");
+        sump.Check();
+        last.Take();
+        last.Show();
+        print($"; logbook {entries}/{logbook.level}, Entries {Entries()}.^");
+    }
+}
+
+verb Names {
+    grammar = {.names};
+    meta = true;
+    void handler() {
+        print($"Cases: {PUMPA.Number} {PumpB.RATE} {pumpc.Rate} {GAUGE.Level} {Sump.LEVEL} {LogBook.Entries} {RATE} {LIMIT}.^");
+        int primed = pumps.filter((Pump level) => level.primed).count();   // a lambda parameter named like the global
+        int flagged = pumps.filter((Pump gauge) => gauge.has(::primed)).count();
+        print($"Primed {primed} flagged {flagged}; ");
+        GAUGE(Pump.LEVEL());
+        print($"; valve {valveA.flow} {valveA.provides(tagged)} {pumpA.provides(tagged)} {pumpA.provides(flow)}.^");
+        print($"Weigh {Weigh()} {Weigh(sump: 2)} {Weigh(gauge: pumpC)} {pumpB.Weigh()} {pumpB.Weigh(sump: 4)}; busiest {pumpA.Busiest()} {pumpC.Busiest()}; {::GAUGE.level} {::Sump.Level}.^");
+        object held = gauge;            // the object, beside the emitter of its name
+        print($"Held {held == gauge} {cThe(gauge)} {gauge.parent == roomA}; valve {valveA.checked} {valveA.General} {valveA.has(checked)} {valveA.HAS(GENERAL)}.^");
+        print($"Phases: low {(int)Low} mid {(int)ePhase.MID} high {(int)::HIGH}; feed {Feed(2)} {FEED(level: 1, flow: 2)}.^");
+    }
+}
+
+#includeI6 "grammar"

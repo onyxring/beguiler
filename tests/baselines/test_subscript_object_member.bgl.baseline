@@ -73,9 +73,10 @@ class _bglClass_rule
     ]
 ;
 array book table _bglanon4 _bglanon5;
-[main v;
+[main v _bgl_tempL0;
     print ( _bglAt(book, 1, 0)-->0 ).pri;
-    if(( _bglAt(book, 0, 0)-->0 ).matcher provides print) ( _bglAt(book, 0, 0)-->0 ).matcher.print(); else print (name)( _bglAt(book, 0, 0)-->0 ).matcher;
+    _bgl_tempL0 = ( _bglAt(book, 0, 0)-->0 ).matcher;
+    if(_bgl_tempL0 provides print) _bgl_tempL0.print(); else print (name)_bgl_tempL0;
     v = ( _bglAt(book, 0, 0)-->0 ).run();
     print v;
 ];

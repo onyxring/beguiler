@@ -1,0 +1,96 @@
+Room A
+Room A. Three pumps stand over a sump. A gauge is on the wall. Room B is east.
+You can see a sump, a gauge, a pump A, a pump B and a pump C here.
+> x sump
+The sump holds 0 (at most 0, poured 0 times).
+> x gauge
+The gauge reads 0 (global 0), high 0, low 12, phase 1 <0>, low water.
+> pour
+Water pours in. The sump holds 3.
+> pour
+Water pours in. The sump holds 6.
+> x gauge
+The gauge reads 6 (global 6), high 6, low 3, phase 2 <6>, half.
+> crank pump a
+The pump A turns over; the sump stays at 6 (dry).
+> prime pump a
+The pump A is primed; pump A is primed.
+> crank pump a
+The pump A moves 3; the sump falls from 6 to 3.
+Feed 61 33.
+> crank pump b by 2
+The pump B turns over; the sump stays at 3 (dry).
+> prime pump b
+The pump B is primed; pump A is primed.
+> crank pump b by 2
+The pump B moves 3; the sump falls from 3 to 0.
+Feed 32 3.
+> x pump a
+Pump 1: moved 3 of 6, cranked 1 of 2, rate 3, phase 2, mid 1, primed, flagged.
+> x pump b
+Pump 2: moved 3 of 6, cranked 1 of 2, rate 2, phase 1, mid 0, primed, flagged.
+> readout
+Level 0, flow 6, runs 2, pumped 2, Pump.pumped 6, Pump.Level 6.
+Marks: 1 1 0.
+1: flow 3 runs 1 mid 1 share 50 marks 3 0 0 0.
+2: flow 3 runs 1 mid 0 share 50 marks 3 0 0 0.
+3: flow 0 runs 0 mid 0 share 0 marks 0 0 0 0.
+Gauge 0/6/0, reading <0>, phase 1; sump 6 (2); busiest 1.
+Spread 300, above 26, drained 0 0 0.
+Sump check: gauge 0 <6> valve shut.
+[0 0 3]<0>; logbook 4/0, Entries 11.
+> purge pump a
+The pump A runs back; the sump holds 3.
+> x gauge
+The gauge reads 3 (global 3), high 6, low 0, phase 1 <3>, low water.
+> pour
+Water pours in. The sump holds 6.
+> pour
+Water pours in. The sump holds 9.
+> pour
+Water pours in. The sump holds 12.
+> prime pump c
+The pump C is primed; pump A is dry.
+> crank pump c by 3
+The pump C moves 9; the sump falls from 12 to 3.
+Feed 123 39.
+> crank pump a by 2
+The pump A turns over; the sump stays at 3 (dry).
+> readout
+Level 3, flow 15, runs 3, pumped 3, Pump.pumped 15, Pump.Level 45.
+Marks: 1 1 1.
+1: flow 3 runs 1 mid 1 share 20 marks 3 0 0 0.
+2: flow 3 runs 1 mid 0 share 20 marks 3 0 0 0.
+3: flow 9 runs 1 mid 0 share 60 marks 9 0 0 0.
+Gauge 3/12/0, reading <3>, phase 1; sump 12 (5); busiest 3.
+Spread 903, above 42, drained 1* 0 0.
+Sump check: gauge 0 <12> valve shut pump 1.
+[3 3 3]<3>; logbook 8/3, Entries 15.
+> names
+Cases: 1 2 3 3 12 8 3 12.
+Primed 2 flagged 3; <45>; valve shut true false true.
+Weigh 16 17 36 37 41; busiest false true; 3 12.
+Held true The gauge true; valve 0 0 false false.
+Phases: low 1 mid 2 high 3; feed 20 12.
+> e
+Room B
+Room B. A valve and a logbook. Room A is west.
+You can see a valve and a logbook here.
+> x valve
+The valve is shut, tagged 0, turned 0 (0), unchecked.
+> turn valve
+You turn the valve open.
+> x valve
+The valve is open, tagged 11, turned 1 (10), checked.
+> names
+Cases: 1 2 3 3 12 8 3 12.
+Primed 2 flagged 3; <45>; valve open true false true.
+Weigh 16 17 36 37 41; busiest false true; 3 12.
+Held true The gauge true; valve 1 10 true true.
+Phases: low 1 mid 2 high 3; feed 20 12.
+> turn valve
+You turn the valve shut.
+> x valve
+The valve is shut, tagged 21, turned 2 (20), unchecked.
+> x logbook
+8 entries, the last at 3.
