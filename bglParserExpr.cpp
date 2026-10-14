@@ -5172,6 +5172,11 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
     statementBlock* body = st.body;
 
     if(!expr->resolvedType.empty()){
+        // A plain enum doesn't widen to int (§2.7.3), so int arithmetic doesn't apply to it.
+        if(enumDef* en = languageService.findEnum(expr->resolvedType); en != nullptr && !en->isBnum
+           && (cur.value == "+" || cur.value == "-" || cur.value == "*" || cur.value == "/" || cur.value == "%"))
+            parsingError(format("'{0}' isn't defined for the enum '{1}'; cast to int first: `(int)a {0} (int)b`.",
+                                cur.value, en->dName()));
         classDef* cls = languageService.classOf(expr->resolvedType);
         // A named union compares as its anonymous form does: by identity.
         if(cls != nullptr && !cls->unionMembers.empty() && (cur.value == "==" || cur.value == "!="))

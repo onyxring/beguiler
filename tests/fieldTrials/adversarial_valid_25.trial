@@ -1,0 +1,86 @@
+Room A
+Room A.
+You can see a shelf A, a shelf B, a shelf C and a printer here.
+> shelves
+By caption: (blank)   Bolts   Bins; stamped 0; blank 1.
+The shelf A: plain, 0 faults, caption 9
+The shelf B: plain, 0 faults, caption 4
+The shelf C: plain, 0 faults, caption 0
+> words
+Distinct: nut bolt washer axle bracket; ordered: axle bolt bracket nut washer; by length: nut bolt axle washer bracket; b-words 3; long yes; all short yes; nut at 0.
+> stamp shelf a boxed
+9 chars -> [Bolts] (code 0, pad 4, boxed); ok 1 bad 0.
+> stamp shelf b loud
+0 chars -> fault: empty (code 2, pad 6, loud); ok 1 bad 1.
+> stamp shelf c quiet
+25 chars -> fault: too long (code 1, pad 8, quiet); ok 1 bad 2.
+> stamp shelf a fancy
+[Bolts]: fault: bad style.
+> stamp shelf c plain
+25 chars -> fault: too long (code 1, pad 2, plain); ok 1 bad 4.
+> journal
+Journal 4/4, dropped 0: <[Bolts]> <fault: empty> <fault: too long> <fault: too long>.
+> retext shelf c 4
+the shelf C raw now [Axles 4].
+> stamp shelf c loud
+7 chars -> AXLES 4! (code 0, pad 6, loud); ok 2 bad 4.
+> journal
+Journal 4/4, dropped 1: <fault: empty> <fault: too long> <fault: too long> <AXLES 4!>.
+> shelves
+By caption: AXLES 4! Bins [Bolts]; stamped 2; blank 0.
+The shelf A: boxed, 0 faults, caption 7
+The shelf B: plain, 1 faults, caption 4
+The shelf C: loud, 2 faults, caption 8
+> spell shelf a
+[Bolts]: vowels 1, classes ?Ullll?, flipped [bOLTS], same ci yes, same no.
+> spell shelf c
+AXLES 4!: vowels 2, classes UUUUU_d?, flipped axles 4!, same ci yes, same no.
+> passes shelf a
+[  Bolts  ] -> [Bolts] -> [BOLTS] -> [STLOB] -> [STLOB.....].
+> passes shelf c
+[Axles 4] -> [Axles 4] -> [AXLES 4] -> [4 SELXA] -> [4 SELXA...].
+> grab
+Captured 24: {shelf A/shelf B/shelf C} and {} by {hand}.
+> tack shelf a
+[Bolts]# via ref; caption [Bolts]#; jobs 1, last tack (4).
+> tack shelf b
+Bins# via ref; caption Bins#; jobs 2, last tack (4).
+> reset shelf a
+the shelf A cleared: [(blank)] style plain; jobs 3.
+> purge
+Purged 3 faults; popped <AXLES 4!>; left 0; has [BOLTS] no.
+> journal
+Journal 0/4, dropped 1:.
+> tag 3
+Made label 'tag 3'; onHand 1; made 1.
+> tag 4
+Made label 'tag 4'; onHand 2; made 2.
+> tag 5
+No labels; made 2.
+> untag
+Dropped tag 4; onHand 1.
+> tag 6
+Made label 'tag 6'; onHand 2; made 3.
+> untag
+Dropped tag 6; onHand 1.
+> untag
+Dropped tag 3; onHand 0.
+> untag
+No labels held.
+> shelves
+By caption: (blank) AXLES 4! Bins#; stamped 2; blank 1.
+The shelf A: plain, 0 faults, caption 0
+The shelf B: plain, 1 faults, caption 5
+The shelf C: loud, 2 faults, caption 8
+> probe shelf a
+blank; s at -1; mid ; right ; ins ; ends ] no; has 4 no; before Bins yes, yes; longest the shelf C.
+> probe shelf b
+other; s at 3; mid ins; right s#; ins -ins#; ends ] no; has 4 no; before Bins no, no; longest the shelf C.
+> probe shelf c
+axles; s at -1; mid XLE; right 4!; ins -XLES 4!; ends ] no; has 4 yes; before Bins yes, yes; longest the shelf C.
+> footer 1
+plain end
+Labels (2)
+> footer 2
+routine end
+Labels (2) (2)

@@ -1,0 +1,594 @@
+#grids
+Room A
+Room A. A lift car with a row of four buttons.
+[win 1] [0] lift ready
+[grid 1]
+|3           |
+|2           |
+|1           |
+|G [-]       |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at G stopped     doors open                  |
+|Queue: none                                       |
+|Moves 0; 0 trips, 0 floors, mean 0.0, longest 0t  |
+[grid 3]
+|Room A | turn 0 | log 1                           |
+> examine first button
+The first button (1): 0 calls, dark.
+[grid 1]
+|3           |
+|2           |
+|1           |
+|G [-]       |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at G stopped     doors open                  |
+|Queue: none                                       |
+|Moves 0; 0 trips, 0 floors, mean 0.0, longest 0t  |
+[grid 3]
+|Room A | turn 1 | log 1                           |
+> report
+No trips yet.
+[grid 1]
+|3           |
+|2           |
+|1           |
+|G [-]       |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at G stopped     doors open                  |
+|Queue: none                                       |
+|Moves 0; 0 trips, 0 floors, mean 0.0, longest 0t  |
+[grid 3]
+|Room A | turn 1 | log 1                           |
+> call 2
+The second button lights. 1 call waiting.
+The doors close.
+The lift is rising: first floor.
+[win 1] [1] call 2
+[grid 1]
+|3           |
+|2     *     |
+|1 [^]       |
+|G           |
+|q 1/6       |
+|            |
+[grid 2]
+|Lift at 1 rising      doors shut                  |
+|Queue: 2                                          |
+|Moves 1; 0 trips, 0 floors, mean 0.0, longest 0t  |
+[grid 3]
+|Room A | turn 2 | log 2                           |
+> z
+Time passes.
+The lift is rising: second floor.
+Ding. The doors open on the second floor.
+[win 1] [3] arrived G>2 (2t)
+[grid 1]
+|3           |
+|2 [-]       |
+|1           |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 2 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 2; 1 trip, 2 floors, mean 2.0, longest 2t   |
+[grid 3]
+|Room A | turn 3 | log 3                           |
+> z
+Time passes.
+[win 1] [4] lift idle
+[grid 1]
+|3           |
+|2 [-]       |
+|1           |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 2 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 2; 1 trip, 2 floors, mean 2.0, longest 2t   |
+[grid 3]
+|Room A | turn 4 | log 4                           |
+> report
+1. G>2 (2t) span 2
+Up 1, down 0.
+Shortest G>2 (2t); longest G>2 (2t).
+Any span 3: no; all moved: yes.
+First and last match; 0 unlike the first.
+Total: 1 trip, 2 floors, mean 2.0, longest 2t.
+Busiest second (1).
+[grid 1]
+|3           |
+|2 [-]       |
+|1           |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 2 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 2; 1 trip, 2 floors, mean 2.0, longest 2t   |
+[grid 3]
+|Room A | turn 4 | log 4                           |
+> send 3 via 1
+The third button lights. 1 call waiting.
+The first button lights. 2 calls waiting.
+The doors close.
+The lift is rising: third floor.
+Ding. The doors open on the third floor.
+[win 1] [4] call 3
+[win 1] [4] call 1
+[win 1] [5] arrived 2>3 (1t)
+[grid 1]
+|3 [^]       |
+|2           |
+|1     *     |
+|G           |
+|q 1/6       |
+|            |
+[grid 2]
+|Lift at 3 rising      doors open                  |
+|Queue: 1                                          |
+|Moves 3; 2 trips, 3 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 5 | log 7                           |
+> z
+Time passes.
+The doors close.
+The lift is falling: second floor.
+[grid 1]
+|3           |
+|2 [v]       |
+|1     *     |
+|G           |
+|q 1/6       |
+|            |
+[grid 2]
+|Lift at 2 falling     doors shut                  |
+|Queue: 1                                          |
+|Moves 4; 2 trips, 3 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 6 | log 7                           |
+> z
+Time passes.
+The lift is falling: first floor.
+Ding. The doors open on the first floor.
+[win 1] [7] arrived 3>1 (2t)
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 5; 3 trips, 5 floors, mean 1.7, longest 2t  |
+[grid 3]
+|Room A | turn 7 | log 8                           |
+> z
+Time passes.
+[win 1] [8] lift idle
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 5; 3 trips, 5 floors, mean 1.7, longest 2t  |
+[grid 3]
+|Room A | turn 8 | log 9                           |
+> z
+Time passes.
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 5; 3 trips, 5 floors, mean 1.7, longest 2t  |
+[grid 3]
+|Room A | turn 9 | log 9                           |
+> taller
+The panel is now 4 rows.
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 5; 3 trips, 5 floors, mean 1.7, longest 2t  |
+|row 4 of 4                                        |
+[grid 3]
+|Room A | turn 9 | log 9                           |
+> taller
+The panel is now 5 rows.
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 5; 3 trips, 5 floors, mean 1.7, longest 2t  |
+|row 4 of 5                                        |
+|row 5 of 5                                        |
+[grid 3]
+|Room A | turn 9 | log 9                           |
+> taller
+The panel is already 5 rows.
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 5; 3 trips, 5 floors, mean 1.7, longest 2t  |
+|row 4 of 5                                        |
+|row 5 of 5                                        |
+[grid 3]
+|Room A | turn 9 | log 9                           |
+> push ground button
+The ground button lights. 1 call waiting.
+The doors close.
+The lift is falling: ground floor.
+Ding. The doors open on the ground floor.
+[win 1] [9] call G
+[win 1] [10] arrived 1>G (1t)
+[grid 1]
+|3           |
+|2           |
+|1           |
+|G [-]       |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at G stopped     doors open                  |
+|Queue: none                                       |
+|Moves 6; 4 trips, 6 floors, mean 1.5, longest 2t  |
+|row 4 of 5                                        |
+|row 5 of 5                                        |
+[grid 3]
+|Room A | turn 10 | log 11                         |
+> z
+Time passes.
+[win 1] [11] lift idle
+[grid 1]
+|3           |
+|2           |
+|1           |
+|G [-]       |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at G stopped     doors open                  |
+|Queue: none                                       |
+|Moves 6; 4 trips, 6 floors, mean 1.5, longest 2t  |
+|row 4 of 5                                        |
+|row 5 of 5                                        |
+[grid 3]
+|Room A | turn 11 | log 12                         |
+> z
+Time passes.
+[grid 1]
+|3           |
+|2           |
+|1           |
+|G [-]       |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at G stopped     doors open                  |
+|Queue: none                                       |
+|Moves 6; 4 trips, 6 floors, mean 1.5, longest 2t  |
+|row 4 of 5                                        |
+|row 5 of 5                                        |
+[grid 3]
+|Room A | turn 12 | log 12                         |
+> call 1
+The first button lights. 1 call waiting.
+The doors close.
+The lift is rising: first floor.
+Ding. The doors open on the first floor.
+[win 1] [12] call 1
+[win 1] [13] arrived G>1 (1t)
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+|row 4 of 5                                        |
+|row 5 of 5                                        |
+[grid 3]
+|Room A | turn 13 | log 14                         |
+> shorter
+The panel is now 4 rows.
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+|row 4 of 4                                        |
+[grid 3]
+|Room A | turn 13 | log 14                         |
+> shorter
+The panel is now 3 rows.
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 13 | log 14                         |
+> call 1
+The lift is already at the first floor.
+[win 1] [14] lift idle
+[grid 1]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 14 | log 15                         |
+> hide
+The shaft is hidden.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 14 | log 15                         |
+> z
+Time passes.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 15 | log 15                         |
+> unhide
+The shaft is shown (2 openings).
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 15 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> unhide
+The shaft is already shown.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 15 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> styles
+Shaft normal style: unknown; known no.
+Use markers: yes.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 15 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> z
+Time passes.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 16 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> report
+1. G>2 (2t) span 2
+2. 2>3 (1t) span 1
+3. 3>1 (2t) span 2
+4. 1>G (1t) span 1
+5. G>1 (1t) span 1
+Up 3, down 2.
+Shortest 2>3 (1t); longest 3>1 (2t).
+Any span 3: no; all moved: yes.
+First and last differ; 4 unlike the first.
+Total: 5 trips, 7 floors, mean 1.4, longest 2t.
+Busiest first (3).
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 16 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> examine ground button
+The ground button (G): 1 call, dark.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 17 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> call 7
+There is no floor 7.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 18 | log 15                         |
+[grid 4]
+|3           |
+|2           |
+|1 [-]       |
+|G           |
+|q 0/6       |
+|            |
+> quiet
+The log is closed.
+[grid 2]
+|Lift at 1 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 7; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 18 | log 15                         |
+> call 3
+The third button lights. 1 call waiting.
+The doors close.
+The lift is rising: second floor.
+[grid 2]
+|Lift at 2 rising      doors shut                  |
+|Queue: 3                                          |
+|Moves 8; 5 trips, 7 floors, mean 1.4, longest 2t  |
+[grid 3]
+|Room A | turn 19 | log 16                         |
+> z
+Time passes.
+The lift is rising: third floor.
+Ding. The doors open on the third floor.
+[grid 2]
+|Lift at 3 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 9; 6 trips, 9 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 20 | log 17                         |
+> z
+Time passes.
+[grid 2]
+|Lift at 3 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 9; 6 trips, 9 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 21 | log 18                         |
+> unhide
+There is nowhere to show the shaft.
+[grid 2]
+|Lift at 3 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 9; 6 trips, 9 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 21 | log 18                         |
+> hide
+The shaft is already hidden.
+[grid 2]
+|Lift at 3 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 9; 6 trips, 9 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 21 | log 18                         |
+> unhide
+There is nowhere to show the shaft.
+[grid 2]
+|Lift at 3 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 9; 6 trips, 9 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 21 | log 18                         |
+> report
+1. 2>3 (1t) span 1
+2. 3>1 (2t) span 2
+3. 1>G (1t) span 1
+4. G>1 (1t) span 1
+5. 1>3 (2t) span 2
+Up 3, down 2.
+Shortest 2>3 (1t); longest 1>3 (2t).
+Any span 3: no; all moved: yes.
+First and last differ; 4 unlike the first.
+Total: 6 trips, 9 floors, mean 1.5, longest 2t.
+Busiest first (3).
+[grid 2]
+|Lift at 3 stopped     doors open                  |
+|Queue: none                                       |
+|Moves 9; 6 trips, 9 floors, mean 1.5, longest 2t  |
+[grid 3]
+|Room A | turn 21 | log 18                         |

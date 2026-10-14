@@ -665,6 +665,7 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
     // its `{`. Everything at count >= i6Depth is treated as I6 content.
     int i6Depth = -1;
     bool pendingI6 = false;
+    int parenDepth = 0, i6ExprParen = -1;
     int openLine = braceLines.empty() ? 0 : braceLines.back();
     int stringLine = 0;   // where a string still open at the end of the file began
 
@@ -727,7 +728,15 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          // skipping an object/method body), `!` is an operator (`!=`, `!flag`, etc.)
          // and must NOT trigger comment-skip. The caller signals the context via
          // `isI6Content` so the same function works for both.
-         if(c == '!' && (isI6Content || i6Depth != -1)){
+         // `$i6Expr( … )` holds a Beguile expression, where `!` is an operator, not a comment.
+         if(c == '('){
+             parenDepth++;
+             string tail = retval.size() >= 7 ? retval.substr(retval.size() - 7) : string();
+             for(char& ch : tail) ch = (char)tolower((unsigned char)ch);
+             if(i6ExprParen < 0 && tail == "$i6expr") i6ExprParen = parenDepth;
+         }
+         else if(c == ')'){ if(parenDepth == i6ExprParen) i6ExprParen = -1; parenDepth--; }
+         if(c == '!' && (isI6Content || i6Depth != -1) && i6ExprParen < 0){
              while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
              if(c == '\n'){ retval += c; c = readChar(); }
              continue;
@@ -1364,8 +1373,8 @@ bool fileLexer::tryLexDictionaryWordToken(token& retval){
                           || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
                           || prevTokenType == eTokenType::dictionaryWord || prevTokenType == eTokenType::directive
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
-    // A keyword that a value follows (`return .lamp;`, `case .take:`) is not a receiver.
-    if(prevIsExprEnd && (prevTokenValue == "return" || prevTokenValue == "case")) prevIsExprEnd = false;
+    // A keyword that a value follows (`return .lamp;`, `case .take:`, `inject .nails;`) is not a receiver.
+    if(prevIsExprEnd && (prevTokenValue == "return" || prevTokenValue == "case" || prevTokenValue == "inject")) prevIsExprEnd = false;
     // `.lamp.addr()` sends to the word; `.card .a` (spaced) is a second word.
     if(prevIsExprEnd && prevTokenType == eTokenType::dictionaryWord && retval.is(".")){
         auto here = currentStream()->tellg();

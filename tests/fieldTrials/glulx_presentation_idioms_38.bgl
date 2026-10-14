@@ -1,0 +1,531 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a lift serving four floors, drawn in a text grid split above the main window (the
+// panel), a text-buffer log split below with its own styleSheet, and a text grid split to the right
+// of the log through ?. (the shaft, one row per floor, top floor first, with its own styleSheet). A class Floor : object (not in the tree)
+// with a number, a label, a letter char, a call count and a waiting flag, methods returning char,
+// bool and stringObj; a lift object whose daemon() moves the car one floor a turn toward the front
+// of an <array> queue of floor numbers (enqueue, dequeue, contains, peek, length), opens its doors
+// on arrival, records a Trip and stops itself when the queue is empty; an enum eMotion switched on
+// for names and arrows; a value class Trip (from, to, turns, copy operator, ==, a stringObj text)
+// kept in a global array<Trip> history ring and reported with <linq> filter, count, orderBy with a
+// comparator, any, all, first and last; a value class Tally with += of a Trip and a float mean;
+// bgl.util.math abs, min and max; verbs taking NUMBER (call, send), NOUN (examine a floor button)
+// and none (hide/unhide the shaft by close() and a fresh split, taller/shorter through the panel's
+// height clamped to a range, a meta report, a style report through checkStyle and distinguishes);
+// the shaft and panel redrawn from a replaced DrawStatusLine; the log written through ?. with an
+// alert style for arrivals and a link-free plain path when the log is closed.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define FLOOR_COUNT 4
+#define QUEUE_MAX 6
+#define TRIP_MAX 5
+#define PANEL_MIN 2
+#define PANEL_MAX 5
+#define SHAFT_WIDTH 12
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eMotion { stopped, rising, falling }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 1; };
+    alert = style{ fontWeight = 1; foreColor = $C80000; };
+};
+
+styleSheet shaftLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+    emphasized = style{ reverse = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowVert shaft = null;
+textGridWindowHorz panel = null;
+textBufferWindowHorz logPane = null;
+array<int> queue[QUEUE_MAX];
+int logLines = 0;
+int shaftOpenings = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string motionName(eMotion m) {
+    switch (m) {
+        case eMotion.stopped: return "stopped";
+        case eMotion.rising:  return "rising";
+        case eMotion.falling: return "falling";
+    }
+    return "?";
+}
+
+char arrow(eMotion m) {
+    switch (m) {
+        case eMotion.rising:  return '^';
+        case eMotion.falling: return 'v';
+    }
+    return '-';
+}
+
+stringObj padRight(stringObj s, int width) {
+    while (s.length < width) s += ' ';
+    return s;
+}
+
+string countWord(int n, string one, string many) { return n == 1 ? one : many; }
+
+void note(stringObj text, bool loud = false) {
+    logLines++;
+    if (logPane == null) {
+        log($"note (no log): {text}");
+        return;
+    }
+    if (loud) logPane.printLine($"{bold}[{turns}] {text}{roman}");
+    else logPane.printLine($"[{turns}] {text}");
+}
+
+// ---- trips ---------------------------------------------------------------------------------------
+
+value class Trip {
+    int from;
+    int to;
+    int turns;
+
+    Trip operator = (Trip o) {
+        from = o.from;
+        to = o.to;
+        turns = o.turns;
+        return self;
+    }
+
+    bool operator == (Trip o) { return from == o.from && to == o.to; }
+    bool operator != (Trip o) { return !(self == o); }
+
+    int span() { return bgl.util.math.abs(to - from); }
+
+    stringObj text() {
+        stringObj out = $"{floors[from].letter}>{floors[to].letter}";
+        out += $" ({turns}t)";
+        return out;
+    }
+}
+
+value class Tally {
+    int count;
+    int floorsMoved;
+    int longest;
+
+    Tally operator = (Tally o) {
+        count = o.count;
+        floorsMoved = o.floorsMoved;
+        longest = o.longest;
+        return self;
+    }
+
+    Tally operator += (Trip t) {
+        count++;
+        floorsMoved += t.span();
+        longest = bgl.util.math.max(longest, t.turns);
+        return self;
+    }
+
+    float mean() {
+        if (count == 0) return 0.0;
+        return (float)floorsMoved / count;
+    }
+
+    stringObj summary() {
+        int tenths = (int)(mean() * 10 + 0.5);
+        stringObj out = $"{count} {countWord(count, "trip", "trips")}, {floorsMoved} floors, mean {tenths / 10}.{tenths % 10}, longest {longest}t";
+        return out;
+    }
+}
+
+array<Trip> trips[TRIP_MAX];
+Tally overall;
+
+void record(Trip t) {
+    if (trips.length >= TRIP_MAX) trips.remove(0);
+    trips += t;
+    overall += t;
+}
+
+// ---- floors --------------------------------------------------------------------------------------
+
+class Floor : object {
+    attributeList attributes = {scenery};
+    int number = 0;
+    string label = "floor";
+    char letter = '?';
+    int calls = 0;
+    bool waiting = false;
+
+    char lamp() { return waiting ? '*' : ' '; }
+
+    bool isTop() { return number == FLOOR_COUNT - 1; }
+
+    stringObj row(bool carHere, eMotion m) {
+        stringObj out = "";
+        out += letter;
+        out += ' ';
+        out += carHere ? "[" : " ";
+        out += carHere ? arrow(m) : ' ';
+        out += carHere ? "]" : " ";
+        out += ' ';
+        out += lamp();
+        return out;
+    }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"The {label} button ({letter}): {calls} {countWord(calls, "call", "calls")}, {waiting ? "lit" : "dark"}{isTop() ? ", top floor" : ""}.");
+                rtrue;
+            case Push:
+                callTo(number);
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A lift car with a row of four buttons.";
+    attributes = {light};
+}
+
+Floor floorG { "ground button"; parent = roomA; name = {.ground, .g, .button}; number = 0; label = "ground"; letter = 'G'; }
+Floor floor1 { "first button";  parent = roomA; name = {.first, .one, .button};  number = 1; label = "first";  letter = '1'; }
+Floor floor2 { "second button"; parent = roomA; name = {.second, .two, .button}; number = 2; label = "second"; letter = '2'; }
+Floor floor3 { "third button";  parent = roomA; name = {.third, .three, .button}; number = 3; label = "third";  letter = '3'; }
+
+array<Floor> floors = { floorG, floor1, floor2, floor3 };
+
+// ---- the lift ------------------------------------------------------------------------------------
+
+object lift {
+    "lift";
+    int at = 0;
+    int departedFrom = 0;
+    int travelTurns = 0;
+    int moves = 0;
+    bool doorsOpen = true;
+    bool running = false;
+    eMotion motion = eMotion.stopped;
+
+    void start() {
+        if (running) return;
+        running = true;
+        StartDaemon(self);
+    }
+
+    void daemon() {
+        if (queue.length == 0) {
+            motion = eMotion.stopped;
+            running = false;
+            StopDaemon(self);
+            note("lift idle");
+            return;
+        }
+        int target = queue.peek();
+        if (target == at) {
+            arrive();
+            return;
+        }
+        if (doorsOpen) {
+            doorsOpen = false;
+            departedFrom = at;
+            travelTurns = 0;
+            printLine("The doors close.");
+        }
+        motion = target > at ? eMotion.rising : eMotion.falling;
+        at += motion == eMotion.rising ? 1 : -1;
+        moves++;
+        travelTurns++;
+        printLine($"The lift is {motionName(motion)}: {floors[at].label} floor.");
+        if (at == target) arrive();
+    }
+
+    void arrive() {
+        queue.dequeue();
+        Floor f = floors[at];
+        f.waiting = false;
+        doorsOpen = true;
+        Trip t;
+        t.from = departedFrom;
+        t.to = at;
+        t.turns = travelTurns;
+        if (t.turns > 0) {
+            record(t);
+            stringObj msg = $"arrived {t.text()}";
+            note(msg, true);
+        }
+        printLine($"Ding. The doors open on the {f.label} floor.");
+        motion = queue.length == 0 ? eMotion.stopped : motion;
+        departedFrom = at;
+        travelTurns = 0;
+    }
+}
+
+void callTo(int n) {
+    if (n < 0 || n >= FLOOR_COUNT) {
+        printLine($"There is no floor {n}.");
+        return;
+    }
+    Floor f = floors[n];
+    f.calls++;
+    if (n == lift.at && lift.doorsOpen && queue.length == 0) {
+        printLine($"The lift is already at the {f.label} floor.");
+        return;
+    }
+    if (queue.contains(n)) {
+        printLine($"The {f.label} button is already lit.");
+        return;
+    }
+    if (queue.length >= QUEUE_MAX) {
+        printLine("The panel buzzes: too many calls.");
+        return;
+    }
+    queue.enqueue(n);
+    f.waiting = true;
+    printLine($"The {f.label} button lights. {queue.length} {countWord(queue.length, "call", "calls")} waiting.");
+    stringObj msg = $"call {f.letter}";
+    note(msg);
+    lift.start();
+}
+
+// ---- the windows ---------------------------------------------------------------------------------
+
+void openShaft() {
+    shaft = logPane?.splitRightGrid(SHAFT_WIDTH, fixed, border, styles: shaftLook);
+    if (shaft != null) shaftOpenings++;
+}
+
+void drawShaft() {
+    if (shaft == null) return;
+    shaft.clear();
+    for (int i = 0; i < FLOOR_COUNT; i++) {
+        Floor f = floors[FLOOR_COUNT - 1 - i];
+        shaft.moveCursor(0, i);
+        shaft.print(f.row(f.number == lift.at, lift.motion));
+    }
+    shaft.moveCursor(0, FLOOR_COUNT);
+    shaft.print($"q {queue.length}/{QUEUE_MAX}");
+}
+
+void drawPanel() {
+    if (panel == null) return;
+    panel.clear();
+    panel.moveCursor(0, 0);
+    stringObj head = $"Lift at {floors[lift.at].letter} {motionName(lift.motion)}";
+    panel.print(padRight(head, 22));
+    panel.print($"doors {lift.doorsOpen ? "open" : "shut"}");
+    if (panel.height < 2) return;
+    panel.moveCursor(0, 1);
+    stringObj waiting = "";
+    for (int n in queue) {
+        if (!waiting.isEmpty()) waiting += ',';
+        waiting += floors[n].letter;
+    }
+    panel.print($"Queue: {waiting.isEmpty() ? "none" : waiting}");
+    if (panel.height < 3) return;
+    panel.moveCursor(0, 2);
+    panel.print($"Moves {lift.moves}; {overall.summary()}");
+    for (int row = 3; row < panel.height; row++) {
+        panel.moveCursor(0, row);
+        panel.print($"row {row + 1} of {panel.height}");
+    }
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | log {logLines}");
+    drawPanel();
+    drawShaft();
+}
+
+bool Initialise() {
+    location = roomA;
+    panel = bgl.ui.mainWin.splitUpGrid(3, fixed, border);
+    logPane = bgl.ui.mainWin.splitDownBuffer(6, fixed, border, styles: logLook);
+    openShaft();
+    note("lift ready");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb CallLift {
+    grammar = {.call, NUMBER};
+    void handler() {
+        callTo((int)noun);
+    }
+}
+
+verb SendLift {
+    grammar = { {.send, NUMBER}, {.send, NUMBER, .via, NUMBER} };
+    void handler() {
+        callTo((int)noun);
+        if (second != null) callTo((int)second);
+    }
+}
+
+verb HideShaft {
+    grammar = {.hide};
+    meta = true;
+    void handler() {
+        if (shaft == null) {
+            printLine("The shaft is already hidden.");
+            return;
+        }
+        shaft.close();
+        shaft = null;
+        printLine("The shaft is hidden.");
+    }
+}
+
+verb ShowShaft {
+    grammar = {.unhide};
+    meta = true;
+    void handler() {
+        if (shaft != null) {
+            printLine("The shaft is already shown.");
+            return;
+        }
+        openShaft();
+        if (shaft == null) {
+            printLine("There is nowhere to show the shaft.");
+            return;
+        }
+        printLine($"The shaft is shown ({shaftOpenings} {countWord(shaftOpenings, "opening", "openings")}).");
+    }
+}
+
+verb Taller {
+    grammar = {.taller};
+    meta = true;
+    void handler() {
+        if (panel == null) return;
+        int h = bgl.util.math.min(panel.height + 1, PANEL_MAX);
+        if (h == panel.height) {
+            printLine($"The panel is already {h} rows.");
+            return;
+        }
+        panel.height = h;
+        printLine($"The panel is now {panel.height} rows.");
+    }
+}
+
+verb Shorter {
+    grammar = {.shorter};
+    meta = true;
+    void handler() {
+        if (panel == null) return;
+        int h = bgl.util.math.max(panel.height - 1, PANEL_MIN);
+        if (h == panel.height) {
+            printLine($"The panel is already {h} rows.");
+            return;
+        }
+        panel.height = h;
+        printLine($"The panel is now {panel.height} rows.");
+    }
+}
+
+verb Closelog {
+    grammar = {.quiet};
+    meta = true;
+    void handler() {
+        if (logPane == null) {
+            printLine("The log is already closed.");
+            return;
+        }
+        if (shaft != null) {
+            shaft.close();
+            shaft = null;
+        }
+        logPane.close();
+        logPane = null;
+        printLine("The log is closed.");
+    }
+}
+
+int byTurns(Trip a, Trip b) { return a.turns - b.turns; }
+
+verb Report {
+    grammar = {.report};
+    meta = true;
+    void handler() {
+        if (trips.length == 0) {
+            printLine("No trips yet.");
+            return;
+        }
+        int i = 0;
+        for (Trip t in trips) {
+            i++;
+            printLine($"{i}. {t.text()} span {t.span()}");
+        }
+        int ups = trips.filter((Trip t) => t.to > t.from).count();
+        printLine($"Up {ups}, down {trips.length - ups}.");
+        array<Trip> sorted[TRIP_MAX];
+        sorted = trips.orderBy(byTurns);
+        printLine($"Shortest {sorted.first().text()}; longest {sorted.last().text()}.");
+        bool anyLong = trips.any((Trip t) => t.span() >= 3);
+        bool allMoved = trips.all((Trip t) => t.turns > 0);
+        printLine($"Any span 3: {anyLong ? "yes" : "no"}; all moved: {allMoved ? "yes" : "no"}.");
+        Trip first = trips[0];
+        Trip last = trips[trips.length - 1];
+        printLine($"First and last {first == last ? "match" : "differ"}; {trips.filter((Trip t) => t != first).count()} unlike the first.");
+        printLine($"Total: {overall.summary()}.");
+        int busiest = 0;
+        for (Floor f in floors) {
+            if (f.calls > floors[busiest].calls) busiest = f.number;
+        }
+        printLine($"Busiest {floors[busiest].label} ({floors[busiest].calls}).");
+    }
+}
+
+verb StyleCheck {
+    grammar = {.styles};
+    meta = true;
+    void handler() {
+        if (shaft == null) {
+            printLine("No shaft to check.");
+            return;
+        }
+        style want = style{ fixedWidth = true; };
+        eStyleCheck r = shaft.checkStyle(eGlulxStyleType.normal, want);
+        string word = "?";
+        switch (r) {
+            case eStyleCheck.unknown: word = "unknown";
+            case eStyleCheck.applied: word = "applied";
+            case eStyleCheck.differs: word = "differs";
+        }
+        printLine($"Shaft normal style: {word}; known {r.known ? "yes" : "no"}.");
+        bool marks = !shaft.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.emphasized);
+        printLine($"Use markers: {marks ? "yes" : "no"}.");
+    }
+}
+
+#includeI6 "grammar"

@@ -2097,6 +2097,11 @@ void bglParser::rejectMethodOnWordProperty(token name, const string& owner, cons
 
 void bglParser::processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace, string i6alias){
     rejectMethodOnWordProperty(name, obj.dName(), i6alias);
+    // Inside the object a bare name is either the type or the routine; it can't be both.
+    for(typeMember* m : obj.members)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isAlias && !vd->isPrePassStub && vd->name == (string)name)
+            parsingError(format("'{0}': method '{1}' has the name of the object's type alias '{2}'; rename one.",
+                                obj.dName(), name.originalValue.empty() ? (string)name : name.originalValue, vd->dName()));
     functionDef& funcDef = *(new functionDef());
     funcDef.name = (string)name;
     funcDef.displayName = name.originalValue;
@@ -3774,11 +3779,21 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
                 elem = parseExpression(elemTok, {"after", "before", "first", "last", token::endStatement}, nullptr, nullptr);
                 clauseStr = elem->terminator;                 // "after"/"before"/"first"/"last", or the ';' terminator
                 if(elem->terminator == token::endStatement) clauseStr = ";";
-            } else {
-                // Single reference or value: stored as a one-token expression.
+            } else if(elemTok.is(token::braceOpen) && isArrayOfArraysElement(arr->elementType)){
+                // An inner array, baked as the array's own `{ … }` elements are.
+                string anonName = format("_bglanon{0}", anonObjectCounter++);
+                bakeInlineArrayAggregate(arrayInnerType(arr->elementType), anonName, nullptr, nullptr);
                 elem = new expression();
-                elem->tokens.push_back(elemTok.value);
-                clauseStr = file.getToken().value;            // after | before | first | last | ;
+                elem->tokens.push_back(anonName);
+                elem->resolvedType = arr->elementType;
+                clauseStr = file.getToken().value;
+            } else {
+                // A value, read as the array's initial elements are (`eStation.forge`, a bare enum member, `.word`).
+                string savedExpected = currentExpectedType;
+                if(languageService.findEnum(arr->elementType) != nullptr) currentExpectedType = arr->elementType;
+                elem = parseExpression(elemTok, {"after", "before", "first", "last", token::endStatement}, nullptr, nullptr);
+                currentExpectedType = savedExpected;
+                clauseStr = elem->terminator == token::endStatement ? string(";") : elem->terminator;
             }
             int pos;
             if(clauseStr == ";") pos = (int)init->elements.size();  // append

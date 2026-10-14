@@ -1,0 +1,9 @@
+/*  Inside an object, a bare name is either its type alias or its method, so the two can't share a name.  */
+// EXPECT_ERROR: has the name of the object's type alias
+#beguilerSettings { target = z5; informName = "none"; }
+value class SkTally { int got; SkTally operator = (SkTally o) { got = o.got; return self; } }
+object sk {
+    alias tally for SkTally;
+    tally tally() { tally r; return r; }
+}
+void main(){ }

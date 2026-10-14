@@ -1,0 +1,91 @@
+Room A
+Room A.
+
+> tanks
+A water 30/50 [######....] free 20 (normal)
+B water 10/40 [##........] free 30 (low leaking)
+C water 0/60 [..........] free 60 (empty)
+D oil 25/30 [########..] free 5 (leaking)
+E brine 20/20 [##########] free 0 (full)
+total 85, water 3, with room 4
+
+> pipes
+A -> B at 6, would move 6
+B -> C at 4, would move 4
+D -> C at 5, would move 5 (mixed)
+E -> B at 3, would move 3 (mixed)
+
+> pipes tank b
+A -> B at 6, would move 6
+B -> C at 4, would move 4
+E -> B at 3, would move 3 (mixed)
+
+> plan 1
+in 1: A=24 B=14 C=9 D=18 E=17
+change: -6 4 9 -7 -3
+rising 2: B C; unchanged 0; tanks still 85
+
+> plan 3
+in 3: A=12 B=22 C=27 D=7 E=11
+change: -18 12 27 -18 -9
+rising 2: B C; unchanged 0; tanks still 85
+
+> tanks
+A water 30/50 [######....] free 20 (normal)
+B water 10/40 [##........] free 30 (low leaking)
+C water 0/60 [..........] free 60 (empty)
+D oil 25/30 [########..] free 5 (leaking)
+E brine 20/20 [##########] free 0 (full)
+total 85, water 3, with room 4
+
+> tick 1
+after 1: A=24 B=14 C=9 D=18 E=17, total 82
+
+> tick 2
+after 2: A=12 B=22 C=27 D=7 E=11, total 79
+
+> history
+history: 82 80 79
+steps 3, mean 80, most 82, least 79
+deltas: -2 -1; falls 2, steady run 1
+running max: 82 82 82; distinct 3, last three 82..79
+
+> rank
+by fluid then room: A(38) C(33) B(18) D(23) E(9)
+fullest E at 55%, emptiest D, two emptiest water: A C
+any full false, all have fluid true, leaking 2
+percents: 24 55 45 23 55; mean 40%
+
+> rules 10
+rules on 10: all 29, steps 5 10 30 29
+by tank: A=10 B=9 C=10 D=9 E=10
+
+> fill tank c 70
+C: 27 -> 60, spilled 37
+
+> drain tank a 5
+A: drained 5, now 7 [=.........]
+
+> swap tank a with tank b
+A 22, B 7
+
+> swap tank a with tank d
+A holds water, D holds oil.
+
+> tick 3
+after 3: A=4 B=31 C=60 D=7 E=2, total 104
+
+> history
+history: 82 80 79 106 105 104
+steps 6, mean 92, most 106, least 79
+deltas: -2 -1 27 -1 -1; falls 4, steady run 1
+running max: 82 82 82 106 106 106; distinct 6, last three 106..104
+
+> rank
+by fluid then room: A(46) B(9) C(0) D(23) E(18)
+fullest C at 100%, emptiest A, two emptiest water: A B
+any full true, all have fluid true, leaking 2
+percents: 8 77 100 23 10; mean 43%
+
+> pipes tank e
+E -> B at 3, would move 2 (mixed)

@@ -632,6 +632,8 @@ void i6Emitter::collectBodyLocals(statementBlock* body, vector<variableDeclarati
     for(statement* s : body->statements){
         if(auto* vd = dynamic_cast<variableDeclaration*>(s)){
             if(seen.insert(vd->name).second) out.push_back(vd);
+            // A later local of the name in another block owns an instance of its own: one I6 local, rebound.
+            else if(vd->isClassLocalWithBacking) laterOwnedLocals.insert(vd);
         } else if(auto* ifs = dynamic_cast<ifStatement*>(s)){
             collectBodyLocals(ifs->thenBlock, out, seen);
             collectBodyLocals(ifs->elseBlock, out, seen);
@@ -817,6 +819,8 @@ void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, 
         out << format("{0}{1} = {2};\n", indent, spillName(vd->name), vd->backingName);
         emitBackingReset(cls, vd->backingName, indent);
     }
+    for(variableDeclaration* vd : laterOwnedLocals)
+        if(classDef* cls = languageService.findClass(vd->type.name)) emitBackingReset(cls, vd->backingName, indent);
 }
 
 // Each field of a backing instance back to its declared value (0 when it has none). A field that owns
@@ -2681,6 +2685,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             vector<variableDeclaration*> locals;
             if(body != nullptr){
                 set<string> seen;
+                laterOwnedLocals.clear();
                 collectBodyLocals(body, locals, seen);
                 for(variableDeclaration* vd : locals)
                     if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
@@ -2830,6 +2835,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     vector<variableDeclaration*> locals;
     if(body != nullptr){
         set<string> seen;
+        laterOwnedLocals.clear();
         collectBodyLocals(body, locals, seen);
         for(variableDeclaration* vd : locals){
             if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
@@ -3715,6 +3721,8 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         pushSourceMap(currentLine(), stmt->src.file, stmt->src.line);
     if(typeid(*stmt) == typeid(variableDeclaration)) undeclaredTopLocals.erase(((variableDeclaration*)stmt)->name);
     if(auto* arrLoc = dynamic_cast<arrayDeclaration*>(stmt)){ emitLocalArrayDeclaration(arrLoc, indent); return; }
+    if(typeid(*stmt) == typeid(variableDeclaration) && laterOwnedLocals.count((variableDeclaration*)stmt))
+        out << format("{0}{1} = {2};\n", indent, spillName(((variableDeclaration*)stmt)->name), ((variableDeclaration*)stmt)->backingName);
     if(typeid(*stmt) == typeid(variableDeclaration)) emitLocalDeclaration((variableDeclaration*)stmt, indent);
     else if(typeid(*stmt) == typeid(assignmentStatement)) emitAssignment((assignmentStatement*)stmt, indent);
     else if(typeid(*stmt) == typeid(returnStatement)) emitReturn((returnStatement*)stmt, indent);
@@ -4497,6 +4505,7 @@ for(typeMember* m : obj->members){
         vector<variableDeclaration*> locals;
         if(body){
             set<string> seen;
+            laterOwnedLocals.clear();
             collectBodyLocals(body, locals, seen);
             for(variableDeclaration* vd : locals)
                 if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
@@ -5824,7 +5833,7 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
                     for(verbObjectDef* vd : languageService.verbs) if(vd->name == verbNameLower){ owner = vd; break; }
                     string where = owner != nullptr && owner->src.line > 0
                                  ? format("{0}:{1}:{2}: ", owner->src.file, owner->src.line, max(1, owner->src.col)) : string();
-                    std::cerr << format("{0}WARNING: meta verb '{1}' takes the library word {2}, which stays a non-meta "
+                    std::cerr << format("{0}warning: meta verb '{1}' takes the library word {2}, which stays a non-meta "
                         "word: commands using it take a turn. Use a word of its own.\n", where, owner != nullptr ? owner->dName() : verbName, toI6Word(word));
                 }
                 switch(mode){

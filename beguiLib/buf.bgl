@@ -476,6 +476,8 @@ object _bglBuf {
     array<char> insert(array<char> toBuf, array<char> fromBuf, int toPos, int charCount = 0){
         if(charCount <= 0) charCount = length(fromBuf);
         int len = length(toBuf);
+        if(toPos < 0) toPos = 0;
+        if(toPos > len) toPos = len;   // past the end appends, as the substring methods clamp
         copy(toBuf, toBuf, len - toPos, toPos + charCount, toPos);
         copy(toBuf, fromBuf, charCount, toPos, 0);
         setLength(toBuf, len + charCount);

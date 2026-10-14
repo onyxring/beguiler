@@ -1,0 +1,67 @@
+Room A
+Room A. Room B is north.
+You can see a brass key here.
+> tasks
+--
+. a find key (2 points)
+. c visit B (3 points)
+. b press button (4 points)
+. a read tally (1 point)
+--
+Scored 0/10, 4 pending.
+0% - Rank: starting.
+> hint
+Try: find key, worth 2 points.
+Lookup: press button, true.
+> push button
+You can't see any such thing.
+> take key
+Taken.
+[+2 find key]
+[The score has just gone up by two points.]
+> log
+log 'a' (1), scored 1, handed 2, dropped 0, score 2
+> n
+Room B
+Room B. Room A is south.
+You can see a red button here.
+[+3 visit B]
+[The score has just gone up by three points.]
+> push button
+Click (1).
+[+4 press button]
+[The score has just gone up by four points.]
+> push button
+Click (2).
+(Already done.)
+Bonus! [+6 press twice]
+[The score has just gone up by six points.]
+> push button
+Click (3).
+(Already done.)
+> tasks
+--
+x a find key (2 points)
+x c visit B (3 points)
+x b press button (4 points)
+x b press twice (6 points)
+. a read tally (1 point)
+--
+Scored 15/16, 1 pending.
+93% - Rank: halfway.
+> tally
+Tally 15/16 then 16/16, same false, both 31+32, sum match true.
+[+1 read tally]
+[The score has just gone up by one point.]
+> tally
+Tally 16/16 then 16/16, same true, both 32+32, sum match true.
+[+1 read tally]
+[The score has just gone up by one point.]
+> log
+log 'acbbaa' (6), scored 6, handed 17, dropped 0, score 17
+> stats
+find 2, solve 2, visit 1, best press twice, bonus 1, tries 0 0 3 0 2
+> hint
+No hints.
+> score
+You have so far scored 17 out of a possible 0, in 7 turns.

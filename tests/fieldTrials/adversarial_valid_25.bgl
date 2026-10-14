@@ -1,0 +1,507 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small shelf-label stamping program, on Glulx, leaning on text
+// built in pieces and faults thrown across routines.
+// Routines written above the enums, consts, classes and objects they use: functions that take and return
+// stringObj (copies), `ref stringObj` parameters written in place and through an interpolated string, a
+// switch on an enum whose every case returns a chained stringObj method result, a function whose last
+// statement is a `throw` of an enum value, a try whose body and catch both return, a catch that re-throws
+// a different fault to an outer catch, a general parsing routine that reads a dictionary word, calls a
+// throwing routine inside its own try and keeps the result in a global. A pooled class of labels whose
+// create() takes a stringObj, with a stringObj member, a static counter and its own print(); a shelf class
+// with an `inline` string, an owned stringObj caption, a `?:` choosing a string or the caption, and a
+// `selfType` method; an inline `auto` accessor whose getter returns a stringObj and whose setter takes a
+// string and counts through `outer`; a file-scope array of `func<stringObj, stringObj>` holding named
+// functions and a lambda, applied in turn; an `array<stringObj>` journal appended with `+=`, searched,
+// trimmed with `removeValue`, popped from the back; an `array<string>` run through distinct, orderBy (by
+// the string's own ordering and by a lambda on length), filter on startsWith, any and all, and a shelf
+// array ordered by a lambda over compareTo; a char switch with ranges and value lists over a stringObj's
+// characters, character writes `s[i] = c`, `do/until` padding, `=~`, `format()` with `$0`..`$2`,
+// capture()/release() of object printing, a `ref stringObj` local bound to a member, an enum emitter value
+// and emitter method (added by `extend enum` and reading an #i6 array), a value class tallying results
+// printed in interpolation; a content switch on a stringObj (an empty-string case among them), mid/right/
+// insert/delete chained, `<=>` and `<` against a literal, a static method added by an `extend class` after
+// the objects; a `string | func<void>` global set from a ternary of a literal and a function name, then
+// narrowed by typeof and called through a parenthesized cast; a stringObj global grown by format().
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ---- routines, above everything they use -----------------------------------------------------------------
+
+stringObj framed(stringObj body, eStyle st = plain) {
+    switch (st) {
+        case boxed: return body.prepend("[").append("]");
+        case loud:  return body.toUpper().append('!');
+        case quiet: return body.toLower().prepend('(').append(')');
+        default:    return body;
+    }
+}
+
+void check(ref stringObj s) {
+    s = s.trim();
+    if (s.isEmpty()) throw eFault.empty;
+    if (s.length > MAXLEN) throw eFault.tooLong;
+}
+
+string faultName(eFault f) {
+    switch (f) {
+        case tooLong:  return "too long";
+        case empty:    return "empty";
+        case badStyle: return "bad style";
+        default:       return "no room";
+    }
+}
+
+eStyle styleOf(dictionaryWord w) {
+    if (w == .plain) return plain;
+    if (w == .boxed) return boxed;
+    if (w == .loud) return loud;
+    if (w == .quiet) return quiet;
+    throw eFault.badStyle;
+}
+
+int stampInto(ref stringObj s, eStyle st, ref stringObj out) {
+    try {
+        check(s);
+        out = framed(s, st);
+        return 0;
+    } catch (eFault f) {
+        out = $"fault: {faultName(f)}";
+        return (int)f;
+    }
+}
+
+int styleWord() {
+    dictionaryWord w = NextWord();
+    try {
+        wanted = styleOf(w);
+        styleKnown = true;
+    } catch (eFault f) {
+        styleKnown = false;
+    }
+    return 0;
+}
+
+void pushJournal(stringObj line) {
+    try {
+        if (journal.length >= journal.size) throw eFault.noRoom;
+        journal += line;
+    } catch (eFault f) {
+        try {
+            journal.dequeue();
+            journal += line;
+            throw eFault.noRoom;
+        } catch (eFault g) {
+            dropped++;
+        }
+    }
+}
+
+stringObj trimmed(stringObj s) { return s.trim(); }
+stringObj shout(stringObj s) { return s.toUpper(); }
+stringObj dotted(stringObj s) {
+    stringObj r = s;
+    do {
+        r += '.';
+    } until (r.length >= PADTO);
+    return r;
+}
+
+array<func<stringObj, stringObj>> passes = { trimmed, shout, (stringObj s) => s.reverse(), dotted };
+
+int vowels(stringObj s) {
+    int n = 0;
+    for (int i = 0; i < s.length; i++) {
+        switch (s[i]) {
+            case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U': n++;
+            default: ;
+        }
+    }
+    return n;
+}
+
+stringObj classes(stringObj s) {
+    stringObj r;
+    for (int i = 0; i < s.length; i++) {
+        switch (s[i]) {
+            case 'a' to 'z':  r += 'l';
+            case 'A' to 'Z':  r += 'U';
+            case '0' to '9':  r += 'd';
+            case ' ':         r += '_';
+            default:          r += '?';
+        }
+    }
+    return r;
+}
+
+void swapCase(ref stringObj s) {
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        if (c >= 'a' && c <= 'z') s[i] = c - 32;
+        else if (c >= 'A' && c <= 'Z') s[i] = c + 32;
+    }
+}
+
+void sayEnd() { print("routine end"); }
+
+void showFooter(string | func<void> f) {
+    if (typeof(f) == eType.routine) {
+        ((func<void>)f)();
+        printLine();
+    } else printLine((string)f);
+}
+
+// ---- data --------------------------------------------------------------------------------------------------
+
+eStyle wanted = plain;
+bool styleKnown = false;
+int dropped = 0;
+Tally totals;
+
+array<stringObj> journal[4];
+array<string> words = { "nut", "bolt", "washer", "nut", "axle", "bracket", "bolt" };
+array<Shelf> shelves = { shelfA, shelfB, shelfC };
+stringObj heading = "Labels";
+string | func<void> footer = "end";
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    shelfA.caption = shelfA.raw;
+    shelfB.caption = "Bins";
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ---- verbs -------------------------------------------------------------------------------------------------
+
+verb Stamp {
+    grammar = {.stamp, NOUN, styleWord};
+    void handler() {
+        if (!noun.is(Shelf)) {
+            printLine("Only shelves.");
+            return;
+        }
+        Shelf sh = (Shelf)noun;
+        if (!styleKnown) {
+            totals.bad++;
+            printLine($"{sh}: fault: {faultName(eFault.badStyle)}.");
+            return;
+        }
+        stringObj work = sh.raw;
+        stringObj out;
+        int code = stampInto(work, wanted, out);
+        if (code == 0) {
+            sh.caption = out;
+            sh.style = wanted;
+            Shelf.stamped++;
+            totals.ok++;
+        } else {
+            sh.faults++;
+            totals.bad++;
+        }
+        pushJournal(out);
+        printLine($"{sh.raw.length} chars -> {out} (code {code}, pad {wanted.pad}, {wanted.named()}); {totals}.");
+    }
+}
+
+verb Retext {
+    grammar = {.retext, NOUN, NUMBER};
+    void handler() {
+        Shelf sh = (Shelf)noun;
+        switch ((int)second) {
+            case 1:  sh.raw = "  Bolts  ";
+            case 2:  sh.raw = "";
+            case 3:  sh.raw = "Assorted washers and nuts";
+            default: sh.raw = "Axles 4";
+        }
+        printLine($"{bgl.printRules.the(sh)} raw now [{sh.raw}].");
+    }
+}
+
+verb Listing {
+    grammar = {.shelves};
+    void handler() {
+        array<Shelf> sorted[3];
+        sorted = shelves.orderBy((Shelf a, Shelf b) => a.caption.compareTo(b.caption));
+        print("By caption:");
+        for (Shelf s in sorted) print($" {s}");
+        printLine($"; stamped {Shelf.stamped}; blank {shelves.filter((Shelf s) => s.caption.isEmpty()).count()}.");
+        for (Shelf s in shelves) printLine($"{bgl.printRules.cThe(s)}: {s.summary()}");
+    }
+}
+
+verb WordList {
+    grammar = {.words};
+    void handler() {
+        array<string> uniq[8];
+        uniq = words.distinct();
+        print("Distinct:");
+        for (string w in uniq) print($" {w}");
+        array<string> ordered[8];
+        ordered = uniq.orderBy();
+        print("; ordered:");
+        for (string w in ordered) print($" {w}");
+        print("; by length:");
+        for (string w in uniq.orderBy((string a, string b) => a.length - b.length)) print($" {w}");
+        int bs = words.filter((string w) => w.startsWith('b')).count();
+        bool anyLong = words.any((string w) => w.length > 6);
+        bool allShort = words.all((string w) => w.length < 8);
+        printLine($"; b-words {bs}; long {anyLong ? "yes" : "no"}; all short {allShort ? "yes" : "no"}; nut at {words.indexOf("nut")}.");
+    }
+}
+
+verb ShowLog {
+    grammar = {.journal};
+    void handler() {
+        print($"Journal {journal.length}/{journal.size}, dropped {dropped}:");
+        for (stringObj j in journal) print($" <{j}>");
+        printLine(".");
+    }
+}
+
+verb Purge {
+    grammar = {.purge};
+    void handler() {
+        int before = journal.length;
+        journal.removeValue("fault: empty");
+        journal -= "fault: too long";
+        stringObj last = journal.popEnd();
+        printLine($"Purged {before - journal.length - 1} faults; popped <{last}>; left {journal.length}; has [BOLTS] {journal.contains("[Bolts]") ? "yes" : "no"}.");
+    }
+}
+
+verb Spell {
+    grammar = {.spell, NOUN};
+    void handler() {
+        Shelf sh = (Shelf)noun;
+        stringObj c = sh.caption;
+        stringObj k = classes(c);
+        stringObj flipped = c;
+        swapCase(flipped);
+        printLine($"{c}: vowels {vowels(c)}, classes {k}, flipped {flipped}, same ci {flipped =~ c ? "yes" : "no"}, same {flipped == c ? "yes" : "no"}.");
+    }
+}
+
+verb Grab {
+    grammar = {.grab};
+    void handler() {
+        stringObj cap;
+        cap.capture();
+        for (Shelf s in shelves) {
+            printName(s);
+            print("/");
+        }
+        cap.release();
+        stringObj f = cap.left(cap.length - 1);
+        stringObj g = f.format("{$0} and {$1} by {$2}", printer.lastJob, "hand");
+        printLine($"Captured {cap.length}: {g}.");
+    }
+}
+
+verb Pipeline {
+    grammar = {.passes, NOUN};
+    void handler() {
+        Shelf sh = (Shelf)noun;
+        stringObj v = sh.raw;
+        print($"[{v}]");
+        for (func<stringObj, stringObj> p in passes) {
+            v = p(v);
+            print($" -> [{v}]");
+        }
+        printLine(".");
+    }
+}
+
+verb Tack {
+    grammar = {.tack, NOUN};
+    void handler() {
+        Shelf sh = (Shelf)noun;
+        ref stringObj r := sh.caption;
+        r += "+";
+        r = r.replaceAll('+', "#");
+        printer.lastJob = "tack";
+        printLine($"{sh} via ref; caption {sh.caption}; jobs {printer.jobs}, last {printer.lastJob} ({printer.lastJob.length}).");
+    }
+}
+
+verb Reset {
+    grammar = {.reset, NOUN};
+    void handler() {
+        Shelf sh = ((Shelf)noun).clear();
+        printer.lastJob = "reset";
+        printLine($"{bgl.printRules.the(sh)} cleared: [{sh}] style {sh.style.named()}; jobs {printer.jobs}.");
+    }
+}
+
+verb Tag {
+    grammar = {.tag, NUMBER};
+    void handler() {
+        stringObj t = $"tag {(int)noun}";
+        Label l = new Label(t);
+        if (l == null) {
+            printLine($"No labels; made {Label.made}.");
+            return;
+        }
+        onHand.append(l);
+        printLine($"Made {l}; onHand {onHand.length}; made {Label.made}.");
+    }
+}
+
+verb Untag {
+    grammar = {.untag};
+    void handler() {
+        Label l = onHand.popEnd();
+        if (!l?) {
+            printLine("No labels held.");
+            return;
+        }
+        stringObj was = l.text;
+        delete l;
+        printLine($"Dropped {was}; onHand {onHand.length}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NOUN};
+    void handler() {
+        Shelf sh = (Shelf)noun;
+        stringObj c = sh.caption;
+        string kind;
+        switch (c) {
+            case "":         kind = "blank";
+            case "[Bolts]":  kind = "bolts box";
+            case "AXLES 4!": kind = "axles";
+            default:         kind = "other";
+        }
+        stringObj m = c.mid(1, 3);
+        stringObj ins = c.insert(1, "-").delete(0, 1);
+        print($"{kind}; s at {c.indexOf('s')}; mid {m}; right {c.right(2)}; ins {ins}");
+        print($"; ends ] {c.endsWith(']') ? "yes" : "no"}; has 4 {c.contains('4') ? "yes" : "no"}");
+        printLine($"; before Bins {(c <=> "Bins") < 0 ? "yes" : "no"}, {c < "Bins" ? "yes" : "no"}; longest {bgl.printRules.the(Shelf.longest())}.");
+    }
+}
+
+verb Ending {
+    grammar = {.footer, NUMBER};
+    void handler() {
+        footer = (int)noun == 1 ? "plain end" : sayEnd;
+        showFooter(footer);
+        stringObj n = $"{Shelf.stamped}";
+        heading = heading.format("$0 ($1)", n);
+        printLine(heading);
+    }
+}
+
+// ---- the types ---------------------------------------------------------------------------------------------
+
+const int MAXLEN = 12;
+const int PADTO = 10;
+
+enum eFault { tooLong, empty, badStyle, noRoom }
+
+enum eStyle {
+    plain, boxed, loud, quiet,
+    emitter int pad { ($self * 2) }
+}
+
+extend enum eStyle {
+    emitter string named() { (bglStyleNames-->$self) }
+}
+
+#i6 { Array bglStyleNames --> "none" "plain" "boxed" "loud" "quiet"; }
+
+value class Tally {
+    int ok;
+    int bad;
+    Tally operator = (Tally o) {
+        ok = o.ok;
+        bad = o.bad;
+        return self;
+    }
+    void print() { ::print($"ok {ok} bad {bad}"); }
+}
+
+class Shelf : object {
+    inline instanceName;
+    inline string raw;
+    stringObj caption;
+    eStyle style = plain;
+    int faults = 0;
+    static int stamped = 0;
+    void print() { ::print(caption.isEmpty() ? "(blank)" : caption); }
+    stringObj summary() {
+        stringObj d = $"{style.named()}, {faults} faults, caption ";
+        d += $"{caption.length}";
+        return d;
+    }
+    selfType clear() {
+        caption = "";
+        style = plain;
+        return self;
+    }
+}
+
+class Label[2] : object {
+    stringObj text;
+    static int made = 0;
+    void create(stringObj t) {
+        text = t;
+        made++;
+    }
+    void print() { ::print($"label '{text}'"); }
+}
+
+array<Label> onHand[2];
+
+// ---- the objects -------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Shelf shelfA { "shelf A", "  Bolts  "; parent = roomA; attributes = {static}; name = {.shelf, .a}; description = "Shelf A."; }
+Shelf shelfB { "shelf B", ""; parent = roomA; attributes = {static}; name = {.shelf, .b}; description = "Shelf B."; }
+Shelf shelfC { "shelf C", "Assorted washers and nuts"; parent = roomA; attributes = {static}; name = {.shelf, .c}; description = "Shelf C."; }
+
+object printer {
+    "printer";
+    parent = roomA;
+    attributes = {static};
+    name = {.printer};
+    description = "A printer.";
+    int jobs = 0;
+    auto lastJob = {
+        stringObj _t;
+        stringObj operator () { return _t; }
+        void operator = (string v) {
+            _t = v;
+            outer.jobs++;
+        }
+    };
+}
+
+extend class Shelf {
+    static Shelf longest() {
+        Shelf best = null;
+        for (Shelf s in shelves) {
+            if (best == null || s.caption.length > best.caption.length) best = s;
+        }
+        return best;
+    }
+}

@@ -415,13 +415,13 @@ void bglParser::preScanDirective(token tok){
             while(t.isNot("\n") && t.isNot(eTokenType::eof)) t = file.getBasicToken(true);
         }
     } else if(tok.is("#using")){
-        // Consume the full dotted path: name(.name)*
-        // Resolution is deferred to the main parse (this is pre-scan).
-        file.getToken();
+        // Consume the full dotted path: name(.name)*. Its type aliases name an object's class above it.
+        string root = file.getToken().value;
         while(file.peekToken().is(token::period)){
             file.getToken(); // consume '.'
-            file.getToken(); // consume member name
+            root += "." + file.getToken().value;
         }
+        preScanUsingRoots.push_back(root);
     } else if(tok.is("#if")){
         // Evaluate condition and skip false branch. The condition ends at the first
         // newline, optional `;` no-op, EOF, or the start of the next #-directive — so
@@ -2420,6 +2420,18 @@ void bglParser::preScanGlobalLoop(){
         // objectDef; `Room r;` / `extern Room r;` is a variable stub. A '(' after the name means it's a
         // FUNCTION returning the class (`Room getRoom(){…}`) — excluded, so it falls through to the
         // routine-stub path below.
+        // `task taskLater { … }` with `task` a type alias a `#using` imports: the alias's class.
+        if(tok.is(eTokenType::identifier) && languageService.findClass(tok.value) == nullptr)
+            for(const string& root : preScanUsingRoots)
+                if(auto* od = languageService.findGlobalAs<objectDef>(root.substr(0, root.find('.')))){
+                    bool found = false;
+                    for(typeMember* m : od->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isAlias && vd->name == tok.value
+                           && languageService.findClass(vd->type.name) != nullptr){
+                            tok.value = vd->type.name; tok.tokenType = eTokenType::dataType; found = true; break;
+                        }
+                    if(found) break;
+                }
         auto objectBackedType = [&](token t){
             classDef* c = t.isDataType() || t.is(eTokenType::identifier) ? languageService.findClass(t.value) : nullptr;
             return c != nullptr && isObjectBackedClass(c);

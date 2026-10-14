@@ -1,0 +1,10 @@
+/*  A plain enum doesn't widen to int, so int arithmetic on enum operands is an error; cast first.  */
+// EXPECT_ERROR: isn't defined for the enum
+#beguilerSettings { target = z5; informName = "none"; }
+enum eM { A, B, C }
+void main(){
+    eM x = eM.C;
+    eM y = eM.A;
+    eM d = x - y;
+    print((int)d);
+}

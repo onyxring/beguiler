@@ -1,0 +1,24 @@
+// `!` inside an emitter's $i6Expr, and an object declared through a #using-imported type alias used
+// above its declaration.
+// EXPECT_OUTPUT: false true award 3 award 3
+#beguilerSettings { target = z5; informName = "none"; }
+
+class SkTask : object { int worth; bool hidden; }
+object kit {
+    alias task for SkTask;
+    void award(task t) { print($"award {t.worth} "); }
+}
+#using kit
+
+emitter bool shown(SkTask t) { $i6Expr(!$t.hidden) }
+
+void early() { kit.award(taskLater); }
+
+void main() {
+    print($"{shown(taskHidden)} {shown(taskLater)} ");
+    early();
+    kit.award(taskLater);
+}
+
+task taskLater { worth = 3; }
+task taskHidden { worth = 1; hidden = true; }

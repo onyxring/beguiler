@@ -1,0 +1,107 @@
+Room A
+> stock
+plank    4 (some)
+nail     10 (many)
+iron bar 2 (few)
+fibre    6 (some)
+Worth 34.
+> recipes
+rope     1 rope by hand from 3 fibre; cost 3.
+hook     2 hook at the forge from 1 iron bar; cost 5.
+crate    1 crate at the bench from 4 plank, 8 nail; cost 16.
+ladder   1 ladder at the bench from 3 plank, 6 nail, 1 rope; cost 16.
+nails    12 nail at the forge from 1 iron bar; cost 5.
+> stations
+hands (by hand): 1 recipes, used 0.
+bench (at the bench): 2 recipes, used 0.
+forge (at the forge): 2 recipes, used 0.
+Busiest: none.
+> history
+Nothing made; 0 failed.
+> can
+4 of 5 makeable: rope x2 hook x2 crate x1 nails x2; all by hand: no; any at the forge: yes.
+> checks
+makeable      rope hook crate nails
+multi-yield   hook nails
+multi-part    crate ladder
+profitable    rope hook nails
+> need crate
+crate: nothing short, 1 possible.
+> need ladder
+ladder: short 1 rope; worth 4.
+> need hook
+hook: nothing short, 2 possible.
+> make hook
+The forge forged 2 hook; now 2.
+> make rope
+The hands twisted 1 rope; now 1.
+> make crate
+The bench built 1 crate; now 1.
+> make ladder
+Cannot make ladder.
+> make ladder
+Cannot make ladder.
+> make nails
+The forge forged 12 nail; now 14.
+> stock
+nail     14 (many)
+fibre    3 (few)
+rope     1 (few)
+hook     2 (few)
+crate    1 (few)
+Worth 42.
+> history
+Last: hook rope crate nails; newest nails; 4 made, 2 failed.
+> rank 2
+Top 2 by cost: crate (16) ladder (16); yields 17.
+> rank 9
+Top 5 by cost: crate (16) ladder (16) hook (5) nails (5) rope (3); yields 17.
+> give 5 plank
+plank: 5.
+> make ladder
+The bench built 1 ladder; now 1.
+> make crate
+Cannot make crate.
+> history
+Last: rope crate nails ladder; newest ladder; 5 made, 3 failed.
+> stations
+hands (by hand): 1 recipes, used 1.
+bench (at the bench): 2 recipes, used 2.
+forge (at the forge): 2 recipes, used 2.
+Busiest: at the bench.
+> worth nail
+nail: worth 1, held 8, in 2 recipes, made as nails.
+> worth rope
+rope: worth 4, held 0, in 1 recipes, made as rope.
+> worth fibre
+fibre: worth 1, held 3, in 1 recipes, not made.
+> can
+1 of 5 makeable: rope x1; all by hand: no; any at the forge: no.
+> checks
+makeable      rope
+multi-yield   hook nails
+multi-part    crate ladder
+profitable    rope hook nails
+> make nails
+Cannot make nails.
+> make crate
+Cannot make crate.
+> make rope
+The hands twisted 1 rope; now 1.
+> need ladder
+ladder: short 1 plank; worth 2.
+> give 2 plank
+plank: 4.
+> make ladder
+The bench built 1 ladder; now 2.
+> history
+Last: nails ladder rope ladder; newest ladder; 7 made, 5 failed.
+> need crate
+crate: short 6 nail 3 plank; worth 12.
+> stock
+plank    1 (few)
+nail     2 (few)
+hook     2 (few)
+crate    1 (few)
+ladder   2 (few)
+Worth 49.

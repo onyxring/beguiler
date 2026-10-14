@@ -1,0 +1,676 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-eighth first-time-programmer program, a classroom where pupils sit at desks,
+// hand in homework that goes on a pile, the homework is marked and given a grade, pupils get merit
+// stars and are kept in after the bell, written the way a beginner writes it after reading the spec
+// once. Counts in int globals with consts for the pile size, the pass mark and the lesson length,
+// bool flags, an enum for a grade returned from a function and switched on, a class of pupils (a
+// desk number, a first name, a member array of marks kept as a queue with enqueue / dequeue, stars,
+// a kept-in flag, methods that add a mark, work out a best mark and a total, print a line about
+// themselves, a before() for Examine) with a subclass for the class monitor that replaces how a mark
+// is added (still calling the class's through a cast), a value class for a piece of homework with a
+// copy operator, ==, != and <=> kept in an array of the value class sized by a const and used as a
+// queue (enqueue / peek / [0] / remove / contains, copied into a local array and sorted),
+// a static member counting marked homework, a teacher object with a daemon that rings the bell,
+// helper functions (one with a default argument, one called with named arguments, one overloaded for
+// an int and a grade, one that throws when the pile is full), try / catch / throw, a switch with
+// ranges, a string switch, C-style for loops with break and continue, a while loop, a do/while,
+// for-in over the pupils array and over a literal list, <linq> filter / count / any / all / orderBy
+// with a comparator / first / map, a lambda capturing a local, stringObj text built with += and
+// interpolation, toUpper, left and contains, and verbs with no noun, one noun, a number, and a noun
+// and a number (register, hand, mark, star, report, seat, pile, keep, grades, sum, bell, desks) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+// ===== COUNTS =====
+
+// how many pieces of homework fit on the pile
+const int PILE_SIZE = 4;
+// the mark you need to pass
+const int PASS_MARK = 5;
+// how many turns a lesson lasts
+const int LESSON_TURNS = 6;
+// how many marks a pupil can keep
+const int MARK_SLOTS = 4;
+// how many turns have gone by in this lesson
+int lessonTurn = 0;
+// how many lessons have finished
+int lessonsDone = 0;
+// how many stars have been given out
+int starsGiven = 0;
+// how many pieces of homework were handed in
+int handedIn = 0;
+// has the bell rung yet?
+bool bellRung = false;
+// was the pile ever full?
+bool pileWasFull = false;
+// is anybody kept in?
+bool anyKeptIn = false;
+
+// ===== KINDS OF THINGS =====
+
+enum Grade { fail, pass, merit, distinction }
+
+// ===== HELPER FUNCTIONS =====
+
+// works out the grade for a mark out of ten
+Grade gradeFor(int mark) {
+    if (mark >= 9) {
+        return Grade.distinction;
+    }
+    if (mark >= 7) {
+        return Grade.merit;
+    }
+    if (mark >= PASS_MARK) {
+        return Grade.pass;
+    }
+    return Grade.fail;
+}
+
+// a word for a grade
+string gradeWord(Grade g) {
+    switch (g) {
+        case Grade.fail: return "fail";
+        case Grade.pass: return "pass";
+        case Grade.merit: return "merit";
+        case Grade.distinction: return "distinction";
+    }
+    return "?";
+}
+
+// prints a mark the way the teacher writes it
+void showMark(int mark) {
+    switch (mark) {
+        case 0: print("nothing");
+        case 1 to 4: print($"{mark} (poor)");
+        case 5 to 6: print($"{mark} (fair)");
+        case 7 to 8: print($"{mark} (good)");
+        default: print($"{mark} (top)");
+    }
+}
+
+// prints a grade the way the teacher writes it
+void showMark(Grade g) {
+    print(gradeWord(g).toUpper());
+}
+
+// "star" or "stars"
+string starWord(int n) {
+    if (n == 1) {
+        return "star";
+    }
+    return "stars";
+}
+
+// the mark a piece of homework gets: its pages, its neatness and a bonus
+int markFor(int pages, int neat, int bonus = 0) {
+    int mark = pages * 2 + neat + bonus;
+    if (mark > 10) {
+        mark = 10;
+    }
+    return mark;
+}
+
+// ===== HOMEWORK =====
+
+// one piece of homework on the pile
+value class Homework {
+    string subject;
+    int desk;
+    int pages;
+    int neat;
+    Homework operator = (Homework o) {
+        subject = o.subject;
+        desk = o.desk;
+        pages = o.pages;
+        neat = o.neat;
+        return self;
+    }
+    bool operator == (Homework o) {
+        return subject == o.subject && desk == o.desk;
+    }
+    bool operator != (Homework o) {
+        return !(subject == o.subject && desk == o.desk);
+    }
+    // the thicker one sorts later
+    int operator <=> (Homework o) {
+        return pages - o.pages;
+    }
+}
+
+// the pile on the teacher's desk (the front is marked first)
+array<Homework> pile[PILE_SIZE];
+
+// puts homework on the pile; throws how many are on it when it is full
+void putOnPile(string subject, int desk, int pages, int neat) {
+    if (pile.length >= PILE_SIZE) {
+        pileWasFull = true;
+        throw pile.length;
+    }
+    Homework h;
+    h.subject = subject;
+    h.desk = desk;
+    h.pages = pages;
+    h.neat = neat;
+    pile.enqueue(h);
+    handedIn++;
+}
+
+// ===== PUPILS =====
+
+class Pupil : object {
+    // the pupil's first name
+    string first;
+    // the number on the desk
+    int desk = 0;
+    // the marks so far
+    array<int> marks[MARK_SLOTS];
+    // how many stars
+    int stars = 0;
+    // kept in after the bell?
+    bool keptIn = false;
+    // what subject they hand in
+    string subject = "sums";
+    string description;
+
+    // how many pieces of homework have been marked
+    static int markedCount = 0;
+
+    // adds a mark, dropping the oldest when there is no room
+    void addMark(int m) {
+        if (marks.length >= MARK_SLOTS) {
+            marks.dequeue();
+        }
+        marks.enqueue(m);
+        markedCount++;
+    }
+
+    // the best mark so far, or -1
+    int bestMark() {
+        int best = -1;
+        for (int i = 0; i < marks.length; i++) {
+            if (marks[i] > best) {
+                best = marks[i];
+            }
+        }
+        return best;
+    }
+
+    // all the marks added up
+    int totalMarks() {
+        int total = 0;
+        int i = 0;
+        while (i < marks.length) {
+            total += marks[i];
+            i++;
+        }
+        return total;
+    }
+
+    // prints a line about the pupil
+    void sayLine() {
+        print($"Desk {desk}: {first}, {stars} {starWord(stars)}");
+        if (marks.length > 0) {
+            print(", marks");
+            for (int m in marks) {
+                print($" {m}");
+            }
+        }
+        if (keptIn) {
+            print(", kept in");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"{first} does {subject}. ");
+            sayLine();
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// the class monitor gets a bonus mark on everything
+class Monitor : Pupil {
+    replace void addMark(int m) {
+        if (m < 10) {
+            m++;
+        }
+        ((Pupil)self).addMark(m);
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The classroom. The corridor is to the east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The corridor. The classroom is to the west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ===== THE PUPILS =====
+
+Pupil pupilOne {
+    "first pupil";
+    parent = roomA;
+    name = {.first, .pupil, .ann};
+    first = "Ann";
+    desk = 1;
+    subject = "sums";
+    description = "A pupil.";
+    attributes = {animate};
+}
+
+Pupil pupilTwo {
+    "second pupil";
+    parent = roomA;
+    name = {.second, .pupil, .bob};
+    first = "Bob";
+    desk = 2;
+    subject = "spelling";
+    description = "A pupil.";
+    attributes = {animate};
+}
+
+Monitor pupilThree {
+    "third pupil";
+    parent = roomA;
+    name = {.third, .pupil, .cal};
+    first = "Cal";
+    desk = 3;
+    subject = "maps";
+    description = "A pupil.";
+    attributes = {animate};
+}
+
+// every pupil, by desk
+array<Pupil> pupils = { pupilOne, pupilTwo, pupilThree };
+
+// ===== THE TEACHER =====
+
+object teacher {
+    "teacher";
+    parent = roomA;
+    name = {.teacher};
+    string description = "The teacher.";
+    attributes = {animate, static};
+    void daemon() {
+        lessonTurn++;
+        if (lessonTurn >= LESSON_TURNS) {
+            lessonTurn = 0;
+            lessonsDone++;
+            bellRung = true;
+            print("^The bell rings.");
+            for (Pupil p in pupils) {
+                if (p.keptIn) {
+                    print($" {p.first} stays behind.");
+                    p.keptIn = false;
+                }
+            }
+            anyKeptIn = false;
+            print("^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(teacher);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the pupils) =====
+
+// the pupil at a desk, or null
+Pupil pupilAt(int desk) {
+    for (Pupil p in pupils) {
+        if (p.desk == desk) {
+            return p;
+        }
+    }
+    return null;
+}
+
+// how many pupils have passed their best piece
+int pupilsPassing() {
+    int n = 0;
+    for (int i = 0; i < pupils.length; i++) {
+        if (pupils[i].bestMark() < PASS_MARK) {
+            continue;
+        }
+        n++;
+    }
+    return n;
+}
+
+// ===== VERBS =====
+
+// REGISTER - calls out every pupil
+verb CallRegister {
+    meta = true;
+    grammar = {.register};
+    void handler() {
+        for (Pupil p in pupils) {
+            p.sayLine();
+        }
+        print($"Passing: {pupilsPassing()}. Lesson turn {lessonTurn} of {LESSON_TURNS}. Lessons: {lessonsDone}.^");
+        if (bellRung == true) {
+            print("The bell has rung.^");
+        }
+    }
+}
+
+// HAND <pupil> - the pupil hands in their homework
+verb HandIn {
+    grammar = {.hand, NOUN};
+    void handler() {
+        if (!(noun.is(Pupil))) {
+            print("Only a pupil can hand in homework.^");
+            return;
+        }
+        Pupil p = (Pupil)noun;
+        int pages = p.desk + 1;
+        // a pupil who is kept in rushes it
+        if (p.keptIn) {
+            pages = 1;
+        }
+        int neat = 2;
+        // maps are always messy
+        if (p.subject == "maps") {
+            neat = 0;
+        }
+        try {
+            putOnPile(p.subject, p.desk, pages, neat);
+        } catch (int onPile) {
+            print($"The pile is full ({onPile}).^");
+            return;
+        }
+        print($"{p.first} hands in {pages} pages of {p.subject}. The pile has {pile.length}.^");
+    }
+}
+
+// MARK - marks the homework at the front of the pile
+verb MarkHomework {
+    grammar = {.mark};
+    void handler() {
+        if (pile.length == 0) {
+            print("There is nothing to mark.^");
+            return;
+        }
+        Homework h = pile[0];
+        pile.remove(0);
+        Pupil p = pupilAt(h.desk);
+        if (p == null) {
+            print("Nobody sits at that desk.^");
+            return;
+        }
+        int bonus = 0;
+        if (p.stars > 1) {
+            bonus = 1;
+        }
+        int mark = markFor(neat: h.neat, pages: h.pages, bonus: bonus);
+        p.addMark(mark);
+        Grade g = gradeFor(p.marks.peekEnd());
+        print($"{p.first}'s {h.subject}: ");
+        showMark(p.marks.peekEnd());
+        print(", ");
+        showMark(g);
+        print($". Marked so far: {Pupil.markedCount}.^");
+        if (g == Grade.fail) {
+            p.keptIn = true;
+            anyKeptIn = true;
+            print($"{p.first} is kept in.^");
+        }
+    }
+}
+
+// STAR <pupil> - gives a merit star
+verb GiveStar {
+    grammar = {.star, NOUN};
+    void handler() {
+        if (!(noun.is(Pupil))) {
+            print("Stars are for pupils.^");
+            return;
+        }
+        Pupil p = (Pupil)noun;
+        p.stars++;
+        starsGiven++;
+        print($"{p.first} has {p.stars} {starWord(p.stars)}. Given: {starsGiven}.^");
+    }
+}
+
+// KEEP <pupil> - keeps a pupil in after the bell
+verb KeepIn {
+    grammar = {.keep, NOUN};
+    void handler() {
+        if (!(noun.is(Pupil))) {
+            print("You can only keep a pupil in.^");
+            return;
+        }
+        Pupil p = (Pupil)noun;
+        if (p.keptIn) {
+            print($"{p.first} is already kept in.^");
+            return;
+        }
+        p.keptIn = true;
+        anyKeptIn = true;
+        print($"{p.first} will stay behind.^");
+    }
+}
+
+// SEAT <pupil> AT <number> - moves a pupil to another desk
+verb SeatPupil {
+    grammar = {.seat, NOUN, .at, NUMBER};
+    void handler() {
+        if (!(noun.is(Pupil))) {
+            print("You can only seat a pupil.^");
+            return;
+        }
+        Pupil p = (Pupil)noun;
+        int to = (int)second;
+        if (to < 1 || to > 9) {
+            print("There is no desk with that number.^");
+            return;
+        }
+        Pupil there = pupilAt(to);
+        if (there != null && there != p) {
+            there.desk = p.desk;
+            print($"{there.first} moves to desk {there.desk}. ");
+        }
+        p.desk = to;
+        print($"{p.first} sits at desk {p.desk}.^");
+    }
+}
+
+// PILE - what is on the pile
+verb ShowPile {
+    meta = true;
+    grammar = {.pile};
+    void handler() {
+        if (pile.length == 0) {
+            print("The pile is empty.^");
+            return;
+        }
+        stringObj row = "Pile:";
+        for (Homework h in pile) {
+            row += $" {h.subject}/{h.desk}";
+        }
+        print(row);
+        print("^");
+        Homework top = pile.peek();
+        print($"Next to mark: {top.subject} from desk {top.desk}.^");
+        array<Homework> thick[PILE_SIZE];
+        thick = pile;
+        thick.sort();
+        Homework thickest = thick.last();
+        print($"Thickest: {thickest.subject} ({thickest.pages} pages).^");
+        Homework look;
+        look.subject = "sums";
+        look.desk = 1;
+        if (pile.contains(look)) {
+            print("Ann's sums are on the pile.^");
+        }
+        int maps = pile.filter((Homework h) => h.subject == "maps").count();
+        print($"Maps on the pile: {maps}.^");
+    }
+}
+
+// REPORT <pupil> - writes a report card
+verb WriteReport {
+    meta = true;
+    grammar = {.report, NOUN};
+    void handler() {
+        if (!(noun.is(Pupil))) {
+            print("Reports are for pupils.^");
+            return;
+        }
+        Pupil p = (Pupil)noun;
+        stringObj card = "REPORT: ";
+        card += p.first;
+        if (p.marks.length == 0) {
+            card += " - no marks yet.";
+            print(card);
+            print("^");
+            return;
+        }
+        int best = p.bestMark();
+        card += $" - best {best}, total {p.totalMarks()}";
+        card += $", {gradeWord(gradeFor(best))}";
+        if (p.stars > 0) {
+            card += $", {p.stars} {starWord(p.stars)}";
+        }
+        card += ".";
+        print(card);
+        print("^");
+        if (card.contains("distinction")) {
+            print("Well done.^");
+        }
+        print($"Short: {card.left(12)}.^");
+        switch (p.subject) {
+            case "sums": print("Keep practising tables.^");
+            case "spelling", "maps": print("Read more at home.^");
+            default: print("No comment.^");
+        }
+    }
+}
+
+// GRADES - how the class is doing, with <linq>
+verb ShowGrades {
+    meta = true;
+    grammar = {.grades};
+    void handler() {
+        int marked = pupils.filter((Pupil p) => p.marks.length > 0).count();
+        print($"Pupils with marks: {marked}.^");
+        int mark = PASS_MARK;
+        if (pupils.any((Pupil p) => p.bestMark() >= mark)) {
+            print("Somebody has passed.^");
+        }
+        if (pupils.all((Pupil p) => p.stars == 0)) {
+            print("No stars yet.^");
+        }
+        array<Pupil> order[3];
+        order = pupils.orderBy((Pupil a, Pupil b) => b.totalMarks() - a.totalMarks());
+        stringObj row = "Top first:";
+        for (Pupil p in order) {
+            row += $" {p.first}={p.totalMarks()}";
+        }
+        print(row);
+        print("^");
+        Pupil top = order.first();
+        print($"Top of the class: {top.first}.^");
+        int firstDesk = pupils.map((Pupil p) => p.desk).first();
+        print($"First desk: {firstDesk}.^");
+        // count pupils until the first one kept in
+        int free = 0;
+        for (Pupil p in pupils) {
+            if (p.keptIn) {
+                break;
+            }
+            free++;
+        }
+        print($"Pupils before one kept in: {free}.^");
+        if (anyKeptIn) {
+            print("Somebody is kept in.^");
+        }
+        if (pileWasFull) {
+            print("The pile has been full.^");
+        }
+    }
+}
+
+// SUM <number> - shows a grade for a mark
+verb ShowSum {
+    meta = true;
+    grammar = {.sum, NUMBER};
+    void handler() {
+        int m = (int)noun;
+        if (m > 10) {
+            print("Marks go up to 10.^");
+            return;
+        }
+        showMark(m);
+        print(" is ");
+        showMark(gradeFor(m));
+        print(".^");
+        // count up the grades from 0 to this mark
+        int passes = 0;
+        int k = 0;
+        do {
+            if (gradeFor(k) != Grade.fail) {
+                passes++;
+            }
+            k++;
+        } while (k <= m);
+        print($"Passing marks up to {m}: {passes}.^");
+    }
+}
+
+// BELL - rings the bell early
+verb RingBell {
+    grammar = {.bell};
+    void handler() {
+        print("You ring the bell early.^");
+        lessonTurn = LESSON_TURNS - 1;
+    }
+}
+
+// DESKS - walks the desks in a list
+verb CheckDesks {
+    meta = true;
+    grammar = {.desks};
+    void handler() {
+        stringObj row = "Desks:";
+        for (int d in {1, 2, 3, 4}) {
+            Pupil p = pupilAt(d);
+            if (p == null) {
+                row += $" {d}=empty";
+            } else {
+                row += $" {d}={p.first}";
+            }
+        }
+        print(row);
+        print("^");
+    }
+}

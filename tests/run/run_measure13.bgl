@@ -1,0 +1,28 @@
+// Elements injected into a global array as its own initial elements are written (an enum member, an inner
+// array, a dictionary word); same-named owning locals in sibling blocks; insert past the end of a string.
+// EXPECT_OUTPUT: 3 3 2 4 3 7 0 ab-
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+enum eStation { hand, bench, forge }
+array<eStation> at = { eStation.hand };
+extend at { inject eStation.forge; }
+extend at { inject bench; }
+array<array<int>> needs = { { 3 } };
+extend needs { inject { 2, 4 }; }
+array<dictionaryWord> words = { .rope };
+extend words { inject .nails; }
+
+value class Call { int from; Call operator = (Call o) { from = o.from; return self; } }
+Call g;
+
+void main() {
+    bglInit();
+    print($"{(int)at[1]} {at.length} {needs.length} {needs[1][1]} ");
+    print($"{words.length + (words[1] == .nails ? 1 : 0)} ");
+    g.from = 7;
+    { Call c = g; print($"{c.from} "); }
+    { Call c; print($"{c.from} "); }
+    stringObj a = "ab";
+    print(a.insert(5, "-"));
+}

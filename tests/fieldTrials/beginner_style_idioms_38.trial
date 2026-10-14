@@ -1,0 +1,179 @@
+Room A
+Room A. The classroom. The corridor is to the east.
+You can see a first pupil, a second pupil, a third pupil and a teacher here.
+> register
+Desk 1: Ann, 0 stars.
+Desk 2: Bob, 0 stars.
+Desk 3: Cal, 0 stars.
+Passing: 0. Lesson turn 0 of 6. Lessons: 0.
+> grades
+Pupils with marks: 0.
+No stars yet.
+Top first: Ann=0 Bob=0 Cal=0
+Top of the class: Ann.
+First desk: 1.
+Pupils before one kept in: 3.
+> pile
+The pile is empty.
+> mark
+There is nothing to mark.
+> report ann
+REPORT: Ann - no marks yet.
+> sum 3
+3 (poor) is FAIL.
+Passing marks up to 3: 0.
+> sum 7
+7 (good) is MERIT.
+Passing marks up to 7: 3.
+> sum 10
+10 (top) is DISTINCTION.
+Passing marks up to 10: 6.
+> sum 11
+Marks go up to 10.
+> desks
+Desks: 1=Ann 2=Bob 3=Cal 4=empty
+> hand ann
+Ann hands in 2 pages of sums. The pile has 1.
+> hand bob
+Bob hands in 3 pages of spelling. The pile has 2.
+> hand cal
+Cal hands in 4 pages of maps. The pile has 3.
+> pile
+Pile: sums/1 spelling/2 maps/3
+Next to mark: sums from desk 1.
+Thickest: maps (4 pages).
+Ann's sums are on the pile.
+Maps on the pile: 1.
+> mark
+Ann's sums: 6 (fair), PASS. Marked so far: 1.
+> mark
+Bob's spelling: 8 (good), MERIT. Marked so far: 2.
+The bell rings.
+> register
+Desk 1: Ann, 0 stars, marks 6.
+Desk 2: Bob, 0 stars, marks 8.
+Desk 3: Cal, 0 stars.
+Passing: 2. Lesson turn 0 of 6. Lessons: 1.
+The bell has rung.
+> star ann
+Ann has 1 star. Given: 1.
+> star ann
+Ann has 2 stars. Given: 2.
+> hand ann
+Ann hands in 2 pages of sums. The pile has 2.
+> hand ann
+Ann hands in 2 pages of sums. The pile has 3.
+> hand cal
+Cal hands in 4 pages of maps. The pile has 4.
+> hand bob
+The pile is full (4).
+The bell rings.
+> pile
+Pile: maps/3 sums/1 sums/1 maps/3
+Next to mark: maps from desk 3.
+Thickest: maps (4 pages).
+Ann's sums are on the pile.
+Maps on the pile: 2.
+> mark
+Cal's maps: 9 (top), DISTINCTION. Marked so far: 3.
+> report ann
+REPORT: Ann - best 6, total 6, pass, 2 stars.
+Short: REPORT: Ann .
+Keep practising tables.
+> report cal
+REPORT: Cal - best 9, total 9, distinction.
+Well done.
+Short: REPORT: Cal .
+Read more at home.
+> report bob
+REPORT: Bob - best 8, total 8, merit.
+Short: REPORT: Bob .
+Read more at home.
+> grades
+Pupils with marks: 3.
+Somebody has passed.
+Top first: Cal=9 Bob=8 Ann=6
+Top of the class: Cal.
+First desk: 1.
+Pupils before one kept in: 3.
+The pile has been full.
+> seat bob at 3
+Cal moves to desk 2. Bob sits at desk 3.
+> desks
+Desks: 1=Ann 2=Cal 3=Bob 4=empty
+> seat ann at 4
+Ann sits at desk 4.
+> desks
+Desks: 1=empty 2=Cal 3=Bob 4=Ann
+> seat cal at 12
+There is no desk with that number.
+> keep bob
+Bob will stay behind.
+> hand bob
+Bob hands in 1 pages of spelling. The pile has 4.
+The bell rings. Bob stays behind.
+> keep bob
+Bob will stay behind.
+> mark
+Nobody sits at that desk.
+> mark
+Nobody sits at that desk.
+> bell
+You ring the bell early.
+The bell rings. Bob stays behind.
+> wait
+Time passes.
+> register
+Desk 4: Ann, 2 stars, marks 6.
+Desk 3: Bob, 0 stars, marks 8.
+Desk 2: Cal, 0 stars, marks 9.
+Passing: 3. Lesson turn 1 of 6. Lessons: 4.
+The bell has rung.
+> mark
+Bob's maps: 8 (good), MERIT. Marked so far: 4.
+> mark
+Bob's spelling: 4 (poor), FAIL. Marked so far: 5.
+Bob is kept in.
+> mark
+There is nothing to mark.
+> register
+Desk 4: Ann, 2 stars, marks 6.
+Desk 3: Bob, 0 stars, marks 8 8 4, kept in.
+Desk 2: Cal, 0 stars, marks 9.
+Passing: 3. Lesson turn 4 of 6. Lessons: 4.
+The bell has rung.
+> grades
+Pupils with marks: 3.
+Somebody has passed.
+Top first: Bob=20 Cal=9 Ann=6
+Top of the class: Bob.
+First desk: 4.
+Pupils before one kept in: 1.
+Somebody is kept in.
+The pile has been full.
+> star teacher
+Stars are for pupils.
+> hand teacher
+Only a pupil can hand in homework.
+The bell rings. Bob stays behind.
+> examine third pupil
+Cal does maps. Desk 2: Cal, 0 stars, marks 9.
+> hand bob
+Bob hands in 4 pages of spelling. The pile has 1.
+> mark
+Bob's spelling: 10 (top), DISTINCTION. Marked so far: 6.
+> hand bob
+Bob hands in 4 pages of spelling. The pile has 1.
+> mark
+Bob's spelling: 10 (top), DISTINCTION. Marked so far: 7.
+> report bob
+REPORT: Bob - best 10, total 32, distinction.
+Well done.
+Short: REPORT: Bob .
+Read more at home.
+> register
+Desk 4: Ann, 2 stars, marks 6.
+Desk 3: Bob, 0 stars, marks 8 4 10 10.
+Desk 2: Cal, 0 stars, marks 9.
+Passing: 3. Lesson turn 5 of 6. Lessons: 5.
+The bell has rung.

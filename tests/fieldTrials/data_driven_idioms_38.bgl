@@ -1,0 +1,409 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a workshop recipe book kept in tables. Parallel item tables (name, dictionary word,
+// held count, worth) indexed by position and read by a general parsing routine; parallel recipe
+// tables (name, made item, yield, station enum) beside two arrays of arrays holding each recipe's
+// needed items and counts, walked with nested for-in loops and by index; a Need value class with a
+// copy operator, a static factory and a `<=>` used by sort(), collected into a local array of
+// shortfalls with append; a Station class with an enum kind, a use counter and a method, three
+// station objects in an array<Station> searched with filter/first; a table of named checks as
+// func<bool, int> lambdas with a parallel name table; <linq> filter/map/count/any/all/orderBy/take
+// over an index range array, with lambdas capturing locals; a history queue with enqueue/dequeue/
+// peekEnd capped at a size; switch on an enum and on a range of ints; `extend` of the recipe tables
+// adding a recipe at build time; a stringObj report padded to columns by a helper taking a ref
+// stringObj; interpolated strings with ?: choices and calls; a ledger object whose member array is
+// the history queue.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+#using bgl.printRules;
+
+//-- Constants -------------------------------------------------------------------
+
+const int ITEM_COUNT = 8;
+const int NONE = -1;
+const int HISTORY_MAX = 4;
+const int COL = 9;
+
+enum eStation { hand, bench, forge }
+
+//-- Item tables -----------------------------------------------------------------
+
+array<string> itemName = { "plank", "nail", "iron bar", "fibre", "rope", "hook", "crate", "ladder" };
+array<dictionaryWord> itemWord = { .plank, .nail, .bar, .fibre, .rope, .hook, .crate, .ladder };
+array<int> onHand = { 4, 10, 2, 6, 0, 0, 0, 0 };
+array<int> worth = { 2, 1, 5, 1, 4, 6, 9, 12 };
+
+//-- Recipe tables ---------------------------------------------------------------
+
+array<string> recipeName = { "rope", "hook", "crate", "ladder" };
+array<dictionaryWord> recipeWord = { .rope, .hook, .crate, .ladder };
+array<int> recipeMakes = { 4, 5, 6, 7 };
+array<int> recipeYield = { 1, 2, 1, 1 };
+array<eStation> recipeAt = { eStation.hand, eStation.forge, eStation.bench, eStation.bench };
+array<array<int>> needItem = { { 3 }, { 2 }, { 0, 1 }, { 0, 1, 4 } };
+array<array<int>> needQty = { { 3 }, { 1 }, { 4, 8 }, { 3, 6, 1 } };
+
+// A late recipe: a second way to make nails, from an iron bar at the forge.
+extend recipeName { inject "nails"; }
+extend recipeWord { inject .nails; }
+extend needItem { inject { 2 }; }
+extend needQty { inject { 1 }; }
+extend recipeMakes { inject 1; }
+extend recipeYield { inject 12; }
+extend recipeAt { inject eStation.forge; }
+
+array<string> stationName = { "by hand", "at the bench", "at the forge" };
+
+//-- Value classes ---------------------------------------------------------------
+
+value class Need {
+    inline int item;
+    inline int qty;
+    Need operator = (Need o) { item = o.item; qty = o.qty; return self; }
+    static Need of(int i, int q) { return Need{ i, q }; }
+    int operator <=> (Need o) { return o.qty - qty; }
+    int value() { return qty * worth[item]; }
+}
+
+//-- Objects ---------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Station : object {
+    eStation kind;
+    int uses;
+    void use() { uses++; }
+    string label() { return stationName[(int)kind - 1]; }
+}
+
+Station handStation { "hands"; kind = eStation.hand; }
+Station benchStation { "bench"; kind = eStation.bench; parent = roomA; }
+Station forgeStation { "forge"; kind = eStation.forge; parent = roomA; }
+
+array<Station> stations = { handStation, benchStation, forgeStation };
+
+object ledger {
+    "ledger";
+    int made;
+    int failed;
+    array<int> history[HISTORY_MAX];
+    void note(int recipe) {
+        if (history.length == HISTORY_MAX) history.dequeue();
+        history.enqueue(recipe);
+        made++;
+    }
+}
+
+//-- Helpers ---------------------------------------------------------------------
+
+void pad(ref stringObj s, string t, int w) {
+    int start = s.length;
+    s += t;
+    while (s.length - start < w) s += ' ';
+}
+
+int recipeCount() { return recipeName.length; }
+
+Station stationFor(int r) {
+    eStation k = recipeAt[r];
+    return stations.filter((Station s) => s.kind == k).first();
+}
+
+// How many times recipe r can be made from what is held.
+int timesOf(int r) {
+    int best = 9999;
+    array<int> items = needItem[r];
+    array<int> qtys = needQty[r];
+    for (int j in 0 to items.length - 1) {
+        int t = onHand[items[j]] / qtys[j];
+        if (t < best) best = t;
+    }
+    return best;
+}
+
+bool canMake(int r) { return timesOf(r) > 0; }
+
+int fillShort(int r, array<Need> out) {
+    array<int> items = needItem[r];
+    array<int> qtys = needQty[r];
+    for (int j in 0 to items.length - 1) {
+        int gap = qtys[j] - onHand[items[j]];
+        if (gap > 0) out.append(Need.of(items[j], gap));
+    }
+    return out.length;
+}
+
+int costOf(int r) {
+    int total = 0;
+    array<int> items = needItem[r];
+    for (int j in 0 to items.length - 1) total += worth[items[j]] * needQty[r][j];
+    return total;
+}
+
+string sizeWord(int n) {
+    switch (n) {
+        case 0: return "none";
+        case 1 to 3: return "few";
+        case 4 to 9: return "some";
+        default: return "many";
+    }
+}
+
+string stationVerb(eStation k) {
+    switch (k) {
+        case eStation.hand: return "twisted";
+        case eStation.bench: return "built";
+        case eStation.forge: return "forged";
+    }
+    return "made";
+}
+
+// Named checks over a recipe index.
+array<func<bool, int>> checks = {
+    (int r) => canMake(r),
+    (int r) => recipeYield[r] > 1,
+    (int r) => needItem[r].length > 1,
+    (int r) => costOf(r) < worth[recipeMakes[r]] * recipeYield[r]
+};
+array<string> checkName = { "makeable", "multi-yield", "multi-part", "profitable" };
+
+// Every recipe index, for chains.
+array<int> allRecipes[8];
+
+void fillRecipes() {
+    allRecipes.clear();
+    for (int r in 0 to recipeCount() - 1) allRecipes.append(r);
+}
+
+//-- Parsing ---------------------------------------------------------------------
+
+int parseItem() {
+    int at = itemWord.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+int parseRecipe() {
+    int at = recipeWord.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        stringObj line = "";
+        int total = 0;
+        for (int i in 0 to ITEM_COUNT - 1) {
+            if (onHand[i] == 0) continue;
+            line = "";
+            pad(line, itemName[i], COL);
+            line += $"{onHand[i]} ({sizeWord(onHand[i])})";
+            line.print();
+            print("^");
+            total += onHand[i] * worth[i];
+        }
+        print($"Worth {total}.^");
+    }
+}
+
+verb RecipesTest {
+    grammar = {.recipes};
+    void handler() {
+        for (int r in 0 to recipeCount() - 1) {
+            stringObj line = "";
+            pad(line, recipeName[r], COL);
+            line += $"{recipeYield[r]} {itemName[recipeMakes[r]]} {stationName[(int)recipeAt[r] - 1]} from";
+            array<int> items = needItem[r];
+            for (int j in 0 to items.length - 1) {
+                line += j == 0 ? " " : ", ";
+                line += $"{needQty[r][j]} {itemName[items[j]]}";
+            }
+            line += $"; cost {costOf(r)}.";
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb NeedTest {
+    grammar = {.need, parseRecipe};
+    void handler() {
+        int r = (int)noun;
+        array<Need> gaps[4];
+        int n = fillShort(r, gaps);
+        if (n == 0) {
+            print($"{recipeName[r]}: nothing short, {timesOf(r)} possible.^");
+            return;
+        }
+        gaps.sort();
+        stringObj line = $"{recipeName[r]}: short";
+        int value = 0;
+        for (Need g in gaps) {
+            line += $" {g.qty} {itemName[g.item]}";
+            value += g.value();
+        }
+        line += $"; worth {value}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb MakeTest {
+    grammar = {.make, parseRecipe};
+    void handler() {
+        int r = (int)noun;
+        if (!canMake(r)) {
+            ledger.failed++;
+            print($"Cannot make {recipeName[r]}.^");
+            return;
+        }
+        array<int> items = needItem[r];
+        array<int> qtys = needQty[r];
+        for (int j in 0 to items.length - 1) onHand[items[j]] -= qtys[j];
+        int out = recipeMakes[r];
+        onHand[out] += recipeYield[r];
+        Station s = stationFor(r);
+        s.use();
+        ledger.note(r);
+        print($"{cThe(s)} {stationVerb(recipeAt[r])} {recipeYield[r]} {itemName[out]}; now {onHand[out]}.^");
+    }
+}
+
+verb CanTest {
+    grammar = {.can};
+    void handler() {
+        fillRecipes();
+        array<int> ok = allRecipes.filter(canMake);
+        stringObj line = $"{ok.count()} of {allRecipes.count()} makeable:";
+        for (int r in ok) line += $" {recipeName[r]} x{timesOf(r)}";
+        line += $"; all by hand: {allRecipes.all((int r) => recipeAt[r] == eStation.hand) ? "yes" : "no"}";
+        line += $"; any at the forge: {ok.any((int r) => recipeAt[r] == eStation.forge) ? "yes" : "no"}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb ChecksTest {
+    grammar = {.checks};
+    void handler() {
+        fillRecipes();
+        for (int c in 0 to checks.length - 1) {
+            func<bool, int> f = checks[c];
+            stringObj line = "";
+            pad(line, checkName[c], 13);
+            int hits = 0;
+            for (int r in allRecipes) {
+                if (f(r)) {
+                    line += $" {recipeName[r]}";
+                    hits++;
+                }
+            }
+            if (hits == 0) line += " -";
+            line.print();
+            print("^");
+        }
+    }
+}
+
+verb RankTest {
+    grammar = {.rank, NUMBER};
+    void handler() {
+        int k = (int)noun;
+        fillRecipes();
+        array<int> best = allRecipes.orderBy((int a, int b) => costOf(b) - costOf(a)).take(k);
+        stringObj line = $"Top {best.length} by cost:";
+        for (int r in best) line += $" {recipeName[r]} ({costOf(r)})";
+        int sum = 0;
+        for (var v in allRecipes.map((int r) => recipeYield[r])) sum += (int)v;
+        line += $"; yields {sum}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb GiveTest {
+    grammar = {.give, NUMBER, parseItem};
+    void handler() {
+        int n = (int)noun;
+        int i = (int)second;
+        onHand[i] += n;
+        print($"{itemName[i]}: {onHand[i]}.^");
+    }
+}
+
+verb StationsTest {
+    grammar = {.stations};
+    void handler() {
+        for (Station s in stations) {
+            int count = 0;
+            for (int r in 0 to recipeCount() - 1)
+                if (recipeAt[r] == s.kind) count++;
+            print($"{s} ({s.label()}): {count} recipes, used {s.uses}.^");
+        }
+        Station busiest = stations.orderBy((Station a, Station b) => b.uses - a.uses).first();
+        print($"Busiest: {busiest.uses > 0 ? busiest.label() : "none"}.^");
+    }
+}
+
+verb HistoryTest {
+    grammar = {.history};
+    void handler() {
+        if (ledger.history.length == 0) {
+            print($"Nothing made; {ledger.failed} failed.^");
+            return;
+        }
+        stringObj line = "Last:";
+        for (int r in ledger.history) line += $" {recipeName[r]}";
+        line += $"; newest {recipeName[ledger.history.peekEnd()]}; {ledger.made} made, {ledger.failed} failed.";
+        line.print();
+        print("^");
+    }
+}
+
+verb WorthTest {
+    grammar = {.worth, parseItem};
+    void handler() {
+        int i = (int)noun;
+        int used = 0;
+        int makes = NONE;
+        for (int r in 0 to recipeCount() - 1) {
+            if (recipeMakes[r] == i) makes = r;
+            for (int it in needItem[r])
+                if (it == i) used++;
+        }
+        stringObj how = "not made";
+        if (makes != NONE) how = "made as " + recipeName[makes];
+        print($"{itemName[i]}: worth {worth[i]}, held {onHand[i]}, in {used} recipes, {how}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

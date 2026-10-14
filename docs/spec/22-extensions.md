@@ -193,7 +193,7 @@ the one-character string.
 | `s.trim()` / `s.trimLeft()` / `s.trimRight()` | `stringObj` | Without leading and/or trailing spaces. |
 | `s.reverse()` | `stringObj` | Characters in reverse order. |
 | `s.mid(start, count)` / `s.left(count)` / `s.right(count)` | `stringObj` | Substrings. A position or count outside the text is clamped to it: `left(-1)` is empty and `left(99)` is the whole text. |
-| `s.insert(pos, src)` | `stringObj` | With `src` inserted at `pos`. |
+| `s.insert(pos, src)` | `stringObj` | With `src` inserted at `pos` (a position past the end appends). |
 | `s.delete(pos, count)` | `stringObj` | With `count` characters removed at `pos`. |
 | `s.replace(search, repl)` / `s.replaceAll(search, repl)` | `stringObj` | With the first / every occurrence replaced. |
 | `s.format(pattern[, p1[, p2]])` | `stringObj` | `pattern` with `$0` replaced by `s` and `$1`, `$2` by the arguments, each a `string` or `stringObj`. |

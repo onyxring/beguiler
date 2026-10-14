@@ -1,0 +1,476 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a task-and-score kit and its consumer. The kit is configured by #define symbols set
+// before it (#if with a default, #if on a value, #message); it declares an enum of task kinds with
+// emitter members, a bnum of task flags, a value class tallying points (copy operator, + and +=, ==,
+// a percent and a show method), a task class with a required positional worth, a kind, flags, a done
+// flag, static counters, a default label() and ready(), an award() that adds to the library's score,
+// an emitter testing a flag through $i6Expr and an emitter value; a pooled note class owning a
+// stringObj that the kit's daemon prints and deletes; an emitter namespace of output helpers; a
+// global hook (literal func<>) with a kit default the consumer swaps for a lambda; a kit routine the
+// consumer replaces and chains with replaced(). The kit's root object is a namespace (alias … for the
+// types) with an array of tasks, a register/award/find API, a <linq> pending count and list, a
+// totals(), a stringObj log, a daemon; a superposed stats object reached through an alias that `extend`
+// adds. The consumer extends the task class with a tries count and an attempt() that throws, and
+// declares tasks as objects (one overriding label() and ready()); it awards tasks from an object's
+// after() on Take, from a room's initial(), and from its own verbs (push, tasks, notes, stats,
+// hint), catching the thrown reason codes, and reads the library's score.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define SK_MAX_TASKS 6
+#define SK_VERBOSE
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 20; }
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit. ====
+
+#if !SK_MAX_TASKS
+    #define SK_MAX_TASKS 4
+#endif
+
+#if SK_MAX_TASKS > 8
+    #warning "sk: more than eight tasks is untried"
+#endif
+
+const int skMaxTasks = SK_MAX_TASKS;
+
+/// What sort of task it is.
+enum eSkKind {
+    find, solve, visit,
+    /// Points a task of this kind is worth on top of its own.
+    emitter int bonus()  { ($self - 1) }
+    /// A one-letter code for listings.
+    emitter char code    { ($self + 'a' - 1) }
+}
+
+/// Flags a task may carry.
+bnum eSkFlag { hidden, bonus, repeatable }
+
+/// Points scored against points possible.
+value class SkTally {
+    int got;
+    int max;
+
+    SkTally operator = (SkTally o) { got = o.got; max = o.max; return self; }
+
+    /// Two tallies added together.
+    SkTally operator + (SkTally o) {
+        SkTally r;
+        r.got = got + o.got;
+        r.max = max + o.max;
+        return r;
+    }
+
+    /// Adds another tally in place.
+    void operator += (SkTally o) {
+        got += o.got;
+        max += o.max;
+    }
+
+    /// True when both counts match.
+    bool operator == (SkTally o) { return got == o.got && max == o.max; }
+
+    /// Points scored as a percentage of points possible.
+    int pct() {
+        if (max == 0) return 0;
+        return got * 100 / max;
+    }
+
+    /// Prints "got/max".
+    void show() { print($"{got}/{max}"); }
+}
+
+/// A task: worth some points, scored once unless repeatable.
+class SkTask : object {
+    /// Points the task is worth.
+    required inline int worth;
+    eSkKind kind = eSkKind.find;
+    eSkFlag flags;
+    bool done = false;
+    int times = 0;
+    /// Tasks scored so far, across all tasks.
+    static int scored = 0;
+    /// Points handed out so far.
+    static int handed = 0;
+
+    /// The task's label in listings.
+    default string label() { return "task"; }
+
+    /// Whether the task may be scored now.
+    default bool ready() { return true; }
+
+    /// Points it gives, with its kind's bonus.
+    int value() { return worth + kind.bonus(); }
+
+    /// True when it carries a flag.
+    emitter bool has(eSkFlag f) { (($self.flags & $f) ~= 0) }
+
+    /// True when it is listed.
+    emitter bool listed { $i6Expr(!$self.has(eSkFlag.hidden)) }
+
+    /// Scores the task; false when it is done or not ready.
+    bool award() {
+        if (done && !has(eSkFlag.repeatable)) return false;
+        if (!ready()) return false;
+        done = true;
+        times++;
+        int pts = value();
+        score = score + pts;
+        scored++;
+        handed += pts;
+        skAwardHook(self);
+        stringObj msg = $"+{pts} {label()}";
+        sk.queue(msg);
+        return true;
+    }
+}
+
+/// A note waiting to be printed at the end of the turn.
+class SkNote[3] : object {
+    string short_name = "note";
+    stringObj text;
+    int turn;
+
+    void create(int t) { turn = t; }
+}
+
+/// Plain output helpers.
+emitter skOut {
+    void rule()           { print "--^"; }
+    void points(int n)    { print $n, " point"; if ($n ~= 1) print "s"; }
+    void mark(bool b)     { if ($b) print "x"; else print "."; }
+}
+
+/// Called after every award; a program may set its own.
+literal func<void, SkTask> skAwardHook = skQuietHook;
+
+void skQuietHook(SkTask t) { }
+
+/// The rank line printed under a listing.
+void skRankLine(int pct) {
+    if (pct >= 100)     print("Rank: all done.^");
+    else if (pct >= 50) print("Rank: halfway.^");
+    else                print("Rank: starting.^");
+}
+
+/// The kit's root: the tasks, the notes and the log.
+object sk {
+    alias task  for SkTask;
+    alias kind  for eSkKind;
+    alias flag  for eSkFlag;
+    alias tally for SkTally;
+    array<SkTask> tasks[skMaxTasks];
+    array<SkNote> notes[3];
+    stringObj log;
+    int dropped = 0;
+
+    /// Adds a task to the list; false when the list is full.
+    bool register(task t) {
+        if (tasks.contains(t)) return false;
+        return tasks.append(t);
+    }
+
+    /// Scores a task, logging it.
+    bool award(task t) {
+        if (!t.award()) return false;
+        log += t.kind.code;
+        return true;
+    }
+
+    /// The first task with a label, or null.
+    task find(string what) {
+        for (task t in tasks) {
+            if (t.label() == what) return t;
+        }
+        return null;
+    }
+
+    /// Tasks not yet scored and not hidden.
+    int pending() {
+        return tasks.filter((task t) => !t.done && t.listed).count();
+    }
+
+    /// Points scored against points possible, hidden tasks counted only once scored.
+    tally totals() {
+        tally r;
+        for (task t in tasks) {
+            if (t.listed || t.done) {
+                r.max += t.value();
+                if (t.done) r.got += t.value();
+            }
+        }
+        return r;
+    }
+
+    /// Queues a note for the end of the turn; dropped when no note is free.
+    void queue(stringObj s) {
+        SkNote n = new SkNote(turns);
+        if (n == null) {
+            dropped++;
+            return;
+        }
+        n.text = s;
+        notes.append(n);
+    }
+
+    /// Prints the listing.
+    void list() {
+        skOut.rule();
+        for (task t in tasks) {
+            if (!t.listed && !t.done) continue;
+            skOut.mark(t.done);
+            print($" {t.kind.code} {t.label()} (");
+            skOut.points(t.value());
+            print(")^");
+        }
+        skOut.rule();
+        tally s = totals();
+        print("Scored ");
+        s.show();
+        print($", {pending()} pending.^");
+        skRankLine(s.pct());
+    }
+
+    /// Prints and returns the queued notes.
+    void daemon() {
+        while (notes.length > 0) {
+            SkNote n = notes.dequeue();
+            print($"[{n.text}]^");
+            delete n;
+        }
+    }
+}
+
+/// Counts over the kit's tasks; present only when used.
+superposed object skStats {
+    /// Tasks of one kind.
+    int ofKind(eSkKind k) {
+        return sk.tasks.filter((SkTask t) => t.kind == k).count();
+    }
+
+    /// The most valuable task scored, or null.
+    SkTask best() {
+        SkTask b = null;
+        for (SkTask t in sk.tasks) {
+            if (t.done && (b == null || t.value() > b.value())) b = t;
+        }
+        return b;
+    }
+}
+
+extend sk {
+    alias stats = skStats;
+}
+
+#if SK_VERBOSE
+    #message "sk: verbose notes"
+#endif
+
+// ==== The consumer. ====
+
+#using sk
+
+/// Every task can be tried, and counts its tries.
+extend class SkTask {
+    int tries = 0;
+
+    /// Tries the task: throws 1 when done, 2 when not ready; otherwise scores it.
+    void attempt() {
+        tries++;
+        if (done && !has(flag.repeatable)) throw 1;
+        if (!ready()) throw 2;
+        sk.award(self);
+    }
+}
+
+replace void skRankLine(int pct) {
+    print($"{pct}% - ");
+    replaced(pct);
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    attributes = {light};
+    object n_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    attributes = {light};
+    object s_to = roomA;
+    void initial() { sk.award(taskVisit); }
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    bool after() {
+        if (action != ::Take) return false;
+        sk.award(taskKey);
+        return false;
+    }
+}
+
+object button {
+    "red button";
+    parent = roomB;
+    name = {.red, .button};
+    attributes = {static};
+    int presses = 0;
+}
+
+task taskKey {
+    2, "key task";
+    string label() { return "find key"; }
+}
+
+task taskVisit {
+    1, "visit task";
+    kind = kind.visit;
+    string label() { return "visit B"; }
+}
+
+task taskButton {
+    3, "button task";
+    kind = kind.solve;
+    string label() { return "press button"; }
+    bool ready() { return brassKey.parent == player; }
+}
+
+task taskSecret {
+    5, "secret task";
+    kind = kind.solve;
+    flags = flag.hidden | flag.bonus;
+    string label() { return "press twice"; }
+    bool ready() { return button.presses >= 2; }
+}
+
+task taskTally {
+    1, "tally task";
+    flags = flag.repeatable;
+    string label() { return "read tally"; }
+}
+
+/// Report verbs: they take no time.
+class SkInfo : verb {
+    meta = true;
+}
+
+SkInfo SkTasks {
+    grammar = {.tasks};
+    void handler() { sk.list(); }
+}
+
+SkInfo SkNotes {
+    grammar = {.log};
+    void handler() {
+        print($"log '{sk.log}' ({sk.log.length}), scored {task.scored}, handed {task.handed}, dropped {sk.dropped}, score {score}^");
+    }
+}
+
+SkInfo SkReport {
+    grammar = {.stats};
+    void handler() {
+        print($"find {sk.stats.ofKind(kind.find)}, solve {sk.stats.ofKind(kind.solve)}, visit {sk.stats.ofKind(kind.visit)}");
+        SkTask b = sk.stats.best();
+        print($", best {(b == null) ? "none" : b.label()}");
+        int bonusCount = 0;
+        for (task t in sk.tasks) if (t.has(flag.bonus)) bonusCount++;
+        print($", bonus {bonusCount}, tries");
+        for (task t in sk.tasks) print($" {t.tries}");
+        print("^");
+    }
+}
+
+verb SkPush {
+    grammar = {.push, NOUN};
+    void handler() {
+        if (noun != button) {
+            print("Nothing happens.^");
+            return;
+        }
+        button.presses++;
+        print($"Click ({button.presses}).^");
+        try {
+            taskButton.attempt();
+        } catch (int why) {
+            switch (why) {
+                case 1: print("(Already done.)^");
+                case 2: print("(Not yet.)^");
+            }
+        }
+        if (button.presses >= 2) sk.award(taskSecret);
+    }
+}
+
+verb SkCount {
+    grammar = {.tally};
+    void handler() {
+        tally before = sk.totals();
+        taskTally.attempt();
+        tally after = sk.totals();
+        tally both = before + after;
+        tally sum;
+        sum += before;
+        sum += after;
+        print("Tally ");
+        before.show();
+        print(" then ");
+        after.show();
+        print($", same {before == after}, both {both.got}+{both.max}, sum match {both == sum}.^");
+    }
+}
+
+SkInfo SkHint {
+    grammar = {.hint};
+    void handler() {
+        task next = null;
+        for (task t in sk.tasks) {
+            if (!t.done && t.listed) {
+                next = t;
+                break;
+            }
+        }
+        if (next == null) {
+            print("No hints.^");
+            return;
+        }
+        print($"Try: {next.label()}, worth ");
+        skOut.points(next.value());
+        print($"{next.ready() ? "" : " (not ready)"}.^");
+        task found = sk.find("press button");
+        print($"Lookup: {found?.label() ?? "none"}, {sk.find("fly") == null}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    sk.register(taskKey);
+    sk.register(taskVisit);
+    sk.register(taskButton);
+    sk.register(taskSecret);
+    sk.register(taskTally);
+    sk.register(taskKey);
+    skAwardHook = (SkTask t) => { if (t.has(flag.bonus)) print("Bonus! "); };
+    StartDaemon(sk);
+    rfalse;
+}
+
+#includeI6 "grammar"

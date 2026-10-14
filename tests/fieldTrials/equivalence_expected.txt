@@ -67,4 +67,5 @@ stdlib610_1 [-G]                      6/10 library is Z-machine only
 stdlib610_2 [-G]                      6/10 library is Z-machine only
 stdlib610_1 [--debug]                 prints the build kind
 glulx_presentation_idioms_37 [--debug] log() prints in debug builds only
+glulx_presentation_idioms_38 [--debug] log() prints in debug builds only
 data_driven_idioms_34 [-z5]            Glulx trial: its value-class instances outgrow the Z-machine's readable memory

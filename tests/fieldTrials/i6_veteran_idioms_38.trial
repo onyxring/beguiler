@@ -1,0 +1,190 @@
+Lower Lockside
+Lower Lockside. The bottom gates of the lock face the lower pound. The towpath runs north up beside the chamber.
+The lock chamber holds water at 0 feet.
+The narrowboat is tied up in the lower pound.
+The bottom gates stand shut.
+You can also see a bottom paddle and a windlass here.
+> levels
+Chamber 0, lower 0, upper 6. Changes 0: none.
+bottom: gates shut, paddle down.
+top: gates shut, paddle down.
+Boat in the lower pound, deck 1. Tows 0. Score 0.
+> x chamber
+Brick walls drop to water at 0 feet, level with the lower pound.
+> x boat
+A green narrowboat on a long line. Its deck stands at 1.
+> swim
+The water is cold and full of weed. You stay on the bank.
+> jump
+It is a long drop to the water. You stay where you are.
+> w
+The towpath only runs north.
+> tow boat
+The bottom gates are shut.
+> raise paddle
+You need a windlass to wind the paddle gear.
+> take windlass
+Taken.
+> x windlass
+An L-shaped iron handle with a square socket.
+> x bottom paddle
+The bottom paddle gear has a square spindle for a windlass. The paddle is down.
+> raise boat
+That doesn't wind up.
+> enter boat
+You'd rather work the lock from the bank.
+> take gates
+The gates weigh tons.
+> turn paddle
+You wind the bottom paddle up. Water begins to boil under the gates.
+> turn paddle
+You knock off the catch and the bottom paddle drops with a clatter.
+> n
+Upper Lockside
+Upper Lockside. The top gates hold back the upper pound. The towpath runs south down beside the chamber.
+The lock chamber holds water at 0 feet.
+The top gates stand shut.
+You can also see a top paddle here.
+> e
+The towpath only runs south, and the chamber is at 0 feet.
+> raise top paddle
+You wind the top paddle up. Water begins to boil under the gates.
+The water in the chamber rises to 2 feet.
+> z
+Time passes.
+The water in the chamber rises to 4 feet.
+> lower paddle
+You knock off the catch and the top paddle drops with a clatter.
+> raise paddle
+You wind the top paddle up. Water begins to boil under the gates.
+The water in the chamber rises to 6 feet and settles.
+> levels
+Chamber 6, lower 0, upper 6. Changes 3: 2 4 6.
+bottom: gates shut, paddle down.
+top: gates shut, paddle up.
+Boat in the lower pound, deck 1. Tows 0. Score 0.
+> lower paddle
+You knock off the catch and the top paddle drops with a clatter.
+> s
+Lower Lockside
+Lower Lockside. The bottom gates of the lock face the lower pound. The towpath runs north up beside the chamber.
+The lock chamber holds water at 6 feet.
+The narrowboat is tied up in the lower pound.
+The bottom gates stand shut.
+You can also see a bottom paddle here.
+> turn paddle
+You wind the bottom paddle up. Water begins to boil under the gates.
+The water in the chamber falls to 4 feet.
+> z
+Time passes.
+The water in the chamber falls to 2 feet.
+> z
+Time passes.
+The water in the chamber falls to 0 feet and settles.
+> levels
+Chamber 0, lower 0, upper 6. Changes 6: 6 4 2 0.
+bottom: gates shut, paddle up.
+top: gates shut, paddle down.
+Boat in the lower pound, deck 1. Tows 0. Score 0.
+> open gates
+Drop the paddle first.
+> drop paddle
+The bottom paddle is already here.
+> lower paddle
+You knock off the catch and the bottom paddle drops with a clatter.
+> open gates
+You lean on the beam and the bottom gates swing open.
+> raise paddle with windlass
+Close both pairs of gates first.
+> x gates
+The bottom gates are open, their balance beam lying along the bank.
+> lower paddle with windlass
+The paddle is already down.
+> open gates
+They are already open.
+> tow boat
+You haul on the line and the narrowboat slides into the chamber.
+[The score has just gone up by one point.]
+> levels
+Chamber 0, lower 0, upper 6. Changes 6: 6 4 2 0.
+bottom: gates open, paddle down.
+top: gates shut, paddle down.
+Boat in the lock chamber, deck 1. Tows 1. Score 1.
+> tow boat
+You can't get a pull on the line from down here.
+> close gates
+You walk the beam round and the bottom gates close.
+> push beam
+You lean on the beam and the bottom gates swing open.
+> pull beam
+You walk the beam round and the bottom gates close.
+> n
+Upper Lockside
+Upper Lockside. The top gates hold back the upper pound. The towpath runs south down beside the chamber.
+The lock chamber holds water at 0 feet, with the narrowboat in it.
+The top gates stand shut.
+You can also see a top paddle here.
+> x chamber
+Brick walls drop to water at 0 feet, level with the lower pound.
+> open top gates
+The water holds the top gates shut: the chamber is at 0 feet, the pound at 6.
+> raise paddle with windlass
+You wind the top paddle up. Water begins to boil under the gates.
+The water in the chamber rises to 2 feet, carrying the narrowboat.
+> open gates
+The water holds the top gates shut: the chamber is at 2 feet, the pound at 6.
+The water in the chamber rises to 4 feet, carrying the narrowboat.
+> z
+Time passes.
+The water in the chamber rises to 6 feet, carrying the narrowboat and settles.
+> jump
+You jump on the spot, fruitlessly.
+> z
+Time passes.
+> x boat
+A green narrowboat on a long line. Its deck stands at 7, inside the lock.
+> levels
+Chamber 6, lower 0, upper 6. Changes 9: 0 2 4 6.
+bottom: gates shut, paddle down.
+top: gates shut, paddle up.
+Boat in the lock chamber, deck 7. Tows 1. Score 1.
+> open gates
+Drop the paddle first.
+> s
+Lower Lockside
+Lower Lockside. The bottom gates of the lock face the lower pound. The towpath runs north up beside the chamber.
+The lock chamber holds water at 6 feet, with the narrowboat in it.
+The bottom gates stand shut.
+You can also see a bottom paddle here.
+> tow boat
+You can't get a pull on the line from down here.
+> n
+Upper Lockside
+Upper Lockside. The top gates hold back the upper pound. The towpath runs south down beside the chamber.
+The lock chamber holds water at 6 feet, with the narrowboat in it.
+The top gates stand shut.
+You can also see a top paddle here.
+> lower top paddle
+You knock off the catch and the top paddle drops with a clatter.
+> open gates
+You lean on the beam and the top gates swing open.
+> s
+Lower Lockside
+Lower Lockside. The bottom gates of the lock face the lower pound. The towpath runs north up beside the chamber.
+The lock chamber holds water at 6 feet, with the narrowboat in it.
+The bottom gates stand shut.
+You can also see a bottom paddle here.
+> raise paddle
+Close both pairs of gates first.
+> n
+Upper Lockside
+Upper Lockside. The top gates hold back the upper pound. The towpath runs south down beside the chamber.
+The lock chamber holds water at 6 feet, with the narrowboat in it.
+The top gates stand open.
+You can also see a top paddle here.
+> tow boat
+You haul on the line and the narrowboat glides out into the upper pound.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 2 out of a possible 2, in 58 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

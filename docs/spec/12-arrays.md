@@ -517,7 +517,7 @@ slots += tmp;                        // copies into a new slot allocation; tmp k
                                      // released at scope exit, not by the array
 ```
 
-**See also** §9.6 — `static` operators; §8.5 — the value form of `deinit`; §22.4 — the `<array>` methods that.
+**See also** §9.6 — `static` operators; §8.5 — the value form of `deinit`; §22.4 — the `<array>` methods that
 consult these operators.
 
 ## 12.11 `extend` for Arrays

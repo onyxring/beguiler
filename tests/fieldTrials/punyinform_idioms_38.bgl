@@ -1,0 +1,570 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-eighth PunyInform program, written plainly: two rooms (Room A with a desk, a
+// sack of four letters, a scale, a franking machine, an ink bottle and a clerk; Room B to the south
+// with a rack of three pigeonholes) and OPTIONAL_SCORED; an enum district; a `Letter` class with a
+// district, a weight, a franked flag, an address string and a paid amount, its description a routine
+// with a `switch` over the district; a `Postage` value class (`operator ()`, `=` from int, `+=`, a
+// method returning `stringObj`) held as a global; a rate table chosen by a `switch` with ranges and a
+// guard; a scale whose `after` takes `Receive` and reports the weight; a switchable franking machine
+// with a warm-up daemon and an ink count, franking through a `frank NOUN` verb that calls a routine
+// which throws when the ink is out, caught with `try`/`catch`; a `refill NOUN with NOUN` verb; a
+// `Pigeonhole` class whose `before` takes `Receive` (letters only, franked, right district) and whose
+// `after` counts sorted letters over `children`; a clerk with `life` (Ask through NextWord, Give) and
+// `orders`; an `array<int>` of franked weights with `+=`, `sort`, `contains`, `distinct`/`count`;
+// `bgl.world.instances` with a predicate and a `<linq>` `filter`/`orderBy`/`any`/`all` chain; a
+// `stringObj` log built with interpolated strings; `for`, `for … in`, `while` loops; and meta verbs
+// reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 2;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object s_to;
+    object n_to;
+}
+
+extern bool scope_modified;
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eDistrict { north, east, west }
+
+array<string> districtNames = {"north", "east", "west"};
+
+const int INK_FULL   = 3;
+const int WARM_TURNS = 2;
+
+value class Postage {
+    int _pence = 0;
+
+    int  operator ()        { return _pence; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        _pence = v;
+    }
+    void operator += (int v) {
+        _pence = _pence + v;
+    }
+
+    stringObj label() {
+        stringObj s;
+        int pounds = _pence / 100;
+        int rest = _pence % 100;
+        if (rest < 10) s = $"{pounds}.0{rest}";
+        else s = $"{pounds}.{rest}";
+        return s;
+    }
+}
+
+Postage takings;
+stringObj postLog;
+int logLines  = 0;
+int sorted    = 0;
+int franked   = 0;
+int refills   = 0;
+bool rackDone = false;
+
+array<int> frankedWeights[8];
+
+void jot(string what, int n = -1) {
+    logLines++;
+    if (n < 0) postLog += $"{what}; ";
+    else postLog += $"{what} {n}; ";
+}
+
+string districtName(eDistrict d) {
+    return districtNames[(int)d - 1];
+}
+
+// The rate in pence for a weight in grams.
+int rateFor(int grams) {
+    switch (grams) {
+        case 0 to 10:   return 35;
+        case 11 to 50:  return 60;
+        case 51 to 100: return 95;
+        case > 100:     return 150;
+    }
+    return 0;
+}
+
+// --- letters ----------------------------------------------------------------------------------------
+
+class Letter : object {
+    eDistrict district = eDistrict.north;
+    int weight = 20;
+    bool isFranked = false;
+    string address = "no address";
+    int paid = 0;
+    name = {.letter};
+
+    void description() {
+        print($"{cThe(self)}, {weight} grams, addressed to {address}");
+        switch (district) {
+            case eDistrict.north: print(" in the north district");
+            case eDistrict.east:  print(" in the east district");
+            case eDistrict.west:  print(" in the west district");
+        }
+        if (isFranked) printLine($". It is franked for {paid} pence.");
+        else printLine(". It has no frank.");
+    }
+}
+
+int byWeight(object a, object b) {
+    return bgl.util.math.sign(((Letter)a).weight - ((Letter)b).weight);
+}
+
+// Franks one letter; throws the letter when the machine has no ink.
+int frankLetter(Letter l) {
+    if (frankingMachine.ink == 0) throw l;
+    frankingMachine.ink--;
+    int cost = rateFor(l.weight);
+    l.isFranked = true;
+    l.paid = cost;
+    takings += cost;
+    franked++;
+    frankedWeights += l.weight;
+    return cost;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {proper, light};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A desk stands here. A door leads south to Room B.";
+    s_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A rack of pigeonholes fills the wall. A door leads north.";
+    n_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object desk {
+    "desk";
+    parent = roomA;
+    name = {.desk};
+    description = "A plain desk.";
+    attributes = {supporter, static};
+}
+
+object sack {
+    "sack";
+    parent = desk;
+    name = {.sack, .bag};
+    description = "A canvas sack.";
+    attributes = {container, openable};
+}
+
+Letter letterOne {
+    "white letter";
+    parent = sack;
+    name = {.white};
+    district = eDistrict.north;
+    weight = 20;
+    address = "Mill Lane";
+}
+
+Letter letterTwo {
+    "brown parcel";
+    parent = sack;
+    name = {.brown, .parcel};
+    district = eDistrict.east;
+    weight = 140;
+    address = "Dock Road";
+}
+
+Letter letterThree {
+    "postcard";
+    parent = sack;
+    name = {.postcard, .card};
+    district = eDistrict.west;
+    weight = 5;
+    address = "Hill Street";
+}
+
+Letter letterFour {
+    "blue letter";
+    parent = sack;
+    name = {.blue};
+    district = eDistrict.east;
+    weight = 60;
+    address = "Quay Street";
+}
+
+object scale {
+    "scale";
+    parent = roomA;
+    name = {.scale, .scales};
+    description = "A flat scale.";
+    attributes = {supporter, static};
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                if (noun.is(Letter)) rtrue($"You put {the(noun)} on the scale. It reads {((Letter)noun).weight} grams.^");
+                rtrue($"You put {the(noun)} on the scale. It reads nothing useful.^");
+        }
+        rfalse;
+    }
+}
+
+object frankingMachine {
+    "franking machine";
+    parent = roomA;
+    name = {.franking, .machine};
+    int ink = INK_FULL;
+    int warmth = 0;
+    attributes = {switchable, static};
+
+    void description() {
+        string state = has(on) ? "on" : "off";
+        print($"A franking machine, switched {state}, with {ink} frank");
+        if (ink != 1) print("s");
+        printLine(" of ink left.");
+    }
+
+    bool ready() {
+        return has(on) && warmth >= WARM_TURNS;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                warmth = 0;
+                StartDaemon(self);
+                jot("machine on");
+            case SwitchOff:
+                warmth = 0;
+                StopDaemon(self);
+                jot("machine off");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        warmth++;
+        if (warmth >= WARM_TURNS) {
+            StopDaemon(self);
+            if (location == roomA) printLine("The franking machine hums. It is ready.");
+        }
+    }
+}
+
+object inkBottle {
+    "ink bottle";
+    parent = desk;
+    name = {.ink, .bottle};
+    description = "A small bottle of franking ink.";
+    string article = "an";
+}
+
+object clerk {
+    "clerk";
+    parent = roomA;
+    name = {.clerk};
+    description = "A clerk in a gray coat.";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .rates || w == .rate) rtrue("The clerk says: it goes by weight.^");
+                if (w == .rack || w == .pigeonholes) rtrue("The clerk says: south, one hole per district.^");
+                if (w == .ink) rtrue("The clerk says: the bottle is on the desk.^");
+                rtrue("The clerk shrugs.^");
+            case Give:
+                if (noun == inkBottle) {
+                    if (frankingMachine.ink == INK_FULL) rtrue("The clerk says: the machine is full.^");
+                    refillMachine();
+                    rtrue("The clerk refills the franking machine.^");
+                }
+                if (noun.is(Letter)) rtrue("The clerk says: sort it yourself.^");
+                rtrue("The clerk says: keep it.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The clerk waits.^");
+        }
+        rtrue("The clerk says: do it yourself.^");
+    }
+}
+
+void refillMachine() {
+    frankingMachine.ink = INK_FULL;
+    refills++;
+    jot("refilled");
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+object rack {
+    "rack";
+    parent = roomB;
+    name = {.rack};
+    description = "A rack of three pigeonholes: north, east and west.";
+    attributes = {static};
+}
+
+class Pigeonhole : object {
+    eDistrict district = eDistrict.north;
+    name = {.hole, .pigeonhole};
+    attributes = {container, open, static};
+
+    void description() {
+        int n = 0;
+        for (object o in children) n++;
+        print($"The {districtName(district)} pigeonhole holds {n} item");
+        if (n == 1) printLine(".");
+        else printLine("s.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Letter)) rtrue("Only post goes in the pigeonholes.^");
+                Letter l = (Letter)noun;
+                if (!l.isFranked) rtrue($"{cThe(l)} has no frank.^");
+                if (l.district != district) rtrue($"{cThe(l)} is for the {districtName(l.district)} district.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                recount();
+                jot("sorted", ((Letter)noun).weight);
+                if (sorted == 4 && !rackDone) {
+                    rackDone = true;
+                    score++;
+                    rtrue($"You sort {the(noun)}. All the post is sorted.^");
+                }
+                rtrue($"You sort {the(noun)}. {sorted} of 4 sorted.^");
+            case LetGo:
+                recount();
+        }
+        rfalse;
+    }
+}
+
+Pigeonhole northHole {
+    "north pigeonhole";
+    parent = roomB;
+    name = {.north};
+    district = eDistrict.north;
+}
+
+Pigeonhole eastHole {
+    "east pigeonhole";
+    parent = roomB;
+    string article = "an";
+    name = {.east};
+    district = eDistrict.east;
+}
+
+Pigeonhole westHole {
+    "west pigeonhole";
+    parent = roomB;
+    name = {.west};
+    district = eDistrict.west;
+}
+
+void recount() {
+    sorted = 0;
+    for (object h in bgl.world.instances(Pigeonhole)) {
+        for (object o in h.children) {
+            if (o.is(Letter)) sorted++;
+        }
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Frank {
+    grammar = {.frank, HELD};
+    void handler() {
+        if (!noun.is(Letter)) {
+            printLine($"{cThe(noun)} is not post.");
+            return;
+        }
+        Letter l = (Letter)noun;
+        if (l.isFranked) {
+            printLine($"{cThe(l)} is already franked.");
+            return;
+        }
+        if (!frankingMachine.has(on)) {
+            printLine("The franking machine is switched off.");
+            return;
+        }
+        if (!frankingMachine.ready()) {
+            printLine("The franking machine is still warming up.");
+            return;
+        }
+        int cost = 0;
+        try {
+            cost = frankLetter(l);
+        } catch (object which) {
+            printLine($"The machine is out of ink. {cThe(which)} stays unfranked.");
+            return;
+        }
+        jot("franked", l.weight);
+        printLine($"You frank {the(l)} for {cost} pence. Takings {takings.label()}.");
+        if (franked == 4) score++;
+    }
+}
+
+verb Refill {
+    grammar = { {.refill, NOUN, .with, HELD} };
+    void handler() {
+        if (noun != frankingMachine) {
+            printLine($"You can't refill {the(noun)}.");
+            return;
+        }
+        if (second != inkBottle) {
+            printLine($"{cThe(second)} holds no ink.");
+            return;
+        }
+        if (frankingMachine.ink == INK_FULL) {
+            printLine("The machine is full.");
+            return;
+        }
+        refillMachine();
+        printLine("You refill the franking machine.");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        string state = frankingMachine.has(on) ? "on" : "off";
+        printLine($"Score {score} of {MAX_SCORE}. Machine {state}, ink {frankingMachine.ink}, warmth {frankingMachine.warmth}.");
+        printLine($"Franked {franked}, sorted {sorted}, refills {refills}, asked {clerk.asked}, takings {(int)takings} pence.");
+    }
+}
+
+verb Rates {
+    meta = true;
+    grammar = {.rates};
+    void handler() {
+        array<int> samples = {5, 10, 11, 50, 51, 100, 101};
+        print("Rates:");
+        int i = 0;
+        while (i < samples.length) {
+            print($" {samples[i]}g={rateFor(samples[i])}");
+            i++;
+        }
+        printLine(".");
+    }
+}
+
+verb ListLetters {
+    meta = true;
+    grammar = {.letters};
+    void handler() {
+        array<object> all[8];
+        all = bgl.world.instances(Letter).orderBy(byWeight);
+        print("Letters:");
+        for (int i = 0; i < all.length; i++) {
+            Letter l = (Letter)all[i];
+            print($" {l.weight}g {l}");
+            if (l.isFranked) print(" (franked)");
+            if (i < all.length - 1) print(",");
+        }
+        printLine(".");
+        array<object> held[8];
+        held = bgl.world.instances(Letter, (object o) => o.parent == player);
+        int open = all.filter((object o) => !((Letter)o).isFranked).count();
+        printLine($"{held.length} held, {open} unfranked.");
+        if (all.any((object o) => ((Letter)o).weight > 100)) printLine("One is heavy.");
+        if (all.all((object o) => ((Letter)o).isFranked)) printLine("All are franked.");
+    }
+}
+
+verb ListWeights {
+    meta = true;
+    grammar = {.weights};
+    void handler() {
+        if (frankedWeights.length == 0) {
+            printLine("Nothing is franked.");
+            return;
+        }
+        array<int> order[8];
+        order = frankedWeights;
+        order.sort();
+        print("Weights:");
+        for (int w in order) print($" {w}");
+        int kinds = frankedWeights.distinct().count();
+        printLine($". {kinds} different.");
+        if (frankedWeights.contains(140)) printLine("The parcel is franked.");
+    }
+}
+
+verb Holes {
+    meta = true;
+    grammar = {.holes};
+    void handler() {
+        for (int d in 1 to 3) {
+            eDistrict dist = (eDistrict)d;
+            int n = 0;
+            for (object h in bgl.world.instances(Pigeonhole)) {
+                if (((Pigeonhole)h).district == dist) {
+                    for (object o in h.children) n++;
+                }
+            }
+            printLine($"{districtName(dist)}: {n}");
+        }
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (postLog.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logLines}): {postLog}");
+        if (postLog.contains("refilled")) printLine("The machine was refilled.");
+    }
+}
+
+bool Initialise() {
+    takings = 0;
+    rfalse;
+}

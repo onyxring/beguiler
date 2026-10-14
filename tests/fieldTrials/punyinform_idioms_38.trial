@@ -1,0 +1,153 @@
+Room A
+Room A. A desk stands here. A door leads south to Room B.
+> tally
+Score 0 of 2. Machine off, ink 3, warmth 0.
+Franked 0, sorted 0, refills 0, asked 0, takings 0 pence.
+> rates
+Rates: 5g=35 10g=35 11g=60 50g=60 51g=95 100g=95 101g=150.
+> letters
+Letters: 5g postcard, 20g white letter, 60g blue letter, 140g brown parcel.
+0 held, 4 unfranked.
+One is heavy.
+> weights
+Nothing is franked.
+> holes
+north: 0
+east: 0
+west: 0
+> log
+The log is empty.
+> examine machine
+A franking machine, switched off, with 3 franks of ink left.
+The franking machine is currently switched off.
+> open sack
+You open the sack, revealing a white letter, a brown parcel, a postcard and a blue letter.
+> take all from sack
+white letter: Removed.
+brown parcel: Removed.
+postcard: Removed.
+blue letter: Removed.
+> examine postcard
+The postcard, 5 grams, addressed to Hill Street in the west district. It has no frank.
+> put parcel on scale
+You put the brown parcel on the scale. It reads 140 grams.
+> put postcard on scale
+You put the postcard on the scale. It reads 5 grams.
+> take parcel
+Taken.
+> take postcard
+Taken.
+> frank postcard
+The franking machine is switched off.
+> turn on machine
+You switch the franking machine on.
+> frank postcard
+The franking machine is still warming up.
+The franking machine hums. It is ready.
+> wait
+Nothing happens.
+> frank postcard
+You frank the postcard for 35 pence. Takings 0.35.
+> frank postcard
+The postcard is already franked.
+> frank desk
+The desk is not post.
+> take bottle
+Taken.
+> frank white letter
+You frank the white letter for 60 pence. Takings 0.95.
+> frank blue letter
+You frank the blue letter for 95 pence. Takings 1.90.
+> frank parcel
+The machine is out of ink. The brown parcel stays unfranked.
+> examine machine
+A franking machine, switched on, with 0 franks of ink left.
+The franking machine is currently switched on.
+> tally
+Score 0 of 2. Machine on, ink 0, warmth 2.
+Franked 3, sorted 0, refills 0, asked 0, takings 190 pence.
+> ask clerk about rates
+The clerk says: it goes by weight.
+> ask clerk about rack
+The clerk says: south, one hole per district.
+> ask clerk about ink
+The clerk says: the bottle is on the desk.
+> ask clerk about cheese
+The clerk shrugs.
+> give white letter to clerk
+The clerk says: sort it yourself.
+> give bottle to clerk
+The clerk refills the franking machine.
+> give bottle to clerk
+The clerk says: the machine is full.
+> clerk, wait
+The clerk waits.
+> clerk, jump
+The clerk says: do it yourself.
+> frank parcel
+You frank the brown parcel for 150 pence. Takings 3.40.
+[The score has just gone up by 1 point.]
+> refill machine with bottle
+You refill the franking machine.
+> refill desk with bottle
+You can't refill the desk.
+> examine parcel
+The brown parcel, 140 grams, addressed to Dock Road in the east district. It is franked for 150 pence.
+> letters
+Letters: 5g postcard (franked), 20g white letter (franked), 60g blue letter (franked), 140g brown parcel (franked).
+4 held, 0 unfranked.
+One is heavy.
+All are franked.
+> weights
+Weights: 5 20 60 140. 4 different.
+The parcel is franked.
+> s
+Room B
+Room B. A rack of pigeonholes fills the wall. A door leads north.
+You can see a rack, a north pigeonhole (which is empty), an east pigeonhole (which is empty) and a west pigeonhole (which is empty) here.
+> put postcard in east pigeonhole
+The postcard is for the west district.
+> put postcard in west pigeonhole
+You sort the postcard. 1 of 4 sorted.
+> put bottle in north pigeonhole
+Only post goes in the pigeonholes.
+> put white letter in north pigeonhole
+You sort the white letter. 2 of 4 sorted.
+> examine north pigeonhole
+The north pigeonhole holds 1 item.
+> put parcel in east hole
+You sort the brown parcel. 3 of 4 sorted.
+> take postcard
+Taken.
+> holes
+north: 1
+east: 1
+west: 0
+> put postcard in west hole
+You sort the postcard. 3 of 4 sorted.
+> put blue letter in east hole
+You sort the blue letter. All the post is sorted.
+[The score has just gone up by 1 point.]
+> examine east hole
+The east pigeonhole holds 2 items.
+> holes
+north: 1
+east: 2
+west: 1
+> tally
+Score 2 of 2. Machine on, ink 3, warmth 2.
+Franked 4, sorted 4, refills 2, asked 4, takings 340 pence.
+> log
+Log (12): machine on; franked 5; franked 20; franked 60; refilled; franked 140; refilled; sorted 5; sorted 20; sorted 140; sorted 5; sorted 60;
+The machine was refilled.
+> n
+Room A
+You can see a desk (on which is a sack (which is open but empty)), a scale, a franking machine and a clerk here.
+> turn off machine
+You switch the franking machine off.
+> tally
+Score 2 of 2. Machine off, ink 3, warmth 0.
+Franked 4, sorted 4, refills 2, asked 4, takings 340 pence.
+> log
+Log (13): machine on; franked 5; franked 20; franked 60; refilled; franked 140; refilled; sorted 5; sorted 20; sorted 140; sorted 5; sorted 60; machine off;
+The machine was refilled.

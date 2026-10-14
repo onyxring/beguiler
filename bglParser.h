@@ -1484,6 +1484,7 @@ class bglParser {
         void preScanSkipBodyContents(bool isI6Content = false);   // assumes '{' already consumed; skips to matching '}'
         void preScanSkipToSemicolon();    // consumes tokens up to and including ';'
         void preScanSkipParens();         // assumes '(' already consumed; skips to matching ')'
+        vector<string> preScanUsingRoots;   // `#using` paths seen by the pre-scan
         void preScanArrayStubShape(arrayDeclaration& ad, bool isRef, token afterName, token sizeTok);
         void preScanCaptureParams(vector<paramDef*>& out); // like preScanSkipParens but captures type/name of each parameter
         // If typeTok is a generic base type (array/func) and the next token is '<', consume

@@ -1,0 +1,495 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a canal lock between
+// two rooms (a cant_go string on one, a cant_go routine on the other). A Gate class (an int end
+// member, openable, a describe rule, a before rule on Open/Close/Push/Pull that wants the water level
+// on both sides equal and the gate's paddle down, Push and Pull on the balance beam forwarding through
+// Open.perform/Close.perform, a method returning its Paddle) and a Paddle class (an int end member, a bool
+// raised, a per-object dictionaryWord member read by a class parse_name with NextWord, a before rule
+// refusing Turn/Push/Pull without the windlass); a windlass whose held state is tested with
+// `parent == player`; end names in a global array<string> indexed by the end constants; a chamber
+// container found_in both rooms with a describe rule, a daemon (StartDaemon from Initialise) filling
+// or emptying it a step a turn toward the open paddles' pound, a react_before on Jump while the
+// level is low, and each change logged in a sized ring array<int> read back oldest-first; lower and
+// upper pound containers with describe rules; a narrowboat moved between them by assigning parent,
+// its deck height in its description; native Raise/Lower/Wind (NOUN, and NOUN .with HELD) and Tow
+// verbs; a LibraryMessages override of Swim; a meta Levels verb with a while loop; score and deadflag
+// at MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 2;
+const int BOTTOM = 1;
+const int TOP = 2;
+const int LOW = 0;              // the lower pound's level, in feet
+const int HIGH = 6;             // the upper pound's level
+const int STEP = 2;             // feet a turn through one paddle
+const int NLOG = 4;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Swim:
+                rtrue("The water is cold and full of weed. You stay on the bank.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+array<string> endName = {"", "bottom", "top"};
+int chamberLevel = LOW;
+array<int> levelLog[NLOG];      // the chamber's level after each change; oldest dropped
+int nChanges;                       // changes ever logged
+int g_tows;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// The level of the pound on the given end of the lock.
+int PoundLevel(int end) {
+    if (end == TOP) return HIGH;
+    return LOW;
+}
+
+void LogLevel(int lv) {
+    levelLog[nChanges % NLOG] = lv;
+    nChanges++;
+}
+
+bool HoldsWindlass() {
+    return windlass.parent == player;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object lowerSide {
+    short_name = "Lower Lockside";
+    description = "Lower Lockside. The bottom gates of the lock face the lower pound. The towpath runs north up beside the chamber.";
+    object n_to = upperSide;
+    string cant_go = "The towpath only runs north.";
+    attributes = {light};
+}
+
+object upperSide {
+    short_name = "Upper Lockside";
+    description = "Upper Lockside. The top gates hold back the upper pound. The towpath runs south down beside the chamber.";
+    object s_to = lowerSide;
+    void cant_go() {
+        print($"The towpath only runs south, and the chamber is at {chamberLevel} feet.^");
+    }
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- the water
+
+object lowerPound {
+    short_name = "lower pound";
+    name = {.lower, .pound, .canal};
+    parent = lowerSide;
+    void description() {
+        print($"The lower pound stands at {LOW} feet.^");
+    }
+    bool describe() {
+        if (narrowboat.parent == self) {
+            print("^The narrowboat is tied up in the lower pound.^");
+            return true;
+        }
+        return true;
+    }
+    attributes = {static, container, open};
+}
+
+object upperPound {
+    short_name = "upper pound";
+    name = {.upper, .pound, .canal};
+    parent = upperSide;
+    void description() {
+        print($"The upper pound stands at {HIGH} feet.^");
+    }
+    bool describe() {
+        if (narrowboat.parent == self) {
+            print("^The narrowboat lies in the upper pound, clear of the lock.^");
+            return true;
+        }
+        return true;
+    }
+    attributes = {static, container, open};
+}
+
+object chamber {
+    short_name = "lock chamber";
+    name = {.lock, .chamber, .water};
+    rawArray<object> found_in = {lowerSide, upperSide};
+    int lastLevel = LOW;
+
+    void description() {
+        print($"Brick walls drop to water at {chamberLevel} feet");
+        if (chamberLevel == LOW) print(", level with the lower pound");
+        else if (chamberLevel == HIGH) print(", level with the upper pound");
+        print(".^");
+    }
+
+    bool describe() {
+        print($"^The lock chamber holds water at {chamberLevel} feet");
+        if (narrowboat.parent == self) print(", with the narrowboat in it");
+        print(".^");
+        return true;
+    }
+
+    // Moves the water a step toward whichever pound a raised paddle opens onto.
+    void daemon() {
+        int target = chamberLevel;
+        if (topPaddle.raised && !bottomPaddle.raised) target = HIGH;
+        if (bottomPaddle.raised && !topPaddle.raised) target = LOW;
+        if (target == chamberLevel) {
+            if (topPaddle.raised && bottomPaddle.raised)
+                print("^Water pours straight through the chamber from top to bottom.^");
+            return;
+        }
+        if (target > chamberLevel) {
+            chamberLevel += STEP;
+            if (chamberLevel > target) chamberLevel = target;
+        } else {
+            chamberLevel -= STEP;
+            if (chamberLevel < target) chamberLevel = target;
+        }
+        LogLevel(chamberLevel);
+        if (chamberLevel > lastLevel) print($"^The water in the chamber rises to {chamberLevel} feet");
+        else print($"^The water in the chamber falls to {chamberLevel} feet");
+        if (narrowboat.parent == self) print(", carrying the narrowboat");
+        if (chamberLevel == target) print(" and settles");
+        print(".^");
+        lastLevel = chamberLevel;
+    }
+
+    bool react_before() {
+        switch (action) {
+            case Jump:
+                if (chamberLevel < HIGH / 2) rtrue("It is a long drop to the water. You stay where you are.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+// ---------------------------------------------------------------- gates and paddles
+
+class Gate : object {
+    int end;
+
+    Paddle Own() {
+        if (end == TOP) return topPaddle;
+        return bottomPaddle;
+    }
+
+    void description() {
+        print($"The {endName[end]} gates are ");
+        if (has(open)) print("open");
+        else print("shut");
+        print(", their balance beam lying along the bank.^");
+    }
+
+    bool describe() {
+        print($"^The {endName[end]} gates stand ");
+        if (has(open)) print("open");
+        else print("shut");
+        print(".^");
+        return true;
+    }
+
+    bool before() {
+        switch (action) {
+            case Open:
+                if (has(open)) rtrue("They are already open.^");
+                if (chamberLevel != PoundLevel(end)) {
+                    print($"The water holds the {endName[end]} gates shut: the chamber is at {chamberLevel} feet, ");
+                    print($"the pound at {PoundLevel(end)}.^");
+                    return true;
+                }
+                if (Own().raised) rtrue("Drop the paddle first.^");
+                give(open);
+                print($"You lean on the beam and the {endName[end]} gates swing open.^");
+                return true;
+            case Close:
+                if (hasnt(open)) rtrue("They are already shut.^");
+                if (narrowboat.parent == chamber && end == BOTTOM && chamberLevel != LOW)
+                    rtrue("The gates are under water.^");
+                ungive(open);
+                print($"You walk the beam round and the {endName[end]} gates close.^");
+                return true;
+            case Push:
+                if (has(open)) Close.perform(self);
+                else Open.perform(self);
+                return true;
+            case Pull:
+                Close.perform(self);
+                return true;
+            case Take:
+                rtrue("The gates weigh tons.^");
+        }
+        rfalse;
+    }
+    attributes = {static, openable};
+}
+
+Gate bottomGate {
+    short_name = "bottom gates";
+    name = {.bottom, .gate, .gates, .beam, .balance};
+    parent = lowerSide;
+    end = BOTTOM;
+    attributes = {pluralname};
+}
+
+Gate topGate {
+    short_name = "top gates";
+    name = {.top, .gate, .gates, .beam, .balance};
+    parent = upperSide;
+    end = TOP;
+    attributes = {pluralname};
+}
+
+class Paddle : object {
+    int end;
+    bool raised;
+    dictionaryWord endWord;
+
+    int parse_name() {
+        int n = 0;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .paddle || w == .paddles || w == .sluice) {
+                n++;
+                continue;
+            }
+            if (w != null && w == endWord) {
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+
+    void description() {
+        print($"The {endName[end]} paddle gear has a square spindle for a windlass. The paddle is ");
+        if (raised) print("up");
+        else print("down");
+        print(".^");
+    }
+
+    // Raises (up true) or drops the paddle; the windlass must be held.
+    bool Wind(bool up) {
+        if (!HoldsWindlass()) {
+            print("You need a windlass to wind the paddle gear.^");
+            return false;
+        }
+        if (raised == up) {
+            if (up) print("The paddle is already up.^");
+            else print("The paddle is already down.^");
+            return false;
+        }
+        if (up && (topGate.has(open) || bottomGate.has(open))) {
+            print("Close both pairs of gates first.^");
+            return false;
+        }
+        raised = up;
+        if (up) print($"You wind the {endName[end]} paddle up. Water begins to boil under the gates.^");
+        else print($"You knock off the catch and the {endName[end]} paddle drops with a clatter.^");
+        return true;
+    }
+
+    bool before() {
+        switch (action) {
+            case Turn, Push, Pull:
+                if (!HoldsWindlass()) rtrue("The spindle is square; it wants a windlass.^");
+                Wind(!raised);
+                return true;
+            case Take:
+                rtrue("It is bolted to the gate.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+Paddle bottomPaddle {
+    short_name = "bottom paddle";
+    parent = lowerSide;
+    end = BOTTOM;
+    endWord = .bottom;
+}
+
+Paddle topPaddle {
+    short_name = "top paddle";
+    parent = upperSide;
+    end = TOP;
+    endWord = .top;
+}
+
+// ---------------------------------------------------------------- things
+
+object windlass {
+    short_name = "windlass";
+    name = {.windlass, .handle, .crank};
+    parent = lowerSide;
+    description = "An L-shaped iron handle with a square socket.";
+}
+
+object narrowboat {
+    short_name = "narrowboat";
+    name = {.narrow, .boat, .narrowboat, .rope, .line};
+    parent = lowerPound;
+    int deck() {
+        if (parent == upperPound) return HIGH + 1;
+        if (parent == chamber) return chamberLevel + 1;
+        return LOW + 1;
+    }
+    void description() {
+        print($"A green narrowboat on a long line. Its deck stands at {deck()}");
+        if (parent == chamber) print(", inside the lock");
+        print(".^");
+    }
+    bool before() {
+        switch (action) {
+            case Take, Push, Pull:
+                rtrue("You can only tow it along on its line.^");
+            case Enter:
+                rtrue("You'd rather work the lock from the bank.^");
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Raise {
+    grammar = {{.raise, NOUN}, {.raise, NOUN, .with, HELD}};
+    void handler() {
+        if (!noun.is(Paddle)) {
+            print("That doesn't wind up.^");
+            return;
+        }
+        if (second != null && second != windlass) {
+            print($"You can't wind it with {the(second)}.^");
+            return;
+        }
+        ((Paddle)noun).Wind(true);
+    }
+}
+
+verb Lower {
+    grammar = {{.lower, NOUN}, {.lower, NOUN, .with, HELD}};
+    void handler() {
+        if (!noun.is(Paddle)) {
+            print("That doesn't wind down.^");
+            return;
+        }
+        ((Paddle)noun).Wind(false);
+    }
+}
+
+verb Wind {
+    grammar = {{.wind, NOUN}, {.wind, NOUN, .with, HELD}};
+    void handler() {
+        if (!noun.is(Paddle)) {
+            print("There is nothing there to wind.^");
+            return;
+        }
+        Paddle p = (Paddle)noun;
+        p.Wind(!p.raised);
+    }
+}
+
+verb Tow {
+    grammar = {.tow, NOUN};
+    void handler() {
+        if (noun != narrowboat) {
+            print("You can only tow the boat.^");
+            return;
+        }
+        object from = narrowboat.parent;
+        if (from == upperPound) {
+            print("The boat is through the lock already.^");
+            return;
+        }
+        if (from == lowerPound) {
+            if (location != lowerSide) {
+                print("The boat's line is down at the lower lockside.^");
+                return;
+            }
+            if (bottomGate.hasnt(open)) {
+                print("The bottom gates are shut.^");
+                return;
+            }
+            narrowboat.parent = chamber;
+            print("You haul on the line and the narrowboat slides into the chamber.^");
+        } else {
+            if (location != upperSide) {
+                print("You can't get a pull on the line from down here.^");
+                return;
+            }
+            if (topGate.hasnt(open)) {
+                print("The top gates are shut.^");
+                return;
+            }
+            narrowboat.parent = upperPound;
+            print("You haul on the line and the narrowboat glides out into the upper pound.^");
+        }
+        g_tows++;
+        Award();
+    }
+}
+
+verb Levels {
+    grammar = {.levels};
+    meta = true;
+    void handler() {
+        print($"Chamber {chamberLevel}, lower {LOW}, upper {HIGH}. Changes {nChanges}:");
+        int first = 0;
+        if (nChanges > NLOG) first = nChanges - NLOG;
+        if (nChanges == 0) print(" none");
+        int i = first;
+        while (i < nChanges) {
+            print($" {levelLog[i % NLOG]}");
+            i++;
+        }
+        print(".^");
+        for (int e = BOTTOM; e <= TOP; e++) {
+            Gate g = bottomGate;
+            if (e == TOP) g = topGate;
+            print($"{endName[e]}: gates ");
+            if (g.has(open)) print("open");
+            else print("shut");
+            print(", paddle ");
+            if (g.Own().raised) print("up");
+            else print("down");
+            print(".^");
+        }
+        print($"Boat in {the(narrowboat.parent)}, deck {narrowboat.deck()}. Tows {g_tows}. Score {score}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = lowerSide;
+    StartDaemon(chamber);
+    rfalse;
+}

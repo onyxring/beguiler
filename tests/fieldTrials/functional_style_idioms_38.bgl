@@ -1,0 +1,462 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small tank-and-pipe level model written in a functional style on z5. Tanks are scenery
+// objects of a class with an enum fluid, a capacity, a level and a func<int, int> loss rule (named
+// functions and lambdas in their definitions, one left null), held in a global array; pipes are a
+// global array<array<int>> of (from, to, rate) triples. A pure step function takes an array of levels
+// and returns a new local array (captured by the caller), and is iterated by a hand-written `iterate`
+// over a func<> parameter to project levels without changing the tanks; hand-written fold, zipWith,
+// scan and indicesWhere over func<> parameters; a rule pipeline held in an array<func<int, int>>
+// applied by a fold over functions; a value class tally with a copy operator and `operator +` folded
+// over levels; <linq> filter/map/orderBy (two-key comparator)/first/last/count/any/all/take/skip/
+// takeWhile/distinct over tanks and the level history; level bars built into a stringObj returned by
+// value; a bnum of tank states combined with `|` and tested with `&`; a switch over the enum; verbs
+// reading noun, second and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXT = 6;
+const int MAXH = 16;
+const int BARW = 10;
+
+//-- Tanks ----------------------------------------------------------------------------------------
+
+enum eFluid { water, oil, brine }
+
+bnum eState { empty, low, full, leaking }
+
+int keepAll(int x) { return x; }
+int seep(int x) { return x > 0 ? x - 1 : 0; }
+
+class Tank : object {
+    attributeList attributes = {scenery};
+    string label;
+    eFluid fluid;
+    int cap;
+    int level;
+    func<int, int> loss;
+
+    int free() { return cap - level; }
+
+    int percent() { return cap == 0 ? 0 : level * 100 / cap; }
+
+    eState state() {
+        eState s = 0;
+        if (level == 0) s = s | eState.empty;
+        else if (level * 4 <= cap) s = s | eState.low;
+        if (level == cap) s = s | eState.full;
+        if (loss != null && loss(10) < 10) s = s | eState.leaking;
+        return s;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Tank tankA { "tank A"; name = {.tank, .a}; label = "A"; fluid = eFluid.water; cap = 50; level = 30; loss = keepAll; parent = roomA; }
+Tank tankB { "tank B"; name = {.tank, .b}; label = "B"; fluid = eFluid.water; cap = 40; level = 10; loss = seep; parent = roomA; }
+Tank tankC { "tank C"; name = {.tank, .c}; label = "C"; fluid = eFluid.water; cap = 60; level = 0; parent = roomA; }
+Tank tankD { "tank D"; name = {.tank, .d}; label = "D"; fluid = eFluid.oil; cap = 30; level = 25; loss = (int x) => x - x / 10; parent = roomA; }
+Tank tankE { "tank E"; name = {.tank, .e}; label = "E"; fluid = eFluid.brine; cap = 20; level = 20; loss = keepAll; parent = roomA; }
+
+array<Tank> tanks = {tankA, tankB, tankC, tankD, tankE};
+
+// Pipes: from-index, to-index, rate per step.
+array<array<int>> pipes = { {0, 1, 6}, {1, 2, 4}, {3, 2, 5}, {4, 1, 3} };
+
+// Total volume after each committed step.
+array<int> history[MAXH];
+
+//-- Small pure helpers ---------------------------------------------------------------------------
+
+int plus(int a, int b) { return a + b; }
+int larger(int a, int b) { return a > b ? a : b; }
+int smaller(int a, int b) { return a < b ? a : b; }
+int minus(int a, int b) { return a - b; }
+
+int fold(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+array<int> zipWith(array<int> a, array<int> b, func<int, int, int> f) {
+    array<int> out[MAXH];
+    int n = smaller(a.length, b.length);
+    for (int i = 0; i < n; i++) out += f(a[i], b[i]);
+    return out;
+}
+
+// Running fold: the accumulator after each element.
+array<int> scan(array<int> xs, int seed, func<int, int, int> f) {
+    array<int> out[MAXH];
+    int acc = seed;
+    for (int x in xs) {
+        acc = f(acc, x);
+        out += acc;
+    }
+    return out;
+}
+
+array<int> indicesWhere(array<int> xs, func<bool, int> p) {
+    array<int> out[MAXH];
+    for (int i = 0; i < xs.length; i++) {
+        if (p(xs[i])) out += i;
+    }
+    return out;
+}
+
+// Differences between neighbours: xs[i+1] - xs[i].
+array<int> deltas(array<int> xs) {
+    array<int> out[MAXH];
+    for (int i = 1; i < xs.length; i++) out += xs[i] - xs[i - 1];
+    return out;
+}
+
+int applyAll(array<func<int, int>> fs, int x) {
+    int v = x;
+    for (func<int, int> f in fs) v = f(v);
+    return v;
+}
+
+int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+string fluidName(eFluid f) {
+    switch (f) {
+        case eFluid.water: return "water";
+        case eFluid.oil:   return "oil";
+        default:           return "brine";
+    }
+}
+
+stringObj stateWords(eState s) {
+    stringObj w;
+    if (s & eState.empty)   w += "empty ";
+    if (s & eState.low)     w += "low ";
+    if (s & eState.full)    w += "full ";
+    if (s & eState.leaking) w += "leaking ";
+    if (w.isEmpty()) w = "normal";
+    return w.trim();
+}
+
+stringObj bar(int level, int top, char mark = '#') {
+    stringObj s = "[";
+    int n = top == 0 ? 0 : level * BARW / top;
+    for (int i = 0; i < BARW; i++) s += i < n ? mark : '.';
+    s += ']';
+    return s;
+}
+
+Tank asTank(object o) {
+    if (o == null || !o.is(Tank)) {
+        print("That is not a tank.^");
+        return null;
+    }
+    return (Tank)o;
+}
+
+int indexOfTank(Tank t) { return tanks.indexOf(t); }
+
+//-- Levels as data ---------------------------------------------------------------------------------
+
+array<int> currentLevels() {
+    array<int> out[MAXT];
+    for (Tank t in tanks) out += t.level;
+    return out;
+}
+
+// How much moves along a pipe: no more than the rate, what the source holds, or the room at the target.
+int flow(int from, int to, int room, int rate) { return smaller(rate, smaller(from, room - to)); }
+
+// One step of the model: pipes run in order, then each tank's loss rule.
+array<int> stepLevels(array<int> lv) {
+    array<int> out[MAXT];
+    out = lv;
+    for (array<int> p in pipes) {
+        int moved = flow(out[p[0]], out[p[1]], tanks[p[1]].cap, p[2]);
+        if (moved > 0) {
+            out[p[0]] -= moved;
+            out[p[1]] += moved;
+        }
+    }
+    for (int i = 0; i < out.length; i++) {
+        func<int, int> f = tanks[i].loss;
+        if (f != null) out[i] = clamp(f(out[i]), 0, tanks[i].cap);
+    }
+    return out;
+}
+
+array<int> iterate(array<int> start, int n, func<array<int>, array<int>> f) {
+    array<int> cur[MAXT];
+    cur = start;
+    for (int i = 0; i < n; i++) cur = f(cur);
+    return cur;
+}
+
+void commit(array<int> lv) {
+    for (int i = 0; i < tanks.length; i++) tanks[i].level = lv[i];
+}
+
+int totalVolume() {
+    array<int> lv[MAXT];
+    lv = currentLevels();
+    return fold(lv, 0, plus);
+}
+
+void record() {
+    int total = totalVolume();
+    if (history.length == history.size) history.remove(0);
+    history += total;
+}
+
+//-- Tally ----------------------------------------------------------------------------------------
+
+value class Tally {
+    int count = 0;
+    int total = 0;
+    int most = 0;
+
+    Tally operator = (Tally o) {
+        count = o.count;
+        total = o.total;
+        most = o.most;
+        return self;
+    }
+
+    Tally operator + (int v) {
+        Tally t;
+        t.count = count + 1;
+        t.total = total + v;
+        t.most = count == 0 ? v : larger(most, v);
+        return t;
+    }
+
+    int mean() { return count == 0 ? 0 : total / count; }
+}
+
+Tally tallyOf(array<int> xs) {
+    Tally t;
+    for (int x in xs) t = t + x;
+    return t;
+}
+
+//-- Comparators and predicates ---------------------------------------------------------------------
+
+int byFluidThenFree(Tank a, Tank b) {
+    if (a.fluid != b.fluid) return (int)a.fluid - (int)b.fluid;
+    return b.free() - a.free();
+}
+
+int byPercent(Tank a, Tank b) { return a.percent() - b.percent(); }
+
+bool isWater(Tank t) { return t.fluid == eFluid.water; }
+
+bool hasRoom(Tank t) { return t.free() > 0; }
+
+//-- Rules ----------------------------------------------------------------------------------------
+
+int halve(int x) { return x / 2; }
+int plusFive(int x) { return x + 5; }
+
+array<func<int, int>> rules = { halve, plusFive, (int x) => x * 3, seep };
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb TanksVerb {
+    grammar = {{.tanks}};
+    void handler() {
+        for (Tank t in tanks) {
+            print($"{t.label} {fluidName(t.fluid)} {t.level}/{t.cap} {bar(t.level, t.cap)} free {t.free()} ({stateWords(t.state())})^");
+        }
+        print($"total {totalVolume()}, water {tanks.filter(isWater).count()}, with room {tanks.filter(hasRoom).count()}^");
+    }
+}
+
+verb FillVerb {
+    grammar = {{.fill, NOUN, NUMBER}};
+    void handler() {
+        Tank t = asTank(noun);
+        if (t == null) return;
+        int was = t.level;
+        t.level = clamp(t.level + parsed_number, 0, t.cap);
+        print($"{t.label}: {was} -> {t.level}, spilled {was + parsed_number - t.level}^");
+    }
+}
+
+verb DrainVerb {
+    grammar = {{.drain, NOUN, NUMBER}};
+    void handler() {
+        Tank t = asTank(noun);
+        if (t == null) return;
+        int took = smaller(t.level, parsed_number);
+        t.level -= took;
+        print($"{t.label}: drained {took}, now {t.level} {bar(t.level, t.cap, '=')}^");
+    }
+}
+
+verb TickVerb {
+    grammar = {{.tick, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        if (n < 1) n = 1;
+        for (int i = 0; i < n; i++) {
+            array<int> now[MAXT];
+            now = currentLevels();
+            array<int> next[MAXT];
+            next = stepLevels(now);
+            commit(next);
+            record();
+        }
+        print($"after {n}:");
+        for (Tank t in tanks) print($" {t.label}={t.level}");
+        print($", total {history.last()}^");
+    }
+}
+
+verb PlanVerb {
+    grammar = {{.plan, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<int> now[MAXT];
+        now = currentLevels();
+        array<int> later[MAXT];
+        later = iterate(now, n, stepLevels);
+        print($"in {n}:");
+        for (int i = 0; i < later.length; i++) print($" {tanks[i].label}={later[i]}");
+        print("^");
+        array<int> change[MAXT];
+        change = zipWith(later, now, minus);
+        print("change:");
+        for (int c in change) print($" {c}");
+        print("^");
+        array<int> rising[MAXT];
+        rising = indicesWhere(change, (int c) => c > 0);
+        print($"rising {rising.length}:");
+        for (int i in rising) print($" {tanks[i].label}");
+        print($"; unchanged {change.filter((int c) => c == 0).count()}; tanks still {totalVolume()}^");
+    }
+}
+
+verb HistoryVerb {
+    grammar = {{.history}};
+    void handler() {
+        if (history.length == 0) {
+            print("No history.^");
+            return;
+        }
+        print("history:");
+        for (int h in history) print($" {h}");
+        print("^");
+        Tally t = tallyOf(history);
+        print($"steps {t.count}, mean {t.mean()}, most {t.most}, least {fold(history, history[0], smaller)}^");
+        array<int> d[MAXH];
+        d = deltas(history);
+        print("deltas:");
+        for (int x in d) print($" {x}");
+        print($"; falls {d.filter((int x) => x < 0).count()}, steady run {history.takeWhile((int h) => h == history[0]).count()}^");
+        print("running max:");
+        array<int> peaks[MAXH];
+        peaks = scan(history, 0, larger);
+        for (int x in peaks) print($" {x}");
+        print($"; distinct {history.distinct().count()}, last three {history.skip(history.length - 3).first()}..{history.last()}^");
+    }
+}
+
+verb RankVerb {
+    grammar = {{.rank}};
+    void handler() {
+        print("by fluid then room:");
+        for (Tank t in tanks.orderBy(byFluidThenFree)) print($" {t.label}({t.free()})");
+        print("^");
+        print($"fullest {tanks.orderBy(byPercent).last().label} at {tanks.orderBy(byPercent).last().percent()}%, ");
+        print($"emptiest {tanks.orderBy(byPercent).first().label}, two emptiest water:");
+        for (Tank t in tanks.filter(isWater).orderBy(byPercent).take(2)) print($" {t.label}");
+        print("^");
+        print($"any full {tanks.any((Tank t) => t.level == t.cap)}, all have fluid {tanks.all((Tank t) => t.level > 0)}, ");
+        print($"leaking {tanks.filter((Tank t) => (t.state() & eState.leaking) != 0).count()}^");
+        array<int> pct[MAXT];
+        pct = tanks.map((var t) => ((Tank)t).percent());
+        print("percents:");
+        for (int p in pct) print($" {p}");
+        print($"; mean {tallyOf(pct).mean()}%^");
+    }
+}
+
+verb PipeVerb {
+    grammar = {{.pipes}, {.pipes, NOUN}};
+    void handler() {
+        Tank only = noun == null ? null : asTank(noun);
+        if (noun != null && only == null) return;
+        int k = only == null ? -1 : indexOfTank(only);
+        int shown = 0;
+        for (array<int> p in pipes) {
+            if (k >= 0 && p[0] != k && p[1] != k) continue;
+            Tank a = tanks[p[0]];
+            Tank b = tanks[p[1]];
+            print($"{a.label} -> {b.label} at {p[2]}, would move {flow(a.level, b.level, b.cap, p[2])}");
+            if (a.fluid != b.fluid) print(" (mixed)");
+            print("^");
+            shown++;
+        }
+        if (shown == 0) print("No pipes.^");
+    }
+}
+
+verb RulesVerb {
+    grammar = {{.rules, NUMBER}};
+    void handler() {
+        int x = parsed_number;
+        print($"rules on {x}: all {applyAll(rules, x)}");
+        int v = x;
+        print(", steps");
+        for (func<int, int> f in rules) {
+            v = f(v);
+            print($" {v}");
+        }
+        print("^");
+        print("by tank:");
+        for (Tank t in tanks) print($" {t.label}={t.loss == null ? x : t.loss(x)}");
+        print("^");
+    }
+}
+
+verb SwapVerb {
+    grammar = {{.swap, NOUN, .with, NOUN}};
+    void handler() {
+        Tank a = asTank(noun);
+        Tank b = asTank(second);
+        if (a == null || b == null) return;
+        if (a.fluid != b.fluid) {
+            print($"{a.label} holds {fluidName(a.fluid)}, {b.label} holds {fluidName(b.fluid)}.^");
+            return;
+        }
+        int moveA = smaller(a.level, b.free());
+        int moveB = smaller(b.level, a.free() + moveA);
+        int la = a.level - moveA + moveB;
+        int lb = b.level + moveA - moveB;
+        a.level = clamp(la, 0, a.cap);
+        b.level = clamp(lb, 0, b.cap);
+        print($"{a.label} {a.level}, {b.label} {b.level}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

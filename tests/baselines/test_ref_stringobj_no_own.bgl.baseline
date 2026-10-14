@@ -325,6 +325,12 @@ object _bglBuf
         charCount=self.length(fromBuf);
     }
     len=self.length(toBuf);
+    if (topos < 0) {
+        toPos = 0;
+    }
+    if (topos > len) {
+        toPos=len;
+    }
     self.copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
     self.copy(toBuf, fromBuf, charCount, toPos, 0);
     self.setLength(toBuf, len + charcount);

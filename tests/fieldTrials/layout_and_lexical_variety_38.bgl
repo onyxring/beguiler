@@ -1,0 +1,488 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program with two rooms, a switchboard of four lines, a
+// queue of incoming calls fed by a daemon from a fixed script, and a pool of paper stubs. A line class
+// with positional members (`inline instanceName` re-listed, an `inline int` number), an enum state shown
+// as a char glyph from a switch, a class-wide static counter and a method that `throw`s a string caught
+// by the verb that connects two lines; a value class call with a copy operator, `==`, a static `<=>`
+// that puts urgent calls first, and a method returning a `stringObj` code; a global `array<Call>` queue
+// sorted, searched by index, trimmed with `remove` and copied into a local array; a script in an
+// `array<int>` read four words at a time; a bnum of marks set with `|=`, tested with `&` and cleared
+// with `^`; a pooled stub class with `create`, a `short_name` routine and `delete`; a `stringObj` log
+// built with `+=` of chars, strings and interpolations, then shown through `replaceAll`, `toUpper` and
+// `right`; a raw string and `~` quotes; a lookup that can be null read through `?.` and a ternary;
+// <linq> `filter`, `count`, `any`, `first` and `orderBy`; two `NUMBER` tokens in one grammar line;
+// `#define` values under `#if`/`#else`; hex and binary literals; mixed-case keywords, Allman, K&R and
+// one-line braces, comments between tokens and in argument lists, a routine with no optional spaces and
+// declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6   "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define NLINES     4
+#define QMAX       5        // calls that can wait at once
+#define STUBS      3
+#define LOUD       1
+
+// ---- constants ------------------------------------------------------------------------------------
+
+const int RING_LIMIT = $03 ;           // turns a call rings before it gives up
+CONST INT SCRIPT_STEP = $$100 ;        // four words a call
+Const int
+    LOG_TAIL = 12 ;                    // characters of the log shown short
+
+enum eState
+{
+    idle ,
+    ringing ,   // lamp lit
+    /* plugged */ talking ,
+    held
+}
+
+bnum bMark { urgent , /* written down */ logged , dropped }
+
+char glyph ( eState s )
+{
+    switch ( s )
+    {
+        case eState.idle    : return '.' ;
+        case eState.ringing : return '*' ;
+        case eState.talking : return '=' ;
+        default             : return 'h' ;
+    }
+}
+
+string stateWord(eState s){switch(s){case eState.idle:return "idle";case eState.ringing:return "ringing";case eState.talking:return "talking";default:return "held";}}
+
+// ---- rooms ----------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A switchboard stands against the wall. Room B is east." ;
+    object e_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. A stool. Room A is west." ;
+    object w_to = roomA ;
+}
+
+object stool { "stool" ; parent = roomB ; name = { .stool } ; attributes = { supporter } ; string description = "A wooden stool." ; }
+
+object card
+{
+    "card" ;
+    parent = roomA ;
+    name   = { .card , .white } ;
+    void description ()
+    {
+        printLine( "A card reads: ~Urgent calls first, then the oldest.~" ) ;
+        printLine( @"Pencilled below: ^1 and ~2~ are a pair." ) ;
+    }
+}
+
+// ---- lines ----------------------------------------------------------------------------------------
+
+class Line : object
+{
+    inline instanceName ;
+    inline int number = 0 ;
+    eState state   = eState.idle ;
+    int    partner = 0 ;            // the other line's number while talking or held
+    int    rings   = 0 ;
+    int    served  = 0 ;
+    attributeList attributes = { static , scenery } ;
+
+    static int connects = 0 ;
+
+    bool free () { return state == eState.idle || state == eState.ringing ; }
+
+    void reset ()
+    {
+        state   = eState.idle ;
+        partner = 0 ;
+        rings   = 0 ;
+    }
+
+    /// Joins this line to another; throws when the other one is busy.
+    void join ( Line other )
+    {
+        if ( other == self )                  throw "the same line" ;
+        if ( other.state == eState.talking
+          || other.state == eState.held )     throw "busy" ;
+        state         = eState.talking ;
+        partner       = other.number ;
+        other.state   = eState.talking ;
+        other.partner = number ;
+        rings         = 0 ;
+        other.rings   = 0 ;
+        served++ ;
+        Line.connects++ ;
+    }
+
+    void description () { printLine( $"Line {number} is {stateWord( state )}." ) ; }
+}
+
+Line line1 { "line one"   , 1 ; name = { .line , .one , .first } ;  parent = board ; }
+Line line2 { "line two"   , 2 ; name = { .line , .two } ;           parent = board ; }
+Line line3
+{
+    "line three" ,
+    3 ;                                 // number by position
+    name   = { .line , .three } ;
+    parent = board ;
+}
+Line line4 { "line four" , $04 ; name = { .line , .four , .last } ; parent = board ; }
+
+array<Line> lines = { line1 , line2 , line3 , line4 } ;
+
+Line lineAt ( int n )
+{
+    return lines.filter( ( Line l ) => l.number == n ).first() ;
+}
+
+// ---- calls ----------------------------------------------------------------------------------------
+
+/// One call: who rings, whom they want, when it came in.
+value class Call
+{
+    int   from ;
+    int   to ;
+    int   at ;
+    bMark marks ;
+
+    Call operator = ( Call o ) { from = o.from ; to = o.to ; at = o.at ; marks = o.marks ; return self ; }
+
+    bool operator == ( Call o ) { return from == o.from && to == o.to && at == o.at ; }
+    bool operator != ( Call o ) { return !( self == o ) ; }
+
+    /// Urgent calls first, then the oldest.
+    static int operator <=> ( Call a , Call b )
+    {
+        bool ua = ( a.marks & bMark.urgent ) != 0 ;
+        bool ub = ( b.marks & bMark.urgent ) != 0 ;
+        if ( ua && !ub ) return -1 ;
+        if ( ub && !ua ) return  1 ;
+        return a.at - b.at ;
+    }
+
+    stringObj code ()
+    {
+        stringObj s = $"{from}>{to}" ;
+        if ( marks & bMark.urgent ) s += '!' ;
+        return s ;
+    }
+}
+
+array<Call> queue[ QMAX ] ;
+Call        lastCall ;
+int         dropped = 0 ;
+
+/* turn, from, to, urgent -- one call every four words */
+array<int> script =
+{
+    1 , 1 , 3 , 0 ,
+    2 , 2 , 4 , 1 ,
+    4 , 4 , 1 , 0 ,
+    5 , 3 , 2 , 1 ,
+    9 , 2 , 1 , 0 ,
+    $11 , 1 , 3 , 0                    // turn 17
+} ;
+
+stringObj callLog ;
+
+void note ( Call c , string what )
+{
+    if ( callLog.length > 0 ) callLog += ' ' ;
+    callLog += c.code() ;
+    callLog += ':' ;
+    callLog += what ;
+}
+
+int findCall ( int from )
+{
+    for ( int i = 0 ; i < queue.length ; i++ ) if ( queue[ i ].from == from ) return i ;
+    return -1 ;
+}
+
+// ---- the board and its daemon ---------------------------------------------------------------------
+
+object board
+{
+    "switchboard" ;
+    parent     = roomA ;
+    name       = { .switchboard , .board } ;
+    attributes = { static , container , open } ;
+    int ticks  = 0 ;
+
+    void description ()
+    {
+        print( "A switchboard with four lamps:" ) ;
+        for ( Line l in lines ) print( $" {l.number}{glyph( l.state )}" ) ;
+        printLine( "." ) ;
+    }
+
+    void daemon ()
+    {
+        ticks++ ;
+        // calls that have rung too long give up
+        for ( Line l in lines )
+        {
+            if ( l.state != eState.ringing ) continue ;
+            l.rings++ ;
+            if ( l.rings <= RING_LIMIT ) continue ;
+            int at = findCall( l.number ) ;
+            if ( at >= 0 )
+            {
+                Call c = queue[ at ] ;
+                c.marks |= bMark.dropped ;
+                note( c , "gone" ) ;
+                queue.remove( at ) ;
+            }
+            l.reset() ;
+            dropped++ ;
+            if ( location == roomA ) printLine( $"^The lamp on {l} goes out." ) ;
+        }
+        // new calls from the script
+        for ( int i = 0 ; i < script.length ; i += SCRIPT_STEP )
+        {
+            if ( script[ i ] != ticks ) continue ;
+            Call c ;
+            c.from = script[ i + 1 ] ;
+            c.to   = script[ i + 2 ] ;
+            c.at   = ticks ;
+            if ( script[ i + 3 ] ) c.marks = bMark.urgent ;
+            Line l = lineAt( c.from ) ;
+            if ( l == null || !l.free() || queue.length == QMAX )
+            {
+                note( c , "lost" ) ;
+                dropped++ ;
+                continue ;
+            }
+            l.state = eState.ringing ;
+            l.rings = 0 ;
+            queue += c ;
+            if ( location == roomA )
+                printLine( $"^The lamp on {l} lights{( c.marks & bMark.urgent ) ? " red" : ""}." ) ;
+            else
+                printLine( "^A buzzer sounds from Room A." ) ;
+        }
+    }
+}
+
+// ---- stubs ----------------------------------------------------------------------------------------
+
+class Stub[ STUBS ] : object
+{
+    int    from ;
+    int    to ;
+    static int written = 0 ;
+    name = { .stub , .paper } ;
+    string description = "A paper stub." ;
+
+    void create ( Call c )
+    {
+        from = c.from ;
+        to   = c.to ;
+        Stub.written++ ;
+        parent = player ;
+    }
+
+    bool short_name () { print( $"stub {from}-{to}" ) ; rtrue ; }
+}
+
+int stubCount () { int n = 0 ; for ( object o in player.children ) if ( o.is( Stub ) ) n++ ; return n ; }
+
+// ---- startup --------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    StartDaemon( board ) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands -------------------------------------------------------------------------------------
+
+verb AcceptCall
+{
+    grammar = { { .accept } , { .accept , .call } } ;
+    void handler ()
+    {
+        if ( location != roomA )  { printLine( "The switchboard is in Room A." ) ; return ; }
+        if ( queue.length == 0 )  { printLine( "No call is waiting." ) ; return ; }
+        queue.sort() ;
+        Call c = queue[ 0 ] ;
+        queue.remove( 0 ) ;
+        Line a = lineAt( c.from ) ;
+        Line b = lineAt( c.to ) ;
+        TRY
+        {
+            a.join( b ) ;
+        }
+        CATCH ( string why )
+        {
+            printLine( $"{cThe( b )} is {why}; {the( a )} goes dark." ) ;
+            a.reset() ;
+            c.marks = c.marks | bMark.dropped ;
+            note( c , "busy" ) ;
+            return ;
+        }
+        c.marks |= bMark.logged ;
+        lastCall = c ;
+        note( c , "put through" ) ;
+        printLine( $"You put {c.code()} through: {the( a )} to {the( b )}." ) ;
+    }
+}
+
+verb Plug
+{
+    grammar =
+    {
+        { .plug , NUMBER , .into , NUMBER } ,
+        { .plug , NUMBER , NUMBER }
+    } ;
+    void handler ()
+    {
+        Line a = lineAt( ( int ) noun ) ;
+        Line b = lineAt( ( int ) second ) ;
+        if ( a == null || b == null ) { printLine( $"Lines run 1 to {NLINES}." ) ; return ; }
+        if ( a.state != eState.idle ) { printLine( $"{cThe( a )} is {stateWord( a.state )}." ) ; return ; }
+        try { a.join( b ) ; }
+        catch ( string why ) { printLine( $"{cThe( b )} is {why}." ) ; return ; }
+        Call c ;
+        c.from  = a.number ;
+        c.to    = b.number ;
+        c.at    = board.ticks ;
+        c.marks = bMark.logged ;
+        lastCall = c ;
+        note( c , "plugged" ) ;
+        printLine( $"You plug {a.number} into {b.number}." ) ;
+    }
+}
+
+verb Unplug {
+    grammar = { .unplug , NUMBER } ;
+    void handler () {
+        Line a = lineAt( ( int ) noun ) ;
+        if ( a == null ) { printLine( $"Lines run 1 to {NLINES}." ) ; return ; }
+        if ( a.state == eState.idle || a.state == eState.ringing ) { printLine( $"{cThe( a )} is not plugged." ) ; return ; }
+        Line b = lineAt( a.partner ) ;
+        b?.reset() ;
+        a.reset() ;
+        if ( b != null ) printLine( $"You pull the cords from {a.number} and {b?.number}." ) ;
+        else             printLine( $"You pull the cord from {a.number}." ) ;
+    }
+}
+
+verb Park
+{
+    grammar = { .park , NUMBER } ;
+    void handler ()
+    {
+        Line a = lineAt( ( int ) noun ) ;
+        switch ( a == null ? eState.idle : a.state )
+        {
+            case eState.talking :
+                a.state = eState.held ;
+                lineAt( a.partner ).state = eState.held ;
+                printLine( $"Lines {a.number} and {a.partner} are held." ) ;
+            case eState.held :
+                a.state = eState.talking ;
+                lineAt( a.partner ).state = eState.talking ;
+                printLine( $"Lines {a.number} and {a.partner} talk again." ) ;
+            default :
+                printLine( "Nothing to park." ) ;
+        }
+    }
+}
+
+verb MakeStub
+{
+    grammar = { { .stub } , { .write , .stub } } ;
+    void handler ()
+    {
+        if ( ( lastCall.marks & bMark.logged ) == 0 ) { printLine( "No call to write down." ) ; return ; }
+        Stub s = new Stub( lastCall ) ;
+        if ( s == null ) { printLine( "The pad is empty." ) ; return ; }
+        lastCall.marks = lastCall.marks ^ bMark.logged ;
+        printLine( $"You write {the( s )}. You hold {stubCount()}." ) ;
+    }
+}
+
+verb FileStubs
+{
+    grammar = { .file , .stubs } ;
+    void handler ()
+    {
+        array<Stub> held[ STUBS ] ;
+        for ( object o in player.children ) if ( o.is( Stub ) ) held += ( Stub ) o ;
+        if ( held.length == 0 ) { printLine( "You hold no stubs." ) ; return ; }
+        print( "You file" ) ;
+        for ( Stub s in held ) { print( $" {s.from}-{s.to}" ) ; delete s ; }
+        printLine( "." ) ;
+    }
+}
+
+verb Lamps
+{
+    meta    = true ;
+    grammar = { .lamps } ;
+    void handler ()
+    {
+        stringObj row = "" ;
+        for ( Line l in lines )
+        {
+            row += $"{l.number}" ;
+            row += glyph( l.state ) ;
+            row += ' ' ;
+        }
+        row = row.trimRight() ;
+        row.print() ;
+        printLine( $" ({lines.filter( ( Line l ) => !l.free() ).count()} in use, {Line.connects} put through, {dropped} lost)" ) ;
+        if ( queue.length == 0 ) { printLine( "Queue: empty." ) ; return ; }
+        array<Call> waiting[ QMAX ] ;
+        waiting = queue ;
+        waiting.sort() ;
+        print( "Queue:" ) ;
+        for ( Call c in waiting ) print( $" {c.code()}@{c.at}" ) ;
+        printLine( "." ) ;
+    }
+}
+
+verb ShowLog
+{
+    meta    = TRUE ;
+    grammar = { { .log } , { .calls } } ;
+    void handler ()
+    {
+        if ( callLog.isEmpty() ) { printLine( "The log is empty." ) ; return ; }
+        stringObj plain = callLog.replaceAll( '>' , " to " ) ;
+        printLine( plain ) ;
+        stringObj upper = callLog.toUpper() ;
+#if LOUD
+        printLine( $"Tail: {upper.right( LOG_TAIL )}" ) ;
+#else
+        printLine( $"Tail: {callLog.right( LOG_TAIL )}" ) ;
+#endif
+        printLine( $"Busiest: {lines.orderBy( ( Line a , Line b ) => b.served - a.served ).first()?.number}; any held {lines.any( ( Line l ) => l.state == eState.held )}; stubs {Stub.written}." ) ;
+    }
+}

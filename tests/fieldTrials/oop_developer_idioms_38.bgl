@@ -1,0 +1,609 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-eighth pass: a crafting bench.
+// A value class for a stack of material with a copy operator, `*` by a count, `==`/`!=`, a `<=>` that
+// `sort()` and `<`/`>` use, a static factory and its own `print()` used inside interpolation; an
+// inventory class holding an `array<Stack>` member, an indexer by enum, overloaded `Add` (by material and
+// count, by stack), a `Take` that throws a pooled error carrying an owned `Stack`, and a summary returning
+// a `stringObj`; a recipe base with `required` and default members, a fluent builder method, `default`
+// `Category()`/`Minutes()` overridden by two subclasses (one chaining to the base with an ancestor cast),
+// and `<linq>` `all`/`filter`/`count` with lambdas capturing a parameter; recipe cards as objects named in
+// grammar (`make NOUN`); a pooled item class with `create()`/`destroy()`, static counters and downcasts
+// guarded by `is`; the Observer pattern as an `array<func<void, string, Item>>` of listeners (a named
+// function and a capturing-free lambda); a bench service crafting, salvaging and undoing through a
+// `History` stack (`push`/`pop`); transfers between two inventories that put material back in a `catch`; a fill loop leaving a `while (true)`
+// with `break` from a `catch`;
+// `orderBy` with a comparator, `map`, `any`, `first`; enum switches; `?.`/`??`; named arguments.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eMaterial { Wood, Iron, Cloth, Glass }
+enum eReason { Missing, Full, PoolEmpty, NothingToUndo }
+
+string MaterialName(eMaterial m) {
+    switch (m) {
+        case eMaterial.Wood:  return "wood";
+        case eMaterial.Iron:  return "iron";
+        case eMaterial.Cloth: return "cloth";
+        case eMaterial.Glass: return "glass";
+    }
+    return "?";
+}
+
+//-- Stack: a value type ---------------------------------------------------------------------------------------
+
+value class Stack {
+    eMaterial Material;
+    int Count;
+
+    Stack operator = (Stack o) {
+        Material = o.Material;
+        Count = o.Count;
+        return self;
+    }
+
+    Stack operator * (int times) {
+        Stack r;
+        r.Material = Material;
+        r.Count = Count * times;
+        return r;
+    }
+
+    bool operator == (Stack o) { return Material == o.Material && Count == o.Count; }
+    bool operator != (Stack o) { return Material != o.Material || Count != o.Count; }
+    int operator <=> (Stack o) { return Count - o.Count; }
+
+    static Stack Of(eMaterial m, int n = 1) {
+        Stack s;
+        s.Material = m;
+        s.Count = n;
+        return s;
+    }
+
+    bool IsEmpty() { return Count <= 0; }
+
+    void print() { print($"{Count} {MaterialName(Material)}"); }
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class CraftError[2] : object {
+    eReason Reason;
+    Stack Need;
+    static int Raised;
+
+    void create(eReason why, eMaterial m = eMaterial.Wood, int n = 0) {
+        Reason = why;
+        Need = Stack.Of(m, n);
+        CraftError.Raised++;
+    }
+
+    string Message() {
+        switch (Reason) {
+            case eReason.Missing:       return "missing material";
+            case eReason.Full:          return "no room";
+            case eReason.PoolEmpty:     return "no free item slot";
+            case eReason.NothingToUndo: return "nothing to undo";
+        }
+        return "?";
+    }
+
+    void print() {
+        print(Message());
+        if (!Need.IsEmpty()) print($" ({Need})");
+    }
+}
+
+//-- Inventories -----------------------------------------------------------------------------------------------
+
+class Inventory : object {
+    string Label;
+    int Capacity = 12;
+    array<Stack> Slots[4];
+
+    int Total() {
+        int sum = 0;
+        for (Stack s in Slots) sum += s.Count;
+        return sum;
+    }
+
+    int Free() { return Capacity - Total(); }
+
+    int SlotOf(eMaterial m) {
+        for (int i = 0; i < Slots.length; i++) {
+            if (Slots[i].Material == m) return i;
+        }
+        return -1;
+    }
+
+    int operator [] (eMaterial m) {
+        int i = SlotOf(m);
+        return i < 0 ? 0 : Slots[i].Count;
+    }
+
+    bool Has(Stack need) { return self[need.Material] >= need.Count; }
+
+    void Add(eMaterial m, int n) {
+        if (n <= 0) return;
+        if (n > Free()) throw new CraftError(eReason.Full, m, n - Free());
+        int i = SlotOf(m);
+        if (i < 0) Slots += Stack.Of(m, n);
+        else Slots[i].Count += n;
+    }
+
+    void Add(Stack s) { Add(s.Material, s.Count); }
+
+    void Take(Stack need) {
+        int i = SlotOf(need.Material);
+        int have = i < 0 ? 0 : Slots[i].Count;
+        if (have < need.Count) throw new CraftError(eReason.Missing, need.Material, need.Count - have);
+        Slots[i].Count -= need.Count;
+        if (Slots[i].Count == 0) Slots.remove(i);
+    }
+
+    bool TryTake(Stack need) {
+        if (!Has(need)) return false;
+        Take(need);
+        return true;
+    }
+
+    stringObj Summary() {
+        if (Slots.length == 0) return "empty";
+        Slots.sort((Stack a, Stack b) => (int)a.Material - (int)b.Material);
+        stringObj s = "";
+        for (Stack st in Slots) {
+            if (s.length > 0) s += ", ";
+            s += $"{st}";
+        }
+        return s;
+    }
+
+    void print() { print($"{Label} [{Summary()}] {Total()}/{Capacity}"); }
+}
+
+Inventory pack { Label = "pack"; Capacity = 10; }
+Inventory chest { Label = "chest"; Capacity = 30; }
+
+//-- Recipes ---------------------------------------------------------------------------------------------------
+
+class Recipe : object {
+    required string Title;
+    int Makes = 1;
+    array<Stack> Inputs[3];
+    int TimesMade;
+    static int Built;
+
+    Recipe Needs(eMaterial m, int n = 1) {
+        Inputs += Stack.Of(m, n);
+        return self;
+    }
+
+    default string Category() { return "part"; }
+
+    default int Minutes() { return Inputs.length * 2; }
+
+    bool CanCraft(Inventory from) { return Inputs.all((Stack s) => from.Has(s)); }
+
+    int MissingCount(Inventory from) { return Inputs.filter((Stack s) => !from.Has(s)).count(); }
+
+    int Cost() {
+        int c = 0;
+        for (Stack s in Inputs) c += s.Count;
+        return c;
+    }
+
+    stringObj Details() {
+        stringObj s = $"{Title} ({Category()}, {Minutes()} min):";
+        for (Stack st in Inputs) s += $" {st}";
+        return s;
+    }
+
+    void print() { print(Title); }
+}
+
+class ToolRecipe : Recipe {
+    int Durability = 3;
+
+    string Category() { return "tool"; }
+
+    int Minutes() { return ((Recipe)self).Minutes() + Durability; }
+}
+
+class GarmentRecipe : Recipe {
+    string Category() { return "garment"; }
+}
+
+//-- Items -----------------------------------------------------------------------------------------------------
+
+class Item[4] : object {
+    Recipe Kind;
+    int Wear;
+    int Serial;
+    static int NextSerial = 100;
+    static int Live;
+
+    void create(Recipe r) {
+        Kind = r;
+        NextSerial++;
+        Serial = NextSerial;
+        Live++;
+    }
+
+    void destroy() { Live--; }
+
+    bool IsTool() { return Kind.is(ToolRecipe); }
+
+    int UsesLeft() {
+        if (!IsTool()) return 0;
+        ToolRecipe t = (ToolRecipe)Kind;
+        return t.Durability - Wear;
+    }
+
+    bool Use() {
+        if (UsesLeft() <= 0) return false;
+        Wear++;
+        return true;
+    }
+
+    void print() { print($"{Kind.Title}#{Serial}"); }
+}
+
+//-- Events: the Observer pattern -------------------------------------------------------------------------------
+
+object Events {
+    array<func<void, string, Item>> Listeners[3];
+    int Fired;
+
+    void Subscribe(func<void, string, Item> listener) { Listeners += listener; }
+
+    void Publish(string what, Item it) {
+        Fired++;
+        for (func<void, string, Item> listener in Listeners) listener(what, it);
+    }
+}
+
+int ToolsMade;
+array<Recipe> Catalog[5];
+int Salvaged;
+
+void LogEvent(string what, Item it) { printLine($"  [{what} {it}]"); }
+
+//-- The bench -------------------------------------------------------------------------------------------------
+
+object Bench {
+    array<Item> Made[4];
+    array<Recipe> History[6];
+    int MinutesSpent;
+
+    Item Craft(Recipe r, Inventory from) {
+        for (Stack s in r.Inputs) {
+            if (!from.Has(s)) throw new CraftError(eReason.Missing, s.Material, s.Count - from[s.Material]);
+        }
+        Item it = new Item(r);
+        if (it == null) throw new CraftError(eReason.PoolEmpty);
+        for (Stack s in r.Inputs) from.Take(s);
+        Made += it;
+        History.push(r);
+        r.TimesMade++;
+        Recipe.Built++;
+        MinutesSpent += r.Minutes();
+        Events.Publish("made", it);
+        return it;
+    }
+
+    void Salvage(Item it, Inventory into) {
+        for (Stack s in it.Kind.Inputs) into.Add(s.Material, s.Count / 2);
+        Made -= it;
+        Events.Publish("salvaged", it);
+        delete it;
+    }
+
+    Recipe Undo(Inventory into) {
+        if (History.length == 0) throw new CraftError(eReason.NothingToUndo);
+        Recipe r = History.pop();
+        Item last = Find(r.Title);
+        if (last != null) {
+            for (Stack s in r.Inputs) into.Add(s);
+            Made -= last;
+            Events.Publish("undone", last);
+            delete last;
+            r.TimesMade--;
+        }
+        return r;
+    }
+
+    Item Find(string title) {
+        for (int i = Made.length - 1; i >= 0; i--) {
+            if (Made[i].Kind.Title == title) return Made[i];
+        }
+        return null;
+    }
+
+    int ToolCount() { return Made.filter((Item i) => i.IsTool()).count(); }
+}
+
+//-- Helpers ---------------------------------------------------------------------------------------------------
+
+bool TryCraft(Recipe r, Inventory from = pack) {
+    try {
+        Item it = Bench.Craft(r, from);
+        printLine($"Made {it} from {from.Label}.");
+        return true;
+    } catch (CraftError e) {
+        printLine($"Cannot make {r}: {e}.");
+        delete e;
+    }
+    return false;
+}
+
+bool Transfer(Inventory from, Inventory to, eMaterial m, int n) {
+    Stack moving = Stack.Of(m, n);
+    if (!from.TryTake(moving)) {
+        printLine($"Transfer {moving}: {from.Label} has {from[m]}.");
+        return false;
+    }
+    try {
+        to.Add(moving);
+    } catch (CraftError e) {
+        from.Add(moving);
+        printLine($"Transfer {moving}: {e}, returned to {from.Label}.");
+        delete e;
+        return false;
+    }
+    printLine($"Moved {moving} from {from.Label} to {to.Label}.");
+    return true;
+}
+
+int ByCostThenTitle(Recipe a, Recipe b) {
+    int d = a.Cost() - b.Cost();
+    if (d != 0) return d;
+    return a.Title <=> b.Title;
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Gather {
+    grammar = {.gather};
+    void handler() {
+        pack.Add(eMaterial.Wood, 4);
+        pack.Add(Stack.Of(eMaterial.Iron, 3));
+        pack.Add(eMaterial.Cloth, 2);
+        chest.Add(Stack.Of(eMaterial.Glass) * 3);
+        chest.Add(eMaterial.Wood, 6);
+        try {
+            pack.Add(eMaterial.Glass, 5);
+        } catch (CraftError e) {
+            printLine($"Pack: {e}.");
+            delete e;
+        }
+        printLine($"{pack}");
+        printLine($"{chest}");
+        printLine($"Wood {pack[eMaterial.Wood]}, glass {pack[eMaterial.Glass]}, free {pack.Free()}.");
+    }
+}
+
+verb Recipes {
+    grammar = {.recipes};
+    void handler() {
+        for (Recipe r in Catalog) printLine(r.Details());
+        stringObj line = "By cost:";
+        for (Recipe r in Catalog.orderBy(ByCostThenTitle)) line += $" {r.Title}={r.Cost()}";
+        printLine(line);
+    }
+}
+
+verb Check {
+    grammar = {.check};
+    void handler() {
+        for (Recipe r in Catalog) {
+            bool ok = r.CanCraft(pack);
+            printLine($"{r}: {(ok ? "ready" : "short")}, missing {r.MissingCount(pack)}, in chest {r.CanCraft(chest)}");
+        }
+    }
+}
+
+verb Make {
+    grammar = {.make, NOUN};
+    void handler() {
+        if (!noun.is(Recipe)) {
+            printLine("That is not a recipe card.");
+            return;
+        }
+        Recipe r = (Recipe)noun;
+        if (!TryCraft(r)) TryCraft(r, from: chest);
+    }
+}
+
+verb Use {
+    grammar = {.use, NOUN};
+    void handler() {
+        if (!noun.is(Recipe)) {
+            printLine("That is not a recipe card.");
+            return;
+        }
+        Item it = Bench.Find(((Recipe)noun).Title);
+        if (it == null) {
+            printLine($"No {noun} made.");
+            return;
+        }
+        if (it.Use()) printLine($"Used {it}, {it.UsesLeft()} left.");
+        else if (it.IsTool()) printLine($"{it} is worn out.");
+        else printLine($"{it} is not a tool.");
+    }
+}
+
+verb Salvage {
+    grammar = {.salvage, NOUN};
+    void handler() {
+        Recipe r = noun.is(Recipe) ? (Recipe)noun : null;
+        Item it = Bench.Find(r?.Title ?? "");
+        if (it == null) {
+            printLine("Nothing to salvage.");
+            return;
+        }
+        try {
+            Bench.Salvage(it, pack);
+        } catch (CraftError e) {
+            printLine($"Salvage: {e}.");
+            delete e;
+            Bench.Salvage(it, chest);
+        }
+        printLine($"{pack}");
+    }
+}
+
+verb Stuff {
+    grammar = {.stuff};
+    void handler() {
+        int added = 0;
+        while (true) {
+            try {
+                pack.Add(eMaterial.Glass, 1);
+                added++;
+            } catch (CraftError e) {
+                printLine($"Stopped: {e}.");
+                delete e;
+                break;
+            }
+        }
+        printLine($"Added {added} glass; {pack}");
+    }
+}
+
+verb UndoLast {
+    grammar = {.unmake};
+    void handler() {
+        try {
+            Recipe r = Bench.Undo(pack);
+            printLine($"Undid {r}; made {r.TimesMade} now.");
+        } catch (CraftError e) {
+            printLine($"Undo: {e}.");
+            delete e;
+        }
+    }
+}
+
+verb Move {
+    grammar = {.move};
+    void handler() {
+        Transfer(chest, pack, eMaterial.Glass, 2);
+        Transfer(chest, pack, eMaterial.Wood, 9);
+        Transfer(from: chest, to: pack, m: eMaterial.Wood, n: 6);
+        Transfer(pack, chest, eMaterial.Cloth, 1);
+        printLine($"{pack}");
+        printLine($"{chest}");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        stringObj made = "Made:";
+        for (Item it in Bench.Made) made += $" {it}";
+        if (Bench.Made.length == 0) made += " none";
+        printLine(made);
+        printLine($"Live {Item.Live}, built {Recipe.Built}, tools {Bench.ToolCount()}, minutes {Bench.MinutesSpent}.");
+        printLine($"Events {Events.Fired}, tools made {ToolsMade}, salvaged {Salvaged}, errors {CraftError.Raised}.");
+        bool anyWorn = Bench.Made.any((Item i) => i.IsTool() && i.UsesLeft() == 0);
+        Item newest = Bench.Made.orderBy((Item a, Item b) => b.Serial - a.Serial).first();
+        printLine($"Worn {anyWorn}, newest {newest?.Kind?.Title ?? "none"}, oldest {Bench.Made.first()?.Serial}.");
+        array<var> serials = Bench.Made.map((Item i) => i.Serial);
+        int sum = 0;
+        for (var s in serials) sum += s;
+        printLine($"Serial sum {sum} over {serials.length}.");
+        stringObj hist = "History:";
+        for (Recipe r in Bench.History) hist += $" {r}";
+        printLine(hist);
+        Stack big = Stack.Of(eMaterial.Wood, 4);
+        Stack small = Stack.Of(eMaterial.Iron, 2);
+        printLine($"Compare {big > small} {big < small} {big == Stack.Of(eMaterial.Wood, 4)} {big != small * 2} {small * 2 == Stack.Of(eMaterial.Iron, 4)}");
+        for (Recipe r in Catalog) {
+            if (r.TimesMade > 0) printLine($"{r} x{r.TimesMade} ({r.Category()})");
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+//-- Recipe cards ----------------------------------------------------------------------------------------------
+
+Recipe plank {
+    "plank card";
+    parent = roomA;
+    name = {.plank, .card};
+    Title = "plank";
+    Makes = 2;
+}
+
+Recipe pane {
+    "pane card";
+    parent = roomA;
+    name = {.pane, .card};
+    Title = "pane";
+}
+
+ToolRecipe hammer {
+    "hammer card";
+    parent = roomA;
+    name = {.hammer, .card};
+    Title = "hammer";
+    Durability = 2;
+}
+
+ToolRecipe saw {
+    "saw card";
+    parent = roomA;
+    name = {.saw, .card};
+    Title = "saw";
+}
+
+GarmentRecipe apron {
+    "apron card";
+    parent = roomA;
+    name = {.apron, .card};
+    Title = "apron";
+}
+
+object rock {
+    "rock";
+    parent = roomA;
+    name = {.rock};
+}
+
+bool Initialise() {
+    location = roomA;
+    Catalog += { plank, pane, hammer, saw, apron };
+    plank.Needs(eMaterial.Wood);
+    pane.Needs(eMaterial.Glass, 2);
+    hammer.Needs(eMaterial.Iron, 2).Needs(eMaterial.Wood);
+    saw.Needs(eMaterial.Iron).Needs(eMaterial.Wood, 2);
+    apron.Needs(eMaterial.Cloth, 3).Needs(n: 1, m: eMaterial.Iron);
+    Events.Subscribe(LogEvent);
+    Events.Subscribe((string what, Item it) => {
+        if (what == "made" && it.IsTool()) ToolsMade++;
+        if (what == "salvaged") Salvaged++;
+    });
+    rfalse;
+}

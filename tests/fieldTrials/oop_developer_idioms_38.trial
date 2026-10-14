@@ -1,0 +1,150 @@
+Room A
+Room A.
+You can see a plank card, a pane card, a hammer card, a saw card, an apron card and a rock here.
+
+> recipes
+plank (part, 2 min): 1 wood
+pane (part, 2 min): 2 glass
+hammer (tool, 6 min): 2 iron 1 wood
+saw (tool, 7 min): 1 iron 2 wood
+apron (garment, 4 min): 3 cloth 1 iron
+By cost: plank=1 pane=2 hammer=3 saw=3 apron=4
+
+> gather
+Pack: no room (4 glass).
+pack [4 wood, 3 iron, 2 cloth] 9/10
+chest [6 wood, 3 glass] 9/30
+Wood 4, glass 0, free 1.
+
+> check
+plank: ready, missing 0, in chest true
+pane: short, missing 1, in chest true
+hammer: ready, missing 0, in chest false
+saw: ready, missing 0, in chest false
+apron: short, missing 1, in chest false
+
+> make hammer
+  [made hammer#101]
+Made hammer#101 from pack.
+
+> make plank
+  [made plank#102]
+Made plank#102 from pack.
+
+> make apron
+Cannot make apron: missing material (1 cloth).
+Cannot make apron: missing material (3 cloth).
+
+> make pane
+Cannot make pane: missing material (2 glass).
+  [made pane#103]
+Made pane#103 from chest.
+
+> make rock
+That is not a recipe card.
+
+> move
+Transfer 2 glass: chest has 1.
+Transfer 9 wood: chest has 6.
+Transfer 6 wood: no room (1 wood), returned to chest.
+Moved 1 cloth from pack to chest.
+pack [2 wood, 1 iron, 1 cloth] 4/10
+chest [6 wood, 1 cloth, 1 glass] 8/30
+
+> make pane
+Cannot make pane: missing material (2 glass).
+Cannot make pane: missing material (1 glass).
+
+> make saw
+  [made saw#104]
+Made saw#104 from pack.
+
+> use hammer
+Used hammer#101, 1 left.
+
+> use hammer
+Used hammer#101, 0 left.
+
+> use hammer
+hammer#101 is worn out.
+
+> use plank
+plank#102 is not a tool.
+
+> use saw
+Used saw#104, 2 left.
+
+> report
+Made: hammer#101 plank#102 pane#103 saw#104
+Live 4, built 4, tools 2, minutes 17.
+Events 4, tools made 2, salvaged 0, errors 7.
+Worn true, newest saw, oldest 101.
+Serial sum 410 over 4.
+History: saw pane plank hammer
+Compare true false true true true
+plank x1 (part)
+pane x1 (part)
+hammer x1 (tool)
+saw x1 (tool)
+
+> salvage hammer
+  [salvaged hammer#101]
+pack [1 iron, 1 cloth] 2/10
+
+> unmake
+  [undone saw#104]
+Undid saw; made 0 now.
+
+> unmake
+  [undone pane#103]
+Undid pane; made 0 now.
+
+> make hammer
+  [made hammer#105]
+Made hammer#105 from pack.
+
+> report
+Made: plank#102 hammer#105
+Live 2, built 5, tools 1, minutes 23.
+Events 8, tools made 3, salvaged 1, errors 7.
+Worn false, newest hammer, oldest 102.
+Serial sum 207 over 2.
+History: hammer plank hammer
+Compare true false true true true
+plank x1 (part)
+hammer x2 (tool)
+
+> stuff
+Stopped: no room (1 glass).
+Added 6 glass; pack [1 wood, 1 cloth, 8 glass] 10/10
+
+> salvage hammer
+Salvage: no room (1 iron).
+  [salvaged hammer#105]
+pack [1 wood, 1 cloth, 8 glass] 10/10
+
+> unmake
+Undid hammer; made 2 now.
+
+> unmake
+Undo: no room (1 wood).
+
+> unmake
+Undid hammer; made 2 now.
+
+> unmake
+Undo: nothing to undo.
+
+> salvage rock
+Nothing to salvage.
+
+> report
+Made: plank#102
+Live 1, built 5, tools 0, minutes 23.
+Events 9, tools made 3, salvaged 2, errors 11.
+Worn false, newest plank, oldest 102.
+Serial sum 102 over 1.
+History:
+Compare true false true true true
+plank x1 (part)
+hammer x2 (tool)
