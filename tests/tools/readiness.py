@@ -44,6 +44,7 @@ from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
+TRIALS_DIR = os.path.join(ROOT, 'tests', 'fieldTrials')
 DEFECTS = os.path.join(ROOT, 'tests', 'defects')
 PROBES = {'doc-tests', 'feature-matrix', 'field-trial', 'test-suite'}
 ESCAPES = {'jim', 'wip-game'}
@@ -287,8 +288,9 @@ def report(rows, probes, by, md):
         e = week_end(w)
         return sum(1 for r in rows if r['found_date'] and r['found_date'] <= e
                    and not (r['fixed_date'] and r['fixed_date'] <= e))
-    out.append(table(['active week', 'found', 'fixed', 'open', 'new lines', 'per 1k (4 wk)', ''],
-                     [[w, n, fixed_in(w), open_at(w), k, '-' if a is None else f'{a:.1f}', '█' * min(60, round(a or 0))]
+    out.append(table(['active week', 'found', 'fixed', 'open', 'new lines', 'per 1k (week)', 'per 1k (4 wk)', ''],
+                     [[w, n, fixed_in(w), open_at(w), k, f'{1000 * n / k:.1f}' if k else '-',
+                       '-' if a is None else f'{a:.1f}', '█' * min(60, round(a or 0))]
                       for w, n, k, a in shown], md))
     out.append(h('Probe yield (falling on fresh probes is the strongest stability signal)'))
     prow = []
@@ -304,8 +306,17 @@ def report(rows, probes, by, md):
             later = [q['date'] for q in probes[i + 1:] if q['found_by'] == p['found_by']]
             end = later[0] if later else '9999'
             n = sum(1 for r in rows if r['found_by'] == p['found_by'] and p['date'] <= r['found_date'] < end)
-        prow.append([p['date'], p['found_by'], f"{p['units']} {p['unit']}s", n, f"{n / int(p['units']):.3f}"])
-    out.append(table(['date', 'probe', 'size', 'found', 'per unit'], prow, md))
+        # A round whose note names its trials: its own rate per 1,000 lines of those programs.
+        lines, named = 0, 0
+        for name in set(re.findall(r'\b([a-z][a-z0-9_]*_\d+)\b', p.get('note') or '')):
+            path = os.path.join(TRIALS_DIR, name + '.bgl')
+            if os.path.exists(path):
+                named += 1
+                with open(path, encoding='utf-8', errors='replace') as f: lines += sum(1 for _ in f)
+        if p['unit'] != 'trial' or named != int(p['units']): lines = 0   # only when every trial of the run is named
+        prow.append([p['date'], p['found_by'], f"{p['units']} {p['unit']}s", n, f"{n / int(p['units']):.3f}",
+                     f"{1000 * n / lines:.1f}" if lines else '-'])
+    out.append(table(['date', 'probe', 'size', 'found', 'per unit', 'per 1k lines'], prow, md))
 
     # Feature-interaction coverage: new defects mostly come from two features meeting for the first time.
     try:
